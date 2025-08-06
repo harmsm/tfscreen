@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.distutils.bdist_wheel]
+universal = true
+
+[tool.setuptools.dynamic]
+version = {attr = "tfscreen.__version__.__version__"}
+
+[tool.setuptools.package-data]
+"*" = [
+]
+
+[project]
+name = "tfscreen"
+dynamic = ["version"]
+dependencies = [
+  "numpy",
+  "pandas",
+  "openpyxl",
+  "matplotlib",
+  "tqdm",
+  "statsmodels",
+  "eee",
+  "dataprob"
+]
+
+requires-python = ">=3.10"
+authors = [
+  {name = "Mike Harms", email = "harms@uoregon.edu"},
+]
+maintainers = [
+  {name = "Mike Harms", email = "harms@uoregon.edu"}
+]
+description = "Simulate or analyze a high-throughput screen of a transcription factor library"
+readme = "README.rst"
+license = {file = "LICENSE"}
+keywords = ["high-throughput","protein","transcription factor","analysis","statistics","simulation"]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Programming Language :: Python"
+]
+
+[project.urls]
+Repository = "https://github.com/harmslab/tfscreen.git"
+"Bug Tracker" = "https://github.com/harmslab/tfscreen/issues"
+
+[project.optional-dependencies]
+test = [
+  "coverage",
+  "flake8",
+  "pytest",
+  "genbadge"
+ ]
+docs = [
+  "pydata-sphinx-theme"
+]
+
+
