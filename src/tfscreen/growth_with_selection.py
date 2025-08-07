@@ -1,6 +1,9 @@
+"""
+Functions for simulating population growth under selection conditions in tfscreen.
+"""
 import numpy as np
 from tqdm.auto import tqdm
-from cell_growth_moves import grow_for_time
+from tfscreen import grow_for_time
 
 def growth_with_selection(ln_pop_array,
                           growth_rates,

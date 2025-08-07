@@ -1,3 +1,6 @@
+"""
+Functions for simulating cell growth, dilution, and related operations in tfscreen.
+"""
 import numpy as np
 
 def thaw_glycerol_stock(input_library,

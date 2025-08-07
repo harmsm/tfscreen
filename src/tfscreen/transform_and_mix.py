@@ -1,3 +1,6 @@
+"""
+Functions for simulating transformation and mixing of mutant libraries in tfscreen.
+"""
 import numpy as np
 
 import copy
@@ -6,7 +9,27 @@ def _transform_cells(num_transformants,
                      library_vector,
                      lambda_value=None,
                      max_num_plasmids=10):
-    
+    """
+    Simulate transformation of cells with a library of plasmids.
+
+    Parameters
+    ----------
+    num_transformants : int
+        Number of transformant cells to generate.
+    library_vector : numpy.ndarray
+        Vector of possible plasmid indexes to sample from.
+    lambda_value : float or None, optional
+        Mean number of plasmids per cell (Poisson-distributed). If None or
+        <= 0, each cell gets one plasmid. Default is None.
+    max_num_plasmids : int, optional
+        Maximum number of plasmids per cell. Default is 10.
+
+    Returns
+    -------
+    raw_genotypes : numpy.ndarray
+        Array of shape (num_transformants, max_num_plasmids) with plasmid
+        indexes. -1 indicates no plasmid in that slot.
+    """
     raw_genotypes = np.random.choice(library_vector,
                                      size=(num_transformants,max_num_plasmids))
     
@@ -37,7 +60,20 @@ def _transform_cells(num_transformants,
 
 
 def _scale_library_mixture(library_mixture):
-    
+    """
+    Scale the library mixture so the lowest entry is 1 and others are
+    proportional.
+
+    Parameters
+    ----------
+    library_mixture : dict
+        Dictionary mapping library names to mixture sizes.
+
+    Returns
+    -------
+    library_mixture : dict
+        Scaled dictionary with integer mixture sizes.
+    """
     library_mixture = copy.deepcopy(library_mixture)
 
     # Create vector from entries
@@ -61,7 +97,32 @@ def transform_and_mix(lib_phenotypes,
                       library_mixture,
                       lambda_value=0,
                       max_num_plasmids=10):
+    """
+    Transform and mix multiple libraries into a single input library.
 
+    Parameters
+    ----------
+    lib_phenotypes : dict
+        Dictionary mapping library names to lists of clone dicts.
+    transform_sizes : dict
+        Dictionary mapping library names to number of transformants for each
+        library.
+    library_mixture : dict
+        Dictionary mapping library names to mixture sizes.
+    lambda_value : float, optional
+        Mean number of plasmids per cell (Poisson-distributed). If None or
+        <= 0, each cell gets one plasmid. Default is 0.
+    max_num_plasmids : int, optional
+        Maximum number of plasmids per cell. Default is 10.
+
+    Returns
+    -------
+    input_library : numpy.ndarray
+        Array holding bacterial clones in the population (indexes to mega
+        library).
+    mega_library : list
+        List of all clones from all libraries.
+    """
     if lambda_value is None:
         lambda_value = 0
 

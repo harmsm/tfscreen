@@ -1,12 +1,98 @@
 """
-Generate libraries based on degenerate codon information.
+Functions for generating mutant libraries based on degenerate codon information.
 """
-from data import degen_base_specifier
-from data import codon_to_aa
+
+from tfscreen import data
+
+import pandas as pd
 
 import string
 import itertools
 import re
+
+def _build_genotype_df(all_genotypes):
+    """
+    Build a DataFrame with genotype information for all clones.
+
+    Parameters
+    ----------
+    all_genotypes : list
+        List of all genotypes with full genotype information.
+
+    Returns
+    -------
+    df : pandas.DataFrame
+        DataFrame with genotype, mutation, and site information.
+    """
+    
+    unique_genotypes = set(all_genotypes)
+    
+    out_dict = {"genotype":[],
+                "num_muts":[],
+                "site_1":[],
+                "site_2":[],
+                "mut_1":[],
+                "mut_2":[],
+                "wt_1":[],
+                "wt_2":[]}
+                
+    for genotype in unique_genotypes:
+        
+        mut = genotype.split("/")
+        
+        if len(mut) == 1:
+            if mut[0] == "" or mut[0] == "wt":
+                name = "wt"
+                num_muts = 0
+                m1 = None
+                m2 = None
+                s1 = None
+                s2 = None
+                w1 = None
+                w2 = None
+            else:
+                name = genotype
+                num_muts = 1
+                m1 = mut[0][-1]
+                m2 = None
+                s1 = int(mut[0][1:-1])
+                s2 = None
+                w1 = mut[0][0]
+                w2 = None
+            
+        # two mutations
+        elif len(mut) == 2:
+            name = genotype
+            num_muts = 2
+
+            m1 = mut[0][-1]
+            m2 = mut[1][-1]
+            s1 = int(mut[0][1:-1])
+            s2 = int(mut[1][1:-1])
+            w1 = mut[0][0]
+            w2 = mut[1][0]
+    
+        else:
+            err = "more than two mutations\n"
+            raise ValueError(err)
+    
+        out_dict["genotype"].append(name)
+        out_dict["num_muts"].append(num_muts)
+        out_dict["site_1"].append(s1)
+        out_dict["site_2"].append(s2)
+        out_dict["mut_1"].append(m1)
+        out_dict["mut_2"].append(m2)
+        out_dict["wt_1"].append(w1)
+        out_dict["wt_2"].append(w2)
+    
+    df = pd.DataFrame(out_dict)
+    
+    df = df.sort_values(by=["num_muts","site_1","site_2","mut_1","mut_2"],axis=0)
+    df = df.reset_index(drop=True)
+    df.index = df["genotype"]
+
+    return df
+
 
 def _create_mut_aa_list(degen_codon):
     """
@@ -14,10 +100,10 @@ def _create_mut_aa_list(degen_codon):
     """
 
     amino_acids = []
-    for b0 in list(degen_base_specifier[degen_codon[0]]):
-        for b1 in list(degen_base_specifier[degen_codon[1]]):
-            for b2 in list(degen_base_specifier[degen_codon[2]]):
-                aa = codon_to_aa[f"{b0}{b1}{b2}"]
+    for b0 in list(data.degen_base_specifier[degen_codon[0]]):
+        for b1 in list(data.degen_base_specifier[degen_codon[1]]):
+            for b2 in list(data.degen_base_specifier[degen_codon[2]]):
+                aa = data.codon_to_aa[f"{b0}{b1}{b2}"]
                 amino_acids.append(aa)
 
     return amino_acids
@@ -30,6 +116,8 @@ def _get_libs_to_build(mutated_sites,
     Build a list of all combos of up to max_num_combos sub libraries from a 
     string of mutated sites.
 
+    Parameters
+    ----------
     mutated_sites : str
         string holding library information. This should be an amino acid 
         sequence. Any non-uppercase letter is treated as a library with specific
@@ -100,7 +188,7 @@ def generate_libraries(aa_sequence,
                        internal_doubles=False,
                        degen_codon="nnt"):
     """
-    Taken an amino acid sequence and description of sites to mutate and generate
+    Take an amino acid sequence and description of sites to mutate and generate
     a list of libraries. Libraries are spit out at an amino acid mutation level
     and correspond to all clones. If two sub-libraries both encode S7G by
     itself, this will appear twice. The idea is to have every clone that will be
@@ -130,14 +218,13 @@ def generate_libraries(aa_sequence,
     degen_codon : str, default="nnt"
         use this codon at each site that is mutated
 
-
     Returns
     -------
     lib_clone_dict : dict
         dictionary keying library combinations to a list of clones. For the 
         examples above, this would have three keys ("1",), ("2",), ("1","2",). 
-        Values are lists like [['R5A'],['R5C'],...]. Internal lists can have 
-        multiple mutations ['R5A','L12A'] or none ([] ; wildtype).
+        Values are strings like ['R5A','R5C',...,"R5A/L12A"]. wildtype will 
+        have the key "wt".
     """
 
     # Get amino acid sequence, stripping out white space
@@ -208,6 +295,7 @@ def generate_libraries(aa_sequence,
             # Generate all possible combinations of the site_mutations. So, 
             # make ["R5A","L12A"], ["R5A","L12C"] ... 
             for clone_mutants in itertools.product(*site_mutations):
+
                 to_place = []
                 for m in clone_mutants:
 
@@ -217,9 +305,22 @@ def generate_libraries(aa_sequence,
                         continue
                     else:
                         to_place.append(m)
-                library_clones.append(to_place)
-                
+
+                if len(to_place) == 0:
+                    clone_name = "wt"
+                else:
+                    clone_name = "/".join(to_place)
+
+                library_clones.append(clone_name)
+
         lib_clone_dict[lib] = library_clones
-                
-    return lib_clone_dict
+
+    all_genotypes = []
+    for lib in lib_clone_dict:
+        all_genotypes.extend(lib_clone_dict[lib])
+
+    # Now build a DataFrame with all genotypes
+    genotype_df = _build_genotype_df(all_genotypes)
+
+    return lib_clone_dict, genotype_df
         

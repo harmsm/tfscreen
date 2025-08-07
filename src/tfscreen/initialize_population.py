@@ -1,7 +1,10 @@
-from cell_growth_moves import grow_to_target
-from cell_growth_moves import grow_for_time
-from cell_growth_moves import dilute
-from cell_growth_moves import thaw_glycerol_stock
+"""
+Functions for initializing bacterial populations for tfscreen simulations.
+"""
+from tfscreen import grow_to_target
+from tfscreen import grow_for_time
+from tfscreen import dilute
+from tfscreen import thaw_glycerol_stock
 
 import numpy as np
 from tqdm.auto import tqdm
@@ -11,27 +14,25 @@ def _get_growth_rates(input_library,
                       all_genotypes,
                       selectors):
     """
-    Get the growth rates of a population of cells that (possibly) has cells
-    with multiple plasmids. 
+    Get the growth rates of a population of cells that may have multiple
+    plasmids per cell.
 
     Parameters
     ----------
     input_library : numpy.ndarray
-        array holding bacterial clones in the population
-    growth_rates : numpy.ndarray
-        array with growth rate of each clone under this condition
-    final_cfu_mL : float, default = 1e9
-        grow to this cfu/mL
+        Array holding bacterial clones in the population.
+    all_genotypes : list
+        List of all genotypes with full genotype information.
+    selectors : list
+        List of selectors to apply (e.g., ["kan", "pheS"]). These should
+        match selectors created by pheno_to_growth calls.
 
     Returns
     -------
     base_growth_rate : numpy.ndarray
-        growth rates of cells in the population in the absence of selection
-    all_genotypes : list
-        list of all genotypes with full genotype information
-    selectors : list
-        list of selectors to apply (ex: ["kan","pheS"]). These should
-        match selectors created by pheno_to_growth calls
+        Growth rates of cells in the population in the absence of selection.
+    growth_rates : dict
+        Dictionary mapping selector to growth rate array for each clone.
     """
 
     print("getting growth rates of each bacterium",flush=True)
@@ -96,6 +97,42 @@ def initialize_population(input_library,
                           iptg_dilution_factor=0.2/10.2,
                           iptg_out_growth_time=30):
     
+    """
+    Initialize a bacterial population for tfscreen simulations, including
+    thawing, growth, dilution, and induction steps.
+
+    Parameters
+    ----------
+    input_library : numpy.ndarray
+        Array holding bacterial clones in the population.
+    all_genotypes : list
+        List of all genotypes with full genotype information.
+    num_thawed_colonies : int, optional
+        Number of colonies to thaw from the input library (default: 1e7).
+    overnight_volume_in_mL : float, optional
+        Overnight growth volume in mL (default: 10).
+    saturation_cfu_mL : float, optional
+        Final cfu/mL for overnight saturation (default: 1e9).
+    morning_dilution : float, optional
+        Dilution factor for morning culture (default: 1/70).
+    pre_iptg_cfu_mL : float, optional
+        Target cfu/mL before IPTG induction (default: 9e7).
+    iptg_dilution_factor : float, optional
+        Dilution factor for IPTG induction (default: 0.2/10.2).
+    iptg_out_growth_time : float, optional
+        Out-growth time in IPTG (default: 30).
+
+    Returns
+    -------
+    input_library : numpy.ndarray
+        Array holding bacterial clones in the population after initialization.
+    ln_pop_array : numpy.ndarray
+        Log population array for each clone after initialization.
+    base_growth_rates : numpy.ndarray
+        Growth rates of cells in the absence of selection.
+    growth_rates : dict
+        Dictionary mapping selector to growth rate array for each clone.
+    """
     # Thaw glycerol stock, 
     input_library, ln_pop_array = thaw_glycerol_stock(input_library,
                                                       num_thawed_colonies=num_thawed_colonies,
