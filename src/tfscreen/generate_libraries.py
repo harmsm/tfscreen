@@ -189,42 +189,40 @@ def generate_libraries(aa_sequence,
                        degen_codon="nnt"):
     """
     Take an amino acid sequence and description of sites to mutate and generate
-    a list of libraries. Libraries are spit out at an amino acid mutation level
-    and correspond to all clones. If two sub-libraries both encode S7G by
-    itself, this will appear twice. The idea is to have every clone that will be
-    present, even if this means repeating specific amino acid sequence.
-    
+    a list of libraries. Libraries are returned at the amino acid mutation level
+    and correspond to all clones encoded by the degenerate codons at the sites 
+    indicated. This means the same genotype may occur multiple times.  
+
     Parameters
     ----------
     aa_sequence : str
-        string containing amino acid sequence as uppercase letters. whitespace
-        and line-breaks are allowed. For example: MASTRKEQRVTLFGMNQR...
+        Amino acid sequence as uppercase letters. Whitespace and line-breaks are allowed.
+        Example: 'MASTRKEQRVTLFGMNQR...'
     mutated_sites : str
-        string containing amino acid sequence as uppercase letters with mutated
-        sites replaced with library identifier characters. whitespace
-        and line-breaks are allowed. For example: MAST111QRVT222MNQR... This
-        specifies there are two sublibraries "1" and "2" that replace the amino
-        codon for that amino acid with 'degen_codon'. A library id can be 
-        non-uppercase-letter character. 
-    seq_starts_at : int, default = 1
-        number of amino acid corresponding to first position in aa_seq.
-    max_num_combos : int, default = 2
-        maximum number of combinations to make. 1 means do each library only 
-        individual; 2 means make pairwise combos; 3 means make three-way, etc. 
+        Amino acid sequence as uppercase letters with mutated sites replaced by library
+        identifier characters. Whitespace and line-breaks are allowed.
+        Example: 'MAST111QRVT222MNQR...'
+        This specifies there are two sublibraries "1" and "2" that replace the amino
+        codon for that amino acid with 'degen_codon'. A library id can be any non-uppercase-letter character.
+    seq_starts_at : int, default=1
+        Number of the amino acid corresponding to the first position in aa_sequence.
+    max_num_combos : int, default=2
+        Maximum number of combinations to make. 1 means do each library only individually;
+        2 means make pairwise combos; 3 means make three-way, etc.
     internal_doubles : bool, default=False
-        if True, make double mutants within a library block. for the 
-        mutated_sites example above, this would make all combos within 1 and
-        within 2, in addition to 1, 2, and (1,2). 
+        If True, make double mutants within a library block. For the mutated_sites example above,
+        this would make all combos within 1 and within 2, in addition to 1, 2, and (1,2).
     degen_codon : str, default="nnt"
-        use this codon at each site that is mutated
+        Use this codon at each site that is mutated.
 
     Returns
     -------
     lib_clone_dict : dict
-        dictionary keying library combinations to a list of clones. For the 
-        examples above, this would have three keys ("1",), ("2",), ("1","2",). 
-        Values are strings like ['R5A','R5C',...,"R5A/L12A"]. wildtype will 
-        have the key "wt".
+        Dictionary keying library combinations to a list of clone names. For the examples above,
+        this would have keys like ("1",), ("2",), ("1","2",). Values are lists of genotype strings
+        like ['R5A', 'R5C', ..., 'R5A/L12A']. The wildtype will have the key "wt".
+    genotype_df : pandas.DataFrame
+        DataFrame with genotype, mutation, and site information for all clones.
     """
 
     # Get amino acid sequence, stripping out white space
@@ -323,4 +321,4 @@ def generate_libraries(aa_sequence,
     genotype_df = _build_genotype_df(all_genotypes)
 
     return lib_clone_dict, genotype_df
-        
+

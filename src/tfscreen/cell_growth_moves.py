@@ -16,7 +16,7 @@ def thaw_glycerol_stock(input_library,
     num_thawed_colonies : int, default = 1e7
         sample this number of colonies from the input library
     overnight_volume_in_mL : float, default = 10
-        overnight growth volume. (This sets cfu/mL for rest of experiemnts).
+        overnight growth volume. (This sets cfu/mL for rest of experiments).
 
     Returns
     -------

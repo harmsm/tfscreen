@@ -93,7 +93,9 @@ def generate_phenotypes(genotype_df,
                      "fx_occupied":[],
                      "fx_folded":[],
                      "obs": [],
-                     "growth_rate": []}
+                     "base_growth_rate": [],
+                     "marker_growth_rate":[],
+                     "select_growth_rate":[]}
     
     # These will hold ddG and growth rate effects for the genotype_df
     ddG_out = []
@@ -111,6 +113,9 @@ def generate_phenotypes(genotype_df,
     # Calculate wildtype growth rate as a function of IPTG
     wt_effect = np.array([data.wt_growth(iptg)
                           for iptg in condition_df["iptg"]])
+    
+    # get base growth rate for wildtype
+    log_wt_base_growth_rate = np.log(data.wt_growth(0))
     
     # Assign the appropriate marker and selection polynomials. These will have
     # mutant-specific effects because they depend on fraction of binding sites
@@ -135,14 +140,15 @@ def generate_phenotypes(genotype_df,
     print(f"calculating phenotypes",flush=True)
     for genotype in tqdm(list_of_genotypes):
 
-
         # Create list of mutations from genotype string
         if genotype == "wt":
             genotype_as_list = []
             growth_rate_effect = 0
         else:
             genotype_as_list = genotype.split("/")
-            growth_rate_effect = float(np.random.normal(0,mut_growth_rate_std,1))
+
+            perturb = np.random.normal(0,mut_growth_rate_std,1)[0]
+            growth_rate_effect = np.exp(log_wt_base_growth_rate + perturb)
     
         # Create array of ddG values for the genotype
         genotype_ddG = np.zeros(len(ens.species),dtype=float)
@@ -158,13 +164,17 @@ def generate_phenotypes(genotype_df,
                                                      temperature=T_array)
         obs = fx_occupied * fx_folded * scale_obs_by
 
-        # Calculate the growth rate at each condition
-        growth_rate = wt_effect + growth_rate_effect
-
+        # Calculate the growth rates
+        base_growth_rate = wt_effect + growth_rate_effect
+        marker_growth_rate = base_growth_rate.copy()
+        select_growth_rate = base_growth_rate.copy()
+        
         # Go through marker and selection
         for i in range(num_markers):
-            growth_rate[marker_masks[i]] += marker_polys[i](obs[marker_masks[i]])
-            growth_rate[selection_masks[i]] += selection_polys[i](obs[selection_masks[i]])
+            marker_growth_rate[marker_masks[i]] += marker_polys[i](obs[marker_masks[i]])
+
+            select_growth_rate[marker_masks[i]] += marker_polys[i](obs[marker_masks[i]])
+            select_growth_rate[selection_masks[i]] += selection_polys[i](obs[selection_masks[i]])
 
         # Record phenotype information
         phenotype_out["genotype"].extend([genotype]*num_points)
@@ -174,7 +184,11 @@ def generate_phenotypes(genotype_df,
         phenotype_out["fx_occupied"].extend(fx_occupied)
         phenotype_out["fx_folded"].extend(fx_folded)
         phenotype_out["obs"].extend(obs)
-        phenotype_out["growth_rate"].extend(growth_rate)
+        phenotype_out["base_growth_rate"].extend(base_growth_rate)
+        phenotype_out["marker_growth_rate"].extend(marker_growth_rate)
+        phenotype_out["select_growth_rate"].extend(select_growth_rate)
+
+    print("storing phenotypes",flush=True)
 
     phenotype_df = pd.DataFrame(phenotype_out)
 
@@ -182,7 +196,6 @@ def generate_phenotypes(genotype_df,
     genotype_df = genotype_df.copy()
     genotype_df["ddG"] = ddG_out
     genotype_df["growth_rate_effect"] = growth_rate_effect_out
-    
     
     return phenotype_df, genotype_df
 

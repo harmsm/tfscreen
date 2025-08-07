@@ -5,98 +5,139 @@ from tfscreen import grow_to_target
 from tfscreen import grow_for_time
 from tfscreen import dilute
 from tfscreen import thaw_glycerol_stock
+from tfscreen import data
 
 import numpy as np
 from tqdm.auto import tqdm
 
-
-def _get_growth_rates(input_library,
-                      all_genotypes,
-                      selectors):
-    """
-    Get the growth rates of a population of cells that may have multiple
-    plasmids per cell.
-
-    Parameters
-    ----------
-    input_library : numpy.ndarray
-        Array holding bacterial clones in the population.
-    all_genotypes : list
-        List of all genotypes with full genotype information.
-    selectors : list
-        List of selectors to apply (e.g., ["kan", "pheS"]). These should
-        match selectors created by pheno_to_growth calls.
-
-    Returns
-    -------
-    base_growth_rate : numpy.ndarray
-        Growth rates of cells in the population in the absence of selection.
-    growth_rates : dict
-        Dictionary mapping selector to growth rate array for each clone.
-    """
-
-    print("getting growth rates of each bacterium",flush=True)
+def _get_initial_pops(input_library,
+                      num_thawed_colonies=1e7,
+                      overnight_volume_in_mL=10):
     
-    growth_rates = dict([(s,[0.0 for _ in range(len(input_library))]) for s in selectors])
-    base_growth_rate = np.zeros(len(input_library),dtype=float)
+    print("Generating initial populations",flush=True)
 
-    # Decide if this is a single plasmid
-    single_plasmid = True
-    if len(input_library.shape) > 1:
-        single_plasmid = False
+    # If input_library is a 1D array, there is one genotype per bacterium.
+    if input_library.ndim == 1:
 
+        bacteria, ln_pop_array = thaw_glycerol_stock(input_library,
+                                                     num_thawed_colonies=num_thawed_colonies,
+                                                     overnight_volume_in_mL=overnight_volume_in_mL)
+        bacteria, counts = np.unique(bacteria,return_counts=True)
+        ln_pop_array = np.log(np.exp(ln_pop_array[0])*counts)
 
-    for i in tqdm(range(len(input_library))):
+    # If input_library is a 2D array, there are multiple genotypes per bacterium.
+    else:
+
+        # Create an array "to_thaw" that holds the indices of the bacteria to 
+        # thaw. We will then use this to thaw the bacteria, remove duplicates,
+        # and get the counts. The "indexer" and "reverse_indexer" dictionaries
+        # are used to map the genotypes back to the original input_library.
+        to_thaw = []
+        indexer = {}
+        for i in tqdm(range(input_library.shape[0])):
+            
+            # Drop '-' empty slots and created a sorted tuple of genotypes in 
+            # this bacterium. 
+            tmp_genos = list(input_library[i][input_library[i] != "-"])
+            tmp_genos.sort()
+            tmp_genos = tuple(tmp_genos)
+            
+            # Record a previously unseen genotype
+            if tmp_genos not in indexer:
+                indexer[tmp_genos] = i
+            
+            # Add the index to the list of bacteria to thaw
+            to_thaw.append(indexer[tmp_genos])
+
+        to_thaw = np.array(to_thaw)
+        reverse_indexer = dict(zip(indexer.values(),indexer.keys()))
+
+        # Thaw and de-duplicate the bacteria just like we did for the 1D case
+        bacteria, ln_pop_array = thaw_glycerol_stock(to_thaw,
+                                                     num_thawed_colonies=num_thawed_colonies,
+                                                     overnight_volume_in_mL=overnight_volume_in_mL)
+        bacteria, counts = np.unique(bacteria,return_counts=True)
+        ln_pop_array = np.log(np.exp(ln_pop_array[0])*counts)
+
+        # Convert the bacteria back to genotype tuples
+        bacteria = np.array([reverse_indexer[b] for b in bacteria],dtype=object)
+
+    return bacteria, ln_pop_array
+    
+
+def _get_growth_rates(bacteria,
+                      phenotype_df,
+                      genotype_df,
+                      condition_df):
+    
+    print("Getting bacterial growth rates",flush=True)
+
+    # Map genotype strings to indices in the genotype_df dataframe
+    genotype_to_idx = dict(zip(list(genotype_df.index),
+                           range(len(genotype_df.index))))
+
+    # Number of conditions and bacteria in the complete library
+    num_conditions = condition_df.shape[0]
+    num_bacteria = len(bacteria)
+
+    # Get base and marker growth rates for each genotype
+    base_k = np.array(phenotype_df["base_growth_rate"])
+    
+    # Create marker_k array (num_genotypes,num_conditions) with growth 
+    # rates for each individual genotype when it's marker is expressed but not 
+    # under selection.
+    marker_k = np.array(phenotype_df["marker_growth_rate"])
+    marker_k = np.reshape(marker_k,
+                          (len(marker_k)//num_conditions,
+                           num_conditions))
+
+    # Create condition_k array (num_genotypes,num_conditions) with growth 
+    # rates for each individual genotype with marker and selection. 
+    condition_k = np.array(phenotype_df["select_growth_rate"])
+    condition_k = np.reshape(condition_k,
+                            (len(condition_k)//num_conditions,
+                            num_conditions))
         
-        if single_plasmid:
-
-            # Get the genotype
-            genotype = all_genotypes[input_library[i]]
-
-            # Record the genotype base growth rate and growth under selection 
-            # conditions
-            base_growth_rate[i] = genotype["base_growth_rate"]
-            for sel_name in growth_rates:
-                growth_rates[sel_name][i] = genotype[sel_name]
+    # If bacteria array is made of strings, each bacterium has a single 
+    # genotype
+    if issubclass(type(bacteria[0]),str):
         
-            continue
+        idx = np.array([genotype_to_idx[g] for g in bacteria])
 
-        # If we get there, there are multiple plasmids. Get the indexes of the
-        # genotypes for each plasmid.
-        genotype_indexes = input_library[i,input_library[i,:] > -1]
-        num_gentoypes = len(genotype_indexes)
+        bact_base_k = base_k[idx]
+        bact_marker_k = marker_k[idx]
+        bact_condition_k = condition_k[idx]
 
-        # Go through each genotype
-        for j in genotype_indexes:
+    # If the bacteria array is not made of strings, bacteria have multiple 
+    # genotypes. We need to calculate the average growth rate effects for each
+    # bacterium.
+    else:
 
-            # Sum the log of the growth rates for the base growth and selection
-            # growth
-            base_growth_rate[i] += np.log(all_genotypes[j]["base_growth_rate"])
-            for sel_name in growth_rates:
-                growth_rates[sel_name][i] += np.log(all_genotypes[j][sel_name])
+        bact_base_k = np.zeros(num_bacteria)
+        bact_marker_k = np.zeros((num_bacteria,num_conditions),dtype=float)
+        bact_condition_k = np.zeros((num_bacteria,num_conditions),dtype=float)
+        
+        for i in tqdm(range(len(bacteria))):
+        
+            idx = np.array([genotype_to_idx[g] for g in bacteria[i]])        
+            
+            bact_base_k[i] = np.mean(base_k[idx])
+            bact_marker_k[i] = np.mean(marker_k[idx,:],axis=0)
+            bact_condition_k[i] = np.mean(condition_k[idx,:],axis=0)
+        
 
-        # Now divide by number of genotypes and take exponent (geometric mean)
-        base_growth_rate[i] = np.exp(base_growth_rate[i]/num_gentoypes)
-        for sel_name in growth_rates:
-            growth_rates[sel_name][i] = np.exp(growth_rates[sel_name][i]/num_gentoypes)
-
-    # Convert growth rates into a matrix
-    for selector in growth_rates:
-        growth_rates[selector] = np.array(growth_rates[selector])
-                         
-    return base_growth_rate, growth_rates
+    return bact_base_k, bact_marker_k, bact_condition_k
 
 
 def initialize_population(input_library,
-                          all_genotypes,
+                          phenotype_df,
+                          genotype_df,
+                          condition_df,
                           num_thawed_colonies=1e7,
                           overnight_volume_in_mL=10,
-                          saturation_cfu_mL=1e9,
-                          morning_dilution=1/70,
                           pre_iptg_cfu_mL=90000000,
-                          iptg_dilution_factor=0.2/10.2,
-                          iptg_out_growth_time=30):
-    
+                          iptg_out_growth_time=30,
+                          post_iptg_dilution_factor=0.2/10.2):
     """
     Initialize a bacterial population for tfscreen simulations, including
     thawing, growth, dilution, and induction steps.
@@ -104,70 +145,63 @@ def initialize_population(input_library,
     Parameters
     ----------
     input_library : numpy.ndarray
-        Array holding bacterial clones in the population.
-    all_genotypes : list
-        List of all genotypes with full genotype information.
+        Array holding genotype(s) transformed into each bacterium in the
+        population.
     num_thawed_colonies : int, optional
         Number of colonies to thaw from the input library (default: 1e7).
     overnight_volume_in_mL : float, optional
         Overnight growth volume in mL (default: 10).
-    saturation_cfu_mL : float, optional
-        Final cfu/mL for overnight saturation (default: 1e9).
-    morning_dilution : float, optional
-        Dilution factor for morning culture (default: 1/70).
     pre_iptg_cfu_mL : float, optional
         Target cfu/mL before IPTG induction (default: 9e7).
-    iptg_dilution_factor : float, optional
-        Dilution factor for IPTG induction (default: 0.2/10.2).
     iptg_out_growth_time : float, optional
         Out-growth time in IPTG (default: 30).
+    post_iptg_dilution_factor : float, optional
+        Dilution factor after IPTG induction (default: 0.2/10.2).
 
     Returns
     -------
     input_library : numpy.ndarray
-        Array holding bacterial clones in the population after initialization.
+        Array holding bacterial bacts in the population after initialization.
     ln_pop_array : numpy.ndarray
-        Log population array for each clone after initialization.
+        Log population array for each bact after initialization.
     base_growth_rates : numpy.ndarray
         Growth rates of cells in the absence of selection.
     growth_rates : dict
-        Dictionary mapping selector to growth rate array for each clone.
+        Dictionary mapping selector to growth rate array for each bact.
     """
-    # Thaw glycerol stock, 
-    input_library, ln_pop_array = thaw_glycerol_stock(input_library,
-                                                      num_thawed_colonies=num_thawed_colonies,
-                                                      overnight_volume_in_mL=overnight_volume_in_mL)
 
-    # Get final growth rates for population of cells under the specified 
-    # selection conditions.
-    keys = list(all_genotypes[0].keys())
-    selectors = [k for k in keys if k.startswith("sel_")]
-    base_growth_rates, growth_rates = _get_growth_rates(input_library,
-                                                        all_genotypes,
-                                                        selectors=selectors)
+    # Thaw glycerol stock and get initial populations
+    bacteria, ln_pop_array = _get_initial_pops(input_library,
+                                               num_thawed_colonies=num_thawed_colonies,
+                                               overnight_volume_in_mL=overnight_volume_in_mL)
 
-    # Grow to saturation overnight
+    # Get base growth rates and condition-specific growth rates for each
+    # bacterium in the population.
+    bact_base_k, bact_marker_k, bact_condition_k = _get_growth_rates(bacteria,
+                                                                     phenotype_df,
+                                                                     genotype_df,
+                                                                     condition_df)
+
+    # Grow to pre-induction OD600 (0.35 ~ 90,000,000 CFU/mL) using the base
+    # growth rates for all bacteria.
     ln_pop_array = grow_to_target(ln_pop_array,
-                                  base_growth_rates,
-                                  final_cfu_mL=saturation_cfu_mL)
-
-    # Dilute culture in morning
-    ln_pop_array = dilute(ln_pop_array,
-                          dilution_factor=morning_dilution)
-
-
-    # Grow to pre-induction OD600 (0.35 ~ 90,000,000 CFU/mL)
-    ln_pop_array = grow_to_target(ln_pop_array,
-                                  base_growth_rates,
+                                  growth_rates=bact_base_k,
                                   final_cfu_mL=pre_iptg_cfu_mL)
 
-    # Dilute growing cultures into tubes with IPTG
+    # Get the IPTG concentrations for each condition
+    iptg_concs = np.array(condition_df["iptg"],dtype=float)
+    num_conditions= len(iptg_concs)
+
+    # Split culture into iptg matching conditions, without selection, and then
+    # grow for the specified out-growth time.
+    ln_pop_array = np.stack([ln_pop_array]*num_conditions,axis=1)
+    for i in range(num_conditions):
+        ln_pop_array[:,i] = grow_for_time(ln_pop_array[:,i],
+                                          growth_rates=bact_marker_k[:,i],
+                                          t=iptg_out_growth_time)
+        
+    # Dilute as we drop into selection conditions
     ln_pop_array = dilute(ln_pop_array,
-                          dilution_factor=iptg_dilution_factor)
+                          dilution_factor=post_iptg_dilution_factor)
 
-    # Out-growth in IPTG
-    ln_pop_array = grow_for_time(ln_pop_array,
-                                 base_growth_rates,
-                                 t=iptg_out_growth_time)
-
-    return input_library, ln_pop_array, base_growth_rates, growth_rates
+    return bacteria, ln_pop_array, bact_condition_k
