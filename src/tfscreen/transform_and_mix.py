@@ -12,24 +12,34 @@ def _transform_cells(num_transformants,
     """
     Simulate transformation of cells with a library of plasmids.
 
+    This function simulates the process of transforming bacterial cells with a
+    library of plasmids. It models the number of plasmids entering each cell
+    based on a Poisson distribution (if `lambda_value` is provided) or assumes
+    each cell receives one plasmid.
+
     Parameters
     ----------
     num_transformants : int
         Number of transformant cells to generate.
     library_vector : numpy.ndarray
-        Vector of possible plasmid indexes to sample from.
+        Vector of possible plasmid indexes to sample from.  This represents the
+        pool of available plasmids in the library.
     lambda_value : float or None, optional
         Mean number of plasmids per cell (Poisson-distributed). If None or
         <= 0, each cell gets one plasmid. Default is None.
     max_num_plasmids : int, optional
-        Maximum number of plasmids per cell. Default is 10.
+        Maximum number of plasmids a cell can contain.  This limits the number
+        of plasmids assigned even if the Poisson distribution suggests more.
+        Default is 10.
 
     Returns
     -------
     raw_genotypes : numpy.ndarray
         Array of shape (num_transformants, max_num_plasmids) with plasmid
-        indexes. -1 indicates no plasmid in that slot.
+        indexes. '-' indicates no plasmid in that slot. Each row represents a
+        single cell, and each column represents a plasmid slot within that cell.
     """
+
     raw_genotypes = np.random.choice(library_vector,
                                      size=(num_transformants,max_num_plasmids))
     
@@ -80,6 +90,7 @@ def _scale_library_mixture(library_mixture):
     library_mixture : dict
         Scaled dictionary with integer mixture sizes.
     """
+
     library_mixture = copy.deepcopy(library_mixture)
 
     # Create vector from entries
@@ -106,29 +117,43 @@ def transform_and_mix(libraries,
     """
     Transform and mix multiple libraries into a single input library.
 
+    This function simulates the process of transforming multiple mutant libraries
+    into bacterial cells and then mixing them to create a single, combined
+    input library. It allows for specifying different transformation sizes and
+    mixing ratios for each library. The function also models the number of
+    plasmids entering each cell based on a Poisson distribution (if
+    `lambda_value` is provided) or assumes each cell receives one plasmid.
+
     Parameters
     ----------
     libraries : dict
-        Dictionary mapping library names to lists of genotypes.
-    transform_sizes : dict
-        Dictionary mapping library names to number of transformants for each
+        Dictionary mapping library names to lists or arrays of genotype indexes
+        to sample from. This represents the pool of available genotypes in each
         library.
+    transform_sizes : dict
+        Dictionary mapping library names to the number of transformants for each
+        library. This determines how many cells are transformed with each
+        individual library.
     library_mixture : dict
-        Dictionary mapping library names to mixture sizes.
+        Dictionary mapping library names to mixture sizes (relative proportions).
+        These values determine the relative abundance of each library in the
+        final mixed population. The function `_scale_library_mixture` ensures
+        that the lowest entry is 1 and others are proportional.
     lambda_value : float, optional
         Mean number of plasmids per cell (Poisson-distributed). If None or
         <= 0, each cell gets one plasmid. Default is 0.
     max_num_plasmids : int, optional
-        Maximum number of plasmids per cell. Default is 10.
+        Maximum number of plasmids per cell. This limits the number of plasmids
+        assigned even if the Poisson distribution suggests more. Default is 10.
 
     Returns
     -------
     input_library : numpy.ndarray
-        array holding individual bacteria in the population. If lambda_value <= 0,
-        this will be a 1D array of genotypes. If lambda_value > 0, this will be
-        a 2D array with shape (num_transformants, max_num_plasmids) where each
-        row has the genotypes found in that bacterium. '-' indicates no plasmid
-        in that slot.
+        Array holding bacterial clones in the population. If lambda_value <= 0,
+        this is a 1D array (one plasmid per cell). If lambda_value > 0, this is
+        a 2D array (cells x max_num_plasmids), with '-' indicating empty slots.
+        The order of the input library is randomized to remove any structure
+        from the separate transformations.
     """
 
     if lambda_value is None:

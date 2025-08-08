@@ -13,6 +13,26 @@ from tqdm.auto import tqdm
 def _get_initial_pops(input_library,
                       num_thawed_colonies=1e7,
                       overnight_volume_in_mL=10):
+    """
+    Generate initial bacterial populations from an input library.
+
+    Parameters
+    ----------
+    input_library : numpy.ndarray
+        Array holding genotype(s) transformed into each bacterium in the population.
+        Can be 1D (single genotype per bacterium) or 2D (multiple genotypes per bacterium).
+    num_thawed_colonies : int, optional
+        Number of colonies to thaw from the input library (default: 1e7).
+    overnight_volume_in_mL : float, optional
+        Overnight growth volume in mL (default: 10).
+
+    Returns
+    -------
+    bacteria : numpy.ndarray
+        Array of unique bacteria (genotype or tuple of genotypes per bacterium).
+    ln_pop_array : numpy.ndarray
+        Log population array for each unique bacterium.
+    """
     
     print("Generating initial populations",flush=True)
 
@@ -69,6 +89,29 @@ def _get_growth_rates(bacteria,
                       phenotype_df,
                       genotype_df,
                       condition_df):
+    """
+    Get growth rates for each bacterium in the population.
+
+    Parameters
+    ----------
+    bacteria : numpy.ndarray
+        Array of bacteria, each as a genotype string or tuple of genotype strings.
+    phenotype_df : pandas.DataFrame
+        DataFrame with phenotype information for all genotypes.
+    genotype_df : pandas.DataFrame
+        DataFrame with genotype, mutation, and site information for all clones.
+    condition_df : pandas.DataFrame
+        DataFrame describing all selection conditions.
+
+    Returns
+    -------
+    bact_base_k : numpy.ndarray
+        Base growth rates for each bacterium (no selection).
+    bact_marker_k : numpy.ndarray
+        Growth rates for each bacterium under marker expression (no selection), shape (num_bacteria, num_conditions).
+    bact_condition_k : numpy.ndarray
+        Growth rates for each bacterium under selection, shape (num_bacteria, num_conditions).
+    """
     
     print("Getting bacterial growth rates",flush=True)
 
@@ -147,6 +190,12 @@ def initialize_population(input_library,
     input_library : numpy.ndarray
         Array holding genotype(s) transformed into each bacterium in the
         population.
+    phenotype_df : pandas.DataFrame
+        DataFrame with phenotype information for all genotypes and conditions.
+    genotype_df : pandas.DataFrame
+        DataFrame with genotype, mutation, and site information for all clones.
+    condition_df : pandas.DataFrame
+        DataFrame describing all selection conditions.
     num_thawed_colonies : int, optional
         Number of colonies to thaw from the input library (default: 1e7).
     overnight_volume_in_mL : float, optional
@@ -160,14 +209,14 @@ def initialize_population(input_library,
 
     Returns
     -------
-    input_library : numpy.ndarray
-        Array holding bacterial bacts in the population after initialization.
+    bacteria : numpy.ndarray
+        Array holding bacterial genotypes in the population after initialization.
     ln_pop_array : numpy.ndarray
-        Log population array for each bact after initialization.
-    base_growth_rates : numpy.ndarray
-        Growth rates of cells in the absence of selection.
-    growth_rates : dict
-        Dictionary mapping selector to growth rate array for each bact.
+        Log population array (n_bacteria,n_conditions) for each bacterium after
+        initialization.
+    bact_condition_k : numpy.ndarray
+        Growth rate array (n_bacteria,n_conditions) of cells in each selection
+        condition after initialization.
     """
 
     # Thaw glycerol stock and get initial populations
@@ -190,7 +239,7 @@ def initialize_population(input_library,
 
     # Get the IPTG concentrations for each condition
     iptg_concs = np.array(condition_df["iptg"],dtype=float)
-    num_conditions= len(iptg_concs)
+    num_conditions = len(iptg_concs)
 
     # Split culture into iptg matching conditions, without selection, and then
     # grow for the specified out-growth time.
