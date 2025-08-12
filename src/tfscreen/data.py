@@ -61,8 +61,17 @@ selectors = {"kanR":[-0.01067521071786613,
              "pheS":[-0.012493817129926034,
                       0.009408800930366923]}
 
-
 wt_growth = np.polynomial.Polynomial(coef=wt_growth)
+
+def wt_theta(iptg):
+    """
+    Return wildtype theta value given theta (approximated with a Hill model)
+    """
+
+    x = iptg**2
+    K = 0.00024254947599999997 # (K = 0.015574)^2
+
+    return x/(K + x)
 
 for m in markers:
     markers[m] = np.polynomial.Polynomial(coef=markers[m])

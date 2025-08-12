@@ -124,7 +124,7 @@ def build_condition_dataframes(condition_blocks,
                                                  "time"]).reset_index()
     condition_df_t = condition_df_t.drop(columns=["index"])
 
-    cols_to_join = ["replicate","marker","select","iptg","time"]
+    cols_to_join = ["marker","select","iptg","time"]
     condition_df_t.index = condition_df_t[cols_to_join].astype(str).agg('-'.join,axis=1)
 
     # build condition_df that has no time column
@@ -137,8 +137,7 @@ def build_condition_dataframes(condition_blocks,
                                                   current_df=condition_df)
     
     # Sort in a stereotyped way
-    condition_df = condition_df.sort_values(["replicate",
-                                             "marker",
+    condition_df = condition_df.sort_values(["marker",
                                              "select",
                                              "iptg"]).reset_index()
     condition_df = condition_df.drop(columns=["index"])
