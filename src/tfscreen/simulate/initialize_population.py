@@ -1,11 +1,10 @@
 """
 Functions for initializing bacterial populations for tfscreen simulations.
 """
-from tfscreen import grow_to_target
-from tfscreen import grow_for_time
-from tfscreen import dilute
-from tfscreen import thaw_glycerol_stock
-from tfscreen import data
+from .cell_growth_moves import grow_to_target
+from .cell_growth_moves import grow_for_time
+from .cell_growth_moves import dilute
+from .cell_growth_moves import thaw_glycerol_stock
 
 import numpy as np
 from tqdm.auto import tqdm

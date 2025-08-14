@@ -2,11 +2,13 @@
 Functions for simulating transformation and mixing of mutant libraries in tfscreen.
 """
 import numpy as np
-
+from scipy.stats import lognorm 
 import copy
+
 
 def _transform_cells(num_transformants,
                      library_vector,
+                     skew_sigma=0,
                      lambda_value=None,
                      max_num_plasmids=10):
     """
@@ -24,6 +26,10 @@ def _transform_cells(num_transformants,
     library_vector : numpy.ndarray
         Vector of possible plasmid indexes to sample from.  This represents the
         pool of available plasmids in the library.
+    skew_sigma : float, default = 0
+        sigma value to give to log normal distribution for generating genotype
+        frequencies in the library. 0 gives an even distribution; 1-2 is a good
+        guess for a real library. 
     lambda_value : float or None, optional
         Mean number of plasmids per cell (Poisson-distributed). If None or
         <= 0, each cell gets one plasmid. Default is None.
@@ -34,15 +40,27 @@ def _transform_cells(num_transformants,
 
     Returns
     -------
-    raw_genotypes : numpy.ndarray
+    bacteria : numpy.ndarray
         Array of shape (num_transformants, max_num_plasmids) with plasmid
-        indexes. '-' indicates no plasmid in that slot. Each row represents a
+        names. '-' indicates no plasmid in that slot. Each row represents a
         single cell, and each column represents a plasmid slot within that cell.
     """
 
-    raw_genotypes = np.random.choice(library_vector,
-                                     size=(num_transformants,max_num_plasmids))
+    # Build counts for each entry in library_vector. These are even or sampled
+    # from a log normal distribution with sigma = skew_sigma
+    if skew_sigma == 0 or skew_sigma is None:
+        raw_counts = np.ones(len(library_vector))
+    else:
+        dist = lognorm(s=skew_sigma,scale=1,loc=0)
+        raw_counts = dist.rvs(size=len(library_vector))
+
+    # Get frequency of each genotype in the pre-transformation library. 
+    frequencies = raw_counts/np.sum(raw_counts)
     
+    # Make a pool of bacteria sampled from the library vector. 
+    bacteria = np.random.choice(library_vector,
+                                size=(num_transformants,max_num_plasmids),
+                                p=frequencies)
     
     # The goal of this block is to create a "slice_at" index array. This selects
     # how many plasmids each bacterium has based on a Poisson distribution. The
@@ -64,16 +82,14 @@ def _transform_cells(num_transformants,
     
     slice_at[slice_at > max_num_plasmids] = max_num_plasmids
     
-    col_indexes = np.arange(raw_genotypes.shape[1])
+    col_indexes = np.arange(bacteria.shape[1])
     
     # Create a mask where True means "set to -"
     # Broadcasting creates a comparison for each row with all columns
     mask = col_indexes >= slice_at[:, np.newaxis]
-    raw_genotypes[mask] = '-'
+    bacteria[mask] = '-'
 
-    return raw_genotypes
-
-
+    return bacteria
 
 def _scale_library_mixture(library_mixture):
     """
@@ -112,6 +128,7 @@ def _scale_library_mixture(library_mixture):
 def transform_and_mix(libraries,
                       transform_sizes,
                       library_mixture,
+                      skew_sigma=None,
                       lambda_value=0,
                       max_num_plasmids=10):
     """
@@ -139,7 +156,11 @@ def transform_and_mix(libraries,
         These values determine the relative abundance of each library in the
         final mixed population. The function `_scale_library_mixture` ensures
         that the lowest entry is 1 and others are proportional.
-    lambda_value : float, optional
+    skew_sigma : float, default = 0
+        sigma value to give to log normal distribution for generating genotype
+        frequencies in the library. 0 gives an even distribution; 1-2 is a good
+        guess for a real library. 
+    lambda_value : float, default=0
         Mean number of plasmids per cell (Poisson-distributed). If None or
         <= 0, each cell gets one plasmid. Default is 0.
     max_num_plasmids : int, optional

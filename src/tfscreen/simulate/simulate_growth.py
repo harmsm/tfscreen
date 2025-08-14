@@ -5,7 +5,7 @@ Functions for simulating the growth of bacteria during a screen.
 import numpy as np
 from tqdm.auto import tqdm
 
-from tfscreen import grow_for_time
+from .cell_growth_moves import grow_for_time
 
 def simulate_growth(ln_pop_array,
                     bact_condition_k,

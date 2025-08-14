@@ -105,7 +105,7 @@ def _do_glm(times,cfu,delta):
                 pbar.update(1000)
 
     
-        pbar.n = pbar.total
+        pbar.n = pbar.total - 1
         pbar.refresh()
     
     return growth_rate_est, growth_rate_std

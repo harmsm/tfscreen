@@ -215,7 +215,7 @@ def _do_gls(times,
             if i > 0 and i % 1000 == 0:
                 pbar.update(1000)
     
-        pbar.n = pbar.total
+        pbar.n = pbar.total - 1
         pbar.refresh()
     
     return growth_rate_est, growth_rate_std

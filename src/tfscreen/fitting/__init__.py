@@ -34,3 +34,7 @@ from .glm import (
 from .gee import (
     get_growth_rates_gee
 )
+
+from .nls import (
+    get_growth_rates_nls
+)
