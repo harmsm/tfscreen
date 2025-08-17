@@ -14,9 +14,30 @@ def plot_corr(x_values,
               ax=None,
               scatter_kwargs=None,
               scale_by=0.01):
+    """
+    Plot the correlation between two sets of values.
+
+    Parameters
+    ----------
+    x_values : array_like
+        Values for the x-axis.
+    y_values : array_like
+        Values for the y-axis.
+    ax : matplotlib.axes._axes.Axes, optional
+        Axes object to plot on. If None, a new figure and axes are created.
+    scatter_kwargs : dict, optional
+        Keyword arguments to pass to the scatter plot.
+    scale_by : float, optional
+        Amount to scale the axis limits by.
+
+    Returns
+    -------
+    matplotlib.axes._axes.Axes
+        The axes object with the plot.
+    """
 
     if ax is None:
-        fig, ax = plt.subplots(1,figsize=(6,6))
+        _, ax = plt.subplots(1,figsize=(6,6))
 
     final_scatter_kwargs = copy.deepcopy(DEFAULT_SCATTER_KWARGS)
     if scatter_kwargs is not None:
@@ -42,19 +63,46 @@ def plot_corr(x_values,
 
 
 def plot_err(real_values,
-               est_values,
-               est_err,
-               plot_as_real_err=False,
-               range_mask=None,
-               ax=None,
-               scatter_kwargs=None,
-               pct_cut=0.01):
+             est_values,
+             est_err,
+             plot_as_real_err=False,
+             range_mask=None,
+             ax=None,
+             scatter_kwargs=None,
+             pct_cut=0.01):
+    """
+    Plot the error between estimated and real values.
+
+    Parameters
+    ----------
+    real_values : array_like
+        The true values.
+    est_values : array_like
+        The estimated values.
+    est_err : array_like
+        The standard error on the estimated parameters.
+    plot_as_real_err : bool, optional
+        Whether to plot the error as a fraction of the real values.
+    range_mask : array_like, optional
+        A boolean mask to apply to the values.
+    ax : matplotlib.axes._axes.Axes, optional
+        Axes object to plot on. If None, a new figure and axes are created.
+    scatter_kwargs : dict, optional
+        Keyword arguments to pass to the scatter plot.
+    pct_cut : float, optional
+        The percentage of the largest errors to exclude from the plot.
+
+    Returns
+    -------
+    matplotlib.axes._axes.Axes
+        The axes object with the plot.
+    """
 
     if range_mask is None:
         range_mask = np.ones(len(real_values),dtype=bool)
 
     if ax is None:
-        fig, ax = plt.subplots(1,figsize=(6,6))
+        _, ax = plt.subplots(1,figsize=(6,6))
 
     final_scatter_kwargs = copy.deepcopy(DEFAULT_SCATTER_KWARGS)
     if scatter_kwargs is not None:
@@ -97,9 +145,35 @@ def plot_err_zscore(real_values,
                     z_max=8,
                     step_size=0.1,
                     ax=None):
+    """
+    Plot the distribution of Z-scores for the error between estimated and real
+    values.
+
+    Parameters
+    ----------
+    real_values : array_like
+        The true values.
+    est_values : array_like
+        The estimated values.
+    est_std : array_like
+        The standard error on the estimated parameters.
+    z_min : float, optional
+        The minimum Z-score to plot.
+    z_max : float, optional
+        The maximum Z-score to plot.
+    step_size : float, optional
+        The step size for the histogram bins.
+    ax : matplotlib.axes._axes.Axes, optional
+        Axes object to plot on. If None, a new figure and axes are created.
+
+    Returns
+    -------
+    matplotlib.axes._axes.Axes
+        The axes object with the plot.
+    """
 
     if ax is None:
-        fig, ax = plt.subplots(1,figsize=(6,6))
+        _, ax = plt.subplots(1,figsize=(6,6))
     
     input_bins = np.arange(z_min,z_max + step_size,step_size)
     counts, bins = np.histogram((est_values - real_values)/(est_std),bins=input_bins)
@@ -137,6 +211,29 @@ def plot_summary(k_est,
                  k_real,
                  suptitle=None,
                  subsample=10000):
+    """
+    Generate a summary plot of estimated vs real values.
+
+    Parameters
+    ----------
+    k_est : array_like
+        The estimated parameters.
+    k_std : array_like
+        The standard error on the estimated parameters.
+    k_real : array_like
+        The true values.
+    suptitle : str, optional
+        A title for the whole figure.
+    subsample : int, optional
+        The number of points to subsample for plotting.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        The matplotlib figure.
+    ax : array_like of matplotlib.axes._axes.Axes
+        An array of axes objects.
+    """
 
     good_mask = np.logical_not(np.isnan(k_est))
 

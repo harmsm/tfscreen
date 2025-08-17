@@ -5,7 +5,6 @@ import numpy as np
 from scipy.stats import lognorm 
 import copy
 
-
 def _transform_cells(num_transformants,
                      library_vector,
                      skew_sigma=0,
@@ -137,7 +136,8 @@ def transform_and_mix(libraries,
     This function simulates the process of transforming multiple mutant libraries
     into bacterial cells and then mixing them to create a single, combined
     input library. It allows for specifying different transformation sizes and
-    mixing ratios for each library. The function also models the number of
+    mixing ratios for each library. Each input library has a frequency 
+    distribution set by skew_sigma. The function also models the number of
     plasmids entering each cell based on a Poisson distribution (if
     `lambda_value` is provided) or assumes each cell receives one plasmid.
 
@@ -200,6 +200,7 @@ def transform_and_mix(libraries,
         # Transform library, sampling appropriately
         transformed = _transform_cells(int(transform_sizes[k]),
                                        library_vector=libraries[k],
+                                       skew_sigma=skew_sigma,
                                        lambda_value=lambda_value,
                                        max_num_plasmids=max_num_plasmids)
         

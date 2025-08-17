@@ -1,7 +1,3 @@
-
-from tfscreen.util import process_counts
-from tfscreen.fitting import fast_weighted_linear_regression
-
 import numpy as np
 from scipy.optimize import least_squares
 from scipy.sparse import issparse
@@ -72,12 +68,44 @@ def _model_residuals(params, cfu, cfu_std, t):
     return ((cfu - calc) / cfu_std).flatten()
 
 
-def _do_nls(times,
-            cfu,
-            cfu_std,
-            growth_rate_guesses,
-            initial_pop_guesses,
-            block_size):
+def get_growth_rates_nls(times,
+                         cfu,
+                         cfu_var,
+                         growth_rate_guess=0.015,
+                         initial_pop_guess=1,
+                         block_size=100):
+    """
+    Estimates exponential growth rates from sequencing count data.
+
+    This function orchestrates the entire fitting process. It first
+    calculates CFU/mL and its variance from raw counts. Then, it performs a
+    fast weighted linear regression on the log-transformed data to obtain
+    robust initial guesses for the parameters. Finally, it uses these
+    guesses in a non-linear least squares fit to the original data to get
+    the final growth rate estimates and their standard errors.
+
+    Parameters
+    ----------
+    times : np.ndarray
+        2D array of time points, shape (num_genotypes, num_times).
+    cfu : np.ndarray
+        2D array of cfu each genotype, shape (num_genotypes, num_times).
+    cfu_var : np.ndarray
+        2D array of variance of the estimate of cfu each genotype, 
+        shape (num_genotypes, num_times).
+    block_size : int, optional
+        The number of genotypes to fit simultaneously. A larger size can
+        be faster but uses more memory, by default 100.
+
+    Returns
+    -------
+    growth_rate_est : numpy.ndarray
+        A 1D array containing the final estimated growth rate (k) for each
+        genotype.
+    growth_rate_std : numpy.ndarray
+        A 1D array containing the estimated standard error for each growth
+        rate.
+    """
     """
     Performs block-wise non-linear least squares fitting.
 
@@ -116,15 +144,21 @@ def _do_nls(times,
     num_genotypes = cfu.shape[0]
     num_times = cfu.shape[1]
 
+    if not hasattr(growth_rate_guess,"__iter__"):
+        growth_rate_guess = np.ones(num_genotypes)*growth_rate_guess
+    
+    if not hasattr(initial_pop_guess,"__iter__"):
+        initial_pop_guess = np.ones(num_genotypes)*initial_pop_guess
+
     for i in tqdm(range(0, num_genotypes, block_size), desc="Fitting Growth Rates"):
 
         # Grab a block of data for fitting
         indices = slice(i, i + block_size)
         times_block = times[indices,:]
         cfu_block = cfu[indices, :]
-        cfu_std_block = cfu_std[indices, :]
-        rate_guess_block = growth_rate_guesses[indices]
-        pop_guess_block = initial_pop_guesses[indices]
+        cfu_std_block = cfu_var[indices, :]
+        rate_guess_block = growth_rate_guess[indices]
+        pop_guess_block = initial_pop_guess[indices]
 
         n = cfu_block.shape[0]
         if n == 0:
@@ -181,78 +215,3 @@ def _do_nls(times,
         growth_rate_std.extend(std[n:])
 
     return np.array(growth_rate_est), np.array(growth_rate_std)
-
-
-def get_growth_rates_nls(times,
-                         sequence_counts,
-                         total_counts,
-                         total_cfu_ml,
-                         pseudocount=1,
-                         block_size=100):
-    """
-    Estimates exponential growth rates from sequencing count data.
-
-    This function orchestrates the entire fitting process. It first
-    calculates CFU/mL and its variance from raw counts. Then, it performs a
-    fast weighted linear regression on the log-transformed data to obtain
-    robust initial guesses for the parameters. Finally, it uses these
-    guesses in a non-linear least squares fit to the original data to get
-    the final growth rate estimates and their standard errors.
-
-    Parameters
-    ----------
-    times : numpy.ndarray
-        A 1D array of time points at which samples were taken.
-    sequence_counts : numpy.ndarray
-        A 2D array (n_genotypes, n_times) of the raw sequencing counts for
-        each genotype at each time point.
-    total_counts : numpy.ndarray
-        A 1D array (n_times) of the total sequencing counts at each time point.
-    total_cfu_ml : numpy.ndarray
-        A 1D array (n_times) of the total measured CFU/mL of the culture
-        at each time point.
-    pseudocount : int, optional
-        A small count to add to all sequence counts to handle zeros before
-        log transformation, by default 1.
-    block_size : int, optional
-        The number of genotypes to fit simultaneously. A larger size can
-        be faster but uses more memory, by default 100.
-
-    Returns
-    -------
-    growth_rate_est : numpy.ndarray
-        A 1D array containing the final estimated growth rate (k) for each
-        genotype.
-    growth_rate_std : numpy.ndarray
-        A 1D array containing the estimated standard error for each growth
-        rate.
-    """
-    
-    counts = process_counts(sequence_counts,
-                            total_counts,
-                            total_cfu_ml,
-                            pseudocount=pseudocount)
-    
-    cfu = counts["cfu"]
-    cfu_std = np.sqrt(counts["cfu_var"])
-    ln_cfu = counts["ln_cfu"]
-    ln_cfu_var = counts["ln_cfu_var"]
-    
-    # Do fast linear regression on ln(cfu) to get initial guesses
-    wls_results = fast_weighted_linear_regression(times,
-                                                  ln_cfu,
-                                                  ln_cfu_var)
-    growth_rate_guesses = wls_results[0]
-    initial_pop_guesses = np.exp(wls_results[1])
-
-    growth_rate_est, growth_rate_std = _do_nls(
-        times=times,
-        cfu=cfu,
-        cfu_std=cfu_std,
-        growth_rate_guesses=growth_rate_guesses,
-        initial_pop_guesses=initial_pop_guesses,
-        block_size=block_size
-    )
-
-    return growth_rate_est, growth_rate_std
-

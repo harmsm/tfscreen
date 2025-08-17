@@ -1,17 +1,13 @@
-from tfscreen.util import process_counts
-
 import numpy as np
 from tqdm.auto import tqdm
 from scipy.linalg import cholesky
 
 def get_growth_rates_ukf(times,
-                         sequence_counts,
-                         total_counts,
-                         total_cfu_ml,
-                         process_noise_std=[1e-5,1e-5],
+                         cfu,
+                         cfu_var,
                          growth_rate_guess=0.015,
-                         initial_growth_rate_uncertainty=0.1,
-                         pseudocount=1.0,
+                         growth_rate_uncertainty=0.1,
+                         process_noise_std=[1e-5,1e-5],
                          alpha=1e-3,
                          beta=2.0,
                          kappa=0.0):
@@ -28,21 +24,19 @@ def get_growth_rates_ukf(times,
     ----------
     times : np.ndarray
         2D array of time points, shape (num_genotypes, num_times).
-    ln_pop_measured : np.ndarray
-        2D array of estimated log cfu/mL shape (num_genotypes, num_times).
-    measurement_noise : np.ndarray
-        2D array of measurement noise variance for each data point, 
+    cfu : np.ndarray
+        2D array of cfu each genotype, shape (num_genotypes, num_times).
+    cfu_var : np.ndarray
+        2D array of variance of the estimate of cfu each genotype, 
         shape (num_genotypes, num_times).
-    process_noise : np.ndarray
-        2D array of process noise. (Assumed to be constant over all genotypes).
-        Default : [1e-5,1e-5]
     growth_rate_guess : float or np.ndarray
         initial guess for the growth rate (usually wildtype under reference 
         conditions). Can be an array num_gentoypes long. default: 0.015 
-    initial_growth_rate_uncertainty : float, optional
-        Initial uncertainty (standard deviation) for the growth rate. Default: 0.1.
-    pseudocount : float, optional
-        Pseudocount added to sequence counts to avoid division by zero. Default: 1.0.
+    growth_rate_uncertainty : float, optional
+        Uncertainty (standard deviation) in the initial growth rate. Default: 0.1.
+    process_noise : np.ndarray
+        2D array of process noise. (Assumed to be constant over all genotypes).
+        Default : [1e-5,1e-5]
     alpha : float, optional
         UKF scaling parameter, determines the spread of the sigma points. Default: 1e-3.
     beta : float, optional
@@ -58,21 +52,12 @@ def get_growth_rates_ukf(times,
         1D array of standard errors on growth rate estimates, shape (num_genotypes,)
     """
     
-    num_genotypes, num_times = sequence_counts.shape
+    num_genotypes, num_times = times.shape
     n_states = 2  # [population, growth_rate]
-
-    # --- 1. Calculate the raw measurement vector (z) ---
-    _counted = process_counts(sequence_counts,
-                              total_counts,
-                              total_cfu_ml,
-                              pseudocount=pseudocount)
-
-    cfu = _counted["cfu"]
-    cfu_var = _counted["cfu_var"]
 
     process_noise_std = np.asarray(process_noise_std)
 
-    # --- 2. UKF Parameters and Weights ---
+    # --- UKF Parameters and Weights ---
     lam = alpha**2 * (n_states + kappa) - n_states
     gamma = np.sqrt(n_states + lam)
 
@@ -82,7 +67,7 @@ def get_growth_rates_ukf(times,
     wm[0] = lam / (n_states + lam)
     wc[0] = lam / (n_states + lam) + (1 - alpha**2 + beta)
 
-    # --- 3. Initialize UKF variables ---
+    # --- Initialize UKF variables ---
     # State vector: [population, growth_rate]
     x = np.zeros((num_genotypes, n_states, 1))
     x[:, 0, 0] = cfu[:, 0]
@@ -92,12 +77,12 @@ def get_growth_rates_ukf(times,
     P = np.zeros((num_genotypes, n_states, n_states))
     
     P[:,1,1] = cfu_var[:, 0]
-    P[:,1,1] = initial_growth_rate_uncertainty
+    P[:,1,1] = growth_rate_uncertainty
 
     # Process noise covariance (Q)
     Q = np.diag(np.array(process_noise_std)**2)
 
-    # --- 4. Run the UKF loop over time ---
+    # --- Run the UKF loop over time ---
     
     for i in tqdm(range(1, num_times)):
         
@@ -147,9 +132,7 @@ def get_growth_rates_ukf(times,
         T = np.zeros((num_genotypes, n_states, 1))
         
         # Propagate the variance from counts through the scaling factors.
-        var_counts = sequence_counts[:, i] + pseudocount
-        scaling_factor = total_cfu_ml[:, i] / (total_counts[:, i] + pseudocount)
-        R = var_counts * (scaling_factor**2)
+        R = cfu_var[:,i]
 
         for j in range(2 * n_states + 1):
             x_err = (propagated_sigmas[:, :, j] - x_pred[:, :, 0])[:, :, np.newaxis]

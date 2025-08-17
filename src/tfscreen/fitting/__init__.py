@@ -11,7 +11,7 @@ from .wls import (
     get_growth_rates_wls
 )
 
-from .kalman_filter import (
+from .kf import (
     get_growth_rates_kf
 )
 

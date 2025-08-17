@@ -1,15 +1,12 @@
-from tfscreen.util import process_counts
 import numpy as np
 
 def get_growth_rates_kf(times,
-                        sequence_counts,
-                        total_counts,
-                        total_cfu_ml,
-                        pseudocount=1.0,
-                        min_measurement_noise=1e-12,
-                        process_noise=1e-5,
+                        ln_cfu,
+                        ln_cfu_var,
                         growth_rate_guess=0.015,
-                        growth_rate_guess_std=1.0):
+                        growth_rate_uncertainty=1.0,
+                        min_measurement_noise=1e-12,
+                        process_noise=1e-5):
     """
     Estimate growth rates using a linear Kalman filter.
 
@@ -22,25 +19,22 @@ def get_growth_rates_kf(times,
     ----------
     times : np.ndarray
         2D array of time points, shape (num_genotypes, num_times).
-    sequence_counts : np.ndarray
-        2D array of sequence counts for each genotype, shape (num_genotypes, num_times).
-    total_counts : np.ndarray
-        2D array of total sequence counts for each time point, shape (num_genotypes, num_times).
-    total_cfu_ml : np.ndarray
-        2D array of total CFU/mL measurements, shape (num_genotypes, num_times).
-    pseudocount : float, optional
-        Pseudocount added to sequence counts to avoid division by zero. Default: 1.0.
+    ln_cfu : np.ndarray
+        2D array of ln_cfu each genotype, shape (num_genotypes, num_times).
+    ln_cfu_var : np.ndarray
+        2D array of variance of the estimate of ln_cfu each genotype, 
+        shape (num_genotypes, num_times).
+    growth_rate_guess : float, optional
+        Initial guess for the growth rate (usually wildtype under reference
+        conditions). Default: 0.015.
+    growth_rate_uncertainty : float, optional
+        Uncertainty (standard deviation) on the initial growth rate. Default: 0.1.
     min_measurement_noise : float, optional
         Minimum value for the measurement noise variance to avoid instability. Default: 1e-12.
     process_noise : float, optional
         The variance of the process noise, which models the uncertainty in the
         state transition. Default: 1e-5.
-    growth_rate_guess : float, optional
-        Initial guess for the growth rate (usually wildtype under reference
-        conditions). Default: 0.015.
-    growth_rate_guess_std : float, optional
-        Initial uncertainty (standard deviation) for the growth rate. Default: 1.0.
-
+    
     Returns
     -------
     growth_rate_est : np.ndarray
@@ -49,30 +43,23 @@ def get_growth_rates_kf(times,
         1D array of standard errors on growth rate estimates, shape (num_genotypes,)
     """
 
-    _counted = process_counts(sequence_counts,
-                              total_counts,
-                              total_cfu_ml,
-                              pseudocount=pseudocount)
-    
-    ln_pop_measured = _counted["ln_cfu"]
-    ln_pop_var = _counted["ln_cfu_var"]
-    ln_pop_var = np.maximum(ln_pop_var, min_measurement_noise)
+    ln_cfu_var = np.maximum(ln_cfu_var, min_measurement_noise)
 
     # Get num_genotypes
-    num_genotypes, num_times = ln_pop_measured.shape
+    num_genotypes, num_times = ln_cfu.shape
 
     # State vector: [ln(population), growth_rate]
     # Shape: (num_genotypes, 2, 1)
     x = np.zeros((num_genotypes, 2, 1))
-    x[:, 0, 0] = ln_pop_measured[:, 0]  # Initialize ln(pop) with the first measurement
+    x[:, 0, 0] = ln_cfu[:, 0]  # Initialize ln(pop) with the first measurement
     x[:, 1, 0] = growth_rate_guess      # Initialize growth rate to growth_rate_guess
 
     # State covariance matrix (P)
     # Shape: (num_genotypes, 2, 2)
     P = np.zeros((num_genotypes, 2, 2))
 
-    P[:, 0, 0] = ln_pop_var[:,0]
-    P[:, 1, 1] = growth_rate_guess_std
+    P[:, 0, 0] = ln_cfu_var[:,0]
+    P[:, 1, 1] = growth_rate_uncertainty
 
     # Process noise covariance matrix (Q)
     # Shape: (num_genotypes, 2, 2)
@@ -113,14 +100,14 @@ def get_growth_rates_kf(times,
 
         # --- UPDATE STEP (Vectorized) ---
         # Get measurements for all genotypes at the current time step
-        z = ln_pop_measured[:, i].reshape(-1, 1, 1)
+        z = ln_cfu[:, i].reshape(-1, 1, 1)
 
         # Innovation (residual) for all genotypes
         y = z - H @ x_pred
 
         # Measurement noise covariance (R) is now a stack of matrices,
         # one for each genotype, using the provided noise for this time step.
-        R = ln_pop_var[:, i].reshape(-1, 1, 1)
+        R = ln_cfu_var[:, i].reshape(-1, 1, 1)
 
         # Innovation covariance for all genotypes
         S = H @ P_pred @ H.transpose(0, 2, 1) + R

@@ -87,7 +87,8 @@ def _get_initial_pops(input_library,
 def _get_growth_rates(bacteria,
                       phenotype_df,
                       genotype_df,
-                      condition_df):
+                      condition_df,
+                      growth_rate_noise=0):
     """
     Get growth rates for each bacterium in the population.
 
@@ -101,6 +102,9 @@ def _get_growth_rates(bacteria,
         DataFrame with genotype, mutation, and site information for all clones.
     condition_df : pandas.DataFrame
         DataFrame describing all selection conditions.
+    growth_rate_noise : float
+        percent noise to apply to all growth rates. (growth_noise*base_value is
+        the standard deviation of the random normal distribution to sample)
 
     Returns
     -------
@@ -166,7 +170,17 @@ def _get_growth_rates(bacteria,
             bact_base_k[i] = np.mean(base_k[idx])
             bact_marker_k[i] = np.mean(marker_k[idx,:],axis=0)
             bact_condition_k[i] = np.mean(condition_k[idx,:],axis=0)
-        
+    
+    # Add noise to the growth rates
+    if growth_rate_noise > 0:
+
+        bact_base_k = np.random.normal(loc=bact_base_k,
+                                       scale=np.abs(bact_base_k)*growth_rate_noise)
+        bact_marker_k = np.random.normal(loc=bact_marker_k,
+                                         scale=np.abs(bact_marker_k)*growth_rate_noise)
+        bact_condition_k = np.random.normal(loc=bact_condition_k,
+                                            scale=np.abs(bact_condition_k)*growth_rate_noise)
+
 
     return bact_base_k, bact_marker_k, bact_condition_k
 
@@ -179,7 +193,8 @@ def initialize_population(input_library,
                           overnight_volume_in_mL=10,
                           pre_iptg_cfu_mL=90000000,
                           iptg_out_growth_time=30,
-                          post_iptg_dilution_factor=0.2/10.2):
+                          post_iptg_dilution_factor=0.2/10.2,
+                          growth_rate_noise=0.0):
     """
     Initialize a bacterial population for tfscreen simulations, including
     thawing, growth, dilution, and induction steps.
@@ -205,6 +220,9 @@ def initialize_population(input_library,
         Out-growth time in IPTG (default: 30).
     post_iptg_dilution_factor : float, optional
         Dilution factor after IPTG induction (default: 0.2/10.2).
+    growth_rate_noise : float
+        percent noise to apply to all growth rates. (growth_noise*base_value is
+        the standard deviation of the random normal distribution to sample)
 
     Returns
     -------
@@ -228,7 +246,8 @@ def initialize_population(input_library,
     bact_base_k, bact_marker_k, bact_condition_k = _get_growth_rates(bacteria,
                                                                      phenotype_df,
                                                                      genotype_df,
-                                                                     condition_df)
+                                                                     condition_df,
+                                                                     growth_rate_noise=growth_rate_noise)
 
     # Grow to pre-induction OD600 (0.35 ~ 90,000,000 CFU/mL) using the base
     # growth rates for all bacteria.

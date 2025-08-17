@@ -1,4 +1,3 @@
-from tfscreen.util import process_counts
 from tfscreen.fitting.linear_regression import (
     fast_linear_regression,
     fast_weighted_linear_regression
@@ -221,11 +220,7 @@ def _do_gls(times,
     return growth_rate_est, growth_rate_std
     
 
-def get_growth_rates_gls(times,
-                         sequence_counts,
-                         total_counts,
-                         total_cfu_ml,
-                         pseudocount=1):
+def get_growth_rates_gls(times,ln_cfu):
     """
     Estimate growth rates using a Generalized Least Squares (GLS) model.
 
@@ -238,18 +233,8 @@ def get_growth_rates_gls(times,
     ----------
     times : numpy.ndarray
         2D array of time points, shape (num_genotypes, num_times).
-    sequence_counts : numpy.ndarray
-        2D array of sequence counts for each genotype,
-        shape (num_genotypes, num_times).
-    total_counts : numpy.ndarray
-        2D array of total sequence counts for each time point,
-        shape (num_genotypes, num_times).
-    total_cfu_ml : numpy.ndarray
-        2D array of total CFU/mL measurements,
-        shape (num_genotypes, num_times).
-    pseudocount : float, optional
-        Pseudocount added to sequence counts to avoid division by zero.
-        Default: 1.
+    ln_cfu : np.ndarray
+        2D array of ln_cfu each genotype, shape (num_genotypes, num_times).
 
     Returns
     -------
@@ -259,13 +244,6 @@ def get_growth_rates_gls(times,
         1D array of standard errors of estimated growth rates,
         shape (num_genotypes,).
     """
-    # Get ln_cfu for fitting
-    _count = process_counts(sequence_counts=sequence_counts,
-                            total_counts=total_counts,
-                            total_cfu_ml=total_cfu_ml,
-                            pseudocount=pseudocount)
-    
-    ln_cfu = _count["ln_cfu"]
 
     delta, weighted_residuals = _estimate_delta(times,ln_cfu)
     phi = _estimate_phi(weighted_residuals)

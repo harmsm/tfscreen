@@ -1,4 +1,3 @@
-from tfscreen.util import process_counts
 from tfscreen.fitting.linear_regression import (
     fast_linear_regression,
 )
@@ -132,11 +131,7 @@ def _do_gee(times,
     return growth_rate_est, growth_rate_std
     
 
-def get_growth_rates_gee(times,
-                         sequence_counts,
-                         total_counts,
-                         total_cfu_ml,
-                         pseudocount=1):
+def get_growth_rates_gee(times,cfu):
     """
     Estimate growth rates using Generalized Estimating Equations (GEE).
 
@@ -147,14 +142,8 @@ def get_growth_rates_gee(times,
     ----------
     times : numpy.ndarray
         2D array of time points, shape (num_genotypes, num_times).
-    sequence_counts : numpy.ndarray
-        2D array of sequence counts for each genotype, shape (num_genotypes, num_times).
-    total_counts : numpy.ndarray
-        2D array of total sequence counts for each time point, shape (num_genotypes, num_times).
-    total_cfu_ml : numpy.ndarray
-        2D array of total CFU/mL measurements, shape (num_genotypes, num_times).
-    pseudocount : float, optional
-        Pseudocount added to sequence counts to avoid division by zero. Default: 1.
+    cfu : np.ndarray
+        2D array of cfu each genotype, shape (num_genotypes, num_times).
 
     Returns
     -------
@@ -163,14 +152,6 @@ def get_growth_rates_gee(times,
     growth_rate_std : numpy.ndarray
         1D array of standard errors of estimated growth rates, shape (num_genotypes,).
     """
-
-    # Get ln_cfu for fitting
-    _count = process_counts(sequence_counts=sequence_counts,
-                            total_counts=total_counts,
-                            total_cfu_ml=total_cfu_ml,
-                            pseudocount=pseudocount)
-
-    cfu = _count["cfu"]
 
     delta = _estimate_delta(times,cfu)
 

@@ -46,7 +46,6 @@ def simulate_growth(ln_pop_array,
     # ct will hold all condition-level results (cfu/mL and num reads)
     ct = condition_df_with_time.copy()
     
-
     # Dictionary to store populations under all conditions
     condition_pops = {}
 
