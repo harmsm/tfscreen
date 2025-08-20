@@ -6,6 +6,7 @@ from tfscreen.fitting.linear_regression import (
 import numpy as np
 from tqdm.auto import tqdm
 import statsmodels.api as sm
+from scipy.linalg import toeplitz
 
 def _estimate_delta(times,
                     ln_cfu,
@@ -65,6 +66,7 @@ def _estimate_delta(times,
         
         success = False
         for _ in range(max_iteration):
+
             fitted_values_original_scale = np.exp(fitted_values)
             std = (fitted_values_original_scale)**(delta / 2)
 
@@ -73,9 +75,14 @@ def _estimate_delta(times,
                                                            y_err_arrays=std)
             slopes = _wls_results[0]
             intercepts = _wls_results[1]
+    
             fitted_values = intercepts[:, np.newaxis] + slopes[:, np.newaxis]*times
             residuals = (fitted_values - ln_cfu)
-            
+
+            # Clean up numerical problem of zero residuals
+            residuals = np.abs(residuals)
+            residuals[residuals == 0] = np.finfo(float).tiny
+
             ln_abs_fitted = np.log(np.abs(fitted_values.reshape(fitted_values.shape[0]*fitted_values.shape[1])))
             ln_abs_resid = np.log(np.abs(residuals.reshape(residuals.shape[0]*residuals.shape[1])))
             
@@ -196,11 +203,13 @@ def _do_gls(times,
             variances_log_scale = (mean_vals_i)**(delta - 2)
             D = np.diag(np.sqrt(variances_log_scale))
             
-            # The correlation matrix R is correct
-            R = np.array([[1,     phi,   phi**2],
-                          [phi,   1,     phi],
-                          [phi**2, phi,   1]])
-            
+            # --- Inside your loop ---
+            n_times = len(y) # Get the number of time points for the current sample
+            exponents = np.arange(n_times)
+
+            # The first row of an AR(1) matrix is [phi^0, phi^1, phi^2, ...]
+            R = toeplitz(phi ** exponents)
+
             # The final covariance matrix for the log-scale errors
             omega = D @ R @ D
             
@@ -214,13 +223,16 @@ def _do_gls(times,
             if i > 0 and i % 1000 == 0:
                 pbar.update(1000)
     
-        pbar.n = pbar.total - 1
+        pbar.n = pbar.total
         pbar.refresh()
     
     return growth_rate_est, growth_rate_std
     
 
-def get_growth_rates_gls(times,ln_cfu):
+def get_growth_rates_gls(times,
+                         ln_cfu,
+                         convergence_criterion=1e-4,
+                         max_iteration=50):
     """
     Estimate growth rates using a Generalized Least Squares (GLS) model.
 
@@ -235,7 +247,14 @@ def get_growth_rates_gls(times,ln_cfu):
         2D array of time points, shape (num_genotypes, num_times).
     ln_cfu : np.ndarray
         2D array of ln_cfu each genotype, shape (num_genotypes, num_times).
-
+    convergence_criterion : float, optional
+        Criterion for convergence of the iterative estimation of delta.
+        The estimation stops when the absolute change in delta is less than
+        this value. Default is 1e-4.
+    max_iteration : int, optional
+        Maximum number of iterations for the estimation of delta.
+        Default is 50.
+        
     Returns
     -------
     growth_rate_est : numpy.ndarray
@@ -245,7 +264,10 @@ def get_growth_rates_gls(times,ln_cfu):
         shape (num_genotypes,).
     """
 
-    delta, weighted_residuals = _estimate_delta(times,ln_cfu)
+    delta, weighted_residuals = _estimate_delta(times,
+                                                ln_cfu,
+                                                convergence_criterion=convergence_criterion,
+                                                max_iteration=max_iteration)
     phi = _estimate_phi(weighted_residuals)
 
     growth_rate_est, growth_rate_std = _do_gls(times=times,
