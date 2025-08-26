@@ -1,6 +1,7 @@
-
-from tfscreen.util import get_growth_guesses
+from tfscreen.util import read_dataframe
 from tfscreen.fitting import fast_weighted_linear_regression
+from tfscreen.calibration import predict_growth_rate
+
 
 import pandas as pd
 import numpy as np
@@ -126,7 +127,8 @@ def _build_time_zero(times,
                      condition_df,
                      num_genotypes,
                      num_conditions,
-                     iptg_out_growth_time):
+                     iptg_out_growth_time,
+                     calibration):
     """
     Estimate t = 0 points from all conditions and create a new pseudo datapoint
     with ln_cfu and ln_cfu_var at t = 0. This is done by:
@@ -166,6 +168,8 @@ def _build_time_zero(times,
     iptg_out_growth_time : float
         how long the cultures grew in iptg before being put under selection. 
         Units should match other units.
+    calibration : dict
+        calibration dictionary
     
     Returns
     -------
@@ -193,9 +197,11 @@ def _build_time_zero(times,
         
     # Calculate how much the genotype grew during the IPTG outgrowth prior 
     # to selection.
-    pre_selection_k = get_growth_guesses(iptg=np.array(condition_df["iptg"]),
-                                         marker=np.array(condition_df["marker"]),
-                                         select=np.zeros(len(condition_df["select"])))
+    pre_selection_k, _ = predict_growth_rate(marker=np.array(condition_df["marker"]),
+                                             select=np.zeros(len(condition_df["select"])),
+                                             iptg=np.array(condition_df["iptg"]),
+                                             calibration=calibration)
+
     pre_growth = pre_selection_k*iptg_out_growth_time
     
     # Get a per-genotype mean and variance for the true starting ln_cfu (from 
@@ -229,16 +235,36 @@ def _build_time_zero(times,
     return times_expanded, ln_cfu_expanded, ln_cfu_var_expanded
 
 def _get_k_guess_from_wt(condition_df,
-                         num_genotypes):
+                         num_genotypes,
+                         calibration):
+    """
+    Get guesses for rates for wildtype under the conditions given in the 
+    condition dataframe.
+
+    Parameters
+    ----------
+    condition_df : pandas.DataFrame
+        pandas dataframe with conditions
+    num_genotypes : int
+        number of genotypes
+    calibration : dict
+        calibration dictionary
+
+    Returns
+    -------
+    growth_rate_wt : numpy.ndarray
+        1D numpy array of growth rates. Shape: (num_conditions*num_genotypes,)
+    """
     
     iptg = np.array(condition_df["iptg"])
     marker = np.array(condition_df["marker"])
     select = np.array(condition_df["select"])
     
     # Get guesses for growth rates from wildtype data
-    growth_rate_wt = get_growth_guesses(iptg=iptg,
-                                        select=select,
-                                        marker=marker)
+    growth_rate_wt, _ = predict_growth_rate(marker=marker,
+                                            select=select,
+                                            iptg=iptg,
+                                            calibration=calibration)
     growth_rate_wt = np.tile(growth_rate_wt,num_genotypes)
 
     return growth_rate_wt
@@ -246,6 +272,7 @@ def _get_k_guess_from_wt(condition_df,
 
 def process_for_fit(combined_df,
                     condition_df,
+                    calibration,
                     pseudocount=1,
                     iptg_out_growth_time=30):
     """
@@ -286,6 +313,7 @@ def process_for_fit(combined_df,
     Returns
     -------
     out : dict
+
         A dictionary containing the processed data. The dictionary has the
         following keys:
 
@@ -322,8 +350,8 @@ def process_for_fit(combined_df,
             Shape (num_genotypes*num_conditions)
     """
 
-    combined_df = pd.read_csv(combined_df)
-    condition_df = pd.read_csv(condition_df)
+    combined_df = read_dataframe(combined_df)
+    condition_df = read_dataframe(condition_df)
 
     # Convert the dataframe into a collection of numpy arrays
     _results = _count_df_to_arrays(combined_df)
@@ -337,7 +365,7 @@ def process_for_fit(combined_df,
     # 1D arrays (num_genotypes*num_conditions). 
     genotypes = _results[4]
     base_conditions = _results[5]
-    
+
     num_conditions = len(pd.unique(base_conditions))
     num_genotypes = len(pd.unique(genotypes))
     
@@ -355,7 +383,8 @@ def process_for_fit(combined_df,
                                 condition_df=condition_df,
                                 num_genotypes=num_genotypes,
                                 num_conditions=num_conditions,
-                                iptg_out_growth_time=iptg_out_growth_time)
+                                iptg_out_growth_time=iptg_out_growth_time,
+                                calibration=calibration)
     
     times_expanded, ln_cfu_expanded, ln_cfu_var_expanded = _results
 
@@ -364,7 +393,8 @@ def process_for_fit(combined_df,
     cfu_var_expanded = (cfu_expanded**2)*ln_cfu_var_expanded
 
     growth_rate_wt = _get_k_guess_from_wt(condition_df=condition_df,
-                                          num_genotypes=num_genotypes)
+                                          num_genotypes=num_genotypes,
+                                          calibration=calibration)
 
     # Do a final 
     k_est, _, k_err, _, _ = fast_weighted_linear_regression(x_arrays=times_expanded,
@@ -373,6 +403,7 @@ def process_for_fit(combined_df,
 
     out = {"genotypes":genotypes,
            "conditions":base_conditions,
+           "sequence_counts":sequence_counts,
            "times":times_expanded,
            "cfu":cfu_expanded,
            "cfu_var":cfu_var_expanded,

@@ -75,41 +75,9 @@ def get_growth_rates_nls(times,
                          initial_pop_guess=1,
                          block_size=100):
     """
-    Estimates exponential growth rates from sequencing count data.
-
-    This function orchestrates the entire fitting process. It first
-    calculates CFU/mL and its variance from raw counts. Then, it performs a
-    fast weighted linear regression on the log-transformed data to obtain
-    robust initial guesses for the parameters. Finally, it uses these
-    guesses in a non-linear least squares fit to the original data to get
-    the final growth rate estimates and their standard errors.
-
-    Parameters
-    ----------
-    times : np.ndarray
-        2D array of time points, shape (num_genotypes, num_times).
-    cfu : np.ndarray
-        2D array of cfu each genotype, shape (num_genotypes, num_times).
-    cfu_var : np.ndarray
-        2D array of variance of the estimate of cfu each genotype, 
-        shape (num_genotypes, num_times).
-    block_size : int, optional
-        The number of genotypes to fit simultaneously. A larger size can
-        be faster but uses more memory, by default 100.
-
-    Returns
-    -------
-    growth_rate_est : numpy.ndarray
-        A 1D array containing the final estimated growth rate (k) for each
-        genotype.
-    growth_rate_std : numpy.ndarray
-        A 1D array containing the estimated standard error for each growth
-        rate.
-    """
-    """
     Performs block-wise non-linear least squares fitting.
 
-    This internal function iterates through all genotypes in blocks,
+    This function iterates through all genotypes in blocks,
     performing an independent exponential fit for each one simultaneously
     within the block. It leverages a sparse Jacobian to accelerate the
     computation.

@@ -8,6 +8,3 @@ Exports all public functions and data from submodules for package-level use.
 from . import data
 from . import util
 from . import simulate
-
-
-

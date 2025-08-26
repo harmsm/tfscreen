@@ -1,6 +1,5 @@
-
-from .get_growth_guesses import (
-    get_growth_guesses
+from .read_dataframe import (
+    read_dataframe
 )
 
 from .stats_test_suite import (
@@ -17,3 +16,4 @@ from .fit_plotting import (
     plot_err_zscore,
     plot_summary
 )
+

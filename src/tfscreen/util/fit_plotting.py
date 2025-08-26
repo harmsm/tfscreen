@@ -119,7 +119,13 @@ def plot_err(real_values,
 
     abs_diffs = np.abs(diff)
     abs_diffs.sort()
+
     pct_cut_index = int(np.round(len(abs_diffs)*(1-pct_cut),0))
+    if pct_cut_index < 0:
+        pct_cut_index = 0
+    if pct_cut_index >= len(abs_diffs):
+        pct_cut_index = len(abs_diffs) - 1
+
     ax_max = abs_diffs[pct_cut_index]
 
     ax.scatter(diff,err,**final_scatter_kwargs)
@@ -241,8 +247,8 @@ def plot_summary(k_est,
     k_std = k_std[good_mask]
     k_real = k_real[good_mask]
     
+    index = np.arange(len(k_est),dtype=int)
     if subsample is not None:
-        index = np.arange(len(k_est),dtype=int)
         index = np.random.choice(index,size=subsample,replace=False)
     
     fig, ax = plt.subplots(1,3,figsize=(14,6))
