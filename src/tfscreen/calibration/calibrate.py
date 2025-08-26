@@ -75,7 +75,11 @@ def _get_growth_rates(df,default_err=0.01):
     
     return out_df
 
-def calibrate(calibration_file,output_root,K,n):
+def calibrate(calibration_file,
+              output_root,
+              K,
+              n,
+              log_iptg_offset=1e-6):
     """
     
     Parameters
@@ -88,6 +92,9 @@ def calibrate(calibration_file,output_root,K,n):
         binding coefficient for the operator occupancy Hill model
     n : float
         Hill coefficient for the operator occupancy Hill model
+    log_iptg_offset : float, default=1e-6
+        add this to value to all iptg concentrations before taking the log 
+        to fit the linear model
 
     Returns
     -------
@@ -106,7 +113,10 @@ def calibrate(calibration_file,output_root,K,n):
     expt_df = _get_growth_rates(df)
 
     # Do calibration
-    calibration = perform_calibration(expt_df,K=K,n=n)
+    calibration = perform_calibration(expt_df,
+                                      K=K,
+                                      n=n,
+                                      log_iptg_offset=log_iptg_offset)
 
     # Write out calibration figure
     fig, ax = plot_calibration(expt_df=expt_df,
