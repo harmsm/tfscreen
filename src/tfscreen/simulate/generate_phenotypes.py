@@ -1,14 +1,14 @@
 """
 Functions for generating phenotypes from mutant libraries and ensemble data.
 """
-from tfscreen import data
+
+from tfscreen.calibration import predict_growth_rate
 
 import eee
 
 import pandas as pd
 import numpy as np
 from tqdm.auto import tqdm
-
 
 
 def _read_ddG(ddG_spreadsheet,ens):
@@ -36,7 +36,6 @@ def _read_ddG(ddG_spreadsheet,ens):
         ddG_values = np.array(ddG_table.loc[idx,ens.species],dtype=float)
         ddG_dict[mut] = ddG_values
     
-    
     ### HACK FOR NOW --> CALL C AS S
     for mut in list(ddG_dict.keys()):
         if mut[-1] == "S":
@@ -46,9 +45,10 @@ def _read_ddG(ddG_spreadsheet,ens):
 
     
 def generate_phenotypes(genotype_df,
-                        condition_df,
+                        sample_df,
                         ensemble_spreadsheet,
                         ddG_spreadsheet,
+                        calibration_dict,
                         scale_obs_by=1,
                         mut_growth_rate_std=1,
                         T=310,
@@ -62,16 +62,25 @@ def generate_phenotypes(genotype_df,
     genotype_df : pandas.DataFrame
         dataframe with genotype information. Must contain a column "genotype"
         with genotype strings.
+    sample_df : pandas.DataFrame
+        dataframe with samples. Expects columns 'marker', 'select', 'iptg' 
     ensemble_spreadsheet : str or file-like
         Path to ensemble spreadsheet.
     ddG_spreadsheet : str or file-like
         Path to ddG spreadsheet.
-    concs_mM : array-like
-        Ligand concentrations in mM.
+    calibration_dict : dict
+        calibration dictionary with wildtype growth rates under experimental 
+        conditions.
+    scale_obs_by : float, default = 1
+        scale the observable by this factor to account for differences between
+        transcription factor and operator concentrations in cells
+    mut_growth_rate_std : float, default = 1
+        standard deviation on growth rate perturbations
     T : float, optional
         Temperature in Kelvin. Default is 310.
     R : float, optional
-        Gas constant. Default is 0.001987.
+        gas constant. Default is 0.001987 (kcal/mol). NOTE: this **must** match
+        the units in the ddG and ensemble spreadsheets. 
 
     Returns
     -------
@@ -83,6 +92,12 @@ def generate_phenotypes(genotype_df,
         - "fx_occupied": fraction of binding sites occupied
         - "fx_folded": fraction of folded protein
         - "obs": observed phenotype (product of fx_occupied and fx_folded)  
+        - "base_growth_rate": growth rate under these conditions without a 
+          marker or selection
+        - "marker_growth_rate": growth rate under these conditions accounting 
+          for marker without selection
+        - "select_growth_rate": growth rate under these conditions accounting 
+          for marker and selection.
     """
     
     # Prepare output dictionary to hold phenotype data
@@ -105,40 +120,41 @@ def generate_phenotypes(genotype_df,
     list_of_genotypes = list(genotype_df["genotype"])
 
     # Create thermodynamic ensemble
-    ens = eee.io.read_ensemble(ensemble_spreadsheet) 
-    ens.read_ligand_dict(ligand_dict={"iptg":condition_df["iptg"]*1e3})
+    ens = eee.io.read_ensemble(ensemble_spreadsheet,gas_constant=R)
+
+    iptg_chemical_potential = -R*T*np.log(sample_df["iptg"]*1e-3)
+
+    ens.read_ligand_dict(ligand_dict={"iptg":iptg_chemical_potential})
     T_array = np.array([T])
     ddG_dict = _read_ddG(ddG_spreadsheet,ens=ens)
 
+    # Get marker, select, and iptg
+    marker = np.array(sample_df["marker"])
+    select = np.array(sample_df["select"])
+    iptg = np.array(sample_df["iptg"])
+    
+    # Create dummy 
+    no_marker = np.array(["none" for _ in range(len(iptg))])
+    no_select = np.zeros(len(iptg),dtype=int)
+
     # Calculate wildtype growth rate as a function of IPTG
-    wt_effect = np.array([data.wt_growth(iptg)
-                          for iptg in condition_df["iptg"]])
+    wt_effect, _ = predict_growth_rate(marker=no_marker,
+                                       select=no_select,
+                                       iptg=iptg,
+                                       calibration_dict=calibration_dict)
     
-    # get base growth rate for wildtype
-    log_wt_base_growth_rate = np.log(data.wt_growth(0))
-    
-    # Assign the appropriate marker and selection polynomials. These will have
-    # mutant-specific effects because they depend on fraction of binding sites
-    # occupied. We apply to the correct conditions based on the masks we 
-    # store in marker_masks and selection_masks.
-
-    unique_markers = pd.unique(condition_df["marker"])
-    num_markers = len(unique_markers)
-
-    marker_polys = [data.markers[m] for m in unique_markers]
-    marker_masks = [np.array(condition_df["marker"] == m)
-                    for m in unique_markers]
-
-    selection_polys = [data.selectors[m] for m in unique_markers]
-    selection_masks = [np.logical_and(condition_df["marker"] == m,
-                                      condition_df["select"] == 1)
-                                      for m in unique_markers]
+    # Get growth rate with lac repressor but no iptg, selection, or iptg
+    wt_base, _ = predict_growth_rate(marker=np.array(["none"]),
+                                     select=np.zeros(1,dtype=bool),
+                                     iptg=np.zeros(1,dtype=float),
+                                     calibration_dict=calibration_dict)
+    log_wt_base_growth_rate = np.log(wt_base)
 
     # Figure out number of points to add    
     num_points = len(wt_effect)
 
-    print(f"calculating phenotypes",flush=True)
-    for genotype in tqdm(list_of_genotypes):
+    desc = "{}".format("calculating phenotypes")
+    for genotype in tqdm(list_of_genotypes,desc=desc,ncols=800):
 
         # Create list of mutations from genotype string
         if genotype == "wt":
@@ -164,31 +180,36 @@ def generate_phenotypes(genotype_df,
                                                      temperature=T_array)
         obs = fx_occupied * fx_folded * scale_obs_by
 
-        # Calculate the growth rates
-        base_growth_rate = wt_effect + growth_rate_effect
-        marker_growth_rate = base_growth_rate.copy()
-        select_growth_rate = base_growth_rate.copy()
-        
-        # Go through marker and selection
-        for i in range(num_markers):
-            marker_growth_rate[marker_masks[i]] += marker_polys[i](obs[marker_masks[i]])
+        # Calculate growth rate without marker or selection
+        base_growth_rate = growth_rate_effect + wt_effect
 
-            select_growth_rate[marker_masks[i]] += marker_polys[i](obs[marker_masks[i]])
-            select_growth_rate[selection_masks[i]] += selection_polys[i](obs[selection_masks[i]])
+        # Calculate growth rate with marker but no selection
+        marker_growth_rate, _ = predict_growth_rate(marker=marker,
+                                                    select=no_select,
+                                                    iptg=iptg,
+                                                    theta=obs,
+                                                    calibration_dict=calibration_dict)
+        marker_growth_rate += growth_rate_effect 
+
+        # Predict growth with marker + selection
+        select_growth_rate, _ = predict_growth_rate(marker=marker,
+                                                    select=select,
+                                                    iptg=iptg,
+                                                    theta=obs,
+                                                    calibration_dict=calibration_dict)
+        select_growth_rate += growth_rate_effect 
 
         # Record phenotype information
         phenotype_out["genotype"].extend([genotype]*num_points)
-        phenotype_out["marker"].extend(condition_df["marker"].values)
-        phenotype_out["select"].extend(condition_df["select"].values)
-        phenotype_out["iptg"].extend(condition_df["iptg"].values)
+        phenotype_out["marker"].extend(sample_df["marker"].values)
+        phenotype_out["select"].extend(sample_df["select"].values)
+        phenotype_out["iptg"].extend(sample_df["iptg"].values)
         phenotype_out["fx_occupied"].extend(fx_occupied)
         phenotype_out["fx_folded"].extend(fx_folded)
         phenotype_out["obs"].extend(obs)
         phenotype_out["base_growth_rate"].extend(base_growth_rate)
         phenotype_out["marker_growth_rate"].extend(marker_growth_rate)
         phenotype_out["select_growth_rate"].extend(select_growth_rate)
-
-    print("storing phenotypes",flush=True)
 
     phenotype_df = pd.DataFrame(phenotype_out)
 

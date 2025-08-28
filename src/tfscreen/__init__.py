@@ -8,3 +8,6 @@ Exports all public functions and data from submodules for package-level use.
 from . import data
 from . import util
 from . import simulate
+from . import analyze
+
+from tfscreen.simulate import run_simulation

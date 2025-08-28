@@ -4,9 +4,6 @@ from .core import (
     predict_growth_rate
 )
 
-from .plot_calibration import (
-    plot_calibration
-)
 
 from .io import (
     write_calibration,
@@ -16,3 +13,4 @@ from .io import (
 from .calibrate import (
     calibrate
 )
+

@@ -3,6 +3,8 @@ Functions for simulating transformation and mixing of mutant libraries in tfscre
 """
 import numpy as np
 from scipy.stats import lognorm 
+from tqdm.auto import tqdm
+
 import copy
 
 def _transform_cells(num_transformants,
@@ -195,7 +197,8 @@ def transform_and_mix(libraries,
     library_mixture = _scale_library_mixture(library_mixture)
     
     to_combine = []
-    for k in transform_sizes:
+    desc = "{}".format("simulating transformation")
+    for k in tqdm(transform_sizes,desc=desc,ncols=800):
 
         # Transform library, sampling appropriately
         transformed = _transform_cells(int(transform_sizes[k]),

@@ -3,6 +3,10 @@ from .linear_regression import (
     fast_weighted_linear_regression
 )
 
+from .matrix_wls import (
+    matrix_wls
+)
+
 from .ols import (
     get_growth_rates_ols
 )

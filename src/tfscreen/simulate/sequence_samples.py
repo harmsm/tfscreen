@@ -1,5 +1,5 @@
 """
-Functions for simulating the sequencing of conditions.
+Functions for simulating the sequencing of timepoints. 
 """
 
 import numpy as np
@@ -70,11 +70,11 @@ def _sample_population(bacteria,
             
             # Grab random plasmids from this bacterium for sequencing
             plasmids_extracted = np.random.choice(bacteria_seen[i],
-                                                    size=counts[i])
+                                                  size=counts[i])
             
             # Count the unique plasmids pulled
             plasmids, p_count = np.unique(plasmids_extracted,
-                                            return_counts=True)
+                                          return_counts=True)
             
             # Record these in our new bacteria/counts
             genotypes_seen.extend(plasmids)
@@ -111,7 +111,7 @@ def _get_overall_plasmid_freqs(bacteria,ln_pop):
         Array of overall frequencies for each unique plasmid.
     """
 
-    # Frequency of bacteria in this condition
+    # Frequency of bacteria in at each timepoint
     bacterial_freq = np.exp(ln_pop)
 
     # Simple case: no multi-transformants
@@ -207,30 +207,29 @@ def _index_hopping(genotype_seen,
 
     return genotype_seen, genotype_counts
     
-    
 
-def sequence_conditions(condition_pops,
-                        condition_df_with_time,
-                        genotype_df,
-                        bacteria,
-                        total_num_reads,
-                        index_hop_freq=0.0):
+def sequence_samples(sample_pops,
+                     sample_df_with_time,
+                     genotype_df,
+                     bacteria,
+                     total_num_reads,
+                     index_hop_freq=0.0):
     """
-    Simulate sequencing of bacterial populations across different conditions.
+    Simulate sequencing of bacterial populations from different samples. 
 
-    This function simulates the sequencing process by sampling reads from the
-    final bacterial populations in each condition. It generates a dataframe
-    containing the counts of each genotype observed in each condition,
-    mimicking the output of a real sequencing experiment.
+    This function simulates the sequencing process by randomly sampling reads
+    from the bacterial populations at each time point in each sample. It
+    generates a dataframe containing the counts for each genotype observed at
+    each time point mimicking the output of a real sequencing experiment.
 
     Parameters
     ----------
-    condition_pops : dict
-        Dictionary mapping condition names to log population arrays (ln_pop).
+    sample_pops : dict
+        Dictionary mapping timepoint names to log population arrays (ln_pop).
         Each ln_pop array represents the log-transformed population size of
-        each bacterium in that condition.
-    condition_df_with_time : pandas.DataFrame
-        DataFrame containing information about each condition, including time.
+        each bacterium in that timepoint.
+    sample_df_with_time : pandas.DataFrame
+        DataFrame containing information about each sample, including time.
     genotype_df : pandas.DataFrame
         DataFrame containing information about each genotype, including
         genotype names and other relevant features.
@@ -239,8 +238,8 @@ def sequence_conditions(condition_pops,
         (if there is one plasmid per bacterium) or a tuple of genotype strings
         (if there are multiple plasmids per bacterium).
     total_num_reads : int
-        The total number of reads to simulate across all conditions.  This is
-        split evenly across all conditions.
+        The total number of reads to simulate across all timepoints.  This is
+        split evenly across all timempoints.
     index_hop_freq : float, default=0
         Proportion of reads that should be reassigned randomly after the 
         initial sampling. 
@@ -249,26 +248,24 @@ def sequence_conditions(condition_pops,
     -------
     count_df : pandas.DataFrame
         DataFrame containing the counts of each genotype observed in each
-        condition.  Columns include 'condition', 'base_condition', 'time',
+        timepoint.  Columns include 'timepoint', 'sample', 'sample_number','time',
         'genotype', and 'counts'.
-    condition_df_with_time : pandas.DataFrame
-        DataFrame containing information about each condition, updated with
+    sample_df_with_time : pandas.DataFrame
+        DataFrame containing information about each timepoint, updated with
         'cfu_per_mL' and 'num_reads' columns.
     """
-    
-    print("Sequencing final populations",flush=True)
-    
-    num_samples = len(condition_df_with_time)        
-    condition_df_with_time["cfu_per_mL"] = 0.0
-    condition_df_with_time["num_reads"] = int(total_num_reads//num_samples)
+        
+    num_samples = len(sample_df_with_time)        
+    sample_df_with_time["cfu_per_mL"] = 0.0
+    sample_df_with_time["num_reads"] = int(total_num_reads//num_samples)
 
-    # Create template dataframe to store results for each condition
+    # Create template dataframe to store results for each timepoint
     template_df = genotype_df.copy()
     columns = list(template_df.columns)
     to_drop = [c for c in columns if c not in ["genotype"]]
     template_df = template_df.drop(columns=to_drop)
 
-    # Together genotype_number and base_condition_number will allow us to sort
+    # Together genotype_number and sample_number will allow us to sort
     # the final dataframe in a human-readable way that will also allow us to 
     # readily pull counts for future fitting. 
 
@@ -276,34 +273,34 @@ def sequence_conditions(condition_pops,
     template_df["genotype_number"] = np.arange(len(template_df["genotype"]),
                                                dtype=int)
     
-    # Create dictionary mapping base conditions to their order in the 
-    # condition_df. 
+    # Create dictionary mapping samples to their order in the sample_df. 
     counter = 0
-    base_condition_number = {}
-    for c in condition_df_with_time.index:
-        base_condition = "-".join(c.split("-")[:-1])
-        if base_condition not in base_condition_number:
-            base_condition_number[base_condition] = counter
+    sample_number = {}
+    for c in sample_df_with_time.index:
+        sample = "|".join(c.split("|")[:-1])
+        if sample not in sample_number:
+            sample_number[sample] = counter
             counter += 1
 
-    # Go through each condition ... 
+    # Go through each timepoint ... 
     sequencing_dataframes = []
-    for condition in tqdm(condition_pops):
+    desc = "{}".format("sequencing samples")
+    for timepoint in tqdm(sample_pops,desc=desc,ncols=800):
 
-        # Get information about this condition
-        num_reads = condition_df_with_time.loc[condition,"num_reads"]
-        time = condition_df_with_time.loc[condition,"time"]
-        base_condition = "-".join(condition.split("-")[:-1])
+        # Get information about this timepoint
+        num_reads = sample_df_with_time.loc[timepoint,"num_reads"]
+        time = sample_df_with_time.loc[timepoint,"time"]
+        sample = "|".join(timepoint.split("|")[:-1])
 
         # Record the cfu/mL for this sample
-        ln_pop = condition_pops[condition]
-        condition_df_with_time.loc[condition,"cfu_per_mL"] = np.sum(np.exp(ln_pop))
+        ln_pop = sample_pops[timepoint]
+        sample_df_with_time.loc[timepoint,"cfu_per_mL"] = np.sum(np.exp(ln_pop))
 
-        # this_df will hold the samples for all genotypes from this condition. 
+        # this_df will hold the samples for all genotypes from this timepoint. 
         this_df = template_df.copy()
-        this_df["condition"] = condition
-        this_df["base_condition"] = base_condition
-        this_df["base_condition_number"] = base_condition_number[base_condition]
+        this_df["timepoint"] = timepoint
+        this_df["sample"] = sample
+        this_df["sample_number"] = sample_number[sample]
         this_df["time"] = time
         this_df["counts"] = 0
 
@@ -328,18 +325,15 @@ def sequence_conditions(condition_pops,
         # Record the sequencing dataframe
         sequencing_dataframes.append(this_df)
         
-
-
-    print("Building final dataframe",flush=True)
-
     # Build one huge dataframe with all sequencing results
     count_df = pd.concat(sequencing_dataframes)
 
     count_df = count_df.sort_values(["genotype_number",
-                                     "base_condition_number",
+                                     "sample_number",
                                      "time"])
 
     count_df.index = np.arange(len(count_df["genotype"]),dtype=int)
 
-    # Return sequencing counts dataframe and condition dataframe
-    return count_df, condition_df_with_time
+    # Return sequencing counts dataframe and sample dataframe
+    
+    return count_df, sample_df_with_time

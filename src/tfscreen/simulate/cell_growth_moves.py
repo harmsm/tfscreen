@@ -58,7 +58,7 @@ def grow_to_target(ln_pop_array,
     ln_pop_array : numpy.ndarray
         array with current ln(pop) of each clone
     growth_rates : numpy.ndarray
-        array with growth rate of each clone under this condition
+        array with growth rate of each clone in this sample
     final_cfu_mL : float, default = 1e9
         grow to this cfu/mL
 
@@ -98,7 +98,7 @@ def grow_for_time(ln_pop_array,
     ln_pop_array : numpy.ndarray
         array with current ln(pop) of each clone
     growth_rates : numpy.ndarray
-        array with growth rate of each clone under this condition
+        array with growth rate of each clone in this sample
     t : float
         time (in units matching growth rate; minutes, usually) to grow
 

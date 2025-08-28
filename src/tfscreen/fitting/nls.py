@@ -72,7 +72,7 @@ def get_growth_rates_nls(times,
                          cfu,
                          cfu_var,
                          growth_rate_guess=0.015,
-                         initial_pop_guess=1,
+                         initial_pop_guess=1e7,
                          block_size=100):
     """
     Performs block-wise non-linear least squares fitting.
@@ -100,12 +100,18 @@ def get_growth_rates_nls(times,
 
     Returns
     -------
-    growth_rate_est : numpy.ndarray
-        1D array of the final estimated growth rates (k) for all genotypes.
-    growth_rate_std : numpy.ndarray
-        1D array of the estimated standard errors for each growth rate.
+    A0_est : np.ndarray
+        1D array of estimated initial populations, shape (num_genotypes,)
+    A0_std : np.ndarray
+        1D array of standard errors on estimated initial populations, shape (num_genotypes,)
+    growth_rate_est : np.ndarray
+        1D array of estimated growth rates, shape (num_genotypes,)
+    growth_rate_std : np.ndarray
+        1D array of standard errors on estimated growth rates, shape (num_genotypes,)
     """
 
+    A0_est = []
+    A0_std = []
     growth_rate_est = []
     growth_rate_std = []
 
@@ -179,7 +185,15 @@ def get_growth_rates_nls(times,
             std = np.sqrt(np.diagonal(cov))
 
         # Record results
+        A0_est.extend(fit.x[:n])
+        A0_std.extend(std[:n])
+
         growth_rate_est.extend(fit.x[n:])
         growth_rate_std.extend(std[n:])
 
-    return np.array(growth_rate_est), np.array(growth_rate_std)
+    A0_est = np.array(A0_est)
+    A0_std = np.array(A0_std)
+    growth_rate_est = np.array(growth_rate_est)
+    growth_rate_std = np.array(growth_rate_std)
+
+    return A0_est, A0_std, growth_rate_est, growth_rate_std

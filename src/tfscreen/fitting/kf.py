@@ -25,8 +25,7 @@ def get_growth_rates_kf(times,
         2D array of variance of the estimate of ln_cfu each genotype, 
         shape (num_genotypes, num_times).
     growth_rate_guess : float, optional
-        Initial guess for the growth rate (usually wildtype under reference
-        conditions). Default: 0.015.
+        Initial guess for the growth rate 
     growth_rate_uncertainty : float, optional
         Uncertainty (standard deviation) on the initial growth rate. Default: 0.1.
     min_measurement_noise : float, optional
@@ -37,10 +36,16 @@ def get_growth_rates_kf(times,
     
     Returns
     -------
+    A0_est : np.ndarray
+        1D array of nan. Here for consistency across api, but this method does not
+        estimate A0.
+    A0_std : np.ndarray
+        1D array of nan. Here for consistency across api, but this method does not
+        estimate A0.
     growth_rate_est : np.ndarray
         1D array of estimated growth rates, shape (num_genotypes,)
     growth_rate_std : np.ndarray
-        1D array of standard errors on growth rate estimates, shape (num_genotypes,)
+        1D array of standard errors on estimated growth rates, shape (num_genotypes,)
     """
 
     ln_cfu_var = np.maximum(ln_cfu_var, min_measurement_noise)
@@ -123,7 +128,9 @@ def get_growth_rates_kf(times,
 
     growth_rate_est = x[:, 1, 0]
     growth_rate_std = np.sqrt(P[:, 1, 1])
+    A0_est = np.repeat(np.nan,growth_rate_est.shape[0])
+    A0_std = np.repeat(np.nan,growth_rate_est.shape[0])
         
-    return growth_rate_est, growth_rate_std
+    return A0_est, A0_std, growth_rate_est, growth_rate_std
 
 

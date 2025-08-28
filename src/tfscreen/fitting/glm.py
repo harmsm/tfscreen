@@ -72,14 +72,20 @@ def _do_glm(times,cfu,delta):
 
     Returns
     -------
-    growth_rate_est : numpy.ndarray
-        1D array of estimated growth rates, shape (num_genotypes,).
-    growth_rate_std : numpy.ndarray
-        1D array of standard errors of estimated growth rates, shape (num_genotypes,).
+    A0_est : np.ndarray
+        1D array of estimated initial populations, shape (num_genotypes,)
+    A0_std : np.ndarray
+        1D array of standard errors on estimated initial populations, shape (num_genotypes,)
+    growth_rate_est : np.ndarray
+        1D array of estimated growth rates, shape (num_genotypes,)
+    growth_rate_std : np.ndarray
+        1D array of standard errors on estimated growth rates, shape (num_genotypes,)
     """
 
-    growth_rate_est = np.nan*np.ones(times.shape[0],dtype=float)
-    growth_rate_std = np.nan*np.ones(times.shape[0],dtype=float)
+    A0_est = np.repeat(np.nan,times.shape[0])
+    A0_std = np.repeat(np.nan,times.shape[0])
+    growth_rate_est = np.repeat(np.nan,times.shape[0])
+    growth_rate_std = np.repeat(np.nan,times.shape[0])
 
     with tqdm(total=times.shape[0]) as pbar:
 
@@ -97,6 +103,8 @@ def _do_glm(times,cfu,delta):
             glm_results = glm_model.fit()
     
             # Store the results
+            A0_est[i] = glm_results.params[0]
+            A0_std[i] = glm_results.params[1]
             growth_rate_est[i] = glm_results.params[1]
             growth_rate_std[i] = glm_results.bse[1]
 
@@ -107,7 +115,7 @@ def _do_glm(times,cfu,delta):
         pbar.n = pbar.total - 1
         pbar.refresh()
     
-    return growth_rate_est, growth_rate_std
+    return A0_est, A0_std, growth_rate_est, growth_rate_std
     
 
 def get_growth_rates_glm(times,cfu):
@@ -128,16 +136,20 @@ def get_growth_rates_glm(times,cfu):
 
     Returns
     -------
-    growth_rate_est : numpy.ndarray
-        1D array of estimated growth rates, shape (num_genotypes,).
-    growth_rate_std : numpy.ndarray
-        1D array of standard errors of estimated growth rates, shape (num_genotypes,).
+    A0_est : np.ndarray
+        1D array of estimated initial populations, shape (num_genotypes,)
+    A0_std : np.ndarray
+        1D array of standard errors on estimated initial populations, shape (num_genotypes,)
+    growth_rate_est : np.ndarray
+        1D array of estimated growth rates, shape (num_genotypes,)
+    growth_rate_std : np.ndarray
+        1D array of standard errors on estimated growth rates, shape (num_genotypes,)
     """
 
     delta = _estimate_delta(times,cfu)
 
-    growth_rate_est, growth_rate_std = _do_glm(times=times,
-                                               cfu=cfu,
-                                               delta=delta)
+    A0_est, A0_std, growth_rate_est, growth_rate_std = _do_glm(times=times,
+                                                               cfu=cfu,
+                                                               delta=delta)
 
-    return growth_rate_est, growth_rate_std
+    return A0_est, A0_std, growth_rate_est, growth_rate_std

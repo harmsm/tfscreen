@@ -20,10 +20,14 @@ def get_growth_rates_wls(times,
 
     Returns
     -------
+    A0_est : np.ndarray
+        1D array of estimated initial populations, shape (num_genotypes,)
+    A0_std : np.ndarray
+        1D array of standard errors on estimated initial populations, shape (num_genotypes,)
     growth_rate_est : np.ndarray
-        1D array of estimated growth rates, shape (num_genotypes,).
+        1D array of estimated growth rates, shape (num_genotypes,)
     growth_rate_std : np.ndarray
-        1D array of standard deviations on estimated growth rates, shape (num_genotypes,).
+        1D array of standard errors on estimated growth rates, shape (num_genotypes,)
     """
 
     _results = fast_weighted_linear_regression(x_arrays=times,
@@ -31,6 +35,8 @@ def get_growth_rates_wls(times,
                                                y_err_arrays=ln_cfu_var)
 
     growth_rate_est = _results[0]
+    A0_est = _results[1]
     growth_rate_std = _results[2]
+    A0_std = _results[3]
 
-    return growth_rate_est, growth_rate_std
+    return A0_est, A0_std, growth_rate_est, growth_rate_std

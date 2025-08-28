@@ -29,8 +29,8 @@ def get_growth_rates_ukf_lin(times,
         2D array of variance of the estimate of ln_cfu each genotype, 
         shape (num_genotypes, num_times).
     growth_rate_guess : float or np.ndarray
-        initial guess for the growth rate (usually wildtype under reference 
-        conditions). Can be an array num_gentoypes long. default: 0.015 
+        initial guess for the growth rate. Can be an array num_gentoypes long.
+        default: 0.015 
     growth_rate_uncertainty : float, optional
         Uncertainty (standard deviation) on the initial growth rate. Default: 0.1.
     process_noise : np.ndarray
@@ -45,10 +45,16 @@ def get_growth_rates_ukf_lin(times,
 
     Returns
     -------
+    A0_est : np.ndarray
+        1D array of nan. Here for consistency across api, but this method does not
+        estimate A0.
+    A0_std : np.ndarray
+        1D array of nan. Here for consistency across api, but this method does not
+        estimate A0.
     growth_rate_est : np.ndarray
         1D array of estimated growth rates, shape (num_genotypes,)
     growth_rate_std : np.ndarray
-        1D array of standard deviations on estimated growth rates, shape (num_genotypes,)
+        1D array of standard errors on estimated growth rates, shape (num_genotypes,)
     """
     
     cfu = np.exp(ln_cfu)
@@ -155,5 +161,7 @@ def get_growth_rates_ukf_lin(times,
 
     growth_rate_est = x[:, 1, 0]
     growth_rate_std = np.sqrt(np.abs(P[:, 1, 1]))
+    A0_est = np.repeat(np.nan,growth_rate_est.shape[0])
+    A0_std = np.repeat(np.nan,growth_rate_est.shape[0])
         
-    return growth_rate_est, growth_rate_std
+    return A0_est, A0_std, growth_rate_est, growth_rate_std
