@@ -5,6 +5,7 @@ from tfscreen.fitting.linear_regression import (
 import numpy as np
 from tqdm.auto import tqdm
 import statsmodels.api as sm
+import pandas as pd
 
 
 def _estimate_delta(times, cfu):
@@ -72,25 +73,24 @@ def _do_glm(times,cfu,delta):
 
     Returns
     -------
-    A0_est : np.ndarray
-        1D array of estimated initial populations, shape (num_genotypes,)
-    A0_std : np.ndarray
-        1D array of standard errors on estimated initial populations, shape (num_genotypes,)
-    growth_rate_est : np.ndarray
-        1D array of estimated growth rates, shape (num_genotypes,)
-    growth_rate_std : np.ndarray
-        1D array of standard errors on estimated growth rates, shape (num_genotypes,)
+    param_df : pandas.DataFrame
+        dataframe with extracted parameters (A0_est, k_est) and their standard
+        errors (A0_std, k_std)
+    pred_df : pandas.DataFrame
+        dataframe with obs and pred
     """
 
     A0_est = np.repeat(np.nan,times.shape[0])
     A0_std = np.repeat(np.nan,times.shape[0])
-    growth_rate_est = np.repeat(np.nan,times.shape[0])
-    growth_rate_std = np.repeat(np.nan,times.shape[0])
+    k_est = np.repeat(np.nan,times.shape[0])
+    k_std = np.repeat(np.nan,times.shape[0])
+
+    obs = np.ones(times.shape,dtype=float)*np.nan
+    pred = np.ones(times.shape,dtype=float)*np.nan
 
     with tqdm(total=times.shape[0]) as pbar:
 
         for i in range(times.shape[0]):
-
 
             y = cfu[i, :]
             X = sm.add_constant(times[i,:])
@@ -105,17 +105,31 @@ def _do_glm(times,cfu,delta):
             # Store the results
             A0_est[i] = glm_results.params[0]
             A0_std[i] = glm_results.params[1]
-            growth_rate_est[i] = glm_results.params[1]
-            growth_rate_std[i] = glm_results.bse[1]
+            k_est[i] = glm_results.params[1]
+            k_std[i] = glm_results.bse[1]
+
+            obs[i,:] = y
+            pred[i,:] = glm_results.fittedvalues
 
             if i > 0 and i % 1000 == 0:
                 pbar.update(1000)
 
-    
         pbar.n = pbar.total - 1
         pbar.refresh()
     
-    return A0_est, A0_std, growth_rate_est, growth_rate_std
+    obs = obs.flatten()
+    pred = pred.flatten()
+
+    param_df = pd.DataFrame({"A0_est":A0_est,
+                             "A0_std":A0_std,
+                             "k_est":k_est,
+                             "k_std":k_std})
+
+    pred_df = pd.DataFrame({"obs":obs,
+                            "pred":pred})
+    
+
+    return param_df, pred_df
     
 
 def get_growth_rates_glm(times,cfu):
@@ -136,20 +150,17 @@ def get_growth_rates_glm(times,cfu):
 
     Returns
     -------
-    A0_est : np.ndarray
-        1D array of estimated initial populations, shape (num_genotypes,)
-    A0_std : np.ndarray
-        1D array of standard errors on estimated initial populations, shape (num_genotypes,)
-    growth_rate_est : np.ndarray
-        1D array of estimated growth rates, shape (num_genotypes,)
-    growth_rate_std : np.ndarray
-        1D array of standard errors on estimated growth rates, shape (num_genotypes,)
+    param_df : pandas.DataFrame
+        dataframe with extracted parameters (A0_est, k_est) and their standard
+        errors (A0_std, k_std)
+    pred_df : pandas.DataFrame
+        dataframe with obs and pred
     """
 
     delta = _estimate_delta(times,cfu)
 
-    A0_est, A0_std, growth_rate_est, growth_rate_std = _do_glm(times=times,
-                                                               cfu=cfu,
-                                                               delta=delta)
+    param_df, pred_df = _do_glm(times=times,
+                                cfu=cfu,
+                                delta=delta)
 
-    return A0_est, A0_std, growth_rate_est, growth_rate_std
+    return param_df, pred_df

@@ -44,8 +44,11 @@ def plot_corr(x_values,
         for k in scatter_kwargs:
             final_scatter_kwargs[k] = scatter_kwargs[k]
     
-    ax_min = np.min([np.min(x_values),np.min(y_values)])
-    ax_max = np.max([np.max(x_values),np.max(y_values)])
+    all_values = list(x_values)
+    all_values.extend(y_values)
+    all_values = np.array(y_values)
+    ax_min, ax_max = np.quantile(all_values, [0.005, 0.995])
+
     span = ax_max - ax_min
     ax_min = ax_min - scale_by*span
     ax_max = ax_max + scale_by*span

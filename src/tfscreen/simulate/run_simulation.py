@@ -102,6 +102,10 @@ def run_simulation(yaml_file: str,
         R=cf['R']
     )
 
+    phenotype_df.to_csv(os.path.join(output_path,
+                                        f"{output_prefix}-phenotype_df.csv"),index=False)
+    assert False
+
     # -------------------------------------------------------------------------
     # Sample from library and grow out
     

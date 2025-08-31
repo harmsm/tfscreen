@@ -122,7 +122,7 @@ def generate_phenotypes(genotype_df,
     # Create thermodynamic ensemble
     ens = eee.io.read_ensemble(ensemble_spreadsheet,gas_constant=R)
 
-    iptg_chemical_potential = -R*T*np.log(sample_df["iptg"]*1e-3)
+    iptg_chemical_potential = R*T*np.log(sample_df["iptg"])
 
     ens.read_ligand_dict(ligand_dict={"iptg":iptg_chemical_potential})
     T_array = np.array([T])

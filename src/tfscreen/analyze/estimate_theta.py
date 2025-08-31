@@ -174,9 +174,10 @@ def _multi_genotype_regression(y,
         all_parameters, cov = matrix_nls(X,
                                          y,
                                          weights,
+                                         guesses,
                                          lower_bounds,
-                                         upper_bounds,
-                                         guesses)
+                                         upper_bounds)
+
     else:
         err = f"method '{method}' not recognized.\n"
         raise ValueError(err)
@@ -265,10 +266,10 @@ def estimate_theta(df,
     intercepts = []
     slopes = []
     for m, s in zip(df["marker"],df["select"]):
-        b_idx = param_idx_dict[f"{m}|{s}_b"]
+        b_idx = param_idx_dict[f"{m}|{s}|b"]
         intercepts.append(param_values[b_idx])
         
-        m_idx = param_idx_dict[f"{m}|{s}_m"]
+        m_idx = param_idx_dict[f"{m}|{s}|m"]
         slopes.append(param_values[m_idx])
 
     intercepts = np.array(intercepts)

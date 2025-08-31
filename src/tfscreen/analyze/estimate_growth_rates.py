@@ -11,6 +11,7 @@ from tfscreen.fitting import (
     get_growth_rates_wls,
     get_growth_rates_gls,
     get_growth_rates_glm,
+    get_growth_rates_gee,
     get_growth_rates_kf,
     get_growth_rates_ukf,
     get_growth_rates_ukf_lin,
@@ -18,6 +19,7 @@ from tfscreen.fitting import (
 )
 
 import numpy as np
+import pandas as pd
 
 # k fitters with list of positional arguments to pass. The names of these 
 # positional arguments match the keys in the output dictionary from 
@@ -34,6 +36,11 @@ _ALLOWED_K_FITTERS = {
         "args":["times",
                 "ln_cfu",
                 "ln_cfu_var"],
+    },
+    "gee":{
+        "fcn":get_growth_rates_gee,
+        "args":["times",
+                "cfu"],
     },
     "gls":{
         "fcn":get_growth_rates_gls,
@@ -72,8 +79,7 @@ _ALLOWED_K_FITTERS = {
         "fcn":get_growth_rates_nls,
         "args":["times",
                 "cfu",
-                "cfu_var",
-                "growth_rate_wls"],
+                "cfu_var"],
     }
 }
 
@@ -157,6 +163,16 @@ def estimate_growth_rates(combined_df,
     # Load the calibration dictionary
     calibration_dict = read_calibration(calibration_file)
 
+    # Load the combined and sample data frames
+    combined_df = read_dataframe(combined_df)
+    sample_df = read_dataframe(sample_df)
+
+    # Set the index of the sample dataframe to be the sample
+    if sample_df.columns[0] == "Unnamed: 0":
+        sample_df = sample_df.rename(columns={"Unnamed: 0":"sample"})
+    sample_df.index = sample_df["sample"]
+    sample_df = sample_df.drop(columns=["sample"])
+
     # Create arrays with sample/genotype as their primary axis and (if 
     # relevant) time as their secondary axis. These 1D and 2D arrays include 
     # times (2D), cfu (2D), cfu_var (2D), ln_cfu (2D), ln_cfu_var (2D), 
@@ -169,15 +185,6 @@ def estimate_growth_rates(combined_df,
 
     genotypes = processed["genotypes"]
     samples = processed["samples"]
-
-    # Load the sample data frame
-    sample_df = read_dataframe(sample_df)
-
-    # Set the index of the sample dataframe to be the sample
-    if sample_df.columns[0] == "Unnamed: 0":
-        sample_df = sample_df.rename(columns={"Unnamed: 0":"sample"})
-    sample_df.index = sample_df["sample"]
-    sample_df = sample_df.drop(columns=["sample"])
 
     # Get rid of data with too few counts across time points to fit
     sequence_counts = processed["sequence_counts"]
@@ -201,21 +208,50 @@ def estimate_growth_rates(combined_df,
         k_fit_args_filled.append(v)
 
     # Estimate A0 and k for all genotypes/timepoints
-    A0_est, A0_std, k_est, k_std = k_fit_fcn(*k_fit_args_filled,
-                                             **k_fitter_kwargs)
+    param_df, pred_df = k_fit_fcn(*k_fit_args_filled,
+                                  **k_fitter_kwargs)
 
-    k_out_df = sample_df.loc[samples,:]
-    k_out_df["genotype"] = genotypes
-    k_out_df["A0_est"] = np.nan
-    k_out_df["A0_std"] = np.nan
-    k_out_df["k_est"] = np.nan
-    k_out_df["k_std"] = np.nan
-    k_out_df["fit_attempted"] = False
+    # build the output dataframe
+    out_param_df = sample_df.loc[samples,:]
+    out_param_df["genotype"] = genotypes
+    out_param_df["A0_est"] = np.nan
+    out_param_df["A0_std"] = np.nan
+    out_param_df["k_est"] = np.nan
+    out_param_df["k_std"] = np.nan
+    out_param_df["fit_attempted"] = False
 
-    k_out_df.loc[keep_mask,"A0_est"] = A0_est
-    k_out_df.loc[keep_mask,"A0_std"] = A0_std
-    k_out_df.loc[keep_mask,"k_est"] = k_est
-    k_out_df.loc[keep_mask,"k_std"] = k_std
-    k_out_df.loc[keep_mask,"fit_attempted"] = True
+    # Record the fit values
+    out_param_df.loc[keep_mask,"A0_est"] = np.array(param_df["A0_est"])
+    out_param_df.loc[keep_mask,"A0_std"] = np.array(param_df["A0_std"])
+    out_param_df.loc[keep_mask,"k_est"] = np.array(param_df["k_est"])
+    out_param_df.loc[keep_mask,"k_std"] = np.array(param_df["k_std"])
+    out_param_df.loc[keep_mask,"fit_attempted"] = True
 
-    return k_out_df
+    # Move sample from index to its own column and reset index
+    out_param_df["sample"] = out_param_df.index
+    out_param_df.index = np.arange(len(out_param_df.index),dtype=int)
+    
+    # Clean up column order
+    columns = list(out_param_df.columns[:-1])
+    columns.insert(0,out_param_df.columns[-1])
+    out_param_df = out_param_df.loc[:,columns]
+
+    # Create a dataframe with comparing the observed and predicted values for 
+    # each sample/genotype/time. 
+    num_t = processed["times"].shape[1]
+    out_pred_df = pd.DataFrame({"sample":np.repeat(processed["samples"],num_t),
+                                "genotype":np.repeat(processed["genotypes"],num_t),
+                                "time":processed["times"].flatten()})
+    
+    out_pred_df["obs"] = np.nan
+    out_pred_df.loc[np.repeat(keep_mask,num_t),"obs"] = pred_df["obs"]
+    out_pred_df["pred"] = np.nan
+    out_pred_df.loc[np.repeat(keep_mask,num_t),"pred"] = pred_df["pred"]
+
+    # Drop the fake zero points from the prediction. These are part of the 
+    # fit. 
+    if use_inferred_zero_point:
+        out_pred_df = out_pred_df[out_pred_df["time"] != 0]
+
+
+    return out_param_df, out_pred_df

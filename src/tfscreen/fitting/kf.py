@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 
 def get_growth_rates_kf(times,
                         ln_cfu,
@@ -36,16 +37,11 @@ def get_growth_rates_kf(times,
     
     Returns
     -------
-    A0_est : np.ndarray
-        1D array of nan. Here for consistency across api, but this method does not
-        estimate A0.
-    A0_std : np.ndarray
-        1D array of nan. Here for consistency across api, but this method does not
-        estimate A0.
-    growth_rate_est : np.ndarray
-        1D array of estimated growth rates, shape (num_genotypes,)
-    growth_rate_std : np.ndarray
-        1D array of standard errors on estimated growth rates, shape (num_genotypes,)
+    param_df : pandas.DataFrame
+        dataframe with extracted parameters (A0_est, k_est) and their standard
+        errors (A0_std, k_std). Note that A0_std is not estimated by this method.
+    pred_df : pandas.DataFrame
+        dataframe with obs and pred
     """
 
     ln_cfu_var = np.maximum(ln_cfu_var, min_measurement_noise)
@@ -126,11 +122,22 @@ def get_growth_rates_kf(times,
         # Update the state covariance for all genotypes
         P = (I - K @ H) @ P_pred
 
-    growth_rate_est = x[:, 1, 0]
-    growth_rate_std = np.sqrt(P[:, 1, 1])
-    A0_est = np.repeat(np.nan,growth_rate_est.shape[0])
-    A0_std = np.repeat(np.nan,growth_rate_est.shape[0])
+
+    k_est = x[:, 1, 0]
+    k_std = np.sqrt(P[:, 1, 1])
+
+    A0_est = ln_cfu[:,-1] - k_est*times[:,-1]
+    A0_std = np.repeat(np.nan,k_std.shape[0])
+
+    param_df = pd.DataFrame({"A0_est":A0_est,
+                             "A0_std":A0_std,
+                             "k_est":k_est,
+                             "k_std":k_std})
+
+    pred = times*k_est[:,np.newaxis] + A0_est[:,np.newaxis]
+    pred_df = pd.DataFrame({"obs":ln_cfu.flatten(),
+                            "pred":pred.flatten()})
         
-    return A0_est, A0_std, growth_rate_est, growth_rate_std
+    return param_df, pred_df
 
 

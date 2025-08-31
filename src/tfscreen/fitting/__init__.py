@@ -7,6 +7,11 @@ from .matrix_wls import (
     matrix_wls
 )
 
+from .matrix_nls import (
+    matrix_nls
+)
+
+
 from .ols import (
     get_growth_rates_ols
 )

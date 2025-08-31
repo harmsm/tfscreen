@@ -9,7 +9,7 @@ import pandas as pd
 
 def _estimate_delta(times, cfu):
     """
-    Estimates the variance power parameter 'delta' for the GLM.
+    Estimates the variance power parameter 'delta' for the GEE.
     This parameter describes the relationship Var(cfu) ~ E[cfu]**delta.
 
     Parameters
@@ -85,9 +85,6 @@ def _do_gee(times,
         1D array of standard errors on estimated growth rates, shape (num_genotypes,)
     """
 
-    growth_rate_est = np.nan*np.ones(times.shape[0],dtype=float)
-    growth_rate_std = np.nan*np.ones(times.shape[0],dtype=float)
-
     # Flatten the (N, t) cfu array into a single (N * t) vector for 'y'
     y_long = cfu.flatten()
 
@@ -131,12 +128,22 @@ def _do_gee(times,
 
     A0_est = np.asarray(gee_results.param[:cfu.shape[0]])
     A0_std = np.asarray(gee_results.base[:cfu.shape[0]])
-    growth_rate_est = np.asarray(gee_results.param[cfu.shape[0]:])
-    growth_rate_std = np.asarray(gee_results.base[cfu.shape[0]:])
+    k_est = np.asarray(gee_results.param[cfu.shape[0]:])
+    k_std = np.asarray(gee_results.base[cfu.shape[0]:])
     
+    pred = gee_results.fittedvalues
+    obs = y_long
 
-    return A0_est, A0_std, growth_rate_est, growth_rate_std
+    param_df = pd.DataFrame({"A0_est":A0_est,
+                             "A0_std":A0_std,
+                             "k_est":k_est,
+                             "k_std":k_std})
+
+    pred_df = pd.DataFrame({"obs":obs,
+                            "pred":pred})
     
+    return param_df, pred_df
+
 
 def get_growth_rates_gee(times,cfu):
     """
@@ -166,8 +173,8 @@ def get_growth_rates_gee(times,cfu):
 
     delta = _estimate_delta(times,cfu)
 
-    A0_est, A0_std, growth_rate_est, growth_rate_std = _do_gee(times=times,
-                                                               cfu=cfu,
-                                                               delta=delta)
+    param_df, pred_df = _do_gee(times=times,
+                                cfu=cfu,
+                                delta=delta)
 
-    return A0_est, A0_std, growth_rate_est, growth_rate_std
+    return param_df, pred_df

@@ -1,7 +1,12 @@
+
+from tfscreen.fitting import get_growth_rates_wls
+
 import numpy as np
 from scipy.optimize import least_squares
 from scipy.sparse import issparse
 from tqdm.auto import tqdm
+import pandas as pd
+
 
 
 def _model(A0, k, t):
@@ -49,7 +54,7 @@ def _model_residuals(params, cfu, cfu_std, t):
         A 2D array (n_curves, n_times) of the standard deviations
         associated with each CFU/mL measurement.
     t : numpy.ndarray
-        A 1D array of time points at which measurements were taken.
+        A 2D array of time points at which measurements were taken.
 
     Returns
     -------
@@ -71,8 +76,6 @@ def _model_residuals(params, cfu, cfu_std, t):
 def get_growth_rates_nls(times,
                          cfu,
                          cfu_var,
-                         growth_rate_guess=0.015,
-                         initial_pop_guess=1e7,
                          block_size=100):
     """
     Performs block-wise non-linear least squares fitting.
@@ -90,49 +93,50 @@ def get_growth_rates_nls(times,
         2D array of observed CFU/mL values for all genotypes.
     cfu_std : numpy.ndarray
         2D array of standard deviations for the CFU/mL values.
-    growth_rate_guesses : numpy.ndarray
-        1D array of initial guesses for the growth rate (k) for each genotype.
-    initial_pop_guesses : numpy.ndarray
-        1D array of initial guesses for the initial population (A0) for each
-        genotype.
     block_size : int
-        The number of genotypes to fit simultaneously in each block.
+        The number of genotypes to fit simultaneously in each block. Default 
+        is 100.
 
     Returns
     -------
-    A0_est : np.ndarray
-        1D array of estimated initial populations, shape (num_genotypes,)
-    A0_std : np.ndarray
-        1D array of standard errors on estimated initial populations, shape (num_genotypes,)
-    growth_rate_est : np.ndarray
-        1D array of estimated growth rates, shape (num_genotypes,)
-    growth_rate_std : np.ndarray
-        1D array of standard errors on estimated growth rates, shape (num_genotypes,)
+    param_df : pandas.DataFrame
+        dataframe with extracted parameters (A0_est, k_est) and their standard
+        errors (A0_std, k_std)
+    pred_df : pandas.DataFrame
+        dataframe with obs and pred
     """
 
-    A0_est = []
-    A0_std = []
-    growth_rate_est = []
-    growth_rate_std = []
+    param_out = {"A0_est":[],
+                 "A0_std":[],
+                 "k_est":[],
+                 "k_std":[]}
+
+    pred_out = {"obs":[],
+                "pred":[]}
 
     num_genotypes = cfu.shape[0]
     num_times = cfu.shape[1]
+    block_size = int(np.round(block_size,0))
 
-    if not hasattr(growth_rate_guess,"__iter__"):
-        growth_rate_guess = np.ones(num_genotypes)*growth_rate_guess
+    ln_cfu = np.log(cfu)
+    ln_cfu_var = cfu_var/(cfu**2)
+
+    wls_param_df, _ = get_growth_rates_wls(times=times,
+                                            ln_cfu=ln_cfu,
+                                            ln_cfu_var=ln_cfu_var)
     
-    if not hasattr(initial_pop_guess,"__iter__"):
-        initial_pop_guess = np.ones(num_genotypes)*initial_pop_guess
-
+    k_guess = np.array(wls_param_df["k_est"])
+    A0_guess = np.exp(np.array(wls_param_df["A0_est"]))
+        
     for i in tqdm(range(0, num_genotypes, block_size), desc="Fitting Growth Rates"):
 
         # Grab a block of data for fitting
         indices = slice(i, i + block_size)
         times_block = times[indices,:]
         cfu_block = cfu[indices, :]
-        cfu_std_block = cfu_var[indices, :]
-        rate_guess_block = growth_rate_guess[indices]
-        pop_guess_block = initial_pop_guess[indices]
+        cfu_std_block = np.sqrt(cfu_var[indices, :])
+        rate_guess_block = k_guess[indices]
+        pop_guess_block = A0_guess[indices]
 
         n = cfu_block.shape[0]
         if n == 0:
@@ -165,35 +169,47 @@ def get_growth_rates_nls(times,
             jac_sparsity[row_start:row_end, n + j] = 1
 
         # Do nonlinear regression
-        fit = least_squares(_model_residuals,
-                            x0=params,
-                            bounds=bounds,
-                            jac_sparsity=jac_sparsity,
-                            args=(cfu_block, cfu_std_block, times_block))
-
-        # Extract standard error from the covariance matrix
-        J = fit.jac
-        if issparse(J):
-            JTJ = (J.T @ J).toarray()
-        else:
-            JTJ = np.dot(J.T, J)
+        fit_result = least_squares(_model_residuals,
+                                   x0=params,
+                                   bounds=bounds,
+                                   jac_sparsity=jac_sparsity,
+                                   args=(cfu_block, cfu_std_block, times_block))
         
-        # Use pseudo-inverse to avoid "Singular matrix" errors
-        # for poorly constrained fits.
-        cov = np.linalg.pinv(2 * JTJ)
+        # Get results
+        parameters = fit_result.x
+
+        J = fit_result.jac
+
+        num_obs, num_param = J.shape
+        dof = num_obs - num_param
+        chi2_red = np.sum(fit_result.fun**2) / dof
+        
+        JTJ = J.T @ J
+        if issparse(J):
+            JTJ =JTJ.toarray()
+    
+        try:
+            cov_matrix = chi2_red * np.linalg.inv(JTJ)
+        except np.linalg.LinAlgError:
+            cov_matrix = np.ones((num_param,num_param))*np.nan
+
         with np.errstate(invalid='ignore'): # Ignore sqrt(negative) for bad fits
-            std = np.sqrt(np.diagonal(cov))
+            std = np.sqrt(np.diagonal(cov_matrix))
 
-        # Record results
-        A0_est.extend(fit.x[:n])
-        A0_std.extend(std[:n])
+        # Record fit parameters
+        param_out["A0_est"].extend(parameters[:n])
+        param_out["A0_std"].extend(std[:n])
+        param_out["k_est"].extend(parameters[n:])
+        param_out["k_std"].extend(std[n:])
 
-        growth_rate_est.extend(fit.x[n:])
-        growth_rate_std.extend(std[n:])
+        # Record prediction obs and prediction
+        calc = _model(parameters[:n], parameters[n:], times_block)
+        pred_out["obs"].extend(cfu_block.flatten())
+        pred_out["pred"].extend(calc.flatten())
 
-    A0_est = np.array(A0_est)
-    A0_std = np.array(A0_std)
-    growth_rate_est = np.array(growth_rate_est)
-    growth_rate_std = np.array(growth_rate_std)
+    
+    param_df = pd.DataFrame(param_out)
+    pred_df = pd.DataFrame(pred_out)
 
-    return A0_est, A0_std, growth_rate_est, growth_rate_std
+
+    return param_df, pred_df
