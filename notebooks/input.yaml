@@ -1,21 +1,44 @@
 # -----------------------------------------------------------------------------
 # Ensemble information
 
-# spreadsheet defining ensemble and interactions with iptg
-ensemble_spreadsheet: "input/ensemble.xlsx"
+# lac repressor linkage model calculation
+# r_total = 40 dimers per cell, 1.5 fL cell, 40% crowding
+# o_total = 20 plasmids, 1.5 fL cell, 40% crowding
+observable_calculator: "lac"
+observable_calc_kwargs:
+  T: 310       # K
+  R: 0.001987  # kcal/mol/K
+  model_to_use: "mwc_dimer"
+  wt_K_dict:
+    K_h_l: 0.4 #6.3 <- tweaked this and k_h_e to get observe mid (1.59e-5 M)
+    K_h_o: 4.2e8
+    K_h_e: 5.6e3 #5.6e4
+    K_l_o: 0.1
+    K_l_e: 7.6e5
+  r_total: 3.3e-7 # molar, total *monomer* repressor concentration
+  o_total: 8.3e-8 # molar, total operator concentration
+  #e_total: e_total is required to initialize the observable, but do not define
+  # here because it is defined in the condition_blocks. Yes, this is a hack. 
 
-# Spreadsheet with affects of all mutations on each state in ensemble
-ddG_spreadsheet: "input/ddG.xlsx"
+# eee-style calculation
+# # spreadsheet defining ensemble and interactions with iptg
+# observable_calculator: "eee"
+# observable_calc_kwargs:
+#   ensemble_spreadsheet: "input/ensemble.xlsx"
+#   T: 310       # K
+#   R: 0.001987  # kcal/mol/K
+#   # This sets how the thermodynamic variable maps proportionally to output. For
+#   # the lac repressor, this is 12 because we derived the thermodynamic
+#   # parameters under conditions where there was a 12-fold excess of the lac
+#   # repressor to operator. Fully bound lac repressor thus corresponds to a
+#   # an observable value of 1/12 in the operator-bound state--hence 12 here.
+#   scale_obs_by: 12
+#   #e_total: e_total is required to initialize the observable, but do not define
+#   # here because it is defined in the condition_blocks. Yes, this is a hack. 
 
-T: 310       # K
-R: 0.001987  # kcal/mol/K
+# Spreadsheet with effects of all mutations on each state in ensemble
+ddG_spreadsheet: "input/ddG_mwc_dimer.xlsx"
 
-# This sets how the thermodynamic variable maps proportionally to output. For
-# the lac repressor, this is 12 because we dervied the thermodynamics
-# parameters under conditions where there was a 12-fold excess of the lac
-# repressor to operator. Fully bound lac repressor thus corresponds to a
-# an observable value of 1/12 in the operator-bound state--hence 12 here.
-scale_obs_by: 12
 
 # -----------------------------------------------------------------------------
 # Library definition information
@@ -33,12 +56,19 @@ aa_sequence: |
 # amino acids or non-uppercase letters. non-uppercase letters
 # are interpreted as sub-library identifiers.
 mutated_sites: |
-  VKPVTLYDVAEYAGVSYQTVSRVVNQASH111111111111111111111111111111
-  QS2222222222222222222222222222222222222VERSGVEACKAAVHNLLAQR
+  VKPVTLYDVAEYAGVSYQTVSRVVNQASH111KTREKVEAAMAELNYIPNRVAQQLAGK
+  QSLLIGVATSSLALHAPSQIVAAIKSRADQLGASVV222VERSGVEACKAAVHNLLAQR
   VSGLIINYPLDDQDAIAVEAACTNVPALFLDVSDQTPINSIIFSHEDGTRLGVEHLVAL
   GHQQIALLAGPLSSVSARLRLAGWHKYLTRNQIQPIAEREGDWSAMSGFQQTMQMLNEG
   IVPTAMLVANDQMALGAMRAITESGLRVGADISVVGYDDTEDSSCYIPPLTTIKQDFRL
   LGQTSVDRLLQLSQGQAVKGNQLLPVSLVKRKTTLAPNTQTASP
+
+#VKPVTLYDVAEYAGVSYQTVSRVVNQASH111111111111111111111111111111
+#QS2222222222222222222222222222222222222VERSGVEACKAAVHNLLAQR
+#VSGLIINYPLDDQDAIAVEAACTNVPALFLDVSDQTPINSIIFSHEDGTRLGVEHLVAL
+#GHQQIALLAGPLSSVSARLRLAGWHKYLTRNQIQPIAEREGDWSAMSGFQQTMQMLNEG
+#IVPTAMLVANDQMALGAMRAITESGLRVGADISVVGYDDTEDSSCYIPPLTTIKQDFRL
+#LGQTSVDRLLQLSQGQAVKGNQLLPVSLVKRKTTLAPNTQTASP
 
 # Number of first letter in amino sequence. Should match
 # numbering in ddG spreadsheet
@@ -126,17 +156,17 @@ post_iptg_dilution_factor: 0.01960784313  # 0.2/10.2
 # key with a list of iptg concentrations (in mM), and a "time" key with a list
 # of sample times (in minutes)
 condition_blocks:
-  - iptg: [0.000001, 1]
+  - iptg: [0, 1]
     marker: "kanR"
     select: 0
     time: [80, 95, 110]
 
-  - iptg: [0.000001, 1]
+  - iptg: [0, 1]
     marker: "pheS"
     select: 0
     time: [80, 95, 110]
 
-  - iptg: [0.000001, 0.0001, 0.001, 0.003]
+  - iptg: [0, 0.0001, 0.001, 0.003]
     marker: "kanR"
     select: 1
     time: [160, 180, 200]
@@ -146,7 +176,7 @@ condition_blocks:
     select: 1
     time: [145, 165, 180]
 
-  - iptg: [0.000001, 0.0001, 0.001, 0.003, 0.01, 0.03, 0.1, 1.0]
+  - iptg: [0, 0.0001, 0.001, 0.003, 0.01, 0.03, 0.1, 1.0]
     marker: "pheS"
     select: 1
     time: [95, 110, 125]

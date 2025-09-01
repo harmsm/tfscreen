@@ -218,6 +218,7 @@ def plot_err_zscore(real_values,
 def plot_summary(k_est,
                  k_std,
                  k_real,
+                 axis_prefix=None,
                  suptitle=None,
                  subsample=10000):
     """
@@ -231,6 +232,8 @@ def plot_summary(k_est,
         The standard error on the estimated parameters.
     k_real : array_like
         The true values.
+    axis_prefix : str, optional
+        append a prefix to the axis titles
     suptitle : str, optional
         A title for the whole figure.
     subsample : int, optional
@@ -252,7 +255,8 @@ def plot_summary(k_est,
     
     index = np.arange(len(k_est),dtype=int)
     if subsample is not None:
-        index = np.random.choice(index,size=subsample,replace=False)
+        if subsample < len(index):
+            index = np.random.choice(index,size=subsample,replace=False)
     
     fig, ax = plt.subplots(1,3,figsize=(14,6))
     
@@ -260,23 +264,33 @@ def plot_summary(k_est,
               k_est[index],
               ax=ax[0])
 
-    ax[0].set_xlabel("k_real")
-    ax[0].set_ylabel("k_est")
+    if axis_prefix is not None:
+        est = f"{axis_prefix}_est"
+        real = f"{axis_prefix}_real"
+        std = f"{axis_prefix}_std"
+    else:
+        est = "est"
+        real = "real"
+        std = "std"
+         
+
+    ax[0].set_xlabel(real)
+    ax[0].set_ylabel(est)
     
     plot_err(k_real[index],
              k_est[index],
              k_std[index],
              ax=ax[1],plot_as_real_err=True)
 
-    ax[1].set_xlabel("k_est - k_real")
-    ax[1].set_ylabel("k_std")
+    ax[1].set_xlabel(f"{est} - {real}")
+    ax[1].set_ylabel(std)
 
     plot_err_zscore(k_real,
                     k_est,
                     k_std,
                     ax=ax[2])
 
-    ax[2].set_xlabel("Z-score (k_est - k_real)")
+    ax[2].set_xlabel(f"Z-score ({est} - {real})")
     
     if suptitle is not None:
         fig.suptitle(suptitle)

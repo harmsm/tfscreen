@@ -85,7 +85,7 @@ def _build_design_matrix(marker,
         
         K = float(K)
         n = float(n)
-        theta = (iptg**n)/(K**n + iptg**n)
+        theta = 1 - (iptg**n)/(K**n + iptg**n)
 
     
     # base growth intercept (@ log(iptg + log_iptg_offset) == 0)

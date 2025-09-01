@@ -91,18 +91,23 @@ def run_simulation(yaml_file: str,
     # Get calibrated description of wildtype growth
     calibration_dict = read_calibration(cf['calibration_file'])
 
-    obs_fcn, ddG_df = setup_observable(cf['observable_calculator'],
-                                       cf['observable_calc_kwargs'],
-                                       cf['ddG_spreadsheet'],
-                                       sample_df)
+    # Set up the observable function (takes species-level ddG and translates to 
+    # changes in operator occupancy)
+    obs_fcn, ddG_df = setup_observable(
+        cf['observable_calculator'],
+        cf['observable_calc_kwargs'],
+        cf['ddG_spreadsheet'],
+        sample_df
+    )
 
+    # Calculate phenotype for each genotype across all conditions in sample_df
     phenotype_df, genotype_df = generate_phenotypes(
         genotype_df=genotype_df,
         sample_df=sample_df,
         obs_fcn=obs_fcn,
         ddG_df=ddG_df,
         calibration_dict=calibration_dict,
-        mut_growth_rate_std=1
+        mut_growth_rate_std=cf["mut_growth_rate_std"]
     )
 
     # -------------------------------------------------------------------------

@@ -17,7 +17,7 @@ def setup_observable(observable_calculator,
                      sample_df):
     
     if observable_calculator not in AVAILABLE_CALCULATORS:
-        err = "observable_calculator '{observable_calculator}' not recognized.\n"
+        err = f"observable_calculator '{observable_calculator}' not recognized.\n"
         err += "Should be one of:\n"
         for c in AVAILABLE_CALCULATORS:
             err += f"    {c}\n"
@@ -26,11 +26,12 @@ def setup_observable(observable_calculator,
         raise ValueError(err)
     
     # This is a hack. Annoyingly, I need iptg concentrations to initialize the
-    # observables, but this is defined via the conditions in the yaml. Without
-    # adding a bunch of code/refactoring, I can't easily link that information
-    # to the observable initialization. So, for now, assume that the observable
-    # calc_kwargs have 'e_total' and that this maps to iptg concentraiton. 
-    observable_calc_kwargs["e_total"] = np.array(sample_df["iptg"])
+    # observables, but iptg concentrations are defined via the conditions, not 
+    # the calculator in the yaml. Without a refactor, I can't easily link that
+    # information to the observable initialization. So, for now, assume that the
+    # observable calc_kwargs have 'e_total', that this maps to molar iptg, and
+    # that we can get the correct iptg concs from 1e-3*sample_df iptg... 
+    observable_calc_kwargs["e_total"] = np.array(sample_df["iptg"])*1e-3
 
     # Set up observable calculator object and its observable function
     calculator = AVAILABLE_CALCULATORS[observable_calculator]
@@ -42,7 +43,6 @@ def setup_observable(observable_calculator,
 
     # Get mutations and species ddG from the spreadsheet, checking for errors
     # along the way. 
-
     if "mut" not in ddG_df.columns:
         err = "ddG_spreadsheet must have a 'mut' column\n"
         raise ValueError(err)
