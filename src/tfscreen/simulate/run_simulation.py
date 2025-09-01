@@ -1,6 +1,7 @@
 
 from tfscreen.simulate import build_sample_dataframes
 from tfscreen.simulate import generate_libraries
+from tfscreen.simulate import setup_observable
 from tfscreen.simulate import generate_phenotypes
 from tfscreen.simulate import transform_and_mix
 from tfscreen.simulate import initialize_population
@@ -90,21 +91,19 @@ def run_simulation(yaml_file: str,
     # Get calibrated description of wildtype growth
     calibration_dict = read_calibration(cf['calibration_file'])
 
+    obs_fcn, ddG_df = setup_observable(cf['observable_calculator'],
+                                       cf['observable_calc_kwargs'],
+                                       cf['ddG_spreadsheet'],
+                                       sample_df)
+
     phenotype_df, genotype_df = generate_phenotypes(
         genotype_df=genotype_df,
         sample_df=sample_df,
-        ensemble_spreadsheet=cf['ensemble_spreadsheet'],
-        ddG_spreadsheet=cf['ddG_spreadsheet'],
+        obs_fcn=obs_fcn,
+        ddG_df=ddG_df,
         calibration_dict=calibration_dict,
-        scale_obs_by=cf['scale_obs_by'],
-        mut_growth_rate_std=cf['mut_growth_rate_std'],
-        T=cf['T'],
-        R=cf['R']
+        mut_growth_rate_std=1
     )
-
-    phenotype_df.to_csv(os.path.join(output_path,
-                                        f"{output_prefix}-phenotype_df.csv"),index=False)
-    assert False
 
     # -------------------------------------------------------------------------
     # Sample from library and grow out
