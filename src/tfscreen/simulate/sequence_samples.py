@@ -6,8 +6,10 @@ import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
+import warnings
+
 def _sample_population(bacteria,
-                       ln_pop,
+                       cfu,
                        num_reads):
     """
     Sample genotypes from a bacterial population for sequencing.
@@ -23,8 +25,8 @@ def _sample_population(bacteria,
         Array of bacteria, where each element is either a genotype string
         (if there is one plasmid per bacterium) or a tuple of genotype strings
         (if there are multiple plasmids per bacterium).
-    ln_pop : numpy.ndarray
-        Log-transformed population sizes for each bacterium in the population.
+    cfu : numpy.ndarray
+        Population sizes for each bacterium in the population.
     num_reads : int
         Number of reads to sample from the population.
 
@@ -39,9 +41,9 @@ def _sample_population(bacteria,
     # Make bacteria ints for faster sort/unique calls
     bacteria_as_int = np.arange(len(bacteria),dtype=int)
 
-    # Do a weighted sample from the bacteria (stored as integers)
-    w = np.exp(ln_pop)
-    w = w/np.sum(w)
+    # Do a weighted sample from the bacteria (stored as integers), removing 
+    # nan and inf samples
+    w = cfu/np.sum(cfu)
     sample = np.random.choice(bacteria_as_int,
                               size=num_reads,
                               p=w,
@@ -86,7 +88,7 @@ def _sample_population(bacteria,
     return genotypes_seen, genotype_counts
 
 
-def _get_overall_plasmid_freqs(bacteria,ln_pop):
+def _get_overall_plasmid_freqs(bacteria,cfu):
     """
     Calculate the overall frequency of each plasmid in a bacterial population.
 
@@ -100,8 +102,8 @@ def _get_overall_plasmid_freqs(bacteria,ln_pop):
         Array of bacteria, where each element is either a genotype string
         (if there is one plasmid per bacterium) or a tuple of genotype strings
         (if there are multiple plasmids per bacterium).
-    ln_pop : numpy.ndarray
-        Log-transformed population sizes for each bacterium in the population.
+    cfu : numpy.ndarray
+        Population sizes for each bacterium in the population.
 
     Returns
     -------
@@ -111,32 +113,29 @@ def _get_overall_plasmid_freqs(bacteria,ln_pop):
         Array of overall frequencies for each unique plasmid.
     """
 
-    # Frequency of bacteria in at each timepoint
-    bacterial_freq = np.exp(ln_pop)
-
     # Simple case: no multi-transformants
     if issubclass(type(bacteria[0]),str):
         plasmids_to_count = bacteria
-        all_plasmid_freq = bacterial_freq
+        all_plasmid_cfu = cfu
 
     # Harder case: multi-transformant
     else:
         plasmids_to_count = []
-        all_plasmid_freq = []
+        all_plasmid_cfu = []
         for i in range(len(bacteria)):
             plasmids_to_count.extend(bacteria[i])
-            all_plasmid_freq.extend(np.ones(len(bacteria[i]))*bacterial_freq[i])
+            all_plasmid_cfu.extend(np.ones(len(bacteria[i]))*cfu[i])
 
     # This holds all plasmids seen with their associated bacterial frequencies
     plasmids_to_count = np.array(plasmids_to_count)
-    all_plasmid_freq = np.array(all_plasmid_freq)
+    all_plasmid_cfu = np.array(all_plasmid_cfu)
 
     # Get all unique plasmids
     plasmid, index, counts = np.unique(plasmids_to_count,
                                        return_counts=True,
                                        return_index=True)
 
-    w = all_plasmid_freq[index]*counts
+    w = all_plasmid_cfu[index]*counts
     overall_plasmid_freq = w/np.sum(w)
 
     return plasmid, overall_plasmid_freq
@@ -145,7 +144,7 @@ def _get_overall_plasmid_freqs(bacteria,ln_pop):
 def _index_hopping(genotype_seen,
                    genotype_counts,
                    bacteria,
-                   ln_pop,
+                   cfu,
                    index_hop_freq):
     """
     Simulate index hopping during sequencing.
@@ -164,8 +163,8 @@ def _index_hopping(genotype_seen,
         Array of bacteria, where each element is either a genotype string
         (if there is one plasmid per bacterium) or a tuple of genotype strings
         (if there are multiple plasmids per bacterium).
-    ln_pop : numpy.ndarray
-        Log-transformed population sizes for each bacterium in the population.
+    cfu : numpy.ndarray
+        Population sizes for each bacterium in the population.
     index_hop_freq : float
         Proportion of reads that should be reassigned randomly after the
         initial sampling.
@@ -189,7 +188,7 @@ def _index_hopping(genotype_seen,
     # Get the overall frequency of each plasmid in the current population,
     # taking into account both the frequency of each bacterium and the
     # identities of the plasmids in each bacterium. 
-    plasmids, plasmid_freq = _get_overall_plasmid_freqs(bacteria,ln_pop)
+    plasmids, plasmid_freq = _get_overall_plasmid_freqs(bacteria,cfu)
     
     # Select hopped genotypes from the plasmid frequencies
     new_genotypes = np.random.choice(plasmids,
@@ -288,13 +287,21 @@ def sequence_samples(sample_pops,
     for timepoint in tqdm(sample_pops,desc=desc,ncols=800):
 
         # Get information about this timepoint
-        num_reads = sample_df_with_time.loc[timepoint,"num_reads"]
+        num_reads = np.array(sample_df_with_time.loc[timepoint,"num_reads"])
         time = sample_df_with_time.loc[timepoint,"time"]
         sample = "|".join(timepoint.split("|")[:-1])
 
         # Record the cfu/mL for this sample
         ln_pop = sample_pops[timepoint]
-        sample_df_with_time.loc[timepoint,"cfu_per_mL"] = np.sum(np.exp(ln_pop))
+        cfu = np.exp(ln_pop)
+        good_mask = np.logical_not(np.logical_or(np.isnan(cfu),np.isinf(cfu)))
+        
+        num_removed = len(good_mask) - np.sum(good_mask)
+        if num_removed > 0:
+            warnings.warn(f"Removed {num_removed} NaN/inf genotype + conditions")
+
+        # Record cfu/mL in this condition
+        sample_df_with_time.loc[timepoint,"cfu_per_mL"] = np.sum(cfu[good_mask])
 
         # this_df will hold the samples for all genotypes from this timepoint. 
         this_df = template_df.copy()
@@ -305,8 +312,8 @@ def sequence_samples(sample_pops,
         this_df["counts"] = 0
 
         # Sample from bacteria
-        genotypes_seen, genotype_counts = _sample_population(bacteria,
-                                                             ln_pop,
+        genotypes_seen, genotype_counts = _sample_population(bacteria[good_mask],
+                                                             cfu[good_mask],
                                                              num_reads)
 
 
@@ -315,8 +322,8 @@ def sequence_samples(sample_pops,
         if index_hop_freq > 0:
             genotypes_seen, genotype_counts = _index_hopping(genotypes_seen,
                                                              genotype_counts,
-                                                             bacteria,
-                                                             ln_pop,
+                                                             bacteria[good_mask],
+                                                             cfu[good_mask],
                                                              index_hop_freq)
 
         # Records the genotypes we saw. this_df has genotype name as its index

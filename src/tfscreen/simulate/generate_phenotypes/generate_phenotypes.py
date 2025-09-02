@@ -8,6 +8,7 @@ from tfscreen.util import read_dataframe
 import pandas as pd
 import numpy as np
 from tqdm.auto import tqdm
+from scipy.stats import gamma
 
 
 def _read_ddG(ddG_df):
@@ -52,13 +53,42 @@ def _read_ddG(ddG_df):
 
     return ddG_dict
 
+
+def _assign_growth_rate_perturb(genotype_list,
+                                shape_param=3,
+                                scale_param=0.002):
+
+
+    singles = [g for g in genotype_list if len(g.split("/")) == 1]
+
+    peturb = scale_param/2 - gamma.rvs(a=shape_param, 
+                                       scale=scale_param, 
+                                       size=len(singles))
+    
+    growth_rate_dict = dict(zip(singles,list(peturb)))
+
+    growth_rate_effect = {}
+    for genotype in genotype_list:
+
+        # Assume that multi-mutant genotypes sum their individual effects on 
+        # growth rate. 
+        if genotype == "wt":
+            growth_rate_effect[genotype] = 0
+        else:
+            genotype_as_list = genotype.split("/")
+            growth_rate_effect[genotype] = np.sum([growth_rate_dict[g]
+                                                   for g in genotype_as_list])
+        
+    return growth_rate_effect
+
     
 def generate_phenotypes(genotype_df,
                         sample_df,
                         obs_fcn,
                         ddG_df,
                         calibration_dict,
-                        mut_growth_rate_std=1):
+                        mut_growth_rate_shape=3,
+                        mut_growth_rate_scale=0.002):
     """
     Generate phenotypes for all genotypes in genotype_df given ensemble and 
     ddG data.
@@ -83,8 +113,9 @@ def generate_phenotypes(genotype_df,
     calibration_dict : dict
         calibration dictionary with wildtype growth rates under experimental 
         conditions.
-    mut_growth_rate_std : float, default = 1
-        standard deviation on growth rate perturbations
+    mut_growth_rate_std : float, default = 0.01
+        standard deviation on growth rate perturbations (in units of growth 
+        rate). 
 
     Returns
     -------
@@ -98,8 +129,9 @@ def generate_phenotypes(genotype_df,
           marker or selection
         - "marker_growth_rate": growth rate under these conditions accounting 
           for marker without selection
-        - "select_growth_rate": growth rate under these conditions accounting 
-          for marker and selection.
+        - "overall_growth_rate": growth rate under these conditions accounting 
+          for marker and selection. (This is the growth rate used for the 
+          simulation of each sample.)
     """
     
     # Prepare output dictionary to hold phenotype data
@@ -110,14 +142,11 @@ def generate_phenotypes(genotype_df,
                      "obs": [],
                      "base_growth_rate": [],
                      "marker_growth_rate":[],
-                     "select_growth_rate":[]}
+                     "overall_growth_rate":[]}
     
     # These will hold ddG and growth rate effects for the genotype_df
     ddG_out = []
     growth_rate_effect_out = []
-
-    # create list of genotypes
-    list_of_genotypes = list(genotype_df["genotype"])
 
     ddG_dict = _read_ddG(ddG_df)
 
@@ -131,33 +160,35 @@ def generate_phenotypes(genotype_df,
     no_select = np.zeros(len(iptg),dtype=int)
 
     # Calculate wildtype growth rate as a function of IPTG
-    wt_effect, _ = predict_growth_rate(marker=no_marker,
-                                       select=no_select,
-                                       iptg=iptg,
-                                       calibration_dict=calibration_dict)
-    
-    # Get growth rate with lac repressor but no iptg, selection, or iptg
-    wt_base, _ = predict_growth_rate(marker=np.array(["none"]),
-                                     select=np.zeros(1,dtype=bool),
-                                     iptg=np.zeros(1,dtype=float),
-                                     calibration_dict=calibration_dict)
-    log_wt_base_growth_rate = np.log(wt_base)
+    no_marker_no_select, _ = predict_growth_rate(
+        marker=no_marker,
+        select=no_select,
+        iptg=iptg,
+        calibration_dict=calibration_dict
+    )
 
     # Figure out number of points to add and number of molecular species
-    num_points = len(wt_effect)
+    num_points = len(no_marker_no_select)
     num_species = len(ddG_dict[list(ddG_dict.keys())[0]])
 
-    desc = "{}".format("calculating phenotypes")
-    for genotype in tqdm(list_of_genotypes,desc=desc,ncols=800):
+    # create list of genotypes
+    genotype_list = list(genotype_df["genotype"])
 
-        # Create list of mutations from genotype string
+    growth_rate_effect_dict = _assign_growth_rate_perturb(
+        genotype_list=genotype_list,
+        shape_param=mut_growth_rate_shape,
+        scale_param=mut_growth_rate_scale
+    )
+
+    desc = "{}".format("calculating phenotypes")
+    for genotype in tqdm(genotype_list,desc=desc,ncols=800):
+
+        # Create list of mutations from genotype string. Assume that multi
+        # mutant genotypes sum their individual effects. 
         if genotype == "wt":
             genotype_as_list = []
-            growth_rate_effect = 0
         else:
             genotype_as_list = genotype.split("/")
-            perturb = np.random.normal(0,mut_growth_rate_std,1)[0]
-            growth_rate_effect = np.exp(log_wt_base_growth_rate + perturb)
     
         # Create array of ddG values for the genotype
         genotype_ddG = np.zeros(num_species,dtype=float)
@@ -166,29 +197,32 @@ def generate_phenotypes(genotype_df,
     
         # Record genotype information 
         ddG_out.append(genotype_ddG)
-        growth_rate_effect_out.append(growth_rate_effect)
+        growth_rate_effect_out.append(growth_rate_effect_dict[genotype])
         
         # Get observable given ddG
         obs = obs_fcn(genotype_ddG)
 
-        # Calculate growth rate without marker or selection
-        base_growth_rate = growth_rate_effect + wt_effect
-
         # Calculate growth rate with marker but no selection
-        marker_growth_rate, _ = predict_growth_rate(marker=marker,
-                                                    select=no_select,
-                                                    iptg=iptg,
-                                                    theta=obs,
-                                                    calibration_dict=calibration_dict)
-        marker_growth_rate += growth_rate_effect 
-
-        # Predict growth with marker + selection
-        select_growth_rate, _ = predict_growth_rate(marker=marker,
-                                                    select=select,
-                                                    iptg=iptg,
-                                                    theta=obs,
-                                                    calibration_dict=calibration_dict)
-        select_growth_rate += growth_rate_effect 
+        marker_growth_rate, _ = predict_growth_rate(
+            marker=marker,
+            select=no_select,
+            iptg=iptg,
+            theta=obs,
+            calibration_dict=calibration_dict
+        )
+        
+        # Predict growth with marker + selection (i.e., the real growth rate)
+        overall_growth_rate, _ = predict_growth_rate(
+            marker=marker,
+            select=select,
+            iptg=iptg,
+            theta=obs,
+            calibration_dict=calibration_dict
+        )
+        
+        # The base, marker, and overall growth rates are all perturbed by the 
+        # global effect of the mutation on growth rate. 
+        growth_rate_effect = growth_rate_effect_dict[genotype]
 
         # Record phenotype information
         phenotype_out["genotype"].extend([genotype]*num_points)
@@ -196,9 +230,9 @@ def generate_phenotypes(genotype_df,
         phenotype_out["select"].extend(sample_df["select"].values)
         phenotype_out["iptg"].extend(sample_df["iptg"].values)
         phenotype_out["obs"].extend(obs)
-        phenotype_out["base_growth_rate"].extend(base_growth_rate)
-        phenotype_out["marker_growth_rate"].extend(marker_growth_rate)
-        phenotype_out["select_growth_rate"].extend(select_growth_rate)
+        phenotype_out["base_growth_rate"].extend(no_marker_no_select + growth_rate_effect)
+        phenotype_out["marker_growth_rate"].extend(marker_growth_rate + growth_rate_effect)
+        phenotype_out["overall_growth_rate"].extend(overall_growth_rate + growth_rate_effect)
 
     phenotype_df = pd.DataFrame(phenotype_out)
 

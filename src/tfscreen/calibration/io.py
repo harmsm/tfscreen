@@ -18,6 +18,10 @@ def read_calibration(json_file):
         calibration dictionary
     """
 
+    # If this is already a dictionary, return it
+    if issubclass(type(json_file),dict):
+        return json_file
+
     with open(json_file,'r') as f:
         calibration_dict = json.load(f)
 

@@ -1,26 +1,7 @@
 # -----------------------------------------------------------------------------
 # Ensemble information
 
-# lac repressor linkage model calculation
-# r_total = 40 dimers per cell, 1.5 fL cell, 40% crowding
-# o_total = 20 plasmids, 1.5 fL cell, 40% crowding
-# observable_calculator: "lac"
-# observable_calc_kwargs:
-#   T: 310       # K
-#   R: 0.001987  # kcal/mol/K
-#   model_to_use: "mwc_dimer"
-#   wt_K_dict:
-#     K_h_l: 0.4 #6.3 <- tweaked this and k_h_e to get observe mid (1.59e-5 M)
-#     K_h_o: 4.2e8
-#     K_h_e: 5.6e3 #5.6e4
-#     K_l_o: 0.1
-#     K_l_e: 7.6e5
-#   r_total: 3.3e-7 # molar, total *monomer* repressor concentration
-#   o_total: 8.3e-8 # molar, total operator concentration
-#   #e_total: e_total is required to initialize the observable, but do not define
-#   # here because it is defined in the condition_blocks. Yes, this is a hack. 
-
-
+###### MWC microscopic dimer ########
 # lac repressor linkage model calculation
 # r_total = 40 dimers per cell, 1.5 fL cell, 40% crowding
 # o_total = 20 plasmids, 1.5 fL cell, 40% crowding
@@ -47,7 +28,25 @@ observable_calc_kwargs:
   #e_total: e_total is required to initialize the observable, but do not define
   # here because it is defined in the condition_blocks. Yes, this is a hack. 
 
+###### MWC dimer ########
+# lac repressor linkage model calculation
+# r_total = 40 dimers per cell, 1.5 fL cell, 40% crowding
+# o_total = 20 plasmids, 1.5 fL cell, 40% crowding
+# observable_calculator: "lac"
+# observable_calc_kwargs:
+#   T: 310       # K
+#   R: 0.001987  # kcal/mol/K
+#   model_to_use: "mwc_dimer"
+#   wt_K_dict:
+#     K_h_l: 0.4 #6.3 <- tweaked this and k_h_e to get observe mid (1.59e-5 M)
+#     K_h_o: 4.2e8
+#     K_h_e: 5.6e3 #5.6e4
+#     K_l_o: 0.1
+#     K_l_e: 7.6e5
+#   r_total: 3.3e-7 # molar, total *monomer* repressor concentration
+#   o_total: 8.3e-8 # molar, total operator concentration
 
+###### linkage microscopic dimer ########
 # observable_calculator: "lac"
 # observable_calc_kwargs:
 #   T: 310       # K
@@ -61,10 +60,8 @@ observable_calc_kwargs:
 #     Kd_oe2: 1e-5  # RE2 binding to O (weakest)
 #   r_total: 3.3e-7 # molar, total *monomer* repressor concentration
 #   o_total: 8.3e-8 # molar, total operator concentration
-#   #e_total: e_total is required to initialize the observable, but do not define
-#   # here because it is defined in the condition_blocks. Yes, this is a hack. 
 
-# eee-style calculation
+###### ensemble-epistasis-engine calculation ########
 # spreadsheet defining ensemble and interactions with iptg
 # observable_calculator: "eee"
 # observable_calc_kwargs:
@@ -77,11 +74,9 @@ observable_calc_kwargs:
 #   # repressor to operator. Fully bound lac repressor thus corresponds to a
 #   # an observable value of 1/12 in the operator-bound state--hence 12 here.
 #   scale_obs_by: 12
-#   #e_total: e_total is required to initialize the observable, but do not define
-#   # here because it is defined in the condition_blocks. Yes, this is a hack. 
 
-# # Spreadsheet with effects of all mutations on each state in ensemble
-ddG_spreadsheet: "input/ddG_mwc_dimer.xlsx"
+# Spreadsheet with effects of all mutations on each state in ensemble
+ddG_spreadsheet: "ddG_mwc_dimer.xlsx"
 
 
 # -----------------------------------------------------------------------------
@@ -100,12 +95,20 @@ aa_sequence: |
 # amino acids or non-uppercase letters. non-uppercase letters
 # are interpreted as sub-library identifiers.
 mutated_sites: |
-  VKPVTLYDVAEYAGVSYQTVSRVVNQASH111111111111111111111111111111
-  QS2222222222222222222222222222222222222VERSGVEACKAAVHNLLAQR
+  VKPVTLYDVAEYAGVSYQTVSRVVNQASH1111111KVEAAMAELNYIPNRVAQQLAGK
+  QSLLIGVATSSLALHAPSQIVAAIKSRAD2222222VSMVERSGVEACKAAVHNLLAQR
   VSGLIINYPLDDQDAIAVEAACTNVPALFLDVSDQTPINSIIFSHEDGTRLGVEHLVAL
   GHQQIALLAGPLSSVSARLRLAGWHKYLTRNQIQPIAEREGDWSAMSGFQQTMQMLNEG
   IVPTAMLVANDQMALGAMRAITESGLRVGADISVVGYDDTEDSSCYIPPLTTIKQDFRL
   LGQTSVDRLLQLSQGQAVKGNQLLPVSLVKRKTTLAPNTQTASP
+
+# This is our real library
+# VKPVTLYDVAEYAGVSYQTVSRVVNQASH111111111111111111111111111111
+# QS2222222222222222222222222222222222222VERSGVEACKAAVHNLLAQR
+# VSGLIINYPLDDQDAIAVEAACTNVPALFLDVSDQTPINSIIFSHEDGTRLGVEHLVAL
+# GHQQIALLAGPLSSVSARLRLAGWHKYLTRNQIQPIAEREGDWSAMSGFQQTMQMLNEG
+# IVPTAMLVANDQMALGAMRAITESGLRVGADISVVGYDDTEDSSCYIPPLTTIKQDFRL
+# LGQTSVDRLLQLSQGQAVKGNQLLPVSLVKRKTTLAPNTQTASP
 
 # Number of first letter in amino sequence. Should match
 # numbering in ddG spreadsheet
@@ -143,14 +146,15 @@ library_mixture:
   "12": 10
 
 # sigma value to give to log normal distribution for generating genotype
-# frequencies in the library. 0 gives an even distribution; 1-2 is a good
-# guess for a real library.
-skew_sigma: 0
+# frequencies in the library. 0 gives an even distribution; higher numbers 
+# give greater skew (meaning some genotypes have very high frequency). 
+# 1-2 is a good guess for a real library. 
+skew_sigma: 1.5
 
 # The number of plasmids per cell is set by sampling from a Poisson
 # distribution. If 0 or None, each cell gets exactly one plasmid. Otherwise,
-# do Poisson sampling.
-lambda_value: 0
+# do Poisson sampling. 
+lambda_value: 1.5
 
 # Maximum number of plasmids per cell. The lower this number, the faster the
 # analysis; however, if you make it too small relative to lambda_value, you'll
@@ -232,17 +236,18 @@ condition_blocks:
     time: [95, 110, 125]
 
 # percent noise to apply to all growth rates. (growth_noise*base_value is
-# the standard deviation of the random normal distribution to sample)
-growth_rate_noise: 0
+# the standard deviation of the random normal distribution to sample). This
+# is the underlying rep-to-rep variability. 
+growth_rate_noise: 0.01
 
 # -----------------------------------------------------------------------------
 # Data collection parameters
 
-total_num_reads: 3.0e9
+total_num_reads: 5e7 # 1.5e9 # <- good value for a real experiment
 
 # number of reads that should be re-assigned a resampled genotype after the
 # initial sampling (index-hopping/read bleedthrough)
-index_hop_freq: 0.0
+index_hop_freq: 0.05
 
 # This populates the replicate column in the output dataframes, exactly as
 # happens experimentally.

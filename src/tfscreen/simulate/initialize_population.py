@@ -143,7 +143,7 @@ def _get_growth_rates(bacteria,
 
         # Create sample_k array (num_genotypes,num_samples) with growth 
         # rates for each individual genotype with marker and selection. 
-        sample_k = np.array(phenotype_df["select_growth_rate"])
+        sample_k = np.array(phenotype_df["overall_growth_rate"])
         sample_k = np.reshape(sample_k,
                             (len(sample_k)//num_samples,num_samples))
             
@@ -166,7 +166,7 @@ def _get_growth_rates(bacteria,
             bact_marker_k = np.zeros((num_bacteria,num_samples),dtype=float)
             bact_sample_k = np.zeros((num_bacteria,num_samples),dtype=float)
             
-            for i in tqdm(range(len(bacteria))):
+            for i in range(len(bacteria)):
             
                 idx = np.array([genotype_to_idx[g] for g in bacteria[i]])        
                 

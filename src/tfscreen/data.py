@@ -2,8 +2,6 @@
 Constants and lookup tables for codon and amino acid data used in tfscreen.
 """
 
-import numpy as np
-
 codon_to_aa = {
     'ttt': 'F', 'ttc': 'F', 'tta': 'L', 'ttg': 'L',
     'ctt': 'L', 'ctc': 'L', 'cta': 'L', 'ctg': 'L',

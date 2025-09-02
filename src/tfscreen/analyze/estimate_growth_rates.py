@@ -109,8 +109,8 @@ def estimate_growth_rates(combined_df,
         Dataframe containing information about the samples. This function assumes
         it is indexed by the values seen in the "sample" column of the 
         combined_df. 
-    calibration_file : str
-        Path to the calibration file.
+    calibration_file : str or dict
+        Path to the calibration file or loaded calibration dictionary.
     k_fit_method : str, optional
         Method to use for fitting growth rates. Must be one of 'ols', 'wls', 
         'gls', 'glm', 'kf', 'ukf', 'ukf_lin', or 'nls'. Default is 'wls'.
@@ -167,11 +167,14 @@ def estimate_growth_rates(combined_df,
     combined_df = read_dataframe(combined_df)
     sample_df = read_dataframe(sample_df)
 
-    # Set the index of the sample dataframe to be the sample
-    if sample_df.columns[0] == "Unnamed: 0":
-        sample_df = sample_df.rename(columns={"Unnamed: 0":"sample"})
-    sample_df.index = sample_df["sample"]
-    sample_df = sample_df.drop(columns=["sample"])
+    if sample_df.index.name != "sample":
+
+        # Set the index of the sample dataframe to be the sample
+        if sample_df.columns[0] == "Unnamed: 0":
+            sample_df = sample_df.rename(columns={"Unnamed: 0":"sample"})
+
+        sample_df.index = sample_df["sample"]
+        sample_df = sample_df.drop(columns=["sample"])
 
     # Create arrays with sample/genotype as their primary axis and (if 
     # relevant) time as their secondary axis. These 1D and 2D arrays include 

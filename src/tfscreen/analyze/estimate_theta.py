@@ -1,4 +1,8 @@
-from tfscreen.calibration import predict_growth_rate
+from tfscreen.calibration import (
+    read_calibration,
+    predict_growth_rate
+)
+
 from tfscreen.fitting import (
     matrix_wls,
     matrix_nls
@@ -77,7 +81,6 @@ def _multi_genotype_regression(y,
         
     # Get the number of observations and genotypes
     num_obs = len(y)
-    num_genotypes = len(np.unique(genotypes_as_idx))
 
     # This holds the first column in the design matrix for the current 
     # genotype
@@ -207,7 +210,7 @@ def _multi_genotype_regression(y,
 
 
 def estimate_theta(df,
-                   calibration_dict,
+                   calibration_file,
                    block_size=100,
                    method="nls"):
     """
@@ -219,7 +222,8 @@ def estimate_theta(df,
     ----------
     df : pandas.DataFrame
         genotype, k_est, k_std, iptg, marker, select
-    calibration : dict
+    calibration_file : str or dict
+        Path to the calibration file or loaded calibration dictionary.
     block_size : int, default = 100
         break into blocks of block_size genotypes (each genotype is
         independent, but pooling them speeds up the array operations--to a
@@ -239,6 +243,8 @@ def estimate_theta(df,
     
     # Work on a copy of the dataframe
     df = df.copy()
+
+    calibration_dict = read_calibration(calibration_file)
 
     # Get rid of nan
     df = df.loc[np.logical_not(np.isnan(df["k_est"])),:]

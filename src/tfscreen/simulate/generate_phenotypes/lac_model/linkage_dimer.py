@@ -52,7 +52,7 @@ class LinkageDimerModel:
     repressor_reactant = np.array(['RE', 'RE2', 'RO', 'ROE', 'ROE2'])
     repressor_product = np.array(['R', 'RE', 'R', 'RE', 'RE2'])
 
-    equilbrium_constants = ["Kd_e1","Kd_e2","Kd_o","Kd_oe1","Kd_oe2"]
+    equilibrium_constants = ["Kd_e1","Kd_e2","Kd_o","Kd_oe1","Kd_oe2"]
 
     def __init__(self, r_total, o_total, e_total):
         # Convert input r_total (monomer units) to the dimer units used
@@ -104,22 +104,26 @@ class LinkageDimerModel:
 
     def _solve_single(self, e_total, o_total, r_total_dimer, K_array):
         def _equations_log(log_free_concs, *args):
-            e_free, o_free, r_free = np.exp(log_free_concs)
-            e_total, o_total, r_total_dimer, K_array = args
-            Kd_e1, Kd_e2, Kd_o, Kd_oe1, Kd_oe2 = K_array
 
-            # Add a small epsilon to Kd values to avoid division by zero if a K is 0
-            re = r_free * e_free / (Kd_e1 + 1e-30)
-            re2 = re * e_free / (Kd_e2 + 1e-30)
-            ro = r_free * o_free / (Kd_o + 1e-30)
-            roe = re * o_free / (Kd_oe1 + 1e-30)
-            roe2 = re2 * o_free / (Kd_oe2 + 1e-30)
+            # Ignore overflows within this calculation --> np.inf
+            with np.errstate(over='ignore'):
 
-            e_calc = e_free + re + 2*re2 + roe + 2*roe2
-            o_calc = o_free + ro + roe + roe2
-            r_calc = r_free + re + re2 + ro + roe + roe2
+                e_free, o_free, r_free = np.exp(log_free_concs)
+                e_total, o_total, r_total_dimer, K_array = args
+                Kd_e1, Kd_e2, Kd_o, Kd_oe1, Kd_oe2 = K_array
 
-            return (e_total-e_calc, o_total-o_calc, r_total_dimer-r_calc)
+                # Add a small epsilon to Kd values to avoid division by zero if a K is 0
+                re = r_free * e_free / (Kd_e1 + 1e-30)
+                re2 = re * e_free / (Kd_e2 + 1e-30)
+                ro = r_free * o_free / (Kd_o + 1e-30)
+                roe = re * o_free / (Kd_oe1 + 1e-30)
+                roe2 = re2 * o_free / (Kd_oe2 + 1e-30)
+
+                e_calc = e_free + re + 2*re2 + roe + 2*roe2
+                o_calc = o_free + ro + roe + roe2
+                r_calc = r_free + re + re2 + ro + roe + roe2
+
+                return (e_total-e_calc, o_total-o_calc, r_total_dimer-r_calc)
 
         initial_guess = np.log(np.maximum(1e-20, [e_total, o_total, r_total_dimer]))
         solution = root(_equations_log, initial_guess, args=(e_total, o_total, r_total_dimer, K_array), method='lm')

@@ -85,6 +85,9 @@ def run_simulation(yaml_file: str,
         replicate=cf['replicate']
     )
 
+    sample_df.to_csv(os.path.join(output_path,
+                                  f"{output_prefix}-sample_df.csv"))
+
     # -------------------------------------------------------------------------
     # Calculate phenotypes
         
@@ -107,9 +110,14 @@ def run_simulation(yaml_file: str,
         obs_fcn=obs_fcn,
         ddG_df=ddG_df,
         calibration_dict=calibration_dict,
-        mut_growth_rate_std=cf["mut_growth_rate_std"]
+        mut_growth_rate_shape=cf['mut_growth_rate_shape'],
+        mut_growth_rate_scale=cf['mut_growth_rate_scale']
     )
 
+    phenotype_df.to_csv(os.path.join(output_path,
+                                     f"{output_prefix}-phenotype_df.csv"),
+                                     index=False)
+    
     # -------------------------------------------------------------------------
     # Sample from library and grow out
     
@@ -171,18 +179,10 @@ def run_simulation(yaml_file: str,
 
     count_df["total_cfu_mL_at_time"] = count_df["timepoint"].map(cfu_dict)
     count_df["total_counts_at_time"] = count_df["timepoint"].map(num_reads_dict)
-    
-    desc = "{}".format("writing file")
-    with tqdm(total=3,desc=desc,ncols=800) as pbar:
 
-        phenotype_df.to_csv(os.path.join(output_path,
-                                        f"{output_prefix}-phenotype_df.csv"),index=False)
-        pbar.update()
+    print("writing final output.\n")
 
-        sample_df.to_csv(os.path.join(output_path,f"{output_prefix}-sample_df.csv"))
-        pbar.update()
-
-        count_df.to_csv(os.path.join(output_path,f"{output_prefix}-combined_df.csv"),index=False)
-        pbar.update()
+    count_df.to_csv(os.path.join(output_path,f"{output_prefix}-combined_df.csv"),index=False)
+    pbar.update()
 
     print(f"\n Simulation '{output_prefix}' complete.")

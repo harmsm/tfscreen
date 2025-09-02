@@ -51,6 +51,7 @@ def setup_observable(observable_calculator,
     
     if len(missing_columns) > 0:
         err = "not all molecular species in ddG file. Missing species:\n"
+        missing_columns = list(missing_columns)
         missing_columns.sort()
         for c in missing_columns:
             err += f"    {c}\n"

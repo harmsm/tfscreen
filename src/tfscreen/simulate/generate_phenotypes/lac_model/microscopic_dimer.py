@@ -116,29 +116,33 @@ class MicroscopicDimerModel:
 
     def _solve_single_condition(self, e_total, o_total, r_total, K_array):
         def _equations_log(log_free_concs, *args):
-            e_free, o_free, u_free = np.exp(log_free_concs)
-            e_total, o_total, r_total, K_array = args
-            (K_l_2u, K_l_h, K_l_o, K_h_o, K_l_e, K_le_e,
-             K_h_e, K_he_e, K_lo_e, K_loe_e, K_ho_e, K_hoe_e) = K_array
 
-            l = u_free**2 / K_l_2u if K_l_2u > 0 else (0.0 if u_free > 1e-30 else np.inf)
-            h = K_l_h * l
-            lo = K_l_o * l * o_free
-            le = K_l_e * l * e_free
-            le2 = K_le_e * le * e_free
-            loe = K_lo_e * lo * e_free
-            loe2 = K_loe_e * loe * e_free
-            ho = K_h_o * h * o_free
-            he = K_h_e * h * e_free
-            he2 = K_he_e * he * e_free
-            hoe = K_ho_e * ho * e_free
-            hoe2 = K_hoe_e * hoe * e_free
+            # Ignore overflows within this calculation --> np.inf
+            with np.errstate(over='ignore'):
 
-            e_calc = (e_free + le + 2*le2 + loe + 2*loe2 + he + 2*he2 + hoe + 2*hoe2)
-            o_calc = o_free + lo + loe + loe2 + ho + hoe + hoe2
-            r_calc = (u_free + 2*l + 2*h + 2*lo + 2*le + 2*le2 + 2*loe + 2*loe2 + 2*ho + 2*he + 2*he2 + 2*hoe + 2*hoe2)
-            
-            return (e_total - e_calc, o_total - o_calc, r_total - r_calc)
+                e_free, o_free, u_free = np.exp(log_free_concs)
+                e_total, o_total, r_total, K_array = args
+                (K_l_2u, K_l_h, K_l_o, K_h_o, K_l_e, K_le_e,
+                K_h_e, K_he_e, K_lo_e, K_loe_e, K_ho_e, K_hoe_e) = K_array
+
+                l = u_free**2 / K_l_2u if K_l_2u > 0 else (0.0 if u_free > 1e-30 else np.inf)
+                h = K_l_h * l
+                lo = K_l_o * l * o_free
+                le = K_l_e * l * e_free
+                le2 = K_le_e * le * e_free
+                loe = K_lo_e * lo * e_free
+                loe2 = K_loe_e * loe * e_free
+                ho = K_h_o * h * o_free
+                he = K_h_e * h * e_free
+                he2 = K_he_e * he * e_free
+                hoe = K_ho_e * ho * e_free
+                hoe2 = K_hoe_e * hoe * e_free
+
+                e_calc = (e_free + le + 2*le2 + loe + 2*loe2 + he + 2*he2 + hoe + 2*hoe2)
+                o_calc = o_free + lo + loe + loe2 + ho + hoe + hoe2
+                r_calc = (u_free + 2*l + 2*h + 2*lo + 2*le + 2*le2 + 2*loe + 2*loe2 + 2*ho + 2*he + 2*he2 + 2*hoe + 2*hoe2)
+                
+                return (e_total - e_calc, o_total - o_calc, r_total - r_calc)
 
         initial_concs = np.array([e_total, o_total, r_total])
         initial_guess_log = np.log(np.maximum(initial_concs, 1e-20))

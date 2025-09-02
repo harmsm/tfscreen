@@ -113,29 +113,32 @@ class LinkageDimerTetramerModel:
 
     def _solve_single(self, e_total, o_total, r_total_dimer, K_array):
         def _equations_log(log_free_concs, *args):
-            e_free, o_free, r2_free = np.exp(log_free_concs)
-            e_total, o_total, r_total_dimer, K_array = args
-            (K_r2_e, K_r2e_e, K_2r2_r4, K_r4_e, K_r4e_e, K_r4e2_e, K_r4e3_e,
-             K_r2_o, K_r4_o, K_r2o_e, K_r2oe_e, K_r4o_e) = K_array
 
-            r2e = K_r2_e * r2_free * e_free
-            r2e2 = K_r2e_e * r2e * e_free
-            r4 = K_2r2_r4 * r2_free**2
-            r4e = K_r4_e * r4 * e_free
-            r4e2 = K_r4e_e * r4e * e_free
-            r4e3 = K_r4e2_e * r4e2 * e_free
-            r4e4 = K_r4e3_e * r4e3 * e_free
-            r2o = K_r2_o * o_free * r2_free
-            r4o = K_r4_o * o_free * r4
-            r2oe = K_r2o_e * r2o * e_free
-            r2oe2 = K_r2oe_e * r2oe * e_free
-            r4oe = K_r4o_e * r4o * e_free
+            # Ignore overflows within this calculation --> np.inf
+            with np.errstate(over='ignore'):
+                e_free, o_free, r2_free = np.exp(log_free_concs)
+                e_total, o_total, r_total_dimer, K_array = args
+                (K_r2_e, K_r2e_e, K_2r2_r4, K_r4_e, K_r4e_e, K_r4e2_e, K_r4e3_e,
+                K_r2_o, K_r4_o, K_r2o_e, K_r2oe_e, K_r4o_e) = K_array
 
-            e_calc = e_free + r2e + 2*r2e2 + r4e + 2*r4e2 + 3*r4e3 + 4*r4e4 + r2oe + 2*r2oe2 + r4oe
-            o_calc = o_free + r2o + r4o + r2oe + r2oe2 + r4oe
-            r_calc = r2_free + r2e + r2e2 + 2*(r4 + r4e + r4e2 + r4e3 + r4e4) + r2o + r2oe + r2oe2 + 2*(r4o + r4oe)
+                r2e = K_r2_e * r2_free * e_free
+                r2e2 = K_r2e_e * r2e * e_free
+                r4 = K_2r2_r4 * r2_free**2
+                r4e = K_r4_e * r4 * e_free
+                r4e2 = K_r4e_e * r4e * e_free
+                r4e3 = K_r4e2_e * r4e2 * e_free
+                r4e4 = K_r4e3_e * r4e3 * e_free
+                r2o = K_r2_o * o_free * r2_free
+                r4o = K_r4_o * o_free * r4
+                r2oe = K_r2o_e * r2o * e_free
+                r2oe2 = K_r2oe_e * r2oe * e_free
+                r4oe = K_r4o_e * r4o * e_free
 
-            return (e_total-e_calc, o_total-o_calc, r_total_dimer-r_calc)
+                e_calc = e_free + r2e + 2*r2e2 + r4e + 2*r4e2 + 3*r4e3 + 4*r4e4 + r2oe + 2*r2oe2 + r4oe
+                o_calc = o_free + r2o + r4o + r2oe + r2oe2 + r4oe
+                r_calc = r2_free + r2e + r2e2 + 2*(r4 + r4e + r4e2 + r4e3 + r4e4) + r2o + r2oe + r2oe2 + 2*(r4o + r4oe)
+
+                return (e_total-e_calc, o_total-o_calc, r_total_dimer-r_calc)
 
         initial_guess = np.log(np.maximum(1e-20, [e_total, o_total, r_total_dimer]))
         solution = root(_equations_log, initial_guess, args=(e_total, o_total, r_total_dimer, K_array), method='lm')

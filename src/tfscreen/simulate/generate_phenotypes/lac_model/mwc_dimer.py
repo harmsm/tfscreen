@@ -108,22 +108,25 @@ class MWCDimerModel:
 
     def _solve_single(self, e_total, o_total, r_total_dimer, K_array):
         def _equations_log(log_free_concs, *args):
-            e_free, o_free, h_free = np.exp(log_free_concs)
-            e_total, o_total, r_total_dimer, K_array = args
-            K_h_l, K_h_o, K_h_e, K_l_o, K_l_e = K_array
 
-            l_free = K_h_l * h_free
-            he, he2 = K_h_e * h_free * e_free, K_h_e**2 * h_free * e_free**2
-            le, le2 = K_l_e * l_free * e_free, K_l_e**2 * l_free * e_free**2
-            ho, lo = K_h_o * h_free * o_free, K_l_o * l_free * o_free
-            hoe, hoe2 = K_h_e * ho * e_free, K_h_e**2 * ho * e_free**2
-            loe, loe2 = K_l_e * lo * e_free, K_l_e**2 * lo * e_free**2
+            # Ignore overflows within this calculation --> np.inf
+            with np.errstate(over='ignore'):
+                e_free, o_free, h_free = np.exp(log_free_concs)
+                e_total, o_total, r_total_dimer, K_array = args
+                K_h_l, K_h_o, K_h_e, K_l_o, K_l_e = K_array
 
-            e_calc = e_free + he + 2*he2 + le + 2*le2 + hoe + 2*hoe2 + loe + 2*loe2
-            o_calc = o_free + ho + lo + hoe + hoe2 + loe + loe2
-            r_calc = h_free + l_free + he + he2 + le + le2 + ho + lo + hoe + hoe2 + loe + loe2
+                l_free = K_h_l * h_free
+                he, he2 = K_h_e * h_free * e_free, K_h_e**2 * h_free * e_free**2
+                le, le2 = K_l_e * l_free * e_free, K_l_e**2 * l_free * e_free**2
+                ho, lo = K_h_o * h_free * o_free, K_l_o * l_free * o_free
+                hoe, hoe2 = K_h_e * ho * e_free, K_h_e**2 * ho * e_free**2
+                loe, loe2 = K_l_e * lo * e_free, K_l_e**2 * lo * e_free**2
 
-            return (e_total-e_calc, o_total-o_calc, r_total_dimer-r_calc)
+                e_calc = e_free + he + 2*he2 + le + 2*le2 + hoe + 2*hoe2 + loe + 2*loe2
+                o_calc = o_free + ho + lo + hoe + hoe2 + loe + loe2
+                r_calc = h_free + l_free + he + he2 + le + le2 + ho + lo + hoe + hoe2 + loe + loe2
+
+                return (e_total-e_calc, o_total-o_calc, r_total_dimer-r_calc)
 
         initial_guess = np.log(np.maximum(1e-20, [e_total, o_total, r_total_dimer]))
         solution = root(_equations_log, initial_guess, args=(e_total, o_total, r_total_dimer, K_array), method='lm')
