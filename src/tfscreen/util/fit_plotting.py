@@ -11,9 +11,9 @@ DEFAULT_SCATTER_KWARGS = {"s":10,
 
 def plot_corr(x_values,
               y_values,
-              ax=None,
+              scale_by=0.01,
               scatter_kwargs=None,
-              scale_by=0.01):
+              ax=None):
     """
     Plot the correlation between two sets of values.
 
@@ -23,12 +23,12 @@ def plot_corr(x_values,
         Values for the x-axis.
     y_values : array_like
         Values for the y-axis.
-    ax : matplotlib.axes._axes.Axes, optional
-        Axes object to plot on. If None, a new figure and axes are created.
-    scatter_kwargs : dict, optional
-        Keyword arguments to pass to the scatter plot.
     scale_by : float, optional
         Amount to scale the axis limits by.
+    scatter_kwargs : dict, optional
+        Keyword arguments to pass to the scatter plot.
+    ax : matplotlib.axes._axes.Axes, optional
+        Axes object to plot on. If None, a new figure and axes are created.
 
     Returns
     -------
@@ -44,8 +44,12 @@ def plot_corr(x_values,
         for k in scatter_kwargs:
             final_scatter_kwargs[k] = scatter_kwargs[k]
     
-    ax_min = np.min([np.min(x_values),np.min(y_values)])
-    ax_max = np.max([np.max(x_values),np.max(y_values)])
+
+    all_values = list(x_values)
+    all_values.extend(y_values)
+    all_values = np.array(y_values)
+    ax_min, ax_max = np.quantile(all_values, [0.005, 0.995])
+
     span = ax_max - ax_min
     ax_min = ax_min - scale_by*span
     ax_max = ax_max + scale_by*span
@@ -61,15 +65,92 @@ def plot_corr(x_values,
 
     return ax
 
+def plot_err_vs_mag(obs,
+                    pred,
+                    subsample=10000,
+                    axis_name="",
+                    x_min=None,
+                    x_max=None,
+                    scatter_kwargs=None,
+                    ax=None):
+    """
+    Plot the error vs real value. 
+
+    Parameters
+    ----------
+    obs : array_like
+        Observed values.
+    pred : array_like
+        Predicted values.
+    subsample : int, optional
+        Number of points to subsample for plotting.
+    axis_name : str, optional
+        Name to prepend to the axis labels.
+    x_min : float, optional
+        Minimum value for the x-axis. If None, it's calculated from the data.
+    x_max : float, optional
+        Maximum value for the x-axis. If None, it's calculated from the data.
+    ax : matplotlib.axes._axes.Axes, optional
+        Axes object to plot on. If None, a new figure and axes are created.
+
+    Returns
+    -------
+    matplotlib.axes._axes.Axes
+        The axes object with the plot.
+    """
+
+    if ax is None:
+        _, ax = plt.subplots(1,figsize=(6,6))
+
+    final_scatter_kwargs = copy.deepcopy(DEFAULT_SCATTER_KWARGS)
+    if scatter_kwargs is not None:
+        for k in scatter_kwargs:
+            final_scatter_kwargs[k] = scatter_kwargs[k]
+
+    obs = np.asarray(obs)
+    pred = np.asarray(pred)
+
+    good_mask = np.logical_not(np.isnan(pred))
+    obs = obs[good_mask]
+    pred = pred[good_mask]
+
+    index = np.arange(len(pred),dtype=int)
+    if subsample is not None:
+        if subsample < len(index):
+            index = np.random.choice(index,size=subsample,replace=False)
+
+    x_min_pct, x_max_pct = np.quantile(obs, [0.005, 0.995])
+    if x_min is None:
+        x_min = x_min_pct
+    if x_max is None:
+        x_max = x_max_pct
+    
+    span = x_max - x_min
+    
+    ax.scatter(
+        obs[index],
+        pred[index]-obs[index],
+        **final_scatter_kwargs
+    )
+    
+    ax.plot([x_min,x_max],[0,0],'--',color='gray',zorder=-5)
+    ax.set_xlim(x_min,x_max)
+    ax.set_ylim(-span/2,span/2)
+    ax.set_aspect('equal')
+    
+    ax.set_xlabel(f"{axis_name} obs")
+    ax.set_ylabel(f"{axis_name} predicted - obs")
+
+    return ax
 
 def plot_err(real_values,
              est_values,
              est_err,
              plot_as_real_err=False,
              range_mask=None,
-             ax=None,
+             pct_cut=0.01,
              scatter_kwargs=None,
-             pct_cut=0.01):
+             ax=None):
     """
     Plot the error between estimated and real values.
 
@@ -85,12 +166,12 @@ def plot_err(real_values,
         Whether to plot the error as a fraction of the real values.
     range_mask : array_like, optional
         A boolean mask to apply to the values.
-    ax : matplotlib.axes._axes.Axes, optional
-        Axes object to plot on. If None, a new figure and axes are created.
-    scatter_kwargs : dict, optional
-        Keyword arguments to pass to the scatter plot.
     pct_cut : float, optional
         The percentage of the largest errors to exclude from the plot.
+    scatter_kwargs : dict, optional
+        Keyword arguments to pass to the scatter plot.
+    ax : matplotlib.axes._axes.Axes, optional
+        Axes object to plot on. If None, a new figure and axes are created.
 
     Returns
     -------
@@ -215,8 +296,10 @@ def plot_err_zscore(real_values,
 def plot_summary(k_est,
                  k_std,
                  k_real,
+                 axis_prefix=None,
                  suptitle=None,
-                 subsample=10000):
+                 subsample=10000,
+                 scatter_kwargs=None):
     """
     Generate a summary plot of estimated vs real values.
 
@@ -228,10 +311,14 @@ def plot_summary(k_est,
         The standard error on the estimated parameters.
     k_real : array_like
         The true values.
+    axis_prefix : str, optional
+        append a prefix to the axis titles
     suptitle : str, optional
         A title for the whole figure.
     subsample : int, optional
         The number of points to subsample for plotting.
+    scatter_kwargs : dict, optional
+        Keyword arguments to pass to the scatter plot.
 
     Returns
     -------
@@ -249,31 +336,45 @@ def plot_summary(k_est,
     
     index = np.arange(len(k_est),dtype=int)
     if subsample is not None:
-        index = np.random.choice(index,size=subsample,replace=False)
+        if subsample < len(index):
+            index = np.random.choice(index,size=subsample,replace=False)
     
     fig, ax = plt.subplots(1,3,figsize=(14,6))
     
     plot_corr(k_real[index],
               k_est[index],
+              scatter_kwargs=scatter_kwargs,
               ax=ax[0])
 
-    ax[0].set_xlabel("k_real")
-    ax[0].set_ylabel("k_est")
+    if axis_prefix is not None:
+        est = f"{axis_prefix}_est"
+        real = f"{axis_prefix}_real"
+        std = f"{axis_prefix}_std"
+    else:
+        est = "est"
+        real = "real"
+        std = "std"
+         
+
+    ax[0].set_xlabel(real)
+    ax[0].set_ylabel(est)
     
     plot_err(k_real[index],
              k_est[index],
              k_std[index],
-             ax=ax[1],plot_as_real_err=True)
+             plot_as_real_err=True,
+             scatter_kwargs=scatter_kwargs,
+             ax=ax[1])
 
-    ax[1].set_xlabel("k_est - k_real")
-    ax[1].set_ylabel("k_std")
+    ax[1].set_xlabel(f"{est} - {real}")
+    ax[1].set_ylabel(std)
 
     plot_err_zscore(k_real,
                     k_est,
                     k_std,
                     ax=ax[2])
 
-    ax[2].set_xlabel("Z-score (k_est - k_real)")
+    ax[2].set_xlabel(f"Z-score ({est} - {real})")
     
     if suptitle is not None:
         fig.suptitle(suptitle)
@@ -281,3 +382,4 @@ def plot_summary(k_est,
     fig.tight_layout()
                      
     return fig, ax
+

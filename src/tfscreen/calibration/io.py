@@ -18,16 +18,20 @@ def read_calibration(json_file):
         calibration dictionary
     """
 
+    # If this is already a dictionary, return it
+    if issubclass(type(json_file),dict):
+        return json_file
+
     with open(json_file,'r') as f:
-        calibration = json.load(f)
+        calibration_dict = json.load(f)
 
-    calibration["cov_matrix"] = np.array(calibration["cov_matrix"])
-    calibration["param_values"] = np.array(calibration["param_values"])
+    calibration_dict["cov_matrix"] = np.array(calibration_dict["cov_matrix"])
+    calibration_dict["param_values"] = np.array(calibration_dict["param_values"])
 
-    return calibration
+    return calibration_dict
 
 
-def write_calibration(calibration,
+def write_calibration(calibration_dict,
                       json_file):
     """
     Write a calibration dictionary to a json file.
@@ -40,11 +44,11 @@ def write_calibration(calibration,
         path to json file to write
     """
 
-    calibration = copy.deepcopy(calibration)
-    calibration["param_values"] = [float(f)
-                                   for f in calibration["param_values"]]
+    calibration_dict = copy.deepcopy(calibration_dict)
+    calibration_dict["param_values"] = [float(f)
+                                        for f in calibration_dict["param_values"]]
     
-    cov = calibration["cov_matrix"]
+    cov = calibration_dict["cov_matrix"]
     
     cov_list = []
     for i in range(cov.shape[0]):
@@ -52,9 +56,9 @@ def write_calibration(calibration,
         for j in range(cov.shape[1]):
             cov_list[-1].append(float(cov[i,j]))
 
-    calibration["cov_matrix"] = cov_list
+    calibration_dict["cov_matrix"] = cov_list
 
     with open(json_file,'w') as f:
-        json.dump(calibration,f,indent=2,sort_keys=True)
+        json.dump(calibration_dict,f,indent=2,sort_keys=True)
 
 

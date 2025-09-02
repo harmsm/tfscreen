@@ -12,6 +12,7 @@ from .process_for_fit import (
 
 from .fit_plotting import (
     plot_corr,
+    plot_err_vs_mag,
     plot_err,
     plot_err_zscore,
     plot_summary

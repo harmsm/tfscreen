@@ -1,6 +1,7 @@
 import numpy as np
 from tqdm.auto import tqdm
 from scipy.linalg import cholesky
+import pandas as pd
 
 def get_growth_rates_ukf(times,
                          cfu,
@@ -30,8 +31,8 @@ def get_growth_rates_ukf(times,
         2D array of variance of the estimate of cfu each genotype, 
         shape (num_genotypes, num_times).
     growth_rate_guess : float or np.ndarray
-        initial guess for the growth rate (usually wildtype under reference 
-        conditions). Can be an array num_gentoypes long. default: 0.015 
+        initial guess for the growth rate. Can be an array num_gentoypes long.
+        default: 0.015 
     growth_rate_uncertainty : float, optional
         Uncertainty (standard deviation) in the initial growth rate. Default: 0.1.
     process_noise : np.ndarray
@@ -46,10 +47,11 @@ def get_growth_rates_ukf(times,
         
     Returns
     -------
-    growth_rate_est : np.ndarray
-        1D array of estimated growth rates, shape (num_genotypes,)
-    growth_rate_std : np.ndarray
-        1D array of standard errors on growth rate estimates, shape (num_genotypes,)
+    param_df : pandas.DataFrame
+        dataframe with extracted parameters (A0_est, k_est) and their standard
+        errors (A0_std, k_std). Note that A0_std is not estimated by this method.
+    pred_df : pandas.DataFrame
+        dataframe with obs and pred
     """
     
     num_genotypes, num_times = times.shape
@@ -151,7 +153,20 @@ def get_growth_rates_ukf(times,
         x = x_pred + K @ y_residual
         P = P_pred - (K @ S @ K.transpose(0, 2, 1))
 
-    growth_rate_est = x[:, 1, 0]
-    growth_rate_std = np.sqrt(np.abs(P[:, 1, 1]))
+
+    k_est = x[:, 1, 0]
+    k_std = np.sqrt(np.abs(P[:, 1, 1]))
+    
+    A0_est = cfu[:,-1]/np.exp(k_est*times[:,-1])
+    A0_std = np.repeat(np.nan,k_std.shape[0])
+
+    param_df = pd.DataFrame({"A0_est":A0_est,
+                             "A0_std":A0_std,
+                             "k_est":k_est,
+                             "k_std":k_std})
+
+    pred = A0_est[:,np.newaxis]*np.exp(times*k_est[:,np.newaxis])
+    pred_df = pd.DataFrame({"obs":cfu.flatten(),
+                            "pred":pred.flatten()})
         
-    return growth_rate_est, growth_rate_std
+    return param_df, pred_df

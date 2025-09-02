@@ -1,6 +1,9 @@
 
 from tfscreen.fitting.linear_regression import fast_linear_regression
 
+import pandas as pd
+import numpy as np
+
 def get_growth_rates_ols(times,ln_cfu):
     """
     Estimate growth rates using ordinary least squares regression on
@@ -15,16 +18,30 @@ def get_growth_rates_ols(times,ln_cfu):
 
     Returns
     -------
-    growth_rate_est : np.ndarray
-        1D array of estimated growth rates, shape (num_genotypes,).
-    growth_rate_std : np.ndarray
-        1D array of standard deviations on estimated growth rates, shape (num_genotypes,).
+    param_df : pandas.DataFrame
+        dataframe with extracted parameters (A0_est, k_est) and their standard
+        errors (A0_std, k_std)
+    pred_df : pandas.DataFrame
+        dataframe with obs and pred
     """
 
     _results = fast_linear_regression(x_arrays=times,
                                       y_arrays=ln_cfu)
 
-    growth_rate_est = _results[0]
-    growth_rate_std = _results[2]
+    k_est = _results[0]
+    A0_est = _results[1]
+    k_std = _results[2]
+    A0_std = _results[3]
 
-    return growth_rate_est, growth_rate_std
+    param_out = {"A0_est":A0_est,
+                 "A0_std":A0_std,
+                 "k_est":k_est,
+                 "k_std":k_std}
+    param_df = pd.DataFrame(param_out)
+
+    pred = times*k_est[:,np.newaxis] + A0_est[:,np.newaxis]
+    pred_out = {"obs":ln_cfu.flatten(),
+                "pred":pred.flatten()}
+    pred_df = pd.DataFrame(pred_out)
+
+    return param_df, pred_df

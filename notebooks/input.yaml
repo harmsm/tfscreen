@@ -1,0 +1,249 @@
+# -----------------------------------------------------------------------------
+# Ensemble information
+
+# lac repressor linkage model calculation
+# r_total = 40 dimers per cell, 1.5 fL cell, 40% crowding
+# o_total = 20 plasmids, 1.5 fL cell, 40% crowding
+# observable_calculator: "lac"
+# observable_calc_kwargs:
+#   T: 310       # K
+#   R: 0.001987  # kcal/mol/K
+#   model_to_use: "mwc_dimer"
+#   wt_K_dict:
+#     K_h_l: 0.4 #6.3 <- tweaked this and k_h_e to get observe mid (1.59e-5 M)
+#     K_h_o: 4.2e8
+#     K_h_e: 5.6e3 #5.6e4
+#     K_l_o: 0.1
+#     K_l_e: 7.6e5
+#   r_total: 3.3e-7 # molar, total *monomer* repressor concentration
+#   o_total: 8.3e-8 # molar, total operator concentration
+#   #e_total: e_total is required to initialize the observable, but do not define
+#   # here because it is defined in the condition_blocks. Yes, this is a hack. 
+
+
+# lac repressor linkage model calculation
+# r_total = 40 dimers per cell, 1.5 fL cell, 40% crowding
+# o_total = 20 plasmids, 1.5 fL cell, 40% crowding
+observable_calculator: "lac"
+observable_calc_kwargs:
+  T: 310       # K
+  R: 0.001987  # kcal/mol/K
+  model_to_use: "microscopic_dimer"
+  wt_K_dict:
+    K_l_2u: 4.35E-08
+    K_l_h: 20
+    K_l_o: 1.83E-04
+    K_h_o: 1.20E+08
+    K_l_e: 1E+06
+    K_le_e: 1E+06
+    K_h_e: 5.60E+04
+    K_he_e: 5.60E+04
+    K_lo_e: 7.60e5
+    K_loe_e: 7.60E+05
+    K_ho_e: 1e4
+    K_hoe_e: 1e4
+  r_total: 3.3e-7 # molar, total *monomer* repressor concentration
+  o_total: 8.3e-8 # molar, total operator concentration
+  #e_total: e_total is required to initialize the observable, but do not define
+  # here because it is defined in the condition_blocks. Yes, this is a hack. 
+
+
+# observable_calculator: "lac"
+# observable_calc_kwargs:
+#   T: 310       # K
+#   R: 0.001987  # kcal/mol/K
+#   model_to_use: "linkage_dimer"
+#   wt_K_dict:
+#     Kd_e1: 4e-7   # 1st IPTG binding
+#     Kd_e2: 4e-7   # 2nd IPTG binding (assuming non-cooperative)
+#     Kd_o: 1e-10   # R binding to O (tight)
+#     Kd_oe1: 1e-5  # RE binding to O (weaker)
+#     Kd_oe2: 1e-5  # RE2 binding to O (weakest)
+#   r_total: 3.3e-7 # molar, total *monomer* repressor concentration
+#   o_total: 8.3e-8 # molar, total operator concentration
+#   #e_total: e_total is required to initialize the observable, but do not define
+#   # here because it is defined in the condition_blocks. Yes, this is a hack. 
+
+# eee-style calculation
+# spreadsheet defining ensemble and interactions with iptg
+# observable_calculator: "eee"
+# observable_calc_kwargs:
+#   ensemble_spreadsheet: "input/ensemble.xlsx"
+#   T: 310       # K
+#   R: 0.001987  # kcal/mol/K
+#   # This sets how the thermodynamic variable maps proportionally to output. For
+#   # the lac repressor, this is 12 because we derived the thermodynamic
+#   # parameters under conditions where there was a 12-fold excess of the lac
+#   # repressor to operator. Fully bound lac repressor thus corresponds to a
+#   # an observable value of 1/12 in the operator-bound state--hence 12 here.
+#   scale_obs_by: 12
+#   #e_total: e_total is required to initialize the observable, but do not define
+#   # here because it is defined in the condition_blocks. Yes, this is a hack. 
+
+# # Spreadsheet with effects of all mutations on each state in ensemble
+ddG_spreadsheet: "input/ddG_mwc_dimer.xlsx"
+
+
+# -----------------------------------------------------------------------------
+# Library definition information
+
+# wildtype amino acid sequence (single letter, uppercase)
+aa_sequence: |
+  VKPVTLYDVAEYAGVSYQTVSRVVNQASHVSAKTREKVEAAMAELNYIPNRVAQQLAGK
+  QSLLIGVATSSLALHAPSQIVAAIKSRADQLGASVVVSMVERSGVEACKAAVHNLLAQR
+  VSGLIINYPLDDQDAIAVEAACTNVPALFLDVSDQTPINSIIFSHEDGTRLGVEHLVAL
+  GHQQIALLAGPLSSVSARLRLAGWHKYLTRNQIQPIAEREGDWSAMSGFQQTMQMLNEG
+  IVPTAMLVANDQMALGAMRAITESGLRVGADISVVGYDDTEDSSCYIPPLTTIKQDFRL
+  LGQTSVDRLLQLSQGQAVKGNQLLPVSLVKRKTTLAPNTQTASP
+
+# sites that are mutated. sites should either be wildtype
+# amino acids or non-uppercase letters. non-uppercase letters
+# are interpreted as sub-library identifiers.
+mutated_sites: |
+  VKPVTLYDVAEYAGVSYQTVSRVVNQASH111111111111111111111111111111
+  QS2222222222222222222222222222222222222VERSGVEACKAAVHNLLAQR
+  VSGLIINYPLDDQDAIAVEAACTNVPALFLDVSDQTPINSIIFSHEDGTRLGVEHLVAL
+  GHQQIALLAGPLSSVSARLRLAGWHKYLTRNQIQPIAEREGDWSAMSGFQQTMQMLNEG
+  IVPTAMLVANDQMALGAMRAITESGLRVGADISVVGYDDTEDSSCYIPPLTTIKQDFRL
+  LGQTSVDRLLQLSQGQAVKGNQLLPVSLVKRKTTLAPNTQTASP
+
+# Number of first letter in amino sequence. Should match
+# numbering in ddG spreadsheet
+seq_starts_at: 1
+
+# Should we make internal combinations (within O1, O2, etc.)
+internal_doubles: false
+
+# highest order combination to make (1 -- alone, 2 -- pairs,
+# 3 -- triplicates, etc.)
+max_num_combos: 2
+
+# What codon to place at mutated sites
+degen_codon: "nnt"
+
+# -----------------------------------------------------------------------------
+# Transformation and library composition
+
+# Define how many transformants to include for each sub-library. Keys are
+# strings: '1' means O1; '2' means O2; '12' means O1/O2.
+# if you set internal_doubles to True above, you can then add '11' and
+# '22' to get the doubles within each pool.
+transform_sizes:
+  "1": 1.0e5
+  "2": 1.0e5
+  "12": 1.0e6
+
+# what is the mixture ratio of the library. This works together with
+# sizes. For the example values, the final mixed library would have 1e5 * 1
+# O1, 1e5 * 1, O2, and and 1e6 * 10 O1/O2. Note that the **ratio** matters,
+# not the absolute value.
+library_mixture:
+  "1": 1
+  "2": 1
+  "12": 10
+
+# sigma value to give to log normal distribution for generating genotype
+# frequencies in the library. 0 gives an even distribution; 1-2 is a good
+# guess for a real library.
+skew_sigma: 0
+
+# The number of plasmids per cell is set by sampling from a Poisson
+# distribution. If 0 or None, each cell gets exactly one plasmid. Otherwise,
+# do Poisson sampling.
+lambda_value: 0
+
+# Maximum number of plasmids per cell. The lower this number, the faster the
+# analysis; however, if you make it too small relative to lambda_value, you'll
+# distort the Poisson distribution by cutting off the long right tail. 10 should
+# be safe for lambda ~ 2-3.
+max_num_plasmids: 10
+
+# We assign effects on intrinsic growth rate using a gamma distribution. We use
+# the formula mut_growth = wt_growth + (scale/2 - Gamma(shape,scale)). This
+# distribution will have a short right tail of variants that grow faster than 
+# wildtype and a long left tail of variants that grow slower. Increasing 
+# mut_growth_rate_scale simultaneously increases the number of genotypes with
+# super low and super high growth rates, interfering with the inference. The 
+# default values of (3, 0.002) cause 0.2% of variants have negative growth rates 
+# and 1.4% grow faster than wildtype. The fastest grower will have a growth 
+# rate 5% faster than wildtype. A shape parameter of 0.02 will cause 81% of 
+# variants to have a negative growth rate, and the fastest grower to grow 50%
+# faster than wildtype. A value of 0.0002 will have no dead phenotypes and a 
+# a fastest genotype that is 0.4% faster than wildtype. 
+mut_growth_rate_shape: 3  
+mut_growth_rate_scale: 0.002
+
+
+# -----------------------------------------------------------------------------
+# Pre selection culture set up
+
+# Describes how bacteria grow under different conditions
+calibration_file: "2025-08-27_calibration.json"
+
+# Number of cells that come out of glycerol stock
+# (NIH says 40%)
+num_thawed_colonies: 1.0e7
+
+# Overnight cell culture volume
+overnight_volume_in_mL: 10
+
+# Grow cells to this cfu/mL before diluting into IPTG
+# (OD600 of 0.35 on spec is 89370229 cfu/mL)
+pre_iptg_cfu_mL: 90000000
+
+# Grow out this long before putting into selection conditions
+iptg_out_growth_time: 30
+
+# Dilute by this factor when adding to IPTG tubes
+post_iptg_dilution_factor: 0.01960784313  # 0.2/10.2
+
+# -----------------------------------------------------------------------------
+# Selection conditions
+
+# condition_blocks is a list of dictionaries defining different growth
+# conditions. Each dictionary should have a "marker" key with a value of either
+# "kanR" or "pheS", a "select" key with a value of either 0 or 1, an "iptg"
+# key with a list of iptg concentrations (in mM), and a "time" key with a list
+# of sample times (in minutes)
+condition_blocks:
+  - iptg: [0, 1]
+    marker: "kanR"
+    select: 0
+    time: [80, 95, 110]
+
+  - iptg: [0, 1]
+    marker: "pheS"
+    select: 0
+    time: [80, 95, 110]
+
+  - iptg: [0, 0.0001, 0.001, 0.003]
+    marker: "kanR"
+    select: 1
+    time: [160, 180, 200]
+
+  - iptg: [0.01, 0.03, 0.1, 1.0]
+    marker: "kanR"
+    select: 1
+    time: [145, 165, 180]
+
+  - iptg: [0, 0.0001, 0.001, 0.003, 0.01, 0.03, 0.1, 1.0]
+    marker: "pheS"
+    select: 1
+    time: [95, 110, 125]
+
+# percent noise to apply to all growth rates. (growth_noise*base_value is
+# the standard deviation of the random normal distribution to sample)
+growth_rate_noise: 0
+
+# -----------------------------------------------------------------------------
+# Data collection parameters
+
+total_num_reads: 3.0e9
+
+# number of reads that should be re-assigned a resampled genotype after the
+# initial sampling (index-hopping/read bleedthrough)
+index_hop_freq: 0.0
+
+# This populates the replicate column in the output dataframes, exactly as
+# happens experimentally.
+replicate: 1

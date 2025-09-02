@@ -5,6 +5,7 @@ Functions for generating mutant libraries based on degenerate codon information.
 from tfscreen import data
 
 import pandas as pd
+from tqdm.auto import tqdm
 
 import string
 import itertools
@@ -238,7 +239,8 @@ def generate_libraries(aa_sequence,
     
     # Go through each library combo
     lib_clone_dict = {}
-    for lib in libraries_to_build:
+    desc = "{}".format("generating library sequences")
+    for lib in tqdm(libraries_to_build,desc=desc,ncols=800):
     
         # List to hold clones
         library_clones = []

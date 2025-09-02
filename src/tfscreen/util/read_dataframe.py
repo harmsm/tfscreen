@@ -50,7 +50,7 @@ def read_dataframe(input,remove_extra_index=True):
 
     # Look for extra index column that pandas writes out (in case user wrote out
     # pandas frame manually, then re-read). Looks for first column that is
-    # Unnamed and has values [0,1,2,...,L]
+    # Unnamed and has integer values [0,1,2,...,L]
     if remove_extra_index:
         if df.columns[0].startswith("Unnamed:"):
             possible_index = df.loc[:,df.columns[0]]
