@@ -1,5 +1,5 @@
 from tfscreen.fitting.linear_regression import (
-    fast_linear_regression,
+    linear_regression,
 )
 
 import numpy as np
@@ -31,7 +31,7 @@ def _estimate_delta(times, cfu):
     # 1. Run a quick OLS on the log-data to get a reasonable starting
     #    point for the growth trend.
     ln_cfu = np.log(cfu)
-    _ols_results = fast_linear_regression(x_arrays=times, y_arrays=ln_cfu)
+    _ols_results = linear_regression(x_arrays=times, y_arrays=ln_cfu)
     slopes, intercepts = _ols_results[0], _ols_results[1]
 
     # 2. Calculate fitted values and residuals on the ORIGINAL scale.

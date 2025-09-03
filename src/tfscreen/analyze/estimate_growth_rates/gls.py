@@ -1,6 +1,6 @@
-from tfscreen.fitting.linear_regression import (
-    fast_linear_regression,
-    fast_weighted_linear_regression
+from tfscreen.fitting import (
+    linear_regression,
+    weighted_linear_regression
 )
 
 import numpy as np
@@ -47,7 +47,7 @@ def _estimate_delta(times,
 
     all_deltas = []
     
-    _ols_results = fast_linear_regression(x_arrays=times,
+    _ols_results = linear_regression(x_arrays=times,
                                           y_arrays=ln_cfu)
     slopes = _ols_results[0]
     intercepts = _ols_results[1]
@@ -71,7 +71,7 @@ def _estimate_delta(times,
             fitted_values_original_scale = np.exp(fitted_values)
             std = (fitted_values_original_scale)**(delta / 2)
 
-            _wls_results = fast_weighted_linear_regression(x_arrays=times,
+            _wls_results = weighted_linear_regression(x_arrays=times,
                                                            y_arrays=ln_cfu,
                                                            y_err_arrays=std)
             slopes = _wls_results[0]

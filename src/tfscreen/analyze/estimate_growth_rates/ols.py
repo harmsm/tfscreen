@@ -1,15 +1,13 @@
-from tfscreen.fitting.linear_regression import fast_weighted_linear_regression
 
-import numpy as np
+from tfscreen.fitting.linear_regression import linear_regression
+
 import pandas as pd
+import numpy as np
 
-def get_growth_rates_wls(times,
-                         ln_cfu,
-                         ln_cfu_var):
+def get_growth_rates_ols(times,ln_cfu):
     """
-    Estimate growth rates using weighted least squares regression (WLS) on
-    log-transformed CFU/mL. The weights are based on the variance of the
-    log-transformed data.
+    Estimate growth rates using ordinary least squares regression on
+    log-transformed CFU/mL data. 
 
     Parameters
     ----------
@@ -17,9 +15,6 @@ def get_growth_rates_wls(times,
         2D array of time points, shape (num_genotypes, num_times).
     ln_cfu : np.ndarray
         2D array of ln_cfu each genotype, shape (num_genotypes, num_times).
-    ln_cfu_var : np.ndarray
-        2D array of variance of the estimate of ln_cfu each genotype, 
-        shape (num_genotypes, num_times).
 
     Returns
     -------
@@ -30,9 +25,8 @@ def get_growth_rates_wls(times,
         dataframe with obs and pred
     """
 
-    _results = fast_weighted_linear_regression(x_arrays=times,
-                                               y_arrays=ln_cfu,
-                                               y_err_arrays=ln_cfu_var)
+    _results = linear_regression(x_arrays=times,
+                                      y_arrays=ln_cfu)
 
     k_est = _results[0]
     A0_est = _results[1]
@@ -51,5 +45,3 @@ def get_growth_rates_wls(times,
     pred_df = pd.DataFrame(pred_out)
 
     return param_df, pred_df
-
-    
