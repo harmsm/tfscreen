@@ -22,8 +22,6 @@ dependencies = [
   "matplotlib",
   "tqdm",
   "statsmodels",
-  "eee",
-  "dataprob",
   "PyYAML"
 ]
 

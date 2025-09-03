@@ -1,5 +1,5 @@
 from tfscreen.util import read_dataframe
-from tfscreen.fitting import fast_weighted_linear_regression
+from tfscreen.fitting import weighted_linear_regression
 from tfscreen.calibration import predict_growth_rate
 
 import pandas as pd
@@ -192,7 +192,7 @@ def _build_time_zero(times,
 
     # Get initial fit with from data that do not have a real t = 0 point. Fit 
     # returns estimates for lnA0 (t = 0). 
-    _, lnA0, _, lnA0_err, _ = fast_weighted_linear_regression(x_arrays=times,
+    _, lnA0, _, lnA0_err, _ = weighted_linear_regression(x_arrays=times,
                                                               y_arrays=ln_cfu,
                                                               y_err_arrays=ln_cfu_var)
         
@@ -403,7 +403,7 @@ def process_for_fit(combined_df,
                                           calibration_dict=calibration_dict)
 
     # Do a final 
-    k_est, _, k_err, _, _ = fast_weighted_linear_regression(x_arrays=times_expanded,
+    k_est, _, k_err, _, _ = weighted_linear_regression(x_arrays=times_expanded,
                                                             y_arrays=ln_cfu_expanded,
                                                             y_err_arrays=ln_cfu_var_expanded)
 

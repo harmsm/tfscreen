@@ -1,12 +1,11 @@
 
-from tfscreen.fitting import get_growth_rates_wls
+from .wls import get_growth_rates_wls
 
 import numpy as np
 from scipy.optimize import least_squares
 from scipy.sparse import issparse
 from tqdm.auto import tqdm
 import pandas as pd
-
 
 
 def _model(A0, k, t):

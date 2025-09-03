@@ -6,3 +6,7 @@ from .estimate_growth_rates import (
 from .estimate_theta import (
     estimate_theta
 )
+
+from .estimate_hill import (
+    estimate_hill
+)
