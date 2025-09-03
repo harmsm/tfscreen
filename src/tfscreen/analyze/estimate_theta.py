@@ -186,7 +186,8 @@ def _multi_genotype_regression(y,
         raise ValueError(err)
         
     # Standard errors are the diagonal of the covariance matrix
-    all_std_errors = np.sqrt(np.diag(cov))
+    with np.errstate(invalid='ignore'): 
+        all_std_errors = np.sqrt(np.diag(cov))
     
     out_genotypes = []
     out_mut_est = []
@@ -302,11 +303,11 @@ def estimate_theta(df,
 
     # Prepare output
     growth_out = {"genotype":[],
-                  "mut_effect":[],
+                  "mut_effect_est":[],
                   "mut_effect_std":[]}
     theta_out = {"genotype":[],
                  "iptg":[],
-                 "theta":[],
+                 "theta_est":[],
                  "theta_std":[]}
     
     for i, chunk in enumerate(tqdm(chunks)):
@@ -334,7 +335,7 @@ def estimate_theta(df,
         out_genotype = idx_to_genotype[result[0] + np.min(_genotype_idx)]
         
         growth_out["genotype"].extend(out_genotype)
-        growth_out["mut_effect"].extend(result[1])
+        growth_out["mut_effect_est"].extend(result[1])
         growth_out["mut_effect_std"].extend(result[2])
 
         out_iptg = result[3]
@@ -346,7 +347,7 @@ def estimate_theta(df,
             
             theta_out["genotype"].extend(np.repeat(out_genotype[j],len(idx)))
             theta_out["iptg"].extend(out_iptg[j][idx])
-            theta_out["theta"].extend(out_theta_est[j][idx])
+            theta_out["theta_est"].extend(out_theta_est[j][idx])
             theta_out["theta_std"].extend(out_theta_std[j][idx])
 
     print("Creating final dataframes.",flush=True)

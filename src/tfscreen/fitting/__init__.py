@@ -21,3 +21,8 @@ from .run_least_squares import (
 from .predict_with_error import (
     predict_with_error
 )
+
+from .stats_test_suite import (
+    stats_test_suite
+)
+
