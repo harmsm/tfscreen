@@ -9,5 +9,6 @@ from . import data
 from . import util
 from . import simulate
 from . import analyze
+from . import plot
 
 from tfscreen.simulate import run_simulation
