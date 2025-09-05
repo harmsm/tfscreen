@@ -1,9 +1,9 @@
 import numpy as np
 
-def predict_with_error(prediction_points,
-                       some_model,
+def predict_with_error(some_model,
                        params,
                        cov_matrix,
+                       args=None,
                        epsilon=1e-6):
     """
     Calculate model predictions and their standard errors.
@@ -14,14 +14,15 @@ def predict_with_error(prediction_points,
 
     Parameters
     ----------
-    prediction_points : np.ndarray
-        An array of x-values at which to calculate the model predictions.
     some_model : callable
-        The model function, with a signature `some_model(params, x)`.
+        The model function
     params : np.ndarray
         The array of best-fit parameters for the model.
     cov_matrix : np.ndarray
         The covariance matrix of the fitted parameters.
+    args : tuple, optional
+        A tuple of additional fixed arguments (e.g., x-values) required by
+        `some_model`.
     epsilon : float, optional
         The small step size used for numerical differentiation (central
         difference method) to calculate the Jacobian.
@@ -33,8 +34,12 @@ def predict_with_error(prediction_points,
     calc_se : np.ndarray
         The standard error for each predicted value.
     """
+    
     num_params = len(params)
-    calc_values = some_model(params, prediction_points)
+    if args is None:
+        args = []
+
+    calc_values = some_model(params,*args)
 
     # If the covariance matrix is invalid, we can't propagate error.
     if np.any(np.isnan(cov_matrix)):
@@ -48,11 +53,11 @@ def predict_with_error(prediction_points,
     for i in range(num_params):
         params_plus = params.copy()
         params_plus[i] += epsilon
-        pred_plus = some_model(params_plus, prediction_points)
+        pred_plus = some_model(params_plus,*args)
 
         params_minus = params.copy()
         params_minus[i] -= epsilon
-        pred_minus = some_model(params_minus, prediction_points)
+        pred_minus = some_model(params_minus,*args)
 
         derivative = (pred_plus - pred_minus) / (2 * epsilon)
         J_pred[:, i] = derivative

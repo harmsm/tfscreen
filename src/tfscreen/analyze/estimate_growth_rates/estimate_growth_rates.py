@@ -86,6 +86,7 @@ def estimate_growth_rates(combined_df,
                           calibration_file,
                           k_fit_method="wls",
                           use_inferred_zero_point=True,
+                          genotype_k_shift=None,
                           pseudocount=1,
                           num_required=2,
                           iptg_out_growth_time=30,
@@ -114,6 +115,10 @@ def estimate_growth_rates(combined_df,
         'gls', 'glm', 'kf', 'ukf', 'ukf_lin', or 'nls'. Default is 'wls'.
     use_inferred_zero_point : bool, optional
         Whether to use the inferred zero time point in the fit. Default is True.
+    genotype_k_shift : numpy.ndarray, optional
+        1D array of genotype-specific growth rate effects (shape num_genotypes).
+        This is the additive *offset* on the growth rate relative to wildtype. 
+        This must match the order of the genotypes in ln_cfu etc. 
     pseudocount : int, optional
         Pseudocount to add to CFU values before taking the logarithm. 
         Default is 1.
@@ -181,6 +186,7 @@ def estimate_growth_rates(combined_df,
     processed = process_for_fit(combined_df=combined_df,
                                 sample_df=sample_df,
                                 calibration_dict=calibration_dict,
+                                genotype_k_shift=genotype_k_shift,
                                 pseudocount=pseudocount,
                                 iptg_out_growth_time=iptg_out_growth_time)
 
