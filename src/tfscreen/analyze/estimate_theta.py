@@ -1,6 +1,6 @@
 from tfscreen.calibration import (
     read_calibration,
-    get_wt_growth
+    get_wt_k
 )
 
 from tfscreen.fitting import (
@@ -234,7 +234,7 @@ def _multi_genotype_regression(y,
 
 
 def estimate_theta(df,
-                   calibration_file,
+                   calibration_data,
                    block_size=100,
                    method="nls"):
     """
@@ -246,7 +246,7 @@ def estimate_theta(df,
     ----------
     df : pandas.DataFrame
         genotype, k_est, k_std, iptg, marker, select
-    calibration_file : str or dict
+    calibration_data : str or dict
         Path to the calibration file or loaded calibration dictionary.
     block_size : int, default = 100
         break into blocks of block_size genotypes (each genotype is
@@ -268,7 +268,7 @@ def estimate_theta(df,
     # Work on a copy of the dataframe
     df = df.copy()
 
-    calibration_dict = read_calibration(calibration_file)
+    calibration_dict = read_calibration(calibration_data)
 
     # Get rid of nan
     df = df.loc[np.logical_not(np.isnan(df["k_est"])),:]
@@ -284,12 +284,12 @@ def estimate_theta(df,
     select = np.array(df["select"])
 
     # get wildtype growth rate under each of these conditions
-    k_wt, _ = get_wt_growth(marker=["none" for _ in range(len(iptg))],
-                            select=["none" for _ in range(len(iptg))],
-                            iptg=iptg,
-                            calibration_dict=calibration_dict,
-                            theta=None,
-                            calc_err=False)
+    k_wt, _ = get_wt_k(marker=["none" for _ in range(len(iptg))],
+                       select=["none" for _ in range(len(iptg))],
+                       iptg=iptg,
+                       calibration_data=calibration_dict,
+                       theta=None,
+                       calc_err=False)
 
 
     param_values = calibration_dict["param_values"]

@@ -1,6 +1,10 @@
 from tfscreen.util import read_dataframe
 from tfscreen.fitting import weighted_linear_regression
-from tfscreen.calibration import get_wt_growth
+from tfscreen.calibration import (
+    get_wt_k,
+    read_calibration
+)
+    
 
 import pandas as pd
 import numpy as np
@@ -48,7 +52,6 @@ def _count_df_to_arrays(df):
         If any of the required columns are missing from the input DataFrame.
     """
     
-
     required_cols = {
         "genotype",
         "sample",
@@ -226,10 +229,10 @@ def _build_time_zero(times,
         
     # Calculate how much the genotype grew during the IPTG outgrowth prior 
     # to selection.
-    pre_selection_k, _ = get_wt_growth(marker=np.array(sample_df["marker"]),
-                                             select=np.zeros(len(sample_df["select"]),dtype=int),
-                                             iptg=np.array(sample_df["iptg"]),
-                                             calibration_dict=calibration_dict)
+    pre_selection_k, _ = get_wt_k(marker=np.array(sample_df["marker"]),
+                                  select=np.zeros(len(sample_df["select"]),dtype=int),
+                                  iptg=np.array(sample_df["iptg"]),
+                                  calibration_data=calibration_dict)
 
     # no genotype_k_shift
     if genotype_k_shift is None:
@@ -296,10 +299,10 @@ def _get_k_guess_from_wt(sample_df,
     select = np.array(sample_df["select"])
     
     # Get guesses for growth rates from wildtype data
-    growth_rate_wt, _ = get_wt_growth(marker=marker,
-                                            select=select,
-                                            iptg=iptg,
-                                            calibration_dict=calibration_dict)
+    growth_rate_wt, _ = get_wt_k(marker=marker,
+                                 select=select,
+                                 iptg=iptg,
+                                 calibration_data=calibration_dict)
     growth_rate_wt = np.tile(growth_rate_wt,num_genotypes)
 
     return growth_rate_wt
@@ -307,7 +310,7 @@ def _get_k_guess_from_wt(sample_df,
 
 def process_for_fit(combined_df,
                     sample_df,
-                    calibration_dict,
+                    calibration_data,
                     genotype_k_shift=None,
                     pseudocount=1,
                     iptg_out_growth_time=30):
@@ -340,6 +343,8 @@ def process_for_fit(combined_df,
     sample_df : str
         sample dataframe. This dataframe should have columns "marker", "select"
         and "iptg" and be indexed by 'sample' (replicate|marker|select|iptg)
+    calibration_data : str or dict
+        calibration dictionary or string pointing to path to calibration file
     genotype_k_shift : numpy.ndarray, optional
         1D array of genotype-specific growth rate effects (shape num_genotypes).
         This is the additive *offset* on the growth rate relative to wildtype. 
@@ -392,6 +397,7 @@ def process_for_fit(combined_df,
 
     combined_df = read_dataframe(combined_df)
     sample_df = read_dataframe(sample_df)
+    calibration_dict = read_calibration(calibration_data)
 
     # Convert the dataframe into a collection of numpy arrays
     _results = _count_df_to_arrays(combined_df)

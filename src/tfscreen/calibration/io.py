@@ -27,6 +27,12 @@ def read_calibration(json_file):
 
     calibration_dict["cov_matrix"] = np.array(calibration_dict["cov_matrix"])
     calibration_dict["param_values"] = np.array(calibration_dict["param_values"])
+    
+    # Build param_dict, a convenient dictionary for looking up paramter values
+    param_dict = {}
+    for i, p in enumerate(calibration_dict["param_names"]):
+        param_dict[p] = calibration_dict["param_values"][i]
+    calibration_dict["param_dict"] = param_dict
 
     return calibration_dict
 
@@ -57,6 +63,11 @@ def write_calibration(calibration_dict,
             cov_list[-1].append(float(cov[i,j]))
 
     calibration_dict["cov_matrix"] = cov_list
+
+    # Remove the param_dict attribute for consistency. Parameter values are 
+    # stored **only** in param_values. 
+    if "param_dict" in calibration_dict:
+        calibration_dict.pop("param_dict")
 
     with open(json_file,'w') as f:
         json.dump(calibration_dict,f,indent=2,sort_keys=True)

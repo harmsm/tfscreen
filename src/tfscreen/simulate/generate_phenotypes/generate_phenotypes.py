@@ -2,7 +2,7 @@
 Functions for generating phenotypes from mutant libraries and ensemble data.
 """
 
-from tfscreen.calibration import get_wt_growth
+from tfscreen.calibration import get_wt_k
 from tfscreen.util import read_dataframe
 
 import pandas as pd
@@ -160,11 +160,11 @@ def generate_phenotypes(genotype_df,
     no_select = np.zeros(len(iptg),dtype=int)
 
     # Calculate wildtype growth rate as a function of IPTG
-    no_marker_no_select, _ = get_wt_growth(
+    no_marker_no_select, _ = get_wt_k(
         marker=no_marker,
         select=no_select,
         iptg=iptg,
-        calibration_dict=calibration_dict
+        calibration_data=calibration_dict
     )
 
     # Figure out number of points to add and number of molecular species
@@ -203,21 +203,21 @@ def generate_phenotypes(genotype_df,
         obs = obs_fcn(genotype_ddG)
 
         # Calculate growth rate with marker but no selection
-        marker_growth_rate, _ = get_wt_growth(
+        marker_growth_rate, _ = get_wt_k(
             marker=marker,
             select=no_select,
             iptg=iptg,
             theta=obs,
-            calibration_dict=calibration_dict
+            calibration_data=calibration_dict
         )
         
         # Predict growth with marker + selection (i.e., the real growth rate)
-        overall_growth_rate, _ = get_wt_growth(
+        overall_growth_rate, _ = get_wt_k(
             marker=marker,
             select=select,
             iptg=iptg,
             theta=obs,
-            calibration_dict=calibration_dict
+            calibration_data=calibration_dict
         )
         
         # The base, marker, and overall growth rates are all perturbed by the 

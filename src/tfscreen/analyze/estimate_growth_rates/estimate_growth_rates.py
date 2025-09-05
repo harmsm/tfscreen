@@ -83,7 +83,7 @@ _ALLOWED_K_FITTERS = {
 
 def estimate_growth_rates(combined_df,
                           sample_df,
-                          calibration_file,
+                          calibration_data,
                           k_fit_method="wls",
                           use_inferred_zero_point=True,
                           genotype_k_shift=None,
@@ -108,7 +108,7 @@ def estimate_growth_rates(combined_df,
         Dataframe containing information about the samples. This function assumes
         it is indexed by the values seen in the "sample" column of the 
         combined_df. 
-    calibration_file : str or dict
+    calibration_data : str or dict
         Path to the calibration file or loaded calibration dictionary.
     k_fit_method : str, optional
         Method to use for fitting growth rates. Must be one of 'ols', 'wls', 
@@ -164,7 +164,7 @@ def estimate_growth_rates(combined_df,
         k_fitter_kwargs = {}
     
     # Load the calibration dictionary
-    calibration_dict = read_calibration(calibration_file)
+    calibration_dict = read_calibration(calibration_data)
 
     # Load the combined and sample data frames
     combined_df = read_dataframe(combined_df)
@@ -185,7 +185,7 @@ def estimate_growth_rates(combined_df,
     # genotypes (1D), etc.
     processed = process_for_fit(combined_df=combined_df,
                                 sample_df=sample_df,
-                                calibration_dict=calibration_dict,
+                                calibration_data=calibration_dict,
                                 genotype_k_shift=genotype_k_shift,
                                 pseudocount=pseudocount,
                                 iptg_out_growth_time=iptg_out_growth_time)

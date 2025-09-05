@@ -2,7 +2,7 @@
 from tfscreen.fitting import matrix_wls
 from tfscreen.calibration import build_calibration_dict
 from tfscreen.calibration import write_calibration
-from tfscreen.calibration import get_wt_growth
+from tfscreen.calibration import get_wt_k
 
 from tfscreen.util import read_dataframe
 
@@ -144,10 +144,10 @@ def _plot_k_vs_iptg(k_df,
             sim_marker = np.repeat(m,sim_iptg.shape[0])
             sim_select = np.repeat(s,sim_iptg.shape[0])
             
-            pred, _ = get_wt_growth(sim_marker,
-                                          sim_select,
-                                          sim_iptg,
-                                          calibration_dict)
+            pred, _ = get_wt_k(sim_marker,
+                               sim_select,
+                               sim_iptg,
+                               calibration_dict)
             ax.plot(sim_iptg,pred,'-',lw=2,color=COLOR_DICT[series],label=label)
 
 
@@ -180,10 +180,10 @@ def _plot_k_pred_corr(k_df,
     k_est = np.array(k_df["k_est"])
     k_std = np.array(k_df["k_std"])
 
-    k_calc, k_calc_std = get_wt_growth(k_df["marker"],
-                                             k_df["select"],
-                                             k_df["iptg"],
-                                             calibration_dict)
+    k_calc, k_calc_std = get_wt_k(k_df["marker"],
+                                  k_df["select"],
+                                  k_df["iptg"],
+                                  calibration_dict)
 
     edgecolor = [COLOR_DICT[k] for k in zip(k_df["marker"],k_df["select"])]
     ax.scatter(k_calc,
@@ -344,7 +344,7 @@ def _get_growth_rates(df,
 
     return A0_df, k_df
 
-def calibrate(calibration_file,
+def calibrate(calibration_expt_data,
               output_root,
               K,
               n,
@@ -354,7 +354,7 @@ def calibrate(calibration_file,
     """
     Parameters
     ----------
-    calibration_file : pd.DataFrame or str
+    calibration_expt_data : pd.DataFrame or str
         dataframe or path to spreadsheet with 
     output_root : str
         prefix to use for writing out calibration files
@@ -389,7 +389,7 @@ def calibrate(calibration_file,
         ax_k_pred_corr = None
 
     # read in growth file
-    df = read_dataframe(calibration_file)
+    df = read_dataframe(calibration_expt_data)
 
     # Extract growth rates
     A0_df, k_df = _get_growth_rates(df,

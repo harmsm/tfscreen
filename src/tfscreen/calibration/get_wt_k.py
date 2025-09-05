@@ -1,14 +1,17 @@
-from tfscreen.calibration import build_design_matrix
+
+from tfscreen.calibration import (
+    build_design_matrix,
+    read_calibration
+)
 
 import numpy as np
 
-
-def get_wt_growth(marker,
-                  select,
-                  iptg,
-                  calibration_dict,
-                  theta=None,
-                  calc_err=True):
+def get_wt_k(marker,
+             select,
+             iptg,
+             calibration_data,
+             theta=None,
+             calc_err=True):
     """
     Get the growth rate of a wildtype clone under the conditions specified 
     using the model stored in calibration_dict.
@@ -21,8 +24,9 @@ def get_wt_growth(marker,
         1D array of selection state for each condition 
     iptg : np.ndarray
         1D array of iptg concentration for each condition
-    calibration_dict : dict
-        a dictionary holding calibration values
+    calibration_data : dict or str
+        a dictionary holding calibration values or the path to the calibration
+        json file
     theta : np.ndarray, default=None
         1D array of theta values over the conditions. if None, calculate theta
         from the K and n values in the calibration dictionary
@@ -34,6 +38,8 @@ def get_wt_growth(marker,
     y_std : np.ndarray
         standard error on the predicted growth rates
     """
+
+    calibration_dict = read_calibration(calibration_data)
 
     param_names, X_pred = build_design_matrix(marker=marker,
                                               select=select,

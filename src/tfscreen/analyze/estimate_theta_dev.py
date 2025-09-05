@@ -2,7 +2,7 @@ from tfscreen.util import read_dataframe
 
 from tfscreen.calibration import (
     read_calibration,
-    get_wt_growth,
+    get_wt_k,
     get_wt_theta
 )
 
@@ -196,10 +196,10 @@ def estimate_theta(df,
     
     # Load calibration dictionary
     calibration_dict = read_calibration(calibration_file)
-    k_wt, _ = get_wt_growth(marker=["none" for _ in range(len(iptg))],
+    k_wt, _ = get_wt_k(marker=["none" for _ in range(len(iptg))],
                             select=["none" for _ in range(len(iptg))],
                             iptg=iptg,
-                            calibration_dict=calibration_dict,
+                            calibration_data=calibration_dict,
                             theta=None,
                             calc_err=False)
 
