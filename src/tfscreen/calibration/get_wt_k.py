@@ -14,7 +14,7 @@ def get_wt_k(marker,
              calc_err=True):
     """
     Get the growth rate of a wildtype clone under the conditions specified 
-    using the model stored in calibration_dict.
+    using the model stored in calibration_data.
 
     Parameters
     ----------

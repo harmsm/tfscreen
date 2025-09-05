@@ -9,7 +9,8 @@ def get_slopes(marker,
                select,
                calibration_data):
     """
-    Get the slope of k vs. theta for combinations of marker and selection.
+    Get the slope of k vs. theta for combinations of marker and selection 
+    using the model stored in calibration_data.
 
     Parameters
     ----------
@@ -18,8 +19,14 @@ def get_slopes(marker,
         (slope is zero)
     select : np.ndarray
         1D array of selection state for each condition 
+    calibration_data : dict or str
+        a dictionary holding calibration values or the path to the calibration
+        json file
     
     Returns
+    -------
+    np.ndarray
+        1D array of the slope of k vs. theta
     """
 
     calibration_dict = read_calibration(calibration_data)
