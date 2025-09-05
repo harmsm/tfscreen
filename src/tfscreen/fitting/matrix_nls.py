@@ -56,6 +56,9 @@ def matrix_nls(X,
     J = fit_result.jac
     num_obs, num_param = J.shape
     dof = num_obs - num_param
+    if dof < 0:
+        dof = 1
+
     chi2_red = np.sum(fit_result.fun**2) / dof
     
     try:

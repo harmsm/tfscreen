@@ -1,16 +1,37 @@
 from tfscreen.calibration import (
     read_calibration,
-    predict_growth_rate
+    get_wt_growth
 )
 
 from tfscreen.fitting import (
     matrix_wls,
-    matrix_nls
+    run_least_squares,
 )
 
 import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
+
+def theta_model(params, X):
+    """
+    Calculate predicted values from a linear model.
+
+    This model is defined by `y = X @ params`, where `X` is the design matrix
+    and `params` is the vector of model parameters.
+
+    Parameters
+    ----------
+    params : np.ndarray
+        1D array of model parameters.
+    X : np.ndarray
+        2D design matrix, where rows are observations and columns are parameters.
+
+    Returns
+    -------
+    np.ndarray
+        1D array of predicted `y` values.
+    """
+    return X @ params
 
 def _chunk_by_group(arr, max_chunk_size):
     """
@@ -174,17 +195,19 @@ def _multi_genotype_regression(y,
                                          y,
                                          weights)
     elif method == "nls":
-        all_parameters, cov = matrix_nls(X,
-                                         y,
-                                         weights,
-                                         guesses,
-                                         lower_bounds,
-                                         upper_bounds)
+
+        all_parameters, std_errors, cov = run_least_squares(theta_model,
+                                                            y,
+                                                            1/np.sqrt(weights),
+                                                            guesses,
+                                                            lower_bounds=lower_bounds,
+                                                            upper_bounds=upper_bounds,
+                                                            args=(X,))
 
     else:
         err = f"method '{method}' not recognized.\n"
         raise ValueError(err)
-        
+
     # Standard errors are the diagonal of the covariance matrix
     with np.errstate(invalid='ignore'): 
         all_std_errors = np.sqrt(np.diag(cov))
@@ -261,11 +284,13 @@ def estimate_theta(df,
     select = np.array(df["select"])
 
     # get wildtype growth rate under each of these conditions
-    k_wt, _ = predict_growth_rate(marker=np.array(["none" for _ in range(len(marker))]),
-                                  select=select,
-                                  iptg=iptg,
-                                  calibration_dict=calibration_dict,
-                                  calc_err=False)
+    k_wt, _ = get_wt_growth(marker=["none" for _ in range(len(iptg))],
+                            select=["none" for _ in range(len(iptg))],
+                            iptg=iptg,
+                            calibration_dict=calibration_dict,
+                            theta=None,
+                            calc_err=False)
+
 
     param_values = calibration_dict["param_values"]
     param_idx_dict = dict([(p,i) for i,p in enumerate(calibration_dict["param_names"])])
@@ -309,7 +334,7 @@ def estimate_theta(df,
                  "iptg":[],
                  "theta_est":[],
                  "theta_std":[]}
-    
+
     for i, chunk in enumerate(tqdm(chunks)):
 
         # values to fit against in this chunk

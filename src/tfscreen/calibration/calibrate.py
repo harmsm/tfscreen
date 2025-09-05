@@ -1,8 +1,8 @@
 
 from tfscreen.fitting import matrix_wls
-from tfscreen.calibration import perform_calibration
+from tfscreen.calibration import build_calibration_dict
 from tfscreen.calibration import write_calibration
-from tfscreen.calibration import predict_growth_rate
+from tfscreen.calibration import get_wt_growth
 
 from tfscreen.util import read_dataframe
 
@@ -144,7 +144,7 @@ def _plot_k_vs_iptg(k_df,
             sim_marker = np.repeat(m,sim_iptg.shape[0])
             sim_select = np.repeat(s,sim_iptg.shape[0])
             
-            pred, _ = predict_growth_rate(sim_marker,
+            pred, _ = get_wt_growth(sim_marker,
                                           sim_select,
                                           sim_iptg,
                                           calibration_dict)
@@ -180,7 +180,7 @@ def _plot_k_pred_corr(k_df,
     k_est = np.array(k_df["k_est"])
     k_std = np.array(k_df["k_std"])
 
-    k_calc, k_calc_std = predict_growth_rate(k_df["marker"],
+    k_calc, k_calc_std = get_wt_growth(k_df["marker"],
                                              k_df["select"],
                                              k_df["iptg"],
                                              calibration_dict)
@@ -398,10 +398,10 @@ def calibrate(calibration_file,
                                     ax_hist=ax_hist)
 
     # Do calibration
-    calibration_dict = perform_calibration(k_df,
-                                           K=K,
-                                           n=n,
-                                           log_iptg_offset=log_iptg_offset)
+    calibration_dict = build_calibration_dict(k_df,
+                                              K=K,
+                                              n=n,
+                                              log_iptg_offset=log_iptg_offset)
 
     # Write out calibration file
     calibration_file = f"{output_root}.json"

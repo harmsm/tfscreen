@@ -35,7 +35,7 @@ def hill_model(params, x):
     """
     logK, n, left_base, right_base = params
 
-    with np.errstate(all='ignore'):
+    with np.errstate(invalid='ignore'):
         K = np.exp(logK)
         K_to_n = np.power(K, n)
         x_to_n = np.power(x, n)
@@ -215,10 +215,11 @@ def estimate_hill(df,
         param_out["right_base_std"].append(std_err[3])
 
         # Predict hill model (with error) for all iptg in smooth_iptg
-        hill_est, hill_std = predict_with_error(smooth_iptg,
-                                                hill_model,
+        hill_est, hill_std = predict_with_error(hill_model,
                                                 param,
-                                                cov_matrix)
+                                                cov_matrix,
+                                                args=[smooth_iptg])
+
 
         # Record results
         pred_out["genotype"].extend(np.repeat(genotypes[i],smooth_iptg.size))

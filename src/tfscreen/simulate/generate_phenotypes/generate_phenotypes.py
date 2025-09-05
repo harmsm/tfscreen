@@ -2,7 +2,7 @@
 Functions for generating phenotypes from mutant libraries and ensemble data.
 """
 
-from tfscreen.calibration import predict_growth_rate
+from tfscreen.calibration import get_wt_growth
 from tfscreen.util import read_dataframe
 
 import pandas as pd
@@ -160,7 +160,7 @@ def generate_phenotypes(genotype_df,
     no_select = np.zeros(len(iptg),dtype=int)
 
     # Calculate wildtype growth rate as a function of IPTG
-    no_marker_no_select, _ = predict_growth_rate(
+    no_marker_no_select, _ = get_wt_growth(
         marker=no_marker,
         select=no_select,
         iptg=iptg,
@@ -203,7 +203,7 @@ def generate_phenotypes(genotype_df,
         obs = obs_fcn(genotype_ddG)
 
         # Calculate growth rate with marker but no selection
-        marker_growth_rate, _ = predict_growth_rate(
+        marker_growth_rate, _ = get_wt_growth(
             marker=marker,
             select=no_select,
             iptg=iptg,
@@ -212,7 +212,7 @@ def generate_phenotypes(genotype_df,
         )
         
         # Predict growth with marker + selection (i.e., the real growth rate)
-        overall_growth_rate, _ = predict_growth_rate(
+        overall_growth_rate, _ = get_wt_growth(
             marker=marker,
             select=select,
             iptg=iptg,
