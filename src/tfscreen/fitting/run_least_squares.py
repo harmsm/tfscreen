@@ -35,7 +35,8 @@ def _weighted_residuals(params, some_model, obs, obs_std, args):
     calc = some_model(params, *args)
 
     # Calculate weighted residuals
-    residuals = (obs - calc) / obs_std
+    residuals = ((obs - calc) / obs_std).flatten()
+    
 
     # Replace any NaNs/Infs from missing data or math errors with 0.0,
     # so they do not contribute to the cost function.

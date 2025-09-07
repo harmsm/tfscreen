@@ -59,7 +59,7 @@ def xy_corr(
     final_scatter_kwargs = copy.deepcopy(DEFAULT_SCATTER_KWARGS)
     if scatter_kwargs is not None:
         for k in scatter_kwargs:
-            final_scatter_kwargs[k] = scatter_kwargs[k]
+            final_scatter_kwargs[k] = copy.deepcopy(scatter_kwargs[k])
     
     ax_min, ax_max = get_ax_limits(x_values=x_values,
                                    y_values=y_values,
