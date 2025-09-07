@@ -1,27 +1,28 @@
 
 from tfscreen.util import (
-    read_dataframe
+    read_dataframe,
+    df_to_arrays
 )
 
 from tfscreen.calibration import read_calibration
+from tfscreen.analyze import estimate_time0
 
-from .process_for_fit import process_for_fit
-from .ols import get_growth_rates_ols
-from .wls import get_growth_rates_wls
-from .kf import get_growth_rates_kf
-from .ukf import get_growth_rates_ukf
-from .ukf_lin import get_growth_rates_ukf_lin
-from .gls import get_growth_rates_gls
-from .glm import get_growth_rates_glm
-from .gee import get_growth_rates_gee
-from .nls import get_growth_rates_nls
+from tfscreen.analyze.get_growth_rates import (
+    get_growth_rates_ols,
+    get_growth_rates_wls,
+    get_growth_rates_kf,
+    get_growth_rates_ukf,
+    get_growth_rates_ukf_lin,
+    get_growth_rates_gls,
+    get_growth_rates_glm,
+    get_growth_rates_gee,
+    get_growth_rates_nls
+)
 
 import numpy as np
 import pandas as pd
 
-# k fitters with list of positional arguments to pass. The names of these 
-# positional arguments match the keys in the output dictionary from 
-# process_for_fit.
+# k fitters with list of positional arguments to pass. 
 
 _ALLOWED_K_FITTERS = {
     "ols":{
@@ -55,7 +56,7 @@ _ALLOWED_K_FITTERS = {
         "args":["times",
                 "ln_cfu",
                 "ln_cfu_var",
-                "growth_rate_wt"],
+                "growth_rate_wls"],
     },
     "ukf":{
         "fcn":get_growth_rates_ukf,
@@ -86,10 +87,10 @@ def estimate_growth_rates(combined_df,
                           calibration_data,
                           k_fit_method="wls",
                           use_inferred_zero_point=True,
-                          genotype_k_shift=None,
                           pseudocount=1,
                           num_required=2,
                           iptg_out_growth_time=30,
+                          num_time0_iterations=4,
                           k_fitter_kwargs=None):
     """
     Estimate growth rates for each genotype in each sample.
@@ -115,10 +116,6 @@ def estimate_growth_rates(combined_df,
         'gls', 'glm', 'kf', 'ukf', 'ukf_lin', or 'nls'. Default is 'wls'.
     use_inferred_zero_point : bool, optional
         Whether to use the inferred zero time point in the fit. Default is True.
-    genotype_k_shift : numpy.ndarray, optional
-        1D array of genotype-specific growth rate effects (shape num_genotypes).
-        This is the additive *offset* on the growth rate relative to wildtype. 
-        This must match the order of the genotypes in ln_cfu etc. 
     pseudocount : int, optional
         Pseudocount to add to CFU values before taking the logarithm. 
         Default is 1.
@@ -183,16 +180,30 @@ def estimate_growth_rates(combined_df,
     # relevant) time as their secondary axis. These 1D and 2D arrays include 
     # times (2D), cfu (2D), cfu_var (2D), ln_cfu (2D), ln_cfu_var (2D), 
     # genotypes (1D), etc.
-    processed = process_for_fit(combined_df=combined_df,
-                                sample_df=sample_df,
-                                calibration_data=calibration_dict,
-                                genotype_k_shift=genotype_k_shift,
-                                pseudocount=pseudocount,
-                                iptg_out_growth_time=iptg_out_growth_time)
-
+    processed = df_to_arrays(combined_df,
+                             sample_df,
+                             pseudocount=pseudocount)
+    
     genotypes = processed["genotypes"]
     samples = processed["samples"]
 
+    # Get zero points
+    _, times, ln_cfu, ln_cfu_var = estimate_time0(
+        times=processed["times"],
+        ln_cfu=processed["ln_cfu"],
+        ln_cfu_var=processed["ln_cfu_var"],
+        sample_df=sample_df,
+        calibration_data=calibration_data,
+        iptg_out_growth_time=iptg_out_growth_time,
+        num_iterations=num_time0_iterations
+    )
+
+    processed["times"] = times
+    processed["ln_cfu"] = ln_cfu
+    processed["ln_cfu_var"] = ln_cfu_var
+    processed["cfu"] = np.exp(ln_cfu)
+    processed["cfu_var"] = ln_cfu_var*(processed["cfu"]**2)
+    
     # Get rid of data with too few counts across time points to fit
     sequence_counts = processed["sequence_counts"]
     less_than_required = np.sum(sequence_counts > 0,axis=1) < num_required
@@ -202,6 +213,14 @@ def estimate_growth_rates(combined_df,
     k_fit_args_filled = []
     for a in k_fit_args:
         
+        # Do wls fit if requested
+        if a in ["growth_rate_wls","growth_rate_err_wls"]:
+            wls_df, _ = get_growth_rates_wls(times,
+                                             ln_cfu,
+                                             ln_cfu_var)
+            processed["growth_rate_wls"] = wls_df["k_est"].values
+            processed["growth_rate_err_wls"] = wls_df["k_std"].values
+
         v = processed[a]
 
         # Only keep entries with enough counts

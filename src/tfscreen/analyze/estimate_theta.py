@@ -1,6 +1,7 @@
 from tfscreen.calibration import (
     read_calibration,
-    get_wt_k
+    get_wt_k,
+    get_slopes
 )
 
 from tfscreen.fitting import (
@@ -156,7 +157,7 @@ def _multi_genotype_regression(y,
                                       dtype=int))
         genotype_iptg.append(unique_iptg)
 
-        guesses.append(0.01)
+        guesses.append(-0.01) # initial guess for the global mutation effect on growth rate
         lower_bounds.append(-np.inf)
         upper_bounds.append(np.inf)
         
@@ -283,32 +284,18 @@ def estimate_theta(df,
     marker = np.array(df["marker"])
     select = np.array(df["select"])
 
-    # get wildtype growth rate under each of these conditions
-    k_wt, _ = get_wt_k(marker=["none" for _ in range(len(iptg))],
-                       select=["none" for _ in range(len(iptg))],
-                       iptg=iptg,
-                       calibration_data=calibration_dict,
-                       theta=None,
-                       calc_err=False)
 
-
-    param_values = calibration_dict["param_values"]
-    param_idx_dict = dict([(p,i) for i,p in enumerate(calibration_dict["param_names"])])
-
-    intercepts = []
-    slopes = []
-    for m, s in zip(df["marker"],df["select"]):
-        b_idx = param_idx_dict[f"{m}|{s}|b"]
-        intercepts.append(param_values[b_idx])
-        
-        m_idx = param_idx_dict[f"{m}|{s}|m"]
-        slopes.append(param_values[m_idx])
-
-    intercepts = np.array(intercepts)
-    slopes = np.array(slopes)
+    k_wt0, _  = get_wt_k(marker=marker,
+                         select=select,
+                         iptg=iptg,
+                         calibration_data=calibration_dict,
+                         theta=np.zeros(len(select)),
+                         calc_err=False)
     
-    # Growth for wildtype with zero occupancy operator under these conditions
-    k_wt0 = k_wt + intercepts 
+    slopes = get_slopes(marker=marker,
+                        select=select,
+                        calibration_data=calibration_dict)
+
     
     # y is the change in growth rate due to the global effect of the mutation
     # and the shift on occupancy away from theta = 0. 
