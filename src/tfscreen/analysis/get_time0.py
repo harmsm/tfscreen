@@ -1,5 +1,5 @@
 from tfscreen.calibration import get_wt_k
-from tfscreen.analyze.get_growth_rates.wls import get_growth_rates_wls
+from tfscreen.analysis.get_growth_rates.wls import get_growth_rates_wls
 
 import numpy as np
 import pandas as pd
@@ -132,13 +132,13 @@ def _estimate_lnA0(times,
     return lnA0_est, lnA0_var, param_df
 
 
-def estimate_time0(times,
-                   ln_cfu,
-                   ln_cfu_var,
-                   sample_df,
-                   calibration_data,
-                   pre_select_time=30,
-                   num_iterations=3):
+def get_time0(times,
+              ln_cfu,
+              ln_cfu_var,
+              sample_df,
+              calibration_data,
+              pre_select_time=30,
+              num_iterations=3):
     """
     Independently estimate the growth rates of each genotype in each sample, 
     then use these fits to estimate the shared initial ln(CFU) for each

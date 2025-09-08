@@ -1,11 +1,10 @@
 
-from tfscreen.util import (
-    df_to_arrays,
-    argsort_genotypes,
-    read_dataframe
-)
+from tfscreen.util import df_to_arrays
+from tfscreen.util import argsort_genotypes
+from tfscreen.util import read_dataframe
+
 from tfscreen.calibration import read_calibration
-from tfscreen.analyze import estimate_time0
+from tfscreen.analysis import get_time0
 
 import numpy as np
 import pandas as pd
@@ -14,7 +13,6 @@ def _load_replicate(combined_df,
                     sample_df,
                     calibration_data,
                     pseudocount,
-                    num_required,
                     pre_select_time):
     """
     Load and process data for a single replicate.
@@ -88,7 +86,7 @@ def _load_replicate(combined_df,
         
     # Estimate the starting ln_cfu and global effect of each genotype on
     # growth rate. 
-    time0_df, _, _, _ = estimate_time0(
+    time0_df, _, _, _ = get_time0(
         times,
         ln_cfu,
         ln_cfu_var,
@@ -102,19 +100,20 @@ def _load_replicate(combined_df,
     to_regress_df["lnA_pre0_guess"] = time0_df.loc[genotype,"lnA_pre0_est"].values
     to_regress_df["k_shift_guess"] = time0_df.loc[genotype,"k_shift"].values
 
-    # Find seq/condition rows that had at least num_required time points with
-    # more than zero reads. We do this here rather than before the estimate_time0
-    # call because estimate_time0 assumes observations for all conditions. 
-    less_than_required = np.sum(sequence_counts > 0,axis=1) < num_required
-    keep_mask = np.logical_not(less_than_required)
-
-    # Drop rows with too few time points that have enough reads
-    times = times[keep_mask,:]
-    ln_cfu = ln_cfu[keep_mask,:]
-    ln_cfu_var = ln_cfu_var[keep_mask,:]
-    to_regress_df = to_regress_df.loc[keep_mask,:]
-    to_regress_df.index = np.arange(len(to_regress_df),dtype=int)
-
+    # Determine which genotypes have enough time points with non-zero counts to
+    # be included in the regression. The rule is that at least one condition 
+    # must have two time points with counts. This allows us to estimate the 
+    # growth rate for at least that sample, and thus A0. If A0 can be estimated
+    # for at least one condition, it constrains growth rate estimates for that
+    # genotype in all conditions.
+    num_samples = len(sample_df)
+    num_t_with_counts = np.sum(sequence_counts > 0,axis=1)
+    new_shape = (sequence_counts.shape[0]//num_samples, num_samples)
+    genotype_row_t_counts = num_t_with_counts.reshape(new_shape)
+    genotype_enough_obs = np.any(genotype_row_t_counts > 2,axis=1)
+    enough_obs_df = pd.DataFrame({"enough_obs":genotype_enough_obs},
+                                 index=pd.unique(genotype))
+    to_regress_df["enough_obs"] = enough_obs_df.loc[genotype,"enough_obs"].values
 
     return to_regress_df, times, ln_cfu, ln_cfu_var
 
@@ -123,7 +122,6 @@ def counts_to_lncfu(combined_df,
                     sample_df,
                     calibration_data,
                     pseudocount,
-                    num_required,
                     pre_select_time):
     """
     Use combined and sample dataframe to calculate ln(cfu/mL) array for
@@ -145,9 +143,6 @@ def counts_to_lncfu(combined_df,
         Path to or dictionary containing calibration data.
     pseudocount : float
         Pseudocount added to sequence counts to avoid division by zero.
-    num_required : int
-        Minimum number of time points with more than zero reads required for a
-        genotype.
     pre_select_time : float
         length of time before selection is applied (used to estimate initial
         ln_cfu values). Units must match the units of the "time" column in the
@@ -172,6 +167,11 @@ def counts_to_lncfu(combined_df,
     # Read dataframes
     combined_df = read_dataframe(combined_df)
     sample_df = read_dataframe(sample_df)
+
+    # Get all unique genotypes in canonical sorted order
+    genotypes = pd.unique(combined_df["genotype"])
+    idx = argsort_genotypes(genotypes)
+    genotype_order = genotypes[idx]
     
     # Make sure sample_df is indexed by sample if it isn't already
     if sample_df.index.name != "sample":
@@ -210,7 +210,6 @@ def counts_to_lncfu(combined_df,
             rep_sample_df,
             calibration_data,
             pseudocount,
-            num_required,
             pre_select_time
         )
 
@@ -226,11 +225,6 @@ def counts_to_lncfu(combined_df,
     ln_cfu = np.concat(ln_cfu)
     ln_cfu_var = np.concat(ln_cfu_var)
     
-    # Get all unique genotypes in canonical sorted order
-    genotypes = pd.unique(to_regress_df["genotype"])
-    idx = argsort_genotypes(genotypes)
-    genotype_order = genotypes[idx]
-
     # Convert genotype to categorical to allow sort
     to_regress_df["genotype"] = pd.Categorical(to_regress_df["genotype"],
                                                categories=genotype_order,

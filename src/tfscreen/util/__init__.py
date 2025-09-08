@@ -1,3 +1,4 @@
+
 from .read_dataframe import (
     read_dataframe
 )
@@ -10,6 +11,6 @@ from .argsort_genotypes import (
     argsort_genotypes,
 )
 
-from .counts_to_lncfu import (
-    counts_to_lncfu,
+from .chunk_by_group import (
+    chunk_by_group,
 )

@@ -9,6 +9,10 @@ from tfscreen.fitting import (
     run_least_squares,
 )
 
+from tfscreen.util import (
+    chunk_by_group,
+)
+
 import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
@@ -33,63 +37,6 @@ def theta_model(params, X):
         1D array of predicted `y` values.
     """
     return X @ params
-
-def _chunk_by_group(arr, max_chunk_size):
-    """
-    Splits an array into chunks of max size N without breaking groups of
-    identical values. Returns lists of numpy arrays of indexes for the chunks.
-    It assumes arr values are sorted by value, that values can repeat, but
-    that the number of each value is different. 
-    
-    For example: [0,0,0,1,1,2,2,2,2]
-
-    Parameters
-    ----------
-    arr : np.ndarray
-        A 1D sorted array with repeating values.
-    max_chunk_size : int
-        the maximum size for any chunk.
-
-    Returns
-    -------
-    chunks : list
-        A list of NumPy arrays with indexes representing the chunks.
-    """
-    
-    if not isinstance(arr, np.ndarray):
-        arr = np.array(arr)
-
-    max_chunk_size = int(max_chunk_size)
-    if max_chunk_size < 1:
-        err = "max_chunk_size must be 1 or greater.\n"
-        raise ValueError(err)
-
-    # Find the start of each new group of numbers.
-    group_starts = np.where(arr[:-1] != arr[1:])[0] + 1
-
-    # Create a full list of boundaries including the start (0) and end of the
-    # array. 
-    boundaries = np.concatenate(([0], group_starts, [len(arr)]))
-
-    # Iterate through boundaries to find split points.
-    split_indices = []
-    current_chunk_start = 0  
-    for i in range(1, len(boundaries)):
-        
-        # If the current group's end minus the chunk's start exceeds
-        # max_chunk_size...
-        if boundaries[i] - boundaries[current_chunk_start] > max_chunk_size:
-            
-            # ...then we must split at the previous group's end.
-            split_point = boundaries[i-1]
-            split_indices.append(split_point)
-            
-            # The new chunk will start from that split point.
-            current_chunk_start = i-1
-            
-    # Return indexes split into chunks
-    indexes = np.arange(len(arr),dtype=int)
-    return np.split(indexes, split_indices)
 
                     
 def _multi_genotype_regression(y,
@@ -234,14 +181,14 @@ def _multi_genotype_regression(y,
     return out_genotypes, out_mut_est, out_mut_std, out_iptg, out_theta_est, out_theta_std
 
 
-def estimate_theta(df,
-                   calibration_data,
-                   block_size=100,
-                   method="nls"):
+def growth_to_theta(df,
+                    calibration_data,
+                    block_size=100,
+                    method="nls"):
     """
     This function estimates the global effect of each mutation on growth, as 
     well as the fractional occupancy of the binding site across all iptg 
-    conditions. 
+    conditions, given the estimated growth rates for each genotype and condition.
 
     Parameters
     ----------
@@ -311,7 +258,7 @@ def estimate_theta(df,
     genotypes_as_idx = np.array([genotype_to_idx[g] for g in genotypes],dtype=int)
 
     # Break into chunks governed by block_size
-    chunks = _chunk_by_group(genotypes_as_idx,block_size)
+    chunks = chunk_by_group(genotypes_as_idx,block_size)
 
     # Prepare output
     growth_out = {"genotype":[],

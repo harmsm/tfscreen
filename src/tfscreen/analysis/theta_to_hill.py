@@ -110,7 +110,7 @@ def fit_hill_model(theta_est, theta_std, conc, hill_guess=2.0):
     )
 
 
-def estimate_hill(df,
+def theta_to_hill(df,
                   left_log_extend=5,
                   right_log_extend=1,
                   num_smooth_steps=100):
