@@ -5,9 +5,9 @@ from tfscreen.util import (
 )
 
 from tfscreen.calibration import read_calibration
-from tfscreen.analyze import estimate_time0
+from tfscreen.analysis import get_time0
 
-from tfscreen.analyze.get_growth_rates import (
+from tfscreen.analysis.get_growth_rates import (
     get_growth_rates_ols,
     get_growth_rates_wls,
     get_growth_rates_kf,
@@ -82,18 +82,19 @@ _ALLOWED_K_FITTERS = {
     }
 }
 
-def estimate_growth_rates(combined_df,
-                          sample_df,
-                          calibration_data,
-                          k_fit_method="wls",
-                          use_inferred_zero_point=True,
-                          pseudocount=1,
-                          num_required=2,
-                          iptg_out_growth_time=30,
-                          num_time0_iterations=4,
-                          k_fitter_kwargs=None):
+def counts_to_growth(combined_df,
+                     sample_df,
+                     calibration_data,
+                     k_fit_method="wls",
+                     use_inferred_zero_point=True,
+                     pseudocount=1,
+                     num_required=2,
+                     pre_select_time=30,
+                     num_time0_iterations=4,
+                     k_fitter_kwargs=None):
     """
-    Estimate growth rates for each genotype in each sample.
+    Estimate growth rates for each genotype in each sample given count 
+    and sample information.
 
     Parameters
     ----------
@@ -122,7 +123,7 @@ def estimate_growth_rates(combined_df,
     num_required : int, optional
         Minimum number of time points with non-zero counts required for a 
         successful fit. Default is 2.
-    iptg_out_growth_time : int, optional
+    pre_select_time : int, optional
         Time (in minutes) that the samples grow at their IPTG concentrations 
         before selection is added. Default is 30.
     k_fitter_kwargs : dict, optional
@@ -188,13 +189,13 @@ def estimate_growth_rates(combined_df,
     samples = processed["samples"]
 
     # Get zero points
-    _, times, ln_cfu, ln_cfu_var = estimate_time0(
+    _, times, ln_cfu, ln_cfu_var = get_time0(
         times=processed["times"],
         ln_cfu=processed["ln_cfu"],
         ln_cfu_var=processed["ln_cfu_var"],
         sample_df=sample_df,
         calibration_data=calibration_data,
-        iptg_out_growth_time=iptg_out_growth_time,
+        pre_select_time=pre_select_time,
         num_iterations=num_time0_iterations
     )
 

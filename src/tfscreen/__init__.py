@@ -11,7 +11,7 @@ from . import data
 from . import fitting
 from . import plot
 
-from . import analyze
+from . import analysis
 from . import simulate
 
 
