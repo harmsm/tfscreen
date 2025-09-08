@@ -8,11 +8,10 @@ def _estimate_lnA0(times,
                    ln_cfu,
                    ln_cfu_var,
                    no_select_mask,
-                   k_wt0,
-                   iptg_out_growth_time):
+                   k_wt,
+                   pre_select_time):
     """
-    Estimate t = 0 points from all samples with a specific genotype and create a
-    new pseudo datapoint with ln_cfu and ln_cfu_var at t = 0. 
+    Estimate t = 0 points from all samples with a specific genotype. 
 
     Parameters
     ----------
@@ -28,12 +27,12 @@ def _estimate_lnA0(times,
     no_select_mask : numpy.ndarray
         1D bool numpy array that is num_samples long and selects sample 
         conditions that did not have selection in them. 
-    wt_k0 : float
+    k_wt : float
         1D numpy array holding the wildtype growth rate in the absence of
         selection for each sample condition. Shape (num_genotype*num_samples,). 
-    iptg_out_growth_time : float
-        how long the cultures grew in iptg before being put under selection. 
-        Units should match units in times array. 
+    pre_select_time : float
+        how long the cultures grew after being split but before being put under
+        selection.  Units should match units in times array. 
         
     Returns
     -------
@@ -64,7 +63,7 @@ def _estimate_lnA0(times,
 
     # Shift in growth rate in each sample relative to wildtype no-selection
     # expectation
-    k_shift = k_est - k_wt0
+    k_shift = k_est - k_wt
 
     # Get mean of k for each genotype in each sample that has no selection
     # applied. (This assumes growth with/without marker and with/without iptg
@@ -82,11 +81,11 @@ def _estimate_lnA0(times,
     # k_before_select is the growth rate of each genotype in the absence of
     # selection. This is the wildtype growth rate in that sample condition plus
     # the genotype-specific shift.
-    k_before_select = k_wt0 + np.repeat(k_shift,num_samples)
+    k_before_select = k_wt + np.repeat(k_shift,num_samples)
 
     # Calculate how much each genotype in each sample would grow in the
     # pre-selection interval
-    pre_growth = k_before_select*iptg_out_growth_time
+    pre_growth = k_before_select*pre_select_time
 
     # Re-shape lnA0, lnA0_var, and pre_growth. In this new shape, genotypes are 
     # rows and samples are columns. 
@@ -108,8 +107,8 @@ def _estimate_lnA0(times,
     lnA0_weight = 1/lnA0_var_reshaped
     lnA0_weight = lnA0_weight/np.sum(lnA0_weight,axis=1,keepdims=True)
     lnA_pre0_mean = np.average(lnA_pre0,
-                                   weights=lnA0_weight,
-                                   axis=1)
+                               weights=lnA0_weight,
+                               axis=1)
     
     # Get the weighted variance of our estimates of lnA_pre0. We're keeping
     # full variance rather than doing variance on the mean because we do not
@@ -138,7 +137,7 @@ def estimate_time0(times,
                    ln_cfu_var,
                    sample_df,
                    calibration_data,
-                   iptg_out_growth_time=30,
+                   pre_select_time=30,
                    num_iterations=3):
     """
     Independently estimate the growth rates of each genotype in each sample, 
@@ -179,9 +178,9 @@ def estimate_time0(times,
         Calibration data to use for estimating wildtype growth rates. This can
         either be a path to a calibration data file or a dictionary containing
         calibration data.
-    iptg_out_growth_time : float, optional
-        how long the cultures grew in iptg before being put under selection.
-        Units should match units in times array. Default is 30.
+    pre_select_time : float, optional
+        how long the cultures grew after being split but before being put under
+        selection. Units should match units in times array. Default is 30.
     num_iterations : int, optional
         Number of iterations to perform when estimating time0. Default is 3.
         This means that we will estimate time0 three times, each time using the
@@ -211,12 +210,12 @@ def estimate_time0(times,
     num_genotypes = times.shape[0]//num_samples
     
     # Get the wildtype growth rate without selection for model outgrowth
-    k_wt0, _ = get_wt_k(marker=sample_df["marker"],
-                        select=np.zeros(len(sample_df["select"]),dtype=int),
-                        iptg=sample_df["iptg"],
-                        calibration_data=calibration_data,
-                        calc_err=False)
-    k_wt0 = np.tile(k_wt0,num_genotypes)
+    k_wt, _ = get_wt_k(marker=sample_df["marker"],
+                       select=np.zeros(len(sample_df["select"]),dtype=int),
+                       iptg=sample_df["iptg"],
+                       calibration_data=calibration_data,
+                       calc_err=False)
+    k_wt = np.tile(k_wt,num_genotypes)
 
     # Useful templates for later
     time_block = np.zeros(times.shape[0])
@@ -237,8 +236,8 @@ def estimate_time0(times,
             ln_cfu=ln_cfu,
             ln_cfu_var=ln_cfu_var,
             no_select_mask=no_select_mask,
-            k_wt0=k_wt0,
-            iptg_out_growth_time=iptg_out_growth_time
+            k_wt=k_wt,
+            pre_select_time=pre_select_time
         )
     
         # Build new times, ln_cfu, and ln_cfu_var arrays that have a new fake 
