@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.optimize import least_squares
+from scipy.sparse import issparse
 
 def _weighted_residuals(params, some_model, obs, obs_std, args):
     """
@@ -37,10 +38,14 @@ def _weighted_residuals(params, some_model, obs, obs_std, args):
     # Calculate weighted residuals
     residuals = ((obs - calc) / obs_std).flatten()
     
+    
+    # nan/inf return high value to guide optimizer away from this region of 
+    # parameter space
+    if np.any(~np.isfinite(residuals)):
+        return np.full(len(residuals),1e12)
+    
+    return residuals
 
-    # Replace any NaNs/Infs from missing data or math errors with 0.0,
-    # so they do not contribute to the cost function.
-    return np.nan_to_num(residuals, nan=0.0, posinf=0.0, neginf=0.0)
 
 def run_least_squares(some_model,
                       obs,
@@ -105,7 +110,7 @@ def run_least_squares(some_model,
     # Process results
     params = fit.x
     J = fit.jac
-
+    
     # Build covariance matrix and estimate standard errors
     num_params = len(params)
     num_obs = np.sum(~np.isnan(obs))  # Count only valid observations
@@ -117,6 +122,8 @@ def run_least_squares(some_model,
 
     try:
         JTJ = J.T @ J
+        if issparse(J):
+            JTJ =JTJ.toarray()
         cov_matrix = chi2_red * np.linalg.inv(JTJ)
         with np.errstate(invalid='ignore'): 
             std_errors = np.sqrt(np.diagonal(cov_matrix))

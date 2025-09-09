@@ -65,7 +65,7 @@ observable_calc_kwargs:
 # spreadsheet defining ensemble and interactions with iptg
 # observable_calculator: "eee"
 # observable_calc_kwargs:
-#   ensemble_spreadsheet: "input/ensemble.xlsx"
+#   ensemble_spreadsheet: "../input/ensemble.xlsx"
 #   T: 310       # K
 #   R: 0.001987  # kcal/mol/K
 #   # This sets how the thermodynamic variable maps proportionally to output. For
@@ -77,6 +77,7 @@ observable_calc_kwargs:
 
 # Spreadsheet with effects of all mutations on each state in ensemble
 ddG_spreadsheet: "ddG_mwc_dimer.xlsx"
+
 
 
 # -----------------------------------------------------------------------------

@@ -85,9 +85,6 @@ def run_simulation(yaml_file: str,
         replicate=cf['replicate']
     )
 
-    sample_df.to_csv(os.path.join(output_path,
-                                  f"{output_prefix}-sample_df.csv"))
-
     # -------------------------------------------------------------------------
     # Calculate phenotypes
         
@@ -114,10 +111,6 @@ def run_simulation(yaml_file: str,
         mut_growth_rate_scale=cf['mut_growth_rate_scale']
     )
 
-    phenotype_df.to_csv(os.path.join(output_path,
-                                     f"{output_prefix}-phenotype_df.csv"),
-                                     index=False)
-    
     # -------------------------------------------------------------------------
     # Sample from library and grow out
     
@@ -144,7 +137,7 @@ def run_simulation(yaml_file: str,
         post_iptg_dilution_factor=cf['post_iptg_dilution_factor'],
         growth_rate_noise=cf['growth_rate_noise']
     )
-    bacteria, ln_pop_array, bact_sample_k = init_output
+    bacteria, ln_pop_array, bact_sample_k, genotype_df = init_output
 
     # Simulate the growth of each sample
     sample_pops = simulate_growth(
@@ -169,6 +162,19 @@ def run_simulation(yaml_file: str,
     # -------------------------------------------------------------------------
     # Build final outputs and write as csv files
         
+    sample_df.to_csv(os.path.join(output_path,
+                                  f"{output_prefix}-sample_df.csv"))
+
+    genotype_df.to_csv(os.path.join(output_path,
+                                  f"{output_prefix}-genotype_df.csv"),
+                                  index=False)
+
+    phenotype_df.to_csv(os.path.join(output_path,
+                                     f"{output_prefix}-phenotype_df.csv"),
+                                     index=False)
+    
+
+
     cfu_dict = {}
     num_reads_dict = {}
     for c in tqdm(sample_df_with_time.index,desc="Assembling combined dataframe."):

@@ -166,28 +166,13 @@ def counts_to_lncfu(combined_df,
 
     # Read dataframes
     combined_df = read_dataframe(combined_df)
-    sample_df = read_dataframe(sample_df)
+    sample_df = read_dataframe(sample_df,index_column="sample")
 
     # Get all unique genotypes in canonical sorted order
     genotypes = pd.unique(combined_df["genotype"])
     idx = argsort_genotypes(genotypes)
     genotype_order = genotypes[idx]
-    
-    # Make sure sample_df is indexed by sample if it isn't already
-    if sample_df.index.name != "sample":
-
-        # Set the index of the sample dataframe to be the sample
-        if "sample" not in sample_df.columns:
-            if sample_df.columns[0] == "Unnamed: 0":
-                sample_df = sample_df.rename(columns={"Unnamed: 0":"sample"})
-
-        if "sample" not in sample_df.columns:
-            err = "sample_df must have a column or index named 'sample'\n"
-            raise ValueError(err)   
-
-        sample_df.index = sample_df["sample"]
-        sample_df = sample_df.drop(columns=["sample"])
-    
+        
     calibration_data = read_calibration(calibration_data)
 
     # These will hold all replicate dataframes and arrays

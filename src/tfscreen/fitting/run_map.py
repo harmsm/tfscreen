@@ -71,7 +71,7 @@ def _negative_log_likelihood(params, model, obs, obs_std, args):
     This is equivalent to a weighted sum of squared residuals.
     """
 
-    prediction = model(params, args)
+    prediction = model(params, *args)
     residuals = obs - prediction
     return 0.5 * np.sum((residuals / obs_std)**2)
 
@@ -93,8 +93,6 @@ def _objective_function(params, model, obs, obs_std, prior_types, prior_params, 
         return 1e12
     return result
 
-
-
 def run_map(some_model,
             obs,
             obs_std,
@@ -111,7 +109,7 @@ def run_map(some_model,
     Parameters
     ----------
     some_model : callable
-        The model function with signature `some_model(parameters, args)`. It
+        The model function with signature `some_model(parameters, *args)`. It
         should return a NumPy array of predictions of the same shape as `obs`.
     obs : np.ndarray
         Array of observed data.
@@ -154,7 +152,6 @@ def run_map(some_model,
     obj_args = (some_model, obs, obs_std, prior_types, prior_params, args)
 
     # Perform the minimization
-    # BFGS is a good choice as it builds an approximation of the inverse Hessian
     result = scipy.optimize.minimize(
         fun=_objective_function,
         x0=np.array(guesses),
