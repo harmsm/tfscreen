@@ -20,6 +20,10 @@ from .xy_corr import (
     xy_corr
 )
 
+from .corner import (
+    corner_plot
+)
+
 # -----------------------------------------------------------------------------
 # Big summary plots that incorporate other plots go below here 
 

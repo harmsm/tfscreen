@@ -197,7 +197,7 @@ def df_to_arrays(combined_df,
     """
 
     combined_df = read_dataframe(combined_df)
-    sample_df = read_dataframe(sample_df)
+    sample_df = read_dataframe(sample_df,index_column="sample")
 
     # Convert the dataframe into a collection of numpy arrays
     _results = _count_df_to_arrays(combined_df)

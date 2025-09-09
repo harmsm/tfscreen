@@ -166,16 +166,7 @@ def counts_to_growth(combined_df,
 
     # Load the combined and sample data frames
     combined_df = read_dataframe(combined_df)
-    sample_df = read_dataframe(sample_df)
-
-    if sample_df.index.name != "sample":
-
-        # Set the index of the sample dataframe to be the sample
-        if sample_df.columns[0] == "Unnamed: 0":
-            sample_df = sample_df.rename(columns={"Unnamed: 0":"sample"})
-
-        sample_df.index = sample_df["sample"]
-        sample_df = sample_df.drop(columns=["sample"])
+    sample_df = read_dataframe(sample_df,index_column="sample")
 
     # Create arrays with sample/genotype as their primary axis and (if 
     # relevant) time as their secondary axis. These 1D and 2D arrays include 

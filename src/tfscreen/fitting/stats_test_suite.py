@@ -3,6 +3,8 @@ from scipy.stats import pearsonr
 import statsmodels.api as sm
 from statsmodels.stats.diagnostic import het_breuschpagan
 
+import warnings
+
 def stats_test_suite(param_est,param_std,param_real):
     """
     Run a test suite comparing parameter estimates against true values.
@@ -115,7 +117,12 @@ def stats_test_suite(param_est,param_std,param_real):
     residual_corr, residual_corr_p_value = pearsonr(diff, param_real)
     
     # Look for heteroscedasticity in the residuals
-    bp_test = het_breuschpagan(diff, sm.add_constant(param_real))
+    try:
+        bp_test = het_breuschpagan(diff, sm.add_constant(param_real))
+    except np.linalg.LinAlgError as e:
+        warnings.warn("het_breuschpagan test did not converge.\n")
+        bp_test = [np.nan,np.nan]
+    
     bp_p_value = bp_test[1]
 
 

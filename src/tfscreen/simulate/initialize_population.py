@@ -190,6 +190,47 @@ def _get_growth_rates(bacteria,
 
     return bact_base_k, bact_marker_k, bact_sample_k
 
+def _get_A0(initial_pop,
+            bacteria,
+            post_iptg_dilution_factor,
+            genotype_df):
+    """
+    Record the initial population of each genotype and load into genotype_df. 
+    """
+    
+    out_counts = {}
+    for i in range(len(initial_pop)):
+
+        if issubclass(type(bacteria[i]),str):
+            keys = [bacteria[i]]
+        else:
+            keys = bacteria[i]
+        
+        for key in keys:
+            if key not in out_counts:
+                out_counts[key] = []
+            out_counts[key].append(initial_pop[i]/len(keys))
+    
+    # Sum population of the genotype and account for dilution
+    genotypes = []
+    lnA0 = []
+    for g in out_counts:
+        cfu = np.exp(np.array(out_counts[g]))
+        cfu_diluted = np.sum(cfu)*post_iptg_dilution_factor
+
+        genotypes.append(g)
+        lnA0.append(np.log(cfu_diluted))
+
+    genotypes = np.array(genotypes)
+    lnA0 = np.array(lnA0)
+    
+    genotype_df["lnA0"] = -np.inf
+    genotype_df.loc[genotypes,"lnA0"] = lnA0
+
+    return genotype_df
+
+
+
 
 def initialize_population(input_library,
                           phenotype_df,
@@ -255,16 +296,22 @@ def initialize_population(input_library,
         # Get base growth rates and sample-specific growth rates for each
         # bacterium in the population.
         bact_base_k, bact_marker_k, bact_sample_k = _get_growth_rates(bacteria,
-                                                                        phenotype_df,
-                                                                        genotype_df,
-                                                                        sample_df,
-                                                                        growth_rate_noise=growth_rate_noise)
+                                                                      phenotype_df,
+                                                                      genotype_df,
+                                                                      sample_df,
+                                                                      growth_rate_noise=growth_rate_noise)
 
         # Grow to pre-induction OD600 (0.35 ~ 90,000,000 CFU/mL) using the base
         # growth rates for all bacteria.
         ln_pop_array = grow_to_target(ln_pop_array,
                                     growth_rates=bact_base_k,
                                     final_cfu_mL=pre_iptg_cfu_mL)
+        
+        # Record initial population of each genotype. 
+        genotype_df = _get_A0(ln_pop_array,
+                              bacteria,
+                              post_iptg_dilution_factor,
+                              genotype_df)
 
         pbar.update()
 
@@ -286,4 +333,4 @@ def initialize_population(input_library,
 
         pbar.update()
 
-    return bacteria, ln_pop_array, bact_sample_k
+    return bacteria, ln_pop_array, bact_sample_k, genotype_df

@@ -1,7 +1,9 @@
 import numpy as np
 import pandas as pd
 
-def read_dataframe(input,remove_extra_index=True):
+def read_dataframe(input,
+                   remove_extra_index=True,
+                   index_column=None):
     """
     Read a spreadsheet. Handles .csv, .tsv, .xlsx/.xls. If extension is
     not one of these, attempts to parse text as a spreadsheet using
@@ -12,8 +14,13 @@ def read_dataframe(input,remove_extra_index=True):
     input : pandas.DataFrame or str
         either a pandas dataframe OR the filename to read in.
     remove_extra_index : bool, default=True
-        look for the 'Unnamed: 0' column that pandas writes out for
-        pandas.to_csv(index=True) and, if found, drop column.
+        look for the 'Unnamed: #' columns that pandas writes out and drop them 
+        if they are present and have integer indexes. Non-integer columns that
+        match this pattern are left intact. 
+    index_column : str, optional
+        use this column as the index. if this is not in the dataframe but there
+        is a "Unnamed: 0" column, assume that column is this column and assign 
+        it as such. 
 
     Returns
     -------
@@ -50,7 +57,7 @@ def read_dataframe(input,remove_extra_index=True):
 
     # Look for extra index column that pandas writes out (in case user wrote out
     # pandas frame manually, then re-read). Looks for first column that is
-    # Unnamed and has integer values [0,1,2,...,L]
+    # Unnamed and has integer values [0,1,2,...,L]. This gets dropped. 
     if remove_extra_index:
         if df.columns[0].startswith("Unnamed:"):
             possible_index = df.loc[:,df.columns[0]]
@@ -58,5 +65,28 @@ def read_dataframe(input,remove_extra_index=True):
                 if np.array_equal(possible_index,np.arange(len(possible_index),dtype=int)):
                     df = df.drop(columns=[df.columns[0]])
 
+    # If an index column is requested
+    if index_column is not None:
+
+        # If this is not already the index...
+        if df.index.name != index_column:
+
+            # If the column is not in columns
+            if index_column not in df.columns:
+
+                # Look for "Unnamed: 0". If this is here, assume this is the
+                # requested index and rename it. 
+                if df.columns[0] == "Unnamed: 0":
+                    print(f"Renaming column 'Unnamed: 0' -> '{index_column}'")
+                    df = df.rename(columns={"Unnamed: 0":index_column})
+
+                # If we get here, we can't even try to guess the column
+                else:
+                    err = f"df does not have a column or index named '{index_column}'\n"
+                    raise ValueError(err)   
+
+            # assign the index and drop the original column
+            df.index = df[index_column]
+            df = df.drop(columns=[index_column])
 
     return df

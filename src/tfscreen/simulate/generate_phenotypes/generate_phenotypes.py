@@ -67,19 +67,19 @@ def _assign_growth_rate_perturb(genotype_list,
     
     growth_rate_dict = dict(zip(singles,list(peturb)))
 
-    growth_rate_effect = {}
+    k_shift = {}
     for genotype in genotype_list:
 
         # Assume that multi-mutant genotypes sum their individual effects on 
         # growth rate. 
         if genotype == "wt":
-            growth_rate_effect[genotype] = 0
+            k_shift[genotype] = 0
         else:
             genotype_as_list = genotype.split("/")
-            growth_rate_effect[genotype] = np.sum([growth_rate_dict[g]
+            k_shift[genotype] = np.sum([growth_rate_dict[g]
                                                    for g in genotype_as_list])
         
-    return growth_rate_effect
+    return k_shift
 
     
 def generate_phenotypes(genotype_df,
@@ -146,7 +146,7 @@ def generate_phenotypes(genotype_df,
     
     # These will hold ddG and growth rate effects for the genotype_df
     ddG_out = []
-    growth_rate_effect_out = []
+    k_shift_out = []
 
     ddG_dict = _read_ddG(ddG_df)
 
@@ -174,7 +174,7 @@ def generate_phenotypes(genotype_df,
     # create list of genotypes
     genotype_list = list(genotype_df["genotype"])
 
-    growth_rate_effect_dict = _assign_growth_rate_perturb(
+    k_shift_dict = _assign_growth_rate_perturb(
         genotype_list=genotype_list,
         shape_param=mut_growth_rate_shape,
         scale_param=mut_growth_rate_scale
@@ -197,7 +197,7 @@ def generate_phenotypes(genotype_df,
     
         # Record genotype information 
         ddG_out.append(genotype_ddG)
-        growth_rate_effect_out.append(growth_rate_effect_dict[genotype])
+        k_shift_out.append(k_shift_dict[genotype])
         
         # Get observable given ddG
         obs = obs_fcn(genotype_ddG)
@@ -222,7 +222,7 @@ def generate_phenotypes(genotype_df,
         
         # The base, marker, and overall growth rates are all perturbed by the 
         # global effect of the mutation on growth rate. 
-        growth_rate_effect = growth_rate_effect_dict[genotype]
+        k_shift = k_shift_dict[genotype]
 
         # Record phenotype information
         phenotype_out["genotype"].extend([genotype]*num_points)
@@ -230,16 +230,16 @@ def generate_phenotypes(genotype_df,
         phenotype_out["select"].extend(sample_df["select"].values)
         phenotype_out["iptg"].extend(sample_df["iptg"].values)
         phenotype_out["obs"].extend(obs)
-        phenotype_out["base_growth_rate"].extend(no_marker_no_select + growth_rate_effect)
-        phenotype_out["marker_growth_rate"].extend(marker_growth_rate + growth_rate_effect)
-        phenotype_out["overall_growth_rate"].extend(overall_growth_rate + growth_rate_effect)
+        phenotype_out["base_growth_rate"].extend(no_marker_no_select + k_shift)
+        phenotype_out["marker_growth_rate"].extend(marker_growth_rate + k_shift)
+        phenotype_out["overall_growth_rate"].extend(overall_growth_rate + k_shift)
 
     phenotype_df = pd.DataFrame(phenotype_out)
 
     # update the genotype dataframe
     genotype_df = genotype_df.copy()
     genotype_df["ddG"] = ddG_out
-    genotype_df["growth_rate_effect"] = growth_rate_effect_out
+    genotype_df["k_shift"] = k_shift_out
     
     return phenotype_df, genotype_df
 

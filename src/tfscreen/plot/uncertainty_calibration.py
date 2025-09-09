@@ -7,6 +7,7 @@ from tfscreen.plot.helper import (
 )
 
 from matplotlib import pyplot as plt
+import numpy as np
 
 import copy
 
@@ -81,6 +82,7 @@ def uncertainty_calibration(
     _, ax_max = get_ax_limits(diff,
                               percentile=percentile,
                               pad_by=pad_by)
+    ax_max = np.abs(ax_max)
     
     ax.scatter(diff,param_std,**final_scatter_kwargs)
     ax.set_xlabel("est_value - real_value")

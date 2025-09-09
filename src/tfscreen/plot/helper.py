@@ -56,7 +56,7 @@ def clean_arrays(*arrs):
 
     combined = np.array(arrs)
 
-    good_mask = ~np.any(np.isnan(combined),axis=0)
+    good_mask = ~np.any(~np.isfinite(combined),axis=0)
     combined = combined[:,good_mask]
 
     return tuple(combined)

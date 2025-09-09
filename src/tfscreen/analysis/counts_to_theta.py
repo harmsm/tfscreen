@@ -12,7 +12,11 @@ from tfscreen.util import (
 
 from tfscreen.fitting import (
     run_least_squares,
-    predict_with_error
+    run_map,
+    predict_with_error,
+    scale,
+    unscale,
+    get_scaling    
 )
 
 from tfscreen.analysis import (
@@ -22,6 +26,7 @@ from tfscreen.analysis import (
 import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
+import scipy
 
 
 def _get_theta(theta_unconstrained):
@@ -36,7 +41,8 @@ def _get_k(params,
            k_wt0,
            m_cond,
            theta_indexer,
-           kshift_indexer):
+           kshift_indexer,
+           k_shift_scaling):
     """
     Get predicted bacterial growth rate under a set of conditions given
     the global effect of the genotype and the fractional saturation of the 
@@ -70,8 +76,11 @@ def _get_k(params,
     # Get theta from unconstrained parameters
     theta = _get_theta(params[theta_indexer])
     
-    #      k_wt0 +    k_shift  +  theta * slope_at_condition
-    return k_wt0 + params[kshift_indexer] + theta*m_cond 
+    # scale k_shift
+    k_shift = unscale(params[kshift_indexer],k_shift_scaling)
+
+    
+    return k_wt0 + k_shift + theta*m_cond 
           
 
 def _theta_to_lncfu(params,
@@ -83,7 +92,9 @@ def _theta_to_lncfu(params,
                     m_noselect,
                     t_select,
                     k_wt0_select,
-                    m_select):
+                    m_select,
+                    k_shift_scaling,
+                    A0_scaling):
     """
     Calculate ln_cfu over time given the global effect of the genotype on
     growth, the fractional saturation of the operator, and the conditions. 
@@ -129,14 +140,19 @@ def _theta_to_lncfu(params,
                         k_wt0_noselect,
                         m_noselect,
                         theta_indexer,
-                        kshift_indexer)
+                        kshift_indexer,
+                        k_shift_scaling)
     
     # Get growth rate during selection interval
     k_select = _get_k(params,
                       k_wt0_select,
                       m_select,
                       theta_indexer,
-                      kshift_indexer)
+                      kshift_indexer,
+                      k_shift_scaling)
+
+    # Scale A0 
+    A0 = unscale(params[A0_indexer],A0_scaling)
 
     # Flatten t if necessary
     if len(t_select.shape) > 1:
@@ -166,6 +182,11 @@ def _run_regression(df,
     # Load calibration dictionary
     calibration_dict = read_calibration(calibration_data)
     
+    # --------------------------------------------------------------------------
+    # Get growth rates of wildtype in all conditions with theta = 0. Then get
+    # slope of growth vs. theta in these conditions. DO this for noselect (out
+    # growth in iptg without selection) and select (full selection conditions)
+
     k_wt0_noselect, _ = get_wt_k(marker=df["marker"],
                                  select=np.zeros(len(df["iptg"]),dtype=int),
                                  iptg=df["iptg"],
@@ -192,7 +213,7 @@ def _run_regression(df,
                           select=df["select"],
                           calibration_data=calibration_dict)
      
-
+    # --------------------------------------------------------------------------
     # Create indexer and rev_indexer arrays. The "indexer" arrays map from 
     # dataframe rows to parameters. The rev_indexer arrays map from parameters
     # to rows. (rev_indexer[indexer] would give the rows in the dataframe). 
@@ -224,11 +245,11 @@ def _run_regression(df,
     
     # kshift_indexer maps each row in the dataframe to its k_shift
     # parameter in the parameter array
-    genotype_start = np.max(theta_indexer) + 1
+    kshift_start = np.max(theta_indexer) + 1
     _idx, _rev = pd.factorize(df["genotype"])
-    kshift_indexer = _idx + genotype_start
+    kshift_indexer = _idx + kshift_start
     kshift_rev_indexer = np.full(np.max(kshift_indexer)+1,object)
-    kshift_rev_indexer[genotype_start:] = _rev
+    kshift_rev_indexer[kshift_start:] = _rev
 
     # A0_indexer maps each row to its A0 parameter in the parameter array
     A0_start = np.max(kshift_indexer) + 1
@@ -237,12 +258,15 @@ def _run_regression(df,
         A0_rev_indexer = np.full(np.max(A0_indexer)+1,0,dtype=int)
         A0_rev_indexer[A0_start:] = np.arange(0,len(A0_indexer),dtype=int)
     else:
-        _rep_geno_tuples = df[['replicate','genotype']].itertuples(index=False, name=None)
+        _rep_geno_tuples = df[['genotype','replicate']].itertuples(index=False, name=None)
         _idx, _rev = pd.factorize(pd.Series(_rep_geno_tuples))
         A0_indexer = _idx + A0_start
         A0_rev_indexer = np.full(np.max(A0_indexer)+1,object)
         A0_rev_indexer[A0_start:] = _rev
     
+    # --------------------------------------------------------------------------
+    # Build guesses
+
     # empty guesses
     guesses = np.zeros(np.max(A0_indexer)+1,dtype=float)
     
@@ -254,6 +278,50 @@ def _run_regression(df,
     guesses[A0_indexer] = df["lnA_pre0_guess"]
     guesses[kshift_indexer] = df["k_shift_guess"]
 
+    # Get scale of k_shift and transform
+    k_shift_scaling = get_scaling(guesses[kshift_indexer])
+    guesses[kshift_indexer] = scale(guesses[kshift_indexer], k_shift_scaling)
+    
+    # Get scale of A0 and transform
+    A0_scaling = get_scaling(guesses[A0_indexer])  
+    guesses[A0_indexer] = scale(guesses[A0_indexer], A0_scaling)
+
+    # --------------------------------------------------------------------------
+    # Construct a dataframe holding information about the fit parameters (for
+    # the fit_out object with detailed internal information about the fit)
+
+    param_class = []
+    param_class.extend(["theta" for _ in theta_rev_indexer[0:]])
+    param_class.extend(["k_shift" for _ in kshift_rev_indexer[kshift_start:]])
+    param_class.extend(["lnA0" for _ in A0_rev_indexer[A0_start:]])
+    
+    param_genotype = []
+    param_genotype.extend([v[0] for v in theta_rev_indexer[0:]])
+    param_genotype.extend([v for v in kshift_rev_indexer[kshift_start:]])
+    
+    param_replicate = []
+    param_replicate.extend([None for _ in theta_rev_indexer[0:]])
+    param_replicate.extend([None for _ in kshift_rev_indexer[kshift_start:]])
+    
+    if unique_A0:
+        param_genotype.extend(list(df["genotype"]))
+        param_replicate.extend(list(df["replicate"]))
+    else:
+        param_genotype.extend([v[0] for v in A0_rev_indexer[A0_start:]])
+        param_replicate.extend([v[1] for v in A0_rev_indexer[A0_start:]])
+    
+    param_iptg = []
+    param_iptg.extend([v[1] for v in theta_rev_indexer[0:]])
+    param_iptg.extend([np.nan for _ in kshift_rev_indexer[kshift_start:]])
+    param_iptg.extend([np.nan for _ in A0_rev_indexer[A0_start:]])
+
+    fit_df = pd.DataFrame({"class":param_class,
+                           "genotype":param_genotype,
+                           "replicate":param_replicate,
+                           "iptg":param_iptg,
+                           "guess":guesses})
+     
+    # --------------------------------------------------------------------------
     # Non-params args for the _theta_to_lncfu model
     args = (theta_indexer,
             kshift_indexer,
@@ -263,7 +331,12 @@ def _run_regression(df,
             m_noselect,
             times,
             k_wt0_select,
-            m_select)
+            m_select,
+            k_shift_scaling,
+            A0_scaling)
+
+    # --------------------------------------------------------------------------
+    # Do fit, either mle or map. 
 
     if fit_method == "mle":
     
@@ -285,42 +358,85 @@ def _run_regression(df,
         )
 
     elif fit_method == "map":
+        
+        prior_types = np.full(len(guesses), object)
+        prior_types[theta_indexer] = 'normal'
+        prior_types[kshift_indexer] = 'normal'
+        prior_types[A0_indexer] = 'normal'
 
-        pass
-        # params, cov_matrix = run_map(
-        #     _theta_to_lncfu,
-        #     ln_cfu,
-        #     np.sqrt(ln_cfu_var.flatten()),
-        #     guesses,
-        #     prior_types,
-        #     prior_params,
-        #     args
-        # )
+        prior_0_params = np.zeros(len(guesses),dtype=float)
+        prior_0_params[theta_indexer] = 0
+        prior_0_params[kshift_indexer] = guesses[kshift_indexer]
+        prior_0_params[A0_indexer] = guesses[A0_indexer]
+
+        prior_1_params = np.zeros(len(guesses),dtype=float)
+        prior_1_params[theta_indexer] = 15
+        prior_1_params[kshift_indexer] = 15
+        prior_1_params[A0_indexer] = 15
+
+        prior_params = list(zip(prior_0_params,prior_1_params))
+
+        params, cov_matrix = run_map(
+            _theta_to_lncfu,
+            ln_cfu.flatten(),
+            np.sqrt(ln_cfu_var.flatten()),
+            guesses,
+            prior_types,
+            prior_params,
+            args
+        )
+
+        std_errors = np.sqrt(np.diag(cov_matrix))
 
     else: 
         err = f"fit_method '{fit_method}' not recognized. Should be 'mle' or 'map'.\n"
         raise ValueError(err)
+    
+    # --------------------------------------------------------------------------
+    # Build fit_out object with detailed internal information about the fit
+    fit_df["est"] = params
+    fit_df["std"] = std_errors
+
+    # Prep output dictionary holding fit outputs
+    fit_out = {"cov_matrix":cov_matrix,
+               "fit_df":fit_df}
         
-    # Extract parameters 
+    
+    # -------------------------------------------------------------------------
+    # Build dataframes holding parameter outputs on real scale
+
+    # Dataframe holding fractional saturation
     theta_est = _get_theta(params[theta_indexer])
     theta_std = theta_est*(1 - theta_est)*std_errors[theta_indexer]
 
-    k_shift_est = params[kshift_indexer]
-    k_shift_std = std_errors[kshift_indexer]
-    
-    lnA0_est = params[A0_indexer]
-    lnA0_std = std_errors[A0_indexer]
+    theta_df = pd.DataFrame({"genotype":[v[0] for v in theta_rev_indexer[theta_indexer]],
+                             "iptg":[float(v[1]) for v in theta_rev_indexer[theta_indexer]],
+                             "theta_est":theta_est,
+                             "theta_std":theta_std})
 
-    # -------------------------------------------------------------------------
-    # Calculate observables using our parameters
-            
-    # Predict the values of ln_cfu using our estimated parameters. 
+    # Dataframe holding global growth rate effects of genotypes
+    k_shift_est = unscale(params[kshift_indexer],k_shift_scaling)
+    k_shift_std = std_errors[kshift_indexer]*k_shift_scaling[1]
+    
+    growth_df = pd.DataFrame({"genotype":kshift_rev_indexer[kshift_indexer],
+                              "k_shift_est":k_shift_est,
+                              "k_shift_std":k_shift_std})
+
+    # Dataframe holding observed and predicted ln(cfu/mL) using model. 
     pred_est, pred_std = predict_with_error(
         _theta_to_lncfu,
         params,
         cov_matrix,
         args
     )
+  
+    pred_df = pd.DataFrame({"time":times.flatten(),
+                            "obs_est":ln_cfu.flatten(),
+                            "obs_std":np.sqrt(ln_cfu_var.flatten()),
+                            "pred_est":pred_est,
+                            "pred_std":pred_std})
+    
+    # Build a dataframe holding growth rates and A0 for each sample
 
     # Predict the growth rates under all conditions using our estimated 
     # parameters. 
@@ -331,37 +447,20 @@ def _run_regression(df,
         args=[k_wt0_select,
               m_select,
               theta_indexer,
-              kshift_indexer]
+              kshift_indexer,
+              k_shift_scaling]
     )
-    
 
-    # Build a dataframe holding fractional saturation
-    theta_df = pd.DataFrame({"genotype":[v[0] for v in theta_rev_indexer[theta_indexer]],
-                             "iptg":[float(v[1]) for v in theta_rev_indexer[theta_indexer]],
-                             "theta_est":theta_est,
-                             "theta_std":theta_std})
+    lnA0_est = unscale(params[A0_indexer], A0_scaling)
+    lnA0_std = std_errors[A0_indexer]*A0_scaling[1]
 
-    # Build a dataframe holding global growth rate effects of genotypes
-    growth_df = pd.DataFrame({"genotype":kshift_rev_indexer[kshift_indexer],
-                              "k_shift_est":k_shift_est,
-                              "k_shift_std":k_shift_std})
-
-    # Build predicted growth dataframe    
-    pred_df = pd.DataFrame({"time":times.flatten(),
-                            "obs_est":ln_cfu.flatten(),
-                            "obs_std":np.sqrt(ln_cfu_var.flatten()),
-                            "pred_est":pred_est,
-                            "pred_std":pred_std})
-
-    # Build a dataframe holding growth rates and A0 for each sample
     k_df = df.copy()[["genotype","replicate","marker","select","iptg"]]
     k_df["k_est"] = k_est
     k_df["k_std"] = k_std
     k_df["lnA0_est"] = lnA0_est
     k_df["lnA0_std"] = lnA0_std
 
-
-    return theta_df, growth_df, pred_df, k_df
+    return theta_df, growth_df, pred_df, k_df, fit_out
 
 def counts_to_theta(combined_df,
                     sample_df,
@@ -436,17 +535,26 @@ def counts_to_theta(combined_df,
 
     # Genotypes come out of replicate_aware_load sorted
     genotype_order = pd.unique(to_regress_df["genotype"])
+
+    # This records whether we actually had data against which to do a 
+    # regression. 
+    enough_obs = to_regress_df.groupby("genotype",
+                                       observed=False).first()["enough_obs"]
     
-    genotype_blocks = chunk_by_group(to_regress_df["genotype"],max_block_size)
+    # Lists to store block-wise results
     theta_dfs = []
     growth_dfs = []
     pred_dfs = []
     k_dfs = []
-    counter = 0
+    fit_outs = []
+
+    # For genotype blocks...
+    block_counter = 0
+    genotype_blocks = chunk_by_group(to_regress_df["genotype"],max_block_size)
     for block in tqdm(genotype_blocks):
 
         this_df = to_regress_df.loc[block,:]
-        theta_df, growth_df, pred_df, k_df = _run_regression(
+        theta_df, growth_df, pred_df, k_df, fit_out = _run_regression(
             this_df,
             times[block,:],
             ln_cfu[block,:],
@@ -461,20 +569,17 @@ def counts_to_theta(combined_df,
         growth_dfs.append(growth_df)
         pred_dfs.append(pred_df)
         k_dfs.append(k_df)
-    
-    # Build final dataframes
-    theta_df = pd.concat(theta_dfs,ignore_index=True)
-    growth_df = pd.concat(growth_dfs,ignore_index=True)
-    pred_df = pd.concat(pred_dfs,ignore_index=True)
-    k_df = pd.concat(k_dfs,ignore_index=True)
 
-    # This records whether we actually had data against which to do a 
-    # regression. 
-    enough_obs = to_regress_df.groupby("genotype",
-                                       observed=False).first()["enough_obs"]
+        fit_out["fit_df"]["block"] = block_counter
+        fit_outs.append(fit_out)
+        
+        block_counter += 1
+    
     
     # -------------------------------------------------------------------------
     # Finalize theta_df
+
+    theta_df = pd.concat(theta_dfs,ignore_index=True)
     
     # Collapse theta_df to single genotype/iptg values 
     theta_df["genotype"] = pd.Categorical(theta_df["genotype"],
@@ -488,6 +593,8 @@ def counts_to_theta(combined_df,
     
     # -------------------------------------------------------------------------
     # Finalize growth_df
+
+    growth_df = pd.concat(growth_dfs,ignore_index=True)
     
     # Collapse growth_df to single genotype values
     growth_df["genotype"] = pd.Categorical(growth_df["genotype"],
@@ -500,6 +607,8 @@ def counts_to_theta(combined_df,
 
     # -------------------------------------------------------------------------
     # Finalize pred_df
+
+    pred_df = pd.concat(pred_dfs,ignore_index=True)
     
     # Build a dataframe holding observed and predicted ln(cfu/mL)
     pred_df["genotype"] = combined_df["genotype"].values
@@ -524,7 +633,18 @@ def counts_to_theta(combined_df,
     # -------------------------------------------------------------------------
     # Finalize k_df
 
+    k_df = pd.concat(k_dfs,ignore_index=True)
     k_df["enough_obs"] = enough_obs[k_df["genotype"]].values
     
     
-    return theta_df, growth_df, pred_df, k_df
+    # -------------------------------------------------------------------------
+    # Finalize fit_out
+
+    fit_out = {}
+    fit_out["fit_df"] = pd.concat([f["fit_df"] for f in fit_outs],
+                                  ignore_index=True)
+    cov_matrices = [f["cov_matrix"] for f in fit_outs]
+    fit_out["cov_matrix"] = scipy.linalg.block_diag(*cov_matrices)
+
+    
+    return theta_df, growth_df, pred_df, k_df, fit_out
