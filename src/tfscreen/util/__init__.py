@@ -14,3 +14,7 @@ from .argsort_genotypes import (
 from .chunk_by_group import (
     chunk_by_group,
 )
+
+from .xfill import (
+    xfill
+)

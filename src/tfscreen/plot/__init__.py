@@ -24,6 +24,10 @@ from .corner import (
     corner_plot
 )
 
+from .cat_fits import (
+    cat_fits
+)
+
 # -----------------------------------------------------------------------------
 # Big summary plots that incorporate other plots go below here 
 

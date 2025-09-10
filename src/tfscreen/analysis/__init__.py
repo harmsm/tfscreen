@@ -15,10 +15,10 @@ from .growth_to_theta import (
     growth_to_theta
 )
 
-from .theta_to_hill import (
-    theta_to_hill
-)
-
 from .counts_to_theta import (
     counts_to_theta
+)
+
+from .cat_response import (
+    cat_response,
 )

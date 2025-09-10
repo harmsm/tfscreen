@@ -347,7 +347,7 @@ def _run_regression(df,
         lower_bounds[theta_indexer] = -15
         upper_bounds[theta_indexer] = 15
         
-        params, std_errors, cov_matrix = run_least_squares(
+        params, std_errors, cov_matrix, _ = run_least_squares(
             _theta_to_lncfu,
             ln_cfu.flatten(),
             np.sqrt(ln_cfu_var.flatten()),

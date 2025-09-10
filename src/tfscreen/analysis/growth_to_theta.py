@@ -144,13 +144,13 @@ def _multi_genotype_regression(y,
                                          weights)
     elif method == "nls":
 
-        all_parameters, std_errors, cov = run_least_squares(theta_model,
-                                                            y,
-                                                            1/np.sqrt(weights),
-                                                            guesses,
-                                                            lower_bounds=lower_bounds,
-                                                            upper_bounds=upper_bounds,
-                                                            args=(X,))
+        all_parameters, std_errors, cov, _ = run_least_squares(theta_model,
+                                                               y,
+                                                               1/np.sqrt(weights),
+                                                               guesses,
+                                                               lower_bounds=lower_bounds,
+                                                               upper_bounds=upper_bounds,
+                                                               args=(X,))
 
     else:
         err = f"method '{method}' not recognized.\n"
