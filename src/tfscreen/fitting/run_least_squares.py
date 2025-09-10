@@ -86,6 +86,8 @@ def run_least_squares(some_model,
         The array of standard errors for each fitted parameter.
     cov_matrix : np.ndarray
         The full covariance matrix of the fitted parameters.
+    fit : scipy.optimize.OptimizeResult
+        result from least_squares call
     """
     if args is None:
         args = ()
@@ -131,4 +133,4 @@ def run_least_squares(some_model,
         cov_matrix = np.full((num_params, num_params), np.nan)
         std_errors = np.full(num_params, np.nan)
 
-    return params, std_errors, cov_matrix
+    return params, std_errors, cov_matrix, fit

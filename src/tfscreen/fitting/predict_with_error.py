@@ -51,6 +51,7 @@ def predict_with_error(some_model,
     # This is calculated numerically via the central difference method.
     J_pred = np.zeros((calc_values.size, num_params))
     for i in range(num_params):
+        
         params_plus = params.copy()
         params_plus[i] += epsilon
         pred_plus = some_model(params_plus,*args)
