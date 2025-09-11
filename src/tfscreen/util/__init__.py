@@ -18,3 +18,11 @@ from .chunk_by_group import (
 from .xfill import (
     xfill
 )
+
+from .expand_on_conditions import (
+    expand_on_conditions
+)
+
+from .build_cycles import (
+    build_cycles
+)
