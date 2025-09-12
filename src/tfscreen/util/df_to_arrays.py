@@ -96,8 +96,6 @@ def _count_df_to_arrays(df):
 
     return times, sequence_counts, total_counts, total_cfu_ml, genotypes, samples
 
-
-
 def _get_ln_cfu(sequence_counts,
                 total_counts,
                 total_cfu_ml,
@@ -118,6 +116,10 @@ def _get_ln_cfu(sequence_counts,
 
     Returns
     -------
+    cfu : numpy.ndarray
+        CFU/mL for each genotype
+    cfu_var : numpy.ndarray
+        Variance of the CFU/mL for each genotype.   
     ln_cfu : numpy.ndarray
         Natural logarithm of the CFU/mL for each genotype
     ln_cfu_var : numpy.ndarray
@@ -178,22 +180,25 @@ def df_to_arrays(combined_df,
             1D array of genotypes. Shape (num_genotypes*num_samples)
         *   "samples" : numpy.ndarray
             1D array of samples. Shape (num_genotypes*num_samples)
+        *   "sequence_counts" : numpy.ndarray
+            2D array of counts for each observation. 
+             Shape: (num_genotypes*num_samples,num_times)
         *   "times" : numpy.ndarray
             2D array of time points
-            Shape: (num_times,num_genotypes*num_samples)
+            Shape: (num_genotypes*num_samples,num_times)
         *   "cfu" : numpy.ndarray
             2D array of CFU values
-            Shape: (num_times,num_genotypes*num_samples)
+            Shape: (num_genotypes*num_samples,num_times)
         *   "cfu_var" : numpy.ndarray
             2D array of CFU variances
-            Shape: (num_times,num_genotypes*num_samples)
+            Shape: (num_genotypes*num_samples,num_times)
         *   "ln_cfu" : numpy.ndarray
             2D array of natural log of CFU values
-            Shape: (num_times,num_genotypes*num_samples)
+            Shape: (num_genotypes*num_samples,num_times)
         *   "ln_cfu_var" : numpy.ndarray
             2D array of variances of natural log of CFU values, expanded to
             include the time zero point. 
-            Shape: (num_times,num_genotypes*num_samples)
+            Shape: (num_genotypes*num_samples,num_times)
     """
 
     combined_df = read_dataframe(combined_df)
@@ -202,7 +207,7 @@ def df_to_arrays(combined_df,
     # Convert the dataframe into a collection of numpy arrays
     _results = _count_df_to_arrays(combined_df)
     
-    # 2D arrays (num_times,num_genotypes*num_samples)
+    # 2D arrays (num_genotypes*num_samples,num_times)
     times = _results[0]
     sequence_counts = _results[1]
     total_counts = _results[2]
@@ -211,6 +216,9 @@ def df_to_arrays(combined_df,
     # 1D arrays (num_genotypes*num_samples). 
     genotypes = _results[4]
     samples = _results[5]
+
+    ### SOMEHOW NEED TO ADJUST TOTAL COUNTS BY NUMBER OF GENOTYPES PER SAMPLE
+    # total_count in pseudocount add should divide by genotype_counts + 1/(total_counts_sample + num_genotypes_in_sample*1)
 
     # Extract ln_cfu and ln_cfu_variance from the count data
     cfu, cfu_var, ln_cfu, ln_cfu_var = _get_ln_cfu(
