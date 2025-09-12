@@ -1,92 +1,81 @@
-import numpy as np
 import pandas as pd
 
-def read_dataframe(input,
-                   remove_extra_index=True,
-                   index_column=None):
+import warnings
+
+def read_dataframe(source, index_column=None):
     """
-    Read a spreadsheet. Handles .csv, .tsv, .xlsx/.xls. If extension is
-    not one of these, attempts to parse text as a spreadsheet using
-    `pandas.read_csv(sep=None)`.
+    Reads a spreadsheet from a file path or DataFrame.
+
+    Handles .csv, .tsv, and .xlsx/.xls files. It can also intelligently
+    set the index, including finding and using the common 'Unnamed: 0'
+    column that pandas creates when an index is saved to a file.
 
     Parameters
     ----------
-    input : pandas.DataFrame or str
-        either a pandas dataframe OR the filename to read in.
-    remove_extra_index : bool, default=True
-        look for the 'Unnamed: #' columns that pandas writes out and drop them 
-        if they are present and have integer indexes. Non-integer columns that
-        match this pattern are left intact. 
+    source : pandas.DataFrame or str
+        A pandas DataFrame or the file path to read.
     index_column : str, optional
-        use this column as the index. if this is not in the dataframe but there
-        is a "Unnamed: 0" column, assume that column is this column and assign 
-        it as such. 
+        The desired column to be used as the DataFrame index. If this
+        column is not found, the function will look for 'Unnamed: 0'
+        and use it instead. If None, it will try to find and drop a
+        spurious default index (a column named 'Unnamed: 0' with
+        values 0, 1, 2, ...).
 
     Returns
     -------
     pandas.DataFrame
-        read in dataframe
+        The processed DataFrame.
     """
+    # 1. Handle different source types (path vs. DataFrame)
+    if isinstance(source, str):
+        path = source
+        ext = path.split(".")[-1].strip().lower()
+        try:
+            if ext in ["xlsx", "xls"]:
+                df = pd.read_excel(path)
+            elif ext == "csv":
+                df = pd.read_csv(path)
+            elif ext == "tsv":
+                df = pd.read_csv(path, sep="\t")
+            else:
+                df = pd.read_csv(path, sep=None, engine="python")
+        except FileNotFoundError:
+            raise ValueError(f"File not found at path: {path}")
+        except Exception as e:
+            raise IOError(f"Error reading file {path}: {e}")
 
-    # If this is a string, try to load it as a file
-    if type(input) is str:
-
-        filename = input
-
-        ext = filename.split(".")[-1].strip().lower()
-
-        if ext in ["xlsx","xls"]:
-            df = pd.read_excel(filename)
-        elif ext == "csv":
-            df = pd.read_csv(filename,sep=",")
-        elif ext == "tsv":
-            df = pd.read_csv(filename,sep="\t")
-        else:
-            # Fall back -- try to guess delimiter
-            df = pd.read_csv(filename,sep=None,engine="python")
-
-    # If this is a pandas dataframe, work in a copy of it.
-    elif type(input) is pd.DataFrame:
-        df = input.copy()
-
-    # Otherwise, fail
+    elif isinstance(source, pd.DataFrame):
+        df = source.copy()
     else:
-        err = f"\n\n'input' {input} not recognized. Should be the filename of\n"
-        err += "spreadsheet or a pandas dataframe.\n"
-        raise ValueError(err)
+        raise TypeError("`source` must be a file path (str) or pandas DataFrame.")
 
-    # Look for extra index column that pandas writes out (in case user wrote out
-    # pandas frame manually, then re-read). Looks for first column that is
-    # Unnamed and has integer values [0,1,2,...,L]. This gets dropped. 
-    if remove_extra_index:
-        if df.columns[0].startswith("Unnamed:"):
-            possible_index = df.loc[:,df.columns[0]]
-            if np.issubdtype(possible_index.dtypes,int):
-                if np.array_equal(possible_index,np.arange(len(possible_index),dtype=int)):
-                    df = df.drop(columns=[df.columns[0]])
+    # Handle the 'Unnamed: 0' column if it exists. This is a common artifact of
+    # `df.to_csv()` without `index=False`.
+    unnamed_col = "Unnamed: 0"
+    if unnamed_col in df.columns:
 
-    # If an index column is requested
+        # If a specific index is requested, assume 'Unnamed: 0' is it.
+        if index_column is not None and index_column not in df.columns:
+            warnings.warn(f"Renaming column '{unnamed_col}' to '{index_column}'")
+            df = df.rename(columns={unnamed_col: index_column})
+        else:
+            
+            # Otherwise, check if it's just a spurious default index.
+            # A spurious index is an integer column with values 0, 1, 2...
+            col_data = df[unnamed_col]
+            is_spurious = pd.api.types.is_integer_dtype(col_data) and \
+                          col_data.equals(pd.RangeIndex(start=0, stop=len(df)).to_series())
+            
+            if is_spurious:
+                # If it looks like a junk index, drop it.
+                df = df.drop(columns=unnamed_col)
+
+    # 3. Set the final index if requested
     if index_column is not None:
-
-        # If this is not already the index...
-        if df.index.name != index_column:
-
-            # If the column is not in columns
-            if index_column not in df.columns:
-
-                # Look for "Unnamed: 0". If this is here, assume this is the
-                # requested index and rename it. 
-                if df.columns[0] == "Unnamed: 0":
-                    print(f"Renaming column 'Unnamed: 0' -> '{index_column}'")
-                    df = df.rename(columns={"Unnamed: 0":index_column})
-
-                # If we get here, we can't even try to guess the column
-                else:
-                    err = f"df does not have a column or index named '{index_column}'\n"
-                    raise ValueError(err)   
-
-            # assign the index and drop the original column
-            df.index = df[index_column]
-            df = df.drop(columns=[index_column])
+        if index_column in df.columns:
+            df = df.set_index(index_column)
+        elif df.index.name != index_column:
+            # If after all that, we still can't find it, raise an error.
+            raise ValueError(f"Column '{index_column}' not found in the DataFrame.")
 
     return df
