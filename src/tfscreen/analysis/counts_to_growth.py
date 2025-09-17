@@ -4,7 +4,7 @@ from tfscreen.util import (
     df_to_arrays
 )
 
-from tfscreen.calibration import read_calibration
+from tfscreen.calibration import get_wt_k
 from tfscreen.analysis import get_time0
 
 from tfscreen.analysis.get_growth_rates import (
@@ -161,9 +161,6 @@ def counts_to_growth(combined_df,
     if k_fitter_kwargs is None:
         k_fitter_kwargs = {}
     
-    # Load the calibration dictionary
-    calibration_dict = read_calibration(calibration_data)
-
     # Load the combined and sample data frames
     combined_df = read_dataframe(combined_df)
     sample_df = read_dataframe(sample_df,index_column="sample")
@@ -178,14 +175,26 @@ def counts_to_growth(combined_df,
     
     genotypes = processed["genotypes"]
     samples = processed["samples"]
+    times = processed["times"]
+
+    # Get things under selection and wt growth
+    no_select_mask = np.array(sample_df["select"],dtype=bool)
+    k_wt, _ = get_wt_k(marker=sample_df["marker"],
+                       select=np.zeros(len(sample_df["select"]),dtype=int),
+                       iptg=sample_df["iptg"],
+                       calibration_data=calibration_data,
+                       calc_err=False)
+    
+    no_select_mask = np.tile(no_select_mask,times.shape[0])
+    k_wt = np.tile(k_wt,times.shape[0])
 
     # Get zero points
     _, times, ln_cfu, ln_cfu_var = get_time0(
-        times=processed["times"],
+        times=times,
         ln_cfu=processed["ln_cfu"],
         ln_cfu_var=processed["ln_cfu_var"],
-        sample_df=sample_df,
-        calibration_data=calibration_data,
+        no_select_mask=no_select_mask,
+        k_wt=k_wt,
         pre_select_time=pre_select_time,
         num_iterations=num_time0_iterations
     )

@@ -1,44 +1,81 @@
 
-from tfscreen.calibration import read_calibration
+from tfscreen.calibration import (
+    read_calibration,
+    _models
+)
 
-def get_wt_theta(iptg,
-                 calibration_data,
-                 override_K=None,
-                 override_n=None):
+from tfscreen.util import (
+    broadcast_args
+)
+
+import numpy as np
+import pandas as pd
+
+def get_wt_theta(
+    titrant_name: np.ndarray,
+    titrant_conc: np.ndarray,
+    calibration_data: dict or str,
+    override_K: float or np.ndarray = None,
+    override_n: float or np.ndarray = None
+) -> np.ndarray:
     """
-    Get the slope of k vs. theta for combinations of marker and selection 
-    using the model stored in calibration_data.
+    Calculate wildtype theta using the calibrated Hill model.
+
+    This function looks up the calibrated Hill model parameters for each
+    specified titrant. It allows for optionally overriding the equilibrium
+    constant (K) and Hill coefficient (n) before calculating the fractional
+    saturation (theta).
 
     Parameters
     ----------
-    iptg : np.ndarray
-        1D array of iptg concentration for each condition
+    titrant_name : numpy.ndarray
+        A 1D array of titrant name strings.
+    titrant_conc : numpy.ndarray
+        A 1D array of corresponding titrant concentrations.
     calibration_data : dict or str
-        a dictionary holding calibration values or the path to the calibration
-        json file
-    override_K : np.ndarray or float
-        use this K value for the hill model, not the K in calibration_data. if
-        an array, must match dimensions of iptg
-    override_n : np.ndarray or float
-        use this n value for the hill model, not the n in calibration_data. if
-        an array, must match dimensions of iptg
-    
+        A pre-loaded calibration dictionary or the file path to the
+        calibration JSON file.
+    override_K : float or numpy.ndarray, optional
+        If provided, this value is used for the dissociation constant (K)
+        instead of the value from the calibration data. Must have a shape
+        compatible with `titrant_name`. Defaults to None.
+    override_n : float or numpy.ndarray, optional
+        If provided, this value is used for the Hill coefficient (n)
+        instead of the value from the calibration data. Must have a shape
+        compatible with `titrant_name`. Defaults to None.
+
     Returns
     -------
-    np.ndarray
-        1D array of the slope of k vs. theta
+    numpy.ndarray
+        A 1D array of the calculated theta values for each corresponding input.
+    
+    Notes
+    -----
+    The function assumes the Hill parameters in the calibration data are
+    ordered as `[baseline, amplitude, K, n]`.
     """
     
+    # Read calibration data
     calibration_dict = read_calibration(calibration_data)
+
+    titrant_name, titrant_conc = broadcast_args(titrant_name,
+                                                titrant_conc)
+
+    # Create series to map between theta and parameter arrays
+    theta_param_dict = calibration_dict["theta_param"]
+    theta_map = pd.Series(theta_param_dict)
+
+    # param array 
+    param_array = np.array(theta_map[titrant_name].tolist())
+
+    # Override calibration K value
+    if override_K is not None:
+        param_array[:, _models.HILL_PARAM_IDX["K"]] = override_K
     
-    K = calibration_dict["K"]
-    n = calibration_dict["n"]
+    # Override calibration n value
+    if override_n is not None:
+        param_array[:, _models.HILL_PARAM_IDX["n"]] = override_n
 
-    if override_K:
-        K = override_K
-    if override_n:
-        n = override_n
+    # Return hill model
+    return _models.hill_model(param_array.T,titrant_conc)
 
-    theta = 1 - (iptg**n)/(K**n + iptg**n)
-
-    return theta

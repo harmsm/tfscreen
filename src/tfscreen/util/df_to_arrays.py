@@ -217,9 +217,6 @@ def df_to_arrays(combined_df,
     genotypes = _results[4]
     samples = _results[5]
 
-    ### SOMEHOW NEED TO ADJUST TOTAL COUNTS BY NUMBER OF GENOTYPES PER SAMPLE
-    # total_count in pseudocount add should divide by genotype_counts + 1/(total_counts_sample + num_genotypes_in_sample*1)
-
     # Extract ln_cfu and ln_cfu_variance from the count data
     cfu, cfu_var, ln_cfu, ln_cfu_var = _get_ln_cfu(
         sequence_counts=sequence_counts,

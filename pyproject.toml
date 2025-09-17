@@ -23,7 +23,9 @@ dependencies = [
   "tqdm",
   "statsmodels",
   "PyYAML",
-  "corner"
+  "corner",
+  "dataclasses",
+  "typing"
 ]
 
 requires-python = ">=3.10"
@@ -51,7 +53,8 @@ test = [
   "coverage",
   "flake8",
   "pytest",
-  "genbadge"
+  "genbadge",
+  "pytest-mock"
  ]
 docs = [
   "pydata-sphinx-theme"

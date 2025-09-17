@@ -3,7 +3,7 @@ from tfscreen.util import df_to_arrays
 from tfscreen.util import argsort_genotypes
 from tfscreen.util import read_dataframe
 
-from tfscreen.calibration import read_calibration
+from tfscreen.calibration import get_wt_k
 from tfscreen.analysis import get_time0
 
 import numpy as np
@@ -84,14 +84,22 @@ def _load_replicate(combined_df,
     ln_cfu_var = _arrays["ln_cfu_var"]
     sequence_counts = _arrays["sequence_counts"]
         
+    # Get things under selection and wt growth
+    no_select_mask = np.array(to_regress_df["select"],dtype=bool)
+    k_wt, _ = get_wt_k(marker=to_regress_df["marker"],
+                       select=np.zeros(len(to_regress_df["select"])),
+                       iptg=to_regress_df["iptg"],
+                       calibration_data=calibration_data,
+                       calc_err=False)    
+
     # Estimate the starting ln_cfu and global effect of each genotype on
     # growth rate. 
     time0_df, _, _, _ = get_time0(
         times,
         ln_cfu,
         ln_cfu_var,
-        sample_df,
-        calibration_data,
+        no_select_mask=no_select_mask,
+        k_wt=k_wt,
         pre_select_time=pre_select_time
     )
 
@@ -173,8 +181,6 @@ def counts_to_lncfu(combined_df,
     idx = argsort_genotypes(genotypes)
     genotype_order = genotypes[idx]
         
-    calibration_data = read_calibration(calibration_data)
-
     # These will hold all replicate dataframes and arrays
     to_regress_dfs = []
     times = []
