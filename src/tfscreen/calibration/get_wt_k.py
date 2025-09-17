@@ -1,68 +1,75 @@
 
 from tfscreen.calibration import (
-    build_design_matrix,
-    read_calibration
+    read_calibration,
+    get_background,
+    get_wt_theta,
+    get_k_vs_theta
+)
+
+from tfscreen.util import (
+    broadcast_args
 )
 
 import numpy as np
 
-def get_wt_k(marker,
-             select,
-             iptg,
-             calibration_data,
-             theta=None,
-             calc_err=True):
+def get_wt_k(
+    condition: np.ndarray,
+    titrant_name: np.ndarray,
+    titrant_conc: np.ndarray,
+    calibration_data: dict or str,
+    theta: np.ndarray = None
+) -> np.ndarray:
     """
-    Get the growth rate of a wildtype clone under the conditions specified 
-    using the model stored in calibration_data.
+    Calculate the wildtype growth rate using the full calibration model.
+
+    This function combines the background growth rate with a theta-dependent
+    perturbation to predict the final growth rate (`k`) for a given set of
+    experimental conditions.
 
     Parameters
     ----------
-    marker : np.ndarray
-        1D array of condition markers (the special value 'none' is ignored). 
-    select : np.ndarray
-        1D array of selection state for each condition 
-    iptg : np.ndarray
-        1D array of iptg concentration for each condition
+    condition : numpy.ndarray
+        A 1D array of condition strings.
+    titrant_name : numpy.ndarray
+        A 1D array of titrant name strings.
+    titrant_conc : numpy.ndarray
+        A 1D array of corresponding titrant concentrations.
     calibration_data : dict or str
-        a dictionary holding calibration values or the path to the calibration
-        json file
-    theta : np.ndarray, default=None
-        1D array of theta values over the conditions. if None, calculate theta
-        from the K and n values in the calibration dictionary
+        A pre-loaded calibration dictionary or the file path to the
+        calibration JSON file.
+    theta : numpy.ndarray, optional
+        A 1D array of pre-calculated theta values. If None (the default),
+        theta will be calculated internally using the calibrated Hill model.
 
     Returns
     -------
-    y_est : np.ndarray
-        predicted growth rates
-    y_std : np.ndarray
-        standard error on the predicted growth rates
+    numpy.ndarray
+        A 1D array of the final predicted wildtype growth rate (`k`) for each
+        corresponding set of inputs.
     """
 
+    # Read calibration data
     calibration_dict = read_calibration(calibration_data)
 
-    param_names, X_pred = build_design_matrix(marker=marker,
-                                              select=select,
-                                              iptg=iptg,
-                                              theta=theta,
-                                              K=calibration_dict["K"],
-                                              n=calibration_dict["n"],
-                                              log_iptg_offset=calibration_dict["log_iptg_offset"],
-                                              param_names=calibration_dict["param_names"])
-    
-    if tuple(param_names) != tuple(calibration_dict["param_names"]):
-        print("Warning. param name mismatch between inputs and calibration.")
-        print("Inferred param_names",param_names)
-        print("Calibration param_names",calibration_dict["param_names"])
-        print("This could mean the model does not describe your data.",flush=True)
-        print(X_pred.shape)
+    condition, titrant_name, titrant_conc = broadcast_args(condition,
+                                                           titrant_name,
+                                                           titrant_conc)
 
-    y_est = X_pred @ calibration_dict["param_values"]
 
-    if calc_err: 
-        y_var_matrix = X_pred @ calibration_dict["cov_matrix"] @ X_pred.T
-        y_std = np.sqrt(np.diag(y_var_matrix))
-    else:
-        y_std = np.repeat(np.nan,len(y_est))
+    # Get background growth
+    background = get_background(titrant_name,
+                                titrant_conc,
+                                calibration_dict)
     
-    return y_est, y_std 
+    # Get slope/intercept vs. theta 
+    slopes, intercepts = get_k_vs_theta(condition,
+                                        titrant_name,
+                                        calibration_dict)
+    
+    # Get theta if not passed in
+    if theta is None:
+        theta = get_wt_theta(titrant_name,
+                             titrant_conc,
+                             calibration_dict)
+                
+    return background + intercepts + slopes*theta

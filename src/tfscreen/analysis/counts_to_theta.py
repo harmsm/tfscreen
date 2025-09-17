@@ -3,7 +3,7 @@ from tfscreen.calibration import (
     read_calibration,
     get_wt_k,
     get_wt_theta,
-    get_slopes
+    get_k_vs_theta
 )
 
 from tfscreen.util import (
@@ -79,7 +79,6 @@ def _get_k(params,
     # scale k_shift
     k_shift = unscale(params[kshift_indexer],k_shift_scaling)
 
-    
     return k_wt0 + k_shift + theta*m_cond 
           
 

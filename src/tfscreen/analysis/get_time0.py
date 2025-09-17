@@ -1,4 +1,4 @@
-from tfscreen.calibration import get_wt_k
+
 from tfscreen.analysis.get_growth_rates.wls import get_growth_rates_wls
 
 import numpy as np
@@ -135,8 +135,8 @@ def _estimate_lnA0(times,
 def get_time0(times,
               ln_cfu,
               ln_cfu_var,
-              sample_df,
-              calibration_data,
+              no_select_mask,
+              k_wt,
               pre_select_time=30,
               num_iterations=3):
     """
@@ -164,20 +164,19 @@ def get_time0(times,
     ----------
     times : numpy.ndarray
         2D array. Time points corresponding to each genotype/sample. 
-        Shape (num_time_points,num_genotypes*num_samples)
+        Shape (num_genotypes*num_samples,num_time_points)
     ln_cfu : numpy.ndarray
         2D array. Natural logarithm of the CFU/mL for each genotype/sample
-        Shape (num_time_points,num_genotypes*num_samples)
+        Shape (num_genotypes*num_samples,num_time_points)
     ln_cfu_var : numpy.ndarray
         2D array. Variance of the natural logarithm of the CFU/mL for each
-        genotype/sample. Shape (num_time_points,num_genotypes*num_samples) 
-    sample_df : pandas.DataFrame
-        DataFrame with information about each sample, including columns for
-        "select", "marker", and "iptg".
-    calibration_data : dict or str
-        Calibration data to use for estimating wildtype growth rates. This can
-        either be a path to a calibration data file or a dictionary containing
-        calibration data.
+        genotype/sample. Shape (num_genotypes*num_samples,num_time_points) 
+    no_select_mask : numpy.ndarray
+        1D array. mask indicating which columns are not under selection and 
+        should be used to estimate k_shift. Shape (num_samples)
+    k_wt : numpy.ndarray
+        1D array. expected growth rate of wildtype under each of the conditions
+        in each colum. Shape (num_genotypes*num_samples)
     pre_select_time : float, optional
         how long the cultures grew after being split but before being put under
         selection. Units should match units in times array. Default is 30.
@@ -203,19 +202,6 @@ def get_time0(times,
         ln_cfu_var array with a new zero point added to the front of it. Shape
         (num_time_points+1,num_genotypes*num_samples)
     """
-
-    # Get every sample row that is not under selection
-    no_select_mask = np.array(sample_df["select"] == 0,dtype=bool)
-    num_samples = len(sample_df["select"])
-    num_genotypes = times.shape[0]//num_samples
-    
-    # Get the wildtype growth rate without selection for model outgrowth
-    k_wt, _ = get_wt_k(marker=sample_df["marker"],
-                       select=np.zeros(len(sample_df["select"]),dtype=int),
-                       iptg=sample_df["iptg"],
-                       calibration_data=calibration_data,
-                       calc_err=False)
-    k_wt = np.tile(k_wt,num_genotypes)
 
     # Useful templates for later
     time_block = np.zeros(times.shape[0])

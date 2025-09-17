@@ -1,7 +1,7 @@
 from tfscreen.calibration import (
     read_calibration,
     get_wt_k,
-    get_slopes
+    get_k_vs_theta
 )
 
 from tfscreen.fitting import (

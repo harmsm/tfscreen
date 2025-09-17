@@ -3,26 +3,27 @@ from .io import (
     read_calibration
 )
 
-from .build_design_matrix import (
-    build_design_matrix
+from .get_background import (
+    get_background
 )
 
-from .get_wt_k import (
-    get_wt_k
+from .get_k_vs_theta import (
+    get_k_vs_theta
 )
 
 from .get_wt_theta import (
     get_wt_theta
 )
 
-from .get_slopes import (
-    get_slopes
+from .get_wt_k import (
+    get_wt_k
 )
 
-from .build_calibration_dict import (
-    build_calibration_dict
+from .manual_fit import (
+    manual_fit
 )
 
 from .calibrate import (
     calibrate
 )
+
