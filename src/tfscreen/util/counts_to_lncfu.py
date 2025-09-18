@@ -106,7 +106,7 @@ def _calculate_frequencies(df: pd.DataFrame, pseudocount: int) -> pd.DataFrame:
 def _calculate_concentrations_and_variance(df: pd.DataFrame) -> pd.DataFrame:
     """Calculate the cfu/mL for each genotype and propagate the variance."""
     
-    # FIX: Rename sample-level columns first for clarity
+    # Rename sample-level columns first for clarity
     df = df.rename(columns={"cfu_per_mL": "sample_cfu_per_mL",
                             "cfu_per_mL_var": "sample_cfu_per_mL_var"})
 
@@ -162,7 +162,7 @@ def counts_to_lncfu(
         DataFrame indexed by a unique 'sample' string. Must contain metadata
         for each sample. The required columns are 'library', 'cfu_per_mL',
         and 'cfu_per_mL_var'. Any additional columns (e.g., 'replicate',
-        'time', 'iptg') will be preserved in the final output.
+        'time', 'titrant_name') will be preserved in the final output.
     counts_df : pd.DataFrame
         DataFrame with 'sample', 'genotype', and 'counts' columns.
     min_genotype_obs : int, optional

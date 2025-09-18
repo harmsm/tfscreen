@@ -82,7 +82,7 @@ _ALLOWED_K_FITTERS = {
     }
 }
 
-def counts_to_growth(combined_df,
+def cfu_to_growth(combined_df,
                      sample_df,
                      calibration_data,
                      k_fit_method="wls",

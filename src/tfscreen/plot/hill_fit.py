@@ -11,13 +11,13 @@ import copy
 def hill_fit(obs_df,
 			 pred_df,
 			 genotype,
-			 zero_iptg_value=1e-6,
+			 zero_titrant_value=1e-6,
 			 scatter_kwargs=None,
 			 fit_line_kwargs=None,
 			 ax=None):
   
 	this_obs_df = obs_df[obs_df["genotype"] == genotype]
-	this_obs_df.loc[this_obs_df["iptg"] == 0,"iptg"] = zero_iptg_value
+	this_obs_df.loc[this_obs_df["titrant_conc"] == 0,"titrant_conc"] = zero_titrant_value
 	this_pred_df = pred_df[pred_df["genotype"] == genotype]
 
 	if ax is None:
@@ -36,31 +36,31 @@ def hill_fit(obs_df,
 
 
 	# Plot error bars
-	ax.errorbar(this_obs_df["iptg"],
+	ax.errorbar(this_obs_df["titrant_conc"],
 				this_obs_df["theta_est"],
 				this_obs_df["theta_std"],
 				lw=0,
 				elinewidth=1,
 				capsize=5,
 				zorder=10)
-	ax.scatter(this_obs_df["iptg"],
+	ax.scatter(this_obs_df["titrant_conc"],
 			   this_obs_df["theta_est"],
 			   **final_scatter_kwargs)
 
-	ax.plot(this_pred_df["iptg"],
+	ax.plot(this_pred_df["titrant_conc"],
 			this_pred_df["hill_est"],
 			"-",
 			zorder=30,
 			**final_fit_line_kwargs)
 
-	ax.fill_between(this_pred_df["iptg"],
+	ax.fill_between(this_pred_df["titrant_conc"],
 					this_pred_df["hill_est"] - this_pred_df["hill_std"],
 					this_pred_df["hill_est"] + this_pred_df["hill_std"],
 					color="lightgray",
 					zorder=0)
 
 	ax.set_xscale('log')
-	ax.set_xlabel("[iptg] (mM)")
+	ax.set_xlabel("[titrant] (mM)")
 	ax.set_ylabel("fractional occupancy")
 	ax.set_ylim(0,1)
 

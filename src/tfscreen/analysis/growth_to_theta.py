@@ -239,7 +239,7 @@ def growth_to_theta(df,
                          theta=np.zeros(len(select)),
                          calc_err=False)
     
-    slopes = get_slopes(marker=marker,
+    slopes, _ = get_k_vs_theta(marker=marker,
                         select=select,
                         calibration_data=calibration_dict)
 

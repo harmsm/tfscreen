@@ -24,7 +24,7 @@ def mock_dependencies(mocker):
     
     # Mock the return values for the two main fitting steps
     mock_fit_linear = mocker.patch('tfscreen.calibration.calibrate._fit_linear_model', return_value=(
-        param_df, {"iptg": np.array([0.01])}, "pred_df_mock", "A0_df_mock"
+        param_df, {"iptg": np.array([0.01])}, pd.DataFrame({"iptg": np.array([0.01])}), "A0_df_mock"
     ))
     mock_fit_theta = mocker.patch('tfscreen.calibration.calibrate._fit_theta', return_value={"iptg": np.array([1, -0.9, 10, 2])})
 

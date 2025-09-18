@@ -90,7 +90,7 @@ def manual_fit(df: pd.DataFrame, calibration_data: dict) -> pd.DataFrame:
 
         # dummy value. function expects this to calculate k_shift, which we're
         # going to ignore. 
-        no_select_mask = np.ones(new_shape[0],dtype=bool)
+        no_select_mask = np.zeros(new_shape[0],dtype=bool)
 
         # Calculate wildtype background growth rate for pre-growth
         no_time_sub_df = sub_df[sort_on[:-1]].drop_duplicates()

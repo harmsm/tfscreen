@@ -15,8 +15,8 @@ def corner_plot(fit_df,
     ----------
     fit_df : pd.DataFrame
         dataframe with fit parameter information. expects columns 
-        "est', "genotype", "class","iptg", and "block". indexes are expected to 
-        be integers that match dimensions of the covariance matrix. 
+        "est', "genotype", "class","titrant_conc", and "block". indexes are
+        expected to be integers that match dimensions of the covariance matrix. 
     cov_matrix : np.ndarray (or scipy.sparse)
         covariance matrix for the fit parameters.
     plot_mask : np.ndarray, optional
@@ -48,8 +48,8 @@ def corner_plot(fit_df,
 
     est_values = fit_df["est"].values
 
-    param_df = fit_df.loc[:,["genotype","class","iptg","block"]] 
-    param_df["iptg"] = param_df["iptg"].astype(str)
+    param_df = fit_df.loc[:,["genotype","class","titrant_conc","block"]] 
+    param_df["titrant_conc"] = param_df["titrant_conc"].astype(str)
     param_df["block"] = param_df["block"].astype(str)
     param_names = list(param_df.agg("_".join,axis=1))
     

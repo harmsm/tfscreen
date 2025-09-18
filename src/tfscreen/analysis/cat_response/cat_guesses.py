@@ -2,8 +2,8 @@
 A library of empirical mathematical functions used to generate guesses for the
 functions in cat_library.py. Each function adheres to the signature: 
 `guess_func(x,y)`
-- `x`: A NumPy array of independent variable values (e.g., IPTG concentration).
-- `y`: A NumPy array of dependent variable values (e.g., IPTG concentration).
+- `x`: A NumPy array of independent variable values (e.g., titrant concentration).
+- `y`: A NumPy array of dependent variable values (e.g., titrant concentration).
 """
 
 import numpy as np

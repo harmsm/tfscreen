@@ -170,7 +170,7 @@ def _calculate_log_population(params,
     # Background growth over pre_time + time
     k_bg_t = simple_poly(params[bg_param_idx.T],titrant_conc)*(pre_time + time)
 
-    # Pertubation to background growth due to occupancy of the transcription
+    # Perturbation to background growth due to occupancy of the transcription
     # factor (theta) and current conditions. 
     k_pre_t = (params[b_pre_idx] + params[m_pre_idx]*theta)*pre_time
     k_t = (params[b_idx] + params[m_idx]*theta)*time
@@ -520,6 +520,7 @@ def _fit_linear_model(
     # 4. Parse the raw results into final, clean outputs
     results = _parse_fit_results(params, std_errors, cov_matrix, fit_setup, fit_data)
 
+    
     return (
         results.linear_model_df,
         results.bg_model_param,
@@ -630,6 +631,10 @@ def calibrate(
     param_df, bg_model_param, pred_df, A0_df = _fit_linear_model(df,
                                                                  bg_model_guesses,
                                                                  lnA0_guess=lnA0_guess)
+    
+    # Concatenate main dataset and pred_df -- we now have predictions in the
+    # same organization as the total dataset. 
+    pred_df = pd.concat([df,pred_df],axis=1)
 
     # Fit a hill model to the observed theta values so we can calculate
     # approximate wildtype theta on the fly for any titrant conc
