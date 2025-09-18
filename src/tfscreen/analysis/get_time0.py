@@ -29,7 +29,7 @@ def _estimate_lnA0(times,
         conditions that did not have selection in them. 
     k_wt : float
         1D numpy array holding the wildtype growth rate in the absence of
-        selection for each sample condition. Shape (num_genotype*num_samples,). 
+        selection for each sample condition. Shape (num_genotypes,). 
     pre_select_time : float
         how long the cultures grew after being split but before being put under
         selection.  Units should match units in times array. 
@@ -66,15 +66,18 @@ def _estimate_lnA0(times,
     k_shift = k_est - k_wt
 
     # Get mean of k for each genotype in each sample that has no selection
-    # applied. (This assumes growth with/without marker and with/without iptg
-    # is similar). Grab k_est for rows not under selection using no_select_mask.
+    # applied. Grab k_est for rows not under selection using no_select_mask.
     # Reshape into samples-as-columns and take the mean of each row. This 
     # yields an array k_before_select that has the average growth rate of each 
-    # genotype under non-selective conditions. 
-    to_mean = k_shift[np.tile(no_select_mask,num_genotypes)]
-    to_mean = to_mean.reshape((num_genotypes, np.sum(no_select_mask)))
-    k_shift = np.nanmean(to_mean,axis=1)
-    
+    # genotype under non-selective conditions. If the mask is all zeros, assume
+    # kshift is zero. 
+    if np.sum(no_select_mask) > 0:
+        to_mean = k_shift[np.tile(no_select_mask,num_genotypes)]
+        to_mean = to_mean.reshape((num_genotypes, np.sum(no_select_mask)))
+        k_shift = np.nanmean(to_mean,axis=1)
+    else:
+        k_shift = np.zeros(num_genotypes,dtype=float)
+        
     # Any bad estimates -- replace with 0.0
     k_shift[np.isnan(k_shift)] = 0.0
     
@@ -95,9 +98,9 @@ def _estimate_lnA0(times,
     pre_growth = pre_growth.reshape(new_dim)
 
     # Grow backwards in time by pre_growth, finding the lnA the mother sample 
-    # was split into different tubes with different iptg. **Because the samples 
-    # are split from the same starter culture, lnA_pre0 for a given genotype
-    # should be the same for all samples.**
+    # was split into different tubes with each pre_condition. **Because the
+    # samples are split from the same starter culture, lnA_pre0 for a given 
+    # genotype should be the same for all samples.**
     lnA_pre0 = lnA0_reshaped - pre_growth
     
     # Because of uncertainty in our measurements, fits, and growth rates, 

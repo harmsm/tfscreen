@@ -2,7 +2,7 @@
 A library of empirical mathematical functions for fitting 1D curves. Each
 function adheres to the signature: `model_func(params, x)`
 - `params`: A list or NumPy array of the model's parameters.
-- `x`: A NumPy array of independent variable values (e.g., IPTG concentration).
+- `x`: A NumPy array of independent variable values (e.g., titrant concentration).
 """
 import numpy as np
 

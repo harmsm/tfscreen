@@ -35,7 +35,7 @@ def cat_fits(x,y,y_std,
     Parameters
     ----------
     x : numpy.ndarray
-        Array of x-coordinates (e.g., IPTG concentrations).
+        Array of x-coordinates (e.g., titrant concentrations).
     y : numpy.ndarray
         Array of y-coordinates (e.g., operator occupancy).
     y_std : numpy.ndarray
@@ -162,7 +162,7 @@ def cat_fits(x,y,y_std,
               prop={'size': 10})
 
     # Clean up plot
-    ax.set_xlabel("iptg (mM)")
+    ax.set_xlabel("titrant (mM)")
     ax.set_ylabel("operator occupancy")
     ax.set_xscale("log")
     ax.set_ylim((-0.1,1.1))

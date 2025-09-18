@@ -8,7 +8,7 @@ import pandas as pd
 from tqdm.auto import tqdm
 
 def cat_response(df,
-                 x_column="iptg",
+                 x_column="titrant_conc",
                  y_column="theta_est",
                  y_std_column="theta_std",
                  models_to_run=None):
