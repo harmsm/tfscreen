@@ -1,10 +1,7 @@
 from ._get_indiv_growth import _get_indiv_growth
 from tfscreen.util import get_scaled_cfu
 
-from tfscreen.calibration import get_wt_k
-
 import pandas as pd
-
 
 def get_indiv_growth(df,
                      series_selector,

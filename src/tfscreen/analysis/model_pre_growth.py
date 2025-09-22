@@ -1,6 +1,3 @@
-from tfscreen.util import (
-    get_group_mean_std
-)
 
 import numpy as np
 

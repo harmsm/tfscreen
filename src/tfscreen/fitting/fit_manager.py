@@ -68,8 +68,6 @@ class FitManager:
         # For numerical stability, ensure sigma is positive.
         if np.any(self._scale_sigma <= 0):
             raise ValueError("Values in 'scale_sigma' must be positive.")
-
-        self._is_fixed = self._param_df["fixed"] == True
     
     def __repr__(self) -> str:
         """
@@ -167,7 +165,7 @@ class FitManager:
         out = v_transformed.copy()
         out[self._is_scale] = self._from_scale(v_transformed[self._is_scale])
         out[self._is_logistic] = self._from_logistic(v_transformed[self._is_logistic])
-        out[self._is_fixed] = self._param_df.loc[self._is_fixed,"guess"]
+        out[self.is_fixed] = self._param_df.loc[self.is_fixed,"guess"]
         return out
 
     def back_transform_std_err(self, v_transformed: np.ndarray, std_err_transformed: np.ndarray) -> np.ndarray:
@@ -226,7 +224,7 @@ class FitManager:
             The predicted y-values.
         """
         real_v = v.copy()
-        real_v[self._is_fixed] = self.guesses[self._is_fixed]
+        real_v[self.is_fixed] = self.guesses[self.is_fixed]
         return self._X @ real_v
 
     def predict_from_transformed(self, v_transformed: np.ndarray) -> np.ndarray:
@@ -244,7 +242,7 @@ class FitManager:
             The predicted y-values.
         """
         real_v = self.back_transform(v_transformed)
-        real_v[self._is_fixed] = self.guesses[self._is_fixed]
+        real_v[self.is_fixed] = self.guesses[self.is_fixed]
         return self._X @ real_v
 
     def _to_logistic(self, v: np.ndarray) -> np.ndarray:
@@ -404,7 +402,7 @@ class FitManager:
     @property
     def censored(self) -> np.ndarray:
         """np.ndarray: A boolean array indicating if a parameter is censored."""
-        return self._param_df["censored"].to_numpy()
+        return self._param_df["censored"].to_numpy(dtype=bool)
 
     @property
     def guesses(self) -> np.ndarray:
@@ -415,3 +413,8 @@ class FitManager:
     def guesses_transformed(self) -> np.ndarray:
         """np.ndarray: The initial guesses in the transformed space."""
         return self.transform(self.guesses)
+    
+    @property
+    def is_fixed(self) -> np.ndarray:
+        """np.ndarray: The initial guess for each parameter."""
+        return self._param_df["fixed"].to_numpy(dtype=bool)
