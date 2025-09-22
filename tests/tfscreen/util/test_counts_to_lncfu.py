@@ -22,7 +22,7 @@ def sample_df() -> pd.DataFrame:
         'sample': ['s1', 's2', 's3', 's4'],
         'library': ['libA', 'libA', 'libB', 'libB'],
         'cfu_per_mL': [1e8, 1.2e8, 2e7, 2.5e7],
-        'cfu_per_mL_var': [1e14, 1.1e14, 4e12, 5e12],
+        'cfu_per_mL_std': [1e7, 1.0488088481701516e7, 2e6, 2.2360679774997894e6],
         'extra_col': ['cond1', 'cond2', 'cond1', 'cond2']
     }
     return pd.DataFrame(data).set_index('sample')
@@ -82,6 +82,7 @@ def test_impute_missing_genotypes(sample_df):
         'genotype': ['G1',   'G1',   'G2',   'G3'],
         'counts':   [100,    50,     200,    300],
         'cfu_per_mL': [1e8, 1.2e8, 2e7, 2.5e7],
+        'cfu_per_mL_std': [1e8, 1.2e8, 2e7, 2.5e7],
         'extra_col': ['cond1', 'cond2', 'cond1', 'cond2']
     }
     filtered_df = pd.DataFrame(filtered_data)
@@ -142,7 +143,7 @@ def test_calculate_concentrations_and_variance():
         'sample': ['s1'],
         'frequency': [0.9],
         'cfu_per_mL': [1e8],         # Original sample-level data
-        'cfu_per_mL_var': [1e14],   # Original sample-level data
+        'cfu_per_mL_std': [1e7],   # Original sample-level data
         'adjusted_counts': [91]
     })
     # Simulate a second genotype in the sample for total counts calculation
@@ -185,7 +186,7 @@ def test_calculate_concentrations_zero_cfu():
         'sample': ['s1'],
         'frequency': [0.0],
         'cfu_per_mL': [1e8],
-        'cfu_per_mL_var': [1e14],
+        'cfu_per_mL_std': [1e7],
         'adjusted_counts': [100]
     })
     result = _calculate_concentrations_and_variance(df.copy())
@@ -204,12 +205,15 @@ def test_counts_to_lncfu_full_pipeline(sample_df, counts_df, mocker):
     calculation, sorting, and data type conversion.
     """
     # Mock dependencies imported by the module under test
-    mocker.patch('tfscreen.util.read_dataframe', side_effect=lambda df, **kwargs: df.copy())
+    mocker.patch('tfscreen.util.counts_to_lncfu.read_dataframe', side_effect=lambda df, **kwargs: df.copy())
     mocker.patch(
-        'tfscreen.util.argsort_genotypes', 
+        'tfscreen.util.counts_to_lncfu.argsort_genotypes', 
         side_effect=lambda g: np.argsort(g)  # Simple alphabetical sort for testing
     )
 
+    print("****")
+    print(counts_df)
+    print("XXX")
     result = counts_to_lncfu(sample_df, counts_df, min_genotype_obs=10, pseudocount=1)
 
     # Expected shape: G2 from libA is filtered. G2 and G3 are cross-imputed in libB.
