@@ -1,6 +1,7 @@
 from tfscreen.util import (
     read_dataframe,
-    argsort_genotypes
+    argsort_genotypes,
+    check_columns
 )
 
 import pandas as pd
@@ -108,10 +109,13 @@ def _calculate_concentrations_and_variance(df: pd.DataFrame) -> pd.DataFrame:
     
     # Rename sample-level columns first for clarity
     df = df.rename(columns={"cfu_per_mL": "sample_cfu_per_mL",
-                            "cfu_per_mL_var": "sample_cfu_per_mL_var"})
+                            "cfu_per_mL_std": "sample_cfu_per_mL_std"})
 
     # Calculate the cfu/mL for each genotype
     df['cfu'] = df['frequency'] * df['sample_cfu_per_mL']
+
+    # Convert input standard deviation into variance
+    sample_cfu_per_mL_var = (df["sample_cfu_per_mL_std"])**2
 
     # --- Propagate Variance ---
     # 1. Variance in frequency (from binomial uncertainty)
@@ -121,7 +125,7 @@ def _calculate_concentrations_and_variance(df: pd.DataFrame) -> pd.DataFrame:
     # 2. Propagate error for Z = X * Y
     with np.errstate(divide='ignore', invalid='ignore'):
         relative_var_freq = np.nan_to_num(var_frequency / (df['frequency']**2))
-        relative_var_sample_cfu = np.nan_to_num(df['sample_cfu_per_mL_var'] / (df['sample_cfu_per_mL']**2))
+        relative_var_sample_cfu = np.nan_to_num(sample_cfu_per_mL_var / (df['sample_cfu_per_mL']**2))
 
     relative_var_sum = relative_var_freq + relative_var_sample_cfu
 
@@ -161,7 +165,7 @@ def counts_to_lncfu(
     sample_df : pd.DataFrame
         DataFrame indexed by a unique 'sample' string. Must contain metadata
         for each sample. The required columns are 'library', 'cfu_per_mL',
-        and 'cfu_per_mL_var'. Any additional columns (e.g., 'replicate',
+        and 'cfu_per_mL_std'. Any additional columns (e.g., 'replicate',
         'time', 'titrant_name') will be preserved in the final output.
     counts_df : pd.DataFrame
         DataFrame with 'sample', 'genotype', and 'counts' columns.
@@ -188,8 +192,15 @@ def counts_to_lncfu(
     
     # Read/clean up dataframes
     sample_df = read_dataframe(sample_df,index_column="sample")
+    check_columns(sample_df,required_columns=["library",
+                                              "cfu_per_mL",
+                                              "cfu_per_mL_std"])
+    
     counts_df = read_dataframe(counts_df)
-
+    check_columns(counts_df,required_columns=["sample",
+                                              "genotype",
+                                              "counts"])
+    
     # 1. Combine the two dataframes
     # Merge on the index of sample_df and the 'sample' column of counts_df
     combined_df = pd.merge(counts_df, sample_df, left_on=['sample'], right_index=True, how='left')

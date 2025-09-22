@@ -1,10 +1,14 @@
 
-from .read_dataframe import (
-    read_dataframe
-)
-
 from .df_to_arrays import (
     df_to_arrays
+)
+
+from .broadcast_args import (
+    broadcast_args
+)
+
+from .check_columns import (
+    check_columns
 )
 
 from .argsort_genotypes import (
@@ -19,6 +23,12 @@ from .xfill import (
     xfill
 )
 
+
+from .read_dataframe import (
+    read_dataframe
+)
+
+
 from .expand_on_conditions import (
     expand_on_conditions
 )
@@ -29,14 +39,6 @@ from .build_cycles import (
 
 from .counts_to_lncfu import (
     counts_to_lncfu
-)
-
-from .broadcast_args import (
-    broadcast_args
-)
-
-from .check_columns import (
-    check_columns
 )
 
 from .numerical import (
