@@ -1,12 +1,6 @@
-
-from tfscreen.calibration import (
-    read_calibration,
-    _models
-)
-
-from tfscreen.util import (
-    broadcast_args
-)
+from tfscreen.models.generic import MODEL_LIBRARY
+from tfscreen.calibration import read_calibration
+from tfscreen.util import broadcast_args
 
 import numpy as np
 import pandas as pd
@@ -38,7 +32,8 @@ def get_wt_theta(
     override_K : float or numpy.ndarray, optional
         If provided, this value is used for the dissociation constant (K)
         instead of the value from the calibration data. Must have a shape
-        compatible with `titrant_name`. Defaults to None.
+        compatible with `titrant_name`. Defaults to None. Note that the 
+        calibration stores lnK, but this function expects K. 
     override_n : float or numpy.ndarray, optional
         If provided, this value is used for the Hill coefficient (n)
         instead of the value from the calibration data. Must have a shape
@@ -58,6 +53,7 @@ def get_wt_theta(
     # Read calibration data
     calibration_dict = read_calibration(calibration_data)
 
+    # Create arrays of identical length from inputs
     titrant_name, titrant_conc = broadcast_args(titrant_name,
                                                 titrant_conc)
 
@@ -68,14 +64,21 @@ def get_wt_theta(
     # param array 
     param_array = np.array(theta_map[titrant_name].tolist())
 
+    # Get positions of named parameters in the model to allow us to override
+    param_names = MODEL_LIBRARY["hill_repressor"]["param_names"]
+    param_positions = dict([(p,i) for i, p in enumerate(param_names)])
+
     # Override calibration K value
     if override_K is not None:
-        param_array[:, _models.HILL_PARAM_IDX["K"]] = override_K
+        idx = param_positions["lnK"]
+        param_array[:, idx] = np.log(override_K)
     
     # Override calibration n value
     if override_n is not None:
-        param_array[:, _models.HILL_PARAM_IDX["n"]] = override_n
+        idx = param_positions["n"]
+        param_array[:,idx] = override_n
 
     # Return hill model
-    return _models.hill_model(param_array.T,titrant_conc)
+    return MODEL_LIBRARY["hill_repressor"]["model_func"](param_array.T,
+                                                         titrant_conc)
 

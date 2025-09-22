@@ -1,11 +1,12 @@
 
 from tfscreen.calibration import (
     read_calibration,
-    manual_fit,
     get_background,
     get_wt_k
 )
 from tfscreen.plot.helper import get_ax_limits
+
+from tfscreen.analysis import get_indiv_growth
 
 import pandas as pd
 import numpy as np
@@ -123,7 +124,7 @@ def k_vs_titrant(df,
     if plot_color_dict is None:
         plot_color_dict = {}
 
-    for key, sub_df in manual_df.groupby(["pre_condition","condition","titrant_name"]):
+    for key, sub_df in manual_df.groupby(["condition_pre","condition_sel","titrant_name"]):
 
         condition = key[1]
         
@@ -164,10 +165,12 @@ def k_pred_corr(manual_df,
     k_man_est = np.array(manual_df["k_est"])
     k_man_std = np.array(manual_df["k_std"])
 
+    titrant_conc = manual_df["titrant_conc"].to_numpy(dtype=float)
+
     # calculate matched k using model
-    k_cal_est = get_wt_k(manual_df["condition"],
-                         manual_df["titrant_name"],
-                         manual_df["titrant_conc"],
+    k_cal_est = get_wt_k(manual_df["condition_sel"].values,
+                         manual_df["titrant_name"].values,
+                         titrant_conc,
                          calibration_data=calibration_dict)
     
     ax.scatter(k_cal_est,
@@ -198,32 +201,50 @@ def k_pred_corr(manual_df,
     return ax
 
 def fit_summary(pred_df,
-                A0_df,
+                param_df,
                 calibration_data,
-                plot_color_dict=None):
-    
+                plot_color_dict=None,
+                no_selection_conditions=None):
+
+    if no_selection_conditions is None:
+        no_selection_conditions = ["pheS-4CP","kanR-kan"]
+
     calibration_dict = read_calibration(calibration_data)
 
     fig, ax = plt.subplots(2,2,figsize=(12,12))
-    growth_rate_fit(pred_df["obs_est"],
-                    pred_df["obs_std"],
+    growth_rate_fit(pred_df["y_obs"],
+                    pred_df["y_std"],
                     pred_df["calc_est"],
                     pred_df["calc_std"],
                     ax=ax[0,0])
     
-    A0_hist(A0_df["A0_est"],
-            ax=ax[0,1])
+    A0_est = param_df.loc[param_df["param_class"] == "ln_cfu_0","est"]
 
-    # Do a manual fit of all data used for the calibration
-    manual_df = manual_fit(pred_df,calibration_dict)
+    A0_hist(A0_est,ax=ax[0,1])
+
+    pred_df = pred_df.copy()
+    if "genotype" not in pred_df:
+        pred_df["genotype"] = "wt"
+    
+    pred_df["dk_geno_mask"] = pred_df["condition_sel"].isin(no_selection_conditions)
+
+    manual_param_df, manual_pre_df = get_indiv_growth(
+        pred_df,
+        series_selector=["replicate","condition_sel","titrant_name","titrant_conc"],
+        calibration_data=calibration_dict,
+        dk_geno_selector=["genotype"],
+        dk_geno_mask_col="dk_geno_mask",
+        lnA0_selector=["replicate"],
+        num_iterations=3
+    )
 
     k_vs_titrant(pred_df,
-                 manual_df,
+                 manual_param_df,
                  calibration_dict,
                  plot_color_dict,
                  ax[1,0])
 
-    k_pred_corr(manual_df,
+    k_pred_corr(manual_param_df,
                 calibration_dict,
                 ax[1,1])
 
@@ -241,8 +262,8 @@ def indiv_replicates(pred_df,rgb_map=None):
     ----------
     pred_df : pandas.DataFrame
         prediction dataframe returned by calibrate. The function expects the 
-        dataframe has columns: "time", "replicate", "titrant_conc", "obs_est",
-        "obs_std", and "calc_est". 
+        dataframe has columns: "time", "replicate", "titrant_conc", "y_obs",
+        "y_std", and "calc_est". 
     rgb_map : list or None, optional
         rgb_map defines how the series colors should change as a function of 
         log(titrant). Should be a list of three values indicating how the 
@@ -341,10 +362,10 @@ def indiv_replicates(pred_df,rgb_map=None):
     size = int(np.ceil(np.sqrt(len(pred_df.groupby(["replicate"])))))
     
     # Get axis limits
-    min_x, max_x = get_ax_limits(pred_df["time"],
-                                 pred_df["time"],
+    min_x, max_x = get_ax_limits(pred_df["t_sel"],
+                                 pred_df["t_sel"],
                                  pad_by=0.05,percentile=0)
-    min_y, max_y = get_ax_limits(pred_df["obs_est"],
+    min_y, max_y = get_ax_limits(pred_df["y_obs"],
                                  pred_df["calc_est"],
                                  pad_by=0.05,percentile=0)
         
@@ -361,13 +382,13 @@ def indiv_replicates(pred_df,rgb_map=None):
         ax = axes[row_counter,col_counter]
 
         # Go through all conditions...
-        condition = sub_df[["condition"]].drop_duplicates()["condition"].iloc[0]
+        condition = sub_df[["condition_sel"]].drop_duplicates()["condition_sel"].iloc[0]
         for _, cond_df in sub_df.groupby(["titrant_conc"]):
     
             # Get values to plot
-            x = cond_df["time"].to_numpy()
-            y = cond_df["obs_est"].to_numpy()
-            y_std = cond_df["obs_std"].to_numpy()
+            x = cond_df["t_sel"].to_numpy()
+            y = cond_df["y_obs"].to_numpy()
+            y_std = cond_df["y_std"].to_numpy()
             
             # Get color and titrant label
             t = cond_df["titrant_conc"].iloc[0]
@@ -377,7 +398,7 @@ def indiv_replicates(pred_df,rgb_map=None):
             # Plot data and fit values
             ax.scatter(x,y,s=30,facecolor="none",edgecolor=color,label=label)
             ax.errorbar(x,y,y_std,lw=0,color=color,capsize=5,elinewidth=1)
-            ax.plot(cond_df["time"],cond_df["calc_est"],'-',color=color,lw=2)
+            ax.plot(cond_df["t_sel"],cond_df["calc_est"],'-',color=color,lw=2)
 
             # Put legend on top-left plot
             if row_counter == 0 and col_counter == 0:

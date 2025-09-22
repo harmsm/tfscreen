@@ -1,8 +1,9 @@
-from .cat_library import MODEL_LIBRARY
+from tfscreen.models.generic import MODEL_LIBRARY
 
 from tfscreen.fitting import (
     run_least_squares,
-    predict_with_error
+    predict_with_error,
+    run_matrix_wls
 )
 
 from tfscreen.util import xfill
@@ -107,13 +108,25 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, verbose=False):
         
         try:
             
+            # Get guesses
             guesses = guess_func(x, y)
+
+            # If this is a 1D array of values, we have normal guesses. Solve by
+            # nonlinear weighted least squares. 
+            if len(guesses.shape) == 1:
             
-            params, std_err, cov_matrix, fit_obj = run_least_squares(
-                model_func, y, y_std, guesses, bounds[0], bounds[1], args=(x,)
-            )
-            if not fit_obj.success:
-                raise RuntimeError(f"Fit failed: {fit_obj.message}")
+                params, std_err, cov_matrix, fit_obj = run_least_squares(
+                    model_func, y, y_std, guesses, bounds[0], bounds[1], args=(x,)
+                )
+                if not fit_obj.success:
+                    raise RuntimeError(f"Fit failed: {fit_obj.message}")
+
+            # If this is a 2D array of values, this is a full design matrix. 
+            # Solve by weighted least squares.  
+            else:
+                params, cov_matrix = run_matrix_wls(guesses,y,1/y_std)
+                std_err = np.sqrt(np.diag(cov_matrix))
+            
 
             y_fit = model_func(params, x)
             ss_res = np.sum((y - y_fit) ** 2)

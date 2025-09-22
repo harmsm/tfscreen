@@ -1,4 +1,3 @@
-from ._models import simple_poly
 
 from tfscreen.calibration import (
     read_calibration
@@ -9,7 +8,6 @@ from tfscreen.util import (
 )
 
 import numpy as np
-import pandas as pd
 
 def get_background(
     titrant_name: np.ndarray,
@@ -46,15 +44,12 @@ def get_background(
 
     # Read calibration data
     calibration_dict = read_calibration(calibration_data)
-    bg_param_dict = calibration_dict["bg_model_param"]
 
-    # Create a pandas Series for fast, vectorized lookups
-    param_map = pd.Series(bg_param_dict)
+    k_bg_df = calibration_dict["k_bg_df"]
+    m = k_bg_df.loc[titrant_name,["m"]].to_numpy().flatten()
+    b = k_bg_df.loc[titrant_name,["b"]].to_numpy().flatten()
 
-    # Use the Series to map each input titrant_name to its parameter array.
-    # .tolist() converts the resulting Series of arrays into a list of lists.
-    bg_params = np.array(param_map[titrant_name].tolist())
-    
-    return simple_poly(bg_params.T, titrant_conc)
+    return m*titrant_conc + b
+
 
 

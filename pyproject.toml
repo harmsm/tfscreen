@@ -25,7 +25,8 @@ dependencies = [
   "PyYAML",
   "corner",
   "dataclasses",
-  "typing"
+  "typing",
+  "patsy"
 ]
 
 requires-python = ">=3.10"

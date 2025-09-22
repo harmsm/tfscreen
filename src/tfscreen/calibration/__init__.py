@@ -19,10 +19,6 @@ from .get_wt_k import (
     get_wt_k
 )
 
-from .manual_fit import (
-    manual_fit
-)
-
 from .calibrate import (
     calibrate
 )

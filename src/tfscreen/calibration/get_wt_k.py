@@ -55,7 +55,6 @@ def get_wt_k(
                                                            titrant_name,
                                                            titrant_conc)
 
-
     # Get background growth
     background = get_background(titrant_name,
                                 titrant_conc,
@@ -63,7 +62,6 @@ def get_wt_k(
     
     # Get slope/intercept vs. theta 
     slopes, intercepts = get_k_vs_theta(condition,
-                                        titrant_name,
                                         calibration_dict)
     
     # Get theta if not passed in
@@ -72,4 +70,6 @@ def get_wt_k(
                              titrant_conc,
                              calibration_dict)
                 
-    return background + intercepts + slopes*theta
+    v = background + intercepts + slopes*theta
+
+    return v

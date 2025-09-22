@@ -167,7 +167,7 @@ def _run_regression(df,
     df = df.copy()
     
     # Extract 1D arrays from the data frame
-    t_sel = df["time"].to_numpy()
+    t_sel = df["sel_time"].to_numpy()
     t_pre = df["pre_time"].to_numpy()
     ln_cfu = df["ln_cfu"].to_numpy()
     ln_cfu_std = np.sqrt(df["ln_cfu_var"].to_numpy())
@@ -190,7 +190,7 @@ def _run_regression(df,
     k_wt_pre = k_bg + b_pre
 
     # Get wildtype growth for theta = 0 in selection condition
-    m_sel, b_sel = get_k_vs_theta(df["condition"],
+    m_sel, b_sel = get_k_vs_theta(df["sel_condition"],
                                   df["titrant_name"],
                                   calibration_dict)    
     k_wt_sel = k_bg + b_sel
@@ -357,7 +357,7 @@ def _run_regression(df,
         args
     )
   
-    pred_df = pd.DataFrame({"time":t_sel,
+    pred_df = pd.DataFrame({"sel_time":t_sel,
                             "obs_est":ln_cfu,
                             "obs_std":ln_cfu_std,
                             "pred_est":pred_est,
@@ -381,7 +381,7 @@ def _run_regression(df,
     lnA0_est = unscale(params[A0_indexer], A0_scaling)
     lnA0_std = std_errors[A0_indexer]*A0_scaling[1]
 
-    k_df = df.copy()[["genotype","replicate","library","condition","titrant_name","titrant_conc"]]
+    k_df = df.copy()[["genotype","replicate","library","sel_condition","titrant_name","titrant_conc"]]
     k_df["k_est"] = k_est
     k_df["k_std"] = k_std
     k_df["lnA0_est"] = lnA0_est
@@ -500,7 +500,7 @@ def cfu_to_theta(df,
                                          categories=genotype_order,
                                          ordered=True)
     sort_on = ["genotype","replicate","library",
-               "condition","titrant_name","titrant_conc"]
+               "sel_condition","titrant_name","titrant_conc"]
     pred_df = pred_df.sort_values(sort_on)
 
 

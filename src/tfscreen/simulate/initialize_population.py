@@ -192,7 +192,7 @@ def _get_growth_rates(bacteria,
 
 def _get_A0(initial_pop,
             bacteria,
-            post_iptg_dilution_factor,
+            into_pre_dilution_factor,
             genotype_df):
     """
     Record the initial population of each genotype and load into genotype_df. 
@@ -216,7 +216,7 @@ def _get_A0(initial_pop,
     lnA0 = []
     for g in out_counts:
         cfu = np.exp(np.array(out_counts[g]))
-        cfu_diluted = np.sum(cfu)*post_iptg_dilution_factor
+        cfu_diluted = np.sum(cfu)*into_pre_dilution_factor
 
         genotypes.append(g)
         lnA0.append(np.log(cfu_diluted))
@@ -238,9 +238,9 @@ def initialize_population(input_library,
                           sample_df,
                           num_thawed_colonies=1e7,
                           overnight_volume_in_mL=10,
-                          pre_iptg_cfu_mL=90000000,
+                          initial_cfu_mL=90000000,
                           iptg_out_growth_time=30,
-                          post_iptg_dilution_factor=0.2/10.2,
+                          into_pre_dilution_factor=0.2/10.2,
                           growth_rate_noise=0.0):
     """
     Initialize a bacterial population for tfscreen simulations, including
@@ -261,12 +261,12 @@ def initialize_population(input_library,
         Number of colonies to thaw from the input library (default: 1e7).
     overnight_volume_in_mL : float, optional
         Overnight growth volume in mL (default: 10).
-    pre_iptg_cfu_mL : float, optional
+    initial_cfu_mL : float, optional
         Target cfu/mL before IPTG induction (default: 9e7).
     iptg_out_growth_time : float, optional
         Out-growth time in IPTG (default: 30).
-    post_iptg_dilution_factor : float, optional
-        Dilution factor after IPTG induction (default: 0.2/10.2).
+    into_pre_dilution_factor : float, optional
+        Dilution factor going into the pre-treatment (default: 0.2/10.2).
     growth_rate_noise : float
         percent noise to apply to all growth rates. (growth_noise*base_value is
         the standard deviation of the random normal distribution to sample)
@@ -305,12 +305,12 @@ def initialize_population(input_library,
         # growth rates for all bacteria.
         ln_pop_array = grow_to_target(ln_pop_array,
                                     growth_rates=bact_base_k,
-                                    final_cfu_mL=pre_iptg_cfu_mL)
+                                    final_cfu_mL=initial_cfu_mL)
         
         # Record initial population of each genotype. 
         genotype_df = _get_A0(ln_pop_array,
                               bacteria,
-                              post_iptg_dilution_factor,
+                              into_pre_dilution_factor,
                               genotype_df)
 
         pbar.update()
@@ -329,7 +329,7 @@ def initialize_population(input_library,
             
         # Dilute as we drop into selection conditions 
         ln_pop_array = dilute(ln_pop_array,
-                            dilution_factor=post_iptg_dilution_factor)
+                            dilution_factor=into_pre_dilution_factor)
 
         pbar.update()
 
