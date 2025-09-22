@@ -259,13 +259,14 @@ def _build_calibration_X(df):
                            patsy_param_names,
                            model_terms,
                            factor_terms)
-
+    
     return y_obs, y_std, X, param_df 
 
 
 def setup_calibration(df,
                       ln_cfu_0_guess=16,
-                      k_bg_guess=0.02):
+                      k_bg_guess=0.02,
+                      no_bg_slope=False):
 
     # Prepare dataframe, creating all necessary columns etc. 
     df = _prep_calibration_df(df)
@@ -287,6 +288,11 @@ def setup_calibration(df,
     # Record the guesses
     param_df["guess"] = guesses
     
+    param_df["fixed"] = False
+    if no_bg_slope:
+        param_df.loc[param_df["param_class"] == "k_bg_m","guess"] = 0.0
+        param_df.loc[param_df["param_class"] == "k_bg_m","fixed"] = True
+
     # Build fit manager
     fm = FitManager(y_obs,y_std,X,param_df)
 
@@ -295,7 +301,8 @@ def setup_calibration(df,
 def calibrate(df,
               output_file,
               ln_cfu_0_guess=16,
-              k_bg_guess=0.02):
+              k_bg_guess=0.02,
+              no_bg_slope=False):
     """
     Run the full calibration workflow on experimental data.
 
@@ -311,12 +318,14 @@ def calibrate(df,
         containing the compiled experimental data.
     output_file : str
         The file path where the output JSON calibration data will be written.
+    ln_cfu_0_guess : float, optional
+        An initial guess for the log-transformed initial population size (lnA0),
+        by default 16.
     bg_k_guess : float, optional
         An initial guess for the constant term (c_0) of the background
         growth model, by default 0.025.
-    lnA0_guess : float, optional
-        An initial guess for the log-transformed initial population size (lnA0),
-        by default 16.
+    no_bg_slope : bool, optional
+        whether or not to fix the background slope to 0. defaults to False. 
 
     Returns
     -------
@@ -334,7 +343,8 @@ def calibrate(df,
     # Construct a FitManager object to manage the fit. 
     fm = setup_calibration(df,
                            ln_cfu_0_guess=ln_cfu_0_guess,
-                           k_bg_guess=k_bg_guess)
+                           k_bg_guess=k_bg_guess,
+                           no_bg_slope=no_bg_slope)
 
     # Run least squares fit
     params, std_errors, cov_matrix, _ = run_least_squares(

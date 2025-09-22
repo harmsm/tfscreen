@@ -68,7 +68,7 @@ def _run_batch_fits(df,
         # Create a column for pivoting that represents timepoint order (0, 1, 2...)
         sub_df['_t_sel_row_number'] = (sub_df.groupby(series_selector)["t_sel"]
                                        .rank(method='first').astype(int) - 1)
-
+        
         # Reshape from long to wide format for the fitter
         row_ids, arrays = df_to_arrays(sub_df, pivot_on=series_selector)
 
@@ -279,7 +279,7 @@ def _get_indiv_growth(df,
         dk_geno_selector=dk_geno_selector,
         lnA0_selector=lnA0_selector
     )
-    
+
     # Run the fitting function in batches based on timepoint counts.
     fit_fcn = MODEL_LIBRARY[fit_method]["fcn"]
     param_df, pred_df = _run_batch_fits(
