@@ -1,24 +1,29 @@
 
-from ._models import (
-    hill_model,
-    simple_poly
-)
+from tfscreen.models.generic import MODEL_LIBRARY
 
 from tfscreen.calibration import (
     write_calibration,
     read_calibration
 )
 
-from tfscreen.util import read_dataframe
 from tfscreen.fitting import (
     run_least_squares,
-    predict_with_error
+    predict_with_error,
+    FitManager,
+    parse_patsy
+)
+
+from tfscreen.util import (
+    read_dataframe,
+    check_columns,
+    get_scaled_cfu
 )
 
 import numpy as np
 import pandas as pd
-from dataclasses import dataclass
-from typing import Tuple
+import patsy
+
+import warnings
 
 
 def _fit_theta(df):
@@ -66,20 +71,9 @@ def _fit_theta(df):
         y = titr_df["theta"].to_numpy()
         y_std = titr_df["theta_std"].to_numpy()
 
-        # Some simple guesses. (Note, this was built for a repressor and
-        # assumes the baseline starts high, then drops with increasing 
-        # titrant). 
-        baseline_guess = np.max(y)
-        amplitude_guess = np.min(y) - baseline_guess
-        y_half = baseline_guess + 0.5 * amplitude_guess
-        K_guess = x[np.argmin(np.abs(y - y_half))]
-        n_guess = 2
-
-        # Set up guess array 
-        guesses = np.array([baseline_guess,
-                            amplitude_guess,
-                            K_guess,
-                            n_guess])
+        hill_model = MODEL_LIBRARY["hill_repressor"]["model_func"]
+        guess_fcn = MODEL_LIBRARY["hill_repressor"]["guess_func"]
+        guesses = guess_fcn(x,y)
 
         # Run fit (nonlinear least squares) 
         params, _, _, _ = run_least_squares(
@@ -95,447 +89,213 @@ def _fit_theta(df):
 
     return out_dict
 
-def _calculate_log_population(params,
-                              theta,
-                              titrant_conc,
-                              pre_time,
-                              time,
-                              not_bg,
-                              b_pre_idx,
-                              m_pre_idx,
-                              b_idx,
-                              m_idx,
-                              A0_idx,
-                              bg_param_idx):
-    """
-    Calculate the log-transformed population size (lnA) from model parameters.
+def _prep_calibration_df(df):
 
-    This function implements the forward model for predicting an observable (lnA)
-    based on a global parameter vector and the specific experimental conditions
-    for each data point. It combines background growth with a perturbation term
-    that depends on transcription factor occupancy (`theta`).
+    # Reads file or copies datafame
+    df = read_dataframe(df)
 
-    Parameters
-    ----------
-    params : numpy.ndarray
-        A 1D array of float values representing all global model parameters.
-    theta : numpy.ndarray
-        A 1D array containing the fractional occupancy of the transcription
-        factor for each observation. Same length as `time`.
-    titrant_conc : numpy.ndarray
-        A 1D array of titrant concentrations for each observation.
-    pre_time : numpy.ndarray
-        A 1D array of pre-incubation times for each observation.
-    time : numpy.ndarray
-        A 1D array of main incubation times for each observation.
-    not_bg : numpy.ndarray
-        A 1D boolean array. `True` for observations that are not background
-        controls, `False` for those that are. This acts as a mask to
-        include the perturbation terms.
-    b_pre_idx : numpy.ndarray
-        A 1D integer array mapping each observation to its corresponding
-        'b_pre' (pre-incubation intercept) parameter in `params`.
-    m_pre_idx : numpy.ndarray
-        A 1D integer array mapping each observation to its corresponding
-        'm_pre' (pre-incubation slope) parameter in `params`.
-    b_idx : numpy.ndarray
-        A 1D integer array mapping each observation to its corresponding
-        'b' (main incubation intercept) parameter in `params`.
-    m_idx : numpy.ndarray
-        A 1D integer array mapping each observation to its corresponding
-        'm' (main incubation slope) parameter in `params`.
-    A0_idx : numpy.ndarray
-        A 1D integer array mapping each observation to its corresponding
-        'lnA0' (initial log population) parameter in `params`.
-    bg_param_idx : numpy.ndarray
-        A 2D integer array mapping each observation to its corresponding
-        background growth polynomial coefficients in `params`. Shape is (M, D)
-        where M is the number of observations and D is the polynomial degree + 1.
+    # Build ln_cfu and ln_cfu_std columns
+    df = get_scaled_cfu(df,need_columns=["ln_cfu","ln_cfu_std"])
 
-    Returns
-    -------
-    numpy.ndarray
-        A 1D array of the calculated lnA values for each observation.
+    # add genotype if not present
+    if "genotype" not in df.columns:
+        warnings.warn("No genotype column. Assuming all calibration genotypes are 'wt'")
+        df["genotype"] = "wt"
 
-    Notes
-    -----
-    The various `_idx` arrays and the `not_bg` mask collectively function as a
-    design matrix, selecting the appropriate parameters from the global `params`
-    vector for the calculation of each data point.
-    """
-
-    # starting population
-    lnA0 = params[A0_idx]
-
-    # Background growth over pre_time + time
-    k_bg_t = simple_poly(params[bg_param_idx.T],titrant_conc)*(pre_time + time)
-
-    # Perturbation to background growth due to occupancy of the transcription
-    # factor (theta) and current conditions. 
-    k_pre_t = (params[b_pre_idx] + params[m_pre_idx]*theta)*pre_time
-    k_t = (params[b_idx] + params[m_idx]*theta)*time
-
-    # Final population. Note we only apply k_pre_t and k_t if this is not a
-    # 'background' sample (meaning no perturbation)
-    lnA = lnA0 + k_bg_t + not_bg*(k_pre_t + k_t)
-
-    return lnA
-
-def _get_linear_model_df(df):
-    """
-    Create a mapping DataFrame for linear model parameters.
-
-    This function identifies all unique (condition, titrant_name) pairs from
-    the `pre_condition` and `condition` columns of the input DataFrame. It then
-    assigns a unique parameter index for an intercept (`b_idx`) and a slope
-    (`m_idx`) to each non-"background" pair. Pairs where the condition is
-    "background" are assigned a dummy index of 0 for both parameters.
-
-    Parameters
-    ----------
-    df : pandas.DataFrame
-        Input DataFrame containing experimental conditions. Must include the
-        columns 'pre_condition', 'condition', and 'titrant_name'.
-
-    Returns
-    -------
-    pandas.DataFrame
-        A DataFrame with a `MultiIndex` of ('condition', 'titrant_name').
-        The columns are:
-        - 'b_idx': Integer index for the intercept parameter.
-        - 'm_idx': Integer index for the slope parameter.
-
-    Notes
-    -----
-    - The slope indices (`m_idx`) are generated as a block that is offset from
-      the intercept indices (`b_idx`). For N non-background pairs, `b_idx`
-      will be `0..N-1` and `m_idx` will be `N..2N-1`.
-    - "background" conditions are not fit with this linear model and are
-      assigned a placeholder index of 0, which is ignored in downstream
-      fitting steps due to a boolean mask.
-    """
-
-    # 1. Use pd.melt to unpivot 'pre_condition' and 'condition' columns
-    id_vars = ["titrant_name"]
-    value_vars = ["pre_condition", "condition"]
-    melted_df = df.melt(id_vars=id_vars, value_vars=value_vars,
-                        value_name="condition_unified")
-
-    # 2. Find all unique pairs and rename the column
-    unique_pairs = melted_df[["condition_unified", "titrant_name"]] \
-                        .drop_duplicates().dropna() \
-                        .rename(columns={"condition_unified": "condition"})
-
-    # Create the correctly structured empty DataFrame that we will return
-    # in all edge cases or concatenate onto later.
-    empty_indexed_df = pd.DataFrame(
-        {'b_idx': pd.Series(dtype=int), 'm_idx': pd.Series(dtype=int)}
-    ).set_index(pd.MultiIndex(levels=[[], []], codes=[[], []],
-                             names=['condition', 'titrant_name']))
-
-    if unique_pairs.empty:
-        return empty_indexed_df
-
-    # 3. Separate non-background from background pairs
-    is_bg = unique_pairs["condition"] == "background"
-    non_bg_pairs = unique_pairs[~is_bg]
-    bg_pairs = unique_pairs[is_bg]
-
-    # 4. Assign parameter indices to non-background pairs
-    num_non_bg = len(non_bg_pairs)
-    if num_non_bg > 0:
-        b_idx = np.arange(num_non_bg, dtype=int)
-        m_idx = b_idx[-1] + 1 + np.arange(num_non_bg, dtype=int)
-        non_bg_df = pd.DataFrame({
-            "b_idx": b_idx,
-            "m_idx": m_idx
-        }, index=pd.MultiIndex.from_frame(non_bg_pairs))
-    else:
-        # If no non-background pairs, use the empty template
-        non_bg_df = empty_indexed_df
-
-    # 5. Assign dummy index (0) to background pairs
-    if not bg_pairs.empty:
-        bg_df = pd.DataFrame({
-            "b_idx": 0,
-            "m_idx": 0
-        }, index=pd.MultiIndex.from_frame(bg_pairs))
-    else:
-        # If no background pairs, use the empty template
-        bg_df = empty_indexed_df
-
-    # 6. Return the combined dataframe
-    return pd.concat([non_bg_df, bg_df])
-
-
-@dataclass
-class FitSetup:
-    """
-    A container for the setup needed for the linear model fit.
-    """
-
-    # DataFrames needed for parsing results
-    linear_model_df: pd.DataFrame
-    A0_df: pd.DataFrame
-
-    # Initial parameter guesses
-    initial_guesses: np.ndarray
-
-    # Index mapping arrays (the "design matrix")
-    b_pre_idx: np.ndarray
-    m_pre_idx: np.ndarray
-    b_idx: np.ndarray
-    m_idx: np.ndarray
-    A0_idx: np.ndarray
-    bg_param_idx: np.ndarray
-    not_bg: np.ndarray
-
-    # Helper lookup for background parameters
-    bg_results_lookup: dict
-
-    def get_args_tuple(self, theta, titrant_conc, pre_time, time) -> tuple:
-        """
-        Assembles the arguments tuple required by the prediction model.
-        """
-        return (
-            theta, titrant_conc, pre_time, time, self.not_bg,
-            self.b_pre_idx, self.m_pre_idx, self.b_idx, self.m_idx,
-            self.A0_idx, self.bg_param_idx
-        )
-
-@dataclass
-class FitResult:
-    """
-    A container for the final, parsed results of the fit.
-    """
-
-    linear_model_df: pd.DataFrame
-    bg_model_param: dict
-    pred_df: pd.DataFrame
-    A0_df: pd.DataFrame
-
-def _build_fit_setup(df: pd.DataFrame, bg_model_guesses: list, lnA0_guess: float) -> FitSetup:
-    """
-    Builds the design matrix, index arrays, and initial parameter guesses.
-
-    This function prepares all inputs required for the least-squares fit,
-    encapsulating the complex logic of mapping data rows to a global
-    parameter vector.
-    """
-
-    # Build dataframe for b/m parameter lookups
-    linear_model_df = _get_linear_model_df(df)
-
-    # --- Create Index Arrays for Linear Model ---
-    pre_keys = list(zip(df['pre_condition'], df['titrant_name']))
-    b_pre_idx = linear_model_df.loc[pre_keys, "b_idx"].to_numpy()
-    m_pre_idx = linear_model_df.loc[pre_keys, "m_idx"].to_numpy()
-
-    keys = list(zip(df['condition'], df['titrant_name']))
-    b_idx = linear_model_df.loc[keys, "b_idx"].to_numpy()
-    m_idx = linear_model_df.loc[keys, "m_idx"].to_numpy()
-
-    # --- Create Index Array for lnA0 ---
-    A0_df = df[["replicate"]].drop_duplicates().sort_values("replicate").reset_index(drop=True)
-    A0_start = np.max(m_idx) + 1 if len(m_idx) > 0 else 0
-    replicate_codes = pd.factorize(df['replicate'])[0]
-    A0_idx = replicate_codes + A0_start
-    A0_df["A0_idx"] = np.arange(A0_start, len(A0_df) + A0_start, dtype=int)
-
-    # --- Create Index Array for Background Model (Vectorized) ---
-    num_bg_model_params = len(bg_model_guesses)
-    titr_codes, titr_uniques = pd.factorize(df["titrant_name"])
+    # Add censored if not present
+    if "censored" not in df.columns:
+        df["censored"] = False
     
-    bg_start = np.max(A0_idx) + 1 if len(A0_idx) > 0 else 0
-    start_indices = bg_start + (titr_codes * num_bg_model_params)
-    bg_param_idx = start_indices[:, np.newaxis] + np.arange(num_bg_model_params)
+    required_columns = ["ln_cfu",
+                        "ln_cfu_std",
+                        "t_pre",
+                        "condition_pre",
+                        "t_sel",
+                        "condition_sel",
+                        "replicate",
+                        "genotype",
+                        "titrant_name",
+                        "titrant_conc",
+                        "theta",
+                        "censored"]
     
-    # --- Create Background Parameter Lookup ---
-    bg_results_lookup = {}
-    for i, titr in enumerate(titr_uniques):
-        start = bg_start + i * num_bg_model_params
-        bg_results_lookup[titr] = np.arange(start, start + num_bg_model_params)
+    # Check for required columns
+    check_columns(df,required_columns)
 
-    # --- Initialize Parameter Vector ---
-    num_bg_params = len(titr_uniques) * num_bg_model_params
-    num_params = bg_start + num_bg_params
-    initial_guesses = np.zeros(num_params, dtype=float)
-    initial_guesses[A0_idx] = lnA0_guess
-    # b/m and pre_b/pre_m guesses default to 0.
+    # We do some regex-y matching with patsy. Nuke extra columns to avoid 
+    # unexpected behavior. 
+    df = df.loc[:,required_columns]
 
-    return FitSetup(
-        linear_model_df=linear_model_df,
-        A0_df=A0_df,
-        initial_guesses=initial_guesses,
-        b_pre_idx=b_pre_idx, m_pre_idx=m_pre_idx,
-        b_idx=b_idx, m_idx=m_idx,
-        A0_idx=A0_idx, bg_param_idx=bg_param_idx,
-        not_bg=(df["condition"] != "background").to_numpy(),
-        bg_results_lookup=bg_results_lookup
-    )
+    return df
 
-def _prepare_fit_data(df: pd.DataFrame) -> dict:
+
+def _build_calibration_X(df):
     """
-    Extracts and transforms observable data from the DataFrame for fitting.
-    """
-
-    cfu = df['cfu_per_mL'].to_numpy()
-    cfu_var = df['cfu_per_mL_std'].to_numpy()**2
-
-    # Prevent division by zero or log(0) errors for bad data points
-    cfu[cfu <= 0] = 1
-    cfu_var[cfu_var <= 0] = 1e-9
-
-    ln_cfu = np.log(cfu)
-    ln_cfu_var = cfu_var / (cfu**2)
-
-    return {
-        "y": ln_cfu,
-        "y_var": ln_cfu_var,
-        "theta": df["theta"].to_numpy(),
-        "titrant_conc": df["titrant_conc"].to_numpy(),
-        "pre_time": df["pre_time"].to_numpy(),
-        "time": df["time"].to_numpy(),
-    }
-
-def _parse_fit_results(
-    params: np.ndarray,
-    std_errors: np.ndarray,
-    cov_matrix: np.ndarray,
-    fit_setup: FitSetup,
-    fit_data: dict
-) -> FitResult:
-    """
-    Parses raw fitter output into structured DataFrames and dictionaries.
-    """
-
-    # Populate linear model results
-    lm_df = fit_setup.linear_model_df.copy()
-    lm_df["b_est"] = params[lm_df["b_idx"]]
-    lm_df["b_std"] = std_errors[lm_df["b_idx"]]
-    lm_df["m_est"] = params[lm_df["m_idx"]]
-    lm_df["m_std"] = std_errors[lm_df["m_idx"]]
-
-    # Drop the dummy "background" condition 
-    keep_idx = lm_df.index.get_level_values('condition') != 'background'
-    lm_df = lm_df.loc[keep_idx, :]
-
-    # Populate A0 results
-    a0_df = fit_setup.A0_df.copy()
-    a0_df["A0_est"] = params[a0_df["A0_idx"]]
-    a0_df["A0_std"] = std_errors[a0_df["A0_idx"]]
-
-    # Build prediction dataframe with uncertainty
-    args = fit_setup.get_args_tuple(
-        fit_data["theta"], fit_data["titrant_conc"],
-        fit_data["pre_time"], fit_data["time"]
-    )
-    calc_values, calc_std = predict_with_error(
-        _calculate_log_population, params, cov_matrix, args=args
-    )
-    pred_df = pd.DataFrame({
-        "calc_est": calc_values, "calc_std": calc_std,
-        "obs_est": fit_data["y"], "obs_std": np.sqrt(fit_data["y_var"])
-    })
-
-    # Record the background model parameters
-    bg_model_param = {}
-    for titr, idx in fit_setup.bg_results_lookup.items():
-        bg_model_param[titr] = params[idx]
-
-    return FitResult(
-        linear_model_df=lm_df,
-        bg_model_param=bg_model_param,
-        pred_df=pred_df,
-        A0_df=a0_df
-    )
-
-
-def _fit_linear_model(
-    df: pd.DataFrame,
-    bg_model_guesses: list,
-    lnA0_guess: float = 16
-) -> Tuple[pd.DataFrame, dict, pd.DataFrame, pd.DataFrame]:
-    """
-    Fits the core calibration model by orchestrating helper functions.
-
-    This function serves as a high-level orchestrator for the entire fitting
-    process. It delegates complex tasks to specialized helper functions,
-    making the workflow more modular and readable. The process involves:
-    1. Building the design matrix and initial parameter guesses.
-    2. Preparing the observational data for fitting.
-    3. Executing the non-linear least-squares optimization.
-    4. Parsing the raw fitter output into user-friendly results.
-
-    Parameters
-    ----------
-    df : pandas.DataFrame
-        The compiled experimental data. Must contain columns such as 'replicate',
-        'condition', 'pre_condition', 'titrant_name', 'theta', 'cfu_per_mL',
-        and 'cfu_per_mL_std'.
-    bg_model_guesses : list
-        A list or array of initial guesses for the parameters of the background
-        growth model. The length of this list determines the model's complexity
-        (e.g., number of polynomial terms).
-    lnA0_guess : float, optional
-        An initial guess for the log-transformed initial population size (lnA0),
-        by default 16.
-
-    Returns
-    -------
-    tuple
-        A tuple containing four structured result objects:
-        - linear_model_df (pandas.DataFrame): Contains the estimated slope (`m_est`)
-          and intercept (`b_est`) parameters and their standard errors, indexed
-          by (condition, titrant_name).
-        - bg_model_param (dict): A dictionary mapping each titrant name to its
-          fitted background growth model parameters.
-        - pred_df (pandas.DataFrame): Contains the observed and calculated
-          `ln(cfu)` values along with their standard deviations for diagnostics.
-        - A0_df (pandas.DataFrame): Contains the estimated `lnA0` value and its
-          standard error for each replicate.
-    """
-
-    # 1. Build the design matrix and parameter guesses
-    fit_setup = _build_fit_setup(df, bg_model_guesses, lnA0_guess)
-
-    # 2. Prepare the observable data for fitting
-    fit_data = _prepare_fit_data(df)
-
-    # 3. Assemble args 
-    args = fit_setup.get_args_tuple(
-        fit_data["theta"], fit_data["titrant_conc"],
-        fit_data["pre_time"], fit_data["time"]
-    )
-
-    # run the least-squares fit
-    params, std_errors, cov_matrix, fit = run_least_squares(
-        _calculate_log_population,
-        fit_data["y"],
-        fit_data["y_var"],
-        guesses=fit_setup.initial_guesses,
-        args=args
-    )
-
-    # 4. Parse the raw results into final, clean outputs
-    results = _parse_fit_results(params, std_errors, cov_matrix, fit_setup, fit_data)
-
+    Build a design matrix that allows fitting of k and dk parameters given known
+    values for theta. 
     
-    return (
-        results.linear_model_df,
-        results.bg_model_param,
-        results.pred_df,
-        results.A0_df
-    )
+    ln_cfu ~ ln_cfu_0 + pre_growth + sel_growth
+    pre_growth: (k_bg_b + k_bg_m*titrant + dk_geno + dk_pre_b + dk_pre_m*theta)*t_pre
+    sel_growth: (k_bg_b + k_bg_m*titrant + dk_geno + dk_sel_b + dk_sel_m*theta)*t_sel
+    
+    We are going to describe k_bg as a linear model in titrant_conc,
+    accounting for any changes in growth rate of background cells due to change
+    in titrant but not theta. If we distribute terms to isolate individual 
+    variables, we end up with the following terms, which are shared among 
+    experiments by the following scheme.
+    
+    1. ln_cfu_0  * (           1                ): genotype:replicate
+    2. k_bg_b    * ( t_pre + t_sel              ): titrant_name
+    3. k_bg_m    * ((t_pre + t_sel)*titrant_conc): titrant_name
+    4. dk_geno   * ( t_pre + t_sel              ): genotype, ref = wt
+    5. dk_cond_b * ( t_pre OR t_sel             ): condition, ref = background
+    6. dk_cond_m * ( t_pre OR t_sel             ): condition, ref = background
+    
+    The OR on dk_cond_b comes about because a condition can either be a pre-
+    or sel-condition. We have to take care of that with a wide-to-long move 
+    when constructing X. 
+    """
+
+    # Grab y_obs and y_std from the wide dataframe.
+    y_obs = df["ln_cfu"].to_numpy()
+    y_std = df["ln_cfu_std"].to_numpy()
+    
+    # Make aggregate variables involving t_pre and t_sel for the linear regression
+    # before the wide to long transform. 
+    # genotype:replicate, t_pre + t_sel, (t_pre + t_sel)*titrant_conc
+    df["geno_rep"] = list(zip(df["genotype"],df["replicate"]))
+    df["t_tot"] = df["t_pre"] + df["t_sel"]
+    df["t_tot_titr"] = df["t_tot"]*df["titrant_conc"]
+    
+    # The dataframe has t_pre, t_sel, condition_pre and condition_sel. Convert
+    # to a long dataframe that doubles the number of rows. The pre and sel 
+    # phases each get their own row with t_pre and t_sel -> t and 
+    # condition_pre and condition_sel -> condition. 
+    df_for_reshape = df.reset_index()
+    df_long = pd.wide_to_long(
+        df_for_reshape,
+        stubnames=['t', 'condition'], # The prefixes of columns to melt
+        i='index',                    # The identifier for each row
+        j='phase',                    # The name for the new phase column
+        sep='_',                      # The separator between stubname and phase
+        suffix='(pre|sel)'            # The suffixes to look for
+    ).reset_index()
+    
+    # Create aggregate t_theta variable 
+    df_long["theta_t"] = df_long["theta"]*df_long["t"]
+    
+    model_terms = {}
+    factor_terms = {}
+
+    # Use a different ln_cfu0 for every genotype/replicate
+    model_terms["ln_cfu_0"] = "C(geno_rep)"
+    factor_terms["ln_cfu_0"] = ("genotype","replicate")
+    
+    # background growth vs titrant depends on titrant_name. The intercept depends
+    # on total time. The slope depends on total time multipled by titrant conc. 
+    model_terms["k_bg_b"] = "C(titrant_name):t_tot"
+    factor_terms["k_bg_b"] = "titrant_name"
+    
+    model_terms["k_bg_m"] = "C(titrant_name):t_tot_titr"
+    factor_terms["k_bg_m"] = "titrant_name"
+    
+    # The global effect of the genotype depends on genotype. Define wt parameter
+    # as 0 with Treatment('wt') syntax. 
+    model_terms["dk_geno"] = "C(genotype, Treatment('wt'))"
+    factor_terms["dk_geno"] = "genotype"
+
+    # The relationship between the known theta values and the growth rate 
+    # perturbation. Note we set the 'background' treatment has have no effect
+    # with the Treatment('background') syntax. 
+    model_terms["dk_cond_b"] = "C(condition, Treatment('background')):t"
+    factor_terms["dk_cond_b"] = "condition"
+    
+    model_terms["dk_cond_m"] = "C(condition, Treatment('background')):theta_t"
+    factor_terms["dk_cond_m"] = "condition"
+
+    # Build final formula. We're predicting ln_cfu with our model. Drop
+    # default intercept (0)
+    formula = " + ".join(model_terms.values())
+    formula = f"ln_cfu ~ 0 + {formula}"
+
+    _, X_long = patsy.dmatrices(formula,df_long,)
+
+    param_names = X_long.design_info.column_names
+    X_long_df = pd.DataFrame(X_long, columns=param_names)
+    
+    X_long_df['index'] = df_long['index']
+    
+    # Group by the original experiment and sum the contributions
+    X_final_df = X_long_df.groupby('index').sum()
+
+    # The sum just doubled the values for ln_cfu_0, k_bg*, and dk_geno. Divide
+    # by two to get the values back. 
+    cols_to_fix = [c for c in X_final_df.columns if 
+                   "geno_rep" in c or 
+                   c.endswith(':t_tot') or 
+                   c.endswith(':t_tot_titr')]
+
+    X_final_df[cols_to_fix] /= 2.0
+
+    # Get the final design matrix as a numpy array, ready for fitting
+    X = X_final_df.values
+
+    # Get param names
+    patsy_param_names = X_final_df.columns.to_numpy()
+
+    # patsy is finicky with intercepts attached continuous variables. This 
+    # drops columns that use [background] or [wt] -- both reference 
+    # conditions that should be dropped. 
+    good_mask = ~X_final_df.columns.str.contains(r"\[background\]|\[wt\]")
+
+    # Clean up X and parameter names
+    X = X[:,good_mask]
+    patsy_param_names = patsy_param_names[good_mask]
+
+    # Construct initial parameter dataframe with parameter names indexed
+    # by parameter order, linked back to the factors of the initial 
+    # dataframe. 
+    param_df = parse_patsy(df,
+                           patsy_param_names,
+                           model_terms,
+                           factor_terms)
+
+    return y_obs, y_std, X, param_df 
 
 
-def calibrate(
-    df: pd.DataFrame or str,
-    output_file: str,
-    bg_order: int = 0,
-    bg_k_guess: float = 0.025,
-    lnA0_guess: float = 16,
-) -> dict:
+def setup_calibration(df,
+                      ln_cfu_0_guess=16,
+                      k_bg_guess=0.02):
+
+    # Prepare dataframe, creating all necessary columns etc. 
+    df = _prep_calibration_df(df)
+
+    # Build the design matrix
+    y_obs, y_std, X, param_df = _build_calibration_X(df)
+
+    # Build guesses
+    guesses = np.zeros(len(param_df))
+
+    # ln_cfu_0
+    ln_cfu_0_mask = param_df["param_class"] == "ln_cfu_0"
+    guesses[ln_cfu_0_mask] = ln_cfu_0_guess
+
+    # k_bg_b
+    k_bg_b_mask = param_df["param_class"] == "k_bg_b"
+    guesses[k_bg_b_mask] = k_bg_guess
+
+    # Record the guesses
+    param_df["guess"] = guesses
+    
+    # Build fit manager
+    fm = FitManager(y_obs,y_std,X,param_df)
+
+    return fm
+
+def calibrate(df,
+              output_file,
+              ln_cfu_0_guess=16,
+              k_bg_guess=0.02):
     """
     Run the full calibration workflow on experimental data.
 
@@ -551,9 +311,6 @@ def calibrate(
         containing the compiled experimental data.
     output_file : str
         The file path where the output JSON calibration data will be written.
-    bg_order : int, optional
-        The polynomial order for the background growth model (`k` vs. titrant
-        concentration). `bg_order=0` (the default) fits a constant rate. 
     bg_k_guess : float, optional
         An initial guess for the constant term (c_0) of the background
         growth model, by default 0.025.
@@ -572,92 +329,75 @@ def calibrate(
     pd.DataFrame
         A dataframe holding the fit ln(A0) for all replicates used for the 
         calibration
-
-    Raises
-    ------
-    ValueError
-        - If `df` is missing any of the required columns.
-        - If any `titrant_name` in the data does not have a corresponding
-          row with the condition 'background'.
-        - If `bg_order` is negative.
     """
+
+    # Construct a FitManager object to manage the fit. 
+    fm = setup_calibration(df,
+                           ln_cfu_0_guess=ln_cfu_0_guess,
+                           k_bg_guess=k_bg_guess)
+
+    # Run least squares fit
+    params, std_errors, cov_matrix, _ = run_least_squares(
+        fm.predict_from_transformed,
+        obs=fm.y_obs,
+        obs_std=fm.y_std,
+        guesses=fm.guesses_transformed,
+        lower_bounds=fm.lower_bounds_transformed,
+        upper_bounds=fm.upper_bounds_transformed
+    )
     
-    # Read dataframe
-    df = read_dataframe(df)
-
-    # Check for required columns
-    required_columns = ["replicate",
-                        "pre_condition",
-                        "pre_time",
-                        "condition",
-                        "time",
-                        "titrant_name",
-                        "titrant_conc",
-                        "cfu_per_mL",
-                        "cfu_per_mL_std",
-                        "theta",
-                        "theta_std"]
     
-    required_set = set(required_columns)
-    seen_set = set(df.columns)
-    if not required_set.issubset(seen_set):
-        missing = required_set - seen_set
-        err = "Not all required columns seen. Missing columns:\n"
-        for c in missing:
-            err += f"    {c}\n"
-        err += "\n"
-        raise ValueError(err)
-
-    # Make sure we see a value of 'background' in the conditions for each 
-    # titrant_name
-    unique_ct = df[["condition","titrant_name"]].drop_duplicates()
-    num_unique_tn = len(pd.unique(unique_ct["titrant_name"]))
-    num_with_bg = len(unique_ct[unique_ct["condition"] == "background"].drop_duplicates())
-    if num_unique_tn != num_with_bg:
-        err = "All unique titrant_name values must have a 'background' condition.\n"
-        raise ValueError(err)
-
-    # Make sure the order of the model for the background selection is sane. 
-    bg_order = int(bg_order)
-    if bg_order < 0:
-        err = "bg_order must be >= 0\n"
-        raise ValueError(err)
-
-    # Build guesses for model order (length specifies order)
-    bg_model_guesses = np.zeros(bg_order + 1,dtype=float)
-    bg_model_guesses[0] = bg_k_guess
-
-    # Fit the k vs. theta model to the whole dataset 
-    param_df, bg_model_param, pred_df, A0_df = _fit_linear_model(df,
-                                                                 bg_model_guesses,
-                                                                 lnA0_guess=lnA0_guess)
+    # Make predictions at each data point and store
+    pred, pred_std = predict_with_error(fm.predict_from_transformed,
+                                        params,
+                                        cov_matrix)
     
-    # Concatenate main dataset and pred_df -- we now have predictions in the
-    # same organization as the total dataset. 
+    pred_df = pd.DataFrame({"y_obs":fm.y_obs,
+                            "y_std":fm.y_std,
+                            "calc_est":pred,
+                            "calc_std":pred_std})
+
     pred_df = pd.concat([df,pred_df],axis=1)
+
+    # Extract parameter estimates
+    param_df = fm.param_df.copy()
+    param_df["est"] = fm.back_transform(params)
+    param_df["std"] = fm.back_transform_std_err(params,std_errors)
 
     # Fit a hill model to the observed theta values so we can calculate
     # approximate wildtype theta on the fly for any titrant conc
     theta_param = _fit_theta(df)
-    
-    # Build output dictionary with fit results
+        
+    # # Build output dictionary with fit results
     calibration_dict = {}
 
-    calibration_dict["m"] = param_df["m_est"].to_dict()
-    calibration_dict["b"] = param_df["b_est"].to_dict()
+    # Extract k_bg vs. titrant slopes and interecepts
+    calibration_dict["k_bg"] = {}
+    tmp_df = param_df.loc[param_df["param_class"] == "k_bg_b",["titrant_name","est"]]
+    calibration_dict["k_bg"]["b"] = tmp_df.set_index('titrant_name')['est'].to_dict()
+    tmp_df = param_df.loc[param_df["param_class"] == "k_bg_m",["titrant_name","est"]]
+    calibration_dict["k_bg"]["m"] = tmp_df.set_index('titrant_name')['est'].to_dict()
 
-    calibration_dict["theta_param"] = theta_param
-    calibration_dict["bg_model_param"] = bg_model_param
-
-    # Write output as json file
-    write_calibration(calibration_dict=calibration_dict,
-                      json_file=output_file)
+    # Extract dk_cond vs. theta slopes and interecepts
+    calibration_dict["dk_cond"] = {}
+    tmp_df = param_df.loc[param_df["param_class"] == "dk_cond_m",["condition","est"]] 
+    calibration_dict["dk_cond"]["m"] = tmp_df.set_index('condition')['est'].to_dict()
+    tmp_df = param_df.loc[param_df["param_class"] == "dk_cond_b",["condition","est"]] 
+    calibration_dict["dk_cond"]["b"] = tmp_df.set_index('condition')['est'].to_dict()
     
-    # Read back in calibration. (This does a bit of processing on the 
-    # dictionary like internal dataframe creation so the returned calibration
-    # dictionary is usable). 
-    calibration_dict = read_calibration(json_file=output_file)
+    # Put background values (defined as as 0) into dk_cond
+    calibration_dict["dk_cond"]["m"]["background"] = 0.0
+    calibration_dict["dk_cond"]["b"]["background"] = 0.0
 
-    return calibration_dict, pred_df, A0_df
+    # Write out theta fit
+    calibration_dict["theta_param"] = theta_param
+
+    write_calibration(calibration_dict=calibration_dict,
+                    json_file=output_file)
+
+    calibration_dict = read_calibration(output_file)
+
+
+    return calibration_dict, pred_df, param_df
 
     

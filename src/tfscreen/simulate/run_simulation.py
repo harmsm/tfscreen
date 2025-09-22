@@ -132,9 +132,9 @@ def run_simulation(yaml_file: str,
         sample_df=sample_df,
         num_thawed_colonies=cf['num_thawed_colonies'],
         overnight_volume_in_mL=cf['overnight_volume_in_mL'],
-        pre_iptg_cfu_mL=cf['pre_iptg_cfu_mL'],
+        initial_cfu_mL=cf['initial_cfu_mL'],
         iptg_out_growth_time=cf['iptg_out_growth_time'],
-        post_iptg_dilution_factor=cf['post_iptg_dilution_factor'],
+        into_pre_dilution_factor=cf['into_pre_dilution_factor'],
         growth_rate_noise=cf['growth_rate_noise']
     )
     bacteria, ln_pop_array, bact_sample_k, genotype_df = init_output

@@ -21,6 +21,9 @@ from .generate_libraries import (
 # Import public functions from generate_phenotypes.py
 from .generate_phenotypes import (
     generate_phenotypes,
+)
+
+from .setup_observable import (
     setup_observable
 )
 

@@ -13,6 +13,7 @@ from . import plot
 
 from . import analysis
 from . import simulate
+from . import models
 
 
 

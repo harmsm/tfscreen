@@ -5,7 +5,7 @@ from tfscreen.calibration import (
 )
 
 from tfscreen.fitting import (
-    matrix_wls,
+    run_matrix_wls,
     run_least_squares,
 )
 
@@ -139,9 +139,7 @@ def _multi_genotype_regression(y,
 
     # Do regression based on specified method
     if method == "wls":
-        all_parameters, cov = matrix_wls(X,
-                                         y,
-                                         weights)
+        all_parameters, cov = run_matrix_wls(X,y,weights)
     elif method == "nls":
 
         all_parameters, std_errors, cov, _ = run_least_squares(theta_model,

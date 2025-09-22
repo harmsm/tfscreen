@@ -34,3 +34,20 @@ from .counts_to_lncfu import (
 from .broadcast_args import (
     broadcast_args
 )
+
+from .check_columns import (
+    check_columns
+)
+
+from .numerical import (
+    to_log,
+    from_log
+)
+
+from .get_scaled_cfu import (
+    get_scaled_cfu
+)
+
+from .get_group_mean_std import (
+    get_group_mean_std
+)
