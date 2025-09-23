@@ -124,15 +124,15 @@ def k_vs_titrant(df,
     if plot_color_dict is None:
         plot_color_dict = {}
 
-    for key, sub_df in manual_df.groupby(["condition_pre","condition_sel","titrant_name"]):
+    for key, sub_df in manual_df.groupby(["condition_sel","titrant_name"]):
 
-        condition = key[1]
+        condition = key[0]
         
-        k_bg = get_background(key[2],titrant_conc=titr_span,calibration_data=calibration_dict)
+        k_bg = get_background(key[1],titrant_conc=titr_span,calibration_data=calibration_dict)
         if condition == "background":
             k_total = k_bg
         else:
-            k_total = get_wt_k(key[1],key[2],titrant_conc=titr_span,calibration_data=calibration_dict)
+            k_total = get_wt_k(key[0],key[1],titrant_conc=titr_span,calibration_data=calibration_dict)
 
         x = sub_df["titrant_conc"].to_numpy()
         x[x == 0] = min_titr

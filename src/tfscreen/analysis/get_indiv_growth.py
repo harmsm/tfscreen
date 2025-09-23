@@ -3,6 +3,8 @@ from tfscreen.util import get_scaled_cfu
 
 import pandas as pd
 
+import copy
+
 def get_indiv_growth(df,
                      series_selector,
                      calibration_data,
@@ -148,7 +150,7 @@ def get_indiv_growth(df,
 
             # Grab the index corresponding to the minimum time for each 
             # series. 
-            min_t_idx = pred_df.groupby(series_selector)["t_sel"].idxmin() 
+            min_t_idx = pred_df.groupby(series_selector,observed=True)["t_sel"].idxmin() 
 
             # Create a new dataframe from this minimum time point, copying all 
             # information over. Set time to 0, copy in the fit data, and declare
@@ -177,6 +179,16 @@ def get_indiv_growth(df,
     if "_is_fake_point" in pred_df.columns:
         pred_df = pred_df[~pred_df["_is_fake_point"]].reset_index()
         pred_df = pred_df.drop(columns=["_is_fake_point"])
+
+
+    # Make pretty output columns for final_parm_df. Just include whatever we 
+    # selected series on, as this will uniquely define each row. 
+    final_columns = copy.deepcopy(series_selector)
+    final_columns.extend(["lnA0_est","lnA0_std",
+                          "k_est","k_std",
+                          "dk_geno","lnA0_pre"])
+    param_df = param_df[final_columns]
+
 
     return param_df, pred_df
         

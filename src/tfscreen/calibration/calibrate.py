@@ -25,6 +25,7 @@ import patsy
 
 import warnings
 
+from tfscreen.analysis.cfu_to_theta import _build_param_df
 
 def _fit_theta(df):
     """
@@ -128,6 +129,143 @@ def _prep_calibration_df(df):
 
     return df
 
+
+def _build_calibration_X_new(df):
+    """
+    Assemble the design matrix and response vector for calibration.
+
+    This function constructs the necessary inputs for a least-squares fit to
+    calibrate the model's growth rate parameters. It defines parameters for
+    initial cell counts (lnA0), global background growth (k_bg), and
+    condition-specific growth effects (dk), then builds the corresponding
+    design matrix `X` and response vector `y_obs`.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        A fully prepared dataframe containing all necessary columns for the
+        calibration model, including 'ln_cfu', 'ln_cfu_std', 'genotype',
+        'library', 'replicate', 't_pre', 't_sel', 'condition_pre',
+        'condition_sel', 'titrant_conc', and 'theta'.
+
+    Returns
+    -------
+    y_obs : numpy.ndarray
+        A 1D array of shape (n_obs,) representing the response variable,
+        which is the observed log(cfu).
+    y_std : numpy.ndarray
+        A 1D array of shape (n_obs,) holding the standard error for each
+        observation in ``y_obs``.
+    X : numpy.ndarray
+        A 2D design matrix of shape (n_obs, n_params).
+    param_df : pandas.DataFrame
+        A dataframe defining each parameter's name, class, initial guess,
+        and transformation properties.
+
+    Notes
+    -----
+    A key step in this function is handling the condition parameters. The
+    model uses the same `dk_b` and `dk_m` parameters for a given condition
+    (e.g., 'kanR-kan') regardless of whether it appears in the 'pre' or 'sel'
+    phase. To achieve this, the dataframe is internally reshaped into a "long"
+    format where each growth phase is its own row.
+    """
+    # -------------------------------------------------------------------------
+    # 1. Reshape data to handle shared condition parameters
+    # -------------------------------------------------------------------------
+    
+    # Create a unique index for each original row to map back to later
+    df['_original_row_idx'] = np.arange(len(df))
+
+    # Create a "long" dataframe where each row is one growth phase ('pre' or 'sel')
+    pre_df = df[['_original_row_idx', 'condition_pre', 't_pre', 'theta']].copy()
+    pre_df.rename(columns={'condition_pre': 'condition', 't_pre': 't'}, inplace=True)
+    
+    sel_df = df[['_original_row_idx', 'condition_sel', 't_sel', 'theta']].copy()
+    sel_df.rename(columns={'condition_sel': 'condition', 't_sel': 't'}, inplace=True)
+
+    long_df = pd.concat([pre_df, sel_df], ignore_index=True)
+    long_df = long_df[long_df['t'] > 0].copy() # Drop phases with no duration
+
+    # -------------------------------------------------------------------------
+    # 2. Define all parameter blocks using the helper function
+    # -------------------------------------------------------------------------
+
+    offset = 0
+    # lnA0 parameters (one per unique experimental series)
+    lnA0_idx, lnA0_df = _build_param_df(
+        df=df, base_name="lnA0", series_selector=["genotype", "replicate"], #"library", "replicate"],
+        guess_column="ln_cfu", transform="none", offset=offset
+    )
+    offset = lnA0_df["idx"].max() + 1
+
+    # Global background growth parameters (k_bg_b and k_bg_m)
+    # Use a dummy column to group all rows together.
+    df['_global_selector'] = 1
+    _, k_bg_df = _build_param_df(
+        df=df, base_name="k_bg", series_selector=["_global_selector"],
+        guess_column="none", transform="none", offset=offset # Guesses added manually
+    )
+    # Manually create the two k_bg parameters from the single group
+    k_bg_b_df = k_bg_df.copy(); k_bg_b_df['name'] = 'k_bg_b'
+    k_bg_m_df = k_bg_df.copy(); k_bg_m_df['name'] = 'k_bg_m'; k_bg_m_df['idx'] += 1
+    k_bg_df = pd.concat([k_bg_b_df, k_bg_m_df], ignore_index=True)
+    offset = k_bg_df["idx"].max() + 1
+    
+    # Condition-specific parameters (dk_b and dk_m)
+    # Defined from the unified 'condition' column in the long dataframe
+    dk_idx, dk_df = _build_param_df(
+        df=long_df, base_name="dk", series_selector=["condition"],
+        guess_column="none", transform="none", offset=offset # Guesses added manually
+    )
+    # Manually create b and m parameters for each condition
+    dk_b_df = dk_df.copy(); dk_b_df['name'] += '_b'
+    dk_m_df = dk_df.copy(); dk_m_df['name'] += '_m'; dk_m_df['idx'] += len(dk_df)
+    dk_df = pd.concat([dk_b_df, dk_m_df], ignore_index=True)
+
+    # Combine all parameter definitions
+    param_df = pd.concat([lnA0_df, k_bg_df, dk_df], ignore_index=True)
+
+    # -------------------------------------------------------------------------
+    # 3. Construct the final design matrix X
+    # -------------------------------------------------------------------------
+
+    X = np.zeros((len(df), len(param_df)))
+
+    # Populate lnA0 columns (predictor is 1)
+    X[df['_original_row_idx'], lnA0_idx] = 1.0
+
+    # Populate global k_bg columns
+    k_bg_b_idx = k_bg_df[k_bg_df['name'] == 'k_bg_b']['idx'].iloc[0]
+    k_bg_m_idx = k_bg_df[k_bg_df['name'] == 'k_bg_m']['idx'].iloc[0]
+    total_time = (df['t_pre'] + df['t_sel']).to_numpy()
+    X[:, k_bg_b_idx] = total_time
+    X[:, k_bg_m_idx] = total_time * df['titrant_conc'].to_numpy()
+
+    # Populate condition-specific dk columns using the long_df
+    # This loop adds the predictor values for each growth phase back to the
+    # appropriate row and parameter column in the main design matrix.
+    dk_b_map = pd.Series(dk_b_df['idx'].values, index=dk_b_df['condition'])
+    dk_m_map = pd.Series(dk_m_df['idx'].values, index=dk_m_df['condition'])
+    
+    long_df['dk_b_idx'] = long_df['condition'].map(dk_b_map)
+    long_df['dk_m_idx'] = long_df['condition'].map(dk_m_map)
+    
+    # Vectorized update using np.add.at for efficiency
+    np.add.at(X, (long_df['_original_row_idx'], long_df['dk_b_idx']), long_df['t'])
+    np.add.at(X, (long_df['_original_row_idx'], long_df['dk_m_idx']), long_df['t'] * long_df['theta'])
+    
+    # -------------------------------------------------------------------------
+    # 4. Construct response vectors y_obs and y_std
+    # -------------------------------------------------------------------------
+    
+    y_obs = df["ln_cfu"].to_numpy()
+    y_std = df["ln_cfu_std"].to_numpy()
+
+    # Clean up temporary columns from the original df before returning
+    df.drop(columns=['_original_row_idx', '_global_selector'], inplace=True)
+    
+    return y_obs, y_std, X, param_df
 
 def _build_calibration_X(df):
     """

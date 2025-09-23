@@ -62,7 +62,7 @@ def df_to_arrays(df, pivot_on="genotype"):
     ]
     
     df = df.copy()
-    df['_observation_idx'] = df.groupby(pivot_on).cumcount()
+    df['_observation_idx'] = df.groupby(pivot_on,observed=True).cumcount()
     
     
     # Determine the definitive row identifiers and their order from the input df.
@@ -79,6 +79,7 @@ def df_to_arrays(df, pivot_on="genotype"):
         index=pivot_on,
         columns="_observation_idx",
         values=numeric_cols,
+        observed=False,
     )
     
     # Reindex the pivot result. This forces all groups to be present as rows,

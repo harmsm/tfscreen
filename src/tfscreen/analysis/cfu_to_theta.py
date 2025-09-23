@@ -1,522 +1,585 @@
 
 from tfscreen.calibration import (
     read_calibration,
-    get_background,
-    get_wt_theta,
-    get_k_vs_theta
-)
-
-from tfscreen.util import (
-    chunk_by_group,
-    argsort_genotypes
+    get_wt_theta
 )
 
 from tfscreen.fitting import (
     run_least_squares,
     predict_with_error,
-    scale,
-    unscale,
-    get_scaling    
+    FitManager,
 )
+
+from tfscreen.util import (
+    read_dataframe,
+    check_columns,
+    get_scaled_cfu,
+    chunk_by_group,
+    argsort_genotypes
+)
+
+from tfscreen.analysis import get_indiv_growth
 
 import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
-import scipy
 
-def _get_theta(theta_unconstrained):
+
+def _prep_inference_df(df,
+                       calibration_data,
+                       max_batch_size):
     """
-    Logistic transform of unconstrained theta parameters to bound
-    between 0 and 1.
-    """
-    
-    return 1/(1 + np.exp(-theta_unconstrained))   
+    Prepare a DataFrame for regression analysis.
 
-def _get_k(params,
-           k_wt0,
-           m_cond,
-           theta_indexer,
-           kshift_indexer,
-           k_shift_scaling):
-    """
-    Get predicted bacterial growth rate under a set of conditions given
-    the global effect of the genotype and the fractional saturation of the 
-    operator.
-    
-    Parameters
-    ----------
-    params : np.ndarray
-        1D numpy array of parameters. These are accessed using theta_indexer,
-        kshift_indexer, and A0_indexer. 
-    k_wt0 : np.ndarray
-        1D array of wildtype growth rates under the conditions of interest. 
-        There should be one entry per genotype/condition pair. 
-    m_cond : np.ndarray
-        1D array of slopes relating theta to growth rate under the conditions 
-        of interest. There should be one entry per genotype/condition pair. 
-    theta_indexer : np.ndarray
-        1D array that indexes params, pulling out the appropriate theta for 
-        each genotype/condition. There should be one entry per
-        genotype/condition pair. 
-    kshift_indexer : np.ndarray
-        1D array that indexes params, pulling out the appropriate global effect
-        of the genotype. There should be one entry per genotype/condition pair.
-
-    Returns
-    -------
-    np.ndarray
-        1D array of growth rates. 
-    """
-
-    # Get theta from unconstrained parameters
-    theta = _get_theta(params[theta_indexer])
-    
-    # scale k_shift
-    k_shift = unscale(params[kshift_indexer],k_shift_scaling)
-
-    return k_wt0 + k_shift + theta*m_cond 
-          
-
-def _theta_to_lncfu(params,
-                    theta_indexer,
-                    kshift_indexer,
-                    A0_indexer,
-                    t_pre,
-                    k_wt_pre,
-                    m_pre,
-                    t_sel,
-                    k_wt_sel,
-                    m_sel,
-                    k_shift_scaling,
-                    A0_scaling):
-    """
-    Calculate ln_cfu over time given the global effect of the genotype on
-    growth, the fractional saturation of the operator, and the conditions. 
+    This function takes an experimental dataframe and performs several
+    preprocessing steps: it ensures required columns are present, sets
+    appropriate data types, creates an ordered categorical for genotypes to
+    ensure consistent sorting, divides the data into batches, and merges in
+    pre-calculated calibration constants for growth rate models.
 
     Parameters
     ----------
-    params : np.ndarray
-        1D numpy array of parameters. These are accessed using theta_indexer,
-        kshift_indexer, and A0_indexer. 
-    t : np.ndarray
-        1D or 2D array of times at which to do the calculation. The first 
-        dimension should have one entry per genotype/condition pair. The second
-        dimension can encode multiple time points. 
-    k_wt0 : np.ndarray
-        1D array of wildtype growth rates at theta = 0 under the conditions of
-        interest. There should be one entry per genotype/condition pair. 
-    m_cond : np.ndarray
-        1D array of slopes relating theta to growth rate under the conditions 
-        of interest. There should be one entry per genotype/condition pair. 
-    theta_indexer : np.ndarray
-        1D array that indexes params, pulling out the appropriate theta for 
-        each genotype/condition. There should be one entry per
-        genotype/condition pair. 
-    kshift_indexer : np.ndarray
-        1D array that indexes params, pulling out the appropriate global effect
-        of the genotype. There should be one entry per genotype/condition pair.
-    A0_indexer : np.ndarray
-        1D array that indexes params, pulling out the appropriate initial
-        ln_cfu for the sample. There should be one entry per genotype/condition
-        pair.
+    df : pandas.DataFrame or str
+        The input experimental data, either as a DataFrame object or a path
+        to a file readable by ``read_dataframe``.
+    calibration_data : dict or str
+        Calibration data, either as a loaded dictionary or a path to a file
+        readable by ``read_calibration``. It should contain at least the
+        keys 'k_bg_df' and 'dk_cond_df'.
+    max_batch_size : int
+        The maximum number of experiments to group into a single regression
+        batch. Genotypes are kept together within batches.
 
     Returns
     -------
-    np.ndarray
-        1D array of ln_cfu. The array will be len(k_wt0)*num_times long. 
+    pandas.DataFrame
+        The processed and enriched DataFrame, ready for parameter guessing and
+        inference setup.
+
+    Notes
+    -----
+    The function expects the input dataframe ``df`` to contain the following
+    columns: 'ln_cfu', 'ln_cfu_std', 't_pre', 't_sel', 'genotype', 'library',
+    'replicate', 'titrant_name', 'titrant_conc', 'condition_pre', and
+    'condition_sel'.
+
+    The function adds the following columns to the returned dataframe:
+    - ``_batch_idx``: An integer identifying the regression batch.
+    - ``k_bg_m``, ``k_bg_b``: Slope and intercept for background growth rate.
+    - ``dk_m_pre``, ``dk_b_pre``: Slope and intercept for pre-selection condition.
+    - ``dk_m_sel``, ``dk_b_sel``: Slope and intercept for selection condition.
     """
 
-    # Get initial populations
-    A0 = params[A0_indexer]
+    # Reads file or copies datafame
+    df = read_dataframe(df)
 
-    # Get growth rate during pre-selection interval
-    k_pre = _get_k(params,
-                   k_wt_pre,
-                   m_pre,
-                   theta_indexer,
-                   kshift_indexer,
-                   k_shift_scaling)
+    # Build ln_cfu and ln_cfu_std
+    df = get_scaled_cfu(df,need_columns=["ln_cfu","ln_cfu_std"])
+
+    # Check for required columns
+    required_columns = ["ln_cfu",
+                        "ln_cfu_std",
+                        "t_pre",
+                        "t_sel",
+                        "genotype",
+                        "library",
+                        "replicate",
+                        "titrant_name",
+                        "titrant_conc",
+                        "condition_pre",
+                        "condition_sel"]
+    check_columns(df,required_columns)
+
+    # Nuke extra columns to avoid unexpected behavior. 
+    df = df.loc[:,required_columns]
     
-    # Get growth rate during selection interval
-    k_sel = _get_k(params,
-                   k_wt_sel,
-                   m_sel,
-                   theta_indexer,
-                   kshift_indexer,
-                   k_shift_scaling)
-
-    # Scale A0 
-    A0 = unscale(params[A0_indexer],A0_scaling)
-
-    # Expand to match t if necessary
-    if len(t_sel.shape) > 1:
-        A0 = A0[:,np.newaxis]
-        k_pre = k_pre[:,np.newaxis]
-        k_sel = k_sel[:,np.newaxis]
-
-    # Calculate population
-    A = A0 + k_pre*t_pre + k_sel*t_sel
-
-    return A.flatten()
+    # Clean up on replicate column. It must be Int64 because it can have 
+    # missing values later. 
+    df["replicate"] = df["replicate"].astype('Int64')
     
-
-def _run_regression(df,
-                    calibration_data):
-
-    # Work on a copy of the dataframe
-    df = df.copy()
-    
-    # Extract 1D arrays from the data frame
-    t_sel = df["sel_time"].to_numpy()
-    t_pre = df["pre_time"].to_numpy()
-    ln_cfu = df["ln_cfu"].to_numpy()
-    ln_cfu_std = np.sqrt(df["ln_cfu_var"].to_numpy())
-
-    # Load calibration dictionary
-    calibration_dict = read_calibration(calibration_data)
-    
-    # --------------------------------------------------------------------------
-    # Get relationship between theta and growth for these conditions
-
-    # Get background growth at this titrant concentration
-    k_bg = get_background(df["titrant_name"],
-                          df["titrant_conc"],
-                          calibration_dict)
-
-    # Get wildtype growth for theta = 0 in pre condition
-    m_pre, b_pre = get_k_vs_theta(df["pre_condition"],
-                                  df["titrant_name"],
-                                  calibration_dict)    
-    k_wt_pre = k_bg + b_pre
-
-    # Get wildtype growth for theta = 0 in selection condition
-    m_sel, b_sel = get_k_vs_theta(df["sel_condition"],
-                                  df["titrant_name"],
-                                  calibration_dict)    
-    k_wt_sel = k_bg + b_sel
-
-     
-    # --------------------------------------------------------------------------
-    # Create indexer and rev_indexer arrays. The "indexer" arrays map from 
-    # dataframe rows to parameters. The rev_indexer arrays map from parameters
-    # to rows. (rev_indexer[indexer] would give the rows in the dataframe). 
-
-    # theta_indexer maps each row to its genotype/titrant_name/titrant_conc
-    # theta parameter in the parameter array
-    theta_slicer = ['genotype', 'titrant_name','titrant_conc']
-    _theta_tuples = df[theta_slicer].itertuples(index=False, name=None)
-    theta_indexer, theta_rev_indexer = pd.factorize(pd.Series(_theta_tuples))
-    
-    # kshift_indexer maps each row to its k_shift parameter in the parameter
-    # array
-    kshift_start = np.max(theta_indexer) + 1
-    _idx, _rev = pd.factorize(df["genotype"])
-    kshift_indexer = _idx + kshift_start
-    kshift_rev_indexer = np.full(np.max(kshift_indexer)+1,object)
-    kshift_rev_indexer[kshift_start:] = _rev
-
-    # A0_indexer maps each row to its A0 parameter in the parameter array
-    A0_start = np.max(kshift_indexer) + 1
-    A0_slicer = ['genotype','replicate','library']    
-    _rep_geno_tuples = df[A0_slicer].itertuples(index=False, name=None)
-    _idx, _rev = pd.factorize(pd.Series(_rep_geno_tuples))
-    A0_indexer = _idx + A0_start
-    A0_rev_indexer = np.full(np.max(A0_indexer)+1,object)
-    A0_rev_indexer[A0_start:] = _rev
-    
-    # --------------------------------------------------------------------------
-    # Build guesses
-
-    # empty guesses
-    guesses = np.zeros(np.max(A0_indexer)+1,dtype=float)
-    
-    # Initialize theta parameters with wildtype theta
-    guesses[theta_indexer] = get_wt_theta(df["titrant_name"],
-                                          df["titrant_conc"],
-                                          calibration_dict)
-
-    # Get pre-loaded lnA0 and k shift guesses
-    guesses[A0_indexer] = df["lnA_pre0_guess"].to_numpy()
-    guesses[kshift_indexer] = df["k_shift_guess"].to_numpy()
-
-    # Get scale of k_shift and transform
-    k_shift_scaling = get_scaling(guesses[kshift_indexer])
-    guesses[kshift_indexer] = scale(guesses[kshift_indexer], k_shift_scaling)
-    
-    # Get scale of A0 and transform
-    A0_scaling = get_scaling(guesses[A0_indexer])  
-    guesses[A0_indexer] = scale(guesses[A0_indexer], A0_scaling)
-
-    # --------------------------------------------------------------------------
-    # Construct a dataframe holding information about the fit parameters (for
-    # the fit_out object with detailed internal information about the fit)
-
-    param_class = []
-    param_class.extend(["theta" for _ in theta_rev_indexer[0:]])
-    param_class.extend(["k_shift" for _ in kshift_rev_indexer[kshift_start:]])
-    param_class.extend(["lnA0" for _ in A0_rev_indexer[A0_start:]])
-    
-    param_genotype = []
-    param_genotype.extend([v[0] for v in theta_rev_indexer[0:]])
-    param_genotype.extend([v for v in kshift_rev_indexer[kshift_start:]])
-    param_genotype.extend([v[0] for v in A0_rev_indexer[A0_start:]])
-    
-    param_replicate = []
-    param_replicate.extend([None for _ in theta_rev_indexer[0:]])
-    param_replicate.extend([None for _ in kshift_rev_indexer[kshift_start:]])
-    param_replicate.extend([(v[1],v[2]) for v in A0_rev_indexer[A0_start:]])
-
-    param_titrant_name = []
-    param_titrant_name.extend([v[1] for v in theta_rev_indexer[0:]])
-    param_titrant_name.extend([None for _ in kshift_rev_indexer[kshift_start:]])
-    param_titrant_name.extend([None for _ in A0_rev_indexer[A0_start:]])
-
-    param_titrant_conc = []
-    param_titrant_conc.extend([v[2] for v in theta_rev_indexer[0:]])
-    param_titrant_conc.extend([np.nan for _ in kshift_rev_indexer[kshift_start:]])
-    param_titrant_conc.extend([np.nan for _ in A0_rev_indexer[A0_start:]])
-
-    fit_df = pd.DataFrame({"class":param_class,
-                           "genotype":param_genotype,
-                           "replicate":param_replicate,
-                           "titrant_name":param_titrant_name,
-                           "titrant_conc":param_titrant_conc,
-                           "guess":guesses})
-     
-    # --------------------------------------------------------------------------
-    # Non-params args for the _theta_to_lncfu model
-    args = (theta_indexer,
-            kshift_indexer,
-            A0_indexer,
-            t_pre,
-            k_wt_pre,
-            m_pre,
-            t_sel,
-            k_wt_sel,
-            m_pre,
-            k_shift_scaling,
-            A0_scaling)
-
-    # --------------------------------------------------------------------------
-    # Do fit,
-    
-    # Run least squares, optimizing the parameters against ln_cfu with the
-    # _theta_to_lncfu model. 
-    lower_bounds = np.full(len(guesses),-np.inf)
-    upper_bounds = np.full(len(guesses), np.inf)
-    lower_bounds[theta_indexer] = -15
-    upper_bounds[theta_indexer] = 15
-    
-    params, std_errors, cov_matrix, _ = run_least_squares(
-        _theta_to_lncfu,
-        ln_cfu,
-        ln_cfu_std,
-        guesses,
-        lower_bounds,
-        upper_bounds,
-        args
-    )
-
-
-    # --------------------------------------------------------------------------
-    # Build fit_out object with detailed internal information about the fit
-    fit_df["est"] = params
-    fit_df["std"] = std_errors
-
-    # Prep output dictionary holding fit outputs
-    fit_out = {"cov_matrix":cov_matrix,
-               "fit_df":fit_df}
-        
-    
-    # -------------------------------------------------------------------------
-    # Build dataframes holding parameter outputs on real scale
-
-    # Dataframe holding fractional saturation
-    theta_est = _get_theta(params[theta_indexer])
-    theta_std = theta_est*(1 - theta_est)*std_errors[theta_indexer]
-
-    theta_df = pd.DataFrame({"genotype":[v[0] for v in theta_rev_indexer[theta_indexer]],
-                             "titrant_name":[v[1] for v in theta_rev_indexer[theta_indexer]],
-                             "titrant_conc":[float(v[2]) for v in theta_rev_indexer[theta_indexer]],
-                             "theta_est":theta_est,
-                             "theta_std":theta_std})
-
-    # Dataframe holding global growth rate effects of genotypes
-    k_shift_est = unscale(params[kshift_indexer],k_shift_scaling)
-    k_shift_std = std_errors[kshift_indexer]*k_shift_scaling[1]
-    
-    growth_df = pd.DataFrame({"genotype":kshift_rev_indexer[kshift_indexer],
-                              "k_shift_est":k_shift_est,
-                              "k_shift_std":k_shift_std})
-
-    # Dataframe holding observed and predicted ln(cfu/mL) using model. 
-    pred_est, pred_std = predict_with_error(
-        _theta_to_lncfu,
-        params,
-        cov_matrix,
-        args
-    )
-  
-    pred_df = pd.DataFrame({"sel_time":t_sel,
-                            "obs_est":ln_cfu,
-                            "obs_std":ln_cfu_std,
-                            "pred_est":pred_est,
-                            "pred_std":pred_std})
-    
-    # Build a dataframe holding growth rates and A0 for each sample
-
-    # Predict the growth rates under all conditions using our estimated 
-    # parameters. 
-    k_est, k_std = predict_with_error(
-        _get_k,
-        params,
-        cov_matrix,
-        args=[k_wt_sel,
-              m_sel,
-              theta_indexer,
-              kshift_indexer,
-              k_shift_scaling]
-    )
-
-    lnA0_est = unscale(params[A0_indexer], A0_scaling)
-    lnA0_std = std_errors[A0_indexer]*A0_scaling[1]
-
-    k_df = df.copy()[["genotype","replicate","library","sel_condition","titrant_name","titrant_conc"]]
-    k_df["k_est"] = k_est
-    k_df["k_std"] = k_std
-    k_df["lnA0_est"] = lnA0_est
-    k_df["lnA0_std"] = lnA0_std
-
-    return theta_df, growth_df, pred_df, k_df, fit_out
-
-def cfu_to_theta(df,
-                 calibration_data,
-                 max_block_size=250):
-    """
-    Take read counts under different conditions and use them to estimate the 
-    fractional saturation of the operator (theta) for each genotype as a
-    function of inducer concentration. This estimate also yields the intrinsic
-    effect of each genotype on growth rate and the initial population of each 
-    genotype in each replicate. 
-    
-    Parameters
-    ----------
-    df : 
-    calibration_data : str or dict
-        Path to the calibration file or loaded calibration dictionary.
-    fit_method : str, optional
-        which fitting method to use to estimate parameters. should be 'mle' 
-        (maximum likelihood, default) or 'map' (maximum a posteriori). 
-    max_block_size : int, default=250
-        when doing regression, grab no more than max_block_size rows from the
-        combined_df when doing regression. It pools rows until it reaches
-        max_block_size rows. The function keeps all rows corresponding to a
-        specific genotype together. If adding a genotype goes exceeds this, 
-        it is placed in the next block. If a genotype has more rows than 
-        max_block_size by itself, this limit is ignored and the genotype is
-        analyzed on its own.
-
-    Returns
-    -------
-    length 4 tuple
-        + theta_df: pandas.DataFrame holding theta vs. titrant for each genotype
-        + growth_df: pandas.DataFrame holding the intrinsic effect of each 
-          genotype on growth rate
-        + pred_df: pandas.DataFrame holding the observed and predicted
-          ln(cfu/mL) under all conditions and times
-        + k_df: pandas.DataFrame holding the A0 and k values for each genotype
-    """
-
-    # Genotypes come out of replicate_aware_load sorted
+    # Sort on genotype (in case not done already) and make ordered categorical
+    # so it sorts properly. 
     all_genotypes = pd.unique(df["genotype"])
     idx = argsort_genotypes(all_genotypes)
     genotype_order = all_genotypes[idx]
+    df["genotype"] = pd.Categorical(df["genotype"],
+                                    categories=genotype_order,
+                                    ordered=True) 
 
-    # Lists to store block-wise results
-    theta_dfs = []
-    growth_dfs = []
-    pred_dfs = []
-    k_dfs = []
-    fit_outs = []
+    # Break the dataframe into batches that keep genotypes together. 
+    df_genotype_idx = df.groupby(["genotype"],observed=False).ngroup()
+    batches = chunk_by_group(df_genotype_idx,max_batch_size)
+    batch_idx = np.concatenate([np.full(c.shape,i,dtype=int)
+                                for i, c in enumerate(batches)])
+    df["_batch_idx"] = batch_idx
 
-    # For genotype blocks...
-    block_counter = 0
-    genotype_blocks = chunk_by_group(df["genotype"],max_block_size)
-    for block in tqdm(genotype_blocks):
-
-        this_df = df.loc[block,:]
-        theta_df, growth_df, pred_df, k_df, fit_out = _run_regression(
-            this_df,
-            calibration_data,
-        )
+    # Read calibration data
+    calibration_data = read_calibration(calibration_data)
     
-        theta_dfs.append(theta_df)
-        growth_dfs.append(growth_df)
-        pred_dfs.append(pred_df)
-        k_dfs.append(k_df)
+    # Background slope and titrant vs titrant
+    bg_df = calibration_data["k_bg_df"]
+    k_bg_m = bg_df.loc[df["titrant_name"],"m"].to_numpy()
+    k_bg_b = bg_df.loc[df["titrant_name"],"b"].to_numpy()
 
-        fit_out["fit_df"]["block"] = block_counter
-        fit_outs.append(fit_out)
+    # Condition slope and intercept vs. theta
+    dk_df = calibration_data["dk_cond_df"]
+    dk_m_pre = dk_df.loc[df["condition_pre"],"m"].to_numpy()
+    dk_b_pre = dk_df.loc[df["condition_pre"],"b"].to_numpy()
+    dk_m_sel = dk_df.loc[df["condition_sel"],"m"].to_numpy()
+    dk_b_sel = dk_df.loc[df["condition_sel"],"b"].to_numpy()
+
+    # Record these values as entries in the dataframe. 
+    df["k_bg_m"] = k_bg_m
+    df["k_bg_b"] = k_bg_b
+    df["dk_m_pre"] = dk_m_pre
+    df["dk_b_pre"] = dk_b_pre
+    df["dk_m_sel"] = dk_m_sel
+    df["dk_b_sel"] = dk_b_sel
+
+    return df
+
+def _prep_param_guesses(df,
+                        non_sel_conditions,
+                        calibration_data):
+    """
+    Generate and attach initial guesses for regression parameters.
+
+    This function runs preliminary, simplified fits on individual experimental
+    series to estimate initial values for the main regression parameters. The
+    results of these fits (`lnA0_est`, `dk_geno`) and a calculated wild-type
+    theta (`wt_theta`) are added as new columns to the dataframe. These serve
+    as starting points for the global least-squares optimization.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        The preprocessed DataFrame, typically the output of
+        `_prep_inference_df`.
+    non_sel_conditions : list of str
+        A list of strings identifying experimental conditions considered
+        non-selective. Data from these conditions are used to get an initial
+        estimate of the `dk_geno` parameter.
+    calibration_data : dict
+        The dictionary of calibration data, required by the fitting and
+        theta calculation functions.
+
+    Returns
+    -------
+    pandas.DataFrame
+        The input DataFrame with new columns containing parameter guesses.
+
+    Notes
+    -----
+    This function adds the following columns to the returned dataframe:
+    - ``lnA0_est``: Initial guess for the log of the initial cell count for
+      each unique `(genotype, library, replicate)` series.
+    - ``dk_geno``: Initial guess for the global fitness effect of each
+      genotype, derived from non-selective conditions.
+    - ``wt_theta``: Initial guess for the fractional occupancy of the binding
+      site, calculated assuming a wild-type response to the titrant.
+    """
+
+    # _dk_geno_mask is a boolean mask holding whether a condition has no
+    # selection and thus is a good sample to try to get a guess of 
+    # dk_geno (the global effect of the genotype on growth independent of
+    # theta). 
+    df["_dk_geno_mask"] = df["condition_sel"].isin(non_sel_conditions)
+
+    # genotype/library/replicate uniquely specifies a series that will 
+    # have its own lnA0 that must be estimated. 
+    series_selector = ["genotype","library","replicate"]
+
+    # Run individual fits on all genotype/library/replicate growth rates. 
+    indiv_param_df, _ = get_indiv_growth(df,
+                                         series_selector=series_selector,
+                                         calibration_data=calibration_data,
+                                         dk_geno_selector=["genotype"],
+                                         dk_geno_mask_col="_dk_geno_mask",
+                                         lnA0_selector=series_selector)
+
+    # make sure the genotype column is preserved as a category (which preserves
+    # it's pretty sorting). 
+    indiv_param_df["genotype"] = indiv_param_df["genotype"].astype(df["genotype"].dtype)
+    
+    # Grab guess values from the individual fits. This will bring lnA0_est 
+    # and dk_geno into the parameter dataframe.
+    df = df.merge(indiv_param_df,
+                  on=series_selector,
+                  how='left')
+    
+    # Get the theta for wildtype under these conditions
+    df["wt_theta"] = get_wt_theta(df["titrant_name"].to_numpy(),
+                                  df["titrant_conc"].to_numpy(),
+                                  calibration_data=calibration_data)
+    
+    return df
+
+def _build_param_df(df,
+                    series_selector,
+                    base_name,
+                    guess_column,
+                    transform,
+                    offset):
+    """
+    Build a parameter specification DataFrame for a single parameter class.
+
+    This helper function identifies a set of unique model parameters based on
+    the columns in ``series_selector``. It creates a DataFrame where each row
+    defines one parameter, populating it with a unique name, an initial guess,
+    and transformation properties. It also generates a mapping array that links
+    each row in the input ``df`` back to its corresponding parameter index.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        The main, fully prepped DataFrame containing experimental data and
+        initial guess columns.
+    series_selector : list of str
+        A list of column names that together uniquely define a parameter of
+        this class. For example, ``['genotype', 'library', 'replicate']``.
+    base_name : str
+        The class name for this block of parameters (e.g., 'lnA0', 'theta').
+        Used for naming and classification.
+    guess_column : str
+        The name of the column in ``df`` that holds the initial guess for
+        each parameter.
+    transform : str
+        The name of the transformation to apply to this parameter class during
+        regression (e.g., 'scale', 'logistic', 'none').
+    offset : int
+        An integer to add to all generated parameter indices. This is used to
+        ensure that indices from different parameter classes do not overlap.
+
+    Returns
+    -------
+    df_idx : pandas.Series
+        An array with the same length as ``df``. Each value is the global index
+        of the parameter corresponding to that row in ``df``.
+    final_df : pandas.DataFrame
+        A DataFrame where each row defines one parameter, containing its class,
+        name, guess, transform info, and unique global index ('idx').
+    """
+
+    # Group by unique combinations in series_selector
+    grouper = df.groupby(series_selector, observed=True)
+    
+    # Get indexes pointing to unique combinations in series_selector
+    # (same length as df)
+    df_idx = grouper.ngroup() + offset
+    
+    # Get parameters (one for each unique combination)
+    param_df = grouper.agg('first').reset_index()
+
+    # Get index of parameter. This is a global counter that will cover all 
+    # parameter classes. This is enforced by offset. Note that offset is added
+    # both here and to the df_idx above, keepting them in sync
+    param_df["idx"] = param_df.index + offset
+    
+    # Get parameter class and name
+    joined_series = param_df[series_selector].astype(str).agg('_'.join, axis=1)
+    param_df["class"] = base_name
+    param_df["name"] = f"{base_name}_" + joined_series
+    
+    # Get parameter guess
+    param_df["guess"] = param_df[guess_column]
+    
+    # Figure out transform if requested. 
+    param_df["transform"] = transform
+    param_df["scale_mu"] = 0
+    param_df["scale_sigma"] = 1
+
+    # Deal with scale transform parameters
+    if transform == "scale":
         
-        block_counter += 1
-    
-    
-    # -------------------------------------------------------------------------
-    # Finalize theta_df
+        mu = np.mean(param_df["guess"])
+        sig = np.std(param_df["guess"])
 
-    theta_df = pd.concat(theta_dfs,ignore_index=True)
-    
-    # Collapse theta_df to single genotype/titrant name/titrant conc values 
-    theta_df["genotype"] = pd.Categorical(theta_df["genotype"],
-                                          categories=genotype_order,
-                                          ordered=True)    
-    theta_df = theta_df.groupby(['genotype', 'titrant_name', 'titrant_conc'],
-                                 as_index=False,
-                                 observed=False).first()
-    
-    # -------------------------------------------------------------------------
-    # Finalize growth_df
+        param_df["scale_mu"] = mu
 
-    growth_df = pd.concat(growth_dfs,ignore_index=True)
-    
-    # Collapse growth_df to single genotype values
-    growth_df["genotype"] = pd.Categorical(growth_df["genotype"],
-                                           categories=genotype_order,
-                                           ordered=True)    
-    growth_df = growth_df.groupby(['genotype'],
-                                 as_index=False,
-                                 observed=False).first()
+        # Only overwrite the default scale_sigma of 1 if sig or mu is non-zero
+        if sig > 0:
+            param_df["scale_sigma"] = sig
+        elif mu != 0:
+            # If std dev is 0 but mean is not, use the mean
+            param_df["scale_sigma"] = np.abs(mu)
+        else:
+            param_df["scale_sigma"] = 1.0
 
-    # -------------------------------------------------------------------------
-    # Finalize pred_df
+    # Build final clean dataframe with only required columns
+    final_df = param_df[["class","name","guess",
+                         "transform","scale_mu","scale_sigma","idx"]]
 
-    pred_df = pd.concat(pred_dfs,ignore_index=True)
-    
-    # Build a dataframe holding observed and predicted ln(cfu/mL)
-    pred_df = pd.concat([df,pred_df],axis=1)
-    
-    # Sort on genotype, replicate, library, condition, titrant_name, titrant_conc
-    pred_df["genotype"] = pd.Categorical(pred_df["genotype"],
-                                         categories=genotype_order,
-                                         ordered=True)
-    sort_on = ["genotype","replicate","library",
-               "sel_condition","titrant_name","titrant_conc"]
-    pred_df = pred_df.sort_values(sort_on)
-
-
-    # -------------------------------------------------------------------------
-    # Finalize k_df
-
-    k_df = pd.concat(k_dfs,ignore_index=True)
-    
-    # -------------------------------------------------------------------------
-    # Finalize fit_out
-
-    fit_out = {}
-    fit_out["fit_df"] = pd.concat([f["fit_df"] for f in fit_outs],
-                                  ignore_index=True)
-    cov_matrices = [f["cov_matrix"] for f in fit_outs]
-    fit_out["cov_matrix"] = scipy.linalg.block_diag(*cov_matrices)
+    return df_idx, final_df
 
     
-    return theta_df, growth_df, pred_df, k_df, fit_out
+def _setup_inference(df):
+    """
+    Assemble the final design matrix and response vector for regression.
+
+    This function serves as the final step in preparing data for a
+    least-squares fit. It orchestrates the creation of the complete parameter
+    specification dataframe (`param_df`) by calling the `_build_param_df`
+    helper for each parameter class (`lnA0`, `dk_geno`, `theta`). It then uses
+    the parameter definitions and indices to construct the final design matrix
+    `X` and the response vector `y_obs`.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        A fully prepared dataframe, typically from `_prep_param_guesses`. It
+        must contain all columns needed for parameter assignment (e.g.,
+        'genotype', 'library') and for predictor value calculation (e.g.,
+        't_pre', 't_sel', 'dk_m_pre').
+
+    Returns
+    -------
+    y_obs : numpy.ndarray
+        A 1D array of shape (n_obs,) representing the response variable. This
+        is the observed log(cfu) with all known constant growth terms
+        subtracted out.
+    y_std : numpy.ndarray
+        A 1D array of shape (n_obs,) holding the standard error for each
+        observation in ``y_obs``.
+    X : numpy.ndarray
+        A 2D design matrix of shape (n_obs, n_params). Each row is an
+        observation and each column corresponds to a model parameter.
+    param_df : pandas.DataFrame
+        A dataframe where each row corresponds to a column in ``X``, defining
+        the parameter's name, class, initial guess, and transformation.
+
+    Notes
+    -----
+    The function constructs `X` and `y_obs` to represent the linear model:
+    `y_obs ≈ X @ p`, where `p` is the vector of parameters to be fit.
+    This corresponds to the underlying model for log-growth:
+    `ln(cfu) - constants ≈ lnA0 + dk_geno*t_total + theta*mtp_mts`
+    """
+
+    # -----------------------------------------------------------------------------
+    # Infer column/value combination to parameter mapping. 
+
+    # Each of these calls builds a dataframe with parameters for all unique 
+    # combinations of the selector (lnA0_selector, etc.) and then populates that
+    # dataframe with guesses and parameter transformation info. The function
+    # also returns an index (lnA0_idx, etc.) that indicates which rows in the main
+    # dataframe correspond to which parameters in the parameter dataframe. 
+
+    offset = 0
+    lnA0_selector = ["genotype","library","replicate"]
+    lnA0_idx, lnA0_df = _build_param_df(
+        df=df,
+        base_name="lnA0",
+        series_selector=lnA0_selector,
+        guess_column="lnA0_est",
+        transform="scale",
+        offset=offset
+    )
+    
+    offset = lnA0_df["idx"].max() + 1
+    
+    dk_geno_selector = ["genotype"]
+    dk_geno_idx, dk_geno_df = _build_param_df(
+        df=df,
+        base_name="dk_geno",
+        series_selector=dk_geno_selector,
+        guess_column="dk_geno",
+        transform="scale",
+        offset=offset
+    )
+    
+    offset = dk_geno_df["idx"].max() + 1
+    
+    theta_selector = ["genotype","titrant_name","titrant_conc"]
+    theta_idx, theta_df = _build_param_df(
+        df=df,
+        base_name="theta",
+        series_selector=theta_selector,
+        guess_column="wt_theta",
+        transform="none",
+        offset=offset
+    )
+
+    # -----------------------------------------------------------------------------
+    # build final parameter dataframe
+    
+    param_df = pd.concat([lnA0_df,dk_geno_df,theta_df],ignore_index=True)
+    
+    # -----------------------------------------------------------------------------
+    # Construct design matrix
+    
+    # Initialize design matrix
+    X = np.zeros((df.shape[0],param_df.shape[0]),dtype=float)
+    
+    # Populate design matrix
+    row_indexer = np.arange(X.shape[0],dtype=int)
+    X[row_indexer,lnA0_idx] = np.ones(len(df),dtype=float)
+    X[row_indexer,dk_geno_idx] = df["t_pre"] + df["t_sel"]
+    X[row_indexer,theta_idx] = df["dk_m_pre"]*df["t_pre"] + df["dk_m_sel"]*df["t_sel"]
+
+    # -----------------------------------------------------------------------------
+    # build y_obs and y_std
+    
+    # Build final y_obs  (ln_cfu - constant terms)
+    k_bg = df["k_bg_b"] + df["k_bg_m"]*df["titrant_conc"]
+    y_offset = (k_bg + df["dk_b_pre"])*df["t_pre"] + (k_bg + df["dk_b_sel"])*df["t_sel"]
+    y_obs = (df["ln_cfu"] - y_offset).to_numpy()
+
+    # y_std is unchanged
+    y_std = df["ln_cfu_std"].to_numpy()
+
+    return y_obs, y_std, X, param_df
+
+
+def _run_inference(fm):
+    """
+    Execute a weighted least-squares regression for one batch.
+
+    This function takes a fully prepared FitManager object, which encapsulates
+    the model for a single batch of data. It clips the initial parameter
+    guesses to ensure they are within the specified bounds, runs the weighted
+    least-squares optimization, calculates the model's predictions with error
+    propagation, and returns the results in formatted dataframes.
+
+    Parameters
+    ----------
+    fm : FitManager
+        A FitManager object containing all necessary components for the fit:
+        the design matrix (X), observations (y_obs), standard errors (y_std),
+        a parameter dataframe, and methods for parameter transformation.
+
+    Returns
+    -------
+    param_df : pandas.DataFrame
+        A dataframe containing the final parameter estimates and standard errors
+        for the current batch, along with all other parameter metadata from the
+        input FitManager.
+    pred_df : pandas.DataFrame
+        The input dataframe for the batch, now containing new columns with the
+        model's prediction (`calc_est`) and its standard error (`calc_std`)
+        for each observation.
+    """
+
+    # Clip the guesses to keep them within the bounds. (This mainly applies to
+    # logistic transformed data, because guesses of 0.0 and 1.0 will be outside
+    # the bounds of 1e-7 and 0.9999999 we set for numerical stability). 
+    clipped_guesses = fm.guesses_transformed.copy()
+    too_low = clipped_guesses < fm.lower_bounds_transformed
+    clipped_guesses[too_low] = fm.lower_bounds_transformed[too_low]
+    too_high = clipped_guesses > fm.upper_bounds_transformed
+    clipped_guesses[too_high] = fm.upper_bounds_transformed[too_high]
+
+    # Run least squares fit
+    params, std_errors, cov_matrix, _ = run_least_squares(
+        fm.predict_from_transformed,
+        obs=fm.y_obs,
+        obs_std=fm.y_std,
+        guesses=clipped_guesses,
+        lower_bounds=fm.lower_bounds_transformed,
+        upper_bounds=fm.upper_bounds_transformed
+    )
+    
+    # Make predictions at each data point and store
+    pred, pred_std = predict_with_error(fm.predict_from_transformed,
+                                        params,
+                                        cov_matrix)
+
+    # Prediction dataframe
+    pred_df = pd.DataFrame({"y_obs":fm.y_obs,
+                            "y_std":fm.y_std,
+                            "calc_est":pred,
+                            "calc_std":pred_std})
+
+    # Extract parameter estimates
+    param_df = fm.param_df.copy()
+    param_df["est"] = fm.back_transform(params)
+    param_df["std"] = fm.back_transform_std_err(params,std_errors)
+
+    return param_df, pred_df
+
+
+def cfu_to_theta(df,
+                 non_sel_conditions,
+                 calibration_data,
+                 max_batch_size=250):
+    """
+    Estimate transcription factor occupancy (theta) from cell growth data.
+
+    This function implements a global regression model to infer the fractional
+    occupancy of a transcription factor binding site (`theta`) from time-course
+    cell fitness data. It orchestrates a complete analysis pipeline:
+
+    1. Preprocesses the input data, adding calibration constants.
+    2. Generates reasonable initial guesses for model parameters.
+    3. Splits the data into manageable batches.
+    4. For each batch, constructs a design matrix and runs a weighted
+       least-squares regression to fit the model parameters.
+    5. Aggregates and returns the results from all batches.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame or str
+        Input experimental data, containing columns for CFU counts, times,
+        conditions, genotypes, titrant concentrations, etc.
+    non_sel_conditions : list of str
+        A list of strings identifying experimental conditions considered
+        "non-selective". This data is used to get an initial estimate for the
+        baseline fitness effect of each genotype (`dk_geno`).
+    calibration_data : dict or str
+        A dictionary or path to a file containing pre-calculated calibration
+        constants, such as background growth rates.
+    max_batch_size : int, optional
+        The maximum number of experiments to include in a single regression
+        batch. This helps manage memory usage for large datasets.
+        (default is 250).
+
+    Returns
+    -------
+    param_df : pandas.DataFrame
+        A dataframe containing the final estimated value (`est`) and standard
+        error (`std`) for every model parameter (`lnA0`, `dk_geno`, `theta`)
+        across all fitted batches.
+    pred_df : pandas.DataFrame
+        A dataframe containing the original experimental data for all batches,
+        augmented with the model's prediction (`calc_est`) and its standard
+        error (`calc_std`) for each observation.
+    """
+    
+    
+    # Prepare dataframe, creating all necessary columns etc. 
+    df = _prep_inference_df(df,
+                            max_batch_size=max_batch_size,
+                            calibration_data=calibration_data)
+    
+    # get parameter guesses
+    df = _prep_param_guesses(df,
+                             non_sel_conditions=non_sel_conditions,
+                             calibration_data=calibration_data)
+
+    
+    # Lists to store batch-wise results
+    batch_param_dfs = []
+    batch_pred_dfs = []
+
+    # For batches of genotypes...
+    for batch_idx, batch_df in tqdm(df.groupby(["_batch_idx"])):
+
+        # Build the design matrix
+        y_obs, y_std, X, fit_param_df = _setup_inference(batch_df)
+
+        # Construct a FitManager object to manage the fit. 
+        fm = FitManager(y_obs,y_std,X,fit_param_df)
+
+        # Run the inference
+        batch_param_df, batch_pred_df = _run_inference(fm)
+
+        # Combine the original batch data with its new predictions
+        batch_pred_df = pd.concat([batch_df.reset_index(drop=True), 
+                                   batch_pred_df],axis=1)
+        
+        batch_param_dfs.append(batch_param_df)
+        batch_pred_dfs.append(batch_pred_df)
+
+    param_df = pd.concat(batch_param_dfs,ignore_index=True)
+    pred_df = pd.concat(batch_pred_dfs,ignore_index=True)
+
+    return param_df, pred_df
