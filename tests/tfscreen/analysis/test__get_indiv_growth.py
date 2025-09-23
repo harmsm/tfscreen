@@ -124,16 +124,16 @@ def test_get_indiv_growth_full_pipeline(mock_dependencies, base_df):
     assert pred_df.shape[0] == 10
 
     # 2. Test parameter dataframe content
-    # Check that metadata columns are present
-    assert "replicate" in param_df.columns
-    assert "genotype" in param_df.columns
-    # Check that corrected parameters from the mock model_pre_growth are present
-    assert "dk_geno" in param_df.columns
-    assert "lnA0_pre" in param_df.columns
-    
+    # Check that expected metadata and results columns are present
+    for c in series_selector:
+        assert c in param_df.columns    
+    for c in ["lnA0_est","lnA0_std","k_est","dk_geno","lnA0_pre"]:
+        assert c in param_df.columns
+        
     # 3. Test prediction dataframe content
     assert "pred" in pred_df.columns
     assert "obs" in pred_df.columns
+    assert "genotype" in pred_df.columns # check one piece of metadata
     # Check that temporary columns are gone
     assert "_timepoint_count" not in pred_df.columns
     assert "_t_sel_row_number" not in pred_df.columns

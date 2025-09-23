@@ -65,7 +65,7 @@ def parse_patsy(df,
         # If we hit a parameter with [...], it's a real categorical variable
         hit = bracket_search.search(param)
         if hit:
-    
+
             # Pop out match: red[stuff]blue -> redblue
             key = "".join(bracket_search.split(param))
             
@@ -77,6 +77,11 @@ def parse_patsy(df,
     
             # Get everything inside [ ... ]: [stuff] -> stuff
             specifier = hit.group()[1:-1].strip()
+
+            # Get rid of T. level indicator
+            if specifier.startswith("T."):
+                specifier = specifier[2:]
+
             if isinstance(param_factors,str):
                 param_factors = [param_factors]
                 specifier = [specifier]

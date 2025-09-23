@@ -37,7 +37,7 @@ class FitManager:
     dataframe.
     """
 
-    _LOGISTIC_STABILITY_BOUND = 15
+    _LOGISTIC_STABILITY_BOUND = 20
     
     def __init__(self,
                  y_obs: np.ndarray,
@@ -196,11 +196,12 @@ class FitManager:
 
         # Handle logistic transformation
         if np.any(self._is_logistic):
+
             v_t_logistic = v_transformed[self._is_logistic]
             
             # Derivative of the back-transformation (expit)
             # derivative = expit(v_t) * (1 - expit(v_t))
-            derivative = self._to_logistic(v_t_logistic) * (1 - self._to_logistic(v_t_logistic))
+            derivative = self._from_logistic(v_t_logistic) * (1 - self._from_logistic(v_t_logistic))
             
             out_std[self._is_logistic] = derivative * std_err_transformed[self._is_logistic]
             
@@ -245,7 +246,7 @@ class FitManager:
         real_v[self.is_fixed] = self.guesses[self.is_fixed]
         return self._X @ real_v
 
-    def _to_logistic(self, v: np.ndarray) -> np.ndarray:
+    def _from_logistic(self, v: np.ndarray, mask=None) -> np.ndarray:
         """
         Logistic transformation (sigmoid).
 
@@ -259,9 +260,12 @@ class FitManager:
         np.ndarray
             Transformed values.
         """
+
+        if mask is not None:
+            v = v[mask] 
         return expit(v)
 
-    def _from_logistic(self, v: np.ndarray) -> np.ndarray:
+    def _to_logistic(self, v: np.ndarray,mask=None) -> np.ndarray:
         """
         Inverse logistic transformation (logit).
 
@@ -281,11 +285,16 @@ class FitManager:
         np.ndarray
             Transformed values.
         """
+
+        if mask is not None:
+            v = v[mask]
+
         epsilon = np.finfo(v.dtype).eps
         v_clipped = np.clip(v, epsilon, 1 - epsilon)
+  
         return logit(v_clipped)
 
-    def _to_scale(self, v: np.ndarray) -> np.ndarray:
+    def _to_scale(self, v: np.ndarray, mask=None) -> np.ndarray:
         """
         Applies scaling: (v - mu) / sigma.
 
@@ -299,9 +308,14 @@ class FitManager:
         np.ndarray
             Transformed values.
         """
+    
+        if mask is not None:
+            return (v[mask] - self._scale_mu[mask]) / self._scale_sigma[mask]
+        
         return (v - self._scale_mu) / self._scale_sigma
+        
 
-    def _from_scale(self, v: np.ndarray) -> np.ndarray:
+    def _from_scale(self, v: np.ndarray,mask=None) -> np.ndarray:
         """
         Reverses scaling: v * sigma + mu.
 
@@ -315,6 +329,10 @@ class FitManager:
         np.ndarray
             Un-transformed values.
         """
+
+        if mask is not None:
+            return v[mask] * self._scale_sigma[mask] + self._scale_mu[mask]
+
         return v * self._scale_sigma + self._scale_mu
 
     @property
@@ -351,8 +369,8 @@ class FitManager:
     def lower_bounds_transformed(self) -> np.ndarray:
         """
         np.ndarray: The lower bounds in the transformed space.
-        Infinite bounds are preserved.
         """
+
         bounds = self.lower_bounds
         transformed_bounds = bounds.copy()
         finite_mask = np.isfinite(bounds)
@@ -360,16 +378,24 @@ class FitManager:
         scale_and_finite = self._is_scale & finite_mask
         logistic_and_finite = self._is_logistic & finite_mask
 
-        transformed_bounds[scale_and_finite] = self._to_scale(
-            bounds[scale_and_finite]
-        )
-        transformed_bounds[logistic_and_finite] = self._to_logistic(
-            bounds[logistic_and_finite]
-        )
+        # If any values are not infinite
+        if np.any(scale_and_finite):
+            transformed_bounds[scale_and_finite] = self._to_scale(
+                bounds,
+                mask=scale_and_finite
+            )
+
+        # If any values are not infinite
+        if np.any(logistic_and_finite):
+            transformed_bounds[logistic_and_finite] = self._to_logistic(
+                bounds,
+                mask=logistic_and_finite
+            )
 
         # Enforce bound of -15 on logistic for numerical stability
-        logistic_and_infinite = self._is_logistic & ~finite_mask
-        transformed_bounds[logistic_and_finite] = -self._LOGISTIC_STABILITY_BOUND
+        logistic_and_not_set = self._is_logistic & ~finite_mask
+        if np.any(logistic_and_not_set):
+            transformed_bounds[logistic_and_not_set] = -self._LOGISTIC_STABILITY_BOUND
         
         return transformed_bounds
 
@@ -377,7 +403,6 @@ class FitManager:
     def upper_bounds_transformed(self) -> np.ndarray:
         """
         np.ndarray: The upper bounds in the transformed space.
-        Infinite bounds are preserved.
         """
         bounds = self.upper_bounds
         transformed_bounds = bounds.copy()
@@ -386,16 +411,22 @@ class FitManager:
         scale_and_finite = self._is_scale & finite_mask
         logistic_and_finite = self._is_logistic & finite_mask
 
-        transformed_bounds[scale_and_finite] = self._to_scale(
-            bounds[scale_and_finite]
-        )
-        transformed_bounds[logistic_and_finite] = self._to_logistic(
-            bounds[logistic_and_finite]
-        )
+        if np.any(scale_and_finite):
+            transformed_bounds[scale_and_finite] = self._to_scale(
+                bounds,
+                mask=scale_and_finite
+            )
+
+        if np.any(logistic_and_finite):
+            transformed_bounds[logistic_and_finite] = self._to_logistic(
+                bounds,
+                mask=logistic_and_finite
+            )
 
         # Enforce bound of +15 on logistic for numerical stability
-        logistic_and_infinite = self._is_logistic & ~finite_mask
-        transformed_bounds[logistic_and_finite] = self._LOGISTIC_STABILITY_BOUND
+        logistic_and_not_set = self._is_logistic & ~finite_mask
+        if np.any(logistic_and_not_set):
+            transformed_bounds[logistic_and_not_set] = self._LOGISTIC_STABILITY_BOUND
         
         return transformed_bounds
 

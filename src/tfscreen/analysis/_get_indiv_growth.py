@@ -44,7 +44,7 @@ def _prepare_and_validate_growth_data(df,
     df = df.sort_values(by=series_selector + ["t_sel"])
 
     # 5. Extract a single row for each unique series to get its metadata
-    series_metadata_df = df.loc[df.groupby(series_selector)["t_sel"].idxmin()].copy()
+    series_metadata_df = df.loc[df.groupby(series_selector,observed=True)["t_sel"].idxmin()].copy()
     series_metadata_df.reset_index(drop=True, inplace=True)
 
     return df, series_metadata_df, needs_columns
@@ -61,12 +61,12 @@ def _run_batch_fits(df,
     param_dfs = []
     pred_dfs = []
 
-    df['_timepoint_count'] = df.groupby(series_selector)["t_sel"].transform('size')
+    df['_timepoint_count'] = df.groupby(series_selector,observed=True)["t_sel"].transform('size')
     
     for _, sub_df in df.groupby('_timepoint_count'):
         
         # Create a column for pivoting that represents timepoint order (0, 1, 2...)
-        sub_df['_t_sel_row_number'] = (sub_df.groupby(series_selector)["t_sel"]
+        sub_df['_t_sel_row_number'] = (sub_df.groupby(series_selector,observed=True)["t_sel"]
                                        .rank(method='first').astype(int) - 1)
         
         # Reshape from long to wide format for the fitter
@@ -137,13 +137,13 @@ def _apply_pre_growth_correction(param_df,
     dk_geno_groups = None
     dk_geno_mask = None
     if dk_geno_selector:
-        dk_geno_groups = (series_metadata_df.groupby(dk_geno_selector)
+        dk_geno_groups = (series_metadata_df.groupby(dk_geno_selector,observed=True)
                           .ngroup().to_numpy(dtype=int))
         dk_geno_mask = series_metadata_df[dk_geno_mask_col].to_numpy(dtype=bool)
         
     lnA0_groups = None
     if lnA0_selector:
-        lnA0_groups = (series_metadata_df.groupby(lnA0_selector)
+        lnA0_groups = (series_metadata_df.groupby(lnA0_selector,observed=True)
                        .ngroup().to_numpy(dtype=int))
 
     # Apply the pre-growth correction model
