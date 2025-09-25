@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 
-from tfscreen.util import argsort_genotypes
+from tfscreen.util.genotype_sorting import argsort_genotypes
 
 
 def test_argsort_genotypes():

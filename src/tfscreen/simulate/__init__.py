@@ -18,14 +18,16 @@ from .generate_libraries import (
     generate_libraries,
 )
 
+from .setup_observable import (
+    setup_observable
+)
+
 # Import public functions from generate_phenotypes.py
 from .generate_phenotypes import (
     generate_phenotypes,
 )
 
-from .setup_observable import (
-    setup_observable
-)
+
 
 # Import public functions from growth_with_selection.py
 from .simulate_growth import (

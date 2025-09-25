@@ -2,8 +2,15 @@
 Functions for generating phenotypes from mutant libraries and ensemble data.
 """
 
-from tfscreen.calibration import get_wt_k
-from tfscreen.util import read_dataframe
+from tfscreen.calibration import(
+    get_wt_k
+)
+from tfscreen.util import (
+    set_categorical_genotype
+)
+from tfscreen.simulate import (
+    setup_observable
+)
 
 import pandas as pd
 import numpy as np
@@ -11,235 +18,278 @@ from tqdm.auto import tqdm
 from scipy.stats import gamma
 
 
-def _read_ddG(ddG_df):
+def _assign_ddG(genotype_list,ddG_df):
     """
-    Read ddG values from spreadsheet and return a dictionary mapping mutation
-    strings to ddG arrays for each species.
+    Read ddG values and return a mutation-to-ddG dictionary.
+
+    This function processes a DataFrame of free energy changes for all 
+    species in an ensemble, converting it into a dictionary for fast
+    lookups. The code assumes there are only single mutants in the dataframe.
+    Genotypes with multiple mutations (separated by '/') are assumed to behave
+    additively within each species. 
 
     Parameters
     ----------
-    ddG_df : pandas.DataFrame or str
-        dataframe or path to spreadsheet containing ddG values. dataframe must 
-        have column 'mut' (with values formatted like M1Q, V238P, etc.) and 
-        a column for each molecular species in the model being used. 
+    genotype_list : list
+        A list of all genotype strings (e.g., ["wt", "A1G", "A1G/C2T"]).
+    ddG_df : pandas.DataFrame
+        A DataFrame of free energy changes, indexed by single mutation strings,
+        with columns corresponding to molecular species. This is typically the
+        DataFrame returned by `setup_observable`
 
     Returns
     -------
     ddG_dict : dict
-        Dictionary mapping mutation string to ddG numpy array.
+        A dictionary mapping each mutation string to a NumPy array of its
+        ddG values for each species.
     """
 
-    ddG_df = read_dataframe(ddG_df)
-
-    # Species are all columns except mut
-    species_list = [c for c in ddG_df.columns if c != "mut"]
-    
+    # Build ddG dictionary for all genotypes (singles and higher-order)
     ddG_dict = {}
-    for idx in ddG_df.index:
-        mut = str(ddG_df.loc[idx,"mut"])
-        ddG_values = np.array(ddG_df.loc[idx,species_list],dtype=float)
-        ddG_dict[mut] = ddG_values
-    
-    # If not ddG values for "C" at site, stick in value for "S"
-    update_dict = {}
-    for k in ddG_dict:
-        if k[-1] == "S":
-            new_key = f"{k[:-1]}C"
-            if new_key not in ddG_dict:
-                update_dict[new_key] = ddG_dict[k]
-    for k in update_dict:
-        ddG_dict[k] = update_dict[k]
-
-
+    for g in list(set(genotype_list)):
+        if g == "wt":
+            ddG_dict["wt"] = np.zeros(len(ddG_df.columns),dtype=float)
+        else:
+            ddG_dict[g] = np.sum(ddG_df.loc[g.split("/"),:],axis=0)
+            
     return ddG_dict
 
 
-def _assign_growth_rate_perturb(genotype_list,
-                                shape_param=3,
-                                scale_param=0.002):
+def _assign_dk_geno(genotype_list,
+                    shape_param=3,
+                    scale_param=0.002):
+    """
+    Assign a global fitness cost (dk_geno) to each genotype.
 
+    This function simulates the pleiotropic fitness effects of mutations that
+    are unrelated to the modeled thermodynamic change. It assigns a fitness
+    cost to each unique individual mutation by drawing from a gamma
+    distribution. The total fitness cost for a genotype with multiple
+    mutations is assumed to be the sum of the costs of its constituent
+    mutations.
 
-    singles = [g for g in genotype_list if len(g.split("/")) == 1]
+    Parameters
+    ----------
+    genotype_list : list of str
+        A list of all genotype strings (e.g., ["wt", "A1G", "A1G/C2T"]).
+    shape_param : float, optional
+        The shape parameter `a` for the gamma distribution used for sampling.
+    scale_param : float, optional
+        The scale parameter for the gamma distribution used for sampling.
 
-    peturb = scale_param/2 - gamma.rvs(a=shape_param, 
-                                       scale=scale_param, 
-                                       size=len(singles))
+    Returns
+    -------
+    dk_geno : dict
+        A dictionary mapping each full genotype string to its calculated
+        total fitness cost (dk_geno).
+    """
+
+    # Get all unique mutations (whether seen singly or doubly)
+    all_individual_muts = set()
+    for g in genotype_list:
+        if g != "wt":
+            all_individual_muts.update(g.split('/'))
     
-    growth_rate_dict = dict(zip(singles,list(peturb)))
+    # List of all singles
+    unique_singles = sorted(list(all_individual_muts))
 
-    k_shift = {}
-    for genotype in genotype_list:
+    # Get dk_geno effects by random sampling from a gamma distribution
+    dk_geno = scale_param/2 - gamma.rvs(a=shape_param, 
+                                       scale=scale_param, 
+                                       size=len(unique_singles))
+    
+    # This dataframe maps individual mutations to their fitness effect
+    dk_geno_df = pd.DataFrame({"mut":unique_singles,
+                              "dk_geno":dk_geno})
+    dk_geno_df = dk_geno_df.set_index("mut")
 
-        # Assume that multi-mutant genotypes sum their individual effects on 
-        # growth rate. 
-        if genotype == "wt":
-            k_shift[genotype] = 0
+    # Build dk_geno dictionary for all genotypes (singles and higher-order)
+    dk_geno_dict = {}
+    for g in genotype_list:
+        if g == "wt":
+            dk_geno_dict[g] = 0
         else:
-            genotype_as_list = genotype.split("/")
-            k_shift[genotype] = np.sum([growth_rate_dict[g]
-                                                   for g in genotype_as_list])
+            dk_geno_dict[g] = np.sum(dk_geno_df.loc[g.split("/"),"dk_geno"])
         
-    return k_shift
+    return dk_geno_dict
 
     
 def generate_phenotypes(genotype_df,
                         sample_df,
-                        obs_fcn,
-                        ddG_df,
-                        calibration_dict,
+                        observable_calculator,
+                        observable_calc_kwargs,
+                        ddG_spreadsheet,
+                        calibration_data,
                         mut_growth_rate_shape=3,
                         mut_growth_rate_scale=0.002):
     """
-    Generate phenotypes for all genotypes in genotype_df given ensemble and 
-    ddG data.
+    Generate phenotypes (growth rates) from genotypes and conditions.
+
+    This is the main simulation engine. It takes a set of genotypes and a set
+    of experimental conditions, then calculates the predicted phenotype for
+    every combination. The process involves summing free energy changes for
+    mutations, assigning a random fitness cost, calculating a biophysical
+    observable (e.g., theta), and finally calculating the growth rates in
+    pre-selection and selection conditions based on calibration data.
 
     Parameters
     ----------
     genotype_df : pandas.DataFrame
-        dataframe with genotype information. Must contain a column "genotype"
-        with genotype strings.
+        DataFrame containing a "genotype" column with all genotypes to be
+        simulated.
     sample_df : pandas.DataFrame
-        dataframe with samples. Expects columns 'marker', 'select', 'iptg' 
-    obs_fcn : function
-        function for calculating observable values. This function should take 
-        an array of ddG values for all species in the model as its only 
-        argument and return a 1D array of the observable across the conditions
-        specified in the experiment. 
-    ddG_df : pandas.DataFrame or str
-        dataframe or path to spreadsheet with dataframe. This dataframe should 
-        have a 'mut' column and then one column for each species in the model. 
-        The order of the columns should match the order of the species in the 
-        ddG_array passed to obs_function. 
-    calibration_dict : dict
-        calibration dictionary with wildtype growth rates under experimental 
-        conditions.
-    mut_growth_rate_std : float, default = 0.01
-        standard deviation on growth rate perturbations (in units of growth 
-        rate). 
+        DataFrame defining all experimental conditions (titrations, times, etc.).
+    observable_calculator : str
+        The name of the biophysical model to use for the calculation. Must be
+        "eee" or "lac".
+    observable_calc_kwargs : dict
+        A dictionary of keyword arguments to pass to the constructor of the
+        chosen model. Must contain the key "e_name", which specifies the
+        name of the titrant (effector).
+    ddG_spreadsheet : str or pandas.DataFrame
+        The path to a spreadsheet file (e.g., CSV, Excel) or a pre-loaded
+        pandas DataFrame containing the free energy perturbations (ddG) to each
+        molecular species in the model. The DataFrame must contain a "mut"
+        column for mutation names and one for each molecular species in the 
+        model. 
+    calibration_data : dict
+        A dictionary containing pre-calculated calibration constants required
+        by ``tfscreen.calibration.get_wt_k``.
+    mut_growth_rate_shape : float, optional
+        The shape parameter for the gamma distribution used to assign
+        fitness costs.
+    mut_growth_rate_scale : float, optional
+        The scale parameter for the gamma distribution used to assign
+        fitness costs.
 
     Returns
     -------
+    genotype_df : pandas.DataFrame
+        The input `genotype_df` with new columns "ddG" and "dk_geno" added.
     phenotype_df : pandas.DataFrame
-        DataFrame with phenotypes for each genotype. Contains columns:
-        - "clone": genotype string
-        - "ddG": ddG values for the genotype
-        - "iptg": iptg concentration in mM
-        - "obs": observed phenotype (product of fx_occupied and fx_folded)  
-        - "base_growth_rate": growth rate under these conditions without a 
-          marker or selection
-        - "marker_growth_rate": growth rate under these conditions accounting 
-          for marker without selection
-        - "overall_growth_rate": growth rate under these conditions accounting 
-          for marker and selection. (This is the growth rate used for the 
-          simulation of each sample.)
+        A "long" DataFrame containing every combination of genotype and
+        sample condition, with calculated observables (theta) and
+        phenotypes (k_pre, k_sel).
     """
-    
-    # Prepare output dictionary to hold phenotype data
-    phenotype_out = {"genotype":[],
-                     "marker":[],
-                     "select":[],
-                     "iptg":[],
-                     "obs": [],
-                     "base_growth_rate": [],
-                     "marker_growth_rate":[],
-                     "overall_growth_rate":[]}
-    
-    # These will hold ddG and growth rate effects for the genotype_df
-    ddG_out = []
-    k_shift_out = []
 
-    ddG_dict = _read_ddG(ddG_df)
+    # -------------------------------------------------------------------------
+    # Load and then sort genotype and sample dataframes in a stereotyped way
 
-    # Get marker, select, and iptg
-    marker = np.array(sample_df["marker"])
-    select = np.array(sample_df["select"])
-    iptg = np.array(sample_df["iptg"])
+    # Work on copies of genotype_df and sample_df
+    genotype_df = genotype_df.copy()
+    sample_df = sample_df.copy()
+
+    # Make sure the genotype dataframe is sorted by the genotype in a 
+    # stereotyped way
+    genotype_df = set_categorical_genotype(genotype_df,sort=True)
     
-    # Create dummy 
-    no_marker = np.array(["none" for _ in range(len(iptg))])
-    no_select = np.zeros(len(iptg),dtype=int)
+    # Sort on as much of the standard sort order as possible. Drop columns from
+    # sort that sample_df does not have.
+    standard_sort_order = ["replicate","library","condition_sel",
+                           "titrant_name","titrant_conc","t_sel"]
+    sort_on = [s for s in standard_sort_order if s in sample_df.columns]
+    if len(sort_on) > 0:
+        sample_df = sample_df.sort_values(sort_on).reset_index(drop=True)
 
-    # Calculate wildtype growth rate as a function of IPTG
-    no_marker_no_select, _ = get_wt_k(
-        marker=no_marker,
-        select=no_select,
-        iptg=iptg,
-        calibration_data=calibration_dict
+    # Set up the observable function. This returns two things. 
+    # 
+    # 1) theta_fcn: a function that takes a 1D array of ddG values for each 
+    #    species in the ensemble as its only argument. theta_fcn returns the 
+    #    fractional occupancy of the transcription factor binding site at each
+    #    of the titrant concentrations specified in sample_df given the ddG 
+    #    array. Passing an array of zeros causes the function to return the  
+    #    wildtype titration behavior. 
+    #
+    # 2) ddG_df: a dataframe indexed by single mutation with the ddG of that 
+    #    mutation on each of the species in the ensemble. The number of columns
+    #.   in this df corresponds to the length of the array expected by theta_fcn.
+    #.   For a genotype with one mutation, we could do theta_fcn(ddG_df[genotype,:])
+    #.   and get its predicted operator occupancy vs. titrant. 
+
+    theta_fcn, ddG_df = setup_observable(observable_calculator,
+                                         observable_calc_kwargs,
+                                         ddG_spreadsheet,
+                                         sample_df)
+
+    # ------------------------------------------------------------------------
+    # Calculate genotype-level effects that are independent of experimental 
+    # conditions and store in genotype_df 
+
+    genotype_list = pd.unique(genotype_df["genotype"])
+
+    # Read ddG spreadsheet into a dictionary
+    ddG_dict = _assign_ddG(
+        genotype_list=genotype_list,
+        ddG_df=ddG_df
     )
 
-    # Figure out number of points to add and number of molecular species
-    num_points = len(no_marker_no_select)
-    num_species = len(ddG_dict[list(ddG_dict.keys())[0]])
-
-    # create list of genotypes
-    genotype_list = list(genotype_df["genotype"])
-
-    k_shift_dict = _assign_growth_rate_perturb(
+    # Get global shifts in growth rate induced by mutations. 
+    dk_geno_dict = _assign_dk_geno(
         genotype_list=genotype_list,
         shape_param=mut_growth_rate_shape,
         scale_param=mut_growth_rate_scale
     )
 
-    desc = "{}".format("calculating phenotypes")
-    for genotype in tqdm(genotype_list,desc=desc,ncols=800):
+    # update the genotype dataframe with the newly calculated ddG and dk_geno
+    # effects. 
+    genotype_df["ddG"] = genotype_df['genotype'].astype(str).map(ddG_dict)
+    genotype_df['dk_geno'] = genotype_df['genotype'].astype(str).map(dk_geno_dict)
 
-        # Create list of mutations from genotype string. Assume that multi
-        # mutant genotypes sum their individual effects. 
-        if genotype == "wt":
-            genotype_as_list = []
-        else:
-            genotype_as_list = genotype.split("/")
+    # -------------------------------------------------------------------------
+    # Creates every combination of genotype and sample condition via a pandas
+    # cross merge.
+
+    # Add merge key for cross merge
+    sample_df['_merge_key'] = 1
+    genotype_df['_merge_key'] = 1
+
+    # Create phenotype_df 
+    phenotype_df = pd.merge(genotype_df, 
+                            sample_df, 
+                            on='_merge_key').drop('_merge_key', axis=1)
+
+    # -------------------------------------------------------------------------
+    # Calculate the observable for every unique genotype and load into 
+    # phenotype_df
+
+    # de-duplicate genotypes
+    unique_ddG = genotype_df.groupby("genotype",observed=True)["ddG"].first()
+
+    # Calculate theta vs. sample_conditions for each unique ddG (genotype).
+    # Right now this manually iterates of unique ddG arrays because
+    # theta_fcn is not vectorized--each genotype ddG must be run alone. In the 
+    # future, vectorizing the theta_fcn call could speed up the overall loop
+    # considerably. 
+    theta_out = []
+    for ddG in tqdm(unique_ddG):
+        theta_out.append(theta_fcn(ddG))
+
+    # Map the results back to the original genotype_df
+    theta_map = pd.Series(theta_out, index=unique_ddG.index)
+    genotype_df['theta'] = genotype_df['genotype'].map(theta_map)
+
+    # Record theta (every genotype, every condition)
+    phenotype_df["theta"] = np.concat(genotype_df["theta"].to_numpy())
     
-        # Create array of ddG values for the genotype
-        genotype_ddG = np.zeros(num_species,dtype=float)
-        for mut in genotype_as_list:
-            genotype_ddG += ddG_dict[mut]
-    
-        # Record genotype information 
-        ddG_out.append(genotype_ddG)
-        k_shift_out.append(k_shift_dict[genotype])
-        
-        # Get observable given ddG
-        obs = obs_fcn(genotype_ddG)
+    # Get growth-rate in pre-selection condition given theta
+    k_pre = get_wt_k(phenotype_df["condition_pre"].to_numpy(),
+                     phenotype_df["titrant_name"].to_numpy(),
+                     phenotype_df["titrant_conc"].to_numpy(),
+                     calibration_data,
+                     theta=phenotype_df["theta"].to_numpy())
 
-        # Calculate growth rate with marker but no selection
-        marker_growth_rate, _ = get_wt_k(
-            marker=marker,
-            select=no_select,
-            iptg=iptg,
-            theta=obs,
-            calibration_data=calibration_dict
-        )
-        
-        # Predict growth with marker + selection (i.e., the real growth rate)
-        overall_growth_rate, _ = get_wt_k(
-            marker=marker,
-            select=select,
-            iptg=iptg,
-            theta=obs,
-            calibration_data=calibration_dict
-        )
-        
-        # The base, marker, and overall growth rates are all perturbed by the 
-        # global effect of the mutation on growth rate. 
-        k_shift = k_shift_dict[genotype]
+    # Record k_pre 
+    phenotype_df["k_pre"] = k_pre + phenotype_df["dk_geno"]
 
-        # Record phenotype information
-        phenotype_out["genotype"].extend([genotype]*num_points)
-        phenotype_out["marker"].extend(sample_df["marker"].values)
-        phenotype_out["select"].extend(sample_df["select"].values)
-        phenotype_out["iptg"].extend(sample_df["iptg"].values)
-        phenotype_out["obs"].extend(obs)
-        phenotype_out["base_growth_rate"].extend(no_marker_no_select + k_shift)
-        phenotype_out["marker_growth_rate"].extend(marker_growth_rate + k_shift)
-        phenotype_out["overall_growth_rate"].extend(overall_growth_rate + k_shift)
+    # Get growth-rate in selection condition given theta
+    k_sel = get_wt_k(phenotype_df["condition_sel"].to_numpy(),
+                     phenotype_df["titrant_name"].to_numpy(),
+                     phenotype_df["titrant_conc"].to_numpy(),
+                     calibration_data,
+                     theta=phenotype_df["theta"].to_numpy())
 
-    phenotype_df = pd.DataFrame(phenotype_out)
+    # Record k_pre 
+    phenotype_df["k_sel"] = k_sel + phenotype_df["dk_geno"]
 
-    # update the genotype dataframe
-    genotype_df = genotype_df.copy()
-    genotype_df["ddG"] = ddG_out
-    genotype_df["k_shift"] = k_shift_out
-    
-    return phenotype_df, genotype_df
+    return genotype_df, phenotype_df
 
