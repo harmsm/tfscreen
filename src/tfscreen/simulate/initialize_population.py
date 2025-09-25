@@ -230,8 +230,6 @@ def _get_A0(initial_pop,
     return genotype_df
 
 
-
-
 def initialize_population(input_library,
                           phenotype_df,
                           genotype_df,

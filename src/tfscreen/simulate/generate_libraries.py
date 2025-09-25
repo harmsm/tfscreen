@@ -1,326 +1,239 @@
-"""
-Functions for generating mutant libraries based on degenerate codon information.
-"""
-
-from tfscreen import data
-
 import pandas as pd
-from tqdm.auto import tqdm
-
-import string
-import itertools
+from collections import Counter, defaultdict
+from itertools import product, combinations
 import re
 
-def _build_genotype_df(all_genotypes):
+# --- Data Constants (Module Dependencies) ---
+
+DEGEN_BASE_SPECIFIER = {
+    "a": "a", "c": "c", "g": "g", "t": "t",
+    "r": "ag", "y": "ct", "m": "ac", "k": "gt", "s": "cg", "w": "at",
+    "h": "act", "b": "cgt", "v": "acg", "d": "agt", "n": "acgt"
+}
+
+CODON_TO_AA = {
+    'ttt': 'F', 'tct': 'S', 'tat': 'Y', 'tgt': 'C',
+    'ttc': 'F', 'tcc': 'S', 'tac': 'Y', 'tgc': 'C',
+    'tta': 'L', 'tca': 'S', 'taa': '*', 'tga': '*',
+    'ttg': 'L', 'tcg': 'S', 'tag': '*', 'tgg': 'W',
+    'ctt': 'L', 'cct': 'P', 'cat': 'H', 'cgt': 'R',
+    'ctc': 'L', 'ccc': 'P', 'cac': 'H', 'cgc': 'R',
+    'cta': 'L', 'cca': 'P', 'caa': 'Q', 'cga': 'R',
+    'ctg': 'L', 'ccg': 'P', 'cag': 'Q', 'cgg': 'R',
+    'att': 'I', 'act': 'T', 'aat': 'N', 'agt': 'S',
+    'atc': 'I', 'acc': 'T', 'aac': 'N', 'agc': 'S',
+    'ata': 'I', 'aca': 'T', 'aaa': 'K', 'aga': 'R',
+    'atg': 'M', 'acg': 'T', 'aag': 'K', 'agg': 'R',
+    'gtt': 'V', 'gct': 'A', 'gat': 'D', 'ggt': 'G',
+    'gtc': 'V', 'gcc': 'A', 'gac': 'D', 'ggc': 'G',
+    'gta': 'V', 'gca': 'A', 'gaa': 'E', 'gga': 'G',
+    'gtg': 'V', 'gcg': 'A', 'gag': 'E', 'ggg': 'G'
+}
+
+# --- Functional Modules ---
+
+def _get_aa_counts_from_codon(degen_codon: str) -> Counter:
     """
-    Build a DataFrame with genotype information for all clones.
-
-    Parameters
-    ----------
-    all_genotypes : list
-        List of all genotypes with full genotype information.
-
-    Returns
-    -------
-    df : pandas.DataFrame
-        DataFrame with genotype, mutation, and site information.
+    Translates a degenerate codon into a Counter of amino acids.
     """
-    
-    unique_genotypes = set(all_genotypes)
-    
-    out_dict = {"genotype":[],
-                "num_muts":[],
-                "site_1":[],
-                "site_2":[],
-                "mut_1":[],
-                "mut_2":[],
-                "wt_1":[],
-                "wt_2":[]}
-                
-    for genotype in unique_genotypes:
-        
-        mut = genotype.split("/")
-        
-        if len(mut) == 1:
-            if mut[0] == "" or mut[0] == "wt":
-                name = "wt"
-                num_muts = 0
-                m1 = None
-                m2 = None
-                s1 = None
-                s2 = None
-                w1 = None
-                w2 = None
-            else:
-                name = genotype
-                num_muts = 1
-                m1 = mut[0][-1]
-                m2 = None
-                s1 = int(mut[0][1:-1])
-                s2 = None
-                w1 = mut[0][0]
-                w2 = None
-            
-        # two mutations
-        elif len(mut) == 2:
-            name = genotype
-            num_muts = 2
+    codon_bases = [DEGEN_BASE_SPECIFIER[b.lower()] for b in degen_codon]
+    possible_codons = [''.join(c) for c in product(*codon_bases)]
+    amino_acids = [CODON_TO_AA[c] for c in possible_codons]
 
-            m1 = mut[0][-1]
-            m2 = mut[1][-1]
-            s1 = int(mut[0][1:-1])
-            s2 = int(mut[1][1:-1])
-            w1 = mut[0][0]
-            w2 = mut[1][0]
-    
-        else:
-            err = "more than two mutations\n"
-            raise ValueError(err)
-    
-        out_dict["genotype"].append(name)
-        out_dict["num_muts"].append(num_muts)
-        out_dict["site_1"].append(s1)
-        out_dict["site_2"].append(s2)
-        out_dict["mut_1"].append(m1)
-        out_dict["mut_2"].append(m2)
-        out_dict["wt_1"].append(w1)
-        out_dict["wt_2"].append(w2)
-    
-    df = pd.DataFrame(out_dict)
-    
-    df = df.sort_values(by=["num_muts","site_1","site_2","mut_1","mut_2"],axis=0)
-    df = df.reset_index(drop=True)
-    df.index = df["genotype"]
+    return Counter(amino_acids)
 
-    return df
-
-
-def _create_mut_aa_list(degen_codon):
+def _parse_site_markers(aa_sequence: str,
+                        mutated_sites: str,
+                        seq_starts_at: int) -> dict:
     """
-    Get a list of the amino acids encoded by a possibly degenerate codon.
+    Parses input strings to identify mutation sites for each sub-library. This
+    will generate a dictionary of library identifiers (`1`, `2`, etc.) to the
+    residue number and site. 
     """
 
-    amino_acids = []
-    for b0 in list(data.degen_base_specifier[degen_codon[0]]):
-        for b1 in list(data.degen_base_specifier[degen_codon[1]]):
-            for b2 in list(data.degen_base_specifier[degen_codon[2]]):
-                aa = data.codon_to_aa[f"{b0}{b1}{b2}"]
-                amino_acids.append(aa)
+    aa_sequence = re.sub(r'\s', '', aa_sequence)
+    mutated_sites = re.sub(r'\s', '', mutated_sites)
 
-    return amino_acids
+    sites = defaultdict(list)
+    for i, char in enumerate(mutated_sites):
+        if not char.isalpha() or not char.isupper():
+            sites[char].append({
+                'res_num': i + seq_starts_at,
+                'wt_aa': aa_sequence[i],
+                'index': i
+            })
 
+    return sites
 
-def _get_libs_to_build(mutated_sites,
-                       max_num_combos=2,
-                       internal_doubles=False):
+def _generate_single_outcomes_library(sites_for_one_lib: list, aa_counts: Counter) -> pd.DataFrame:
     """
-    Build a list of all combos of up to max_num_combos sub libraries from a 
-    string of mutated sites.
+    Generates all possible single outcomes (mutant and wt) for one sub-library.
+    """
+    records = []
+    for site in sites_for_one_lib:
+        for mut_aa, count in aa_counts.items():
+            is_wt_outcome = (mut_aa == site['wt_aa'])
+            genotype = f"{site['wt_aa']}{site['res_num']}{mut_aa}"
+            records.append({
+                'genotype': genotype,
+                'count': count,
+                'res_num': site['res_num'],
+                'is_wt': is_wt_outcome
+            })
+    return pd.DataFrame(records)
 
-    Parameters
-    ----------
-    mutated_sites : str
-        string holding library information. This should be an amino acid 
-        sequence. Any non-uppercase letter is treated as a library with specific
-        sites to mutate. The following has two sublibraries, 1 and 2. 
-            MAST111QRVT222MNQR...
-    max_num_combos : int, default = 2
-        maximum number of combinations to make. 1 means do each library only 
-        individual; 2 means make pairwise combos; 3 means make three-way, etc. 
-    internal_doubles : bool, default=False
-        if True, make double mutants within a library block. for the 
-        mutated_sites example above, this would make all combos within 1 and
-        within 2, in addition to 1, 2, and (1,2). 
-
-    Returns
-    -------
-    lib_id : list
-        list of all sub-libraries seen. would be ["1","2"] for the mutated_sites
-        example above
-    libraries_to_build : list
-        list of tuples of libraries to build. would be [("1",),("2",),("1","2")]
-        for the mutated_sites example above if internal_doubles is False. Would
-        be [("1",),("1","1"),("2",),("2","2"),("1","2")] if internal_doubles is
-        True.
+def _combine_outcomes(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
+    """
+    Helper to perform the cross-join and combination logic.
     """
 
-    # remove all white space from mutated_sites            
-    mutated_sites = re.sub(r'\s+','',mutated_sites)
+    merged = pd.merge(df1, df2, how='cross', suffixes=('_1', '_2'))
+    merged = merged[merged['res_num_1'] < merged['res_num_2']].copy()
     
-    # Record all non-uppercase letter values in mutated_sites
-    lib_id = []
-    for s in mutated_sites:
-        if s in string.ascii_uppercase:
-            lib_id.append(None)
-        else:
-            lib_id.append(s)
-    
-    # Get unique non-uppercase letter values and sort
-    all_libs = list(set([s for s in lib_id if s is not None]))
-    all_libs.sort()
-    
-    # Build all combos of the libraries
-    libraries_to_build = []
-    for k in range(max_num_combos):
-    
-        # Don't build combos that are higher-order than our number of sub 
-        # libraries
-        if k + 1 > len(all_libs):
-            break
-    
-        # Build out all combos of this order from the libraries
-        to_build_combo = list(itertools.combinations(all_libs,r=(k+1)))
-        libraries_to_build.extend(to_build_combo)
-    
-        # Build internal doubles if requested
-        if k == 0 and internal_doubles:
-            for i in range(len(to_build_combo)):
-                libraries_to_build.append((to_build_combo[i][0],
-                                           to_build_combo[i][0]))
-    
+    merged['count'] = merged['count_1'] * merged['count_2']
+    merged['genotype'] = merged['genotype_1'] + '/' + merged['genotype_2']
+    merged['num_muts'] = (~merged['is_wt_1']).astype(int) + (~merged['is_wt_2']).astype(int)
 
-    return lib_id, libraries_to_build
+    # Return the intermediate columns needed for later steps.
+    return merged[[
+        'genotype', 'count', 'num_muts', 
+        'genotype_1', 'genotype_2', 'is_wt_1', 'is_wt_2'
+    ]]
 
 
-def generate_libraries(aa_sequence,
-                       mutated_sites,
-                       seq_starts_at=1,
-                       max_num_combos=2,
-                       internal_doubles=False,
-                       degen_codon="nnt"):
+def generate_libraries(aa_sequence: str,
+                       mutated_sites: str,
+                       seq_starts_at: int=1,
+                       degen_codon: str="nnt",
+                       internal_doubles=False) -> pd.DataFrame:
     """
-    Take an amino acid sequence and description of sites to mutate and generate
-    a list of libraries. Libraries are returned at the amino acid mutation level
-    and correspond to all clones encoded by the degenerate codons at the sites 
-    indicated. This means the same genotype may occur multiple times.  
+    Generate a DataFrame of mutant libraries from simulation parameters.
+
+    This function serves as the main orchestrator for simulating the creation
+    of mutant libraries. It mimics an experimental pipeline where specific sites
+    in a protein are targeted for mutagenesis using a degenerate codon. The
+    function can generate libraries of single mutants, cross-library double
+    mutants (combinations of mutations from different sub-libraries), or
+    internal double mutants (combinations of mutations within the same
+    sub-library). The output DataFrame enumerates every expected genotype, its
+    library of origin, and its expected frequency based on codon degeneracy.
 
     Parameters
     ----------
     aa_sequence : str
-        Amino acid sequence as uppercase letters. Whitespace and line-breaks are allowed.
-        Example: 'MASTRKEQRVTLFGMNQR...'
+        The wild-type amino acid sequence.
     mutated_sites : str
-        Amino acid sequence as uppercase letters with mutated sites replaced by library
-        identifier characters. Whitespace and line-breaks are allowed.
-        Example: 'MAST111QRVT222MNQR...'
-        This specifies there are two sublibraries "1" and "2" that replace the amino
-        codon for that amino acid with 'degen_codon'. A library id can be any non-uppercase-letter character.
-    seq_starts_at : int, default=1
-        Number of the amino acid corresponding to the first position in aa_sequence.
-    max_num_combos : int, default=2
-        Maximum number of combinations to make. 1 means do each library only individually;
-        2 means make pairwise combos; 3 means make three-way, etc.
-    internal_doubles : bool, default=False
-        If True, make double mutants within a library block. For the mutated_sites example above,
-        this would make all combos within 1 and within 2, in addition to 1, 2, and (1,2).
-    degen_codon : str, default="nnt"
-        Use this codon at each site that is mutated.
+        A string of the same length as `aa_sequence` with characters marking
+        sites for mutation. Each unique non-alphabetic character defines a 
+        sub-library (e.g., '1', '2').
+    seq_starts_at : int, optional
+        The residue number corresponding to the first amino acid in 
+        `aa_sequence`. Defaults to 1.
+    degen_codon : str, optional
+        The degenerate codon used at each marked site, e.g., 'nnt' or 'nnk'. 
+        Defaults to "nnt".
+    internal_doubles : bool, optional
+        Controls double mutant generation logic. If False (default), creates 
+        cross-library doubles (e.g., a mutation from library '1' paired with 
+        one from '2'). If True, creates all internal doubles (e.g., two 
+        distinct mutations from within library '1').
 
     Returns
     -------
-    lib_clone_dict : dict
-        Dictionary keying library combinations to a list of clone names. For the examples above,
-        this would have keys like ("1",), ("2",), ("1","2",). Values are lists of genotype strings
-        like ['R5A', 'R5C', ..., 'R5A/L12A']. The wildtype will have the key "wt".
-    genotype_df : pandas.DataFrame
-        DataFrame with genotype, mutation, and site information for all clones.
+    pandas.DataFrame
+        A DataFrame listing all generated genotypes, sorted by library and
+        count. It has the following columns:
+        - 'library_origin' (str): The library from which the genotype
+          originates (e.g., 'single-1', 'double-1-2').
+        - 'genotype' (str): The genotype string. 'wt' for wild-type, 'A10G'
+          for single mutants, and 'S30A/V75G' for double mutants.
+        - 'count' (int): The expected frequency of the genotype, accounting
+          for codon degeneracy.
+
+    Examples
+    --------
+    >>> library_df = generate_libraries(
+    ...     aa_sequence="ASKV",
+    ...     mutated_sites="A1K2",
+    ...     seq_starts_at=10,
+    ...     internal_doubles=False,
+    ...     degen_codon='GCN' # Encodes Alanine 4 times
+    ... )
+    >>> print(library_df)
+      library_origin   genotype  count
+    0     double-1-2  S11A/V13A     16
+    1       single-1       S11A      4
+    2       single-2       V13A      4
+
     """
-
-    # Get amino acid sequence, stripping out white space
-    aa_sequence = re.sub(r'\s+','',aa_sequence)
-
-    # Get set of library combinations to build [(1,), (2,), (1,2), etc.]
-    lib_id, libraries_to_build = _get_libs_to_build(mutated_sites=mutated_sites,
-                                                    max_num_combos=max_num_combos,
-                                                    internal_doubles=internal_doubles)
-
-    # Get list of amino acids to put at each degenerate codon
-    amino_acids = _create_mut_aa_list(degen_codon=degen_codon)
     
-    # Go through each library combo
-    lib_clone_dict = {}
-    desc = "{}".format("generating library sequences")
-    for lib in tqdm(libraries_to_build,desc=desc,ncols=800):
+    site_markers = _parse_site_markers(aa_sequence,
+                                       mutated_sites,
+                                       seq_starts_at)
     
-        # List to hold clones
-        library_clones = []
-        
-        # Figure out sites within each sub-library
-        for_product = []
-        for block in lib:
-            sites = [i for i, s in enumerate(lib_id) if s == block]
-            for_product.append(sites)
+    aa_counts = _get_aa_counts_from_codon(degen_codon)
     
-        # Make a list of combos to make at a site level (5,12), etc.
-        combos_to_make = []
-        for c in itertools.product(*for_product):
+    all_results = []
+    single_outcomes = {
+        lib_id: _generate_single_outcomes_library(sites, aa_counts)
+        for lib_id, sites in site_markers.items()
+    }
+
+    # 3. Process combined libraries
+    combination_dfs = []
+    if internal_doubles:
+        for lib_id, df in single_outcomes.items():
+            if len(df['res_num'].unique()) > 1:
+                combined = _combine_outcomes(df, df)
+                combined['library_origin'] = f'internal-double-{lib_id}'
+                combination_dfs.append(combined)
+    else:
+        lib_ids = list(single_outcomes.keys())
+        for id1, id2 in combinations(lib_ids, 2):
+            combined = _combine_outcomes(single_outcomes[id1], single_outcomes[id2])
+            combined['library_origin'] = f'double-{id1}-{id2}'
+            combination_dfs.append(combined)
             
-            # Sort by amino acid to avoid duplicates like 5,12 vs. 12,5
-            combo = list(c)
-            combo.sort()
-
-            # Remove things like 5,5 or 12,12
-            if len(combo) != len(set(combo)):
+    if combination_dfs:
+        full_combined_df = pd.concat(combination_dfs, ignore_index=True)
+        for num_muts_val in [0, 1, 2]:
+            subset_df = full_combined_df[full_combined_df['num_muts'] == num_muts_val].copy()
+            if subset_df.empty:
                 continue
-    
-            combos_to_make.append(tuple(combo))
-    
-        # Remove duplicated combos (e.g. 5,12 coming from both the 5,12 and 12,5
-        # combos
-        combos_to_make = list(set(combos_to_make))
-        combos_to_make.sort()
-    
-        # Now build out the site-level combinations into all possible amino acid
-        # substitution codons. 
+            if num_muts_val == 0:
+                subset_df = subset_df.groupby('library_origin', as_index=False)['count'].sum()
+                subset_df['genotype'] = 'wt'
+            elif num_muts_val == 1:
+                subset_df['genotype'] = subset_df.apply(
+                    lambda row: row['genotype_1'] if not row['is_wt_1'] else row['genotype_2'],
+                    axis=1)
+            all_results.append(subset_df[['library_origin', 'genotype', 'count']])
 
-        # Go through each site combination (5,12), (6,12), (7,12), (5,13), ...
-        for combo in combos_to_make:
-    
-            # Create list of amino acid mutations for each site combination. 
-            # site_mutations will look like
-            # [['R5A','R5C','R5D'...],['L12A','L12C','L12D',...]]
-            site_mutations = []
-            for site in combo:
-    
-                site_mut_list = []
-                
-                wt = aa_sequence[site]
-                position = site + seq_starts_at
-                for aa in amino_acids:
-                    mutation = f"{wt}{position}{aa}"
-                    site_mut_list.append(mutation)
-    
-                site_mutations.append(site_mut_list)
-    
-            # Generate all possible combinations of the site_mutations. So, 
-            # make ["R5A","L12A"], ["R5A","L12C"] ... 
-            for clone_mutants in itertools.product(*site_mutations):
+    # 4. Process the pure single-mutant libraries AND THEIR WILDTYPES
+    for lib_id, df in single_outcomes.items():
+        # Add the mutants from this library
+        mutants_df = df[~df['is_wt']].copy()
+        mutants_df['library_origin'] = f'single-{lib_id}'
+        all_results.append(mutants_df[['library_origin', 'genotype', 'count']])
 
-                to_place = []
-                for m in clone_mutants:
+        # --- CORRECTED LOGIC FOR SINGLE-LIBRARY WT ---
+        # Calculate and add the 'wt' for this library
+        wt_outcomes_df = df[df['is_wt']].copy()
+        if not wt_outcomes_df.empty:
+            # The total wt count is the SUM of all individual wt outcome counts
+            wt_count = wt_outcomes_df['count'].sum() # <-- THE FIX IS HERE (.prod() -> .sum())
+            wt_single_df = pd.DataFrame([{
+                'library_origin': f'single-{lib_id}',
+                'genotype': 'wt',
+                'count': wt_count
+            }])
+            all_results.append(wt_single_df)
 
-                    # Do not add something with same wildtype and mutant amino
-                    # acid (e.g. R5R, L12L, etc.)
-                    if m[0] == m[-1]:
-                        continue
-                    else:
-                        to_place.append(m)
-
-                if len(to_place) == 0:
-                    clone_name = "wt"
-                else:
-                    clone_name = "/".join(to_place)
-
-                library_clones.append(clone_name)
-
-        lib_clone_dict[lib] = library_clones
-
-    all_genotypes = []
-    for lib in lib_clone_dict:
-        all_genotypes.extend(lib_clone_dict[lib])
-
-    # Now build a DataFrame with all genotypes
-    genotype_df = _build_genotype_df(all_genotypes)
-
-    return lib_clone_dict, genotype_df
-
+    # 5. Concatenate everything for the final result
+    if not all_results:
+        return pd.DataFrame(columns=['library_origin', 'genotype', 'count'])
+        
+    final_df = pd.concat(all_results, ignore_index=True)
+    return final_df.sort_values(
+        by=['library_origin', 'count'], ascending=[True, False]
+    ).reset_index(drop=True)

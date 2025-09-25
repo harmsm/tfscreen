@@ -11,8 +11,10 @@ from .check_columns import (
     check_columns
 )
 
-from .argsort_genotypes import (
+from .genotype_sorting import (
+    standardize_genotypes,
     argsort_genotypes,
+    set_categorical_genotype
 )
 
 from .chunk_by_group import (
