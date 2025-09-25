@@ -78,12 +78,12 @@ def test_combine_outcomes():
     """
     # Create two simple single-outcome DataFrames
     df1 = pd.DataFrame([
-        {'genotype': 'A10G', 'count': 2, 'res_num': 10, 'is_wt': False},
-        {'genotype': 'A10A', 'count': 1, 'res_num': 10, 'is_wt': True},
+        {'genotype': 'A10G', 'degeneracy': 2, 'res_num': 10, 'is_wt': False},
+        {'genotype': 'A10A', 'degeneracy': 1, 'res_num': 10, 'is_wt': True},
     ])
     df2 = pd.DataFrame([
-        {'genotype': 'C20T', 'count': 3, 'res_num': 20, 'is_wt': False},
-        {'genotype': 'C20C', 'count': 2, 'res_num': 20, 'is_wt': True},
+        {'genotype': 'C20T', 'degeneracy': 3, 'res_num': 20, 'is_wt': False},
+        {'genotype': 'C20C', 'degeneracy': 2, 'res_num': 20, 'is_wt': True},
     ])
 
     result = _combine_outcomes(df1, df2)
@@ -94,15 +94,15 @@ def test_combine_outcomes():
     # Test a mutant/mutant combo
     mut_mut = result[result['num_muts'] == 2].iloc[0]
     assert mut_mut['genotype'] == 'A10G/C20T'
-    assert mut_mut['count'] == 2 * 3
+    assert mut_mut['degeneracy'] == 2 * 3
     
     # Test a mutant/wt combo
     mut_wt = result[result['num_muts'] == 1].iloc[0]
-    assert mut_wt['count'] == 2 * 2
+    assert mut_wt['degeneracy'] == 2 * 2
 
     # Test a wt/wt combo
     wt_wt = result[result['num_muts'] == 0].iloc[0]
-    assert wt_wt['count'] == 1 * 2
+    assert wt_wt['degeneracy'] == 1 * 2
 
 # --- Integration Tests for the Main `generate_libraries` Function (Updated) ---
 
@@ -125,7 +125,7 @@ def test_generate_libraries_cross_library_path(base_config):
 
     s11a = df[df['genotype'] == 'S11A']
     assert len(s11a) == 1
-    assert s11a.iloc[0]['count'] == 1
+    assert s11a.iloc[0]['degeneracy'] == 1
 
     double_mut = df[df['genotype'] == 'S11A/V13A']
     assert len(double_mut) == 1
