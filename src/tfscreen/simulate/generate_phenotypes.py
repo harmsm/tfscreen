@@ -261,12 +261,20 @@ def generate_phenotypes(genotype_df,
     # future, vectorizing the theta_fcn call could speed up the overall loop
     # considerably. 
     theta_out = []
-    for ddG in tqdm(unique_ddG):
-        theta_out.append(theta_fcn(ddG))
+    desc = "calculating theta using thermo model"
+    for ddG in tqdm(unique_ddG,desc=desc, ncols=800):
+        theta_out.append(theta_fcn(np.array(ddG)))
 
-    # Map the results back to the original genotype_df
-    theta_map = pd.Series(theta_out, index=unique_ddG.index)
-    genotype_df['theta'] = genotype_df['genotype'].map(theta_map)
+    # merge theta results back into genotype_df
+    ddG_df = unique_ddG.reset_index()
+    ddG_df["theta"] = theta_out
+    genotype_df = genotype_df.merge(ddG_df[["genotype","theta"]],
+                                    on="genotype",
+                                    how="left")
+
+    # # Map the results back to the original genotype_df
+    # theta_map = pd.Series(theta_out, index=unique_ddG.index)
+    # genotype_df['theta'] = genotype_df['genotype'].map(theta_map)
 
     # Record theta (every genotype, every condition)
     phenotype_df["theta"] = np.concat(genotype_df["theta"].to_numpy())
@@ -291,5 +299,11 @@ def generate_phenotypes(genotype_df,
     # Record k_pre 
     phenotype_df["k_sel"] = k_sel + phenotype_df["dk_geno"]
 
+    # -------------------------------------------------------------------------
+    # Do some final clean up of the dataframes
+
+    genotype_df = genotype_df.drop(columns=["_merge_key","theta"])
+    phenotype_df = phenotype_df.drop(columns=["ddG"])
+    
     return genotype_df, phenotype_df
 
