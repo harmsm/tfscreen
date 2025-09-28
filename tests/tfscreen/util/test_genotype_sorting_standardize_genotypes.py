@@ -2,6 +2,7 @@
 
 import pytest
 from tfscreen.util.genotype_sorting import standardize_genotypes
+import numpy as np
 
 # -------------------------------------------------------------------------
 # Tests for valid genotypes that should be standardized correctly
@@ -14,7 +15,7 @@ def test_simple_case():
     """
     genotypes = ["wt", "A1T", "Q50L/A1T", "A1T"]
     expected = ["wt", "A1T", "A1T/Q50L", "A1T"]
-    assert standardize_genotypes(genotypes) == expected
+    assert np.array_equal(standardize_genotypes(genotypes),np.array(expected))
 
 def test_wildtype_variations():
     """
@@ -23,7 +24,7 @@ def test_wildtype_variations():
     """
     genotypes = ["wt", "WT", "wildtype", "WILDTYPE", "WildType"]
     expected = ["wt", "wt", "wt", "wt", "wt"]
-    assert standardize_genotypes(genotypes) == expected
+    assert np.array_equal(standardize_genotypes(genotypes),np.array(expected))
 
 def test_self_mutation_to_wildtype():
     """
@@ -32,7 +33,7 @@ def test_self_mutation_to_wildtype():
     """
     genotypes = ["A1A", "C100C", "D5D/E6E"]
     expected = ["wt", "wt", "wt"]
-    assert standardize_genotypes(genotypes) == expected
+    assert np.array_equal(standardize_genotypes(genotypes),np.array(expected))
 
 def test_self_mutation_is_dropped():
     """
@@ -41,7 +42,7 @@ def test_self_mutation_is_dropped():
     """
     genotypes = ["A1T/C50C", "V10V/L20F/V30V"]
     expected = ["A1T", "L20F"]
-    assert standardize_genotypes(genotypes) == expected
+    assert np.array_equal(standardize_genotypes(genotypes),np.array(expected))
 
 def test_duplicate_mutations_are_dropped():
     """
@@ -49,7 +50,7 @@ def test_duplicate_mutations_are_dropped():
     """
     genotypes = ["A1T/A1T", "A1T/B2C/A1T"]
     expected = ["A1T", "A1T/B2C"]
-    assert standardize_genotypes(genotypes) == expected
+    assert np.array_equal(standardize_genotypes(genotypes),np.array(expected))
 
 def test_sorting_of_mutations():
     """
@@ -58,13 +59,13 @@ def test_sorting_of_mutations():
     """
     genotypes = ["Q50L/A1T", "C100A/Z5B/D50E"]
     expected = ["A1T/Q50L", "Z5B/D50E/C100A"]
-    assert standardize_genotypes(genotypes) == expected
+    assert np.array_equal(standardize_genotypes(genotypes),np.array(expected))
 
 def test_empty_input():
     """
     Tests that an empty input list returns an empty list.
     """
-    assert standardize_genotypes([]) == []
+    assert np.array_equal(standardize_genotypes([]),np.array([]))
 
 def test_large_site_numbers():
     """
@@ -72,7 +73,7 @@ def test_large_site_numbers():
     """
     genotypes = ["A1234T", "Y999C/X10000Z"]
     expected = ["A1234T", "Y999C/X10000Z"]
-    assert standardize_genotypes(genotypes) == expected
+    assert np.array_equal(standardize_genotypes(genotypes),np.array(expected))
 
 def test_all_features_combined():
     """
@@ -95,7 +96,7 @@ def test_all_features_combined():
         "C5A/V10F",
         "A1T/Q50L"
     ]
-    assert standardize_genotypes(genotypes) == expected
+    assert np.array_equal(standardize_genotypes(genotypes),np.array(expected))
 
 # -------------------------------------------------------------------------
 # Tests for invalid genotypes that should raise a ValueError

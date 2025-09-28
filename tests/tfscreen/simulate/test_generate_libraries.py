@@ -1,179 +1,201 @@
 import pytest
 import pandas as pd
-from collections import Counter
+import numpy as np
+from unittest.mock import patch, call
 
-# Import the functions to be tested
+# Import all functions from the target module
 from tfscreen.simulate.generate_libraries import (
-    _get_aa_counts_from_codon,
-    _parse_site_markers,
-    _generate_single_outcomes_library,
-    _combine_outcomes,
-    generate_libraries
+    _validate_inputs,
+    _find_mut_sites,
+    _expand_degen_codon,
+    _generate_singles,
+    _generate_inter_block,
+    _generate_intra_block,
+    _build_final_df,
+    generate_libraries,
 )
 
-# --- Fixtures for Test Data ---
+# --------------------------- Fixtures ---------------------------
 
 @pytest.fixture
 def base_config():
-    """Provides a standard configuration dictionary for testing."""
+    """Provides a basic, valid configuration for tests."""
     return {
-        'aa_sequence': "ASKV",
-        'mutated_sites': "A1K2", 
-        'seq_starts_at': 10,
-        'internal_doubles': False,
-        'degen_codon': 'NNK' # G,T -> K
+        "aa_sequence": "ASKVGM",
+        "mutated_sites": "A1KVG2", # Site S->1, M->2
+        "degen_codon": "tgg", # Only encodes 'W'
+        "seq_starts_at": 10,
+        "lib_keys": ["single-1", "single-2", "double-1-2"],
     }
 
-@pytest.fixture
-def simple_aa_counts():
-    """A simplified Counter for testing downstream functions."""
-    # Real NNK is more complex, this is just for predictable test outcomes
-    return Counter({'A': 2, 'C': 1, 'G': 1}) # Total of 4 outcomes
+# ----------------------- Helper Function Tests -----------------------
 
+class TestValidateInputs:
+    def test_happy_path(self):
+        clean_aa, clean_mut, start, keys = _validate_inputs(" A S K ", " a s k ", "1", [" key1 "])
+        assert clean_aa == "ASK"
+        assert clean_mut == "ASK"
+        assert start == 1
+        assert keys == ["key1"]
 
-# --- Tests for Helper Functions (Unchanged) ---
+    def test_mismatched_length_raises_error(self):
+        with pytest.raises(ValueError, match="must be strings of the same length"):
+            _validate_inputs("ASK", "AS", 1, [])
 
-@pytest.mark.parametrize("codon, expected", [
-    ("ATG", Counter({'M': 1})),
-    ("GCN", Counter({'A': 4})), # N -> A,C,G,T
-    ("TGY", Counter({'C': 2})), # Y -> C,T
-    ("TAN", Counter({'*':2,'Y': 2})),
-])
-def test_get_aa_counts_from_codon(codon, expected):
-    """
-    Tests the _get_aa_counts_from_codon function with various inputs.
-    """
-    result = _get_aa_counts_from_codon(codon)
-    assert result == expected
+    @pytest.mark.parametrize("bad_start", ["not_a_number", None])
+    def test_bad_seq_starts_at_raises_error(self, bad_start):
+        with pytest.raises(ValueError, match="must be an integer"):
+            _validate_inputs("A", "A", bad_start, [])
 
-def test_parse_site_markers(base_config):
-    """
-    Tests the _parse_site_markers function for correct site identification.
-    """
-    expected_sites = {
-        '1': [{'res_num': 11, 'wt_aa': 'S', 'index': 1}],
-        '2': [{'res_num': 13, 'wt_aa': 'V', 'index': 3}]
+def test_find_mut_sites():
+    """Tests the user-provided logic where any difference defines a site."""
+    clean_aa = "ASKVGM"
+    clean_mut = "A1KVG2" # S->1, M->2
+    seq_starts_at = 10
+    
+    wt_aa, sites = _find_mut_sites(clean_aa, clean_mut, seq_starts_at)
+
+    # Note: residue number advances only for mutated sites in this implementation
+    expected_wt_aa = {'1': ['S'], '2': ['M']}
+    expected_sites = {'1': [11], '2': [15]} # Residue S is at index 1 (10+1), M is index 2 (11+1)
+
+    assert wt_aa == expected_wt_aa
+    assert sites == expected_sites
+
+def test_find_mut_sites_no_diff():
+    """Tests case with no differences between sequences."""
+    wt_aa, sites = _find_mut_sites("ASK", "ASK", 1)
+    assert wt_aa == {}
+    assert sites == {}
+
+def test_expand_degen_codon():
+    """Tests translation of a degenerate codon to amino acids."""
+    
+    possible_muts = _expand_degen_codon("nnt")
+    assert len(possible_muts) == 16 # 4*4*1
+    assert "F" in possible_muts
+    assert "R" in possible_muts
+    assert "M" not in possible_muts # NNT does not encode Met
+    assert "*" not in possible_muts # NNT avoids stop codons
+
+def test_generate_singles():
+    wt_aa = {'1': ['S', 'K'], '2': ['M']}
+    sites = {'1': [11, 12], '2': [15]}
+    possible_muts = ['A', 'G']
+
+    lib_genotypes = _generate_singles(wt_aa, sites, possible_muts)
+    
+    assert "single-1" in lib_genotypes
+    assert "single-2" in lib_genotypes
+    assert lib_genotypes["single-1"] == ['S11A', 'S11G', 'K12A', 'K12G']
+    assert lib_genotypes["single-2"] == ['M15A', 'M15G']
+
+def test_generate_inter_block():
+    lib_genotypes = {
+        "single-1": ["S11A", "S11G"],
+        "single-2": ["M15C", "M15D"]
     }
-    result = _parse_site_markers(base_config["aa_sequence"],
-                            base_config["mutated_sites"],
-                            base_config["seq_starts_at"])
-    assert dict(result) == expected_sites
+    doubles = _generate_inter_block('1', '2', lib_genotypes)
+    expected = [
+        "S11A/M15C", "S11A/M15D",
+        "S11G/M15C", "S11G/M15D"
+    ]
+    assert sorted(doubles) == sorted(expected)
 
-def test_generate_single_outcomes_library(simple_aa_counts):
-    """
-    Tests _generate_single_outcomes_library for correct DataFrame creation.
-    """
-    sites = [{'res_num': 11, 'wt_aa': 'S', 'index': 1}]
-    df = _generate_single_outcomes_library(sites, simple_aa_counts)
+def test_generate_intra_block():
+    wt_aa = {'1': ['S', 'K']}
+    sites = {'1': [11, 12]}
+    possible_muts = ['A', 'G']
 
-    assert df.shape == (3, 4)
-    assert 'genotype' in df.columns
-    assert 'is_wt' in df.columns
-    assert df['is_wt'].sum() == 0
-    assert "S11A" in df['genotype'].values
+    doubles = _generate_intra_block(wt_aa, sites, '1', possible_muts)
+    
+    # Expected singles: S11 -> [S11A, S11G], K12 -> [K12A, K12G]
+    # Expected product should have 2 * 2 = 4 combinations
+    assert len(doubles) == 4
+    assert "S11A/K12A" in doubles
+    assert "S11G/K12G" in doubles
 
-def test_combine_outcomes():
-    """
-    Tests the core logic of the _combine_outcomes function.
-    """
-    # Create two simple single-outcome DataFrames
-    df1 = pd.DataFrame([
-        {'genotype': 'A10G', 'degeneracy': 2, 'res_num': 10, 'is_wt': False},
-        {'genotype': 'A10A', 'degeneracy': 1, 'res_num': 10, 'is_wt': True},
+@patch('tfscreen.simulate.generate_libraries.standardize_genotypes', side_effect=lambda x: x)
+@patch('tfscreen.simulate.generate_libraries.set_categorical_genotype', side_effect=lambda x: x)
+def test_build_final_df(mock_set_cat, mock_standardize):
+    lib_genotypes = {
+        "single-1": ["S11A", "S11G", "wt"], # "wt" from S11S, for example
+        "single-2": ["M15C", "M15C"] # Test degeneracy
+    }
+    df = _build_final_df(lib_genotypes)
+    
+    # Check mocks were called
+    assert mock_standardize.call_count == 2
+    mock_set_cat.assert_called_once()
+    
+    # Check DataFrame structure and content
+    assert isinstance(df, pd.DataFrame)
+    assert list(df.columns) == ["library_origin", "genotype", "degeneracy","weight"]
+    
+    # Check values for single-1
+    s1_df = df[df["library_origin"] == "single-1"]
+    assert len(s1_df) == 3 # S11A, S11G, wt
+    
+    # Check values for single-2 (degeneracy)
+    s2_df = df[df["library_origin"] == "single-2"]
+    assert len(s2_df) == 1
+    assert s2_df.iloc[0]["genotype"] == "M15C"
+    assert s2_df.iloc[0]["degeneracy"] == 2
+
+# ----------------------- Main Function Tests -----------------------
+
+@patch('tfscreen.simulate.generate_libraries.standardize_genotypes', side_effect=lambda g: g)
+@patch('tfscreen.simulate.generate_libraries.set_categorical_genotype', side_effect=lambda df: df)
+class TestGenerateLibraries:
+
+    def test_full_run_singles_and_doubles(self, mock_set, mock_std, base_config):
+        df = generate_libraries(**base_config)
+        
+        libs = df["library_origin"].unique()
+        assert "single-1" in libs
+        assert "single-2" in libs
+        assert "double-1-2" in libs
+        
+        # Check single-1 results (S->W at site 11)
+        s1_genos = df[df.library_origin == 'single-1'].genotype.values
+        assert "S11W" in s1_genos
+        
+        # Check double-1-2 results (S11W/M15W)
+        d12_genos = df[df.library_origin == 'double-1-2'].genotype.values
+        assert "S11W/M15W" in d12_genos
+
+    def test_intra_block_doubles(self, mock_set, mock_std, base_config):
+        base_config["mutated_sites"] = "AS1V1M" # Block '1' at S and V
+        base_config["lib_keys"] = ["double-1-1"]
+        
+        df = generate_libraries(**base_config)
+        
+        assert "double-1-1" in df["library_origin"].unique()
+        assert "K12W/G14W" in df.genotype.values
+        
+    def test_unrequested_singles_are_filtered(self, mock_set, mock_std, base_config):
+        """Ensures that singles generated for doubles are not in the final output."""
+        base_config["lib_keys"] = ["double-1-2"]
+        df = generate_libraries(**base_config)
+        
+        libs = df["library_origin"].unique()
+        assert "single-1" not in libs
+        assert "single-2" not in libs
+        assert "double-1-2" in libs
+
+    @pytest.mark.parametrize("bad_key, err_msg", [
+        ("double-1", "could not parse"),
+        ("double-1-", "could not match"),
+        ("other-1-2", "could not parse"),
+        ("single-3", "should be formatted like 'single-x'"), # Invalid because it wasn't pre-generated
     ])
-    df2 = pd.DataFrame([
-        {'genotype': 'C20T', 'degeneracy': 3, 'res_num': 20, 'is_wt': False},
-        {'genotype': 'C20C', 'degeneracy': 2, 'res_num': 20, 'is_wt': True},
-    ])
+    def test_bad_lib_key_format_raises_error(self, mock_set, mock_std, bad_key, err_msg, base_config):
+        base_config["lib_keys"] = [bad_key]
+        with pytest.raises(ValueError, match=err_msg):
+            generate_libraries(**base_config)
 
-    result = _combine_outcomes(df1, df2)
-    
-    # 2 rows * 2 rows = 4 rows
-    assert len(result) == 4
-    
-    # Test a mutant/mutant combo
-    mut_mut = result[result['num_muts'] == 2].iloc[0]
-    assert mut_mut['genotype'] == 'A10G/C20T'
-    assert mut_mut['degeneracy'] == 2 * 3
-    
-    # Test a mutant/wt combo
-    mut_wt = result[result['num_muts'] == 1].iloc[0]
-    assert mut_wt['degeneracy'] == 2 * 2
-
-    # Test a wt/wt combo
-    wt_wt = result[result['num_muts'] == 0].iloc[0]
-    assert wt_wt['degeneracy'] == 1 * 2
-
-# --- Integration Tests for the Main `generate_libraries` Function (Updated) ---
-
-def test_generate_libraries_cross_library_path(base_config):
-    """
-    Tests the main `generate_libraries` function for the cross-library case.
-    """
-    base_config['degen_codon'] = 'GCT' # Always Alanine ('A')
-    
-    # UPDATED: Unpack the config dictionary into keyword arguments
-    df = generate_libraries(**base_config)
-
-    expected_origins = {'single-1', 'single-2', 'double-1-2'}
-    assert set(df['library_origin'].unique()) == expected_origins
-
-    wt_single1 = df[(df['library_origin'] == 'single-1') & (df['genotype'] == 'wt')]
-    wt_double = df[(df['library_origin'] == 'double-1-2') & (df['genotype'] == 'wt')]
-    assert len(wt_single1) == 0
-    assert len(wt_double) == 0
-
-    s11a = df[df['genotype'] == 'S11A']
-    assert len(s11a) == 1
-    assert s11a.iloc[0]['degeneracy'] == 1
-
-    double_mut = df[df['genotype'] == 'S11A/V13A']
-    assert len(double_mut) == 1
-
-def test_generate_libraries_internal_doubles_path():
-    """
-    Tests the main `generate_libraries` function for the internal doubles case.
-    """
-    config = {
-        'aa_sequence': "ASKV",
-        'mutated_sites': "A1K1",
-        'seq_starts_at': 10,
-        'internal_doubles': True,
-        'degen_codon': 'GCN' # Alanine
-    }
-    
-    # UPDATED: Unpack the config dictionary into keyword arguments
-    df = generate_libraries(**config)
-
-    # Check for correct library origins
-    expected_origins = {'single-1', 'internal-double-1'}
-    assert set(df['library_origin'].unique()) == expected_origins
-
-    # There should be no wt outcomes since neither S nor V is A.
-    wt_single = df[(df['library_origin'] == 'single-1') & (df['genotype'] == 'wt')]
-    assert len(wt_single) == 0
-    wt_double = df[(df['library_origin'] == 'internal-double-1') & (df['genotype'] == 'wt')]
-    assert len(wt_double) == 0
-
-    # There should be one double mutant.
-    double_mut = df[df['genotype'] == 'S11A/V13A']
-    assert len(double_mut) == 1
-
-def test_generate_libraries_no_internal_doubles_possible():
-    """
-    Tests the edge case where internal doubles are requested but impossible.
-    """
-    config = {
-        'aa_sequence': "ASKV",
-        'mutated_sites': "A1KV",
-        'seq_starts_at': 10,
-        'internal_doubles': True,
-        'degen_codon': 'GCN'
-    }
-
-    # UPDATED: Unpack the config dictionary into keyword arguments
-    df = generate_libraries(**config)
-    
-    # Only the single-1 library should be present.
-    # No 'internal-double-1' because there's only one '1' site.
-    assert set(df['library_origin'].unique()) == {'single-1'}
+    @pytest.mark.parametrize("bad_key", ["double-1-3", "double-3-1"])
+    def test_lib_key_with_nonexistent_block_raises_error(self, mock_set, mock_std, bad_key, base_config):
+        base_config["lib_keys"] = [bad_key]
+        with pytest.raises(ValueError, match="could not match mutant identifier"):
+            generate_libraries(**base_config)

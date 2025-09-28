@@ -1,38 +1,71 @@
 
 from tfscreen.simulate import (
-    build_sample_dataframes,
-    generate_libraries,
-    setup_observable,
-    generate_phenotypes,
-    transform_and_mix,
-    initialize_population,
-    simulate_growth,
-    sequence_samples,
-    load_simulation_config
+    library_prediction,
+    load_simulation_config,
+    selection_experiment
 )
 
-from tfscreen.calibration import read_calibration
-
-from tqdm.auto import tqdm
-
+from typing import Any, Dict, Union
+from pathlib import Path
 import os
 
-def run_simulation(yaml_file: str,
-                   output_prefix: str=None,
-                   output_path: str=".",
+def _setup_file_output(output_dir,
+                       output_prefix):
+
+    if output_dir is None:
+        return None
+    
+    if not isinstance(output_prefix,str):
+        err = "if output_dir is specified, output_prefix must be a string\n"
+        raise ValueError(err)
+    
+    roots = ["library","phenotype","genotype_ddG","sample","counts"]
+    files = [f"{output_prefix}{r}.csv" for r in roots]
+    files_with_path = [os.path.join(output_dir,f) for f in files]
+    file_dict = dict([(roots[i],files_with_path[i]) for i in range(len(roots))])
+
+    # Output directory exists
+    if os.path.exists(output_dir):
+
+        # But is not a directory
+        if not os.path.isdir(output_dir):
+            err = f"output_dir '{output_dir}' exists and is not a directory\n"
+            raise FileExistsError(err)
+        
+    # Does not exist -- make it
+    else:
+        os.makedirs(output_dir)
+    
+    # Look for files that are already there and die if they are
+    found_files = [f for f in files_with_path if os.path.exists(f)]
+    if len(found_files) > 0:
+        err = f"output files already exist: {','.join(found_files)}\n"
+        raise ValueError(err)
+        
+    return file_dict
+        
+
+def run_simulation(cf: Union[Dict[str, Any], str, Path],
+                   output_dir: Union[Dict[str, Any], str, Path],
+                   output_prefix: str="tfscreen_",
                    override_keys: dict=None):
     """
-    Simulate a full transcription factor selection and growth experiment.
+    Simulate a full transcription factor selection and growth experiment, 
+
+    This includes building the library, predicting phenotypes using a thermodynamic
+    model, simulating growth, and then doing high-throughput sequencing. This 
+    runs `library_prediction` and `selection_experiment` back-to-back. It also
+    writes out files with the results in addition to returning the dataframes.
 
     Arguments
     ---------
-    yaml_file : str
-        Path to the YAML configuration file.
-    output_prefix : str, default=None
-        output files will have output_prefix appended to front. if not specified,
-        use 'replicate' from the yaml_file
-    output_path : str, default="."
-        write output file to this path
+    cf : dict or str or pathlib.Path
+        The configuration for the simulation. Can be a dictionary or a path
+        to a YAML file containing the configuration parameters.
+    output_dir : None or str or pathlib.Path
+        The output directory to write to. If None, do not write
+    output_prefix : str
+        put this prefix in front of all output files. default = "tfscreen_"
     override_keys : dict, default=None
         after reading the configuration file, replace keys in the configuration
         with the key/value pairs in override keys. No error checking is done 
@@ -42,144 +75,36 @@ def run_simulation(yaml_file: str,
     # -------------------------------------------------------------------------
     # Read inputs and set up simulation
 
-    desc = "{}".format(f"loading configuration '{yaml_file}'")
-    with tqdm(total=1,desc=desc,ncols=800) as pbar:
-        pbar.update()
-
-    cf = load_simulation_config(yaml_file)
+    cf = load_simulation_config(cf,override_keys=override_keys)
     if cf is None:
         err = "Aborting simulation due to configuration error."
         raise RuntimeError(err)
     
-    # Replace keys from the configuration with keyword arguments passed in. 
-    if override_keys is not None:
-        for k in override_keys:
-            if k not in cf:
-                err = f"override_keys has a key '{k}' that was not in configuration."
-                raise ValueError(err)
-            cf[k] = override_keys[k]
-
-    if output_prefix is None:
-        output_prefix = cf["replicate"]
+    # Decide if we are going to write out files, make output directory, and make
+    # sure that we are not going to write over anything
+    file_dict = _setup_file_output(output_dir,output_prefix)
     
-    if os.path.exists(output_path) and not os.path.isdir(output_path):
-        err = f"{output_path} already exists and is not a directory.\n"
-        raise FileExistsError(err)
-    else:
-        os.makedirs(output_path,exist_ok=True)
+    # Build library and predict its phenotypes
+    library_df, phenotype_df, genotype_ddG_df = library_prediction(cf)
+
+    # Perform selection experiment
+    sample_df, counts_df = selection_experiment(cf,library_df,phenotype_df)
+
+    # Prepare outputs
+    out_dict = {"library":library_df,
+                "phenotype":phenotype_df,
+                "genotype_ddG":genotype_ddG_df,
+                "sample":sample_df,
+                "counts":counts_df}
     
-    # -------------------------------------------------------------------------
-    # Build library
-        
-    genotype_df = generate_libraries(
-        aa_sequence=cf['aa_sequence'],
-        mutated_sites=cf['mutated_sites'],
-        seq_starts_at=cf['seq_starts_at'],
-        internal_doubles=cf['internal_doubles'],
-        degen_codon=cf['degen_codon']
-    )
-
-    # Build sample_df (holds all conditions for the experiment)
-    sample_df = build_sample_dataframes(
-        cf['condition_blocks'],
-        replicate=cf['replicate']
-    )
-
-    # -------------------------------------------------------------------------
-    # Calculate phenotypes
-
-    # Calculate phenotype for each genotype across all conditions in sample_df
-    genotype_df, phenotype_df = generate_phenotypes(
-        genotype_df=genotype_df,
-        sample_df=sample_df,
-        observable_calculator=cf["observable_calculator"],
-        observable_calc_kwargs=cf["observable_calc_kwargs"],
-        ddG_spreadsheet=cf["ddG_spreadsheet"],
-        calibration_data=cf['calibration_file'],
-        mut_growth_rate_shape=cf['mut_growth_rate_shape'],
-        mut_growth_rate_scale=cf['mut_growth_rate_scale']
-    )
-
-    return genotype_df, phenotype_df, sample_df
-
-    # # -------------------------------------------------------------------------
-    # # Sample from library and grow out
+    # If file_dict is specified, write out the results as files
+    if file_dict is not None:
+        for root in out_dict:
+            out_dict[root].to_csv(file_dict[root],index=False)
     
-    # # Sample from the main library
-    # input_library = transform_and_mix(
-    #     libraries=libraries,
-    #     transform_sizes=cf['transform_sizes'],
-    #     library_mixture=cf['library_mixture'],
-    #     skew_sigma=cf['skew_sigma'],
-    #     lambda_value=cf['lambda_value'],
-    #     max_num_plasmids=cf['max_num_plasmids']
-    # )
+    # Return outputs
+    return out_dict
 
-    # # Create initial populations and growth rates
-    # init_output = initialize_population(
-    #     input_library=input_library,
-    #     phenotype_df=phenotype_df,
-    #     genotype_df=genotype_df,
-    #     sample_df=sample_df,
-    #     num_thawed_colonies=cf['num_thawed_colonies'],
-    #     overnight_volume_in_mL=cf['overnight_volume_in_mL'],
-    #     initial_cfu_mL=cf['initial_cfu_mL'],
-    #     iptg_out_growth_time=cf['iptg_out_growth_time'],
-    #     into_pre_dilution_factor=cf['into_pre_dilution_factor'],
-    #     growth_rate_noise=cf['growth_rate_noise']
-    # )
-    # bacteria, ln_pop_array, bact_sample_k, genotype_df = init_output
 
-    # # Simulate the growth of each sample
-    # sample_pops = simulate_growth(
-    #     ln_pop_array=ln_pop_array,
-    #     bact_sample_k=bact_sample_k,
-    #     sample_df=sample_df,
-    #     sample_df_with_time=sample_df_with_time
-    # )
-
-    # # -------------------------------------------------------------------------
-    # # Sequence all libraries
-        
-    # count_df, sample_df_with_time = sequence_samples(
-    #     sample_pops=sample_pops,
-    #     sample_df_with_time=sample_df_with_time,
-    #     genotype_df=genotype_df,
-    #     bacteria=bacteria,
-    #     total_num_reads=cf['total_num_reads'],
-    #     index_hop_freq=cf['index_hop_freq']
-    # )
-
-    # # -------------------------------------------------------------------------
-    # # Build final outputs and write as csv files
-        
-    # sample_df.to_csv(os.path.join(output_path,
-    #                               f"{output_prefix}-sample_df.csv"))
-
-    # genotype_df.to_csv(os.path.join(output_path,
-    #                               f"{output_prefix}-genotype_df.csv"),
-    #                               index=False)
-
-    # phenotype_df.to_csv(os.path.join(output_path,
-    #                                  f"{output_prefix}-phenotype_df.csv"),
-    #                                  index=False)
     
 
-
-    # cfu_dict = {}
-    # num_reads_dict = {}
-    # for c in tqdm(sample_df_with_time.index,desc="Assembling combined dataframe."):
-    #     cfu = float(sample_df_with_time.loc[c, "cfu_per_mL"])
-    #     num_reads = int(sample_df_with_time.loc[c, "num_reads"])
-    #     cfu_dict[c] = cfu
-    #     num_reads_dict[c] = num_reads
-
-    # count_df["total_cfu_mL_at_time"] = count_df["timepoint"].map(cfu_dict)
-    # count_df["total_counts_at_time"] = count_df["timepoint"].map(num_reads_dict)
-
-    # print("writing final output.\n")
-
-    # count_df.to_csv(os.path.join(output_path,f"{output_prefix}-combined_df.csv"),index=False)
-    # pbar.update()
-
-    # print(f"\n Simulation '{output_prefix}' complete.")

@@ -1,5 +1,4 @@
 import pandas as pd
-from tqdm.auto import tqdm
 import itertools
 
 def build_sample_dataframes(condition_blocks, replicate=1):
@@ -60,9 +59,7 @@ def build_sample_dataframes(condition_blocks, replicate=1):
 
     # --- DataFrame Construction ---
     all_block_dfs = []
-    desc = "Setting up conditions"
-    
-    for block in tqdm(condition_blocks, desc=desc, ncols=800):
+    for block in condition_blocks:
         # Use itertools.product to get the cartesian product of the lists
         variable_params = list(itertools.product(
             block["titrant_conc"],

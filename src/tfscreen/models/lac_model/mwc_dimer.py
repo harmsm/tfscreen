@@ -1,9 +1,34 @@
 import numpy as np
 from scipy.optimize import root
 import warnings
+from numba import jit
+
+# --- Numba JIT-Compiled Objective Function ---
+# This function is compiled to machine code by Numba for a massive speedup.
+# It must be a standalone function, not a class method, for @jit to work best.
+@jit(nopython=True, cache=True)
+def _equations_log_numba(log_free_concs, *args):
+
+    e_free, o_free, h_free = np.exp(log_free_concs)
+    e_total, o_total, r_total_dimer, K_array = args
+    K_h_l, K_h_o, K_h_e, K_l_o, K_l_e = K_array
+
+    l_free = K_h_l * h_free
+    he, he2 = K_h_e * h_free * e_free, K_h_e**2 * h_free * e_free**2
+    le, le2 = K_l_e * l_free * e_free, K_l_e**2 * l_free * e_free**2
+    ho, lo = K_h_o * h_free * o_free, K_l_o * l_free * o_free
+    hoe, hoe2 = K_h_e * ho * e_free, K_h_e**2 * ho * e_free**2
+    loe, loe2 = K_l_e * lo * e_free, K_l_e**2 * lo * e_free**2
+
+    e_calc = e_free + he + 2*he2 + le + 2*le2 + hoe + 2*hoe2 + loe + 2*loe2
+    o_calc = o_free + ho + lo + hoe + hoe2 + loe + loe2
+    r_calc = h_free + l_free + he + he2 + le + le2 + ho + lo + hoe + hoe2 + loe + loe2
+
+    return (e_total-e_calc, o_total-o_calc, r_total_dimer-r_calc)
 
 class MWCDimerModel:
-    """A Monod-Wyman-Changeux (MWC) style model of a lac repressor dimer.
+    """
+    A Monod-Wyman-Changeux (MWC) style model of a lac repressor dimer.
 
     This model describes a dimeric repressor that exists in two conformational
     states, H (high-affinity for operator) and L (low-affinity for operator).
@@ -107,29 +132,12 @@ class MWCDimerModel:
         return (self.o_total - o_free_conc) / (self.o_total + 1e-30)
 
     def _solve_single(self, e_total, o_total, r_total_dimer, K_array):
-        def _equations_log(log_free_concs, *args):
-
-            # Ignore overflows within this calculation --> np.inf
-            with np.errstate(over='ignore'):
-                e_free, o_free, h_free = np.exp(log_free_concs)
-                e_total, o_total, r_total_dimer, K_array = args
-                K_h_l, K_h_o, K_h_e, K_l_o, K_l_e = K_array
-
-                l_free = K_h_l * h_free
-                he, he2 = K_h_e * h_free * e_free, K_h_e**2 * h_free * e_free**2
-                le, le2 = K_l_e * l_free * e_free, K_l_e**2 * l_free * e_free**2
-                ho, lo = K_h_o * h_free * o_free, K_l_o * l_free * o_free
-                hoe, hoe2 = K_h_e * ho * e_free, K_h_e**2 * ho * e_free**2
-                loe, loe2 = K_l_e * lo * e_free, K_l_e**2 * lo * e_free**2
-
-                e_calc = e_free + he + 2*he2 + le + 2*le2 + hoe + 2*hoe2 + loe + 2*loe2
-                o_calc = o_free + ho + lo + hoe + hoe2 + loe + loe2
-                r_calc = h_free + l_free + he + he2 + le + le2 + ho + lo + hoe + hoe2 + loe + loe2
-
-                return (e_total-e_calc, o_total-o_calc, r_total_dimer-r_calc)
-
+    
         initial_guess = np.log(np.maximum(1e-20, [e_total, o_total, r_total_dimer]))
-        solution = root(_equations_log, initial_guess, args=(e_total, o_total, r_total_dimer, K_array), method='lm')
+        solution = root(_equations_log_numba,
+                        initial_guess,
+                        args=(e_total, o_total, r_total_dimer, K_array),
+                        method='lm')
         if not solution.success:
             warnings.warn(f"Solver failed for condition E={e_total}, O={o_total}, R={r_total_dimer*2}: {solution.message}")
             return np.full(len(self.species_names), np.nan)
@@ -149,4 +157,5 @@ class MWCDimerModel:
         concs[self._species_map['HOE2']] = K_h_e * concs[self._species_map['HOE']] * e_free
         concs[self._species_map['LOE']] = K_l_e * concs[self._species_map['LO']] * e_free
         concs[self._species_map['LOE2']] = K_l_e * concs[self._species_map['LOE']] * e_free
+
         return concs

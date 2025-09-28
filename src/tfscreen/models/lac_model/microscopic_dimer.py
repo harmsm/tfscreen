@@ -2,6 +2,46 @@ import numpy as np
 from scipy.optimize import root
 import warnings
 
+from numba import jit
+
+# --- Numba JIT-Compiled Objective Function ---
+# This function is compiled to machine code by Numba for a massive speedup.
+# It must be a standalone function, not a class method, for @jit to work best.
+@jit(nopython=True, cache=True)
+def _equations_log_numba(log_free_concs, e_total, o_total, r_total, K_array):
+    """
+    Numba-optimized objective function for the root solver.
+    Calculates the difference between total and calculated concentrations.
+    """
+    e_free, o_free, u_free = np.exp(log_free_concs)
+    
+    (K_l_2u, K_l_h, K_l_o, K_h_o, K_l_e, K_le_e,
+     K_h_e, K_he_e, K_lo_e, K_loe_e, K_ho_e, K_hoe_e) = K_array
+
+    # Calculate concentrations of all species based on free concentrations
+    l = u_free**2 / K_l_2u if K_l_2u > 0 else 0.0
+    h = K_l_h * l
+    lo = K_l_o * l * o_free
+    le = K_l_e * l * e_free
+    le2 = K_le_e * le * e_free
+    loe = K_lo_e * lo * e_free
+    loe2 = K_loe_e * loe * e_free
+    ho = K_h_o * h * o_free
+    he = K_h_e * h * e_free
+    he2 = K_he_e * he * e_free
+    hoe = K_ho_e * ho * e_free
+    hoe2 = K_hoe_e * hoe * e_free
+
+    # Calculate total concentrations based on the current free concentrations
+    e_calc = e_free + le + 2*le2 + loe + 2*loe2 + he + 2*he2 + hoe + 2*hoe2
+    o_calc = o_free + lo + loe + loe2 + ho + hoe + hoe2
+    r_calc = (u_free + 2*(l + h + lo + le + le2 + loe + loe2 +
+                         ho + he + he2 + hoe + hoe2))
+    
+    # The solver seeks to make these residuals zero
+    return (e_total - e_calc, o_total - o_calc, r_total - r_calc)
+
+
 class MicroscopicDimerModel:
     """
     A microscopic linked equilibria model of a lac repressor dimer.
@@ -115,44 +155,23 @@ class MicroscopicDimerModel:
         return results
 
     def _solve_single_condition(self, e_total, o_total, r_total, K_array):
-        def _equations_log(log_free_concs, *args):
-
-            # Ignore overflows within this calculation --> np.inf
-            with np.errstate(over='ignore'):
-
-                e_free, o_free, u_free = np.exp(log_free_concs)
-                e_total, o_total, r_total, K_array = args
-                (K_l_2u, K_l_h, K_l_o, K_h_o, K_l_e, K_le_e,
-                K_h_e, K_he_e, K_lo_e, K_loe_e, K_ho_e, K_hoe_e) = K_array
-
-                l = u_free**2 / K_l_2u if K_l_2u > 0 else (0.0 if u_free > 1e-30 else np.inf)
-                h = K_l_h * l
-                lo = K_l_o * l * o_free
-                le = K_l_e * l * e_free
-                le2 = K_le_e * le * e_free
-                loe = K_lo_e * lo * e_free
-                loe2 = K_loe_e * loe * e_free
-                ho = K_h_o * h * o_free
-                he = K_h_e * h * e_free
-                he2 = K_he_e * he * e_free
-                hoe = K_ho_e * ho * e_free
-                hoe2 = K_hoe_e * hoe * e_free
-
-                e_calc = (e_free + le + 2*le2 + loe + 2*loe2 + he + 2*he2 + hoe + 2*hoe2)
-                o_calc = o_free + lo + loe + loe2 + ho + hoe + hoe2
-                r_calc = (u_free + 2*l + 2*h + 2*lo + 2*le + 2*le2 + 2*loe + 2*loe2 + 2*ho + 2*he + 2*he2 + 2*hoe + 2*hoe2)
-                
-                return (e_total - e_calc, o_total - o_calc, r_total - r_calc)
-
+        
+        # Initial guess remains the same
         initial_concs = np.array([e_total, o_total, r_total])
         initial_guess_log = np.log(np.maximum(initial_concs, 1e-20))
-        solution = root(_equations_log, initial_guess_log, args=(e_total, o_total, r_total, K_array), method='lm')
+        
+        # Call the solver with the JIT-compiled objective function
+        solution = root(_equations_log_numba, 
+                        initial_guess_log, 
+                        args=(e_total, o_total, r_total, K_array), 
+                        method='lm')
 
         if not solution.success:
             warnings.warn(f"Solver failed for condition E={e_total}, O={o_total}, R={r_total}: {solution.message}")
             return np.full(len(self.species_names), np.nan)
 
         e_free, o_free, u_free = np.exp(solution.x)
+        
         (K_l_2u, K_l_h, K_l_o, K_h_o, K_l_e, K_le_e,
          K_h_e, K_he_e, K_lo_e, K_loe_e, K_ho_e, K_hoe_e) = K_array
 

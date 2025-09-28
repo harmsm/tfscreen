@@ -36,28 +36,17 @@ def _normalize_types(node):
     # Return any other data types (like existing ints, bools, etc.) as is.
     return node
 
-def _rekey_as_tuples(some_dict):
-    """
-    Rekey strings of numbers as tuples.
-    """
 
-    new_dict = {}
-    for k in some_dict:
-        new_k = k
-        if not issubclass(type(k),tuple):
-            new_k = tuple(list(str(k)))
-        new_dict[new_k] = some_dict[k]
-
-    return new_dict
-
-def load_simulation_config(filepath: str) -> dict:
+def load_simulation_config(cf: str | dict,
+                           override_keys: dict | None=None) -> dict:
     """
     Loads a YAML configuration file from the specified path.
 
     Parameters
     ----------
-    filepath : str
-        The path to the YAML configuration file.
+    cf : str or dict
+        If string, this is the path to the YAML configuration file. If a dict,
+        pass through (assume its already read)
 
     Returns
     -------
@@ -65,11 +54,14 @@ def load_simulation_config(filepath: str) -> dict:
         A dictionary containing the configuration parameters.
     """
 
+    if issubclass(type(cf),dict):
+        return cf
+
     try:
-        with open(filepath, 'r') as f:
+        with open(cf, 'r') as f:
             config = yaml.safe_load(f)
     except FileNotFoundError:
-        print(f"Error: Configuration file not found at '{filepath}'")
+        print(f"Error: Configuration file not found at '{cf}'")
         return None
     except yaml.YAMLError as e:
         print(f"Error parsing YAML file: {e}")
@@ -78,10 +70,12 @@ def load_simulation_config(filepath: str) -> dict:
     # clean up floats and ints
     config = _normalize_types(config)
 
-    # Rekey things like "11" and "12" as ('1','1') and ('1','2')
-    to_rekey = ["transform_sizes","library_mixture"]
-    for k in to_rekey:
-        if k in config:
-            config[k] = _rekey_as_tuples(config[k])
+    # Replace keys from the configuration with keyword arguments passed in. 
+    if override_keys is not None:
+        for k in override_keys:
+            if k not in config:
+                err = f"override_keys has a key '{k}' that was not in configuration."
+                raise ValueError(err)
+            config[k] = override_keys[k]
 
     return config
