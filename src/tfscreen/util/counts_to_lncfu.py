@@ -25,7 +25,7 @@ def _filter_low_observation_genotypes(df: pd.DataFrame, min_genotype_obs: int) -
         A dataframe with low-observation genotypes removed.
     """
     # Calculate the sum of counts for each genotype within each library
-    genotype_counts_per_library = df.groupby(['library', 'genotype'])['counts'].transform('sum')
+    genotype_counts_per_library = df.groupby(['library', 'genotype'],observed=True)['counts'].transform('sum')
 
     # Filter the dataframe, keeping rows where the genotype's total count in that library is sufficient
     filtered_df = df[genotype_counts_per_library >= min_genotype_obs].copy()

@@ -2,6 +2,32 @@ import numpy as np
 from scipy.optimize import root
 import warnings
 
+from numba import jit
+
+# --- Numba JIT-Compiled Objective Function ---
+# This function is compiled to machine code by Numba for a massive speedup.
+# It must be a standalone function, not a class method, for @jit to work best.
+@jit(nopython=True, cache=True)
+def _equations_log_numba(log_free_concs, *args):
+
+    e_free, o_free, r_free = np.exp(log_free_concs)
+    e_total, o_total, r_total_dimer, K_array = args
+    Kd_e1, Kd_e2, Kd_o, Kd_oe1, Kd_oe2 = K_array
+
+    # Add a small epsilon to Kd values to avoid division by zero if a K is 0
+    re = r_free * e_free / (Kd_e1 + 1e-30)
+    re2 = re * e_free / (Kd_e2 + 1e-30)
+    ro = r_free * o_free / (Kd_o + 1e-30)
+    roe = re * o_free / (Kd_oe1 + 1e-30)
+    roe2 = re2 * o_free / (Kd_oe2 + 1e-30)
+
+    e_calc = e_free + re + 2*re2 + roe + 2*roe2
+    o_calc = o_free + ro + roe + roe2
+    r_calc = r_free + re + re2 + ro + roe + roe2
+
+    return (e_total-e_calc, o_total-o_calc, r_total_dimer-r_calc)
+
+
 class LinkageDimerModel:
     """
     A general linkage model for a dimeric repressor.
@@ -103,30 +129,12 @@ class LinkageDimerModel:
         return (self.o_total - o_free_conc) / (self.o_total + 1e-30)
 
     def _solve_single(self, e_total, o_total, r_total_dimer, K_array):
-        def _equations_log(log_free_concs, *args):
-
-            # Ignore overflows within this calculation --> np.inf
-            with np.errstate(over='ignore'):
-
-                e_free, o_free, r_free = np.exp(log_free_concs)
-                e_total, o_total, r_total_dimer, K_array = args
-                Kd_e1, Kd_e2, Kd_o, Kd_oe1, Kd_oe2 = K_array
-
-                # Add a small epsilon to Kd values to avoid division by zero if a K is 0
-                re = r_free * e_free / (Kd_e1 + 1e-30)
-                re2 = re * e_free / (Kd_e2 + 1e-30)
-                ro = r_free * o_free / (Kd_o + 1e-30)
-                roe = re * o_free / (Kd_oe1 + 1e-30)
-                roe2 = re2 * o_free / (Kd_oe2 + 1e-30)
-
-                e_calc = e_free + re + 2*re2 + roe + 2*roe2
-                o_calc = o_free + ro + roe + roe2
-                r_calc = r_free + re + re2 + ro + roe + roe2
-
-                return (e_total-e_calc, o_total-o_calc, r_total_dimer-r_calc)
-
+                
         initial_guess = np.log(np.maximum(1e-20, [e_total, o_total, r_total_dimer]))
-        solution = root(_equations_log, initial_guess, args=(e_total, o_total, r_total_dimer, K_array), method='lm')
+        solution = root(_equations_log_numba,
+                        initial_guess,
+                        args=(e_total, o_total, r_total_dimer, K_array),
+                        method='lm')
         if not solution.success:
             warnings.warn(f"Solver failed for condition E={e_total}, O={o_total}, R={r_total_dimer*2}: {solution.message}")
             return np.full(len(self.species_names), np.nan)

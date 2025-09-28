@@ -110,8 +110,8 @@ def standardize_genotypes(genotypes):
         clean_g = "/".join([f"{s[1]}{s[0]}{s[2]}" for s in sort_on])
         genotype_mapper[g] = clean_g
 
-    # Map original genotype list back to a list of standardized genotype names
-    clean_genotypes = [genotype_mapper[g] for g in genotypes]
+    # Map original genotypes back to a numpy array of standardized genotype names
+    clean_genotypes = np.array([genotype_mapper[g] for g in genotypes])
 
     return clean_genotypes
 

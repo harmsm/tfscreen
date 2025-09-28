@@ -1,4 +1,8 @@
 
+from .combine_mutation_effects import (
+    combine_mutation_effects
+)
+
 from .df_to_arrays import (
     df_to_arrays
 )
@@ -55,3 +59,12 @@ from .get_scaled_cfu import (
 from .get_group_mean_std import (
     get_group_mean_std
 )
+
+from .zero_truncated_poisson import (
+    zero_truncated_poisson
+)
+
+from .vstack_padded import (
+    vstack_padded
+)
+
