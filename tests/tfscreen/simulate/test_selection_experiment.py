@@ -74,7 +74,7 @@ def base_library_df() -> pd.DataFrame:
     """
     data = {
         "library_origin": ["libA", "libA", "libB", "libB", "libB"],
-        "genotype":       ["geno1", "geno2", "geno2", "geno3", "geno4"],
+        "genotype":       ["A1V", "A2V", "A2V", "A3V", "A4V"],
         "weight":         [1.0, 0.8, 0.5, 1.2, 0.9],
     }
     return pd.DataFrame(data)
@@ -98,7 +98,7 @@ def base_phenotype_df(base_library_df: pd.DataFrame) -> pd.DataFrame:
 
     # Define base growth rates for each genotype
     base_growth_rates = {
-        "geno1": 0.8, "geno2": 1.0, "geno3": 1.2, "geno4": 0.6
+        "A1V": 0.8, "A2V": 1.0, "A3V": 1.2, "A4V": 0.6
     }
     
     records = []
@@ -294,7 +294,7 @@ def test_check_lib_spec_sets_defaults(base_config: dict,
 @pytest.mark.parametrize("modification_lambda, match_error", [
     # Genotype in library_df is missing from phenotype_df
     # FIX: Modify phenotype_df to remove a genotype that library_df has.
-    (lambda cf, lib, pheno: pheno.drop(pheno[pheno.genotype == "geno2"].index, inplace=True), "missing from phenotype_df"),
+    (lambda cf, lib, pheno: pheno.drop(pheno[pheno.genotype == "A2V"].index, inplace=True), "missing from phenotype_df"),
     
     # library_df is missing a required column
     # FIX: Use inplace=True to modify the DataFrame directly.
@@ -593,7 +593,7 @@ def test_sim_growth_multi_plasmid(combine_fcn_name: str):
     Tests that multi-plasmid kt values are combined correctly for all
     supported combination functions.
     """
-    # 2 cells: cell 0 has 2 plasmids (geno0, geno1), cell 1 has 1 (geno2)
+    # 2 cells: cell 0 has 2 plasmids (geno0, A1V), cell 1 has 1 (A2V)
     transformants = np.array([[0, 1], [2, 0]]) # Second plasmid for cell 1 is masked
     trans_mask = np.array([[False, False], [False, True]])
     trans_freq = np.array([0.4, 0.6])
@@ -651,7 +651,7 @@ def test_sim_sequencing_deterministic(rng: Generator):
     """
     Tests the main sequencing logic with a seeded RNG for a deterministic outcome.
     """
-    # 2 cells: cell 0 has geno0, cell 1 has geno1
+    # 2 cells: cell 0 has geno0, cell 1 has A1V
     transformants = np.array([[0], [1]])
     trans_mask = np.array([[False], [False]])
     num_genotypes = 2
@@ -865,7 +865,76 @@ def test_simulate_library_group_integration(base_config: dict,
     # Some ln_cfu_0 values should have been calculated (i.e., not all are -inf)
     assert np.any(counts_df["ln_cfu_0"] > -np.inf)
 
+@pytest.fixture
+def sparse_phenotype_df(base_phenotype_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Creates a sparse version of the phenotype dataframe.
+    
+    This fixture takes the full, dense base_phenotype_df and removes several
+    rows to simulate a dataset where not all genotypes are present in all
+    conditions. This is the specific edge case we want to test.
+    """
+    df = base_phenotype_df.copy()
+    
+    # Drop a specific genotype ('A1V') from one condition (titrant_conc == 100.0)
+    condition_to_drop = (df["genotype"] == "A1V") & (df["titrant_conc"] == 100.0)
+    df = df[~condition_to_drop]
+    
+    # Drop another genotype ('A4V') entirely from the dataset
+    df = df[df["genotype"] != "A4V"]
+    
+    return df
 
+def test_simulate_library_group_handles_sparse_data(
+    base_config: dict,
+    base_library_df: pd.DataFrame,
+    sparse_phenotype_df: pd.DataFrame, # Use the new sparse fixture
+    rng: Generator
+):
+    """
+    GIVEN a sparse phenotype dataframe missing genotype/condition pairs
+    WHEN _simulate_library_group is called
+    THEN it should run without error and produce a counts_df with the same
+         number of rows as the sparse input.
+    """
+    # 1. ARRANGE
+    sub_df = sparse_phenotype_df
+    sub_df["kt"] = sub_df["t_sel"] * sub_df["k_sel"]
+
+    # Use the full library df for transformation simulation
+    lib_df = base_library_df.copy()
+    lib_df["probs"] = lib_df.groupby("library_origin")["weight"].transform(
+        lambda w: w / w.sum()
+    )
+    lib_origin_grouper = lib_df.groupby("library_origin")
+
+    # The canonical list of ALL genotypes that *could* exist
+    ordered_genotypes = np.sort(pd.unique(lib_df["genotype"]))
+    
+    num_conditions = sub_df.groupby(base_config["condition_selector"]).ngroups
+    reads_per_sample = int(np.round(base_config["total_num_reads"] / num_conditions))
+    
+    # 2. ACT
+    sample_df, counts_df = _simulate_library_group(
+        sub_df=sub_df,
+        index_offset=0,
+        lib_origin_grouper=lib_origin_grouper,
+        ordered_genotypes=ordered_genotypes,
+        reads_per_sample=reads_per_sample,
+        cf=base_config,
+        rng=rng
+    )
+
+    # 3. ASSERT
+    # The primary check: The output dataframe's shape must match the sparse input.
+    assert counts_df.shape[0] == sub_df.shape[0]
+    
+    # Secondary check: The merge should not have failed (no NaNs in counts).
+    assert not counts_df["counts"].isna().any()
+    
+    # Final check: The total number of genotypes in the output should match the
+    # number of unique genotypes in the sparse input.
+    assert counts_df["genotype"].nunique() == sub_df["genotype"].nunique()
 
 # ----------------------------------------------------------------------------
 # test selection_experiment

@@ -19,3 +19,7 @@ from .extract_epistasis import (
     extract_epistasis
 )
 
+from .process_theta_fit import (
+    process_theta_fit
+)
+

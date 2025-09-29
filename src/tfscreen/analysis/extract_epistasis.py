@@ -104,6 +104,20 @@ def extract_epistasis(df,
                           (m2_std / m2_obs)**2 + (m12_std / m12_obs)**2)
             ep_std = np.abs(ep_obs) * np.sqrt(rel_err_sq)
 
+        print("---")
+        print(cycle_array[:, 3].shape)
+        print(ep_obs.shape)
+        print(ep_std.shape)
+        print(wt_obs.shape)
+        print(m1_obs.shape)
+        print(m2_obs.shape)
+        print(m12_obs.shape)
+        print(wt_std.shape)
+        print(m1_std.shape)
+        print(m2_std.shape)
+        print(m12_std.shape)
+        
+
         # Build output dataframe for this condition
         out_df = pd.DataFrame({
             "genotype": cycle_array[:, 3],

@@ -6,6 +6,7 @@ from tfscreen.util import (
     read_dataframe,
     vstack_padded,
     zero_truncated_poisson,
+    set_categorical_genotype
 )
 
 import numpy as np
@@ -877,9 +878,10 @@ def _simulate_library_group(
     sub_grouper = sub_df.groupby(condition_selector)
 
     # Build sample dataframe
+    to_drop = ["genotype","dk_geno","k_pre","k_sel","theta","kt"]
     sample_df = sub_grouper.agg("first")
     sample_df["cfu_per_mL"] = 0.0
-    sample_df = sample_df.drop(columns="genotype")
+    sample_df = sample_df.drop(columns=to_drop)
     sample_df = sample_df.reset_index()
     sample_df.index += index_offset
     sample_df["sample"] = sample_df.index
@@ -889,9 +891,7 @@ def _simulate_library_group(
 
     counts_df = sub_df.copy()
     counts_df["sample"] = sub_grouper.ngroup() + index_offset
-    counts_df = counts_df[["sample","genotype","dk_geno","k_pre","k_sel","theta"]]
     counts_df["ln_cfu_0"] = -np.inf
-    counts_df["counts"] = 0
 
     # -- simulate transformation and mixing of libraries --
 
@@ -913,7 +913,6 @@ def _simulate_library_group(
                                         total_cfu0,
                                         num_genotypes)
     
-
     # Get ln_cfu_0
     genotype_ln_cfu_0 = np.full(len(genotype_cfu0),-np.inf)
     non_zero_mask = genotype_cfu0 > 0
@@ -924,12 +923,28 @@ def _simulate_library_group(
 
     # -- simulate growth -- 
 
-    # Create a 2D array of (genotype,conditions) holding kt
-    genotype_vs_kt = sub_df.pivot_table(index="genotype",
-                                        columns=condition_selector,
-                                        values="kt",
-                                        observed=True).to_numpy()
+    # Make sure the sub_df has the exact same genotype categories as we have 
+    # in transformants. 
+    sub_df["genotype"] = pd.Categorical(sub_df["genotype"],
+                                        categories=ordered_genotypes,
+                                        ordered=True)
 
+    # pivot on condition_selector go get kt for all combos of genotype/condition.
+    # The initial pivot will be sparse.
+    sparse_pivot = sub_df.pivot_table(index="genotype",
+                                      columns=condition_selector,
+                                      values="kt",
+                                      observed=True)
+  
+    # Now force this to match the total number of genotypes. Missing values will 
+    # be zero. This is fine because we are going to drop these genotypes when 
+    # we pivot back. But we need the complete grid of genotype/condition points
+    # to ensure consistent alignment between transformants and conditions. 
+    genotype_vs_kt_pivot = sparse_pivot.reindex(ordered_genotypes, fill_value=0)
+    
+    # Create a 2D array of (genotype,conditions) holding kt. 
+    genotype_vs_kt = genotype_vs_kt_pivot.to_numpy()
+    
     # Add noise to the growth rate
     if growth_rate_noise is not None:
         std = np.mean(genotype_vs_kt) * growth_rate_noise
@@ -951,19 +966,41 @@ def _simulate_library_group(
     sample_df.loc[:,"cfu_per_mL_std"] = sample_df.loc[:,"cfu_per_mL"]*final_cfu_pct_err
 
     # -- simulate sequencing -- 
+    read_counts_dense = _sim_sequencing(transformants,
+                                        trans_mask,
+                                        trans_cfu,
+                                        num_genotypes,
+                                        reads_per_sample,
+                                        rng)
 
-    read_counts = _sim_sequencing(transformants,
-                                    trans_mask,
-                                    trans_cfu,
-                                    num_genotypes,
-                                    reads_per_sample,
-                                    rng)
+    # Create a DataFrame from the dense counts with the same structure as the pivot
+    counts_df_wide = pd.DataFrame(data=read_counts_dense,
+                                  index=genotype_vs_kt_pivot.index,
+                                  columns=genotype_vs_kt_pivot.columns)
+    
+    # Use .stack() to unpivot to a dataframe that we can merge with counts_df
+    counts_long_df = counts_df_wide.stack(
+        level=list(range(len(condition_selector))),
+        future_stack=True,
+    ).reset_index(name="counts")
 
-    # Flatten read counts
-    read_counts = read_counts.flatten()
+    # Apply index hopping to the long-form counts
+    counts_long_df["counts"] = _sim_index_hop(counts_long_df["counts"].to_numpy(),
+                                              prob_index_hop,
+                                              rng)
 
-    read_counts = _sim_index_hop(read_counts, prob_index_hop, rng)
-    counts_df.loc[sub_df.index, "counts"] = read_counts
+    # Merge the simulated counts back into the original sparse dataframe structure
+    # This correctly maps counts to the rows that actually exist in sub_df
+    key_cols = ["genotype"] + condition_selector    
+    counts_df = pd.merge(counts_df, counts_long_df, on=key_cols, how="left")
+    
+    # The merge might leave NaNs in counts for rows that had no sim result, fill with 0
+    counts_df["counts"] = counts_df["counts"].fillna(0).astype(int)
+
+    # Drop all but the columns we want
+    counts_df = counts_df[["sample","genotype",
+                           "dk_geno","k_pre","k_sel","theta","ln_cfu_0",
+                           "counts"]]
 
     return sample_df, counts_df
 
@@ -1020,6 +1057,11 @@ def selection_experiment(
     cf = _check_cf(cf)
     phenotype_df = read_dataframe(phenotype_df)
     library_df = read_dataframe(library_df)
+
+    # Make sure the genotype values are categorical and standardized (e.g.
+    # A30A -> 'wt', 'wildtype' -> 'wt', A50V/A49V -> A49V/A50V, etc.)
+    phenotype_df = set_categorical_genotype(phenotype_df,standardize=True)
+    library_df = set_categorical_genotype(library_df,standardize=True)
 
     # Integrated check and update for library specification
     cf = _check_lib_spec(cf,library_df,phenotype_df)
