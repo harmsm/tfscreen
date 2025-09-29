@@ -395,7 +395,7 @@ def _setup_inference(df):
         base_name="theta",
         series_selector=theta_selector,
         guess_column="wt_theta",
-        transform="none",
+        transform="theta",
         offset=offset
     )
 
