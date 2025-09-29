@@ -67,7 +67,7 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
 
     # Calculate phenotype for each genotype across all conditions in sample_df
     phenotype_df, genotype_ddG_df = thermo_to_growth(
-        genotype_df=library_df,
+        genotypes=library_df["genotype"],
         sample_df=sample_df,
         observable_calculator=cf["observable_calculator"],
         observable_calc_kwargs=cf["observable_calc_kwargs"],
