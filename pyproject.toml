@@ -26,6 +26,7 @@ dependencies = [
   "corner",
   "dataclasses",
   "typing",
+  "numba",
   "patsy"
 ]
 

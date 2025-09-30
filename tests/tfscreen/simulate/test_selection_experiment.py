@@ -401,7 +401,7 @@ def test_sim_index_hop_deterministic(rng: Generator):
     total_counts = np.sum(counts)
     
     # Pre-calculated result with rng seeded to 42 and 10% hopping
-    expected_hopped_counts = np.array([1240, 2134, 6626])
+    expected_hopped_counts = np.array([1234, 2124, 6642])
     
     result = _sim_index_hop(counts, index_hop_prob=0.1, rng=rng)
     

@@ -379,17 +379,18 @@ def _sim_index_hop(
     index_hop_prob: float | None,
     rng: Generator | None = None,
 ) -> np.ndarray:
-    """Simulate sequencing index hopping.
+    """
+    Simulate sequencing index hopping efficiently.
 
     This function models index hopping by randomly re-distributing a
     specified fraction of the total reads. Reads are chosen for hopping
-    proportional to their abundance, and their new identity is chosen
-    uniformly at random from all possibilities.
+    proportional to their abundance (sampling without replacement), and their 
+    new identity is chosen uniformly at random.
 
     Parameters
     ----------
     counts : numpy.ndarray
-        A 1D integer array of read counts for each genotype/category.
+        A 1D integer array of read counts for each category.
     index_hop_prob : float, optional
         The fraction of total reads that will be mis-assigned (hop).
         If None or 0, a copy of the original counts is returned.
@@ -405,47 +406,45 @@ def _sim_index_hop(
 
     Notes
     -----
-    The simulation correctly samples individual reads for hopping without
-    replacement. This is achieved by creating a temporary array representing
-    every single read via `np.repeat`, ensuring that a category cannot
-    lose more reads than it possesses.
+    This simulation uses the multivariate hypergeometric distribution to
+    efficiently sample which reads hop without replacement. This avoids the
+    memory and performance cost of creating an array of all individual reads.
     """
 
-    if index_hop_prob is None:
+    if index_hop_prob is None or index_hop_prob == 0:
         return counts.copy()
-    
-    # Initialize random number generator
+
     if rng is None:
         rng = np.random.default_rng()
 
-    # Figure out how many reads will hop
-    num_to_hop = int(np.round(index_hop_prob*np.sum(counts),0))
+    # Ensure counts are non-negative integers for the distribution
+    counts = np.asarray(counts, dtype=np.int64)
+    if np.any(counts < 0):
+        raise ValueError("counts must be non-negative.")
 
-    # no hopping 
+    total_reads = np.sum(counts)
+    num_to_hop = int(np.round(index_hop_prob * total_reads))
+
     if num_to_hop == 0:
         return counts.copy()
-
-    # index of counts
-    idx = np.arange(counts.shape[0],dtype=int)
-
-    # Figure out where we are going to hop from. The repeat + sampling without
-    # replacement guarantees we end up with real reads. (If we sampled with
-    # replacement from the counts, we could concievably end up subtracting more
-    # reads than we had from a given sample.)
-    all_reads = np.repeat(np.arange(counts.size), repeats=counts)
-    hop_from = rng.choice(all_reads, size=num_to_hop, replace=False)
     
-    # choose reads to gain
-    hop_to = rng.choice(idx,size=num_to_hop,replace=True)
+    # Ensure we don't try to hop more reads than exist
+    num_to_hop = min(num_to_hop, total_reads)
+
+    # Use the multivariate hypergeometric distribution to determine how many 
+    # reads hop from each category. This is equivalent to sampling without 
+    # replacement from the full pool of reads.
+    hop_from_values = rng.multivariate_hypergeometric(counts, num_to_hop)
+
+    # Uniformly choose new categories for the hopped reads.
+    num_categories = len(counts)
+    hop_to_events = rng.choice(num_categories, size=num_to_hop, replace=True)
+    hop_to_values = np.bincount(hop_to_events, minlength=num_categories)
     
-    # Figure out how much to add and subtract to each read
-    hop_from_values = np.bincount(hop_from,minlength=len(idx))
-    hop_to_values = np.bincount(hop_to,minlength=len(idx))
-
-    # move reads from sub --> add
-    counts = counts - hop_from_values + hop_to_values
-
-    return counts
+    # Apply the changes to the original counts
+    new_counts = counts - hop_from_values + hop_to_values
+    
+    return new_counts
 
 
 def _sim_transform(
@@ -895,6 +894,7 @@ def _simulate_library_group(
 
     # -- simulate transformation and mixing of libraries --
 
+    print("--> simulating transformation",flush=True)
     transformants, trans_mask, trans_freq = _sim_transform_and_mix(
         lib_origin_grouper,
         transform_sizes,
@@ -930,16 +930,16 @@ def _simulate_library_group(
                                         ordered=True)
 
     # pivot on condition_selector go get kt for all combos of genotype/condition.
-    # The initial pivot will be sparse.
+    # The initial pivot will be sparse. Fillna to make sure we set any genotypes
+    # with missing *phenotypes* to zero. When we stack, these will be removed. 
     sparse_pivot = sub_df.pivot_table(index="genotype",
                                       columns=condition_selector,
                                       values="kt",
-                                      observed=True)
+                                      observed=True).fillna(0)
   
-    # Now force this to match the total number of genotypes. Missing values will 
-    # be zero. This is fine because we are going to drop these genotypes when 
-    # we pivot back. But we need the complete grid of genotype/condition points
-    # to ensure consistent alignment between transformants and conditions. 
+    # Now force this to match ordered genotypes, building a dense grid. This 
+    # will introduce na for any missing genotypes. Set these to zero. When we
+    # stack, these will be removed. 
     genotype_vs_kt_pivot = sparse_pivot.reindex(ordered_genotypes, fill_value=0)
     
     # Create a 2D array of (genotype,conditions) holding kt. 
@@ -954,6 +954,7 @@ def _simulate_library_group(
     # combine multiple plasmid effects
     lib_name = np.unique(sub_df["library"])[0]
 
+    print("--> simulating growth",flush=True)
     trans_cfu = _sim_growth(transformants,
                             trans_mask,
                             trans_freq,
@@ -966,6 +967,7 @@ def _simulate_library_group(
     sample_df.loc[:,"cfu_per_mL_std"] = sample_df.loc[:,"cfu_per_mL"]*final_cfu_pct_err
 
     # -- simulate sequencing -- 
+    print("--> simulating sequencing",flush=True)
     read_counts_dense = _sim_sequencing(transformants,
                                         trans_mask,
                                         trans_cfu,
@@ -985,6 +987,7 @@ def _simulate_library_group(
     ).reset_index(name="counts")
 
     # Apply index hopping to the long-form counts
+    print("--> simulating index hopping",flush=True)
     counts_long_df["counts"] = _sim_index_hop(counts_long_df["counts"].to_numpy(),
                                               prob_index_hop,
                                               rng)
@@ -1091,7 +1094,9 @@ def selection_experiment(
                   .rename(columns={0:"weight"})
                   .reset_index(drop=True))
     
-    # Get a reference list of genotypes, in order
+    # Get a reference list of genotypes, in order. This is the master index 
+    # used to align the dataframes to the numpy arrays used in the heart of the
+    # calculation. 
     ordered_genotypes = pd.unique(library_df["genotype"])
     
     # groupby on library_df that lets us select individual library origins
