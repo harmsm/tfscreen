@@ -32,14 +32,18 @@ def _process_dk_geno(k_est, k_wt, dk_geno_groups, dk_geno_mask):
     values_to_average = dk[dk_geno_mask]
     groups_for_average = dk_geno_groups[dk_geno_mask]
     
+    required_size = np.max(dk_geno_groups) + 1
+
     # Calculate the per-group summary mean directly, avoiding the double broadcast.
     # This mimics the internal logic of get_group_mean_std.
-    sums = np.bincount(groups_for_average, weights=values_to_average)
-    counts = np.bincount(groups_for_average)
+    sums = np.bincount(groups_for_average,
+                       weights=values_to_average,
+                       minlength=required_size)
+    counts = np.bincount(groups_for_average,
+                         minlength=required_size)
 
     # Ensure the group_means array is large enough for all original groups
-    max_group_id = np.max(dk_geno_groups)
-    group_means = np.zeros(max_group_id + 1, dtype=float)
+    group_means = np.zeros(required_size, dtype=float)
 
     # Use safe division to calculate the mean only for groups present in the subset
     valid_indices = counts > 0
