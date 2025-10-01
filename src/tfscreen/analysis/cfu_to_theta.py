@@ -15,7 +15,7 @@ from tfscreen.util import (
     check_columns,
     get_scaled_cfu,
     chunk_by_group,
-    argsort_genotypes
+    set_categorical_genotype
 )
 
 from tfscreen.analysis import get_indiv_growth
@@ -34,8 +34,10 @@ def _prep_inference_df(df,
     This function takes an experimental dataframe and performs several
     preprocessing steps: it ensures required columns are present, sets
     appropriate data types, creates an ordered categorical for genotypes to
-    ensure consistent sorting, divides the data into batches, and merges in
-    pre-calculated calibration constants for growth rate models.
+    ensure consistent sorting, verifies that all combinations of
+    genotype/condition are present in each replicate, divides the data into
+    batches, and then merges in pre-calculated calibration constants for growth
+    rate models.
 
     Parameters
     ----------
@@ -76,35 +78,71 @@ def _prep_inference_df(df,
     # Build ln_cfu and ln_cfu_std
     df = get_scaled_cfu(df,need_columns=["ln_cfu","ln_cfu_std"])
 
-    # Check for required columns
-    required_columns = ["ln_cfu",
-                        "ln_cfu_std",
-                        "t_pre",
-                        "t_sel",
-                        "genotype",
-                        "library",
-                        "replicate",
-                        "titrant_name",
-                        "titrant_conc",
-                        "condition_pre",
-                        "condition_sel"]
+    condition_cols = ["library","replicate",
+                      "titrant_name","titrant_conc",
+                      "condition_pre","t_pre",
+                      "condition_sel","t_sel"]
+    value_cols = ["ln_cfu","ln_cfu_std"]
+    
+    # Make sure all required columns are present
+    required_columns = ["genotype"] + condition_cols + value_cols
     check_columns(df,required_columns)
 
     # Nuke extra columns to avoid unexpected behavior. 
     df = df.loc[:,required_columns]
-    
+
     # Clean up on replicate column. It must be Int64 because it can have 
     # missing values later. 
     df["replicate"] = df["replicate"].astype('Int64')
     
-    # Sort on genotype (in case not done already) and make ordered categorical
-    # so it sorts properly. 
-    all_genotypes = pd.unique(df["genotype"])
-    idx = argsort_genotypes(all_genotypes)
-    genotype_order = all_genotypes[idx]
-    df["genotype"] = pd.Categorical(df["genotype"],
-                                    categories=genotype_order,
-                                    ordered=True) 
+    # Clean up genotypes. This will make sure things like A57A --> 'wt' and 
+    # that things like A2Q/M1V --> M1V/A2Q. It also makes the genotype column
+    # into an ordered categorical.
+    df = set_categorical_genotype(df,sort=True,standardize=True)
+
+    # Make sure the genotype/condition columns are dense within each replicate
+    for rep, rep_df in df.groupby("replicate"):
+
+        # Make sure that every genotype/condition is unique
+        must_be_unique = ["genotype"] + condition_cols
+        if rep_df.duplicated(subset=must_be_unique).any():
+            num_duplicates = rep_df.duplicated(subset=must_be_unique).sum()
+            raise ValueError(
+                f"DataFrame conditions must be unique. Found {num_duplicates} "
+                f"duplicate combinations of the key columns: {must_be_unique} "
+                f"in replicate {rep}."
+            )
+        
+        # Make sure the dataframe has the right number of rows. Since we already 
+        # checked for duplicates, this is a rigorous check for a dense dataframe. 
+        num_genotypes = rep_df["genotype"].drop_duplicates().shape[0]
+        num_conditions = rep_df[condition_cols].drop_duplicates().shape[0]
+        expected_nrows = num_genotypes*num_conditions
+        rep_df_nrows = rep_df.shape[0]
+        if expected_nrows != rep_df_nrows:
+            raise ValueError(
+                f"DataFrame for replicate {rep} is missing values. It has "
+                f"{rep_df_nrows} rows but a dense grid requires {expected_nrows} "
+                f"rows ({num_genotypes}) unique genotypes x {num_conditions} "
+                "conditions)."
+            )
+
+    # Coerce these columns to be floats
+    float_columns = ["ln_cfu","ln_cfu_std","t_pre","t_sel"]
+    try:
+        df[float_columns] = df[float_columns].astype(float)
+    except Exception as e:
+        raise ValueError(
+            f"Could not coerce {float_columns} into floats"
+        ) from e
+
+    # Make sure the are no nan values in the float columns
+    nan_values = np.isnan(df[float_columns])
+    if np.any(nan_values):
+        raise ValueError(
+            f"nan values are not allowed in columns {float_columns}. "
+            f"Found {np.sum(nan_values,axis=0)} nan values in these columns."
+        )
 
     # Break the dataframe into batches that keep genotypes together. 
     df_genotype_idx = df.groupby(["genotype"],observed=False).ngroup()
@@ -464,9 +502,21 @@ def _run_inference(fm):
     # the bounds of 1e-7 and 0.9999999 we set for numerical stability). 
     clipped_guesses = fm.guesses_transformed.copy()
     too_low = clipped_guesses < fm.lower_bounds_transformed
-    clipped_guesses[too_low] = fm.lower_bounds_transformed[too_low]
+    clipped_guesses[too_low] = fm.lower_bounds_transformed[too_low] 
     too_high = clipped_guesses > fm.upper_bounds_transformed
-    clipped_guesses[too_high] = fm.upper_bounds_transformed[too_high]
+    clipped_guesses[too_high] = fm.upper_bounds_transformed[too_high] 
+
+    is_nan = np.isnan(fm.y_obs)
+    if np.any(is_nan):
+        raise ValueError(
+            f"y_obs contains {np.sum(is_nan)} nan values. Cannot run fit."
+        )
+    
+    is_nan = np.isnan(fm.y_std)
+    if np.any(is_nan):
+        raise ValueError(
+            f"y_std contains {np.sum(is_nan)} nan values. Cannot run fit."
+        )
 
     # Run least squares fit
     params, std_errors, cov_matrix, _ = run_least_squares(

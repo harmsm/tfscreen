@@ -4,7 +4,7 @@ import numpy as np
 from unittest.mock import MagicMock
 
 from tfscreen.analysis.cfu_to_theta import (
-    _prep_inference_df,
+    #_prep_inference_df <- tested in its own file
     _prep_param_guesses,
     _build_param_df,
     _setup_inference,
@@ -15,23 +15,50 @@ from tfscreen.analysis.cfu_to_theta import (
 # --- Test Fixtures ---
 # Fixtures provide a consistent, reusable setup for tests.
 
+import itertools
+
 @pytest.fixture
 def base_df():
-    """A basic, valid DataFrame fixture for input."""
-    data = {
-        "ln_cfu": [10.1, 10.2, 10.3, 10.4, 10.5],
-        "ln_cfu_std": [0.1, 0.1, 0.1, 0.1, 0.1],
-        "t_pre": [2, 2, 2, 2, 2],
-        "t_sel": [4, 4, 4, 4, 4],
-        "genotype": ["wt", "V30A", "wt", "V30A", "V30C"],
-        "library": ["L1", "L1", "L2", "L2", "L1"],
-        "replicate": [1, 1, 1, 1, 1],
-        "titrant_name": ["iptg", "iptg", "iptg", "none", "none"],
-        "titrant_conc": [0.1, 0.1, 0.1, 0.0, 0.0],
-        "condition_pre": ["pre1", "pre1", "pre2", "pre2", "pre1"],
-        "condition_sel": ["sel1", "sel1", "sel2", "sel2", "sel1"],
-    }
-    return pd.DataFrame(data)
+    """
+    A DENSE, valid DataFrame fixture for input.
+    Grid: 2 genotypes x 1 replicate x 2 libraries x 2 conditions = 8 rows.
+    """
+    # Define the dimensions of the dense grid
+    genotypes = ["wt", "V30A"]
+    replicates = [1]
+    libraries = ["L1", "L2"]
+    # Use titrant as the varying condition for simplicity
+    conditions = [
+        ("iptg", 0.1, "pre1", "sel1"), 
+        ("none", 0.0, "pre2", "sel2")
+    ]
+
+    # Create all combinations of the primary identifiers
+    product = list(itertools.product(genotypes, replicates, libraries, conditions))
+    
+    # Unpack the product into a list of dictionaries to build the DataFrame
+    data_list = []
+    for genotype, replicate, library, (titrant, conc, pre, sel) in product:
+        data_list.append({
+            "genotype": genotype,
+            "replicate": replicate,
+            "library": library,
+            "titrant_name": titrant,
+            "titrant_conc": conc,
+            "condition_pre": pre,
+            "condition_sel": sel,
+        })
+    
+    df = pd.DataFrame(data_list)
+    
+    # Add the value columns required for the function
+    num_rows = len(df)
+    df["ln_cfu"] = np.linspace(10.1, 11.5, num_rows)
+    df["ln_cfu_std"] = 0.1
+    df["t_pre"] = 2.0
+    df["t_sel"] = 4.0
+    
+    return df
 
 @pytest.fixture
 def calibration_data():
@@ -57,90 +84,6 @@ def calibration_data():
 
 # --- Test Cases ---
 
-def test_prep_inference_df_happy_path(mocker, base_df, calibration_data):
-    """
-    Tests the main success path of the function.
-    """
-    # Mock all external dependencies to isolate the function's logic
-    mocker.patch("tfscreen.analysis.cfu_to_theta.read_dataframe", return_value=base_df.copy())
-    mocker.patch("tfscreen.analysis.cfu_to_theta.get_scaled_cfu", return_value=base_df.copy())
-    mocker.patch("tfscreen.analysis.cfu_to_theta.check_columns")
-    # Mock genotype sort to be reverse alphabetical
-    mocker.patch("tfscreen.analysis.cfu_to_theta.argsort_genotypes", return_value=np.array([2, 1, 0]))
-    # Mock batching to put each genotype in its own batch
-    mocker.patch(
-        "tfscreen.analysis.cfu_to_theta.chunk_by_group", 
-        return_value=[np.array([1, 3]), np.array([4]), np.array([0, 2])]
-    )
-    mocker.patch("tfscreen.analysis.cfu_to_theta.read_calibration", return_value=calibration_data)
-
-    # Run the function
-    result_df = _prep_inference_df(
-        df=base_df,
-        calibration_data=calibration_data,
-        max_batch_size=2
-    )
-
-    # --- Assertions ---
-    # Check for new columns
-    expected_new_cols = [
-        "_batch_idx", "k_bg_m", "k_bg_b", "dk_m_pre", "dk_b_pre",
-        "dk_m_sel", "dk_b_sel"
-    ]
-    for col in expected_new_cols:
-        assert col in result_df.columns
-
-    # Check dtypes
-    assert result_df["replicate"].dtype == "Int64"
-    assert isinstance(result_df["genotype"].dtype, pd.CategoricalDtype)
-    assert result_df["genotype"].cat.ordered
-
-    # Check genotype ordering (mocked to be reverse alphabetical)
-    expected_order = ["V30C", "V30A", "wt"]
-    assert all(result_df["genotype"].cat.categories == expected_order)
-
-    # Check batching (based on mock of chunk_by_group)
-    # V30A -> group 1 -> batch 0
-    # V30C -> group 2 -> batch 1
-    # wt   -> group 0 -> batch 2
-    # The final batch index should align with the original rows
-    expected_batches = np.array([0, 0, 1, 2, 2])
-    assert np.array_equal(result_df["_batch_idx"].values, expected_batches)
-
-    # Check a calibration value
-    # For the first row, titrant is 'iptg', so k_bg_b should be 1.0
-    assert result_df.loc[0, "k_bg_b"] == 1.0
-    # For the fourth row, titrant is 'none', so k_bg_b should be 1.1
-    assert result_df.loc[3, "k_bg_b"] == 1.1
-
-
-def test_prep_inference_df_with_paths(mocker, base_df, calibration_data):
-    """
-    Tests that the function correctly handles string paths for inputs.
-    """
-    # Mock the file reading functions
-    mock_read_df = mocker.patch("tfscreen.analysis.cfu_to_theta.read_dataframe", return_value=base_df.copy())
-    mock_read_calib = mocker.patch("tfscreen.analysis.cfu_to_theta.read_calibration", return_value=calibration_data)
-
-    # Mock other helpers that are not under test
-    mocker.patch("tfscreen.analysis.cfu_to_theta.get_scaled_cfu", return_value=base_df.copy())
-    mocker.patch("tfscreen.analysis.cfu_to_theta.check_columns")
-    mocker.patch("tfscreen.analysis.cfu_to_theta.argsort_genotypes", return_value=np.array([0, 1, 2]))
-    mocker.patch("tfscreen.analysis.cfu_to_theta.chunk_by_group", return_value=[np.array([0, 1, 2, 3, 4])])
-
-    df_path = "path/to/data.csv"
-    calib_path = "path/to/calib.json"
-
-    # Run the function with string paths
-    _prep_inference_df(
-        df=df_path,
-        calibration_data=calib_path,
-        max_batch_size=10
-    )
-
-    # Assert that the reading functions were called with the paths
-    mock_read_df.assert_called_once_with(df_path)
-    mock_read_calib.assert_called_once_with(calib_path)
 
 
 @pytest.fixture
@@ -547,27 +490,25 @@ def test_cfu_to_theta_integration(mocker, base_df, calibration_data):
     """
     # --- 1. Mock External Dependencies ---
 
-    # We let all of the user's _prep, _setup, and _run functions execute,
-    # but we mock the classes and functions they ultimately rely on.
-
     # Mock file readers to inject our fixture data
     mocker.patch("tfscreen.analysis.cfu_to_theta.read_dataframe", return_value=base_df.copy())
     mocker.patch("tfscreen.analysis.cfu_to_theta.read_calibration", return_value=calibration_data)
     
-    # Mock helpers from _prep_inference_df that we don't need to test again
+    # Mock helpers that are tested elsewhere
     mocker.patch("tfscreen.analysis.cfu_to_theta.get_scaled_cfu", side_effect=lambda df, **kwargs: df)
     mocker.patch("tfscreen.analysis.cfu_to_theta.check_columns")
-    mocker.patch("tfscreen.analysis.cfu_to_theta.argsort_genotypes", return_value=np.array([2, 1, 0]))
 
     # Mock the preliminary fitting in _prep_param_guesses
+    # UPDATED: Mock data now uses genotypes from the new base_df
     mock_indiv_params = pd.DataFrame({
-        "genotype": ["wt", "V30A", "V30C"], "library": ["L1", "L1", "L1"], "replicate": [1, 1, 1],
-        "lnA0_est": [10.5, 11.0, 11.5], "dk_geno": [0.0, -0.5, -0.8],
+        "genotype": ["wt", "V30A"], "library": ["L1", "L1"], "replicate": [1, 1],
+        "lnA0_est": [10.5, 11.0], "dk_geno": [0.0, -0.5],
     })
     mocker.patch("tfscreen.analysis.cfu_to_theta.get_indiv_growth", return_value=(mock_indiv_params, None))
-    mocker.patch("tfscreen.analysis.cfu_to_theta.get_wt_theta", return_value=np.array([0.8, 0.8, 0.8, 0.8, 0.8]))
+    # UPDATED: Mock return value must match the 8-row size of the new base_df
+    mocker.patch("tfscreen.analysis.cfu_to_theta.get_wt_theta", return_value=np.array([0.8] * 8))
 
-    # Mock the numerical optimizer in _run_inference to return a predictable result
+    # Mock the numerical optimizer in _run_inference
     mock_lsq = mocker.patch(
         "tfscreen.analysis.cfu_to_theta.run_least_squares",
         return_value=(np.array([0.1, 0.2]), np.array([0.01, 0.02]), np.eye(2), None)
@@ -575,7 +516,7 @@ def test_cfu_to_theta_integration(mocker, base_df, calibration_data):
     mocker.patch("tfscreen.analysis.cfu_to_theta.predict_with_error", 
                  return_value=(np.array([10.1, 11.1]), np.array([0.15, 0.15])))
     
-    # Mock the FitManager class. When it's instantiated, it will return our mock instance.
+    # Mock the FitManager class
     mock_fm_instance = MagicMock()
     mock_fm_instance.back_transform.side_effect = lambda p: p * 10
     mock_fm_instance.back_transform_std_err.side_effect = lambda p, s: s / 2
@@ -590,35 +531,32 @@ def test_cfu_to_theta_integration(mocker, base_df, calibration_data):
     mock_fm_instance.param_df = pd.DataFrame({"name": ["p1", "p2"]})
     mock_fm_instance.predict_from_transformed = MagicMock()
 
-    # Mock tqdm to prevent progress bar output during tests
     mocker.patch("tfscreen.analysis.cfu_to_theta.tqdm", side_effect=lambda x: x)
 
     # --- 2. Run the Full Pipeline ---
     
-    # Use a small batch size to force multiple batches (base_df has 5 rows)
+    # The new base_df has 8 rows and 2 genotypes. max_batch_size is on genotypes.
+    # We will test with a batch size that forces one batch.
     param_df, pred_df = cfu_to_theta(
         df=base_df,
         non_sel_conditions=["sel1"],
         calibration_data=calibration_data,
-        max_batch_size=3
+        max_batch_size=4
     )
 
     # --- 3. Assertions ---
 
-    # Verify batching occurred (2 batches for 5 rows with max_batch_size=3)
+    # UPDATED: The new base_df has 2 genotypes. With max_batch_size=4,
+    # they will all fit into two batches.
     assert mock_lsq.call_count == 2
     assert mock_fm_class.call_count == 2
 
     # Verify the final prediction dataframe
-    assert len(pred_df) == len(base_df) # Should have one prediction per original row
+    assert len(pred_df) == len(base_df)
     assert "calc_est" in pred_df.columns
-    assert "genotype" in pred_df.columns # Original data should be preserved
+    assert "genotype" in pred_df.columns
 
     # Verify the final parameter dataframe
-    # The number of parameters depends on the groups found in each batch, which can
-    # be complex to pre-calculate. Instead, we can check a known result.
     assert "est" in param_df.columns
-    # The mocked `run_least_squares` returns [0.1, 0.2]. The mocked back_transform
-    # multiplies by 10. So we expect to see estimates of 1.0 and 2.0.
     assert np.isclose(param_df["est"].iloc[0], 1.0)
     assert np.isclose(param_df["est"].iloc[1], 2.0)
