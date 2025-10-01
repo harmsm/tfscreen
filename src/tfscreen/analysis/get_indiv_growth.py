@@ -117,9 +117,6 @@ def get_indiv_growth(df,
     
     pred_df = df.copy()
 
-    import numpy as np
-    print(np.sum(np.isnan(pred_df[["ln_cfu","ln_cfu_std"]])))
-
     for i in range(num_iterations):
 
         # fit a growth model to the data
@@ -131,7 +128,6 @@ def get_indiv_growth(df,
                                               dk_geno_mask_col=dk_geno_mask_col,
                                               lnA0_selector=lnA0_selector,
                                               fitter_kwargs=fitter_kwargs)
-        print(np.sum(np.isnan(pred_df[["ln_cfu","ln_cfu_std"]])))
         
         # If we're only doing one iteration, don't go to the trouble of adding 
         # fake t = 0 data. 
