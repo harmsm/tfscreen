@@ -33,49 +33,45 @@ def _filter_low_observation_genotypes(df: pd.DataFrame, min_genotype_obs: int) -
     return filtered_df
 
 def _impute_missing_genotypes(df: pd.DataFrame, sample_df: pd.DataFrame) -> pd.DataFrame:
-    """Ensure every sample in a library has a row for every genotype in that library.
-
-    After filtering, some samples may be missing genotypes that are present
-    elsewhere in the same library. This function adds those missing rows back
-    with a count of 0.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        The dataframe after filtering for low-observation genotypes.
-    sample_df : pd.DataFrame
-        The original sample metadata dataframe, used to get column names.
-
-    Returns
-    -------
-    pd.DataFrame
-        A dataframe where each sample has a row for every genotype in its
-        respective library.
+    """
+    Ensure every sample in a library has a row for every genotype in that library.
+    (Refactored to use merge for metadata imputation and guarantee sort order).
     """
     if df.empty:
         return df
 
-    # Create a scaffold with every combination of sample and genotype within each library.
-    lib_structure = df[['library', 'sample']].drop_duplicates()
-    genotype_structure = df[['library', 'genotype']].drop_duplicates()
-    scaffold = pd.merge(lib_structure, genotype_structure, on='library', how='outer')
+    # 1. Create a scaffold with every combination of sample and genotype within each library.
+    # This logic is sound and remains unchanged.
+    lib_samples = df[['library', 'sample']].drop_duplicates()
+    lib_genotypes = df[['library', 'genotype']].drop_duplicates()
+    scaffold = pd.merge(lib_samples, lib_genotypes, on='library', how='outer')
 
-    # Merge the original data onto the scaffold.
-    # This introduces NaNs for counts where a genotype was not observed in a sample.
+    # 2. Merge the original data onto the scaffold.
+    # This brings in 'counts' and other data, leaving NaNs for missing combinations.
     complete_df = pd.merge(scaffold, df, on=['library', 'sample', 'genotype'], how='left')
 
+    # 3. Create a unique metadata map from the original df.
+    # This creates a small DataFrame: one row for each sample with its complete metadata.
+    sample_info_cols = sample_df.columns.tolist()
+    sample_meta_map = df[['sample'] + sample_info_cols].drop_duplicates(subset=['sample'])
+
+    # 4. Impute the missing metadata using a merge (replaces the loop).
+    # Drop the now-sparse metadata columns and merge the complete map back in.
+    complete_df = complete_df.drop(columns=sample_info_cols)
+    complete_df = pd.merge(complete_df, sample_meta_map, on='sample', how='left')
+
+    # 5. Finalize the DataFrame.
     # Fill missing counts with 0.
     complete_df['counts'] = complete_df['counts'].fillna(0).astype(int)
 
-    # Fill the missing sample-specific data by grouping by sample and forward/backward filling.
-    # This is efficient as all info for a given sample is identical.
-    # This logic preserves all columns from the original sample_df.
-    sample_info_cols = sample_df.columns.tolist()
-    for col in sample_info_cols:
-        if col in complete_df.columns:
-            complete_df[col] = complete_df.groupby('sample')[col].transform(lambda x: x.ffill().bfill())
+    # Enforce a predictable, stable row order.
+    sort_keys = ['library', 'sample', 'genotype']
+    complete_df = complete_df.sort_values(by=sort_keys).reset_index(drop=True)
 
-    return complete_df
+    # Reorder columns to match the original DataFrame's structure for consistency.
+    final_col_order = [col for col in df.columns if col in complete_df.columns]
+    
+    return complete_df[final_col_order]
 
 def _calculate_frequencies(df: pd.DataFrame, pseudocount: int) -> pd.DataFrame:
     """Add a pseudocount and calculate genotype frequencies for each sample.

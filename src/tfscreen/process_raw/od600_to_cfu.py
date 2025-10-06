@@ -1,6 +1,6 @@
 import numpy as np
 
-# Constants are **only** valid when measuring samples of XX uL in luria broth
+# Constants are **only** valid when measuring samples of 200 uL in luria broth
 # in clear-bottom 96 well plates on the SpectraMaxI3 in the Harms lab. Upper
 # bound for reliable measurements is an OD600 of 0.600. The lower detection
 # threshold is 0.096. Calibration done 2025/09/19. (See notebooks/od600-to-cfu

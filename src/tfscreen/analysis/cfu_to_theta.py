@@ -101,7 +101,7 @@ def _prep_inference_df(df,
     df = set_categorical_genotype(df,sort=True,standardize=True)
 
     # Make sure the genotype/condition columns are dense within each replicate
-    for rep, rep_df in df.groupby("replicate"):
+    for rep, rep_df in df.groupby(["replicate","library"]):
 
         # Make sure that every genotype/condition is unique
         must_be_unique = ["genotype"] + condition_cols
@@ -433,7 +433,7 @@ def _setup_inference(df):
         base_name="theta",
         series_selector=theta_selector,
         guess_column="wt_theta",
-        transform="theta",
+        transform="logistic",
         offset=offset
     )
 

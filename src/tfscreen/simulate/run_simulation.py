@@ -1,7 +1,7 @@
+import tfscreen
 
 from tfscreen.simulate import (
     library_prediction,
-    load_simulation_config,
     selection_experiment
 )
 
@@ -75,7 +75,7 @@ def run_simulation(cf: Union[Dict[str, Any], str, Path],
     # -------------------------------------------------------------------------
     # Read inputs and set up simulation
 
-    cf = load_simulation_config(cf,override_keys=override_keys)
+    cf = tfscreen.util.read_yaml(cf,override_keys=override_keys)
     if cf is None:
         err = "Aborting simulation due to configuration error."
         raise RuntimeError(err)
