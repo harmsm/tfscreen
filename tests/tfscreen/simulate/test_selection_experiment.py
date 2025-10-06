@@ -210,7 +210,7 @@ def test_check_cf_loads_from_path(mocker, base_config: dict):
     """
     # Mock the external function that loads a YAML file
     mock_loader = mocker.patch(
-        "tfscreen.simulate.selection_experiment.load_simulation_config",
+        "tfscreen.simulate.selection_experiment.read_yaml",
         return_value=base_config
     )
     
@@ -956,7 +956,7 @@ def test_selection_experiment_end_to_end(mocker, base_config: dict,
     )
 
     mocker.patch(
-        "tfscreen.simulate.selection_experiment.load_simulation_config",
+        "tfscreen.simulate.selection_experiment.read_yaml",
         return_value=base_config
     )
     

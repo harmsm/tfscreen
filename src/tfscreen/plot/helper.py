@@ -4,7 +4,8 @@ import numpy as np
 def get_ax_limits(x_values,
                   y_values=None,
                   pad_by=0.0,
-                  percentile=0.005):
+                  percentile=0.005,
+                  center_on_zero=False):
     """
     Calculate symmetrical axis limits for a plot.
 
@@ -26,6 +27,8 @@ def get_ax_limits(x_values,
     percentile: float, optional
         The limits will be set at this percentile. Default is 0.005, removing 
         only the most extreme outliers. 
+    center_on_zero: bool, optional
+        make ax_min and ax_max symmetrical about zero. 
 
     Returns
     -------
@@ -40,6 +43,10 @@ def get_ax_limits(x_values,
         all_values.extend(y_values)
     all_values = np.array(all_values)
     ax_min, ax_max = np.nanquantile(all_values, [percentile, 1-percentile])
+
+    if center_on_zero:
+        ax_max = np.max([np.abs(ax_min),np.abs(ax_max)])
+        ax_min = -ax_max
 
     span = ax_max - ax_min
     ax_min = ax_min - pad_by*span

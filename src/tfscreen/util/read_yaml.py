@@ -37,8 +37,8 @@ def _normalize_types(node):
     return node
 
 
-def load_simulation_config(cf: str | dict,
-                           override_keys: dict | None=None) -> dict:
+def read_yaml(cf: str | dict,
+              override_keys: dict | None=None) -> dict:
     """
     Loads a YAML configuration file from the specified path.
 

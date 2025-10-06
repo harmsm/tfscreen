@@ -50,7 +50,7 @@ def standardize_genotypes(genotypes):
 
         # If wildtype (case-insensitive wt or wildtype), record as wt and 
         # continue
-        if g.lower() in ["wt","wildtype"]:
+        if g.lower() in ["wt","wildtype",""]:
             genotype_mapper[g] = "wt"
             continue
 

@@ -1,9 +1,10 @@
 
+import tfscreen
+
 from tfscreen.simulate import (
     build_sample_dataframes,
     generate_libraries,
     thermo_to_growth,
-    load_simulation_config
 )
 
 from typing import Any, Dict, Union
@@ -42,7 +43,7 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
     # -------------------------------------------------------------------------
     # Read inputs and set up simulation
 
-    cf = load_simulation_config(cf,override_keys=override_keys)
+    cf = tfscreen.util.read_yaml(cf,override_keys=override_keys)
     if cf is None:
         err = "Aborting simulation due to configuration error."
         raise RuntimeError(err)

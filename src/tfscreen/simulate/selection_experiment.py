@@ -1,9 +1,9 @@
 
 from __future__ import annotations
 
-from tfscreen.simulate import load_simulation_config
 from tfscreen.util import (
     read_dataframe,
+    read_yaml,
     vstack_padded,
     zero_truncated_poisson,
     set_categorical_genotype
@@ -151,13 +151,13 @@ def _check_cf(
     
     Notes
     -----
-    This function first calls `tfscreen.simulate.load_simulation_config` to
+    This function first calls `tfscreen.util.read_yaml` to
     ensure the configuration is loaded into a dictionary. It then modifies
     this dictionary in-place by validating values and setting defaults.
     """
 
     # Load from YAML if a path is provided, otherwise assume it's a dict
-    cf = load_simulation_config(cf)
+    cf = read_yaml(cf)
 
     if "final_cfu_pct_err" not in cf:
         cf["final_cfu_pct_err"] = 0.05

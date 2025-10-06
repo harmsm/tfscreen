@@ -211,9 +211,6 @@ def test_counts_to_lncfu_full_pipeline(sample_df, counts_df, mocker):
         side_effect=lambda g: np.argsort(g)  # Simple alphabetical sort for testing
     )
 
-    print("****")
-    print(counts_df)
-    print("XXX")
     result = counts_to_lncfu(sample_df, counts_df, min_genotype_obs=10, pseudocount=1)
 
     # Expected shape: G2 from libA is filtered. G2 and G3 are cross-imputed in libB.
