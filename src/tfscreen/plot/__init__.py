@@ -35,3 +35,6 @@ from .est_v_real_summary import (
     est_v_real_summary
 )
 
+from .heatmap import (
+    heatmap
+)

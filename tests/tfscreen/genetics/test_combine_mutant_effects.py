@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 
 # Import the function to be tested
-from tfscreen.util.combine_mutation_effects import combine_mutation_effects
+from tfscreen.genetics.combine_mutation_effects import combine_mutation_effects
 
 # ----------------------------------------------------------------------------
 # Fixtures for the tests

@@ -28,10 +28,7 @@ from .models import (
     model_bell,
     model_biphasic_peak,
     model_biphasic_dip,
-    model_poly_2nd,
-    model_poly_3rd,
-    model_poly_4th,
-    model_poly_5th
+    model_poly
 )
 
 from .guesses import (
@@ -45,10 +42,6 @@ from .guesses import (
     guess_bell_dip,
     guess_biphasic_peak,
     guess_biphasic_dip,
-    guess_poly_2nd,
-    guess_poly_3rd,
-    guess_poly_4th,
-    guess_poly_5th
 )
 
 # --- Updated MODEL_LIBRARY ---
@@ -123,33 +116,5 @@ MODEL_LIBRARY = {
                      "param_names":['baseline', 'amplitude', 'lnK_dip', 'lnK_rise'],
                      "bounds":([  0,   0, -inf, -inf],
                                [inf, inf,  inf,  inf])},
-
-    # generic 2nd-order polynomial
-    "poly_2nd": {"model_func":model_poly_2nd,
-                 "guess_func":guess_poly_2nd,
-                     "param_names":['a', 'b', 'c'],
-                     "bounds":([-inf,-inf,-inf],
-                               [ inf, inf, inf])},
-
-    # generic 3rd-order polynomial
-    "poly_3rd": {"model_func":model_poly_3rd,
-                 "guess_func":guess_poly_3rd,
-                     "param_names":['a', 'b', 'c','d'],
-                     "bounds":([-inf,-inf,-inf,-inf],
-                               [ inf, inf, inf, inf])},
-
-    # generic 4th-order polynomial
-    "poly_4th": {"model_func":model_poly_4th,
-                 "guess_func":guess_poly_4th,
-                     "param_names":['a', 'b', 'c','d','e'],
-                     "bounds":([-inf,-inf,-inf,-inf,-inf],
-                               [ inf, inf, inf, inf, inf])},
-
-    # generic 5th-order polynomial
-    "poly_5th": {"model_func":model_poly_5th,
-                 "guess_func":guess_poly_5th,
-                     "param_names":['a', 'b', 'c','d','e','f'],
-                     "bounds":([-inf,-inf,-inf,-inf,-inf,-inf],
-                               [ inf, inf, inf, inf, inf, inf])},
 
 }

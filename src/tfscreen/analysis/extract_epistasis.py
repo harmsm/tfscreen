@@ -7,8 +7,8 @@ from typing import List, Optional
 
 def mutant_cycle_pivot(
     df: pd.DataFrame,
-    condition_selector: List[str] | str,
     extract_columns: List[str],
+    condition_selector: List[str] | str | None = None,
     verbose: bool = False,
 ) -> pd.DataFrame:
     """
@@ -25,12 +25,13 @@ def mutant_cycle_pivot(
     df : pd.DataFrame
         Input DataFrame containing genotype and associated data. Must have a
         'genotype' column.
-    condition_selector : list[str] or str
-        Column name(s) to group the DataFrame by. The analysis is performed
-        independently on each group.
-    extract_columns : list[str]
+    extract_columns : list[str],
         A list of column names whose values will be extracted and placed into
         the new wide-format columns (e.g., 'fitness', 'expression').
+    condition_selector : list[str] or str or None, optional
+        Column name(s) to group the DataFrame by. The analysis is performed
+        independently on each group. If None, treat the whole dataframe in a 
+        single analysis. 
     verbose : bool, default False
         If True, print status messages about skipped groups or dropped data.
 
@@ -57,7 +58,7 @@ def mutant_cycle_pivot(
     df_proc = df.copy()
 
     # Standardize genotype strings (e.g., 'B/A' -> 'A/B')
-    standard_genos = tfscreen.util.standardize_genotypes(df_proc["genotype"])
+    standard_genos = tfscreen.genetics.standardize_genotypes(df_proc["genotype"])
     df_proc["genotype"] = pd.Series(data=standard_genos, index=df_proc.index)
 
     # Filter for entries relevant to second-order epistasis (wt, singles, doubles)
@@ -73,8 +74,13 @@ def mutant_cycle_pivot(
     else:
         df_proc["m1"] = None
 
+    if condition_selector is None:
+        grouper = [(None,df_proc)]
+    else:
+        grouper = df_proc.groupby(condition_selector)
+
     result_dfs = []
-    for group, sub_df in df_proc.groupby(condition_selector):
+    for group, sub_df in grouper:
 
         # Handle genotypes that appear more than once within a group
         if not sub_df["genotype"].is_unique:
@@ -122,9 +128,9 @@ def mutant_cycle_pivot(
 
 def extract_epistasis(
     df: pd.DataFrame,
-    condition_selector: List[str] | str,
     y_obs: str,
     y_std: Optional[str] = None,
+    condition_selector: List[str] | str | None=None,
     scale: str = "add",
     keep_extra: bool = False
 ) -> pd.DataFrame:
@@ -142,15 +148,16 @@ def extract_epistasis(
     df : pandas.DataFrame
         Input DataFrame in a "long" format, containing at least a 'genotype'
         column and the columns specified by `y_obs` and `y_std`.
-    condition_selector : list[str] or str
-        Column name(s) that define a unique experimental condition. Epistasis
-        is calculated independently for each condition.
     y_obs : str
         The name of the column containing the measurement for which epistasis
         will be calculated (e.g., 'fitness', 'dG').
     y_std : str, optional
         The name of the column containing the standard error for `y_obs`.
         If provided, the error on the epistasis (`ep_std`) will be calculated.
+    condition_selector : list[str] or str or None
+        Column name(s) that define a unique experimental condition. Epistasis
+        is calculated independently for each condition. If None, treat all 
+        conditions at once
     scale : {"add", "mult"}, default "add"
         The scale for calculating epistasis.
         - "add": $\epsilon = (Y_{11} - Y_{10}) - (Y_{01} - Y_{00})$
@@ -185,15 +192,17 @@ def extract_epistasis(
     
     # Build a dataframe with mutant cycles
     cycles = mutant_cycle_pivot(df,
-                                condition_selector=condition_selector,
-                                extract_columns=extract_columns)
+                                extract_columns=extract_columns,
+                                condition_selector=condition_selector)
     # Drop extra columns
     if not keep_extra:
+
         keep = ["genotype"]
         
-        if isinstance(condition_selector, str):
-            condition_selector = [condition_selector]
-        keep.extend(condition_selector)
+        if condition_selector is not None:
+            if isinstance(condition_selector, str):
+                condition_selector = [condition_selector]
+            keep.extend(condition_selector)
 
         for c in extract_columns:
             keep.extend([f"{mut}_{c}" for mut in ["00","01","10","11"]])

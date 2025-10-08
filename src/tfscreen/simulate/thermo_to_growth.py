@@ -5,7 +5,7 @@ Functions for generating phenotypes from mutant libraries and ensemble data.
 from tfscreen.calibration import(
     get_wt_k
 )
-from tfscreen.util import (
+from tfscreen.genetics import (
     combine_mutation_effects,
     set_categorical_genotype,
     standardize_genotypes,

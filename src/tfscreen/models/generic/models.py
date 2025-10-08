@@ -301,7 +301,6 @@ def model_biphasic_dip(params, x):
     
     return repressor_term + activator_term
 
-
 def model_poly(params, x):
     """
     Evaluate a polynomial at specific x values.
@@ -330,16 +329,3 @@ def model_poly(params, x):
     terms = params[:, np.newaxis] * (x ** exponents[:, np.newaxis])
     
     return np.sum(terms, axis=0)
-
-def model_poly_2nd(params,x):
-    return model_poly(params,x)
-
-def model_poly_3rd(params,x):
-    return model_poly(params,x)
-
-def model_poly_4th(params,x):
-    return model_poly(params,x)
-
-def model_poly_5th(params,x):
-    return model_poly(params,x)
-

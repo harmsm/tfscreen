@@ -3,17 +3,17 @@ import pandas as pd
 import numpy as np
 
 # Import the function to be tested
-from tfscreen.util.genotype_sorting import set_categorical_genotype
+from tfscreen.genetics.genotype_sorting import set_categorical_genotype
 
 @pytest.fixture
 def mock_standardize_genotypes(mocker):
     """Mocks the standardize_genotypes function to return a fixed list."""
-    return mocker.patch("tfscreen.util.genotype_sorting.standardize_genotypes")
+    return mocker.patch("tfscreen.genetics.genotype_sorting.standardize_genotypes")
 
 @pytest.fixture
 def mock_argsort_genotypes(mocker):
     """Mocks the argsort_genotypes function to return a fixed array of indices."""
-    return mocker.patch("tfscreen.util.genotype_sorting.argsort_genotypes")
+    return mocker.patch("tfscreen.genetics.genotype_sorting.argsort_genotypes")
 
 # ----------------------------------------------------------------------------------
 # Scenario 1: standardize=False (Default Behavior)

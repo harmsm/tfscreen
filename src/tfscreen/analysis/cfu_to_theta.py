@@ -15,6 +15,9 @@ from tfscreen.util import (
     check_columns,
     get_scaled_cfu,
     chunk_by_group,
+)
+
+from tfscreen.genetics import (
     set_categorical_genotype
 )
 

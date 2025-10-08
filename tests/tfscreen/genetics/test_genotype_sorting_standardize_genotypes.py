@@ -1,7 +1,7 @@
 # test_genotype_sorting.py
 
 import pytest
-from tfscreen.util.genotype_sorting import standardize_genotypes
+from tfscreen.genetics.genotype_sorting import standardize_genotypes
 import numpy as np
 
 # -------------------------------------------------------------------------

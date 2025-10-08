@@ -31,7 +31,7 @@ def expand_on_conditions(df, conditions):
 
     # Build array of genotypes in canonically sorted order
     genotypes = pd.unique(df["genotype"])
-    idx = tfscreen.util.argsort_genotypes(genotypes)
+    idx = tfscreen.genetics.argsort_genotypes(genotypes)
     genotype_order = genotypes[idx]
 
     # Build index columns (genotype + conditions)
