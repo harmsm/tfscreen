@@ -6,6 +6,8 @@ from tfscreen.util import (
     read_yaml,
     vstack_padded,
     zero_truncated_poisson,
+)
+from tfscreen.genetics import (
     set_categorical_genotype
 )
 

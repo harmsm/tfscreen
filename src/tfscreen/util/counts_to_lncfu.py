@@ -1,7 +1,9 @@
 from tfscreen.util import (
     read_dataframe,
-    argsort_genotypes,
     check_columns
+)
+from tfscreen.genetics import (
+    argsort_genotypes
 )
 
 import pandas as pd

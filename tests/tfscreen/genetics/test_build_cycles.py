@@ -1,4 +1,4 @@
-from tfscreen.util import build_cycles
+from tfscreen.genetics import build_cycles
 
 import pandas as pd
 import numpy as np

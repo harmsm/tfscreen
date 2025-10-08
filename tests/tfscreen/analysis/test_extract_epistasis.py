@@ -9,13 +9,13 @@ from tfscreen.analysis.extract_epistasis import (
 )
 
 # Assuming this utility exists from your previous code
-from tfscreen.util import standardize_genotypes
+from tfscreen.genetics import standardize_genotypes
 
 # Mock the utility function so we don't need the actual file
 # Mock the utility function so we don't need the actual file
 @pytest.fixture(autouse=True)
 def mock_standardize_genotypes(mocker):
-    mocker.patch("tfscreen.util.standardize_genotypes", side_effect=standardize_genotypes)
+    mocker.patch("tfscreen.genetics.standardize_genotypes", side_effect=standardize_genotypes)
 
 # --- Test Fixtures -----------------------------------------------------------
 
@@ -71,7 +71,7 @@ class TestMutantCyclePivot:
         df = base_df_for_epistasis[base_df_for_epistasis["condition"] == 1]
         
         # ACT
-        result = mutant_cycle_pivot(df, "condition", ["fitness", "error"])
+        result = mutant_cycle_pivot(df, ["fitness", "error"], "condition",)
         
         # ASSERT
         assert len(result) == 1
@@ -89,7 +89,7 @@ class TestMutantCyclePivot:
         THEN it should standardize it to 'A10G/P25L' with m0='A10G' and m1='P25L'.
         """
         df = base_df_for_epistasis[base_df_for_epistasis["condition"] == 6]
-        result = mutant_cycle_pivot(df, "condition", ["fitness"])
+        result = mutant_cycle_pivot(df, ["fitness"],"condition")
         
         assert len(result) == 1
         assert result.loc[0, "genotype"] == "A10G/P25L"
@@ -104,7 +104,7 @@ class TestMutantCyclePivot:
         THEN the corresponding columns in the output should be NaN.
         """
         df = base_df_for_epistasis[base_df_for_epistasis["condition"] == 2]
-        result = mutant_cycle_pivot(df, "condition", ["fitness"])
+        result = mutant_cycle_pivot(df, ["fitness"],"condition")
         
         assert len(result) == 1
         assert result.loc[0, "genotype"] == "V30A/M40T"
@@ -118,7 +118,7 @@ class TestMutantCyclePivot:
         THEN that group should be skipped and not appear in the output.
         """
         df = base_df_for_epistasis[base_df_for_epistasis["condition"].isin([1, 3])]
-        result = mutant_cycle_pivot(df, "condition", ["fitness"], verbose=True)
+        result = mutant_cycle_pivot(df, ["fitness"], "condition",verbose=True)
         
         assert len(result) == 1
         assert result.loc[0, "condition"] == 1
@@ -133,7 +133,7 @@ class TestMutantCyclePivot:
         THEN that group should be skipped.
         """
         df = base_df_for_epistasis[base_df_for_epistasis["condition"].isin([1, 4])]
-        result = mutant_cycle_pivot(df, "condition", ["fitness"], verbose=True)
+        result = mutant_cycle_pivot(df, ["fitness"], "condition", verbose=True)
         
         assert len(result) == 1
         assert result.loc[0, "condition"] == 1
@@ -148,19 +148,19 @@ class TestMutantCyclePivot:
         THEN no cycle is generated for it, and it is ignored.
         """
         df = base_df_for_epistasis[base_df_for_epistasis["condition"] == 5]
-        result = mutant_cycle_pivot(df, "condition", ["fitness"])
+        result = mutant_cycle_pivot(df, ["fitness"],"condition")
         assert result.empty # No double mutants in this group
 
     def test_returns_empty_for_empty_input(self):
         """Tests that an empty input DataFrame results in an empty output."""
-        result = mutant_cycle_pivot(pd.DataFrame(), "c", ["f"])
+        result = mutant_cycle_pivot(pd.DataFrame(),  ["f"],"c",)
         assert result.empty
         assert isinstance(result, pd.DataFrame)
         
     def test_returns_empty_if_no_valid_cycles(self, base_df_for_epistasis):
         """Tests that an empty DataFrame is returned if no groups are valid."""
         df = base_df_for_epistasis[base_df_for_epistasis["condition"] == 3] # Only has a group missing wt
-        result = mutant_cycle_pivot(df, "condition", ["fitness"])
+        result = mutant_cycle_pivot(df,  ["fitness"],"condition")
         assert result.empty
 
 # --- `extract_epistasis` Tests ------------------------------------------------
@@ -174,7 +174,7 @@ class TestExtractEpistasis:
         # E_std = sqrt(0.06^2 + 0.03^2 + 0.04^2 + 0.05^2) = sqrt(0.0086) = 0.0927
         
         # ACT
-        result = extract_epistasis(base_df_for_epistasis, "condition", "fitness", "error", "add")
+        result = extract_epistasis(base_df_for_epistasis, "fitness", "error", "condition","add")
         
         # ASSERT
         cycle_1 = result[result["condition"] == 1].iloc[0]
@@ -188,7 +188,7 @@ class TestExtractEpistasis:
         # E_std uses relative error propagation
         
         # ACT
-        result = extract_epistasis(base_df_for_epistasis, "condition", "fitness", "error", "mult")
+        result = extract_epistasis(base_df_for_epistasis, "fitness", "error", condition_selector= "condition",scale="mult")
         
         # ASSERT
         cycle_1 = result[result["condition"] == 1].iloc[0]
@@ -201,13 +201,13 @@ class TestExtractEpistasis:
 
     def test_without_std_dev(self, base_df_for_epistasis):
         """Tests that the function runs without a y_std column."""
-        result = extract_epistasis(base_df_for_epistasis, "condition", "fitness")
+        result = extract_epistasis(base_df_for_epistasis, "fitness", condition_selector="condition") 
         assert "ep_std" not in result.columns
         assert np.isclose(result[result["condition"] == 1].iloc[0]["ep_obs"], 0.0)
 
     def test_propagates_nan_from_missing_mutant(self, base_df_for_epistasis):
         """Tests that if a cycle is incomplete, ep_obs and ep_std are NaN."""
-        result = extract_epistasis(base_df_for_epistasis, "condition", "fitness", "error")
+        result = extract_epistasis(base_df_for_epistasis, "fitness", "error",condition_selector="condition")
         cycle_2 = result[result["condition"] == 2].iloc[0] # The V30A/M40T cycle
         
         assert pd.isna(cycle_2["ep_obs"])
@@ -216,14 +216,14 @@ class TestExtractEpistasis:
     def test_raises_on_invalid_scale(self, base_df_for_epistasis):
         """Tests that an invalid `scale` argument raises a ValueError."""
         with pytest.raises(ValueError, match="scale should be"):
-            extract_epistasis(base_df_for_epistasis, "condition", "fitness", scale="invalid")
+            extract_epistasis(base_df_for_epistasis, "fitness", condition_selector="condition",scale="invalid")
             
     def test_keep_extra_columns(self, base_df_for_epistasis):
         """Tests the `keep_extra` flag."""
         # keep_extra = True should preserve 'extra_col'
-        result_true = extract_epistasis(base_df_for_epistasis, "condition", "fitness", keep_extra=True)
+        result_true = extract_epistasis(base_df_for_epistasis, "fitness", condition_selector="condition", keep_extra=True)
         assert "extra_col" in result_true.columns
         
         # keep_extra = False (default) should drop 'extra_col'
-        result_false = extract_epistasis(base_df_for_epistasis, "condition", "fitness")
+        result_false = extract_epistasis(base_df_for_epistasis, "fitness",condition_selector="condition")
         assert "extra_col" not in result_false.columns

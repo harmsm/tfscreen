@@ -1,5 +1,5 @@
 import pandas as pd
-from tfscreen.util import set_categorical_genotype
+from tfscreen.genetics import set_categorical_genotype
 from typing import Optional
 
 def _parse_parameter(param_df: pd.DataFrame,

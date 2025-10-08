@@ -1,4 +1,4 @@
-from tfscreen.util import argsort_genotypes
+from tfscreen.genetics import argsort_genotypes
 
 import pandas as pd
 import numpy as np
@@ -26,7 +26,7 @@ def build_cycles(genotypes):
     
     # Sort genotypes in canonical order
     genotypes = pd.unique(pd.Series(genotypes))
-    # idx = tfscreen.util.argsort_genotypes(genotypes)
+    # idx = tfscreen.genetics.argsort_genotypes(genotypes)
     genotypes = np.array(genotypes, dtype=str)
     idx = argsort_genotypes(genotypes)
     genotypes = genotypes[idx]

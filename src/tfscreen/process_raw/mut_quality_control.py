@@ -5,8 +5,12 @@ from tfscreen.util import (
     read_yaml,
     read_dataframe,
     check_columns,
+)
+
+from tfscreen.genetics import (
     set_categorical_genotype
 )
+
 from tfscreen.simulate import (
     generate_libraries
 )

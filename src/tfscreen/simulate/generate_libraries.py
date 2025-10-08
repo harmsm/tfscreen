@@ -1,5 +1,5 @@
 
-from tfscreen.util import (
+from tfscreen.genetics import (
     standardize_genotypes,
     set_categorical_genotype
 )
