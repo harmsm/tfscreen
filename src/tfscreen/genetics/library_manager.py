@@ -16,37 +16,60 @@ from itertools import (
     product
 )
 
+from typing import Iterable, Set, Dict, Union, Tuple, List
+
+
 def _check_char(some_str: str,
                 name: str,
-                allowed_chars: str) -> None:
+                allowed_chars: Iterable[str]) -> None:
     """
-    Make sure that all characteris in some_str are within allowed_chars.
+    Checks if all characters in a string are from an allowed set.
+
+    Parameters
+    ----------
+    some_str : str
+        The string to validate.
+    name : str
+        The name of the variable being checked, used for clear error messages.
+    allowed_chars : Iterable[str]
+        An iterable of characters that are permitted in `some_str`.
+
+    Raises
+    ------
+    ValueError
+        If `some_str` contains one or more characters that are not in
+        `allowed_chars`.
+
     """
-    
     str_set = set(some_str)
-    if not str_set.issubset(allowed_chars):
+    allowed_set = set(allowed_chars)
+
+    if not str_set.issubset(allowed_set):
+        # Sort for a deterministic error message, which is good for testing
+        unrecognized_chars = "".join(sorted(list(str_set - allowed_set)))
         raise ValueError(
-            f"not all characters in {name} were recognized. Characters not "
-            f"recognized: '{str_set - allowed_chars}'"
+            f"Not all characters in {name} were recognized. Characters not "
+            f"recognized: '{unrecognized_chars}'"
         )
 
 def _check_contiguous_lib_blocks(s: str) -> None:
     """
     Checks if all non-'.' characters in a string form contiguous blocks.
 
-    For example:
-    - "..111..22.." is True (all '1's are together, all '2's are together)
-    - "..11.1..22.." is False ('1's are separated by a '.')
+    This function validates that a sub-library (e.g., '1') is defined as a
+    single, unbroken block ('..111..') and not split into multiple
+    segments ('..1.11..'). The '.' character is treated as a neutral filler.
 
     Parameters
     ----------
     s : str
-        input string to check.
+        The input string to check.
 
     Raises
     ------
-    ValueError :
-        raised if character blocks beside '.' do not form contiguous blocks. 
+    ValueError
+        If a character block (other than '.') is not contiguous.
+
     """
     
     seen_chars = set()
@@ -67,63 +90,131 @@ def _check_contiguous_lib_blocks(s: str) -> None:
         # Otherwise, add the character to our set of seen characters.
         seen_chars.add(char)
         
+
 def _check_lib_key(lib_key: str,
-                   libraries_seen: iter) -> None:
+                   libraries_seen: Set[str]) -> None:
     """
-    Check the formatting and sanity of lib_key entries.
+    Validates the format of a library combination key.
+
+    A valid key must be in the format 'single-x' or 'double-x-y', where
+    'x' and 'y' are characters representing sub-libraries that have been
+    defined in the main configuration.
+
+    Parameters
+    ----------
+    lib_key : str
+        The library combination key string to validate (e.g., 'single-1',
+        'double-1-2').
+    libraries_seen : set[str]
+        A set of all valid sub-library characters found in the
+        'sub_libraries' configuration string.
+
+    Raises
+    ------
+    ValueError
+        If the key has an invalid format, specifies an unknown command, has
+        the wrong number of parts, or references a sub-library that does
+        not exist.
+
     """
+    parts = lib_key.strip().split("-")
+    command = parts[0]
+    
+    # Generic help text for error messages
+    help_text = (
+        "Keys must be 'single-x' or 'double-x-y', where x and y are "
+        "defined sub-libraries."
+    )
 
-    generic_err = ["lib_keys should be formatted like 'single-x' or",
-                   "'double-x-y' where 'x' and 'y' are library characters in",
-                   "sub_libraries. 'single-x' specifies all degenerate codons",
-                   "in x. 'double-x-x' specifies doubles between degenerate",
-                   "codons in x. 'double-x-y' specifies doubles between",
-                   "sub-libraries x and y but not internal doubles."]
-    generic_err = " ".join(generic_err)
-
-    # Split lib_key into fields
-    columns = str(lib_key).strip().split("-")
-
-    # Check for recognized first column
-    if columns[0] not in ["single","double"]:
-        raise ValueError(generic_err)
-
-    # Single, not enough/too many entries
-    if columns[0] == "single" and len(columns) != 2:
-        raise ValueError(
-            f"single lib_keys must have exactly one sublibrary specified. "
-            f"lib_key '{lib_key}' specifies {len(columns)-1} ({columns[1:]}). "
-            + generic_err
-        )
-
-    # Double, not enough/too many entries
-    if columns[0] == "double" and len(columns) != 3:
-        raise ValueError(
-            f"double lib_keys must have exactly two sublibraries specified. "
-            f"lib_key '{lib_key}' specifies {len(columns)-1} ({columns[1:]}). "
-            + generic_err
-        )
-
-    # Check to make sure we recognize the sub-libraries specified
-    for k in columns[1:]:
-        if k not in libraries_seen:
+    if command == "single":
+        if len(parts) != 2:
             raise ValueError(
-                f"sub-library '{k}' not recognized. It should be one of '{libraries_seen}'. "
-                + generic_err
+                f"Invalid key '{lib_key}'. 'single' keys must have one "
+                f"sub-library part. {help_text}"
+            )
+    elif command == "double":
+        if len(parts) != 3:
+            raise ValueError(
+                f"Invalid key '{lib_key}'. 'double' keys must have two "
+                f"sub-library parts. {help_text}"
+            )
+    else:
+        raise ValueError(
+            f"Invalid command '{command}' in key '{lib_key}'. "
+            f"Command must be 'single' or 'double'."
+        )
+
+    # Check if all specified sub-libraries are valid
+    sub_libs = parts[1:]
+    for lib_id in sub_libs:
+        if lib_id not in libraries_seen:
+            raise ValueError(
+                f"Unrecognized sub-library '{lib_id}' in key '{lib_key}'. "
+                f"Valid libraries are: {sorted(list(libraries_seen))}. "
+                f"{help_text}"
             )
       
 class LibraryManager:
 
+    # Check for missing keys in config
+    REQUIRED_KEYS = ["reading_frame",
+                     "first_amplicon_residue",
+                     "wt_seq",
+                     "degen_sites",
+                     "sub_libraries",
+                     "library_combos"]
+
     def __init__(self,run_config):
 
         self.run_config = run_config
+
+        # -- Build sets of base names to check input --
+        self.standard_bases = set(list("".join(CODON_TO_AA.keys())))
+        self.degen_bases = set(DEGEN_BASE_SPECIFIER.keys())
+        self.standard_plus_dot = self.standard_bases.union({"."})
+        self.degen_plus_dot = self.degen_bases.union({"."})
+
         self._parse_and_validate(run_config)
         self._prepare_blocks()
         self._prepare_indexes()
      
-    def _parse_and_validate(self,run_config):
+    def _parse_and_validate(self,
+                            run_config: Union[str, Dict]) -> None:
         """
-        Load a run configuration file/dictionary. 
+        Parses and validates the run configuration.
+
+        This method reads a configuration from a file path or dictionary,
+        validates all fields for correctness and consistency, and populates
+        the instance with derived attributes.
+
+        Parameters
+        ----------
+        run_config : str or dict
+            Either a path to a YAML configuration file or a dictionary
+            containing the configuration parameters.
+
+        Raises
+        ------
+        ValueError
+            If the configuration is invalid due to missing keys, incorrect
+            data types, inconsistent values (e.g., mismatched sequence
+            lengths), or violations of the library definition rules.
+
+        Notes
+        -----
+        This method has the side effect of setting the following attributes
+        on the class instance upon successful validation:
+        - `reading_frame`
+        - `first_amplicon_residue`
+        - `wt_seq`
+        - `degen_sites`
+        - `sub_libraries`
+        - `libraries_seen`
+        - `library_combos`
+        - `expected_length`
+        - `aa_seq`
+        - `degen_seq`
+
         """
     
         # Read run config (yaml or pass through if already a dict)
@@ -132,18 +223,8 @@ class LibraryManager:
             raise ValueError(
                 f"could not read '{run_config}'."
             )
-        
-        # Check for missing keys in config
-        required_keys = ["reading_frame",
-                         "first_amplicon_residue",
-                         "wt_seq",
-                         "degen_sites",
-                         "sub_libraries",
-                         "expected_5p",
-                         "expected_3p",
-                         "library_combos"]
-        
-        missing = [k for k in required_keys if k not in run_config]
+
+        missing = [k for k in self.REQUIRED_KEYS if k not in run_config]
         if len(missing) > 0:
             raise ValueError(
                 f"run_config is missing keys: {missing}"
@@ -161,22 +242,17 @@ class LibraryManager:
         first_amplicon_residue = check_number(run_config["first_amplicon_residue"],
                                               cast_type=int)
         self.first_amplicon_residue = first_amplicon_residue
-        
-        # -- Build sets of base names to check input --
-        standard_bases = set(list("".join(CODON_TO_AA.keys())))
-        degen_bases = set(DEGEN_BASE_SPECIFIER.keys())
-        standard_plus_dot = standard_bases.union({"."})
-        degen_plus_dot = degen_bases.union({"."})
-    
+
+
         # -- Validate the sequence/library specification --
         
         # Load wildtype seq
         wt_seq = str(run_config["wt_seq"]).strip()
-        _check_char(wt_seq,"wt_eq",standard_bases)
+        _check_char(wt_seq,"wt_seq",self.standard_bases)
         
         # Load degenerate sites
         degen_sites = str(run_config["degen_sites"]).strip()
-        _check_char(degen_sites,"degen_sites",degen_plus_dot)
+        _check_char(degen_sites,"degen_sites",self.degen_plus_dot)
         
         # Load sub-libraries
         sub_libraries = str(run_config["sub_libraries"]).strip()
@@ -194,7 +270,7 @@ class LibraryManager:
         for i in range(len(list(wt_seq))):
     
             # degen_sites must be standard bases unless they are part of a sub_library
-            if degen_sites[i] not in standard_plus_dot:
+            if degen_sites[i] not in self.standard_plus_dot:
                 if sub_libraries[i] == ".":
                     status.append("!")
                     continue
@@ -216,16 +292,6 @@ class LibraryManager:
         self.libraries_seen = libraries_seen
     
         # -- Deal with library specification  --
-        
-        # Load expected 5' flank
-        expected_5p = str(run_config["expected_5p"])
-        _check_char(expected_5p,"expected_5p",standard_bases)
-        self.expected_5p = expected_5p
-        
-        # Load expected 3' flank
-        expected_3p = str(run_config["expected_3p"])
-        _check_char(expected_3p,"expected_3p",standard_bases)
-        self.expected_3p = expected_3p
     
         # Check library combos
         if isinstance(run_config["library_combos"],str) or not hasattr(run_config["library_combos"],"__iter__"):
@@ -255,9 +321,35 @@ class LibraryManager:
                  for i in range(len(degen_sites))]
         self.degen_seq = "".join(degen_seq)
 
-    def _prepare_blocks(self):
+    def _prepare_blocks(self) -> None:
         """
-        Set up blocks for combinatorial library generation
+        Processes sequence definitions to create combinatorial blocks.
+
+        This method iterates through the `self.sub_libraries` string and
+        constructs three parallel lists that represent the entire sequence as a
+        series of blocks. These blocks are the fundamental units used for
+        combinatorially generating mutant libraries.
+
+        For wild-type regions (marked with '.'), each base is treated as a
+        separate, single-character block. For sub-library regions (e.g., '111'),
+        the entire contiguous region is processed at once by a helper method
+        to generate blocks corresponding to codons.
+
+        Notes
+        -----
+        This method does not return any value but sets the following instance
+        attributes:
+
+        self.wt_blocks : list[list[str]]
+            A list where each inner list contains the wild-type sequence for a
+            single block (e.g., `['c']` for a base or `['gac']` for a codon).
+        self.mut_blocks : list[list[str]]
+            A parallel list to `wt_blocks`. For wild-type blocks, it is
+            identical. For degenerate codon blocks, the inner list contains all
+            possible codon sequences (e.g., `['gct', 'gcc', 'gca', 'gcg']`).
+        self.lib_lookup : list[str]
+            A parallel list that maps each block index to its sub-library
+            identifier (e.g., '.', '1', '2').
         """
     
         wt_blocks = []
@@ -288,10 +380,34 @@ class LibraryManager:
         self.lib_lookup = lib_lookup
 
 
-    def _prepare_indiv_lib_blocks(self,lib_to_get):
+    def _prepare_indiv_lib_blocks(self, lib_to_get: str) -> Tuple[List[List[str]], List[List[str]]]:
         """
-        Generate lists of possible sequences at different blocks to allow 
-        combinatorial assembly of specific libraries via itertools.product().
+        Generates wt and mut blocks for a single contiguous sub-library.
+
+        This method isolates a specific sub-library region (e.g., all '1's),
+        aligns it to the instance's reading frame, and processes it into
+        combinatorial blocks. It handles out-of-frame bases by separating them
+        into non-combinatorial "flank" blocks and ensures these flanks do not
+        contain degenerate bases.
+
+        Parameters
+        ----------
+        lib_to_get : str
+            The character identifier for the sub-library to process (e.g., '1').
+
+        Returns
+        -------
+        tuple[list[list[str]], list[list[str]]]
+            A tuple containing two lists: (wt_blocks, mut_blocks).
+            - wt_blocks: A list of wild-type sequence blocks for this region.
+            - mut_blocks: A parallel list containing all possible sequences for
+            each corresponding block. For flanks, this is identical to wt_blocks.
+
+        Raises
+        ------
+        ValueError
+            If any out-of-frame "flank" bases are found to be degenerate (i.e.,
+            not standard 'a', 'c', 'g', or 't' bases).
         """
     
         # Get list indexes for the sub library
@@ -307,26 +423,39 @@ class LibraryManager:
         # Extract the region of the library that encodes the degenerate library,
         # as well as any flanks leftover after the extraction
         start_frame = start_idx % 3
-        offset = (self.reading_frame - start_frame) % 3 
+        offset = (self.reading_frame - start_frame) % 3
+
         if offset == 0:
-            left_flank = []
-            right_flank = []
+            left_flank = ""
         else:
             left_flank = lib_seq[:offset]
-            num_trailing = (len(lib_seq) - offset) % 3
-            right_flank = lib_seq[-num_trailing:]
-            lib_seq = lib_seq[offset:(-num_trailing)]
-            wt_seq = wt_seq[offset:(-num_trailing)]
-    
+
+        # Trim the left flank from the main sequence
+        core_lib_seq = lib_seq[offset:]
+        core_wt_seq = wt_seq[offset:]
+
+        # Now, calculate trailing bases and slice them off
+        num_trailing = len(core_lib_seq) % 3
+        if num_trailing == 0:
+            right_flank = ""
+        else:
+            right_flank = core_lib_seq[-num_trailing:]
+            core_lib_seq = core_lib_seq[:-num_trailing]
+            core_wt_seq = core_wt_seq[:-num_trailing]
+
+        # Re-assign to original variable names for the rest of the function
+        lib_seq = core_lib_seq
+        wt_seq = core_wt_seq
+
         # Make sure the flanks don't have degenerate codons -- just standard bases
-        standard_bases = set(list("".join(CODON_TO_AA.keys())))
-        for flank, name in [(left_flank,"left_flank"),(right_flank,"right_flank")]:
+        # Use the existing self.standard_bases attribute
+        for flank, name in [(left_flank, "left_flank"), (right_flank, "right_flank")]:
             try:
-                _check_char(flank,name,standard_bases)
+                _check_char(flank, name, self.standard_bases)
             except ValueError as e:
                 raise ValueError(
                     f"Degenerate bases must be within codons within a sub-library. "
-                    f"Sequence '{flank}' is before the reading frame "
+                    f"Sequence '{flank}' is out of the main reading frame "
                     f"({self.reading_frame}) but has non-standard bases."
                 ) from e
     
@@ -360,6 +489,27 @@ class LibraryManager:
         return wt_blocks, mut_blocks
 
     def _prepare_indexes(self):
+        """
+        Creates index and residue number lookups for library generation.
+
+        This method builds two essential data structures needed by the library
+        generation methods: a mapping from sub-library IDs to their block
+        indices and a list of residue numbers for naming mutations.
+
+        Notes
+        -----
+        This method does not return any value but sets the following instance
+        attributes:
+
+        self.indexers : dict[str, list[int]]
+            A dictionary mapping each sub-library identifier (e.g., '1') to a
+            list of the integer indices where that library's blocks appear in
+            the main block lists (`wt_blocks`, `mut_blocks`).
+        self.residues : list[str]
+            A list of strings, where each string is the amino acid residue
+            number corresponding to each block. This is offset by
+            `self.first_amplicon_residue`.
+        """
 
         self.indexers = {}
         for lib in self.libraries_seen:
@@ -370,19 +520,39 @@ class LibraryManager:
                          for i in range(len(self.wt_blocks))]
         
     
-    def _convert_to_aa(self,lib_seqs):
+    def _convert_to_aa(self, lib_seqs: List[str]) -> List[str]:
         """
-        Convert all nucleic acid sequences in lib_seqs into amino acid mutation
-        descriptions like A42T/Q90T, etc.
+        Translates DNA sequences into formatted amino acid mutation strings.
+
+        For each DNA sequence provided, this method translates it to an amino
+        acid sequence and compares it to the wild-type protein sequence. It
+        then generates a standardized, slash-separated string describing the
+        changes (e.g., "A42T/Q90R").
+
+        Parameters
+        ----------
+        lib_seqs : list[str]
+            A list of DNA sequences to be translated and compared.
+
+        Returns
+        -------
+        list[str]
+            A list of mutation strings. For sequences with no amino acid
+            changes (including synonymous mutations), an empty string "" is
+            returned.
+
+        Notes
+        -----
+        This method relies on the following instance attributes having been
+        previously set: `self.reading_frame`, `self.aa_seq` (wild-type), and
+        `self.residues`.
         """
         
-        aa_seqs = []
         aa_muts = []
         for lib_member in lib_seqs:
             seq = lib_member[self.reading_frame:]
             seq = seq[:(len(seq) - len(seq) % 3)]
             aa_seq = "".join([CODON_TO_AA[seq[c:(c+3)]] for c in range(0,len(seq),3)])
-            aa_seqs.append(aa_seq)
     
             wt_res_mut = zip(self.aa_seq,self.residues,aa_seq) 
             aa_mut_list = ["".join([wt,res,mut])
@@ -393,9 +563,37 @@ class LibraryManager:
             
         return aa_muts
 
-    def _get_singles(self,target_lib):
+    def _get_singles(self, target_lib: str) -> Tuple[List[str], List[str]]:
         """
-        Get all possible single mutants within a single sub-library.
+        Generates all single mutants for a specific sub-library.
+
+        This method iterates through each mutable block defined for the target
+        sub-library. For each block, it generates all possible full-length DNA
+        sequences where only that single block is mutated. The results from
+        all blocks are combined into a single list.
+
+        Parameters
+        ----------
+        target_lib : str
+            The identifier of the sub-library (e.g., '1') for which to
+            generate single mutants.
+
+        Returns
+        -------
+        tuple[list[str], list[str]]
+            A tuple containing two lists: (lib_seqs, aa_muts).
+            - lib_seqs: A list of all generated DNA sequences.
+            - aa_muts: A parallel list of the corresponding formatted amino
+            acid mutation strings.
+
+        Notes
+        -----
+        This method relies on pre-computed attributes: `self.indexers`,
+        `self.wt_blocks`, and `self.mut_blocks`. It calls the helper method
+        `self._convert_to_aa` for the final translation step.
+        The wild-type sequence will be present in the output list once for
+        each mutable position in the sub-library.
+
         """
 
         indexer = self.indexers[target_lib]
@@ -411,9 +609,36 @@ class LibraryManager:
         return lib_seqs, aa_muts
 
     
-    def _get_intra_doubles(self,target_lib):
+    def _get_intra_doubles(self, target_lib: str) -> Tuple[List[str], List[str]]:
         """
-        Get all possible double mutations within a single sub-library.
+        Generates all double-mutant combinations within a single sub-library.
+
+        This method iterates through all unique pairs of mutable blocks within the
+        target sub-library. For each pair, it generates all possible full-length
+        DNA sequences.
+
+        Parameters
+        ----------
+        target_lib : str
+            The identifier of the sub-library (e.g., '1') in which to
+            generate double mutants.
+
+        Returns
+        -------
+        tuple[list[str], list[str]]
+            A tuple containing two lists: (lib_seqs, aa_muts).
+            - lib_seqs: A list of all generated DNA sequences.
+            - aa_muts: A parallel list of the corresponding formatted amino
+            acid mutation strings.
+
+        Notes
+        -----
+        The generated set is inclusive. For each pair of mutated sites, the
+        output will contain not only the double mutants but also the two
+        corresponding single mutants and the wild-type sequence.
+        This method relies on pre-computed attributes (`self.indexers`, etc.)
+        and calls `self._convert_to_aa` for translation.
+
         """
         
         indexer = self.indexers[target_lib]
@@ -433,9 +658,35 @@ class LibraryManager:
     
         return lib_seqs, aa_muts
     
-    def _get_inter_doubles(self,target_lib_1,target_lib_2):
+    def _get_inter_doubles(self, target_lib_1: str, target_lib_2: str) -> Tuple[List[str], List[str]]:
         """
-        Get all possible double mutations betweenn two sub-libraries.
+        Generates all double-mutant combinations between two sub-libraries.
+
+        This method iterates through all pairs of mutable blocks where one block
+        is from the first sub-library and the other is from the second. For
+        each pair, it generates all possible full-length DNA sequences.
+
+        Parameters
+        ----------
+        target_lib_1 : str
+            The identifier of the first sub-library (e.g., '1').
+        target_lib_2 : str
+            The identifier of the second sub-library (e.g., '2').
+
+        Returns
+        -------
+        tuple[list[str], list[str]]
+            A tuple containing two lists: (lib_seqs, aa_muts).
+            - lib_seqs: A list of all generated DNA sequences.
+            - aa_muts: A parallel list of the corresponding formatted amino
+            acid mutation strings.
+
+        Notes
+        -----
+        The generated set is inclusive. For each pair of mutated sites, the
+        output will contain not only the double mutants but also the two
+
+        corresponding single mutants and the wild-type sequence.
         """
         
         indexer_1 = self.indexers[target_lib_1]
@@ -455,11 +706,27 @@ class LibraryManager:
     
         return lib_seqs, aa_muts
  
-    def get_libraries(self):
+
+    def get_libraries(self) -> Tuple[Dict[str, List[str]], Dict[str, List[str]]]:
         """
-        Get all libraries encoded in a run configuration.
+        Generates all libraries specified in the run configuration.
+
+        This is the main method to generate the libraries after the class
+        has been initialized. It iterates through the `library_combos` list
+        from the configuration and calls the appropriate internal methods to
+        generate single, intra-library double, or inter-library double mutants.
+
+        Returns
+        -------
+        tuple[dict, dict]
+            A tuple of two dictionaries: (all_lib_seqs, all_aa_muts).
+            - all_lib_seqs: A dictionary where keys are the library combo
+            strings (e.g., "single-1") and values are lists of the
+            corresponding generated DNA sequences.
+            - all_aa_muts: A parallel dictionary where keys are the library
+            combo strings and values are lists of the corresponding
+            formatted amino acid mutation strings.
         """
-    
         all_lib_seqs = {}
         all_aa_muts = {}
     
