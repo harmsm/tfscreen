@@ -27,7 +27,9 @@ dependencies = [
   "dataclasses",
   "typing",
   "numba",
-  "patsy"
+  "patsy",
+  "pybktree",
+  "pyfastx",
 ]
 
 requires-python = ">=3.10"

@@ -1,4 +1,3 @@
-from tfscreen.simulate.generate_libraries import _expand_degen_codon
 
 from tfscreen.util import (
     read_yaml,
@@ -8,8 +7,6 @@ from tfscreen.data import (
     CODON_TO_AA,
     DEGEN_BASE_SPECIFIER,
 )
-
-import pandas as pd
 
 from itertools import (
     groupby,
@@ -166,8 +163,6 @@ class LibraryManager:
 
     def __init__(self,run_config):
 
-        self.run_config = run_config
-
         # -- Build sets of base names to check input --
         self.standard_bases = set(list("".join(CODON_TO_AA.keys())))
         self.degen_bases = set(DEGEN_BASE_SPECIFIER.keys())
@@ -214,7 +209,7 @@ class LibraryManager:
         - `expected_length`
         - `aa_seq`
         - `degen_seq`
-
+        - `run_config`
         """
     
         # Read run config (yaml or pass through if already a dict)
@@ -223,6 +218,9 @@ class LibraryManager:
             raise ValueError(
                 f"could not read '{run_config}'."
             )
+        
+        # Store the run_config as an attribute so we can access its values
+        self.run_config = run_config
 
         missing = [k for k in self.REQUIRED_KEYS if k not in run_config]
         if len(missing) > 0:
