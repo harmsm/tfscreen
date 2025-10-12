@@ -64,9 +64,11 @@ from .vstack_padded import (
     vstack_padded
 )
 
-
-
 from .array_search import (
     strict_array_search,
     fuzzy_array_search
+)
+
+from .generalized_main import (
+    generalized_main
 )

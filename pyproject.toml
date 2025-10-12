@@ -64,4 +64,6 @@ docs = [
   "pydata-sphinx-theme"
 ]
 
+[project.scripts]
+tfs-process-fastq = "tfscreen.process_raw.process_fastq:main"
 
