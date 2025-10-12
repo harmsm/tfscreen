@@ -1,4 +1,12 @@
 
+from .check import (
+    check_number
+)
+
+
+from .read_yaml import (
+    read_yaml
+)
 
 
 from .df_to_arrays import (
@@ -27,12 +35,9 @@ from .read_dataframe import (
     read_dataframe
 )
 
-
 from .expand_on_conditions import (
     expand_on_conditions
 )
-
-
 
 from .counts_to_lncfu import (
     counts_to_lncfu
@@ -59,10 +64,9 @@ from .vstack_padded import (
     vstack_padded
 )
 
-from .read_yaml import (
-    read_yaml
-)
 
-from .check import (
-    check_number
+
+from .array_search import (
+    strict_array_search,
+    fuzzy_array_search
 )
