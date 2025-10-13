@@ -13,10 +13,49 @@ import pandas as pd
 import os
 from collections import Counter
 import itertools
-from typing import Optional, Tuple, Iterable, Union
+from typing import Optional, Tuple, Iterable, Union, List
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 
-def _process_paired_fastq(f1_fastq: str, f2_fastq: str, fc: FastqToCalls, max_num_reads: Optional[int]) -> Tuple[Counter, Counter]:
+def _process_chunk(chunk: List[Tuple], fc: 'FastqToCalls') -> Tuple[Counter, Counter]:
+    """
+    Worker function to process a chunk of read pairs. This will be
+    executed in a separate process.
+    """
+
+    sequences = Counter()
+    messages = Counter()
+
+    for read1, read2 in chunk:
+
+        name1, seq1, qual1 = read1
+        name2, seq2, qual2 = read2
+
+        if name1.split()[0] != name2.split()[0]:
+            messages["fail, read id mismatch"] += 1
+            continue
+
+        f1_array = np.array([fc.base_to_number.get(b, 0) for b in seq1], dtype=np.uint8)
+        f2_array = np.array([fc.base_to_number.get(b, 0) for b in seq2], dtype=np.uint8)
+        
+        f1_q = np.frombuffer(qual1.encode('ascii'), dtype=np.uint8) - 33
+        f2_q = np.frombuffer(qual2.encode('ascii'), dtype=np.uint8) - 33
+
+        seq_call, msg = fc.call_read_pair(f1_array, f2_array, f1_q, f2_q)
+
+        messages[msg] += 1
+        if seq_call is not None:
+            sequences[seq_call] += 1
+            
+    return sequences, messages
+
+
+def _process_paired_fastq(f1_fastq: str,
+                          f2_fastq: str,
+                          fc: FastqToCalls,
+                          max_num_reads: Optional[int],
+                          chunk_size: int = 1000,
+                          max_workers: int | None = None) -> Tuple[Counter, Counter]:
     """
     Process paired-end FASTQ files and produce sequence and message counts.
 
@@ -54,9 +93,8 @@ def _process_paired_fastq(f1_fastq: str, f2_fastq: str, fc: FastqToCalls, max_nu
     converted from ASCII-33 (Phred+33) before calling ``fc.call_read_pair``.
     """
     
-    # This will hold results
-    sequences = Counter()
-    messages = Counter()
+    if max_workers is None:
+        max_workers = os.cpu_count() - 1
 
     # Create a vectorized lookup table for base-to-number conversion
     # This is much faster than a dictionary lookup inside the loop.
@@ -79,40 +117,38 @@ def _process_paired_fastq(f1_fastq: str, f2_fastq: str, fc: FastqToCalls, max_nu
     if max_num_reads is not None:
         read_iterator = itertools.islice(read_iterator, max_num_reads)
     
-    # Wrap the zip iterator with tqdm (unknown length, but shows stuff is 
-    # happening)
-    pbar = tqdm(read_iterator, total=None, desc=os.path.basename(f1_fastq))
 
-    # Iterate over files
-    for read1, read2 in pbar:
+    total_sequences = Counter()
+    total_messages = Counter()
 
-        # Get names, sequences, and quality scores
-        name1, seq1, qual1 = read1
-        name2, seq2, qual2 = read2
-
-        # Standard FASTQ headers (e.g., from Illumina) have read pair info
-        # after a space. We check that the core ID matches.
-        if name1.split()[0] != name2.split()[0]:
-            messages["fail, read id mismatch"] += 1
-            continue
-
-        # Get numpy array representations of reads
-        f1_array = np.array([fc.base_to_number[b] for b in seq1],dtype=np.uint8)
-        f2_array = np.array([fc.base_to_number[b] for b in seq2],dtype=np.uint8)
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
         
-        # Get numpy array representations of quality scores
-        f1_q = np.frombuffer(qual1.encode('ascii'), dtype=np.uint8) - 33
-        f2_q = np.frombuffer(qual2.encode('ascii'), dtype=np.uint8) - 33
+        futures = []
+        chunk = []
 
-        # call sequence
-        seq_call, msg = fc.call_read_pair(f1_array, f2_array, f1_q, f2_q)
+        # Track file reading/submission
+        pbar_submit = tqdm(read_iterator, desc="Reading & Submitting", total=max_num_reads)
+        
+        for read_pair in pbar_submit:
+            chunk.append(read_pair)
+            if len(chunk) == chunk_size:
+                futures.append(executor.submit(_process_chunk, chunk, fc))
+                chunk = []
+        
+        if chunk:
+            futures.append(executor.submit(_process_chunk, chunk, fc))
 
-        # Record results
-        messages[msg] += 1
-        if seq_call is not None:
-            sequences[seq_call] += 1
+        # Track completion
+        pbar_process = tqdm(as_completed(futures), total=len(futures), desc="Processing Chunks")
+        
+        for future in pbar_process:
+            sequences, messages = future.result()
+            total_sequences.update(sequences)
+            total_messages.update(messages)
 
-    return sequences, messages
+    return total_sequences, total_messages
+
+
 
 def _create_stats_df(messages: Counter) -> pd.DataFrame:
     """
@@ -172,6 +208,9 @@ def _create_counts_df(sequences: Counter, expected_genotypes: Iterable[str]) -> 
 
     if not expected_genotypes:
          return pd.DataFrame({"genotype": [], "counts": []}).astype({"genotype": object, "counts": int})
+
+    # Make expected genotypes unique
+    expected_genotypes = list(set(expected_genotypes))
 
     out_dict = {"genotype":[],
                 "counts":[]}
@@ -258,7 +297,6 @@ def process_fastq(f1_fastq: str,
     counts_df = _create_counts_df(sequences,fc.all_expected_genotypes)
     counts_file = os.path.join(out_dir,f"counts_{os.path.basename(f1_fastq)}.csv")
     counts_df.to_csv(counts_file,index=False)
-
 
 def main():
     return generalized_main(process_fastq)

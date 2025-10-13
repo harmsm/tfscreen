@@ -5,7 +5,7 @@ from pandas.testing import assert_frame_equal
 
 # Assume the functions to be tested are in a file located at
 # `tfscreen/processing.py` for the purpose of patching dependencies.
-from tfscreen.util.counts_to_lncfu import (
+from tfscreen.process_raw.counts_to_lncfu import (
     _filter_low_observation_genotypes,
     _impute_missing_genotypes,
     _calculate_frequencies,
