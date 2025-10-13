@@ -39,10 +39,6 @@ from .expand_on_conditions import (
     expand_on_conditions
 )
 
-from .counts_to_lncfu import (
-    counts_to_lncfu
-)
-
 from .numerical import (
     to_log,
     from_log

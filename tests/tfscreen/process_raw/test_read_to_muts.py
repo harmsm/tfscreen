@@ -4,11 +4,11 @@ import pandas as pd
 import numpy as np
 
 import tfscreen
-from tfscreen.process_raw.reads_to_muts import _setup_tables
-from tfscreen.process_raw.reads_to_muts import _build_ambiguous_codon_table
-from tfscreen.process_raw.reads_to_muts import _translate_and_count
-from tfscreen.process_raw.reads_to_muts import _prep_to_read
-from tfscreen.process_raw.reads_to_muts import reads_to_muts
+from tfscreen.process_raw.assemble import _setup_tables
+from tfscreen.process_raw.assemble import _build_ambiguous_codon_table
+from tfscreen.process_raw.assemble import _translate_and_count
+from tfscreen.process_raw.assemble import _prep_to_read
+from tfscreen.process_raw.assemble import reads_to_muts
 
 
 import os

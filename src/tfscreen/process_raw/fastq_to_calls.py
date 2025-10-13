@@ -18,6 +18,12 @@ from typing import Optional, Tuple
 from itertools import takewhile
 
 
+def _hamming_dist(s1,s2):
+    """
+    Module-level hamming distance (instead of lamba) to allow multiprocessing.
+    """
+    return np.sum(s1 != s2)
+
 class FastqToCalls:
     """
     Processes paired-end sequencing reads to call genotypes at the amino acid
@@ -219,7 +225,7 @@ class FastqToCalls:
         # Build the search tree we will use to see if a read matches a seq
         # in the library (Hamming distance). This should take a read as an 
         # integer array as its search query. 
-        self._search_tree = pybktree.BKTree(lambda s1, s2: np.sum(s1 != s2),
+        self._search_tree = pybktree.BKTree(_hamming_dist,
                                             all_dna_as_ints)
 
                 
