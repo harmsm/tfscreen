@@ -1,42 +1,26 @@
+from tfscreen.util import read_yaml
+
 import numpy as np
+from typing import Tuple
 
-# Constants are **only** valid when measuring samples of 200 uL in luria broth
-# in clear-bottom 96 well plates on the SpectraMaxI3 in the Harms lab. Upper
-# bound for reliable measurements is an OD600 of 0.600. The lower detection
-# threshold is 0.096. Calibration done 2025/09/19. (See notebooks/od600-to-cfu
-# for calibration details.)
-
-# od600 measurement threshold
-OD600_MEAS_THRESHOLD = 0.09573000000000001
-
-# od600 to cfu, 2nd-order polynomial
-A_CFU = -5388603.36438282 
-B_CFU = 66683325.953339 
-C_CFU = 38292706.79524336 
-
-# cfu polynomial standard error vs. od600, 2nd-order polynomial
-# This approximates J @ P @ J^T.
-P_JCJT = 801108.73371897 
-Q_JCJT = -5133635.54769162 
-R_JCJT = 13418613.55590658 
-
-# pct error in od600 measurements
-OD600_PCT_STD = 0.02
-
-
-def od600_to_cfu(od600):
+def od600_to_cfu(od600: np.ndarray,
+                 constants: str | dict) -> Tuple[np.ndarray,np.ndarray,np.ndarray]:
     """
     Convert plate reader OD600 values to cfu/mL using empirical
     calibration parameters. 
 
     The parameters MUST be determined empirically for a specific experimental 
-    set up. The constants are all defined globally in this file. See the 
-    directory notebooks/od600-to-cfu/ for details on the calibration. 
+    set up. The constants are all defined in the constants dictionary/yaml).
+    See the directory tfscreen/notebooks/od600-to-cfu/ for details on the
+    calibration. 
 
     Parameters
     ----------
     od600 : np.ndarray
         array of OD600 measurements
+    constants : str or dict
+        dictionary holding calibration constants for converting od600 to 
+        cfu/mL. if a string, treat as a path to a yaml file with the constants
 
     Returns
     -------
@@ -49,6 +33,32 @@ def od600_to_cfu(od600):
         detection threshold. (True means measurable; False means too low to see). 
     """
 
+    constants = read_yaml(constants)
+
+    required_constants = ["OD600_MEAS_THRESHOLD",
+                          "A_CFU","B_CFU","C_CFU",
+                          "P_JCJT_CFU","Q_JCJT_CFU","R_JCJT_CFU",
+                          "OD600_PCT_STD"]
+
+    required_set = set(required_constants)
+    seen_set = set(constants.keys())
+    if not required_set.issubset(seen_set):
+        missing = required_set - seen_set
+        err = "Constants are missing. Missing constants:\n"
+        for c in missing:
+            err += f"    {c}\n"
+        err += "\n"
+        raise ValueError(err)
+
+    OD600_MEAS_THRESHOLD = constants["OD600_MEAS_THRESHOLD"]
+    A_CFU = constants["A_CFU"]
+    B_CFU = constants["B_CFU"]
+    C_CFU = constants["C_CFU"]
+    P_JCJT_CFU = constants["P_JCJT_CFU"]
+    Q_JCJT_CFU = constants["Q_JCJT_CFU"]
+    R_JCJT_CFU = constants["R_JCJT_CFU"]
+    OD600_PCT_STD = constants["OD600_PCT_STD"]
+    
     # see if we are dealing with a single value. Turn into an array for
     # simplicity. 
     single_value = False
@@ -68,7 +78,7 @@ def od600_to_cfu(od600):
     cfu_est = A_CFU + B_CFU*(od600) + C_CFU*(od600**2)
     
     # caclulate J @ Cp @ J^T 
-    cfu_est_std_2 = (P_JCJT + Q_JCJT*(od600) + R_JCJT*(od600**2))**2
+    cfu_est_std_2 = (P_JCJT_CFU + Q_JCJT_CFU*(od600) + R_JCJT_CFU*(od600**2))**2
     
     # caclulate (dy/dx)^2 of the cfu vs od600 curve
     dy_dx_2 = (B_CFU + 2*C_CFU*od600)**2
