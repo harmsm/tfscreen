@@ -410,14 +410,15 @@ def _compare_search_results(results, expected):
     Compares the list of (distance, np.ndarray) tuples.
     Converts arrays to tuples to make them hashable for comparison.
     """
-    # Use Counter to handle order-insensitivity for multiple matches
-    results_counter = collections.Counter(
-        (dist, tuple(arr)) for dist, arr in results
-    )
-    expected_counter = collections.Counter(
-        (dist, tuple(arr)) for dist, arr in expected
-    )
-    return results_counter == expected_counter
+
+    results_seqs = collections.Counter([r.tobytes() for r in results[0]])
+    results_dist = results[1]
+
+    expected_seqs = collections.Counter([e.tobytes() for e in expected[0]])
+    expected_dist = expected[1]
+
+    assert results_dist == expected_dist
+    assert results_seqs == expected_seqs
 
 # ------------------------
 # test _search_expected_lib
@@ -434,8 +435,8 @@ def test_search_expected_lib_exact_match(fx_fastq_to_calls_strict):
     # Search with a generous max_diffs; should still only return the dist=0 match
     matches = ftc._search_expected_lib(wt_seq_int, max_diffs=5)
 
-    expected = [(0, wt_seq_int)]
-    assert _compare_search_results(matches, expected)
+    expected = [[wt_seq_int],0]
+    _compare_search_results(matches, expected)
 
 
 def test_search_expected_lib_single_closest_match(fx_fastq_to_calls_strict):
@@ -450,8 +451,8 @@ def test_search_expected_lib_single_closest_match(fx_fastq_to_calls_strict):
     matches = ftc._search_expected_lib(query_seq, max_diffs=5)
 
     # The nearest shell has a distance of 1 and contains only mut1
-    expected = [(1, mut1_seq_int)]
-    assert _compare_search_results(matches, expected)
+    expected = [[mut1_seq_int],1]
+    _compare_search_results(matches, expected)
 
 
 def test_search_expected_lib_multiple_equidistant_matches(fx_fastq_to_calls_strict):
@@ -468,9 +469,9 @@ def test_search_expected_lib_multiple_equidistant_matches(fx_fastq_to_calls_stri
     query_seq = _dna_to_int("NAAAAAAAAA", ftc)
     matches = ftc._search_expected_lib(query_seq, max_diffs=1)
 
-    # FIX: The expected list must include all three equidistant matches.
-    expected = [(1, wt_seq_int), (1, mut1_seq_int), (1, mut_close_seq_int)]
-    assert _compare_search_results(matches, expected)
+    # The expected list must include all three equidistant matches.
+    expected = [[wt_seq_int,mut1_seq_int,mut_close_seq_int],1]
+    _compare_search_results(matches, expected)
 
 
 def test_search_expected_lib_no_match_in_radius(fx_fastq_to_calls_strict):
@@ -485,7 +486,8 @@ def test_search_expected_lib_no_match_in_radius(fx_fastq_to_calls_strict):
     # Search with a max_diffs that is too small
     matches = ftc._search_expected_lib(query_seq, max_diffs=1)
 
-    assert matches == []
+    assert matches[0] == []
+    assert matches[1] == -1
 
 
 def test_search_expected_lib_empty_query(fx_fastq_to_calls_strict):
@@ -501,7 +503,8 @@ def test_search_expected_lib_empty_query(fx_fastq_to_calls_strict):
     # and returns an empty list.
     matches = ftc._search_expected_lib(query_seq, max_diffs=5)
 
-    assert matches == []
+    assert matches[0] == []
+    assert matches[1] == -1
 
 # ------------------------
 # test _build_call_pair
@@ -705,7 +708,7 @@ def test_rr_one_sided_match_f_fails_r_passes(fx_fastq_to_calls_strict, fx_mock_s
     """Tests case where F has no match but R has a unique match."""
     ftc = fx_fastq_to_calls_strict
     matches_f = []
-    matches_r = [(1, fx_mock_sequences["mut1"])]
+    matches_r = [fx_mock_sequences["mut1"]]
     keep_going, seq, msg = ftc._rr_one_sided_match(matches_f, matches_r)
     assert keep_going is False
     assert_array_equal(seq, fx_mock_sequences["mut1"])
@@ -715,7 +718,7 @@ def test_rr_one_sided_match_f_fails_r_ambiguous(fx_fastq_to_calls_strict, fx_moc
     """Tests case where F has no match and R has multiple matches."""
     ftc = fx_fastq_to_calls_strict
     matches_f = []
-    matches_r = [(1, fx_mock_sequences["mut1"]), (1, fx_mock_sequences["mut2"])]
+    matches_r = [fx_mock_sequences["mut1"], fx_mock_sequences["mut2"]]
     keep_going, seq, msg = ftc._rr_one_sided_match(matches_f, matches_r)
     assert keep_going is False
     assert seq is None
@@ -733,8 +736,8 @@ def test_rr_one_sided_match_both_fail(fx_fastq_to_calls_strict):
 def test_rr_one_sided_match_both_pass_continues(fx_fastq_to_calls_strict, fx_mock_sequences):
     """Tests the pass-through case where both reads have matches."""
     ftc = fx_fastq_to_calls_strict
-    matches_f = [(1, fx_mock_sequences["mut1"])]
-    matches_r = [(1, fx_mock_sequences["mut2"])]
+    matches_f = [fx_mock_sequences["mut1"]]
+    matches_r = [fx_mock_sequences["mut2"]]
     keep_going, seq, msg = ftc._rr_one_sided_match(matches_f, matches_r)
     assert keep_going is True
     assert seq is None
@@ -747,9 +750,9 @@ def test_rr_one_sided_match_both_pass_continues(fx_fastq_to_calls_strict, fx_moc
 def test_rr_one_closer_match_f_is_closer(fx_fastq_to_calls_strict, fx_mock_sequences):
     """Tests when F has a unique, closer match than R."""
     ftc = fx_fastq_to_calls_strict
-    matches_f = [(1, fx_mock_sequences["mut1"])] # dist 1
-    matches_r = [(2, fx_mock_sequences["mut2"])] # dist 2
-    keep_going, seq, msg = ftc._rr_one_closer_match(matches_f, matches_r)
+    matches_f = [fx_mock_sequences["mut1"]] # dist 1
+    matches_r = [fx_mock_sequences["mut2"]] # dist 2
+    keep_going, seq, msg = ftc._rr_one_closer_match(matches_f, matches_r,1,2)
     assert keep_going is False
     assert_array_equal(seq, fx_mock_sequences["mut1"])
     assert msg == "pass, F/R disagree but F is expected"
@@ -757,9 +760,9 @@ def test_rr_one_closer_match_f_is_closer(fx_fastq_to_calls_strict, fx_mock_seque
 def test_rr_one_closer_match_f_is_closer_but_ambiguous(fx_fastq_to_calls_strict, fx_mock_sequences):
     """Tests pass-through when F is closer but has multiple matches."""
     ftc = fx_fastq_to_calls_strict
-    matches_f = [(1, fx_mock_sequences["mut1"]), (1, fx_mock_sequences["wt"])]
-    matches_r = [(2, fx_mock_sequences["mut2"])]
-    keep_going, seq, msg = ftc._rr_one_closer_match(matches_f, matches_r)
+    matches_f = [fx_mock_sequences["mut1"],fx_mock_sequences["wt"]]
+    matches_r = [fx_mock_sequences["mut2"]]
+    keep_going, seq, msg = ftc._rr_one_closer_match(matches_f, matches_r,1,2)
     assert keep_going is True
     assert seq is None
     assert msg is None
@@ -767,9 +770,9 @@ def test_rr_one_closer_match_f_is_closer_but_ambiguous(fx_fastq_to_calls_strict,
 def test_rr_one_closer_match_distances_equal(fx_fastq_to_calls_strict, fx_mock_sequences):
     """Tests pass-through when match distances are equal."""
     ftc = fx_fastq_to_calls_strict
-    matches_f = [(1, fx_mock_sequences["mut1"])]
-    matches_r = [(1, fx_mock_sequences["mut2"])]
-    keep_going, seq, msg = ftc._rr_one_closer_match(matches_f, matches_r)
+    matches_f = [fx_mock_sequences["mut1"]]
+    matches_r = [fx_mock_sequences["mut2"]]
+    keep_going, seq, msg = ftc._rr_one_closer_match(matches_f, matches_r,1,1)
     assert keep_going is True
     assert seq is None
     assert msg is None
@@ -781,8 +784,8 @@ def test_rr_one_closer_match_distances_equal(fx_fastq_to_calls_strict, fx_mock_s
 def test_rr_unique_intersection_success(fx_fastq_to_calls_strict, fx_mock_sequences):
     """Tests finding a single shared sequence between two ambiguous match sets."""
     ftc = fx_fastq_to_calls_strict
-    matches_f = [(1, fx_mock_sequences["wt"]), (1, fx_mock_sequences["mut1"])]
-    matches_r = [(1, fx_mock_sequences["mut2"]), (1, fx_mock_sequences["mut1"])] # mut1 is shared
+    matches_f = [fx_mock_sequences["wt"], fx_mock_sequences["mut1"]]
+    matches_r = [fx_mock_sequences["mut2"], fx_mock_sequences["mut1"]] # mut1 is shared
     keep_going, seq, msg = ftc._rr_unique_intersection(matches_f, matches_r)
     assert keep_going is False
     assert_array_equal(seq, fx_mock_sequences["mut1"])
@@ -791,8 +794,8 @@ def test_rr_unique_intersection_success(fx_fastq_to_calls_strict, fx_mock_sequen
 def test_rr_unique_intersection_no_intersection(fx_fastq_to_calls_strict, fx_mock_sequences):
     """Tests pass-through when there is no shared sequence."""
     ftc = fx_fastq_to_calls_strict
-    matches_f = [(1, fx_mock_sequences["wt"])]
-    matches_r = [(1, fx_mock_sequences["mut2"])]
+    matches_f = [fx_mock_sequences["wt"]]
+    matches_r = [fx_mock_sequences["mut2"]]
     keep_going, seq, msg = ftc._rr_unique_intersection(matches_f, matches_r)
     assert keep_going is True
     assert seq is None
@@ -801,8 +804,8 @@ def test_rr_unique_intersection_no_intersection(fx_fastq_to_calls_strict, fx_moc
 def test_rr_unique_intersection_multiple_intersections(fx_fastq_to_calls_strict, fx_mock_sequences):
     """Tests pass-through when there are multiple shared sequences."""
     ftc = fx_fastq_to_calls_strict
-    matches_f = [(1, fx_mock_sequences["wt"]), (1, fx_mock_sequences["mut1"])]
-    matches_r = [(1, fx_mock_sequences["wt"]), (1, fx_mock_sequences["mut1"])] # Both are shared
+    matches_f = [fx_mock_sequences["wt"],fx_mock_sequences["mut1"]]
+    matches_r = [fx_mock_sequences["wt"],fx_mock_sequences["mut1"]] # Both are shared
     keep_going, seq, msg = ftc._rr_unique_intersection(matches_f, matches_r)
     assert keep_going is True
     assert seq is None
@@ -869,8 +872,8 @@ def test_reconcile_reads_rule4_unique_intersection(fx_fastq_to_calls_strict, fx_
     ftc.allowed_diff_from_expected = 1
     
     # Mock the search results to test the intersection logic directly
-    matches_f = [(1, fx_mock_sequences["wt"]), (1, fx_mock_sequences["mut1"])]
-    matches_r = [(1, fx_mock_sequences["mut2"]), (1, fx_mock_sequences["mut1"])]
+    matches_f = [fx_mock_sequences["wt"],fx_mock_sequences["mut1"]]
+    matches_r = [fx_mock_sequences["mut2"],fx_mock_sequences["mut1"]]
     
     # When _search_expected_lib is called, return matches_f then matches_r
     mocker.patch.object(ftc, '_search_expected_lib', side_effect=[matches_f, matches_r])

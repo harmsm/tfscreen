@@ -12,17 +12,24 @@ from tfscreen.util import (
 )
 
 import numpy as np
+import numba
 import pybktree
 from typing import Optional, Tuple
 
 from itertools import takewhile
 
+@numba.jit(nopython=True, fastmath=True)
+def _hamming_dist(s1, s2):
+    """
+    Calculate the Hamming distance between two 1D numpy arrays of the same 
+    length.
+    """
+    dist = 0
+    for i in range(s1.shape[0]):
+        if s1[i] != s2[i]:
+            dist += 1
+    return dist
 
-def _hamming_dist(s1,s2):
-    """
-    Module-level hamming distance (instead of lamba) to allow multiprocessing.
-    """
-    return np.sum(s1 != s2)
 
 class FastqToCalls:
     """
@@ -144,8 +151,14 @@ class FastqToCalls:
         base_to_number = dict([(b, i) for i, b in enumerate(number_to_base)])
         base_to_number.update([(b.lower(), i) for i, b in enumerate(number_to_base)])
 
+        # Create a vectorized lookup table for base-to-number conversion
+        fast_base_to_number = np.zeros(256, dtype=np.uint8)
+        for base, num in base_to_number.items():
+            fast_base_to_number[ord(base)] = num
+
         self.number_to_base = number_to_base
         self.base_to_number = base_to_number
+        self.fast_base_to_number = fast_base_to_number
 
         # Create a full-size lookup table. Initialize it so that any base
         # without a defined complement is its own complement (e.g., N -> N).
@@ -153,8 +166,8 @@ class FastqToCalls:
 
         # Fill in the known complements from the source dictionary
         for base, comp_base in COMPLEMENT_DICT.items():
-            base_num = self.base_to_number.get(base.lower())
-            comp_num = self.base_to_number.get(comp_base.lower())
+            base_num = self.base_to_number[base.lower()]
+            comp_num = self.base_to_number[comp_base.lower()]
             if base_num is not None and comp_num is not None:
                 complement_int[base_num] = comp_num
         
@@ -184,7 +197,6 @@ class FastqToCalls:
         self.expected_3p_size = len(self.expected_3p)
         self.expected_length = self._lm.expected_length
 
-
         # Get dna and amino acid sequences specified by library. These come out
         # as dictionaries with sub-libraries as keys and sequences as values. 
         # dna_lib will look like:
@@ -201,6 +213,7 @@ class FastqToCalls:
             all_sequences.update(list(zip(dna_lib[key],aa_lib[key])))
 
         all_dna_as_ints = []
+        all_dna_as_bytes = []
 
         # Build two dictionaries. bytes_to_num uses the bytes representation of
         # the dna sequence to look up the number of amino acid mutations in the
@@ -214,19 +227,28 @@ class FastqToCalls:
             all_dna_as_ints.append(dna_as_ints)
 
             dna_as_bytes = dna_as_ints.tobytes()
+            all_dna_as_bytes.append(dna_as_bytes)
+
             if prot == "":
                 aa = "wt"
             else: 
                 aa = prot
     
+            if dna_as_bytes in self._bytes_to_aa:
+                if self._bytes_to_aa[dna_as_bytes] != aa:
+                    raise ValueError(
+                        f"DNA sequence '{dna}' is mapped to multiple different "
+                        f"genotypes ('{self._bytes_to_aa[dna_as_bytes]}' and "
+                        f"'{aa}'). Please correct the library."
+                    )
+
             self._bytes_to_aa[dna_as_bytes] = aa
             self.all_expected_genotypes.append(aa)
         
         # Build the search tree we will use to see if a read matches a seq
         # in the library (Hamming distance). This should take a read as an 
         # integer array as its search query. 
-        self._search_tree = pybktree.BKTree(_hamming_dist,
-                                            all_dna_as_ints)
+        self._search_tree = pybktree.BKTree(_hamming_dist, all_dna_as_ints)
 
                 
     def _find_orientation_strict(self, f1_array, f2_array):
@@ -292,28 +314,6 @@ class FastqToCalls:
 
         return fwd_seq, rev_seq, None
 
-    def _search_expected_lib(self,seq,max_diffs):
-        """
-        Search the expected sequences seq, allowing up to max_diffs differences.
-        Return a list of tuples corresponding to the nearest 'shell' of matches.
-        (If the closest match has 0 diffs, return 1 sequence; if the closest 
-        match has 1 diff, return all 1 diff sequences, etc.)
-        """
-
-        # We can't query the bktree with something that is not the same length
-        # as the input sequences. 
-        if len(seq) != self.expected_length:
-            return []
-
-        # Look for matches in the search tree. 
-        matches = self._search_tree.find(seq,max_diffs)
-        if not matches:
-            return []
-
-        # This grabs only the hits that match the minimum distance seen in the
-        # search. Using takewhile, we only iterate until m[0] != min_dist. 
-        min_dist = matches[0][0]
-        return list(takewhile(lambda m: m[0] == min_dist, matches))
 
     def _build_call_pair(self,fwd_seq,rev_seq):
         """
@@ -355,145 +355,22 @@ class FastqToCalls:
 
         return fwd_wins, rev_wins
 
-    def _rr_perfect_agreement(self,fwd_wins,rev_wins):
+
+    def build_call_pair(self,
+                        f1_array: np.ndarray,
+                        f2_array: np.ndarray,
+                        f1_q: np.ndarray,
+                        f2_q: np.ndarray) -> Tuple[Optional[str], str]:
         """
-        Check whether F and R match exactly.
-        """
-        
-        # If fwd and rev match exactly. 
-        if np.array_equal(fwd_wins, rev_wins):
+        Processes a single pair of raw reads to determine their orientation. 
 
-            matches = self._search_expected_lib(fwd_wins,
-                                                self.allowed_diff_from_expected)
-
-            if len(matches) == 0:
-                return False, None, "fail, F/R agree but their sequence is not in the expected library"
-            elif len(matches) == 1:
-                return False, matches[0][1], "pass, F/R agree exactly" 
-            else:
-                return False, None, "fail, F/R agree but match more than one expected sequence"
-
-        return True, None, None
-        
-    def _rr_one_sided_match(self,matches_f,matches_r):
-        """
-        Check to see if F or R matches by the other does not.
-        """
-        
-        # F does not match anything in the expected library
-        if len(matches_f) == 0:
-
-            if len(matches_r) == 0:
-                return False, None, "fail, F/R disagree and neither sequence is expected"
-            elif len(matches_r) == 1:
-                return False, matches_r[0][1], "pass, F/R disagree but R is expected"
-            else:
-                return False, None, "fail, F/R disagree and F is not expected and R is ambiguous"
-            
-        # R does not match anything in the expected library
-        if len(matches_r) == 0:
-            
-            if len(matches_f) == 1:
-                return False, matches_f[0][1], "pass, F/R disagree but F is expected"
-            else:
-                return False, None, "fail, F/R disagree and R is not expected and F is ambiguous"
-
-        return True, None, None
-
-    def _rr_one_closer_match(self,matches_f,matches_r):
-        """
-        Check to see if F or R has a closer match.
-        """
-
-        # If F has a unique match closer than R...
-        if matches_f[0][0] < matches_r[0][0]:
-            if len(matches_f) == 1:
-                return False, matches_f[0][1], "pass, F/R disagree but F is expected"
-            
-        # If R has a unique match closer than F...
-        if matches_r[0][0] < matches_f[0][0]:
-            if len(matches_r) == 1:
-                return False, matches_r[0][1], "pass, F/R disagree but R is expected"
-
-        return True, None, None
-            
-    def _rr_unique_intersection(self,matches_f,matches_r):
-        """
-        Check to see if f and r matches share exactly one unique sequence.
-        """
-        
-        set_f = {m[1].tobytes() for m in matches_f}
-        set_r = {m[1].tobytes() for m in matches_r}
-        intersect = set_f.intersection(set_r)
-        if len(intersect) == 1:
-            seq_int = np.frombuffer(intersect.pop(), dtype=np.uint8)
-            return False, seq_int, "pass, F/R have a unique shared expected sequence"
-    
-        return True, None, None
-        
-    def _reconcile_reads(self,fwd_wins,rev_wins):
-        """
-        Infer a single sequence from the forward wins and reverse wins arrays
-        using a hierarchial set of rules. If we make a sequence call, it is 
-        guaranteed to be in the input library. If the information from the two
-        reads conflict or the sequence is not in the expected library, this
-        returns None. 
-        """
-    
-        # ----------------------------------------------------------------------
-        # Handle simple case of perfect agreement first
-        
-        keep_going, seq, msg = self._rr_perfect_agreement(fwd_wins,rev_wins)
-        if not keep_going: return seq, msg
-
-        # ----------------------------------------------------------------------
-        # If we get here, fwd and reverse do not match exactly. Look for each 
-        # in the expected library.
-        
-        matches_f = self._search_expected_lib(fwd_wins,self.allowed_diff_from_expected)
-        matches_r = self._search_expected_lib(rev_wins,self.allowed_diff_from_expected)
-
-        # ----------------------------------------------------------------------
-        # Check to see if one read matches and the other does not
-        
-        keep_going, seq, msg = self._rr_one_sided_match(matches_f,matches_r)
-        if not keep_going: return seq, msg
-
-        # ----------------------------------------------------------------------
-        # If we get here, both F and R match something in the expected library.
-        # Check to see if one is clearly better. 
-
-        keep_going, seq, msg = self._rr_one_closer_match(matches_f,matches_r)
-        if not keep_going: return seq, msg
-
-        # ----------------------------------------------------------------------
-        # If we get here, both F and R match something in the expected library
-        # and one is not obviously better than the other. Look for a single
-        # shared sequence in both sets of matches. If this is present, take that
-        # as our sequence. 
-
-        keep_going, seq, msg = self._rr_unique_intersection(matches_f,matches_r)
-        if not keep_going: return seq, msg
-
-        # ----------------------------------------------------------------------
-        # If we get here, both F and R match something in the expected library
-        # within but do not point to a single shared sequence. Give up.
-    
-        return None, "fail, F/R match different sequences in expected"
-
-
-    def call_read_pair(self,
-                    f1_array: np.ndarray,
-                    f2_array: np.ndarray,
-                    f1_q: np.ndarray,
-                    f2_q: np.ndarray) -> Tuple[Optional[str], str]:
-        """
-        Processes a single pair of raw reads to determine their genotype.
-
-        This is the main public method for the class. It orchestrates the full
-        pipeline of quality filtering, read orientation, sequence trimming,
-        reconciliation of disagreements between the forward and reverse reads,
-        and matching against the expected sequence library.
+        This function outputs two arrays: fwd_wins (assuming fwd is right at 
+        all disagreeing, non-ambiguous positions) and rev_wins (assuming rev 
+        is right at all disagreeing, non-ambiguous positions). Unambiguous sites
+        on rev that are ambiguous on fwd are copied into fwd_wins; likewise for
+        rev_wins. fwd_wins and rev_wins can be reconciled in subsequent steps
+        (see .reconcile_reads). Both arrays are represented as bytes so they 
+        can be used as keys in Counters(). 
 
         Parameters
         ----------
@@ -512,11 +389,10 @@ class FastqToCalls:
 
         Returns
         -------
-        tuple[str or None, str]
+        tuple[str or None, str or None]
             A tuple containing two elements:
-            1. The genotype call as a string (e.g., 'wt', 'A1C'), or ``None``
-            if no definitive call could be made.
-            2. A status message describing the outcome of the processing. 
+            1. (fwd_wins,rev_wins) (if successful) or None (if failed)
+            2. None (if successful) or str (if failed)
         """
         
         # Set base ambiguity based on phred_cutoff
@@ -546,6 +422,194 @@ class FastqToCalls:
         # disagreements. If they disagree, they disagree at sites that passed 
         # phred_cutoff
         fwd_wins, rev_wins = self._build_call_pair(fwd_seq, rev_seq)
+
+        call_pair = (fwd_wins.tobytes(),rev_wins.tobytes())
+        return call_pair, None
+
+    def _search_expected_lib(self,seq,max_diffs):
+        """
+        Search the expected sequences seq, allowing up to max_diffs differences.
+        Return a list of tuples corresponding to the nearest 'shell' of matches.
+        (If the closest match has 0 diffs, return 1 sequence; if the closest 
+        match has 1 diff, return all 1 diff sequences, etc.)
+        """
+
+        # We can't query the bktree with something that is not the same length
+        # as the input sequences. 
+        if len(seq) != self.expected_length:
+            return [], -1
+
+        # -- pybktree --
+        # # Look for matches in the search tree. 
+        matches = self._search_tree.find(seq,max_diffs)
+        if not matches:
+            return [], -1
+
+        # This grabs only the hits that match the minimum distance seen in the
+        # search. Using takewhile, we only iterate until m[0] != min_dist. 
+        min_dist = matches[0][0]
+        shell_matches = [m[1] for m in takewhile(lambda m: m[0] == min_dist, matches)]
+        return shell_matches, min_dist
+
+    def _rr_perfect_agreement(self,fwd_wins,rev_wins):
+        """
+        Check whether F and R match exactly.
+        """
+        
+        # If fwd and rev match exactly. 
+        if np.array_equal(fwd_wins, rev_wins):
+
+            matches, _ = self._search_expected_lib(fwd_wins,
+                                                   self.allowed_diff_from_expected)
+
+            if len(matches) == 0:
+                return False, None, "fail, F/R agree but their sequence is not in the expected library"
+            elif len(matches) == 1:
+                return False, matches[0], "pass, F/R agree exactly" 
+            else:
+                return False, None, "fail, F/R agree but match more than one expected sequence"
+
+        return True, None, None
+        
+    def _rr_one_sided_match(self,matches_f,matches_r):
+        """
+        Check to see if F or R matches by the other does not.
+        """
+        
+        # F does not match anything in the expected library
+        if len(matches_f) == 0:
+
+            if len(matches_r) == 0:
+                return False, None, "fail, F/R disagree and neither sequence is expected"
+            elif len(matches_r) == 1:
+                return False, matches_r[0], "pass, F/R disagree but R is expected"
+            else:
+                return False, None, "fail, F/R disagree and F is not expected and R is ambiguous"
+            
+        # R does not match anything in the expected library
+        if len(matches_r) == 0:
+            
+            if len(matches_f) == 1:
+                return False, matches_f[0], "pass, F/R disagree but F is expected"
+            else:
+                return False, None, "fail, F/R disagree and R is not expected and F is ambiguous"
+
+        return True, None, None
+
+    def _rr_one_closer_match(self,matches_f,matches_r,match_dist_f,match_dist_r):
+        """
+        Check to see if F or R has a closer match.
+        """
+
+        # If F has a unique match closer than R...
+        if match_dist_f < match_dist_r:
+            if len(matches_f) == 1:
+                return False, matches_f[0], "pass, F/R disagree but F is expected"
+            
+        # If R has a unique match closer than F...
+        if match_dist_r < match_dist_f:
+            if len(matches_r) == 1:
+                return False, matches_r[0], "pass, F/R disagree but R is expected"
+
+        return True, None, None
+            
+    def _rr_unique_intersection(self,matches_f,matches_r):
+        """
+        Check to see if f and r matches share exactly one unique sequence.
+        """
+        
+        set_f = {m.tobytes() for m in matches_f}
+        set_r = {m.tobytes() for m in matches_r}
+        intersect = set_f.intersection(set_r)
+        if len(intersect) == 1:
+            seq_int = np.frombuffer(intersect.pop(), dtype=np.uint8)
+            return False, seq_int, "pass, F/R have a unique shared expected sequence"
+    
+        return True, None, None
+        
+    def _reconcile_reads(self,fwd_wins,rev_wins):
+        """
+        Infer a single sequence from the forward wins and reverse wins arrays
+        using a hierarchial set of rules. If we make a sequence call, it is 
+        guaranteed to be in the input library. If the information from the two
+        reads conflict or the sequence is not in the expected library, this
+        returns None. 
+        """
+    
+        # ----------------------------------------------------------------------
+        # Handle simple case of perfect agreement first
+        
+        keep_going, seq, msg = self._rr_perfect_agreement(fwd_wins,rev_wins)
+        if not keep_going: return seq, msg
+
+        # ----------------------------------------------------------------------
+        # If we get here, fwd and reverse do not match exactly. Look for each 
+        # in the expected library.
+        
+        matches_f, match_dist_f = self._search_expected_lib(fwd_wins,
+                                                            self.allowed_diff_from_expected)
+        matches_r, match_dist_r = self._search_expected_lib(rev_wins,
+                                                            self.allowed_diff_from_expected)
+
+        # ----------------------------------------------------------------------
+        # Check to see if one read matches and the other does not
+        
+        keep_going, seq, msg = self._rr_one_sided_match(matches_f,matches_r)
+        if not keep_going: return seq, msg
+
+        # ----------------------------------------------------------------------
+        # If we get here, both F and R match something in the expected library.
+        # Check to see if one is clearly better. 
+
+        keep_going, seq, msg = self._rr_one_closer_match(matches_f,matches_r,
+                                                         match_dist_f,match_dist_r)
+        if not keep_going: return seq, msg
+        
+        # ----------------------------------------------------------------------
+        # If we get here, both F and R match something in the expected library
+        # and one is not obviously better than the other. Look for a single
+        # shared sequence in both sets of matches. If this is present, take that
+        # as our sequence. 
+
+        keep_going, seq, msg = self._rr_unique_intersection(matches_f,matches_r)
+        if not keep_going: return seq, msg
+        
+        # ----------------------------------------------------------------------
+        # If we get here, both F and R match something in the expected library
+        # within but do not point to a single shared sequence. Give up.
+    
+        return None, "fail, F/R match different sequences in expected"
+
+    def reconcile_reads(self,fwd_wins,rev_wins):
+        """
+        Reconcile the sequences in `fwd_wins` and `rev_wins`. 
+        
+        This function assumes these sequences are the same length, on the 
+        same strand (e.g., 5'->3'), and represented as integers. This function
+        uses a set of hierarchical rules to decide on the correct sequence,
+        ultimately returning either a sequence from the expected set of
+        sequences defined in the LibraryManager or None.
+
+        Parameters
+        ----------
+        fwd_wins: np.ndarray
+            numpy integer arrays holding the DNA sequence (as integers) if the
+            forward read is correct at all unambiguous sites. This assumes any
+            ambiguous sites on forward have been replaced by unambiguous sites
+            on reverse (if present)
+        rev_wins: np.ndarray
+            numpy integer arrays holding the DNA sequence (as integers) if the
+            reverse read is correct at all unambiguous sites. This assumes any
+            ambiguous sites on reverse have been replaced by unambiguous sites
+            on forward (if present)
+
+        Returns
+        -------
+        str, None:
+            protein genotype of the sequence (if identified) or None
+        str:
+            string message describing the result of the analysis
+        """
 
         # Reconcile the forward and reverse reads        
         seq, msg = self._reconcile_reads(fwd_wins,rev_wins)

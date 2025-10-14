@@ -205,9 +205,9 @@ def test_counts_to_lncfu_full_pipeline(sample_df, counts_df, mocker):
     calculation, sorting, and data type conversion.
     """
     # Mock dependencies imported by the module under test
-    mocker.patch('tfscreen.util.counts_to_lncfu.read_dataframe', side_effect=lambda df, **kwargs: df.copy())
+    mocker.patch('tfscreen.process_raw.counts_to_lncfu.read_dataframe', side_effect=lambda df, **kwargs: df.copy())
     mocker.patch(
-        'tfscreen.util.counts_to_lncfu.argsort_genotypes', 
+        'tfscreen.process_raw.counts_to_lncfu.argsort_genotypes', 
         side_effect=lambda g: np.argsort(g)  # Simple alphabetical sort for testing
     )
 
