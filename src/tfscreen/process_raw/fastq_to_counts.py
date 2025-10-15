@@ -31,7 +31,7 @@ def _hamming_dist(s1, s2):
     return dist
 
 
-class FastqToCalls:
+class FastqToCounts:
     """
     Processes paired-end sequencing reads to call genotypes at the amino acid
     level.
@@ -74,7 +74,7 @@ class FastqToCalls:
                  allowed_num_flank_diffs: int = 1,
                  allowed_diff_from_expected: int = 2) -> None:
         """
-        Initializes the FastqToCalls processor.
+        Initializes the FastqToCounts processor.
 
         Parameters
         ----------
@@ -354,7 +354,6 @@ class FastqToCalls:
         rev_wins[rev_load_mask] = rev_seq[rev_good]
 
         return fwd_wins, rev_wins
-
 
     def build_call_pair(self,
                         f1_array: np.ndarray,

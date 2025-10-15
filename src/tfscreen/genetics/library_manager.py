@@ -683,7 +683,6 @@ class LibraryManager:
         -----
         The generated set is inclusive. For each pair of mutated sites, the
         output will contain not only the double mutants but also the two
-
         corresponding single mutants and the wild-type sequence.
         """
         
@@ -704,6 +703,42 @@ class LibraryManager:
     
         return lib_seqs, aa_muts
  
+    def _get_spiked_seqs(self,list_of_seqs):
+        """
+        Validate and translate any spiked sequences.
+
+        Parameters
+        ----------
+        list_of_seqs : list
+            list of spiked sequences (DNA letters)
+        
+        Returns
+        -------
+        tuple[list[str], list[str]]
+            A tuple containing two lists: (lib_seqs, aa_muts).
+            - lib_seqs: A list of all generated DNA sequences.
+            - aa_muts: A parallel list of the corresponding formatted amino
+            acid mutation strings.
+
+        Notes
+        -----
+        The generated set is inclusive. For each pair of mutated sites, the
+        output will contain not only the double mutants but also the two
+        corresponding single mutants and the wild-type sequence.
+        """
+
+        spiked_seqs = []
+        for seq in list_of_seqs:
+            _check_char(seq,"spiked seq",self.standard_bases)
+            if len(seq) != len(self.wt_seq):
+                raise ValueError(
+                    f"spiked seq {seq} is not the same length as the library"
+                )
+            spiked_seqs.append(seq)
+        
+        spiked_aa = self._convert_to_aa(spiked_seqs)
+
+        return spiked_seqs, spiked_aa
 
     def get_libraries(self) -> Tuple[Dict[str, List[str]], Dict[str, List[str]]]:
         """
@@ -713,6 +748,7 @@ class LibraryManager:
         has been initialized. It iterates through the `library_combos` list
         from the configuration and calls the appropriate internal methods to
         generate single, intra-library double, or inter-library double mutants.
+        It also grabs any spiked sequences defined in the input.
 
         Returns
         -------
@@ -730,6 +766,7 @@ class LibraryManager:
     
         # Go through every library combo (single-1, double-1-2, etc.)
         for k in self.library_combos:
+
             cols = k.split("-")
     
             # Singles
@@ -748,6 +785,13 @@ class LibraryManager:
                     
                 all_lib_seqs[k] = lib_seqs
                 all_aa_muts[k] = aa_muts
-                
+        
+        # Grab spiked sequences if defined
+        if "spiked_seqs" in self.run_config:
+            lib_seqs, aa_muts = self._get_spiked_seqs(self.run_config["spiked_seqs"])
+            all_lib_seqs["spiked"] = lib_seqs
+            all_aa_muts["spiked"] = aa_muts
+
+
         return all_lib_seqs, all_aa_muts
 
