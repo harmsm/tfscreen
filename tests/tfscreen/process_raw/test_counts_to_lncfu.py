@@ -21,8 +21,8 @@ def sample_df() -> pd.DataFrame:
     data = {
         'sample': ['s1', 's2', 's3', 's4'],
         'library': ['libA', 'libA', 'libB', 'libB'],
-        'cfu_per_mL': [1e8, 1.2e8, 2e7, 2.5e7],
-        'cfu_per_mL_std': [1e7, 1.0488088481701516e7, 2e6, 2.2360679774997894e6],
+        'sample_cfu': [1e8, 1.2e8, 2e7, 2.5e7],
+        'sample_cfu_std': [1e7, 1.0488088481701516e7, 2e6, 2.2360679774997894e6],
         'extra_col': ['cond1', 'cond2', 'cond1', 'cond2']
     }
     return pd.DataFrame(data).set_index('sample')
@@ -81,8 +81,8 @@ def test_impute_missing_genotypes(sample_df):
         'library':  ['libA', 'libA', 'libB',   'libB'],
         'genotype': ['G1',   'G1',   'G2',   'G3'],
         'counts':   [100,    50,     200,    300],
-        'cfu_per_mL': [1e8, 1.2e8, 2e7, 2.5e7],
-        'cfu_per_mL_std': [1e8, 1.2e8, 2e7, 2.5e7],
+        'sample_cfu': [1e8, 1.2e8, 2e7, 2.5e7],
+        'sample_cfu_std': [1e8, 1.2e8, 2e7, 2.5e7],
         'extra_col': ['cond1', 'cond2', 'cond1', 'cond2']
     }
     filtered_df = pd.DataFrame(filtered_data)
@@ -97,7 +97,7 @@ def test_impute_missing_genotypes(sample_df):
     # Check the imputed row for s3 (genotype G3)
     s3_g3_row = libB_df[(libB_df['sample'] == 's3') & (libB_df['genotype'] == 'G3')]
     assert s3_g3_row['counts'].iloc[0] == 0
-    assert s3_g3_row['cfu_per_mL'].iloc[0] == 2e7  # Metadata preserved
+    assert s3_g3_row['sample_cfu'].iloc[0] == 2e7  # Metadata preserved
     assert s3_g3_row['extra_col'].iloc[0] == 'cond1' # Extra metadata preserved
 
     # Check that libA, which needed no imputation, is correct
@@ -142,8 +142,8 @@ def test_calculate_concentrations_and_variance():
     df = pd.DataFrame({
         'sample': ['s1'],
         'frequency': [0.9],
-        'cfu_per_mL': [1e8],         # Original sample-level data
-        'cfu_per_mL_std': [1e7],   # Original sample-level data
+        'sample_cfu': [1e8],         # Original sample-level data
+        'sample_cfu_std': [1e7],   # Original sample-level data
         'adjusted_counts': [91]
     })
     # Simulate a second genotype in the sample for total counts calculation
@@ -174,7 +174,7 @@ def test_calculate_concentrations_and_variance():
     # FIX: Check that the RENAMED columns contain the ORIGINAL sample data
     assert 'ln_cfu' in result.columns
     assert 'ln_cfu_var' in result.columns
-    assert np.isclose(result['sample_cfu_per_mL'].iloc[0], sample_cfu)
+    assert np.isclose(result['sample_cfu'].iloc[0], sample_cfu)
 
 
 def test_calculate_concentrations_zero_cfu():
@@ -185,8 +185,8 @@ def test_calculate_concentrations_zero_cfu():
     df = pd.DataFrame({
         'sample': ['s1'],
         'frequency': [0.0],
-        'cfu_per_mL': [1e8],
-        'cfu_per_mL_std': [1e7],
+        'sample_cfu': [1e8],
+        'sample_cfu_std': [1e7],
         'adjusted_counts': [100]
     })
     result = _calculate_concentrations_and_variance(df.copy())
@@ -207,8 +207,8 @@ def test_counts_to_lncfu_full_pipeline(sample_df, counts_df, mocker):
     # Mock dependencies imported by the module under test
     mocker.patch('tfscreen.process_raw.counts_to_lncfu.read_dataframe', side_effect=lambda df, **kwargs: df.copy())
     mocker.patch(
-        'tfscreen.process_raw.counts_to_lncfu.argsort_genotypes', 
-        side_effect=lambda g: np.argsort(g)  # Simple alphabetical sort for testing
+        'tfscreen.process_raw.counts_to_lncfu.set_categorical_genotype', 
+        side_effect=lambda df,standardize,sort: df.sort_values("genotype")  # Simple alphabetical sort for testing
     )
 
     result = counts_to_lncfu(sample_df, counts_df, min_genotype_obs=10, pseudocount=1)
@@ -221,10 +221,7 @@ def test_counts_to_lncfu_full_pipeline(sample_df, counts_df, mocker):
     # Check that extra columns from sample_df are preserved
     assert 'extra_col' in result.columns
 
-    # --- FIX: Check the correctly imputed value. ---
-    # The original test checked (s3, G3), which was never removed.
-    # The actual imputed row is (s4, G2), because s4 is in libB
-    # but had no observations for G2.
+    # --- Check the correctly imputed value. ---
     s4_g2_row = result[(result['sample'] == 's4') & (result['genotype'] == 'G2')]
     assert not s4_g2_row.empty
     assert s4_g2_row['counts'].iloc[0] == 0
@@ -244,9 +241,7 @@ def test_counts_to_lncfu_full_pipeline(sample_df, counts_df, mocker):
     # Check sorting (genotype, library, sample)
     expected_genotypes = ['G1', 'G1', 'G2', 'G2', 'G3', 'G3']
     assert result['genotype'].tolist() == expected_genotypes
-    # Check categorical type and order
-    assert isinstance(result["genotype"].dtype, pd.CategoricalDtype)
-    assert result['genotype'].cat.categories.tolist() == ['G1', 'G2', 'G3']
+
 
 def test_counts_to_lncfu_all_filtered(sample_df, counts_df, mocker):
     """

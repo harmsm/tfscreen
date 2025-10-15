@@ -31,3 +31,10 @@ expected_3p: gtagaacgaagcggc
 # degenerate codons in x. 'double-x-y' specifies doubles between sub-libraries
 # x and y but not internal doubles.
 library_combos: ["single-1","single-2","double-1-2"]
+
+# These are sequences that are not part of the library that we include as controls
+# etc. 
+spiked_seqs:
+- gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatggcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctggcggcgccgtcgcaaattgtcgcggcgattctgtctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg
+- gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgattgcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctggcggcgccgtcgcaaattgtcgcggcgattctgtctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg
+- gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatggcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctgcacgcgccgtcgcaaattgtcgcggcgattaaatctcgcgccgcccaactgggtgccagcgtggtggtgtcgatg

@@ -1,4 +1,4 @@
-from .fastq_to_calls import FastqToCalls
+from .fastq_to_counts import FastqToCounts
 from tfscreen.util import generalized_main
 from tfscreen.genetics import (
     LibraryManager,
@@ -14,9 +14,12 @@ import os
 from collections import Counter
 import itertools
 from typing import Optional, Tuple, Iterable, Union, List
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import (
+    ProcessPoolExecutor,
+    as_completed
+)
 
-def _process_reads_chunk(chunk: List[Tuple], ftc_instance: 'FastqToCalls') -> Tuple[Counter, Counter]:
+def _process_reads_chunk(chunk: List[Tuple], ftc_instance: 'FastqToCounts') -> Tuple[Counter, Counter]:
     """
     Worker function to process a chunk of read pairs. This will be executed in a
     separate process. It returns a counter with all fwd/rev read pairs seen 
@@ -60,7 +63,7 @@ def _process_reads_chunk(chunk: List[Tuple], ftc_instance: 'FastqToCalls') -> Tu
 
 def _process_pairs_chunk(fwd_rev_chunk: List,
                          fwd_rev_counter: Counter,
-                         ftc_instance: FastqToCalls) -> Tuple[Counter,Counter]:
+                         ftc_instance: FastqToCounts) -> Tuple[Counter,Counter]:
     """
     Worker function to process a chunk of fwd/rev pairs, generating final
     protein sequence calls. This is designed to be executed as its own process.
@@ -92,7 +95,7 @@ def _process_pairs_chunk(fwd_rev_chunk: List,
 
 def _process_paired_fastq(f1_fastq: str,
                           f2_fastq: str,
-                          ftc_instance: FastqToCalls,
+                          ftc_instance: FastqToCounts,
                           max_num_reads: Optional[int],
                           chunk_size: int = 1000,
                           num_workers: int | None = None) -> Tuple[Counter, Counter]:
@@ -111,8 +114,8 @@ def _process_paired_fastq(f1_fastq: str,
     f2_fastq : str
         Path to the second (read 2) FASTQ file. Must be the mate file for
         ``f1_fastq``.
-    ftc_instance : FastqToCalls
-        A configured :class:`FastqToCalls` instance that performs base-to-number
+    ftc_instance : FastqToCounts
+        A configured :class:`FastqToCounts` instance that performs base-to-number
         mapping and the read-pair calling logic.
     max_num_reads : int or None
         If provided, only the first ``max_num_reads`` read pairs are processed.
@@ -351,8 +354,8 @@ def process_fastq(f1_fastq: str,
     else:
         lm = LibraryManager(run_config)
 
-    # Set up a FastqToCalls object for calling read pairs
-    ftc_instance = FastqToCalls(lm,
+    # Set up a FastqToCounts object for calling read pairs
+    ftc_instance = FastqToCounts(lm,
                       phred_cutoff=phred_cutoff,
                       min_read_length=min_read_length,
                       allowed_num_flank_diffs=allowed_num_flank_diffs,

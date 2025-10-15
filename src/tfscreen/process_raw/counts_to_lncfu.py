@@ -1,15 +1,17 @@
 from tfscreen.util import (
     read_dataframe,
-    check_columns
+    check_columns,
 )
+
 from tfscreen.genetics import (
-    argsort_genotypes
+    set_categorical_genotype
 )
 
 import pandas as pd
 import numpy as np
 
-def _filter_low_observation_genotypes(df: pd.DataFrame, min_genotype_obs: int) -> pd.DataFrame:
+def _filter_low_observation_genotypes(df: pd.DataFrame,
+                                      min_genotype_obs: int) -> pd.DataFrame:
     """Filter out genotypes with total counts below a threshold for each library.
 
     Parameters
@@ -34,7 +36,8 @@ def _filter_low_observation_genotypes(df: pd.DataFrame, min_genotype_obs: int) -
 
     return filtered_df
 
-def _impute_missing_genotypes(df: pd.DataFrame, sample_df: pd.DataFrame) -> pd.DataFrame:
+def _impute_missing_genotypes(df: pd.DataFrame,
+                              sample_df: pd.DataFrame) -> pd.DataFrame:
     """
     Ensure every sample in a library has a row for every genotype in that library.
     (Refactored to use merge for metadata imputation and guarantee sort order).
@@ -42,28 +45,26 @@ def _impute_missing_genotypes(df: pd.DataFrame, sample_df: pd.DataFrame) -> pd.D
     if df.empty:
         return df
 
-    # 1. Create a scaffold with every combination of sample and genotype within each library.
-    # This logic is sound and remains unchanged.
+    # Create a scaffold with every combination of sample and genotype within each library.
     lib_samples = df[['library', 'sample']].drop_duplicates()
     lib_genotypes = df[['library', 'genotype']].drop_duplicates()
     scaffold = pd.merge(lib_samples, lib_genotypes, on='library', how='outer')
 
-    # 2. Merge the original data onto the scaffold.
-    # This brings in 'counts' and other data, leaving NaNs for missing combinations.
+    # Merge the original data onto the scaffold. This brings in 'counts' and
+    # other data, leaving NaNs for missing combinations.
     complete_df = pd.merge(scaffold, df, on=['library', 'sample', 'genotype'], how='left')
 
-    # 3. Create a unique metadata map from the original df.
-    # This creates a small DataFrame: one row for each sample with its complete metadata.
+    # Create a unique metadata map from the original df. This creates a small
+    # DataFrame: one row for each sample with its complete metadata.
     sample_info_cols = sample_df.columns.tolist()
     sample_meta_map = df[['sample'] + sample_info_cols].drop_duplicates(subset=['sample'])
 
-    # 4. Impute the missing metadata using a merge (replaces the loop).
-    # Drop the now-sparse metadata columns and merge the complete map back in.
+    # Impute the missing metadata using a merge. Drop the now-sparse metadata
+    # columns and merge the complete map back in.
     complete_df = complete_df.drop(columns=sample_info_cols)
     complete_df = pd.merge(complete_df, sample_meta_map, on='sample', how='left')
 
-    # 5. Finalize the DataFrame.
-    # Fill missing counts with 0.
+    # Finalize the DataFrame. Fill missing counts with 0.
     complete_df['counts'] = complete_df['counts'].fillna(0).astype(int)
 
     # Enforce a predictable, stable row order.
@@ -75,8 +76,10 @@ def _impute_missing_genotypes(df: pd.DataFrame, sample_df: pd.DataFrame) -> pd.D
     
     return complete_df[final_col_order]
 
-def _calculate_frequencies(df: pd.DataFrame, pseudocount: int) -> pd.DataFrame:
-    """Add a pseudocount and calculate genotype frequencies for each sample.
+def _calculate_frequencies(df: pd.DataFrame,
+                           pseudocount: int) -> pd.DataFrame:
+    """
+    Add a pseudocount and calculate genotype frequencies for each sample.
 
     Parameters
     ----------
@@ -103,27 +106,24 @@ def _calculate_frequencies(df: pd.DataFrame, pseudocount: int) -> pd.DataFrame:
     return df
 
 def _calculate_concentrations_and_variance(df: pd.DataFrame) -> pd.DataFrame:
-    """Calculate the cfu/mL for each genotype and propagate the variance."""
+    """
+    Calculate the cfu/mL for each genotype and propagate the variance.
+    """
     
-    # Rename sample-level columns first for clarity
-    df = df.rename(columns={"cfu_per_mL": "sample_cfu_per_mL",
-                            "cfu_per_mL_std": "sample_cfu_per_mL_std"})
-
     # Calculate the cfu/mL for each genotype
-    df['cfu'] = df['frequency'] * df['sample_cfu_per_mL']
+    df['cfu'] = df['frequency'] * df['sample_cfu']
 
     # Convert input standard deviation into variance
-    sample_cfu_per_mL_var = (df["sample_cfu_per_mL_std"])**2
+    sample_cfu_var = (df["sample_cfu_std"])**2
 
-    # --- Propagate Variance ---
-    # 1. Variance in frequency (from binomial uncertainty)
+    # Variance in frequency (from binomial uncertainty)
     total_counts_per_sample = df.groupby('sample')['adjusted_counts'].transform('sum')
     var_frequency = df['frequency'] * (1 - df['frequency']) / total_counts_per_sample
 
-    # 2. Propagate error for Z = X * Y
+    # Propagate error from multiplying frequency and cfu
     with np.errstate(divide='ignore', invalid='ignore'):
         relative_var_freq = np.nan_to_num(var_frequency / (df['frequency']**2))
-        relative_var_sample_cfu = np.nan_to_num(sample_cfu_per_mL_var / (df['sample_cfu_per_mL']**2))
+        relative_var_sample_cfu = np.nan_to_num(sample_cfu_var / (df['sample_cfu']**2))
 
     relative_var_sum = relative_var_freq + relative_var_sample_cfu
 
@@ -141,7 +141,6 @@ def _calculate_concentrations_and_variance(df: pd.DataFrame) -> pd.DataFrame:
     df.loc[mask_zero_cfu, 'ln_cfu_var'] = np.nan
 
     return df
-
 
 def counts_to_lncfu(
     sample_df: pd.DataFrame,
@@ -162,8 +161,8 @@ def counts_to_lncfu(
     ----------
     sample_df : pd.DataFrame
         DataFrame indexed by a unique 'sample' string. Must contain metadata
-        for each sample. The required columns are 'library', 'cfu_per_mL',
-        and 'cfu_per_mL_std'. Any additional columns (e.g., 'replicate',
+        for each sample. The required columns are 'library', 'sample_cfu',
+        and 'sample_cfu_std'. Any additional columns (e.g., 'replicate',
         'time', 'titrant_name') will be preserved in the final output.
     counts_df : pd.DataFrame
         DataFrame with 'sample', 'genotype', and 'counts' columns.
@@ -191,42 +190,40 @@ def counts_to_lncfu(
     # Read/clean up dataframes
     sample_df = read_dataframe(sample_df,index_column="sample")
     check_columns(sample_df,required_columns=["library",
-                                              "cfu_per_mL",
-                                              "cfu_per_mL_std"])
+                                              "sample_cfu",
+                                              "sample_cfu_std"])
     
+    # Read counts dataframe
     counts_df = read_dataframe(counts_df)
     check_columns(counts_df,required_columns=["sample",
                                               "genotype",
                                               "counts"])
     
-    # 1. Combine the two dataframes
     # Merge on the index of sample_df and the 'sample' column of counts_df
-    combined_df = pd.merge(counts_df, sample_df, left_on=['sample'], right_index=True, how='left')
+    combined_df = pd.merge(counts_df,
+                           sample_df,
+                           left_on=['sample'],
+                           right_index=True,
+                           how='left')
 
-    # 2. Remove genotypes with too few observations per library
+    # Remove genotypes with too few observations per library
     filtered_df = _filter_low_observation_genotypes(combined_df, min_genotype_obs)
 
-    # 3. Impute missing genotypes so all samples in a library have all genotypes
+    # Impute missing genotypes so all samples in a library have all genotypes
     imputed_df = _impute_missing_genotypes(filtered_df, sample_df)
 
     # If imputed_df is empty after filtering, return it.
     if imputed_df.empty:
         return imputed_df
 
-    # 4. Add pseudocount and calculate frequency
+    # Add pseudocount and calculate frequency
     freq_df = _calculate_frequencies(imputed_df, pseudocount)
 
-    # 5. Calculate genotype cfu/mL and propagate variance
+    # Calculate genotype cfu/mL and propagate variance
     final_df = _calculate_concentrations_and_variance(freq_df)
 
-    # 6. Define genotype as a categorical variable
-    all_genotypes = pd.unique(final_df["genotype"])
-    idx = argsort_genotypes(all_genotypes)
-    genotype_order = all_genotypes[idx]
-
-    final_df['genotype'] = pd.Categorical(final_df['genotype'],
-                                          categories=genotype_order,
-                                          ordered=True)
+    # Define genotype as a categorical variable
+    final_df = set_categorical_genotype(final_df,standardize=True,sort=False)
     
     # Sort final dataframe
     sort_columns = ['genotype', 'library', 'sample']

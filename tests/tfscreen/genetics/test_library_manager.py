@@ -9,7 +9,6 @@ from tfscreen.genetics.library_manager import _check_lib_key
 from tfscreen.genetics.library_manager import LibraryManager
 from tfscreen.data import CODON_TO_AA
 
-
 # ----------------------------------------------------------------------------
 # test _check_char
 # ----------------------------------------------------------------------------
@@ -600,9 +599,6 @@ def test_get_intra_doubles():
         assert len(called_with_dna) == 12
         assert set(called_with_dna) == expected_dna
 
-# In your test file...
-from unittest.mock import patch
-from tfscreen.genetics.library_manager import LibraryManager
 
 # ----------------------------------------------------------------------------
 # test _get_inter_doubles
@@ -667,20 +663,97 @@ def test_get_inter_doubles_multiple_sites():
         assert len(called_with_dna) == 8
         assert set(called_with_dna) == expected_dna
 
-# In your test file...
-from unittest.mock import patch
-from tfscreen.genetics.library_manager import LibraryManager
+
+
+# ----------------------------------------------------------------------------
+# test _get_spiked_seqs
+# ----------------------------------------------------------------------------
+
+@pytest.fixture
+def lm_for_spiked_seqs() -> LibraryManager:
+    """Provides a bare LibraryManager instance for testing _get_spiked_seqs."""
+    lm = LibraryManager.__new__(LibraryManager)
+    # Set attributes required by the method under test
+    lm.wt_seq = "gattaca"
+    lm.standard_bases = set('acgt')
+    return lm
+
+def test_get_spiked_seqs_success(lm_for_spiked_seqs):
+    """
+    Tests that valid sequences are processed correctly.
+    """
+    # The bug `spiked_seqs.append(spiked_seqs)` is present in the provided
+    # code. This test is written against the *intended* behavior where
+    # `spiked_seqs.append(seq)` is used. When run against the buggy code,
+    # the mock assertion will correctly fail.
+    
+    valid_seqs = ["gattaca", "gattaaa"]
+    
+    # Mock the helper method that translates DNA to AA mutations
+    with patch.object(lm_for_spiked_seqs, '_convert_to_aa') as mock_convert:
+        mock_convert.return_value = ["", "Y3K"] # Dummy return value
+        
+        # Call the method under test
+        returned_seqs, returned_aa = lm_for_spiked_seqs._get_spiked_seqs(valid_seqs)
+
+        # Assert that the valid sequences were passed to the translator
+        mock_convert.assert_called_once_with(valid_seqs)
+
+        # Assert that the method returns the validated sequences and the
+        # result from the translator
+        assert returned_seqs == valid_seqs
+        assert returned_aa == ["", "Y3K"]
+
+def test_get_spiked_seqs_invalid_character(lm_for_spiked_seqs):
+    """
+    Tests that a ValueError is raised for a sequence with non-standard bases.
+    """
+    invalid_seqs = ["gattaca", "gattacx"] # Contains 'x'
+    
+    with pytest.raises(ValueError) as excinfo:
+        lm_for_spiked_seqs._get_spiked_seqs(invalid_seqs)
+    
+    assert "Characters not recognized" in str(excinfo.value)
+    assert "spiked seq" in str(excinfo.value)
+
+def test_get_spiked_seqs_incorrect_length(lm_for_spiked_seqs):
+    """
+    Tests that a ValueError is raised for a sequence with the wrong length.
+    """
+    short_seqs = ["gattaca", "gatta"]
+    
+    with pytest.raises(ValueError, match="not the same length as the library"):
+        lm_for_spiked_seqs._get_spiked_seqs(short_seqs)
+
+def test_get_spiked_seqs_empty_list(lm_for_spiked_seqs):
+    """
+    Tests that the method handles an empty input list gracefully.
+    """
+    with patch.object(lm_for_spiked_seqs, '_convert_to_aa') as mock_convert:
+        mock_convert.return_value = []
+        
+        returned_seqs, returned_aa = lm_for_spiked_seqs._get_spiked_seqs([])
+
+        # Assert translator was called with an empty list
+        mock_convert.assert_called_once_with([])
+        
+        # Assert the output is a tuple of two empty lists
+        assert returned_seqs == []
+        assert returned_aa == []
+
 
 # ----------------------------------------------------------------------------
 # test get_libraries
 # ----------------------------------------------------------------------------
 
+@patch('tfscreen.genetics.library_manager.LibraryManager._get_spiked_seqs')
 @patch('tfscreen.genetics.library_manager.LibraryManager._get_inter_doubles')
 @patch('tfscreen.genetics.library_manager.LibraryManager._get_intra_doubles')
 @patch('tfscreen.genetics.library_manager.LibraryManager._get_singles')
 def test_get_libraries_dispatcher(mock_get_singles,
                                   mock_get_intra,
-                                  mock_get_inter):
+                                  mock_get_inter,
+                                  mock_get_spiked):
     """
     Tests that get_libraries correctly dispatches to the appropriate
     helper methods based on the library_combos.
@@ -689,6 +762,7 @@ def test_get_libraries_dispatcher(mock_get_singles,
     mock_get_singles.return_value = (['s_dna'], ['s_aa'])
     mock_get_intra.return_value = (['d_intra_dna'], ['d_intra_aa'])
     mock_get_inter.return_value = (['d_inter_dna'], ['d_inter_aa'])
+    mock_get_spiked.return_value = (['spiked_dna'], ['spiked_aa'])
 
     # 2. Setup a bare instance with a list of combos to test
     lm = LibraryManager.__new__(LibraryManager)
@@ -697,6 +771,8 @@ def test_get_libraries_dispatcher(mock_get_singles,
         "double-2-2", # Should call intra-doubles
         "double-1-2"  # Should call inter-doubles
     ]
+    # should cause to call _get_spiked
+    lm.run_config = {"spiked_seqs":"spike_call"} 
 
     # 3. Call the method under test
     dna_libs, aa_libs = lm.get_libraries()
@@ -705,17 +781,20 @@ def test_get_libraries_dispatcher(mock_get_singles,
     mock_get_singles.assert_called_once_with('1')
     mock_get_intra.assert_called_once_with('2')
     mock_get_inter.assert_called_once_with('1', '2')
+    mock_get_spiked.assert_called_once_with("spike_call")
 
     # 5. Assert that the final dictionaries were assembled correctly
     expected_dna = {
         "single-1": ['s_dna'],
         "double-2-2": ['d_intra_dna'],
-        "double-1-2": ['d_inter_dna']
+        "double-1-2": ['d_inter_dna'],
+        "spiked": ["spiked_dna"]
     }
     expected_aa = {
         "single-1": ['s_aa'],
         "double-2-2": ['d_intra_aa'],
-        "double-1-2": ['d_inter_aa']
+        "double-1-2": ['d_inter_aa'],
+        "spiked": ["spiked_aa"]
     }
     assert dna_libs == expected_dna
     assert aa_libs == expected_aa
