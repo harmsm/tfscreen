@@ -179,19 +179,19 @@ def process_counts(
     pseudocount: int=1,
     verbose: bool = True):
 
-    # Assign sample cfu/mL given the od600 for each sample
-    sample_df = _infer_sample_cfu(sample_df,od600_calibration_data)
-
     # After this call, sample_df will be indexed by sample name and have 
     # a column 'obs_file' that points to the csv file to read. 
     sample_df = _prep_sample_df(sample_df,
                                 counts_csv_path,
                                 counts_glob_prefix,
                                 verbose)
-
+    
     # This will be a single dataframe holding all counts for all samples, with
     # a 'sample' column that can be indexed back to to counts. 
     counts_df = _aggregate_counts(sample_df)
+
+    # Assign sample cfu/mL given the od600 for each sample
+    sample_df = _infer_sample_cfu(sample_df,od600_calibration_data)
 
     # Infer cfu per genotype
     ln_cfu_df = counts_to_lncfu(sample_df,
