@@ -21,7 +21,7 @@ from numpy.random import Generator
 from tqdm.auto import tqdm
 from scipy.stats import gamma
 
-from typing import Iterable
+from typing import Iterable, Union, Callable, Optional
 
 def _assign_ddG(unique_genotypes,
                 ddG_df,
@@ -124,7 +124,6 @@ def _assign_dk_geno(unique_genotypes,
     )
 
     
-from typing import Iterable, Union, Callable, Optional
 
 def thermo_to_growth(
     genotypes: Iterable[str],
