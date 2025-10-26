@@ -36,7 +36,7 @@ def model_flat(params, x):
       null hypothesis for model comparison.
     """
     
-    return model_poly(params,x)
+    return np.full_like(x,params[0])
     
 def model_linear(params, x):
     """
@@ -63,7 +63,7 @@ def model_linear(params, x):
       does not saturate within the tested concentration range.
     """
 
-    return model_poly(params,x)
+    return params[0]*x + params[1]
 
 def _hill(params, x):
     """
