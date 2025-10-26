@@ -1,4 +1,5 @@
-from . import model, guide, preprocess, initialize, dataclasses
+from .. import preprocess
+from . import model, guide, initialize, dataclasses
 
 import jax.numpy as jnp
 
