@@ -11,7 +11,8 @@ def cat_response(df,
                  x_column="titrant_conc",
                  y_column="theta_est",
                  y_std_column="theta_std",
-                 models_to_run=None):
+                 models_to_run=None,
+                 verbose=False):
     """
     Processes a DataFrame of genotype data, running fits for each genotype
     and aggregating the results into summary and model-specific DataFrames.
@@ -24,6 +25,12 @@ def cat_response(df,
     x_column, y_column, y_std_columns : str, optional
         names of columns in dataframe corresponding to x (independent variable),
         y (measured value), and y_std (standard error on the measured value). 
+    models_to_run : list of str, optional
+        A list of model names to test. If None (default), all models in the
+        global MODEL_LIBRARY will be tested.
+    verbose : bool, optional
+        If True, prints warnings to the console when a model fails to fit.
+        Defaults to False.
 
     Returns
     -------
@@ -61,6 +68,7 @@ def cat_response(df,
             this_data[:, 1],
             this_data[:, 2],
             x_pred=x_pred,
+            verbose=verbose
         )
         
         fit_results['genotype'] = genotype

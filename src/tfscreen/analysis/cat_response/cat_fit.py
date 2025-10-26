@@ -124,8 +124,7 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, verbose=False):
             # If this is a 2D array of values, this is a full design matrix. 
             # Solve by weighted least squares.  
             else:
-                params, cov_matrix = run_matrix_wls(guesses,y,1/y_std)
-                std_err = np.sqrt(np.diag(cov_matrix))
+                params, std_err, cov_matrix, _ = run_matrix_wls(guesses,y,1/y_std)
             
 
             y_fit = model_func(params, x)
@@ -138,6 +137,7 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, verbose=False):
             param_results[name] = {"params": params, "std_err": std_err, "names": param_names}
 
         except (RuntimeError, ValueError) as e:
+
             if verbose:
                 print(f"Warning: Model '{name}' failed to fit. Reason: {e}")
             summary_results.append({"model": name, "R2": np.nan, "AIC": np.nan, "success": False})
