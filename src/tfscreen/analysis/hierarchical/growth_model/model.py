@@ -1,166 +1,149 @@
-
 import jax.numpy as jnp
 import numpyro as pyro
 from numpyro.handlers import mask
 import numpyro.distributions as dist
+from flax.struct import dataclass
+
+from .components.growth_hyper import define_model as define_growth_hyper
+from .components.growth_indep import define_model as define_growth_indep
+
+from .components.ln_cfu0 import define_model as define_ln_cfu0
+
+from .components.dk_geno import define_model as define_dk_geno
+from .components.dk_geno_fixed import define_model as define_dk_geno_fixed
+
+from .components.activity import define_model as define_activity
+from .components.activity_horseshoe import define_model as define_activity_horseshoe
+from .components.activity_fixed import define_model as define_activity_fixed
+
+from .components.theta_cat import define_model as define_theta_cat
+from .components.theta_hill import define_model as define_theta_hill
+
+#from jax.debug import print as jax_print
+
+@dataclass
+class GrowthModelData:
+    """
+    A container holding data needed to specify growth_model, treated as a JAX
+    Pytree.
+    """
+    
+    # Main data tensors
+    ln_cfu: jnp.ndarray
+    ln_cfu_std: jnp.ndarray
+    
+    # Fixed experimental parameters
+    t_pre: jnp.ndarray
+    t_sel: jnp.ndarray
+    titrant_conc: jnp.ndarray
+
+    # mappers
+    map_ln_cfu0: jnp.ndarray
+    map_cond_pre: jnp.ndarray
+    map_cond_sel: jnp.ndarray
+    map_genotype: jnp.ndarray
+    map_theta: jnp.ndarray
+    map_theta_group: jnp.ndarray
+
+    # lengths for plates
+    num_ln_cfu0: int
+    num_condition: int
+    num_genotype: int
+    num_theta: int
+    num_replicate: int
+    num_not_wt: int
+    num_titrant: int
+    num_theta_group: int
+
+    # meta data
+    wt_index: int
+    not_wt_mask: jnp.ndarray
+    good_mask: jnp.ndarray
 
 
-def growth_model(data,priors,fix_A=False,fix_dk_geno=False):
+def growth_model(data,
+                 growth_priors,
+                 ln_cfu0_priors,
+                 dk_geno_priors,
+                 activity_priors,
+                 theta_priors,
+                 use_growth_indep=False,
+                 use_fixed_dk_geno=False,
+                 use_fixed_activity=False,
+                 use_horseshoe_activity=True,
+                 use_categorical_theta=False):
     """
     Model growth rates of bacteria in culture.
     """
 
-    # -------------------------------------------------------------------------
-    # ln[cfu0]
-    # -------------------------------------------------------------------------
-    
-    with pyro.plate("ln_cfu0_blocks", data.num_ln_cfu0_block):
-        ln_cfu0_hyper_locs = pyro.sample(
-            "ln_cfu0_hyper_locs",
-            dist.Normal(priors.ln_cfu0_hyper_loc_loc, priors.ln_cfu0_hyper_loc_scale)
-        )
-        ln_cfu0_hyper_scales = pyro.sample(
-            "ln_cfu0_hyper_scales",
-            dist.HalfCauchy(priors.ln_cfu0_hyper_scale_loc)
-        )
-        with pyro.plate("genotypes", data.num_geno):
-            ln_cfu0_offsets = pyro.sample("ln_cfu0_offsets", dist.Normal(0, 1))
+    #jax_print("top of function.")
 
-    # CORRECTED #1: Transpose offsets to align dimensions for broadcasting.
-    ln_cfu0 = pyro.deterministic("ln_cfu0", ln_cfu0_hyper_locs[:, None] + ln_cfu0_offsets.T * ln_cfu0_hyper_scales[:, None])
-
-    # -------------------------------------------------------------------------
-    # A
-    # -------------------------------------------------------------------------
-
-    if not fix_A:
-        A_hyper_loc = pyro.sample(
-            "A_hyper_loc",
-            dist.Normal(priors.A_hyper_loc_loc, priors.A_hyper_loc_scale)
-        )
-        A_hyper_scale = pyro.sample(
-            "A_hyper_scale",
-            dist.HalfCauchy(priors.A_hyper_scale_loc)
-        )
-
-        with pyro.plate("mutants_A", data.num_geno - 1):
-            A_offset = pyro.sample("A_offset", dist.Normal(0, 1))
-            A_mutants = A_hyper_loc + A_offset * A_hyper_scale
-
-        A = jnp.empty(data.num_geno)
-        A = A.at[data.wt_index].set(1.0)
-        A = A.at[data.not_wt_mask].set(A_mutants)
-        pyro.deterministic("A", A)
+    # Define base growth parameters
+    if use_growth_indep:
+        k_pre, m_pre, k_sel, m_sel = define_growth_indep("growth",data,growth_priors)
     else:
-        A = jnp.ones(data.num_geno)
+        k_pre, m_pre, k_sel, m_sel = define_growth_hyper("growth",data,growth_priors)
 
-    # -------------------------------------------------------------------------
-    # dk_geno
-    # -------------------------------------------------------------------------
+    # Define ln_cfu0
+    ln_cfu0 = define_ln_cfu0("ln_cfu0",data,ln_cfu0_priors)
 
-    if not fix_dk_geno:
-        dk_geno_hyper_shift = pyro.sample(
-            "dk_geno_shift",
-            dist.Normal(priors.dk_geno_hyper_shift_loc, priors.dk_geno_hyper_shift_scale)
-        )
-        dk_geno_hyper_loc = pyro.sample(
-            "dk_geno_hyper_loc",
-            dist.Normal(priors.dk_geno_hyper_loc_loc, priors.dk_geno_hyper_loc_scale)
-        )
-        dk_geno_hyper_scale = pyro.sample(
-            "dk_geno_hyper_scale",
-            dist.HalfCauchy(priors.dk_geno_hyper_scale_loc)
-        )
-
-        with pyro.plate("mutants_dkgeno", data.num_geno - 1):
-            dk_geno_offset = pyro.sample("dk_geno_offset", dist.Normal(0, 1))
-            dk_geno_lognormal = jnp.exp(dk_geno_hyper_loc + dk_geno_offset * dk_geno_hyper_scale)
-            dk_geno_mutants = dk_geno_hyper_shift - dk_geno_lognormal
-
-        dk_geno = jnp.empty(data.num_geno)
-        dk_geno = dk_geno.at[data.wt_index].set(0.0)
-        dk_geno = dk_geno.at[data.not_wt_mask].set(dk_geno_mutants)
-        pyro.deterministic("dk_geno", dk_geno)
+    # Define dk_geno
+    if use_fixed_dk_geno:
+        dk_geno = define_dk_geno_fixed("dk_geno",data,dk_geno_priors)    
     else:
-        dk_geno = jnp.zeros(data.num_geno)
+        dk_geno = define_dk_geno("dk_geno",data,dk_geno_priors)
 
-    # -------------------------------------------------------------------------
-    # theta
-    # -------------------------------------------------------------------------
+    # Define activity
+    if use_fixed_activity:
+        activity = define_activity_fixed("activity",data,activity_priors)
+    else:
+        if use_horseshoe_activity:
+            activity = define_activity_horseshoe("activity",data,activity_priors)
+        else:
+            activity = define_activity("activity",data,activity_priors)
 
-    wt_theta = pyro.sample(
-        "theta_wt",
-        dist.TruncatedNormal(
-            loc=priors.wt_theta_loc,
-            scale=priors.wt_theta_scale,
-            low=0.0,
-            high=1.0
-        ).to_event(1)
-    )
+    # Define theta
+    if use_categorical_theta:
+        theta = define_theta_cat("theta",data,theta_priors)
+    else:
+        theta = define_theta_hill("theta",data,theta_priors)
 
-    log_alpha_hyper_loc = pyro.sample("log_alpha_hyper_loc", dist.Normal(priors.log_alpha_hyper_loc_loc, priors.log_alpha_hyper_loc_scale))
-    log_alpha_hyper_offset = pyro.sample("log_alpha_hyper_offset", dist.Normal(0, 1))
-    theta_alpha = pyro.deterministic("theta_alpha", jnp.exp(log_alpha_hyper_loc + log_alpha_hyper_offset))
-    
-    log_beta_hyper_loc = pyro.sample("log_beta_hyper_loc", dist.Normal(priors.log_beta_hyper_loc_loc, priors.log_beta_hyper_loc_scale))
-    log_beta_hyper_offset = pyro.sample("log_beta_hyper_offset", dist.Normal(0, 1))
-    theta_beta = pyro.deterministic("theta_beta", jnp.exp(log_beta_hyper_loc + log_beta_hyper_offset))
-    
-    mutant_theta_prior = dist.Beta(theta_alpha, theta_beta)
+    # if jnp.any(~jnp.isfinite(k_pre)):
+    #     jax_print("k_pre")
+    # if jnp.any(~jnp.isfinite(m_pre)):
+    #     jax_print("m_pre")
+    # if jnp.any(~jnp.isfinite(k_sel)):
+    #     jax_print("k_sel")
+    # if jnp.any(~jnp.isfinite(m_sel)):
+    #     jax_print("m_sel")
+    # if jnp.any(~jnp.isfinite(ln_cfu0)):
+    #     jax_print("ln_cfu0")
+    # if jnp.any(~jnp.isfinite(dk_geno)):
+    #     jax_print("dk_geno")
+    # if jnp.any(~jnp.isfinite(activity)):
+    #     jax_print("activity")
+    # if jnp.any(~jnp.isfinite(theta)):
+    #     jax_print("theta")
 
-    with pyro.plate("mutants_geno", data.num_geno - 1):
-        with pyro.plate("titrant_concs", data.num_theta):
-            mutant_thetas = pyro.sample("theta_mutants", mutant_theta_prior)
-            
-    thetas = jnp.empty((data.num_geno, data.num_theta))
-    thetas = thetas.at[data.wt_index].set(wt_theta)
-    thetas = thetas.at[data.not_wt_mask].set(mutant_thetas.T)
-    pyro.deterministic("thetas", thetas)
+    # Calculate growth. All variables have same tensor dimensions. 
+    g_pre = k_pre + dk_geno + activity*m_pre*theta
+    g_sel = k_sel + dk_geno + activity*m_sel*theta
+    ln_cfu_pred = ln_cfu0 + g_pre*data.t_pre + g_sel*data.t_sel
 
-    # -------------------------------------------------------------------------
-    # Growth parameters
-    # -------------------------------------------------------------------------
+    # if jnp.any(~jnp.isfinite(g_pre)):
+    #     jax_print("g_pre")
+    # if jnp.any(~jnp.isfinite(g_sel)):
+    #     jax_print("g_sel")
+    # if jnp.any(~jnp.isfinite(ln_cfu_pred)):
+    #     jax_print("ln_cfu_pred")
 
-    with pyro.plate("replicates", data.num_rep):
-        with pyro.plate("raw_conditions", data.num_raw_cond):
-            growth_k = pyro.sample("growth_k_prior",
-                                   dist.Normal(priors.growth_k_loc, priors.growth_k_scale))
-            growth_m = pyro.sample("growth_m_prior",
-                                   dist.Normal(priors.growth_m_loc, priors.growth_m_scale))
-    
-    pyro.deterministic("growth_k", growth_k)
-    pyro.deterministic("growth_m", growth_m)
+    #ln_cfu_pred = jnp.clip(ln_cfu_pred, a_min=-1e9, a_max=1e9)
 
-    # -------------------------------------------------------------------------
-    # Calculate predicted outputs from model parameters
-    # -------------------------------------------------------------------------
-
-    geno_idx_array = jnp.arange(data.num_geno)
-    rep_idx_array = jnp.arange(data.num_rep)[:, None, None, None]
-
-    ln_cfu0_selected = ln_cfu0[data.ln_cfu0_block_map, geno_idx_array]
-
-    k_pre = growth_k[rep_idx_array, data.cond_pre_map[None, :, None, None]]
-    m_pre = growth_m[rep_idx_array, data.cond_pre_map[None, :, None, None]]
-    k_sel = growth_k[rep_idx_array, data.cond_sel_map[None, :, None, None]]
-    m_sel = growth_m[rep_idx_array, data.cond_sel_map[None, :, None, None]]
-    
-    g_idx = jnp.arange(data.num_geno)[None, None, :, None]
-    th_idx = data.theta_map[None, :, None, None]
-    theta_selected_bcast = thetas[g_idx, th_idx]
-
-    growth_pre = k_pre + dk_geno[None, None, :, None] + m_pre * A[None, None, :, None] * theta_selected_bcast
-    growth_sel = k_sel + dk_geno[None, None, :, None] + m_sel * A[None, None, :, None] * theta_selected_bcast
-
-    predicted_ln_cfu = ln_cfu0_selected[..., None] + growth_pre * data.t_pre + growth_sel * data.t_sel
-
-    # -------------------------------------------------------------------------
     # Observe data
-    # -------------------------------------------------------------------------
-    
+    #jax_print("Made it...")
     with mask(mask=data.good_mask):
-        pyro.sample(
-            "obs",
-            dist.Normal(predicted_ln_cfu, data.ln_cfu_std).to_event(4),
-            obs=data.ln_cfu_obs
-        )
+        pyro.sample("obs",
+                    dist.Normal(ln_cfu_pred,data.ln_cfu_std),
+                    obs=data.ln_cfu)
+    #jax_print("...here.")
+
