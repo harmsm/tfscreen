@@ -220,7 +220,7 @@ def define_model(name,data,priors):
     # Transform parameters to their natural scale
     theta_min_1d = dist.transforms.SigmoidTransform()(logit_theta_min)
     theta_max_1d = dist.transforms.SigmoidTransform()(logit_theta_max)
-    hill_K_1d = jnp.exp(log_hill_K)
+    hill_K_1d = jnp.exp(log_hill_K) # no clips here because we take care of inf cases below
     hill_n_1d = jnp.exp(log_hill_n)
 
     # Register parameter values
@@ -236,9 +236,10 @@ def define_model(name,data,priors):
     hill_n = hill_n_1d[data.map_theta_group]
 
     # Calculate theta (mean) using Hill model applied to a full titrant tensor
-    c_pow_h = jnp.power(data.titrant_conc, hill_n)
-    Kd_pow_h = jnp.power(hill_K, hill_n)
-    mean_theta = theta_min + (theta_max - theta_min) * (c_pow_h / (Kd_pow_h + c_pow_h))
+    c_pow_n = jnp.clip(jnp.power(data.titrant_conc, hill_n),1e30) # high clip to prevent inf/inf
+    Kd_pow_n = jnp.power(hill_K, hill_n)
+    epsilon = 1e-20 # prevent x/0
+    mean_theta = theta_min + (theta_max - theta_min) * (c_pow_n / (Kd_pow_n + c_pow_n + epsilon))
 
     # Clip for numerical stability
     mean_theta = jnp.clip(mean_theta, 1e-6, 1 - 1e-6)

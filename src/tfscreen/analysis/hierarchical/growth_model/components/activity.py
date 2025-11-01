@@ -49,7 +49,7 @@ def define_model(name,data,priors):
     
     # Calculate in log-space, then exponentiate
     log_activity_mutant_dists = log_activity_hyper_loc + activity_offset * log_activity_hyper_scale
-    activity_mutant_dists = jnp.exp(log_activity_mutant_dists)
+    activity_mutant_dists = jnp.clip(jnp.exp(log_activity_mutant_dists),1e30)
 
     # Build array with wildtype set to 1.0
     activity_dists = jnp.ones(data.num_genotype)

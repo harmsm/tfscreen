@@ -5,7 +5,6 @@ from tfscreen.models.generic import MODEL_LIBRARY
 from tfscreen.util import xfill
 
 import pandas as pd
-from tqdm.auto import tqdm
 
 def cat_response(df,
                  x_column="titrant_conc",
@@ -57,7 +56,7 @@ def cat_response(df,
 
     x_pred = xfill(pd.unique(df[x_column]),num_points=100)
 
-    for genotype in tqdm(pd.unique(df["genotype"])):
+    for genotype in pd.unique(df["genotype"]):
         this_data = df.loc[
             df["genotype"] == genotype, get_columns
         ].values
@@ -68,7 +67,8 @@ def cat_response(df,
             this_data[:, 1],
             this_data[:, 2],
             x_pred=x_pred,
-            verbose=verbose
+            verbose=verbose,
+            models_to_run=models_to_run
         )
         
         fit_results['genotype'] = genotype
