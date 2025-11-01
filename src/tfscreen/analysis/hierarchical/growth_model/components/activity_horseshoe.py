@@ -51,7 +51,7 @@ def define_model(name,data,priors):
     effective_scale = 0.0 + global_scale_tau * local_scale_lambda
     log_activity_mutant_dists = activity_offset * effective_scale
     
-    activity_mutant_dists = jnp.clip(jnp.exp(log_activity_mutant_dists),1e30)
+    activity_mutant_dists = jnp.clip(jnp.exp(log_activity_mutant_dists),a_max=1e30)
 
     # Build array with wildtype set to 1.0
     activity_dists = jnp.ones(data.num_genotype)

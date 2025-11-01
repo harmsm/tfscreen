@@ -236,7 +236,7 @@ def define_model(name,data,priors):
     hill_n = hill_n_1d[data.map_theta_group]
 
     # Calculate theta (mean) using Hill model applied to a full titrant tensor
-    c_pow_n = jnp.clip(jnp.power(data.titrant_conc, hill_n),1e30) # high clip to prevent inf/inf
+    c_pow_n = jnp.clip(jnp.power(data.titrant_conc, hill_n),a_max=1e30) # high clip to prevent inf/inf
     Kd_pow_n = jnp.power(hill_K, hill_n)
     epsilon = 1e-20 # prevent x/0
     mean_theta = theta_min + (theta_max - theta_min) * (c_pow_n / (Kd_pow_n + c_pow_n + epsilon))
