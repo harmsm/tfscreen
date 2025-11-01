@@ -60,7 +60,7 @@ def define_model(name,data,priors):
     with pyro.plate(f"{name}_parameters", data.num_not_wt):
         dk_geno_offset = pyro.sample(f"{name}_offset", dist.Normal(0, 1))
     
-    dk_geno_lognormal = jnp.clip(jnp.exp(dk_geno_hyper_loc + dk_geno_offset * dk_geno_hyper_scale),1e30)
+    dk_geno_lognormal = jnp.clip(jnp.exp(dk_geno_hyper_loc + dk_geno_offset * dk_geno_hyper_scale),a_max=1e30)
     dk_geno_mutant_dists = dk_geno_hyper_shift - dk_geno_lognormal
 
     # Set to zero by default (wt) then set rest to dk_geno_mutants
