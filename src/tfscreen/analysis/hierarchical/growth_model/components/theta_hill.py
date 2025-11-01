@@ -241,13 +241,14 @@ def define_model(name,data,priors):
     epsilon = 1e-20 # prevent x/0
     mean_theta = theta_min + (theta_max - theta_min) * (c_pow_n / (Kd_pow_n + c_pow_n + epsilon))
 
-    # Clip for numerical stability
-    mean_theta = jnp.clip(mean_theta, 1e-6, 1 - 1e-6)
-
     # --------------------------------------------------------------------------
     # Convert to alpha, beta and sample the final thetas
     alpha = mean_theta * kappa
     beta = (1.0 - mean_theta) * kappa
+
+    # Clip alpha and beta for stability
+    alpha = jnp.clip(alpha, a_min=1e-10, a_max=1e10)
+    beta = jnp.clip(beta, a_min=1e-10, a_max=1e10)
 
     # Sample from beta distribution centered on theta_mean with spread dictated
     # by kappa
