@@ -62,7 +62,7 @@ def define_model(name,data,priors):
         )
         log_alpha_hyper_offset = pyro.sample(f"{name}_log_alpha_hyper_offset",
                                              dist.Normal(0, 1))
-        theta_alpha = jnp.exp(log_alpha_hyper_loc + log_alpha_hyper_offset)
+        theta_alpha = jnp.clip(jnp.exp(log_alpha_hyper_loc + log_alpha_hyper_offset),1e30)
         pyro.deterministic(f"{name}_alpha",theta_alpha)
 
         log_beta_hyper_loc = pyro.sample(
@@ -71,7 +71,7 @@ def define_model(name,data,priors):
                         priors.theta_log_beta_hyper_loc_scale)
         )
         log_beta_hyper_offset = pyro.sample(f"{name}_log_beta_hyper_offset",dist.Normal(0, 1))
-        theta_beta = jnp.exp(log_beta_hyper_loc + log_beta_hyper_offset)
+        theta_beta = jnp.clip(jnp.exp(log_beta_hyper_loc + log_beta_hyper_offset),1e30)
         pyro.deterministic(f"{name}_beta",theta_beta)
 
         # We're going to sample theta from this distribution for this titrant

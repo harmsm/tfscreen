@@ -19,8 +19,6 @@ from .components.activity_fixed import define_model as define_activity_fixed
 from .components.theta_cat import define_model as define_theta_cat
 from .components.theta_hill import define_model as define_theta_hill
 
-#from jax.debug import print as jax_print
-
 @dataclass
 class GrowthModelData:
     """
@@ -76,8 +74,6 @@ def growth_model(data,
     Model growth rates of bacteria in culture.
     """
 
-    #jax_print("top of function.")
-
     # Define base growth parameters
     if use_growth_indep:
         k_pre, m_pre, k_sel, m_sel = define_growth_indep("growth",data,growth_priors)
@@ -108,42 +104,14 @@ def growth_model(data,
     else:
         theta = define_theta_hill("theta",data,theta_priors)
 
-    # if jnp.any(~jnp.isfinite(k_pre)):
-    #     jax_print("k_pre")
-    # if jnp.any(~jnp.isfinite(m_pre)):
-    #     jax_print("m_pre")
-    # if jnp.any(~jnp.isfinite(k_sel)):
-    #     jax_print("k_sel")
-    # if jnp.any(~jnp.isfinite(m_sel)):
-    #     jax_print("m_sel")
-    # if jnp.any(~jnp.isfinite(ln_cfu0)):
-    #     jax_print("ln_cfu0")
-    # if jnp.any(~jnp.isfinite(dk_geno)):
-    #     jax_print("dk_geno")
-    # if jnp.any(~jnp.isfinite(activity)):
-    #     jax_print("activity")
-    # if jnp.any(~jnp.isfinite(theta)):
-    #     jax_print("theta")
-
     # Calculate growth. All variables have same tensor dimensions. 
     g_pre = k_pre + dk_geno + activity*m_pre*theta
     g_sel = k_sel + dk_geno + activity*m_sel*theta
     ln_cfu_pred = ln_cfu0 + g_pre*data.t_pre + g_sel*data.t_sel
 
-    # if jnp.any(~jnp.isfinite(g_pre)):
-    #     jax_print("g_pre")
-    # if jnp.any(~jnp.isfinite(g_sel)):
-    #     jax_print("g_sel")
-    # if jnp.any(~jnp.isfinite(ln_cfu_pred)):
-    #     jax_print("ln_cfu_pred")
-
-    #ln_cfu_pred = jnp.clip(ln_cfu_pred, a_min=-1e9, a_max=1e9)
-
     # Observe data
-    #jax_print("Made it...")
     with mask(mask=data.good_mask):
         pyro.sample("obs",
                     dist.Normal(ln_cfu_pred,data.ln_cfu_std),
                     obs=data.ln_cfu)
-    #jax_print("...here.")
 
