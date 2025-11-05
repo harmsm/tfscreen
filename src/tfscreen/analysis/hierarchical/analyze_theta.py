@@ -107,8 +107,8 @@ def run_svi_analysis(df,
         # Run svi
         svi_state, svi_params, converged = ri.run_optimization(
             svi_obj,
+            init_params=gm.init_params,
             svi_state=checkpoint_file,
-            init_params=None,
             out_root=f"{out_root}",
             convergence_tolerance=convergence_tolerance,
             convergence_window=convergence_window,
@@ -128,10 +128,9 @@ def run_svi_analysis(df,
         if os.path.isfile(f"{out_root}-map_losses.csv"):
             os.remove(f"{out_root}-map_losses.csv")
     
-                    # Grab model initial params if none specified
+        # Grab model initial params if none specified
         if init_params is None:
             init_params = gm.init_params
-
 
         # Run MAP
         _, map_params, _ = ri.run_optimization(
