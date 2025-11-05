@@ -100,13 +100,13 @@ class TensorManager:
         self._data_dict["wt_index"] = self._parameter_indexers["genotype"]["wt"]
         
         # Create an array of all genotype indices [0, 1, ..., num_genotype-1]
-        all_geno_indices = jnp.arange(self._data_dict["num_genotype"])
+        all_geno_indices = jnp.arange(self._data_dict["num_genotype"],dtype=int)
         
         # Build the mask on this 1D array
-        not_wt_mask_1d = (all_geno_indices != self._data_dict["wt_index"])
+        not_wt_mask_1d = all_geno_indices[all_geno_indices != self._data_dict["wt_index"]]
         
         self._data_dict["not_wt_mask"] = not_wt_mask_1d
-        self._data_dict["num_not_wt"] = int(jnp.sum(not_wt_mask_1d))
+        self._data_dict["num_not_wt"] = len(not_wt_mask_1d)
 
     def add_parameter_map(self,name,select_cols):
         """
@@ -249,6 +249,12 @@ class TensorManager:
             
             # Record the tensor
             self._tensors[c] = tensor
+
+        self._data_dict["num_time"] = self._tensor_shape[1]
+        self._data_dict["tensor_shape_i"] = self._tensor_shape[0]
+        self._data_dict["tensor_shape_j"] = self._tensor_shape[1]
+        self._data_dict["tensor_shape_k"] = self._tensor_shape[2]
+        self._data_dict["tensor_shape_l"] = self._tensor_shape[3]
 
     def build_dataclass(self,target_dataclass):
         """

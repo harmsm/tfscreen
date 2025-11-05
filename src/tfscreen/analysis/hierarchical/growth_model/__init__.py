@@ -43,4 +43,5 @@ are fixed, but their shape parameters are treated as hyperpriors.
   Each replicate is assigned its own growth parameters. 
 """
 
-from .model import growth_model
+from .model_class import ModelClass as GrowthModel
+

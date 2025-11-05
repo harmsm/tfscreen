@@ -1,8 +1,8 @@
+
 import jax.numpy as jnp
 import numpyro as pyro
 from numpyro.handlers import mask
 import numpyro.distributions as dist
-from flax.struct import dataclass
 
 from .components.growth_hyper import define_model as define_growth_hyper
 from .components.growth_indep import define_model as define_growth_indep
@@ -19,57 +19,18 @@ from .components.activity_fixed import define_model as define_activity_fixed
 from .components.theta_cat import define_model as define_theta_cat
 from .components.theta_hill import define_model as define_theta_hill
 
-@dataclass
-class GrowthModelData:
-    """
-    A container holding data needed to specify growth_model, treated as a JAX
-    Pytree.
-    """
-    
-    # Main data tensors
-    ln_cfu: jnp.ndarray
-    ln_cfu_std: jnp.ndarray
-    
-    # Fixed experimental parameters
-    t_pre: jnp.ndarray
-    t_sel: jnp.ndarray
-    titrant_conc: jnp.ndarray
 
-    # mappers
-    map_ln_cfu0: jnp.ndarray
-    map_cond_pre: jnp.ndarray
-    map_cond_sel: jnp.ndarray
-    map_genotype: jnp.ndarray
-    map_theta: jnp.ndarray
-    map_theta_group: jnp.ndarray
-
-    # lengths for plates
-    num_ln_cfu0: int
-    num_condition: int
-    num_genotype: int
-    num_theta: int
-    num_replicate: int
-    num_not_wt: int
-    num_titrant: int
-    num_theta_group: int
-
-    # meta data
-    wt_index: int
-    not_wt_mask: jnp.ndarray
-    good_mask: jnp.ndarray
-
-
-def growth_model(data,
-                 growth_priors,
-                 ln_cfu0_priors,
-                 dk_geno_priors,
-                 activity_priors,
-                 theta_priors,
-                 use_growth_indep=False,
-                 use_fixed_dk_geno=False,
-                 use_fixed_activity=False,
-                 use_horseshoe_activity=True,
-                 use_categorical_theta=False):
+def jax_model(data,
+              growth_priors,
+              ln_cfu0_priors,
+              dk_geno_priors,
+              activity_priors,
+              theta_priors,
+              use_growth_indep=False,
+              use_fixed_dk_geno=False,
+              use_fixed_activity=False,
+              use_horseshoe_activity=True,
+              use_categorical_theta=False):
     """
     Model growth rates of bacteria in culture.
     """
@@ -109,9 +70,20 @@ def growth_model(data,
     g_sel = k_sel + dk_geno + activity*m_sel*theta
     ln_cfu_pred = ln_cfu0 + g_pre*data.t_pre + g_sel*data.t_sel
 
+    # Make sure that all values in ln_cfu_std are greater than zero. (The 
+    # data will have ensured is all non-nan).
+    safe_std = jnp.clip(data.ln_cfu_std, a_min=1e-9)
+    
+    # Get size of this batch
+    batch_size = data.ln_cfu.shape[-1]
+
     # Observe data
-    with mask(mask=data.good_mask):
-        pyro.sample("obs",
-                    dist.Normal(ln_cfu_pred,data.ln_cfu_std),
-                    obs=data.ln_cfu)
+    with pyro.plate("main_replicate",size=data.tensor_shape_i,dim=-4):
+        with pyro.plate("main_time",size=data.tensor_shape_j,dim=-3):
+            with pyro.plate("main_condition",size=data.tensor_shape_k,dim=-2):
+                with pyro.plate("main_genotype",size=data.tensor_shape_l,subsample_size=batch_size,dim=-1):
+                    with mask(mask=data.good_mask):
+                        pyro.sample("obs",
+                                    dist.Normal(ln_cfu_pred,safe_std),
+                                    obs=data.ln_cfu)
 
