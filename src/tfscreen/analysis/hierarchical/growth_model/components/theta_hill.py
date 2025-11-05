@@ -1,9 +1,10 @@
 import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
-from flax.struct import dataclass
-
-
+from flax.struct import (
+    dataclass,
+    field
+)
 
 @dataclass 
 class ModelPriors:
@@ -41,7 +42,7 @@ class ModelPriors:
 
     measured_theta_hill_indices: jnp.ndarray
     unmeasured_theta_hill_indices: jnp.ndarray
-    num_measured_theta_hill: int
+    num_measured_theta_hill: int = field(pytree_node=False)
 
 
 def define_model(name,data,priors):
@@ -156,17 +157,24 @@ def define_model(name,data,priors):
     # not previously measured
 
     num_unmeas = data.num_theta_group - priors.num_measured_theta_hill
-    with pyro.plate(f"{name}_unmeasured_parameters", num_unmeas):
+    
+    if num_unmeas > 0:
 
-        logit_theta_min_offset = pyro.sample(f"{name}_unmeasured_logit_min_offset", dist.Normal(0, 1))
-        logit_theta_max_offset = pyro.sample(f"{name}_unmeasured_logit_max_offset", dist.Normal(0, 1))
-        log_hill_K_offset = pyro.sample(f"{name}_unmeasured_log_hill_K_offset", dist.Normal(0, 1))
-        log_hill_n_offset = pyro.sample(f"{name}_unmeasured_log_hill_n_offset", dist.Normal(0, 1))
+        with pyro.plate(f"{name}_unmeasured_parameters", num_unmeas):
+            logit_theta_min_offset = pyro.sample(f"{name}_unmeasured_logit_min_offset", dist.Normal(0, 1))
+            logit_theta_max_offset = pyro.sample(f"{name}_unmeasured_logit_max_offset", dist.Normal(0, 1))
+            log_hill_K_offset = pyro.sample(f"{name}_unmeasured_log_hill_K_offset", dist.Normal(0, 1))
+            log_hill_n_offset = pyro.sample(f"{name}_unmeasured_log_hill_n_offset", dist.Normal(0, 1))
 
-    unmeasured_logit_theta_min = logit_theta_min_hyper_loc + logit_theta_min_offset * logit_theta_min_hyper_scale
-    unmeasured_logit_theta_max = logit_theta_max_hyper_loc + logit_theta_max_offset * logit_theta_max_hyper_scale
-    unmeasured_log_hill_K = log_hill_K_hyper_loc + log_hill_K_offset * log_hill_K_hyper_scale
-    unmeasured_log_hill_n = log_hill_n_hyper_loc + log_hill_n_offset * log_hill_n_hyper_scale
+        unmeasured_logit_theta_min = logit_theta_min_hyper_loc + logit_theta_min_offset * logit_theta_min_hyper_scale
+        unmeasured_logit_theta_max = logit_theta_max_hyper_loc + logit_theta_max_offset * logit_theta_max_hyper_scale
+        unmeasured_log_hill_K = log_hill_K_hyper_loc + log_hill_K_offset * log_hill_K_hyper_scale
+        unmeasured_log_hill_n = log_hill_n_hyper_loc + log_hill_n_offset * log_hill_n_hyper_scale
+    else:
+        unmeasured_logit_theta_min = jnp.array([])
+        unmeasured_logit_theta_max = jnp.array([])
+        unmeasured_log_hill_K = jnp.array([])
+        unmeasured_log_hill_n = jnp.array([])
 
     # --------------------------------------------------------------------------
     # Sample curve parameters for each (genotype, titrant_name) group that was
