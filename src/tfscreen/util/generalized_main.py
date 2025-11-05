@@ -2,29 +2,40 @@ import sys
 import inspect
 import argparse
 
-def generalized_main(fcn,argv=None,optional_arg_types=None):
+def generalized_main(fcn,
+                     argv=None,
+                     manual_arg_defaults=None,
+                     manual_arg_types=None):
     """
     A generalized main function that constructs a command line argument parser
-    and then parses arguments for any function.
+    and then parses arguments for any function. It infers argument defaults and
+    types from the function signature. These inferences can be overwritten by 
+    manual_arg_defaults and manual_arg_types. 
 
     Parameters
     ----------
     fcn: callable
         function to run.
     argv: iterable
-        arguments to parse. if none, use sys.argv[1:]
-    optional_arg_types: dict
-        dictionary of arg types for arguments with None as their default in the
-        function. If an argument is not in optional_arg_types, the default is to
-        treat argument as an int.
+        arguments to parse. if None, use sys.argv[1:]
+    manual_arg_defaults : dict
+        dictionary keying arguments to defaults that differ from the signature.
+        The argument type is set to the type of the value specified. 
+    manual_arg_types: dict
+        dictionary keying arguments to types. This overrides the types inferred
+        from the signature or manual_arg_defaults. 
     """
 
     # Get command line arguments
     if argv is None:
         argv = sys.argv[1:]
 
-    if optional_arg_types is None:
-        optional_arg_types = {}
+    # Build dicts of manual arg types and defaults if not specified
+    if manual_arg_types is None:
+        manual_arg_types = {}
+
+    if manual_arg_defaults is None:
+        manual_arg_defaults = {}
 
     # Build parser
     description = dict(inspect.getmembers(fcn))["__doc__"]
@@ -36,27 +47,41 @@ def generalized_main(fcn,argv=None,optional_arg_types=None):
     param = inspect.signature(fcn).parameters
     for p in param:
 
-        # If no default specified, make required
-        if param[p].default is param[p].empty:
-            parser.add_argument(p)
-
-        # If default specified, make optional
+        # Grab default and type the default for the parameter. If no default 
+        # specified, make required. 
+        if param[p].default is not param[p].empty:
+            arg_type = type(param[p].default)
+            default = param[p].default
+            required = False
         else:
+            arg_type = None
+            default = None
+            required = True
+        
+        # If the argument is in manual defaults, override what we got from the
+        # function signature. 
+        if p in manual_arg_defaults:
+            arg_type = type(manual_arg_defaults[p])
+            default = manual_arg_defaults[p]
+            required = False
+        
+        # manual_arg_type takes precedence over any types inferred above. 
+        if p in manual_arg_types:
+            arg_type = manual_arg_types[p]
 
-            # For type == None args, parse as integer
-            if param[p].default is None:
-                try:
-                    arg_type = optional_arg_types[p]
-                except KeyError:
-                    arg_type = int
-
+        # Add the appropriate argument to the parser. 
+        if required:
+            parser.add_argument(p,type=arg_type)
+        else:
+            arg_name = f"--{p}"
+            if arg_type is bool:
+                if default is True:
+                    parser.add_argument(arg_name,action="store_false")
+                else:
+                    parser.add_argument(arg_name,action="store_true")
             else:
-                arg_type = type(param[p].default)
-
-            parser.add_argument(f"--{p}",
-                                type=arg_type,
-                                default=param[p].default)
-
+                parser.add_argument(arg_name,type=arg_type,default=default)
+                
     # Parse stats
     args = parser.parse_args(argv)
 

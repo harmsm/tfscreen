@@ -61,6 +61,7 @@ class RunInference:
         self.model = model
         self._seed = seed
         self._main_key = random.PRNGKey(self._seed)
+        self._current_step = 0
 
 
     def setup_map(self,
@@ -108,6 +109,9 @@ class RunInference:
 
         Parameters
         ----------
+        init_params : dict, optional
+            starting parameter values. if not specified, use default parameters
+            defined in the model. 
         adam_step_size : float, optional
             Step size for the ClippedAdam optimizer.
         adam_clip_norm : float, optional
@@ -149,7 +153,7 @@ class RunInference:
                          convergence_tolerance=1e-5,
                          convergence_window=1000,
                          checkpoint_interval=1000,
-                         num_steps=100000,
+                         num_steps=10000000,
                          batch_size=1024):
         """
         Run the SVI optimization loop.
@@ -163,7 +167,7 @@ class RunInference:
             The SVI object (from `setup_svi` or `setup_map`).
         svi_state : Any, optional
             An existing SVI state to resume from. If None, a new state is
-            initialized.
+            initialized. If a checkpoint file, restore from the checkpoint. 
         init_params : dict, optional
             Initial parameters. 
         out_root : str, optional
@@ -199,14 +203,16 @@ class RunInference:
             batch_size = self.model.data.num_genotype
 
         # Set up initialization and update functions (triggers jit)
-
         static_arg_names = self.model.static_arg_names
-
         init_function = jax.jit(svi.init, static_argnames=static_arg_names)
         update_function = jax.jit(svi.update, static_argnames=static_arg_names)
 
         # Get the arguments to pass to the jax model
         jax_model_kwargs = self.model.jax_model_kwargs.copy()
+
+        # If svi_state is passed in as a checkpoint file, restore. 
+        if os.path.isfile(str(svi_state)):
+            svi_state = self._restore_checkpoint(svi_state)
 
         # Not starting from an existing state, so build state
         if svi_state is None:
@@ -245,8 +251,13 @@ class RunInference:
 
             if i % checkpoint_interval == 0:
 
+                self._current_step += i
+
+                # Update loss deque
+                self._update_loss_deque(losses,convergence_window)
+
                 # stdout
-                print(f"Step: {i:10d}, Loss: {loss:10.5e}",flush=True)
+                print(f"Step: {i:10d}, Loss: {loss:10.5e}, Change: {self._relative_change:10.5e}",flush=True)
 
                 # Check for explosion in parameters
                 params = svi.get_params(svi_state)
@@ -261,7 +272,6 @@ class RunInference:
                 self._write_losses(losses,out_root) 
 
                 # Check for convergence               
-                self._update_loss_deque(losses,convergence_window)
                 if convergence_tolerance is not None: 
                     if self._relative_change < convergence_tolerance:
                         converged = True
@@ -279,84 +289,6 @@ class RunInference:
         
         return svi_state, params, converged
 
-    
-    def run_from_checkpoint(self,
-                            checkpoint_file,
-                            out_root,
-                            adam_step_size=1e-6,
-                            adam_clip_norm=1.0,
-                            guide_rank=10,
-                            elbo_num_particles=10,
-                            convergence_tolerance=1e-5,
-                            convergence_window=1000,
-                            checkpoint_interval=1000,
-                            num_steps=100000,
-                            batch_size=1024):
-        """
-        Resume an optimization run from a checkpoint file.
-
-        This method initializes SVI (hard-coded to `setup_svi`), restores
-        the state from the checkpoint, and continues optimization.
-
-        Parameters
-        ----------
-        checkpoint_file : str
-            Path to the checkpoint .pkl file to load.
-        out_root : str
-            Root name for output files for the *new* run.
-        adam_step_size : float, optional
-            Step size for the ClippedAdam optimizer.
-        adam_clip_norm : float, optional
-            Gradient clipping norm for the ClippedAdam optimizer.
-        guide_rank : int, optional
-            Rank for the AutoLowRankMultivariateNormal guide.
-        elbo_num_particles : int, optional
-            Number of particles for ELBO estimation.
-        convergence_tolerance : float, optional
-            Relative change in smoothed loss to declare convergence.
-        convergence_window : int, optional
-            Number of steps to average over for convergence check.
-        checkpoint_interval : int, optional
-            Frequency (in steps) to write checkpoints and check convergence.
-        num_steps : int, optional
-            Total number of *additional* optimization steps to run.
-        batch_size : int, optional
-            Number of genotypes to include in each mini-batch.
-
-        Returns
-        -------
-        svi : numpyro.infer.SVI
-            The SVI object used for the run.
-        svi_state : Any
-            The final SVI state.
-        params : dict
-            The final optimized parameters.
-        converged : bool
-            True if the optimization converged based on the tolerance.
-        """
-
-        # Create svi optimizer object
-        svi = self.setup_svi(adam_step_size=adam_step_size,
-                             adam_clip_norm=adam_clip_norm,
-                             guide_rank=guide_rank,
-                             elbo_num_particles=elbo_num_particles)
-
-        # Restore svi state (and key) from checkpoint
-        svi_state = self._restore_checkpoint(checkpoint_file)
-
-        svi_state, params, converged = self.run_optimization(
-            svi=svi,
-            svi_state=svi_state,
-            init_params=None,
-            out_root=out_root,
-            convergence_tolerance=convergence_tolerance,
-            convergence_window=convergence_window,
-            checkpoint_interval=checkpoint_interval,
-            num_steps=num_steps,
-            batch_size=batch_size
-        )
-
-        return svi, svi_state, params, converged
 
     def get_posteriors(self,
                        guide,
@@ -407,8 +339,8 @@ class RunInference:
 
         # Harder case. Going to have to do batching of posterior generation 
 
-        # First loop: Dispatch all jobs to the GPU. This list will hold JAX
-        # *futures* (pointers to data on the GPU)
+        # Dispatch all jobs to the GPU. This list will hold JAX *futures* 
+        # (pointers to data on the GPU)
         all_samples_gpu = []
 
         total_size = self.model.data.num_genotype 
@@ -438,8 +370,7 @@ class RunInference:
         for batch_gpu in all_samples_gpu:
             all_samples_cpu.append(jax.device_get(batch_gpu))
         
-        # 3. Concatenate on the CPU (memory-safe)
-        # This jax.tree_map with np.concatenate is correct.
+        # Concatenate on the CPU
         posterior_samples = jax.tree_map(
             lambda *batches: np.concatenate(batches, axis=-1), 
             *all_samples_cpu  # Note: Use the CPU list
@@ -451,8 +382,6 @@ class RunInference:
     def get_key(self):
         """
         Get a new JAX PRNG key, splitting the main key.
-
-        This is the standard pattern for stateful PRNG management in JAX.
 
         Returns
         -------
@@ -478,7 +407,8 @@ class RunInference:
         host_svi_state = jax.device_get(svi_state)
 
         out_dict = {"main_key":self._main_key,
-                    "svi_state":host_svi_state}
+                    "svi_state":host_svi_state,
+                    "current_step":self._current_step}
 
         tmp_checkpoint_file = f"tmp_{out_root}_checkpoint.pkl"
 
@@ -510,6 +440,8 @@ class RunInference:
     
         svi_state = checkpoint_data['svi_state'] 
         self._main_key = checkpoint_data['main_key']
+        if 'current_step' in checkpoint_data:
+            self._current_step = checkpoint_data['current_step']
 
         return svi_state
 
@@ -524,19 +456,32 @@ class RunInference:
             A list of loss values from the recent optimization interval.
         out_root : str
             Root name for the output losses CSV file.
+        step_num : int
+            number of the step this is from
         """
 
+        # Name of output file
+        losses_file = f"{out_root}_losses.csv"
+
+        # Delete an existing losses_file if it is here and we are just starting
+        # the run. 
+        if self._current_step == 0:
+            if os.path.exists(losses_file):
+                os.remove(losses_file)
+
+        # No losses to write this iteration, continue
         if len(losses) == 0:
             return 
 
-        losses_file = f"{out_root}_losses.csv"
+        # Build dataframe of lossese
         losses_df = pd.DataFrame({"loss":np.array(losses,dtype=float)})
 
-        # append to existing if it's present
+        # Append to existing if it's present
         if os.path.exists(losses_file):
             prev_df = pd.read_csv(losses_file)
             losses_df = pd.concat([prev_df,losses_df],ignore_index=True)
 
+        # Atomic write
         tmp_loss_file = f"tmp_{out_root}_losses.csv"
         losses_df.to_csv(tmp_loss_file,index=False)
         os.replace(tmp_loss_file,losses_file)

@@ -29,7 +29,7 @@ def jax_model(data,
               use_growth_indep=False,
               use_fixed_dk_geno=False,
               use_fixed_activity=False,
-              use_horseshoe_activity=True,
+              no_horseshoe_activity=False,
               use_categorical_theta=False):
     """
     Model growth rates of bacteria in culture.
@@ -54,11 +54,11 @@ def jax_model(data,
     if use_fixed_activity:
         activity = define_activity_fixed("activity",data,activity_priors)
     else:
-        if use_horseshoe_activity:
-            activity = define_activity_horseshoe("activity",data,activity_priors)
-        else:
+        if no_horseshoe_activity:
             activity = define_activity("activity",data,activity_priors)
-
+        else:
+            activity = define_activity_horseshoe("activity",data,activity_priors)
+            
     # Define theta
     if use_categorical_theta:
         theta = define_theta_cat("theta",data,theta_priors)

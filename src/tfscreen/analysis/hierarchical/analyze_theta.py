@@ -32,19 +32,27 @@ def run_svi_analysis(df,
 
     # Run from a checkpoint file
     if checkpoint_file is not None:
-        svi_obj, svi_state, params, converged = ri.run_from_checkpoint(
-            checkpoint_file=checkpoint_file,
-            adam_step_size=adam_step_size,
-            adam_clip_norm=adam_clip_norm,
-            guide_rank=guide_rank,
-            elbo_num_particles=elbo_num_particles,
+
+        # Create an svi object
+        svi_obj = ri.setup_svi(adam_step_size=adam_step_size,
+                               adam_clip_norm=adam_clip_norm,
+                               guide_rank=guide_rank,
+                               elbo_num_particles=elbo_num_particles,
+                               init_params=map_params)
+        
+        # Run svi
+        svi_state, svi_params, converged = ri.run_optimization(
+            svi_obj,
+            svi_state=checkpoint_file,
+            init_params=None,
+            out_root=f"{out_root}",
             convergence_tolerance=convergence_tolerance,
             convergence_window=convergence_window,
             checkpoint_interval=checkpoint_interval,
             num_steps=num_steps,
-            batch_size=batch_size,
-            num_posterior_samples=num_posterior_samples
+            batch_size=batch_size
         )
+
 
     else:
 
@@ -102,4 +110,4 @@ def run_svi_analysis(df,
     return svi_state, svi_params, converged
 
 def main():
-    return generalized_main(run_svi_analysis)
+    return generalized_main(run_svi_analysis,manual_arg_types={"seed":int})
