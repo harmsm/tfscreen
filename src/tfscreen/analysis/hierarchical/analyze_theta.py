@@ -101,13 +101,11 @@ def run_svi_analysis(df,
         svi_obj = ri.setup_svi(adam_step_size=adam_step_size,
                                adam_clip_norm=adam_clip_norm,
                                guide_rank=guide_rank,
-                               elbo_num_particles=elbo_num_particles,
-                               init_params=None)
+                               elbo_num_particles=elbo_num_particles)
         
         # Run svi
         svi_state, svi_params, converged = ri.run_optimization(
             svi_obj,
-            init_params=gm.init_params,
             svi_state=checkpoint_file,
             out_root=f"{out_root}",
             convergence_tolerance=convergence_tolerance,
@@ -116,7 +114,6 @@ def run_svi_analysis(df,
             num_steps=num_steps,
             batch_size=batch_size
         )
-
 
     else:
 
