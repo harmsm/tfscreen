@@ -110,8 +110,7 @@ class RunInference:
         Parameters
         ----------
         init_params : dict, optional
-            starting parameter values. if not specified, use default parameters
-            defined in the model. 
+            starting parameter values. 
         adam_step_size : float, optional
             Step size for the ClippedAdam optimizer.
         adam_clip_norm : float, optional
@@ -129,14 +128,13 @@ class RunInference:
             An SVI object configured with an AutoLowRankMultivariateNormal guide.
         """
 
-        # Grab model initial params if none specified
-        if init_params is None:
-            init_params = self.model.init_params
+        if init_params is not None:
+            init_params = init_to_value(values=init_params)
 
         optimizer = ClippedAdam(step_size=adam_step_size,clip_norm=adam_clip_norm)
         guide = AutoLowRankMultivariateNormal(self.model.jax_model,
                                               rank=guide_rank,
-                                              init_loc_fn=init_to_value(values=init_params),
+                                              init_loc_fn=init_params,
                                               init_scale=init_scale)
         svi = SVI(self.model.jax_model,
                   guide,
