@@ -1,4 +1,4 @@
-import jax
+
 import jax.numpy as jnp
 from flax.struct import (
     dataclass,
@@ -36,7 +36,7 @@ class DataClass:
     tensor_shape_k: int = field(pytree_node=False)
     tensor_shape_l: int = field(pytree_node=False)
 
-    # lengths for plates (total sizes)
+    # lengths for plates (various total sizes)
     num_ln_cfu0: int = field(pytree_node=False)
     num_condition: int = field(pytree_node=False)
     num_genotype: int = field(pytree_node=False)
@@ -44,7 +44,6 @@ class DataClass:
     num_replicate: int = field(pytree_node=False)
     num_titrant: int = field(pytree_node=False)
     num_theta_group: int = field(pytree_node=False)
-    num_time: int = field(pytree_node=False)
 
     # meta data
     wt_index: int = field(pytree_node=False)

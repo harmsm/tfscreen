@@ -33,8 +33,8 @@ class TensorManager:
 
     The data_dict will always include:
     + wt_index: position of the wildtype genotype on the tensor genotype axis
-    + not_wt_mask: bool mask selecting non-wildtype genotypes along the tensor
-      genotype axis. 
+    + not_wt_mask: integer index mask selecting non-wildtype genotypes along the
+      tensor genotype axis. 
     + num_not_wt: number of non-wildtype genotypes
     
     """
@@ -128,8 +128,9 @@ class TensorManager:
 
     def add_condition_map(self):
         """
-        Map things like replicate + pheS-4CP and kanR+kan to integer indexes. 
-        This is its own method so we can merge identical conditions in 
+        Map things like replicate + pheS-4CP to integer indexes. We have a 
+        specific method for conditions (rather than using the generic 
+        add_parameter_map method) so we can merge identical conditions in 
         condition_pre and condition_sel into a single set of maps. map_cond_pre
         and map_cond_sel map specific rows to the integer index for the
         (replicate,condition_pre) and (replicate,condition_sel) combos. 
@@ -169,7 +170,8 @@ class TensorManager:
     def add_data_tensor(self,name):
         """
         Add a specific data column to the tensor list. This will appear in 
-        self.tensors[name] and will be returned as float32. 
+        self.tensors[name]. The values in the dataframe should be coercible as 
+        floats. 
         """
 
         self._to_tensor_columns.append(name)
@@ -188,17 +190,17 @@ class TensorManager:
         )
 
         # These columns are going to be our tensor dimension (used for a pivot)
-        self._df['rep_idx'] = self._df['replicate'].cat.codes
+        self._df['rep_idx'] = self._df['replicate'] #.cat.categories
         self._df['time_idx'] = (self._df
                                 .groupby(['replicate','genotype','treatment'],observed=False)['t_sel']
                                 .rank(method='first')
                                 .astype(int) - 1)
-        self._df['treat_idx'] = self._df['treatment'].cat.codes
-        self._df['geno_idx'] = self._df['genotype'].cat.codes
+        self._df['treat_idx'] = self._df['treatment'] #.cat.codes
+        self._df['geno_idx'] = self._df['genotype'] #.cat.codes
 
         # Build an exhaustive multi-index across our target tensor dimensions
-        dim_labels = [np.sort(self._df[idx].unique()) for idx in pivot_index]
-        exhaustive_index = pd.MultiIndex.from_product(dim_labels,names=pivot_index)
+        dim_codes = [np.sort(self._df[idx].unique()) for idx in pivot_index]
+        exhaustive_index = pd.MultiIndex.from_product(dim_codes,names=pivot_index)
 
         # Use pivot_table to reshape the data.
         pivoted_df = pd.pivot_table(
@@ -217,8 +219,9 @@ class TensorManager:
         # Pivot the dataframe
         pivoted_df = self._pivot_df()
 
-        # Hold what each entry in each tensor dimension holds on to
-        self._tensor_dim_labels = [level.to_numpy() for level in pivoted_df.index.levels]
+        # Get the labels along each tensor dimension, as well as the tensor 
+        # shape. 
+        self._tensor_dim_labels = [pivoted_df.index.levels[i] for i in range(4)]
         self._tensor_shape = tuple(len(lab) for lab in self._tensor_dim_labels)
         
         # Build mask indicating good values. This will have the shape of the rest of

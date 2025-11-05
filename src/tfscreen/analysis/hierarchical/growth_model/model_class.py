@@ -6,7 +6,7 @@ from .model import (
 
 from . import components
 
-from .factory import (
+from .batch import (
     sample_batch,
     deterministic_batch
 )
@@ -22,7 +22,7 @@ class ModelClass:
     static_arg_names = ("use_growth_indep",
                         "use_fixed_dk_geno",
                         "use_fixed_activity",
-                        "use_horseshoe_activity",
+                        "no_horseshoe_activity",
                         "use_categorical_theta")
 
     def __init__(self,
@@ -32,7 +32,7 @@ class ModelClass:
                  use_fixed_dk_geno=False,
                  use_fixed_activity=False,
                  use_categorical_theta=False,
-                 use_horseshoe_activity=True):
+                 no_horseshoe_activity=False):
         
         # Read dataframe
         df = tfscreen.util.read_dataframe(df)
@@ -46,7 +46,7 @@ class ModelClass:
         self.use_fixed_dk_geno = bool(use_fixed_dk_geno)
         self.use_fixed_activity = bool(use_fixed_activity)
         self.use_categorical_theta = bool(use_categorical_theta)
-        self.use_horseshoe_activity = bool(use_horseshoe_activity)
+        self.no_horseshoe_activity = bool(no_horseshoe_activity)
 
         # Creates .tm and .df attributes.
         self._build_tensors(df)
@@ -111,11 +111,11 @@ class ModelClass:
         if self.use_fixed_activity:
             self._activity_component = components.activity_fixed
         else:
-            if self.use_horseshoe_activity:
-                self._activity_component = components.activity_horseshoe
-            else:
+            if self.no_horseshoe_activity:
                 self._activity_component = components.activity
-
+            else:
+                self._activity_component = components.activity_horseshoe
+                
         # theta
         if self.use_categorical_theta:
             self._theta_component = components.theta_cat
