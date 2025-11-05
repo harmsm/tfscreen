@@ -210,25 +210,29 @@ class RunInference:
         # Get the arguments to pass to the jax model
         jax_model_kwargs = self.model.jax_model_kwargs.copy()
 
-        # If svi_state is passed in as a checkpoint file, restore. 
-        if os.path.isfile(str(svi_state)):
-            svi_state = self._restore_checkpoint(svi_state)
+        # Create initialization key
+        init_key = self.get_key()
 
-        # Not starting from an existing state, so build state
+        # Create dummy batch. Note that we just need the shape of the data, so 
+        # we don't actually consume the key. 
+        dummy_batch = self.model.sample_batch(init_key, self.model.data, batch_size)
+        jax_model_kwargs["data"] = dummy_batch
+
+        # Use the dummy batch and initial key to create the initial svi_state
+        dummy_svi_state = init_function(init_key,
+                                        init_params=init_params,
+                                        **jax_model_kwargs)
+
+        # Decide how to initialize the svi_state. If nothing was passed in, use
+        # the dummy_state above. If something was passed in, either use it as 
+        # the state or read it from a checkpoint file.
         if svi_state is None:
-    
-            # Create initialization key
-            init_key = self.get_key()
-
-            # Create dummy batch. Note that we just need the shape of the data, so 
-            # we don't actually consume the key. 
-            dummy_batch = self.model.sample_batch(init_key, self.model.data, batch_size)
-            jax_model_kwargs["data"] = dummy_batch
-
-            # Use the dummy batch and initial key to create the initial svi_state
-            svi_state = init_function(init_key,
-                                      init_params=init_params,
-                                      **jax_model_kwargs)
+            svi_state = dummy_svi_state
+        else:
+            if os.path.isfile(str(svi_state)):
+                svi_state = self._restore_checkpoint(svi_state)
+            else:
+                svi_state = svi_state
         
         # loss deque holds loss values for smoothing to check for convergence
         self._loss_deque = deque(maxlen=(convergence_window*2))
