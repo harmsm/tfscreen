@@ -17,6 +17,7 @@ import pybktree
 from typing import Optional, Tuple
 
 from itertools import takewhile
+import random, string, sys
 
 @numba.jit(nopython=True, fastmath=True)
 def _hamming_dist(s1, s2):
@@ -72,7 +73,8 @@ class FastqToCounts:
                  phred_cutoff: int = 10,
                  min_read_length: int = 50,
                  allowed_num_flank_diffs: int = 1,
-                 allowed_diff_from_expected: int = 2) -> None:
+                 allowed_diff_from_expected: int = 2,
+                 print_raw_seq: bool = False) -> None:
         """
         Initializes the FastqToCounts processor.
 
@@ -96,6 +98,14 @@ class FastqToCounts:
             The maximum number of mismatches (Hamming distance) allowed when
             comparing a reconciled read sequence to the sequences in the
             expected library, by default 2.
+        print_raw_seq : bool, optional
+            if True, print the foward and reverse sequences to standard out.
+            These are written with random 10 letter prefixes in the order 
+            they are encountered.  This only writes out correctly oriented
+            sequences, but does not alter the sequences in any way. Setting
+            this to True with a high number of allowed_num_flank_diffs reveals
+            sequences that are somewhat close to expected and can be used for
+            troubleshooting. The sequences include the 5' and 3' flank regions.
         """
 
         # LibraryManager instance
@@ -120,6 +130,8 @@ class FastqToCounts:
                                                        param_name="allowed_diff_from_expected",
                                                        cast_type=int,
                                                        min_allowed=0)
+
+        self.print_raw_seq = print_raw_seq
         
         # the LibraryManager yaml parser does not require/check for expected 
         # 5p and 3p flanks. (This is because it can be used for simulation 
@@ -306,7 +318,33 @@ class FastqToCounts:
         
         if idx1_score > self.allowed_num_flank_diffs:
             return None, None, "fail, could not find expected 3p flank"
+       
+        if self.print_raw_seq:
+            
+            L = self.expected_length + self.expected_5p_size + self.expected_3p_size
+            mapper = np.asarray(list(self.number_to_base),dtype=object)
+
+            fwd_out = np.full(L,self.ambig_base_number,dtype=np.uint8)
+            tmp_F = fwd[(idx0 - self.expected_5p_size):]
+            tmp_F = tmp_F[:L]
+            fwd_out[:len(tmp_F)] = tmp_F
+            
+            fwd_str_seq = "".join(list(mapper[fwd_out]))
+          
+            rev_out = np.full(L,self.ambig_base_number,dtype=np.uint8)
+            tmp_R = rev[:(idx1 + self.expected_3p_size)] 
+            if len(tmp_R) > L:
+                tmp_R = tmp_R[-L:] 
+            rev_out[-len(tmp_R):] = tmp_R
+
+            rev_str_seq = "".join(list(mapper[rev_out]))
         
+            prefix = "".join([random.choice(string.ascii_letters) for _ in range(10)])
+
+            sys.stdout.write(f">fwd_{prefix}\n{fwd_str_seq}\n")
+            sys.stdout.write(f">rev_{prefix}\n{rev_str_seq}\n")
+            
+         
         # The forward sequence starts after the 5' flank. The reverse is 
         # everything from the start to the beginning of the 3' flank.
         fwd_seq = fwd[idx0:]
