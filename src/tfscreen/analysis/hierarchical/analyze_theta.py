@@ -151,7 +151,7 @@ def run_svi_analysis(df,
         # Run svi
         svi_state, svi_params, converged = ri.run_optimization(
             svi_obj,
-            init_params=map_params,
+            init_params=None,
             out_root=f"{out_root}",
             convergence_tolerance=convergence_tolerance,
             convergence_window=convergence_window,
