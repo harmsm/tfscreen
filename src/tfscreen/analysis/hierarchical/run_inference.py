@@ -290,10 +290,38 @@ class RunInference:
         
         return svi_state, params, converged
 
+    def get_parameter_posteriors(self,
+                                 svi,
+                                 svi_state,
+                                 num_samples=10000,
+                                 batch_size=100,
+                                 out_dir="tfs_param-posteriors"):
+
+        guide = svi.guide
+        params = svi.get_params(svi_state)
+
+        os.makedirs(out_dir, exist_ok=True)
+
+        num_batches = int(np.ceil(num_samples / batch_size))
+        for i in range(num_batches):
+
+            # Sample batch on the GPU            
+            batch_sampler = Predictive(guide,
+                                       params=params,
+                                       num_samples=batch_size)
+
+            batch_key = self.get_key()
+            batch_samples_gpu = batch_sampler(batch_key)
+            
+            # Pull down the samples and write to a file (atomic)
+            batch_samples_cpu = jax.device_get(batch_samples_gpu)
+            self._write_posteriors(out_root=f"{out_dir}/{i:05d}",
+                                   posterior_samples=batch_samples_cpu)
+
 
     def get_posteriors(self,
-                       guide,
-                       params,
+                       svi,
+                       svi_state,
                        out_root,
                        num_posterior_samples=10000,
                        batch_size=1024):
@@ -306,10 +334,7 @@ class RunInference:
 
         Parameters
         ----------
-        guide : numpyro.infer.autoguide.AutoGuide
-            The trained guide (e.g., from `setup_svi`).
-        params : dict
-            The optimized parameters from `run_optimization`.
+
         out_root : str
             Root name for the output .npz file.
         num_posterior_samples : int, optional
@@ -319,31 +344,27 @@ class RunInference:
             match the training batch size.
         """
 
-        # Create sampler    
-        predictive_sampler = Predictive(self.model.jax_model,
-                                        guide=guide,
-                                        params=params,
-                                        num_samples=num_posterior_samples)
+        guide = svi.guide
+        params = svi.get_params(svi_state)
 
-        # Get a key
+        # Sample the parameter posterior distribution
         post_key = self.get_key()
+        latent_sampler = Predictive(guide,
+                                    params=params,
+                                    num_samples=num_posterior_samples)
+        latent_samples = jax.device_get(latent_sampler(post_key))
+
+
+        # Create a sampler that will predict outputs (obs) given those samples
+        forward_sampler = Predictive(self.model.jax_model,
+                                     posterior_samples=latent_samples)
 
         # Create model kwargs
         jax_model_kwargs = self.model.jax_model_kwargs.copy()
 
-        # Simple case. Do in one batch
-        if batch_size > self.model.data.num_genotype:
-            jax_model_kwargs["data"] = self.model.data
-            posterior_samples = predictive_sampler(post_key,**jax_model_kwargs)
-            self._write_posteriors(posterior_samples,out_root=out_root)
-            return 
-
-        # Harder case. Going to have to do batching of posterior generation 
-
-        # Dispatch all jobs to the GPU. This list will hold JAX *futures* 
-        # (pointers to data on the GPU)
-        all_samples_gpu = []
-
+        # List to hold CPU-side results
+        all_samples_cpu = []
+        
         total_size = self.model.data.num_genotype 
         for start_idx in range(0, total_size, batch_size):
             
@@ -356,28 +377,29 @@ class RunInference:
                                                         batch_indices)
             jax_model_kwargs["data"] = batch_data
 
-            # Dispatch the computation. This call is non-blocking. It returns
-            # immediately, and JAX schedules the work.
-            batch_samples_gpu = predictive_sampler(post_key, **jax_model_kwargs)
+            # Dispatch the forward pass for this batch.s
+            sample_key = self.get_key()
+            batch_samples_gpu = forward_sampler(sample_key, **jax_model_kwargs)
 
-            # Append the *future* (the on-device array), NOT the result.
-            all_samples_gpu.append(batch_samples_gpu)
+            # Retrieve results to CPU to free GPU memory for next batch.
+            all_samples_cpu.append(jax.device_get(batch_samples_gpu))
 
-        # At this point, JAX has a full queue of work and the GPU
-        # is processing all batches as fast as it can. Second loop: Retrieve
-        # results from GPU to CPU. This list will hold the concrete numpy arrays
-        # on the CPU.
-        all_samples_cpu = []
-        for batch_gpu in all_samples_gpu:
-            all_samples_cpu.append(jax.device_get(batch_gpu))
-        
-        # Concatenate on the CPU
-        posterior_samples = jax.tree_map(
-            lambda *batches: np.concatenate(batches, axis=-1), 
-            *all_samples_cpu  # Note: Use the CPU list
-        )
+        # Concatenate samples        
+        final_samples = latent_samples.copy()
+        forward_pass_keys = all_samples_cpu[0].keys()
 
-        self._write_posteriors(posterior_samples, out_root=out_root)
+        for key in forward_pass_keys:
+            if key not in final_samples:
+                
+                # Collect all arrays for this key from all batches
+                all_batches_for_key = [batch[key] for batch in all_samples_cpu]
+                
+                # Concatenate along the batch dimension (assumed to be -1)
+                # This matches your original logic.
+                final_samples[key] = np.concatenate(all_batches_for_key, axis=-1)
+
+        self._write_posteriors(final_samples, out_root=out_root)
+
 
 
     def get_key(self):
@@ -450,7 +472,6 @@ class RunInference:
             )
 
         return svi_state
-
 
     def _write_losses(self,losses,out_root):
         """

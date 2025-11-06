@@ -78,10 +78,10 @@ def jax_model(data,
     batch_size = data.ln_cfu.shape[-1]
 
     # Observe data
-    with pyro.plate("main_replicate",size=data.tensor_shape_i,dim=-4):
-        with pyro.plate("main_time",size=data.tensor_shape_j,dim=-3):
-            with pyro.plate("main_condition",size=data.tensor_shape_k,dim=-2):
-                with pyro.plate("main_genotype",size=data.tensor_shape_l,subsample_size=batch_size,dim=-1):
+    with pyro.plate("main_replicate",size=data.num_replicate,dim=-4):
+        with pyro.plate("main_time",size=data.num_time,dim=-3):
+            with pyro.plate("main_treatment",size=data.num_treatment,dim=-2):
+                with pyro.plate("main_genotype",size=data.num_genotype,subsample_size=batch_size,dim=-1):
                     with mask(mask=data.good_mask):
                         pyro.sample("obs",
                                     dist.Normal(ln_cfu_pred,safe_std),
