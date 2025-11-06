@@ -433,7 +433,7 @@ class RunInference:
                     "svi_state":host_svi_state,
                     "current_step":self._current_step}
 
-        tmp_checkpoint_file = f"tmp_{out_root}_checkpoint.pkl"
+        tmp_checkpoint_file = f"{out_root}_checkpoint.tmp.pkl"
 
         checkpoint_file = f"{out_root}_checkpoint.pkl"
 
@@ -509,7 +509,7 @@ class RunInference:
             losses_df = pd.concat([prev_df,losses_df],ignore_index=True)
 
         # Atomic write
-        tmp_loss_file = f"tmp_{out_root}_losses.csv"
+        tmp_loss_file = f"{out_root}_losses.tmp.csv"
         losses_df.to_csv(tmp_loss_file,index=False)
         os.replace(tmp_loss_file,losses_file)
 
@@ -525,7 +525,7 @@ class RunInference:
             Root name for the output .npz file.
         """
 
-        tmp_out_file = f"tmp_{out_root}_posterior.npz"
+        tmp_out_file = f"{out_root}_posterior.tmp.npz"
         out_file = f"{out_root}_posterior.npz"
 
         np.savez_compressed(tmp_out_file,**posterior_samples)
