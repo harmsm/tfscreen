@@ -165,11 +165,11 @@ def run_svi_analysis(df,
 
     if converged or always_get_posterior:
         ri.get_parameter_posteriors(svi=svi_obj,
-                                    svi_state=svi_state,guide=svi_obj.guide,
-                                    out_root=f"{out_root}-posteriors",
-                                    num_posterior_samples=num_posterior_samples,
+                                    svi_state=svi_state,
+                                    out_dir=f"{out_root}-posteriors",
+                                    num_samples=num_posterior_samples,
                                     batch_size=posterior_batch_size)
-        
+
     return svi_state, svi_params, converged
 
 def main():
