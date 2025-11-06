@@ -299,6 +299,7 @@ def process_fastq(f1_fastq: str,
                   min_read_length: int = 50,
                   allowed_num_flank_diffs: int = 1,
                   allowed_diff_from_expected: int = 2,
+                  print_raw_seq: bool = False,
                   max_num_reads: Optional[int] = None,
                   chunk_size: int = 10000,
                   num_workers: int | None = None) -> None:
@@ -325,6 +326,14 @@ def process_fastq(f1_fastq: str,
     allowed_diff_from_expected : int, default=2
         allow up to allowed_diff_from_expected differences between the read and 
         the expected library sequences when calling the sequence
+    print_raw_seq : bool, optional
+        if True, print the foward and reverse sequences to standard out.
+        These are written with random 10 letter prefixes in the order 
+        they are encountered.  This only writes out correctly oriented
+        sequences, but does not alter the sequences in any way. Setting
+        this to True with a high number of allowed_num_flank_diffs reveals
+        sequences that are somewhat close to expected and can be used for
+        troubleshooting. The sequences include the 5' and 3' flank regions.
     max_num_reads : int, optional
         only read the first max_num_reads. if None, read whole files.
     chunk_size : int
@@ -346,8 +355,6 @@ def process_fastq(f1_fastq: str,
     else:
         os.makedirs(out_dir)
 
-    print("Setting up calculation... ",flush=True,end="")
-
     # Initialize library manager
     if isinstance(run_config,LibraryManager):
         lm = run_config
@@ -359,10 +366,9 @@ def process_fastq(f1_fastq: str,
                       phred_cutoff=phred_cutoff,
                       min_read_length=min_read_length,
                       allowed_num_flank_diffs=allowed_num_flank_diffs,
-                      allowed_diff_from_expected=allowed_diff_from_expected)
+                      allowed_diff_from_expected=allowed_diff_from_expected,
+                      print_raw_seq=print_raw_seq)
         
-    print("Done.",flush=True)
-
     # Extract sequence calls with statistics about outcomes
     sequences, messages = _process_paired_fastq(f1_fastq,f2_fastq,
                                                 ftc_instance,
