@@ -20,6 +20,7 @@ def run_svi_analysis(df,
                      num_steps=100000,
                      batch_size=1024,
                      num_posterior_samples=10000,
+                     posterior_batch_size=500,
                      map_elbo_num_particles=1,
                      map_convergence_tolerance=None,
                      map_num_steps=100000,
@@ -67,6 +68,8 @@ def run_svi_analysis(df,
         Mini-batch size for optimization (default 1024).
     num_posterior_samples : int, optional
         Number of posterior samples to draw after convergence (default 10000).
+    posterior_batch_size : int, optional
+        Sample parameter posteriors in batches of this size (default 500)
     map_elbo_num_particles : int, optional
         Number of particles for MAP ELBO estimation (default 1).
     map_convergence_tolerance : float or None, optional
@@ -161,11 +164,11 @@ def run_svi_analysis(df,
         )
 
     if converged or always_get_posterior:
-        ri.get_posteriors(guide=svi_obj.guide,
-                            params=svi_params,
-                            out_root=f"{out_root}-posterior",
-                            num_posterior_samples=num_posterior_samples,
-                            batch_size=batch_size)
+        ri.get_parameter_posteriors(svi=svi_obj,
+                                    svi_state=svi_state,guide=svi_obj.guide,
+                                    out_root=f"{out_root}-posteriors",
+                                    num_posterior_samples=num_posterior_samples,
+                                    batch_size=posterior_batch_size)
         
     return svi_state, svi_params, converged
 

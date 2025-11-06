@@ -31,15 +31,15 @@ class DataClass:
     map_theta_group: jnp.ndarray
 
     # Tensor shape (static)
-    tensor_shape_i: int = field(pytree_node=False)
-    tensor_shape_j: int = field(pytree_node=False)
-    tensor_shape_k: int = field(pytree_node=False)
-    tensor_shape_l: int = field(pytree_node=False)
+    num_replicate: int = field(pytree_node=False)
+    num_time: int = field(pytree_node=False)
+    num_treatment: int = field(pytree_node=False)
+    num_genotype: int = field(pytree_node=False)
 
-    # lengths for plates (various total sizes)
+    # other lengths for plates (various total sizes)
     num_ln_cfu0: int = field(pytree_node=False)
     num_condition: int = field(pytree_node=False)
-    num_genotype: int = field(pytree_node=False)
+    
     num_theta: int = field(pytree_node=False)
     num_replicate: int = field(pytree_node=False)
     num_titrant: int = field(pytree_node=False)
