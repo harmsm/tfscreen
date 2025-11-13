@@ -68,3 +68,7 @@ from .array_search import (
 from .generalized_main import (
     generalized_main
 )
+
+from .add_group_columns import (
+    add_group_columns
+)

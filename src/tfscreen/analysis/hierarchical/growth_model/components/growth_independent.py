@@ -3,7 +3,7 @@ import numpyro as pyro
 import numpyro.distributions as dist
 from flax.struct import dataclass
 
-@dataclass 
+@dataclass(frozen=True)
 class ModelPriors:
     """
     JAX Pytree holding data needed to specify model priors.
@@ -38,8 +38,8 @@ def define_model(name,data,priors):
     ----
     data.num_condition
     data.num_replicate
-    data.map_cond_pre
-    data.map_cond_sel
+    data.map_condition_pre
+    data.map_condition_sel
     """
 
     # Loop over conditions
@@ -82,10 +82,10 @@ def define_model(name,data,priors):
     pyro.deterministic(f"{name}_m", growth_m_dist_1d)
 
     # Expand to full-sized tensors
-    k_pre = growth_k_dist_1d[data.map_cond_pre]
-    m_pre = growth_m_dist_1d[data.map_cond_pre]
-    k_sel = growth_k_dist_1d[data.map_cond_sel]
-    m_sel = growth_m_dist_1d[data.map_cond_sel]
+    k_pre = growth_k_dist_1d[data.map_condition_pre]
+    m_pre = growth_m_dist_1d[data.map_condition_pre]
+    k_sel = growth_k_dist_1d[data.map_condition_sel]
+    m_sel = growth_m_dist_1d[data.map_condition_sel]
 
     return k_pre, m_pre, k_sel, m_sel
 
@@ -122,5 +122,7 @@ def get_guesses(name,data):
 
     return guesses
 
+def get_priors():
+    return ModelPriors(**get_hyperparameters())
 
     

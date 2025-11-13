@@ -4,8 +4,8 @@ from tfscreen.util.generalized_main import generalized_main
 
 import os
 
-def run_svi_analysis(df,
-                     measured_hill,
+def run_svi_analysis(growth_df,
+                     binding_df,
                      seed,
                      checkpoint_file=None,
                      out_root="tfs",
@@ -36,10 +36,10 @@ def run_svi_analysis(df,
 
     Parameters
     ----------
-    df : pandas.DataFrame
+    growth_df : pandas.DataFrame
         Input data for the growth model (e.g., genotype/phenotype measurements).
-    measured_hill : float or array-like
-        Hill coefficient(s) or related measurement(s) for the model.
+    binding_df : pandas.DataFrame
+        Input data for the binding model (e.g., theta vs. titrant measurements)
     seed : int
         Random seed for reproducibility.
     checkpoint_file : str or None, optional
@@ -94,7 +94,17 @@ def run_svi_analysis(df,
     output root. It can resume from a checkpoint or start from MAP optimization.
     """
     
-    gm = GrowthModel(df,measured_hill)
+    gm = GrowthModel(growth_df,
+                     binding_df,
+                     condition_growth="hierarchical",
+                     ln_cfu0="hierarchical",
+                     dk_geno="hierarchical",
+                     activity="fixed",
+                     theta="hill",
+                     theta_growth_noise="beta",
+                     theta_binding_noise="beta")
+    
+
     ri = RunInference(gm,seed)
 
     # Run from a checkpoint file
