@@ -42,19 +42,21 @@ class RunInference:
         model : object
             A model object that must expose the following attributes:
             - `jax_model` (callable): The Numpyro model.
-            - `jax_model_kwargs` (dict): Keyword arguments for the model.
-            - `init_params` (dict): Initial parameter guesses.
             - `data` (flax.struct.dataclass): Data object, expected to have `num_genotype`.
+            - `priors` (flax.struct.dataclass): Data object holding model priors
+            - `control` (flax.struct.dataclass): Data object holding model control
+            - `init_params` (dict): Initial parameter guesses.
             - `sample_batch` (callable): Function to sample a data batch.
             - `deterministic_batch` (callable): Function for deterministic batch.
         seed : int
             Random seed for JAX PRNG key generation.
         """
         
-        required_attr = ["jax_model_kwargs",
+        required_attr = ["data",
+                         "priors",
+                         "control",
                          "jax_model",
-                         "init_params",
-                         "static_arg_names"]
+                         "init_params"]
         for attr in required_attr:
             if not hasattr(model,attr):
                 raise ValueError(f"`model` must have attribute {attr}")
@@ -203,12 +205,12 @@ class RunInference:
             batch_size = self.model.data.num_genotype
 
         # Set up initialization and update functions (triggers jit)
-        static_arg_names = self.model.static_arg_names
-        init_function = jax.jit(svi.init, static_argnames=static_arg_names)
-        update_function = jax.jit(svi.update, static_argnames=static_arg_names)
+        init_function = jax.jit(svi.init)
+        update_function = jax.jit(svi.update)
 
         # Get the arguments to pass to the jax model
-        jax_model_kwargs = self.model.jax_model_kwargs.copy()
+        jax_model_kwargs = {"priors":self.model.priors,
+                            "control":self.model.control} 
     
         # Create initialization key
         init_key = self.get_key()
@@ -360,7 +362,8 @@ class RunInference:
                                      posterior_samples=latent_samples)
 
         # Create model kwargs
-        jax_model_kwargs = self.model.jax_model_kwargs.copy()
+        jax_model_kwargs = {"priors":self.model.priors,
+                            "control":self.model.control} 
 
         # List to hold CPU-side results
         all_samples_cpu = []

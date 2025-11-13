@@ -1,21 +1,14 @@
-from tfscreen.genetics import (
-    set_categorical_genotype
-)
 
 from tfscreen.util import (
-    read_dataframe,
-    get_scaled_cfu,
     check_columns,
 )
 
-import jax
 import jax.numpy as jnp
 
 import numpy as np
 import pandas as pd
 
-import inspect
-import collections
+import copy
 
 class TensorManager:
     """
@@ -31,9 +24,6 @@ class TensorManager:
     ----------
     df : pd.DataFrame
         The fully preprocessed pandas DataFrame.
-    parameter_indexers : dict
-        A dictionary mapping parameter names (e.g., "genotype") to their
-        own mapping dictionaries.
     data_dict : dict
         A dictionary of scalar values and small arrays needed by the model
         (e.g., "wt_index", "num_genotype").
@@ -49,25 +39,18 @@ class TensorManager:
 
     Notes
     -----
-    The output tensor dimensions are always:
-        (num_replicates, num_timepoints, num_treatments, num_genotypes)
+    The output tensor dimensions are determined by each call to
+    `add_pivot_index` or `add_ranked_pivot_index`. Each call will result in a 
+    new pivot index, and thus a new tensor dimension. 
 
-    The `tensors` dict will always include:
-    + ln_cfu: observed ln_cfu
-    + ln_cfu_std: uncertainty in observed ln_cfu (standard error)
-    + t_pre: amount of time the sample grew in pre-selection conditions
-    + t_sel: amount of time the sample grew in selection conditions
-    + map_genotype: map indicating which genotype corresponds to what cell
-      in the tensor.
-    + good_mask: bool mask that indicates which values of ln_cfu are non-nan
+    The `tensors` dict will always include the "good_mask" tensor, which is a
+    bool mask that is only True if an element is non-NaN across all tensors. 
 
     The `data_dict` will always include:
-    + wt_index: position of the wildtype genotype on the tensor genotype axis
-    + not_wt_mask: integer index mask selecting non-wildtype genotypes
-    + num_not_wt: number of non-wildtype genotypes
+
     """
 
-    def __init__(self,df,treatment_columns=None):
+    def __init__(self,df): 
         """
         Initializes the TensorManager.
 
@@ -76,192 +59,171 @@ class TensorManager:
         df : pd.DataFrame or str
             The input DataFrame or a path to a file (e.g., CSV, Excel)
             that can be read by `read_dataframe`.
-        treatment_columns : list of str, optional
-            A list of column names that, together, uniquely define an
-            experimental treatment. If None (default), uses a standard set:
-            ['condition_pre', 'condition_sel', 'titrant_name', 'titrant_conc'].
-
         """
 
-        self._prep_dataframe(df)
-
-        # Columns that select a unique treatment experienced by a genotype, then
-        # followed over time. 
-        if treatment_columns is None:
-            treatment_columns = ['condition_pre',
-                                 'condition_sel',
-                                 'titrant_name',
-                                 'titrant_conc']
-        self._treatment_columns = treatment_columns
-        check_columns(self._df, required_columns=self._treatment_columns)
-
-        self._parameter_indexers = {}
-        self._data_dict = {}
-    
-        # These tensors will always be generated
-        self._to_tensor_columns = ['ln_cfu','ln_cfu_std','t_pre','t_sel']
+        self._df = df
+        self._map_sizes = {}
+        self._to_tensor_columns = []
+        self._tensor_column_dtypes = {}
         
         # Empty tensor data for now
         self._tensors = None
         self._tensor_shape = None
-        self._tensor_dim_labels = None
+        self._pivot_index = []
 
-        # add genotype parameter map, then wildtype information. 
-        self.add_parameter_map("genotype",["genotype"])
-        self._load_wt_info()
+        self._tensor_dim_names = []
+        self._tensor_dim_labels = []
+        self._tensor_dim_codes = []
 
-    def _prep_dataframe(self,df):
+
+    def _add_simple_map_tensor(self,
+                               select_cols,
+                               name=None):
         """
-        Prepares the input DataFrame for tensor creation.
-
-        This method reads the DataFrame if it's a path, calculates `ln_cfu`
-        and `ln_cfu_std` if missing, ensures a 'replicate' column exists,
-        checks for all required columns, and standardizes genotype/replicate
-        columns as categorical.
-
-        Parameters
-        ----------
-        df : pd.DataFrame or str
-            Input DataFrame or file path.
-
-        Raises
-        ------
-        ValueError
-            If required columns are missing and cannot be calculated.
-        
+        Add a new parameter map to the tensor. Create c-order indexes for 
+        unique combinations of select_cols.
         """
 
-        # read from file or work on a copy
-        self._df = read_dataframe(df)    
-    
-        # Make sure we have required ln_cfu/std columns, calculating if
-        # needed/possible
-        self._df = get_scaled_cfu(self._df,need_columns=["ln_cfu","ln_cfu_std"])
+        if name is None:
+            name = "-".join(select_cols)
 
-        # make a replicate column if not defined
-        if "replicate" not in self._df.columns:
-            self._df["replicate"] = 1
+        # Group on selected columns
+        map_name = f"map_{name}"
 
-        # check for all required columns
-        required = ["ln_cfu","ln_cfu_std","replicate"]
-        required.extend(["condition_pre","condition_sel"])
-        required.extend(["t_pre","t_sel"])
-        required.extend(["titrant_name","titrant_conc"])
-        check_columns(self._df,required_columns=required)
-                                                    
-        # Set genotype and replicate to categorical.
-        self._df = set_categorical_genotype(self._df,standardize=True)
-        self._df['replicate'] = pd.Categorical(self._df['replicate'])
+        if map_name in self._to_tensor_columns:
+            raise ValueError(
+                f"{map_name} already added"
+            )
 
-    def _load_wt_info(self):
+        # Get all unique combinations of the group columns, then sort and 
+        # extract indexes. This creates a map with C-order/row-major sorting.
+        unique_groups = self._df[select_cols].drop_duplicates().copy()
+        sorted_groups = unique_groups.sort_values(by=select_cols).reset_index(drop=True)
+        sorted_groups[map_name] = sorted_groups.index
+
+        # Merge the map back onto the target dataframe.
+        self._df = self._df.merge(sorted_groups, 
+                                 on=select_cols, 
+                                 how="left",
+                                 sort=False)
+        
+        # Record the size of the mapping
+        num_entries = self._df[map_name].drop_duplicates().size
+        self._map_sizes[name] = num_entries
+
+        # Record that this should be a new tensor
+        self._to_tensor_columns.append(map_name)
+
+    def _add_multi_map_tensor(self,
+                              select_cols,
+                              select_pool_cols,
+                              name=None):
         """
-        Extracts and stores wildtype genotype information.
-
-        Finds the integer index for the 'wt' genotype from the 'genotype'
-        parameter map. It then creates and stores the 'wt_index', a mask for
-        non-wildtype genotypes ('not_wt_mask'), and the count of non-wildtype
-        genotypes ('num_not_wt') in `self._data_dict`.
-
-        Raises
-        ------
-        ValueError
-            If 'wt' is not found in the genotype parameter map.
+        Add a new parameter map to the tensor. Harder case that requires pooling
+        across select_pool_cols. Create c-order indexes for unique combinations
+        of select_cols + select_pool_cols[0] OR select_cols + select_pool_cols[1]
+        ... 
         """
+        
+        pooled_col_name = "_tmp_pool"
 
-        if "wt" not in self._parameter_indexers["genotype"]:
-            raise ValueError("df['genotype'] must have a wt entry")
-        
-        self._data_dict["wt_index"] = self._parameter_indexers["genotype"]["wt"]
-        
-        # Create an array of all genotype indices [0, 1, ..., num_genotype-1]
-        all_geno_indices = jnp.arange(self._data_dict["num_genotype"],dtype=int)
-        
-        # Build the mask on this 1D array
-        not_wt_mask_1d = all_geno_indices[all_geno_indices != self._data_dict["wt_index"]]
-        
-        self._data_dict["not_wt_mask"] = not_wt_mask_1d
-        self._data_dict["num_not_wt"] = len(not_wt_mask_1d)
+        # Build a pooled dataframe that has only columns in select_cols plus a
+        # new column `pooled_col_name`. The pooled column has the values taken 
+        # from each select_pool_col stacked into rows.
+        to_concat = []
+        for c in select_pool_cols:
+            sel_on = copy.copy(select_cols)
+            sel_on.append(c)
+            new_df = self._df[sel_on].rename(columns={c: pooled_col_name})
+            to_concat.append(new_df)
+        pooled_df = pd.concat(to_concat).drop_duplicates().reset_index(drop=True)
 
-    def add_parameter_map(self,name,select_cols):
+        # Record an overall name if one is specified
+        if name is not None:
+            self._map_sizes[name] = len(pooled_df)
+
+        # Now get unique entries for select_cols + pooled_col_name. Build a map
+        # on this. 
+        group_list = copy.copy(select_cols)
+        group_list.append(pooled_col_name)
+
+        # Sort the unique pooled combinations to create a C-order index
+        pooled_df = pooled_df.sort_values(by=group_list).reset_index(drop=True)
+        pooled_df[f"map_tmp_pool"] = pooled_df.index
+
+        # Now go back through the select_pool_cols and merge the newly 
+        # constructed parameter map back to each of those columns. 
+        for c in select_pool_cols:
+            
+            left_on = copy.copy(select_cols)
+            left_on.append(c)
+
+            right_on = copy.copy(select_cols)
+            right_on.append(pooled_col_name)
+
+            self._df = self._df.merge(
+                pooled_df,
+                left_on=left_on,
+                right_on=right_on,
+                how="left"
+            ).rename(columns={f"map_tmp_pool": f"map_{c}"}).drop(columns=pooled_col_name)
+
+            # Build a new tensor from this column. 
+            self._to_tensor_columns.append(f"map_{c}")
+        
+            # Record the number of conditions
+            self._map_sizes[c] = pooled_df[pooled_col_name].drop_duplicates().size
+
+
+    def add_map_tensor(self,
+                       select_cols,
+                       select_pool_cols=None,
+                       name=None):
         """
-        Creates an integer map for a new parameter based on DataFrame columns.
+        Creates an integer map for unique values in DataFrame column(s). 
 
         Groups the DataFrame by `select_cols` and creates a new column
         `map_{name}` containing a unique integer index (via `ngroup`) for
-        each group. It stores the mapping dictionary in
-        `self._parameter_indexers` and the total count in `self._data_dict`.
-
-        The resulting `map_{name}` column is added to `self._to_tensor_columns`.
+        each group. It stores the total count in `self._map_sizes`. The
+        resulting `map_{name}` column is added to `self._to_tensor_columns`. 
 
         Parameters
         ----------
-        name : str
-            The base name for the parameter (e.g., "genotype").
-        select_cols : list of str
+        select_cols : list of str or str
             The DataFrame columns to group by to create the map.
+        select_pool_cols : list of str or str
+            These DataFrame columns are added to select_cols with OR logic. The
+            function looks for unique rows in (select_cols + select_pool_cols[0])
+            OR (select_cols + select_pool_cols[1]) OR ... 
+            (select_cols + select_pool_cols[n]). This will create a new map for
+            *each* column in select_pool_cols. `name` cannot be specified with 
+            select_pool_cols. 
+        name : str
+            The base name for the map (e.g. map_{name}). If not specified, the
+            name will be "-".join(select_cols). 
         """
 
-        map_name = f"map_{name}"
-        self._df[map_name] = self._df.groupby(select_cols,
-                                              sort=False,
-                                              observed=True).ngroup()
-        to_idx = (self._df[[map_name] + select_cols]
-                  .drop_duplicates()
-                  .set_index(select_cols))[map_name].to_dict()
-        
-        num_entries = self._df[map_name].drop_duplicates().size
+        # Deal with select_cols. Ensure it is a list of columns rather than a 
+        # single value
+        if isinstance(select_cols,str):
+            select_cols = [select_cols]
+        select_cols = copy.copy(list(select_cols))
 
-        self._parameter_indexers[name] = to_idx
-        self._data_dict[f"num_{name}"] = num_entries
-        self._to_tensor_columns.append(map_name)
+        # Deal with pool columns
+        if select_pool_cols is not None:
+            if isinstance(select_pool_cols,str):
+                select_pool_cols = [select_pool_cols]
 
-    def add_condition_map(self):
-        """
-        Creates unified integer maps for pre-selection and selection conditions.
+        if select_pool_cols is None:
+            self._add_simple_map_tensor(name=name,
+                                        select_cols=select_cols)
 
-        This method is specialized for experimental conditions. It finds all
-        unique (replicate, condition) pairs across both `condition_pre` and
-        `condition_sel` columns, creates a single unified integer map
-        (`map_cond`), and then merges this map back onto the DataFrame as
-        `map_cond_pre` and `map_cond_sel`.
+        else:
+            self._add_multi_map_tensor(name=name,
+                                       select_cols=select_cols,
+                                       select_pool_cols=select_pool_cols)
 
-        This ensures identical conditions (e.g., "LB") have the same index
-        regardless of whether they appeared in the 'pre' or 'sel' column.
-        The resulting maps are added to `self._to_tensor_columns`.
-        """
-
-        # Build array mapping unique replicate/combination combos to indexes
-        pre = self._df[["replicate", "condition_pre"]].rename(columns={"condition_pre": "condition"})
-        sel = self._df[["replicate", "condition_sel"]].rename(columns={"condition_sel": "condition"})
-        cond_df = pd.concat([pre, sel]).drop_duplicates().reset_index(drop=True)
-        cond_df["map_cond"] = cond_df.groupby(["condition","replicate"], sort=False, observed=True).ngroup()
-
-        # Merge back onto df for condition_pre, creating 'map_cond_pre'
-        self._df = self._df.merge(
-            cond_df,
-            left_on=["replicate", "condition_pre"],
-            right_on=["replicate", "condition"],
-            how="left"
-        ).rename(columns={"map_cond": "map_cond_pre"}).drop(columns="condition")
-
-        # Merge back onto df for condition_sel, creating 'map_cond_sel'
-        self._df = self._df.merge(
-            cond_df,
-            left_on=["replicate", "condition_sel"],
-            right_on=["replicate", "condition"],
-            how="left"
-        ).rename(columns={"map_cond": "map_cond_sel"}).drop(columns="condition")
-
-        # dictionary will map (replicate,condition) to index
-        condition_to_idx = dict(zip(zip(cond_df["condition"],cond_df["replicate"]),
-                                    cond_df["map_cond"]))
-
-        self._to_tensor_columns.extend(["map_cond_pre","map_cond_sel"])
-        self._parameter_indexers["k"] = condition_to_idx
-        self._parameter_indexers["m"] = condition_to_idx
-        self._data_dict["num_condition"] = cond_df["condition"].drop_duplicates().size
-
-    def add_data_tensor(self,name):
+    def add_data_tensor(self,name,dtype=jnp.float32):
         """
         Registers a DataFrame column to be included in the final tensors.
 
@@ -272,109 +234,192 @@ class TensorManager:
         ----------
         name : str
             The name of the column in `self._df` to be converted into a tensor.
+        dtype : type, optional
+            Cast to this type. Default is jnp.float32
         """
+
+        if name not in self._df.columns:
+            raise ValueError(
+                f"column '{name}' not found in dataframe"
+            )
 
         self._to_tensor_columns.append(name)
 
-    def _pivot_df(self):
+        if dtype is not None:
+            self._tensor_column_dtypes[name] = dtype
+
+
+    def _register_pivot_dimension(self, tensor_dim_name, new_index_column, cat_column):
         """
-        Pivots the tidy DataFrame into a dense, multi-dimensional structure.
-
-        This method is the core of the tensor creation. It uses
-        `pandas.pivot_table` to reshape the data from a long format to a wide,
-        dense format matching the tensor dimensions. It builds an exhaustive
-        `MultiIndex` to ensure all tensor cells are present, filling missing
-        data with NaN.
-
-        Crucially, it pivots on the pre-computed integer codes for each
-        dimension (e.g., `replicate.cat.codes`, `map_genotype`) to ensure
-        the final tensor axes are correctly aligned with the parameter maps.
-
-        Returns
-        -------
-        pd.DataFrame
-            A pivoted DataFrame, reindexed to be exhaustive.
+        Private helper to register a new tensor dimension.
         """
-
-        pivot_index = ['rep_idx', 'time_idx', 'treat_idx', 'geno_idx']
         
-        # Build aggregate treatment column
-        self._df['treatment'] = pd.Categorical(
-            self._df[self._treatment_columns].apply(tuple, axis=1)
-        )
+        # Record the new index column
+        self._df[new_index_column] = self._df[cat_column].cat.codes
 
-        # These columns are going to be our tensor dimension (used for a pivot)
-        self._df['rep_idx'] = self._df['replicate'].cat.codes
-        self._df['time_idx'] = (self._df
-                                .groupby(['replicate','genotype','treatment'],observed=False)['t_sel']
+        # Record that we are going to pivot on this to make the tensor
+        self._pivot_index.append(new_index_column)
+
+        # Record the identities of the name of each dimension (dim_names), 
+        # labels for each element along the dimension (dim_labels), and their
+        # integer codes (dim_codes).
+        cats = self._df[cat_column].cat.categories
+        self._tensor_dim_names.append(tensor_dim_name)
+        self._tensor_dim_labels.append(cats)
+        self._tensor_dim_codes.append(np.arange(cats.size,dtype=int))
+
+    def add_pivot_index(self,
+                        tensor_dim_name,
+                        cat_column):
+        """
+        Create a new tensor column/pivot index that is based on a categorical 
+        variable in `cat_column`. If that column is not already categorical, 
+        it will be coerced into a categorical value.
+
+        Populates self._df with a new column (name_idx) containing the category
+        codes for the row. It also appends to self._pivot_index,
+        self._tensor_dim_names self._tensor_dim_labels, and self._tensor_dim_codes, 
+        to set up the final tensor creation operation. 
+        
+        Parameters
+        ----------
+        tensor_dim_name : str
+            name of the new tensor dimension
+        cat_column : str
+            column to use for categorization
+        """
+        
+        # Will create this column 
+        new_index_column = f"{tensor_dim_name}_idx"
+
+        if not isinstance(cat_column,str) or cat_column not in self._df.columns:
+            raise ValueError(
+                f"cat_column '{cat_column}' is invalid. It should be a single column in the dataframe."
+            )
+
+        # Do a categorical cast *unless* already done. This lets the user 
+        # pre-specify some categories with complexity (e.g. genotype) but leaves
+        # the rest simple.
+        if not pd.api.types.is_categorical_dtype(self._df[cat_column]):
+            self._df[cat_column] = pd.Categorical(self._df[cat_column])
+
+        # Call helper to register the dimension
+        self._register_pivot_dimension(tensor_dim_name,
+                                       new_index_column,
+                                       cat_column)
+
+    def add_ranked_pivot_index(self,
+                               tensor_dim_name,
+                               rank_column,
+                               select_cols):
+        """
+        Create a new tensor column/pivot index that is based on the rank-order
+        of the values in rank_column. This is helpful for things like 
+        time-series. We want to build a tensor with a dimension that is
+        num_time_points long, in order of the time points. Our categories need
+        to be defined by the time point number (0,1,2,...), not the time point
+        value (20 min, 27.3 s, etc.) that may differ between samples.  
+
+        Populates self._df with a new column (name_idx) containing the category
+        codes for the row. It also appends to self._pivot_index,
+        self._tensor_dim_names self._tensor_dim_labels, and self._tensor_dim_codes, 
+        to set up the final tensor creation operation. 
+        
+        Parameters
+        ----------
+        tensor_dim_name : str
+            name of the new tensor dimension
+        rank_column : str
+            column to use for ranking (e.g. time)
+        select_cols : str or list of str
+            columns to use to select unique values of rank column.
+        """
+        
+        # Make sure select_cols is a list
+        if isinstance(select_cols,str):
+            select_cols = [select_cols]
+
+        # Will make this column
+        new_index_column = f"{tensor_dim_name}_idx"
+
+        # Make sure the all requested columns exist
+        all_columns = []
+        all_columns.append(rank_column)
+        all_columns.extend(select_cols)
+        check_columns(self._df, required_columns=all_columns)
+
+        # Create a new, 'hidden/private' category column for this aggregated
+        # value.
+        cat_column = f"_cat_{new_index_column}"
+
+        # The categorical column is a the rank of each `rank_column` value 
+        # within each condition defined by select_cols. This is in sorted order
+        self._df[cat_column] = (self._df
+                                .groupby(select_cols,observed=False)[rank_column]
                                 .rank(method='first')
                                 .astype(int) - 1)
-        self._df['treat_idx'] = self._df['treatment'].cat.codes
-        self._df['geno_idx'] = self._df['genotype'].cat.codes
+        self._df[cat_column] = pd.Categorical(self._df[cat_column])
 
-        # Build an exhaustive multi-index across our target tensor dimensions
-        dim_sizes = [
-            len(self._df['replicate'].cat.categories),
-            self._df['time_idx'].max() + 1,
-            len(self._df['treatment'].cat.categories),
-            self._data_dict['num_genotype'] 
-        ]
-        dim_codes = [np.arange(size) for size in dim_sizes]
-        exhaustive_index = pd.MultiIndex.from_product(dim_codes, 
-                                                      names=pivot_index)
+        # Call helper to register the dimension
+        self._register_pivot_dimension(tensor_dim_name, new_index_column, cat_column)
+        
+    def create_tensors(self):
+        """
+        Converts the DataFrame into a dictionary of JAX tensors.
+        
+        This pivots the tidy DataFrame into a dense, multi-dimensional structure, 
+        keeping track of columns the user asked to grab. Each of those columns
+        becomes its own named tensor. It uses `pandas.pivot_table` to reshape
+        the data from a long format to a wide, dense format matching the tensor
+        dimensions. It builds an exhaustive `MultiIndex` to ensure all tensor
+        elements are present, filling missing data with NaN. It pivots on the
+        pre-computed integer codes for each dimension (e.g., `_tensor_dim_codes`)
+        to ensure the final tensor axes are correctly aligned with the parameter
+        maps.
 
-        # Use pivot_table to reshape the data.
+        This method populates `self._tensors` and `self._tensor_shape`. It also
+        generates the tensor `good_mask` which records whether each element is
+        non-NaN across all tensors.   
+        """
+
+        if len(self._tensor_dim_codes) == 0:
+            raise ValueError(
+                "pivot indexes must be added using add_pivot_index before generating tensors."
+            )
+        
+        if len(self._to_tensor_columns) == 0:
+            raise ValueError(
+                "tensor columns must be specified prior to generating tensors."
+            )
+
+        exhaustive_index = pd.MultiIndex.from_product(self._tensor_dim_codes, 
+                                                      names=self._pivot_index)
+
+        # Use pivot_table to reshape data.
         pivoted_df = pd.pivot_table(
             self._df,
             values=self._to_tensor_columns,
-            index=pivot_index,
+            index=self._pivot_index,
             observed=False
         )
 
         # Reindex, forcing the complete set of indices
-        return pivoted_df.reindex(exhaustive_index)
+        pivoted_df = pivoted_df.reindex(exhaustive_index)
 
-
-    def create_tensors(self):
-        """
-        Converts the pivoted DataFrame into a dictionary of JAX tensors.
-
-        This method first calls `_pivot_df`. It then iterates over the
-        pivoted data, converts each column to a `jnp.ndarray`, reshapes it
-        to the final tensor shape, and stores it in `self._tensors`.
-
-        It also creates the `good_mask` tensor to identify non-NaN values.
-        All NaN values are filled with `1.0` to avoid JAX/Numpyro errors
-        during sampling, but the mask ensures these values are ignored.
-
-        This method populates `self._tensors`, `self._tensor_shape`, and
-        `self._tensor_dim_labels`.    
-        """
-
-        # Pivot the dataframe
-        pivoted_df = self._pivot_df()
-
-        # The 'time_idx' is the only one not from a categorical, so we get its
-        # unique sorted values.
-        time_labels = np.sort(self._df['time_idx'].unique())
-
-        # Get dimension labels
-        self._tensor_dim_labels = [
-            self._df['replicate'].cat.categories,  # Labels for dim 0
-            time_labels,                           # Labels for dim 1
-            self._df['treatment'].cat.categories,  # Labels for dim 2
-            self._df['genotype'].cat.categories    # Labels for dim 3
-        ]
-    
-        # Get the labels along each tensor dimension, as well as the tensor 
-        # shape. 
+        # Get the final tensor shape
         self._tensor_shape = tuple(len(lab) for lab in self._tensor_dim_labels)
         
-        # Build mask indicating good values. This will have the shape of the rest of
-        # the tensors with False for any nan values created during the pivot.
+        # We're going to put tensors here. 
         self._tensors = {}
+
+        # Build mask indicating good values. This will have the shape of the
+        # rest of the tensors with False for nan values created during the
+        # pivot. Look for a row with **any** nan. This corresponds to a tensor
+        # coordinate that is a nan in at least one of the tensor. 
+        pivot_non_nan = ~np.any(pivoted_df[self._to_tensor_columns]
+                                .isna().to_numpy(),axis=1)
         self._tensors["good_mask"] = jnp.asarray(
-            pivoted_df["ln_cfu"].notna().to_numpy().reshape(self._tensor_shape)
+            pivot_non_nan.reshape(self._tensor_shape)
         )
 
         # df cleanup -- remove nan prior to building tensors. We can set them 
@@ -382,107 +427,41 @@ class TensorManager:
         # analysis. Has to be above zero because jax/numpyro demands non-zero
         # values when it checks std on final obs/Normal samples -- even with 
         # the mask
-        pivoted_df.fillna(1,inplace=True)
+        pivoted_df = pivoted_df.fillna(1)
 
         # Convert to tensors, reshaping and casting as needed
         for c in self._to_tensor_columns:
 
             # Cast to float and reshape
-            tensor = jnp.asarray(pivoted_df[c].to_numpy(dtype=float).reshape(self._tensor_shape))
+            tensor = jnp.asarray(pivoted_df[c]
+                                 .to_numpy(dtype=float)
+                                 .reshape(self._tensor_shape))
 
-            # Final cast to int (for maps) and 32 bit (everything else)
-            if c.startswith("map_"):
-                tensor = jnp.asarray(tensor,dtype=int)
+            # Figure out the datatype we should cast to. Unless manually 
+            # defined, set `map_` to int and everything else to float32. 
+            if c in self._tensor_column_dtypes:
+                dtype = self._tensor_column_dtypes[c]
+            elif c.startswith("map_"):
+                dtype = int
             else:
-                tensor = jnp.asarray(tensor,dtype=jnp.float32)
-            
+                dtype = jnp.float32
+
+            # Final cast 
+            tensor = jnp.asarray(tensor,dtype=dtype)
+
             # Record the tensor
             self._tensors[c] = tensor
 
-        self._data_dict["num_replicate"] = self._tensor_shape[0]
-        self._data_dict["num_time"] = self._tensor_shape[1]
-        self._data_dict["num_treatment"] = self._tensor_shape[2]
-        # This is set above -- here for parallelism
-        #self._data_dict["num_genotype"] = self._tensor_shape[3]
-
-    def build_dataclass(self,target_dataclass):
-        """
-        Populates a target dataclass with data from the manager.
-
-        This method inspects the `__init__` signature of `target_dataclass`
-        and populates its arguments using keys from `self.tensors` and
-        `self.data_dict`.
-
-        It includes validation to ensure no Python lists or tuples are
-        passed, as these are not valid JAX Pytree nodes.
-
-        Parameters
-        ----------
-        target_dataclass : type
-            The (e.g., flax) dataclass to instantiate.
-
-        Returns
-        -------
-        object
-            An instance of `target_dataclass` populated with tensor data.
-
-        Raises
-        ------
-        ValueError
-            If a required dataclass parameter is not found in
-            `self.tensors` or `self.data_dict`.
-        ValueError
-            If a value is a Python `list` or `tuple`, which are
-            not valid JAX Pytree nodes.
-        """
-
-        # Get required parameters
-        required_keys = inspect.signature(target_dataclass).parameters
-
-        # Construct dataclass kwargs from data in dataclass. 
-        dataclass_kwargs = {}
-        for k in required_keys:
-        
-            if k in self.tensors:
-                value = self.tensors[k]
-            elif k in self.data_dict:
-                value = self.data_dict[k]
-            else:
-                raise ValueError(
-                    f"could not find required parameter '{k}' in {self.__class__.__name__}"
-                )
-
-            # Check if the value is an iterable (like list or tuple) but NOT a
-            # string/bytes and NOT a JAX array.
-            is_iterable = isinstance(value, collections.abc.Iterable)
-            is_string = isinstance(value, (str, bytes))
-            is_jax_array = isinstance(value, jax.Array) 
-
-            if is_iterable and not is_string and not is_jax_array:
-                raise ValueError(
-                    f"Parameter '{k}' is a '{type(value)}', but must be a "
-                    f"jnp.ndarray, scalar, or bool. Python lists/tuples are not "
-                    f"valid JAX Pytree nodes."
-                )        
-            
-            dataclass_kwargs[k] = value
-         
-        return target_dataclass(**dataclass_kwargs) 
 
     @property
     def df(self):
         """The final, preprocessed pandas DataFrame."""
         return self._df
-    
+
     @property
-    def parameter_indexers(self):
-        """A dictionary of parameter-to-integer mapping dictionaries."""
-        return self._parameter_indexers
-    
-    @property
-    def data_dict(self):
-        """A dictionary of scalar values and small arrays for the model."""
-        return self._data_dict
+    def map_sizes(self):
+        """A dictionary holding the sizes of the maps."""
+        return self._map_sizes
 
     @property
     def tensors(self):
@@ -491,9 +470,14 @@ class TensorManager:
     
     @property
     def tensor_shape(self):
-        """The shape of the generated tensors (replicates, timepoints, treatments, genotypes)."""
+        """The shape of the generated tensors."""
         return self._tensor_shape
     
+    @property
+    def tensor_dim_names(self):
+        """A list of names for each tensor dimension."""
+        return self._tensor_dim_names
+
     @property
     def tensor_dim_labels(self):
         """A list of labels for each tensor dimension."""

@@ -3,7 +3,7 @@ import numpyro as pyro
 import numpyro.distributions as dist
 from flax.struct import dataclass
 
-@dataclass 
+@dataclass(frozen=True)
 class ModelPriors:
     """
     JAX Pytree holding data needed to specify model priors.
@@ -47,3 +47,6 @@ def get_guesses(name,data):
     Get guesses for the model parameters. 
     """
     return {}
+
+def get_priors():
+    return ModelPriors(**get_hyperparameters())
