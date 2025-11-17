@@ -375,9 +375,10 @@ class ModelClass:
 
         # Grab the sizes
         sizes = {"num_titrant_name":self.binding_tm.tensor_shape[0],
-                 "num_titrant_conc":self.binding_tm.tensor_shape[1]}
-        other_data = {"scatter_theta":0,
-                      "obs_mask":jnp.ones(self.growth_tm.tensor_shape[-1],dtype=bool)}
+                 "num_titrant_conc":self.binding_tm.tensor_shape[1],
+                 "num_genotype":self.binding_tm.tensor_shape[2]}
+        other_data = {"scatter_theta":0}
+                      #"obs_mask":jnp.ones(self.binding_tm.tensor_shape[-1],dtype=bool)}
 
         # Populate a BindingData flax dataclass with all keys in `sources`
         binding_dataclass = populate_dataclass(BindingData,

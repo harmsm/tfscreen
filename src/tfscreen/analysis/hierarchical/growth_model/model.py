@@ -21,7 +21,8 @@ from .components.theta_hill import run_model as calc_theta_hill
 from .components.beta_noise import define_model as define_no_noise
 from .components.beta_noise import define_model as define_beta_noise
 
-from .observe import observe
+from .observe.binding import observe as observe_binding
+from .observe.growth import observe as observe_growth
 
 
 MODEL_COMPONENT_NAMES = {
@@ -55,13 +56,22 @@ MODEL_COMPONENT_NAMES = {
     }
 }
 
-def _define_growth(data,priors,control,theta,calc_theta):
+def _define_growth(data,priors,control,theta):
 
     # -------------------------------------------------------------------------
     # Define theta for the growth model
     
     # calculate theta under growth conditions and scatter (returns full-sized
     # tensor)
+    if control.theta == 0:
+        calc_theta = calc_theta_cat
+    elif control.theta == 1:
+        calc_theta = calc_theta_hill
+    else:
+        raise ValueError(
+            f"theta selection {control.theta} is invalid"
+        )
+
     growth_theta = calc_theta(theta,data.growth)
 
     # -------------------------------------------------------------------------
@@ -135,11 +145,11 @@ def _define_growth(data,priors,control,theta,calc_theta):
     elif control.activity == 1:
         activity = define_activity_hierarchical("activity",
                                                 data.growth,
-                                                control.growth.activity)
+                                                priors.growth.activity)
     elif control.activity == 2:
         activity = define_activity_horseshoe("activity",
                                              data.growth,
-                                             control.growth.activity)
+                                             priors.growth.activity)
     else:
         raise ValueError (
             f"activity_model selection {control.activity} is invalid"
@@ -153,7 +163,16 @@ def _define_growth(data,priors,control,theta,calc_theta):
 
     return ln_cfu_pred
 
-def _define_binding(data,priors,control,theta,calc_theta):
+def _define_binding(data,priors,control,theta):
+
+    if control.theta == 0:
+        calc_theta = calc_theta_cat
+    elif control.theta == 1:
+        calc_theta = calc_theta_hill
+    else:
+        raise ValueError(
+            f"theta selection {control.theta} is invalid"
+        )
 
     theta_binding = calc_theta(theta,data.binding)
 
@@ -190,25 +209,26 @@ def jax_model(data,priors,control):
         theta = define_theta_cat("theta",
                                  data,
                                  priors.theta)
-        calc_theta = calc_theta_cat
     elif control.theta == 1:
         # passing data.growth enforces it as the source of truth for the 
         # titrant_name and genotype seen across both datasets. 
         theta = define_theta_hill("theta",
                                   data.growth, 
                                   priors.theta)
-        calc_theta = calc_theta_hill
     else:
         raise ValueError (
             f"theta selection {control.theta} is invalid"
         )
 
     # predict ln_cfu and binding
-    ln_cfu_pred = _define_growth(data,priors,control,theta,calc_theta)
-    binding_pred = _define_binding(data,priors,control,theta,calc_theta)
+    ln_cfu_pred = _define_growth(data,priors,control,theta)
+    binding_pred = _define_binding(data,priors,control,theta)
 
-    # make final observation
-    observe("final-obs",data,ln_cfu_pred,binding_pred)
+    # make final observations
+    observe_growth("final-obs",data.growth,ln_cfu_pred)
+    observe_binding("final-obs",data.binding,binding_pred)
+    
+    
 
   
     

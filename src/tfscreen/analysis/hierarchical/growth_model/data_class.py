@@ -71,10 +71,11 @@ class BindingData:
     theta_std: jnp.ndarray
     titrant_conc: jnp.ndarray
     map_theta_group: jnp.ndarray
-    obs_mask: jnp.ndarray # mask used for mini-batching
+    #obs_mask: jnp.ndarray # mask used for mini-batching
 
     num_titrant_name: int = field(pytree_node=False)
     num_titrant_conc: int = field(pytree_node=False)
+    num_genotype: int = field(pytree_node=False) 
     
     good_mask: jnp.ndarray
     scatter_theta: int = field(pytree_node=False) 
