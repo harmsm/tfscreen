@@ -15,24 +15,26 @@ class TensorManager:
     Manages the wrangling of experimental data from a DataFrame into
     JAX-compatible tensors.
 
-    This class handles data loading, preprocessing, and pivoting to create
+    This class handles data preprocessing and pivoting to create
     dense, multi-dimensional tensors required for hierarchical models in
-    JAX/Numpyro. It creates parameter maps, handles NaN values, and builds a
-    final data dictionary.
-    
+    JAX/Numpyro. It creates integer-based parameter maps based on column
+    values and builds a final dictionary of tensors.
+
     Attributes
     ----------
     df : pd.DataFrame
         The fully preprocessed pandas DataFrame.
-    data_dict : dict
-        A dictionary of scalar values and small arrays needed by the model
-        (e.g., "wt_index", "num_genotype").
+    map_sizes : dict
+        A dictionary holding the sizes (max index + 1) of the generated
+        parameter maps.
     tensors : dict
         A dictionary of the final, dense JAX tensors (e.g., "ln_cfu",
-        "good_mask").
+        "good_mask"). This is populated after create_tensors() is called.
     tensor_shape : tuple
-        The shape of the generated tensors (replicates, timepoints,
-        treatments, genotypes).
+        The shape of the generated tensors. Populated after
+        create_tensors() is called.
+    tensor_dim_names : list
+        A list of names for each tensor dimension.
     tensor_dim_labels : list
         A list of pandas.CategoricalIndex objects, where each provides
         the labels for a tensor dimension.
@@ -40,14 +42,11 @@ class TensorManager:
     Notes
     -----
     The output tensor dimensions are determined by each call to
-    `add_pivot_index` or `add_ranked_pivot_index`. Each call will result in a 
-    new pivot index, and thus a new tensor dimension. 
+    `add_pivot_index` or `add_ranked_pivot_index`. Each call will result in a
+    new pivot index, and thus a new tensor dimension.
 
     The `tensors` dict will always include the "good_mask" tensor, which is a
-    bool mask that is only True if an element is non-NaN across all tensors. 
-
-    The `data_dict` will always include:
-
+    bool mask that is only True if an element is non-NaN across all tensors.
     """
 
     def __init__(self,df): 
@@ -56,9 +55,9 @@ class TensorManager:
 
         Parameters
         ----------
-        df : pd.DataFrame or str
-            The input DataFrame or a path to a file (e.g., CSV, Excel)
-            that can be read by `read_dataframe`.
+        df : pd.DataFrame
+            The input DataFrame containing the data to be wrangled. This
+            class assumes the DataFrame is already loaded.
         """
 
         self._df = df
@@ -103,12 +102,12 @@ class TensorManager:
 
         # Merge the map back onto the target dataframe.
         self._df = self._df.merge(sorted_groups, 
-                                 on=select_cols, 
-                                 how="left",
-                                 sort=False)
+                                  on=select_cols, 
+                                  how="left",
+                                  sort=False)
         
         # Record the size of the mapping
-        num_entries = self._df[map_name].drop_duplicates().size
+        num_entries = len(sorted_groups)
         self._map_sizes[name] = num_entries
 
         # Record that this should be a new tensor
@@ -180,34 +179,38 @@ class TensorManager:
                        select_pool_cols=None,
                        name=None):
         """
-        Creates an integer map for unique values in DataFrame column(s). 
+        Creates an integer map for unique values in DataFrame column(s).
 
         Groups the DataFrame by `select_cols` and creates a new column
-        `map_{name}` containing a unique integer index (via `ngroup`) for
-        each group. It stores the total count in `self._map_sizes`. The
-        resulting `map_{name}` column is added to `self._to_tensor_columns`. 
+        `map_{name}` containing a unique, 0-indexed integer for
+        each group. The map is created by finding all unique combinations of
+        `select_cols`, sorting them, and then assigning a C-order index.
+        It stores the total count in `self.map_sizes`. The
+        resulting `map_{name}` column is added to `self._to_tensor_columns`.
 
         Parameters
         ----------
         select_cols : list of str or str
             The DataFrame columns to group by to create the map.
-        select_pool_cols : list of str or str
-            These DataFrame columns are added to select_cols with OR logic. The
-            function looks for unique rows in (select_cols + select_pool_cols[0])
-            OR (select_cols + select_pool_cols[1]) OR ... 
+        select_pool_cols : list of str or str, optional
+            These DataFrame columns are "pooled" with `select_cols`. The
+            function finds unique rows in (select_cols + select_pool_cols[0])
+            OR (select_cols + select_pool_cols[1]) OR ...
             (select_cols + select_pool_cols[n]). This will create a new map for
-            *each* column in select_pool_cols. `name` cannot be specified with 
-            select_pool_cols. 
-        name : str
-            The base name for the map (e.g. map_{name}). If not specified, the
-            name will be "-".join(select_cols). 
+            *each* column in `select_pool_cols` (e.g., `map_col1`, `map_col2`).
+        name : str, optional
+            The base name for the map (e.g. `map_{name}`). If not specified, the
+            name will be "-".join(select_cols). If used in conjunction with
+            `select_pool_cols`, this `name` is also used as a key in
+            `self.map_sizes` to store the total count of all unique
+            pooled entries.
         """
 
         # Deal with select_cols. Ensure it is a list of columns rather than a 
         # single value
         if isinstance(select_cols,str):
             select_cols = [select_cols]
-        select_cols = copy.copy(list(select_cols))
+        select_cols = list(select_cols)
 
         # Deal with pool columns
         if select_pool_cols is not None:
@@ -300,7 +303,8 @@ class TensorManager:
         # Do a categorical cast *unless* already done. This lets the user 
         # pre-specify some categories with complexity (e.g. genotype) but leaves
         # the rest simple.
-        if not pd.api.types.is_categorical_dtype(self._df[cat_column]):
+
+        if not isinstance(self._df[cat_column].dtype, pd.CategoricalDtype):
             self._df[cat_column] = pd.Categorical(self._df[cat_column])
 
         # Call helper to register the dimension
@@ -432,11 +436,6 @@ class TensorManager:
         # Convert to tensors, reshaping and casting as needed
         for c in self._to_tensor_columns:
 
-            # Cast to float and reshape
-            tensor = jnp.asarray(pivoted_df[c]
-                                 .to_numpy(dtype=float)
-                                 .reshape(self._tensor_shape))
-
             # Figure out the datatype we should cast to. Unless manually 
             # defined, set `map_` to int and everything else to float32. 
             if c in self._tensor_column_dtypes:
@@ -446,8 +445,9 @@ class TensorManager:
             else:
                 dtype = jnp.float32
 
-            # Final cast 
-            tensor = jnp.asarray(tensor,dtype=dtype)
+            # Resize, cast, and convert to jnumpy array
+            values = pivoted_df[c].to_numpy().reshape(self._tensor_shape)
+            tensor = jnp.asarray(values,dtype=dtype)
 
             # Record the tensor
             self._tensors[c] = tensor

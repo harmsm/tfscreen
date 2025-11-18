@@ -1,25 +1,62 @@
-
+import jax.numpy as jnp
 from flax.struct import (
     dataclass
 )
+from typing import Dict, Any
+
+# Assuming data_class is in a relative path
+# from .data_class import GrowthData, BindingData
+# Using a placeholder for now:
+class DataClass: pass
+
 
 @dataclass(frozen=True)
 class ModelPriors:
     """
-    JAX Pytree holding data needed to specify model priors.
+    JAX Pytree holding hyperparameters for the no-noise model.
+    This is an empty placeholder, as this model has no priors.
     """
 
     pass
 
 
-def define_model(name,fx_calc,priors):
+def define_model(name: str, 
+                 fx_calc: jnp.ndarray, 
+                 priors: ModelPriors) -> jnp.ndarray:
+    """
+    A null model that applies no noise to the input.
+
+    This function serves as a placeholder in the model architecture.
+    It simply returns the deterministic input array ``fx_calc``
+    without adding any stochasticity or sampling any parameters.
+
+    Parameters
+    ----------
+    name : str
+        The prefix for Numpyro sites. (Unused in this model).
+    fx_calc : jnp.ndarray
+        The deterministically calculated input array (e.g., fractional
+        occupancy).
+    priors : ModelPriors
+        A Pytree of hyperparameters. (Unused in this model).
+
+    Returns
+    -------
+    jnp.ndarray
+        The original, unmodified ``fx_calc`` array.
+    """
 
     return fx_calc
 
 
-def get_hyperparameters():
+def get_hyperparameters() -> Dict[str, Any]:
     """
     Get default values for the model hyperparameters.
+
+    Returns
+    -------
+    dict[str, Any]
+        An empty dictionary, as this model has no hyperparameters.
     """
 
     parameters = {}
@@ -27,14 +64,34 @@ def get_hyperparameters():
     return parameters
 
 
-def get_guesses(name,data):
+def get_guesses(name: str, data: DataClass) -> Dict[str, Any]:
     """
-    Get guesses for the model parameters. 
+    Get guess values for the model's latent parameters.
+
+    Parameters
+    ----------
+    name : str
+        The prefix used for all sample sites. (Unused).
+    data : DataClass
+        A Pytree containing data metadata. (Unused).
+
+    Returns
+    -------
+    dict[str, Any]
+        An empty dictionary, as this model has no latent parameters.
     """
     
     guesses = {}
 
     return guesses
 
-def get_priors():
+def get_priors() -> ModelPriors:
+    """
+    Utility function to create a populated ModelPriors object.
+
+    Returns
+    -------
+    ModelPriors
+        An empty, populated Pytree (Flax dataclass).
+    """
     return ModelPriors(**get_hyperparameters())

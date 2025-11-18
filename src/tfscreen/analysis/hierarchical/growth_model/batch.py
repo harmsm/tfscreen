@@ -1,28 +1,59 @@
+from tfscreen.analysis.hierarchical.growth_model.data_class import DataClass
+
 import jax
 import jax.numpy as jnp
 from functools import partial
 
+from typing import Any
+
+# Mock type hints for the dataclasses
+PRNGKey = Any
+
 @partial(jax.jit, static_argnames=("batch_size",))
-def sample_batch(rng_key,sharded_data,batch_size):
+def sample_batch(rng_key: PRNGKey, 
+                 sharded_data: DataClass, 
+                 batch_size: int) -> DataClass:
     """
-    Generate a random sample of the data. 
+    Generates a random batch of data by subsampling genotypes.
+
+    This function performs subsampling along the genotype dimension, which
+    is assumed to be the last axis of all relevant tensors within
+    ``sharded_data.growth``. It slices all tensors in ``sharded_data.growth``
+    by the randomly selected genotype indices.
+
+    Per the model design, the ``sharded_data.binding`` attribute is
+    passed through unmodified, as the full binding dataset is used in
+    each model step. This function is JIT-compiled, with ``batch_size``
+    treated as a static argument.
+
+    Parameters
+    ----------
+    rng_key : PRNGKey
+        A JAX random key used for sampling genotype indices.
+    sharded_data : DataClass
+        The *full* ``DataClass`` object containing all growth and binding
+        data.
+    batch_size : int
+        The number of genotypes to sample. This must be static for
+        JIT compilation.
+
+    Returns
+    -------
+    DataClass
+        A new ``DataClass`` pytree where ``data.growth`` tensors have been
+        sliced to ``batch_size`` along the last dimension. ``data.binding``
+        remains unmodified.
+
+    Raises
+    ------
+    ValueError
+        If ``batch_size > total_size`` (from ``jax.random.choice`` with
+        ``replace=False``).
     """
 
     # Generate a collection of random sample indexes
     total_size = sharded_data.growth.num_genotype
     idx = jax.random.choice(rng_key, total_size, shape=(batch_size,), replace=False)
-
-    # ----- This existed to do a batched sample of binding data ----
-    # growth_to_binding_idx is the map between the growth tensor genotype
-    # indexes and their indexes in the binding dataset. These will be -1 if
-    # there is no measured value. Sample from this with idx and create a 
-    # mask for whether the value is True or not. 
-    #binding_idx_padded = sharded_data.growth_to_binding_idx[idx]
-    #obs_mask = binding_idx_padded >= 0
-
-    # Replace any -1 with 0 to prevent out-of-bounds errors. This is fine, as
-    # these entries will be masked out.
-    #binding_idx = jnp.where(obs_mask,binding_idx_padded,0)
 
     batch_data = sharded_data.replace(
         growth=sharded_data.growth.replace(
@@ -45,40 +76,39 @@ def sample_batch(rng_key,sharded_data,batch_size):
             map_theta_group=sharded_data.growth.map_theta_group[..., idx],
             
             good_mask=sharded_data.growth.good_mask[..., idx],
-        ),
-
-        # ----- This existed to do a batched sample of binding data ----
-        # binding=sharded_data.binding.replace(
-        #     theta_obs=sharded_data.binding.theta_obs[..., binding_idx],
-        #     theta_std=sharded_data.binding.theta_std[..., binding_idx],
-        #     titrant_conc=sharded_data.binding.titrant_conc[..., binding_idx],
-        #     map_theta_group=sharded_data.binding.map_theta_group[..., binding_idx],
-        #     good_mask=sharded_data.binding.good_mask[..., binding_idx],
-        #     obs_mask=obs_mask,
-        # )
-
+        )
     )
-
 
     return batch_data
     
-def deterministic_batch(full_data, idx):
+def deterministic_batch(full_data: DataClass, idx: jnp.ndarray) -> DataClass:
     """
-    Slice the full data to create a deterministic batch. 
+    Extracts a deterministic batch of data given specific indices.
+
+    This function performs subsampling along the genotype dimension (assumed
+    to be the last axis) using a provided array of indices. It slices all
+    tensors within the ``full_data.growth`` attribute.
+
+    Per the model design, the ``full_data.binding`` attribute is passed
+    through unmodified, as the full binding dataset is used in each
+    model step.
+
+    Parameters
+    ----------
+    full_data : DataClass
+        The *full* ``DataClass`` object containing all growth and binding
+        data.
+    idx : jnp.ndarray
+        An array of integer indices to use for slicing the genotype dimension.
+
+    Returns
+    -------
+    DataClass
+        A new ``DataClass`` pytree where ``data.growth`` tensors have been
+        sliced according to ``idx`` along the last dimension.
+        ``data.binding`` remains unmodified.
     """
     
-    # growth_to_binding_idx is the map between the growth tensor genotype
-    # indexes and their indexes in the binding dataset. These will be -1 if
-    # there is no measured value. Sample from this with idx and create a 
-    # mask for whether the value is True or not. 
-    binding_idx_padded = full_data.growth_to_binding_idx[idx]
-    obs_mask = binding_idx_padded >= 0
-
-    # ----- This existed to do a batched sample of binding data ----
-    # Replace any -1 with 0 to prevent out-of-bounds errors. This is fine, as
-    # these entries will be masked out.
-    #binding_idx = jnp.where(obs_mask,binding_idx_padded,0)
-
     batch_data = full_data.replace(
         growth=full_data.growth.replace(
 
@@ -100,16 +130,7 @@ def deterministic_batch(full_data, idx):
             map_theta_group=full_data.growth.map_theta_group[..., idx],
             
             good_mask=full_data.growth.good_mask[..., idx],
-        ),
-        # ----- This existed to do a batched sample of binding data ----
-        # binding=full_data.binding.replace(
-        #     theta_obs=full_data.binding.theta_obs[..., binding_idx],
-        #     theta_std=full_data.binding.theta_std[..., binding_idx],
-        #     titrant_conc=full_data.binding.titrant_conc[..., binding_idx],
-        #     map_theta_group=full_data.binding.map_theta_group[..., binding_idx],
-        #     good_mask=full_data.binding.good_mask[..., binding_idx],
-        #     obs_mask=obs_mask,
-        # )
+        )
     )
 
     return batch_data
