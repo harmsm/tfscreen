@@ -44,7 +44,7 @@ def add_group_columns(target_df,
     if existing_df is not None:
 
         # Deal with columns for merge
-        merge_on = group_cols[:]
+        merge_on = list(group_cols) 
         merge_on.append(group_name)
         need_cols = set(merge_on)
         seen_cols = set(existing_df.columns)
@@ -64,6 +64,9 @@ def add_group_columns(target_df,
         # enforcing its role as the source of truth on the group definition. 
         target_df = target_df[~pd.isna(target_df[group_name])].reset_index(drop=True)
         
+        # Cast back to int to ensure type consistency
+        target_df[group_name] = target_df[group_name].astype(int)
+        
     else:
 
         # Get all unique combinations of the group columns, then sort and 
@@ -78,9 +81,9 @@ def add_group_columns(target_df,
                                     how="left",
                                     sort=False)
 
-    # Record a tuple version of this grouping.  
-    target_df[f"{group_name}_tuple"] = pd.Categorical(
-        target_df[group_cols].apply(tuple, axis=1)
-    )
+    # Record a tuple version of this grouping.
+    # Use .values and map(tuple,...) for a fast, hashable conversion
+    tuple_values = list(map(tuple, target_df[group_cols].values))
+    target_df[f"{group_name}_tuple"] = pd.Categorical(tuple_values)
 
     return target_df

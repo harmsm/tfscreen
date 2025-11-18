@@ -1,116 +1,221 @@
 import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
-from flax.struct import dataclass
-
+from flax.struct import (
+    dataclass,
+    field
+)
+from typing import Dict, Any
+from tfscreen.analysis.hierarchical.growth_model.data_class import DataClass
 
 @dataclass(frozen=True)
 class ModelPriors:
     """
-    JAX Pytree holding data needed to specify model priors.
+    JAX Pytree holding hyperparameters for the categorical theta model.
+    
+    Attributes
+    ----------
+    logit_theta_hyper_loc_loc : float
+        Mean of the prior for the hyper-location of logit(theta).
+    logit_theta_hyper_loc_scale : float
+        Std dev of the prior for the hyper-location of logit(theta).
+    logit_theta_hyper_scale : float
+        Scale of the HalfNormal prior for the hyper-scale of logit(theta).
     """
 
-    theta_log_alpha_hyper_loc_loc: float
-    theta_log_alpha_hyper_loc_scale: float
-    theta_log_beta_hyper_loc_loc: float
-    theta_log_beta_hyper_loc_scale: float
+    logit_theta_hyper_loc_loc: float
+    logit_theta_hyper_loc_scale: float
+    logit_theta_hyper_scale: float
 
 
 @dataclass(frozen=True)
 class ThetaParam:
     """
+    JAX Pytree holding the sampled categorical theta parameters.
+
+    Attributes
+    ----------
+    theta : jnp.ndarray
+        A tensor of sampled fractional occupancy values, with shape
+        ``[num_titrant_name, num_titrant_conc, num_genotype]``.
     """
 
     theta: jnp.ndarray
 
 
-def define_model(name,data,priors):
+def define_model(name: str, data: DataClass, priors: ModelPriors) -> ThetaParam:
     """
-    priors.theta_log_alpha_hyper_loc_loc
-    priors.theta_log_alpha_hyper_loc_scale
-    priors.theta_log_beta_hyper_loc_loc
-    priors.theta_log_beta_hyper_loc_scale
+    Defines the hierarchical categorical model for theta.
+    
+    This function defines a unique, sampled ``theta`` parameter for every
+    ``(titrant_name, titrant_conc, genotype)`` combination.
+    
+    The parameters are sampled from a pooled Normal distribution in
+    logit-space using a non-centered parameterization.
 
-    Data
-    ----
-    data.num_titrant
-    data.num_theta
-    data.map_theta
+    Parameters
+    ----------
+    name : str
+        The prefix for all Numpyro sample sites (e.g., "theta").
+    data : DataClass
+        A data object (e.g., `GrowthData`) containing metadata, primarily:
+        - ``data.num_titrant_name`` : (int) Number of titrants.
+        - ``data.num_titrant_conc`` : (int) Number of titrant concentrations.
+        - ``data.num_genotype`` : (int) Number of genotypes.
+    priors : ModelPriors
+        A Pytree (Flax dataclass) containing all hyperparameters for the
+        pooled logit-space prior.
+
+    Returns
+    -------
+    ThetaParam
+        A Pytree containing the sampled theta parameters in their
+        natural scale, with shape
+        ``[num_titrant_name, num_titrant_conc, num_genotype]``.
     """
 
-    # Go over all titrants
-    with pyro.plate(f"{name}_all_titrants",data.num_titrant):
-
-        # Sample to create a beta distribution with unique shape parameters 
-        # alpha/beta for each titrant
-        log_alpha_hyper_loc = pyro.sample(
-            f"{name}_log_alpha_hyper_loc",
-            dist.Normal(priors.theta_log_alpha_hyper_loc_loc,
-                        priors.theta_log_alpha_hyper_loc_scale)
-        )
-        log_alpha_hyper_offset = pyro.sample(f"{name}_log_alpha_hyper_offset",
-                                             dist.Normal(0, 1))
-        theta_alpha = jnp.clip(jnp.exp(log_alpha_hyper_loc + log_alpha_hyper_offset),a_max=1e30)
-        pyro.deterministic(f"{name}_alpha",theta_alpha)
-
-        log_beta_hyper_loc = pyro.sample(
-            f"{name}_log_beta_hyper_loc",
-            dist.Normal(priors.theta_log_beta_hyper_loc_loc,
-                        priors.theta_log_beta_hyper_loc_scale)
-        )
-        log_beta_hyper_offset = pyro.sample(f"{name}_log_beta_hyper_offset",dist.Normal(0, 1))
-        theta_beta = jnp.clip(jnp.exp(log_beta_hyper_loc + log_beta_hyper_offset),a_max=1e30)
-        pyro.deterministic(f"{name}_beta",theta_beta)
-
-        # We're going to sample theta from this distribution for this titrant
-        theta_at_titrant_dist = dist.Beta(theta_alpha, theta_beta)
-        with pyro.plate(f"{name}_parameters",data.num_theta):
-            new_theta_dists = pyro.sample(f"{name}_value", theta_at_titrant_dist)
-
-    theta_dists = new_theta_dists.ravel()
-
-    # Register dists
-    pyro.deterministic(name, theta_dists)
-
-    # Expand to full-sized tensor
-    theta = theta_dists[data.map_theta]
+    # --------------------------------------------------------------------------
+    # Hyperpriors for the logit(theta) parameters
     
-    return theta
-
-def run_model(theta_param,data):
-    
-    raise NotImplementedError(
-        "the categorical model is not fully implemented."
+    logit_theta_hyper_loc = pyro.sample(
+        f"{name}_logit_theta_hyper_loc",
+        dist.Normal(priors.logit_theta_hyper_loc_loc,
+                    priors.logit_theta_hyper_loc_scale)
+    )
+    logit_theta_hyper_scale = pyro.sample(
+        f"{name}_logit_theta_hyper_scale",
+        dist.HalfNormal(priors.logit_theta_hyper_scale)
     )
 
-def get_hyperparameters():
+    # --------------------------------------------------------------------------
+    # Sample parameters for each (titrant_name, titrant_conc, genotype) group 
+
+    with pyro.plate(f"{name}_titrant_name_plate", data.num_titrant_name, dim=-3):
+        with pyro.plate(f"{name}_titrant_conc_plate", data.num_titrant_conc, dim=-2):
+            with pyro.plate(f"{name}_genotype_plate", data.num_genotype, dim=-1):
+                
+                logit_theta_offset = pyro.sample(
+                    f"{name}_logit_theta_offset", 
+                    dist.Normal(0, 1)
+                )
+
+    # Calculate parameters in logit-space
+    logit_theta = logit_theta_hyper_loc + logit_theta_offset * logit_theta_hyper_scale
+
+    # --------------------------------------------------------------------------
+    # Transform parameters to natural scale
+    
+    theta = dist.transforms.SigmoidTransform()(logit_theta)
+
+    # Register parameter values
+    pyro.deterministic(f"{name}_theta", theta)
+
+    theta_param = ThetaParam(theta=theta)
+    
+    return theta_param
+
+def run_model(theta_param: ThetaParam, data: DataClass) -> jnp.ndarray:
     """
-    Get default values for the model hyperparameters.
+    "Calculates" fractional occupancy (theta) by looking it up.
+
+    This is a pure JAX function that returns the sampled categorical
+    theta values. Unlike the Hill model, no calculation is needed.
+    It simply passes the sampled tensor and handles the final optional
+    scattering.
+
+    Parameters
+    ----------
+    theta_param : ThetaParam
+        A Pytree generated by ``define_model`` containing the sampled
+        theta parameters. ``theta_param.theta`` has dimensions
+        ``[titrant_name, titrant_conc, genotype]``.
+    data : DataClass
+        A data object (e.g., ``GrowthData`` or ``BindingData``) containing:
+        - ``data.map_theta``: (jnp.ndarray) Mapper with dimensions
+          ``[replicate, time, treatment, genotype]``, used for scattering.
+        - ``data.scatter_theta``: (int) A flag (0 or 1) indicating
+          whether to scatter the final tensor.
+
+    Returns
+    -------
+    jnp.ndarray
+        A tensor of theta values.
+        - If ``data.scatter_theta == 0``, shape is
+          ``[titrant_name, titrant_conc, genotype]``.
+        - If ``data.scatter_theta == 1``, shape is
+          ``[replicate, time, treatment, genotype]``.
+    """
+    
+    # The parameters are the calculated values
+    theta_calc = theta_param.theta
+
+    # Scatter to the full-sized tensor if required
+    if data.scatter_theta == 1:
+        theta_calc = theta_calc.ravel()[data.map_theta]
+    
+    return theta_calc
+
+
+def get_hyperparameters() -> Dict[str, Any]:
+    """
+    Gets default values for the model hyperparameters.
+
+    Returns
+    -------
+    dict[str, Any]
+        A dictionary of hyperparameter names and their default values.
     """
 
     parameters = {}
 
-    parameters["theta_log_alpha_hyper_loc_loc"] = 0.9
-    parameters["theta_log_alpha_hyper_loc_scale"] = 0.1
-    parameters["theta_log_beta_hyper_loc_loc"] = 0.9
-    parameters["theta_log_beta_hyper_loc_scale"] = 0.1
-    
+    # Center logit(theta) prior on 0.0 (i.e., theta = 0.5)
+    parameters["logit_theta_hyper_loc_loc"] = 0.0
+    parameters["logit_theta_hyper_loc_scale"] = 1.5
+    parameters["logit_theta_hyper_scale"] = 1.0
+
     return parameters
 
 
-def get_guesses(name,data):
+def get_guesses(name: str, data: DataClass) -> Dict[str, Any]:
     """
-    Get guesses for the model parameters. 
-    """
+    Gets initial guess values for model parameters.
 
+    Parameters
+    ----------
+    name : str
+        The prefix for the parameter names (e.g., "theta").
+    data : DataClass
+        A data object (e.g., `GrowthData`) containing metadata, primarily:
+        - ``data.num_titrant_name``
+        - ``data.num_titrant_conc``
+        - ``data.num_genotype``
+
+    Returns
+    -------
+    dict[str, Any]
+        A dictionary mapping parameter names to their initial
+        guess values.
+    """
+    
     guesses = {}
 
-    guesses[f"{name}_log_alpha_hyper_loc"] = jnp.ones(data.num_titrant)*0.9
-    guesses[f"{name}_log_alpha_hyper_offset"] = jnp.ones(data.num_titrant)
-    guesses[f"{name}_log_beta_hyper_loc"] = jnp.ones(data.num_titrant)
-    guesses[f"{name}_log_beta_hyper_offset"] = jnp.ones(data.num_titrant)
+    # Guess hyperparams
+    guesses[f"{name}_logit_theta_hyper_loc"] = 0.0
+    guesses[f"{name}_logit_theta_hyper_scale"] = 1.0
 
-    return {}
+    # Guess offsets (all zeros)
+    shape = (data.num_titrant_name, data.num_titrant_conc, data.num_genotype)
+    guesses[f"{name}_logit_theta_offset"] = jnp.zeros(shape)
 
-def get_priors():
+    return guesses
+
+def get_priors() -> ModelPriors:
+    """
+    Utility function to create a populated ModelPriors object.
+
+    Returns
+    -------
+    ModelPriors
+        A populated Pytree (Flax dataclass) of hyperparameters.
+    """
     return ModelPriors(**get_hyperparameters())

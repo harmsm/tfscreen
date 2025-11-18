@@ -8,20 +8,6 @@ from typing import Any
 
 
 @dataclass(frozen=True)
-class DataClass:
-    """
-    A container holding data needed to specify growth_model, treated as a JAX
-    Pytree.
-    """
-    
-    growth_to_binding_idx: jnp.ndarray
-    num_genotype: int = field(pytree_node=False)
-
-    # This will be a GrowthData and BindingData
-    growth: Any
-    binding: Any
-
-@dataclass(frozen=True)
 class GrowthData:
 
     # Main data tensors
@@ -49,7 +35,6 @@ class GrowthData:
     num_ln_cfu0: int = field(pytree_node=False)
     num_condition: int = field(pytree_node=False)
     num_theta: int = field(pytree_node=False)
-    num_replicate: int = field(pytree_node=False)
     
     # small tensor used for theta calculations
     titrant_conc: jnp.ndarray
@@ -82,12 +67,19 @@ class BindingData:
 
 
 @dataclass(frozen=True)
-class PriorsClass:
+class DataClass:
+    """
+    A container holding data needed to specify growth_model, treated as a JAX
+    Pytree.
+    """
     
-    ## GrowthPriors and BindingPriors
-    theta: Any
-    growth: Any
-    binding: Any
+    growth_to_binding_idx: jnp.ndarray
+    num_genotype: int = field(pytree_node=False)
+
+    # This will be a GrowthData and BindingData
+    growth: GrowthData
+    binding: BindingData
+
 
 @dataclass(frozen=True)
 class GrowthPriors:
@@ -101,7 +93,6 @@ class GrowthPriors:
 class BindingPriors:
     theta_binding_noise: Any
 
-
 @dataclass(frozen=True)
 class ControlClass:
      condition_growth: int = field(pytree_node=False)
@@ -111,3 +102,11 @@ class ControlClass:
      theta: int = field(pytree_node=False)
      theta_growth_noise: int = field(pytree_node=False)
      theta_binding_noise: int = field(pytree_node=False)
+
+@dataclass(frozen=True)
+class PriorsClass:
+    
+    ## GrowthPriors and BindingPriors
+    theta: BindingPriors
+    growth: GrowthPriors
+    binding: BindingPriors

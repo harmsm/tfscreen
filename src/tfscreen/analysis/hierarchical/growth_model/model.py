@@ -24,6 +24,16 @@ from .components.beta_noise import define_model as define_beta_noise
 from .observe.binding import observe as observe_binding
 from .observe.growth import observe as observe_growth
 
+# Import for typing
+from .data_class import (
+    DataClass,
+    PriorsClass,
+    ControlClass
+)
+
+import jax.numpy as jnp
+from typing import Dict
+
 
 MODEL_COMPONENT_NAMES = {
     "condition_growth":{
@@ -56,7 +66,51 @@ MODEL_COMPONENT_NAMES = {
     }
 }
 
-def _define_growth(data,priors,control,theta):
+def _define_growth(data: DataClass, 
+                   priors: PriorsClass, 
+                   control: ControlClass, 
+                   theta: Dict[str, jnp.ndarray]) -> jnp.ndarray:
+    """
+    Defines the growth model components and calculates predicted ln(CFU).
+
+    This function constructs the deterministic prediction for the log-transformed
+    colony-forming units (ln_cfu_pred) based on the model components
+    selected by the 'control' object. It combines base growth rates,
+    genotype-specific effects, initial cell counts, and the predicted
+    fractional occupancy (theta) for the growth conditions.
+
+    The core growth equation is:
+    g_pre = k_pre + dk_geno + activity*m_pre*noisy_growth_theta
+    g_sel = k_sel + dk_geno + activity*m_sel*noisy_growth_theta
+    ln_cfu_pred = ln_cfu0 + g_pre*data.growth.t_pre + g_sel*data.growth.t_sel
+
+    Parameters
+    ----------
+    data : DataClass
+        The main DataClass object, primarily using data.growth.
+    priors : PriorsClass
+        The main PriorsClass object, primarily using priors.growth.
+    control : ControlClass
+        The ControlClass object containing integer flags to select
+        which sub-model to use for each component (e.g., condition_growth,
+        dk_geno, activity).
+    theta : dict[str, jnp.ndarray]
+        A pytree (typically a dict) containing the sampled latent
+        parameters for the fractional occupancy (theta) model, as defined
+        in the main jax_model function.
+
+    Returns
+    -------
+    jnp.ndarray
+        A jnp.ndarray representing the deterministically predicted ln(CFU)
+        values for all growth experiments.
+
+    Raises
+    ------
+    ValueError
+        If an invalid integer flag is provided in the control object for any
+        component.
+    """
 
     # -------------------------------------------------------------------------
     # Define theta for the growth model
@@ -98,7 +152,7 @@ def _define_growth(data,priors,control,theta):
         k_pre, m_pre, k_sel, m_sel = define_growth_independent("condition_growth",
                                                                data.growth,
                                                                priors.growth.condition_growth)
-    if control.condition_growth == 1:
+    elif control.condition_growth == 1:
         k_pre, m_pre, k_sel, m_sel = define_growth_hierarchical("condition_growth",
                                                                 data.growth,
                                                                 priors.growth.condition_growth)
@@ -126,7 +180,7 @@ def _define_growth(data,priors,control,theta):
         dk_geno = define_dk_geno_fixed("dk_geno",
                                        data.growth,
                                        priors.growth.dk_geno)    
-    if control.dk_geno == 1:
+    elif control.dk_geno == 1:
         dk_geno = define_dk_geno_hierarchical("dk_geno",
                                               data.growth,
                                               priors.growth.dk_geno)
@@ -152,7 +206,7 @@ def _define_growth(data,priors,control,theta):
                                              priors.growth.activity)
     else:
         raise ValueError (
-            f"activity_model selection {control.activity} is invalid"
+            f"activity selection {control.activity} is invalid"
         )
         
 
@@ -163,7 +217,44 @@ def _define_growth(data,priors,control,theta):
 
     return ln_cfu_pred
 
-def _define_binding(data,priors,control,theta):
+def _define_binding(data: DataClass, 
+                    priors: PriorsClass, 
+                    control: ControlClass, 
+                    theta: Dict[str, jnp.ndarray]) -> jnp.ndarray:
+    """
+    Calculates the predicted fractional occupancy (theta) for binding data.
+
+    This function takes the shared latent theta parameters and computes the
+    specific fractional occupancy values predicted for the binding
+    experiment's conditions (e.g., titrant concentrations). It then
+    applies a selected noise model (e.g., Beta noise) to these
+    deterministic predictions.
+
+    Parameters
+    ----------
+    data : DataClass
+        The main DataClass object, primarily using data.binding.
+    priors : PriorsClass
+        The main PriorsClass object, primarily using priors.binding.
+    control : ControlClass
+        The ControlClass object containing integer flags to select
+        the theta model (categorical vs. hill) and the noise model.
+    theta : dict[str, jnp.ndarray]
+        A pytree (typically a dict) containing the sampled latent
+        parameters for the fractional occupancy (theta) model, as defined
+
+    Returns
+    -------
+    jnp.ndarray
+        A jnp.ndarray representing the deterministically predicted (and noised)
+        fractional occupancy values for all binding experiments.
+
+    Raises
+    ------
+    ValueError
+        If an invalid integer flag is provided in the
+        control object for the theta or noise components.
+    """
 
     if control.theta == 0:
         calc_theta = calc_theta_cat
@@ -180,11 +271,11 @@ def _define_binding(data,priors,control,theta):
     # Define binding noise on theta model
 
     if control.theta_binding_noise == 0:
-        noisy_binding_theta = define_no_noise("theta-binding-noise",
+        noisy_binding_theta = define_no_noise("theta_binding_noise",
                                               theta_binding,
                                               priors.binding.theta_binding_noise)
     elif control.theta_binding_noise == 1:
-        noisy_binding_theta = define_beta_noise("theta-binding-noise",
+        noisy_binding_theta = define_beta_noise("theta_binding_noise",
                                                 theta_binding,
                                                 priors.binding.theta_binding_noise)
     else:
@@ -195,9 +286,39 @@ def _define_binding(data,priors,control,theta):
     return noisy_binding_theta
 
 
-def jax_model(data,priors,control):
+def jax_model(data: DataClass, priors: PriorsClass, control: ControlClass):
     """
-    Model growth rates of bacteria in culture.
+    Defines the joint hierarchical model for bacterial growth and binding.
+
+    This is the main Numpyro model function. It defines the shared latent
+    parameters for fractional occupancy (theta), then calls helper functions
+    to construct the deterministic predictions for both the growth
+    (_define_growth) and binding (_define_binding) assays. Finally, it
+    registers the likelihood of the observed data against these predictions
+    using the 'observe_growth' and 'observe_binding' functions.
+
+    The model structure is dynamically controlled by the 'control' object,
+    which selects the specific implementation for each model component
+    (e.g., hierarchical vs. fixed, Hill vs. categorical).
+
+    Parameters
+    ----------
+    data : DataClass
+        A DataClass pytree containing all observed data and experimental
+        metadata for both growth and binding assays.
+    priors : PriorsClass
+        A PriorsClass pytree containing the prior distributions
+        (as Numpyro distribution objects) for all latent parameters.
+    control : ControlClass
+        A ControlClass pytree containing integer flags that
+        determine which sub-model to use for each component of the
+        hierarchical model.
+
+    Raises
+    ------
+    ValueError
+        If an invalid integer flag is provided in the
+        control object for the main theta component.
     """
 
     # -------------------------------------------------------------------------
@@ -225,11 +346,6 @@ def jax_model(data,priors,control):
     binding_pred = _define_binding(data,priors,control,theta)
 
     # make final observations
-    observe_growth("final-obs",data.growth,ln_cfu_pred)
-    observe_binding("final-obs",data.binding,binding_pred)
+    observe_growth("final_obs",data.growth,ln_cfu_pred)
+    observe_binding("final_obs",data.binding,binding_pred)
     
-    
-
-  
-    
-

@@ -5,11 +5,29 @@ from flax.struct import (
     dataclass,
     field
 )
+from typing import Dict, Any
+
+from tfscreen.analysis.hierarchical.growth_model.data_class import DataClass
 
 @dataclass(frozen=True)
 class ModelPriors:
     """
-    JAX Pytree holding data needed to specify model priors.
+    JAX Pytree holding hyperparameters for the Hill model priors.
+    
+    Attributes
+    ----------
+    theta_logit_min_hyper_loc_loc : float
+    theta_logit_min_hyper_loc_scale : float
+    theta_logit_min_hyper_scale : float
+    theta_logit_max_hyper_loc_loc : float
+    theta_logit_max_hyper_loc_scale : float
+    theta_logit_max_hyper_scale : float
+    theta_log_hill_K_hyper_loc_loc : float
+    theta_log_hill_K_hyper_loc_scale : float
+    theta_log_hill_K_hyper_scale : float
+    theta_log_hill_n_hyper_loc_loc : float
+    theta_log_hill_n_hyper_loc_scale : float
+    theta_log_hill_n_hyper_scale : float
     """
 
     theta_logit_min_hyper_loc_loc: float
@@ -32,6 +50,20 @@ class ModelPriors:
 @dataclass(frozen=True)
 class ThetaParam:
     """
+    JAX Pytree holding the sampled Hill equation parameters.
+    
+    These are the parameters sampled in their natural scale.
+
+    Attributes
+    ----------
+    theta_min : jnp.ndarray
+        The minimum fractional occupancy (baseline).
+    theta_max : jnp.ndarray
+        The maximum fractional occupancy (saturation).
+    hill_K : jnp.ndarray
+        The Hill constant (K_D).
+    hill_n : jnp.ndarray
+        The Hill coefficient.
     """
 
     theta_min: jnp.ndarray
@@ -40,34 +72,45 @@ class ThetaParam:
     hill_n: jnp.ndarray
 
 
-def define_model(name,data,priors):
+def define_model(name: str, data: DataClass, priors: ModelPriors) -> ThetaParam:
     """
-    Hill model parameters (theta_min, theta_max, K, and n). theta_min and 
-    theta_max each use pooled logit-scaled hyperpriors. hill_K and hill_n each
-    use pooled log-scaled hyperpriors. 
+    Defines the hierarchical Hill model parameters.
     
-    Priors
-    ------
-    priors.theta_logit_min_hyper_loc_loc
-    priors.theta_logit_min_hyper_loc_scale
-    priors.theta_logit_min_hyper_scale
+    This function defines the Numpyro ``sample`` sites for a non-centered
+    hierarchical model of Hill parameters (theta_min, theta_max, K, and n).
+    
+    - ``theta_min`` and ``theta_max`` use pooled logit-scaled hyperpriors.
+    - ``hill_K`` and ``hill_n`` use pooled log-scaled hyperpriors.
 
-    priors.theta_logit_max_hyper_loc_loc
-    priors.theta_logit_max_hyper_loc_scale
-    priors.theta_logit_max_hyper_scale
+    Parameters
+    ----------
+    name : str
+        The prefix for all Numpyro sample sites (e.g., "theta").
+    data : DataClass
+        A data object containing metadata, primarily:
+        - ``data.num_titrant_name`` : (int) Number of titrants.
+        - ``data.num_genotype`` : (int) Number of genotypes.
+    priors : ModelPriors
+        A Pytree containing all hyperparameters for the model, including:
+        - ``priors.theta_logit_min_hyper_loc_loc``
+        - ``priors.theta_logit_min_hyper_loc_scale``
+        - ``priors.theta_logit_min_hyper_scale``
+        - ``priors.theta_logit_max_hyper_loc_loc``
+        - ``priors.theta_logit_max_hyper_loc_scale``
+        - ``priors.theta_logit_max_hyper_scale``
+        - ``priors.theta_log_hill_K_hyper_loc_loc``
+        - ``priors.theta_log_hill_K_hyper_loc_scale``
+        - ``priors.theta_log_hill_K_hyper_scale``
+        - ``priors.theta_log_hill_n_hyper_loc_loc``
+        - ``priors.theta_log_hill_n_hyper_loc_scale``
+        - ``priors.theta_log_hill_n_hyper_scale``
 
-    priors.theta_log_hill_K_hyper_loc_loc
-    priors.theta_log_hill_K_hyper_loc_scale
-    priors.theta_log_hill_K_hyper_scale
-
-    priors.theta_log_hill_n_hyper_loc_loc
-    priors.theta_log_hill_n_hyper_loc_scale
-    priors.theta_log_hill_n_hyper_scale
-
-    Data
-    ----
-    data.num_titrant_name 
-    data.num_genotype
+    Returns
+    -------
+    ThetaParam
+        A Pytree containing the sampled Hill parameters (theta_min,
+        theta_max, hill_K, hill_n), each with shape
+        ``[num_titrant_name, num_genotype]``.
     """
 
     # --------------------------------------------------------------------------
@@ -120,8 +163,8 @@ def define_model(name,data,priors):
     # --------------------------------------------------------------------------
     # Sample curve parameters for each (genotype, titrant_name) group 
 
-    with pyro.plate(f"{name}_titrant_name_plate",data.num_titrant_name):
-        with pyro.plate(f"{name}_genotype_plate",data.num_genotype):
+    with pyro.plate(f"{name}_titrant_name_plate",data.num_titrant_name,dim=-2):
+        with pyro.plate(f"{name}_genotype_plate",data.num_genotype,dim=-1):
             logit_theta_min_offset = pyro.sample(f"{name}_logit_min_offset", dist.Normal(0, 1))
             logit_theta_max_offset = pyro.sample(f"{name}_logit_max_offset", dist.Normal(0, 1))
             log_hill_K_offset = pyro.sample(f"{name}_log_hill_K_offset", dist.Normal(0, 1))
@@ -138,8 +181,8 @@ def define_model(name,data,priors):
     # Transform parameters to their natural scale
     theta_min = dist.transforms.SigmoidTransform()(logit_theta_min)
     theta_max = dist.transforms.SigmoidTransform()(logit_theta_max)
-    hill_K = jnp.clip(jnp.exp(log_hill_K),a_max=1e30)
-    hill_n = jnp.clip(jnp.exp(log_hill_n),a_max=1e30)
+    hill_K = jnp.clip(jnp.exp(log_hill_K),max=1e30)
+    hill_n = jnp.clip(jnp.exp(log_hill_n),max=1e30)
 
     # Register parameter values
     pyro.deterministic(f"{name}_theta_min",theta_min)
@@ -154,24 +197,38 @@ def define_model(name,data,priors):
     
     return theta_param
 
-def run_model(theta_param,data):
+def run_model(theta_param: ThetaParam, data: DataClass) -> jnp.ndarray:
     """
-    Calculate the values of the hill model using the parameters in theta_param. 
+    Calculates fractional occupancy (theta) using the Hill equation.
 
-    theta_param is generated by `define_model`. 
+    This is a pure JAX function that deterministically calculates theta
+    values using the sampled parameters from ``define_model``.
 
-    theta_param.hill_K et al have dimensions: 
-        [titrant_name,genotype]
+    Parameters
+    ----------
+    theta_param : ThetaParam
+        A Pytree generated by ``define_model`` containing the sampled
+        Hill parameters. Tensors within (e.g., ``theta_param.hill_K``)
+        are expected to have dimensions ``[titrant_name, genotype]``.
+    data : DataClass
+        A data object (e.g., ``GrowthData`` or ``BindingData``) containing:
+        - ``data.map_theta_group``: (jnp.ndarray) Mapper with dimensions
+          ``[titrant_name, titrant_conc, genotype]``.
+        - ``data.titrant_conc``: (jnp.ndarray) Titrant concentrations,
+          with dimensions ``[titrant_name, titrant_conc, genotype]``.
+        - ``data.map_theta``: (jnp.ndarray) Mapper with dimensions
+          ``[replicate, time, treatment, genotype]``.
+        - ``data.scatter_theta``: (int) A flag (0 or 1) indicating
+          whether to scatter the final tensor.
 
-    data.map_theta_group and data.titrant_conc have dimensions
-        [titrant_name,titrant_conc,genotype]
-
-    data.map_theta has dimensions
-        [replicate,time,treatment,genotype]
-
-    This function returns a tensor of calculated theta values. This either has
-    dimensions [titrant_name,titrant_conc,genotype] (scatter_theta == 0) or
-    dimensions [replicate,time,treatment,genotype] (scatter_theta == 1). 
+    Returns
+    -------
+    jnp.ndarray
+        A tensor of calculated theta values.
+        - If ``data.scatter_theta == 0``, shape is
+          ``[titrant_name, titrant_conc, genotype]``.
+        - If ``data.scatter_theta == 1``, shape is
+          ``[replicate, time, treatment, genotype]``.
     """
     
     # Create [titrant_name,titrant_conc,genotype]-sized tensors of all 
@@ -182,7 +239,7 @@ def run_model(theta_param,data):
     hill_n = theta_param.hill_n.ravel()[data.map_theta_group]
 
     # Calculate theta 
-    c_pow_n = jnp.clip(jnp.power(data.titrant_conc, hill_n),a_max=1e30) 
+    c_pow_n = jnp.clip(jnp.power(data.titrant_conc, hill_n),max=1e30) 
     Kd_pow_n = jnp.power(hill_K, hill_n)
     epsilon = 1e-20 # prevent x/0
     theta_calc = theta_min + (theta_max - theta_min) * (c_pow_n / (Kd_pow_n + c_pow_n + epsilon))
@@ -194,9 +251,15 @@ def run_model(theta_param,data):
     return theta_calc
 
 
-def get_hyperparameters():
+def get_hyperparameters() -> Dict[str, Any]:
     """
-    Get default values for the model hyperparameters.
+    Gets default values for the model hyperparameters.
+
+    Returns
+    -------
+    dict[str, Any]
+        A dictionary mapping hyperparameter names (as strings) to their
+        default values.
     """
 
     parameters = {}
@@ -220,17 +283,36 @@ def get_hyperparameters():
     return parameters
 
 
-def get_guesses(name,data):
+def get_guesses(name: str, data: DataClass) -> Dict[str, Any]:
     """
-    Get guesses for the model parameters. 
+    Gets initial guess values for model parameters.
+
+    These are used to initialize the MCMC sampler (e.g., via
+    ``numpyro.infer.init_to_value``).
+
+    Parameters
+    ----------
+    name : str
+        The prefix for the parameter names (e.g., "theta").
+    data : DataClass
+        A data object containing metadata, primarily:
+        - ``data.num_titrant_name`` : (int) Number of titrants.
+        - ``data.num_genotype`` : (int) Number of genotypes.
+
+    Returns
+    -------
+    dict[str, Any]
+        A dictionary mapping parameter names to their initial
+        guess values.
     """
     
     guesses = {}
 
-    guesses[f"{name}_logit_min_hyper_loc"] = -1
-    guesses[f"{name}_logit_min_hyper_scale"] = 1.5
-    guesses[f"{name}_logit_max_hyper_loc"] = 1
-    guesses[f"{name}_logit_max_hyper_scale"] = 1.5
+    guesses[f"{name}_theta_logit_min_hyper_loc"] = -1
+    guesses[f"{name}_theta_logit_min_hyper_scale"] = 1.5
+    guesses[f"{name}_theta_logit_max_hyper_loc"] = 1
+    guesses[f"{name}_theta_logit_max_hyper_scale"] = 1.5
+    
     guesses[f"{name}_theta_log_hill_K_hyper_loc"] = -4.14433344452323 # ln(0.017 mM)
     guesses[f"{name}_theta_log_hill_K_hyper_scale"] = 1
     guesses[f"{name}_theta_log_hill_n_hyper_loc"] = 0.693 # ln(2)
@@ -243,5 +325,13 @@ def get_guesses(name,data):
 
     return guesses
 
-def get_priors():
+def get_priors() -> ModelPriors:
+    """
+    Utility function to create a populated ModelPriors object.
+
+    Returns
+    -------
+    ModelPriors
+        A populated Pytree (Flax dataclass) of hyperparameters.
+    """
     return ModelPriors(**get_hyperparameters())

@@ -25,13 +25,13 @@ def define_model(name,data,priors):
     """
 
     # Create fixed dk_geno (0)
-    dk_geno_dists = jnp.zeros(data.num_genotype)
+    dk_geno_per_genotype = jnp.zeros(data.num_genotype)
 
     # Register dists
-    pyro.deterministic(name, dk_geno_dists)  
+    pyro.deterministic(name, dk_geno_per_genotype)  
 
     # Expand to full-sized tensor
-    dk_geno = dk_geno_dists[data.map_genotype]
+    dk_geno = dk_geno_per_genotype[data.map_genotype]
 
     return dk_geno
 
