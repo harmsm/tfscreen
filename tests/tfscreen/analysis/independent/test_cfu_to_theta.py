@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from unittest.mock import MagicMock
 
-from tfscreen.analysis.cfu_to_theta import (
+from tfscreen.analysis.independent.cfu_to_theta import (
     #_prep_inference_df <- tested in its own file
     _prep_param_guesses,
     _build_param_df,
@@ -126,13 +126,13 @@ def test_prep_param_guesses_happy_path(mocker, prepped_df, calibration_data):
     })
     # We only care about the first return value
     mock_get_indiv = mocker.patch(
-        "tfscreen.analysis.cfu_to_theta.get_indiv_growth",
+        "tfscreen.analysis.independent.cfu_to_theta.get_indiv_growth",
         return_value=(mock_indiv_params, None)
     )
 
     # 2. Mock the wild-type theta calculation to return a fixed array
     mock_get_theta = mocker.patch(
-        "tfscreen.analysis.cfu_to_theta.get_wt_theta",
+        "tfscreen.analysis.independent.cfu_to_theta.get_wt_theta",
         return_value=np.array([0.8, 0.8, 0.8, 0.0])
     )
 
@@ -350,7 +350,7 @@ def test_setup_inference_happy_path(mocker, setup_df):
     theta_df = pd.DataFrame({"idx": [5, 6], "class": "theta"})
 
     mock_builder = mocker.patch(
-        "tfscreen.analysis.cfu_to_theta._build_param_df",
+        "tfscreen.analysis.independent.cfu_to_theta._build_param_df",
         side_effect=[
             (lnA0_idx, lnA0_df),
             (dk_geno_idx, dk_geno_df),
@@ -426,7 +426,7 @@ def test_run_inference(mocker):
 
     # Mock the external fitting and prediction functions
     mock_lsq = mocker.patch(
-        "tfscreen.analysis.cfu_to_theta.run_least_squares",
+        "tfscreen.analysis.independent.cfu_to_theta.run_least_squares",
         return_value=(
             np.array([0.1, 0.5, 3.9]),     # fitted params
             np.array([0.02, 0.05, 0.08]),  # std_errors
@@ -435,7 +435,7 @@ def test_run_inference(mocker):
         )
     )
     mock_predict = mocker.patch(
-        "tfscreen.analysis.cfu_to_theta.predict_with_error",
+        "tfscreen.analysis.independent.cfu_to_theta.predict_with_error",
         return_value=(
             np.array([10.1, 11.0, 11.9]), # y_pred
             np.array([0.11, 0.11, 0.12])  # y_pred_std
@@ -491,12 +491,12 @@ def test_cfu_to_theta_integration(mocker, base_df, calibration_data):
     # --- 1. Mock External Dependencies ---
 
     # Mock file readers to inject our fixture data
-    mocker.patch("tfscreen.analysis.cfu_to_theta.read_dataframe", return_value=base_df.copy())
-    mocker.patch("tfscreen.analysis.cfu_to_theta.read_calibration", return_value=calibration_data)
+    mocker.patch("tfscreen.analysis.independent.cfu_to_theta.read_dataframe", return_value=base_df.copy())
+    mocker.patch("tfscreen.analysis.independent.cfu_to_theta.read_calibration", return_value=calibration_data)
     
     # Mock helpers that are tested elsewhere
-    mocker.patch("tfscreen.analysis.cfu_to_theta.get_scaled_cfu", side_effect=lambda df, **kwargs: df)
-    mocker.patch("tfscreen.analysis.cfu_to_theta.check_columns")
+    mocker.patch("tfscreen.analysis.independent.cfu_to_theta.get_scaled_cfu", side_effect=lambda df, **kwargs: df)
+    mocker.patch("tfscreen.analysis.independent.cfu_to_theta.check_columns")
 
     # Mock the preliminary fitting in _prep_param_guesses
     # UPDATED: Mock data now uses genotypes from the new base_df
@@ -504,23 +504,23 @@ def test_cfu_to_theta_integration(mocker, base_df, calibration_data):
         "genotype": ["wt", "V30A"], "library": ["L1", "L1"], "replicate": [1, 1],
         "lnA0_est": [10.5, 11.0], "dk_geno": [0.0, -0.5],
     })
-    mocker.patch("tfscreen.analysis.cfu_to_theta.get_indiv_growth", return_value=(mock_indiv_params, None))
+    mocker.patch("tfscreen.analysis.independent.cfu_to_theta.get_indiv_growth", return_value=(mock_indiv_params, None))
     # UPDATED: Mock return value must match the 8-row size of the new base_df
-    mocker.patch("tfscreen.analysis.cfu_to_theta.get_wt_theta", return_value=np.array([0.8] * 8))
+    mocker.patch("tfscreen.analysis.independent.cfu_to_theta.get_wt_theta", return_value=np.array([0.8] * 8))
 
     # Mock the numerical optimizer in _run_inference
     mock_lsq = mocker.patch(
-        "tfscreen.analysis.cfu_to_theta.run_least_squares",
+        "tfscreen.analysis.independent.cfu_to_theta.run_least_squares",
         return_value=(np.array([0.1, 0.2]), np.array([0.01, 0.02]), np.eye(2), None)
     )
-    mocker.patch("tfscreen.analysis.cfu_to_theta.predict_with_error", 
+    mocker.patch("tfscreen.analysis.independent.cfu_to_theta.predict_with_error", 
                  return_value=(np.array([10.1, 11.1]), np.array([0.15, 0.15])))
     
     # Mock the FitManager class
     mock_fm_instance = MagicMock()
     mock_fm_instance.back_transform.side_effect = lambda p: p * 10
     mock_fm_instance.back_transform_std_err.side_effect = lambda p, s: s / 2
-    mock_fm_class = mocker.patch("tfscreen.analysis.cfu_to_theta.FitManager")
+    mock_fm_class = mocker.patch("tfscreen.analysis.independent.cfu_to_theta.FitManager")
     mock_fm_class.return_value = mock_fm_instance
 
     mock_fm_instance.guesses_transformed = np.array([0.5, 0.6])
@@ -531,7 +531,7 @@ def test_cfu_to_theta_integration(mocker, base_df, calibration_data):
     mock_fm_instance.param_df = pd.DataFrame({"name": ["p1", "p2"]})
     mock_fm_instance.predict_from_transformed = MagicMock()
 
-    mocker.patch("tfscreen.analysis.cfu_to_theta.tqdm", side_effect=lambda x: x)
+    mocker.patch("tfscreen.analysis.independent.cfu_to_theta.tqdm", side_effect=lambda x: x)
 
     # --- 2. Run the Full Pipeline ---
     

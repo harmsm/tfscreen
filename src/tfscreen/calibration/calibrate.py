@@ -25,7 +25,7 @@ import patsy
 
 import warnings
 
-from tfscreen.analysis.cfu_to_theta import _build_param_df
+from tfscreen.analysis.independent.cfu_to_theta import _build_param_df
 
 def _fit_theta(df):
     """

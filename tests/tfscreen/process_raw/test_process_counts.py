@@ -220,14 +220,21 @@ def test_process_counts_orchestration(
     )
 
     # Assert that each step was called once with the correct arguments
-    mock_infer.assert_called_once_with(fx_sample_df, "calib.csv")
+    # 1. _prep_sample_df is called with the original input df
     mock_prep.assert_called_once_with(
-        df_step1, "/counts/path", "test_prefix", False
+        fx_sample_df, "/counts/path", "test_prefix", False
     )
+
+    # 2. _aggregate_counts is called with the output of _prep_sample_df (df_step2)
     mock_agg.assert_called_once_with(df_step2)
+
+    # 3. _infer_sample_cfu is called with the output of _prep_sample_df (df_step2)
+    mock_infer.assert_called_once_with(df_step2, "calib.csv")
+
+    # 4. counts_to_lncfu is called with the output of _infer_sample_cfu (df_step1) 
+    #    and the output of _aggregate_counts (df_step3)
     mock_lncfu.assert_called_once_with(
-        df_step2, df_step3, min_genotype_obs=20, pseudocount=2
+        df_step1, df_step3, min_genotype_obs=20, pseudocount=2
     )
-    
     # Assert that the final output was saved
     mock_to_csv.assert_called_once_with("/out/final.csv", index=False)

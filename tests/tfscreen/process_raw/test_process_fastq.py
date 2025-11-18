@@ -326,7 +326,8 @@ def test_process_fastq_happy_path_with_instance(mock_ftc_cls, mock_process_paire
         phred_cutoff=20,
         min_read_length=50,
         allowed_num_flank_diffs=1,
-        allowed_diff_from_expected=2
+        allowed_diff_from_expected=2,
+        print_raw_seq=False
     )
     
     mock_create_counts.assert_called_once_with(Counter({"seq": 1}), ["wt"])

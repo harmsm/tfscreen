@@ -5,7 +5,8 @@ import argparse
 def generalized_main(fcn,
                      argv=None,
                      manual_arg_defaults=None,
-                     manual_arg_types=None):
+                     manual_arg_types=None,
+                     manual_arg_nargs=None):
     """
     A generalized main function that constructs a command line argument parser
     and then parses arguments for any function. It infers argument defaults and
@@ -23,6 +24,9 @@ def generalized_main(fcn,
         The argument type is set to the type of the value specified. 
     manual_arg_types: dict
         dictionary keying arguments to types. This overrides the types inferred
+        from the signature or manual_arg_defaults. 
+    manual_arg_nargs: dict
+        dictionary keying arguments to nargs. This overrides the nargs inferred
         from the signature or manual_arg_defaults. 
     """
 
@@ -69,9 +73,15 @@ def generalized_main(fcn,
         if p in manual_arg_types:
             arg_type = manual_arg_types[p]
 
+        # assume nargs is None unless the user overrides explicitly
+        if p in manual_arg_nargs:
+            nargs = manual_arg_nargs[p]
+        else:
+            nargs = None
+
         # Add the appropriate argument to the parser. 
         if required:
-            parser.add_argument(p,type=arg_type)
+            parser.add_argument(p,type=arg_type,nargs=nargs)
         else:
             arg_name = f"--{p}"
             if arg_type is bool:
@@ -80,7 +90,7 @@ def generalized_main(fcn,
                 else:
                     parser.add_argument(arg_name,action="store_true")
             else:
-                parser.add_argument(arg_name,type=arg_type,default=default)
+                parser.add_argument(arg_name,type=arg_type,default=default,nargs=nargs)
                 
     # Parse stats
     args = parser.parse_args(argv)

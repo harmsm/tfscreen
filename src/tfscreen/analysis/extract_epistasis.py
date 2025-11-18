@@ -160,8 +160,8 @@ def extract_epistasis(
         conditions at once
     scale : {"add", "mult"}, default "add"
         The scale for calculating epistasis.
-        - "add": $\epsilon = (Y_{11} - Y_{10}) - (Y_{01} - Y_{00})$
-        - "mult": $\epsilon = (Y_{11} / Y_{10}) / (Y_{01} / Y_{00})$
+        - "add": epsilon = (Y_{11} - Y_{10}) - (Y_{01} - Y_{00})
+        - "mult": epsilon = (Y_{11} / Y_{10}) / (Y_{01} / Y_{00})
     keep_extra : bool, default False
         If True, all columns from the original DataFrame are kept in the
         output. If False, only key identifiers and the calculated epistasis

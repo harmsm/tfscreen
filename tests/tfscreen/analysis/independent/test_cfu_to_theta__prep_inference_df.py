@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 
 # Import the function to be tested
-from tfscreen.analysis.cfu_to_theta import _prep_inference_df
+from tfscreen.analysis.independent.cfu_to_theta import _prep_inference_df
 
 # --- Test Fixtures -----------------------------------------------------------
 
@@ -54,12 +54,12 @@ class TestPrepInferenceDF:
         THEN it should return a processed DataFrame with correct new columns.
         """
         # ARRANGE: Mock all external dependencies
-        mocker.patch("tfscreen.analysis.cfu_to_theta.read_dataframe", side_effect=lambda x: x.copy())
-        mocker.patch("tfscreen.analysis.cfu_to_theta.get_scaled_cfu", side_effect=lambda df, **kwargs: df)
-        mocker.patch("tfscreen.analysis.cfu_to_theta.check_columns") # Assume it passes
-        mocker.patch("tfscreen.analysis.cfu_to_theta.set_categorical_genotype", side_effect=lambda df, **kwargs: df)
-        mocker.patch("tfscreen.analysis.cfu_to_theta.chunk_by_group", side_effect=lambda x, y: [x]) # Single batch
-        mocker.patch("tfscreen.analysis.cfu_to_theta.read_calibration", return_value=calibration_data)
+        mocker.patch("tfscreen.analysis.independent.cfu_to_theta.read_dataframe", side_effect=lambda x: x.copy())
+        mocker.patch("tfscreen.analysis.independent.cfu_to_theta.get_scaled_cfu", side_effect=lambda df, **kwargs: df)
+        mocker.patch("tfscreen.analysis.independent.cfu_to_theta.check_columns") # Assume it passes
+        mocker.patch("tfscreen.analysis.independent.cfu_to_theta.set_categorical_genotype", side_effect=lambda df, **kwargs: df)
+        mocker.patch("tfscreen.analysis.independent.cfu_to_theta.chunk_by_group", side_effect=lambda x, y: [x]) # Single batch
+        mocker.patch("tfscreen.analysis.independent.cfu_to_theta.read_calibration", return_value=calibration_data)
         
         # ACT
         result_df = _prep_inference_df(base_df, calibration_data, max_batch_size=10)
@@ -88,11 +88,11 @@ class TestPrepInferenceDF:
         THEN it should raise a ValueError.
         """
         # ARRANGE
-        mocker.patch("tfscreen.analysis.cfu_to_theta.read_dataframe", side_effect=lambda x: x.copy())
-        mocker.patch("tfscreen.analysis.cfu_to_theta.get_scaled_cfu", side_effect=lambda df, **kwargs: df)
+        mocker.patch("tfscreen.analysis.independent.cfu_to_theta.read_dataframe", side_effect=lambda x: x.copy())
+        mocker.patch("tfscreen.analysis.independent.cfu_to_theta.get_scaled_cfu", side_effect=lambda df, **kwargs: df)
         # We need to mock the real check_columns to test the failure
         from tfscreen.util import check_columns 
-        mocker.patch("tfscreen.analysis.cfu_to_theta.check_columns", side_effect=check_columns)
+        mocker.patch("tfscreen.analysis.independent.cfu_to_theta.check_columns", side_effect=check_columns)
         
         df_missing_col = base_df.drop(columns=['t_sel'])
         
@@ -107,10 +107,10 @@ class TestPrepInferenceDF:
         THEN it should raise a ValueError.
         """
         # ARRANGE
-        mocker.patch("tfscreen.analysis.cfu_to_theta.read_dataframe", side_effect=lambda x: x.copy())
-        mocker.patch("tfscreen.analysis.cfu_to_theta.get_scaled_cfu", side_effect=lambda df, **kwargs: df)
-        mocker.patch("tfscreen.analysis.cfu_to_theta.check_columns")
-        mocker.patch("tfscreen.analysis.cfu_to_theta.set_categorical_genotype", side_effect=lambda df, **kwargs: df)
+        mocker.patch("tfscreen.analysis.independent.cfu_to_theta.read_dataframe", side_effect=lambda x: x.copy())
+        mocker.patch("tfscreen.analysis.independent.cfu_to_theta.get_scaled_cfu", side_effect=lambda df, **kwargs: df)
+        mocker.patch("tfscreen.analysis.independent.cfu_to_theta.check_columns")
+        mocker.patch("tfscreen.analysis.independent.cfu_to_theta.set_categorical_genotype", side_effect=lambda df, **kwargs: df)
         
         df_with_duplicates = pd.concat([base_df, base_df.head(1)], ignore_index=True)
         
@@ -125,10 +125,10 @@ class TestPrepInferenceDF:
         THEN it should raise a ValueError.
         """
         # ARRANGE
-        mocker.patch("tfscreen.analysis.cfu_to_theta.read_dataframe", side_effect=lambda x: x.copy())
-        mocker.patch("tfscreen.analysis.cfu_to_theta.get_scaled_cfu", side_effect=lambda df, **kwargs: df)
-        mocker.patch("tfscreen.analysis.cfu_to_theta.check_columns")
-        mocker.patch("tfscreen.analysis.cfu_to_theta.set_categorical_genotype", side_effect=lambda df, **kwargs: df)
+        mocker.patch("tfscreen.analysis.independent.cfu_to_theta.read_dataframe", side_effect=lambda x: x.copy())
+        mocker.patch("tfscreen.analysis.independent.cfu_to_theta.get_scaled_cfu", side_effect=lambda df, **kwargs: df)
+        mocker.patch("tfscreen.analysis.independent.cfu_to_theta.check_columns")
+        mocker.patch("tfscreen.analysis.independent.cfu_to_theta.set_categorical_genotype", side_effect=lambda df, **kwargs: df)
         
         df_sparse = base_df.iloc[:-1] # Drop one row to make it not dense
         
@@ -143,10 +143,10 @@ class TestPrepInferenceDF:
         THEN it should raise a ValueError.
         """
         # ARRANGE
-        mocker.patch("tfscreen.analysis.cfu_to_theta.read_dataframe", side_effect=lambda x: x.copy())
-        mocker.patch("tfscreen.analysis.cfu_to_theta.get_scaled_cfu", side_effect=lambda df, **kwargs: df)
-        mocker.patch("tfscreen.analysis.cfu_to_theta.check_columns")
-        mocker.patch("tfscreen.analysis.cfu_to_theta.set_categorical_genotype", side_effect=lambda df, **kwargs: df)
+        mocker.patch("tfscreen.analysis.independent.cfu_to_theta.read_dataframe", side_effect=lambda x: x.copy())
+        mocker.patch("tfscreen.analysis.independent.cfu_to_theta.get_scaled_cfu", side_effect=lambda df, **kwargs: df)
+        mocker.patch("tfscreen.analysis.independent.cfu_to_theta.check_columns")
+        mocker.patch("tfscreen.analysis.independent.cfu_to_theta.set_categorical_genotype", side_effect=lambda df, **kwargs: df)
         
         base_df.loc[0, 'ln_cfu'] = np.nan
         
@@ -161,14 +161,14 @@ class TestPrepInferenceDF:
         THEN it should assign all rows for a given genotype to the same batch.
         """
         # ARRANGE: Mock helpers
-        mocker.patch("tfscreen.analysis.cfu_to_theta.read_dataframe", side_effect=lambda x: x.copy())
-        mocker.patch("tfscreen.analysis.cfu_to_theta.get_scaled_cfu", side_effect=lambda df, **kwargs: df)
-        mocker.patch("tfscreen.analysis.cfu_to_theta.check_columns")
-        mocker.patch("tfscreen.analysis.cfu_to_theta.set_categorical_genotype", side_effect=lambda df, **kwargs: df)
+        mocker.patch("tfscreen.analysis.independent.cfu_to_theta.read_dataframe", side_effect=lambda x: x.copy())
+        mocker.patch("tfscreen.analysis.independent.cfu_to_theta.get_scaled_cfu", side_effect=lambda df, **kwargs: df)
+        mocker.patch("tfscreen.analysis.independent.cfu_to_theta.check_columns")
+        mocker.patch("tfscreen.analysis.independent.cfu_to_theta.set_categorical_genotype", side_effect=lambda df, **kwargs: df)
         # Mock the real chunk_by_group to test the logic
         from tfscreen.util import chunk_by_group
-        mocker.patch("tfscreen.analysis.cfu_to_theta.chunk_by_group", side_effect=chunk_by_group)
-        mocker.patch("tfscreen.analysis.cfu_to_theta.read_calibration", return_value=calibration_data)
+        mocker.patch("tfscreen.analysis.independent.cfu_to_theta.chunk_by_group", side_effect=chunk_by_group)
+        mocker.patch("tfscreen.analysis.independent.cfu_to_theta.read_calibration", return_value=calibration_data)
         
         # Use a max_batch_size of 2. This will break into each genotype condition
         # block

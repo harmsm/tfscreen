@@ -4,7 +4,7 @@ from tfscreen.util import (
     get_scaled_cfu,
     check_columns,
 )
-from tfscreen.analysis import model_pre_growth
+from tfscreen.analysis.independent.model_pre_growth import model_pre_growth
 from tfscreen.calibration import get_wt_k
 from tfscreen.models.growth import MODEL_LIBRARY
 

@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 
 # Import all functions to be tested
-from tfscreen.analysis._get_indiv_growth import (
+from tfscreen.analysis.independent._get_indiv_growth import (
     _prepare_and_validate_growth_data,
     _run_batch_fits,
     _apply_pre_growth_correction,
@@ -42,7 +42,7 @@ def mock_dependencies(mocker):
 
     # Patch the MODEL_LIBRARY to use our corrected mock fitter
     mocker.patch(
-        "tfscreen.analysis._get_indiv_growth.MODEL_LIBRARY",
+        "tfscreen.analysis.independent._get_indiv_growth.MODEL_LIBRARY",
         {
             "wls": {
                 "fcn": mock_fitter,
@@ -62,13 +62,13 @@ def mock_dependencies(mocker):
         return df
 
     mocker.patch(
-        "tfscreen.analysis._get_indiv_growth.get_scaled_cfu", 
+        "tfscreen.analysis.independent._get_indiv_growth.get_scaled_cfu", 
         side_effect=mock_get_scaled_cfu
     )
 
     # ... (rest of the mocks are unchanged) ...
-    mocker.patch("tfscreen.analysis._get_indiv_growth.check_columns", return_value=None)
-    mocker.patch("tfscreen.analysis._get_indiv_growth.get_wt_k", return_value=1.0)
+    mocker.patch("tfscreen.analysis.independent._get_indiv_growth.check_columns", return_value=None)
+    mocker.patch("tfscreen.analysis.independent._get_indiv_growth.get_wt_k", return_value=1.0)
     
     def mock_model_pre_growth(k_est, lnA0_est, **kwargs):
         dk_geno = k_est - 1.0
@@ -77,7 +77,7 @@ def mock_dependencies(mocker):
         lnA0_std_updated = np.full_like(k_est, 0.5)
         return dk_geno, lnA0_pre, lnA0_est_updated, lnA0_std_updated
     
-    mocker.patch("tfscreen.analysis._get_indiv_growth.model_pre_growth", side_effect=mock_model_pre_growth)
+    mocker.patch("tfscreen.analysis.independent._get_indiv_growth.model_pre_growth", side_effect=mock_model_pre_growth)
 
 
 @pytest.fixture
@@ -166,12 +166,12 @@ def test_apply_correction_no_groups(mocker):
         np.ones(num_series)
     )
     mock_model = mocker.patch(
-        "tfscreen.analysis._get_indiv_growth.model_pre_growth", 
+        "tfscreen.analysis.independent._get_indiv_growth.model_pre_growth", 
         return_value=mock_return_value
     )
     # --- FIX ENDS HERE ---
     
-    mocker.patch("tfscreen.analysis._get_indiv_growth.get_wt_k", return_value=1.0)
+    mocker.patch("tfscreen.analysis.independent._get_indiv_growth.get_wt_k", return_value=1.0)
 
     param_df = pd.DataFrame({
         "k_est": np.ones(num_series),

@@ -3,11 +3,10 @@ import pytest
 import numpy as np
 
 # Import the main function and its helpers for testing
-from tfscreen.analysis.model_pre_growth import (
+from tfscreen.analysis.independent.model_pre_growth import (
     model_pre_growth, 
     _process_dk_geno, 
     _process_lnA0,
-    _validate_group_array
 )
 
 # --- Tests for Helper Functions ---
