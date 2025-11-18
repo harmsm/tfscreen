@@ -67,5 +67,6 @@ docs = [
 [project.scripts]
 tfs-process-fastq = "tfscreen.process_raw.process_fastq:main"
 tfs-process-counts = "tfscreen.process_raw.process_counts:main"
-tfs-analyze-theta = "tfscreen.analysis.hierarchical.analyze_theta:main"
+tfs-hier-theta = "tfscreen.analysis.hierarchical.analyze_theta:main"
+tfs-indep-theta = "tfscreen.analysis.independent.analyze_theta:main"
 

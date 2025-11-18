@@ -21,7 +21,7 @@ from tfscreen.genetics import (
     set_categorical_genotype
 )
 
-from tfscreen.analysis import get_indiv_growth
+from tfscreen.analysis.independent.get_indiv_growth import get_indiv_growth
 
 import numpy as np
 import pandas as pd
