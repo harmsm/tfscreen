@@ -360,6 +360,10 @@ class RunInference:
         # Create a sampler that will predict outputs (obs) given those samples
         forward_sampler = Predictive(self.model.jax_model,
                                      posterior_samples=latent_samples)
+        forward_sampler = Predictive(model=self.model.jax_model,
+                                     guide=guide,
+                                     params=params,
+                                     num_samples=num_posterior_samples)
 
         # Create model kwargs
         jax_model_kwargs = {"priors":self.model.priors,
@@ -382,24 +386,25 @@ class RunInference:
 
             # Dispatch the forward pass for this batch.s
             sample_key = self.get_key()
-            batch_samples_gpu = forward_sampler(sample_key, **jax_model_kwargs)
+            batch_pred = forward_sampler(sample_key, **jax_model_kwargs)
+
+            new_keys = {k: v for k, v in batch_pred.items() if k not in latent_samples}
 
             # Retrieve results to CPU to free GPU memory for next batch.
-            all_samples_cpu.append(jax.device_get(batch_samples_gpu))
+            all_samples_cpu.append(jax.device_get(new_keys))
 
         # Concatenate samples        
         final_samples = latent_samples.copy()
         forward_pass_keys = all_samples_cpu[0].keys()
 
         for key in forward_pass_keys:
-            if key not in final_samples:
-                
-                # Collect all arrays for this key from all batches
-                all_batches_for_key = [batch[key] for batch in all_samples_cpu]
-                
-                # Concatenate along the batch dimension (assumed to be -1)
-                # This matches your original logic.
-                final_samples[key] = np.concatenate(all_batches_for_key, axis=-1)
+
+            # Collect all arrays for this key from all batches
+            all_batches_for_key = [batch[key] for batch in all_samples_cpu]
+            
+            # Concatenate along the batch dimension (assumed to be -1)
+            # This matches your original logic.
+            final_samples[key] = np.concatenate(all_batches_for_key, axis=-1)
 
         self._write_posteriors(final_samples, out_root=out_root)
 

@@ -25,9 +25,9 @@ class ModelPriors:
     theta_log_hill_K_hyper_loc_loc : float
     theta_log_hill_K_hyper_loc_scale : float
     theta_log_hill_K_hyper_scale : float
-    theta_log_hill_n_hyper_loc_loc : float
-    theta_log_hill_n_hyper_loc_scale : float
-    theta_log_hill_n_hyper_scale : float
+    theta_hill_n_hyper_loc_loc : float
+    theta_hill_n_hyper_loc_scale : float
+    theta_hill_n_hyper_scale : float
     """
 
     theta_logit_min_hyper_loc_loc: float
@@ -42,9 +42,9 @@ class ModelPriors:
     theta_log_hill_K_hyper_loc_scale: float
     theta_log_hill_K_hyper_scale: float
 
-    theta_log_hill_n_hyper_loc_loc: float
-    theta_log_hill_n_hyper_loc_scale: float
-    theta_log_hill_n_hyper_scale: float
+    theta_hill_n_hyper_loc_loc: float
+    theta_hill_n_hyper_loc_scale: float
+    theta_hill_n_hyper_scale: float
 
 
 @dataclass(frozen=True)
@@ -101,9 +101,9 @@ def define_model(name: str, data: DataClass, priors: ModelPriors) -> ThetaParam:
         - ``priors.theta_log_hill_K_hyper_loc_loc``
         - ``priors.theta_log_hill_K_hyper_loc_scale``
         - ``priors.theta_log_hill_K_hyper_scale``
-        - ``priors.theta_log_hill_n_hyper_loc_loc``
-        - ``priors.theta_log_hill_n_hyper_loc_scale``
-        - ``priors.theta_log_hill_n_hyper_scale``
+        - ``priors.theta_hill_n_hyper_loc_loc``
+        - ``priors.theta_hill_n_hyper_loc_scale``
+        - ``priors.theta_hill_n_hyper_scale``
 
     Returns
     -------
@@ -118,46 +118,46 @@ def define_model(name: str, data: DataClass, priors: ModelPriors) -> ThetaParam:
     
     # hyperpriors for the min theta (logit scale)
     logit_theta_min_hyper_loc = pyro.sample(
-        f"{name}_theta_logit_min_hyper_loc",
+        f"{name}_logit_min_hyper_loc",
         dist.Normal(priors.theta_logit_min_hyper_loc_loc,
                     priors.theta_logit_min_hyper_loc_scale)
     )
     logit_theta_min_hyper_scale = pyro.sample(
-        f"{name}_theta_logit_min_hyper_scale",
+        f"{name}_logit_min_hyper_scale",
         dist.HalfNormal(priors.theta_logit_min_hyper_scale)
     )
 
     # hyperpriors for max theta (logit scale)
     logit_theta_max_hyper_loc = pyro.sample(
-        f"{name}_theta_logit_max_hyper_loc",
+        f"{name}_logit_max_hyper_loc",
         dist.Normal(priors.theta_logit_max_hyper_loc_loc,
                     priors.theta_logit_max_hyper_loc_scale)
     )
     logit_theta_max_hyper_scale = pyro.sample(
-        f"{name}_theta_logit_max_hyper_scale",
+        f"{name}_logit_max_hyper_scale",
         dist.HalfNormal(priors.theta_logit_max_hyper_scale)
     )
     
      # hyperpriors for hill K (log scale)
     log_hill_K_hyper_loc = pyro.sample(
-        f"{name}_theta_log_hill_K_hyper_loc",
+        f"{name}_log_hill_K_hyper_loc",
         dist.Normal(priors.theta_log_hill_K_hyper_loc_loc,
                     priors.theta_log_hill_K_hyper_loc_scale)
     )
     log_hill_K_hyper_scale = pyro.sample(
-        f"{name}_theta_log_hill_K_hyper_scale",
+        f"{name}_log_hill_K_hyper_scale",
         dist.HalfNormal(priors.theta_log_hill_K_hyper_scale)
     )
 
     # hyperpriors for hill n (log scale)
-    log_hill_n_hyper_loc = pyro.sample(
-        f"{name}_theta_log_hill_n_hyper_loc",
-        dist.Normal(priors.theta_log_hill_n_hyper_loc_loc,
-                    priors.theta_log_hill_n_hyper_loc_scale)
+    hill_n_hyper_loc = pyro.sample(
+        f"{name}_hill_n_hyper_loc",
+        dist.Normal(priors.theta_hill_n_hyper_loc_loc,
+                    priors.theta_hill_n_hyper_loc_scale)
     )
-    log_hill_n_hyper_scale = pyro.sample(
-        f"{name}_theta_log_hill_n_hyper_scale",
-        dist.HalfNormal(priors.theta_log_hill_n_hyper_scale)
+    hill_n_hyper_scale = pyro.sample(
+        f"{name}_hill_n_hyper_scale",
+        dist.HalfNormal(priors.theta_hill_n_hyper_scale)
     )
 
     # --------------------------------------------------------------------------
@@ -168,12 +168,12 @@ def define_model(name: str, data: DataClass, priors: ModelPriors) -> ThetaParam:
             logit_theta_min_offset = pyro.sample(f"{name}_logit_min_offset", dist.Normal(0, 1))
             logit_theta_max_offset = pyro.sample(f"{name}_logit_max_offset", dist.Normal(0, 1))
             log_hill_K_offset = pyro.sample(f"{name}_log_hill_K_offset", dist.Normal(0, 1))
-            log_hill_n_offset = pyro.sample(f"{name}_log_hill_n_offset", dist.Normal(0, 1))
+            hill_n_offset = pyro.sample(f"{name}_hill_n_offset", dist.Normal(0, 1))
 
     logit_theta_min = logit_theta_min_hyper_loc + logit_theta_min_offset * logit_theta_min_hyper_scale
     logit_theta_max = logit_theta_max_hyper_loc + logit_theta_max_offset * logit_theta_max_hyper_scale
     log_hill_K = log_hill_K_hyper_loc + log_hill_K_offset * log_hill_K_hyper_scale
-    log_hill_n = log_hill_n_hyper_loc + log_hill_n_offset * log_hill_n_hyper_scale
+    hill_n = hill_n_hyper_loc + hill_n_offset * hill_n_hyper_scale
 
     # --------------------------------------------------------------------------
     # Expand parameters 
@@ -182,7 +182,7 @@ def define_model(name: str, data: DataClass, priors: ModelPriors) -> ThetaParam:
     theta_min = dist.transforms.SigmoidTransform()(logit_theta_min)
     theta_max = dist.transforms.SigmoidTransform()(logit_theta_max)
     hill_K = jnp.clip(jnp.exp(log_hill_K),max=1e30)
-    hill_n = jnp.clip(jnp.exp(log_hill_n),max=1e30)
+    # hill_n already on its natural scale
 
     # Register parameter values
     pyro.deterministic(f"{name}_theta_min",theta_min)
@@ -276,9 +276,9 @@ def get_hyperparameters() -> Dict[str, Any]:
     parameters["theta_log_hill_K_hyper_loc_scale"] = 2
     parameters["theta_log_hill_K_hyper_scale"] = 1.0
 
-    parameters["theta_log_hill_n_hyper_loc_loc"] = 0.693
-    parameters["theta_log_hill_n_hyper_loc_scale"] = 0.5
-    parameters["theta_log_hill_n_hyper_scale"] = 1.0
+    parameters["theta_hill_n_hyper_loc_loc"] = 2.0
+    parameters["theta_hill_n_hyper_loc_scale"] = 1.0
+    parameters["theta_hill_n_hyper_scale"] = 1.0
 
     return parameters
 
@@ -308,20 +308,20 @@ def get_guesses(name: str, data: DataClass) -> Dict[str, Any]:
     
     guesses = {}
 
-    guesses[f"{name}_theta_logit_min_hyper_loc"] = -1
-    guesses[f"{name}_theta_logit_min_hyper_scale"] = 1.5
-    guesses[f"{name}_theta_logit_max_hyper_loc"] = 1
-    guesses[f"{name}_theta_logit_max_hyper_scale"] = 1.5
+    guesses[f"{name}_logit_min_hyper_loc"] = -1
+    guesses[f"{name}_logit_min_hyper_scale"] = 1.5
+    guesses[f"{name}_logit_max_hyper_loc"] = 1
+    guesses[f"{name}_logit_max_hyper_scale"] = 1.5
     
-    guesses[f"{name}_theta_log_hill_K_hyper_loc"] = -4.14433344452323 # ln(0.017 mM)
-    guesses[f"{name}_theta_log_hill_K_hyper_scale"] = 1
-    guesses[f"{name}_theta_log_hill_n_hyper_loc"] = 0.693 # ln(2)
-    guesses[f"{name}_theta_log_hill_n_hyper_scale"] = 0.3
+    guesses[f"{name}_log_hill_K_hyper_loc"] = -4.14433344452323 # ln(0.017 mM)
+    guesses[f"{name}_log_hill_K_hyper_scale"] = 1
+    guesses[f"{name}_hill_n_hyper_loc"] = 2
+    guesses[f"{name}_hill_n_hyper_scale"] = 0.3
 
     guesses[f"{name}_logit_min_offset"] = jnp.ones((data.num_titrant_name,data.num_genotype))*0.076
     guesses[f"{name}_logit_max_offset"] = jnp.ones((data.num_titrant_name,data.num_genotype))*0.924
     guesses[f"{name}_log_hill_K_offset"] = jnp.ones((data.num_titrant_name,data.num_genotype))*(-4.144) #ln(0.017 mM)
-    guesses[f"{name}_log_hill_n_offset"] = jnp.ones((data.num_titrant_name,data.num_genotype))*0.693 #ln(2)  
+    guesses[f"{name}_hill_n_offset"] = jnp.ones((data.num_titrant_name,data.num_genotype))*2
 
     return guesses
 
