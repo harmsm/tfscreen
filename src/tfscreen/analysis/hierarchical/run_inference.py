@@ -292,35 +292,6 @@ class RunInference:
         
         return svi_state, params, converged
 
-    def get_parameter_posteriors(self,
-                                 svi,
-                                 svi_state,
-                                 num_samples=10000,
-                                 batch_size=100,
-                                 out_dir="tfs_param-posteriors"):
-
-        guide = svi.guide
-        params = svi.get_params(svi_state)
-
-        os.makedirs(out_dir, exist_ok=True)
-
-        num_batches = int(np.ceil(num_samples / batch_size))
-        for i in range(num_batches):
-
-            # Sample batch on the GPU            
-            batch_sampler = Predictive(guide,
-                                       params=params,
-                                       num_samples=batch_size)
-
-            batch_key = self.get_key()
-            batch_samples_gpu = batch_sampler(batch_key)
-            
-            # Pull down the samples and write to a file (atomic)
-            batch_samples_cpu = jax.device_get(batch_samples_gpu)
-            self._write_posteriors(out_root=f"{out_dir}/{i:05d}",
-                                   posterior_samples=batch_samples_cpu)
-
-
     def get_posteriors(self,
                        svi,
                        svi_state,
@@ -337,6 +308,10 @@ class RunInference:
         Parameters
         ----------
 
+        svi : numpyro.infer.SVI
+            svi object being used for the inference
+        svi_state : 
+            current state of the svi object
         out_root : str
             Root name for the output .npz file.
         num_posterior_samples : int, optional

@@ -174,11 +174,11 @@ def run_svi_analysis(growth_df,
         )
 
     if converged or always_get_posterior:
-        ri.get_parameter_posteriors(svi=svi_obj,
-                                    svi_state=svi_state,
-                                    out_dir=f"{out_root}-posteriors",
-                                    num_samples=num_posterior_samples,
-                                    batch_size=posterior_batch_size)
+        ri.get_posteriors(svi=svi_obj,
+                          svi_state=svi_state,
+                          out_root=out_root,
+                          num_posterior_samples=num_posterior_samples,
+                          batch_size=posterior_batch_size)
 
     return svi_state, svi_params, converged
 
