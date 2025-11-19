@@ -63,10 +63,9 @@ def define_model(name,data,priors):
     )
     
     # Loop over conditions and replicates
-    with pyro.plate(f"{name}_condition_parameters",data.num_condition,dim=-2):
-        with pyro.plate(f"{name}_replicate_parameters", data.num_replicate,dim=-1):
-            growth_k_offset = pyro.sample(f"{name}_k_offset", dist.Normal(0, 1))
-            growth_m_offset = pyro.sample(f"{name}_m_offset", dist.Normal(0, 1))
+    with pyro.plate(f"{name}_condition_parameters",data.num_condition,dim=-1):
+        growth_k_offset = pyro.sample(f"{name}_k_offset", dist.Normal(0, 1))
+        growth_m_offset = pyro.sample(f"{name}_m_offset", dist.Normal(0, 1))
     
     growth_k_per_cond_rep = growth_k_hyper_loc + growth_k_offset * growth_k_hyper_scale
     growth_m_per_cond_rep = growth_m_hyper_loc + growth_m_offset * growth_m_hyper_scale

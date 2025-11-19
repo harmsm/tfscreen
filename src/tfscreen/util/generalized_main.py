@@ -41,6 +41,9 @@ def generalized_main(fcn,
     if manual_arg_defaults is None:
         manual_arg_defaults = {}
 
+    if manual_arg_nargs is None:
+        manual_arg_nargs = {}
+
     # Build parser
     description = dict(inspect.getmembers(fcn))["__doc__"]
     parser = argparse.ArgumentParser(prog=f"{fcn.__name__}.py",

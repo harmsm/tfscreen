@@ -94,8 +94,11 @@ def define_model(name: str,
         observations.
     """
 
-    # Loop over conditions
-    with pyro.plate(f"{name}_condition_parameters",data.num_condition,dim=-2):
+    # Loop over conditions. NOTE THE FLIPPED PLATES. I need each condition to 
+    # have its own priors (outer loop) for each replicate (inner loop). The 
+    # data are ordered in the parameters as rep0, cond0 \ rep0, cond1 \ etc.
+    # which means they ravel with these dimensions. 
+    with pyro.plate(f"{name}_condition_parameters",data.num_condition,dim=-1):
 
         growth_k_hyper_loc = pyro.sample(
             f"{name}_k_hyper_loc",
@@ -118,7 +121,7 @@ def define_model(name: str,
         )
 
         # Loop over replicates
-        with pyro.plate(f"{name}_replicate_parameters", data.num_replicate,dim=-1):
+        with pyro.plate(f"{name}_replicate_parameters", data.num_replicate,dim=-2):
             k_offset = pyro.sample(f"{name}_k_offset", dist.Normal(0, 1))
             m_offset = pyro.sample(f"{name}_m_offset", dist.Normal(0, 1))
     

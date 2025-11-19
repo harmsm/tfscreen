@@ -62,6 +62,8 @@ class TensorManager:
 
         self._df = df
         self._map_sizes = {}
+        self._map_groups = {}
+
         self._to_tensor_columns = []
         self._tensor_column_dtypes = {}
         
@@ -98,7 +100,11 @@ class TensorManager:
         # extract indexes. This creates a map with C-order/row-major sorting.
         unique_groups = self._df[select_cols].drop_duplicates().copy()
         sorted_groups = unique_groups.sort_values(by=select_cols).reset_index(drop=True)
-        sorted_groups[map_name] = sorted_groups.index
+        sorted_groups[map_name] = sorted_groups.index    
+
+        # Record the parameter mapping 
+        self._map_groups[name] = sorted_groups
+        self._map_sizes[name] = len(sorted_groups)
 
         # Merge the map back onto the target dataframe.
         self._df = self._df.merge(sorted_groups, 
@@ -106,10 +112,6 @@ class TensorManager:
                                   how="left",
                                   sort=False)
         
-        # Record the size of the mapping
-        num_entries = len(sorted_groups)
-        self._map_sizes[name] = num_entries
-
         # Record that this should be a new tensor
         self._to_tensor_columns.append(map_name)
 
@@ -124,7 +126,16 @@ class TensorManager:
         ... 
         """
         
-        pooled_col_name = "_tmp_pool"
+        if name is None:
+            name = "-".join(select_cols)
+
+        # Group on selected columns
+        map_name = f"map_{name}"
+
+        if map_name in self._to_tensor_columns:
+            raise ValueError(
+                f"{map_name} already added"
+            )
 
         # Build a pooled dataframe that has only columns in select_cols plus a
         # new column `pooled_col_name`. The pooled column has the values taken 
@@ -133,22 +144,21 @@ class TensorManager:
         for c in select_pool_cols:
             sel_on = copy.copy(select_cols)
             sel_on.append(c)
-            new_df = self._df[sel_on].rename(columns={c: pooled_col_name})
+            new_df = self._df[sel_on].rename(columns={c: name})
             to_concat.append(new_df)
-        pooled_df = pd.concat(to_concat).drop_duplicates().reset_index(drop=True)
 
-        # Record an overall name if one is specified
-        if name is not None:
-            self._map_sizes[name] = len(pooled_df)
+        # Build list of columns for sorting
+        sort_by = copy.copy(select_cols)
+        sort_by.append(name)
 
-        # Now get unique entries for select_cols + pooled_col_name. Build a map
-        # on this. 
-        group_list = copy.copy(select_cols)
-        group_list.append(pooled_col_name)
+        # Get unique groups, sort, and record index
+        unique_groups = pd.concat(to_concat).drop_duplicates().copy()
+        sorted_groups = unique_groups.sort_values(by=sort_by).reset_index(drop=True)
+        sorted_groups[map_name] = sorted_groups.index
 
-        # Sort the unique pooled combinations to create a C-order index
-        pooled_df = pooled_df.sort_values(by=group_list).reset_index(drop=True)
-        pooled_df[f"map_tmp_pool"] = pooled_df.index
+        # Record the parameter mapping 
+        self._map_groups[name] = sorted_groups
+        self._map_sizes[name] = len(sorted_groups)
 
         # Now go back through the select_pool_cols and merge the newly 
         # constructed parameter map back to each of those columns. 
@@ -158,20 +168,17 @@ class TensorManager:
             left_on.append(c)
 
             right_on = copy.copy(select_cols)
-            right_on.append(pooled_col_name)
+            right_on.append(name)
 
             self._df = self._df.merge(
-                pooled_df,
+                sorted_groups,
                 left_on=left_on,
                 right_on=right_on,
                 how="left"
-            ).rename(columns={f"map_tmp_pool": f"map_{c}"}).drop(columns=pooled_col_name)
+            ).rename(columns={map_name: f"map_{c}"}).drop(columns=name)
 
             # Build a new tensor from this column. 
             self._to_tensor_columns.append(f"map_{c}")
-        
-            # Record the number of conditions
-            self._map_sizes[c] = pooled_df[pooled_col_name].drop_duplicates().size
 
 
     def add_map_tensor(self,
@@ -462,6 +469,11 @@ class TensorManager:
     def map_sizes(self):
         """A dictionary holding the sizes of the maps."""
         return self._map_sizes
+    
+    @property
+    def map_groups(self):
+        """A dictionary holding the parameters the maps point to."""
+        return self._map_groups
 
     @property
     def tensors(self):

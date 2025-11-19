@@ -94,7 +94,8 @@ class TestTensorManager:
             tensor_manager.add_map_tensor(select_cols='genotype')
 
     def test_add_multi_map(self, tensor_manager):
-        tensor_manager.add_map_tensor(select_cols=['replicate'], 
+        tensor_manager.add_map_tensor(name="test",
+                                      select_cols=['replicate'], 
                                       select_pool_cols=['g_control', 't_control'])
         
         assert 'map_g_control' in tensor_manager.df.columns
@@ -105,8 +106,8 @@ class TestTensorManager:
         # R1-A, R1-B, R1-T1, R1-T2, R2-A, R2-B, R2-T1, R2-T2
         # But g_control and t_control are correlated
         # Unique pooled values are A, B, T1, T2. Size = 4
-        assert tensor_manager.map_sizes['g_control'] == 4 
-        assert tensor_manager.map_sizes['t_control'] == 4
+        assert tensor_manager.map_sizes['test'] == 8
+        #assert tensor_manager.map_sizes['map_t_control'] == 4
 
     def test_add_multi_map_with_name(self, tensor_manager):
         tensor_manager.add_map_tensor(select_cols=['replicate'], 
