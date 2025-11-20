@@ -98,7 +98,7 @@ def get_hyperparameters():
 
     parameters = {}
     parameters["dk_geno_hyper_loc_loc"] = -3.5
-    parameters["dk_geno_hyper_loc_scale"] = 1
+    parameters["dk_geno_hyper_loc_scale"] = 1.0
     parameters["dk_geno_hyper_scale_loc"] = 1.0
     parameters["dk_geno_hyper_shift_loc"] = 0.02
     parameters["dk_geno_hyper_shift_scale"] = 0.2

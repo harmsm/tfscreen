@@ -18,7 +18,7 @@ from .components.theta_cat import run_model as calc_theta_cat
 from .components.theta_hill import define_model as define_theta_hill
 from .components.theta_hill import run_model as calc_theta_hill
 
-from .components.beta_noise import define_model as define_no_noise
+from .components.no_noise import define_model as define_no_noise
 from .components.beta_noise import define_model as define_beta_noise
 
 from .observe.binding import observe as observe_binding
@@ -35,34 +35,57 @@ import jax.numpy as jnp
 from typing import Dict
 
 
+CONDITION_GROWTH_INDEPENDENT = 0
+CONDITION_GROWTH_HIERARCHICAL = 1
+LN_CFU0_HIERARCHICAL = 0
+DK_GENO_FIXED = 0
+DK_GENO_HIERARCHICAL = 1
+ACTIVITY_FIXED = 0
+ACTIVITY_HIERARCHICAL = 1
+ACTIVITY_HORSESHOE = 2
+THETA_CATEGORICAL = 0
+THETA_HILL = 1
+THETA_GROWTH_NOISE_NONE = 0
+THETA_GROWTH_NOISE_BETA = 1
+THETA_BINDING_NOISE_NONE = 0
+THETA_BINDING_NOISE_BETA = 1
+
 MODEL_COMPONENT_NAMES = {
     "condition_growth":{
-        "independent":(0,components.growth_independent),
-        "hierarchical":(1,components.growth_hierarchical)
+        "independent":(CONDITION_GROWTH_INDEPENDENT,
+                       components.growth_independent),
+        "hierarchical":(CONDITION_GROWTH_HIERARCHICAL,
+                        components.growth_hierarchical)
     },
     "ln_cfu0":{
-        "hierarchical":(0,components.ln_cfu0),
+        "hierarchical":(LN_CFU0_HIERARCHICAL,
+                        components.ln_cfu0),
     },
     "dk_geno":{
-        "fixed":(0,components.dk_geno_fixed),
-        "hierarchical":(1,components.dk_geno_hierarchical),
+        "fixed":(DK_GENO_FIXED,
+                 components.dk_geno_fixed),
+        "hierarchical":(DK_GENO_HIERARCHICAL,
+                        components.dk_geno_hierarchical),
     },
     "activity":{
-        "fixed":(0,components.activity_fixed),
-        "hierarchical":(1,components.activity_hierarchical),
-        "horseshoe":(2,components.activity_horseshoe),
+        "fixed":(ACTIVITY_FIXED,
+                 components.activity_fixed),
+        "hierarchical":(ACTIVITY_HIERARCHICAL,
+                        components.activity_hierarchical),
+        "horseshoe":(ACTIVITY_HORSESHOE,
+                     components.activity_horseshoe),
     },
     "theta":{
-        "categorical":(0,components.theta_cat),
-        "hill":(1,components.theta_hill)
+        "categorical":(THETA_CATEGORICAL,components.theta_cat),
+        "hill":(THETA_HILL,components.theta_hill)
     },
     "theta_growth_noise":{
-        "none":(0,components.no_noise),
-        "beta":(1,components.beta_noise),
+        "none":(THETA_GROWTH_NOISE_NONE,components.no_noise),
+        "beta":(THETA_GROWTH_NOISE_BETA,components.beta_noise),
     },
     "theta_binding_noise":{
-        "none":(0,components.no_noise),
-        "beta":(1,components.beta_noise),
+        "none":(THETA_BINDING_NOISE_NONE,components.no_noise),
+        "beta":(THETA_BINDING_NOISE_BETA,components.beta_noise),
     }
 }
 
@@ -117,9 +140,9 @@ def _define_growth(data: DataClass,
     
     # calculate theta under growth conditions and scatter (returns full-sized
     # tensor)
-    if control.theta == 0:
+    if control.theta == THETA_CATEGORICAL:
         calc_theta = calc_theta_cat
-    elif control.theta == 1:
+    elif control.theta == THETA_HILL:
         calc_theta = calc_theta_hill
     else:
         raise ValueError(
@@ -131,11 +154,11 @@ def _define_growth(data: DataClass,
     # -------------------------------------------------------------------------
     # Define growth noise on theta
 
-    if control.theta_growth_noise == 0:
+    if control.theta_growth_noise == THETA_GROWTH_NOISE_NONE:
         noisy_growth_theta = define_no_noise("theta_growth_noise",
                                              growth_theta,
                                              priors.growth.theta_growth_noise)
-    elif control.theta_growth_noise == 1:
+    elif control.theta_growth_noise == THETA_GROWTH_NOISE_BETA:
         noisy_growth_theta = define_beta_noise("theta_growth_noise",
                                                growth_theta,
                                                priors.growth.theta_growth_noise)
@@ -148,11 +171,11 @@ def _define_growth(data: DataClass,
     # -------------------------------------------------------------------------
     # Define base growth model
 
-    if control.condition_growth == 0:
+    if control.condition_growth == CONDITION_GROWTH_INDEPENDENT:
         k_pre, m_pre, k_sel, m_sel = define_growth_independent("condition_growth",
                                                                data.growth,
                                                                priors.growth.condition_growth)
-    elif control.condition_growth == 1:
+    elif control.condition_growth == CONDITION_GROWTH_HIERARCHICAL:
         k_pre, m_pre, k_sel, m_sel = define_growth_hierarchical("condition_growth",
                                                                 data.growth,
                                                                 priors.growth.condition_growth)
@@ -164,7 +187,7 @@ def _define_growth(data: DataClass,
     # -------------------------------------------------------------------------
     # Define ln_cfu0 model
 
-    if control.ln_cfu0 == 0:
+    if control.ln_cfu0 == LN_CFU0_HIERARCHICAL:
         ln_cfu0 = define_ln_cfu0("ln_cfu0",
                                  data.growth,
                                  priors.growth.ln_cfu0)
@@ -176,11 +199,11 @@ def _define_growth(data: DataClass,
     # -------------------------------------------------------------------------
     # Define dk_geno model
 
-    if control.dk_geno == 0:
+    if control.dk_geno == DK_GENO_FIXED:
         dk_geno = define_dk_geno_fixed("dk_geno",
                                        data.growth,
                                        priors.growth.dk_geno)    
-    elif control.dk_geno == 1:
+    elif control.dk_geno == DK_GENO_HIERARCHICAL:
         dk_geno = define_dk_geno_hierarchical("dk_geno",
                                               data.growth,
                                               priors.growth.dk_geno)
@@ -192,15 +215,15 @@ def _define_growth(data: DataClass,
     # -------------------------------------------------------------------------
     # Define activity model
 
-    if control.activity == 0:
+    if control.activity == ACTIVITY_FIXED:
         activity = define_activity_fixed("activity",
                                          data.growth,
                                          priors.growth.activity)
-    elif control.activity == 1:
+    elif control.activity == ACTIVITY_HIERARCHICAL:
         activity = define_activity_hierarchical("activity",
                                                 data.growth,
                                                 priors.growth.activity)
-    elif control.activity == 2:
+    elif control.activity == ACTIVITY_HORSESHOE:
         activity = define_activity_horseshoe("activity",
                                              data.growth,
                                              priors.growth.activity)
@@ -256,9 +279,9 @@ def _define_binding(data: DataClass,
         control object for the theta or noise components.
     """
 
-    if control.theta == 0:
+    if control.theta == THETA_CATEGORICAL:
         calc_theta = calc_theta_cat
-    elif control.theta == 1:
+    elif control.theta == THETA_HILL:
         calc_theta = calc_theta_hill
     else:
         raise ValueError(
@@ -270,11 +293,11 @@ def _define_binding(data: DataClass,
     # -------------------------------------------------------------------------
     # Define binding noise on theta model
 
-    if control.theta_binding_noise == 0:
+    if control.theta_binding_noise == THETA_BINDING_NOISE_NONE:
         noisy_binding_theta = define_no_noise("theta_binding_noise",
                                               theta_binding,
                                               priors.binding.theta_binding_noise)
-    elif control.theta_binding_noise == 1:
+    elif control.theta_binding_noise == THETA_BINDING_NOISE_BETA:
         noisy_binding_theta = define_beta_noise("theta_binding_noise",
                                                 theta_binding,
                                                 priors.binding.theta_binding_noise)

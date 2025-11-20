@@ -2,8 +2,8 @@ import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
 from flax.struct import dataclass
-from typing import Dict, Any
 
+from typing import Dict, Any
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
 
 

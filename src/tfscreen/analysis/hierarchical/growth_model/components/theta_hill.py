@@ -264,16 +264,16 @@ def get_hyperparameters() -> Dict[str, Any]:
 
     parameters = {}
 
-    parameters["theta_logit_min_hyper_loc_loc"] = -1
+    parameters["theta_logit_min_hyper_loc_loc"] = -1.0
     parameters["theta_logit_min_hyper_loc_scale"] = 1.5
     parameters["theta_logit_min_hyper_scale"] = 1.0
 
-    parameters["theta_logit_max_hyper_loc_loc"] = 1
+    parameters["theta_logit_max_hyper_loc_loc"] = 1.0
     parameters["theta_logit_max_hyper_loc_scale"] = 1.5
     parameters["theta_logit_max_hyper_scale"] = 1.0
 
     parameters["theta_log_hill_K_hyper_loc_loc"] = -4.1
-    parameters["theta_log_hill_K_hyper_loc_scale"] = 2
+    parameters["theta_log_hill_K_hyper_loc_scale"] = 2.0
     parameters["theta_log_hill_K_hyper_scale"] = 1.0
 
     parameters["theta_hill_n_hyper_loc_loc"] = 2.0
@@ -308,20 +308,20 @@ def get_guesses(name: str, data: DataClass) -> Dict[str, Any]:
     
     guesses = {}
 
-    guesses[f"{name}_logit_min_hyper_loc"] = -1
+    guesses[f"{name}_logit_min_hyper_loc"] = -1.0
     guesses[f"{name}_logit_min_hyper_scale"] = 1.5
-    guesses[f"{name}_logit_max_hyper_loc"] = 1
+    guesses[f"{name}_logit_max_hyper_loc"] = 1.0
     guesses[f"{name}_logit_max_hyper_scale"] = 1.5
     
     guesses[f"{name}_log_hill_K_hyper_loc"] = -4.14433344452323 # ln(0.017 mM)
-    guesses[f"{name}_log_hill_K_hyper_scale"] = 1
-    guesses[f"{name}_hill_n_hyper_loc"] = 2
+    guesses[f"{name}_log_hill_K_hyper_scale"] = 1.0
+    guesses[f"{name}_hill_n_hyper_loc"] = 2.0
     guesses[f"{name}_hill_n_hyper_scale"] = 0.3
 
     guesses[f"{name}_logit_min_offset"] = jnp.ones((data.num_titrant_name,data.num_genotype))*0.076
     guesses[f"{name}_logit_max_offset"] = jnp.ones((data.num_titrant_name,data.num_genotype))*0.924
     guesses[f"{name}_log_hill_K_offset"] = jnp.ones((data.num_titrant_name,data.num_genotype))*(-4.144) #ln(0.017 mM)
-    guesses[f"{name}_hill_n_offset"] = jnp.ones((data.num_titrant_name,data.num_genotype))*2
+    guesses[f"{name}_hill_n_offset"] = jnp.ones((data.num_titrant_name,data.num_genotype))*2.0
 
     return guesses
 
