@@ -628,11 +628,13 @@ class ModelClass:
     
             # Record guesses
             if prior_group == "binding":
-                init_params.update(component.get_guesses(name=key,
-                                                         data=self._data.binding))
+                guesses = component.get_guesses(name=key,
+                                                data=self._data.binding)
             else:
-                init_params.update(component.get_guesses(name=key,
-                                                         data=self._data.growth))
+                guesses = component.get_guesses(name=key,
+                                                data=self._data.growth)
+
+            init_params.update(guesses)
     
         # Build control class
         control = ControlClass(**control_class_kwargs)

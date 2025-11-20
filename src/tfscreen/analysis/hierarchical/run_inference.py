@@ -106,7 +106,8 @@ class RunInference:
                   adam_clip_norm=1.0,
                   guide_rank=10,
                   elbo_num_particles=10,
-                  init_scale=1e-3):
+                  init_param_jitter=0.1,
+                  init_scale=0.01):
         """
         Set up SVI with an AutoLowRankMultivariateNormal guide.
 
@@ -122,6 +123,9 @@ class RunInference:
             Rank of the low-rank approximation for the guide's covariance.
         elbo_num_particles : int, optional
             Number of particles for ELBO estimation.
+        init_param_jitter : float, optional
+            amount of jitter to apply to each parameter guess (log-normal). 
+            Default = 0.1. 
         init_scale : float, optional
             scale to apply to the initial parameter values
 
@@ -133,7 +137,8 @@ class RunInference:
 
         guide_kwargs = {}
         if init_params is not None:
-            guide_kwargs["init_loc_fn"] = init_to_value(values=init_params)
+            jittered_params = self._jitter_init_parameters(init_params,init_param_jitter)
+            guide_kwargs["init_loc_fn"] = init_to_value(values=jittered_params)
             guide_kwargs["init_scale"] = init_scale
             
         optimizer = ClippedAdam(step_size=adam_step_size,clip_norm=adam_clip_norm)
@@ -156,7 +161,8 @@ class RunInference:
                          convergence_window=1000,
                          checkpoint_interval=1000,
                          num_steps=10000000,
-                         batch_size=1024):
+                         batch_size=1024,
+                         init_param_jitter=0.1):
         """
         Run the SVI optimization loop.
 
@@ -184,6 +190,8 @@ class RunInference:
             Total number of optimization steps to run.
         batch_size : int, optional
             Number of genotypes to include in each mini-batch.
+        init_param_jitter : float, optional
+            amount of jitter to add to init_params. To turn off, set to 0.
 
         Returns
         -------
@@ -211,9 +219,15 @@ class RunInference:
         # Get the arguments to pass to the jax model
         jax_model_kwargs = {"priors":self.model.priors,
                             "control":self.model.control} 
-    
+
+        # Add jitter to the input parameters if they are specified
+        if init_params is not None:
+            init_params = self._jitter_init_parameters(init_params=init_params,
+                                                       init_param_jitter=init_param_jitter)
+
         # Create initialization key
         init_key = self.get_key()
+
 
         # Create dummy batch. Note that we just need the shape of the data, so 
         # we don't actually consume the key. 
@@ -384,7 +398,6 @@ class RunInference:
         self._write_posteriors(final_samples, out_root=out_root)
 
 
-
     def get_key(self):
         """
         Get a new JAX PRNG key, splitting the main key.
@@ -397,6 +410,26 @@ class RunInference:
 
         new_key, self._main_key = jax.random.split(self._main_key)
         return new_key
+
+    def _jitter_init_parameters(self,init_params,init_param_jitter):
+
+        # No jitter requested
+        if init_param_jitter == 0:
+            return init_params 
+
+        for p in init_params:
+
+            jitter_key = self.get_key()
+            if jnp.isscalar(init_params[p]):
+                noise = jnp.random.normal(jitter_key)
+            else:
+                noise = jnp.random.normal(jitter_key,shape=init_params[p].shape)
+            
+            # add noise to init_params[p]
+            init_params[p] = init_params[p]*jnp.exp(noise*init_param_jitter)
+
+        return init_params
+
 
     def _write_checkpoint(self,svi_state,out_root):
         """
@@ -550,4 +583,13 @@ class RunInference:
 
         # Calculate relative change
         self._relative_change = np.abs(mean_curr - mean_prev) / (np.abs(mean_prev) + 1e-10)
+
+    def write_params(self,params,out_root):
+
+        tmp_out_file = f"{out_root}_params.tmp.npz"
+        out_file = f"{out_root}_params.npz"
+
+        np.savez_compressed(tmp_out_file,**params)
+
+        os.replace(tmp_out_file,out_file)        
 

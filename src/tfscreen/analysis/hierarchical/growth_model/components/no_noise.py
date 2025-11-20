@@ -3,12 +3,7 @@ from flax.struct import (
     dataclass
 )
 from typing import Dict, Any
-
-# Assuming data_class is in a relative path
-# from .data_class import GrowthData, BindingData
-# Using a placeholder for now:
-class DataClass: pass
-
+from tfscreen.analysis.hierarchical.growth_model.data_class import DataClass
 
 @dataclass(frozen=True)
 class ModelPriors:

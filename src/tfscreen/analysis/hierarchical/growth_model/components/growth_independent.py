@@ -165,7 +165,7 @@ def get_hyperparameters(num_condition: int) -> Dict[str, Any]:
     parameters["growth_k_hyper_loc_loc"] = jnp.ones(num_condition)*0.025
     parameters["growth_k_hyper_loc_scale"] = jnp.ones(num_condition)*0.1
     parameters["growth_k_hyper_scale"] = jnp.ones(num_condition)*1.0
-    parameters["growth_m_hyper_loc_loc"] = jnp.zeros(num_condition)
+    parameters["growth_m_hyper_loc_loc"] = jnp.zeros(num_condition)*0.0
     parameters["growth_m_hyper_loc_scale"] = jnp.ones(num_condition)*0.01
     parameters["growth_m_hyper_scale"] = jnp.ones(num_condition)*1.0
 
