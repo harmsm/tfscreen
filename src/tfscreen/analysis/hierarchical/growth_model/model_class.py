@@ -28,11 +28,16 @@ from tfscreen.analysis.hierarchical.growth_model.data_class import (
     BindingPriors
 )
 
-
+import jax
 from jax import numpy as jnp
 import pandas as pd
 import numpy as np
 
+# Declare float datatype
+FLOAT_DTYPE = jnp.float64 if jax.config.read("jax_enable_x64") else jnp.float32
+
+# Set zero conc to this when taking log
+ZERO_CONC_VALUE = 1e-20
 
 def _read_growth_df(growth_df,
                     theta_group_cols=None,
@@ -84,7 +89,7 @@ def _read_growth_df(growth_df,
     growth_df = tfscreen.util.read_dataframe(growth_df)
     growth_df = tfscreen.genetics.set_categorical_genotype(growth_df,standardize=True)
     growth_df = tfscreen.util.get_scaled_cfu(growth_df,need_columns=["ln_cfu","ln_cfu_std"])
-    
+
     # make a replicate column if not defined
     if "replicate" not in growth_df.columns:
         growth_df["replicate"] = 1
@@ -102,6 +107,12 @@ def _read_growth_df(growth_df,
     growth_df = add_group_columns(target_df=growth_df,
                                   group_cols=theta_group_cols,
                                   group_name="map_theta_group")
+    
+    # Create a log_titrant_conc column, replacing 0 with 1000x less than lowest
+    # non-zero value. 
+    titrant_conc = np.array(growth_df["titrant_conc"],dtype=float)
+    titrant_conc[titrant_conc == 0] = ZERO_CONC_VALUE
+    growth_df["log_titrant_conc"] = np.log(titrant_conc)
     
     return growth_df
 
@@ -142,11 +153,12 @@ def _build_growth_tm(growth_df):
     growth_tm.add_pivot_index(tensor_dim_name="genotype",cat_column="genotype")
     
     # Register that we want tensors from these data columns
-    growth_tm.add_data_tensor("ln_cfu")
-    growth_tm.add_data_tensor("ln_cfu_std")
-    growth_tm.add_data_tensor("t_pre")
-    growth_tm.add_data_tensor("t_sel")
-    growth_tm.add_data_tensor("titrant_conc")
+    growth_tm.add_data_tensor("ln_cfu",dtype=FLOAT_DTYPE)
+    growth_tm.add_data_tensor("ln_cfu_std",dtype=FLOAT_DTYPE)
+    growth_tm.add_data_tensor("t_pre",dtype=FLOAT_DTYPE)
+    growth_tm.add_data_tensor("t_sel",dtype=FLOAT_DTYPE)
+    growth_tm.add_data_tensor("titrant_conc",dtype=FLOAT_DTYPE)
+    growth_tm.add_data_tensor("log_titrant_conc",dtype=FLOAT_DTYPE)
     
     # These calls will create full-sized integer tensors for parameter 
     # mapping. For example, ln_cfu0 should have a unique parameter for each 
@@ -228,7 +240,8 @@ def _build_growth_theta_tm(growth_df):
     tm.add_data_tensor("map_theta_group",dtype=int)
 
     # This will give us the array of titrant concs
-    tm.add_data_tensor("titrant_conc")
+    tm.add_data_tensor("titrant_conc",dtype=FLOAT_DTYPE)
+    tm.add_data_tensor("log_titrant_conc",dtype=FLOAT_DTYPE)
 
     # Create tensors
     tm.create_tensors()
@@ -289,7 +302,12 @@ def _read_binding_df(binding_df,
                                    group_cols=theta_group_cols,
                                    group_name="map_theta_group",
                                    existing_df=existing_df)
-            
+    
+    # Create a log_titrant_conc column, replacing 0 ZERO_CONC_VALUE
+    titrant_conc = np.array(binding_df["titrant_conc"],dtype=float)
+    titrant_conc[titrant_conc == 0] = ZERO_CONC_VALUE
+    binding_df["log_titrant_conc"] = np.log(titrant_conc)
+
     return binding_df
 
 def _build_binding_tm(binding_df):
@@ -329,10 +347,11 @@ def _build_binding_tm(binding_df):
     binding_tm.add_pivot_index(tensor_dim_name="genotype",cat_column="genotype")
 
     # add data columns 
-    binding_tm.add_data_tensor("theta_obs")
-    binding_tm.add_data_tensor("theta_std")
+    binding_tm.add_data_tensor("theta_obs",dtype=FLOAT_DTYPE)
+    binding_tm.add_data_tensor("theta_std",dtype=FLOAT_DTYPE)
     binding_tm.add_data_tensor("map_theta_group",dtype=int)
-    binding_tm.add_data_tensor("titrant_conc")
+    binding_tm.add_data_tensor("titrant_conc",dtype=FLOAT_DTYPE)
+    binding_tm.add_data_tensor("log_titrant_conc",dtype=FLOAT_DTYPE)
 
     # Build tenors
     binding_tm.create_tensors()
@@ -501,7 +520,7 @@ class ModelClass:
         for k in from_growth_tm:
             tensors[k] = self.growth_tm.tensors[k]
 
-        from_growth_theta_tm = ["titrant_conc","map_theta_group"]
+        from_growth_theta_tm = ["titrant_conc","log_titrant_conc","map_theta_group"]
         for k in from_growth_theta_tm:
             tensors[k] = self.growth_theta_tm.tensors[k]
 
