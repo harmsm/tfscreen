@@ -38,6 +38,7 @@ class GrowthData:
     
     # small tensor used for theta calculations
     titrant_conc: jnp.ndarray
+    log_titrant_conc: jnp.ndarray
     map_theta_group: jnp.ndarray
     num_titrant_name: int  = field(pytree_node=False)
     num_titrant_conc: int = field(pytree_node=False)
@@ -55,8 +56,8 @@ class BindingData:
     theta_obs: jnp.ndarray
     theta_std: jnp.ndarray
     titrant_conc: jnp.ndarray
+    log_titrant_conc: jnp.ndarray
     map_theta_group: jnp.ndarray
-    #obs_mask: jnp.ndarray # mask used for mini-batching
 
     num_titrant_name: int = field(pytree_node=False)
     num_titrant_conc: int = field(pytree_node=False)
@@ -73,7 +74,7 @@ class DataClass:
     Pytree.
     """
     
-    growth_to_binding_idx: jnp.ndarray
+    #growth_to_binding_idx: jnp.ndarray
     num_genotype: int = field(pytree_node=False)
 
     # This will be a GrowthData and BindingData

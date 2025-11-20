@@ -23,6 +23,8 @@ import dill
 from collections import deque
 import os
 
+import optax
+
 class RunInference:
     """
     Manages the SVI (Stochastic Variational Inference) process for a model.
@@ -135,13 +137,26 @@ class RunInference:
             An SVI object configured with an AutoLowRankMultivariateNormal guide.
         """
 
+        # # Example for 500k steps
+        # schedule = optax.warmup_cosine_decay_schedule(
+        #     init_value=1e-4,    # Start small to prevent explosion
+        #     peak_value=1e-3,    # Ramp up to full speed
+        #     warmup_steps=1000,  # Take 1000 steps to warm up
+        #     decay_steps=500000, # Decay over the rest of the run
+        #     end_value=1e-6      # End at very high precision
+        # )
+
+
         guide_kwargs = {}
         if init_params is not None:
             jittered_params = self._jitter_init_parameters(init_params,init_param_jitter)
             guide_kwargs["init_loc_fn"] = init_to_value(values=jittered_params)
             guide_kwargs["init_scale"] = init_scale
             
-        optimizer = ClippedAdam(step_size=adam_step_size,clip_norm=adam_clip_norm)
+        optimizer = ClippedAdam(
+            #learning_rate=schedule,
+            step_size=adam_step_size,
+            clip_norm=adam_clip_norm)
         guide = AutoLowRankMultivariateNormal(self.model.jax_model,
                                               rank=guide_rank,
                                               **guide_kwargs)
