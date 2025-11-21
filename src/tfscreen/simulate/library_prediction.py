@@ -3,9 +3,9 @@ import tfscreen
 
 from tfscreen.simulate import (
     build_sample_dataframes,
-    generate_libraries,
     thermo_to_growth,
 )
+from tfscreen.genetics import library_manager
 
 from typing import Any, Dict, Union
 from pathlib import Path
@@ -51,14 +51,9 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
     # -------------------------------------------------------------------------
     # Do main calculation
 
-    # Build library    
-    library_df = generate_libraries(
-        aa_sequence=cf['aa_sequence'],
-        mutated_sites=cf['mutated_sites'],
-        degen_codon=cf['degen_codon'],
-        seq_starts_at=cf['seq_starts_at'],
-        lib_keys=list(cf["transform_sizes"].keys())
-    )
+    # Build library_df
+    lm = library_manager.LibraryManager(cf)
+    library_df = lm.build_library_df()
 
     # Build sample_df (holds all conditions for the experiment)
     sample_df = build_sample_dataframes(

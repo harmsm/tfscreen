@@ -64,9 +64,10 @@ def _parse_parameter(param_df: pd.DataFrame,
         # Use the map to look up the real value for each row in our parsed df
         real_values = df.set_index(ground_truth_keys).index.map(mapper)
         
-        # Insert the new column
+        # Insert the new column and coerce to float
         insert_loc = df.columns.get_loc(f'{output_prefix}_std') + 1
         df.insert(loc=insert_loc, column=f"{output_prefix}_real", value=real_values)
+        df[f"{output_prefix}_real"] = df[f"{output_prefix}_real"].astype(float)
 
     return df
 
@@ -124,8 +125,8 @@ def _build_ground_truth(counts_df,sample_df):
 
     #  Drop cfu/mL part of sample_df
     sample_df = sample_df.copy()
-    if "cfu_per_mL" in sample_df.columns:
-        drop_at = sample_df.columns.get_loc("cfu_per_mL")
+    if "cfu" in sample_df.columns:
+        drop_at = sample_df.columns.get_loc("cfu")
         sample_df = sample_df[sample_df.columns[:drop_at]]
 
     # Move sample from a column to the index
