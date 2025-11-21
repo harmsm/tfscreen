@@ -23,7 +23,6 @@ import dill
 from collections import deque
 import os
 
-import optax
 
 class RunInference:
     """
@@ -136,16 +135,6 @@ class RunInference:
         numpyro.infer.SVI
             An SVI object configured with an AutoLowRankMultivariateNormal guide.
         """
-
-        # # Example for 500k steps
-        # schedule = optax.warmup_cosine_decay_schedule(
-        #     init_value=1e-4,    # Start small to prevent explosion
-        #     peak_value=1e-3,    # Ramp up to full speed
-        #     warmup_steps=1000,  # Take 1000 steps to warm up
-        #     decay_steps=500000, # Decay over the rest of the run
-        #     end_value=1e-6      # End at very high precision
-        # )
-
 
         guide_kwargs = {}
         if init_params is not None:

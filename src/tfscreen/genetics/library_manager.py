@@ -7,6 +7,13 @@ from tfscreen.data import (
     CODON_TO_AA,
     DEGEN_BASE_SPECIFIER,
 )
+from tfscreen.genetics import (
+    standardize_genotypes,
+    set_categorical_genotype
+)
+
+import numpy as np
+import pandas as pd
 
 from itertools import (
     groupby,
@@ -794,4 +801,56 @@ class LibraryManager:
 
 
         return all_lib_seqs, all_aa_muts
+    
+    def build_library_df(self):
+        """
+        Generate a pandas dataframe describing the library at an amino acid 
+        level. 
+
+        The resulting dataframe will have columns:
+        - 'library_origin', indicating the origin of the mutation
+        - 'genotype', indicating the genotype in H29A format
+        - 'degeneracy', how many times the genotype is seen within the library
+          origin
+        - 'weight', the fraction of the library_origin made up by this genotype
+
+        Returns
+        -------
+        pandas.DataFrame
+            dataframe describing the library
+        """
+    
+        # Get libraries
+        _, all_aa_muts = self.get_libraries()
+
+        dfs = []
+
+        # Go through each key
+        for key in all_aa_muts:
+
+            # Clean up the genotypes. This does things like convert "" and H29H
+            # to wt.
+            clean_genotypes = standardize_genotypes(all_aa_muts[key])
+
+            # Grab unique genotypes and their counts from the library. We want 
+            # these to account for degeneracy when using the libraries for 
+            # transformation etc. 
+            genotypes, counts = np.unique(clean_genotypes,return_counts=True)
+
+            # Build a pandas DataFrame for the library
+            out_dict = {}
+            out_dict["library_origin"] = np.full(len(genotypes),key)
+            out_dict["genotype"] = genotypes
+            out_dict["degeneracy"] = counts
+            out_dict["weight"] = out_dict["degeneracy"]/np.sum(out_dict["degeneracy"])
+
+            dfs.append(pd.DataFrame(out_dict))
+
+        # Build a single large genotype dataframe. Set the genotypes to categorical
+        # (allowing useful sorting). 
+        df = pd.concat(dfs,ignore_index=True)
+        df = set_categorical_genotype(df)
+        df = df.sort_values(["genotype","library_origin"]).reset_index(drop=True)
+
+        return df
 

@@ -436,7 +436,9 @@ def _sim_index_hop(
     # Use the multivariate hypergeometric distribution to determine how many 
     # reads hop from each category. This is equivalent to sampling without 
     # replacement from the full pool of reads.
-    hop_from_values = rng.multivariate_hypergeometric(counts, num_to_hop)
+    hop_from_values = rng.multivariate_hypergeometric(counts,
+                                                      num_to_hop,
+                                                      method="count")
 
     # Uniformly choose new categories for the hopped reads.
     num_categories = len(counts)
@@ -505,7 +507,7 @@ def _sim_transform(
     plasmids = np.arange(num_plasmids,dtype=int)
     
     # Assign the number of plasmids each transformant will recieve
-    if transformation_poisson_lambda is None:
+    if transformation_poisson_lambda is None or transformation_poisson_lambda == 0:
         num_plas_in_cell = np.ones(num_transformants,dtype=int)
     else:
         num_plas_in_cell = zero_truncated_poisson(num_transformants,
@@ -881,7 +883,7 @@ def _simulate_library_group(
     # Build sample dataframe
     to_drop = ["genotype","dk_geno","k_pre","k_sel","theta","kt"]
     sample_df = sub_grouper.agg("first")
-    sample_df["cfu_per_mL"] = 0.0
+    sample_df["sample_cfu"] = 0.0
     sample_df = sample_df.drop(columns=to_drop)
     sample_df = sample_df.reset_index()
     sample_df.index += index_offset
@@ -965,8 +967,8 @@ def _simulate_library_group(
                             multi_plasmid_combine_fcn[lib_name])
     
     # Record cfu/mL over all conditions
-    sample_df.loc[:,"cfu_per_mL"] = np.sum(trans_cfu,axis=0)
-    sample_df.loc[:,"cfu_per_mL_std"] = sample_df.loc[:,"cfu_per_mL"]*final_cfu_pct_err
+    sample_df.loc[:,"sample_cfu"] = np.sum(trans_cfu,axis=0)
+    sample_df.loc[:,"sample_cfu_std"] = sample_df.loc[:,"sample_cfu"]*final_cfu_pct_err
 
     # -- simulate sequencing -- 
     print("--> simulating sequencing",flush=True)
@@ -1142,7 +1144,7 @@ def selection_experiment(
     index_offset = 0
     sample_df_batches = []
     counts_df_batches = []
-    for _, sub_df in tqdm(lib_grouper):
+    for _, sub_df in tqdm(lib_grouper,desc="replicate/library"):
 
         # Do a complete transform + grow + sequence for this block of conditions
         sample_df, counts_df = _simulate_library_group(sub_df,
