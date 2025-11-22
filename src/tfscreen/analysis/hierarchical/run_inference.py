@@ -19,6 +19,7 @@ from numpyro.optim import ClippedAdam
 import pandas as pd
 import numpy as np
 import dill
+from tqdm.auto import tqdm
 
 from collections import deque
 import os
@@ -315,92 +316,167 @@ class RunInference:
                        svi_state,
                        out_root,
                        num_posterior_samples=10000,
-                       batch_size=1024):
+                       sampling_batch_size=100,
+                       forward_batch_size=512):
+            """
+            Generate and save posterior samples using the trained guide.
+
+            Uses `numpyro.infer.Predictive` to sample from the posterior
+            distribution defined by the guide and parameters. Handles large
+            datasets by batching predictions.
+
+            Parameters
+            ----------
+
+            svi : numpyro.infer.SVI
+                svi object being used for the inference
+            svi_state : 
+                current state of the svi object
+            out_root : str
+                Root name for the output .npz file.
+            num_posterior_samples : int, optional
+                Number of posterior samples to draw.
+            sampling_batch_size : int, optional
+                Generate posteriors in blocks of this size
+            forward_batch_size : int, optional
+                calculate forward predictions in batches of this size
+            """
+
+            guide = svi.guide
+            params = svi.get_params(svi_state)
+
+            combined_results = {}
+
+            total_num_genotypes = self.model.data.num_genotype 
+            num_latent_batches = -(-num_posterior_samples // sampling_batch_size)
+
+            for _ in tqdm(range(num_latent_batches),desc="sampling posterior"):
+
+                # Sample the entire guide posterior distribution 
+                post_key = self.get_key()
+                latent_sampler = Predictive(guide,
+                                            params=params,
+                                            num_samples=sampling_batch_size)
+                latent_samples = latent_sampler(post_key)
+
+                # Create a sampler that will predict outputs using the full
+                # model given those latent samples
+                forward_sampler = Predictive(self.model.jax_model,
+                                            posterior_samples=latent_samples)
+
+                # Create model kwargs
+                jax_model_kwargs = {"priors":self.model.priors,
+                                    "control":self.model.control} 
+
+                # Sample batches of genotypes
+                batched_results = {}
+                for start_idx in range(0, total_num_genotypes, forward_batch_size):
+                    
+                    # Create indexes for slicing a batch
+                    end_idx = min(start_idx + forward_batch_size, total_num_genotypes)
+                    batch_indices = jnp.arange(start_idx, end_idx)
+
+                    # Get a batch of data
+                    batch_data = self.model.deterministic_batch(self.model.data,
+                                                                batch_indices)
+                    jax_model_kwargs["data"] = batch_data
+
+                    # Run the forward pass for this batch of genotypes
+                    sample_key = self.get_key()
+                    batch_pred = forward_sampler(sample_key, **jax_model_kwargs)
+
+                    # Pull the results off the gpu
+                    batch_pred_cpu = jax.device_get(batch_pred)
+
+                    # Grab the parameters we sampled in this batch
+                    for k, v in batch_pred_cpu.items():
+                        if k not in batched_results:
+                            batched_results[k] = []
+                        batched_results[k].append(v)
+                
+                    # Grab the latent parameters we sampled in this batch. If 
+                    # the latent parameter has a genotype axis (last dimension
+                    # is length total_num_genotypes) slice and append it. If 
+                    # it does not have a genotype axis, just append it on the 
+                    # first iteration.
+                    for k, v in latent_samples.items():
+                        if k in batch_pred_cpu:
+                            continue
+                        if k not in batched_results:
+                            batched_results[k] = []
+                        is_genotype_param = (v.ndim > 1) and (v.shape[-1] == total_num_genotypes)
+                        if is_genotype_param:
+                            batched_results[k].append(v[:, start_idx:end_idx])
+                        else:
+                            if start_idx == 0:
+                                batched_results[k].append(v)
+
+                # Combine our batched results. The result of this will be a 
+                # dictionary of lists. Each list will be an array whose first
+                # dimension is the number of latent samples. 
+                for k, v in batched_results.items():
+
+                    if k not in combined_results:
+                        combined_results[k] = []
+
+                    if len(v) == 1:
+                        combined_results[k].append(v[0])
+                    else:
+                        full_width = np.concatenate(v,axis=1)
+                        combined_results[k].append(full_width)
+                        
+            # assemble final results
+            final_results = {}
+            for k in batched_results:
+                final_results[k] = np.concatenate(batched_results[k],axis=0)
+
+            self._write_posteriors(final_results, out_root=out_root)
+
+    def predict(self,
+                predict_sites,
+                posteriors_file,
+                data_for_predict=None):
         """
-        Generate and save posterior samples using the trained guide.
+        Use the model to predict values of deterministic parameters in 
+        predict_sites given the model and the model parameter samples in the
+        posteriors_file. 
 
-        Uses `numpyro.infer.Predictive` to sample from the posterior
-        distribution defined by the guide and parameters. Handles large
-        datasets by batching predictions.
-
-        Parameters
-        ----------
-
-        svi : numpyro.infer.SVI
-            svi object being used for the inference
-        svi_state : 
-            current state of the svi object
-        out_root : str
-            Root name for the output .npz file.
-        num_posterior_samples : int, optional
-            Number of posterior samples to draw.
-        batch_size : int, optional
-            Batch size for generating predictions. This does not need to
-            match the training batch size.
+        predict_sites : list of str or str
+            list of deterministic sites defined in the model we should predict.
+        posteriors_file : str
+            path to a file holding posterior samples. usually generated by
+            self.get_posteriors()
+        data_for_predict : flax.dataclass
+            dataclass exactly matching self.model.data in its parameters but 
+            with (possibly) different independent variables (e.g. t_sel, 
+            titrant_conc, etc.). This lets us predict at more titrant
+            concentrations than the training set, for example. If None, use the
+            data class used for training. 
         """
 
-        guide = svi.guide
-        params = svi.get_params(svi_state)
+        if isinstance(predict_sites,str):
+            predict_sites = [predict_sites]
 
-        # Sample the parameter posterior distribution
-        post_key = self.get_key()
-        latent_sampler = Predictive(guide,
-                                    params=params,
-                                    num_samples=num_posterior_samples)
-        latent_samples = jax.device_get(latent_sampler(post_key))
+        # Load posterior samples from a file
+        posterior_samples = jnp.load(posteriors_file)
 
+        # No data specified. Predict using the inputs
+        if data_for_predict is None:
+            data_for_predict = self.model.data
 
-        # Create a sampler that will predict outputs (obs) given those samples
-        forward_sampler = Predictive(self.model.jax_model,
-                                     posterior_samples=latent_samples)
-        forward_sampler = Predictive(model=self.model.jax_model,
-                                     guide=guide,
-                                     params=params,
-                                     num_samples=num_posterior_samples)
+        # Set of predictor class
+        predictor = Predictive(self.model.jax_model, 
+                               posterior_samples=posterior_samples, 
+                               return_sites=predict_sites)
 
-        # Create model kwargs
-        jax_model_kwargs = {"priors":self.model.priors,
-                            "control":self.model.control} 
-
-        # List to hold CPU-side results
-        all_samples_cpu = []
+        # Make predictions
+        predict_key = self.get_key()
+        predictions = predictor(predict_key, 
+                                data=data_for_predict, 
+                                priors=self.model.priors, 
+                                control=self.model.control)
         
-        total_size = self.model.data.num_genotype 
-        for start_idx in range(0, total_size, batch_size):
-            
-            # Create indexes for slicing a batch
-            end_idx = min(start_idx + batch_size, total_size)
-            batch_indices = jnp.arange(start_idx, end_idx)
-
-            # Get a batch of data
-            batch_data = self.model.deterministic_batch(self.model.data,
-                                                        batch_indices)
-            jax_model_kwargs["data"] = batch_data
-
-            # Dispatch the forward pass for this batch.s
-            sample_key = self.get_key()
-            batch_pred = forward_sampler(sample_key, **jax_model_kwargs)
-
-            new_keys = {k: v for k, v in batch_pred.items() if k not in latent_samples}
-
-            # Retrieve results to CPU to free GPU memory for next batch.
-            all_samples_cpu.append(jax.device_get(new_keys))
-
-        # Concatenate samples        
-        final_samples = latent_samples.copy()
-        forward_pass_keys = all_samples_cpu[0].keys()
-
-        for key in forward_pass_keys:
-
-            # Collect all arrays for this key from all batches
-            all_batches_for_key = [batch[key] for batch in all_samples_cpu]
-            
-            # Concatenate along the batch dimension (assumed to be -1)
-            # This matches your original logic.
-            final_samples[key] = np.concatenate(all_batches_for_key, axis=-1)
-
-        self._write_posteriors(final_samples, out_root=out_root)
-
+        return predictions
 
     def get_key(self):
         """
@@ -414,16 +490,50 @@ class RunInference:
 
         new_key, self._main_key = jax.random.split(self._main_key)
         return new_key
+    
 
     def _jitter_init_parameters(self,init_params,init_param_jitter):
+        """
+        Apply multiplicative log-normal jitter to initial parameter values.
+
+        This method perturbs each parameter in the `init_params` dictionary by multiplying
+        it by a log-normal random variable with standard deviation `init_param_jitter`.
+        This is useful for breaking symmetry and improving optimization robustness.
+
+        Parameters
+        ----------
+        init_params : dict
+            Dictionary of initial parameter values, where each value is a scalar or
+            NumPy/JAX array.
+        init_param_jitter : float
+            Standard deviation of the log-normal noise to apply. If set to 0, no jitter
+            is applied and the original parameters are returned.
+
+        Returns
+        -------
+        dict
+            Dictionary of jittered initial parameter values, with the same keys as
+            `init_params`.
+
+        Notes
+        -----
+        The jitter is applied independently to each parameter (and each element if
+        the parameter is an array), using a normal random variable in the exponent:
+        `param = param * exp(noise * init_param_jitter)`, where `noise` is drawn
+        from a standard normal distribution.
+        """
 
         # No jitter requested
         if init_param_jitter == 0:
             return init_params 
 
+        # Go through each parameter
         for p in init_params:
 
+            # Key for randomness
             jitter_key = self.get_key()
+
+            # Get noise of the right dimensionality
             if jnp.isscalar(init_params[p]):
                 noise = jnp.random.normal(jitter_key)
             else:
@@ -495,7 +605,7 @@ class RunInference:
 
     def _write_losses(self,losses,out_root):
         """
-        Atomically write/append losses to a CSV file.
+        Write losses to a binary file. 
 
         Parameters
         ----------
@@ -503,12 +613,10 @@ class RunInference:
             A list of loss values from the recent optimization interval.
         out_root : str
             Root name for the output losses CSV file.
-        step_num : int
-            number of the step this is from
         """
 
         # Name of output file
-        losses_file = f"{out_root}_losses.csv"
+        losses_file = f"{out_root}_losses.bin"
 
         # Delete an existing losses_file if it is here and we are just starting
         # the run. 
@@ -520,18 +628,13 @@ class RunInference:
         if len(losses) == 0:
             return 
 
-        # Build dataframe of lossese
-        losses_df = pd.DataFrame({"loss":np.array(losses,dtype=float)})
+        # Open in append Binary mode
+        with open(losses_file, "ab") as f:
+            np.array(losses).tofile(f)
+            f.flush()
+            os.fsync(f.fileno())
 
-        # Append to existing if it's present
-        if os.path.exists(losses_file):
-            prev_df = pd.read_csv(losses_file)
-            losses_df = pd.concat([prev_df,losses_df],ignore_index=True)
 
-        # Atomic write
-        tmp_loss_file = f"{out_root}_losses.tmp.csv"
-        losses_df.to_csv(tmp_loss_file,index=False)
-        os.replace(tmp_loss_file,losses_file)
 
     def _write_posteriors(self,posterior_samples,out_root):
         """

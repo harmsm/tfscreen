@@ -10,8 +10,8 @@ def _run_map(ri,
              out_root="tfs",
              adam_step_size=1e-6,
              adam_clip_norm=1.0,
-             map_elbo_num_particles=10,
-             map_convergence_tolerance=1e-5,
+             elbo_num_particles=10,
+             convergence_tolerance=1e-5,
              convergence_window=1000,
              checkpoint_interval=1000,
              map_num_steps=100000,
@@ -38,9 +38,9 @@ def _run_map(ri,
         Step size for the Adam optimizer (default 1e-6).
     adam_clip_norm : float, optional
         Gradient clipping norm for Adam optimizer (default 1.0).
-    map_elbo_num_particles : int, optional
+    elbo_num_particles : int, optional
         Number of particles for ELBO estimation during MAP (default 10).
-    map_convergence_tolerance : float, optional
+    convergence_tolerance : float, optional
         Relative change in loss to declare MAP convergence (default 1e-5).
     convergence_window : int, optional
         Number of steps to average for convergence check (default 1000).
@@ -64,7 +64,7 @@ def _run_map(ri,
      # Create a maximum a posteriori svi object
     map_obj = ri.setup_map(adam_step_size=adam_step_size,
                            adam_clip_norm=adam_clip_norm,
-                           elbo_num_particles=map_elbo_num_particles)
+                           elbo_num_particles=elbo_num_particles)
     
     if os.path.isfile(f"{out_root}_losses.csv"):
         os.remove(f"{out_root}_losses.csv")
@@ -75,7 +75,7 @@ def _run_map(ri,
         init_params=init_params, 
         out_root=out_root,
         svi_state=checkpoint_file,
-        convergence_tolerance=map_convergence_tolerance,
+        convergence_tolerance=convergence_tolerance,
         convergence_window=convergence_window,
         checkpoint_interval=checkpoint_interval,
         num_steps=map_num_steps,
@@ -101,13 +101,14 @@ def _run_svi(ri,
              adam_clip_norm=1.0,
              guide_rank=10,
              elbo_num_particles=10,
-             convergence_tolerance=1e-5,
+             convergence_tolerance=1e-7,
              convergence_window=1000,
              checkpoint_interval=1000,
              num_steps=100000,
              batch_size=1024,
              num_posterior_samples=10000,
-             posterior_batch_size=500,
+             sampling_batch_size=100,
+             forward_batch_size=512,
              always_get_posterior=False):
     """
     Run stochastic variational inference (SVI) for hierarchical model inference.
@@ -136,7 +137,7 @@ def _run_svi(ri,
     elbo_num_particles : int, optional
         Number of particles for ELBO estimation during SVI (default 10).
     convergence_tolerance : float, optional
-        Relative change in loss to declare SVI convergence (default 1e-5).
+        Relative change in loss to declare SVI convergence (default 1e-7).
     convergence_window : int, optional
         Number of steps to average for convergence check (default 1000).
     checkpoint_interval : int, optional
@@ -147,8 +148,12 @@ def _run_svi(ri,
         Mini-batch size for optimization (default 1024).
     num_posterior_samples : int, optional
         Number of posterior samples to draw after convergence (default 10000).
-    posterior_batch_size : int, optional
-        Sample parameter posteriors in batches of this size (default 500).
+    sampling_batch_size : int, optional
+        When getting posteriors, sample parameter posteriors in batches of this
+        size (default 100).
+    forward_batch_size : int, optional
+        when getting posteriors, calculate forward predictions in batches of
+        this size (default 512)
     always_get_posterior : bool, optional
         If True, always sample posteriors even if not converged (default False).
 
@@ -168,9 +173,9 @@ def _run_svi(ri,
                            guide_rank=guide_rank,
                            elbo_num_particles=elbo_num_particles,
                            init_params=init_params)
-    
+ 
     # Run svi
-    svi_state, svi_params, converged = ri.run_optimization(
+    svi_state, params, converged = ri.run_optimization(
         svi_obj,
         init_params=None, # init_params captured during svi_obj initialization
         out_root=f"{out_root}",
@@ -187,13 +192,16 @@ def _run_svi(ri,
                           svi_state=svi_state,
                           out_root=out_root,
                           num_posterior_samples=num_posterior_samples,
-                          batch_size=posterior_batch_size)
+                          sampling_batch_size=sampling_batch_size,
+                          forward_batch_size=forward_batch_size)
         
     # Write convergence information to stdout
     if converged:
         print("SVI run converged.",flush=True)
     else:
         print("SVI run has not yet converged.",flush=True)
+    
+    return svi_state, params, converged
 
     
 def analyze_theta(growth_df,
@@ -213,13 +221,14 @@ def analyze_theta(growth_df,
                   adam_clip_norm=1.0,
                   guide_rank=10,
                   elbo_num_particles=10,
-                  convergence_tolerance=1e-5,
-                  convergence_window=1000,
-                  checkpoint_interval=1000,
+                  convergence_tolerance=1e-6,
+                  convergence_window=10000,
+                  checkpoint_interval=10000,
                   num_steps=100000,
                   batch_size=1024,
                   num_posterior_samples=10000,
-                  posterior_batch_size=500,
+                  sampling_batch_size=100,
+                  forward_batch_size=512,
                   always_get_posterior=False):
     """
     Run the joint hierarchical growth model to extract estimates of
@@ -227,11 +236,10 @@ def analyze_theta(growth_df,
     parameters using Stochastic Variational Inference (SVI) or maximum a
     posteriori (MAP) approaches. 
 
-    The default runs MAP for the specified number of iterations to get
-    reasonable starting guesses, then SVI until convergence. This writes
-    checkpoints, checks for convergence, and writes posterior samples, and
-    finally returns the last SVI state, parameters, and convergence status. It
-    can also restart from a checkpoint file. 
+    The default is SVI. This writes checkpoints, checks for convergence, and
+    writes posterior samples, and finally returns the last SVI state,
+    parameters, and convergence status. The function can also restart from a
+    checkpoint file. 
 
     Parameters
     ----------
@@ -294,14 +302,12 @@ def analyze_theta(growth_df,
         Mini-batch size for optimization (default 1024).
     num_posterior_samples : int, optional
         Number of posterior samples to draw after convergence (default 10000).
-    posterior_batch_size : int, optional
-        Sample parameter posteriors in batches of this size (default 500)
-    map_elbo_num_particles : int, optional
-        Number of particles for MAP ELBO estimation (default 1).
-    map_convergence_tolerance : float or None, optional
-        Convergence tolerance for MAP optimization (default None).
-    map_num_steps : int, optional
-        Number of MAP optimization steps (default 100000).
+    sampling_batch_size : int, optional
+        When getting posteriors, sample parameter posteriors in batches of this
+        size (default 100).
+    forward_batch_size : int, optional
+        when getting posteriors, calculate forward predictions in batches of
+        this size (default 512)
     always_get_posterior : bool, optional
         If True, always sample posteriors even if not converged (default False).
 
@@ -353,7 +359,8 @@ def analyze_theta(growth_df,
                         num_steps=num_steps,
                         batch_size=batch_size,
                         num_posterior_samples=num_posterior_samples,
-                        posterior_batch_size=posterior_batch_size,
+                        sampling_batch_size=sampling_batch_size,
+                        forward_batch_size=forward_batch_size,
                         always_get_posterior=always_get_posterior)
     
     # Run MAP
@@ -371,7 +378,27 @@ def analyze_theta(growth_df,
                         checkpoint_interval=checkpoint_interval,
                         map_num_steps=num_steps,
                         batch_size=batch_size)
-        
+    
+    elif analysis_method == "posterior":
+
+        return _run_svi(ri,
+                        init_params=None,
+                        checkpoint_file=checkpoint_file,
+                        out_root=out_root,
+                        adam_step_size=adam_step_size,
+                        adam_clip_norm=adam_clip_norm,
+                        guide_rank=guide_rank,
+                        elbo_num_particles=elbo_num_particles,
+                        convergence_tolerance=convergence_tolerance,
+                        convergence_window=convergence_window,
+                        checkpoint_interval=checkpoint_interval,
+                        num_steps=0, # Don't do any optimization
+                        batch_size=batch_size,
+                        num_posterior_samples=num_posterior_samples,
+                        sampling_batch_size=sampling_batch_size,
+                        forward_batch_size=forward_batch_size,
+                        always_get_posterior=True) # Force grabbing the posterior
+
     # Not recognized
     else:
         raise ValueError(
@@ -384,5 +411,4 @@ def main():
 
     return generalized_main(analyze_theta,
                             manual_arg_types={"seed":int,
-                                              "checkpoint_file":str,
-                                              "map_convergence_tolerance":float})
+                                              "checkpoint_file":str})

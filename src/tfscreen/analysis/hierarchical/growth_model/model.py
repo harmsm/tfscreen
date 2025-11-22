@@ -32,6 +32,7 @@ from .data_class import (
 )
 
 import jax.numpy as jnp
+import numpyro as pyro
 from typing import Dict
 
 
@@ -367,6 +368,9 @@ def jax_model(data: DataClass, priors: PriorsClass, control: ControlClass):
     # predict ln_cfu and binding
     ln_cfu_pred = _define_growth(data,priors,control,theta)
     binding_pred = _define_binding(data,priors,control,theta)
+
+    pyro.deterministic(f"growth_pred",ln_cfu_pred)
+    pyro.deterministic(f"binding_pred",binding_pred)
 
     # make final observations
     observe_growth("final_obs",data.growth,ln_cfu_pred)

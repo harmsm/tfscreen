@@ -74,7 +74,6 @@ class DataClass:
     Pytree.
     """
     
-    #growth_to_binding_idx: jnp.ndarray
     num_genotype: int = field(pytree_node=False)
 
     # This will be a GrowthData and BindingData

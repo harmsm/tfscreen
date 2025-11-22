@@ -73,7 +73,6 @@ def _read_growth_df(growth_df,
     pd.DataFrame
         A copy of the processed growth DataFrame with new group columns.
     """
-
     
     # Get default theta_group columns
     if theta_group_cols is None:
@@ -294,7 +293,6 @@ def _read_binding_df(binding_df,
     required.extend(["theta_obs","theta_std","titrant_conc"])
     tfscreen.util.check_columns(binding_df,required_columns=required)
 
-        
     # This map will map back to the theta groups in existing_df, letting us
     # grab the same theta_groups from this binding_df and whatever was in 
     # existing_df. 
@@ -409,6 +407,82 @@ def _get_wt_info(tm):
 
     return out
 
+def _extract_param_est(input_df,
+                       params_to_get,
+                       map_column,
+                       get_columns,
+                       in_run_prefix,
+                       param_posteriors,
+                       q_to_get):
+    """
+    Extract parameter estimates and quantiles from posterior samples.
+
+    This function creates a DataFrame for each parameter in `params_to_get`, mapping
+    parameter indices to metadata columns, and fills in quantile columns for each
+    requested quantile in `q_to_get` using the posterior samples in `param_posteriors`.
+
+    Parameters
+    ----------
+    input_df : pandas.DataFrame
+        DataFrame containing metadata and mapping columns for the parameters.
+    params_to_get : list of str
+        List of parameter names to extract from the posterior samples.
+    map_column : str
+        Name of the column in `input_df` that maps rows to parameter indices.
+    get_columns : list of str
+        List of metadata columns to include in the output DataFrame.
+    in_run_prefix : str
+        Prefix to prepend to parameter names when looking them up in `param_posteriors`.
+    param_posteriors : dict
+        Dictionary mapping parameter names (with prefix) to posterior samples,
+        where each value is a NumPy array of shape (num_samples, num_params).
+    q_to_get : dict
+        Dictionary mapping output column names to quantile values (between 0 and 1)
+        to extract from the posterior samples.
+
+    Returns
+    -------
+    out_dfs : dict
+        Dictionary mapping each parameter name to a DataFrame containing the
+        requested quantiles for each parameter, with metadata columns.
+
+    Raises
+    ------
+    KeyError
+        If a requested parameter or quantile is not found in `param_posteriors`.
+    """
+    # Create dataframe with unique rows for map_column that has columns 
+    # get_columns + map_column. Rows will be sorted by map_column. 
+    get_columns.append(map_column)
+    df = (input_df
+          .drop_duplicates(map_column)[get_columns]
+          .sort_values(map_column)
+          .reset_index(drop=True)
+          .copy())
+
+    # Go through all parameters requested
+    out_dfs = {}
+    for param in params_to_get:
+
+        # Grab the posterior distribution of this parameters and flatten. 
+        model_param = f"{in_run_prefix}{param}"
+        flat_param = (param_posteriors[model_param].reshape(param_posteriors[model_param].shape[0],-1))
+
+        # Create dataframe for loading the data
+        to_write = df.copy()
+
+        # Go through quantiles
+        for q_name in q_to_get:
+
+            # Calculate quantile and load into the output dataframe
+            q = np.quantile(flat_param,q_to_get[q_name],axis=0)
+            q_map = dict(zip(np.arange(len(q),dtype=int),q))
+            to_write[q_name] = to_write[map_column].map(q_map)
+
+        # Record the final dataframe
+        out_dfs[param] = to_write.drop(columns=[map_column])
+    
+    return out_dfs
     
 class ModelClass:
     """
@@ -422,9 +496,9 @@ class ModelClass:
 
     Parameters
     ----------
-    ln_cfu_df : pd.DataFrame or str
+    growth_df : pd.DataFrame or str
         DataFrame or path to file with growth data.
-    theta_obs_df : pd.DataFrame or str
+    binding_df : pd.DataFrame or str
         DataFrame or path to file with binding data.
     condition_growth : str, optional
         Model name for condition-specific growth.
@@ -458,8 +532,8 @@ class ModelClass:
     """
 
     def __init__(self,
-                 ln_cfu_df,
-                 theta_obs_df,
+                 growth_df,
+                 binding_df,
                  condition_growth="hierarchical",
                  ln_cfu0="hierarchical",
                  dk_geno="hierarchical",
@@ -468,8 +542,8 @@ class ModelClass:
                  theta_growth_noise="beta",
                  theta_binding_noise="beta"):
 
-        self._ln_cfu_df = ln_cfu_df
-        self._theta_obs_df = theta_obs_df
+        self._ln_cfu_df = growth_df
+        self._binding_df = binding_df
 
         self._condition_growth = condition_growth
         self._ln_cfu0 = ln_cfu0
@@ -492,10 +566,9 @@ class ModelClass:
         2.  Calls `_read_binding_df` and `_build_binding_tm`, passing the
             growth data to ensure map consistency.
         3.  Extracts tensors and metadata from the TensorManagers.
-        4.  Generates the `growth_to_binding_idx` map.
-        5.  Uses `populate_dataclass` to build the `GrowthData`, `BindingData`,
+        4.  Uses `populate_dataclass` to build the `GrowthData`, `BindingData`,
             and final `DataClass` Pytrees.
-        6.  Sets the final `self._data` attribute.
+        5.  Sets the final `self._data` attribute.
         """
         # ---------------------------------------------------------------------
         # growth dataclass
@@ -550,7 +623,7 @@ class ModelClass:
         # only (titrant_conc,theta_group). Use the growth tensor manager to
         # make sure that the mapping to parameters matches between the growth 
         # and the binding data. 
-        self.binding_df = _read_binding_df(self._theta_obs_df,
+        self.binding_df = _read_binding_df(self._binding_df,
                                            existing_df=self.growth_tm.df)
         self.binding_tm = _build_binding_tm(self.binding_df)
 
@@ -568,18 +641,10 @@ class ModelClass:
         
         # ---------------------------------------------------------------------
         # combined dataclass
-
-        # Build a map for batch sampling on binding data. 
-        N = np.max(self.growth_df["map_theta_group"]) + 1
-        binding_values = pd.unique(self.binding_df["map_theta_group"]).astype(int)
-        growth_to_binding_idx = np.full(N,-1,dtype=int)
-        growth_to_binding_idx[binding_values] = np.arange(len(binding_values),dtype=int)
-        growth_to_binding_idx = jnp.array(growth_to_binding_idx,dtype=int)
         
         source_data = {"growth":growth_dataclass,
                        "binding":binding_dataclass,
-                       "num_genotype":self.growth_tm.tensor_shape[-1],
-                       "growth_to_binding_idx":growth_to_binding_idx}
+                       "num_genotype":self.growth_tm.tensor_shape[-1]}
 
         # Build the aggregated `DataClass` flax dataclass with the growth
         # and binding dataclasses. Expose as a model attribute. 
@@ -669,6 +734,144 @@ class ModelClass:
         self._priors = priors
         self._init_params = init_params
     
+    def extract_parameters(self,
+                           posterior_file,
+                           q_to_get=None):
+        """
+        Extract parameter quantiles from a posterior sample file.
+
+        This method loads posterior samples from a file and extracts specified
+        quantiles for each model parameter of interest, returning a dictionary
+        of DataFrames with parameter estimates and associated metadata.
+
+        Parameters
+        ----------
+        posterior_file : str
+            Path to a .npz file containing posterior samples for model parameters.
+        q_to_get : dict, optional
+            Dictionary mapping output column names to quantile values (between 0 and 1)
+            to extract from the posterior samples. If None, a default set of quantiles
+            is used (min, lower_95, lower_std, lower_quartile, median, upper_std,
+            upper_quartile, upper_95, max).
+
+        Returns
+        -------
+        params : dict
+            Dictionary mapping parameter names to DataFrames containing the requested
+            quantiles and metadata columns for each parameter.
+
+        Raises
+        ------
+        ValueError
+            If `q_to_get` is not a dictionary.
+        """
+
+        # Load the posterior file
+        param_posteriors = np.load(posterior_file)
+
+        # Named quantiles to pull from the posterior distribution
+        if q_to_get is None:
+            q_to_get = {"min":0.0,
+                        "lower_95":0.025,
+                        "lower_std":0.159,
+                        "lower_quartile":0.25,
+                        "median":0.5,
+                        "upper_std":0.659,
+                        "upper_quartile":0.75,
+                        "upper_95":0.975,
+                        "max":1.0}
+            
+        # make sure q_to_get is a dictionary
+        if not isinstance(q_to_get,dict):
+            raise ValueError(
+                "q_to_get should be a dictionary keying column names to quantiles"
+            )
+
+        # Define how to go about constructing dataframes to store the parameter
+        # estimates. 
+        extract = []
+
+        # theta
+        if self._theta == "hill":
+            extract.append(
+                dict(
+                    input_df = self.growth_theta_tm.df,
+                    params_to_get = ["hill_n","log_hill_K","theta_max","theta_min"],
+                    map_column = "map_theta_group",
+                    get_columns = ["genotype","titrant_name"],
+                    in_run_prefix = "theta_"
+                )
+            )
+        elif self._theta == "categorical":
+            extract.append(
+                dict(
+                    input_df = self.growth_theta_tm.df,
+                    params_to_get = ["theta"],
+                    map_column = "map_theta",
+                    get_columns = ["genotype","titrant_name","titrant_conc"],
+                    in_run_prefix = "theta_"
+                )
+            )
+        
+        # condition
+        if self._condition_growth in ["independent","hierarchical"]:
+            extract.append(
+                dict(
+                    input_df = self.growth_tm.map_groups['condition'],
+                    params_to_get = ["growth_m","growth_k"],
+                    map_column = "map_condition",
+                    get_columns = ["replicate","condition"],
+                    in_run_prefix = "condition_"
+                )
+            )
+
+        # ln_cfu0
+        if self._dk_geno == "hierarchical":
+            extract.append(
+                dict(
+                    input_df = self.growth_tm.df,
+                    params_to_get = ["ln_cfu0"],
+                    map_column = "map_ln_cfu0",
+                    get_columns = ["replicate","condition_pre","genotype"],
+                    in_run_prefix = ""
+                )
+            )
+
+        # dk_geno
+        if self._dk_geno == "none":
+            pass
+        elif self._dk_geno == "hierarchical":
+            extract.append(
+                dict(
+                    input_df = self.growth_tm.df,
+                    params_to_get = ["dk_geno"],
+                    map_column = "map_genotype",
+                    get_columns = ["genotype"],
+                    in_run_prefix = ""
+                )
+            )
+
+        # activity
+        if self._activity == "fixed":
+            pass
+        elif self._activity in ["hierarchical","horseshoe"]:
+            dict(
+                    input_df = self.growth_theta_tm.df,
+                    params_to_get = ["activity"],
+                    map_column = "map_genotype",
+                    get_columns = ["genotype"],
+                    in_run_prefix = ""
+                )
+
+        params = {}
+        for kwargs in extract:
+            params.update(_extract_param_est(param_posteriors=param_posteriors,
+                                             q_to_get=q_to_get,
+                                             **kwargs))
+
+        return params
+
+
     @property
     def init_params(self):
         """A dictionary of initial parameter guesses for optimization."""
