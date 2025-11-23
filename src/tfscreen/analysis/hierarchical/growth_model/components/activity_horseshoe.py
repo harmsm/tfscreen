@@ -139,7 +139,7 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
 
     guesses = {}
     guesses[f"{name}_global_scale"] = 0.1
-    guesses[f"{name}_local_scale"] = jnp.zeros(data.num_not_wt)
+    guesses[f"{name}_local_scale"] = jnp.ones(data.num_not_wt)*0.1
     guesses[f"{name}_offset"] = jnp.zeros(data.num_not_wt)
 
     return guesses
