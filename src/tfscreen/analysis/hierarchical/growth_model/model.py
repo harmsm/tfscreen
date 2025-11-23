@@ -352,7 +352,7 @@ def jax_model(data: DataClass, priors: PriorsClass, control: ControlClass):
     # Define theta
     if control.theta == 0:
         theta = define_theta_cat("theta",
-                                 data,
+                                 data.growth,
                                  priors.theta)
     elif control.theta == 1:
         # passing data.growth enforces it as the source of truth for the 

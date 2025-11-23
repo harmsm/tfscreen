@@ -537,10 +537,10 @@ class ModelClass:
                  condition_growth="hierarchical",
                  ln_cfu0="hierarchical",
                  dk_geno="hierarchical",
-                 activity="fixed",
+                 activity="horseshoe",
                  theta="hill",
-                 theta_growth_noise="beta",
-                 theta_binding_noise="beta"):
+                 theta_growth_noise="none",
+                 theta_binding_noise="none"):
 
         self._ln_cfu_df = growth_df
         self._binding_df = binding_df
@@ -735,19 +735,21 @@ class ModelClass:
         self._init_params = init_params
     
     def extract_parameters(self,
-                           posterior_file,
+                           posteriors,
                            q_to_get=None):
         """
-        Extract parameter quantiles from a posterior sample file.
+        Extract parameter quantiles from posterior samples.
 
-        This method loads posterior samples from a file and extracts specified
-        quantiles for each model parameter of interest, returning a dictionary
-        of DataFrames with parameter estimates and associated metadata.
+        This method extracts specified quantiles for each model parameter of
+        interest, returning a dictionary of DataFrames with parameter estimates
+        and associated metadata.
 
         Parameters
         ----------
-        posterior_file : str
-            Path to a .npz file containing posterior samples for model parameters.
+        posteriors : dict or str
+            Assumes this is a dictionary of posteriors keying parameters to 
+            numpy arrays or a path to a .npz file containing posterior samples
+            for model parameters.
         q_to_get : dict, optional
             Dictionary mapping output column names to quantile values (between 0 and 1)
             to extract from the posterior samples. If None, a default set of quantiles
@@ -767,7 +769,11 @@ class ModelClass:
         """
 
         # Load the posterior file
-        param_posteriors = np.load(posterior_file)
+        if isinstance(posteriors,dict):
+            param_posteriors = posteriors
+        else:
+            param_posteriors = np.load(posteriors)
+        
 
         # Named quantiles to pull from the posterior distribution
         if q_to_get is None:
@@ -796,7 +802,7 @@ class ModelClass:
             extract.append(
                 dict(
                     input_df = self.growth_theta_tm.df,
-                    params_to_get = ["hill_n","log_hill_K","theta_max","theta_min"],
+                    params_to_get = ["hill_n","log_hill_K","theta_high","theta_low"],
                     map_column = "map_theta_group",
                     get_columns = ["genotype","titrant_name"],
                     in_run_prefix = "theta_"
@@ -855,13 +861,15 @@ class ModelClass:
         if self._activity == "fixed":
             pass
         elif self._activity in ["hierarchical","horseshoe"]:
-            dict(
-                    input_df = self.growth_theta_tm.df,
+            extract.append(
+                dict(
+                    input_df = self.growth_tm.df,
                     params_to_get = ["activity"],
                     map_column = "map_genotype",
                     get_columns = ["genotype"],
                     in_run_prefix = ""
                 )
+            )
 
         params = {}
         for kwargs in extract:
