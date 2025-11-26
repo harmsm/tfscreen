@@ -43,6 +43,8 @@ def observe(name: str, data: GrowthData, ln_cfu_pred: jnp.ndarray):
     # Get batch size from the subsampled data tensor
     batch_size = data.ln_cfu.shape[-1] 
 
+    nu = pyro.sample(f"{name}_nu", dist.Gamma(2.0, 0.1))
+
     # Growth observation
     with pyro.plate(f"{name}_replicate", size=data.num_replicate, dim=-4):
         with pyro.plate(f"{name}_time", size=data.num_time, dim=-3):
@@ -59,5 +61,6 @@ def observe(name: str, data: GrowthData, ln_cfu_pred: jnp.ndarray):
                         
                         # Define the observation site
                         pyro.sample(f"{name}_growth_obs",
-                                    dist.Normal(ln_cfu_pred, data.ln_cfu_std),
+                                    dist.StudentT(df=nu, loc=ln_cfu_pred, scale=data.ln_cfu_std),
+                                    #dist.Normal(ln_cfu_pred, data.ln_cfu_std),
                                     obs=data.ln_cfu)

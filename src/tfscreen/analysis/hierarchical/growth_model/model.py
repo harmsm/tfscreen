@@ -3,6 +3,7 @@ from . import components
 
 from .components.growth_independent import define_model as define_growth_independent
 from .components.growth_hierarchical import define_model as define_growth_hierarchical
+from .components.growth_fixed import define_model as define_growth_fixed
 
 from .components.ln_cfu0 import define_model as define_ln_cfu0
 
@@ -35,9 +36,9 @@ import jax.numpy as jnp
 import numpyro as pyro
 from typing import Dict
 
-
 CONDITION_GROWTH_INDEPENDENT = 0
 CONDITION_GROWTH_HIERARCHICAL = 1
+CONDITION_GROWTH_FIXED = 2
 LN_CFU0_HIERARCHICAL = 0
 DK_GENO_FIXED = 0
 DK_GENO_HIERARCHICAL = 1
@@ -56,7 +57,9 @@ MODEL_COMPONENT_NAMES = {
         "independent":(CONDITION_GROWTH_INDEPENDENT,
                        components.growth_independent),
         "hierarchical":(CONDITION_GROWTH_HIERARCHICAL,
-                        components.growth_hierarchical)
+                        components.growth_hierarchical),
+        "fixed":(CONDITION_GROWTH_FIXED,
+                   components.growth_fixed)
     },
     "ln_cfu0":{
         "hierarchical":(LN_CFU0_HIERARCHICAL,
@@ -180,6 +183,10 @@ def _define_growth(data: DataClass,
         k_pre, m_pre, k_sel, m_sel = define_growth_hierarchical("condition_growth",
                                                                 data.growth,
                                                                 priors.growth.condition_growth)
+    elif control.condition_growth == CONDITION_GROWTH_FIXED:
+        k_pre, m_pre, k_sel, m_sel = define_growth_fixed("condition_growth",
+                                                         data.growth,
+                                                         priors.growth.condition_growth)
     else:
         raise ValueError (
             f"condition_growth selection {control.condition_growth} is invalid"

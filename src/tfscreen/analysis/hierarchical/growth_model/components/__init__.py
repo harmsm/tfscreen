@@ -1,6 +1,7 @@
 
 from . import growth_independent
 from . import growth_hierarchical
+from . import growth_fixed
 
 from . import activity_fixed
 from . import activity_hierarchical
