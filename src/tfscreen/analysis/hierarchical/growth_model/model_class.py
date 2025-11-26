@@ -336,7 +336,7 @@ def _build_binding_tm(binding_df):
     binding_df["pivot_titrant_conc"] = binding_df["titrant_conc"]
 
     # Create tensor manager
-    binding_tm = tfscreen.analysis.hierarchical.TensorManager(binding_df)
+    binding_tm = TensorManager(binding_df)
 
     # Add pivots on titrant_conc and theta_group to create [num_titrant,num_theta_group]
     # output tensors
@@ -476,8 +476,7 @@ def _extract_param_est(input_df,
 
             # Calculate quantile and load into the output dataframe
             q = np.quantile(flat_param,q_to_get[q_name],axis=0)
-            q_map = dict(zip(np.arange(len(q),dtype=int),q))
-            to_write[q_name] = to_write[map_column].map(q_map)
+            to_write[q_name] = q[to_write[map_column].values]
 
         # Record the final dataframe
         out_dfs[param] = to_write.drop(columns=[map_column])
@@ -696,6 +695,12 @@ class ModelClass:
     
             key, value, prior_group = to_load
     
+            if key not in MODEL_COMPONENT_NAMES:
+                raise ValueError(
+                    f"{key} is not in MODEL_COMPONENT_NAMES. "
+                    f"It should be one of: {list(MODEL_COMPONENT_NAMES.keys())}"
+                )
+
             if value not in MODEL_COMPONENT_NAMES[key]:
                 raise ValueError(
                     f"{key} '{value}' not recognized. "

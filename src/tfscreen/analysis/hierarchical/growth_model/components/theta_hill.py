@@ -318,10 +318,10 @@ def get_guesses(name: str, data: DataClass) -> Dict[str, Any]:
     guesses[f"{name}_log_hill_n_hyper_loc"] = 0.7
     guesses[f"{name}_log_hill_n_hyper_scale"] = 0.3
 
-    guesses[f"{name}_logit_low_offset"] = jnp.ones((data.num_titrant_name,data.num_genotype))*2.0
-    guesses[f"{name}_logit_delta_offset"] = jnp.ones((data.num_titrant_name,data.num_genotype))*-4.0
-    guesses[f"{name}_log_hill_K_offset"] = jnp.ones((data.num_titrant_name,data.num_genotype))*(-4.1) #ln(0.017 mM)
-    guesses[f"{name}_log_hill_n_offset"] = jnp.ones((data.num_titrant_name,data.num_genotype))*0.7
+    guesses[f"{name}_logit_low_offset"] = jnp.zeros((data.num_titrant_name,data.num_genotype))
+    guesses[f"{name}_logit_delta_offset"] = jnp.zeros((data.num_titrant_name,data.num_genotype))
+    guesses[f"{name}_log_hill_K_offset"] = jnp.zeros((data.num_titrant_name,data.num_genotype))
+    guesses[f"{name}_log_hill_n_offset"] = jnp.zeros((data.num_titrant_name,data.num_genotype))
 
     return guesses
 

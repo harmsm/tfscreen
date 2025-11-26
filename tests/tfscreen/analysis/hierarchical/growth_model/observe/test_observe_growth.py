@@ -1,9 +1,8 @@
 import pytest
 import jax
 import jax.numpy as jnp
-import numpyro
 import numpyro.distributions as dist
-from numpyro.handlers import trace, seed
+from numpyro.handlers import trace, seed, substitute
 from collections import namedtuple
 
 # --- Import Module Under Test (MUT) ---
@@ -11,14 +10,13 @@ from tfscreen.analysis.hierarchical.growth_model.observe.growth import observe
 
 # --- Mock Data Fixture ---
 
-# A mock data object that provides the fields observe needs
 MockGrowthData = namedtuple("MockGrowthData", [
     "ln_cfu",
     "ln_cfu_std",
     "num_replicate",
     "num_time",
     "num_treatment",
-    "num_genotype", # This is the *total* genotype size
+    "num_genotype", 
     "good_mask"
 ])
 
@@ -26,94 +24,149 @@ MockGrowthData = namedtuple("MockGrowthData", [
 def mock_data():
     """
     Provides mock data for the growth observation.
-    - Full shape: (2 reps, 1 time, 2 treatments, 10 total genotypes)
-    - Batch shape: (2 reps, 1 time, 2 treatments, 4 batch genotypes)
-    """
-    # Define full and batch shapes
-    full_shape = (2, 1, 2, 10) # (rep, time, treat, genotype_total)
-    batch_shape = (2, 1, 2, 4) # (rep, time, treat, genotype_batch)
     
-    # Create a mask where half the data is good (True)
+    Dimensions:
+    - 2 replicates
+    - 1 time
+    - 2 treatments
+    - Batch of 4 genotypes (representing a Total of 100)
+    """
+    # Define shapes
+    batch_shape = (2, 1, 2, 4) # (rep, time, treat, genotype_batch)
+    total_genotypes = 100      # The full size of the dataset
+    
+    # Create a mask where one specific entry is Bad (False)
     mask_array = jnp.ones(batch_shape, dtype=bool)
-    mask_array = mask_array.at[0, :, :, :].set(False) # Mask first replicate
+    # Mark (rep=0, time=0, treat=0, gene=0) as bad
+    mask_array = mask_array.at[0, 0, 0, 0].set(False)
     
     return MockGrowthData(
         ln_cfu=jnp.ones(batch_shape) * 5.0,
         ln_cfu_std=jnp.ones(batch_shape) * 0.2,
-        num_replicate=full_shape[0],
-        num_time=full_shape[1],
-        num_treatment=full_shape[2],
-        num_genotype=full_shape[3], # Total size
+        num_replicate=batch_shape[0],
+        num_time=batch_shape[1],
+        num_treatment=batch_shape[2],
+        num_genotype=total_genotypes, 
         good_mask=mask_array
     )
 
-def test_observe_growth_site_with_subsampling(mock_data):
+def test_observe_structure_and_distribution(mock_data):
     """
-    Tests that the 'observe' function creates the correct observation site,
-    handling both masking and subsampling.
-    - Checks the site name, type, and parameters (mean, std).
-    - Checks that the observation mask is correctly applied.
-    - Checks that the subsample plate is correctly registered.
+    Verifies the site names, distribution types, and shapes.
     """
     name = "test"
+    ln_cfu_pred = jnp.ones_like(mock_data.ln_cfu) * 5.0
+    rng_key = jax.random.PRNGKey(0)
 
-    # Create a mock prediction tensor (must match batch shape)
-    ln_cfu_pred = jnp.ones_like(mock_data.ln_cfu) * 4.9
-
-    # --- ADD RNG KEY ---
-    rng_key = jax.random.PRNGKey(42)
-
-    # --- Trace the execution (WRAPPED IN SEED) ---
+    # trace the model
     model_trace = trace(seed(observe, rng_key)).get_trace(
         name=name,
         data=mock_data,
         ln_cfu_pred=ln_cfu_pred
     )
 
-    # --- 1. Check for the Observation Site ---
-    obs_site_name = f"{name}_growth_obs"
-    assert obs_site_name in model_trace
+    # 1. Check 'nu' parameter
+    nu_name = f"{name}_nu"
+    assert nu_name in model_trace
+    # FIXED: Check instance type directly, not .base_dist
+    assert isinstance(model_trace[nu_name]["fn"], dist.Gamma)
 
-    site = model_trace[obs_site_name]
+    # 2. Check Observation Site
+    obs_name = f"{name}_growth_obs"
+    assert obs_name in model_trace
+    site = model_trace[obs_name]
     
-    # --- 2. Check Site Properties ---
-    assert site["type"] == "sample"
     assert site["is_observed"]
-    
-    # --- 3. Check Subsampling ---
-    # The 'genotype' plate should be marked as a subsample
-    genotype_plate = model_trace[f"{name}_genotype"]
-    assert genotype_plate["type"] == "plate"
-    
-    # The 'args' tuple in the trace stores (size, subsample_size)
-    assert "args" in genotype_plate
-    
-    expected_size = mock_data.num_genotype
-    expected_subsample_size = mock_data.ln_cfu.shape[-1]
-    
-    assert genotype_plate["args"] == (expected_size, expected_subsample_size)
-        
-    # --- 4. Check Distribution and Parameters ---
-    # The distribution is wrapped in MaskedDistribution
     assert isinstance(site["fn"], dist.MaskedDistribution)
-    dist_obj = site["fn"].base_dist
-    assert isinstance(dist_obj, dist.Normal)
-    
-    # Check that the predicted mean was passed correctly
-    assert jnp.all(dist_obj.loc == ln_cfu_pred)
-    # Check that the standard deviation was passed correctly
-    assert jnp.all(dist_obj.scale == mock_data.ln_cfu_std)
-    
-    # Check that the observations were passed correctly
-    assert jnp.all(site["value"] == mock_data.ln_cfu)
-    
-    # --- 5. Check Masking and Log Prob ---
-    
-    # We can manually compute the log_prob and check the mask's effect.
-    actual_log_prob = jnp.sum(site["fn"].log_prob(site["value"]))
+    assert isinstance(site["fn"].base_dist, dist.StudentT)
 
-    # Calculate expected log_prob
-    unmasked_log_prob = dist.Normal(ln_cfu_pred, mock_data.ln_cfu_std).log_prob(mock_data.ln_cfu)
-    expected_log_prob = jnp.sum(unmasked_log_prob[mock_data.good_mask])
+    # 3. Check shapes match input
+    assert site["value"].shape == mock_data.ln_cfu.shape
+
+def test_observe_subsampling_scaling(mock_data):
+    """
+    CRITICAL: Verifies that the log_prob is correctly scaled.
     
-    assert jnp.isclose(actual_log_prob, expected_log_prob)
+    When subsampling, the log_prob of the batch should be multiplied by:
+    (Total Size / Batch Size).
+    """
+    name = "test"
+    ln_cfu_pred = jnp.ones_like(mock_data.ln_cfu) * 5.0 # Pred = Obs = 5.0
+    
+    # Fix 'nu' to a known value (e.g., 10.0) so math is deterministic
+    fixed_nu = 10.0
+    conditioned_model = substitute(observe, data={f"{name}_nu": fixed_nu})
+    
+    # Subsampling plates require an RNG key.
+    rng_key = jax.random.PRNGKey(1)
+    
+    # Trace
+    model_trace = trace(seed(conditioned_model, rng_key)).get_trace(
+        name=name,
+        data=mock_data,
+        ln_cfu_pred=ln_cfu_pred
+    )
+    
+    # Get the observation site
+    site = model_trace[f"{name}_growth_obs"]
+    
+    # 1. Calculate Unscaled Log Prob manually
+    base_dist = dist.StudentT(df=fixed_nu, loc=ln_cfu_pred, scale=mock_data.ln_cfu_std)
+    log_probs = base_dist.log_prob(mock_data.ln_cfu)
+    
+    # Apply Mask
+    masked_log_probs = jnp.where(mock_data.good_mask, log_probs, 0.0)
+    sum_log_prob_batch = jnp.sum(masked_log_probs)
+    
+    # 2. Calculate Expected Scaled Log Prob
+    batch_size = mock_data.ln_cfu.shape[-1]
+    scale_factor = mock_data.num_genotype / batch_size # 100 / 4 = 25.0
+    
+    # 3. Compare with NumPyro's calculation
+    # The 'scale' property of the *sample site* holds the computed scale factor
+    # derived from the active plate contexts.
+    site_scale = site["scale"]
+    
+    # Verify the observation site has the correct scaling factor applied
+    assert site_scale == scale_factor
+
+    # Verify the unscaled log probability calculated by NumPyro matches ours
+    trace_log_prob = site["fn"].log_prob(site["value"])
+    assert jnp.allclose(jnp.sum(trace_log_prob), sum_log_prob_batch)
+
+def test_observe_masking_logic(mock_data):
+    """
+    Verifies that masked data points do not contribute to the likelihood.
+    """
+    name = "test"
+    
+    # Create a prediction that is WAY OFF for the masked point.
+    ln_cfu_pred = jnp.ones_like(mock_data.ln_cfu) * 5.0
+    
+    # The masked point is at [0,0,0,0]. Let's make prediction there terrible.
+    # Obs=5.0, Pred=1000.0
+    ln_cfu_pred = ln_cfu_pred.at[0, 0, 0, 0].set(1000.0)
+
+    # Run model with fixed nu
+    fixed_nu = 30.0
+    conditioned_model = substitute(observe, data={f"{name}_nu": fixed_nu})
+    
+    # FIXED: Added seed handler.
+    rng_key = jax.random.PRNGKey(2)
+    
+    model_trace = trace(seed(conditioned_model, rng_key)).get_trace(
+        name=name,
+        data=mock_data,
+        ln_cfu_pred=ln_cfu_pred
+    )
+    
+    site = model_trace[f"{name}_growth_obs"]
+    log_probs = site["fn"].log_prob(site["value"])
+    
+    # Check the specific index [0,0,0,0]
+    # It should be 0.0 because of the mask
+    assert log_probs[0, 0, 0, 0] == 0.0
+    
+    # Check a valid index [0,0,0,1]
+    # It should be non-zero
+    assert log_probs[0, 0, 0, 1] != 0.0

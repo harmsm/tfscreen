@@ -216,8 +216,8 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
     guesses[f"{name}_m_hyper_loc"] = jnp.ones(hyper_shape) * 1.0
     guesses[f"{name}_m_hyper_scale"] = jnp.ones(hyper_shape) * 0.1
     
-    guesses[f"{name}_k_offset"] = jnp.ones(shape) * 0.1
-    guesses[f"{name}_m_offset"] = jnp.ones(shape) * 0.1
+    guesses[f"{name}_k_offset"] = jnp.zeros(shape)
+    guesses[f"{name}_m_offset"] = jnp.zeros(shape)
 
     return guesses
 
