@@ -529,7 +529,7 @@ def _sim_transform(
     return transformants, plasmid_mask
 
 def _sim_transform_and_mix(
-    lib_origin_grouper: DataFrameGroupBy,
+    lib_origin_dict: dict,
     transform_sizes: dict[str, int],
     library_mixture: dict[str, float],
     transformation_poisson_lambda: float | None,
@@ -544,9 +544,9 @@ def _sim_transform_and_mix(
 
     Parameters
     ----------
-    lib_origin_grouper : pandas.DataFrameGroupBy
-        A pandas DataFrame grouped by library origin. Each group should contain
-        the `probs` for the genotypes in that library.
+    lib_origin_dict : dict
+        A dictionary created by a pandas DataFrame grouped by library origin.
+        Each group should contain the `probs` for the genotypes in that library.
     transform_sizes : dict
         A dictionary mapping library origin names (str) to the number of
         transformants to simulate (int).
@@ -574,7 +574,7 @@ def _sim_transform_and_mix(
     all_trans = []
     all_trans_mask = []
     all_weights = []
-    for origin_group, origin_sub_df in lib_origin_grouper:
+    for origin_group, origin_sub_df in lib_origin_dict.items():
 
         if isinstance(origin_group,str):
             lib_key = origin_group
@@ -825,7 +825,7 @@ def _calc_genotype_cfu0(
 def _simulate_library_group(
     sub_df: pd.DataFrame,
     index_offset: int,
-    lib_origin_grouper: DataFrameGroupBy,
+    lib_origin_dict: dict,
     ordered_genotypes: np.ndarray,
     reads_per_sample: int,
     cf: dict[str, Any],
@@ -845,8 +845,9 @@ def _simulate_library_group(
         A subset of the main phenotype dataframe for a single library group.
     index_offset : int
         An integer offset to ensure unique sample indices across all groups.
-    lib_origin_grouper : pandas.DataFrameGroupBy
-        A DataFrame grouped by library origin, used for transformation.
+    lib_origin_dict : dict
+        A dictionary created from a DataFrame grouped by library origin, used
+        for transformation.
     ordered_genotypes : numpy.ndarray
         A 1D array of unique genotype names, used for consistent indexing.
     reads_per_sample : int
@@ -900,7 +901,7 @@ def _simulate_library_group(
 
     print("--> simulating transformation",flush=True)
     transformants, trans_mask, trans_freq = _sim_transform_and_mix(
-        lib_origin_grouper,
+        lib_origin_dict,
         transform_sizes,
         library_mixture,
         transformation_poisson_lambda,
@@ -1104,6 +1105,9 @@ def selection_experiment(
     ordered_genotypes = pd.unique(library_df["genotype"])
     
     # groupby on library_df that lets us select individual library origins
+    lib_origin_dict = dict(list(library_df.groupby(["library_origin"])))
+
+    # Create a temporary grouper to iterate for calculation
     lib_origin_grouper = library_df.groupby(["library_origin"])
 
     # Build base probabilities for library transformation. By putting skew here
@@ -1112,8 +1116,11 @@ def selection_experiment(
     library_df["probs"] = 0.0
     for _, origin_sub_df in lib_origin_grouper:
         p = _sim_plasmid_probabilities(origin_sub_df["weight"],
-                                        cf["lib_assembly_skew_sigma"],rng)
-        library_df.loc[origin_sub_df.index,"probs"] = p
+                                        cf["lib_assembly_skew_sigma"], rng)
+        library_df.loc[origin_sub_df.index, "probs"] = p
+
+    # Create a dictionary of grouped DataFrames. 
+    lib_origin_dict = dict(list(library_df.groupby(["library_origin"])))
 
     # Remove genotypes from phenotype_df that are not in the library
     phenotype_df = phenotype_df[phenotype_df["genotype"].isin(ordered_genotypes)]
@@ -1149,7 +1156,7 @@ def selection_experiment(
         # Do a complete transform + grow + sequence for this block of conditions
         sample_df, counts_df = _simulate_library_group(sub_df,
                                                        index_offset,
-                                                       lib_origin_grouper,
+                                                       lib_origin_dict,
                                                        ordered_genotypes,
                                                        reads_per_sample,
                                                        cf,
