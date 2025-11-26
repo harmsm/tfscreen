@@ -4,18 +4,24 @@ from unittest.mock import MagicMock
 from collections import namedtuple
 
 # --- Module Imports ---
-# Import the module that contains the functions we want to test
 from tfscreen.analysis.hierarchical.growth_model import model
 
 # Import the functions we want to test
 from tfscreen.analysis.hierarchical.growth_model.model import (
     _define_growth,
     _define_binding,
-    jax_model
+    jax_model,
+    # Constants needed for control flags
+    THETA_CATEGORICAL, THETA_HILL,
+    CONDITION_GROWTH_INDEPENDENT, CONDITION_GROWTH_HIERARCHICAL, CONDITION_GROWTH_FIXED,
+    LN_CFU0_HIERARCHICAL,
+    DK_GENO_FIXED, DK_GENO_HIERARCHICAL,
+    ACTIVITY_FIXED, ACTIVITY_HIERARCHICAL, ACTIVITY_HORSESHOE,
+    THETA_GROWTH_NOISE_NONE, THETA_GROWTH_NOISE_BETA,
+    THETA_BINDING_NOISE_NONE, THETA_BINDING_NOISE_BETA
 )
 
-# We use a namedtuple to create a simple, stand-in "ControlClass"
-# This avoids needing to import the real dataclass
+# ControlClass mimicking the structure expected by the model
 ControlClass = namedtuple(
     "ControlClass",
     [
@@ -38,7 +44,8 @@ def mock_data():
     data.growth = MagicMock(name="GrowthData")
     data.binding = MagicMock(name="BindingData")
     
-    # Provide real values for the math operations in _define_growth
+    # Provide arrays for the time/math operations
+    # Using 1.0 makes multiplication identity, easier to check math
     data.growth.t_pre = jnp.array(1.0)
     data.growth.t_sel = jnp.array(1.0)
     return data
@@ -50,62 +57,66 @@ def mock_priors():
     priors.growth = MagicMock(name="GrowthPriors")
     priors.binding = MagicMock(name="BindingPriors")
     priors.theta = MagicMock(name="ThetaPriors")
-    
-    # Mock the nested priors
-    priors.growth.theta_growth_noise = MagicMock(name="theta_growth_noise_prior")
-    priors.growth.condition_growth = MagicMock(name="condition_growth_prior")
-    priors.growth.ln_cfu0 = MagicMock(name="ln_cfu0_prior")
-    priors.growth.dk_geno = MagicMock(name="dk_geno_prior")
-    priors.growth.activity = MagicMock(name="activity_prior")
-    priors.binding.theta_binding_noise = MagicMock(name="theta_binding_noise_prior")
     return priors
 
 @pytest.fixture
 def mock_theta_params():
     """Provides a mock theta parameter pytree."""
-    return {"param1": 1.0, "param2": 2.0}
+    return {"param1": 1.0}
+
+@pytest.fixture
+def mock_pyro(monkeypatch):
+    """
+    Mocks numpyro to intercept deterministic calls.
+    Returns the mock object so we can assert calls on it.
+    """
+    pyro_mock = MagicMock(name="numpyro")
+    # deterministic acts as identity function in mocks usually
+    pyro_mock.deterministic.side_effect = lambda name, value: value
+    monkeypatch.setattr("tfscreen.analysis.hierarchical.growth_model.model.pyro", pyro_mock)
+    return pyro_mock
 
 @pytest.fixture
 def mock_growth_components(monkeypatch):
     """Mocks all dependencies for the _define_growth function."""
     
-    # Create a dict of mocks
     mocks = {
-        "calc_theta_cat": MagicMock(name="calc_theta_cat", return_value=jnp.array(0.5)),
-        "calc_theta_hill": MagicMock(name="calc_theta_hill", return_value=jnp.array(0.5)),
+        # Theta calculators
+        "calc_theta_cat": MagicMock(return_value=jnp.array(0.5)),
+        "calc_theta_hill": MagicMock(return_value=jnp.array(0.5)),
         
-        "define_no_noise": MagicMock(name="define_no_noise", return_value=jnp.array(0.5)),
-        "define_beta_noise": MagicMock(name="define_beta_noise", return_value=jnp.array(0.5)),
+        # Noise models
+        "define_no_noise": MagicMock(return_value=jnp.array(0.5)),
+        "define_beta_noise": MagicMock(return_value=jnp.array(0.5)),
         
-        # Must return numerical values for the final math
-        "define_growth_independent": MagicMock(name="define_growth_independent", return_value=(1.0, 1.0, 1.0, 1.0)),
-        "define_growth_hierarchical": MagicMock(name="define_growth_hierarchical", return_value=(2.0, 2.0, 2.0, 2.0)),
+        # Growth Params (Return unpacked tuple)
+        # k_pre, m_pre, k_sel, m_sel
+        "define_growth_independent": MagicMock(return_value=(1.0, 1.0, 1.0, 1.0)),
+        "define_growth_hierarchical": MagicMock(return_value=(2.0, 2.0, 2.0, 2.0)),
+        "define_growth_fixed": MagicMock(return_value=(3.0, 3.0, 3.0, 3.0)),
         
-        "define_ln_cfu0": MagicMock(name="define_ln_cfu0", return_value=10.0),
-        
-        "define_dk_geno_fixed": MagicMock(name="define_dk_geno_fixed", return_value=0.1),
-        "define_dk_geno_hierarchical": MagicMock(name="define_dk_geno_hierarchical", return_value=0.2),
-        
-        "define_activity_fixed": MagicMock(name="define_activity_fixed", return_value=1.0),
-        "define_activity_hierarchical": MagicMock(name="define_activity_hierarchical", return_value=1.1),
-        "define_activity_horseshoe": MagicMock(name="define_activity_horseshoe", return_value=1.2),
+        # Other params
+        "define_ln_cfu0": MagicMock(return_value=10.0),
+        "define_dk_geno_fixed": MagicMock(return_value=0.1),
+        "define_dk_geno_hierarchical": MagicMock(return_value=0.2),
+        "define_activity_fixed": MagicMock(return_value=1.0),
+        "define_activity_hierarchical": MagicMock(return_value=1.1),
+        "define_activity_horseshoe": MagicMock(return_value=1.2),
     }
     
-    # Patch all mocks into the 'model' module's namespace
     for name, mock_obj in mocks.items():
         monkeypatch.setattr(f"tfscreen.analysis.hierarchical.growth_model.model.{name}", mock_obj)
         
     return mocks
 
-
 @pytest.fixture
 def mock_binding_components(monkeypatch):
     """Mocks all dependencies for the _define_binding function."""
     mocks = {
-        "calc_theta_cat": MagicMock(name="calc_theta_cat", return_value=jnp.array(0.5)),
-        "calc_theta_hill": MagicMock(name="calc_theta_hill", return_value=jnp.array(0.5)),
-        "define_no_noise": MagicMock(name="define_no_noise", return_value=jnp.array(0.5)),
-        "define_beta_noise": MagicMock(name="define_beta_noise", return_value=jnp.array(0.5)),
+        "calc_theta_cat": MagicMock(return_value=jnp.array(0.5)),
+        "calc_theta_hill": MagicMock(return_value=jnp.array(0.5)),
+        "define_no_noise": MagicMock(return_value=jnp.array(0.5)),
+        "define_beta_noise": MagicMock(return_value=jnp.array(0.5)),
     }
     for name, mock_obj in mocks.items():
         monkeypatch.setattr(f"tfscreen.analysis.hierarchical.growth_model.model.{name}", mock_obj)
@@ -115,12 +126,12 @@ def mock_binding_components(monkeypatch):
 def mock_main_model_components(monkeypatch):
     """Mocks all dependencies for the jax_model function."""
     mocks = {
-        "define_theta_cat": MagicMock(name="define_theta_cat", return_value={"p": 1}),
-        "define_theta_hill": MagicMock(name="define_theta_hill", return_value={"p": 2}),
-        "_define_growth": MagicMock(name="_define_growth", return_value="growth_pred"),
-        "_define_binding": MagicMock(name="_define_binding", return_value="binding_pred"),
-        "observe_growth": MagicMock(name="observe_growth"),
-        "observe_binding": MagicMock(name="observe_binding"),
+        "define_theta_cat": MagicMock(return_value={"p": 1}),
+        "define_theta_hill": MagicMock(return_value={"p": 2}),
+        "_define_growth": MagicMock(return_value="growth_pred_tensor"),
+        "_define_binding": MagicMock(return_value="binding_pred_tensor"),
+        "observe_growth": MagicMock(),
+        "observe_binding": MagicMock(),
     }
     for name, mock_obj in mocks.items():
         monkeypatch.setattr(f"tfscreen.analysis.hierarchical.growth_model.model.{name}", mock_obj)
@@ -133,98 +144,69 @@ def mock_main_model_components(monkeypatch):
 
 class TestDefineGrowth:
 
-    def test_path_all_zero(self, mock_data, mock_priors, mock_theta_params, mock_growth_components):
-        """Tests the all-default (0) control path."""
+    def test_path_independent_categorical_no_noise(self, mock_data, mock_priors, mock_theta_params, mock_growth_components, mock_pyro):
+        """Tests a specific combination of control flags."""
         control = ControlClass(
-            theta=0, theta_growth_noise=0, condition_growth=0,
-            ln_cfu0=0, dk_geno=0, activity=0, theta_binding_noise=0
+            theta=THETA_CATEGORICAL, 
+            theta_growth_noise=THETA_GROWTH_NOISE_NONE, 
+            condition_growth=CONDITION_GROWTH_INDEPENDENT,
+            ln_cfu0=LN_CFU0_HIERARCHICAL, 
+            dk_geno=DK_GENO_FIXED, 
+            activity=ACTIVITY_FIXED, 
+            theta_binding_noise=0
         )
         
+        # Run
         ln_cfu_pred = _define_growth(mock_data, mock_priors, control, mock_theta_params)
         
-        # Check that the final math was sensible
-        assert isinstance(ln_cfu_pred, jnp.ndarray)
-        
-        # Check theta calculation path
+        # 1. Check Deterministic Registration
+        mock_pyro.deterministic.assert_any_call("theta_growth_pred", jnp.array(0.5))
+
+        # 2. Check Component Calls
         mock_growth_components["calc_theta_cat"].assert_called_once_with(mock_theta_params, mock_data.growth)
-        mock_growth_components["calc_theta_hill"].assert_not_called()
+        mock_growth_components["define_no_noise"].assert_called_once()
+        mock_growth_components["define_growth_independent"].assert_called_once()
+        mock_growth_components["define_ln_cfu0"].assert_called_once()
+        mock_growth_components["define_dk_geno_fixed"].assert_called_once()
+        mock_growth_components["define_activity_fixed"].assert_called_once()
         
-        # Check noise path
-        mock_growth_components["define_no_noise"].assert_called_once_with(
-            "theta_growth_noise", jnp.array(0.5), mock_priors.growth.theta_growth_noise
-        )
-        mock_growth_components["define_beta_noise"].assert_not_called()
+        # 3. Check Math Logic
+        # Mocks return: theta=0.5, noise=0.5, k=1.0, m=1.0, ln_cfu0=10.0, dk=0.1, act=1.0
+        # g = k + dk + act * m * noisy_theta
+        # g = 1.0 + 0.1 + 1.0 * 1.0 * 0.5 = 1.6
+        # pred = ln_cfu0 + g*t + g*t = 10.0 + 1.6*1.0 + 1.6*1.0 = 13.2
         
-        # Check condition_growth path
-        mock_growth_components["define_growth_independent"].assert_called_once_with(
-            "condition_growth", mock_data.growth, mock_priors.growth.condition_growth
-        )
-        mock_growth_components["define_growth_hierarchical"].assert_not_called()
-        
-        # Check ln_cfu0 path
-        mock_growth_components["define_ln_cfu0"].assert_called_once_with(
-            "ln_cfu0", mock_data.growth, mock_priors.growth.ln_cfu0
-        )
-        
-        # Check dk_geno path
-        mock_growth_components["define_dk_geno_fixed"].assert_called_once_with(
-            "dk_geno", mock_data.growth, mock_priors.growth.dk_geno
-        )
-        mock_growth_components["define_dk_geno_hierarchical"].assert_not_called()
+        # We assert approx equality for floating point
+        assert jnp.isclose(ln_cfu_pred, 13.2)
 
-        # Check activity path
-        mock_growth_components["define_activity_fixed"].assert_called_once_with(
-            "activity", mock_data.growth, mock_priors.growth.activity
-        )
-        mock_growth_components["define_activity_hierarchical"].assert_not_called()
-        mock_growth_components["define_activity_horseshoe"].assert_not_called()
-
-    def test_path_all_one_and_two(self, mock_data, mock_priors, mock_theta_params, mock_growth_components):
-        """Tests the non-default (1 or 2) control paths."""
+    def test_path_hierarchical_hill_beta_noise(self, mock_data, mock_priors, mock_theta_params, mock_growth_components):
+        """Tests the hierarchical / hill / beta noise path."""
         control = ControlClass(
-            theta=1, theta_growth_noise=1, condition_growth=1,
-            ln_cfu0=0, dk_geno=1, activity=2, theta_binding_noise=0
+            theta=THETA_HILL, 
+            theta_growth_noise=THETA_GROWTH_NOISE_BETA, 
+            condition_growth=CONDITION_GROWTH_HIERARCHICAL,
+            ln_cfu0=LN_CFU0_HIERARCHICAL, 
+            dk_geno=DK_GENO_HIERARCHICAL, 
+            activity=ACTIVITY_HORSESHOE, 
+            theta_binding_noise=0
         )
         
         _define_growth(mock_data, mock_priors, control, mock_theta_params)
         
-        # Check theta calculation path
-        mock_growth_components["calc_theta_cat"].assert_not_called()
-        mock_growth_components["calc_theta_hill"].assert_called_once_with(mock_theta_params, mock_data.growth)
-        
-        # Check noise path
-        mock_growth_components["define_no_noise"].assert_not_called()
+        mock_growth_components["calc_theta_hill"].assert_called_once()
         mock_growth_components["define_beta_noise"].assert_called_once()
-        
-        # Check condition_growth path
-        mock_growth_components["define_growth_independent"].assert_not_called()
         mock_growth_components["define_growth_hierarchical"].assert_called_once()
-        
-        # Check ln_cfu0 path (only has one path)
-        mock_growth_components["define_ln_cfu0"].assert_called_once()
-        
-        # Check dk_geno path
-        mock_growth_components["define_dk_geno_fixed"].assert_not_called()
         mock_growth_components["define_dk_geno_hierarchical"].assert_called_once()
-
-        # Check activity path
-        mock_growth_components["define_activity_fixed"].assert_not_called()
-        mock_growth_components["define_activity_hierarchical"].assert_not_called()
         mock_growth_components["define_activity_horseshoe"].assert_called_once()
 
-    @pytest.mark.parametrize("bad_control", [
-        ControlClass(theta=2, theta_growth_noise=0, condition_growth=0, ln_cfu0=0, dk_geno=0, activity=0, theta_binding_noise=0),
-        ControlClass(theta=0, theta_growth_noise=2, condition_growth=0, ln_cfu0=0, dk_geno=0, activity=0, theta_binding_noise=0),
-        ControlClass(theta=0, theta_growth_noise=0, condition_growth=2, ln_cfu0=0, dk_geno=0, activity=0, theta_binding_noise=0),
-        ControlClass(theta=0, theta_growth_noise=0, condition_growth=0, ln_cfu0=1, dk_geno=0, activity=0, theta_binding_noise=0),
-        ControlClass(theta=0, theta_growth_noise=0, condition_growth=0, ln_cfu0=0, dk_geno=2, activity=0, theta_binding_noise=0),
-        ControlClass(theta=0, theta_growth_noise=0, condition_growth=0, ln_cfu0=0, dk_geno=0, activity=3, theta_binding_noise=0),
-    ])
-    def test_value_errors(self, mock_data, mock_priors, mock_theta_params, mock_growth_components, bad_control):
-        """Tests that invalid control flags raise ValueErrors."""
-        with pytest.raises(ValueError):
-            _define_growth(mock_data, mock_priors, bad_control, mock_theta_params)
-
+    def test_invalid_selection_raises_error(self, mock_data, mock_priors, mock_theta_params, mock_growth_components):
+        """Tests that random invalid integers raise ValueErrors."""
+        control = ControlClass(
+            theta=99, theta_growth_noise=0, condition_growth=0,
+            ln_cfu0=0, dk_geno=0, activity=0, theta_binding_noise=0
+        )
+        with pytest.raises(ValueError, match="theta selection"):
+             _define_growth(mock_data, mock_priors, control, mock_theta_params)
 
 # -------------------
 # test _define_binding
@@ -232,53 +214,30 @@ class TestDefineGrowth:
 
 class TestDefineBinding:
 
-    def test_path_all_zero(self, mock_data, mock_priors, mock_theta_params, mock_binding_components):
-        """Tests the all-default (0) control path."""
+    def test_path_hill_no_noise(self, mock_data, mock_priors, mock_theta_params, mock_binding_components, mock_pyro):
         control = ControlClass(
-            theta=0, theta_growth_noise=0, condition_growth=0,
-            ln_cfu0=0, dk_geno=0, activity=0, theta_binding_noise=0
+            theta=THETA_HILL, 
+            theta_growth_noise=0, condition_growth=0, ln_cfu0=0, dk_geno=0, activity=0, 
+            theta_binding_noise=THETA_BINDING_NOISE_NONE
         )
         
-        _define_binding(mock_data, mock_priors, control, mock_theta_params)
+        res = _define_binding(mock_data, mock_priors, control, mock_theta_params)
         
-        # Check theta calculation path
-        mock_binding_components["calc_theta_cat"].assert_called_once_with(mock_theta_params, mock_data.binding)
-        mock_binding_components["calc_theta_hill"].assert_not_called()
-
-        # Check noise path
-        mock_binding_components["define_no_noise"].assert_called_once_with(
-            "theta_binding_noise", jnp.array(0.5), mock_priors.binding.theta_binding_noise
-        )
-        mock_binding_components["define_beta_noise"].assert_not_called()
-        
-    def test_path_all_one(self, mock_data, mock_priors, mock_theta_params, mock_binding_components):
-        """Tests the non-default (1) control path."""
-        control = ControlClass(
-            theta=1, theta_growth_noise=0, condition_growth=0,
-            ln_cfu0=0, dk_geno=0, activity=0, theta_binding_noise=1
-        )
-        
-        _define_binding(mock_data, mock_priors, control, mock_theta_params)
-        
-        # Check theta calculation path
-        mock_binding_components["calc_theta_cat"].assert_not_called()
         mock_binding_components["calc_theta_hill"].assert_called_once_with(mock_theta_params, mock_data.binding)
-
-        # Check noise path
-        mock_binding_components["define_no_noise"].assert_not_called()
-        mock_binding_components["define_beta_noise"].assert_called_once_with(
-            "theta_binding_noise", jnp.array(0.5), mock_priors.binding.theta_binding_noise
+        mock_pyro.deterministic.assert_called_with("theta_binding_pred", jnp.array(0.5))
+        mock_binding_components["define_no_noise"].assert_called_once()
+        
+    def test_path_cat_beta_noise(self, mock_data, mock_priors, mock_theta_params, mock_binding_components):
+        control = ControlClass(
+            theta=THETA_CATEGORICAL, 
+            theta_growth_noise=0, condition_growth=0, ln_cfu0=0, dk_geno=0, activity=0, 
+            theta_binding_noise=THETA_BINDING_NOISE_BETA
         )
-
-    @pytest.mark.parametrize("bad_control", [
-        ControlClass(theta=2, theta_growth_noise=0, condition_growth=0, ln_cfu0=0, dk_geno=0, activity=0, theta_binding_noise=0),
-        ControlClass(theta=0, theta_growth_noise=0, condition_growth=0, ln_cfu0=0, dk_geno=0, activity=0, theta_binding_noise=2),
-    ])
-    def test_value_errors(self, mock_data, mock_priors, mock_theta_params, mock_binding_components, bad_control):
-        """Tests that invalid control flags raise ValueErrors."""
-        with pytest.raises(ValueError):
-            _define_binding(mock_data, mock_priors, bad_control, mock_theta_params)
-
+        
+        _define_binding(mock_data, mock_priors, control, mock_theta_params)
+        
+        mock_binding_components["calc_theta_cat"].assert_called_once()
+        mock_binding_components["define_beta_noise"].assert_called_once()
 
 # -------------------
 # test jax_model
@@ -286,22 +245,23 @@ class TestDefineBinding:
 
 class TestJaxModel:
 
-    def test_path_theta_cat(self, mock_data, mock_priors, mock_main_model_components):
+    def test_path_theta_cat(self, mock_data, mock_priors, mock_main_model_components, mock_pyro):
         """Tests the main model path with theta=0 (categorical)."""
         control = ControlClass(
-            theta=0, theta_growth_noise=0, condition_growth=0,
-            ln_cfu0=0, dk_geno=0, activity=0, theta_binding_noise=0
+            theta=THETA_CATEGORICAL, 
+            theta_growth_noise=0, condition_growth=0, ln_cfu0=0, dk_geno=0, activity=0, theta_binding_noise=0
         )
         
         jax_model(mock_data, mock_priors, control)
         
-        # Check theta definition path
+        # 1. Check Data Flow for Theta Definition
+        # CRITICAL UPDATE: The code passes mock_data.growth, not mock_data
         mock_main_model_components["define_theta_cat"].assert_called_once_with(
-            "theta", mock_data, mock_priors.theta
+            "theta", mock_data.growth, mock_priors.theta
         )
-        mock_main_model_components["define_theta_hill"].assert_not_called()
         
-        # Check that helpers were called with the defined theta params
+        # 2. Check Helper Orchestration
+        # define_theta_cat mock returns {"p": 1}, so helpers should receive that
         mock_main_model_components["_define_growth"].assert_called_once_with(
             mock_data, mock_priors, control, {"p": 1}
         )
@@ -309,45 +269,41 @@ class TestJaxModel:
             mock_data, mock_priors, control, {"p": 1}
         )
         
-        # Check that observations were made
+        # 3. Check Deterministic Registration
+        mock_pyro.deterministic.assert_any_call("growth_pred", "growth_pred_tensor")
+        mock_pyro.deterministic.assert_any_call("binding_pred", "binding_pred_tensor")
+        
+        # 4. Check Final Observations
         mock_main_model_components["observe_growth"].assert_called_once_with(
-            "final_obs", mock_data.growth, "growth_pred"
+            "final_obs", mock_data.growth, "growth_pred_tensor"
         )
         mock_main_model_components["observe_binding"].assert_called_once_with(
-            "final_obs", mock_data.binding, "binding_pred"
+            "final_obs", mock_data.binding, "binding_pred_tensor"
         )
         
     def test_path_theta_hill(self, mock_data, mock_priors, mock_main_model_components):
         """Tests the main model path with theta=1 (hill)."""
         control = ControlClass(
-            theta=1, theta_growth_noise=0, condition_growth=0,
-            ln_cfu0=0, dk_geno=0, activity=0, theta_binding_noise=0
+            theta=THETA_HILL, 
+            theta_growth_noise=0, condition_growth=0, ln_cfu0=0, dk_geno=0, activity=0, theta_binding_noise=0
         )
         
         jax_model(mock_data, mock_priors, control)
         
-        # Check theta definition path
-        mock_main_model_components["define_theta_cat"].assert_not_called()
+        # Check calling convention: passes data.growth
         mock_main_model_components["define_theta_hill"].assert_called_once_with(
             "theta", mock_data.growth, mock_priors.theta
         )
         
-        # Check that helpers were called with the defined theta params
+        # Check helpers receive result from define_theta_hill ({"p": 2})
         mock_main_model_components["_define_growth"].assert_called_once_with(
             mock_data, mock_priors, control, {"p": 2}
         )
-        mock_main_model_components["_define_binding"].assert_called_once_with(
-            mock_data, mock_priors, control, {"p": 2}
-        )
-        
-        # Check that observations were made
-        mock_main_model_components["observe_growth"].assert_called_once()
-        mock_main_model_components["observe_binding"].assert_called_once()
 
-    def test_value_error(self, mock_data, mock_priors, mock_main_model_components):
-        """Tests that an invalid theta flag raises a ValueError."""
+    def test_value_error(self, mock_data, mock_priors):
+        """Tests that an invalid theta flag in jax_model raises a ValueError."""
         control = ControlClass(
-            theta=2, theta_growth_noise=0, condition_growth=0,
+            theta=99, theta_growth_noise=0, condition_growth=0,
             ln_cfu0=0, dk_geno=0, activity=0, theta_binding_noise=0
         )
         

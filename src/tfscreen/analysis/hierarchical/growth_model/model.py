@@ -34,7 +34,7 @@ from .data_class import (
 
 import jax.numpy as jnp
 import numpyro as pyro
-from typing import Dict
+from typing import Dict, Any
 
 CONDITION_GROWTH_INDEPENDENT = 0
 CONDITION_GROWTH_HIERARCHICAL = 1
@@ -96,7 +96,7 @@ MODEL_COMPONENT_NAMES = {
 def _define_growth(data: DataClass, 
                    priors: PriorsClass, 
                    control: ControlClass, 
-                   theta: Dict[str, jnp.ndarray]) -> jnp.ndarray:
+                   theta: Any) -> jnp.ndarray:
     """
     Defines the growth model components and calculates predicted ln(CFU).
 
@@ -154,6 +154,7 @@ def _define_growth(data: DataClass,
         )
 
     growth_theta = calc_theta(theta,data.growth)
+    pyro.deterministic(f"theta_growth_pred",growth_theta)
 
     # -------------------------------------------------------------------------
     # Define growth noise on theta
@@ -251,7 +252,7 @@ def _define_growth(data: DataClass,
 def _define_binding(data: DataClass, 
                     priors: PriorsClass, 
                     control: ControlClass, 
-                    theta: Dict[str, jnp.ndarray]) -> jnp.ndarray:
+                    theta: Any) -> jnp.ndarray:
     """
     Calculates the predicted fractional occupancy (theta) for binding data.
 
@@ -297,6 +298,7 @@ def _define_binding(data: DataClass,
         )
 
     theta_binding = calc_theta(theta,data.binding)
+    pyro.deterministic(f"theta_binding_pred",theta_binding)
 
     # -------------------------------------------------------------------------
     # Define binding noise on theta model
@@ -357,11 +359,11 @@ def jax_model(data: DataClass, priors: PriorsClass, control: ControlClass):
     # (theta). This is used for both the growth and binding calculations. 
 
     # Define theta
-    if control.theta == 0:
+    if control.theta == THETA_CATEGORICAL:
         theta = define_theta_cat("theta",
                                  data.growth,
                                  priors.theta)
-    elif control.theta == 1:
+    elif control.theta == THETA_HILL:
         # passing data.growth enforces it as the source of truth for the 
         # titrant_name and genotype seen across both datasets. 
         theta = define_theta_hill("theta",

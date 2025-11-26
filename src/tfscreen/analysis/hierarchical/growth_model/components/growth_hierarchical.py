@@ -67,18 +67,18 @@ def define_model(name,data,priors):
         growth_k_offset = pyro.sample(f"{name}_k_offset", dist.Normal(0, 1))
         growth_m_offset = pyro.sample(f"{name}_m_offset", dist.Normal(0, 1))
     
-    growth_k_per_cond_rep = growth_k_hyper_loc + growth_k_offset * growth_k_hyper_scale
-    growth_m_per_cond_rep = growth_m_hyper_loc + growth_m_offset * growth_m_hyper_scale
+    growth_k_per_condition = growth_k_hyper_loc + growth_k_offset * growth_k_hyper_scale
+    growth_m_per_condition = growth_m_hyper_loc + growth_m_offset * growth_m_hyper_scale
 
     # Register dists
-    pyro.deterministic(f"{name}_k", growth_k_per_cond_rep)
-    pyro.deterministic(f"{name}_m", growth_m_per_cond_rep)
+    pyro.deterministic(f"{name}_k", growth_k_per_condition)
+    pyro.deterministic(f"{name}_m", growth_m_per_condition)
 
     # Expand to full-sized tensors
-    k_pre = growth_k_per_cond_rep[data.map_condition_pre]
-    m_pre = growth_m_per_cond_rep[data.map_condition_pre]
-    k_sel = growth_k_per_cond_rep[data.map_condition_sel]
-    m_sel = growth_m_per_cond_rep[data.map_condition_sel]
+    k_pre = growth_k_per_condition[data.map_condition_pre]
+    m_pre = growth_m_per_condition[data.map_condition_pre]
+    k_sel = growth_k_per_condition[data.map_condition_sel]
+    m_sel = growth_m_per_condition[data.map_condition_sel]
 
     return k_pre, m_pre, k_sel, m_sel
 

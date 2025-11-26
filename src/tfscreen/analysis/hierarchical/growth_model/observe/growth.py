@@ -62,5 +62,4 @@ def observe(name: str, data: GrowthData, ln_cfu_pred: jnp.ndarray):
                         # Define the observation site
                         pyro.sample(f"{name}_growth_obs",
                                     dist.StudentT(df=nu, loc=ln_cfu_pred, scale=data.ln_cfu_std),
-                                    #dist.Normal(ln_cfu_pred, data.ln_cfu_std),
                                     obs=data.ln_cfu)
