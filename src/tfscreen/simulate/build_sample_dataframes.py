@@ -1,159 +1,99 @@
-"""
-Functions for building dataframes of samples (replicate|marker|selection|iptg)
-and timepoints (replicate|marker|selection|iptg|time).
-"""
-
 import pandas as pd
-from tqdm.auto import tqdm
+import itertools
 
-import copy
-
-def _build_sample_dataframe(marker,
-                            select,
-                            iptg,
-                            time=None,
-                            replicate=1,
-                            current_df=None):
+def build_sample_dataframes(condition_blocks, replicate=1):
     """
-    Build a dataframe of samples for the simulation.
+    Build a DataFrame of experimental conditions from a list of blocks.
+
+    This function takes a compact, list-based representation of experimental
+    conditions and expands it into a "tidy" pandas DataFrame. Each row in the
+    output DataFrame represents a single, unique experimental condition. The
+    function computes the Cartesian product of any parameters specified as
+    lists within a condition block (e.g., `titrant_conc` and `t_sel`).
 
     Parameters
     ----------
-    marker : str
-        Name of the marker for these samples.
-    select : int or float
-        Selection value for the marker (e.g., 0 or 1).
-    iptg : list of float
-        List of IPTG concentrations in mM.
-    time : list of float or None
-        list of sample times in minutes, default=None
+    condition_blocks : list of dict
+        A list where each dictionary defines a block of related experimental
+        conditions. Each dictionary must contain keys defining the experimental
+        parameters.
     replicate : int, optional
-        Replicate number for these samples. Default is 1.
-    current_df : pandas.DataFrame, optional
-        Existing DataFrame to append to. If provided, the new samples will be
-        concatenated to this DataFrame.
+        The replicate number to assign to all generated conditions, by default 1.
 
     Returns
     -------
     pandas.DataFrame
-        DataFrame with columns: "replicate", "marker", "select", "iptg", and 
-        possibly "time".
+        A long-form DataFrame where each row is a unique sample condition,
+        sorted by experimental parameters.
+
+    Raises
+    ------
+    ValueError
+        If `condition_blocks` is not a list, is empty, or if any of its
+        elements are not dictionaries.
+
+    Notes
+    -----
+    Each dictionary in the `condition_blocks` list is expected to have a
+    structure similar to the following:
+
+    .. code-block:: yaml
+
+        {
+            "library": "pheS",
+            "titrant_name": "iptg",
+            "titrant_conc": [0, 1],
+            "condition_pre": "pheS-4CP",
+            "t_pre": 30,
+            "condition_sel": "pheS-4CP",
+            "t_sel": [80, 95, 110]
+        }
+
     """
+    # --- Input Validation ---
+    if not isinstance(condition_blocks, list) or not condition_blocks:
+        raise ValueError("condition_blocks must be a non-empty list.")
     
-    out = {"replicate":[],
-           "marker":[],
-           "select":[],
-           "iptg":[]}
-    
-    for c in iptg:
+    if not all(isinstance(c, dict) for c in condition_blocks):
+        raise ValueError("All items in condition_blocks must be dictionaries.")
 
-        out["replicate"].append(replicate)
-        out["marker"].append(marker)
-        out["select"].append(select)
-        out["iptg"].append(c)
-    
-    df = pd.DataFrame(out)
-    if time is not None:
+    # --- DataFrame Construction ---
+    all_block_dfs = []
+    for block in condition_blocks:
+        # Use itertools.product to get the cartesian product of the lists
+        variable_params = list(itertools.product(
+            block["titrant_conc"],
+            block["t_sel"]
+        ))
+        
+        # Create a list of dictionaries, one for each experimental row
+        rows = [
+            {
+                "replicate": replicate,
+                "library": block["library"],
+                "titrant_name": block["titrant_name"],
+                "condition_pre": block["condition_pre"],
+                "t_pre": block["t_pre"],
+                "condition_sel": block["condition_sel"],
+                "titrant_conc": conc,
+                "t_sel": t
+            }
+            for conc, t in variable_params
+        ]
+        
+        all_block_dfs.append(pd.DataFrame(rows))
 
-        time_stack = []
-        for t in time:
-            time_stack.append(df.copy())
-            time_stack[-1]["time"] = t
-
-        df = pd.concat(time_stack,ignore_index=True)
-
-    if current_df is not None:
-        df = pd.concat([current_df, df], ignore_index=True)
-    
-    return df
-
-
-
-def build_sample_dataframes(condition_blocks,
-                            replicate=1):
-    """
-    Build dataframes of samples for the simulation. These are built 
-    combinatorially in time and iptg for the specified marker and selection 
-    conditions. One dataframe has all timepoints (samples + time), the other has
-    only samples (replicate|marker|select|iptg).
-
-    Parameters
-    ----------
-    condition_blocks : list-like
-        list of dictionaries. each dictionary should have the following keys:
-        - marker : name of the marker for these samples.
-        - select : selection value for the marker 
-        - iptg : list of IPTG concentrations in mM.
-        - time : list of times to take timepoints
-    replicate : int, optional
-        Replicate number for these samples. Default is 1.
-    
-    Returns
-    -------
-    sample_df : pandas.DataFrame
-        dataFrame with columns: "replicate", "marker", "select", "iptg", and
-        "time". The index will be a string '{replicate}|{marker}|{select}|{iptg}|{time}'
-    sample_df_no_time : pandas.DataFrame
-        dataFrame with columns: "replicate", "marker", "select", and "iptg". The
-        index will be a string '{replicate}|{marker}|{select}|{iptg}'
-    """
-    
-    
-
-    # Error checking on condition_blocks
-    if not hasattr(condition_blocks,"__iter__"):
-        err = "condition_blocks should be a list of dictionaries\n"
-        raise ValueError(err)
-    
-    if len(condition_blocks) < 1:
-        err = "condition_blocks must have at least one entry\n"
-        raise ValueError(err)
-    
-    types = set([issubclass(type(c),dict) for c in condition_blocks])
-    if len(types) != 1 or list(types)[0] is not True:
-        err = "condition_blocks must be a list of dictionaries\n"
-        raise ValueError(err)
-
-    # build the full sample_df with iptg and time
-    sample_df_t = None
-    desc = "{}".format("setting up conditions")
-    for c in tqdm(condition_blocks,desc=desc,ncols=800):
-        sample_df_t = _build_sample_dataframe(**c,
-                                              replicate=replicate,
-                                              current_df=sample_df_t)
+    # Perform a single, efficient concatenation of all DataFrames
+    if not all_block_dfs:
+        return pd.DataFrame() # Return empty df if no conditions were generated
+        
+    sample_df = pd.concat(all_block_dfs, ignore_index=True)
     
     # Sort in a stereotyped way
-    sample_df_t = sample_df_t.sort_values(["replicate",
-                                           "marker",
-                                           "select",
-                                           "iptg",
-                                           "time"]).reset_index()
-    sample_df_t = sample_df_t.drop(columns=["index"])
+    sort_columns = [
+        "replicate", "library", "condition_pre", "condition_sel",
+        "titrant_name", "titrant_conc", "t_sel"
+    ]
+    sample_df = sample_df.sort_values(sort_columns).reset_index(drop=True)
 
-    cols_to_join = ["replicate","marker","select","iptg","time"]
-    sample_df_t.index = sample_df_t[cols_to_join].astype(str).agg('|'.join,axis=1)
-
-    # build sample_df that has no time column
-    sample_df = None
-    for c in condition_blocks:
-        c_copy = copy.deepcopy(c)
-        c_copy["time"] = None
-        sample_df = _build_sample_dataframe(**c_copy,
-                                            replicate=replicate,
-                                            current_df=sample_df)
-    
-    # Sort in a stereotyped way
-    sample_df = sample_df.sort_values(["replicate",
-                                       "marker",
-                                       "select",
-                                       "iptg"]).reset_index()
-    sample_df = sample_df.drop(columns=["index"])
-
-    cols_to_join = ["replicate","marker","select","iptg"]
-    sample_df.index = sample_df[cols_to_join].astype(str).agg('|'.join,axis=1)
-
-
-    return sample_df, sample_df_t
-    
-
-
+    return sample_df

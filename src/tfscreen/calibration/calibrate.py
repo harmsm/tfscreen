@@ -1,433 +1,551 @@
 
-from tfscreen.fitting import matrix_wls
-from tfscreen.calibration import perform_calibration
-from tfscreen.calibration import write_calibration
-from tfscreen.calibration import predict_growth_rate
+from tfscreen.models.generic import MODEL_LIBRARY
 
-from tfscreen.util import read_dataframe
+from tfscreen.calibration import (
+    write_calibration,
+    read_calibration
+)
+
+from tfscreen.fitting import (
+    run_least_squares,
+    predict_with_error,
+    FitManager,
+    parse_patsy
+)
+
+from tfscreen.util import (
+    read_dataframe,
+    check_columns,
+    get_scaled_cfu
+)
 
 import numpy as np
 import pandas as pd
-from matplotlib import pyplot as plt
+import patsy
 
-COLOR_DICT = {("kanR",0):"wheat",
-                ("kanR",1):"orange",
-                ("pheS",0):"lightgreen",
-                ("pheS",1):"darkgreen",
-                ("none",0):"gray"}
-PRETTY_SELECT = {"kanR":"kanamycin",
-                 "pheS":"4CP"}
+import warnings
 
-def _plot_growth_rate_fit(obs,
-                          obs_std,
-                          calc,
-                          calc_std,
-                          ax):
-    """Plot the fit results (obs vs. calc)"""
+from tfscreen.analysis.independent.cfu_to_theta import _build_param_df
 
-    # Get min and max for plots (assumes min and max are both positive)
-    min_value = np.min([np.min(obs),np.min(calc)])*0.95
-    max_value = np.max([np.max(obs),np.max(calc)])*1.05
-
-    # Build clean ticks
-    min_ceil = np.ceil(min_value)
-    max_floor = np.floor(max_value)
-    ticks = np.arange(min_ceil,max_floor + 1,1,dtype=int)
-
-    # Plot points and error bars
-    ax.scatter(calc,
-               obs,
-               s=30,
-               facecolor='none',
-               edgecolor="black",
-               zorder=20)
-    ax.errorbar(x=calc,
-                xerr=calc_std,
-                y=obs,
-                yerr=obs_std,
-                lw=0,
-                elinewidth=1,
-                capsize=3,
-                color='gray')
-    ax.plot((min_value,max_value),
-            (min_value,max_value),
-            '--',
-            color='gray',
-            zorder=-5)
-
-    # Label axes
-    ax.set_xlabel("calculated ln(cfu/mL)")
-    ax.set_ylabel("observed ln(cfu/mL)")
-
-    # Make clean axes
-    ax.set_xlim(min_value,max_value)
-    ax.set_ylim(min_value,max_value)
-    ax.set_xticks(ticks)
-    ax.set_yticks(ticks)    
-    ax.set_aspect("equal")
-
-def _plot_A0_hist(A0,
-                  ax):
-    """Plot a histogram of A0"""
-    
-    min_edge = np.min(A0)
-    if min_edge > 10:
-        min_edge = 10
-
-    max_edge = np.max(A0)
-    if max_edge < 22:
-        max_edge = 22
-
-    # Create histogram
-    counts, edges = np.histogram(A0,
-                                 bins=np.arange(min_edge,
-                                                max_edge,
-                                                0.5))
-
-    # Plot histogram
-    for i in range(len(counts)):
-        ax.fill(np.array([edges[i],
-                        edges[i],
-                        edges[i+1],
-                        edges[i+1]]),
-                np.array([0,
-                        counts[i],
-                        counts[i],
-                        0]),
-                edgecolor="black",
-                facecolor="gray")
-        
-    # labels
-    ax.set_xlabel("ln(A0)")
-    ax.set_ylabel("counts")
-
-def _plot_k_vs_iptg(k_df,
-                    calibration_dict,
-                    ax):
-
-    sim_iptg = 10**np.linspace(-5,0,100)
-    
-    for m in pd.unique(k_df["marker"]):
-
-        m_df = k_df[k_df["marker"] == m]
-
-        for s in pd.unique(m_df["select"]):
-
-            series = (m,s)        
-            
-            # Figure out label for legend
-            if s == 1:
-                operator = "+"
-            else:
-                operator = "-"
-    
-            if m == "none":
-                label = "base"
-            else:
-                label = f"{m} {operator} {PRETTY_SELECT[m]}"
-
-            ms_df = m_df[m_df["select"] == s].copy()
-            ms_df.loc[ms_df["iptg"] == 0,"iptg"] = 1e-5
-            
-            ax.errorbar(ms_df["iptg"],
-                        ms_df["k_est"],
-                        ms_df["k_std"],
-                        lw=0,
-                        elinewidth=1,
-                        capsize=5,
-                        color=COLOR_DICT[series])
-            ax.scatter(ms_df["iptg"],
-                       ms_df["k_est"],
-                       facecolor="none",
-                       edgecolor=COLOR_DICT[series])
-            
-            sim_marker = np.repeat(m,sim_iptg.shape[0])
-            sim_select = np.repeat(s,sim_iptg.shape[0])
-            
-            pred, _ = predict_growth_rate(sim_marker,
-                                          sim_select,
-                                          sim_iptg,
-                                          calibration_dict)
-            ax.plot(sim_iptg,pred,'-',lw=2,color=COLOR_DICT[series],label=label)
-
-
-    k_est = k_df["k_est"]
-    k_std = k_df["k_std"]
-    y_min = np.min(k_est-k_std)
-    if y_min < 0:
-        y_min = y_min*1.05
-    else:
-        y_min = 0 
-
-    y_max = np.max(k_est+k_std)
-    if y_max < 0:
-        y_max = y_max*0.95
-    else:
-        y_max = y_max*1.05
-
-    ax.set_ylim((y_min,y_max))
-
-    # Clean up plot
-    ax.set_xscale('log')
-    ax.set_xlabel("[iptg] (mM)")
-    ax.set_ylabel("growth rate (cfu/mL/min)")
-    ax.legend()
-
-def _plot_k_pred_corr(k_df,
-                      calibration_dict,
-                      ax):
-    
-    k_est = np.array(k_df["k_est"])
-    k_std = np.array(k_df["k_std"])
-
-    k_calc, k_calc_std = predict_growth_rate(k_df["marker"],
-                                             k_df["select"],
-                                             k_df["iptg"],
-                                             calibration_dict)
-
-    edgecolor = [COLOR_DICT[k] for k in zip(k_df["marker"],k_df["select"])]
-    ax.scatter(k_calc,
-               k_est,
-               s=30,
-               zorder=5,
-               facecolor="none",
-               edgecolor=edgecolor)
-    ax.errorbar(x=k_calc,
-                y=k_est,
-                yerr=k_std,
-                xerr=k_calc_std,
-                lw=0,capsize=5,
-                elinewidth=1,
-                ecolor="gray",
-                zorder=0)
-    
-    x_min = np.min([np.min(k_est-k_std),np.min(k_calc-k_calc_std)])
-    if x_min < 0:
-        x_min = x_min*1.05
-    else:
-        x_min = 0 
-
-    x_max = np.max([np.max(k_est+k_std),np.max(k_calc+k_calc_std)])
-    if x_min < 0:
-        x_max = x_max*0.95
-    else:
-        x_max = x_max*1.05
-
-    ax.plot((x_min,x_max),(x_min,x_max),'--',color='gray',zorder=-5)
-    ax.set_xlim(x_min,x_max)
-    ax.set_ylim(x_min,x_max)
-    
-    ax.set_aspect("equal")
-    ax.set_xlabel("predicted growth rate")
-    ax.set_ylabel("observed growth rate (cfu/mL/min)")
-
-
-def _get_growth_rates(df,
-                      offset=0,
-                      ax_growth=None,
-                      ax_hist=None):
+def _fit_theta(df):
     """
-    Get growth rates by nonlinear least squares given cfu_per_mL vs. 
-    time data. 
+    Fit a Hill model to theta vs. titrant for each titrant.
+
+    This function iterates through each unique `titrant_name` present in the
+    input DataFrame, extracts the corresponding concentration and theta values,
+    generates initial parameter guesses, and performs a non-linear
+    least-squares fit using the Hill model.
 
     Parameters
     ----------
     df : pandas.DataFrame
-        pandas dataframe with input data. The function expects the columns 
-        'day', 'marker', 'select', 'iptg', 'cfu_per_mL', and 'cfu_per_mL_std'.
-    offset : float, default = 0
-        offset time by this amount (for modeling global lag).
-    ax_growth : matplotlib.Axis, default = None
-        if specified, plot the fit results on this axis
-    ax_hist : matplotlib.Axis, default = None
-        if specified, plot a histogram of ln(A0)
-        
+        A DataFrame containing the experimental data. It must contain the
+        following columns:
+        - 'titrant_name': An identifier for the titrant being measured.
+        - 'titrant_conc': The concentration of the titrant (x-values).
+        - 'theta': The measured fractional saturation or response (y-values).
+        - 'theta_std': The standard deviation of 'theta' (y-errors).
+
     Returns
     -------
-    A0_df : pandas.DataFrame
-        dataframe with fit results for initial cell populations for each
-        experiment. It will have day, marker, select, A0_est (estimated 
-        initial population), and A0_std (standard errors on the estimated 
-        initial population).
-    k_df : pandas.DataFrame
-        dataframe with fit results for growth rates under specific conditions.
-        It will have marker, select, iptg, k_est (estimated growth rates), and
-        k_std (standard errors on the estimated growth rates). 
+    dict
+        A dictionary where keys are the unique `titrant_name` strings from
+        the input DataFrame. The corresponding values are NumPy arrays
+        containing the four fitted Hill parameters in the order:
+        [baseline, amplitude, K, n].
+
+    Notes
+    -----
+    The initial parameter guesses are tailored for a repressor system where
+    the signal (`theta`) starts high and decreases with increasing titrant
+    concentration. The guesses may not be suitable for activator-like systems.
     """
 
-    time = np.array(df["time"],dtype=float) + offset
+    out_dict = {}
+    for titr, titr_df in df.groupby("titrant_name"):
 
-    cfu = np.array(df["cfu_per_mL"])
-    cfu_std = np.array(df["cfu_per_mL_std"])
-    cfu_var = cfu_std**2
+        # Grab sub dataframe with only titrant_name
+        titr_df = df[df["titrant_name"] == titr]
 
-    obs = np.log(cfu)
-    obs_std = cfu_var/(cfu**2)
-    weights = (1/obs_std)**2
+        # Pull out x, y and y_std
+        x = titr_df["titrant_conc"].to_numpy()
+        y = titr_df["theta"].to_numpy()
+        y_std = titr_df["theta_std"].to_numpy()
 
-    # Every day/marker/select combo will have a global A0. Figure out the 
-    # unique combinations and create a dictionary mapping day/marker/select
-    # to index. 
-    A0_keys = list(zip(df["day"],df["marker"],df["select"]))
-    unique_A0_keys = list(set(A0_keys))
-    unique_A0_keys.sort()
-    A0_key_to_idx = dict([(k,i) for i, k in enumerate(unique_A0_keys)])
-    A0_idx = np.array([A0_key_to_idx[k] for k in A0_keys])
+        hill_model = MODEL_LIBRARY["hill_repressor"]["model_func"]
+        guess_fcn = MODEL_LIBRARY["hill_repressor"]["guess_func"]
+        guesses = guess_fcn(x,y)
+
+        # Run fit (nonlinear least squares) 
+        params, _, _, _ = run_least_squares(
+            hill_model,
+            y,
+            y_std,
+            guesses=guesses,
+            args=(x,)
+        )
+
+        # record parameters
+        out_dict[titr] = params
+
+    return out_dict
+
+def _prep_calibration_df(df):
+
+    # Reads file or copies datafame
+    df = read_dataframe(df)
+
+    # Build ln_cfu and ln_cfu_std columns
+    df = get_scaled_cfu(df,need_columns=["ln_cfu","ln_cfu_std"])
+
+    # add genotype if not present
+    if "genotype" not in df.columns:
+        warnings.warn("No genotype column. Assuming all calibration genotypes are 'wt'")
+        df["genotype"] = "wt"
+
+    # Add censored if not present
+    if "censored" not in df.columns:
+        df["censored"] = False
     
-    k_keys = list(zip(df["marker"],df["select"],df["iptg"]))
-    unique_k_keys = list(set(k_keys))
-    unique_k_keys.sort()
-    k_key_to_idx = dict([(k,i + np.max(A0_idx) + 1) for i, k in enumerate(unique_k_keys)])
-    k_idx = np.array([k_key_to_idx[k] for k in k_keys])
+    required_columns = ["ln_cfu",
+                        "ln_cfu_std",
+                        "t_pre",
+                        "condition_pre",
+                        "t_sel",
+                        "condition_sel",
+                        "replicate",
+                        "genotype",
+                        "titrant_name",
+                        "titrant_conc",
+                        "theta",
+                        "censored"]
     
-    # Create empty design matrix
-    num_obs = obs.shape[0]
-    num_param = np.max(k_idx) + 1
-    row_indexer = np.arange(num_obs,dtype=int)
-    X = np.zeros((num_obs,num_param),dtype=float)
-    
-    # Associate appropriate A0 and k with appropriate rows
-    X[row_indexer,A0_idx] = 1
-    X[row_indexer,k_idx] = time
+    # Check for required columns
+    check_columns(df,required_columns)
 
-    # Do weighted linear regression 
-    parameters, cov = matrix_wls(X,obs,weights)
-    std_errors = np.sqrt(np.diag(cov))
+    # We do some regex-y matching with patsy. Nuke extra columns to avoid 
+    # unexpected behavior. 
+    df = df.loc[:,required_columns]
 
-    # Calculate predicted ln(cfu) and their standard errors
-    calc = X @ parameters
-    calc_var_matrix = X @ cov @ X.T
-    calc_std = np.sqrt(np.diag(calc_var_matrix))
+    return df
 
-    # Extract A0 per experiment
-    A0_out = {"day":[],
-              "marker":[],
-              "select":[],
-              "lnA0_est":[],
-              "lnA0_std":[]}
-    for k in A0_key_to_idx:
-        A0_out["day"].append(k[0])
-        A0_out["marker"].append(k[1])
-        A0_out["select"].append(k[2])
-        A0_out["lnA0_est"].append(parameters[A0_key_to_idx[k]])
-        A0_out["lnA0_std"].append(std_errors[A0_key_to_idx[k]])
 
-    # Extract k per condition
-    k_out = {"marker":[],
-             "select":[],
-             "iptg":[],
-             "k_est":[],
-             "k_std":[]}
-    for k in k_key_to_idx:
-        k_out["marker"].append(k[0])
-        k_out["select"].append(k[1])
-        k_out["iptg"].append(float(k[2]))
-        k_out["k_est"].append(parameters[k_key_to_idx[k]])
-        k_out["k_std"].append(std_errors[k_key_to_idx[k]])
-
-    # Plot if requested
-    if ax_growth is not None:
-
-        _plot_growth_rate_fit(obs,
-                              obs_std,
-                              calc,
-                              calc_std,
-                              ax_growth)
-    
-    # Plot if requested
-    if ax_hist is not None:
-        _plot_A0_hist(np.array(A0_out["lnA0_est"]),ax_hist)
-
-    # Create dataframes
-    A0_df = pd.DataFrame(A0_out)
-    k_df = pd.DataFrame(k_out)
-
-    return A0_df, k_df
-
-def calibrate(calibration_file,
-              output_root,
-              K,
-              n,
-              log_iptg_offset=1e-6,
-              offset=0,
-              plot_fit=True):
+def _build_calibration_X_new(df):
     """
+    Assemble the design matrix and response vector for calibration.
+
+    This function constructs the necessary inputs for a least-squares fit to
+    calibrate the model's growth rate parameters. It defines parameters for
+    initial cell counts (lnA0), global background growth (k_bg), and
+    condition-specific growth effects (dk), then builds the corresponding
+    design matrix `X` and response vector `y_obs`.
+
     Parameters
     ----------
-    calibration_file : pd.DataFrame or str
-        dataframe or path to spreadsheet with 
-    output_root : str
-        prefix to use for writing out calibration files
-    K : float
-        binding coefficient for the operator occupancy Hill model
-    n : float
-        Hill coefficient for the operator occupancy Hill model
-    log_iptg_offset : float, default=1e-6
-        add this to value to all iptg concentrations before taking the log 
-        to fit the linear model
+    df : pandas.DataFrame
+        A fully prepared dataframe containing all necessary columns for the
+        calibration model, including 'ln_cfu', 'ln_cfu_std', 'genotype',
+        'library', 'replicate', 't_pre', 't_sel', 'condition_pre',
+        'condition_sel', 'titrant_conc', and 'theta'.
 
     Returns
     -------
-    calibration : dict
-        calibration dictionary
-    fig : matplotlib.Figure
-        figure object
-    ax : matplotlib.Axis
-        axis object
+    y_obs : numpy.ndarray
+        A 1D array of shape (n_obs,) representing the response variable,
+        which is the observed log(cfu).
+    y_std : numpy.ndarray
+        A 1D array of shape (n_obs,) holding the standard error for each
+        observation in ``y_obs``.
+    X : numpy.ndarray
+        A 2D design matrix of shape (n_obs, n_params).
+    param_df : pandas.DataFrame
+        A dataframe defining each parameter's name, class, initial guess,
+        and transformation properties.
+
+    Notes
+    -----
+    A key step in this function is handling the condition parameters. The
+    model uses the same `dk_b` and `dk_m` parameters for a given condition
+    (e.g., 'kanR-kan') regardless of whether it appears in the 'pre' or 'sel'
+    phase. To achieve this, the dataframe is internally reshaped into a "long"
+    format where each growth phase is its own row.
+    """
+    # -------------------------------------------------------------------------
+    # 1. Reshape data to handle shared condition parameters
+    # -------------------------------------------------------------------------
+    
+    # Create a unique index for each original row to map back to later
+    df['_original_row_idx'] = np.arange(len(df))
+
+    # Create a "long" dataframe where each row is one growth phase ('pre' or 'sel')
+    pre_df = df[['_original_row_idx', 'condition_pre', 't_pre', 'theta']].copy()
+    pre_df.rename(columns={'condition_pre': 'condition', 't_pre': 't'}, inplace=True)
+    
+    sel_df = df[['_original_row_idx', 'condition_sel', 't_sel', 'theta']].copy()
+    sel_df.rename(columns={'condition_sel': 'condition', 't_sel': 't'}, inplace=True)
+
+    long_df = pd.concat([pre_df, sel_df], ignore_index=True)
+    long_df = long_df[long_df['t'] > 0].copy() # Drop phases with no duration
+
+    # -------------------------------------------------------------------------
+    # 2. Define all parameter blocks using the helper function
+    # -------------------------------------------------------------------------
+
+    offset = 0
+    # lnA0 parameters (one per unique experimental series)
+    lnA0_idx, lnA0_df = _build_param_df(
+        df=df, base_name="lnA0", series_selector=["genotype", "replicate"], #"library", "replicate"],
+        guess_column="ln_cfu", transform="none", offset=offset
+    )
+    offset = lnA0_df["idx"].max() + 1
+
+    # Global background growth parameters (k_bg_b and k_bg_m)
+    # Use a dummy column to group all rows together.
+    df['_global_selector'] = 1
+    _, k_bg_df = _build_param_df(
+        df=df, base_name="k_bg", series_selector=["_global_selector"],
+        guess_column="none", transform="none", offset=offset # Guesses added manually
+    )
+    # Manually create the two k_bg parameters from the single group
+    k_bg_b_df = k_bg_df.copy(); k_bg_b_df['name'] = 'k_bg_b'
+    k_bg_m_df = k_bg_df.copy(); k_bg_m_df['name'] = 'k_bg_m'; k_bg_m_df['idx'] += 1
+    k_bg_df = pd.concat([k_bg_b_df, k_bg_m_df], ignore_index=True)
+    offset = k_bg_df["idx"].max() + 1
+    
+    # Condition-specific parameters (dk_b and dk_m)
+    # Defined from the unified 'condition' column in the long dataframe
+    dk_idx, dk_df = _build_param_df(
+        df=long_df, base_name="dk", series_selector=["condition"],
+        guess_column="none", transform="none", offset=offset # Guesses added manually
+    )
+    # Manually create b and m parameters for each condition
+    dk_b_df = dk_df.copy(); dk_b_df['name'] += '_b'
+    dk_m_df = dk_df.copy(); dk_m_df['name'] += '_m'; dk_m_df['idx'] += len(dk_df)
+    dk_df = pd.concat([dk_b_df, dk_m_df], ignore_index=True)
+
+    # Combine all parameter definitions
+    param_df = pd.concat([lnA0_df, k_bg_df, dk_df], ignore_index=True)
+
+    # -------------------------------------------------------------------------
+    # 3. Construct the final design matrix X
+    # -------------------------------------------------------------------------
+
+    X = np.zeros((len(df), len(param_df)))
+
+    # Populate lnA0 columns (predictor is 1)
+    X[df['_original_row_idx'], lnA0_idx] = 1.0
+
+    # Populate global k_bg columns
+    k_bg_b_idx = k_bg_df[k_bg_df['name'] == 'k_bg_b']['idx'].iloc[0]
+    k_bg_m_idx = k_bg_df[k_bg_df['name'] == 'k_bg_m']['idx'].iloc[0]
+    total_time = (df['t_pre'] + df['t_sel']).to_numpy()
+    X[:, k_bg_b_idx] = total_time
+    X[:, k_bg_m_idx] = total_time * df['titrant_conc'].to_numpy()
+
+    # Populate condition-specific dk columns using the long_df
+    # This loop adds the predictor values for each growth phase back to the
+    # appropriate row and parameter column in the main design matrix.
+    dk_b_map = pd.Series(dk_b_df['idx'].values, index=dk_b_df['condition'])
+    dk_m_map = pd.Series(dk_m_df['idx'].values, index=dk_m_df['condition'])
+    
+    long_df['dk_b_idx'] = long_df['condition'].map(dk_b_map)
+    long_df['dk_m_idx'] = long_df['condition'].map(dk_m_map)
+    
+    # Vectorized update using np.add.at for efficiency
+    np.add.at(X, (long_df['_original_row_idx'], long_df['dk_b_idx']), long_df['t'])
+    np.add.at(X, (long_df['_original_row_idx'], long_df['dk_m_idx']), long_df['t'] * long_df['theta'])
+    
+    # -------------------------------------------------------------------------
+    # 4. Construct response vectors y_obs and y_std
+    # -------------------------------------------------------------------------
+    
+    y_obs = df["ln_cfu"].to_numpy()
+    y_std = df["ln_cfu_std"].to_numpy()
+
+    # Clean up temporary columns from the original df before returning
+    df.drop(columns=['_original_row_idx', '_global_selector'], inplace=True)
+    
+    return y_obs, y_std, X, param_df
+
+def _build_calibration_X(df):
+    """
+    Build a design matrix that allows fitting of k and dk parameters given known
+    values for theta. 
+    
+    ln_cfu ~ ln_cfu_0 + pre_growth + sel_growth
+    pre_growth: (k_bg_b + k_bg_m*titrant + dk_geno + dk_pre_b + dk_pre_m*theta)*t_pre
+    sel_growth: (k_bg_b + k_bg_m*titrant + dk_geno + dk_sel_b + dk_sel_m*theta)*t_sel
+    
+    We are going to describe k_bg as a linear model in titrant_conc,
+    accounting for any changes in growth rate of background cells due to change
+    in titrant but not theta. If we distribute terms to isolate individual 
+    variables, we end up with the following terms, which are shared among 
+    experiments by the following scheme.
+    
+    1. ln_cfu_0  * (           1                ): genotype:replicate
+    2. k_bg_b    * ( t_pre + t_sel              ): titrant_name
+    3. k_bg_m    * ((t_pre + t_sel)*titrant_conc): titrant_name
+    4. dk_geno   * ( t_pre + t_sel              ): genotype, ref = wt
+    5. dk_cond_b * ( t_pre OR t_sel             ): condition, ref = background
+    6. dk_cond_m * ( t_pre OR t_sel             ): condition, ref = background
+    
+    The OR on dk_cond_b comes about because a condition can either be a pre-
+    or sel-condition. We have to take care of that with a wide-to-long move 
+    when constructing X. 
     """
 
-    if plot_fit:
-        fig, axes = plt.subplots(2,2,figsize=(12,12))
-        ax_growth = axes[0,0]
-        ax_hist = axes[0,1]
-        ax_k_vs_iptg = axes[1,0]
-        ax_k_pred_corr = axes[1,1]
-    else:
-        ax_growth = None
-        ax_hist = None
-        ax_k_vs_iptg = None
-        ax_k_pred_corr = None
+    # Grab y_obs and y_std from the wide dataframe.
+    y_obs = df["ln_cfu"].to_numpy()
+    y_std = df["ln_cfu_std"].to_numpy()
+    
+    # Make aggregate variables involving t_pre and t_sel for the linear regression
+    # before the wide to long transform. 
+    # genotype:replicate, t_pre + t_sel, (t_pre + t_sel)*titrant_conc
+    df["geno_rep"] = list(zip(df["genotype"],df["replicate"]))
+    df["t_tot"] = df["t_pre"] + df["t_sel"]
+    df["t_tot_titr"] = df["t_tot"]*df["titrant_conc"]
+    
+    # The dataframe has t_pre, t_sel, condition_pre and condition_sel. Convert
+    # to a long dataframe that doubles the number of rows. The pre and sel 
+    # phases each get their own row with t_pre and t_sel -> t and 
+    # condition_pre and condition_sel -> condition. 
+    df_for_reshape = df.reset_index()
+    df_long = pd.wide_to_long(
+        df_for_reshape,
+        stubnames=['t', 'condition'], # The prefixes of columns to melt
+        i='index',                    # The identifier for each row
+        j='phase',                    # The name for the new phase column
+        sep='_',                      # The separator between stubname and phase
+        suffix='(pre|sel)'            # The suffixes to look for
+    ).reset_index()
+    
+    # Create aggregate t_theta variable 
+    df_long["theta_t"] = df_long["theta"]*df_long["t"]
+    
+    model_terms = {}
+    factor_terms = {}
 
-    # read in growth file
-    df = read_dataframe(calibration_file)
+    # Use a different ln_cfu0 for every genotype/replicate
+    model_terms["ln_cfu_0"] = "C(geno_rep)"
+    factor_terms["ln_cfu_0"] = ("genotype","replicate")
+    
+    # background growth vs titrant depends on titrant_name. The intercept depends
+    # on total time. The slope depends on total time multipled by titrant conc. 
+    model_terms["k_bg_b"] = "C(titrant_name):t_tot"
+    factor_terms["k_bg_b"] = "titrant_name"
+    
+    model_terms["k_bg_m"] = "C(titrant_name):t_tot_titr"
+    factor_terms["k_bg_m"] = "titrant_name"
+    
+    # The global effect of the genotype depends on genotype. Define wt parameter
+    # as 0 with Treatment('wt') syntax. 
+    model_terms["dk_geno"] = "C(genotype, Treatment('wt'))"
+    factor_terms["dk_geno"] = "genotype"
 
-    # Extract growth rates
-    A0_df, k_df = _get_growth_rates(df,
-                                    offset=offset,
-                                    ax_growth=ax_growth,
-                                    ax_hist=ax_hist)
+    # The relationship between the known theta values and the growth rate 
+    # perturbation. Note we set the 'background' treatment has have no effect
+    # with the Treatment('background') syntax. 
+    model_terms["dk_cond_b"] = "C(condition, Treatment('background')):t"
+    factor_terms["dk_cond_b"] = "condition"
+    
+    model_terms["dk_cond_m"] = "C(condition, Treatment('background')):theta_t"
+    factor_terms["dk_cond_m"] = "condition"
 
-    # Do calibration
-    calibration_dict = perform_calibration(k_df,
-                                           K=K,
-                                           n=n,
-                                           log_iptg_offset=log_iptg_offset)
+    # Build final formula. We're predicting ln_cfu with our model. Drop
+    # default intercept (0)
+    formula = " + ".join(model_terms.values())
+    formula = f"ln_cfu ~ 0 + {formula}"
 
-    # Write out calibration file
-    calibration_file = f"{output_root}.json"
-    write_calibration(calibration_dict=calibration_dict,
-                      json_file=calibration_file)
+    _, X_long = patsy.dmatrices(formula,df_long,)
 
-    # Recording out
-    out = {"A0_df":A0_df,
-           "k_df":k_df,
-           "calibration":calibration_dict,
-           "calibration_file":calibration_file}
+    param_names = X_long.design_info.column_names
+    X_long_df = pd.DataFrame(X_long, columns=param_names)
+    
+    X_long_df['index'] = df_long['index']
+    
+    # Group by the original experiment and sum the contributions
+    X_final_df = X_long_df.groupby('index').sum()
 
-    # Plot the results if requested and finalize
-    if plot_fit:
-        _plot_k_vs_iptg(k_df,
-                        calibration_dict,
-                        ax_k_vs_iptg)
-        _plot_k_pred_corr(k_df,
-                        calibration_dict,
-                        ax_k_pred_corr)
-        fig.tight_layout()
+    # The sum just doubled the values for ln_cfu_0, k_bg*, and dk_geno. Divide
+    # by two to get the values back. 
+    cols_to_fix = [c for c in X_final_df.columns if 
+                   "geno_rep" in c or 
+                   c.endswith(':t_tot') or 
+                   c.endswith(':t_tot_titr')]
 
-        out["fig"] = fig
-        out["axes"] = axes
+    X_final_df[cols_to_fix] /= 2.0
 
-    return out
+    # Get the final design matrix as a numpy array, ready for fitting
+    X = X_final_df.values
+
+    # Get param names
+    patsy_param_names = X_final_df.columns.to_numpy()
+
+    # patsy is finicky with intercepts attached continuous variables. This 
+    # drops columns that use [background] or [wt] -- both reference 
+    # conditions that should be dropped. 
+    good_mask = ~X_final_df.columns.str.contains(r"\[background\]|\[wt\]")
+
+    # Clean up X and parameter names
+    X = X[:,good_mask]
+    patsy_param_names = patsy_param_names[good_mask]
+
+    # Construct initial parameter dataframe with parameter names indexed
+    # by parameter order, linked back to the factors of the initial 
+    # dataframe. 
+    param_df = parse_patsy(df,
+                           patsy_param_names,
+                           model_terms,
+                           factor_terms)
+    
+    return y_obs, y_std, X, param_df 
+
+
+def setup_calibration(df,
+                      ln_cfu_0_guess=16,
+                      k_bg_guess=0.02,
+                      no_bg_slope=False):
+
+    # Prepare dataframe, creating all necessary columns etc. 
+    df = _prep_calibration_df(df)
+
+    # Build the design matrix
+    y_obs, y_std, X, param_df = _build_calibration_X(df)
+
+    # Build guesses
+    guesses = np.zeros(len(param_df))
+
+    # ln_cfu_0
+    ln_cfu_0_mask = param_df["param_class"] == "ln_cfu_0"
+    guesses[ln_cfu_0_mask] = ln_cfu_0_guess
+
+    # k_bg_b
+    k_bg_b_mask = param_df["param_class"] == "k_bg_b"
+    guesses[k_bg_b_mask] = k_bg_guess
+
+    # Record the guesses
+    param_df["guess"] = guesses
+    
+    param_df["fixed"] = False
+    if no_bg_slope:
+        param_df.loc[param_df["param_class"] == "k_bg_m","guess"] = 0.0
+        param_df.loc[param_df["param_class"] == "k_bg_m","fixed"] = True
+
+    # Build fit manager
+    fm = FitManager(y_obs,y_std,X,param_df)
+
+    return fm
+
+def calibrate(df,
+              output_file,
+              ln_cfu_0_guess=16,
+              k_bg_guess=0.02,
+              no_bg_slope=False):
+    """
+    Run the full calibration workflow on experimental data.
+
+    Takes experimental data, performs validation, runs a global non-linear
+    fit to determine growth parameters (`b` and `m` vs. theta for each titrant),
+    fits a Hill model to the `theta` vs. titrant data, and saves the resulting
+    calibration parameters to a JSON file.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame or str
+        A pre-loaded DataFrame or a file path (e.g., to an Excel file)
+        containing the compiled experimental data.
+    output_file : str
+        The file path where the output JSON calibration data will be written.
+    ln_cfu_0_guess : float, optional
+        An initial guess for the log-transformed initial population size (lnA0),
+        by default 16.
+    bg_k_guess : float, optional
+        An initial guess for the constant term (c_0) of the background
+        growth model, by default 0.025.
+    no_bg_slope : bool, optional
+        whether or not to fix the background slope to 0. defaults to False. 
+
+    Returns
+    -------
+    dict
+        A dictionary containing the final calibration parameters. The primary keys
+        are 'm', 'b', 'theta_param', and 'bg_model_param'.
+    pd.DataFrame
+        A dataframe holding the predicted and observed ln(A) for all data points
+        used for the calibration
+    pd.DataFrame
+        A dataframe holding the fit ln(A0) for all replicates used for the 
+        calibration
+    """
+
+    # Construct a FitManager object to manage the fit. 
+    fm = setup_calibration(df,
+                           ln_cfu_0_guess=ln_cfu_0_guess,
+                           k_bg_guess=k_bg_guess,
+                           no_bg_slope=no_bg_slope)
+
+    # Run least squares fit
+    params, std_errors, cov_matrix, _ = run_least_squares(
+        fm.predict_from_transformed,
+        obs=fm.y_obs,
+        obs_std=fm.y_std,
+        guesses=fm.guesses_transformed,
+        lower_bounds=fm.lower_bounds_transformed,
+        upper_bounds=fm.upper_bounds_transformed
+    )
+    
+    
+    # Make predictions at each data point and store
+    pred, pred_std = predict_with_error(fm.predict_from_transformed,
+                                        params,
+                                        cov_matrix)
+    
+    pred_df = pd.DataFrame({"y_obs":fm.y_obs,
+                            "y_std":fm.y_std,
+                            "calc_est":pred,
+                            "calc_std":pred_std})
+
+    pred_df = pd.concat([df,pred_df],axis=1)
+
+    # Extract parameter estimates
+    param_df = fm.param_df.copy()
+    param_df["est"] = fm.back_transform(params)
+    param_df["std"] = fm.back_transform_std_err(params,std_errors)
+
+    # Fit a hill model to the observed theta values so we can calculate
+    # approximate wildtype theta on the fly for any titrant conc
+    theta_param = _fit_theta(df)
         
+    # # Build output dictionary with fit results
+    calibration_dict = {}
+
+    # Extract k_bg vs. titrant slopes and interecepts
+    calibration_dict["k_bg"] = {}
+    tmp_df = param_df.loc[param_df["param_class"] == "k_bg_b",["titrant_name","est"]]
+    calibration_dict["k_bg"]["b"] = tmp_df.set_index('titrant_name')['est'].to_dict()
+    tmp_df = param_df.loc[param_df["param_class"] == "k_bg_m",["titrant_name","est"]]
+    calibration_dict["k_bg"]["m"] = tmp_df.set_index('titrant_name')['est'].to_dict()
+
+    # Extract dk_cond vs. theta slopes and interecepts
+    calibration_dict["dk_cond"] = {}
+    tmp_df = param_df.loc[param_df["param_class"] == "dk_cond_m",["condition","est"]] 
+    calibration_dict["dk_cond"]["m"] = tmp_df.set_index('condition')['est'].to_dict()
+    tmp_df = param_df.loc[param_df["param_class"] == "dk_cond_b",["condition","est"]] 
+    calibration_dict["dk_cond"]["b"] = tmp_df.set_index('condition')['est'].to_dict()
+    
+    # Put background values (defined as as 0) into dk_cond
+    calibration_dict["dk_cond"]["m"]["background"] = 0.0
+    calibration_dict["dk_cond"]["b"]["background"] = 0.0
+
+    # Write out theta fit
+    calibration_dict["theta_param"] = theta_param
+
+    write_calibration(calibration_dict=calibration_dict,
+                    json_file=output_file)
+
+    calibration_dict = read_calibration(output_file)
 
 
+    return calibration_dict, pred_df, param_df
+
+    

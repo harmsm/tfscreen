@@ -2,7 +2,7 @@
 Constants and lookup tables for codon and amino acid data used in tfscreen.
 """
 
-codon_to_aa = {
+CODON_TO_AA = {
     'ttt': 'F', 'ttc': 'F', 'tta': 'L', 'ttg': 'L',
     'ctt': 'L', 'ctc': 'L', 'cta': 'L', 'ctg': 'L',
     'att': 'I', 'atc': 'I', 'ata': 'I', 'atg': 'M',
@@ -21,7 +21,7 @@ codon_to_aa = {
     'ggt': 'G', 'ggc': 'G', 'gga': 'G', 'ggg': 'G'
 }
 
-degen_base_specifier = {
+DEGEN_BASE_SPECIFIER = {
     "a":"a",
     "c":"c",
     "g":"g",
@@ -38,3 +38,9 @@ degen_base_specifier = {
     "n":"acgt"
 }
 
+COMPLEMENT_DICT = {"a":"t",
+                   "t":"a",
+                   "g":"c",
+                   "c":"g",
+                   "n":"n",
+                   "-":"-"}

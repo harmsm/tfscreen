@@ -22,9 +22,14 @@ dependencies = [
   "matplotlib",
   "tqdm",
   "statsmodels",
-  "eee",
-  "dataprob",
-  "PyYAML"
+  "PyYAML",
+  "corner",
+  "dataclasses",
+  "typing",
+  "numba",
+  "patsy",
+  "pybktree",
+  "pyfastx",
 ]
 
 requires-python = ">=3.10"
@@ -52,10 +57,16 @@ test = [
   "coverage",
   "flake8",
   "pytest",
-  "genbadge"
+  "genbadge",
+  "pytest-mock"
  ]
 docs = [
   "pydata-sphinx-theme"
 ]
 
+[project.scripts]
+tfs-process-fastq = "tfscreen.process_raw.process_fastq:main"
+tfs-process-counts = "tfscreen.process_raw.process_counts:main"
+tfs-hier-theta = "tfscreen.analysis.hierarchical.analyze_theta:main"
+tfs-indep-theta = "tfscreen.analysis.independent.analyze_theta:main"
 
