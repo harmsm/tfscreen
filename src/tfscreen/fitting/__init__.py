@@ -1,49 +1,25 @@
-from .linear_regression import (
-    fast_linear_regression,
-    fast_weighted_linear_regression
+
+from .fitters import (
+    run_least_squares,
+    run_map,
+    run_matrix_nls,
+    run_matrix_wls,
+    run_ols_2D,
+    run_wls_2D
 )
 
-from .matrix_wls import (
-    matrix_wls
+from .predict_with_error import (
+    predict_with_error
 )
 
-from .matrix_nls import (
-    matrix_nls
+from .stats_test_suite import (
+    stats_test_suite
 )
 
-
-from .ols import (
-    get_growth_rates_ols
+from .fit_manager import (
+    FitManager
 )
 
-from .wls import (
-    get_growth_rates_wls
-)
-
-from .kf import (
-    get_growth_rates_kf
-)
-
-from .ukf import (
-    get_growth_rates_ukf
-)
-
-from .ukf_lin import (
-    get_growth_rates_ukf_lin
-)
-
-from .gls import (
-    get_growth_rates_gls
-)
-
-from .glm import (
-    get_growth_rates_glm
-)
-
-from .gee import (
-    get_growth_rates_gee
-)
-
-from .nls import (
-    get_growth_rates_nls
+from .parse_patsy import (
+    parse_patsy
 )
