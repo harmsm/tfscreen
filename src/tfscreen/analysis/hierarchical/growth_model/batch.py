@@ -73,8 +73,10 @@ def sample_batch(rng_key: PRNGKey,
 
             # small theta tensors
             titrant_conc=sharded_data.growth.titrant_conc[..., idx],
+            log_titrant_conc=sharded_data.growth.log_titrant_conc[..., idx],
             map_theta_group=sharded_data.growth.map_theta_group[..., idx],
             
+            not_wt_mask=sharded_data.growth.not_wt_mask[..., idx],
             good_mask=sharded_data.growth.good_mask[..., idx],
         )
     )
@@ -127,8 +129,10 @@ def deterministic_batch(full_data: DataClass, idx: jnp.ndarray) -> DataClass:
 
             # small theta tensors
             titrant_conc=full_data.growth.titrant_conc[..., idx],
+            log_titrant_conc=full_data.growth.log_titrant_conc[..., idx],
             map_theta_group=full_data.growth.map_theta_group[..., idx],
             
+            not_wt_mask=full_data.growth.not_wt_mask[..., idx],
             good_mask=full_data.growth.good_mask[..., idx],
         )
     )

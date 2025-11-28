@@ -416,8 +416,10 @@ class RunInference:
                     # it does not have a genotype axis, just append it on the 
                     # first iteration.
                     for k, v in latent_samples.items():
+
                         if k in batch_pred_cpu:
                             continue
+
                         if k not in batched_results:
                             batched_results[k] = []
                             
@@ -442,7 +444,7 @@ class RunInference:
                     else:
                         full_width = np.concatenate(v,axis=1)
                         combined_results[k].append(full_width)
-                        
+        
             # assemble final results
             final_results = {}
             for k in combined_results:
