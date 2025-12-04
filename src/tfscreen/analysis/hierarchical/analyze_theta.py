@@ -14,8 +14,8 @@ def _run_map(ri,
              convergence_tolerance=1e-5,
              convergence_window=1000,
              checkpoint_interval=1000,
-             map_num_steps=100000,
-             batch_size=1024):
+             map_num_steps=100000):
+             #batch_size=1024):
     """
     Run maximum a posteriori (MAP) optimization for hierarchical model inference.
 
@@ -79,7 +79,7 @@ def _run_map(ri,
         convergence_window=convergence_window,
         checkpoint_interval=checkpoint_interval,
         num_steps=map_num_steps,
-        batch_size=batch_size
+        #batch_size=batch_size
     )
 
     # Write the current parameter values
@@ -105,7 +105,7 @@ def _run_svi(ri,
              convergence_window=1000,
              checkpoint_interval=1000,
              num_steps=100000,
-             batch_size=1024,
+             #batch_size=1024,
              num_posterior_samples=10000,
              sampling_batch_size=100,
              forward_batch_size=512,
@@ -184,7 +184,7 @@ def _run_svi(ri,
         convergence_window=convergence_window,
         checkpoint_interval=checkpoint_interval,
         num_steps=num_steps,
-        batch_size=batch_size
+        #batch_size=batch_size
     )
 
     if converged or always_get_posterior:
@@ -330,6 +330,7 @@ def analyze_theta(growth_df,
     # parameters to describe the experiments
     gm = GrowthModel(growth_df,
                      binding_df,
+                     batch_size=batch_size,
                      condition_growth=condition_growth_model,
                      ln_cfu0=ln_cfu0_model,
                      dk_geno=dk_geno_model,
@@ -357,7 +358,7 @@ def analyze_theta(growth_df,
                         convergence_window=convergence_window,
                         checkpoint_interval=checkpoint_interval,
                         num_steps=num_steps,
-                        batch_size=batch_size,
+                        #batch_size=batch_size,
                         num_posterior_samples=num_posterior_samples,
                         sampling_batch_size=sampling_batch_size,
                         forward_batch_size=forward_batch_size,
@@ -376,8 +377,8 @@ def analyze_theta(growth_df,
                         map_convergence_tolerance=convergence_tolerance,
                         convergence_window=convergence_window,
                         checkpoint_interval=checkpoint_interval,
-                        map_num_steps=num_steps,
-                        batch_size=batch_size)
+                        map_num_steps=num_steps)
+                        #batch_size=batch_size)
     
     elif analysis_method == "posterior":
 
@@ -393,7 +394,7 @@ def analyze_theta(growth_df,
                         convergence_window=convergence_window,
                         checkpoint_interval=checkpoint_interval,
                         num_steps=0, # Don't do any optimization
-                        batch_size=batch_size,
+                        #batch_size=batch_size,
                         num_posterior_samples=num_posterior_samples,
                         sampling_batch_size=sampling_batch_size,
                         forward_batch_size=forward_batch_size,

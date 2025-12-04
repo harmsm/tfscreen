@@ -644,6 +644,9 @@ class ModelClass:
         # be the entire dataset. 
         if self._batch_size is None:
             self._batch_size = self.growth_tm.tensor_shape[-1]
+        if self._batch_size > self.growth_tm.tensor_shape[-1]:
+            self._batch_size = self.growth_tm.tensor_shape[-1]
+
         control_class_kwargs["batch_size"] = self._batch_size
         control = ControlClass(**control_class_kwargs)
 
