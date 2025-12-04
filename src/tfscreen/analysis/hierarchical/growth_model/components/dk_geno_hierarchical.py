@@ -3,6 +3,8 @@ import numpyro as pyro
 import numpyro.distributions as dist
 from flax.struct import dataclass
 
+from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
+
 @dataclass(frozen=True)
 class ModelPriors:
     """
@@ -16,7 +18,9 @@ class ModelPriors:
     dk_geno_hyper_shift_scale: float
     
 
-def define_model(name,data,priors):
+def define_model(name: str, 
+                 data: GrowthData, 
+                 priors: ModelPriors) -> jnp.ndarray:
     """
     The pleiotropic effect of a genotype on growth rate independent of 
     transcription factor occupancy. 
@@ -33,9 +37,8 @@ def define_model(name,data,priors):
         The prefix for all Numpyro sample sites (e.g., "theta").
     data : DataClass
         A data object containing metadata, primarily:
-        - data.num_not_wt
         - data.num_genotype
-        - data.not_wt_mask
+        - data.wt_indexes
         - data.map_genotype
     priors : ModelPriors
         A Pytree containing all hyperparameters for the model, including:
@@ -68,21 +71,21 @@ def define_model(name,data,priors):
                     priors.dk_geno_hyper_shift_scale)
     )
 
-    with pyro.plate(f"{name}_parameters", data.num_not_wt):
+    with pyro.plate("shared_genotype_plate", size=data.num_genotype,subsample_size=data.batch_size,dim=-1):
         dk_geno_offset = pyro.sample(f"{name}_offset", dist.Normal(0, 1))
     
     dk_geno_lognormal_values = jnp.clip(jnp.exp(dk_geno_hyper_loc + dk_geno_offset * dk_geno_hyper_scale),max=1e30)
-    dk_geno_mutant_dists = dk_geno_hyper_shift - dk_geno_lognormal_values
+    dk_geno_per_genotype = dk_geno_hyper_shift - dk_geno_lognormal_values
 
-    # Set to zero by default (wt) then set rest to dk_geno_mutants
-    dk_geno_per_genotype = jnp.zeros(data.num_genotype)
-    dk_geno_per_genotype = dk_geno_per_genotype.at[data.not_wt_mask].set(dk_geno_mutant_dists)
+    # Force wildtype to be zero. 
+    is_wt_mask = jnp.isin(data.batch_idx, data.wt_indexes)
+    dk_geno_per_genotype = jnp.where(is_wt_mask, 0.0, dk_geno_per_genotype)
     
     # Register dists
     pyro.deterministic(name, dk_geno_per_genotype)    
 
     # Expand to full-sized tensor
-    dk_geno = dk_geno_per_genotype[data.map_genotype]
+    dk_geno = dk_geno_per_genotype[None,None,None,None,None,None,:]
 
     return dk_geno
 
@@ -119,7 +122,7 @@ def get_guesses(name,data):
         The prefix for the parameter names (e.g., "theta").
     data : DataClass
         A data object containing metadata, primarily:
-        - ``data.num_not_wt`` : (int) number of non-wt genotypes
+        - ``data.num_genotype`` : (int) number of non-wt genotypes
 
     Returns
     -------
@@ -140,7 +143,7 @@ def get_guesses(name,data):
     guesses[f"{name}_hyper_loc"] = -3.5
     guesses[f"{name}_hyper_scale"] = 0.5
     guesses[f"{name}_shift"] = 0.02
-    guesses[f"{name}_offset"] = -0.8240460108562919*jnp.ones(data.num_not_wt)
+    guesses[f"{name}_offset"] = -0.8240460108562919*jnp.ones(data.num_genotype)
 
     return guesses
 

@@ -3,6 +3,8 @@ import numpyro as pyro
 import numpyro.distributions as dist
 from flax.struct import dataclass
 
+from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
+
 @dataclass(frozen=True)
 class ModelPriors:
     """
@@ -10,7 +12,9 @@ class ModelPriors:
     """
     pass
 
-def define_model(name,data,priors):
+def define_model(name: str, 
+                 data: GrowthData, 
+                 priors: ModelPriors) -> jnp.ndarray:
     """
     The pleiotropic effect of a genotype on growth rate independent of
     transcription factor occupancy. Fixed to zero. Returns a full tensor. 
@@ -31,7 +35,7 @@ def define_model(name,data,priors):
     pyro.deterministic(name, dk_geno_per_genotype)  
 
     # Expand to full-sized tensor
-    dk_geno = dk_geno_per_genotype[data.map_genotype]
+    dk_geno = dk_geno_per_genotype[None,None,None,None,None,None,:]
 
     return dk_geno
 

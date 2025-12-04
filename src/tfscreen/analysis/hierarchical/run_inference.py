@@ -54,7 +54,6 @@ class RunInference:
             - `control` (flax.struct.dataclass): Data object holding model control
             - `init_params` (dict): Initial parameter guesses.
             - `sample_batch` (callable): Function to sample a data batch.
-            - `deterministic_batch` (callable): Function for deterministic batch.
         seed : int
             Random seed for JAX PRNG key generation.
         """
@@ -376,11 +375,6 @@ class RunInference:
                     end_idx = min(start_idx + forward_batch_size, total_num_genotypes)
                     batch_indices = jnp.arange(start_idx, end_idx)
 
-                    # Get a batch of data
-                    batch_data = self.model.deterministic_batch(self.model.data,
-                                                                batch_indices)
-                    jax_model_kwargs["data"] = batch_data
-
                     # Slice the Latent Samples to match this batch
                     batch_latents = {}
                     for k, v in latent_samples.items():
@@ -394,9 +388,16 @@ class RunInference:
                         else:
                             batch_latents[k] = v
 
+                    # Create a handler that overrides the genotype plate random
+                    # sampling.
+                    deterministic_jax_model = numpyro.handlers.substitute(
+                        self.model.jax_model, 
+                        data={"shared_genotype_plate": batch_indices}
+                    )
+
                     # Create a sampler that will predict outputs using the full
                     # model given those latent samples
-                    forward_sampler = Predictive(self.model.jax_model,
+                    forward_sampler = Predictive(deterministic_jax_model, 
                                                  posterior_samples=batch_latents)
 
                     # Run the forward pass for this batch of genotypes

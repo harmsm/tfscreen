@@ -43,7 +43,9 @@ class ThetaParam:
     theta: jnp.ndarray
 
 
-def define_model(name: str, data: DataClass, priors: ModelPriors) -> ThetaParam:
+def define_model(name: str,
+                 data: DataClass,
+                 priors: ModelPriors) -> ThetaParam:
     """
     Defines the hierarchical categorical model for theta.
     
@@ -90,9 +92,9 @@ def define_model(name: str, data: DataClass, priors: ModelPriors) -> ThetaParam:
     # --------------------------------------------------------------------------
     # Sample parameters for each (titrant_name, titrant_conc, genotype) group 
 
-    with pyro.plate(f"{name}_titrant_name_plate", data.num_titrant_name, dim=-3):
-        with pyro.plate(f"{name}_titrant_conc_plate", data.num_titrant_conc, dim=-2):
-            with pyro.plate(f"{name}_genotype_plate", data.num_genotype, dim=-1):
+    with pyro.plate(f"{name}_titrant_name_plate", data.num_titrant_name,dim=-3):
+        with pyro.plate(f"{name}_titrant_conc_plate", data.num_titrant_conc,dim=-2):
+            with pyro.plate("shared_genotype_plate", size=data.num_genotype,subsample_size=data.batch_size,dim=-1):
                 
                 logit_theta_offset = pyro.sample(
                     f"{name}_logit_theta_offset", 
@@ -149,9 +151,9 @@ def run_model(theta_param: ThetaParam, data: DataClass) -> jnp.ndarray:
     # The parameters are the calculated values
     theta_calc = theta_param.theta
 
-    # Scatter to the full-sized tensor if required
+    # Broadcast to the full-sized tensor if required
     if data.scatter_theta == 1:
-        theta_calc = theta_calc.ravel()[data.map_theta]
+        theta_calc = theta_calc[None,None,None,None,:,:,:]
     
     return theta_calc
 

@@ -11,11 +11,6 @@ from tfscreen.analysis.hierarchical.growth_model.model import (
     MODEL_COMPONENT_NAMES
 )
 
-from tfscreen.analysis.hierarchical.growth_model.batch import (
-    sample_batch,
-    deterministic_batch
-)
-
 from tfscreen.analysis.hierarchical.growth_model.data_class import (
     DataClass,
     BindingData,
@@ -99,6 +94,7 @@ def _read_growth_df(growth_df,
     required.extend(["ln_cfu","ln_cfu_std","replicate","t_pre","t_sel"])
     tfscreen.util.check_columns(growth_df,required_columns=required)
 
+    # These two maps are used to look up parameters after sampling posteriors
     growth_df = add_group_columns(target_df=growth_df,
                                   group_cols=treatment_cols,
                                   group_name="treatment")
@@ -106,13 +102,7 @@ def _read_growth_df(growth_df,
     growth_df = add_group_columns(target_df=growth_df,
                                   group_cols=theta_group_cols,
                                   group_name="map_theta_group")
-    
-    # Create a log_titrant_conc column, replacing 0 with 1000x less than lowest
-    # non-zero value. 
-    titrant_conc = np.array(growth_df["titrant_conc"],dtype=float)
-    titrant_conc[titrant_conc == 0] = ZERO_CONC_VALUE
-    growth_df["log_titrant_conc"] = np.log(titrant_conc)
-    
+        
     return growth_df
 
 def _build_growth_tm(growth_df):
@@ -138,17 +128,24 @@ def _build_growth_tm(growth_df):
     tfscreen.analysis.hierarchical.TensorManager
         A fully-processed TensorManager instance after `create_tensors()`
         has been called.
+
     """
+
+    # Add pivot column so we can both use this as a pivot and value
+    growth_df["pivot_titrant_conc"] = growth_df["titrant_conc"]
 
     # Create tensor manager for construction of growth experiment tensors
     growth_tm = TensorManager(growth_df)
-    
+
     # Define that we want a 4D tensor (replicate,time,treatment,genotype)
     growth_tm.add_pivot_index(tensor_dim_name="replicate",cat_column="replicate")
     growth_tm.add_ranked_pivot_index(tensor_dim_name="time",
                                      rank_column="t_sel",
                                      select_cols=['replicate','genotype','treatment'])
-    growth_tm.add_pivot_index(tensor_dim_name="treatment",cat_column="treatment_tuple")
+    growth_tm.add_pivot_index(tensor_dim_name="condition_pre",cat_column="condition_pre")
+    growth_tm.add_pivot_index(tensor_dim_name="condition_sel",cat_column="condition_sel")
+    growth_tm.add_pivot_index(tensor_dim_name="titrant_name",cat_column="titrant_name")
+    growth_tm.add_pivot_index(tensor_dim_name="titrant_conc",cat_column="pivot_titrant_conc")
     growth_tm.add_pivot_index(tensor_dim_name="genotype",cat_column="genotype")
     
     # Register that we want tensors from these data columns
@@ -156,26 +153,9 @@ def _build_growth_tm(growth_df):
     growth_tm.add_data_tensor("ln_cfu_std",dtype=FLOAT_DTYPE)
     growth_tm.add_data_tensor("t_pre",dtype=FLOAT_DTYPE)
     growth_tm.add_data_tensor("t_sel",dtype=FLOAT_DTYPE)
-    growth_tm.add_data_tensor("titrant_conc",dtype=FLOAT_DTYPE)
-    growth_tm.add_data_tensor("log_titrant_conc",dtype=FLOAT_DTYPE)
-    
-    # These calls will create full-sized integer tensors for parameter 
-    # mapping. For example, ln_cfu0 should have a unique parameter for each 
-    # replicate, condition_pre, and genotype. Each unique combination of 
-    # those columns will be assigned an integer index, then a tensor 
-    # created where the element declares which ln_cfu0 parameter should be 
-    # applied at that tensor coordinate. 
-    growth_tm.add_map_tensor(["replicate","condition_pre","genotype"],
-                             name="ln_cfu0")
-    growth_tm.add_map_tensor("genotype",name="genotype")
-    growth_tm.add_map_tensor("genotype",name="activity")
-    growth_tm.add_map_tensor("genotype",name="dk_geno")
-    growth_tm.add_map_tensor(["titrant_name","titrant_conc","genotype"],name="theta")
 
-    # We already created this map above to integrate with the binding data. It's
-    # living in a data column, so grab it to create this map. 
-    growth_tm.add_data_tensor("map_theta_group",dtype=int) 
-    
+    # This creates a full-dimension map tensor that lets us look up the growth
+    # conditions (pre and sel) for each element in the tensor. 
     # By calling with `select_pool_cols`, we pool names of conditions on 
     # condition_pre and condition_sel. Basically this does the operation 
     # unique(replicate + condition_pre OR replicate + condition_sel). This
@@ -184,71 +164,21 @@ def _build_growth_tm(growth_df):
                              select_pool_cols=["condition_pre","condition_sel"],
                              name="condition")
 
-    growth_tm.add_map_tensor(["titrant_name","titrant_conc"],name="titrant")
-    growth_tm.add_map_tensor("replicate",name="replicate")
+    # These maps will allow us to extract parameter values from posterior 
+    # samples. 
+    growth_tm.add_map_tensor(["replicate","condition_pre","genotype"],
+                            name="ln_cfu0")
+    growth_tm.add_map_tensor("genotype",name="genotype")
+    growth_tm.add_map_tensor(["titrant_name","titrant_conc","genotype"],name="theta")
 
     # Do final tensor creation
     growth_tm.create_tensors()
 
     return growth_tm
 
-def _build_growth_theta_tm(growth_df):
-    """
-    Builds a TensorManager for the growth-derived theta data.
-
-    This function creates a smaller, dense 3D tensor containing the unique
-    values needed to calculate theta from the growth data. The final tensor
-    shape is:
-    (titrant_name, titrant_conc, genotype)
-
-    The resulting tensors (e.g., 'titrant_conc', 'map_theta_group') are
-    used to populate the `GrowthData` dataclass, ensuring a compact
-    representation for theta calculations.
-
-    Parameters
-    ----------
-    growth_df : pd.DataFrame
-        The processed growth DataFrame.
-
-    Returns
-    -------
-    tfscreen.analysis.hierarchical.TensorManager
-        A processed TensorManager instance after `create_tensors()`
-        has been called.
-    """
-
-    # growth theta df has all unique theta_group and titrant_conc combos
-    growth_theta_df = (growth_df
-                       .drop_duplicates(["titrant_name","titrant_conc","genotype"])
-                       .copy())
-    
-    # Create a titrant_conc column to use as a pivot for the tensor. The pivot
-    # consumes the column. This move allows us to preserve titrant_conc and use
-    # its values to populate a tensor.
-    growth_theta_df["pivot_titrant_conc"] = growth_theta_df["titrant_conc"]
-
-    # Create tensor manager
-    tm = TensorManager(growth_theta_df)
-
-    tm.add_pivot_index(tensor_dim_name="titrant_name",cat_column="titrant_name")
-    tm.add_pivot_index(tensor_dim_name="titrant_conc",cat_column="pivot_titrant_conc")
-    tm.add_pivot_index(tensor_dim_name="genotype",cat_column="genotype")
-
-    # map_theta_group will allow us to map back from these local values to the 
-    # parameter values
-    tm.add_data_tensor("map_theta_group",dtype=int)
-
-    # This will give us the array of titrant concs
-    tm.add_data_tensor("titrant_conc",dtype=FLOAT_DTYPE)
-    tm.add_data_tensor("log_titrant_conc",dtype=FLOAT_DTYPE)
-
-    # Create tensors
-    tm.create_tensors()
-
-    return tm
 
 def _read_binding_df(binding_df,
-                     existing_df=None,
+                     growth_df,
                      theta_group_cols=None):
     """
     Reads and processes a DataFrame containing direct binding data.
@@ -285,26 +215,36 @@ def _read_binding_df(binding_df,
     # Load dataframe (either loads from file or works on copy)
     binding_df = tfscreen.util.read_dataframe(binding_df)
     binding_df = tfscreen.genetics.set_categorical_genotype(binding_df,
-                                                            standardize=True,
-                                                            sort=True)
+                                                            standardize=True)
 
     # check for all required columns
     required = theta_group_cols[:]
     required.extend(["theta_obs","theta_std","titrant_conc"])
     tfscreen.util.check_columns(binding_df,required_columns=required)
 
-    # This map will map back to the theta groups in existing_df, letting us
-    # grab the same theta_groups from this binding_df and whatever was in 
-    # existing_df. 
-    binding_df = add_group_columns(binding_df,
-                                   group_cols=theta_group_cols,
-                                   group_name="map_theta_group",
-                                   existing_df=existing_df)
+
+    cols = ["genotype","titrant_name"]
+    binding_seen = binding_df[cols].drop_duplicates().set_index(cols)
+    growth_seen = growth_df[cols].drop_duplicates().set_index(cols)
+    is_subset = binding_seen.index.isin(growth_seen.index).all()
+    if not is_subset:
+        raise ValueError(
+            "binding_df contains genotype/titrant_name pairs that were not seen "
+            "in the growth_df."
+        )
+
+    growth_ref = growth_df[cols].drop_duplicates()
+
+    # Merge the binding data into the growth data. This makes sure the binding
+    # data has a row for every genotype/titrant_name combination seen in the 
+    # growth data. Pairs not seen in the binding data will have `nan` entries.
+    binding_df = growth_ref.merge(binding_df,
+                                  on=["genotype","titrant_name"],
+                                  how="left",
+                                  sort=False)
     
-    # Create a log_titrant_conc column, replacing 0 ZERO_CONC_VALUE
-    titrant_conc = np.array(binding_df["titrant_conc"],dtype=float)
-    titrant_conc[titrant_conc == 0] = ZERO_CONC_VALUE
-    binding_df["log_titrant_conc"] = np.log(titrant_conc)
+    # Reassert that genotype must be categorical after the merge
+    binding_df = tfscreen.genetics.set_categorical_genotype(binding_df)
 
     return binding_df
 
@@ -347,65 +287,12 @@ def _build_binding_tm(binding_df):
     # add data columns 
     binding_tm.add_data_tensor("theta_obs",dtype=FLOAT_DTYPE)
     binding_tm.add_data_tensor("theta_std",dtype=FLOAT_DTYPE)
-    binding_tm.add_data_tensor("map_theta_group",dtype=int)
-    binding_tm.add_data_tensor("titrant_conc",dtype=FLOAT_DTYPE)
-    binding_tm.add_data_tensor("log_titrant_conc",dtype=FLOAT_DTYPE)
 
-    # Build tenors
+    # Build tensors
     binding_tm.create_tensors()
     
     return binding_tm
 
-def _get_wt_info(tm):
-    """
-    Extracts wild-type index and non-wild-type mask from a TensorManager.
-
-    This function inspects the 'genotype' dimension of the TensorManager
-    to find the integer index corresponding to the 'wt' genotype and
-    a mask for all other genotypes.
-
-    Parameters
-    ----------
-    tm : tfscreen.analysis.hierarchical.TensorManager
-        A TensorManager that has a 'genotype' dimension.
-
-    Returns
-    -------
-    dict
-        A dictionary with keys "wt_index", "not_wt_mask", and "num_not_wt".
-
-    Raises
-    ------
-    ValueError
-        If the 'genotype' dimension is not found, or if exactly one
-        'wt' entry is not present.
-    """
-
-    try:
-        genotype_dim_idx = tm.tensor_dim_names.index("genotype")
-    except ValueError:
-        raise ValueError(
-            "Could not find 'genotype' in tensor dimension names."
-        )
-
-    mask = tm.tensor_dim_labels[genotype_dim_idx] != "wt"
-    not_wt_mask = jnp.arange(len(mask),dtype=int)[mask]
-    
-    wt_index = jnp.arange(len(mask),dtype=int)[~mask]
-    if len(wt_index) != 1:
-        raise ValueError(
-            f"Exactly one 'wt' entry is allowed in tensor dimension "
-            f"{tm.tensor_dim_names[genotype_dim_idx]}, but we found {len(wt_index)}."
-        )
-    wt_index = wt_index[0]
-
-    num_not_wt = len(not_wt_mask)
-    
-    out = {"wt_index":wt_index,
-           "not_wt_mask":not_wt_mask,
-           "num_not_wt":num_not_wt}
-
-    return out
 
 def _extract_param_est(input_df,
                        params_to_get,
@@ -533,6 +420,7 @@ class ModelClass:
     def __init__(self,
                  growth_df,
                  binding_df,
+                 batch_size=None,
                  condition_growth="hierarchical",
                  ln_cfu0="hierarchical",
                  dk_geno="hierarchical",
@@ -544,6 +432,7 @@ class ModelClass:
         self._ln_cfu_df = growth_df
         self._binding_df = binding_df
 
+        self._batch_size = batch_size
         self._condition_growth = condition_growth
         self._ln_cfu0 = ln_cfu0
         self._dk_geno = dk_geno
@@ -577,36 +466,49 @@ class ModelClass:
         # the theta (titrant_conc,theta_group) tensor. 
         self.growth_df = _read_growth_df(self._ln_cfu_df)
         self.growth_tm = _build_growth_tm(self.growth_df)
-        self.growth_theta_tm = _build_growth_theta_tm(self.growth_df)
+        #self.growth_theta_tm = _build_growth_theta_tm(self.growth_df)
         
         # Get wildtype information
-        wt_info = _get_wt_info(self.growth_tm)
+        genotype_idx = self.growth_tm.tensor_dim_names.index("genotype")
+        wt_indexes = self.growth_tm.tensor_dim_labels[genotype_idx] == "wt"
+        wt_info = {"wt_indexes":wt_indexes,
+                   "batch_idx":np.arange(self.growth_tm.tensor_shape[-1],dtype=int),
+                   "batch_size":self.growth_tm.tensor_shape[-1]}
         
         # Assemble tensors. We draw some from growth_tm and some from 
-        # growth_theta_tm        
+        # growth_theta_tm    
         tensors = {}
         
         from_growth_tm = ["ln_cfu","ln_cfu_std","t_pre","t_sel",
-                          "map_ln_cfu0","map_condition_pre","map_condition_sel",
-                          "map_genotype","map_theta","good_mask"]
+                          "map_condition_pre","map_condition_sel","good_mask"]
+                          
         for k in from_growth_tm:
             tensors[k] = self.growth_tm.tensors[k]
 
-        from_growth_theta_tm = ["titrant_conc","log_titrant_conc","map_theta_group"]
-        for k in from_growth_theta_tm:
-            tensors[k] = self.growth_theta_tm.tensors[k]
-
         # build dictionaries of sizes. 
         sizes = dict([(f"num_{s}",self.growth_tm.map_sizes[s]) for s in self.growth_tm.map_sizes])
+        sizes["num_replicate"] = self.growth_tm.tensor_shape[0]
         sizes["num_time"] = self.growth_tm.tensor_shape[1]
-        sizes["num_treatment"] = self.growth_tm.tensor_shape[2]
-        sizes["num_titrant_name"] = self.growth_theta_tm.tensor_shape[0]
-        sizes["num_titrant_conc"] = self.growth_theta_tm.tensor_shape[1]
-        
-        # Other data for control. scatter_theta tells the theta model caller 
-        # to return a full-sized growth_tm tensor instead of the smaller 
-        # growth_theta_tm-sized tensor
+        sizes["num_condition_pre"] = self.growth_tm.tensor_shape[2]
+        sizes["num_condition_sel"] = self.growth_tm.tensor_shape[3]
+        sizes["num_titrant_name"] = self.growth_tm.tensor_shape[4]        
+        sizes["num_titrant_conc"] = self.growth_tm.tensor_shape[5]
+        sizes["num_genotype"] = self.growth_tm.tensor_shape[6]
+
+        # scatter_theta tells the theta model caller to return a full-sized
+        # growth_tm tensor instead of the smaller growth_theta_tm-sized tensor
         other_data = {"scatter_theta":1}
+
+        # Grab the titrant concentration and log_titrant_conc (1D array from 
+        # the tensor labels along dimension 6)
+        idx = np.where(np.array(self.growth_tm.tensor_dim_names) == "titrant_conc")[0][0]
+        titrant_conc = np.array(self.growth_tm.tensor_dim_labels[idx])
+        log_titrant_conc = titrant_conc.copy()
+        log_titrant_conc[log_titrant_conc == 0] = ZERO_CONC_VALUE
+        log_titrant_conc = np.log(log_titrant_conc)
+        
+        other_data["titrant_conc"] = titrant_conc
+        other_data["log_titrant_conc"] = log_titrant_conc
 
         # Populate a GrowthData flax dataclass with all keys in `sources`. 
         growth_dataclass = populate_dataclass(GrowthData,
@@ -622,15 +524,28 @@ class ModelClass:
         # only (titrant_conc,theta_group). Use the growth tensor manager to
         # make sure that the mapping to parameters matches between the growth 
         # and the binding data. 
-        self.binding_df = _read_binding_df(self._binding_df,
-                                           existing_df=self.growth_tm.df)
+        self.binding_df = _read_binding_df(self._binding_df,self.growth_tm.df)
         self.binding_tm = _build_binding_tm(self.binding_df)
 
         # Grab the sizes
         sizes = {"num_titrant_name":self.binding_tm.tensor_shape[0],
                  "num_titrant_conc":self.binding_tm.tensor_shape[1],
                  "num_genotype":self.binding_tm.tensor_shape[2]}
-        other_data = {"scatter_theta":0}
+        other_data = {"scatter_theta":0,
+                      "batch_idx":np.arange(self.growth_tm.tensor_shape[-1],dtype=int),
+                      "batch_size":self.binding_tm.tensor_shape[2]}
+
+        # Grab the titrant concentration and log_titrant_conc (1D array from 
+        # the tensor labels along dimension 6)
+        idx = np.where(np.array(self.binding_tm.tensor_dim_names) == "titrant_conc")[0][0]
+        titrant_conc = np.array(self.binding_tm.tensor_dim_labels[idx])
+        log_titrant_conc = titrant_conc.copy()
+        log_titrant_conc[log_titrant_conc == 0] = ZERO_CONC_VALUE
+        log_titrant_conc = np.log(log_titrant_conc)
+
+        other_data["titrant_conc"] = titrant_conc
+        other_data["log_titrant_conc"] = log_titrant_conc
+
 
         # Populate a BindingData flax dataclass with all keys in `sources`
         binding_dataclass = populate_dataclass(BindingData,
@@ -725,7 +640,11 @@ class ModelClass:
 
             init_params.update(guesses)
     
-        # Build control class
+        # Build control class. If no batch size is specified, the batch should
+        # be the entire dataset. 
+        if self._batch_size is None:
+            self._batch_size = self.growth_tm.tensor_shape[-1]
+        control_class_kwargs["batch_size"] = self._batch_size
         control = ControlClass(**control_class_kwargs)
 
         # Build priors class
@@ -806,7 +725,7 @@ class ModelClass:
         if self._theta == "hill":
             extract.append(
                 dict(
-                    input_df = self.growth_theta_tm.df,
+                    input_df = self.growth_tm.df,
                     params_to_get = ["hill_n","log_hill_K","theta_high","theta_low"],
                     map_column = "map_theta_group",
                     get_columns = ["genotype","titrant_name"],
@@ -816,7 +735,7 @@ class ModelClass:
         elif self._theta == "categorical":
             extract.append(
                 dict(
-                    input_df = self.growth_theta_tm.df,
+                    input_df = self.growth_tm.df,
                     params_to_get = ["theta"],
                     map_column = "map_theta",
                     get_columns = ["genotype","titrant_name","titrant_conc"],
@@ -909,17 +828,7 @@ class ModelClass:
     def control(self):
         """The ControlClass Pytree holding model-switching integers."""
         return self._control
-        
-    @property
-    def sample_batch(self):
-        """The batch sampling function (from `batch.py`)."""
-        return sample_batch
-    
-    @property
-    def deterministic_batch(self):
-        """The deterministic batch-creation function (from `batch.py`)."""
-        return deterministic_batch
-
+            
     @property
     def settings(self):
         """A dictionary of the model component names used."""

@@ -25,6 +25,8 @@ from .components.beta_noise import define_model as define_beta_noise
 from .observe.binding import observe as observe_binding
 from .observe.growth import observe as observe_growth
 
+from .batch import store_batch_indices
+
 # Import for typing
 from .data_class import (
     DataClass,
@@ -156,6 +158,7 @@ def _define_growth(data: DataClass,
     growth_theta = calc_theta(theta,data.growth)
     pyro.deterministic(f"theta_growth_pred",growth_theta)
 
+
     # -------------------------------------------------------------------------
     # Define growth noise on theta
 
@@ -171,7 +174,6 @@ def _define_growth(data: DataClass,
         raise ValueError (
             f"theta_growth_noise selection {control.theta_growth_noise} is invalid"
         )
-
 
     # -------------------------------------------------------------------------
     # Define base growth model
@@ -205,6 +207,7 @@ def _define_growth(data: DataClass,
             f"ln_cfu0 selection {control.ln_cfu0} is invalid"
         )
 
+    
     # -------------------------------------------------------------------------
     # Define dk_geno model
 
@@ -220,7 +223,7 @@ def _define_growth(data: DataClass,
         raise ValueError (
             f"dk_geno selection {control.dk_geno} is invalid"
         )
-
+    
     # -------------------------------------------------------------------------
     # Define activity model
 
@@ -241,7 +244,6 @@ def _define_growth(data: DataClass,
             f"activity selection {control.activity} is invalid"
         )
         
-
     # Calculate growth. All variables have same tensor dimensions. 
     g_pre = k_pre + dk_geno + activity*m_pre*noisy_growth_theta
     g_sel = k_sel + dk_geno + activity*m_sel*noisy_growth_theta
@@ -353,6 +355,13 @@ def jax_model(data: DataClass, priors: PriorsClass, control: ControlClass):
         If an invalid integer flag is provided in the
         control object for the main theta component.
     """
+    
+    # The shared genotype plate is used throughout the model. This first call 
+    # creates a batched version of the data. In this case, the batching simply
+    # consists of storing the batch size and batch indexes but keeping the 
+    # dataset intact. 
+    with pyro.plate("shared_genotype_plate", size=data.num_genotype,subsample_size=control.batch_size,dim=-1) as idx:
+        batched_data = store_batch_indices(data,idx)
 
     # -------------------------------------------------------------------------
     # Start by calculating fractional occupancy of the transcription factor
@@ -361,13 +370,11 @@ def jax_model(data: DataClass, priors: PriorsClass, control: ControlClass):
     # Define theta
     if control.theta == THETA_CATEGORICAL:
         theta = define_theta_cat("theta",
-                                 data.growth,
+                                 batched_data.growth,
                                  priors.theta)
     elif control.theta == THETA_HILL:
-        # passing data.growth enforces it as the source of truth for the 
-        # titrant_name and genotype seen across both datasets. 
         theta = define_theta_hill("theta",
-                                  data.growth, 
+                                  batched_data.growth, 
                                   priors.theta)
     else:
         raise ValueError (
@@ -375,13 +382,13 @@ def jax_model(data: DataClass, priors: PriorsClass, control: ControlClass):
         )
 
     # predict ln_cfu and binding
-    ln_cfu_pred = _define_growth(data,priors,control,theta)
-    binding_pred = _define_binding(data,priors,control,theta)
+    ln_cfu_pred = _define_growth(batched_data,priors,control,theta)
+    binding_pred = _define_binding(batched_data,priors,control,theta)
 
-    pyro.deterministic(f"growth_pred",ln_cfu_pred)
+    # pyro.deterministic(f"growth_pred",ln_cfu_pred)
     pyro.deterministic(f"binding_pred",binding_pred)
 
-    # make final observations
-    observe_growth("final_obs",data.growth,ln_cfu_pred)
-    observe_binding("final_obs",data.binding,binding_pred)
+    # # make final observations
+    observe_growth("final_obs",batched_data.growth,ln_cfu_pred)
+    observe_binding("final_obs",batched_data.binding,binding_pred)
     

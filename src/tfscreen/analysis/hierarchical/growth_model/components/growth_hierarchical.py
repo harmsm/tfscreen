@@ -2,6 +2,9 @@ import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
 from flax.struct import dataclass
+from typing import Tuple
+
+from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
 
 @dataclass(frozen=True)
 class ModelPriors:
@@ -18,7 +21,9 @@ class ModelPriors:
     growth_m_hyper_scale: float
 
 
-def define_model(name,data,priors):
+def define_model(name: str, 
+                 data: GrowthData, 
+                 priors: ModelPriors) -> Tuple[jnp.ndarray, ...]:
     """
     Growth parameters k_xx and m_xx versus condition, where xx are things like
     pheS+4CP, kanR-kan, etc. These go into the model as k + m*theta. Assigns

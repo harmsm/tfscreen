@@ -51,8 +51,8 @@ def define_model(name: str,
     # Register per-genotype values for inspection
     pyro.deterministic(name, activity_dists)  
 
-    # Expand to full-sized tensor
-    activity = activity_dists[data.map_genotype]
+    # Broadcast to full-sized tensor
+    activity = activity[None,None,None,None,None,None,:]
 
     return activity
 
