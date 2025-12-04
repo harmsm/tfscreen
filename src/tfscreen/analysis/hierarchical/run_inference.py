@@ -170,7 +170,7 @@ class RunInference:
                          convergence_window=1000,
                          checkpoint_interval=1000,
                          num_steps=10000000,
-                         batch_size=1024,
+                         #batch_size=1024,
                          init_param_jitter=0.1):
         """
         Run the SVI optimization loop.
@@ -218,8 +218,8 @@ class RunInference:
         """
 
         # Trim batch size if needed
-        if batch_size > self.model.data.num_genotype:
-            batch_size = self.model.data.num_genotype
+        #if batch_size > self.model.data.num_genotype:
+        #    batch_size = self.model.data.num_genotype
 
         # Set up initialization and update functions (triggers jit)
         init_function = jax.jit(svi.init)
@@ -240,10 +240,10 @@ class RunInference:
 
         # Create dummy batch. Note that we just need the shape of the data, so 
         # we don't actually consume the key. 
-        dummy_batch = self.model.sample_batch(init_key, self.model.data, batch_size)
-        jax_model_kwargs["data"] = dummy_batch
+        #dummy_batch = self.model.sample_batch(init_key, self.model.data, batch_size)
+        #jax_model_kwargs["data"] = dummy_batch
 
-        # Use the dummy batch and initial key to create the initial svi_state
+        # create the initial svi_state
         initial_svi_state = init_function(init_key,
                                           init_params=init_params,
                                           **jax_model_kwargs)
@@ -265,11 +265,11 @@ class RunInference:
         for i in range(num_steps):
 
             # Get key
-            sample_key = self.get_key()
+            #sample_key = self.get_key()
 
             # Create a mini-batch of the data
-            batch_data = self.model.sample_batch(sample_key, self.model.data, batch_size)
-            jax_model_kwargs["data"] = batch_data
+            #batch_data = self.model.sample_batch(sample_key, self.model.data, batch_size)
+            #jax_model_kwargs["data"] = batch_data
 
             # Update the loss function
             svi_state, loss = update_function(svi_state,**jax_model_kwargs) 
