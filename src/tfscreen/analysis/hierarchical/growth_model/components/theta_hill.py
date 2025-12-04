@@ -72,7 +72,9 @@ class ThetaParam:
     hill_n: jnp.ndarray
 
 
-def define_model(name: str, data: DataClass, priors: ModelPriors) -> ThetaParam:
+def define_model(name: str,
+                 data: DataClass,
+                 priors: ModelPriors) -> ThetaParam:
     """
     Defines the hierarchical Hill model parameters.
     
@@ -166,7 +168,7 @@ def define_model(name: str, data: DataClass, priors: ModelPriors) -> ThetaParam:
     # Sample curve parameters for each (genotype, titrant_name) group 
 
     with pyro.plate(f"{name}_titrant_name_plate",data.num_titrant_name,dim=-2):
-        with pyro.plate(f"{name}_genotype_plate",data.num_genotype,dim=-1):
+        with pyro.plate("shared_genotype_plate", size=data.num_genotype,subsample_size=data.batch_size,dim=-1):
             logit_theta_low_offset = pyro.sample(f"{name}_logit_low_offset", dist.Normal(0, 1))
             logit_theta_delta_offset = pyro.sample(f"{name}_logit_delta_offset", dist.Normal(0, 1))
             log_hill_K_offset = pyro.sample(f"{name}_log_hill_K_offset", dist.Normal(0, 1))
@@ -236,17 +238,19 @@ def run_model(theta_param: ThetaParam, data: DataClass) -> jnp.ndarray:
     
     # Create [titrant_name,titrant_conc,genotype]-sized tensors of all 
     # parameters.
-    theta_low = theta_param.theta_low.ravel()[data.map_theta_group]
-    theta_high = theta_param.theta_high.ravel()[data.map_theta_group]
-    log_hill_K = theta_param.log_hill_K.ravel()[data.map_theta_group]
-    hill_n = theta_param.hill_n.ravel()[data.map_theta_group]
+    theta_low = theta_param.theta_low[:,None,:]
+    theta_high = theta_param.theta_high[:,None,:]
+    log_hill_K = theta_param.log_hill_K[:,None,:]
+    hill_n = theta_param.hill_n[:,None,:]
 
-    occupancy = jax.nn.sigmoid(hill_n * (data.log_titrant_conc - log_hill_K))
+    log_titrant = data.log_titrant_conc[None,:,None]
+
+    occupancy = jax.nn.sigmoid(hill_n * (log_titrant - log_hill_K))
     theta_calc = theta_low + (theta_high - theta_low)*occupancy
 
-    # Scatter to the full-sized tensor
+    # Broadcast to the full-sized tensor
     if data.scatter_theta == 1:
-        theta_calc = theta_calc.ravel()[data.map_theta]
+        theta_calc = theta_calc[None,None,None,None,:,:,:]
     
     return theta_calc
 

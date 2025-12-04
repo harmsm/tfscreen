@@ -76,17 +76,19 @@ def define_model(name: str,
     )
     
     # Sample non-centered offsets for each ln_cfu0 group
-    with pyro.plate(f"{name}_parameters", data.num_ln_cfu0):
-        ln_cfu0_offsets = pyro.sample(f"{name}_offset", dist.Normal(0, 1))
+    with pyro.plate(f"{name}_replicate",data.num_replicate,dim=-3):
+        with pyro.plate(f"{name}_condition_pre",data.num_condition_pre,dim=-2):
+            with pyro.plate("shared_genotype_plate", size=data.num_genotype,subsample_size=data.batch_size,dim=-1):
+                    ln_cfu0_offsets = pyro.sample(f"{name}_offset", dist.Normal(0, 1))
 
     # Calculate the per-group ln_cfu0 values
-    ln_cfu0_dists = ln_cfu0_hyper_loc + ln_cfu0_offsets * ln_cfu0_hyper_scale
+    ln_cfu0_per_rep_cond_geno = ln_cfu0_hyper_loc + ln_cfu0_offsets * ln_cfu0_hyper_scale
 
     # Register deterministic values for inspection
-    pyro.deterministic(name, ln_cfu0_dists)
+    pyro.deterministic(name, ln_cfu0_per_rep_cond_geno)
 
     # Expand tensor to match all observations
-    ln_cfu0 = ln_cfu0_dists[data.map_ln_cfu0]
+    ln_cfu0 = ln_cfu0_per_rep_cond_geno[:,None,:,None,None,None,:]
 
     return ln_cfu0
 
@@ -137,7 +139,9 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
     guesses = {}
     guesses[f"{name}_hyper_loc"] = -2.5
     guesses[f"{name}_hyper_scale"] = 3.0
-    guesses[f"{name}_offset"] = jnp.zeros(data.num_ln_cfu0)
+    guesses[f"{name}_offset"] = jnp.zeros((data.num_replicate,
+                                           data.num_condition_pre,
+                                           data.num_genotype))
 
     return guesses
 

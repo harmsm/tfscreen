@@ -6,7 +6,9 @@ import numpyro.distributions as dist
 # Assuming data_class is in a relative path
 from ..data_class import GrowthData
 
-def observe(name: str, data: GrowthData, ln_cfu_pred: jnp.ndarray):
+def observe(name: str,
+            data: GrowthData,
+            ln_cfu_pred: jnp.ndarray):
     """
     Defines the observation site for the growth (ln_CFU) data.
 
@@ -40,26 +42,21 @@ def observe(name: str, data: GrowthData, ln_cfu_pred: jnp.ndarray):
         with a shape matching `data.ln_cfu`.
     """
 
-    # Get batch size from the subsampled data tensor
-    batch_size = data.ln_cfu.shape[-1] 
-
     nu = pyro.sample(f"{name}_nu", dist.Gamma(2.0, 0.1))
 
     # Growth observation
-    with pyro.plate(f"{name}_replicate", size=data.num_replicate, dim=-4):
-        with pyro.plate(f"{name}_time", size=data.num_time, dim=-3):
-            with pyro.plate(f"{name}_treatment", size=data.num_treatment, dim=-2):
-                
-                # Batching of innermost genotype plate (shared with binding) 
-                with pyro.plate(f"{name}_genotype", 
-                                size=data.num_genotype,    
-                                subsample_size=batch_size, 
-                                dim=-1):
-                    
-                    # Apply mask for good observations
-                    with mask(mask=data.good_mask):
-                        
-                        # Define the observation site
-                        pyro.sample(f"{name}_growth_obs",
-                                    dist.StudentT(df=nu, loc=ln_cfu_pred, scale=data.ln_cfu_std),
-                                    obs=data.ln_cfu)
+    with pyro.plate(f"{name}_replicate", size=data.num_replicate, dim=-7):
+        with pyro.plate(f"{name}_time", size=data.num_time, dim=-6):
+            with pyro.plate(f"{name}_condition_pre", size=data.num_condition_pre, dim=-5):
+                with pyro.plate(f"{name}_condition_sel", size=data.num_condition_sel, dim=-4):
+                    with pyro.plate(f"{name}_titrant_name", size=data.num_titrant_name, dim=-3):
+                        with pyro.plate(f"{name}_titrant_conc", size=data.num_titrant_conc, dim=-2):
+                            with pyro.plate("shared_genotype_plate",size=data.num_genotype,subsample_size=data.batch_size,dim=-1):
+
+                                # Apply mask for good observations
+                                with mask(mask=data.good_mask):
+                                    
+                                    # Define the observation site
+                                    pyro.sample(f"{name}_growth_obs",
+                                                dist.StudentT(df=nu, loc=ln_cfu_pred, scale=data.ln_cfu_std),
+                                                obs=data.ln_cfu)
