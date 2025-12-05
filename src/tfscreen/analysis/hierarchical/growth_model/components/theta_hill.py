@@ -282,23 +282,23 @@ def guide(name: str,
     local_shape = (data.num_titrant_name, data.num_genotype)
 
     # Low Offsets
-    low_offset_locs = pyro.param(f"{name}_logit_low_offset_locs", jnp.zeros(local_shape))
-    low_offset_scales = pyro.param(f"{name}_logit_low_offset_scales", jnp.ones(local_shape), 
+    low_offset_locs = pyro.param(f"{name}_logit_low_offset_locs", jnp.zeros(local_shape,dtype=float))
+    low_offset_scales = pyro.param(f"{name}_logit_low_offset_scales", jnp.ones(local_shape,dtype=float), 
                                    constraint=dist.constraints.positive)
 
     # Delta Offsets
-    delta_offset_locs = pyro.param(f"{name}_logit_delta_offset_locs", jnp.zeros(local_shape))
-    delta_offset_scales = pyro.param(f"{name}_logit_delta_offset_scales", jnp.ones(local_shape), 
+    delta_offset_locs = pyro.param(f"{name}_logit_delta_offset_locs", jnp.zeros(local_shape,dtype=float))
+    delta_offset_scales = pyro.param(f"{name}_logit_delta_offset_scales", jnp.ones(local_shape,dtype=float), 
                                      constraint=dist.constraints.positive)
 
     # K Offsets
-    K_offset_locs = pyro.param(f"{name}_log_hill_K_offset_locs", jnp.zeros(local_shape))
-    K_offset_scales = pyro.param(f"{name}_log_hill_K_offset_scales", jnp.ones(local_shape), 
+    K_offset_locs = pyro.param(f"{name}_log_hill_K_offset_locs", jnp.zeros(local_shape,dtype=float))
+    K_offset_scales = pyro.param(f"{name}_log_hill_K_offset_scales", jnp.ones(local_shape,dtype=float), 
                                  constraint=dist.constraints.positive)
 
     # n Offsets
-    n_offset_locs = pyro.param(f"{name}_log_hill_n_offset_locs", jnp.zeros(local_shape))
-    n_offset_scales = pyro.param(f"{name}_log_hill_n_offset_scales", jnp.ones(local_shape), 
+    n_offset_locs = pyro.param(f"{name}_log_hill_n_offset_locs", jnp.zeros(local_shape,dtype=float))
+    n_offset_scales = pyro.param(f"{name}_log_hill_n_offset_scales", jnp.ones(local_shape,dtype=float), 
                                  constraint=dist.constraints.positive)
 
 
@@ -417,7 +417,7 @@ def get_hyperparameters() -> Dict[str, Any]:
 
     parameters = {}
 
-    parameters["theta_logit_low_hyper_loc_loc"] = 2
+    parameters["theta_logit_low_hyper_loc_loc"] = 2.0
     parameters["theta_logit_low_hyper_loc_scale"] = 2.0
     parameters["theta_logit_low_hyper_scale"] = 1.0
 
@@ -471,10 +471,10 @@ def get_guesses(name: str, data: DataClass) -> Dict[str, Any]:
     guesses[f"{name}_log_hill_n_hyper_loc"] = 0.7
     guesses[f"{name}_log_hill_n_hyper_scale"] = 0.3
 
-    guesses[f"{name}_logit_low_offset"] = jnp.zeros((data.num_titrant_name,data.num_genotype))
-    guesses[f"{name}_logit_delta_offset"] = jnp.zeros((data.num_titrant_name,data.num_genotype))
-    guesses[f"{name}_log_hill_K_offset"] = jnp.zeros((data.num_titrant_name,data.num_genotype))
-    guesses[f"{name}_log_hill_n_offset"] = jnp.zeros((data.num_titrant_name,data.num_genotype))
+    guesses[f"{name}_logit_low_offset"] = jnp.zeros((data.num_titrant_name,data.num_genotype),dtype=float)
+    guesses[f"{name}_logit_delta_offset"] = jnp.zeros((data.num_titrant_name,data.num_genotype),dtype=float)
+    guesses[f"{name}_log_hill_K_offset"] = jnp.zeros((data.num_titrant_name,data.num_genotype),dtype=float)
+    guesses[f"{name}_log_hill_n_offset"] = jnp.zeros((data.num_titrant_name,data.num_genotype),dtype=float)
 
     return guesses
 

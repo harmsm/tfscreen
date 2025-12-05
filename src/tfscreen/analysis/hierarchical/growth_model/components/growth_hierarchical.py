@@ -127,16 +127,16 @@ def guide(name: str,
     )
     
     k_offset_locs = pyro.param(f"{name}_k_offset_locs",
-                               jnp.zeros(data.num_condition))
+                               jnp.zeros(data.num_condition,dtype=float))
     k_offset_scales = pyro.param(f"{name}_k_offset_scales",
-                                 jnp.ones(data.num_condition),
+                                 jnp.ones(data.num_condition,dtype=float),
                                  constraint=dist.constraints.positive)
 
 
     m_offset_locs = pyro.param(f"{name}_m_offset_locs",
-                               jnp.zeros(data.num_condition))
+                               jnp.zeros(data.num_condition,dtype=float))
     m_offset_scales = pyro.param(f"{name}_m_offset_scales",
-                                 jnp.ones(data.num_condition),
+                                 jnp.ones(data.num_condition,dtype=float),
                                  constraint=dist.constraints.positive)
 
 
@@ -191,8 +191,8 @@ def get_guesses(name,data):
     guesses[f"{name}_k_hyper_scale"] = 0.1
     guesses[f"{name}_m_hyper_loc"] = 0.0
     guesses[f"{name}_m_hyper_scale"] = 0.01
-    guesses[f"{name}_k_offset"] = jnp.zeros(shape)
-    guesses[f"{name}_m_offset"] = jnp.zeros(shape)
+    guesses[f"{name}_k_offset"] = jnp.zeros(shape,dtype=float)
+    guesses[f"{name}_m_offset"] = jnp.zeros(shape,dtype=float)
 
     return guesses
 

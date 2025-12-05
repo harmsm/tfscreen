@@ -29,7 +29,7 @@ def define_model(name: str,
     """
 
     # Create fixed dk_geno (0)
-    dk_geno_per_genotype = jnp.zeros(data.num_genotype)
+    dk_geno_per_genotype = jnp.zeros(data.num_genotype,dtype=float)
 
     # Register dists
     pyro.deterministic(name, dk_geno_per_genotype)  
@@ -46,7 +46,7 @@ def guide(name: str,
     """
 
     # Create fixed dk_geno (0)
-    dk_geno_per_genotype = jnp.zeros(data.num_genotype)*0.0
+    dk_geno_per_genotype = jnp.zeros(data.num_genotype,dtype=float)
 
     # Expand to full-sized tensor
     dk_geno = dk_geno_per_genotype[None,None,None,None,None,None,:]

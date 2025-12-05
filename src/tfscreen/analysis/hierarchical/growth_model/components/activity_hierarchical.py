@@ -117,9 +117,9 @@ def guide(name: str,
     )
 
     offset_locs = pyro.param(f"{name}_offset_locs",
-                             jnp.zeros(data.num_genotype))
+                             jnp.zeros(data.num_genotype,dtype=float))
     offset_scales = pyro.param(f"{name}_offset_scales",
-                               jnp.ones(data.num_genotype),
+                               jnp.ones(data.num_genotype,dtype=float),
                                constraint=dist.constraints.positive)
 
     # Sample non-centered offsets for mutant genotypes only
@@ -193,7 +193,7 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
     guesses = {}
     guesses[f"{name}_log_hyper_loc"] = 0.0
     guesses[f"{name}_log_hyper_scale"] = 0.1
-    guesses[f"{name}_offset"] = jnp.zeros(data.num_genotype)
+    guesses[f"{name}_offset"] = jnp.zeros(data.num_genotype,dtype=float)
 
     return guesses
 
