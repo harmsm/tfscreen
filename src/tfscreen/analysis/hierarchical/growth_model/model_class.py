@@ -745,8 +745,8 @@ class ModelClass:
                         "lower_std":0.159,
                         "lower_quartile":0.25,
                         "median":0.5,
-                        "upper_std":0.659,
                         "upper_quartile":0.75,
+                        "upper_std":0.841,
                         "upper_95":0.975,
                         "max":1.0}
             

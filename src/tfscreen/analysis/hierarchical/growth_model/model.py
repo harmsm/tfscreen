@@ -152,7 +152,7 @@ def jax_model(data: DataClass,
         # calculate observable (all tensors have correct dimensions)
         g_pre = k_pre + dk_geno + activity*m_pre*noisy_theta_growth
         g_sel = k_sel + dk_geno + activity*m_sel*noisy_theta_growth
-        ln_cfu_pred = ln_cfu0 + g_pre*data.growth.t_pre + g_sel*data.growth.t_sel
+        ln_cfu_pred = ln_cfu0 + g_pre*batched_data.growth.t_pre + g_sel*batched_data.growth.t_sel
 
         # Register results
         pyro.deterministic(f"binding_pred",binding_pred)
