@@ -47,7 +47,6 @@ class RunInference:
             - `jax_model` (callable): The Numpyro model.
             - `data` (flax.struct.dataclass): Data object, expected to have `num_genotype`.
             - `priors` (flax.struct.dataclass): Data object holding model priors
-            - `control` (flax.struct.dataclass): Data object holding model control
             - `init_params` (dict): Initial parameter guesses.
             - `sample_batch` (callable): Function to sample a data batch.
         seed : int
@@ -56,8 +55,8 @@ class RunInference:
         
         required_attr = ["data",
                          "priors",
-                         "control",
                          "jax_model",
+                         "jax_model_guide"
                          "init_params"]
         for attr in required_attr:
             if not hasattr(model,attr):
@@ -334,7 +333,7 @@ class RunInference:
 
                 # Create model kwargs
                 jax_model_kwargs = {"priors":self.model.priors,
-                                    "control":self.model.control} 
+                                    "data":self.model.data} 
 
                 # Sample batches of genotypes
                 batched_results = {}
@@ -471,8 +470,7 @@ class RunInference:
         predict_key = self.get_key()
         predictions = predictor(predict_key, 
                                 data=data_for_predict, 
-                                priors=self.model.priors, 
-                                control=self.model.control)
+                                priors=self.model.priors)
         
         return predictions
 
@@ -733,8 +731,7 @@ class RunInference:
         
         # Run the traced model
         model_trace = traced_model.get_trace(data=self.model.data,
-                                             priors=self.model.priors,
-                                             control=self.model.control)
+                                             priors=self.model.priors)
         
         # Get all sites matching target_sites
         site_names = [
