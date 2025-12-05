@@ -6,27 +6,25 @@ from tfscreen.analysis.hierarchical import (
     populate_dataclass
 )
 
-from tfscreen.analysis.hierarchical.growth_model.model import (
-    jax_model,
-    MODEL_COMPONENT_NAMES
-)
+from tfscreen.analysis.hierarchical.growth_model.model import jax_model
+from tfscreen.analysis.hierarchical.growth_model.registry import model_registry
 
 from tfscreen.analysis.hierarchical.growth_model.data_class import (
     DataClass,
     BindingData,
     GrowthData,
-    
-    ControlClass,
-
     PriorsClass,
     GrowthPriors,
     BindingPriors
 )
 
+
 import jax
 from jax import numpy as jnp
 import pandas as pd
 import numpy as np
+
+from functools import partial
 
 # Declare float datatype
 FLOAT_DTYPE = jnp.float64 if jax.config.read("jax_enable_x64") else jnp.float32
@@ -433,6 +431,7 @@ class ModelClass:
         self._binding_df = binding_df
 
         self._batch_size = batch_size
+
         self._condition_growth = condition_growth
         self._ln_cfu0 = ln_cfu0
         self._dk_geno = dk_geno
@@ -466,12 +465,12 @@ class ModelClass:
         # the theta (titrant_conc,theta_group) tensor. 
         self.growth_df = _read_growth_df(self._ln_cfu_df)
         self.growth_tm = _build_growth_tm(self.growth_df)
-        #self.growth_theta_tm = _build_growth_theta_tm(self.growth_df)
         
         # Get wildtype information
         genotype_idx = self.growth_tm.tensor_dim_names.index("genotype")
-        wt_indexes = self.growth_tm.tensor_dim_labels[genotype_idx] == "wt"
-        wt_info = {"wt_indexes":wt_indexes,
+        wt_loc = np.where(self.growth_tm.tensor_dim_labels[genotype_idx] == "wt")
+    
+        wt_info = {"wt_indexes":jnp.array(wt_loc[0], dtype=jnp.int32),
                    "batch_idx":np.arange(self.growth_tm.tensor_shape[-1],dtype=int),
                    "batch_size":self.growth_tm.tensor_shape[-1]}
         
@@ -589,12 +588,12 @@ class ModelClass:
         
         # The first value is the prefix of the parameter passed into the `name`
         # arguments of all model components. It is also the key to 
-        # MODEL_COMPONENT_NAMES. The second value is the model name passed by 
+        # model_registry. The second value is the model name passed by 
         # the user/caller. It should match one of the possible model types for
-        # the given model component in MODEL_COMPONENT_NAMES. For example, 
-        # for "dk_geno", `dk_geno_model` could be 'fixed' or 'hierarchical'. 
+        # the given model component in model_registry. For example, 
+        # for "dk_geno", `self._dk_geno` could be 'fixed' or 'hierarchical'. 
         # The last value determines whether this is used to initialize the 
-        # data.growth and data.binding data. 
+        # data.growth and data.binding. 
         load_map = [("condition_growth",self._condition_growth,"growth"),
                     ("ln_cfu0",self._ln_cfu0,"growth"),
                     ("dk_geno",self._dk_geno,"growth"),
@@ -603,53 +602,73 @@ class ModelClass:
                     ("theta_growth_noise",self._theta_growth_noise,"growth"),
                     ("theta_binding_noise",self._theta_binding_noise,"binding")]
         
-        control_class_kwargs = {}
+        main_control_kwargs = {"is_guide":False}
+        guide_control_kwargs = {"is_guide":True}
         priors_class_kwargs = {"growth":{},"binding":{},"theta":{}}
         init_params = {}
         for to_load in load_map:
     
             key, value, prior_group = to_load
     
-            if key not in MODEL_COMPONENT_NAMES:
+            if key not in model_registry:
                 raise ValueError(
-                    f"{key} is not in MODEL_COMPONENT_NAMES. "
-                    f"It should be one of: {list(MODEL_COMPONENT_NAMES.keys())}"
+                    f"{key} is not in model_registry. "
+                    f"It should be one of: {list(model_registry.keys())}"
                 )
 
-            if value not in MODEL_COMPONENT_NAMES[key]:
+            if value not in model_registry[key]:
                 raise ValueError(
                     f"{key} '{value}' not recognized. "
-                    f"It should be one of: {list(MODEL_COMPONENT_NAMES[key].keys())}"
+                    f"It should be one of: {list(model_registry[key].keys())}"
                 )
     
-            component_int, component = MODEL_COMPONENT_NAMES[key][value]
-    
-            # Integer model selector
-            control_class_kwargs[key] = component_int
+            # get the component module 
+            component_module = model_registry[key][value]
     
             # Record priors
-            priors_class_kwargs[prior_group][key] = component.get_priors()
+            priors_class_kwargs[prior_group][key] = component_module.get_priors()
     
             # Record guesses
             if prior_group == "binding":
-                guesses = component.get_guesses(name=key,
-                                                data=self._data.binding)
+                guesses = component_module.get_guesses(name=key,
+                                                       data=self._data.binding)
             else:
-                guesses = component.get_guesses(name=key,
-                                                data=self._data.growth)
-
+                guesses = component_module.get_guesses(name=key,
+                                                       data=self._data.growth)
             init_params.update(guesses)
+
+            # Record control parameters for the main and guide functions
+            if key == "theta":
+                main_control_kwargs[key] = (component_module.define_model, 
+                                            component_module.run_model)
+                guide_control_kwargs[key] = (component_module.guide, 
+                                             component_module.run_model)
+            else:
+                main_control_kwargs[key] = component_module.define_model
+                guide_control_kwargs[key] = component_module.guide
     
-        # Build control class. If no batch size is specified, the batch should
-        # be the entire dataset. 
+        # Record the batch size
         if self._batch_size is None:
             self._batch_size = self.growth_tm.tensor_shape[-1]
         if self._batch_size > self.growth_tm.tensor_shape[-1]:
             self._batch_size = self.growth_tm.tensor_shape[-1]
+        main_control_kwargs["batch_size"] = self._batch_size
+        guide_control_kwargs["batch_size"] = self._batch_size
 
-        control_class_kwargs["batch_size"] = self._batch_size
-        control = ControlClass(**control_class_kwargs)
+        # Set the observables
+        main_control_kwargs["observe_binding"] = model_registry["observe_binding"].observe
+        main_control_kwargs["observe_growth"] = model_registry["observe_growth"].observe
+        
+        guide_control_kwargs["observe_binding"] = model_registry["observe_binding"].guide
+        guide_control_kwargs["observe_growth"] = model_registry["observe_growth"].guide
 
+        # Store main control kwargs for later
+        self.main_control_kwargs = main_control_kwargs
+
+        # bake the control arguments into the main and guide models
+        self._jax_model = partial(jax_model, **main_control_kwargs)
+        self._jax_model_guide = partial(jax_model, **guide_control_kwargs)
+                
         # Build priors class
         growth_priors = GrowthPriors(**(priors_class_kwargs["growth"]))
         binding_priors = BindingPriors(**(priors_class_kwargs["binding"]))
@@ -657,10 +676,27 @@ class ModelClass:
                              growth=growth_priors,
                              binding=binding_priors)
     
-        self._control = control
         self._priors = priors
         self._init_params = init_params
-    
+
+    def define_deterministic_model(self,batch_idx):
+        """
+        Create a jax model that uses specific genotype indices.
+        """
+
+        batch_idx = jnp.array(batch_idx,dtype=jnp.int32)
+
+        # Temporarily store batch_idx the control kwargs
+        self._main_control_kwargs["batch_idx"] = batch_idx
+
+        # Bake in the new deterministic model
+        self._jax_model_deterministic = partial(jax_model, **self._main_control_kwargs)
+
+        # Pop the batch_idx back out of control kwargs (we use this to avoid 
+        # copying the control kwargs while also not contaminating it with our 
+        # our batch_idx)
+        self._main_control_kwargs.pop("batch_idx")
+
     def extract_parameters(self,
                            posteriors,
                            q_to_get=None):
@@ -815,7 +851,24 @@ class ModelClass:
     @property
     def jax_model(self):
         """The top-level JAX model function."""
-        return jax_model
+        return self._jax_model
+    
+    @property
+    def jax_model_guide(self):
+        """Guide for the jax function."""
+        return self._jax_model_guide
+
+    @property
+    def jax_model_deterministic(self):
+        """jax model that does calculation for a specific set of genotype indexes"""
+        if not hasattr(self,"_jax_model_deterministic"):
+            raise ValueError(
+                "jax_model_deterministic is only defined after define_deterministic_model "
+                "is called."
+            )
+        
+        return self._jax_model_deterministic
+
 
     @property
     def data(self):
@@ -837,6 +890,7 @@ class ModelClass:
         """A dictionary of the model component names used."""
 
         return {
+            "batch_size":self._batch_size,
             "condition_growth":self._condition_growth,
             "ln_cfu0":self._ln_cfu0,
             "dk_geno":self._dk_geno,

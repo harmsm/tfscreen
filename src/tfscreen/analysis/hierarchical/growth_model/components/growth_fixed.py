@@ -48,6 +48,23 @@ def define_model(name: str,
 
     return k_pre, m_pre, k_sel, m_sel
 
+
+def guide(name: str, 
+          data: GrowthData, 
+          priors: ModelPriors) -> Tuple[jnp.ndarray, ...]:
+    """
+    Guide
+    """
+
+    # Expand to full-sized tensors
+    k_pre = priors.growth_k_per_cond_rep[data.map_condition_pre]
+    m_pre = priors.growth_m_per_cond_rep[data.map_condition_pre]
+    k_sel = priors.growth_k_per_cond_rep[data.map_condition_sel]
+    m_sel = priors.growth_m_per_cond_rep[data.map_condition_sel]
+
+    return k_pre, m_pre, k_sel, m_sel
+
+
 def get_hyperparameters():
     """
     Get default values for the model hyperparameters.

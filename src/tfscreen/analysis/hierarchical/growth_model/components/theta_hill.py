@@ -202,6 +202,155 @@ def define_model(name: str,
     
     return theta_param
 
+def guide(name: str,
+          data: DataClass,
+          priors: ModelPriors) -> ThetaParam:
+    """
+    Guide corresponding to the hierarchical Hill model.
+    """
+
+    # ==========================================================================
+    # 1. Global Hyperparameters
+    # ==========================================================================
+
+    # --- Theta Low (Logit Scale) ---
+    # Loc
+    h_low_loc_loc = pyro.param(f"{name}_logit_low_hyper_loc_loc", jnp.array(priors.theta_logit_low_hyper_loc_loc))
+    h_low_loc_scale = pyro.param(f"{name}_logit_low_hyper_loc_scale", jnp.array(priors.theta_logit_low_hyper_loc_scale),
+                                 constraint=dist.constraints.positive)
+    logit_theta_low_hyper_loc = pyro.sample(f"{name}_logit_low_hyper_loc", 
+                                            dist.Normal(h_low_loc_loc, h_low_loc_scale))
+
+    # Scale (LogNormal guide)
+    h_low_scale_loc = pyro.param(f"{name}_logit_low_hyper_scale_loc", jnp.array(-1.0))
+    h_low_scale_scale = pyro.param(f"{name}_logit_low_hyper_scale_scale", jnp.array(0.1),
+                                   constraint=dist.constraints.positive)
+    logit_theta_low_hyper_scale = pyro.sample(f"{name}_logit_low_hyper_scale", 
+                                              dist.LogNormal(h_low_scale_loc, h_low_scale_scale))
+
+    # --- Theta Delta (Logit Scale) ---
+    # Loc
+    h_delta_loc_loc = pyro.param(f"{name}_logit_delta_hyper_loc_loc", jnp.array(priors.theta_logit_delta_hyper_loc_loc))
+    h_delta_loc_scale = pyro.param(f"{name}_logit_delta_hyper_loc_scale", jnp.array(priors.theta_logit_delta_hyper_loc_scale),
+                                   constraint=dist.constraints.positive)
+    logit_theta_delta_hyper_loc = pyro.sample(f"{name}_logit_delta_hyper_loc", 
+                                              dist.Normal(h_delta_loc_loc, h_delta_loc_scale))
+
+    # Scale (LogNormal guide)
+    h_delta_scale_loc = pyro.param(f"{name}_logit_delta_hyper_scale_loc", jnp.array(-1.0))
+    h_delta_scale_scale = pyro.param(f"{name}_logit_delta_hyper_scale_scale", jnp.array(0.1),
+                                     constraint=dist.constraints.positive)
+    logit_theta_delta_hyper_scale = pyro.sample(f"{name}_logit_delta_hyper_scale", 
+                                                dist.LogNormal(h_delta_scale_loc, h_delta_scale_scale))
+
+    # --- Hill K (Log Scale) ---
+    # Loc
+    h_K_loc_loc = pyro.param(f"{name}_log_hill_K_hyper_loc_loc", jnp.array(priors.theta_log_hill_K_hyper_loc_loc))
+    h_K_loc_scale = pyro.param(f"{name}_log_hill_K_hyper_loc_scale", jnp.array(priors.theta_log_hill_K_hyper_loc_scale),
+                               constraint=dist.constraints.positive)
+    log_hill_K_hyper_loc = pyro.sample(f"{name}_log_hill_K_hyper_loc", 
+                                       dist.Normal(h_K_loc_loc, h_K_loc_scale))
+
+    # Scale (LogNormal guide)
+    h_K_scale_loc = pyro.param(f"{name}_log_hill_K_hyper_scale_loc", jnp.array(-1.0))
+    h_K_scale_scale = pyro.param(f"{name}_log_hill_K_hyper_scale_scale", jnp.array(0.1),
+                                 constraint=dist.constraints.positive)
+    log_hill_K_hyper_scale = pyro.sample(f"{name}_log_hill_K_hyper_scale", 
+                                         dist.LogNormal(h_K_scale_loc, h_K_scale_scale))
+
+    # --- Hill n (Log Scale) ---
+    # Loc
+    h_n_loc_loc = pyro.param(f"{name}_log_hill_n_hyper_loc_loc", jnp.array(priors.theta_log_hill_n_hyper_loc_loc))
+    h_n_loc_scale = pyro.param(f"{name}_log_hill_n_hyper_loc_scale", jnp.array(priors.theta_log_hill_n_hyper_loc_scale),
+                               constraint=dist.constraints.positive)
+    log_hill_n_hyper_loc = pyro.sample(f"{name}_log_hill_n_hyper_loc", 
+                                       dist.Normal(h_n_loc_loc, h_n_loc_scale))
+
+    # Scale (LogNormal guide)
+    h_n_scale_loc = pyro.param(f"{name}_log_hill_n_hyper_scale_loc", jnp.array(-1.0))
+    h_n_scale_scale = pyro.param(f"{name}_log_hill_n_hyper_scale_scale", jnp.array(0.1),
+                                 constraint=dist.constraints.positive)
+    log_hill_n_hyper_scale = pyro.sample(f"{name}_log_hill_n_hyper_scale", 
+                                         dist.LogNormal(h_n_scale_loc, h_n_scale_scale))
+
+
+    # ==========================================================================
+    # 2. Local Parameters (Offset Variational Params)
+    # ==========================================================================
+    
+    # Shape: (NumTitrants, NumGenotypes)
+    local_shape = (data.num_titrant_name, data.num_genotype)
+
+    # Low Offsets
+    low_offset_locs = pyro.param(f"{name}_logit_low_offset_locs", jnp.zeros(local_shape))
+    low_offset_scales = pyro.param(f"{name}_logit_low_offset_scales", jnp.ones(local_shape), 
+                                   constraint=dist.constraints.positive)
+
+    # Delta Offsets
+    delta_offset_locs = pyro.param(f"{name}_logit_delta_offset_locs", jnp.zeros(local_shape))
+    delta_offset_scales = pyro.param(f"{name}_logit_delta_offset_scales", jnp.ones(local_shape), 
+                                     constraint=dist.constraints.positive)
+
+    # K Offsets
+    K_offset_locs = pyro.param(f"{name}_log_hill_K_offset_locs", jnp.zeros(local_shape))
+    K_offset_scales = pyro.param(f"{name}_log_hill_K_offset_scales", jnp.ones(local_shape), 
+                                 constraint=dist.constraints.positive)
+
+    # n Offsets
+    n_offset_locs = pyro.param(f"{name}_log_hill_n_offset_locs", jnp.zeros(local_shape))
+    n_offset_scales = pyro.param(f"{name}_log_hill_n_offset_scales", jnp.ones(local_shape), 
+                                 constraint=dist.constraints.positive)
+
+
+    # ==========================================================================
+    # 3. Sampling (Sliced by Genotype)
+    # ==========================================================================
+
+    with pyro.plate(f"{name}_titrant_name_plate", data.num_titrant_name, dim=-2):
+        # Batching on Genotype (dim=-1)
+        with pyro.plate("shared_genotype_plate", size=data.num_genotype, subsample_size=data.batch_size, dim=-1) as idx:
+            
+            # Slice last dimension (Genotype) using batch indices.
+            # Ellipsis (...) ensures we preserve the Titrant dimension.
+            
+            # Low
+            logit_theta_low_offset = pyro.sample(f"{name}_logit_low_offset", 
+                dist.Normal(low_offset_locs[..., idx], low_offset_scales[..., idx]))
+            
+            # Delta
+            logit_theta_delta_offset = pyro.sample(f"{name}_logit_delta_offset", 
+                dist.Normal(delta_offset_locs[..., idx], delta_offset_scales[..., idx]))
+            
+            # K
+            log_hill_K_offset = pyro.sample(f"{name}_log_hill_K_offset", 
+                dist.Normal(K_offset_locs[..., idx], K_offset_scales[..., idx]))
+            
+            # n
+            log_hill_n_offset = pyro.sample(f"{name}_log_hill_n_offset", 
+                dist.Normal(n_offset_locs[..., idx], n_offset_scales[..., idx]))
+
+    # ==========================================================================
+    # 4. Reconstruction
+    # ==========================================================================
+
+    logit_theta_low = logit_theta_low_hyper_loc + logit_theta_low_offset * logit_theta_low_hyper_scale
+    logit_theta_delta = logit_theta_delta_hyper_loc + logit_theta_delta_offset * logit_theta_delta_hyper_scale
+    logit_theta_high = logit_theta_low + logit_theta_delta
+    log_hill_K = log_hill_K_hyper_loc + log_hill_K_offset * log_hill_K_hyper_scale
+    log_hill_n = log_hill_n_hyper_loc + log_hill_n_offset * log_hill_n_hyper_scale
+
+    # Transform
+    theta_low = dist.transforms.SigmoidTransform()(logit_theta_low)
+    theta_high = dist.transforms.SigmoidTransform()(logit_theta_high)
+    hill_n = jnp.exp(log_hill_n)
+
+    theta_param = ThetaParam(theta_low=theta_low,
+                             theta_high=theta_high,
+                             log_hill_K=log_hill_K,
+                             hill_n=hill_n)
+    
+    return theta_param
+
 def run_model(theta_param: ThetaParam, data: DataClass) -> jnp.ndarray:
     """
     Calculates fractional occupancy (theta) using the Hill equation.

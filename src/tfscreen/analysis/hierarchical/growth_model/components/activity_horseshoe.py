@@ -93,6 +93,63 @@ def define_model(name: str,
     return activity
 
 
+def guide(name: str, 
+          data: GrowthData, 
+          priors: ModelPriors) -> jnp.ndarray:
+    """
+    """
+
+    t_scale_loc = pyro.param(f"{name}_t_hyper_scale_loc", jnp.array(-5.0))
+    t_scale_scale = pyro.param(f"{name}_t_hyper_scale_scale",jnp.array(0.1),
+                               constraint=dist.constraints.positive)
+    global_scale_tau = pyro.sample(f"{name}_global_scale",
+                                   dist.LogNormal(t_scale_loc, t_scale_scale)) 
+    
+    lambda_locs = pyro.param(f"{name}_lambda_offset_locs",
+                                    jnp.zeros(data.num_genotype))
+    lambda_scales = pyro.param(f"{name}_lambda_offset_scales",
+                                      jnp.ones(data.num_genotype),
+                                      constraint=dist.constraints.positive)
+    
+    activity_offset_locs = pyro.param(f"{name}_activity_offset_locs",
+                                      jnp.zeros(data.num_genotype))
+    activity_offset_scales = pyro.param(f"{name}_activity_offset_scales",
+                                        jnp.ones(data.num_genotype),
+                                        constraint=dist.constraints.positive)
+
+    # Sample local scales and offsets 
+    with pyro.plate("shared_genotype_plate", size=data.num_genotype,subsample_size=data.batch_size,dim=-1) as idx:
+        
+        lambda_batch_locs = lambda_locs[idx]
+        lambda_batch_scales = lambda_scales[idx]
+
+        activity_batch_locs = activity_offset_locs[idx]
+        activity_batch_scales = activity_offset_scales[idx]
+
+        # Local scale `lambda`. HalfNormal(1) is the standard Horseshoe.
+        local_scale_lambda = pyro.sample(f"{name}_local_scale",
+                                         dist.LogNormal(lambda_batch_locs, lambda_batch_scales))
+
+        # Non-centered offset `z` (always Normal(0,1))
+        activity_offset = pyro.sample(f"{name}_offset", dist.Normal(activity_batch_locs, activity_batch_scales))
+
+    # Combine scales: `beta = z * (tau * lambda)`
+    # The mean `log(activity)` is 0.0 (i.e., activity = 1.0)
+    # The effective scale allows for deviations from 0.0
+    effective_scale = global_scale_tau * local_scale_lambda
+    log_activity_mutant_dists = activity_offset * effective_scale
+    
+    activity = jnp.clip(jnp.exp(log_activity_mutant_dists), max=1e30)
+
+    # Set wildtype activity to 1.0
+    is_wt_mask = jnp.isin(data.batch_idx, data.wt_indexes)
+    activity = jnp.where(is_wt_mask, 1.0, activity)
+
+    # Broadcast to full-sized tensor
+    activity = activity[None,None,None,None,None,None,:]
+
+    return activity
+
 def get_hyperparameters() -> Dict[str, Any]:
     """
     Get default values for the model hyperparameters.

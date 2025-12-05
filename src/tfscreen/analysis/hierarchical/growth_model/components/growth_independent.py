@@ -144,6 +144,104 @@ def define_model(name: str,
 
     return k_pre, m_pre, k_sel, m_sel
 
+def guide(name: str, 
+          data: GrowthData, 
+          priors: ModelPriors) -> Tuple[jnp.ndarray, ...]:
+    """
+    Guide corresponding to the independent condition/replicate model.
+    """
+
+    # --- 1. Global Parameters (Per Condition) ---
+    
+    # K Hyper Loc (Normal)
+    k_hl_loc = pyro.param(f"{name}_k_hyper_loc_loc", jnp.array(priors.growth_k_hyper_loc_loc))
+    k_hl_scale = pyro.param(f"{name}_k_hyper_loc_scale", jnp.array(priors.growth_k_hyper_loc_scale),
+                            constraint=dist.constraints.positive)
+    
+    # K Hyper Scale (LogNormal guide for HalfNormal prior)
+    k_hs_loc = pyro.param(f"{name}_k_hyper_scale_loc", jnp.array(-1.0))
+    k_hs_scale = pyro.param(f"{name}_k_hyper_scale_scale", jnp.array(0.1),
+                            constraint=dist.constraints.positive)
+
+    # M Hyper Loc (Normal)
+    m_hl_loc = pyro.param(f"{name}_m_hyper_loc_loc", jnp.array(priors.growth_m_hyper_loc_loc))
+    m_hl_scale = pyro.param(f"{name}_m_hyper_loc_scale", jnp.array(priors.growth_m_hyper_loc_scale),
+                            constraint=dist.constraints.positive)
+    
+    # M Hyper Scale (LogNormal guide for HalfNormal prior)
+    m_hs_loc = pyro.param(f"{name}_m_hyper_scale_loc", jnp.array(-1.0))
+    m_hs_scale = pyro.param(f"{name}_m_hyper_scale_scale", jnp.array(0.1),
+                            constraint=dist.constraints.positive)
+
+    # --- 2. Local Parameters (Per Replicate AND Condition) ---
+    # Shape: (num_replicate, num_condition)
+    # Note: dim 0 is replicate (-2), dim 1 is condition (-1)
+    
+    local_shape = (data.num_replicate, data.num_condition)
+
+    k_offset_locs = pyro.param(f"{name}_k_offset_locs", jnp.zeros(local_shape))
+    k_offset_scales = pyro.param(f"{name}_k_offset_scales", jnp.ones(local_shape),
+                                 constraint=dist.constraints.positive)
+
+    m_offset_locs = pyro.param(f"{name}_m_offset_locs", jnp.zeros(local_shape))
+    m_offset_scales = pyro.param(f"{name}_m_offset_scales", jnp.ones(local_shape),
+                                 constraint=dist.constraints.positive)
+
+
+    # --- 3. Sampling with Nested Plates ---
+    
+    # Outer Loop: Conditions (dim=-1)
+    with pyro.plate(f"{name}_condition_parameters", data.num_condition, dim=-1) as idx_c:
+
+        # Sample Hypers (Sliced by Condition)
+        growth_k_hyper_loc = pyro.sample(f"{name}_k_hyper_loc", 
+                                         dist.Normal(k_hl_loc[idx_c], k_hl_scale[idx_c]))
+        
+        growth_k_hyper_scale = pyro.sample(f"{name}_k_hyper_scale", 
+                                           dist.LogNormal(k_hs_loc[idx_c], k_hs_scale[idx_c]))
+
+        growth_m_hyper_loc = pyro.sample(f"{name}_m_hyper_loc", 
+                                         dist.Normal(m_hl_loc[idx_c], m_hl_scale[idx_c]))
+        
+        growth_m_hyper_scale = pyro.sample(f"{name}_m_hyper_scale", 
+                                           dist.LogNormal(m_hs_loc[idx_c], m_hs_scale[idx_c]))
+
+        # Inner Loop: Replicates (dim=-2)
+        with pyro.plate(f"{name}_replicate_parameters", data.num_replicate, dim=-2) as idx_r:
+            
+            # Slice Locals: 
+            # We must broadcast row indices (idx_r) against col indices (idx_c)
+            # idx_r[:, None] gives shape (Batch_R, 1)
+            # idx_c          gives shape (Batch_C)
+            # Result         gives shape (Batch_R, Batch_C) matching the plates
+            
+            k_batch_locs = k_offset_locs[idx_r[:, None], idx_c]
+            k_batch_scales = k_offset_scales[idx_r[:, None], idx_c]
+            k_offset = pyro.sample(f"{name}_k_offset", dist.Normal(k_batch_locs, k_batch_scales))
+
+            m_batch_locs = m_offset_locs[idx_r[:, None], idx_c]
+            m_batch_scales = m_offset_scales[idx_r[:, None], idx_c]
+            m_offset = pyro.sample(f"{name}_m_offset", dist.Normal(m_batch_locs, m_batch_scales))
+    
+    # --- 4. Reconstruction ---
+    # Note: Broadcasting handles the shape mismatch between Hypers (Batch_C,) and Offsets (Batch_R, Batch_C)
+    growth_k_dist = growth_k_hyper_loc + k_offset * growth_k_hyper_scale
+    growth_m_dist = growth_m_hyper_loc + m_offset * growth_m_hyper_scale
+    
+    # Flatten array (ravel uses C-style order: row0, row1...)
+    # This matches the "rep0, cond0 \ rep0, cond1" order if cond is the last axis.
+    growth_k_dist_1d = growth_k_dist.ravel()
+    growth_m_dist_1d = growth_m_dist.ravel()
+
+    # Expand to full-sized tensors
+    k_pre = growth_k_dist_1d[data.map_condition_pre]
+    m_pre = growth_m_dist_1d[data.map_condition_pre]
+    k_sel = growth_k_dist_1d[data.map_condition_sel]
+    m_sel = growth_m_dist_1d[data.map_condition_sel]
+
+    return k_pre, m_pre, k_sel, m_sel
+
+
 def get_hyperparameters(num_condition: int) -> Dict[str, Any]:
     """
     Get default values for the model hyperparameters.
