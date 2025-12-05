@@ -106,15 +106,15 @@ def guide(name: str,
                                    dist.LogNormal(t_scale_loc, t_scale_scale)) 
     
     lambda_locs = pyro.param(f"{name}_lambda_offset_locs",
-                                    jnp.zeros(data.num_genotype))
+                                    jnp.zeros(data.num_genotype,dtype=float))
     lambda_scales = pyro.param(f"{name}_lambda_offset_scales",
-                                      jnp.ones(data.num_genotype),
+                                      jnp.ones(data.num_genotype,dtype=float),
                                       constraint=dist.constraints.positive)
     
     activity_offset_locs = pyro.param(f"{name}_activity_offset_locs",
-                                      jnp.zeros(data.num_genotype))
+                                      jnp.zeros(data.num_genotype,dtype=float))
     activity_offset_scales = pyro.param(f"{name}_activity_offset_scales",
-                                        jnp.ones(data.num_genotype),
+                                        jnp.ones(data.num_genotype,dtype=float),
                                         constraint=dist.constraints.positive)
 
     # Sample local scales and offsets 
@@ -194,8 +194,8 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
 
     guesses = {}
     guesses[f"{name}_global_scale"] = 0.1
-    guesses[f"{name}_local_scale"] = jnp.ones(data.num_genotype)*0.1
-    guesses[f"{name}_offset"] = jnp.zeros(data.num_genotype)
+    guesses[f"{name}_local_scale"] = jnp.ones(data.num_genotype,dtype=float)*0.1
+    guesses[f"{name}_offset"] = jnp.zeros(data.num_genotype,dtype=float)
 
     return guesses
 

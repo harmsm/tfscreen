@@ -155,9 +155,9 @@ def guide(name: str,
     param_shape = (data.num_titrant_name, data.num_titrant_conc, data.num_genotype)
 
     offset_locs = pyro.param(f"{name}_logit_theta_offset_locs", 
-                             jnp.zeros(param_shape))
+                             jnp.zeros(param_shape,dtype=float))
     offset_scales = pyro.param(f"{name}_logit_theta_offset_scales", 
-                               jnp.ones(param_shape),
+                               jnp.ones(param_shape,dtype=float),
                                constraint=dist.constraints.positive)
 
     # --- 3. Sampling (Sliced by Genotype) ---
@@ -280,7 +280,7 @@ def get_guesses(name: str, data: DataClass) -> Dict[str, Any]:
 
     # Guess offsets (all zeros)
     shape = (data.num_titrant_name, data.num_titrant_conc, data.num_genotype)
-    guesses[f"{name}_logit_theta_offset"] = jnp.zeros(shape)
+    guesses[f"{name}_logit_theta_offset"] = jnp.zeros(shape,dtype=float)
 
     return guesses
 

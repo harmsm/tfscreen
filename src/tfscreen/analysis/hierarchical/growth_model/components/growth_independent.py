@@ -179,12 +179,12 @@ def guide(name: str,
     
     local_shape = (data.num_replicate, data.num_condition)
 
-    k_offset_locs = pyro.param(f"{name}_k_offset_locs", jnp.zeros(local_shape))
-    k_offset_scales = pyro.param(f"{name}_k_offset_scales", jnp.ones(local_shape),
+    k_offset_locs = pyro.param(f"{name}_k_offset_locs", jnp.zeros(local_shape,dtype=float))
+    k_offset_scales = pyro.param(f"{name}_k_offset_scales", jnp.ones(local_shape,dtype=float),
                                  constraint=dist.constraints.positive)
 
-    m_offset_locs = pyro.param(f"{name}_m_offset_locs", jnp.zeros(local_shape))
-    m_offset_scales = pyro.param(f"{name}_m_offset_scales", jnp.ones(local_shape),
+    m_offset_locs = pyro.param(f"{name}_m_offset_locs", jnp.zeros(local_shape,dtype=float))
+    m_offset_scales = pyro.param(f"{name}_m_offset_scales", jnp.ones(local_shape,dtype=float),
                                  constraint=dist.constraints.positive)
 
 
@@ -260,12 +260,12 @@ def get_hyperparameters(num_condition: int) -> Dict[str, Any]:
     """
 
     parameters = {}
-    parameters["growth_k_hyper_loc_loc"] = jnp.ones(num_condition)*0.025
-    parameters["growth_k_hyper_loc_scale"] = jnp.ones(num_condition)*0.1
-    parameters["growth_k_hyper_scale"] = jnp.ones(num_condition)*1.0
-    parameters["growth_m_hyper_loc_loc"] = jnp.zeros(num_condition)*0.0
-    parameters["growth_m_hyper_loc_scale"] = jnp.ones(num_condition)*0.01
-    parameters["growth_m_hyper_scale"] = jnp.ones(num_condition)*1.0
+    parameters["growth_k_hyper_loc_loc"] = jnp.ones(num_condition,dtype=float)*0.025
+    parameters["growth_k_hyper_loc_scale"] = jnp.ones(num_condition,dtype=float)*0.1
+    parameters["growth_k_hyper_scale"] = jnp.ones(num_condition,dtype=float)
+    parameters["growth_m_hyper_loc_loc"] = jnp.zeros(num_condition,dtype=float)
+    parameters["growth_m_hyper_loc_scale"] = jnp.ones(num_condition,dtype=float)*0.01
+    parameters["growth_m_hyper_scale"] = jnp.ones(num_condition,dtype=float)
 
     return parameters
 
@@ -309,13 +309,13 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
     hyper_shape = (data.num_condition, 1) 
 
     guesses = {}
-    guesses[f"{name}_k_hyper_loc"] = jnp.ones(hyper_shape) * 1.0
-    guesses[f"{name}_k_hyper_scale"] = jnp.ones(hyper_shape) * 0.1
-    guesses[f"{name}_m_hyper_loc"] = jnp.ones(hyper_shape) * 1.0
-    guesses[f"{name}_m_hyper_scale"] = jnp.ones(hyper_shape) * 0.1
+    guesses[f"{name}_k_hyper_loc"] = jnp.ones(hyper_shape,dtype=float)
+    guesses[f"{name}_k_hyper_scale"] = jnp.ones(hyper_shape,dtype=float) * 0.1
+    guesses[f"{name}_m_hyper_loc"] = jnp.ones(hyper_shape,dtype=float) 
+    guesses[f"{name}_m_hyper_scale"] = jnp.ones(hyper_shape,dtype=float) * 0.1
     
-    guesses[f"{name}_k_offset"] = jnp.zeros(shape)
-    guesses[f"{name}_m_offset"] = jnp.zeros(shape)
+    guesses[f"{name}_k_offset"] = jnp.zeros(shape,dtype=float)
+    guesses[f"{name}_m_offset"] = jnp.zeros(shape,dtype=float)
 
     return guesses
 

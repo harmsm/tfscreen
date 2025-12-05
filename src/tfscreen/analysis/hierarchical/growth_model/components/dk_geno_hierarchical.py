@@ -119,8 +119,8 @@ def guide(name: str,
 
     # --- Local Parameters (Per Genotype) ---
     
-    offset_locs = pyro.param(f"{name}_offset_locs", jnp.zeros(data.num_genotype))
-    offset_scales = pyro.param(f"{name}_offset_scales", jnp.ones(data.num_genotype), 
+    offset_locs = pyro.param(f"{name}_offset_locs", jnp.zeros(data.num_genotype,dtype=float))
+    offset_scales = pyro.param(f"{name}_offset_scales", jnp.ones(data.num_genotype,dtype=float), 
                                constraint=dist.constraints.positive)
 
     # --- Batching ---
@@ -200,7 +200,7 @@ def get_guesses(name,data):
     guesses[f"{name}_hyper_loc"] = -3.5
     guesses[f"{name}_hyper_scale"] = 0.5
     guesses[f"{name}_shift"] = 0.02
-    guesses[f"{name}_offset"] = -0.8240460108562919*jnp.ones(data.num_genotype)
+    guesses[f"{name}_offset"] = -0.8240460108562919*jnp.ones(data.num_genotype,dtype=float)
 
     return guesses
 

@@ -118,9 +118,9 @@ def guide(name: str,
 
     param_shape = (data.num_replicate, data.num_condition_pre, data.num_genotype)
     offset_locs = pyro.param(f"{name}_offset_locs",
-                             jnp.zeros(param_shape))
+                             jnp.zeros(param_shape,dtype=float))
     offset_scales = pyro.param(f"{name}_offset_scales",
-                               jnp.ones(param_shape),
+                               jnp.ones(param_shape,dtype=float),
                                constraint=dist.constraints.positive)
 
     # Sample non-centered offsets for each ln_cfu0 group
@@ -189,7 +189,7 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
     guesses[f"{name}_hyper_scale"] = 3.0
     guesses[f"{name}_offset"] = jnp.zeros((data.num_replicate,
                                            data.num_condition_pre,
-                                           data.num_genotype))
+                                           data.num_genotype),dtype=float)
 
     return guesses
 
