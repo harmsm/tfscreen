@@ -7,7 +7,6 @@ def generate_batch(full_data: DataClass, idx: jnp.ndarray) -> DataClass:
     Extracts a deterministic batch of data given specific indices.
     """
     
-
     batch_size = len(idx)
     batch_data = full_data.replace(
         growth=full_data.growth.replace(
