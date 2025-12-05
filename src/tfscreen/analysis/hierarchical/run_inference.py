@@ -56,7 +56,7 @@ class RunInference:
         required_attr = ["data",
                          "priors",
                          "jax_model",
-                         "jax_model_guide"
+                         "jax_model_guide",
                          "init_params"]
         for attr in required_attr:
             if not hasattr(model,attr):
