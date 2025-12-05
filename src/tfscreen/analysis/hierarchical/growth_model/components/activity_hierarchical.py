@@ -49,8 +49,7 @@ def define_model(name: str,
         A Pytree (Flax dataclass) containing experimental data and metadata.
         This function primarily uses:
         - ``data.num_genotype`` : (int) The total number of genotypes.
-        - ``data.wt_indexes`` : (jnp.ndarray) A boolean mask that is
-          `True` for non-wild-type genotypes.
+        - ``data.wt_indexes`` : (jnp.ndarray) integer indexes of wt elements
         - ``data.map_genotype`` : (jnp.ndarray) Index array to map
           per-genotype parameters to the full set of observations.
     priors : ModelPriors
@@ -89,6 +88,55 @@ def define_model(name: str,
 
     # Register per-genotype values for inspection
     pyro.deterministic(name, activity)  
+
+    # Broadcast to full-sized tensor
+    activity = activity[None,None,None,None,None,None,:] 
+
+    return activity
+
+def guide(name: str, 
+          data: GrowthData, 
+          priors: ModelPriors) -> jnp.ndarray:
+    """
+    """
+
+    a_loc_loc = pyro.param(f"{name}_a_hyper_loc_loc", jnp.array(priors.activity_hyper_loc_loc))
+    a_loc_scale = pyro.param(f"{name}_a_hyper_loc_scale", jnp.array(priors.activity_hyper_loc_scale),
+                             constraint=dist.constraints.positive)
+    log_activity_hyper_loc = pyro.sample(
+        f"{name}_log_hyper_loc",
+        dist.Normal(a_loc_loc,a_loc_scale)
+    )
+
+    a_scale_loc = pyro.param(f"{name}_a_hyper_scale_loc", jnp.array(-1.0))
+    a_scale_scale = pyro.param(f"{name}_a_hyper_scale_scale",jnp.array(0.1),
+                               constraint=dist.constraints.positive)
+    log_activity_hyper_scale = pyro.sample(
+        f"{name}_log_hyper_scale",
+        dist.LogNormal(a_scale_loc, a_scale_scale)
+    )
+
+    offset_locs = pyro.param(f"{name}_offset_locs",
+                             jnp.zeros(data.num_genotype))
+    offset_scales = pyro.param(f"{name}_offset_scales",
+                               jnp.ones(data.num_genotype),
+                               constraint=dist.constraints.positive)
+
+    # Sample non-centered offsets for mutant genotypes only
+    with pyro.plate("shared_genotype_plate", size=data.num_genotype,subsample_size=data.batch_size,dim=-1) as idx:
+
+        batch_locs = offset_locs[idx]
+        batch_scales = offset_scales[idx]
+
+        activity_offset = pyro.sample(f"{name}_offset", dist.Normal(batch_locs, batch_scales))
+    
+    # Calculate in log-space, then exponentiate
+    log_activity_mutant_dists = log_activity_hyper_loc + activity_offset * log_activity_hyper_scale
+    activity = jnp.clip(jnp.exp(log_activity_mutant_dists), max=1e30)
+
+    # Set wildtype activity to 1.0
+    is_wt_mask = jnp.isin(data.batch_idx, data.wt_indexes)
+    activity = jnp.where(is_wt_mask, 1.0, activity)
 
     # Broadcast to full-sized tensor
     activity = activity[None,None,None,None,None,None,:] 

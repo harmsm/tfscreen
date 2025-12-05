@@ -3,8 +3,7 @@ import numpyro as pyro
 from numpyro.handlers import mask
 import numpyro.distributions as dist
 
-# Assuming data_class is in a relative path
-from ..data_class import GrowthData
+from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
 
 def observe(name: str,
             data: GrowthData,
@@ -60,3 +59,28 @@ def observe(name: str,
                                     pyro.sample(f"{name}_growth_obs",
                                                 dist.StudentT(df=nu, loc=ln_cfu_pred, scale=data.ln_cfu_std),
                                                 obs=data.ln_cfu)
+
+def guide(name: str,
+          data: GrowthData,
+          ln_cfu_pred: jnp.ndarray):
+    """
+    Guide corresponding to the observation function.
+
+    This function handles the inference for the latent degrees of freedom
+    parameter `nu`. It deliberately excludes the `pyro.plate` context
+    and the `growth_obs` sample site because those are observed data,
+    not latent variables.
+    """
+
+    # --- 1. Latent Variable (nu) ---
+    
+    # The prior is Gamma(2.0, 0.1), which has a mean of 20.0.
+    # We use a LogNormal guide to ensure positive support.
+    # Initialize loc at log(20) ≈ 3.0 to start the optimization near the prior mean.
+    nu_loc = pyro.param(f"{name}_nu_loc", jnp.array(3.0))
+    nu_scale = pyro.param(f"{name}_nu_scale", jnp.array(0.1),
+                          constraint=dist.constraints.positive)
+
+    nu = pyro.sample(f"{name}_nu", dist.LogNormal(nu_loc, nu_scale))
+
+    return

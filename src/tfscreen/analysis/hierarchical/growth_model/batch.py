@@ -2,7 +2,7 @@ from tfscreen.analysis.hierarchical.growth_model.data_class import DataClass
 
 import jax.numpy as jnp
 
-def store_batch_indices(full_data: DataClass, idx: jnp.ndarray) -> DataClass:
+def generate_batch(full_data: DataClass, idx: jnp.ndarray) -> DataClass:
     """
     Extracts a deterministic batch of data given specific indices.
     """
@@ -13,10 +13,18 @@ def store_batch_indices(full_data: DataClass, idx: jnp.ndarray) -> DataClass:
         growth=full_data.growth.replace(
             batch_size=batch_size,
             batch_idx=idx,
+            ln_cfu=full_data.growth.ln_cfu[...,idx],
+            ln_cfu_std=full_data.growth.ln_cfu_std[...,idx],
+            t_pre=full_data.growth.t_pre[...,idx],
+            t_sel=full_data.growth.t_sel[...,idx],
+            map_condition_pre=full_data.growth.map_condition_pre[...,idx],
+            map_condition_sel=full_data.growth.map_condition_sel[...,idx],
         ),
         binding=full_data.binding.replace(
             batch_size=batch_size,
             batch_idx=idx,
+            theta_obs=full_data.binding.theta_obs[...,idx],
+            theta_std=full_data.binding.theta_std[...,idx],
         )
     )
 

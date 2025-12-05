@@ -50,3 +50,11 @@ def observe(name: str,
                     pyro.sample(f"{name}_binding_obs",
                                 dist.Normal(binding_pred, data.theta_std),
                                 obs=data.theta_obs)
+                    
+def guide(name: str,
+          data: BindingData,
+          binding_pred: jnp.ndarray):
+    """
+    """
+
+    return

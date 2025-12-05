@@ -95,16 +95,6 @@ class GrowthPriors:
 class BindingPriors:
     theta_binding_noise: Any
 
-@dataclass(frozen=True)
-class ControlClass:
-     batch_size: int = field(pytree_node=False)
-     condition_growth: int = field(pytree_node=False)
-     ln_cfu0: int = field(pytree_node=False)
-     dk_geno: int = field(pytree_node=False)
-     activity: int = field(pytree_node=False)
-     theta: int = field(pytree_node=False)
-     theta_growth_noise: int = field(pytree_node=False)
-     theta_binding_noise: int = field(pytree_node=False)
 
 @dataclass(frozen=True)
 class PriorsClass:

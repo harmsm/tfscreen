@@ -4,10 +4,7 @@ from jax import random
 from jax import numpy as jnp
 
 import numpyro
-from numpyro.infer.autoguide import (
-    AutoDelta,
-    AutoLowRankMultivariateNormal
-)
+
 from numpyro.infer import (
     SVI,
     Trace_ELBO,
@@ -21,7 +18,6 @@ from numpyro.handlers import (
     seed
 )
 
-import pandas as pd
 import numpy as np
 import dill
 from tqdm.auto import tqdm
@@ -97,10 +93,9 @@ class RunInference:
 
         # Create optimizer, guide, and svi object 
         optimizer = ClippedAdam(step_size=adam_step_size,clip_norm=adam_clip_norm)
-        guide = AutoDelta(self.model.jax_model)
 
         svi = SVI(self.model.jax_model,
-                  guide,
+                  self.model.jax_model_guide,
                   optimizer,
                   loss=Trace_ELBO(num_particles=elbo_num_particles))
         
@@ -110,12 +105,11 @@ class RunInference:
                   init_params=None,
                   adam_step_size=1e-6,
                   adam_clip_norm=1.0,
-                  guide_rank=10,
                   elbo_num_particles=10,
                   init_param_jitter=0.1,
                   init_scale=0.01):
         """
-        Set up SVI with an AutoLowRankMultivariateNormal guide.
+        Set up SVI. 
 
         Parameters
         ----------
@@ -125,8 +119,6 @@ class RunInference:
             Step size for the ClippedAdam optimizer.
         adam_clip_norm : float, optional
             Gradient clipping norm for the ClippedAdam optimizer.
-        guide_rank : int, optional
-            Rank of the low-rank approximation for the guide's covariance.
         elbo_num_particles : int, optional
             Number of particles for ELBO estimation.
         init_param_jitter : float, optional
@@ -139,7 +131,7 @@ class RunInference:
         Returns
         -------
         numpyro.infer.SVI
-            An SVI object configured with an AutoLowRankMultivariateNormal guide.
+            An SVI object
         """
 
         guide_kwargs = {}
@@ -151,11 +143,9 @@ class RunInference:
         optimizer = ClippedAdam(
             step_size=adam_step_size,
             clip_norm=adam_clip_norm)
-        guide = AutoLowRankMultivariateNormal(self.model.jax_model,
-                                              rank=guide_rank,
-                                              **guide_kwargs)
+        
         svi = SVI(self.model.jax_model,
-                  guide,
+                  self.model.jax_model_guide,
                   optimizer,
                   loss=Trace_ELBO(num_particles=elbo_num_particles))
         
@@ -170,7 +160,6 @@ class RunInference:
                          convergence_window=1000,
                          checkpoint_interval=1000,
                          num_steps=10000000,
-                         #batch_size=1024,
                          init_param_jitter=0.1):
         """
         Run the SVI optimization loop.
@@ -197,8 +186,6 @@ class RunInference:
             Frequency (in steps) to write checkpoints and check convergence.
         num_steps : int, optional
             Total number of optimization steps to run.
-        batch_size : int, optional
-            Number of genotypes to include in each mini-batch.
         init_param_jitter : float, optional
             amount of jitter to add to init_params. To turn off, set to 0.
 
@@ -217,17 +204,13 @@ class RunInference:
             If parameters explode to NaN during optimization.
         """
 
-        # Trim batch size if needed
-        #if batch_size > self.model.data.num_genotype:
-        #    batch_size = self.model.data.num_genotype
-
         # Set up initialization and update functions (triggers jit)
         init_function = jax.jit(svi.init)
         update_function = jax.jit(svi.update)
 
         # Get the arguments to pass to the jax model
         jax_model_kwargs = {"priors":self.model.priors,
-                            "control":self.model.control} 
+                            "data":self.model.data} 
 
         # Add jitter to the input parameters if they are specified
         if init_params is not None:
@@ -237,13 +220,6 @@ class RunInference:
         # Create initialization key
         init_key = self.get_key()
 
-
-        # Create dummy batch. Note that we just need the shape of the data, so 
-        # we don't actually consume the key. 
-        #dummy_batch = self.model.sample_batch(init_key, self.model.data, batch_size)
-        #jax_model_kwargs["data"] = dummy_batch
-
-        # create the initial svi_state
         initial_svi_state = init_function(init_key,
                                           init_params=init_params,
                                           **jax_model_kwargs)
@@ -263,13 +239,6 @@ class RunInference:
         # Loop over all steps
         losses = []
         for i in range(num_steps):
-
-            # Get key
-            #sample_key = self.get_key()
-
-            # Create a mini-batch of the data
-            #batch_data = self.model.sample_batch(sample_key, self.model.data, batch_size)
-            #jax_model_kwargs["data"] = batch_data
 
             # Update the loss function
             svi_state, loss = update_function(svi_state,**jax_model_kwargs) 
@@ -388,16 +357,13 @@ class RunInference:
                         else:
                             batch_latents[k] = v
 
-                    # Create a handler that overrides the genotype plate random
-                    # sampling.
-                    deterministic_jax_model = numpyro.handlers.substitute(
-                        self.model.jax_model, 
-                        data={"shared_genotype_plate": batch_indices}
-                    )
 
+                    # Create a version of the model that only sees these indices
+                    self.model.define_deterministic_model(batch_indices)
+                    
                     # Create a sampler that will predict outputs using the full
                     # model given those latent samples
-                    forward_sampler = Predictive(deterministic_jax_model, 
+                    forward_sampler = Predictive(self.model.jax_model_deterministic, 
                                                  posterior_samples=batch_latents)
 
                     # Run the forward pass for this batch of genotypes

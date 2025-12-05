@@ -39,6 +39,20 @@ def define_model(name: str,
 
     return dk_geno
 
+def guide(name: str, 
+          data: GrowthData, 
+          priors: ModelPriors) -> jnp.ndarray:
+    """
+    """
+
+    # Create fixed dk_geno (0)
+    dk_geno_per_genotype = jnp.zeros(data.num_genotype)
+
+    # Expand to full-sized tensor
+    dk_geno = dk_geno_per_genotype[None,None,None,None,None,None,:]
+
+    return dk_geno
+
 def get_hyperparameters():
     """
     Get default values for the model hyperparameters.

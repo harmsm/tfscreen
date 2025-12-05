@@ -52,7 +52,22 @@ def define_model(name: str,
     pyro.deterministic(name, activity_dists)  
 
     # Broadcast to full-sized tensor
-    activity = activity[None,None,None,None,None,None,:]
+    activity = activity_dists[None,None,None,None,None,None,:]
+
+    return activity
+
+
+def guide(name: str, 
+          data: GrowthData, 
+          priors: ModelPriors) -> jnp.ndarray:
+    """
+    """
+
+    # Set activity for all genotypes to 1.0
+    activity_dists = jnp.ones(data.num_genotype)
+
+    # Broadcast to full-sized tensor
+    activity = activity_dists[None,None,None,None,None,None,:]
 
     return activity
 

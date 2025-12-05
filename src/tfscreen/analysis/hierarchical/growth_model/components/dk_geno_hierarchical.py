@@ -89,6 +89,63 @@ def define_model(name: str,
 
     return dk_geno
 
+def guide(name: str, 
+          data: GrowthData, 
+          priors: ModelPriors) -> jnp.ndarray:
+    """
+    Guide corresponding to the define_model function for dk_geno.
+    """
+
+    # --- Global Parameters ---
+
+    # Hyper Loc (Normal guide for Normal prior)
+    h_loc_loc = pyro.param(f"{name}_hyper_loc_loc", jnp.array(priors.dk_geno_hyper_loc_loc))
+    h_loc_scale = pyro.param(f"{name}_hyper_loc_scale", jnp.array(priors.dk_geno_hyper_loc_scale), 
+                             constraint=dist.constraints.positive)
+    dk_geno_hyper_loc = pyro.sample(f"{name}_hyper_loc", dist.Normal(h_loc_loc, h_loc_scale))
+
+    # Hyper Scale (LogNormal guide for HalfNormal prior)
+    # Initialized to -1.0 (approx 0.37) to start with reasonable spread
+    h_scale_loc = pyro.param(f"{name}_hyper_scale_loc", jnp.array(-1.0))
+    h_scale_scale = pyro.param(f"{name}_hyper_scale_scale", jnp.array(0.1), 
+                               constraint=dist.constraints.positive)
+    dk_geno_hyper_scale = pyro.sample(f"{name}_hyper_scale", dist.LogNormal(h_scale_loc, h_scale_scale))
+
+    # Shift (Normal guide for Normal prior)
+    shift_loc = pyro.param(f"{name}_shift_loc", jnp.array(priors.dk_geno_hyper_shift_loc))
+    shift_scale = pyro.param(f"{name}_shift_scale", jnp.array(priors.dk_geno_hyper_shift_scale), 
+                             constraint=dist.constraints.positive)
+    dk_geno_hyper_shift = pyro.sample(f"{name}_shift", dist.Normal(shift_loc, shift_scale))
+
+    # --- Local Parameters (Per Genotype) ---
+    
+    offset_locs = pyro.param(f"{name}_offset_locs", jnp.zeros(data.num_genotype))
+    offset_scales = pyro.param(f"{name}_offset_scales", jnp.ones(data.num_genotype), 
+                               constraint=dist.constraints.positive)
+
+    # --- Batching ---
+    with pyro.plate("shared_genotype_plate", size=data.num_genotype, subsample_size=data.batch_size, dim=-1) as idx:
+        
+        batch_locs = offset_locs[idx]
+        batch_scales = offset_scales[idx]
+
+        dk_geno_offset = pyro.sample(f"{name}_offset", dist.Normal(batch_locs, batch_scales))
+
+    # --- Deterministic Calculation ---
+    
+    # Replicate the Shift - LogNormal logic
+    dk_geno_lognormal_values = jnp.clip(jnp.exp(dk_geno_hyper_loc + dk_geno_offset * dk_geno_hyper_scale), max=1e30)
+    dk_geno_per_genotype = dk_geno_hyper_shift - dk_geno_lognormal_values
+
+    # Force wildtype to be zero
+    is_wt_mask = jnp.isin(data.batch_idx, data.wt_indexes)
+    dk_geno_per_genotype = jnp.where(is_wt_mask, 0.0, dk_geno_per_genotype)
+    
+    # Expand to full-sized tensor
+    dk_geno = dk_geno_per_genotype[None,None,None,None,None,None,:]
+
+    return dk_geno
+
 def get_hyperparameters():
     """
     Gets default values for the model hyperparameters.
