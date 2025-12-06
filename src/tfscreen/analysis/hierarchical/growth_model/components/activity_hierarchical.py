@@ -76,7 +76,7 @@ def define_model(name: str,
 
     # Sample non-centered offsets for mutant genotypes only
     with pyro.plate("shared_genotype_plate", size=data.num_genotype,subsample_size=data.batch_size,dim=-1):
-        activity_offset = pyro.sample(f"{name}_offset", dist.Normal(0, 1))
+        activity_offset = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
     
     # Calculate in log-space, then exponentiate
     log_activity_mutant_dists = log_activity_hyper_loc + activity_offset * log_activity_hyper_scale

@@ -438,7 +438,7 @@ class TensorManager:
         # analysis. Has to be above zero because jax/numpyro demands non-zero
         # values when it checks std on final obs/Normal samples -- even with 
         # the mask
-        pivoted_df = pivoted_df.fillna(1)
+        pivoted_df = pivoted_df.fillna(1.0)
 
         # Convert to tensors, reshaping and casting as needed
         for c in self._to_tensor_columns:

@@ -69,8 +69,8 @@ def define_model(name: str,
     
     # Loop over conditions and replicates
     with pyro.plate(f"{name}_condition_parameters",data.num_condition):
-        growth_k_offset = pyro.sample(f"{name}_k_offset", dist.Normal(0, 1))
-        growth_m_offset = pyro.sample(f"{name}_m_offset", dist.Normal(0, 1))
+        growth_k_offset = pyro.sample(f"{name}_k_offset", dist.Normal(0.0, 1.0))
+        growth_m_offset = pyro.sample(f"{name}_m_offset", dist.Normal(0.0, 1.0))
     
     growth_k_per_condition = growth_k_hyper_loc + growth_k_offset * growth_k_hyper_scale
     growth_m_per_condition = growth_m_hyper_loc + growth_m_offset * growth_m_hyper_scale
