@@ -471,7 +471,7 @@ class ModelClass:
         wt_loc = np.where(self.growth_tm.tensor_dim_labels[genotype_idx] == "wt")
     
         wt_info = {"wt_indexes":jnp.array(wt_loc[0], dtype=jnp.int32),
-                   "batch_idx":np.arange(self.growth_tm.tensor_shape[-1],dtype=int),
+                   "batch_idx":jnp.arange(self.growth_tm.tensor_shape[-1],dtype=jnp.int32),
                    "batch_size":self.growth_tm.tensor_shape[-1]}
         
         # Assemble tensors. We draw some from growth_tm and some from 
@@ -531,7 +531,7 @@ class ModelClass:
                  "num_titrant_conc":self.binding_tm.tensor_shape[1],
                  "num_genotype":self.binding_tm.tensor_shape[2]}
         other_data = {"scatter_theta":0,
-                      "batch_idx":np.arange(self.growth_tm.tensor_shape[-1],dtype=int),
+                      "batch_idx":jnp.arange(self.growth_tm.tensor_shape[-1],dtype=jnp.int32),
                       "batch_size":self.binding_tm.tensor_shape[2]}
 
         # Grab the titrant concentration and log_titrant_conc (1D array from 
