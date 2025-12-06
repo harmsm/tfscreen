@@ -79,7 +79,7 @@ def define_model(name: str,
     with pyro.plate(f"{name}_replicate",data.num_replicate,dim=-3):
         with pyro.plate(f"{name}_condition_pre",data.num_condition_pre,dim=-2):
             with pyro.plate("shared_genotype_plate", size=data.num_genotype,subsample_size=data.batch_size,dim=-1):
-                    ln_cfu0_offsets = pyro.sample(f"{name}_offset", dist.Normal(0, 1))
+                    ln_cfu0_offsets = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
 
     # Calculate the per-group ln_cfu0 values
     ln_cfu0_per_rep_cond_geno = ln_cfu0_hyper_loc + ln_cfu0_offsets * ln_cfu0_hyper_scale

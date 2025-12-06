@@ -70,7 +70,7 @@ def define_model(name: str,
                                          dist.HalfNormal(1.0))
 
         # Non-centered offset `z` (always Normal(0,1))
-        activity_offset = pyro.sample(f"{name}_offset", dist.Normal(0, 1))
+        activity_offset = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
 
     # Combine scales: `beta = z * (tau * lambda)`
     # The mean `log(activity)` is 0.0 (i.e., activity = 1.0)

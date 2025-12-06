@@ -72,7 +72,7 @@ def define_model(name: str,
     )
 
     with pyro.plate("shared_genotype_plate", size=data.num_genotype,subsample_size=data.batch_size,dim=-1):
-        dk_geno_offset = pyro.sample(f"{name}_offset", dist.Normal(0, 1))
+        dk_geno_offset = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
     
     dk_geno_lognormal_values = jnp.clip(jnp.exp(dk_geno_hyper_loc + dk_geno_offset * dk_geno_hyper_scale),max=1e30)
     dk_geno_per_genotype = dk_geno_hyper_shift - dk_geno_lognormal_values

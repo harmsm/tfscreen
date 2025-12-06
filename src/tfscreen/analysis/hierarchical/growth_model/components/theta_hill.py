@@ -169,10 +169,10 @@ def define_model(name: str,
 
     with pyro.plate(f"{name}_titrant_name_plate",data.num_titrant_name,dim=-2):
         with pyro.plate("shared_genotype_plate", size=data.num_genotype,subsample_size=data.batch_size,dim=-1):
-            logit_theta_low_offset = pyro.sample(f"{name}_logit_low_offset", dist.Normal(0, 1))
-            logit_theta_delta_offset = pyro.sample(f"{name}_logit_delta_offset", dist.Normal(0, 1))
-            log_hill_K_offset = pyro.sample(f"{name}_log_hill_K_offset", dist.Normal(0, 1))
-            log_hill_n_offset = pyro.sample(f"{name}_log_hill_n_offset", dist.Normal(0, 1))
+            logit_theta_low_offset = pyro.sample(f"{name}_logit_low_offset", dist.Normal(0.0, 1.0))
+            logit_theta_delta_offset = pyro.sample(f"{name}_logit_delta_offset", dist.Normal(0.0, 1.0))
+            log_hill_K_offset = pyro.sample(f"{name}_log_hill_K_offset", dist.Normal(0.0, 1.0))
+            log_hill_n_offset = pyro.sample(f"{name}_log_hill_n_offset", dist.Normal(0.0, 1.0))
 
     logit_theta_low = logit_theta_low_hyper_loc + logit_theta_low_offset * logit_theta_low_hyper_scale
     logit_theta_delta = logit_theta_delta_hyper_loc + logit_theta_delta_offset * logit_theta_delta_hyper_scale

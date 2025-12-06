@@ -122,8 +122,8 @@ def define_model(name: str,
 
         # Loop over replicates
         with pyro.plate(f"{name}_replicate_parameters", data.num_replicate,dim=-2):
-            k_offset = pyro.sample(f"{name}_k_offset", dist.Normal(0, 1))
-            m_offset = pyro.sample(f"{name}_m_offset", dist.Normal(0, 1))
+            k_offset = pyro.sample(f"{name}_k_offset", dist.Normal(0.0, 1.0))
+            m_offset = pyro.sample(f"{name}_m_offset", dist.Normal(0.0, 1.0))
     
         growth_k_dist = growth_k_hyper_loc + k_offset * growth_k_hyper_scale
         growth_m_dist = growth_m_hyper_loc + m_offset * growth_m_hyper_scale

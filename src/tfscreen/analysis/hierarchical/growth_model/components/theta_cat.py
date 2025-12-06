@@ -98,7 +98,7 @@ def define_model(name: str,
                 
                 logit_theta_offset = pyro.sample(
                     f"{name}_logit_theta_offset", 
-                    dist.Normal(0, 1)
+                    dist.Normal(0.0, 1.0)
                 )
 
     # Calculate parameters in logit-space
