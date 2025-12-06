@@ -143,6 +143,60 @@ class RunInference:
             step_size=adam_step_size,
             clip_norm=adam_clip_norm)
         
+        # ---------
+
+        from numpyro.infer.util import initialize_model
+
+        from jax import random
+        import jax.numpy as jnp
+
+        # You need a PRNGKey
+        debug_key = random.PRNGKey(8675309)
+
+        # args and kwargs should be exactly what you pass to svi.update or the model
+        # Assuming 'args' is your tuple of arguments and 'kwargs' is your dict
+        # If you usually pass them unpacked to SVI, unpack them here.
+
+        print("\n========== DEBUGGING PARAMETERS ==========")
+        try:
+            # This simulates the first setup step of SVI
+            init_params, potential_fn, postprocess_fn, model_trace = initialize_model(
+                debug_key, 
+                self.model.jax_model, 
+                guide=self.model.jax_model_guide,
+                model_args=[], # (arg1, arg2, ...)
+                model_kwargs={"data":self.model.data,
+                              "priors":self.model.priors} 
+            )
+
+            found_int = False
+            print(f"{'PARAMETER NAME':<30} | {'DTYPE':<10} | {'SHAPE'}")
+            print("-" * 60)
+            
+            for name, val in init_params.items():
+                dtype_str = str(val.dtype)
+                print(f"{name:<30} | {dtype_str:<10} | {val.shape}")
+                
+                # Flag anything that looks like an integer
+                if "int" in dtype_str:
+                    found_int = True
+                    print(f"   >>> 🚨 FOUND INT PARAMETER: {name}")
+
+            print("-" * 60)
+            if not found_int:
+                print("✅ No integer parameters found in the params dict.")
+            else:
+                print("❌ CRITICAL: Integer parameters detected. SVI will crash on these.")
+
+        except Exception as e:
+            print(f"Crash during model initialization debug: {e}")
+            # If it crashes here, the issue is inside the guide/model trace generation itself
+            import traceback
+            traceback.print_exc()
+
+        print("==========================================\n")
+
+
         svi = SVI(self.model.jax_model,
                   self.model.jax_model_guide,
                   optimizer,

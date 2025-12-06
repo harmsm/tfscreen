@@ -421,7 +421,7 @@ def get_hyperparameters() -> Dict[str, Any]:
     parameters["theta_logit_low_hyper_loc_scale"] = 2.0
     parameters["theta_logit_low_hyper_scale"] = 1.0
 
-    parameters["theta_logit_delta_hyper_loc_loc"] = -4
+    parameters["theta_logit_delta_hyper_loc_loc"] = -4.0
     parameters["theta_logit_delta_hyper_loc_scale"] = 2.0
     parameters["theta_logit_delta_hyper_scale"] = 1.0
 

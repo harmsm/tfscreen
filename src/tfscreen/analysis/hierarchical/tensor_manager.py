@@ -430,7 +430,8 @@ class TensorManager:
         pivot_non_nan = ~np.any(pivoted_df[self._to_tensor_columns]
                                 .isna().to_numpy(),axis=1)
         self._tensors["good_mask"] = jnp.asarray(
-            pivot_non_nan.reshape(self._tensor_shape)
+            pivot_non_nan.reshape(self._tensor_shape),
+            dtype=bool
         )
 
         # df cleanup -- remove nan prior to building tensors. We can set them 
