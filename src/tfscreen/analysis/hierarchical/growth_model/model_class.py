@@ -8,6 +8,11 @@ from tfscreen.analysis.hierarchical import (
 
 from tfscreen.analysis.hierarchical.growth_model.model import jax_model
 from tfscreen.analysis.hierarchical.growth_model.registry import model_registry
+from tfscreen.analysis.hierarchical.growth_model.batch import (
+    get_batch,
+    random_batch
+    
+)
 
 from tfscreen.analysis.hierarchical.growth_model.data_class import (
     DataClass,
@@ -31,6 +36,7 @@ FLOAT_DTYPE = jnp.float64 if jax.config.read("jax_enable_x64") else jnp.float32
 
 # Set zero conc to this when taking log
 ZERO_CONC_VALUE = 1e-20
+
 
 def _read_growth_df(growth_df,
                     theta_group_cols=None,
@@ -231,19 +237,6 @@ def _read_binding_df(binding_df,
             "in the growth_df."
         )
 
-    growth_ref = growth_df[cols].drop_duplicates()
-
-    # Merge the binding data into the growth data. This makes sure the binding
-    # data has a row for every genotype/titrant_name combination seen in the 
-    # growth data. Pairs not seen in the binding data will have `nan` entries.
-    binding_df = growth_ref.merge(binding_df,
-                                  on=["genotype","titrant_name"],
-                                  how="left",
-                                  sort=False)
-    
-    # Reassert that genotype must be categorical after the merge
-    binding_df = tfscreen.genetics.set_categorical_genotype(binding_df)
-
     return binding_df
 
 def _build_binding_tm(binding_df):
@@ -290,6 +283,44 @@ def _build_binding_tm(binding_df):
     binding_tm.create_tensors()
     
     return binding_tm
+
+
+def _setup_batching(growth_genotypes,
+                    binding_genotypes,
+                    batch_size):
+    
+    if batch_size is None:
+        batch_size = len(growth_genotypes)
+    
+    if batch_size > len(growth_genotypes):
+        batch_size = len(growth_genotypes)
+
+    # Use growth_genotype order as the source-of-truth for indexing
+    binding_idx = np.where(np.isin(growth_genotypes,binding_genotypes))[0]
+    not_binding_idx = np.where(~np.isin(growth_genotypes,binding_genotypes))[0]
+    num_binding = len(binding_idx)
+    num_not_binding = len(not_binding_idx)
+    not_binding_batch_size = batch_size - num_binding
+
+    # Build idx array. The first entries correspond to the binding data and are 
+    # the same for all rounds
+    idx = np.zeros(batch_size,dtype=int)
+    idx[:num_binding] = binding_idx
+
+    # Calculate scale vector, which will be the same for all rounds
+    scale_vector = np.ones(batch_size,dtype=float)
+    scale_vector[num_binding:] = num_not_binding/not_binding_batch_size
+
+    # Return output as a dictionary so this can be loaded into the dataclass
+    out = {}
+    out["batch_idx"] = idx
+    out["batch_size"] = batch_size
+    out["scale_vector"] = scale_vector
+    out["num_binding"] = num_binding
+    out["not_binding_idx"] = not_binding_idx
+    out["not_binding_batch_size"] = not_binding_batch_size
+
+    return out
 
 
 def _extract_param_est(input_df,
@@ -465,17 +496,8 @@ class ModelClass:
         # the theta (titrant_conc,theta_group) tensor. 
         self.growth_df = _read_growth_df(self._ln_cfu_df)
         self.growth_tm = _build_growth_tm(self.growth_df)
-        
-        # Get wildtype information
-        genotype_idx = self.growth_tm.tensor_dim_names.index("genotype")
-        wt_loc = np.where(self.growth_tm.tensor_dim_labels[genotype_idx] == "wt")
-    
-        wt_info = {"wt_indexes":jnp.array(wt_loc[0], dtype=jnp.int32),
-                   "batch_idx":jnp.arange(self.growth_tm.tensor_shape[-1],dtype=jnp.int32),
-                   "batch_size":self.growth_tm.tensor_shape[-1]}
-        
-        # Assemble tensors. We draw some from growth_tm and some from 
-        # growth_theta_tm    
+                   
+        # Assemble tensors. 
         tensors = {}
         
         from_growth_tm = ["ln_cfu","ln_cfu_std","t_pre","t_sel",
@@ -494,6 +516,11 @@ class ModelClass:
         sizes["num_titrant_conc"] = self.growth_tm.tensor_shape[5]
         sizes["num_genotype"] = self.growth_tm.tensor_shape[6]
 
+        # Get wildtype information
+        genotype_idx = self.growth_tm.tensor_dim_names.index("genotype")
+        wt_loc = np.where(self.growth_tm.tensor_dim_labels[genotype_idx] == "wt")
+        wt_info = {"wt_indexes":jnp.array(wt_loc[0], dtype=jnp.int32)}
+
         # scatter_theta tells the theta model caller to return a full-sized
         # growth_tm tensor instead of the smaller growth_theta_tm-sized tensor
         other_data = {"scatter_theta":1}
@@ -509,12 +536,7 @@ class ModelClass:
         other_data["titrant_conc"] = titrant_conc
         other_data["log_titrant_conc"] = log_titrant_conc
 
-        # Populate a GrowthData flax dataclass with all keys in `sources`. 
-        growth_dataclass = populate_dataclass(GrowthData,
-                                              sources=[tensors,
-                                                       sizes,
-                                                       wt_info,
-                                                       other_data])
+        growth_data_sources = [tensors,sizes,wt_info,other_data]
         
         # ---------------------------------------------------------------------
         # binding dataclass
@@ -530,9 +552,7 @@ class ModelClass:
         sizes = {"num_titrant_name":self.binding_tm.tensor_shape[0],
                  "num_titrant_conc":self.binding_tm.tensor_shape[1],
                  "num_genotype":self.binding_tm.tensor_shape[2]}
-        other_data = {"scatter_theta":0,
-                      "batch_idx":jnp.arange(self.growth_tm.tensor_shape[-1],dtype=jnp.int32),
-                      "batch_size":self.binding_tm.tensor_shape[2]}
+        other_data = {"scatter_theta":0}
 
         # Grab the titrant concentration and log_titrant_conc (1D array from 
         # the tensor labels along dimension 6)
@@ -545,19 +565,46 @@ class ModelClass:
         other_data["titrant_conc"] = titrant_conc
         other_data["log_titrant_conc"] = log_titrant_conc
 
+        binding_data_sources = [self.binding_tm.tensors,sizes,other_data]
+
+        # ---------------------------------------------------------------------
+        # Create batching information 
+       
+        batch_data = _setup_batching(self.growth_tm.tensor_dim_labels[-1],
+                                     self.binding_tm.tensor_dim_labels[-1],
+                                     self._batch_size)
+        
+        # Record relevant batch data for the growth dataset
+        growth_batch_data = {}
+        growth_batch_data["batch_idx"] = batch_data["batch_idx"]
+        growth_batch_data["batch_size"] = batch_data["batch_size"]
+        growth_batch_data["scale_vector"] = batch_data["scale_vector"]
+        growth_batch_data["geno_theta_idx"] = np.arange(batch_data["batch_size"],dtype=int)
+        growth_data_sources.append(growth_batch_data)
+        
+        # Record relevant batch data for the binding dataset
+        binding_batch_data = {}
+        binding_batch_data["batch_idx"] = batch_data["batch_idx"][:batch_data["num_binding"]]
+        binding_batch_data["batch_size"] = batch_data["num_binding"]
+        binding_batch_data["scale_vector"] = batch_data["scale_vector"][:batch_data["num_binding"]]
+        binding_batch_data["geno_theta_idx"] = np.arange(batch_data["num_binding"],dtype=int)
+        binding_data_sources.append(binding_batch_data)
+
+        # ---------------------------------------------------------------------
+        # Populate dataclasses
+
+        # Populate a GrowthData flax dataclass with all keys in `sources`. 
+        growth_dataclass = populate_dataclass(GrowthData,
+                                              sources=growth_data_sources)
 
         # Populate a BindingData flax dataclass with all keys in `sources`
         binding_dataclass = populate_dataclass(BindingData,
-                                               sources=[self.binding_tm.tensors,
-                                                        sizes,
-                                                        other_data])
-        
-        # ---------------------------------------------------------------------
-        # combined dataclass
-        
-        source_data = {"growth":growth_dataclass,
-                       "binding":binding_dataclass,
-                       "num_genotype":self.growth_tm.tensor_shape[-1]}
+                                               sources=binding_data_sources)
+
+        source_data = [{"growth":growth_dataclass,
+                        "binding":binding_dataclass,
+                        "num_genotype":self.growth_tm.tensor_shape[-1]}]
+        source_data.append(batch_data)
 
         # Build the aggregated `DataClass` flax dataclass with the growth
         # and binding dataclasses. Expose as a model attribute. 
@@ -647,11 +694,7 @@ class ModelClass:
                 main_control_kwargs[key] = component_module.define_model
                 guide_control_kwargs[key] = component_module.guide
     
-        # Record the batch size
-        if self._batch_size is None:
-            self._batch_size = self.growth_tm.tensor_shape[-1]
-        if self._batch_size > self.growth_tm.tensor_shape[-1]:
-            self._batch_size = self.growth_tm.tensor_shape[-1]
+
         main_control_kwargs["batch_size"] = self._batch_size
         guide_control_kwargs["batch_size"] = self._batch_size
 
@@ -678,24 +721,6 @@ class ModelClass:
     
         self._priors = priors
         self._init_params = init_params
-
-    def define_deterministic_model(self,batch_idx):
-        """
-        Create a jax model that uses specific genotype indices.
-        """
-
-        batch_idx = jnp.array(batch_idx,dtype=jnp.int32)
-
-        # Temporarily store batch_idx the control kwargs
-        self._main_control_kwargs["batch_idx"] = batch_idx
-
-        # Bake in the new deterministic model
-        self._jax_model_deterministic = partial(jax_model, **self._main_control_kwargs)
-
-        # Pop the batch_idx back out of control kwargs (we use this to avoid 
-        # copying the control kwargs while also not contaminating it with our 
-        # our batch_idx)
-        self._main_control_kwargs.pop("batch_idx")
 
     def extract_parameters(self,
                            posteriors,
@@ -859,15 +884,12 @@ class ModelClass:
         return self._jax_model_guide
 
     @property
-    def jax_model_deterministic(self):
-        """jax model that does calculation for a specific set of genotype indexes"""
-        if not hasattr(self,"_jax_model_deterministic"):
-            raise ValueError(
-                "jax_model_deterministic is only defined after define_deterministic_model "
-                "is called."
-            )
-        
-        return self._jax_model_deterministic
+    def get_batch(self):
+        return get_batch
+    
+    @property
+    def random_batch(self):
+        return random_batch
 
 
     @property

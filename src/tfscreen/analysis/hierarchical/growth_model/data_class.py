@@ -9,10 +9,12 @@ from typing import Any
 
 @dataclass(frozen=True)
 class GrowthData:
-
+    
     # Batch information
     batch_size: int = field(pytree_node=False)
     batch_idx: jnp.ndarray
+    scale_vector: jnp.ndarray
+    geno_theta_idx: jnp.ndarray
 
     # Data tensors
     ln_cfu: jnp.ndarray
@@ -50,6 +52,8 @@ class BindingData:
     # Batch information
     batch_size: int = field(pytree_node=False)
     batch_idx: jnp.ndarray
+    scale_vector: jnp.ndarray
+    geno_theta_idx: jnp.ndarray
 
     # Main data tensors
     theta_obs: jnp.ndarray
@@ -78,6 +82,10 @@ class DataClass:
 
     num_genotype: int = field(pytree_node=False)
     
+    not_binding_idx: int = field(pytree_node=False)
+    not_binding_batch_size: int = field(pytree_node=False)
+    num_binding: int = field(pytree_node=False) 
+
     # This will be a GrowthData and BindingData
     growth: GrowthData
     binding: BindingData

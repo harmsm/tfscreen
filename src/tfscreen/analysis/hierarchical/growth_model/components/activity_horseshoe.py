@@ -63,14 +63,15 @@ def define_model(name: str,
                                    dist.HalfNormal(priors.global_scale_tau_scale)) 
     
     # Sample local scales and offsets 
-    with pyro.plate("shared_genotype_plate", size=data.num_genotype,subsample_size=data.batch_size,dim=-1):
+    with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
+        with pyro.handlers.scale(scale=data.scale_vector):
         
-        # Local scale `lambda`. HalfNormal(1) is the standard Horseshoe.
-        local_scale_lambda = pyro.sample(f"{name}_local_scale",
-                                         dist.HalfNormal(1.0))
+            # Local scale `lambda`. HalfNormal(1) is the standard Horseshoe.
+            local_scale_lambda = pyro.sample(f"{name}_local_scale",
+                                            dist.HalfNormal(1.0))
 
-        # Non-centered offset `z` (always Normal(0,1))
-        activity_offset = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
+            # Non-centered offset `z` (always Normal(0,1))
+            activity_offset = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
 
     # Combine scales: `beta = z * (tau * lambda)`
     # The mean `log(activity)` is 0.0 (i.e., activity = 1.0)
@@ -118,20 +119,21 @@ def guide(name: str,
                                         constraint=dist.constraints.positive)
 
     # Sample local scales and offsets 
-    with pyro.plate("shared_genotype_plate", size=data.num_genotype,subsample_size=data.batch_size,dim=-1) as idx:
+    with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
+        with pyro.handlers.scale(scale=data.scale_vector):
         
-        lambda_batch_locs = lambda_locs[idx]
-        lambda_batch_scales = lambda_scales[idx]
+            lambda_batch_locs = lambda_locs[data.batch_idx]
+            lambda_batch_scales = lambda_scales[data.batch_idx]
 
-        activity_batch_locs = activity_offset_locs[idx]
-        activity_batch_scales = activity_offset_scales[idx]
+            activity_batch_locs = activity_offset_locs[data.batch_idx]
+            activity_batch_scales = activity_offset_scales[data.batch_idx]
 
-        # Local scale `lambda`. HalfNormal(1) is the standard Horseshoe.
-        local_scale_lambda = pyro.sample(f"{name}_local_scale",
-                                         dist.LogNormal(lambda_batch_locs, lambda_batch_scales))
+            # Local scale `lambda`. HalfNormal(1) is the standard Horseshoe.
+            local_scale_lambda = pyro.sample(f"{name}_local_scale",
+                                            dist.LogNormal(lambda_batch_locs, lambda_batch_scales))
 
-        # Non-centered offset `z` (always Normal(0,1))
-        activity_offset = pyro.sample(f"{name}_offset", dist.Normal(activity_batch_locs, activity_batch_scales))
+            # Non-centered offset `z` (always Normal(0,1))
+            activity_offset = pyro.sample(f"{name}_offset", dist.Normal(activity_batch_locs, activity_batch_scales))
 
     # Combine scales: `beta = z * (tau * lambda)`
     # The mean `log(activity)` is 0.0 (i.e., activity = 1.0)

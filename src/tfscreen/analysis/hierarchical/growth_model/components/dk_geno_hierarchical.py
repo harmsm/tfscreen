@@ -71,8 +71,9 @@ def define_model(name: str,
                     priors.dk_geno_hyper_shift_scale)
     )
 
-    with pyro.plate("shared_genotype_plate", size=data.num_genotype,subsample_size=data.batch_size,dim=-1):
-        dk_geno_offset = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
+    with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
+        with pyro.handlers.scale(scale=data.scale_vector):
+            dk_geno_offset = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
     
     dk_geno_lognormal_values = jnp.clip(jnp.exp(dk_geno_hyper_loc + dk_geno_offset * dk_geno_hyper_scale),max=1e30)
     dk_geno_per_genotype = dk_geno_hyper_shift - dk_geno_lognormal_values
@@ -124,12 +125,13 @@ def guide(name: str,
                                constraint=dist.constraints.positive)
 
     # --- Batching ---
-    with pyro.plate("shared_genotype_plate", size=data.num_genotype, subsample_size=data.batch_size, dim=-1) as idx:
+    with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
+        with pyro.handlers.scale(scale=data.scale_vector):
         
-        batch_locs = offset_locs[idx]
-        batch_scales = offset_scales[idx]
+            batch_locs = offset_locs[...,data.batch_idx]
+            batch_scales = offset_scales[...,data.batch_idx]
 
-        dk_geno_offset = pyro.sample(f"{name}_offset", dist.Normal(batch_locs, batch_scales))
+            dk_geno_offset = pyro.sample(f"{name}_offset", dist.Normal(batch_locs, batch_scales))
 
     # --- Deterministic Calculation ---
     
