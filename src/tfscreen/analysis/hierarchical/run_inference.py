@@ -143,60 +143,6 @@ class RunInference:
             step_size=adam_step_size,
             clip_norm=adam_clip_norm)
         
-        # ---------
-
-        from numpyro.infer.util import initialize_model
-
-        from jax import random
-        import jax.numpy as jnp
-
-        # You need a PRNGKey
-        debug_key = random.PRNGKey(8675309)
-
-        # args and kwargs should be exactly what you pass to svi.update or the model
-        # Assuming 'args' is your tuple of arguments and 'kwargs' is your dict
-        # If you usually pass them unpacked to SVI, unpack them here.
-
-        print("\n========== DEBUGGING PARAMETERS ==========")
-        try:
-            # This simulates the first setup step of SVI
-            init_params, potential_fn, postprocess_fn, model_trace = initialize_model(
-                debug_key, 
-                self.model.jax_model, 
-                guide=self.model.jax_model_guide,
-                model_args=[], # (arg1, arg2, ...)
-                model_kwargs={"data":self.model.data,
-                              "priors":self.model.priors} 
-            )
-
-            found_int = False
-            print(f"{'PARAMETER NAME':<30} | {'DTYPE':<10} | {'SHAPE'}")
-            print("-" * 60)
-            
-            for name, val in init_params.items():
-                dtype_str = str(val.dtype)
-                print(f"{name:<30} | {dtype_str:<10} | {val.shape}")
-                
-                # Flag anything that looks like an integer
-                if "int" in dtype_str:
-                    found_int = True
-                    print(f"   >>> 🚨 FOUND INT PARAMETER: {name}")
-
-            print("-" * 60)
-            if not found_int:
-                print("✅ No integer parameters found in the params dict.")
-            else:
-                print("❌ CRITICAL: Integer parameters detected. SVI will crash on these.")
-
-        except Exception as e:
-            print(f"Crash during model initialization debug: {e}")
-            # If it crashes here, the issue is inside the guide/model trace generation itself
-            import traceback
-            traceback.print_exc()
-
-        print("==========================================\n")
-
-
         svi = SVI(self.model.jax_model,
                   self.model.jax_model_guide,
                   optimizer,
@@ -261,21 +207,21 @@ class RunInference:
         init_function = jax.jit(svi.init)
         update_function = jax.jit(svi.update)
 
-        # Get the arguments to pass to the jax model
-        jax_model_kwargs = {"priors":self.model.priors,
-                            "data":self.model.data} 
-
         # Add jitter to the input parameters if they are specified
         if init_params is not None:
             init_params = self._jitter_init_parameters(init_params=init_params,
                                                        init_param_jitter=init_param_jitter)
 
-        # Create initialization key
-        init_key = self.get_key()
+        # Create a batch of data for initialization
+        batch_key = self.get_key()
+        batch_data = self.model.random_batch(batch_key,self.model.data)
 
+        # Initialize svi with a batch of data
+        init_key = self.get_key()
         initial_svi_state = init_function(init_key,
                                           init_params=init_params,
-                                          **jax_model_kwargs)
+                                          priors=self.model.priors,
+                                          data=batch_data)
             
         if svi_state is None:
             svi_state = initial_svi_state
@@ -293,8 +239,13 @@ class RunInference:
         losses = []
         for i in range(num_steps):
 
+            batch_key = self.get_key()
+            batch_data = self.model.random_batch(batch_key,self.model.data)
+
             # Update the loss function
-            svi_state, loss = update_function(svi_state,**jax_model_kwargs) 
+            svi_state, loss = update_function(svi_state,
+                                              priors=self.model.priors,
+                                              data=batch_data)
             losses.append(loss)
 
             if i % checkpoint_interval == 0:
@@ -344,133 +295,132 @@ class RunInference:
                        num_posterior_samples=10000,
                        sampling_batch_size=100,
                        forward_batch_size=512):
-            """
-            Generate and save posterior samples using the trained guide.
+        """
+        Generate and save posterior samples using the trained guide.
 
-            Uses `numpyro.infer.Predictive` to sample from the posterior
-            distribution defined by the guide and parameters. Handles large
-            datasets by batching predictions.
+        Uses `numpyro.infer.Predictive` to sample from the posterior
+        distribution defined by the guide and parameters. Handles large
+        datasets by batching predictions.
 
-            Parameters
-            ----------
+        Parameters
+        ----------
 
-            svi : numpyro.infer.SVI
-                svi object being used for the inference
-            svi_state : 
-                current state of the svi object
-            out_root : str
-                Root name for the output .npz file.
-            num_posterior_samples : int, optional
-                Number of posterior samples to draw.
-            sampling_batch_size : int, optional
-                Generate posteriors in blocks of this size
-            forward_batch_size : int, optional
-                calculate forward predictions in batches of this size
-            """
+        svi : numpyro.infer.SVI
+            svi object being used for the inference
+        svi_state : 
+            current state of the svi object
+        out_root : str
+            Root name for the output .npz file.
+        num_posterior_samples : int, optional
+            Number of posterior samples to draw.
+        sampling_batch_size : int, optional
+            Generate posteriors in blocks of this size
+        forward_batch_size : int, optional
+            calculate forward predictions in batches of this size
+        """
 
-            guide = svi.guide
-            params = svi.get_params(svi_state)
+        guide = svi.guide
+        params = svi.get_params(svi_state)
 
-            combined_results = {}
+        combined_results = {}
 
-            total_num_genotypes = self.model.data.num_genotype 
-            num_latent_batches = -(-num_posterior_samples // sampling_batch_size)
+        total_num_genotypes = self.model.data.num_genotype 
+        num_latent_batches = -(-num_posterior_samples // sampling_batch_size)
 
-            for _ in tqdm(range(num_latent_batches),desc="sampling posterior"):
+        for _ in tqdm(range(num_latent_batches),desc="sampling posterior"):
 
-                # Sample the entire guide posterior distribution 
-                post_key = self.get_key()
-                latent_sampler = Predictive(guide,
-                                            params=params,
-                                            num_samples=sampling_batch_size)
-                latent_samples = latent_sampler(post_key)
+            # Sample the entire guide posterior distribution 
+            post_key = self.get_key()
+            latent_sampler = Predictive(guide,
+                                        params=params,
+                                        num_samples=sampling_batch_size)
+            latent_samples = latent_sampler(post_key)
 
-                # Create model kwargs
-                jax_model_kwargs = {"priors":self.model.priors,
-                                    "data":self.model.data} 
-
-                # Sample batches of genotypes
-                batched_results = {}
-                for start_idx in range(0, total_num_genotypes, forward_batch_size):
-                    
-                    # Create indexes for slicing a batch
-                    end_idx = min(start_idx + forward_batch_size, total_num_genotypes)
-                    batch_indices = jnp.arange(start_idx, end_idx)
-
-                    # Slice the Latent Samples to match this batch
-                    batch_latents = {}
-                    for k, v in latent_samples.items():
-
-                        # Heuristic: if last dim matches total genotypes, slice it.
-                        # Otherwise, treat it as a global parameter (keep full).
-                        is_genotype_param = (v.ndim > 1) and (v.shape[-1] == total_num_genotypes)
-                        
-                        if is_genotype_param:
-                            batch_latents[k] = v[..., start_idx:end_idx]
-                        else:
-                            batch_latents[k] = v
-
-
-                    # Create a version of the model that only sees these indices
-                    self.model.define_deterministic_model(batch_indices)
-                    
-                    # Create a sampler that will predict outputs using the full
-                    # model given those latent samples
-                    forward_sampler = Predictive(self.model.jax_model_deterministic, 
-                                                 posterior_samples=batch_latents)
-
-                    # Run the forward pass for this batch of genotypes
-                    sample_key = self.get_key()
-                    batch_pred = forward_sampler(sample_key, **jax_model_kwargs)
-                    batch_pred_cpu = jax.device_get(batch_pred)
-
-                    # Grab the parameters we sampled in this batch
-                    for k, v in batch_pred_cpu.items():
-                        if k not in batched_results:
-                            batched_results[k] = []
-                        batched_results[k].append(v)
+            # Sample batches of genotypes
+            batched_results = {}
+            for start_idx in range(0, total_num_genotypes, forward_batch_size):
                 
-                    # Grab the latent parameters we sampled in this batch. If 
-                    # the latent parameter has a genotype axis (last dimension
-                    # is length total_num_genotypes) slice and append it. If 
-                    # it does not have a genotype axis, just append it on the 
-                    # first iteration.
-                    for k, v in latent_samples.items():
+                # Create indexes for slicing a batch
+                end_idx = min(start_idx + forward_batch_size, total_num_genotypes)
+                batch_indices = jnp.arange(start_idx, end_idx)
 
-                        if k in batch_pred_cpu:
-                            continue
+                # Slice the Latent Samples to match this batch
+                batch_latents = {}
+                for k, v in latent_samples.items():
 
-                        if k not in batched_results:
-                            batched_results[k] = []
-                            
-                        is_genotype_param = (v.ndim > 1) and (v.shape[-1] == (end_idx - start_idx))
-
-                        if is_genotype_param:
-                            batched_results[k].append(v)
-                        else:
-                            if start_idx == 0:
-                                batched_results[k].append(v)
-
-                # Combine our batched results. The result of this will be a 
-                # dictionary of lists. Each list will be an array whose first
-                # dimension is the number of latent samples. 
-                for k, v in batched_results.items():
-
-                    if k not in combined_results:
-                        combined_results[k] = []
-
-                    if len(v) == 1:
-                        combined_results[k].append(v[0])
+                    # Heuristic: if last dim matches total genotypes, slice it.
+                    # Otherwise, treat it as a global parameter (keep full).
+                    is_genotype_param = (v.ndim > 1) and (v.shape[-1] == total_num_genotypes)
+                    
+                    if is_genotype_param:
+                        batch_latents[k] = v[..., start_idx:end_idx]
                     else:
-                        full_width = np.concatenate(v,axis=1)
-                        combined_results[k].append(full_width)
-        
-            # assemble final results
-            final_results = {}
-            for k in combined_results:
-                final_results[k] = np.concatenate(combined_results[k],axis=0)
+                        batch_latents[k] = v
 
-            self._write_posteriors(final_results, out_root=out_root)
+
+                # Get a batch of data
+                batch_data = self.model.get_batch(batch_indices)
+                
+                # Create a sampler that will predict outputs using the full
+                # model given those latent samples
+                forward_sampler = Predictive(self.model.jax_model, 
+                                                posterior_samples=batch_latents)
+
+                # Run the forward pass for this batch of genotypes
+                sample_key = self.get_key()
+                batch_pred = forward_sampler(sample_key,
+                                                priors=self.model.priors,
+                                                data=batch_data)
+
+                batch_pred_cpu = jax.device_get(batch_pred)
+
+                # Grab the parameters we sampled in this batch
+                for k, v in batch_pred_cpu.items():
+                    if k not in batched_results:
+                        batched_results[k] = []
+                    batched_results[k].append(v)
+            
+                # Grab the latent parameters we sampled in this batch. If 
+                # the latent parameter has a genotype axis (last dimension
+                # is length total_num_genotypes) slice and append it. If 
+                # it does not have a genotype axis, just append it on the 
+                # first iteration.
+                for k, v in latent_samples.items():
+
+                    if k in batch_pred_cpu:
+                        continue
+
+                    if k not in batched_results:
+                        batched_results[k] = []
+                        
+                    is_genotype_param = (v.ndim > 1) and (v.shape[-1] == (end_idx - start_idx))
+
+                    if is_genotype_param:
+                        batched_results[k].append(v)
+                    else:
+                        if start_idx == 0:
+                            batched_results[k].append(v)
+
+            # Combine our batched results. The result of this will be a 
+            # dictionary of lists. Each list will be an array whose first
+            # dimension is the number of latent samples. 
+            for k, v in batched_results.items():
+
+                if k not in combined_results:
+                    combined_results[k] = []
+
+                if len(v) == 1:
+                    combined_results[k].append(v[0])
+                else:
+                    full_width = np.concatenate(v,axis=1)
+                    combined_results[k].append(full_width)
+    
+        # assemble final results
+        final_results = {}
+        for k in combined_results:
+            final_results[k] = np.concatenate(combined_results[k],axis=0)
+
+        self._write_posteriors(final_results, out_root=out_root)
 
     def predict(self,
                 posterior_samples,

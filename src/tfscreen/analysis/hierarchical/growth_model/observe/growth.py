@@ -1,6 +1,6 @@
 import jax.numpy as jnp
 import numpyro as pyro
-from numpyro.handlers import mask
+
 import numpyro.distributions as dist
 
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
@@ -50,15 +50,18 @@ def observe(name: str,
                 with pyro.plate(f"{name}_condition_sel", size=data.num_condition_sel, dim=-4):
                     with pyro.plate(f"{name}_titrant_name", size=data.num_titrant_name, dim=-3):
                         with pyro.plate(f"{name}_titrant_conc", size=data.num_titrant_conc, dim=-2):
-                            with pyro.plate("shared_genotype_plate",size=data.num_genotype,subsample_size=data.batch_size,dim=-1):
+                            with pyro.plate("shared_genotype_plate",size=data.batch_size,dim=-1):
 
-                                # Apply mask for good observations
-                                with mask(mask=data.good_mask):
-                                    
-                                    # Define the observation site
-                                    pyro.sample(f"{name}_growth_obs",
-                                                dist.StudentT(df=nu, loc=ln_cfu_pred, scale=data.ln_cfu_std),
-                                                obs=data.ln_cfu)
+                                # Scale data for sub-sampling
+                                with pyro.handlers.scale(scale=data.scale_vector):
+
+                                    # Apply mask for good observations
+                                    with pyro.handlers.mask(mask=data.good_mask):
+                                        
+                                        # Define the observation site
+                                        pyro.sample(f"{name}_growth_obs",
+                                                    dist.StudentT(df=nu, loc=ln_cfu_pred, scale=data.ln_cfu_std),
+                                                    obs=data.ln_cfu)
 
 def guide(name: str,
           data: GrowthData,

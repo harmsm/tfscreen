@@ -1,6 +1,4 @@
 
-from .batch import generate_batch
-
 # Import for typing
 from .data_class import (
     DataClass,
@@ -16,8 +14,6 @@ def jax_model(data: DataClass,
               **control):
     """
     Defines the joint hierarchical model for bacterial growth and binding.
-
-    This model can be called 
 
     Parameters
     ----------
@@ -62,44 +58,17 @@ def jax_model(data: DataClass,
     is_guide = control["is_guide"]
 
     # -------------------------------------------------------------------------
-    # Deal with batching/indexing
-
-    # `shared_genotype_plate` is used throughout the model.
-
-    # Forward sampling -- explicit batch_idx passed to the model when it was 
-    # initialized. 
-    if "batch_idx" in control:
-
-        # Create a plate that is the right size but is not sampled
-        idx = control["batch_idx"]
-        with pyro.plate("shared_genotype_plate",size=len(idx),dim=-1):
-             batched_data = generate_batch(data,idx)
-
-    # Training -- generate a randomly sampled batch
-    else:
-
-        # Create a plate that is sub-sampled
-        batch_size = control["batch_size"]
-        with pyro.plate("shared_genotype_plate", 
-                        size=data.num_genotype, 
-                        subsample_size=batch_size, 
-                        dim=-1) as idx:
-            
-            batched_data = generate_batch(data,idx)
-
-
-    # -------------------------------------------------------------------------
     # Calculate theta
 
     # Calculate shared theta
     theta = theta_model("theta",
-                        batched_data.growth,
+                        data.growth,
                         priors.theta)
     
     # -------------------------------------------------------------------------
     # Make prediction for the binding experiment
 
-    theta_binding = calc_theta(theta,batched_data.binding)
+    theta_binding = calc_theta(theta,data.binding)
     pyro.deterministic(f"theta_binding_pred",theta_binding)
     binding_pred = theta_binding_noise_model("theta_binding_noise",
                                              theta_binding,
@@ -109,7 +78,7 @@ def jax_model(data: DataClass,
     # Make prediction for the growth experiment
 
     # theta
-    theta_growth = calc_theta(theta,batched_data.growth)
+    theta_growth = calc_theta(theta,data.growth)
     pyro.deterministic(f"theta_growth_pred",theta_growth)
     noisy_theta_growth = theta_growth_noise_model("theta_growth_noise",
                                                   theta_growth,
@@ -117,22 +86,22 @@ def jax_model(data: DataClass,
     
     # Get growth parameters
     k_pre, m_pre, k_sel, m_sel = condition_growth_model("condition_growth",
-                                                        batched_data.growth,
+                                                        data.growth,
                                                         priors.growth.condition_growth)
 
     # initial populations
     ln_cfu0 = ln_cfu0_model("ln_cfu0",
-                            batched_data.growth,
+                            data.growth,
                             priors.growth.ln_cfu0)
     
-    # pleiotropic effect of mutation
+    # # pleiotropic effect of mutation
     dk_geno = dk_geno_model("dk_geno",
-                            batched_data.growth,
+                            data.growth,
                             priors.growth.dk_geno)   
 
     # activity
     activity = activity_model("activity",
-                              batched_data.growth,
+                              data.growth,
                               priors.growth.activity)
     
     # -------------------------------------------------------------------------
@@ -142,8 +111,8 @@ def jax_model(data: DataClass,
     # final tensors
     if is_guide:
 
-        growth_observer("final_binding_obs",batched_data.growth,None)
-        binding_observer("final_growth_obs",batched_data.binding,None)
+        growth_observer("final_binding_obs",data.growth,None)
+        binding_observer("final_growth_obs",data.binding,None)
 
     # real calculation
     else:
@@ -152,14 +121,14 @@ def jax_model(data: DataClass,
         g_pre = k_pre + dk_geno + activity*m_pre*noisy_theta_growth
         g_sel = k_sel + dk_geno + activity*m_sel*noisy_theta_growth
 
-        ln_cfu_pred = ln_cfu0 + g_pre*batched_data.growth.t_pre + g_sel*batched_data.growth.t_sel
+        ln_cfu_pred = ln_cfu0 + g_pre*data.growth.t_pre + g_sel*data.growth.t_sel
 
         # Register results
         pyro.deterministic(f"binding_pred",binding_pred)
         pyro.deterministic(f"growth_pred",ln_cfu_pred)
     
         # Calculate likelihood
-        growth_observer("final_binding_obs",batched_data.growth,ln_cfu_pred)
-        binding_observer("final_growth_obs",batched_data.binding,binding_pred)
+        growth_observer("final_binding_obs",data.growth,ln_cfu_pred)
+        binding_observer("final_growth_obs",data.binding,binding_pred)
 
 

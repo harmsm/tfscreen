@@ -94,12 +94,13 @@ def define_model(name: str,
 
     with pyro.plate(f"{name}_titrant_name_plate", data.num_titrant_name,dim=-3):
         with pyro.plate(f"{name}_titrant_conc_plate", data.num_titrant_conc,dim=-2):
-            with pyro.plate("shared_genotype_plate", size=data.num_genotype,subsample_size=data.batch_size,dim=-1):
+            with pyro.plate("theta_genotype_plate", size=data.batch_size,dim=-1):
+                with pyro.handlers.scale(scale=data.scale_vector):
                 
-                logit_theta_offset = pyro.sample(
-                    f"{name}_logit_theta_offset", 
-                    dist.Normal(0.0, 1.0)
-                )
+                    logit_theta_offset = pyro.sample(
+                        f"{name}_logit_theta_offset", 
+                        dist.Normal(0.0, 1.0)
+                    )
 
     # Calculate parameters in logit-space
     logit_theta = logit_theta_hyper_loc + logit_theta_offset * logit_theta_hyper_scale
@@ -165,17 +166,18 @@ def guide(name: str,
     with pyro.plate(f"{name}_titrant_name_plate", data.num_titrant_name, dim=-3):
         with pyro.plate(f"{name}_titrant_conc_plate", data.num_titrant_conc, dim=-2):
             # Batching on Genotype (dim=-1)
-            with pyro.plate("shared_genotype_plate", size=data.num_genotype, subsample_size=data.batch_size, dim=-1) as idx:
+            with pyro.plate("theta_genotype_plate", size=data.batch_size,dim=-1):
+                with pyro.handlers.scale(scale=data.scale_vector):
                 
-                # Slice the last dimension (Genotype) using the batch indices
-                # The ellipsis (...) preserves the TitrantName and TitrantConc dimensions
-                batch_locs = offset_locs[..., idx]
-                batch_scales = offset_scales[..., idx]
-                
-                logit_theta_offset = pyro.sample(
-                    f"{name}_logit_theta_offset", 
-                    dist.Normal(batch_locs, batch_scales)
-                )
+                    # Slice the last dimension (Genotype) using the batch indices
+                    # The ellipsis (...) preserves the TitrantName and TitrantConc dimensions
+                    batch_locs = offset_locs[..., data.batch_idx]
+                    batch_scales = offset_scales[..., data.batch_idx]
+                    
+                    logit_theta_offset = pyro.sample(
+                        f"{name}_logit_theta_offset", 
+                        dist.Normal(batch_locs, batch_scales)
+                    )
 
     # --- 4. Reconstruction (Deterministic) ---
     

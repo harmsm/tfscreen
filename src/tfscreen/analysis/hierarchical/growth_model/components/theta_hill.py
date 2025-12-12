@@ -168,11 +168,12 @@ def define_model(name: str,
     # Sample curve parameters for each (genotype, titrant_name) group 
 
     with pyro.plate(f"{name}_titrant_name_plate",data.num_titrant_name,dim=-2):
-        with pyro.plate("shared_genotype_plate", size=data.num_genotype,subsample_size=data.batch_size,dim=-1):
-            logit_theta_low_offset = pyro.sample(f"{name}_logit_low_offset", dist.Normal(0.0, 1.0))
-            logit_theta_delta_offset = pyro.sample(f"{name}_logit_delta_offset", dist.Normal(0.0, 1.0))
-            log_hill_K_offset = pyro.sample(f"{name}_log_hill_K_offset", dist.Normal(0.0, 1.0))
-            log_hill_n_offset = pyro.sample(f"{name}_log_hill_n_offset", dist.Normal(0.0, 1.0))
+        with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
+            with pyro.handlers.scale(scale=data.scale_vector):
+                logit_theta_low_offset = pyro.sample(f"{name}_logit_low_offset", dist.Normal(0.0, 1.0))
+                logit_theta_delta_offset = pyro.sample(f"{name}_logit_delta_offset", dist.Normal(0.0, 1.0))
+                log_hill_K_offset = pyro.sample(f"{name}_log_hill_K_offset", dist.Normal(0.0, 1.0))
+                log_hill_n_offset = pyro.sample(f"{name}_log_hill_n_offset", dist.Normal(0.0, 1.0))
 
     logit_theta_low = logit_theta_low_hyper_loc + logit_theta_low_offset * logit_theta_low_hyper_scale
     logit_theta_delta = logit_theta_delta_hyper_loc + logit_theta_delta_offset * logit_theta_delta_hyper_scale
@@ -308,26 +309,26 @@ def guide(name: str,
 
     with pyro.plate(f"{name}_titrant_name_plate", data.num_titrant_name, dim=-2):
         # Batching on Genotype (dim=-1)
-        with pyro.plate("shared_genotype_plate", size=data.num_genotype, subsample_size=data.batch_size, dim=-1) as idx:
+        with pyro.plate("shared_genotype_plate", size=data.batch_size, dim=-1):
             
-            # Slice last dimension (Genotype) using batch indices.
-            # Ellipsis (...) ensures we preserve the Titrant dimension.
+            # Scale data for sub-sampling
+            with pyro.handlers.scale(scale=data.scale_vector):
             
-            # Low
-            logit_theta_low_offset = pyro.sample(f"{name}_logit_low_offset", 
-                dist.Normal(low_offset_locs[..., idx], low_offset_scales[..., idx]))
-            
-            # Delta
-            logit_theta_delta_offset = pyro.sample(f"{name}_logit_delta_offset", 
-                dist.Normal(delta_offset_locs[..., idx], delta_offset_scales[..., idx]))
-            
-            # K
-            log_hill_K_offset = pyro.sample(f"{name}_log_hill_K_offset", 
-                dist.Normal(K_offset_locs[..., idx], K_offset_scales[..., idx]))
-            
-            # n
-            log_hill_n_offset = pyro.sample(f"{name}_log_hill_n_offset", 
-                dist.Normal(n_offset_locs[..., idx], n_offset_scales[..., idx]))
+                # Low
+                logit_theta_low_offset = pyro.sample(f"{name}_logit_low_offset", 
+                    dist.Normal(low_offset_locs[..., data.batch_idx], low_offset_scales[..., data.batch_idx]))
+                
+                # Delta
+                logit_theta_delta_offset = pyro.sample(f"{name}_logit_delta_offset", 
+                    dist.Normal(delta_offset_locs[..., data.batch_idx], delta_offset_scales[..., data.batch_idx]))
+                
+                # K
+                log_hill_K_offset = pyro.sample(f"{name}_log_hill_K_offset", 
+                    dist.Normal(K_offset_locs[..., data.batch_idx], K_offset_scales[..., data.batch_idx]))
+                
+                # n
+                log_hill_n_offset = pyro.sample(f"{name}_log_hill_n_offset", 
+                    dist.Normal(n_offset_locs[..., data.batch_idx], n_offset_scales[..., data.batch_idx]))
 
     # ==========================================================================
     # 4. Reconstruction
@@ -387,10 +388,10 @@ def run_model(theta_param: ThetaParam, data: DataClass) -> jnp.ndarray:
     
     # Create [titrant_name,titrant_conc,genotype]-sized tensors of all 
     # parameters.
-    theta_low = theta_param.theta_low[:,None,:]
-    theta_high = theta_param.theta_high[:,None,:]
-    log_hill_K = theta_param.log_hill_K[:,None,:]
-    hill_n = theta_param.hill_n[:,None,:]
+    theta_low = theta_param.theta_low[:,None,data.geno_theta_idx]
+    theta_high = theta_param.theta_high[:,None,data.geno_theta_idx]
+    log_hill_K = theta_param.log_hill_K[:,None,data.geno_theta_idx]
+    hill_n = theta_param.hill_n[:,None,data.geno_theta_idx]
 
     log_titrant = data.log_titrant_conc[None,:,None]
 
