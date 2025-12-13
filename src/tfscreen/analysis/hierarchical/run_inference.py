@@ -212,9 +212,15 @@ class RunInference:
             init_params = self._jitter_init_parameters(init_params=init_params,
                                                        init_param_jitter=init_param_jitter)
 
+        # Put the data on to the gpu
+        data_on_gpu = jax.device_put(self.model.data)
+
+        # compile the random batch function
+        get_random_batch = jax.jit(self.model.random_batch)
+
         # Create a batch of data for initialization
         batch_key = self.get_key()
-        batch_data = self.model.random_batch(batch_key,self.model.data)
+        batch_data = get_random_batch(batch_key,data_on_gpu)
 
         # Initialize svi with a batch of data
         init_key = self.get_key()
@@ -240,7 +246,7 @@ class RunInference:
         for i in range(num_steps):
 
             batch_key = self.get_key()
-            batch_data = self.model.random_batch(batch_key,self.model.data)
+            batch_data = get_random_batch(batch_key,data_on_gpu)
 
             # Update the loss function
             svi_state, loss = update_function(svi_state,
