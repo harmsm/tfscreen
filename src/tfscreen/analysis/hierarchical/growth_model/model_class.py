@@ -23,7 +23,6 @@ from tfscreen.analysis.hierarchical.growth_model.data_class import (
     BindingPriors
 )
 
-
 import jax
 from jax import numpy as jnp
 import pandas as pd
@@ -713,11 +712,14 @@ class ModelClass:
         self._jax_model_guide = partial(jax_model, **guide_control_kwargs)
                 
         # Build priors class
-        growth_priors = GrowthPriors(**(priors_class_kwargs["growth"]))
-        binding_priors = BindingPriors(**(priors_class_kwargs["binding"]))
-        priors = PriorsClass(theta=priors_class_kwargs["theta"]["theta"],
-                             growth=growth_priors,
-                             binding=binding_priors)
+        growth_priors = populate_dataclass(GrowthPriors,
+                                           sources=priors_class_kwargs["growth"])
+        binding_priors = populate_dataclass(BindingPriors,
+                                            sources=priors_class_kwargs["binding"])
+        priors = populate_dataclass(PriorsClass,
+                                    sources=dict(theta=priors_class_kwargs["theta"]["theta"],
+                                                 growth=growth_priors,
+                                                 binding=binding_priors))
     
         self._priors = priors
         self._init_params = init_params
@@ -885,12 +887,13 @@ class ModelClass:
 
     @property
     def get_batch(self):
+        """Get a deterministic batch of data."""
         return get_batch
     
     @property
     def random_batch(self):
+        """Get a random batch of data."""
         return random_batch
-
 
     @property
     def data(self):

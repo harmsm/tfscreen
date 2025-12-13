@@ -12,7 +12,7 @@ def random_batch(sample_key, full_data: DataClass):
                                   size,
                                   replace=False)
 
-    idx = full_data.batch_idx.at[full_data.num_binding:].set(batch_idx)
+    idx = full_data.growth.batch_idx.at[full_data.num_binding:].set(batch_idx)
 
     return get_batch(full_data,idx)
 
