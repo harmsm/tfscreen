@@ -212,15 +212,25 @@ class RunInference:
             init_params = self._jitter_init_parameters(init_params=init_params,
                                                        init_param_jitter=init_param_jitter)
 
+
+        # Initialize batching (run on CPU)
+        batch_idx = np.array(self.model.data.batch_idx,dtype=int)
+        batch_choose_from = np.array(self.model.data.not_binding_idx)
+        batch_choose_size = (self.model.data.not_binding_batch_size,)
+        batch_rng = np.random.default_rng(self.get_key())
+        
         # Put the data on to the gpu
         data_on_gpu = jax.device_put(self.model.data)
 
-        # compile the random batch function
-        get_random_batch = jax.jit(self.model.random_batch)
+        # compile the batch slicing function
+        get_batch = jax.jit(self.model.get_batch)
 
         # Create a batch of data for initialization
-        batch_key = self.get_key()
-        batch_data = get_random_batch(batch_key,data_on_gpu)
+        batch_idx[-batch_choose_size:] = batch_rng.choice(batch_choose_from,
+                                                          batch_choose_size,
+                                                          replace=False)
+        gpu_batch_idx = jax.device_put(batch_idx)
+        batch_data = get_batch(data_on_gpu,gpu_batch_idx)
 
         # Initialize svi with a batch of data
         init_key = self.get_key()
@@ -245,8 +255,12 @@ class RunInference:
         losses = []
         for i in range(num_steps):
 
-            batch_key = self.get_key()
-            batch_data = get_random_batch(batch_key,data_on_gpu)
+            # Create a batch of data for initialization
+            batch_idx[-batch_choose_size:] = batch_rng.choice(batch_choose_from,
+                                                              batch_choose_size,
+                                                              replace=False)
+            gpu_batch_idx = jax.device_put(batch_idx)
+            batch_data = get_batch(data_on_gpu,gpu_batch_idx)
 
             # Update the loss function
             svi_state, loss = update_function(svi_state,
