@@ -1,0 +1,267 @@
+
+
+# Reading frame 0, 1, 2. no reverse (negative) allowed.
+reading_frame: 0
+
+# amino acid residue number for first in-frame residue
+first_amplicon_residue: 27
+
+# wildtype sequence (nucleic acids)
+wt_seq: gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatggcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctgcacgcgccgtcgcaaattgtcgcggcgattaaatctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg
+
+# degenerate codons defining the library
+degen_sites: ......nntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnnt......nntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnnt
+
+# sub_libraries defines blocks of contiguous library components cloned in 
+# together. '.' indicates wildtype sequence; each unique character beside '.'
+# defines a unique sub-library. These must be contiguous (...111... is okay, 
+# ...11.1... is not)
+sub_libraries: ......111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111......222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222
+
+# Flanking sequences just upstream and just downstream of the amplicon
+expected_5p: cgcgtggtgaaccag
+expected_3p: gtagaacgaagcggc
+
+# library_combos should be formatted like 'single-x' or 'double-x-y' where 'x'
+# and 'y' are library characters in sub_libraries. 'single-x' specifies all
+# individual degenerate codons in x. 'double-x-x' specifies doubles between
+# degenerate codons in x. 'double-x-y' specifies doubles between sub-libraries
+# x and y but not internal doubles.
+library_combos: ["single-1","single-2","double-1-2"]
+
+# These are sequences that are not part of the library that we include as controls
+# etc. 
+spiked_seqs:
+- gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatggcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctggcggcgccgtcgcaaattgtcgcggcgattctgtctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg
+- gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgattgcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctggcggcgccgtcgcaaattgtcgcggcgattctgtctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg
+- gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatggcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctgcacgcgccgtcgcaaattgtcgcggcgattaaatctcgcgccgcccaactgggtgccagcgtggtggtgtcgatg
+
+
+# -----------------------------------------------------------------------------
+# Phenotype calculation
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# Ensemble 
+
+###### MWC microscopic dimer ########
+## BEST GUESS FOR MODEL
+## lac repressor linkage model calculation
+## r_total = 40 dimers per cell, 1.5 fL cell, 40% crowding
+## o_total = 20 plasmids, 1.5 fL cell, 40% crowding
+observable_calculator: "lac"
+observable_calc_kwargs:
+  T: 310       # K
+  R: 0.001987  # kcal/mol/K
+  model_to_use: "microscopic_dimer"
+  wt_K_dict:
+    K_l_2u: 4.35E-08
+    K_l_h: 20
+    K_l_o: 1.83E-04
+    K_h_o: 1.20E+08
+    K_l_e: 1E+06
+    K_le_e: 1E+06
+    K_h_e: 5.60E+04
+    K_he_e: 5.60E+04
+    K_lo_e: 7.60e5
+    K_loe_e: 7.60E+05
+    K_ho_e: 1e4
+    K_hoe_e: 1e4
+  r_total: 3.3e-7 # molar, total *monomer* repressor concentration
+  o_total: 8.3e-8 # molar, total operator concentration
+  e_name: "iptg"  # name of effector in conditions. (only one allowed)
+
+###### MWC dimer ########
+## SECOND BEST GUESS FOR MODEL
+## lac repressor linkage model calculation
+## r_total = 40 dimers per cell, 1.5 fL cell, 40% crowding
+## o_total = 20 plasmids, 1.5 fL cell, 40% crowding
+# observable_calculator: "lac"
+# observable_calc_kwargs:
+#   T: 310       # K
+#   R: 0.001987  # kcal/mol/K
+#   model_to_use: "mwc_dimer"
+#   wt_K_dict:
+#     K_h_l: 0.4 #6.3 <- tweaked this and k_h_e to get observe mid (1.59e-5 M)
+#     K_h_o: 4.2e8
+#     K_h_e: 5.6e3 #5.6e4
+#     K_l_o: 0.1
+#     K_l_e: 7.6e5
+#   r_total: 3.3e-7 # molar, total *monomer* repressor concentration
+#   o_total: 8.3e-8 # molar, total operator concentration
+#   e_name: "iptg"  # name of effector in conditions. (only one allowed)
+
+###### linkage microscopic dimer ########
+## Historical linkage model. 
+# observable_calculator: "lac"
+# observable_calc_kwargs:
+#   T: 310       # K
+#   R: 0.001987  # kcal/mol/K
+#   model_to_use: "linkage_dimer"
+#   wt_K_dict:
+#     Kd_e1: 4e-7   # 1st IPTG binding
+#     Kd_e2: 4e-7   # 2nd IPTG binding (assuming non-cooperative)
+#     Kd_o: 1e-10   # R binding to O (tight)
+#     Kd_oe1: 1e-5  # RE binding to O (weaker)
+#     Kd_oe2: 1e-5  # RE2 binding to O (weakest)
+#   r_total: 3.3e-7 # molar, total *monomer* repressor concentration
+#   o_total: 8.3e-8 # molar, total operator concentration
+#   e_name: "iptg"  # name of effector in conditions. (only one allowed)
+
+###### ensemble-epistasis-engine calculation ########
+## Simple model has no nonlinear interactions between terms. probably a bad
+## model...
+## spreadsheet defining ensemble and interactions with iptg
+# observable_calculator: "eee"
+# observable_calc_kwargs:
+#   ensemble_spreadsheet: "../input/ensemble.xlsx"
+#   T: 310       # K
+#   R: 0.001987  # kcal/mol/K
+#   # This sets how the thermodynamic variable maps proportionally to output. For
+#   # the lac repressor, this is 12 because we derived the thermodynamic
+#   # parameters under conditions where there was a 12-fold excess of the lac
+#   # repressor to operator. Fully bound lac repressor thus corresponds to a
+#   # an observable value of 1/12 in the operator-bound state--hence 12 here.
+#   scale_obs_by: 12
+#   e_name: "iptg"  # name of effector in conditions. (only one allowed)
+
+# Spreadsheet with effects of all mutations on each state in ensemble
+ddG_spreadsheet: "ddG_ensemble_clean_with_effector.csv"
+
+# -----------------------------------------------------------------------------
+# Conditions
+
+# condition_blocks is a list of dictionaries defining different growth
+# conditions. Each dictionary should have a "marker" key with a value of either
+# "kanR" or "pheS", a "select" key with a value of either 0 or 1, an "iptg"
+# key with a list of iptg concentrations (in mM), and a "time" key with a list
+# of sample times (in minutes)
+condition_blocks:
+  - library: "pheS"
+    titrant_name: "iptg"
+    titrant_conc: [0, 1]
+    condition_pre: "pheS-4CP"
+    t_pre: 30
+    condition_sel: "pheS-4CP"
+    t_sel: [80, 95, 110]
+
+  - library: "kanR"
+    titrant_name: "iptg"
+    titrant_conc: [0, 1]
+    condition_pre: "kanR-kan"
+    t_pre: 30
+    condition_sel: "kanR-kan"
+    t_sel: [80, 95, 110]
+
+  - library: "kanR"
+    titrant_name: "iptg"
+    titrant_conc: [0, 0.0001, 0.001, 0.003]
+    condition_pre: "kanR-kan"
+    t_pre: 30
+    condition_sel: "kanR+kan"
+    t_sel: [160, 180, 200]
+
+  - library: "kanR"
+    titrant_name: "iptg" 
+    titrant_conc: [0.01, 0.03, 0.1, 1.0]
+    condition_pre: "kanR-kan"
+    t_pre: 30
+    condition_sel: "kanR+kan"
+    t_sel: [145, 165, 180]
+
+  - library: "pheS"
+    titrant_name: "iptg"
+    titrant_conc: [0, 0.0001, 0.001, 0.003, 0.01, 0.03, 0.1, 1.0]
+    condition_pre: "pheS-4CP"
+    t_pre: 30
+    condition_sel: "pheS+4CP"
+    t_sel: [95, 110, 125]
+
+# -----------------------------------------------------------------------------
+# Phenotype calculation parameters
+
+# Describes how bacteria grow under different conditions as a function of 
+# operator occupancy
+calibration_file: "2025-12-13_calibration.json" 
+
+# We assign effects on intrinsic growth rate using a gamma distribution. We use
+# the formula mut_growth = wt_growth + (scale/2 - Gamma(shape,scale)). This
+# distribution will have a short right tail of variants that grow faster than 
+# wildtype and a long left tail of variants that grow slower. Increasing 
+# mut_growth_rate_scale simultaneously increases the number of genotypes with
+# super low and super high growth rates, interfering with the inference. The 
+# default values of (3, 0.002) cause 0.2% of variants have negative growth rates 
+# and 1.4% grow faster than wildtype. The fastest grower will have a growth 
+# rate 5% faster than wildtype. A shape parameter of 0.02 will cause 81% of 
+# variants to have a negative growth rate, and the fastest grower to grow 50%
+# faster than wildtype. A value of 0.0002 will have no dead phenotypes and a 
+# a fastest genotype that is 0.4% faster than wildtype. 
+mut_growth_rate_shape: 3  
+mut_growth_rate_scale: 0.002
+
+# -----------------------------------------------------------------------------
+# Experimental simulation information
+
+# Define how many transformants to include for each sub-library. Keys are
+# strings: '1' means O1; '2' means O2; '12' means O1/O2.
+# if you set internal_doubles to True above, you can then add '11' and
+# '22' to get the doubles within each pool.
+transform_sizes:
+  single-1: 1.0e5
+  single-2: 1.0e5
+  double-1-2: 3.0e5
+  spiked: 1.0e3
+
+# what is the mixture ratio of the library. This works together with
+# sizes. For the example values, the final mixed library would have 1e5 * 1
+# O1, 1e5 * 1, O2, and and 1e6 * 10 O1/O2. Note that the **ratio** matters,
+# not the absolute value.
+library_mixture:
+  single-1: 100
+  single-2: 100
+  double-1-2: 1000
+  spiked: 1
+
+# sigma value to give to log normal distribution for generating genotype
+# frequencies in the library. 0 gives an even distribution; higher numbers 
+# give greater skew (meaning some genotypes have very high frequency). 
+# 1-2 is a good guess for a real library. 
+lib_assembly_skew_sigma: 1.5
+
+# The number of plasmids per cell is set by sampling from a Poisson
+# distribution. If 0 or None, each cell gets exactly one plasmid. Otherwise,
+# do Poisson sampling. 
+transformation_poisson_lambda: 1.5
+
+# If there are multiple plasmids in a cell, this indicates how to add up their
+# effect given different libraries. Possible values are `min`, `max`, `mean`, 
+# and `gmean` (geometric mean). We recommend assigning based on occupancy. For
+# a repressor of an antibiotic resistance gene, we'd recommend `min`. This says
+# take the growth rate of the plasmid with the *lowest* growth rate, corresponding
+# to the repressor with the strongest binding to the operator, and thus the 
+# lowest resistance. For an inducer of antibiotic resistance, we'd recommend 
+# `max`. The keys should match the keys in 'library' in the phenotype_df. If
+# this is not specified, us "mean" for all libraries. 
+multi_plasmid_combine_fcn:
+  kanR: "min"
+  pheS: "max"
+
+# cfu/mL at start of pre-growth 
+cfu0: 6.5e7
+
+# percent noise to apply to all growth rates. (growth_noise*base_value is
+# the standard deviation of the random normal distribution to sample). This
+# is the underlying rep-to-rep variability. 
+growth_rate_noise: 0.01
+
+# -----------------------------------------------------------------------------
+# Data collection parameters
+
+# Total number of reads coming out of the experiment
+total_num_reads: 2.0e9 
+
+# number of reads that should be re-assigned a resampled genotype after the
+# initial sampling (index-hopping/read bleedthrough)
+prob_index_hop: 0.05
+
+
