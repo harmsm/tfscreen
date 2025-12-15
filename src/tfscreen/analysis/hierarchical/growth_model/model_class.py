@@ -8,11 +8,7 @@ from tfscreen.analysis.hierarchical import (
 
 from tfscreen.analysis.hierarchical.growth_model.model import jax_model
 from tfscreen.analysis.hierarchical.growth_model.registry import model_registry
-from tfscreen.analysis.hierarchical.growth_model.batch import (
-    get_batch,
-    random_batch
-    
-)
+from tfscreen.analysis.hierarchical.growth_model.batch import get_batch
 
 from tfscreen.analysis.hierarchical.growth_model.data_class import (
     DataClass,
@@ -105,6 +101,14 @@ def _read_growth_df(growth_df,
     growth_df = add_group_columns(target_df=growth_df,
                                   group_cols=theta_group_cols,
                                   group_name="map_theta_group")
+    
+    mapper = {}
+    for _, sub_df in growth_df.groupby(["condition_pre"]):
+        cond_sel = list(pd.unique(sub_df["condition_sel"]))
+        mapper.update({c:i for i, c in enumerate(cond_sel)})
+
+    growth_df["condition_sel_reduced"] = growth_df["condition_sel"].map(mapper)
+
         
     return growth_df
 
@@ -146,7 +150,7 @@ def _build_growth_tm(growth_df):
                                      rank_column="t_sel",
                                      select_cols=['replicate','genotype','treatment'])
     growth_tm.add_pivot_index(tensor_dim_name="condition_pre",cat_column="condition_pre")
-    growth_tm.add_pivot_index(tensor_dim_name="condition_sel",cat_column="condition_sel")
+    growth_tm.add_pivot_index(tensor_dim_name="condition_sel",cat_column="condition_sel_reduced")
     growth_tm.add_pivot_index(tensor_dim_name="titrant_name",cat_column="titrant_name")
     growth_tm.add_pivot_index(tensor_dim_name="titrant_conc",cat_column="pivot_titrant_conc")
     growth_tm.add_pivot_index(tensor_dim_name="genotype",cat_column="genotype")
@@ -890,10 +894,28 @@ class ModelClass:
         """Get a deterministic batch of data."""
         return get_batch
     
-    @property
-    def random_batch(self):
-        """Get a random batch of data."""
-        return random_batch
+    def get_random_idx(self,batch_key=None):
+        """
+        Get a random set of integers corresponding, keeping binding data 
+        every time.
+        """
+
+        if batch_key is not None:
+            self._batch_rng = np.random.default_rng(batch_key)
+            self._batch_idx = np.array(self.model.data.batch_idx,dtype=int)
+            self._batch_choose_from = np.array(self.model.data.not_binding_idx)
+            self._batch_choose_size = self.model.data.not_binding_batch_size
+
+        if not hasattr("_batch_rng",self):
+            raise ValueError(
+                "get_random_idx must be called with an integer batch key the "
+                "first time it is called."
+            )
+
+        self._batch_idx[-self._batch_choose_size:] = self._batch_rng.choice(self._batch_choose_from,
+                                                                            self._batch_choose_size,
+                                                                            replace=False)
+        return self._batch_idx
 
     @property
     def data(self):
@@ -904,11 +926,6 @@ class ModelClass:
     def priors(self):
         """The PriorsClass Pytree holding all model priors."""
         return self._priors
-
-    @property
-    def control(self):
-        """The ControlClass Pytree holding model-switching integers."""
-        return self._control
             
     @property
     def settings(self):
