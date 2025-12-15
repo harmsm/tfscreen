@@ -3,20 +3,6 @@ from tfscreen.analysis.hierarchical.growth_model.data_class import DataClass
 import jax
 import jax.numpy as jnp
 
-def random_batch(sample_key, full_data: DataClass):
-
-    choose_from = full_data.not_binding_idx
-    size = (full_data.not_binding_batch_size,)
-    batch_idx = jax.random.choice(sample_key,
-                                  choose_from,
-                                  size,
-                                  replace=False)
-
-    idx = full_data.growth.batch_idx.at[full_data.num_binding:].set(batch_idx)
-
-    return get_batch(full_data,idx)
-
-
 def get_batch(full_data: DataClass, idx: jnp.ndarray) -> DataClass:
     """
     Extracts a deterministic batch of data given specific indices.
