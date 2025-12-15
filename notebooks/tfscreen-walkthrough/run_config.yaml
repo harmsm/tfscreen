@@ -7,21 +7,18 @@ reading_frame: 0
 first_amplicon_residue: 27
 
 # wildtype sequence (nucleic acids)
-wt_seq:
-  gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatggcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctgcacgcgccgtcgcaaattgtcgcggcgattaaatctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg
+wt_seq: gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatggcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctgcacgcgccgtcgcaaattgtcgcggcgattaaatctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg
 
 # degenerate codons defining the library
-degen_sites:
-#  ......nntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnnt......nntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnnt
-  ......nntnnt.............................................................................................nntnnt.........................................................................................................
+degen_sites: ......nntnnt.............................................................................................nntnnt.........................................................................................................
+#......nntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnnt......nntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnnt
 
 # sub_libraries defines blocks of contiguous library components cloned in 
 # together. '.' indicates wildtype sequence; each unique character beside '.'
 # defines a unique sub-library. These must be contiguous (...111... is okay, 
 # ...11.1... is not)
-sub_libraries:
-#  ......111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111......222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222
-  ......111111.............................................................................................222222.........................................................................................................
+sub_libraries: ......111111.............................................................................................222222.........................................................................................................
+#......111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111......222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222
 
 # Flanking sequences just upstream and just downstream of the amplicon
 expected_5p: cgcgtggtgaaccag
@@ -187,7 +184,7 @@ condition_blocks:
 
 # Describes how bacteria grow under different conditions as a function of 
 # operator occupancy
-calibration_file: "2025-10-02_calibration.json" 
+calibration_file: "2025-12-13_calibration.json" 
 
 # We assign effects on intrinsic growth rate using a gamma distribution. We use
 # the formula mut_growth = wt_growth + (scale/2 - Gamma(shape,scale)). This
