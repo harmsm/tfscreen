@@ -184,7 +184,11 @@ condition_blocks:
 
 # Describes how bacteria grow under different conditions as a function of 
 # operator occupancy
+<<<<<<< HEAD
 calibration_file: "2025-12-13_calibration.json" 
+=======
+calibration_file: "2025-10-02_calibration.json" 
+>>>>>>> 3112216b7d924c6f75af61782b610bafe8c0d563
 
 # We assign effects on intrinsic growth rate using a gamma distribution. We use
 # the formula mut_growth = wt_growth + (scale/2 - Gamma(shape,scale)). This
