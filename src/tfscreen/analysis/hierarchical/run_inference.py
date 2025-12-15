@@ -232,11 +232,16 @@ class RunInference:
             
         if svi_state is None:
             svi_state = initial_svi_state
-        else:
-            if os.path.isfile(str(svi_state)):
+            
+        elif isinstance(svi_state,str):
+            if os.path.isfile(svi_state):
                 svi_state = self._restore_checkpoint(svi_state)
             else:
-                svi_state = svi_state
+                raise ValueError(
+                    f"svi_state '{svi_state}' is not valid"
+                )
+        else:
+            svi_state = svi_state
             
         # loss deque holds loss values for smoothing to check for convergence
         self._loss_deque = deque(maxlen=(convergence_window*2))

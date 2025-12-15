@@ -902,11 +902,11 @@ class ModelClass:
 
         if batch_key is not None:
             self._batch_rng = np.random.default_rng(batch_key)
-            self._batch_idx = np.array(self.model.data.batch_idx,dtype=int)
-            self._batch_choose_from = np.array(self.model.data.not_binding_idx)
-            self._batch_choose_size = self.model.data.not_binding_batch_size
+            self._batch_idx = np.array(self.data.growth.batch_idx,dtype=int)
+            self._batch_choose_from = np.array(self.data.not_binding_idx)
+            self._batch_choose_size = self.data.not_binding_batch_size
 
-        if not hasattr("_batch_rng",self):
+        if not hasattr(self,"_batch_rng"):
             raise ValueError(
                 "get_random_idx must be called with an integer batch key the "
                 "first time it is called."
@@ -915,7 +915,7 @@ class ModelClass:
         self._batch_idx[-self._batch_choose_size:] = self._batch_rng.choice(self._batch_choose_from,
                                                                             self._batch_choose_size,
                                                                             replace=False)
-        return self._batch_idx
+        return jnp.array(self._batch_idx,dtype=jnp.int32)
 
     @property
     def data(self):
