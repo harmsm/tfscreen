@@ -148,7 +148,46 @@ def guide(name: str,
           data: GrowthData, 
           priors: ModelPriors) -> Tuple[jnp.ndarray, ...]:
     """
-    Guide corresponding to the independent condition/replicate model.
+    Guide function for the independent condition/replicate growth model.
+
+    This function defines the variational distributions (guide) for the 
+    independent growth model, specifying the parameterization of the 
+    variational family for SVI inference. It registers variational parameters 
+    for all global (per-condition) and local (per-replicate and per-condition) 
+    latent variables, and samples from the corresponding distributions using 
+    nested plates.
+
+    Parameters
+    ----------
+    name : str
+        Prefix for all Numpyro sample and parameter sites in this guide.
+    data : GrowthData
+        Pytree (Flax dataclass) containing experimental data and metadata.
+        Used to determine the number of conditions and replicates, and to 
+        provide mapping arrays for expanding parameters to observations.
+    priors : ModelPriors
+        Pytree (Flax dataclass) containing the prior hyperparameters for the 
+        model. Used to initialize the variational parameters.
+
+    Returns
+    -------
+    k_pre : jnp.ndarray
+        Basal growth rate `k` for pre-selection, expanded to match observations.
+    m_pre : jnp.ndarray
+        Theta-dependent growth rate `m` for pre-selection, expanded to match observations.
+    k_sel : jnp.ndarray
+        Basal growth rate `k` for post-selection, expanded to match observations.
+    m_sel : jnp.ndarray
+        Theta-dependent growth rate `m` for post-selection, expanded to match observations.
+
+    Notes
+    -----
+    - The guide uses nested plates: the outer plate is over experimental 
+      conditions, and the inner plate is over replicates within each condition.
+    - All variational parameters are registered using `pyro.param` and are 
+      initialized from the provided priors or with default values.
+    - The returned arrays are flattened and then expanded to match the 
+      observation indices using the mapping arrays in `data`.
     """
 
     # --- 1. Global Parameters (Per Condition) ---
@@ -159,8 +198,10 @@ def guide(name: str,
                             constraint=dist.constraints.positive)
     
     # K Hyper Scale (LogNormal guide for HalfNormal prior)
-    k_hs_loc = pyro.param(f"{name}_k_hyper_scale_loc", jnp.array(-1.0))
-    k_hs_scale = pyro.param(f"{name}_k_hyper_scale_scale", jnp.array(0.1),
+    k_hs_loc = pyro.param(f"{name}_k_hyper_scale_loc", 
+                          jnp.full(data.num_condition, -1.0))
+    k_hs_scale = pyro.param(f"{name}_k_hyper_scale_scale", 
+                            jnp.full(data.num_condition, 0.1),
                             constraint=dist.constraints.positive)
 
     # M Hyper Loc (Normal)
@@ -169,8 +210,10 @@ def guide(name: str,
                             constraint=dist.constraints.positive)
     
     # M Hyper Scale (LogNormal guide for HalfNormal prior)
-    m_hs_loc = pyro.param(f"{name}_m_hyper_scale_loc", jnp.array(-1.0))
-    m_hs_scale = pyro.param(f"{name}_m_hyper_scale_scale", jnp.array(0.1),
+    m_hs_loc = pyro.param(f"{name}_m_hyper_scale_loc", 
+                          jnp.full(data.num_condition, -1.0))
+    m_hs_scale = pyro.param(f"{name}_m_hyper_scale_scale", 
+                            jnp.full(data.num_condition, 0.1),
                             constraint=dist.constraints.positive)
 
     # --- 2. Local Parameters (Per Replicate AND Condition) ---
