@@ -43,6 +43,15 @@ def define_model(name: str,
 
     return fx_calc
 
+def guide(name: str, 
+          fx_calc: jnp.ndarray, 
+          priors: ModelPriors) -> jnp.ndarray:
+    """
+    Guide for define_model
+    """
+
+    return fx_calc
+
 
 def get_hyperparameters() -> Dict[str, Any]:
     """

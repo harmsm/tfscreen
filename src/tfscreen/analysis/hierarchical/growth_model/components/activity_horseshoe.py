@@ -41,9 +41,8 @@ def define_model(name: str,
     data : GrowthData
         A Pytree (Flax dataclass) containing experimental data and metadata.
         This function primarily uses:
-        - ``data.num_not_wt`` : (int) The number of non-wild-type genotypes.
         - ``data.num_genotype`` : (int) The total number of genotypes.
-        - ``data.not_wt_mask`` : (jnp.ndarray) A boolean mask that is
+        - ``data.wt_indexes`` : (jnp.ndarray) A boolean mask that is
           `True` for non-wild-type genotypes.
         - ``data.map_genotype`` : (jnp.ndarray) Index array to map
           per-genotype parameters to the full set of observations.
@@ -63,15 +62,16 @@ def define_model(name: str,
     global_scale_tau = pyro.sample(f"{name}_global_scale",
                                    dist.HalfNormal(priors.global_scale_tau_scale)) 
     
-    # Sample local scales and offsets for mutant genotypes only
-    with pyro.plate(f"{name}_parameters", data.num_not_wt):
+    # Sample local scales and offsets 
+    with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
+        with pyro.handlers.scale(scale=data.scale_vector):
         
-        # Local scale `lambda`. HalfNormal(1) is the standard Horseshoe.
-        local_scale_lambda = pyro.sample(f"{name}_local_scale",
-                                         dist.HalfNormal(1.0))
+            # Local scale `lambda`. HalfNormal(1) is the standard Horseshoe.
+            local_scale_lambda = pyro.sample(f"{name}_local_scale",
+                                            dist.HalfNormal(1.0))
 
-        # Non-centered offset `z` (always Normal(0,1))
-        activity_offset = pyro.sample(f"{name}_offset", dist.Normal(0, 1))
+            # Non-centered offset `z` (always Normal(0,1))
+            activity_offset = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
 
     # Combine scales: `beta = z * (tau * lambda)`
     # The mean `log(activity)` is 0.0 (i.e., activity = 1.0)
@@ -79,21 +79,78 @@ def define_model(name: str,
     effective_scale = global_scale_tau * local_scale_lambda
     log_activity_mutant_dists = activity_offset * effective_scale
     
-    activity_mutant_dists = jnp.clip(jnp.exp(log_activity_mutant_dists), max=1e30)
+    activity = jnp.clip(jnp.exp(log_activity_mutant_dists), max=1e30)
 
-    # Build array with wildtype set to 1.0 by default
-    activity_dists = jnp.ones(data.num_genotype)
-    # Set the mutant values in the array
-    activity_dists = activity_dists.at[data.not_wt_mask].set(activity_mutant_dists)
+    # Set wildtype activity to 1.0
+    is_wt_mask = jnp.isin(data.batch_idx, data.wt_indexes)
+    activity = jnp.where(is_wt_mask, 1.0, activity)
 
     # Register per-genotype values for inspection
-    pyro.deterministic(name, activity_dists)  
+    pyro.deterministic(name, activity)  
 
-    # Expand to full-sized tensor
-    activity = activity_dists[data.map_genotype]
+    # Broadcast to full-sized tensor
+    activity = activity[None,None,None,None,None,None,:]
 
     return activity
 
+
+def guide(name: str, 
+          data: GrowthData, 
+          priors: ModelPriors) -> jnp.ndarray:
+    """
+    """
+
+    t_scale_loc = pyro.param(f"{name}_t_hyper_scale_loc", jnp.array(-5.0))
+    t_scale_scale = pyro.param(f"{name}_t_hyper_scale_scale",jnp.array(0.1),
+                               constraint=dist.constraints.positive)
+    global_scale_tau = pyro.sample(f"{name}_global_scale",
+                                   dist.LogNormal(t_scale_loc, t_scale_scale)) 
+    
+    lambda_locs = pyro.param(f"{name}_lambda_offset_locs",
+                                    jnp.zeros(data.num_genotype,dtype=float))
+    lambda_scales = pyro.param(f"{name}_lambda_offset_scales",
+                                      jnp.ones(data.num_genotype,dtype=float),
+                                      constraint=dist.constraints.positive)
+    
+    activity_offset_locs = pyro.param(f"{name}_activity_offset_locs",
+                                      jnp.zeros(data.num_genotype,dtype=float))
+    activity_offset_scales = pyro.param(f"{name}_activity_offset_scales",
+                                        jnp.ones(data.num_genotype,dtype=float),
+                                        constraint=dist.constraints.positive)
+
+    # Sample local scales and offsets 
+    with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
+        with pyro.handlers.scale(scale=data.scale_vector):
+        
+            lambda_batch_locs = lambda_locs[data.batch_idx]
+            lambda_batch_scales = lambda_scales[data.batch_idx]
+
+            activity_batch_locs = activity_offset_locs[data.batch_idx]
+            activity_batch_scales = activity_offset_scales[data.batch_idx]
+
+            # Local scale `lambda`. HalfNormal(1) is the standard Horseshoe.
+            local_scale_lambda = pyro.sample(f"{name}_local_scale",
+                                            dist.LogNormal(lambda_batch_locs, lambda_batch_scales))
+
+            # Non-centered offset `z` (always Normal(0,1))
+            activity_offset = pyro.sample(f"{name}_offset", dist.Normal(activity_batch_locs, activity_batch_scales))
+
+    # Combine scales: `beta = z * (tau * lambda)`
+    # The mean `log(activity)` is 0.0 (i.e., activity = 1.0)
+    # The effective scale allows for deviations from 0.0
+    effective_scale = global_scale_tau * local_scale_lambda
+    log_activity_mutant_dists = activity_offset * effective_scale
+    
+    activity = jnp.clip(jnp.exp(log_activity_mutant_dists), max=1e30)
+
+    # Set wildtype activity to 1.0
+    is_wt_mask = jnp.isin(data.batch_idx, data.wt_indexes)
+    activity = jnp.where(is_wt_mask, 1.0, activity)
+
+    # Broadcast to full-sized tensor
+    activity = activity[None,None,None,None,None,None,:]
+
+    return activity
 
 def get_hyperparameters() -> Dict[str, Any]:
     """
@@ -128,7 +185,7 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
     data : GrowthData
         A Pytree containing data metadata, used to determine the
         shape of the guess arrays. Requires:
-        - ``data.num_not_wt``
+        - ``data.num_genotype`
 
     Returns
     -------
@@ -139,8 +196,8 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
 
     guesses = {}
     guesses[f"{name}_global_scale"] = 0.1
-    guesses[f"{name}_local_scale"] = jnp.ones(data.num_not_wt)*0.1
-    guesses[f"{name}_offset"] = jnp.zeros(data.num_not_wt)
+    guesses[f"{name}_local_scale"] = jnp.ones(data.num_genotype,dtype=float)*0.1
+    guesses[f"{name}_offset"] = jnp.zeros(data.num_genotype,dtype=float)
 
     return guesses
 

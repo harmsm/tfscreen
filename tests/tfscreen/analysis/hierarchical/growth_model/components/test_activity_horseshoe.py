@@ -1,14 +1,14 @@
 import pytest
-import jax
 import jax.numpy as jnp
 import numpyro
-from numpyro.handlers import trace, substitute
+from numpyro.handlers import trace, substitute, seed
 from collections import namedtuple
 
 # --- Import Module Under Test (MUT) ---
 from tfscreen.analysis.hierarchical.growth_model.components.activity_horseshoe import (
     ModelPriors,
     define_model,
+    guide,
     get_hyperparameters,
     get_guesses,
     get_priors
@@ -16,36 +16,51 @@ from tfscreen.analysis.hierarchical.growth_model.components.activity_horseshoe i
 
 # --- Mock Data Fixture ---
 
-# A mock data object that provides the fields define_model needs
 MockGrowthData = namedtuple("MockGrowthData", [
+    "num_genotype",
+    "batch_size",
+    "batch_idx",
+    "wt_indexes",
+    "scale_vector",
+    "map_genotype",
     "num_not_wt", 
-    "num_genotype", 
-    "not_wt_mask", 
-    "map_genotype"
+    "not_wt_mask" 
 ])
 
 @pytest.fixture
 def mock_data():
     """
     Provides a mock data object for testing.
-    - 4 total genotypes (1 WT, 3 Mutants)
-    - 8 observations
+    - 4 total genotypes (0 is WT, 1-3 are mutants)
+    - 8 observations (batch size)
     """
     num_genotype = 4
+    batch_size = 8
+    
+    # Batch indices mapping observations to genotypes
+    # [WT, Mut1, Mut2, Mut3, Mut1, WT, Mut2, Mut3]
+    batch_idx = jnp.array([0, 1, 2, 3, 1, 0, 2, 3], dtype=jnp.int32)
+    
+    # WT is genotype 0
+    wt_indexes = jnp.array([0], dtype=jnp.int32)
+    
+    # Scale vector for the scale handler
+    scale_vector = jnp.ones(batch_size, dtype=float)
+    
+    # Legacy fields
     num_not_wt = 3
-    
-    # [WT, Mutant, Mutant, Mutant]
-    # The mask is True for mutants
-    not_wt_mask = jnp.array([False, True, True, True]) 
-    
-    # 8 observations mapping back to the 4 genotypes
-    map_genotype = jnp.array([0, 1, 2, 3, 1, 0, 2, 3], dtype=jnp.int32)
+    not_wt_mask = jnp.array([False, True, True, True])
+    map_genotype = batch_idx # In a batch context, map matches batch_idx
     
     return MockGrowthData(
-        num_not_wt=num_not_wt,
         num_genotype=num_genotype,
-        not_wt_mask=not_wt_mask,
-        map_genotype=map_genotype
+        batch_size=batch_size,
+        batch_idx=batch_idx,
+        wt_indexes=wt_indexes,
+        scale_vector=scale_vector,
+        map_genotype=map_genotype,
+        num_not_wt=num_not_wt,
+        not_wt_mask=not_wt_mask
     )
 
 # --- Test Cases ---
@@ -74,10 +89,12 @@ def test_get_guesses(mock_data):
     assert f"{name}_global_scale" in guesses
     assert isinstance(guesses[f"{name}_global_scale"], (float, int))
     
-    # Check local scale and offset guesses (plated by num_not_wt)
-    expected_shape = (mock_data.num_not_wt,)
+    # Check local scale and offset guesses (plated by num_genotype)
+    expected_shape = (mock_data.num_genotype,)
+    
     assert f"{name}_local_scale" in guesses
     assert guesses[f"{name}_local_scale"].shape == expected_shape
+    
     assert f"{name}_offset" in guesses
     assert guesses[f"{name}_offset"].shape == expected_shape
     
@@ -87,61 +104,73 @@ def test_get_guesses(mock_data):
 def test_define_model_logic_and_shapes(mock_data):
     """
     Tests the core logic of define_model for the Horseshoe prior.
-    
-    This test uses guesses where local_scale and offset are 0,
-    which should result in all mutant activities being 1.0.
     """
     name = "test_activity"
     priors = get_priors()
-    guesses = get_guesses(name, mock_data)
     
-    # Substitute all sample sites with our guess values
-    # No `seed` is needed as all 3 `sample` calls are substituted
-    substituted_model = substitute(define_model, data=guesses)
+    # Get base guesses (genotype-level)
+    base_guesses = get_guesses(name, mock_data)
     
-    # --- 1. Get the final return value ---
+    # Construct batch-level guesses for substitute
+    # define_model samples 'local_scale' and 'offset' with shape (batch_size,)
+    batch_guesses = base_guesses.copy()
+    
+    # Map genotype guesses to batch indices
+    batch_guesses[f"{name}_local_scale"] = base_guesses[f"{name}_local_scale"][mock_data.batch_idx]
+    batch_guesses[f"{name}_offset"] = base_guesses[f"{name}_offset"][mock_data.batch_idx]
+
+    # Substitute
+    substituted_model = substitute(define_model, data=batch_guesses)
+    
+    # --- 1. Execute Model ---
     final_activity = substituted_model(name=name, 
                                        data=mock_data, 
                                        priors=priors)
 
-    # --- 2. Trace the execution to capture intermediate values ---
+    # --- 2. Trace execution ---
     model_trace = trace(substituted_model).get_trace(
         name=name, 
         data=mock_data, 
         priors=priors
     )
     
-    # --- 3. Check the Per-Genotype Deterministic Site ---
+    # --- 3. Check the Deterministic Site ---
     assert name in model_trace
-    activity_per_genotype = model_trace[name]["value"]
+    activity_site = model_trace[name]["value"]
     
-    # Check shape
-    assert activity_per_genotype.shape == (mock_data.num_genotype,)
+    # Check shape: Should match batch_size
+    assert activity_site.shape == (mock_data.batch_size,)
     
-    # --- 4. Check WT Logic (The Core "Branch") ---
-    wt_index = jnp.argmin(mock_data.not_wt_mask.astype(int))
-    assert activity_per_genotype[wt_index] == 1.0
+    # --- 4. Check WT Logic ---
+    wt_indices = jnp.where(jnp.isin(mock_data.batch_idx, mock_data.wt_indexes))[0]
+    assert jnp.all(activity_site[wt_indices] == 1.0)
     
     # --- 5. Check Mutant Logic ---
+    # With offsets guessed as 0.0, effective scale becomes 0 -> activity 1.0
+    mutant_indices = jnp.where(~jnp.isin(mock_data.batch_idx, mock_data.wt_indexes))[0]
+    assert jnp.allclose(activity_site[mutant_indices], 1.0)
     
-    # Get all mutant values
-    mutant_values = activity_per_genotype[mock_data.not_wt_mask]
+    # --- 6. Check Final Expanded Shape ---
+    # Expect: (1, 1, 1, 1, 1, 1, batch_size)
+    expected_shape = (1, 1, 1, 1, 1, 1, mock_data.batch_size)
+    assert final_activity.shape == expected_shape
+
+def test_guide_logic_and_shapes(mock_data):
+    """
+    Tests the guide function shapes and execution.
+    """
+    name = "test_activity_guide"
+    priors = get_priors()
+
+    # Seed the guide execution because it samples
+    with seed(rng_seed=0):
+        final_activity = guide(name=name,
+                               data=mock_data,
+                               priors=priors)
+
+    # Expect: (1, 1, 1, 1, 1, 1, batch_size)
+    expected_shape = (1, 1, 1, 1, 1, 1, mock_data.batch_size)
+    assert final_activity.shape == expected_shape
     
-    # Recalculate the expected mutant value by hand using the guesses
-    # global_scale = 0.1, local_scale = [0, 0, 0], offset = [0, 0, 0]
-    # effective_scale = 0.1 * 0.0 = 0.0
-    # log_activity = 0.0 * 0.0 = 0.0
-    # activity = exp(0.0) = 1.0
-    expected_mutant_val = jnp.exp(0.0)
-    
-    assert jnp.allclose(mutant_values, expected_mutant_val)
-    assert jnp.allclose(mutant_values, 1.0)
-    
-    # --- 6. Check the Final Returned (Expanded) Tensor ---
-    
-    # The final shape must match the map
-    assert final_activity.shape == mock_data.map_genotype.shape
-    
-    # Since both WT and mutants are 1.0 (based on guesses),
-    # the final expanded array should be all 1.0s.
-    assert jnp.allclose(final_activity, 1.0)
+    # Basic sanity check on values (should be positive)
+    assert jnp.all(final_activity >= 0.0)

@@ -1,8 +1,7 @@
 import pytest
-import jax
 import jax.numpy as jnp
-import numpyro
-from numpyro.handlers import trace, substitute
+import numpyro.distributions as dist
+from numpyro.handlers import trace, substitute, seed
 from collections import namedtuple
 
 # --- Import Module Under Test (MUT) ---
@@ -10,6 +9,7 @@ from tfscreen.analysis.hierarchical.growth_model.components.theta_cat import (
     ModelPriors,
     ThetaParam,
     define_model,
+    guide,
     run_model,
     get_hyperparameters,
     get_guesses,
@@ -18,11 +18,13 @@ from tfscreen.analysis.hierarchical.growth_model.components.theta_cat import (
 
 # --- Mock Data Fixture ---
 
-# A mock data object that provides all fields needed by this module
 MockData = namedtuple("MockData", [
     "num_titrant_name",
     "num_titrant_conc",
     "num_genotype",
+    "batch_size",
+    "batch_idx",
+    "scale_vector",
     "map_theta",
     "scatter_theta"
 ])
@@ -34,37 +36,48 @@ def mock_data():
     - 2 titrant names
     - 3 titrant concentrations
     - 4 genotypes
-    - Total categorical parameters = 2 * 3 * 4 = 24
+    - Batch size 2 (Subset of genotypes)
     """
     num_titrant_name = 2
     num_titrant_conc = 3
     num_genotype = 4
     
-    # A map for 5 observations, indexing into the 24-param array
+    # Batching logic: select 2 genotypes out of 4
+    batch_size = 2
+    batch_idx = jnp.array([1, 3], dtype=jnp.int32)
+    scale_vector = jnp.ones(batch_size, dtype=float)
+    
+    # Legacy map (unused by current run_model code but kept for structure)
     map_theta = jnp.array([0, 5, 10, 23, 1], dtype=jnp.int32)
     
     return MockData(
         num_titrant_name=num_titrant_name,
         num_titrant_conc=num_titrant_conc,
         num_genotype=num_genotype,
+        batch_size=batch_size,
+        batch_idx=batch_idx,
+        scale_vector=scale_vector,
         map_theta=map_theta,
-        scatter_theta=1 # Default to scatter, can be overridden
+        scatter_theta=1
     )
 
 @pytest.fixture
 def model_setup(mock_data):
     """
-    Provides a deterministic ThetaParam object for testing run_model.
-    
-    This fixture runs define_model with guesses (all zero offsets)
-    to produce a known, predictable ThetaParam object.
+    Provides a deterministic ThetaParam object (BATCHED) for testing run_model.
     """
     name = "test_theta_cat"
     priors = get_priors()
-    guesses = get_guesses(name, mock_data)
+    base_guesses = get_guesses(name, mock_data)
     
-    # Run define_model with all sample sites substituted
-    substituted_model = substitute(define_model, data=guesses)
+    # Slice guesses to match batch
+    batch_guesses = base_guesses.copy()
+    full_offsets = base_guesses[f"{name}_logit_theta_offset"]
+    # Shape: (Name, Conc, Genotype) -> (Name, Conc, Batch)
+    batch_guesses[f"{name}_logit_theta_offset"] = full_offsets[..., mock_data.batch_idx]
+
+    # Run define_model with substituted batch guesses
+    substituted_model = substitute(define_model, data=batch_guesses)
     theta_param = substituted_model(name=name,
                                     data=mock_data,
                                     priors=priors)
@@ -92,9 +105,6 @@ def test_get_guesses(mock_data):
     
     assert isinstance(guesses, dict)
     
-    # Check hyperprior guesses
-    assert f"{name}_logit_theta_hyper_loc" in guesses
-    
     # Check offset guess (the main parameter plate)
     assert f"{name}_logit_theta_offset" in guesses
     expected_shape = (
@@ -108,101 +118,131 @@ def test_get_guesses(mock_data):
 def test_define_model_shapes_and_values(mock_data):
     """
     Tests the core logic of define_model.
-    - Checks the return type and shape.
-    - Checks the deterministic site.
-    - Checks the calculated value (should be 0.5 given guesses).
+    Checks return shape (batched) and values.
     """
     name = "test_theta_cat"
     priors = get_priors()
-    guesses = get_guesses(name, mock_data)
     
-    # Substitute all sample sites with our guess values
-    substituted_model = substitute(define_model, data=guesses)
+    # 1. Prepare Batched Guesses
+    base_guesses = get_guesses(name, mock_data)
+    batch_guesses = base_guesses.copy()
+    full_offsets = base_guesses[f"{name}_logit_theta_offset"]
+    # Slice last dim using batch_idx
+    batch_guesses[f"{name}_logit_theta_offset"] = full_offsets[..., mock_data.batch_idx]
     
-    # --- 1. Get the final return value ---
+    # Substitute
+    substituted_model = substitute(define_model, data=batch_guesses)
+    
+    # --- 2. Execute ---
     theta_param = substituted_model(name=name,
                                     data=mock_data,
                                     priors=priors)
 
-    # --- 2. Trace the execution to capture intermediate values ---
+    # --- 3. Trace ---
     model_trace = trace(substituted_model).get_trace(
         name=name, 
         data=mock_data, 
         priors=priors
     )
     
-    # --- 3. Check Return Type and Shape ---
-    assert isinstance(theta_param, ThetaParam)
-    
-    expected_shape = (
+    # --- 4. Check Shape (Batched) ---
+    expected_batch_shape = (
         mock_data.num_titrant_name,
         mock_data.num_titrant_conc,
-        mock_data.num_genotype
+        mock_data.batch_size
     )
-    assert theta_param.theta.shape == expected_shape
+    assert theta_param.theta.shape == expected_batch_shape
     
-# --- 4. Check the Deterministic Site ---
+    # --- 5. Check Deterministic Site ---
     deterministic_key = f"{name}_theta"
     assert deterministic_key in model_trace
-    
     theta_deterministic = model_trace[deterministic_key]["value"]
-    assert theta_deterministic.shape == expected_shape
-    assert jnp.all(theta_deterministic == theta_param.theta)
+    assert theta_deterministic.shape == expected_batch_shape
     
-    # --- 5. Check Values ---
-    # With zero offsets, logit_theta = hyper_loc = 0.0
-    # The final value is sigmoid(0.0) = 0.5
+    # --- 6. Check Values ---
+    # Zero offsets -> sigmoid(0.0) = 0.5
     assert jnp.allclose(theta_param.theta, 0.5)
 
 def test_run_model_no_scatter(model_setup, mock_data):
     """
-    Tests the 'run_model' logic when scatter_theta is 0.
-    It should just return the original parameter tensor.
+    Tests 'run_model' with scatter_theta=0.
+    Should return the raw batched tensor.
     """
-    # Get the pre-calculated ThetaParam object from the fixture
     theta_param = model_setup
-    
-    # Override mock_data to set scatter_theta=0
     data = mock_data._replace(scatter_theta=0)
     
-    # Run the model
     theta_calc = run_model(theta_param, data)
     
-    # --- Check Results ---
-    # 1. Should be the *exact same object*
+    # Should match theta_param.theta exactly (object identity)
     assert theta_calc is theta_param.theta
     
-    # 2. Shape should be the 3D parameter shape
+    # Shape: (Name, Conc, Batch)
     expected_shape = (
         mock_data.num_titrant_name,
         mock_data.num_titrant_conc,
-        mock_data.num_genotype
+        mock_data.batch_size
     )
     assert theta_calc.shape == expected_shape
 
 def test_run_model_with_scatter(model_setup, mock_data):
     """
-    Tests the 'run_model' logic when scatter_theta is 1.
-    It should return a 1D scattered tensor.
+    Tests 'run_model' with scatter_theta=1.
+    Should return expanded tensor.
     """
-    # Get the pre-calculated ThetaParam object from the fixture
-    theta_param = model_setup # This has all 0.5s
+    theta_param = model_setup
+    data = mock_data # defaults to scatter=1
     
-    # Use the default mock_data (scatter_theta=1)
-    data = mock_data
-    
-    # Run the model
     theta_calc = run_model(theta_param, data)
     
-    # --- Check Results ---
-    # 1. Shape should match the map_theta
-    assert theta_calc.shape == data.map_theta.shape
+    # Shape: (1, 1, 1, 1, Name, Conc, Batch)
+    expected_shape = (1, 1, 1, 1, 
+                      mock_data.num_titrant_name, 
+                      mock_data.num_titrant_conc, 
+                      mock_data.batch_size)
     
-    # 2. Check values
-    # Since theta_param.theta is all 0.5s, the scattered
-    # result must also be all 0.5s.
+    assert theta_calc.shape == expected_shape
     assert jnp.allclose(theta_calc, 0.5)
+
+def test_guide_logic_and_shapes(mock_data):
+    """
+    Tests the guide function shapes, parameter creation, and execution.
+    """
+    name = "test_theta_cat_guide"
+    priors = get_priors()
+
+    with seed(rng_seed=0):
+        guide_trace = trace(guide).get_trace(
+            name=name,
+            data=mock_data,
+            priors=priors
+        )
+        theta_param = guide(name=name,
+                            data=mock_data,
+                            priors=priors)
+
+    # --- 1. Check Parameter Sites (Global Genotype Shape) ---
+    assert f"{name}_logit_theta_offset_locs" in guide_trace
+    offset_locs = guide_trace[f"{name}_logit_theta_offset_locs"]["value"]
     
-    # 3. Check indexing logic explicitly
-    expected_vals = theta_param.theta.ravel()[data.map_theta]
-    assert jnp.allclose(theta_calc, expected_vals)
+    # Guide params store full genotype shape
+    expected_param_shape = (
+        mock_data.num_titrant_name,
+        mock_data.num_titrant_conc,
+        mock_data.num_genotype
+    )
+    assert offset_locs.shape == expected_param_shape
+
+    # --- 2. Check Sample Sites (Batched Shape) ---
+    assert f"{name}_logit_theta_offset" in guide_trace
+    sampled_offsets = guide_trace[f"{name}_logit_theta_offset"]["value"]
+    
+    # Samples are sliced to batch size
+    expected_sample_shape = (
+        mock_data.num_titrant_name,
+        mock_data.num_titrant_conc,
+        mock_data.batch_size
+    )
+    assert sampled_offsets.shape == expected_sample_shape
+
+    # --- 3. Check Return Shape ---
+    assert theta_param.theta.shape == expected_sample_shape

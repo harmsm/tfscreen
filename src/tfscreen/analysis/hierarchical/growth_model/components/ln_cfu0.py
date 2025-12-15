@@ -76,17 +76,69 @@ def define_model(name: str,
     )
     
     # Sample non-centered offsets for each ln_cfu0 group
-    with pyro.plate(f"{name}_parameters", data.num_ln_cfu0):
-        ln_cfu0_offsets = pyro.sample(f"{name}_offset", dist.Normal(0, 1))
+    with pyro.plate(f"{name}_replicate",data.num_replicate,dim=-3):
+        with pyro.plate(f"{name}_condition_pre",data.num_condition_pre,dim=-2):
+            with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
+                with pyro.handlers.scale(scale=data.scale_vector):
+                    ln_cfu0_offsets = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
 
     # Calculate the per-group ln_cfu0 values
-    ln_cfu0_dists = ln_cfu0_hyper_loc + ln_cfu0_offsets * ln_cfu0_hyper_scale
+    ln_cfu0_per_rep_cond_geno = ln_cfu0_hyper_loc + ln_cfu0_offsets * ln_cfu0_hyper_scale
 
     # Register deterministic values for inspection
-    pyro.deterministic(name, ln_cfu0_dists)
+    pyro.deterministic(name, ln_cfu0_per_rep_cond_geno)
 
     # Expand tensor to match all observations
-    ln_cfu0 = ln_cfu0_dists[data.map_ln_cfu0]
+    ln_cfu0 = ln_cfu0_per_rep_cond_geno[:,None,:,None,None,None,:]
+
+    return ln_cfu0
+
+def guide(name: str, 
+          data: GrowthData, 
+          priors: ModelPriors) -> jnp.ndarray:
+    """
+    Guide
+    """
+
+    # -------------------------------------------------------------------------
+    # Global parameters
+
+    # Hyper Loc (Normal posterior approximation)
+    h_loc_loc = pyro.param(f"{name}_hyper_loc_loc", jnp.array(priors.ln_cfu0_hyper_loc_loc))
+    h_loc_scale = pyro.param(f"{name}_hyper_loc_scale", jnp.array(priors.ln_cfu0_hyper_loc_scale), constraint=dist.constraints.positive)
+    ln_cfu0_hyper_loc = pyro.sample(f"{name}_hyper_loc", dist.Normal(h_loc_loc, h_loc_scale))
+
+    # Hyper Scale (LogNormal posterior approximation for positive variable)
+    # We use LogNormal because HalfNormal (prior) support is positive.
+    h_scale_loc = pyro.param(f"{name}_hyper_scale_loc", jnp.array(-1.0)) # Init small
+    h_scale_scale = pyro.param(f"{name}_hyper_scale_scale", jnp.array(0.1), constraint=dist.constraints.positive)
+    ln_cfu0_hyper_scale = pyro.sample(f"{name}_hyper_scale", dist.LogNormal(h_scale_loc, h_scale_scale))
+    
+    # -------------------------------------------------------------------------
+    # Genotype-specific parameter
+
+    param_shape = (data.num_replicate, data.num_condition_pre, data.num_genotype)
+    offset_locs = pyro.param(f"{name}_offset_locs",
+                             jnp.zeros(param_shape,dtype=float))
+    offset_scales = pyro.param(f"{name}_offset_scales",
+                               jnp.ones(param_shape,dtype=float),
+                               constraint=dist.constraints.positive)
+
+    # Sample non-centered offsets for each ln_cfu0 group
+    with pyro.plate(f"{name}_replicate",data.num_replicate,dim=-3):
+        with pyro.plate(f"{name}_condition_pre",data.num_condition_pre,dim=-2):
+            with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
+                with pyro.handlers.scale(scale=data.scale_vector):
+                    
+                    batch_locs = offset_locs[...,data.batch_idx]
+                    batch_scales = offset_scales[...,data.batch_idx]
+                    ln_cfu0_offsets = pyro.sample(f"{name}_offset", dist.Normal(batch_locs,batch_scales))
+
+    # Calculate the per-group ln_cfu0 values
+    ln_cfu0_per_rep_cond_geno = ln_cfu0_hyper_loc + ln_cfu0_offsets * ln_cfu0_hyper_scale
+
+    # Expand tensor to match all observations
+    ln_cfu0 = ln_cfu0_per_rep_cond_geno[:,None,:,None,None,None,:]
 
     return ln_cfu0
 
@@ -137,7 +189,9 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
     guesses = {}
     guesses[f"{name}_hyper_loc"] = -2.5
     guesses[f"{name}_hyper_scale"] = 3.0
-    guesses[f"{name}_offset"] = jnp.zeros(data.num_ln_cfu0)
+    guesses[f"{name}_offset"] = jnp.zeros((data.num_replicate,
+                                           data.num_condition_pre,
+                                           data.num_genotype),dtype=float)
 
     return guesses
 

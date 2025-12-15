@@ -1,7 +1,5 @@
 import pytest
-import jax
 import jax.numpy as jnp
-import numpyro
 from numpyro.handlers import trace
 from collections import namedtuple
 
@@ -9,6 +7,7 @@ from collections import namedtuple
 from tfscreen.analysis.hierarchical.growth_model.components.activity_fixed import (
     ModelPriors,
     define_model,
+    guide,
     get_hyperparameters,
     get_guesses,
     get_priors
@@ -16,26 +15,20 @@ from tfscreen.analysis.hierarchical.growth_model.components.activity_fixed impor
 
 # --- Mock Data Fixture ---
 
-# A mock data object that provides the fields define_model needs
+# Updated mock to include batch_size, which is now used by the code
 MockGrowthData = namedtuple("MockGrowthData", [
-    "num_genotype", 
-    "map_genotype"
+    "batch_size"
 ])
 
 @pytest.fixture
 def mock_data():
     """
     Provides a mock data object for testing.
-    - 4 total genotypes
-    - 8 observations
     """
-    num_genotype = 4
-    # 8 observations mapping back to the 4 genotypes
-    map_genotype = jnp.array([0, 1, 2, 3, 1, 0, 2, 3], dtype=jnp.int32)
+    batch_size = 8
     
     return MockGrowthData(
-        num_genotype=num_genotype,
-        map_genotype=map_genotype
+        batch_size=batch_size
     )
 
 # --- Test Cases ---
@@ -63,15 +56,13 @@ def test_define_model_logic_and_shapes(mock_data):
     Tests the core logic of define_model for the fixed (1.0) case.
     
     This test checks:
-    1.  The deterministic site has the correct per-genotype shape and is all 1.0s.
-    2.  The final returned value has the correct expanded shape and is all 1.0s.
+    1. The deterministic site has the correct shape (batch_size) and values (1.0).
+    2. The final returned value has the correct broadcasted shape.
     """
     name = "test_activity_fixed"
-    # Priors object is empty but still needs to be passed
     priors = get_priors()
     
     # --- 1. Get the final return value ---
-    # No `substitute` is needed as there are no pyro.sample calls
     final_activity = define_model(name=name, 
                                   data=mock_data, 
                                   priors=priors)
@@ -83,22 +74,40 @@ def test_define_model_logic_and_shapes(mock_data):
         priors=priors
     )
     
-    # --- 3. Check the Per-Genotype Deterministic Site ---
-    
-    # This is the 'activity_dists' variable before expansion
+    # --- 3. Check the Deterministic Site ---
     assert name in model_trace
-    activity_per_genotype = model_trace[name]["value"]
+    activity_site = model_trace[name]["value"]
     
-    # Check shape
-    assert activity_per_genotype.shape == (mock_data.num_genotype,)
+    # Check shape: Code uses jnp.ones(data.batch_size)
+    assert activity_site.shape == (mock_data.batch_size,)
     
     # Check values (must be all 1.0)
-    assert jnp.all(activity_per_genotype == 1.0)
+    assert jnp.all(activity_site == 1.0)
     
     # --- 4. Check the Final Returned (Expanded) Tensor ---
+    # Code broadcasts: activity_dists[None,None,None,None,None,None,:]
+    expected_shape = (1, 1, 1, 1, 1, 1, mock_data.batch_size)
     
-    # The final shape must match the map_genotype
-    assert final_activity.shape == mock_data.map_genotype.shape
+    assert final_activity.shape == expected_shape
+    assert jnp.all(final_activity == 1.0)
+
+def test_guide_logic_and_shapes(mock_data):
+    """
+    Tests the guide function.
     
-    # The final values must also be all 1.0
+    This test checks:
+    1. The guide returns the correct broadcasted shape.
+    2. The values are all 1.0.
+    """
+    name = "test_activity_guide"
+    priors = get_priors()
+
+    final_activity = guide(name=name,
+                           data=mock_data,
+                           priors=priors)
+
+    # Code broadcasts: activity_dists[None,None,None,None,None,None,:]
+    expected_shape = (1, 1, 1, 1, 1, 1, mock_data.batch_size)
+
+    assert final_activity.shape == expected_shape
     assert jnp.all(final_activity == 1.0)

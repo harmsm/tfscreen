@@ -4,10 +4,7 @@ from jax import random
 from jax import numpy as jnp
 
 import numpyro
-from numpyro.infer.autoguide import (
-    AutoDelta,
-    AutoLowRankMultivariateNormal
-)
+
 from numpyro.infer import (
     SVI,
     Trace_ELBO,
@@ -21,7 +18,6 @@ from numpyro.handlers import (
     seed
 )
 
-import pandas as pd
 import numpy as np
 import dill
 from tqdm.auto import tqdm
@@ -51,18 +47,16 @@ class RunInference:
             - `jax_model` (callable): The Numpyro model.
             - `data` (flax.struct.dataclass): Data object, expected to have `num_genotype`.
             - `priors` (flax.struct.dataclass): Data object holding model priors
-            - `control` (flax.struct.dataclass): Data object holding model control
             - `init_params` (dict): Initial parameter guesses.
             - `sample_batch` (callable): Function to sample a data batch.
-            - `deterministic_batch` (callable): Function for deterministic batch.
         seed : int
             Random seed for JAX PRNG key generation.
         """
         
         required_attr = ["data",
                          "priors",
-                         "control",
                          "jax_model",
+                         "jax_model_guide",
                          "init_params"]
         for attr in required_attr:
             if not hasattr(model,attr):
@@ -98,10 +92,9 @@ class RunInference:
 
         # Create optimizer, guide, and svi object 
         optimizer = ClippedAdam(step_size=adam_step_size,clip_norm=adam_clip_norm)
-        guide = AutoDelta(self.model.jax_model)
 
         svi = SVI(self.model.jax_model,
-                  guide,
+                  self.model.jax_model_guide,
                   optimizer,
                   loss=Trace_ELBO(num_particles=elbo_num_particles))
         
@@ -111,12 +104,11 @@ class RunInference:
                   init_params=None,
                   adam_step_size=1e-6,
                   adam_clip_norm=1.0,
-                  guide_rank=10,
                   elbo_num_particles=10,
                   init_param_jitter=0.1,
                   init_scale=0.01):
         """
-        Set up SVI with an AutoLowRankMultivariateNormal guide.
+        Set up SVI. 
 
         Parameters
         ----------
@@ -126,20 +118,19 @@ class RunInference:
             Step size for the ClippedAdam optimizer.
         adam_clip_norm : float, optional
             Gradient clipping norm for the ClippedAdam optimizer.
-        guide_rank : int, optional
-            Rank of the low-rank approximation for the guide's covariance.
         elbo_num_particles : int, optional
             Number of particles for ELBO estimation.
         init_param_jitter : float, optional
             amount of jitter to apply to each parameter guess (log-normal). 
-            Default = 0.1. 
+            Is only applied if init_params is not None. Default = 0.1. 
         init_scale : float, optional
-            scale to apply to the initial parameter values
+            scale to apply to the initial parameter values. Is only applied if
+            init_params is not None. 
 
         Returns
         -------
         numpyro.infer.SVI
-            An SVI object configured with an AutoLowRankMultivariateNormal guide.
+            An SVI object
         """
 
         guide_kwargs = {}
@@ -149,14 +140,11 @@ class RunInference:
             guide_kwargs["init_scale"] = init_scale
             
         optimizer = ClippedAdam(
-            #learning_rate=schedule,
             step_size=adam_step_size,
             clip_norm=adam_clip_norm)
-        guide = AutoLowRankMultivariateNormal(self.model.jax_model,
-                                              rank=guide_rank,
-                                              **guide_kwargs)
+        
         svi = SVI(self.model.jax_model,
-                  guide,
+                  self.model.jax_model_guide,
                   optimizer,
                   loss=Trace_ELBO(num_particles=elbo_num_particles))
         
@@ -171,7 +159,6 @@ class RunInference:
                          convergence_window=1000,
                          checkpoint_interval=1000,
                          num_steps=10000000,
-                         batch_size=1024,
                          init_param_jitter=0.1):
         """
         Run the SVI optimization loop.
@@ -198,8 +185,6 @@ class RunInference:
             Frequency (in steps) to write checkpoints and check convergence.
         num_steps : int, optional
             Total number of optimization steps to run.
-        batch_size : int, optional
-            Number of genotypes to include in each mini-batch.
         init_param_jitter : float, optional
             amount of jitter to add to init_params. To turn off, set to 0.
 
@@ -218,44 +203,45 @@ class RunInference:
             If parameters explode to NaN during optimization.
         """
 
-        # Trim batch size if needed
-        if batch_size > self.model.data.num_genotype:
-            batch_size = self.model.data.num_genotype
-
         # Set up initialization and update functions (triggers jit)
         init_function = jax.jit(svi.init)
         update_function = jax.jit(svi.update)
-
-        # Get the arguments to pass to the jax model
-        jax_model_kwargs = {"priors":self.model.priors,
-                            "control":self.model.control} 
 
         # Add jitter to the input parameters if they are specified
         if init_params is not None:
             init_params = self._jitter_init_parameters(init_params=init_params,
                                                        init_param_jitter=init_param_jitter)
+        
+        # Put the data on to the gpu
+        data_on_gpu = jax.device_put(self.model.data)
 
-        # Create initialization key
+        # compile the batch slicing function
+        get_batch = jax.jit(self.model.get_batch)
+
+        # Create an initial batch to initialize SVI
+        init_batch_key = int(self.get_key()[1])
+        gpu_batch_idx = jax.device_put(self.model.get_random_idx(init_batch_key))
+        batch_data = get_batch(data_on_gpu,gpu_batch_idx)
+
+        # Initialize svi with a batch of data
         init_key = self.get_key()
-
-
-        # Create dummy batch. Note that we just need the shape of the data, so 
-        # we don't actually consume the key. 
-        dummy_batch = self.model.sample_batch(init_key, self.model.data, batch_size)
-        jax_model_kwargs["data"] = dummy_batch
-
-        # Use the dummy batch and initial key to create the initial svi_state
         initial_svi_state = init_function(init_key,
                                           init_params=init_params,
-                                          **jax_model_kwargs)
+                                          priors=self.model.priors,
+                                          data=batch_data)
             
         if svi_state is None:
             svi_state = initial_svi_state
-        else:
-            if os.path.isfile(str(svi_state)):
+            
+        elif isinstance(svi_state,str):
+            if os.path.isfile(svi_state):
                 svi_state = self._restore_checkpoint(svi_state)
             else:
-                svi_state = svi_state
+                raise ValueError(
+                    f"svi_state '{svi_state}' is not valid"
+                )
+        else:
+            svi_state = svi_state
             
         # loss deque holds loss values for smoothing to check for convergence
         self._loss_deque = deque(maxlen=(convergence_window*2))
@@ -265,15 +251,14 @@ class RunInference:
         losses = []
         for i in range(num_steps):
 
-            # Get key
-            sample_key = self.get_key()
-
-            # Create a mini-batch of the data
-            batch_data = self.model.sample_batch(sample_key, self.model.data, batch_size)
-            jax_model_kwargs["data"] = batch_data
+            # Create a batch of data
+            gpu_batch_idx = jax.device_put(self.model.get_random_idx())
+            batch_data = get_batch(data_on_gpu,gpu_batch_idx)
 
             # Update the loss function
-            svi_state, loss = update_function(svi_state,**jax_model_kwargs) 
+            svi_state, loss = update_function(svi_state,
+                                              priors=self.model.priors,
+                                              data=batch_data)
             losses.append(loss)
 
             if i % checkpoint_interval == 0:
@@ -323,119 +308,132 @@ class RunInference:
                        num_posterior_samples=10000,
                        sampling_batch_size=100,
                        forward_batch_size=512):
-            """
-            Generate and save posterior samples using the trained guide.
+        """
+        Generate and save posterior samples using the trained guide.
 
-            Uses `numpyro.infer.Predictive` to sample from the posterior
-            distribution defined by the guide and parameters. Handles large
-            datasets by batching predictions.
+        Uses `numpyro.infer.Predictive` to sample from the posterior
+        distribution defined by the guide and parameters. Handles large
+        datasets by batching predictions.
 
-            Parameters
-            ----------
+        Parameters
+        ----------
 
-            svi : numpyro.infer.SVI
-                svi object being used for the inference
-            svi_state : 
-                current state of the svi object
-            out_root : str
-                Root name for the output .npz file.
-            num_posterior_samples : int, optional
-                Number of posterior samples to draw.
-            sampling_batch_size : int, optional
-                Generate posteriors in blocks of this size
-            forward_batch_size : int, optional
-                calculate forward predictions in batches of this size
-            """
+        svi : numpyro.infer.SVI
+            svi object being used for the inference
+        svi_state : 
+            current state of the svi object
+        out_root : str
+            Root name for the output .npz file.
+        num_posterior_samples : int, optional
+            Number of posterior samples to draw.
+        sampling_batch_size : int, optional
+            Generate posteriors in blocks of this size
+        forward_batch_size : int, optional
+            calculate forward predictions in batches of this size
+        """
 
-            guide = svi.guide
-            params = svi.get_params(svi_state)
+        guide = svi.guide
+        params = svi.get_params(svi_state)
 
-            combined_results = {}
+        combined_results = {}
 
-            total_num_genotypes = self.model.data.num_genotype 
-            num_latent_batches = -(-num_posterior_samples // sampling_batch_size)
+        total_num_genotypes = self.model.data.num_genotype 
+        num_latent_batches = -(-num_posterior_samples // sampling_batch_size)
 
-            for _ in tqdm(range(num_latent_batches),desc="sampling posterior"):
+        for _ in tqdm(range(num_latent_batches),desc="sampling posterior"):
 
-                # Sample the entire guide posterior distribution 
-                post_key = self.get_key()
-                latent_sampler = Predictive(guide,
-                                            params=params,
-                                            num_samples=sampling_batch_size)
-                latent_samples = latent_sampler(post_key)
+            # Sample the entire guide posterior distribution 
+            post_key = self.get_key()
+            latent_sampler = Predictive(guide,
+                                        params=params,
+                                        num_samples=sampling_batch_size)
+            latent_samples = latent_sampler(post_key)
 
+            # Sample batches of genotypes
+            batched_results = {}
+            for start_idx in range(0, total_num_genotypes, forward_batch_size):
+                
+                # Create indexes for slicing a batch
+                end_idx = min(start_idx + forward_batch_size, total_num_genotypes)
+                batch_indices = jnp.arange(start_idx, end_idx)
+
+                # Slice the Latent Samples to match this batch
+                batch_latents = {}
+                for k, v in latent_samples.items():
+
+                    # Heuristic: if last dim matches total genotypes, slice it.
+                    # Otherwise, treat it as a global parameter (keep full).
+                    is_genotype_param = (v.ndim > 1) and (v.shape[-1] == total_num_genotypes)
+                    
+                    if is_genotype_param:
+                        batch_latents[k] = v[..., start_idx:end_idx]
+                    else:
+                        batch_latents[k] = v
+
+
+                # Get a batch of data
+                batch_data = self.model.get_batch(batch_indices)
+                
                 # Create a sampler that will predict outputs using the full
                 # model given those latent samples
-                forward_sampler = Predictive(self.model.jax_model,
-                                            posterior_samples=latent_samples)
+                forward_sampler = Predictive(self.model.jax_model, 
+                                                posterior_samples=batch_latents)
 
-                # Create model kwargs
-                jax_model_kwargs = {"priors":self.model.priors,
-                                    "control":self.model.control} 
+                # Run the forward pass for this batch of genotypes
+                sample_key = self.get_key()
+                batch_pred = forward_sampler(sample_key,
+                                                priors=self.model.priors,
+                                                data=batch_data)
 
-                # Sample batches of genotypes
-                batched_results = {}
-                for start_idx in range(0, total_num_genotypes, forward_batch_size):
-                    
-                    # Create indexes for slicing a batch
-                    end_idx = min(start_idx + forward_batch_size, total_num_genotypes)
-                    batch_indices = jnp.arange(start_idx, end_idx)
+                batch_pred_cpu = jax.device_get(batch_pred)
 
-                    # Get a batch of data
-                    batch_data = self.model.deterministic_batch(self.model.data,
-                                                                batch_indices)
-                    jax_model_kwargs["data"] = batch_data
+                # Grab the parameters we sampled in this batch
+                for k, v in batch_pred_cpu.items():
+                    if k not in batched_results:
+                        batched_results[k] = []
+                    batched_results[k].append(v)
+            
+                # Grab the latent parameters we sampled in this batch. If 
+                # the latent parameter has a genotype axis (last dimension
+                # is length total_num_genotypes) slice and append it. If 
+                # it does not have a genotype axis, just append it on the 
+                # first iteration.
+                for k, v in latent_samples.items():
 
-                    # Run the forward pass for this batch of genotypes
-                    sample_key = self.get_key()
-                    batch_pred = forward_sampler(sample_key, **jax_model_kwargs)
+                    if k in batch_pred_cpu:
+                        continue
 
-                    # Pull the results off the gpu
-                    batch_pred_cpu = jax.device_get(batch_pred)
-
-                    # Grab the parameters we sampled in this batch
-                    for k, v in batch_pred_cpu.items():
-                        if k not in batched_results:
-                            batched_results[k] = []
-                        batched_results[k].append(v)
-                
-                    # Grab the latent parameters we sampled in this batch. If 
-                    # the latent parameter has a genotype axis (last dimension
-                    # is length total_num_genotypes) slice and append it. If 
-                    # it does not have a genotype axis, just append it on the 
-                    # first iteration.
-                    for k, v in latent_samples.items():
-                        if k in batch_pred_cpu:
-                            continue
-                        if k not in batched_results:
-                            batched_results[k] = []
-                        is_genotype_param = (v.ndim > 1) and (v.shape[-1] == total_num_genotypes)
-                        if is_genotype_param:
-                            batched_results[k].append(v[:, start_idx:end_idx])
-                        else:
-                            if start_idx == 0:
-                                batched_results[k].append(v)
-
-                # Combine our batched results. The result of this will be a 
-                # dictionary of lists. Each list will be an array whose first
-                # dimension is the number of latent samples. 
-                for k, v in batched_results.items():
-
-                    if k not in combined_results:
-                        combined_results[k] = []
-
-                    if len(v) == 1:
-                        combined_results[k].append(v[0])
-                    else:
-                        full_width = np.concatenate(v,axis=1)
-                        combined_results[k].append(full_width)
+                    if k not in batched_results:
+                        batched_results[k] = []
                         
-            # assemble final results
-            final_results = {}
-            for k in batched_results:
-                final_results[k] = np.concatenate(batched_results[k],axis=0)
+                    is_genotype_param = (v.ndim > 1) and (v.shape[-1] == (end_idx - start_idx))
 
-            self._write_posteriors(final_results, out_root=out_root)
+                    if is_genotype_param:
+                        batched_results[k].append(v)
+                    else:
+                        if start_idx == 0:
+                            batched_results[k].append(v)
+
+            # Combine our batched results. The result of this will be a 
+            # dictionary of lists. Each list will be an array whose first
+            # dimension is the number of latent samples. 
+            for k, v in batched_results.items():
+
+                if k not in combined_results:
+                    combined_results[k] = []
+
+                if len(v) == 1:
+                    combined_results[k].append(v[0])
+                else:
+                    full_width = np.concatenate(v,axis=1)
+                    combined_results[k].append(full_width)
+    
+        # assemble final results
+        final_results = {}
+        for k in combined_results:
+            final_results[k] = np.concatenate(combined_results[k],axis=0)
+
+        self._write_posteriors(final_results, out_root=out_root)
 
     def predict(self,
                 posterior_samples,
@@ -446,7 +444,7 @@ class RunInference:
         predict_sites given the model and the model parameter samples in the
         posteriors_file. 
 
-        posterior_samples : str
+        posterior_samples : dict or str
             posteriors dictionary or path to a file holding posterior samples
             (usually generated by self.get_posteriors()) 
         predict_sites : list of str or str
@@ -489,8 +487,7 @@ class RunInference:
         predict_key = self.get_key()
         predictions = predictor(predict_key, 
                                 data=data_for_predict, 
-                                priors=self.model.priors, 
-                                control=self.model.control)
+                                priors=self.model.priors)
         
         return predictions
 
@@ -551,9 +548,9 @@ class RunInference:
 
             # Get noise of the right dimensionality
             if jnp.isscalar(init_params[p]):
-                noise = jnp.random.normal(jitter_key)
+                noise = random.normal(jitter_key)
             else:
-                noise = jnp.random.normal(jitter_key,shape=init_params[p].shape)
+                noise = random.normal(jitter_key,shape=init_params[p].shape)
             
             # add noise to init_params[p]
             init_params[p] = init_params[p]*jnp.exp(noise*init_param_jitter)
@@ -707,6 +704,16 @@ class RunInference:
         self._relative_change = np.abs(mean_curr - mean_prev) / (np.abs(mean_prev) + 1e-10)
 
     def write_params(self,params,out_root):
+        """
+        Write parameters to an .npz file.
+        
+        Parameters
+        ----------
+        params : dict
+            dictionary of parameters
+        out_root : str
+            string to append to front of output file
+        """
 
         tmp_out_file = f"{out_root}_params.tmp.npz"
         out_file = f"{out_root}_params.npz"
@@ -741,8 +748,7 @@ class RunInference:
         
         # Run the traced model
         model_trace = traced_model.get_trace(data=self.model.data,
-                                             priors=self.model.priors,
-                                             control=self.model.control)
+                                             priors=self.model.priors)
         
         # Get all sites matching target_sites
         site_names = [

@@ -2,13 +2,14 @@ import pytest
 import jax
 import jax.numpy as jnp
 import numpyro
+import numpyro.distributions as dist
 from numpyro.handlers import trace, substitute, seed
-
 
 # --- Import Module Under Test (MUT) ---
 from tfscreen.analysis.hierarchical.growth_model.components.beta_noise import (
     ModelPriors,
     define_model,
+    guide,
     get_hyperparameters,
     get_guesses,
     get_priors
@@ -40,7 +41,7 @@ def test_get_priors():
 def test_get_guesses():
     """Tests that get_guesses returns the correct key and value."""
     name = "test_noise"
-    guesses = get_guesses(name,None)
+    guesses = get_guesses(name, None)
     
     assert isinstance(guesses, dict)
     
@@ -61,7 +62,7 @@ def model_setup():
     """Provides common setup for define_model tests."""
     name = "test_beta_noise"
     priors = get_priors()
-    guesses = get_guesses(name,None)
+    guesses = get_guesses(name, None)
     
     # Substitute the kappa sample with our guess value
     substituted_model = substitute(define_model, data=guesses)
@@ -170,3 +171,47 @@ def test_define_model_clipping_logic(model_setup):
     # Check that beta[2] was clipped
     assert jnp.isclose(dist_obj.concentration1[2], 500.0)
     assert dist_obj.concentration0[2] == 1e-10
+
+def test_guide_logic_and_params():
+    """
+    Tests the guide function structure and execution.
+    Verifies that parameters are created and sampling occurs correctly.
+    """
+    name = "test_beta_noise_guide"
+    priors = get_priors()
+    fx_calc = jnp.array([0.2, 0.5, 0.8])
+    
+    # Seed the guide execution because it samples
+    with seed(rng_seed=0):
+        # We need to trace the guide to inspect the created parameters
+        guide_trace = trace(guide).get_trace(
+            name=name,
+            fx_calc=fx_calc,
+            priors=priors
+        )
+    
+    # --- 1. Check Parameter Sites ---
+    # Expect kappa_loc and kappa_scale parameters
+    assert f"{name}_beta_kappa_loc" in guide_trace
+    assert f"{name}_beta_kappa_scale" in guide_trace
+    
+    # Check initial value for loc is log(prior_loc)
+    expected_init_loc = jnp.log(priors.beta_kappa_loc)
+    assert jnp.isclose(guide_trace[f"{name}_beta_kappa_loc"]["value"], expected_init_loc)
+    
+    # --- 2. Check Sample Sites ---
+    # Expect kappa sample (LogNormal)
+    assert f"{name}_beta_kappa" in guide_trace
+    assert isinstance(guide_trace[f"{name}_beta_kappa"]["fn"], dist.LogNormal)
+    
+    # Expect fx_noisy sample (Beta)
+    assert f"{name}_dist" in guide_trace
+    dist_obj = guide_trace[f"{name}_dist"]["fn"]
+    assert isinstance(dist_obj, dist.Beta)
+    
+    # Verify shape of sampled output
+    fx_noisy = guide_trace[f"{name}_dist"]["value"]
+    assert fx_noisy.shape == fx_calc.shape
+    
+    # Verify values are within [0, 1]
+    assert jnp.all((fx_noisy >= 0.0) & (fx_noisy <= 1.0))

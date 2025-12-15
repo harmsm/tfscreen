@@ -46,13 +46,28 @@ def define_model(name: str,
     """
 
     # Set activity for all genotypes to 1.0
-    activity_dists = jnp.ones(data.num_genotype)
+    activity_dists = jnp.ones(data.batch_size,dtype=float)
 
     # Register per-genotype values for inspection
     pyro.deterministic(name, activity_dists)  
 
-    # Expand to full-sized tensor
-    activity = activity_dists[data.map_genotype]
+    # Broadcast to full-sized tensor
+    activity = activity_dists[None,None,None,None,None,None,:]
+
+    return activity
+
+
+def guide(name: str, 
+          data: GrowthData, 
+          priors: ModelPriors) -> jnp.ndarray:
+    """
+    """
+
+    # Set activity for all genotypes to 1.0
+    activity_dists = jnp.ones(data.batch_size,dtype=float)
+
+    # Broadcast to full-sized tensor
+    activity = activity_dists[None,None,None,None,None,None,:]
 
     return activity
 

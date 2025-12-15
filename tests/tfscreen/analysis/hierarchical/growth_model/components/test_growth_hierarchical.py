@@ -1,13 +1,14 @@
 import pytest
 import jax.numpy as jnp
-from numpyro.handlers import trace, substitute
+import numpyro.distributions as dist
+from numpyro.handlers import trace, substitute, seed
 from collections import namedtuple
 
 # --- Import Module Under Test (MUT) ---
-# Adjust import path as necessary for your actual file structure
 from tfscreen.analysis.hierarchical.growth_model.components.growth_hierarchical import (
     ModelPriors,
     define_model,
+    guide,
     get_hyperparameters,
     get_guesses,
     get_priors
@@ -26,18 +27,13 @@ MockGrowthData = namedtuple("MockGrowthData", [
 def mock_data():
     """
     Provides a mock data object for testing.
-    
-    UPDATED:
     - 3 conditions
-    - 2 replicates (just for context, unused by model definition shapes)
-    - Total per-parameter items = 3 (one per condition)
-    - The maps must now index into [0, 1, 2], not a flattened replicate list.
+    - Maps index into these 3 conditions
     """
     num_condition = 3
-    num_replicate = 2 # Irrelevant for parameter shapes in new model, but kept for API compliance
+    num_replicate = 2 
     
     # 4 observations mapping into the [0, 1, 2] condition array
-    # Note: Indices must be < num_condition
     map_condition_pre = jnp.array([0, 2, 2, 1], dtype=jnp.int32)
     map_condition_sel = jnp.array([1, 0, 1, 2], dtype=jnp.int32)
     
@@ -67,8 +63,6 @@ def test_get_priors():
 def test_get_guesses(mock_data):
     """
     Tests that get_guesses returns correctly named and shaped guesses.
-    
-    UPDATED: Checks for shape (num_condition,) instead of (num_cond, num_rep).
     """
     name = "test_growth"
     guesses = get_guesses(name, mock_data)
@@ -134,7 +128,7 @@ def test_define_model_structure_and_shapes(mock_data):
     k_per_condition = model_trace[k_name]["value"]
     m_per_condition = model_trace[m_name]["value"]
     
-    # UPDATED: Check shape is (num_condition,)
+    # Check shape is (num_condition,)
     expected_shape = (mock_data.num_condition,)
     assert k_per_condition.shape == expected_shape
     assert m_per_condition.shape == expected_shape
@@ -148,15 +142,10 @@ def test_define_model_calculation_logic(mock_data):
     priors = get_priors()
     
     # Create specific test values
-    # k = loc + offset * scale
-    # let loc = 10, scale = 2
-    # offsets = [0, 1, -1]
-    # expected k = [10, 12, 8]
-    
     custom_guesses = {
         f"{name}_k_hyper_loc": 10.0,
         f"{name}_k_hyper_scale": 2.0,
-        f"{name}_m_hyper_loc": 0.0,   # Keep m simple/ignored for this test
+        f"{name}_m_hyper_loc": 0.0,
         f"{name}_m_hyper_scale": 1.0,
         
         # Explicit offsets for our 3 conditions
@@ -172,17 +161,66 @@ def test_define_model_calculation_logic(mock_data):
                                            data=mock_data, 
                                            priors=priors)
     
-    # Expected values per condition
+    # Expected values per condition: [10, 12, 8]
     expected_k_per_condition = jnp.array([10.0, 12.0, 8.0])
     
-    # Verify k_pre mapping
-    # map_condition_pre was [0, 2, 2, 1]
-    # Expected: [val[0], val[2], val[2], val[1]] -> [10, 8, 8, 12]
+    # Verify k_pre mapping: [0, 2, 2, 1] -> [10, 8, 8, 12]
     expected_k_pre = expected_k_per_condition[mock_data.map_condition_pre]
     assert jnp.allclose(k_pre, expected_k_pre)
     
-    # Verify k_sel mapping
-    # map_condition_sel was [1, 0, 1, 2]
-    # Expected: [val[1], val[0], val[1], val[2]] -> [12, 10, 12, 8]
+    # Verify k_sel mapping: [1, 0, 1, 2] -> [12, 10, 12, 8]
     expected_k_sel = expected_k_per_condition[mock_data.map_condition_sel]
     assert jnp.allclose(k_sel, expected_k_sel)
+
+def test_guide_logic_and_shapes(mock_data):
+    """
+    Tests the guide function shapes, parameter creation, and execution.
+    """
+    name = "test_growth_guide"
+    priors = get_priors()
+
+    # Seed the guide execution to handle sampling
+    with seed(rng_seed=0):
+        # Trace the guide to inspect parameters and samples
+        guide_trace = trace(guide).get_trace(
+            name=name,
+            data=mock_data,
+            priors=priors
+        )
+        
+        # Run guide to check return values
+        return_tuple = guide(name=name,
+                             data=mock_data,
+                             priors=priors)
+    
+    k_pre, m_pre, k_sel, m_sel = return_tuple
+
+    # --- 1. Check Parameter Sites ---
+    # Global params
+    assert f"{name}_k_hyper_loc_loc" in guide_trace
+    assert f"{name}_k_hyper_scale_loc" in guide_trace
+    
+    # Local params (Condition-specific)
+    # The guide initializes these with shape (num_condition,)
+    assert f"{name}_k_offset_locs" in guide_trace
+    k_locs = guide_trace[f"{name}_k_offset_locs"]["value"]
+    assert k_locs.shape == (mock_data.num_condition,)
+
+    assert f"{name}_m_offset_scales" in guide_trace
+    m_scales = guide_trace[f"{name}_m_offset_scales"]["value"]
+    assert m_scales.shape == (mock_data.num_condition,)
+
+    # --- 2. Check Sample Sites ---
+    # Global samples
+    assert f"{name}_k_hyper_loc" in guide_trace
+    assert f"{name}_m_hyper_scale" in guide_trace
+    
+    # Local samples
+    assert f"{name}_k_offset" in guide_trace
+    
+    # --- 3. Check Return Shapes ---
+    # Must match the mapping arrays
+    assert k_pre.shape == mock_data.map_condition_pre.shape
+    assert m_pre.shape == mock_data.map_condition_pre.shape
+    assert k_sel.shape == mock_data.map_condition_sel.shape
+    assert m_sel.shape == mock_data.map_condition_sel.shape

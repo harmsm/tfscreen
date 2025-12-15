@@ -14,8 +14,7 @@ def _run_map(ri,
              convergence_tolerance=1e-5,
              convergence_window=1000,
              checkpoint_interval=1000,
-             map_num_steps=100000,
-             batch_size=1024):
+             map_num_steps=100000):
     """
     Run maximum a posteriori (MAP) optimization for hierarchical model inference.
 
@@ -48,8 +47,6 @@ def _run_map(ri,
         Steps between checkpoints and convergence checks (default 1000).
     map_num_steps : int, optional
         Number of MAP optimization steps (default 100000).
-    batch_size : int, optional
-        Mini-batch size for optimization (default 1024).
 
     Returns
     -------
@@ -79,7 +76,6 @@ def _run_map(ri,
         convergence_window=convergence_window,
         checkpoint_interval=checkpoint_interval,
         num_steps=map_num_steps,
-        batch_size=batch_size
     )
 
     # Write the current parameter values
@@ -99,13 +95,11 @@ def _run_svi(ri,
              out_root="tfs",
              adam_step_size=1e-6,
              adam_clip_norm=1.0,
-             guide_rank=10,
              elbo_num_particles=10,
-             convergence_tolerance=1e-7,
+             convergence_tolerance=1e-4,
              convergence_window=1000,
              checkpoint_interval=1000,
              num_steps=100000,
-             batch_size=1024,
              num_posterior_samples=10000,
              sampling_batch_size=100,
              forward_batch_size=512,
@@ -132,8 +126,6 @@ def _run_svi(ri,
         Step size for the Adam optimizer (default 1e-6).
     adam_clip_norm : float, optional
         Gradient clipping norm for Adam optimizer (default 1.0).
-    guide_rank : int, optional
-        Rank for the variational guide (default 10).
     elbo_num_particles : int, optional
         Number of particles for ELBO estimation during SVI (default 10).
     convergence_tolerance : float, optional
@@ -144,8 +136,6 @@ def _run_svi(ri,
         Steps between checkpoints and convergence checks (default 1000).
     num_steps : int, optional
         Number of SVI optimization steps (default 100000).
-    batch_size : int, optional
-        Mini-batch size for optimization (default 1024).
     num_posterior_samples : int, optional
         Number of posterior samples to draw after convergence (default 10000).
     sampling_batch_size : int, optional
@@ -170,7 +160,6 @@ def _run_svi(ri,
     # Create an svi object
     svi_obj = ri.setup_svi(adam_step_size=adam_step_size,
                            adam_clip_norm=adam_clip_norm,
-                           guide_rank=guide_rank,
                            elbo_num_particles=elbo_num_particles,
                            init_params=init_params)
  
@@ -184,7 +173,6 @@ def _run_svi(ri,
         convergence_window=convergence_window,
         checkpoint_interval=checkpoint_interval,
         num_steps=num_steps,
-        batch_size=batch_size
     )
 
     if converged or always_get_posterior:
@@ -210,7 +198,7 @@ def analyze_theta(growth_df,
                   condition_growth_model="hierarchical",
                   ln_cfu0_model="hierarchical",
                   dk_geno_model="hierarchical",
-                  activity_model="fixed",
+                  activity_model="horseshoe",
                   theta_model="hill",
                   theta_growth_noise_model="beta",
                   theta_binding_noise_model="beta",
@@ -219,7 +207,6 @@ def analyze_theta(growth_df,
                   out_root="tfs",
                   adam_step_size=1e-6,
                   adam_clip_norm=1.0,
-                  guide_rank=10,
                   elbo_num_particles=10,
                   convergence_tolerance=1e-6,
                   convergence_window=10000,
@@ -286,8 +273,6 @@ def analyze_theta(growth_df,
         Step size for the Adam optimizer (default 1e-6).
     adam_clip_norm : float, optional
         Gradient clipping norm for Adam optimizer (default 1.0).
-    guide_rank : int, optional
-        Rank for the variational guide (default 10).
     elbo_num_particles : int, optional
         Number of particles for ELBO estimation (default 10).
     convergence_tolerance : float, optional
@@ -330,6 +315,7 @@ def analyze_theta(growth_df,
     # parameters to describe the experiments
     gm = GrowthModel(growth_df,
                      binding_df,
+                     batch_size=batch_size,
                      condition_growth=condition_growth_model,
                      ln_cfu0=ln_cfu0_model,
                      dk_geno=dk_geno_model,
@@ -351,13 +337,11 @@ def analyze_theta(growth_df,
                         out_root=out_root,
                         adam_step_size=adam_step_size,
                         adam_clip_norm=adam_clip_norm,
-                        guide_rank=guide_rank,
                         elbo_num_particles=elbo_num_particles,
                         convergence_tolerance=convergence_tolerance,
                         convergence_window=convergence_window,
                         checkpoint_interval=checkpoint_interval,
                         num_steps=num_steps,
-                        batch_size=batch_size,
                         num_posterior_samples=num_posterior_samples,
                         sampling_batch_size=sampling_batch_size,
                         forward_batch_size=forward_batch_size,
@@ -376,8 +360,7 @@ def analyze_theta(growth_df,
                         map_convergence_tolerance=convergence_tolerance,
                         convergence_window=convergence_window,
                         checkpoint_interval=checkpoint_interval,
-                        map_num_steps=num_steps,
-                        batch_size=batch_size)
+                        map_num_steps=num_steps)
     
     elif analysis_method == "posterior":
 
@@ -387,13 +370,11 @@ def analyze_theta(growth_df,
                         out_root=out_root,
                         adam_step_size=adam_step_size,
                         adam_clip_norm=adam_clip_norm,
-                        guide_rank=guide_rank,
                         elbo_num_particles=elbo_num_particles,
                         convergence_tolerance=convergence_tolerance,
                         convergence_window=convergence_window,
                         checkpoint_interval=checkpoint_interval,
                         num_steps=0, # Don't do any optimization
-                        batch_size=batch_size,
                         num_posterior_samples=num_posterior_samples,
                         sampling_batch_size=sampling_batch_size,
                         forward_batch_size=forward_batch_size,
@@ -403,7 +384,7 @@ def analyze_theta(growth_df,
     else:
         raise ValueError(
             f"analysis method '{analysis_method}' not recognized. This should "
-            "be 'SVI' or 'MAP'."
+            "be 'SVI', 'MAP', or 'posterior'"
         )
 
 

@@ -85,6 +85,54 @@ def define_model(name: str,
     
     return fx_noisy
 
+def guide(name: str, 
+          fx_calc: jnp.ndarray, 
+          priors: ModelPriors) -> jnp.ndarray:
+    """
+    Guide for the Beta noise model.
+    
+    Since 'fx_calc' is passed without indices/plates, we cannot store 
+    variational parameters for each individual 'fx_noisy' value. 
+    Instead, we use an amortized strategy: we learn the global 'kappa' 
+    parameter, and then sample 'fx_noisy' from a Beta distribution 
+    derived from that learned 'kappa' and the input 'fx_calc'.
+    """
+
+    # --- 1. Global Parameter (Kappa) ---
+    
+    # We use a LogNormal guide for the Gamma prior (positive support).
+    # Initialize loc to log(prior_loc) to start near the prior mean.
+    # (Adding a small epsilon safety or defaulting to log(10.0) if priors are complex)
+    kappa_init = jnp.log(priors.beta_kappa_loc)
+    
+    kappa_loc = pyro.param(f"{name}_beta_kappa_loc", kappa_init)
+    kappa_scale = pyro.param(f"{name}_beta_kappa_scale", jnp.array(0.1),
+                             constraint=dist.constraints.positive)
+
+    kappa = pyro.sample(
+        f"{name}_beta_kappa",
+        dist.LogNormal(kappa_loc, kappa_scale)
+    )
+
+    # --- 2. Local Latent Variable (Amortized fx_noisy) ---
+    
+    # Calculate the variational alpha/beta using the input fx_calc
+    # and the sampled variational kappa. 
+    alpha = fx_calc * kappa
+    beta = (1.0 - fx_calc) * kappa
+
+    # Clip for stability (exactly mirroring the model)
+    alpha = jnp.clip(alpha, min=1e-10, max=1e10)
+    beta = jnp.clip(beta, min=1e-10, max=1e10)
+
+    # Sample fx_noisy
+    # Note: Because we are mirroring the model's structure exactly, 
+    # the KL divergence contribution from this term will largely cancel,
+    # focusing the optimization on learning 'kappa'.
+    fx_noisy = pyro.sample(f"{name}_dist", dist.Beta(alpha, beta))
+    
+    return fx_noisy
+
 def get_hyperparameters() -> Dict[str, Any]:
     """
     Get default values for the model hyperparameters.

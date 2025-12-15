@@ -943,7 +943,7 @@ def _simulate_library_group(
                                       observed=True).fillna(0)
   
     # Now force this to match ordered genotypes, building a dense grid. This 
-    # will introduce na for any missing genotypes. Set these to zero. When we
+    # will introduce na for any missing genotypes. Set these to one. When we
     # stack, these will be removed. 
     genotype_vs_kt_pivot = sparse_pivot.reindex(ordered_genotypes, fill_value=0)
     
@@ -952,7 +952,7 @@ def _simulate_library_group(
     
     # Add noise to the growth rate
     if growth_rate_noise is not None:
-        std = np.mean(genotype_vs_kt) * growth_rate_noise
+        std = np.abs(np.mean(genotype_vs_kt) * growth_rate_noise)
         genotype_vs_kt += rng.normal(scale=std, size=genotype_vs_kt.shape)
     
     # Name of the library (e.g. kanR, pheS, ... ) for looking up how to 
