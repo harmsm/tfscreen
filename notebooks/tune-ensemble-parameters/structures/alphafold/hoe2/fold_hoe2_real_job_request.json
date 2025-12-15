@@ -1,0 +1,36 @@
+[{
+ "name": "HOE2 real",
+ "modelSeeds": [
+  "1209064026"
+ ],
+ "sequences": [
+  {
+   "proteinChain": {
+    "sequence": "VKPVTLYDVAEYAGVSYQTVSRVVNQASHVSAKTREKVEAAMAELNYIPNRVAQQLAGKQSLLIGVATSSLALHAPSQIVAAIKSRADQLGASVVVSMVERSGVEACKAAVHNLLAQRVSGLIINYPLDDQDAIAVEAACTNVPALFLDVSDQTPINSIIFSHEDGTRLGVEHLVALGHQQIALLAGPLSSVSARLRLAGWHKYLTRNQIQPIAEREGDWSAMSGFQQTMQMLNEGIVPTAMLVANDQMALGAMRAITESGLRVGADISVVGYDDTEDSSCYIPPLTTIKQDFRLLGQTSVDRLLQLSQGQAVKGNQLLPVSLVKRKTTLAPNTQTASP",
+    "count": 2,
+    "useStructureTemplate": true
+   }
+  },
+  {
+   "dnaSequence": {
+    "sequence": "TTGTGAGCGGATAACAA",
+    "count": 1
+   }
+  },
+  {
+   "dnaSequence": {
+    "sequence": "TTGTTATCCGCTCACAA",
+    "count": 1
+   }
+  },
+  {
+   "ligand": {
+    "ligand": "CCD_CIT",
+    "count": 2
+   }
+  }
+ ],
+ "dialect": "alphafoldserver",
+ "version": 1
+}
+]
