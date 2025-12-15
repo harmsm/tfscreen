@@ -430,7 +430,8 @@ class TensorManager:
         pivot_non_nan = ~np.any(pivoted_df[self._to_tensor_columns]
                                 .isna().to_numpy(),axis=1)
         self._tensors["good_mask"] = jnp.asarray(
-            pivot_non_nan.reshape(self._tensor_shape)
+            pivot_non_nan.reshape(self._tensor_shape),
+            dtype=bool
         )
 
         # df cleanup -- remove nan prior to building tensors. We can set them 
@@ -438,7 +439,7 @@ class TensorManager:
         # analysis. Has to be above zero because jax/numpyro demands non-zero
         # values when it checks std on final obs/Normal samples -- even with 
         # the mask
-        pivoted_df = pivoted_df.fillna(1)
+        pivoted_df = pivoted_df.fillna(1.0)
 
         # Convert to tensors, reshaping and casting as needed
         for c in self._to_tensor_columns:

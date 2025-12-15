@@ -1,223 +1,140 @@
 import pytest
-import jax
 import jax.numpy as jnp
-from flax.struct import dataclass, field
-from typing import Any
+import numpy as np
+from collections import namedtuple
 
-# --- Module Imports ---
-from tfscreen.analysis.hierarchical.growth_model.batch import (
-    sample_batch,
-    deterministic_batch
-)
+# --- Import Module Under Test (MUT) ---
+from tfscreen.analysis.hierarchical.growth_model.batch import get_batch
 
-# -------------------
-# Test Fixture
-# -------------------
-# (Your mock_data_container fixture is perfect, no changes needed)
-@pytest.fixture
-def mock_data_container():
-    """
-    Provides mock dataclasses and a 'full_data' instance for testing.
+# --- Mock Data Structures ---
+
+# We need to simulate the nested DataClass structure: DataClass -> GrowthData
+# Using namedtuples to mimic the flax dataclasses behavior (replace method)
+
+class MockGrowthData:
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
     
-    The 'full_data' has num_genotype = 4.
+    def replace(self, **updates):
+        # Create a new instance with updated fields
+        new_data = MockGrowthData(**self.__dict__)
+        new_data.__dict__.update(updates)
+        return new_data
+
+class MockDataClass:
+    def __init__(self, growth):
+        self.growth = growth
+    
+    def replace(self, **updates):
+        # Only 'growth' is expected to be updated in this context
+        new_growth = updates.get("growth", self.growth)
+        return MockDataClass(growth=new_growth)
+
+@pytest.fixture
+def full_data_setup():
     """
-
-    # Define lightweight, local mock dataclasses for this test
-    @dataclass(frozen=True)
-    class MockGrowthData:
-        # Tensors to be sliced
-        ln_cfu: jnp.ndarray
-        ln_cfu_std: jnp.ndarray
-        t_pre: jnp.ndarray
-        t_sel: jnp.ndarray
-        map_ln_cfu0: jnp.ndarray
-        map_condition_pre: jnp.ndarray
-        map_condition_sel: jnp.ndarray
-        map_genotype: jnp.ndarray
-        map_theta: jnp.ndarray
-        titrant_conc: jnp.ndarray
-        map_theta_group: jnp.ndarray
-        good_mask: jnp.ndarray
-        
-        # Static metadata
-        num_genotype: int = field(pytree_node=False)
-
-    @dataclass(frozen=True)
-    class MockBindingData:
-        # A tensor to confirm it's not sliced
-        theta_obs: jnp.ndarray
-        
-    @dataclass(frozen=True)
-    class MockDataClass:
-        growth: MockGrowthData
-        binding: MockBindingData
-        
-        num_genotype: int = field(pytree_node=False)
-        
-
-    # --- Create Sample Data Instance ---
-    num_geno = 4
+    Creates a 'full' dataset with known values for testing slicing.
+    Dimensions: 
+      - Genotypes (Total): 10
+      - Other dims (Rep, Time, etc.): 1
+    """
+    total_size = 10
+    
+    # Create arrays with distinct values for verification
+    # Shape: (1, 1, 1, 1, 1, 1, total_size) for most data tensors
+    # We will use simple 1D arrays for the mock to verify the slicing logic on the *last* dimension,
+    # assuming the real data follows the ellipsis (...) indexing pattern.
+    
+    scale_vector = jnp.arange(total_size, dtype=float)
+    ln_cfu = jnp.arange(total_size, dtype=float) * 10.0
+    ln_cfu_std = jnp.arange(total_size, dtype=float) * 0.1
+    t_pre = jnp.arange(total_size, dtype=float) + 100.0
+    t_sel = jnp.arange(total_size, dtype=float) + 200.0
+    
+    map_condition_pre = jnp.arange(total_size, dtype=int)
+    map_condition_sel = jnp.arange(total_size, dtype=int)
+    good_mask = jnp.ones(total_size, dtype=bool)
+    
+    # Initial batch metadata
+    batch_idx = jnp.arange(total_size, dtype=int)
     
     growth = MockGrowthData(
-        # Tensors with last dim = 4
-        ln_cfu=jnp.array([[10., 20., 30., 40.]]), # shape (1, 4)
-        ln_cfu_std=jnp.ones((1, 4)),
-        t_pre=jnp.ones((1, 4)),
-        t_sel=jnp.ones((1, 4)),
-        map_ln_cfu0=jnp.ones((1, 4)),
-        map_condition_pre=jnp.ones((1, 4)),
-        map_condition_sel=jnp.ones((1, 4)),
-        map_genotype=jnp.ones((1, 4)),
-        map_theta=jnp.array([100., 200., 300., 400.]), # shape (4,)
-        titrant_conc=jnp.ones((1, 1, 4)), # shape (1, 1, 4)
-        map_theta_group=jnp.ones((1, 1, 4)),
-        good_mask=jnp.ones((1, 4), dtype=bool),
-        
-        # Static metadata
-        num_genotype=num_geno
+        batch_size=total_size,
+        batch_idx=batch_idx,
+        scale_vector=scale_vector,
+        ln_cfu=ln_cfu,
+        ln_cfu_std=ln_cfu_std,
+        t_pre=t_pre,
+        t_sel=t_sel,
+        map_condition_pre=map_condition_pre,
+        map_condition_sel=map_condition_sel,
+        good_mask=good_mask
     )
     
-    binding = MockBindingData(
-        # This tensor should remain untouched
-        theta_obs=jnp.array([1., 2., 3., 4.])
-    )
-    
-    full_data = MockDataClass(
-        growth=growth, 
-        binding=binding,
-        num_genotype=num_geno
-    )
-    
-    return full_data
+    return MockDataClass(growth=growth)
 
-# -------------------
-# test deterministic_batch
-# -------------------
+# --- Test Cases ---
 
-def test_deterministic_batch(mock_data_container):
+def test_get_batch_slicing(full_data_setup):
     """
-    Tests that deterministic_batch correctly slices all growth tensors
-    and leaves binding tensors untouched.
+    Tests that get_batch correctly slices data based on the index array.
     """
-    full_data = mock_data_container
+    full_data = full_data_setup
     
-    # Select 2nd and 4th genotypes (indices 1 and 3)
-    idx = jnp.array([1, 3])
+    # INDICES TO SELECT: [2, 5, 8]
+    indices = jnp.array([2, 5, 8], dtype=int)
     
-    batch_data = deterministic_batch(full_data, idx)
+    # Run MUT
+    batch_data = get_batch(full_data, indices)
     
-    # --- Check Sliced Growth Tensors ---
+    # --- 1. Check Metadata Updates ---
+    assert batch_data.growth.batch_size == 3
+    assert jnp.array_equal(batch_data.growth.batch_idx, indices)
     
-    # Check 2D tensor: shape (1, 4) -> (1, 2)
-    # Values should be 20. and 40.
-    expected_ln_cfu = jnp.array([[20., 40.]])
-    assert jnp.array_equal(batch_data.growth.ln_cfu, expected_ln_cfu)
+    # --- 2. Check Data Slicing ---
     
-    # Check 1D tensor: shape (4,) -> (2,)
-    # Values should be 200. and 400.
-    expected_map_theta = jnp.array([200., 400.])
-    assert jnp.array_equal(batch_data.growth.map_theta, expected_map_theta)
+    # Scale Vector
+    expected_scale = full_data.growth.scale_vector[indices]
+    assert jnp.array_equal(batch_data.growth.scale_vector, expected_scale)
+    
+    # ln_cfu (Values: 20.0, 50.0, 80.0)
+    expected_ln_cfu = jnp.array([20.0, 50.0, 80.0], dtype=float)
+    assert jnp.allclose(batch_data.growth.ln_cfu, expected_ln_cfu)
+    
+    # t_pre (Values: 102.0, 105.0, 108.0)
+    expected_t_pre = jnp.array([102.0, 105.0, 108.0], dtype=float)
+    assert jnp.allclose(batch_data.growth.t_pre, expected_t_pre)
+    
+    # Maps
+    assert jnp.array_equal(batch_data.growth.map_condition_pre, indices) # Mapped 1-to-1 in setup
 
-    # Check 3D tensor: shape (1, 1, 4) -> (1, 1, 2)
-    expected_titrant_conc = jnp.ones((1, 1, 2))
-    assert batch_data.growth.titrant_conc.shape == expected_titrant_conc.shape
-    assert jnp.array_equal(batch_data.growth.titrant_conc, expected_titrant_conc)
-
-    # --- Check Unchanged Data ---
-    
-    # Check that binding data values are equal
-    assert jnp.array_equal(batch_data.binding.theta_obs, full_data.binding.theta_obs)
-    
-    # Check that static metadata is unchanged
-    assert batch_data.growth.num_genotype == 4
-    assert batch_data.num_genotype == 4
-
-
-# -------------------
-# test sample_batch
-# -------------------
-
-def test_sample_batch_shapes_and_determinism(mock_data_container):
+def test_get_batch_ordering(full_data_setup):
     """
-    Tests that sample_batch slices to the correct shape and is
-    deterministic (i.e., gives the same result for the same key).
+    Tests that the returned batch respects the *order* of the provided indices,
+    even if they are not sorted.
     """
-    full_data = mock_data_container
-    rng_key = jax.random.PRNGKey(42)
-    batch_size = 2
+    full_data = full_data_setup
     
-    # --- Run first time ---
-    batch_data_1 = sample_batch(rng_key, full_data, batch_size)
+    # INDICES: [8, 0, 5] (Unsorted)
+    indices = jnp.array([8, 0, 5], dtype=int)
     
-    # --- Check Shapes ---
-    assert batch_data_1.growth.ln_cfu.shape == (1, batch_size)
-    assert batch_data_1.growth.map_theta.shape == (batch_size,)
-    assert batch_data_1.growth.titrant_conc.shape == (1, 1, batch_size)
+    batch_data = get_batch(full_data, indices)
     
-    # --- Check Unchanged Data ---
+    # Check ln_cfu order: Should be [80.0, 0.0, 50.0]
+    expected_ln_cfu = jnp.array([80.0, 0.0, 50.0], dtype=float)
     
-    # *** THIS IS THE CHANGED LINE ***
-    # Check for *value equality*, not *object identity*
-    assert jnp.array_equal(batch_data_1.binding.theta_obs, full_data.binding.theta_obs)
-    
-    # Check that static metadata is unchanged
-    assert batch_data_1.growth.num_genotype == 4
+    assert jnp.allclose(batch_data.growth.ln_cfu, expected_ln_cfu)
+    assert jnp.array_equal(batch_data.growth.batch_idx, indices)
 
-    # --- Check Determinism ---
-    # JAX PRNG is deterministic. With key 42, sampling 2 from 4 (0,1,2,3)
-    # without replacement gives indices [2, 0].
-    # This corresponds to values [30., 10.] from ln_cfu
-    # and [300., 100.] from map_theta
-    
-    # ---
-    # NOTE: My previous test had the wrong indices. 
-    # jax.random.choice(key, 4, (2,), replace=False) -> [2 0]
-    # Let's re-run the `deterministic_batch` test with [2, 0]
-    # ln_cfu[..., [2, 0]] -> [30., 10.]
-    # map_theta[..., [2, 0]] -> [300., 100.]
-    # This matches what I had. 
-    
-    # ---
-    # Wait, the failure trace has:
-    # E   ... .MockDataClass(growth=... .MockGrowthData(ln_cfu=Array([[30., 40.]...
-    # This implies the sampled indices were [2, 3], not [2, 0].
-    # This can happen due to JAX version differences.
-    
-    # Let's make the test robust to this by just checking determinism
-    # against a second run.
-    
-    # --- Check Determinism ---
-    
-    # --- Run second time with same key ---
-    batch_data_2 = sample_batch(rng_key, full_data, batch_size)
-    
-    # Should be identical to the first run
-    assert jnp.array_equal(batch_data_1.growth.ln_cfu, batch_data_2.growth.ln_cfu)
-    assert jnp.array_equal(batch_data_1.growth.map_theta, batch_data_2.growth.map_theta)
-    
-    # --- Check a specific result based on *your* failure trace ---
-    # Your trace shows: ln_cfu=Array([[30., 40.]...
-    # This corresponds to indices [2, 3]
-    expected_ln_cfu = jnp.array([[30., 40.]])
-    expected_map_theta = jnp.array([300., 400.])
-    
-    assert jnp.array_equal(batch_data_1.growth.ln_cfu, expected_ln_cfu)
-    assert jnp.array_equal(batch_data_1.growth.map_theta, expected_map_theta)
-
-
-def test_sample_batch_raises_error(mock_data_container):
+def test_get_batch_full_multidimensional_support():
     """
-    Tests that sample_batch raises a ValueError when batch_size > total_size
-    because 'replace=False' is used.
+    Tests get_batch with actual multi-dimensional arrays to ensure the 
+    ellipsis (...) slicing works as intended.
     """
-    full_data = mock_data_container
-    rng_key = jax.random.PRNGKey(42)
+    # Shape: (2, 2, 5) -> (Rep, Time, Genotype)
+    # We want to slice the last dimension (Genotype)
     
-    # Batch size (5) is greater than num_genotype (4)
-    batch_size = 5
+    data_shape = (2, 2, 5)
+    full_array = jnp.arange(20).reshape(data_shape) # 0..19
     
-    # The JIT compilation might wrap the error
-    with pytest.raises(ValueError):
-        batch_data = sample_batch(rng_key, full_data, batch_size)
-        # Force JIT execution
-        batch_data.growth.ln_cfu.block_until_ready()
+    # indices to select from last dim: [1, 3]

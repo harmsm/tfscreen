@@ -43,7 +43,9 @@ class ThetaParam:
     theta: jnp.ndarray
 
 
-def define_model(name: str, data: DataClass, priors: ModelPriors) -> ThetaParam:
+def define_model(name: str,
+                 data: DataClass,
+                 priors: ModelPriors) -> ThetaParam:
     """
     Defines the hierarchical categorical model for theta.
     
@@ -90,14 +92,15 @@ def define_model(name: str, data: DataClass, priors: ModelPriors) -> ThetaParam:
     # --------------------------------------------------------------------------
     # Sample parameters for each (titrant_name, titrant_conc, genotype) group 
 
-    with pyro.plate(f"{name}_titrant_name_plate", data.num_titrant_name, dim=-3):
-        with pyro.plate(f"{name}_titrant_conc_plate", data.num_titrant_conc, dim=-2):
-            with pyro.plate(f"{name}_genotype_plate", data.num_genotype, dim=-1):
+    with pyro.plate(f"{name}_titrant_name_plate", data.num_titrant_name,dim=-3):
+        with pyro.plate(f"{name}_titrant_conc_plate", data.num_titrant_conc,dim=-2):
+            with pyro.plate("theta_genotype_plate", size=data.batch_size,dim=-1):
+                with pyro.handlers.scale(scale=data.scale_vector):
                 
-                logit_theta_offset = pyro.sample(
-                    f"{name}_logit_theta_offset", 
-                    dist.Normal(0, 1)
-                )
+                    logit_theta_offset = pyro.sample(
+                        f"{name}_logit_theta_offset", 
+                        dist.Normal(0.0, 1.0)
+                    )
 
     # Calculate parameters in logit-space
     logit_theta = logit_theta_hyper_loc + logit_theta_offset * logit_theta_hyper_scale
@@ -109,6 +112,80 @@ def define_model(name: str, data: DataClass, priors: ModelPriors) -> ThetaParam:
 
     # Register parameter values
     pyro.deterministic(f"{name}_theta", theta)
+
+    theta_param = ThetaParam(theta=theta)
+    
+    return theta_param
+
+def guide(name: str,
+          data: DataClass,
+          priors: ModelPriors) -> ThetaParam:
+    """
+    Guide corresponding to the categorical theta model.
+    """
+
+    # --- 1. Global Hypers ---
+
+    # Logit Theta Hyper Loc (Normal)
+    # Using the prior loc as the initial value for the variational mean
+    h_loc_loc = pyro.param(f"{name}_logit_theta_hyper_loc_loc", 
+                           jnp.array(priors.logit_theta_hyper_loc_loc))
+    h_loc_scale = pyro.param(f"{name}_logit_theta_hyper_loc_scale", 
+                             jnp.array(priors.logit_theta_hyper_loc_scale),
+                             constraint=dist.constraints.positive)
+    
+    logit_theta_hyper_loc = pyro.sample(
+        f"{name}_logit_theta_hyper_loc",
+        dist.Normal(h_loc_loc, h_loc_scale)
+    )
+
+    # Logit Theta Hyper Scale (LogNormal guide for HalfNormal prior)
+    # Initializing small (-1.0 => ~0.37)
+    h_scale_loc = pyro.param(f"{name}_logit_theta_hyper_scale_loc", jnp.array(-1.0))
+    h_scale_scale = pyro.param(f"{name}_logit_theta_hyper_scale_scale", jnp.array(0.1),
+                               constraint=dist.constraints.positive)
+    
+    logit_theta_hyper_scale = pyro.sample(
+        f"{name}_logit_theta_hyper_scale",
+        dist.LogNormal(h_scale_loc, h_scale_scale)
+    )
+
+    # --- 2. Local Parameters (3D Tensor) ---
+    
+    # Shape: (NumTitrantName, NumTitrantConc, NumGenotype)
+    param_shape = (data.num_titrant_name, data.num_titrant_conc, data.num_genotype)
+
+    offset_locs = pyro.param(f"{name}_logit_theta_offset_locs", 
+                             jnp.zeros(param_shape,dtype=float))
+    offset_scales = pyro.param(f"{name}_logit_theta_offset_scales", 
+                               jnp.ones(param_shape,dtype=float),
+                               constraint=dist.constraints.positive)
+
+    # --- 3. Sampling (Sliced by Genotype) ---
+
+    with pyro.plate(f"{name}_titrant_name_plate", data.num_titrant_name, dim=-3):
+        with pyro.plate(f"{name}_titrant_conc_plate", data.num_titrant_conc, dim=-2):
+            # Batching on Genotype (dim=-1)
+            with pyro.plate("theta_genotype_plate", size=data.batch_size,dim=-1):
+                with pyro.handlers.scale(scale=data.scale_vector):
+                
+                    # Slice the last dimension (Genotype) using the batch indices
+                    # The ellipsis (...) preserves the TitrantName and TitrantConc dimensions
+                    batch_locs = offset_locs[..., data.batch_idx]
+                    batch_scales = offset_scales[..., data.batch_idx]
+                    
+                    logit_theta_offset = pyro.sample(
+                        f"{name}_logit_theta_offset", 
+                        dist.Normal(batch_locs, batch_scales)
+                    )
+
+    # --- 4. Reconstruction (Deterministic) ---
+    
+    # Calculate parameters in logit-space
+    logit_theta = logit_theta_hyper_loc + logit_theta_offset * logit_theta_hyper_scale
+
+    # Transform parameters to natural scale
+    theta = dist.transforms.SigmoidTransform()(logit_theta)
 
     theta_param = ThetaParam(theta=theta)
     
@@ -149,9 +226,9 @@ def run_model(theta_param: ThetaParam, data: DataClass) -> jnp.ndarray:
     # The parameters are the calculated values
     theta_calc = theta_param.theta
 
-    # Scatter to the full-sized tensor if required
+    # Broadcast to the full-sized tensor if required
     if data.scatter_theta == 1:
-        theta_calc = theta_calc.ravel()[data.map_theta]
+        theta_calc = theta_calc[None,None,None,None,:,:,:]
     
     return theta_calc
 
@@ -205,7 +282,7 @@ def get_guesses(name: str, data: DataClass) -> Dict[str, Any]:
 
     # Guess offsets (all zeros)
     shape = (data.num_titrant_name, data.num_titrant_conc, data.num_genotype)
-    guesses[f"{name}_logit_theta_offset"] = jnp.zeros(shape)
+    guesses[f"{name}_logit_theta_offset"] = jnp.zeros(shape,dtype=float)
 
     return guesses
 

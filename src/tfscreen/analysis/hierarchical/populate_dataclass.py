@@ -1,5 +1,7 @@
 
 import inspect
+import numpy as np
+from jax import numpy as jnp
 
 def populate_dataclass(target_dataclass, sources):
     """
@@ -88,6 +90,10 @@ def populate_dataclass(target_dataclass, sources):
                 f"jnp.ndarray, np.ndarray, scalar, or dict. Python lists/tuples are not "
                 f"valid JAX Pytree nodes."
             )
+
+        # Coerce any numpy arrays into jax arrays
+        if isinstance(value,np.ndarray):
+            value = jnp.array(value)
 
         dataclass_kwargs[k] = value
 

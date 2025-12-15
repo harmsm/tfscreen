@@ -8,6 +8,7 @@ from collections import namedtuple
 from tfscreen.analysis.hierarchical.growth_model.components.no_noise import (
     ModelPriors,
     define_model,
+    guide,
     get_hyperparameters,
     get_guesses,
     get_priors
@@ -70,3 +71,23 @@ def test_define_model_pass_through_logic(mock_data):
     # --- 4. Check that no sample or deterministic sites were added ---
     # The trace should be empty
     assert len(model_trace) == 0
+
+def test_guide_pass_through_logic(mock_data):
+    """
+    Tests that guide correctly returns the input 'fx_calc'
+    and does not add any sample or deterministic sites.
+    """
+    name = "test_no_noise_guide"
+    priors = get_priors()
+    
+    # Define a test input array
+    fx_calc_in = jnp.array([0.1, 0.5, 0.9])
+    
+    # --- 1. Get the final return value ---
+    fx_calc_out = guide(name=name, 
+                        fx_calc=fx_calc_in, 
+                        priors=priors)
+
+    # --- 2. Check that input and output are identical ---
+    assert fx_calc_out is fx_calc_in
+    assert jnp.all(fx_calc_out == fx_calc_in)

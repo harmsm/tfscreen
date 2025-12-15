@@ -1,18 +1,18 @@
 import pytest
-import jax
 import jax.numpy as jnp
 import numpyro
-from numpyro.handlers import trace, substitute
+import numpyro.distributions as dist
+from numpyro.handlers import trace, substitute, seed
 from collections import namedtuple
 
 # --- Import Module Under Test (MUT) ---
 from tfscreen.analysis.hierarchical.growth_model.components.growth_independent import (
     ModelPriors,
     define_model,
+    guide,
     get_hyperparameters,
     get_priors,
     get_guesses
-
 )
 
 # --- Mock Data Fixture ---
@@ -163,3 +163,59 @@ def test_define_model_logic_and_shapes(mock_data):
     # Spot-check the mapping logic
     assert k_pre[0] == k_per_cond_rep_1d[mock_data.map_condition_pre[0]]
     assert m_sel[1] == m_per_cond_rep_1d[mock_data.map_condition_sel[1]]
+
+def test_guide_logic_and_shapes(mock_data):
+    """
+    Tests the guide function shapes, parameter creation, and execution.
+    """
+    name = "test_growth_ind_guide"
+    priors = get_priors(mock_data.num_condition)
+
+    # Seed the guide execution to handle sampling
+    with seed(rng_seed=0):
+        # Trace the guide to inspect parameters and samples
+        guide_trace = trace(guide).get_trace(
+            name=name,
+            data=mock_data,
+            priors=priors
+        )
+        
+        # Run guide to check return values
+        return_tuple = guide(name=name,
+                             data=mock_data,
+                             priors=priors)
+    
+    k_pre, m_pre, k_sel, m_sel = return_tuple
+
+    # --- 1. Check Global Parameter Sites ---
+    # Should have shape (num_condition,)
+    assert f"{name}_k_hyper_loc_loc" in guide_trace
+    k_hl_loc = guide_trace[f"{name}_k_hyper_loc_loc"]["value"]
+    assert k_hl_loc.shape == (mock_data.num_condition,)
+
+    # --- 2. Check Local Parameter Sites ---
+    # The guide initializes local params with shape (num_replicate, num_condition)
+    # due to how the nested plates index into them.
+    assert f"{name}_k_offset_locs" in guide_trace
+    k_offset_locs = guide_trace[f"{name}_k_offset_locs"]["value"]
+    expected_local_shape = (mock_data.num_replicate, mock_data.num_condition)
+    assert k_offset_locs.shape == expected_local_shape
+    
+    # --- 3. Check Sample Sites ---
+    # Global samples should have shape (num_condition,)
+    assert f"{name}_k_hyper_loc" in guide_trace
+    k_hyper = guide_trace[f"{name}_k_hyper_loc"]["value"]
+    assert k_hyper.shape == (mock_data.num_condition,)
+
+    # Local samples should broadcast to (num_replicate, num_condition)
+    # because of the nested plates dim=-1 and dim=-2
+    assert f"{name}_k_offset" in guide_trace
+    k_offset = guide_trace[f"{name}_k_offset"]["value"]
+    assert k_offset.shape == expected_local_shape
+
+    # --- 4. Check Return Shapes ---
+    # Must match the mapping arrays
+    assert k_pre.shape == mock_data.map_condition_pre.shape
+    assert m_pre.shape == mock_data.map_condition_pre.shape
+    assert k_sel.shape == mock_data.map_condition_sel.shape
+    assert m_sel.shape == mock_data.map_condition_sel.shape

@@ -122,8 +122,8 @@ def define_model(name: str,
 
         # Loop over replicates
         with pyro.plate(f"{name}_replicate_parameters", data.num_replicate,dim=-2):
-            k_offset = pyro.sample(f"{name}_k_offset", dist.Normal(0, 1))
-            m_offset = pyro.sample(f"{name}_m_offset", dist.Normal(0, 1))
+            k_offset = pyro.sample(f"{name}_k_offset", dist.Normal(0.0, 1.0))
+            m_offset = pyro.sample(f"{name}_m_offset", dist.Normal(0.0, 1.0))
     
         growth_k_dist = growth_k_hyper_loc + k_offset * growth_k_hyper_scale
         growth_m_dist = growth_m_hyper_loc + m_offset * growth_m_hyper_scale
@@ -144,6 +144,147 @@ def define_model(name: str,
 
     return k_pre, m_pre, k_sel, m_sel
 
+def guide(name: str, 
+          data: GrowthData, 
+          priors: ModelPriors) -> Tuple[jnp.ndarray, ...]:
+    """
+    Guide function for the independent condition/replicate growth model.
+
+    This function defines the variational distributions (guide) for the 
+    independent growth model, specifying the parameterization of the 
+    variational family for SVI inference. It registers variational parameters 
+    for all global (per-condition) and local (per-replicate and per-condition) 
+    latent variables, and samples from the corresponding distributions using 
+    nested plates.
+
+    Parameters
+    ----------
+    name : str
+        Prefix for all Numpyro sample and parameter sites in this guide.
+    data : GrowthData
+        Pytree (Flax dataclass) containing experimental data and metadata.
+        Used to determine the number of conditions and replicates, and to 
+        provide mapping arrays for expanding parameters to observations.
+    priors : ModelPriors
+        Pytree (Flax dataclass) containing the prior hyperparameters for the 
+        model. Used to initialize the variational parameters.
+
+    Returns
+    -------
+    k_pre : jnp.ndarray
+        Basal growth rate `k` for pre-selection, expanded to match observations.
+    m_pre : jnp.ndarray
+        Theta-dependent growth rate `m` for pre-selection, expanded to match observations.
+    k_sel : jnp.ndarray
+        Basal growth rate `k` for post-selection, expanded to match observations.
+    m_sel : jnp.ndarray
+        Theta-dependent growth rate `m` for post-selection, expanded to match observations.
+
+    Notes
+    -----
+    - The guide uses nested plates: the outer plate is over experimental 
+      conditions, and the inner plate is over replicates within each condition.
+    - All variational parameters are registered using `pyro.param` and are 
+      initialized from the provided priors or with default values.
+    - The returned arrays are flattened and then expanded to match the 
+      observation indices using the mapping arrays in `data`.
+    """
+
+    # --- 1. Global Parameters (Per Condition) ---
+    
+    # K Hyper Loc (Normal)
+    k_hl_loc = pyro.param(f"{name}_k_hyper_loc_loc", jnp.array(priors.growth_k_hyper_loc_loc))
+    k_hl_scale = pyro.param(f"{name}_k_hyper_loc_scale", jnp.array(priors.growth_k_hyper_loc_scale),
+                            constraint=dist.constraints.positive)
+    
+    # K Hyper Scale (LogNormal guide for HalfNormal prior)
+    k_hs_loc = pyro.param(f"{name}_k_hyper_scale_loc", 
+                          jnp.full(data.num_condition, -1.0))
+    k_hs_scale = pyro.param(f"{name}_k_hyper_scale_scale", 
+                            jnp.full(data.num_condition, 0.1),
+                            constraint=dist.constraints.positive)
+
+    # M Hyper Loc (Normal)
+    m_hl_loc = pyro.param(f"{name}_m_hyper_loc_loc", jnp.array(priors.growth_m_hyper_loc_loc))
+    m_hl_scale = pyro.param(f"{name}_m_hyper_loc_scale", jnp.array(priors.growth_m_hyper_loc_scale),
+                            constraint=dist.constraints.positive)
+    
+    # M Hyper Scale (LogNormal guide for HalfNormal prior)
+    m_hs_loc = pyro.param(f"{name}_m_hyper_scale_loc", 
+                          jnp.full(data.num_condition, -1.0))
+    m_hs_scale = pyro.param(f"{name}_m_hyper_scale_scale", 
+                            jnp.full(data.num_condition, 0.1),
+                            constraint=dist.constraints.positive)
+
+    # --- 2. Local Parameters (Per Replicate AND Condition) ---
+    # Shape: (num_replicate, num_condition)
+    # Note: dim 0 is replicate (-2), dim 1 is condition (-1)
+    
+    local_shape = (data.num_replicate, data.num_condition)
+
+    k_offset_locs = pyro.param(f"{name}_k_offset_locs", jnp.zeros(local_shape,dtype=float))
+    k_offset_scales = pyro.param(f"{name}_k_offset_scales", jnp.ones(local_shape,dtype=float),
+                                 constraint=dist.constraints.positive)
+
+    m_offset_locs = pyro.param(f"{name}_m_offset_locs", jnp.zeros(local_shape,dtype=float))
+    m_offset_scales = pyro.param(f"{name}_m_offset_scales", jnp.ones(local_shape,dtype=float),
+                                 constraint=dist.constraints.positive)
+
+
+    # --- 3. Sampling with Nested Plates ---
+    
+    # Outer Loop: Conditions (dim=-1)
+    with pyro.plate(f"{name}_condition_parameters", data.num_condition, dim=-1) as idx_c:
+
+        # Sample Hypers (Sliced by Condition)
+        growth_k_hyper_loc = pyro.sample(f"{name}_k_hyper_loc", 
+                                         dist.Normal(k_hl_loc[idx_c], k_hl_scale[idx_c]))
+        
+        growth_k_hyper_scale = pyro.sample(f"{name}_k_hyper_scale", 
+                                           dist.LogNormal(k_hs_loc[idx_c], k_hs_scale[idx_c]))
+
+        growth_m_hyper_loc = pyro.sample(f"{name}_m_hyper_loc", 
+                                         dist.Normal(m_hl_loc[idx_c], m_hl_scale[idx_c]))
+        
+        growth_m_hyper_scale = pyro.sample(f"{name}_m_hyper_scale", 
+                                           dist.LogNormal(m_hs_loc[idx_c], m_hs_scale[idx_c]))
+
+        # Inner Loop: Replicates (dim=-2)
+        with pyro.plate(f"{name}_replicate_parameters", data.num_replicate, dim=-2) as idx_r:
+            
+            # Slice Locals: 
+            # We must broadcast row indices (idx_r) against col indices (idx_c)
+            # idx_r[:, None] gives shape (Batch_R, 1)
+            # idx_c          gives shape (Batch_C)
+            # Result         gives shape (Batch_R, Batch_C) matching the plates
+            
+            k_batch_locs = k_offset_locs[idx_r[:, None], idx_c]
+            k_batch_scales = k_offset_scales[idx_r[:, None], idx_c]
+            k_offset = pyro.sample(f"{name}_k_offset", dist.Normal(k_batch_locs, k_batch_scales))
+
+            m_batch_locs = m_offset_locs[idx_r[:, None], idx_c]
+            m_batch_scales = m_offset_scales[idx_r[:, None], idx_c]
+            m_offset = pyro.sample(f"{name}_m_offset", dist.Normal(m_batch_locs, m_batch_scales))
+    
+    # --- 4. Reconstruction ---
+    # Note: Broadcasting handles the shape mismatch between Hypers (Batch_C,) and Offsets (Batch_R, Batch_C)
+    growth_k_dist = growth_k_hyper_loc + k_offset * growth_k_hyper_scale
+    growth_m_dist = growth_m_hyper_loc + m_offset * growth_m_hyper_scale
+    
+    # Flatten array (ravel uses C-style order: row0, row1...)
+    # This matches the "rep0, cond0 \ rep0, cond1" order if cond is the last axis.
+    growth_k_dist_1d = growth_k_dist.ravel()
+    growth_m_dist_1d = growth_m_dist.ravel()
+
+    # Expand to full-sized tensors
+    k_pre = growth_k_dist_1d[data.map_condition_pre]
+    m_pre = growth_m_dist_1d[data.map_condition_pre]
+    k_sel = growth_k_dist_1d[data.map_condition_sel]
+    m_sel = growth_m_dist_1d[data.map_condition_sel]
+
+    return k_pre, m_pre, k_sel, m_sel
+
+
 def get_hyperparameters(num_condition: int) -> Dict[str, Any]:
     """
     Get default values for the model hyperparameters.
@@ -162,12 +303,12 @@ def get_hyperparameters(num_condition: int) -> Dict[str, Any]:
     """
 
     parameters = {}
-    parameters["growth_k_hyper_loc_loc"] = jnp.ones(num_condition)*0.025
-    parameters["growth_k_hyper_loc_scale"] = jnp.ones(num_condition)*0.1
-    parameters["growth_k_hyper_scale"] = jnp.ones(num_condition)*1.0
-    parameters["growth_m_hyper_loc_loc"] = jnp.zeros(num_condition)*0.0
-    parameters["growth_m_hyper_loc_scale"] = jnp.ones(num_condition)*0.01
-    parameters["growth_m_hyper_scale"] = jnp.ones(num_condition)*1.0
+    parameters["growth_k_hyper_loc_loc"] = jnp.ones(num_condition,dtype=float)*0.025
+    parameters["growth_k_hyper_loc_scale"] = jnp.ones(num_condition,dtype=float)*0.1
+    parameters["growth_k_hyper_scale"] = jnp.ones(num_condition,dtype=float)
+    parameters["growth_m_hyper_loc_loc"] = jnp.zeros(num_condition,dtype=float)
+    parameters["growth_m_hyper_loc_scale"] = jnp.ones(num_condition,dtype=float)*0.01
+    parameters["growth_m_hyper_scale"] = jnp.ones(num_condition,dtype=float)
 
     return parameters
 
@@ -211,13 +352,13 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
     hyper_shape = (data.num_condition, 1) 
 
     guesses = {}
-    guesses[f"{name}_k_hyper_loc"] = jnp.ones(hyper_shape) * 1.0
-    guesses[f"{name}_k_hyper_scale"] = jnp.ones(hyper_shape) * 0.1
-    guesses[f"{name}_m_hyper_loc"] = jnp.ones(hyper_shape) * 1.0
-    guesses[f"{name}_m_hyper_scale"] = jnp.ones(hyper_shape) * 0.1
+    guesses[f"{name}_k_hyper_loc"] = jnp.ones(hyper_shape,dtype=float)
+    guesses[f"{name}_k_hyper_scale"] = jnp.ones(hyper_shape,dtype=float) * 0.1
+    guesses[f"{name}_m_hyper_loc"] = jnp.ones(hyper_shape,dtype=float) 
+    guesses[f"{name}_m_hyper_scale"] = jnp.ones(hyper_shape,dtype=float) * 0.1
     
-    guesses[f"{name}_k_offset"] = jnp.zeros(shape)
-    guesses[f"{name}_m_offset"] = jnp.zeros(shape)
+    guesses[f"{name}_k_offset"] = jnp.zeros(shape,dtype=float)
+    guesses[f"{name}_m_offset"] = jnp.zeros(shape,dtype=float)
 
     return guesses
 

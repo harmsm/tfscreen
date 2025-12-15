@@ -1,5 +1,4 @@
 import pytest
-import jax
 import jax.numpy as jnp
 import numpyro
 import numpyro.distributions as dist
@@ -7,18 +6,20 @@ from numpyro.handlers import trace
 from collections import namedtuple
 
 # --- Import Module Under Test (MUT) ---
-from tfscreen.analysis.hierarchical.growth_model.observe.binding import observe
+from tfscreen.analysis.hierarchical.growth_model.observe.binding import observe, guide
 
 # --- Mock Data Fixture ---
 
-# A mock data object that provides the fields observe needs
+# Updated mock to include batching fields
 MockBindingData = namedtuple("MockBindingData", [
     "num_titrant_name",
     "num_titrant_conc",
     "num_genotype",
     "good_mask",
     "theta_std",
-    "theta_obs"
+    "theta_obs",
+    "batch_size",
+    "scale_vector"
 ])
 
 @pytest.fixture
@@ -34,13 +35,18 @@ def mock_data():
     mask_array = jnp.ones(shape, dtype=bool)
     mask_array = mask_array.at[0, :, :].set(False) # Mask first titrant_name
     
+    batch_size = shape[2] # Full batch for basic test
+    scale_vector = jnp.ones(batch_size, dtype=float)
+
     return MockBindingData(
         num_titrant_name=shape[0],
         num_titrant_conc=shape[1],
         num_genotype=shape[2],
         good_mask=mask_array,
         theta_std=jnp.ones(shape) * 0.1,
-        theta_obs=jnp.ones(shape) * 0.5
+        theta_obs=jnp.ones(shape) * 0.5,
+        batch_size=batch_size,
+        scale_vector=scale_vector
     )
 
 def test_observe_binding_site(mock_data):
@@ -86,22 +92,26 @@ def test_observe_binding_site(mock_data):
     
     # Check that the observations were passed correctly
     assert jnp.all(site["value"] == mock_data.theta_obs)
-    # --- 4. Check Masking ---
-
-    # We can manually compute the log_prob and check the mask's effect.
-    # `site["fn"]` is the MaskedDistribution
-    # `site["value"]` is the observed data (data.theta_obs)
     
-    # This call computes the log_prob at all sites, but the
-    # MaskedDistribution will set the log_prob of masked sites to 0.
-    # Summing them gives the total log_prob.
+    # --- 4. Check Masking ---
+    
+    # Calculate the expected log_prob manually
+    # MaskedDistribution returns 0 log_prob for masked items
     actual_log_prob = jnp.sum(site["fn"].log_prob(site["value"]))
 
-    # Now, let's calculate what we *expect* the log_prob to be.
-    # This is the log_prob of the *unmasked* base distribution,
-    # summed over only the *good* data.
+    # Unmasked calculation on only good data
     unmasked_log_prob = dist.Normal(binding_pred, mock_data.theta_std).log_prob(mock_data.theta_obs)
     expected_log_prob = jnp.sum(unmasked_log_prob[mock_data.good_mask])
     
-    # Check that the two calculations are identical.
     assert jnp.isclose(actual_log_prob, expected_log_prob)
+
+def test_guide(mock_data):
+    """
+    Tests the guide function.
+    The guide is currently empty/no-op, so we just check it runs without error.
+    """
+    name = "test_guide"
+    binding_pred = jnp.ones_like(mock_data.theta_obs) * 0.45
+    
+    # Should run without raising
+    guide(name, mock_data, binding_pred)
