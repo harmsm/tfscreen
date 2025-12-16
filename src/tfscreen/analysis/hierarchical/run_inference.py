@@ -347,7 +347,9 @@ class RunInference:
             latent_sampler = Predictive(guide,
                                         params=params,
                                         num_samples=sampling_batch_size)
-            latent_samples = latent_sampler(post_key)
+            latent_samples = latent_sampler(post_key,
+                                            priors=self.model.priors,
+                                            data=self.model.data)
 
             # Sample batches of genotypes
             batched_results = {}
@@ -377,7 +379,7 @@ class RunInference:
                 # Create a sampler that will predict outputs using the full
                 # model given those latent samples
                 forward_sampler = Predictive(self.model.jax_model, 
-                                                posterior_samples=batch_latents)
+                                             posterior_samples=batch_latents)
 
                 # Run the forward pass for this batch of genotypes
                 sample_key = self.get_key()

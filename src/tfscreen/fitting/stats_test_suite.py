@@ -119,8 +119,8 @@ def stats_test_suite(param_est,param_std,param_real):
     # Look for heteroscedasticity in the residuals
     try:
         bp_test = het_breuschpagan(diff, sm.add_constant(param_real))
-    except np.linalg.LinAlgError as e:
-        warnings.warn("het_breuschpagan test did not converge.\n")
+    except (np.linalg.LinAlgError, ValueError):
+        warnings.warn("het_breuschpagan test did not converge or invalid input.\n")
         bp_test = [np.nan,np.nan]
     
     bp_p_value = bp_test[1]

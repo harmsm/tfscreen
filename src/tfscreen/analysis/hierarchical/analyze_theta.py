@@ -311,6 +311,10 @@ def analyze_theta(growth_df,
     output root. 
     """
 
+    # Kind of a hack, but this forces no batching for the posterior calc
+    if analysis_method == "posterior":
+        batch_size = None
+
     # Construct growth model, which defines the jax model and all necessary 
     # parameters to describe the experiments
     gm = GrowthModel(growth_df,

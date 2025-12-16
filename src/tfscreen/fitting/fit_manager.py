@@ -62,11 +62,11 @@ class FitManager:
         self._is_logistic = self._param_df["transform"] == "logistic"
         self._is_scale = self._param_df["transform"] == "scale"
 
-        self._scale_mu = self._param_df.loc[self._is_scale, "scale_mu"].to_numpy()
-        self._scale_sigma = self._param_df.loc[self._is_scale, "scale_sigma"].to_numpy()
+        self._scale_mu = self._param_df["scale_mu"].to_numpy()
+        self._scale_sigma = self._param_df["scale_sigma"].to_numpy()
 
         # For numerical stability, ensure sigma is positive.
-        if np.any(self._scale_sigma <= 0):
+        if np.any(self._scale_sigma[self._is_scale] <= 0):
             raise ValueError("Values in 'scale_sigma' must be positive.")
     
     def __repr__(self) -> str:
@@ -144,7 +144,7 @@ class FitManager:
             Parameter vector in the transformed space.
         """
         out = v.copy()
-        out[self._is_scale] = self._to_scale(v[self._is_scale])
+        out[self._is_scale] = self._to_scale(v, mask=self._is_scale)
         out[self._is_logistic] = self._to_logistic(v[self._is_logistic])
         return out
 
@@ -163,7 +163,7 @@ class FitManager:
             Parameter vector in the original (un-transformed) space.
         """
         out = v_transformed.copy()
-        out[self._is_scale] = self._from_scale(v_transformed[self._is_scale])
+        out[self._is_scale] = self._from_scale(v_transformed, mask=self._is_scale)
         out[self._is_logistic] = self._from_logistic(v_transformed[self._is_logistic])
         out[self.is_fixed] = self._param_df.loc[self.is_fixed,"guess"]
         return out
@@ -192,7 +192,7 @@ class FitManager:
 
         # Handle scale transformation
         if np.any(self._is_scale):
-            out_std[self._is_scale] = self._scale_sigma * std_err_transformed[self._is_scale]
+            out_std[self._is_scale] = self._scale_sigma[self._is_scale] * std_err_transformed[self._is_scale]
 
         # Handle logistic transformation
         if np.any(self._is_logistic):
