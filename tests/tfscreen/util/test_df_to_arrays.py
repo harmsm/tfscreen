@@ -129,3 +129,14 @@ def test_all_numeric_columns_are_nan():
     # 3. Check that the arrays contain only NaNs
     assert np.all(np.isnan(out["nan_col_1"]))
     assert np.all(np.isnan(out["nan_col_2"]))
+
+def test_empty_dataframe_multi_pivot():
+    """
+    Tests empty dataframe with multiple pivot columns.
+    """
+    df = pd.DataFrame({"strain": [], "condition": [], "val": []})
+    row_ids, out = df_to_arrays(df, pivot_on=["strain", "condition"])
+    assert row_ids.empty
+    assert isinstance(row_ids, pd.MultiIndex)
+    assert row_ids.names == ["strain", "condition"]
+    assert isinstance(out, dict) and not out

@@ -39,69 +39,7 @@ SUCCESS_CASES = [
     (["ln_cfu", "ln_cfu_std"], ["cfu", "cfu_var", "cfu_std", "ln_cfu", "ln_cfu_var", "ln_cfu_std"], "B8: Log -> All"),
 ]
 
-# This is a mock of the get_scaled_cfu function that uses the corrected rules.
-# This setup avoids having to edit the source file directly and contains the fix.
-def run_test_with_fixed_rules(df, need_columns):
-    """A wrapper to inject the corrected CALCULATION_RULES into the function logic for testing."""
-    
-    if not need_columns:
-        return df
-    need_columns = set(need_columns)
-    VALID_COLS = {"cfu", "cfu_var", "cfu_std", "ln_cfu", "ln_cfu_var", "ln_cfu_std"}
-    if invalid_cols := need_columns - VALID_COLS:
-        raise ValueError(f"Invalid column(s) requested: {', '.join(invalid_cols)}")
-    if need_columns.issubset(df.columns):
-        return df
-    
-    # Simulate the function with the CORRECTED rules
-    from tfscreen.util import to_log, from_log # Assumed imports
-    
-    df = df.copy()
-
-    # --- FIX is here: The dictionary values are now lists of tuples, and lambdas are indexed ---
-    CALCULATION_RULES = {
-        'cfu_var':    [(('cfu_std',), lambda std: std ** 2),
-                       (('ln_cfu', 'ln_cfu_var'), lambda ln_cfu, var: from_log(v=ln_cfu, v_var=var)[1])],
-        'cfu_std':    [(('cfu_var',), lambda var: np.sqrt(var)),
-                       (('ln_cfu', 'ln_cfu_std'), lambda ln_cfu, std: from_log(v=ln_cfu, v_std=std)[1])],
-        'ln_cfu_var': [(('ln_cfu_std',), lambda std: std ** 2),
-                       (('cfu', 'cfu_var'), lambda cfu, var: to_log(v=cfu, v_var=var)[1])],
-        'ln_cfu_std': [(('ln_cfu_var',), lambda var: np.sqrt(var)),
-                       (('cfu', 'cfu_std'), lambda cfu, std: to_log(v=cfu, v_std=std)[1])],
-        'ln_cfu':     [(('cfu',), lambda cfu: to_log(v=cfu)[0])],
-        'cfu':        [(('ln_cfu',), lambda ln_cfu: from_log(v=ln_cfu)[0])],
-    }
-    
-    visiting = set()
-    def _get_column(col_name: str):
-        if col_name in df.columns: return
-        if col_name in visiting: raise ValueError(f"Circular dependency for {col_name}")
-        visiting.add(col_name)
-
-        # Find a satisfiable rule
-        for sources, func in CALCULATION_RULES.get(col_name, []):
-            if all(s in df.columns for s in sources):
-                df[col_name] = func(*[df[s] for s in sources])
-                visiting.remove(col_name)
-                return
-        
-        # Try to satisfy a rule by recursion
-        for sources, func in CALCULATION_RULES.get(col_name, []):
-            try:
-                for source in sources: _get_column(source)
-                df[col_name] = func(*[df[s] for s in sources])
-                visiting.remove(col_name)
-                return
-            except ValueError:
-                continue
-
-        visiting.remove(col_name)
-        raise ValueError(f"Could not calculate '{col_name}'.")
-
-    for col in need_columns:
-        if col not in df.columns:
-            _get_column(col)
-    return df
+# Mock function removed. Using actual function.
 
 
 @pytest.mark.parametrize("input_cols, need_cols, test_id", SUCCESS_CASES, ids=[c[2] for c in SUCCESS_CASES])
@@ -113,7 +51,7 @@ def test_successful_calculations(input_cols, need_cols, test_id):
     df = pd.DataFrame(start_data)
 
     # Use the test runner with the fixed logic
-    result_df = run_test_with_fixed_rules(df, need_columns=need_cols)
+    result_df = get_scaled_cfu(df, need_columns=need_cols)
 
     expected_cols = set(input_cols) | set(need_cols)
     assert expected_cols.issubset(result_df.columns)
@@ -135,7 +73,7 @@ def test_complex_cross_scale_calculation():
     df = pd.DataFrame(start_data)
     
     # Act
-    result_df = run_test_with_fixed_rules(df, need_columns=['cfu_std'])
+    result_df = get_scaled_cfu(df, need_columns=['cfu_std'])
     
     # Assert
     assert 'cfu_std' in result_df.columns
@@ -156,18 +94,18 @@ def test_impossible_calculations(input_cols, need_cols, test_id):
     start_data = {col: [BASE_DATA[col]] for col in input_cols}
     df = pd.DataFrame(start_data)
     with pytest.raises(ValueError, match="Could not calculate"):
-        run_test_with_fixed_rules(df, need_columns=need_cols)
+        get_scaled_cfu(df, need_columns=need_cols)
 
 
 def test_invalid_column_name_raises_error():
     df = pd.DataFrame({'cfu': [100]})
     with pytest.raises(ValueError, match="Invalid column\\(s\\) requested"):
-        run_test_with_fixed_rules(df, need_columns=['not_a_real_column'])
+        get_scaled_cfu(df, need_columns=['not_a_real_column'])
 
 
 def test_no_needed_columns_returns_original_df():
     df = pd.DataFrame({'cfu': [100]})
-    result_df_none = run_test_with_fixed_rules(df, need_columns=None)
+    result_df_none = get_scaled_cfu(df, need_columns=None)
     assert result_df_none is df
 
 
@@ -177,7 +115,7 @@ def test_already_present_columns_returns_original_df():
     DataFrame is returned.
     """
     df = pd.DataFrame({'cfu': [100], 'ln_cfu': [np.log(100)]})
-    result_df = run_test_with_fixed_rules(df, need_columns=['ln_cfu'])
+    result_df = get_scaled_cfu(df, need_columns=['ln_cfu'])
     
     # --- FIX is here: Assert 'is' not 'is not' ---
     assert result_df is df

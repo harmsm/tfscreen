@@ -88,3 +88,22 @@ def test_xfill_zeros_and_positives_log_autodetect():
     
     assert np.isin(x, result).all()
     # The brittle check for constant ratios has been removed.
+
+def test_xfill_actually_single_value():
+    """Tests input with exactly one value (size=1)."""
+    x = np.array([10.])
+    result = xfill(x, num_points=50)
+    assert result.shape == (50,)
+    assert np.all(result == 10.)
+
+def test_xfill_log_fallback_not_enough_points():
+    """Tests fallback to linear if use_log=True but not enough positive points."""
+    x = np.array([0., 100.]) # Only one positive value
+    # Should not raise, but fallback to linear
+    result = xfill(x, use_log=True, num_points=10)
+    assert result.shape == (10,)
+    assert np.isin(x, result).all()
+    # Check it is linear: (0, 100) -> linear sequence
+    # min 0, max 100. span 100. pad 10. range -10 to 110.
+    assert np.isclose(result[0], -10.0)
+    assert np.isclose(result[-1], 110.0)
