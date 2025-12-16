@@ -27,9 +27,7 @@
 ./build/lib/tfscreen/analysis/cat_response/cat_fit.py:89:36: E231 missing whitespace after ':'
 ./build/lib/tfscreen/analysis/cat_response/cat_fit.py:89:51: E231 missing whitespace after ','
 ./build/lib/tfscreen/analysis/cat_response/cat_fit.py:90:36: E231 missing whitespace after ':'
-./build/lib/tfscreen/analysis/cat_response/cat_fit.py:90:51: E231 missing whitespace after ','
 ./build/lib/tfscreen/analysis/cat_response/cat_fit.py:91:40: E231 missing whitespace after ':'
-./build/lib/tfscreen/analysis/cat_response/cat_fit.py:91:55: E231 missing whitespace after ','
 ./build/lib/tfscreen/analysis/cat_response/cat_fit.py:92:48: E231 missing whitespace after ':'
 ./build/lib/tfscreen/analysis/cat_response/cat_fit.py:94:1: W293 blank line contains whitespace
 ./build/lib/tfscreen/analysis/cat_response/cat_fit.py:108:1: W293 blank line contains whitespace
@@ -110,70 +108,6 @@
 ./build/lib/tfscreen/analysis/extract_epistasis.py:229:1: W293 blank line contains whitespace
 ./build/lib/tfscreen/analysis/extract_epistasis.py:231:10: W291 trailing whitespace
 ./build/lib/tfscreen/analysis/extract_epistasis.py:233:30: W291 trailing whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:20:1: E302 expected 2 blank lines, found 1
-./build/lib/tfscreen/analysis/growth_to_theta.py:41:1: W293 blank line contains whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:50:1: W293 blank line contains whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:54:71: W291 trailing whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:58:77: W291 trailing whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:62:74: W291 trailing whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:74:1: W293 blank line contains whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:82:71: W291 trailing whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:83:66: W291 trailing whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:94:38: E231 missing whitespace after ','
-./build/lib/tfscreen/analysis/growth_to_theta.py:107:30: E261 at least two spaces before inline comment
-./build/lib/tfscreen/analysis/growth_to_theta.py:110:1: W293 blank line contains whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:114:1: W293 blank line contains whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:118:1: W293 blank line contains whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:119:1: W293 blank line contains whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:120:5: E303 too many blank lines (2)
-./build/lib/tfscreen/analysis/growth_to_theta.py:122:1: W293 blank line contains whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:123:49: E231 missing whitespace after ','
-./build/lib/tfscreen/analysis/growth_to_theta.py:124:53: E231 missing whitespace after ','
-./build/lib/tfscreen/analysis/growth_to_theta.py:127:39: E231 missing whitespace after ','
-./build/lib/tfscreen/analysis/growth_to_theta.py:130:36: E231 missing whitespace after ','
-./build/lib/tfscreen/analysis/growth_to_theta.py:133:52: W291 trailing whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:134:18: E231 missing whitespace after ','
-./build/lib/tfscreen/analysis/growth_to_theta.py:136:75: W291 trailing whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:138:18: E231 missing whitespace after ','
-./build/lib/tfscreen/analysis/growth_to_theta.py:142:47: E231 missing whitespace after ','
-./build/lib/tfscreen/analysis/growth_to_theta.py:142:49: E231 missing whitespace after ','
-./build/lib/tfscreen/analysis/growth_to_theta.py:158:40: W291 trailing whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:160:1: W293 blank line contains whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:187:77: W291 trailing whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:188:73: W291 trailing whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:201:35: W291 trailing whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:203:77: W291 trailing whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:204:24: W291 trailing whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:213:1: W293 blank line contains whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:220:54: E231 missing whitespace after ','
-./build/lib/tfscreen/analysis/growth_to_theta.py:221:54: E231 missing whitespace after ','
-./build/lib/tfscreen/analysis/growth_to_theta.py:222:1: W293 blank line contains whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:233:5: E303 too many blank lines (2)
-./build/lib/tfscreen/analysis/growth_to_theta.py:233:13: E221 multiple spaces before operator
-./build/lib/tfscreen/analysis/growth_to_theta.py:239:1: W293 blank line contains whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:241:25: E128 continuation line under-indented for visual indent
-./build/lib/tfscreen/analysis/growth_to_theta.py:242:25: E128 continuation line under-indented for visual indent
-./build/lib/tfscreen/analysis/growth_to_theta.py:244:1: W293 blank line contains whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:245:5: E303 too many blank lines (2)
-./build/lib/tfscreen/analysis/growth_to_theta.py:246:54: W291 trailing whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:251:1: W293 blank line contains whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:255:31: E231 missing whitespace after ','
-./build/lib/tfscreen/analysis/growth_to_theta.py:256:72: E231 missing whitespace after ','
-./build/lib/tfscreen/analysis/growth_to_theta.py:259:45: E231 missing whitespace after ','
-./build/lib/tfscreen/analysis/growth_to_theta.py:262:29: E231 missing whitespace after ':'
-./build/lib/tfscreen/analysis/growth_to_theta.py:263:35: E231 missing whitespace after ':'
-./build/lib/tfscreen/analysis/growth_to_theta.py:264:35: E231 missing whitespace after ':'
-./build/lib/tfscreen/analysis/growth_to_theta.py:265:28: E231 missing whitespace after ':'
-./build/lib/tfscreen/analysis/growth_to_theta.py:266:24: E231 missing whitespace after ':'
-./build/lib/tfscreen/analysis/growth_to_theta.py:267:29: E231 missing whitespace after ':'
-./build/lib/tfscreen/analysis/growth_to_theta.py:268:29: E231 missing whitespace after ':'
-./build/lib/tfscreen/analysis/growth_to_theta.py:281:25: W291 trailing whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:284:1: W293 blank line contains whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:293:1: W293 blank line contains whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:302:1: W293 blank line contains whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:304:1: W293 blank line contains whitespace
-./build/lib/tfscreen/analysis/growth_to_theta.py:305:67: E231 missing whitespace after ','
-./build/lib/tfscreen/analysis/growth_to_theta.py:310:39: E231 missing whitespace after ','
 ./build/lib/tfscreen/analysis/hierarchical/__init__.py:2:1: F401 '.populate_dataclass.populate_dataclass' imported but unused
 ./build/lib/tfscreen/analysis/hierarchical/__init__.py:3:1: F401 '.run_inference.RunInference' imported but unused
 ./build/lib/tfscreen/analysis/hierarchical/__init__.py:4:1: F401 '.tensor_manager.TensorManager' imported but unused
@@ -1996,15 +1930,14 @@
 ./build/lib/tfscreen/data.py:46:23: E231 missing whitespace after ':'
 ./build/lib/tfscreen/data.py:46:28: W292 no newline at end of file
 ./build/lib/tfscreen/fitting/__init__.py:2:1: F401 '.fitters.run_least_squares' imported but unused
-./build/lib/tfscreen/fitting/__init__.py:2:1: F401 '.fitters.run_map' imported but unused
 ./build/lib/tfscreen/fitting/__init__.py:2:1: F401 '.fitters.run_matrix_nls' imported but unused
 ./build/lib/tfscreen/fitting/__init__.py:2:1: F401 '.fitters.run_matrix_wls' imported but unused
 ./build/lib/tfscreen/fitting/__init__.py:2:1: F401 '.fitters.run_ols_2D' imported but unused
 ./build/lib/tfscreen/fitting/__init__.py:2:1: F401 '.fitters.run_wls_2D' imported but unused
-./build/lib/tfscreen/fitting/__init__.py:11:1: F401 '.predict_with_error.predict_with_error' imported but unused
-./build/lib/tfscreen/fitting/__init__.py:15:1: F401 '.stats_test_suite.stats_test_suite' imported but unused
-./build/lib/tfscreen/fitting/__init__.py:19:1: F401 '.fit_manager.FitManager' imported but unused
-./build/lib/tfscreen/fitting/__init__.py:23:1: F401 '.parse_patsy.parse_patsy' imported but unused
+./build/lib/tfscreen/fitting/__init__.py:10:1: F401 '.predict_with_error.predict_with_error' imported but unused
+./build/lib/tfscreen/fitting/__init__.py:14:1: F401 '.stats_test_suite.stats_test_suite' imported but unused
+./build/lib/tfscreen/fitting/__init__.py:18:1: F401 '.fit_manager.FitManager' imported but unused
+./build/lib/tfscreen/fitting/__init__.py:22:1: F401 '.parse_patsy.parse_patsy' imported but unused
 ./build/lib/tfscreen/fitting/fit_manager.py:26:72: W291 trailing whitespace
 ./build/lib/tfscreen/fitting/fit_manager.py:29:56: W291 trailing whitespace
 ./build/lib/tfscreen/fitting/fit_manager.py:34:72: W291 trailing whitespace
@@ -2031,12 +1964,11 @@
 ./build/lib/tfscreen/fitting/fit_manager.py:430:1: W293 blank line contains whitespace
 ./build/lib/tfscreen/fitting/fit_manager.py:447:1: W293 blank line contains whitespace
 ./build/lib/tfscreen/fitting/fitters/__init__.py:2:1: F401 '.least_squares.run_least_squares' imported but unused
-./build/lib/tfscreen/fitting/fitters/__init__.py:3:1: F401 '.map.run_map' imported but unused
-./build/lib/tfscreen/fitting/fitters/__init__.py:5:1: F401 '.matrix_nls.run_matrix_nls' imported but unused
-./build/lib/tfscreen/fitting/fitters/__init__.py:6:1: F401 '.matrix_wls.run_matrix_wls' imported but unused
-./build/lib/tfscreen/fitting/fitters/__init__.py:8:1: F401 '.wls_2D.run_wls_2D' imported but unused
-./build/lib/tfscreen/fitting/fitters/__init__.py:9:1: F401 '.ols_2D.run_ols_2D' imported but unused
-./build/lib/tfscreen/fitting/fitters/__init__.py:10:1: W391 blank line at end of file
+./build/lib/tfscreen/fitting/fitters/__init__.py:4:1: F401 '.matrix_nls.run_matrix_nls' imported but unused
+./build/lib/tfscreen/fitting/fitters/__init__.py:5:1: F401 '.matrix_wls.run_matrix_wls' imported but unused
+./build/lib/tfscreen/fitting/fitters/__init__.py:7:1: F401 '.wls_2D.run_wls_2D' imported but unused
+./build/lib/tfscreen/fitting/fitters/__init__.py:8:1: F401 '.ols_2D.run_ols_2D' imported but unused
+./build/lib/tfscreen/fitting/fitters/__init__.py:9:1: W391 blank line at end of file
 ./build/lib/tfscreen/fitting/fitters/_util.py:5:1: E302 expected 2 blank lines, found 1
 ./build/lib/tfscreen/fitting/fitters/_util.py:5:14: E231 missing whitespace after ','
 ./build/lib/tfscreen/fitting/fitters/_util.py:5:24: E231 missing whitespace after ','
@@ -2052,37 +1984,12 @@
 ./build/lib/tfscreen/fitting/fitters/least_squares.py:43:76: W291 trailing whitespace
 ./build/lib/tfscreen/fitting/fitters/least_squares.py:46:38: E231 missing whitespace after ','
 ./build/lib/tfscreen/fitting/fitters/least_squares.py:47:1: W293 blank line contains whitespace
-./build/lib/tfscreen/fitting/fitters/map.py:11:1: E302 expected 2 blank lines, found 1
-./build/lib/tfscreen/fitting/fitters/map.py:17:1: E302 expected 2 blank lines, found 1
-./build/lib/tfscreen/fitting/fitters/map.py:24:1: E302 expected 2 blank lines, found 1
-./build/lib/tfscreen/fitting/fitters/map.py:27:22: E261 at least two spaces before inline comment
-./build/lib/tfscreen/fitting/fitters/map.py:30:1: E302 expected 2 blank lines, found 1
-./build/lib/tfscreen/fitting/fitters/map.py:33:1: W293 blank line contains whitespace
-./build/lib/tfscreen/fitting/fitters/map.py:34:1: E302 expected 2 blank lines, found 1
-./build/lib/tfscreen/fitting/fitters/map.py:39:1: E305 expected 2 blank lines after class or function definition, found 1
-./build/lib/tfscreen/fitting/fitters/map.py:51:1: E302 expected 2 blank lines, found 1
-./build/lib/tfscreen/fitting/fitters/map.py:59:1: W293 blank line contains whitespace
-./build/lib/tfscreen/fitting/fitters/map.py:63:1: W293 blank line contains whitespace
-./build/lib/tfscreen/fitting/fitters/map.py:65:1: W293 blank line contains whitespace
-./build/lib/tfscreen/fitting/fitters/map.py:68:1: E302 expected 2 blank lines, found 1
-./build/lib/tfscreen/fitting/fitters/map.py:84:1: W293 blank line contains whitespace
-./build/lib/tfscreen/fitting/fitters/map.py:87:1: W293 blank line contains whitespace
-./build/lib/tfscreen/fitting/fitters/map.py:96:1: E302 expected 2 blank lines, found 1
-./build/lib/tfscreen/fitting/fitters/map.py:104:71: W291 trailing whitespace
-./build/lib/tfscreen/fitting/fitters/map.py:105:78: W291 trailing whitespace
-./build/lib/tfscreen/fitting/fitters/map.py:147:1: W293 blank line contains whitespace
-./build/lib/tfscreen/fitting/fitters/map.py:149:1: W293 blank line contains whitespace
-./build/lib/tfscreen/fitting/fitters/map.py:171:1: W293 blank line contains whitespace
-./build/lib/tfscreen/fitting/fitters/map.py:175:1: W293 blank line contains whitespace
-./build/lib/tfscreen/fitting/fitters/map.py:179:48: W291 trailing whitespace
-./build/lib/tfscreen/fitting/fitters/map.py:191:1: W391 blank line at end of file
 ./build/lib/tfscreen/fitting/fitters/matrix_nls.py:6:1: E302 expected 2 blank lines, found 1
 ./build/lib/tfscreen/fitting/fitters/matrix_nls.py:13:76: W291 trailing whitespace
 ./build/lib/tfscreen/fitting/fitters/matrix_nls.py:43:35: E231 missing whitespace after ','
 ./build/lib/tfscreen/fitting/fitters/matrix_nls.py:43:37: E231 missing whitespace after ','
 ./build/lib/tfscreen/fitting/fitters/matrix_nls.py:43:39: E231 missing whitespace after ','
 ./build/lib/tfscreen/fitting/fitters/matrix_nls.py:46:1: W293 blank line contains whitespace
-./build/lib/tfscreen/fitting/fitters/matrix_nls.py:52:34: E201 whitespace after '('
 ./build/lib/tfscreen/fitting/fitters/matrix_nls.py:56:52: E231 missing whitespace after ','
 ./build/lib/tfscreen/fitting/fitters/matrix_nls.py:59:1: W293 blank line contains whitespace
 ./build/lib/tfscreen/fitting/fitters/matrix_nls.py:66:1: W293 blank line contains whitespace
@@ -2930,8 +2837,8 @@
 ./build/lib/tfscreen/plot/cat_fits.py:119:1: W293 blank line contains whitespace
 ./build/lib/tfscreen/plot/cat_fits.py:120:74: W291 trailing whitespace
 ./build/lib/tfscreen/plot/cat_fits.py:121:14: W291 trailing whitespace
-./build/lib/tfscreen/plot/cat_fits.py:123:43: E231 missing whitespace after ','
-./build/lib/tfscreen/plot/cat_fits.py:123:54: E231 missing whitespace after ','
+./build/lib/tfscreen/plot/cat_fits.py:123:33: E231 missing whitespace after ','
+./build/lib/tfscreen/plot/cat_fits.py:123:44: E231 missing whitespace after ','
 ./build/lib/tfscreen/plot/cat_fits.py:128:22: E231 missing whitespace after ','
 ./build/lib/tfscreen/plot/cat_fits.py:128:24: E231 missing whitespace after ','
 ./build/lib/tfscreen/plot/cat_fits.py:131:23: E231 missing whitespace after ','
@@ -3705,10 +3612,8 @@
 ./build/lib/tfscreen/simulate/build_sample_dataframes.py:56:1: W293 blank line contains whitespace
 ./build/lib/tfscreen/simulate/build_sample_dataframes.py:68:1: W293 blank line contains whitespace
 ./build/lib/tfscreen/simulate/build_sample_dataframes.py:83:1: W293 blank line contains whitespace
-./build/lib/tfscreen/simulate/build_sample_dataframes.py:88:30: E261 at least two spaces before inline comment
-./build/lib/tfscreen/simulate/build_sample_dataframes.py:89:1: W293 blank line contains whitespace
-./build/lib/tfscreen/simulate/build_sample_dataframes.py:91:1: W293 blank line contains whitespace
-./build/lib/tfscreen/simulate/build_sample_dataframes.py:99:21: W292 no newline at end of file
+./build/lib/tfscreen/simulate/build_sample_dataframes.py:87:1: W293 blank line contains whitespace
+./build/lib/tfscreen/simulate/build_sample_dataframes.py:95:21: W292 no newline at end of file
 ./build/lib/tfscreen/simulate/library_prediction.py:13:1: E302 expected 2 blank lines, found 1
 ./build/lib/tfscreen/simulate/library_prediction.py:14:43: E252 missing whitespace around parameter equals
 ./build/lib/tfscreen/simulate/library_prediction.py:14:44: E252 missing whitespace around parameter equals
@@ -4163,9 +4068,7 @@
 ./src/tfscreen/analysis/cat_response/cat_fit.py:89:36: E231 missing whitespace after ':'
 ./src/tfscreen/analysis/cat_response/cat_fit.py:89:51: E231 missing whitespace after ','
 ./src/tfscreen/analysis/cat_response/cat_fit.py:90:36: E231 missing whitespace after ':'
-./src/tfscreen/analysis/cat_response/cat_fit.py:90:51: E231 missing whitespace after ','
 ./src/tfscreen/analysis/cat_response/cat_fit.py:91:40: E231 missing whitespace after ':'
-./src/tfscreen/analysis/cat_response/cat_fit.py:91:55: E231 missing whitespace after ','
 ./src/tfscreen/analysis/cat_response/cat_fit.py:92:48: E231 missing whitespace after ':'
 ./src/tfscreen/analysis/cat_response/cat_fit.py:94:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/cat_response/cat_fit.py:108:1: W293 blank line contains whitespace
@@ -4246,70 +4149,6 @@
 ./src/tfscreen/analysis/extract_epistasis.py:229:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/extract_epistasis.py:231:10: W291 trailing whitespace
 ./src/tfscreen/analysis/extract_epistasis.py:233:30: W291 trailing whitespace
-./src/tfscreen/analysis/growth_to_theta.py:20:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/analysis/growth_to_theta.py:41:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/growth_to_theta.py:50:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/growth_to_theta.py:54:71: W291 trailing whitespace
-./src/tfscreen/analysis/growth_to_theta.py:58:77: W291 trailing whitespace
-./src/tfscreen/analysis/growth_to_theta.py:62:74: W291 trailing whitespace
-./src/tfscreen/analysis/growth_to_theta.py:74:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/growth_to_theta.py:82:71: W291 trailing whitespace
-./src/tfscreen/analysis/growth_to_theta.py:83:66: W291 trailing whitespace
-./src/tfscreen/analysis/growth_to_theta.py:94:38: E231 missing whitespace after ','
-./src/tfscreen/analysis/growth_to_theta.py:107:30: E261 at least two spaces before inline comment
-./src/tfscreen/analysis/growth_to_theta.py:110:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/growth_to_theta.py:114:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/growth_to_theta.py:118:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/growth_to_theta.py:119:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/growth_to_theta.py:120:5: E303 too many blank lines (2)
-./src/tfscreen/analysis/growth_to_theta.py:122:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/growth_to_theta.py:123:49: E231 missing whitespace after ','
-./src/tfscreen/analysis/growth_to_theta.py:124:53: E231 missing whitespace after ','
-./src/tfscreen/analysis/growth_to_theta.py:127:39: E231 missing whitespace after ','
-./src/tfscreen/analysis/growth_to_theta.py:130:36: E231 missing whitespace after ','
-./src/tfscreen/analysis/growth_to_theta.py:133:52: W291 trailing whitespace
-./src/tfscreen/analysis/growth_to_theta.py:134:18: E231 missing whitespace after ','
-./src/tfscreen/analysis/growth_to_theta.py:136:75: W291 trailing whitespace
-./src/tfscreen/analysis/growth_to_theta.py:138:18: E231 missing whitespace after ','
-./src/tfscreen/analysis/growth_to_theta.py:142:47: E231 missing whitespace after ','
-./src/tfscreen/analysis/growth_to_theta.py:142:49: E231 missing whitespace after ','
-./src/tfscreen/analysis/growth_to_theta.py:158:40: W291 trailing whitespace
-./src/tfscreen/analysis/growth_to_theta.py:160:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/growth_to_theta.py:187:77: W291 trailing whitespace
-./src/tfscreen/analysis/growth_to_theta.py:188:73: W291 trailing whitespace
-./src/tfscreen/analysis/growth_to_theta.py:201:35: W291 trailing whitespace
-./src/tfscreen/analysis/growth_to_theta.py:203:77: W291 trailing whitespace
-./src/tfscreen/analysis/growth_to_theta.py:204:24: W291 trailing whitespace
-./src/tfscreen/analysis/growth_to_theta.py:213:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/growth_to_theta.py:220:54: E231 missing whitespace after ','
-./src/tfscreen/analysis/growth_to_theta.py:221:54: E231 missing whitespace after ','
-./src/tfscreen/analysis/growth_to_theta.py:222:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/growth_to_theta.py:233:5: E303 too many blank lines (2)
-./src/tfscreen/analysis/growth_to_theta.py:233:13: E221 multiple spaces before operator
-./src/tfscreen/analysis/growth_to_theta.py:239:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/growth_to_theta.py:241:25: E128 continuation line under-indented for visual indent
-./src/tfscreen/analysis/growth_to_theta.py:242:25: E128 continuation line under-indented for visual indent
-./src/tfscreen/analysis/growth_to_theta.py:244:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/growth_to_theta.py:245:5: E303 too many blank lines (2)
-./src/tfscreen/analysis/growth_to_theta.py:246:54: W291 trailing whitespace
-./src/tfscreen/analysis/growth_to_theta.py:251:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/growth_to_theta.py:255:31: E231 missing whitespace after ','
-./src/tfscreen/analysis/growth_to_theta.py:256:72: E231 missing whitespace after ','
-./src/tfscreen/analysis/growth_to_theta.py:259:45: E231 missing whitespace after ','
-./src/tfscreen/analysis/growth_to_theta.py:262:29: E231 missing whitespace after ':'
-./src/tfscreen/analysis/growth_to_theta.py:263:35: E231 missing whitespace after ':'
-./src/tfscreen/analysis/growth_to_theta.py:264:35: E231 missing whitespace after ':'
-./src/tfscreen/analysis/growth_to_theta.py:265:28: E231 missing whitespace after ':'
-./src/tfscreen/analysis/growth_to_theta.py:266:24: E231 missing whitespace after ':'
-./src/tfscreen/analysis/growth_to_theta.py:267:29: E231 missing whitespace after ':'
-./src/tfscreen/analysis/growth_to_theta.py:268:29: E231 missing whitespace after ':'
-./src/tfscreen/analysis/growth_to_theta.py:281:25: W291 trailing whitespace
-./src/tfscreen/analysis/growth_to_theta.py:284:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/growth_to_theta.py:293:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/growth_to_theta.py:302:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/growth_to_theta.py:304:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/growth_to_theta.py:305:67: E231 missing whitespace after ','
-./src/tfscreen/analysis/growth_to_theta.py:310:39: E231 missing whitespace after ','
 ./src/tfscreen/analysis/hierarchical/__init__.py:2:1: F401 '.populate_dataclass.populate_dataclass' imported but unused
 ./src/tfscreen/analysis/hierarchical/__init__.py:3:1: F401 '.run_inference.RunInference' imported but unused
 ./src/tfscreen/analysis/hierarchical/__init__.py:4:1: F401 '.tensor_manager.TensorManager' imported but unused
@@ -6132,15 +5971,14 @@
 ./src/tfscreen/data.py:46:23: E231 missing whitespace after ':'
 ./src/tfscreen/data.py:46:28: W292 no newline at end of file
 ./src/tfscreen/fitting/__init__.py:2:1: F401 '.fitters.run_least_squares' imported but unused
-./src/tfscreen/fitting/__init__.py:2:1: F401 '.fitters.run_map' imported but unused
 ./src/tfscreen/fitting/__init__.py:2:1: F401 '.fitters.run_matrix_nls' imported but unused
 ./src/tfscreen/fitting/__init__.py:2:1: F401 '.fitters.run_matrix_wls' imported but unused
 ./src/tfscreen/fitting/__init__.py:2:1: F401 '.fitters.run_ols_2D' imported but unused
 ./src/tfscreen/fitting/__init__.py:2:1: F401 '.fitters.run_wls_2D' imported but unused
-./src/tfscreen/fitting/__init__.py:11:1: F401 '.predict_with_error.predict_with_error' imported but unused
-./src/tfscreen/fitting/__init__.py:15:1: F401 '.stats_test_suite.stats_test_suite' imported but unused
-./src/tfscreen/fitting/__init__.py:19:1: F401 '.fit_manager.FitManager' imported but unused
-./src/tfscreen/fitting/__init__.py:23:1: F401 '.parse_patsy.parse_patsy' imported but unused
+./src/tfscreen/fitting/__init__.py:10:1: F401 '.predict_with_error.predict_with_error' imported but unused
+./src/tfscreen/fitting/__init__.py:14:1: F401 '.stats_test_suite.stats_test_suite' imported but unused
+./src/tfscreen/fitting/__init__.py:18:1: F401 '.fit_manager.FitManager' imported but unused
+./src/tfscreen/fitting/__init__.py:22:1: F401 '.parse_patsy.parse_patsy' imported but unused
 ./src/tfscreen/fitting/fit_manager.py:26:72: W291 trailing whitespace
 ./src/tfscreen/fitting/fit_manager.py:29:56: W291 trailing whitespace
 ./src/tfscreen/fitting/fit_manager.py:34:72: W291 trailing whitespace
@@ -6167,12 +6005,11 @@
 ./src/tfscreen/fitting/fit_manager.py:430:1: W293 blank line contains whitespace
 ./src/tfscreen/fitting/fit_manager.py:447:1: W293 blank line contains whitespace
 ./src/tfscreen/fitting/fitters/__init__.py:2:1: F401 '.least_squares.run_least_squares' imported but unused
-./src/tfscreen/fitting/fitters/__init__.py:3:1: F401 '.map.run_map' imported but unused
-./src/tfscreen/fitting/fitters/__init__.py:5:1: F401 '.matrix_nls.run_matrix_nls' imported but unused
-./src/tfscreen/fitting/fitters/__init__.py:6:1: F401 '.matrix_wls.run_matrix_wls' imported but unused
-./src/tfscreen/fitting/fitters/__init__.py:8:1: F401 '.wls_2D.run_wls_2D' imported but unused
-./src/tfscreen/fitting/fitters/__init__.py:9:1: F401 '.ols_2D.run_ols_2D' imported but unused
-./src/tfscreen/fitting/fitters/__init__.py:10:1: W391 blank line at end of file
+./src/tfscreen/fitting/fitters/__init__.py:4:1: F401 '.matrix_nls.run_matrix_nls' imported but unused
+./src/tfscreen/fitting/fitters/__init__.py:5:1: F401 '.matrix_wls.run_matrix_wls' imported but unused
+./src/tfscreen/fitting/fitters/__init__.py:7:1: F401 '.wls_2D.run_wls_2D' imported but unused
+./src/tfscreen/fitting/fitters/__init__.py:8:1: F401 '.ols_2D.run_ols_2D' imported but unused
+./src/tfscreen/fitting/fitters/__init__.py:9:1: W391 blank line at end of file
 ./src/tfscreen/fitting/fitters/_util.py:5:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/fitting/fitters/_util.py:5:14: E231 missing whitespace after ','
 ./src/tfscreen/fitting/fitters/_util.py:5:24: E231 missing whitespace after ','
@@ -6188,37 +6025,12 @@
 ./src/tfscreen/fitting/fitters/least_squares.py:43:76: W291 trailing whitespace
 ./src/tfscreen/fitting/fitters/least_squares.py:46:38: E231 missing whitespace after ','
 ./src/tfscreen/fitting/fitters/least_squares.py:47:1: W293 blank line contains whitespace
-./src/tfscreen/fitting/fitters/map.py:11:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/fitting/fitters/map.py:17:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/fitting/fitters/map.py:24:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/fitting/fitters/map.py:27:22: E261 at least two spaces before inline comment
-./src/tfscreen/fitting/fitters/map.py:30:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/fitting/fitters/map.py:33:1: W293 blank line contains whitespace
-./src/tfscreen/fitting/fitters/map.py:34:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/fitting/fitters/map.py:39:1: E305 expected 2 blank lines after class or function definition, found 1
-./src/tfscreen/fitting/fitters/map.py:51:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/fitting/fitters/map.py:59:1: W293 blank line contains whitespace
-./src/tfscreen/fitting/fitters/map.py:63:1: W293 blank line contains whitespace
-./src/tfscreen/fitting/fitters/map.py:65:1: W293 blank line contains whitespace
-./src/tfscreen/fitting/fitters/map.py:68:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/fitting/fitters/map.py:84:1: W293 blank line contains whitespace
-./src/tfscreen/fitting/fitters/map.py:87:1: W293 blank line contains whitespace
-./src/tfscreen/fitting/fitters/map.py:96:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/fitting/fitters/map.py:104:71: W291 trailing whitespace
-./src/tfscreen/fitting/fitters/map.py:105:78: W291 trailing whitespace
-./src/tfscreen/fitting/fitters/map.py:147:1: W293 blank line contains whitespace
-./src/tfscreen/fitting/fitters/map.py:149:1: W293 blank line contains whitespace
-./src/tfscreen/fitting/fitters/map.py:171:1: W293 blank line contains whitespace
-./src/tfscreen/fitting/fitters/map.py:175:1: W293 blank line contains whitespace
-./src/tfscreen/fitting/fitters/map.py:179:48: W291 trailing whitespace
-./src/tfscreen/fitting/fitters/map.py:191:1: W391 blank line at end of file
 ./src/tfscreen/fitting/fitters/matrix_nls.py:6:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/fitting/fitters/matrix_nls.py:13:76: W291 trailing whitespace
 ./src/tfscreen/fitting/fitters/matrix_nls.py:43:35: E231 missing whitespace after ','
 ./src/tfscreen/fitting/fitters/matrix_nls.py:43:37: E231 missing whitespace after ','
 ./src/tfscreen/fitting/fitters/matrix_nls.py:43:39: E231 missing whitespace after ','
 ./src/tfscreen/fitting/fitters/matrix_nls.py:46:1: W293 blank line contains whitespace
-./src/tfscreen/fitting/fitters/matrix_nls.py:52:34: E201 whitespace after '('
 ./src/tfscreen/fitting/fitters/matrix_nls.py:56:52: E231 missing whitespace after ','
 ./src/tfscreen/fitting/fitters/matrix_nls.py:59:1: W293 blank line contains whitespace
 ./src/tfscreen/fitting/fitters/matrix_nls.py:66:1: W293 blank line contains whitespace
@@ -7066,8 +6878,8 @@
 ./src/tfscreen/plot/cat_fits.py:119:1: W293 blank line contains whitespace
 ./src/tfscreen/plot/cat_fits.py:120:74: W291 trailing whitespace
 ./src/tfscreen/plot/cat_fits.py:121:14: W291 trailing whitespace
-./src/tfscreen/plot/cat_fits.py:123:43: E231 missing whitespace after ','
-./src/tfscreen/plot/cat_fits.py:123:54: E231 missing whitespace after ','
+./src/tfscreen/plot/cat_fits.py:123:33: E231 missing whitespace after ','
+./src/tfscreen/plot/cat_fits.py:123:44: E231 missing whitespace after ','
 ./src/tfscreen/plot/cat_fits.py:128:22: E231 missing whitespace after ','
 ./src/tfscreen/plot/cat_fits.py:128:24: E231 missing whitespace after ','
 ./src/tfscreen/plot/cat_fits.py:131:23: E231 missing whitespace after ','
@@ -7841,10 +7653,8 @@
 ./src/tfscreen/simulate/build_sample_dataframes.py:56:1: W293 blank line contains whitespace
 ./src/tfscreen/simulate/build_sample_dataframes.py:68:1: W293 blank line contains whitespace
 ./src/tfscreen/simulate/build_sample_dataframes.py:83:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/build_sample_dataframes.py:88:30: E261 at least two spaces before inline comment
-./src/tfscreen/simulate/build_sample_dataframes.py:89:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/build_sample_dataframes.py:91:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/build_sample_dataframes.py:99:21: W292 no newline at end of file
+./src/tfscreen/simulate/build_sample_dataframes.py:87:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/build_sample_dataframes.py:95:21: W292 no newline at end of file
 ./src/tfscreen/simulate/library_prediction.py:13:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/simulate/library_prediction.py:14:43: E252 missing whitespace around parameter equals
 ./src/tfscreen/simulate/library_prediction.py:14:44: E252 missing whitespace around parameter equals
@@ -8285,6 +8095,104 @@
 ./tests/conftest.py:98:1: E302 expected 2 blank lines, found 1
 ./tests/conftest.py:104:1: E302 expected 2 blank lines, found 1
 ./tests/conftest.py:107:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:4:1: F401 'pandas as pd' imported but unused
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:10:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:17:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:26:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:31:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:34:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:38:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:42:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:44:29: E261 at least two spaces before inline comment
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:47:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:54:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:57:56: W291 trailing whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:59:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:67:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:72:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:75:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:82:47: W291 trailing whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:83:55: W291 trailing whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:84:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:88:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:95:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:98:68: W291 trailing whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:99:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:106:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:108:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:109:29: E261 at least two spaces before inline comment
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:111:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:116:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:121:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:129:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:134:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:136:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:138:47: W291 trailing whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:141:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:148:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:152:49: W291 trailing whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:153:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:155:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:171:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:175:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:177:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:181:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:184:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:187:81: W291 trailing whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:190:32: W291 trailing whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:201:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:203:40: E261 at least two spaces before inline comment
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:204:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:213:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:215:18: E111 indentation is not a multiple of 4
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:215:18: E117 over-indented
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:216:18: E111 indentation is not a multiple of 4
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:217:22: E111 indentation is not a multiple of 4
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:218:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:219:22: E111 indentation is not a multiple of 4
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:220:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:221:22: E111 indentation is not a multiple of 4
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:223:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:231:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:233:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:236:58: E231 missing whitespace after ','
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:236:65: E261 at least two spaces before inline comment
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:241:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:243:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:246:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_fit.py:250:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:3:1: F401 'numpy as np' imported but unused
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:5:1: F401 'unittest.mock.MagicMock' imported but unused
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:9:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:20:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:24:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:28:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:31:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:46:39: E231 missing whitespace after ','
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:46:52: E231 missing whitespace after ','
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:46:69: E231 missing whitespace after ','
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:48:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:51:29: W291 trailing whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:57:29: E261 at least two spaces before inline comment
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:63:39: E231 missing whitespace after ','
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:63:51: E231 missing whitespace after ','
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:63:68: E231 missing whitespace after ','
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:65:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:70:17: W291 trailing whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:74:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:77:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:81:44: E261 at least two spaces before inline comment
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:83:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:92:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:94:29: E261 at least two spaces before inline comment
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:98:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:102:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:105:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:111:90: E231 missing whitespace after ':'
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:112:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:113:59: E261 at least two spaces before inline comment
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:114:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/cat_response/test_cat_response.py:119:1: W391 blank line at end of file
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/test_activity_fixed.py:23:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/test_activity_fixed.py:29:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/test_activity_fixed.py:36:1: E302 expected 2 blank lines, found 1
@@ -9313,6 +9221,65 @@
 ./tests/tfscreen/analysis/independent/test_cfu_to_theta__prep_inference_df.py:172:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/independent/test_cfu_to_theta__prep_inference_df.py:183:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/independent/test_cfu_to_theta__prep_inference_df.py:185:81: W292 no newline at end of file
+./tests/tfscreen/analysis/independent/test_coverage_gaps.py:7:1: F401 'tfscreen.analysis.independent._get_indiv_growth._prepare_and_validate_growth_data' imported but unused
+./tests/tfscreen/analysis/independent/test_coverage_gaps.py:11:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/independent/test_coverage_gaps.py:14:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_coverage_gaps.py:19:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/independent/test_coverage_gaps.py:28:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_coverage_gaps.py:34:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_coverage_gaps.py:39:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/independent/test_coverage_gaps.py:48:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_coverage_gaps.py:50:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_coverage_gaps.py:52:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_coverage_gaps.py:57:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/independent/test_coverage_gaps.py:60:36: W291 trailing whitespace
+./tests/tfscreen/analysis/independent/test_coverage_gaps.py:67:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_coverage_gaps.py:72:18: E111 indentation is not a multiple of 4
+./tests/tfscreen/analysis/independent/test_coverage_gaps.py:72:18: E117 over-indented
+./tests/tfscreen/analysis/independent/test_coverage_gaps.py:73:22: E111 indentation is not a multiple of 4
+./tests/tfscreen/analysis/independent/test_coverage_gaps.py:75:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/independent/test_coverage_gaps.py:81:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_coverage_gaps.py:87:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_get_indiv_growth.py:2:1: F401 'pytest' imported but unused
+./tests/tfscreen/analysis/independent/test_get_indiv_growth.py:3:1: F401 'unittest.mock.MagicMock' imported but unused
+./tests/tfscreen/analysis/independent/test_get_indiv_growth.py:3:1: F401 'unittest.mock.call' imported but unused
+./tests/tfscreen/analysis/independent/test_get_indiv_growth.py:8:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/independent/test_get_indiv_growth.py:13:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_get_indiv_growth.py:23:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_get_indiv_growth.py:25:76: W291 trailing whitespace
+./tests/tfscreen/analysis/independent/test_get_indiv_growth.py:26:76: W291 trailing whitespace
+./tests/tfscreen/analysis/independent/test_get_indiv_growth.py:27:71: W291 trailing whitespace
+./tests/tfscreen/analysis/independent/test_get_indiv_growth.py:31:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_get_indiv_growth.py:33:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_get_indiv_growth.py:41:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_get_indiv_growth.py:44:44: E261 at least two spaces before inline comment
+./tests/tfscreen/analysis/independent/test_get_indiv_growth.py:45:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_get_indiv_growth.py:56:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_get_indiv_growth.py:66:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_get_indiv_growth.py:69:73: W291 trailing whitespace
+./tests/tfscreen/analysis/independent/test_get_indiv_growth.py:74:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_get_indiv_growth.py:76:73: W291 trailing whitespace
+./tests/tfscreen/analysis/independent/test_get_indiv_growth.py:80:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_get_indiv_growth.py:83:30: W291 trailing whitespace
+./tests/tfscreen/analysis/independent/test_get_indiv_growth.py:84:44: E261 at least two spaces before inline comment
+./tests/tfscreen/analysis/independent/test_get_indiv_growth.py:85:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_get_indiv_growth.py:87:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_get_indiv_growth.py:89:53: W291 trailing whitespace
+./tests/tfscreen/analysis/independent/test_get_indiv_growth.py:90:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_get_indiv_growth.py:98:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_get_indiv_growth.py:101:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_get_indiv_growth.py:105:1: W391 blank line at end of file
+./tests/tfscreen/analysis/independent/test_indep_analyze_theta.py:2:1: F401 'pytest' imported but unused
+./tests/tfscreen/analysis/independent/test_indep_analyze_theta.py:3:1: F401 'unittest.mock.call' imported but unused
+./tests/tfscreen/analysis/independent/test_indep_analyze_theta.py:7:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/independent/test_indep_analyze_theta.py:12:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_indep_analyze_theta.py:16:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_indep_analyze_theta.py:20:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_indep_analyze_theta.py:29:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_indep_analyze_theta.py:38:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_indep_analyze_theta.py:46:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_indep_analyze_theta.py:48:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_indep_analyze_theta.py:52:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/independent/test_model_pre_growth.py:7:22: W291 trailing whitespace
 ./tests/tfscreen/analysis/independent/test_model_pre_growth.py:8:22: W291 trailing whitespace
 ./tests/tfscreen/analysis/independent/test_model_pre_growth.py:14:1: E302 expected 2 blank lines, found 1
@@ -9344,6 +9311,60 @@
 ./tests/tfscreen/analysis/independent/test_model_pre_growth.py:131:53: E261 at least two spaces before inline comment
 ./tests/tfscreen/analysis/independent/test_model_pre_growth.py:135:61: E261 at least two spaces before inline comment
 ./tests/tfscreen/analysis/independent/test_model_pre_growth.py:146:1: W391 blank line at end of file
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:2:1: F401 'pytest' imported but unused
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:5:1: F401 'numpy as np' imported but unused
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:7:23: W291 trailing whitespace
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:8:22: W291 trailing whitespace
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:16:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:17:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:26:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:40:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:44:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:45:57: W291 trailing whitespace
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:49:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:66:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:73:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:86:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:89:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:91:10: E114 indentation is not a multiple of 4 (comment)
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:91:10: E117 over-indented (comment)
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:92:10: E111 indentation is not a multiple of 4
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:92:10: E117 over-indented
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:98:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:99:10: E114 indentation is not a multiple of 4 (comment)
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:100:10: E111 indentation is not a multiple of 4
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:101:10: E111 indentation is not a multiple of 4
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:102:10: E111 indentation is not a multiple of 4
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:103:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:104:10: E114 indentation is not a multiple of 4 (comment)
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:105:10: E111 indentation is not a multiple of 4
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:106:10: E111 indentation is not a multiple of 4
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:107:10: E111 indentation is not a multiple of 4
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:108:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:109:10: E114 indentation is not a multiple of 4 (comment)
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:110:10: E111 indentation is not a multiple of 4
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:111:10: E111 indentation is not a multiple of 4
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:112:10: E111 indentation is not a multiple of 4
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:121:25: E261 at least two spaces before inline comment
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:123:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:129:48: E261 at least two spaces before inline comment
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:143:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:144:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:151:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:156:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:161:28: E261 at least two spaces before inline comment
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:164:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:170:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:172:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:178:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:183:54: E261 at least two spaces before inline comment
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:183:128: E501 line too long (141 > 127 characters)
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:184:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:188:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:194:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:196:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:197:40: W291 trailing whitespace
+./tests/tfscreen/analysis/independent/test_process_theta_fit.py:199:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/test_extract_epistasis.py:16:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/analysis/test_extract_epistasis.py:22:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/analysis/test_extract_epistasis.py:34:35: W291 trailing whitespace
@@ -9496,6 +9517,129 @@
 ./tests/tfscreen/calibration/test_plot.py:75:1: W293 blank line contains whitespace
 ./tests/tfscreen/calibration/test_plot.py:78:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/calibration/test_plot.py:82:1: W391 blank line at end of file
+./tests/tfscreen/fitting/fitters/test_least_squares.py:3:1: F401 'pytest' imported but unused
+./tests/tfscreen/fitting/fitters/test_least_squares.py:6:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/fitting/fitters/test_least_squares.py:10:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/fitting/fitters/test_least_squares.py:14:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_least_squares.py:18:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_least_squares.py:22:38: E261 at least two spaces before inline comment
+./tests/tfscreen/fitting/fitters/test_least_squares.py:23:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_least_squares.py:25:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_least_squares.py:33:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_least_squares.py:37:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/fitting/fitters/test_least_squares.py:42:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_least_squares.py:43:22: E231 missing whitespace after ','
+./tests/tfscreen/fitting/fitters/test_least_squares.py:43:24: E231 missing whitespace after ','
+./tests/tfscreen/fitting/fitters/test_least_squares.py:46:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_least_squares.py:52:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_least_squares.py:62:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_least_squares.py:65:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/fitting/fitters/test_least_squares.py:67:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_least_squares.py:71:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_least_squares.py:74:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_least_squares.py:77:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_least_squares.py:79:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_least_squares.py:81:54: E261 at least two spaces before inline comment
+./tests/tfscreen/fitting/fitters/test_least_squares.py:83:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/fitting/fitters/test_least_squares.py:87:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_least_squares.py:90:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_least_squares.py:93:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_least_squares.py:97:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/fitting/fitters/test_least_squares.py:101:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_least_squares.py:105:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_least_squares.py:108:1: W391 blank line at end of file
+./tests/tfscreen/fitting/fitters/test_matrix_nls.py:3:1: F401 'pytest' imported but unused
+./tests/tfscreen/fitting/fitters/test_matrix_nls.py:6:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/fitting/fitters/test_matrix_nls.py:9:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_matrix_nls.py:19:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_matrix_nls.py:22:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_matrix_nls.py:29:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_matrix_nls.py:33:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/fitting/fitters/test_matrix_nls.py:40:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_matrix_nls.py:43:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_matrix_nls.py:51:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_matrix_nls.py:54:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/fitting/fitters/test_matrix_nls.py:60:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_matrix_wls.py:6:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/fitting/fitters/test_matrix_wls.py:9:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_matrix_wls.py:13:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_matrix_wls.py:15:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_matrix_wls.py:17:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_matrix_wls.py:20:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/fitting/fitters/test_matrix_wls.py:25:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_matrix_wls.py:29:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_matrix_wls.py:31:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_matrix_wls.py:35:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/fitting/fitters/test_matrix_wls.py:39:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_matrix_wls.py:40:43: E261 at least two spaces before inline comment
+./tests/tfscreen/fitting/fitters/test_matrix_wls.py:43:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_ols_2D.py:3:1: F401 'pytest' imported but unused
+./tests/tfscreen/fitting/fitters/test_ols_2D.py:6:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/fitting/fitters/test_ols_2D.py:10:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_ols_2D.py:12:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_ols_2D.py:17:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/fitting/fitters/test_ols_2D.py:20:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_ols_2D.py:29:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_ols_2D.py:31:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_ols_2D.py:35:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/fitting/fitters/test_ols_2D.py:39:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_ols_2D.py:41:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_ols_2D.py:45:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/fitting/fitters/test_ols_2D.py:49:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_ols_2D.py:51:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_ols_2D.py:54:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/fitting/fitters/test_ols_2D.py:58:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_ols_2D.py:60:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_ols_2D.py:64:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/fitting/fitters/test_ols_2D.py:69:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_util.py:3:1: F401 'pytest' imported but unused
+./tests/tfscreen/fitting/fitters/test_util.py:7:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/fitting/fitters/test_util.py:12:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_util.py:15:34: E261 at least two spaces before inline comment
+./tests/tfscreen/fitting/fitters/test_util.py:16:31: E261 at least two spaces before inline comment
+./tests/tfscreen/fitting/fitters/test_util.py:17:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_util.py:23:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/fitting/fitters/test_util.py:25:29: E261 at least two spaces before inline comment
+./tests/tfscreen/fitting/fitters/test_util.py:27:31: E261 at least two spaces before inline comment
+./tests/tfscreen/fitting/fitters/test_util.py:28:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_util.py:34:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_util.py:36:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_util.py:40:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/fitting/fitters/test_util.py:45:18: E261 at least two spaces before inline comment
+./tests/tfscreen/fitting/fitters/test_util.py:46:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_util.py:49:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_util.py:53:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/fitting/fitters/test_util.py:59:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_util.py:61:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_util.py:64:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/fitting/fitters/test_util.py:70:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_util.py:75:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_util.py:79:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/fitting/fitters/test_util.py:85:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_util.py:98:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_util.py:102:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_util.py:105:1: W391 blank line at end of file
+./tests/tfscreen/fitting/fitters/test_wls_2D.py:3:1: F401 'pytest' imported but unused
+./tests/tfscreen/fitting/fitters/test_wls_2D.py:6:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/fitting/fitters/test_wls_2D.py:11:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_wls_2D.py:13:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_wls_2D.py:17:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/fitting/fitters/test_wls_2D.py:23:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_wls_2D.py:28:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_wls_2D.py:30:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_wls_2D.py:33:44: E261 at least two spaces before inline comment
+./tests/tfscreen/fitting/fitters/test_wls_2D.py:35:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_wls_2D.py:36:26: E203 whitespace before ','
+./tests/tfscreen/fitting/fitters/test_wls_2D.py:37:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_wls_2D.py:42:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/fitting/fitters/test_wls_2D.py:46:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_wls_2D.py:50:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/fitting/fitters/test_wls_2D.py:51:36: W291 trailing whitespace
+./tests/tfscreen/fitting/fitters/test_wls_2D.py:57:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_wls_2D.py:61:40: E261 at least two spaces before inline comment
+./tests/tfscreen/fitting/fitters/test_wls_2D.py:62:1: W293 blank line contains whitespace
+./tests/tfscreen/fitting/fitters/test_wls_2D.py:68:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/fitting/fitters/test_wls_2D.py:73:1: W293 blank line contains whitespace
 ./tests/tfscreen/fitting/test_fit_manager.py:6:1: F401 'scipy.special.expit' imported but unused
 ./tests/tfscreen/fitting/test_fit_manager.py:8:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/fitting/test_fit_manager.py:20:1: E302 expected 2 blank lines, found 1
@@ -9834,29 +9978,23 @@
 ./tests/tfscreen/genetics/test_library_manager.py:775:35: E231 missing whitespace after ':'
 ./tests/tfscreen/genetics/test_library_manager.py:775:49: W291 trailing whitespace
 ./tests/tfscreen/genetics/test_library_manager.py:800:34: W292 no newline at end of file
-./tests/tfscreen/models/generic/test_guesses.py:2:1: F401 'pytest' imported but unused
-./tests/tfscreen/models/generic/test_guesses.py:4:1: F401 'tfscreen.models.generic.guesses.guess_hill_inducer' imported but unused
-./tests/tfscreen/models/generic/test_guesses.py:4:1: F401 'tfscreen.models.generic.guesses.guess_bell_dip' imported but unused
-./tests/tfscreen/models/generic/test_guesses.py:4:1: F401 'tfscreen.models.generic.guesses.guess_biphasic_dip' imported but unused
-./tests/tfscreen/models/generic/test_guesses.py:18:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/models/generic/test_guesses.py:31:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/models/generic/test_guesses.py:43:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/models/generic/test_guesses.py:47:1: W293 blank line contains whitespace
-./tests/tfscreen/models/generic/test_guesses.py:48:31: W291 trailing whitespace
-./tests/tfscreen/models/generic/test_guesses.py:53:1: W293 blank line contains whitespace
+./tests/tfscreen/models/generic/test_guesses.py:7:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/models/generic/test_guesses.py:18:1: W293 blank line contains whitespace
+./tests/tfscreen/models/generic/test_guesses.py:21:44: E261 at least two spaces before inline comment
+./tests/tfscreen/models/generic/test_guesses.py:23:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/models/generic/test_guesses.py:26:32: E261 at least two spaces before inline comment
+./tests/tfscreen/models/generic/test_guesses.py:33:1: W293 blank line contains whitespace
+./tests/tfscreen/models/generic/test_guesses.py:41:1: W293 blank line contains whitespace
+./tests/tfscreen/models/generic/test_guesses.py:46:1: W293 blank line contains whitespace
+./tests/tfscreen/models/generic/test_guesses.py:51:1: W293 blank line contains whitespace
 ./tests/tfscreen/models/generic/test_guesses.py:57:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/models/generic/test_guesses.py:61:1: W293 blank line contains whitespace
-./tests/tfscreen/models/generic/test_guesses.py:66:1: W293 blank line contains whitespace
-./tests/tfscreen/models/generic/test_guesses.py:70:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/models/generic/test_guesses.py:73:1: W293 blank line contains whitespace
-./tests/tfscreen/models/generic/test_guesses.py:78:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/models/generic/test_guesses.py:82:1: W293 blank line contains whitespace
-./tests/tfscreen/models/generic/test_guesses.py:88:1: W293 blank line contains whitespace
-./tests/tfscreen/models/generic/test_guesses.py:96:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/models/generic/test_guesses.py:98:34: E261 at least two spaces before inline comment
-./tests/tfscreen/models/generic/test_guesses.py:99:1: W293 blank line contains whitespace
-./tests/tfscreen/models/generic/test_guesses.py:105:1: W293 blank line contains whitespace
-./tests/tfscreen/models/generic/test_guesses.py:109:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/models/generic/test_guesses.py:59:1: W293 blank line contains whitespace
+./tests/tfscreen/models/generic/test_guesses.py:65:45: E261 at least two spaces before inline comment
+./tests/tfscreen/models/generic/test_guesses.py:66:45: E261 at least two spaces before inline comment
+./tests/tfscreen/models/generic/test_guesses.py:67:1: W293 blank line contains whitespace
+./tests/tfscreen/models/generic/test_guesses.py:72:45: E261 at least two spaces before inline comment
+./tests/tfscreen/models/generic/test_guesses.py:73:46: E261 at least two spaces before inline comment
+./tests/tfscreen/models/generic/test_guesses.py:79:1: W293 blank line contains whitespace
 ./tests/tfscreen/models/generic/test_models.py:2:1: F401 'pytest' imported but unused
 ./tests/tfscreen/models/generic/test_models.py:15:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/models/generic/test_models.py:20:1: E302 expected 2 blank lines, found 1
@@ -9881,6 +10019,39 @@
 ./tests/tfscreen/models/generic/test_models.py:95:1: W293 blank line contains whitespace
 ./tests/tfscreen/models/generic/test_models.py:98:1: W293 blank line contains whitespace
 ./tests/tfscreen/models/generic/test_models.py:100:1: W293 blank line contains whitespace
+./tests/tfscreen/models/growth/test_growth_wrappers.py:4:1: F401 'pandas as pd' imported but unused
+./tests/tfscreen/models/growth/test_growth_wrappers.py:6:1: F401 'scipy.linalg.LinAlgError' imported but unused
+./tests/tfscreen/models/growth/test_growth_wrappers.py:9:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/models/growth/test_growth_wrappers.py:15:1: W293 blank line contains whitespace
+./tests/tfscreen/models/growth/test_growth_wrappers.py:20:1: W293 blank line contains whitespace
+./tests/tfscreen/models/growth/test_growth_wrappers.py:25:29: W291 trailing whitespace
+./tests/tfscreen/models/growth/test_growth_wrappers.py:26:1: W293 blank line contains whitespace
+./tests/tfscreen/models/growth/test_growth_wrappers.py:30:1: W293 blank line contains whitespace
+./tests/tfscreen/models/growth/test_growth_wrappers.py:33:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/models/growth/test_growth_wrappers.py:41:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/models/growth/test_growth_wrappers.py:49:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/models/growth/test_growth_wrappers.py:52:1: W293 blank line contains whitespace
+./tests/tfscreen/models/growth/test_growth_wrappers.py:58:1: W293 blank line contains whitespace
+./tests/tfscreen/models/growth/test_growth_wrappers.py:60:21: E225 missing whitespace around operator
+./tests/tfscreen/models/growth/test_growth_wrappers.py:61:39: W291 trailing whitespace
+./tests/tfscreen/models/growth/test_growth_wrappers.py:62:54: W291 trailing whitespace
+./tests/tfscreen/models/growth/test_growth_wrappers.py:64:1: W293 blank line contains whitespace
+./tests/tfscreen/models/growth/test_growth_wrappers.py:67:45: W291 trailing whitespace
+./tests/tfscreen/models/growth/test_growth_wrappers.py:70:51: W291 trailing whitespace
+./tests/tfscreen/models/growth/test_growth_wrappers.py:72:45: E231 missing whitespace after ','
+./tests/tfscreen/models/growth/test_growth_wrappers.py:72:48: W291 trailing whitespace
+./tests/tfscreen/models/growth/test_growth_wrappers.py:73:1: W293 blank line contains whitespace
+./tests/tfscreen/models/growth/test_growth_wrappers.py:75:1: W293 blank line contains whitespace
+./tests/tfscreen/models/growth/test_growth_wrappers.py:81:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/models/growth/test_growth_wrappers.py:89:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/models/growth/test_growth_wrappers.py:97:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/models/growth/test_growth_wrappers.py:104:10: E111 indentation is not a multiple of 4
+./tests/tfscreen/models/growth/test_growth_wrappers.py:104:10: E117 over-indented
+./tests/tfscreen/models/growth/test_growth_wrappers.py:106:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/models/growth/test_growth_wrappers.py:109:1: W293 blank line contains whitespace
+./tests/tfscreen/models/growth/test_growth_wrappers.py:111:1: W293 blank line contains whitespace
+./tests/tfscreen/models/growth/test_growth_wrappers.py:118:1: W293 blank line contains whitespace
+./tests/tfscreen/models/growth/test_growth_wrappers.py:120:1: W293 blank line contains whitespace
 ./tests/tfscreen/models/lac_model/test_lac_model.py:4:1: F401 'unittest.mock.MagicMock' imported but unused
 ./tests/tfscreen/models/lac_model/test_lac_model.py:8:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/models/lac_model/test_lac_model.py:13:45: E261 at least two spaces before inline comment
@@ -9897,6 +10068,52 @@
 ./tests/tfscreen/models/lac_model/test_lac_model.py:72:1: W293 blank line contains whitespace
 ./tests/tfscreen/models/lac_model/test_lac_model.py:75:1: W293 blank line contains whitespace
 ./tests/tfscreen/models/lac_model/test_lac_model.py:81:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/models/lac_model/test_model_implementations.py:23:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/models/lac_model/test_model_implementations.py:33:1: W293 blank line contains whitespace
+./tests/tfscreen/models/lac_model/test_model_implementations.py:35:102: W291 trailing whitespace
+./tests/tfscreen/models/lac_model/test_model_implementations.py:42:39: E261 at least two spaces before inline comment
+./tests/tfscreen/models/lac_model/test_model_implementations.py:43:1: W293 blank line contains whitespace
+./tests/tfscreen/models/lac_model/test_model_implementations.py:54:1: W293 blank line contains whitespace
+./tests/tfscreen/models/lac_model/test_model_implementations.py:58:1: W293 blank line contains whitespace
+./tests/tfscreen/models/lac_model/test_model_implementations.py:65:37: W291 trailing whitespace
+./tests/tfscreen/models/lac_model/test_model_implementations.py:68:1: W293 blank line contains whitespace
+./tests/tfscreen/models/lac_model/test_model_implementations.py:73:1: W293 blank line contains whitespace
+./tests/tfscreen/models/lac_model/test_model_implementations.py:78:1: W293 blank line contains whitespace
+./tests/tfscreen/models/lac_model/test_model_implementations.py:80:24: E261 at least two spaces before inline comment
+./tests/tfscreen/models/lac_model/test_model_implementations.py:84:25: E261 at least two spaces before inline comment
+./tests/tfscreen/models/lac_model/test_model_implementations.py:85:1: W293 blank line contains whitespace
+./tests/tfscreen/models/lac_model/test_model_implementations.py:87:1: W293 blank line contains whitespace
+./tests/tfscreen/models/lac_model/test_model_implementations.py:91:30: E261 at least two spaces before inline comment
+./tests/tfscreen/models/lac_model/test_model_implementations.py:94:14: E114 indentation is not a multiple of 4 (comment)
+./tests/tfscreen/models/lac_model/test_model_implementations.py:94:14: E117 over-indented (comment)
+./tests/tfscreen/models/lac_model/test_model_implementations.py:95:14: E111 indentation is not a multiple of 4
+./tests/tfscreen/models/lac_model/test_model_implementations.py:95:14: E117 over-indented
+./tests/tfscreen/models/lac_model/test_model_implementations.py:95:30: E261 at least two spaces before inline comment
+./tests/tfscreen/models/lac_model/test_model_implementations.py:97:14: E114 indentation is not a multiple of 4 (comment)
+./tests/tfscreen/models/lac_model/test_model_implementations.py:97:14: E117 over-indented (comment)
+./tests/tfscreen/models/lac_model/test_model_implementations.py:98:14: E111 indentation is not a multiple of 4
+./tests/tfscreen/models/lac_model/test_model_implementations.py:98:14: E117 over-indented
+./tests/tfscreen/models/lac_model/test_model_implementations.py:99:14: E111 indentation is not a multiple of 4
+./tests/tfscreen/models/lac_model/test_model_implementations.py:100:1: W293 blank line contains whitespace
+./tests/tfscreen/models/lac_model/test_model_implementations.py:102:1: W293 blank line contains whitespace
+./tests/tfscreen/models/lac_model/test_model_implementations.py:106:1: W293 blank line contains whitespace
+./tests/tfscreen/models/lac_model/test_model_implementations.py:111:1: W293 blank line contains whitespace
+./tests/tfscreen/models/lac_model/test_model_implementations.py:115:1: W293 blank line contains whitespace
+./tests/tfscreen/models/lac_model/test_model_implementations.py:122:1: W293 blank line contains whitespace
+./tests/tfscreen/models/lac_model/test_model_implementations.py:125:1: W293 blank line contains whitespace
+./tests/tfscreen/models/lac_model/test_model_implementations.py:129:5: E303 too many blank lines (2)
+./tests/tfscreen/models/lac_model/test_model_implementations.py:134:43: E261 at least two spaces before inline comment
+./tests/tfscreen/models/lac_model/test_model_implementations.py:136:42: E261 at least two spaces before inline comment
+./tests/tfscreen/models/lac_model/test_model_implementations.py:138:34: E702 multiple statements on one line (semicolon)
+./tests/tfscreen/models/lac_model/test_model_implementations.py:140:18: E111 indentation is not a multiple of 4
+./tests/tfscreen/models/lac_model/test_model_implementations.py:140:18: E117 over-indented
+./tests/tfscreen/models/lac_model/test_model_implementations.py:144:40: E261 at least two spaces before inline comment
+./tests/tfscreen/models/lac_model/test_model_implementations.py:150:1: W293 blank line contains whitespace
+./tests/tfscreen/models/lac_model/test_model_implementations.py:157:5: E303 too many blank lines (2)
+./tests/tfscreen/models/lac_model/test_model_implementations.py:161:1: W293 blank line contains whitespace
+./tests/tfscreen/models/lac_model/test_model_implementations.py:165:1: W293 blank line contains whitespace
+./tests/tfscreen/models/lac_model/test_model_implementations.py:171:1: W293 blank line contains whitespace
+./tests/tfscreen/models/lac_model/test_model_implementations.py:174:1: W293 blank line contains whitespace
 ./tests/tfscreen/models/test_eee_model.py:8:43: W291 trailing whitespace
 ./tests/tfscreen/models/test_eee_model.py:13:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/models/test_eee_model.py:20:1: W293 blank line contains whitespace
@@ -10018,6 +10235,140 @@
 ./tests/tfscreen/plot/heatmap/test_heatmap_core.py:786:10: E201 whitespace after '('
 ./tests/tfscreen/plot/heatmap/test_heatmap_core.py:797:1: W293 blank line contains whitespace
 ./tests/tfscreen/plot/heatmap/test_heatmap_core.py:800:30: W292 no newline at end of file
+./tests/tfscreen/plot/heatmap/test_heatmaps.py:4:1: F401 'numpy as np' imported but unused
+./tests/tfscreen/plot/heatmap/test_heatmaps.py:11:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/heatmap/test_heatmaps.py:17:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/heatmap/test_heatmaps.py:24:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/heatmap/test_heatmaps.py:26:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/heatmap/test_heatmaps.py:30:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/heatmap/test_heatmaps.py:36:57: W291 trailing whitespace
+./tests/tfscreen/plot/heatmap/test_heatmaps.py:37:36: W291 trailing whitespace
+./tests/tfscreen/plot/heatmap/test_heatmaps.py:40:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/heatmap/test_heatmaps.py:45:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/heatmap/test_heatmaps.py:55:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/heatmap/test_heatmaps.py:62:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/heatmap/test_heatmaps.py:64:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/heatmap/test_heatmaps.py:72:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/heatmap/test_heatmaps.py:75:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/heatmap/test_heatmaps.py:85:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/heatmap/test_heatmaps.py:98:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/heatmap/test_heatmaps.py:102:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/heatmap/test_heatmaps.py:110:47: E261 at least two spaces before inline comment
+./tests/tfscreen/plot/heatmap/test_heatmaps.py:111:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/heatmap/test_heatmaps.py:113:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/heatmap/test_heatmaps.py:117:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/heatmap/test_heatmaps.py:121:31: E231 missing whitespace after ','
+./tests/tfscreen/plot/heatmap/test_heatmaps.py:123:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/heatmap/test_heatmaps.py:136:1: W391 blank line at end of file
+./tests/tfscreen/plot/test_cat_fits.py:2:1: F401 'pytest' imported but unused
+./tests/tfscreen/plot/test_cat_fits.py:8:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/test_cat_fits.py:12:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_cat_fits.py:20:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_cat_fits.py:23:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_cat_fits.py:26:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_cat_fits.py:29:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_cat_fits.py:32:27: W291 trailing whitespace
+./tests/tfscreen/plot/test_cat_fits.py:34:40: W291 trailing whitespace
+./tests/tfscreen/plot/test_cat_fits.py:35:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_cat_fits.py:37:34: W291 trailing whitespace
+./tests/tfscreen/plot/test_cat_fits.py:38:26: E741 ambiguous variable name 'l'
+./tests/tfscreen/plot/test_cat_fits.py:41:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/test_cat_fits.py:46:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_cat_fits.py:54:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_cat_fits.py:59:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/test_cat_fits.py:63:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_cat_fits.py:73:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_cat_fits.py:78:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/test_cat_fits.py:82:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_cat_fits.py:90:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_corner.py:6:1: F401 'unittest.mock.MagicMock' imported but unused
+./tests/tfscreen/plot/test_corner.py:9:5: F401 'corner' imported but unused
+./tests/tfscreen/plot/test_corner.py:16:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/test_corner.py:22:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/test_corner.py:31:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_corner.py:33:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_corner.py:35:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_corner.py:38:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_corner.py:45:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_corner.py:61:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_corner.py:63:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_corner.py:67:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/test_corner.py:75:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_corner.py:77:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_corner.py:78:41: E261 at least two spaces before inline comment
+./tests/tfscreen/plot/test_corner.py:79:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_corner.py:81:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_default_styles.py:1:1: F401 'pytest' imported but unused
+./tests/tfscreen/plot/test_default_styles.py:14:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/test_err_plots.py:2:1: F401 'pytest' imported but unused
+./tests/tfscreen/plot/test_err_plots.py:9:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/test_err_plots.py:13:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_err_plots.py:22:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/test_err_plots.py:25:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_err_plots.py:33:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/test_err_plots.py:37:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_err_plots.py:45:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_err_plots.py:49:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/test_err_plots.py:53:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_est_v_real_summary.py:2:1: F401 'pytest' imported but unused
+./tests/tfscreen/plot/test_est_v_real_summary.py:7:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/test_est_v_real_summary.py:13:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_est_v_real_summary.py:16:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_est_v_real_summary.py:22:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_est_v_real_summary.py:25:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_est_v_real_summary.py:30:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/test_est_v_real_summary.py:34:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_helper.py:3:1: F401 'pytest' imported but unused
+./tests/tfscreen/plot/test_helper.py:6:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/test_helper.py:9:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_helper.py:15:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/test_helper.py:23:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/test_helper.py:30:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/test_helper.py:31:16: W291 trailing whitespace
+./tests/tfscreen/plot/test_helper.py:33:59: W291 trailing whitespace
+./tests/tfscreen/plot/test_helper.py:40:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/test_helper.py:44:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_helper.py:46:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_helper.py:50:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_helper.py:55:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/test_helper.py:57:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_helper.py:63:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_helper.py:67:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_hill_fit.py:2:1: F401 'pytest' imported but unused
+./tests/tfscreen/plot/test_hill_fit.py:3:1: F401 'numpy as np' imported but unused
+./tests/tfscreen/plot/test_hill_fit.py:8:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/test_hill_fit.py:15:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_hill_fit.py:18:36: E261 at least two spaces before inline comment
+./tests/tfscreen/plot/test_hill_fit.py:18:100: W291 trailing whitespace
+./tests/tfscreen/plot/test_hill_fit.py:19:89: W291 trailing whitespace
+./tests/tfscreen/plot/test_hill_fit.py:24:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_hill_fit.py:27:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_hill_fit.py:30:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_hill_fit.py:36:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/test_hill_fit.py:50:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_xy_corr.py:2:1: F401 'pytest' imported but unused
+./tests/tfscreen/plot/test_xy_corr.py:7:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/test_xy_corr.py:10:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_xy_corr.py:13:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_xy_corr.py:15:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_xy_corr.py:17:36: E261 at least two spaces before inline comment
+./tests/tfscreen/plot/test_xy_corr.py:18:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_xy_corr.py:21:5: F841 local variable 'ylim' is assigned to but never used
+./tests/tfscreen/plot/test_xy_corr.py:22:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_xy_corr.py:27:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/test_xy_corr.py:31:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_xy_corr.py:34:35: E261 at least two spaces before inline comment
+./tests/tfscreen/plot/test_xy_corr.py:36:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/test_xy_corr.py:39:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_xy_corr.py:41:53: W291 trailing whitespace
+./tests/tfscreen/plot/test_xy_corr.py:42:72: W291 trailing whitespace
+./tests/tfscreen/plot/test_xy_corr.py:48:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/plot/test_xy_corr.py:51:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_xy_corr.py:52:5: F841 local variable 'ax' is assigned to but never used
+./tests/tfscreen/plot/test_xy_corr.py:53:77: W291 trailing whitespace
+./tests/tfscreen/plot/test_xy_corr.py:55:1: W293 blank line contains whitespace
+./tests/tfscreen/plot/test_xy_corr.py:57:54: W291 trailing whitespace
+./tests/tfscreen/plot/test_xy_corr.py:61:1: W391 blank line at end of file
 ./tests/tfscreen/process_raw/test_counts_to_lncfu.py:18:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/process_raw/test_counts_to_lncfu.py:30:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/process_raw/test_counts_to_lncfu.py:45:1: E302 expected 2 blank lines, found 1
@@ -10218,6 +10569,46 @@
 ./tests/tfscreen/simulate/test_build_sample_dataframes.py:104:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/simulate/test_build_sample_dataframes.py:115:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/simulate/test_build_sample_dataframes.py:128:55: W292 no newline at end of file
+./tests/tfscreen/simulate/test_library_prediction.py:4:1: F401 'unittest.mock.MagicMock' imported but unused
+./tests/tfscreen/simulate/test_library_prediction.py:7:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_library_prediction.py:19:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_library_prediction.py:31:128: E501 line too long (129 > 127 characters)
+./tests/tfscreen/simulate/test_library_prediction.py:36:128: E501 line too long (143 > 127 characters)
+./tests/tfscreen/simulate/test_library_prediction.py:45:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_library_prediction.py:47:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_library_prediction.py:65:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_library_prediction.py:68:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_library_prediction.py:72:1: E305 expected 2 blank lines after class or function definition, found 1
+./tests/tfscreen/simulate/test_library_prediction.py:72:1: E402 module level import not at top of file
+./tests/tfscreen/simulate/test_library_prediction.py:72:21: E261 at least two spaces before inline comment
+./tests/tfscreen/simulate/test_run_simulation.py:3:1: F401 'os' imported but unused
+./tests/tfscreen/simulate/test_run_simulation.py:5:1: F401 'unittest.mock.MagicMock' imported but unused
+./tests/tfscreen/simulate/test_run_simulation.py:7:1: F401 'tfscreen.util' imported but unused
+./tests/tfscreen/simulate/test_run_simulation.py:9:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_run_simulation.py:13:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_run_simulation.py:26:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_run_simulation.py:29:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_run_simulation.py:33:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_run_simulation.py:40:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_run_simulation.py:46:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_run_simulation.py:50:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_run_simulation.py:54:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_run_simulation.py:64:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_run_simulation.py:69:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_run_simulation.py:71:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_run_simulation.py:74:128: E501 line too long (128 > 127 characters)
+./tests/tfscreen/simulate/test_run_simulation.py:76:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_run_simulation.py:78:128: E501 line too long (144 > 127 characters)
+./tests/tfscreen/simulate/test_run_simulation.py:80:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_run_simulation.py:89:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_run_simulation.py:92:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_run_simulation.py:94:47: W291 trailing whitespace
+./tests/tfscreen/simulate/test_run_simulation.py:97:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_run_simulation.py:99:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_run_simulation.py:103:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_run_simulation.py:106:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_run_simulation.py:109:5: F841 local variable 'results' is assigned to but never used
+./tests/tfscreen/simulate/test_run_simulation.py:110:1: W293 blank line contains whitespace
 ./tests/tfscreen/simulate/test_selection_experiment.py:4:1: F401 'numpy.ma' imported but unused
 ./tests/tfscreen/simulate/test_selection_experiment.py:6:1: F401 'scipy.stats.gmean' imported but unused
 ./tests/tfscreen/simulate/test_selection_experiment.py:9:1: F401 'unittest.mock.MagicMock' imported but unused
@@ -10383,33 +10774,43 @@
 ./tests/tfscreen/simulate/test_setup_observable.py:126:53: E261 at least two spaces before inline comment
 ./tests/tfscreen/simulate/test_setup_observable.py:128:83: W292 no newline at end of file
 ./tests/tfscreen/simulate/test_thermo_to_growth.py:5:1: F401 'typing.Iterable' imported but unused
-./tests/tfscreen/simulate/test_thermo_to_growth.py:12:1: F811 redefinition of unused 'pytest' from line 2
-./tests/tfscreen/simulate/test_thermo_to_growth.py:13:1: F811 redefinition of unused 'pd' from line 3
-./tests/tfscreen/simulate/test_thermo_to_growth.py:14:1: F811 redefinition of unused 'np' from line 4
-./tests/tfscreen/simulate/test_thermo_to_growth.py:15:1: F811 redefinition of unused 'Generator' from line 5
-./tests/tfscreen/simulate/test_thermo_to_growth.py:27:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_thermo_to_growth.py:32:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_thermo_to_growth.py:52:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_thermo_to_growth.py:55:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_thermo_to_growth.py:68:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_thermo_to_growth.py:76:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_thermo_to_growth.py:81:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_thermo_to_growth.py:84:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_thermo_to_growth.py:88:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_thermo_to_growth.py:99:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_thermo_to_growth.py:117:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_thermo_to_growth.py:122:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_thermo_to_growth.py:125:77: W291 trailing whitespace
-./tests/tfscreen/simulate/test_thermo_to_growth.py:127:73: W291 trailing whitespace
-./tests/tfscreen/simulate/test_thermo_to_growth.py:131:68: E261 at least two spaces before inline comment
-./tests/tfscreen/simulate/test_thermo_to_growth.py:140:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_thermo_to_growth.py:146:37: E261 at least two spaces before inline comment
-./tests/tfscreen/simulate/test_thermo_to_growth.py:150:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_thermo_to_growth.py:166:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_thermo_to_growth.py:170:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_thermo_to_growth.py:174:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_thermo_to_growth.py:180:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_thermo_to_growth.py:183:49: W292 no newline at end of file
+./tests/tfscreen/simulate/test_thermo_to_growth.py:13:1: F811 redefinition of unused 'pytest' from line 2
+./tests/tfscreen/simulate/test_thermo_to_growth.py:14:1: F811 redefinition of unused 'pd' from line 3
+./tests/tfscreen/simulate/test_thermo_to_growth.py:15:1: F811 redefinition of unused 'np' from line 4
+./tests/tfscreen/simulate/test_thermo_to_growth.py:16:1: F811 redefinition of unused 'Generator' from line 5
+./tests/tfscreen/simulate/test_thermo_to_growth.py:28:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_thermo_to_growth.py:33:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_thermo_to_growth.py:53:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_thermo_to_growth.py:56:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_thermo_to_growth.py:69:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_thermo_to_growth.py:77:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_thermo_to_growth.py:82:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_thermo_to_growth.py:85:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_thermo_to_growth.py:89:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_thermo_to_growth.py:100:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_thermo_to_growth.py:118:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_thermo_to_growth.py:123:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_thermo_to_growth.py:126:77: W291 trailing whitespace
+./tests/tfscreen/simulate/test_thermo_to_growth.py:128:73: W291 trailing whitespace
+./tests/tfscreen/simulate/test_thermo_to_growth.py:132:68: E261 at least two spaces before inline comment
+./tests/tfscreen/simulate/test_thermo_to_growth.py:141:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_thermo_to_growth.py:147:37: E261 at least two spaces before inline comment
+./tests/tfscreen/simulate/test_thermo_to_growth.py:151:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_thermo_to_growth.py:167:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_thermo_to_growth.py:171:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_thermo_to_growth.py:175:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_thermo_to_growth.py:181:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_thermo_to_growth.py:186:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_thermo_to_growth.py:191:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_thermo_to_growth.py:195:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_thermo_to_growth.py:196:72: W291 trailing whitespace
+./tests/tfscreen/simulate/test_thermo_to_growth.py:198:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_thermo_to_growth.py:199:128: E501 line too long (149 > 127 characters)
+./tests/tfscreen/simulate/test_thermo_to_growth.py:200:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_thermo_to_growth.py:202:88: W291 trailing whitespace
+./tests/tfscreen/simulate/test_thermo_to_growth.py:207:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_thermo_to_growth.py:217:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_thermo_to_growth.py:220:26: W292 no newline at end of file
 ./tests/tfscreen/util/test_add_group_column.py:3:1: F401 'numpy as np' imported but unused
 ./tests/tfscreen/util/test_add_group_column.py:12:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/test_add_group_column.py:22:1: E302 expected 2 blank lines, found 1
@@ -10628,51 +11029,51 @@
 ./tests/tfscreen/util/test_zero_truncated_poisson.py:81:1: W293 blank line contains whitespace
 40    C901 'cat_fit' is too complex (19)
 92    E101 indentation contains mixed spaces and tabs
-11    E111 indentation is not a multiple of 4
-12    E114 indentation is not a multiple of 4 (comment)
+33    E111 indentation is not a multiple of 4
+18    E114 indentation is not a multiple of 4 (comment)
 10    E116 unexpected indentation (comment)
-23    E117 over-indented
+33    E117 over-indented
 5     E124 closing bracket does not match visual indentation
 12    E125 continuation line with same indent as next logical line
 39    E127 continuation line over-indented for visual indent
-95    E128 continuation line under-indented for visual indent
+91    E128 continuation line under-indented for visual indent
 1     E131 continuation line unaligned for hanging indent
-34    E201 whitespace after '['
+32    E201 whitespace after '['
 14    E202 whitespace before ']'
-6     E203 whitespace before ','
+7     E203 whitespace before ','
 10    E211 whitespace before '('
-10    E221 multiple spaces before operator
+8     E221 multiple spaces before operator
 23    E222 multiple spaces after operator
-18    E225 missing whitespace around operator
-3105  E231 missing whitespace after ','
+19    E225 missing whitespace around operator
+3067  E231 missing whitespace after ','
 121   E251 unexpected spaces around keyword / parameter equals
 32    E252 missing whitespace around parameter equals
-277   E261 at least two spaces before inline comment
+314   E261 at least two spaces before inline comment
 4     E262 inline comment should start with '# '
 12    E265 block comment should start with '# '
 3     E266 too many leading '#' for block comment
 2     E271 multiple spaces after keyword
 2     E275 missing whitespace after keyword
 2     E301 expected 1 blank line, found 0
-955   E302 expected 2 blank lines, found 1
-144   E303 too many blank lines (2)
-5     E305 expected 2 blank lines after class or function definition, found 1
+1039  E302 expected 2 blank lines, found 1
+140   E303 too many blank lines (2)
+4     E305 expected 2 blank lines after class or function definition, found 1
 9     E306 expected 1 blank line before a nested definition, found 0
 2     E401 multiple imports on one line
-2     E402 module level import not at top of file
-10    E501 line too long (136 > 127 characters)
+3     E402 module level import not at top of file
+16    E501 line too long (136 > 127 characters)
 32    E701 multiple statements on one line (colon)
-12    E702 multiple statements on one line (semicolon)
+13    E702 multiple statements on one line (semicolon)
 8     E712 comparison to True should be 'if cond is True:' or 'if cond:'
 1     E731 do not assign a lambda expression, use a def
-4     E741 ambiguous variable name 'I'
-311   F401 '.calibration' imported but unused
+5     E741 ambiguous variable name 'I'
+336   F401 '.calibration' imported but unused
 16    F541 f-string is missing placeholders
 7     F811 redefinition of unused 'np' from line 1
-14    F841 local variable 'nu' is assigned to but never used
+17    F841 local variable 'nu' is assigned to but never used
 92    W191 indentation contains tabs
-1791  W291 trailing whitespace
+1801  W291 trailing whitespace
 203   W292 no newline at end of file
-2922  W293 blank line contains whitespace
-73    W391 blank line at end of file
-10628
+3162  W293 blank line contains whitespace
+77    W391 blank line at end of file
+11029

@@ -47,9 +47,9 @@ def run_matrix_nls(X,
     sqrt_weights = np.sqrt(weights)
 
     if lower_bounds is None:
-        lower_bounds = np.repeat(-np.inf*(len(guesses)))
+        lower_bounds = np.repeat(-np.inf, len(guesses))
     if upper_bounds is None:
-        upper_bounds = np.repeat( np.inf*(len(guesses)))
+        upper_bounds = np.repeat(np.inf, len(guesses))
 
     fit_result = least_squares(fun=_weighted_residuals,
                                x0=guesses,
@@ -62,6 +62,6 @@ def run_matrix_nls(X,
     cov_matrix, std_errors = get_cov(y=y,
                                      residuals=fit_result.fun,
                                      params=params,
-                                     J=fit_result.J)
+                                     J=fit_result.jac)
     
     return params, std_errors, cov_matrix, fit_result

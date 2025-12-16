@@ -83,10 +83,6 @@ def build_sample_dataframes(condition_blocks, replicate=1):
         
         all_block_dfs.append(pd.DataFrame(rows))
 
-    # Perform a single, efficient concatenation of all DataFrames
-    if not all_block_dfs:
-        return pd.DataFrame() # Return empty df if no conditions were generated
-        
     sample_df = pd.concat(all_block_dfs, ignore_index=True)
     
     # Sort in a stereotyped way

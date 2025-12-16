@@ -3,6 +3,7 @@ import pytest
 import pandas as pd
 import numpy as np
 from typing import Iterable, Generator
+from unittest.mock import MagicMock
 
 # Import the function to be tested
 from tfscreen.simulate.thermo_to_growth import _assign_ddG
@@ -181,3 +182,39 @@ def test_thermo_to_growth_integration(mocker, test_genotypes, test_sample_df):
     # Check the second returned dataframe
     assert isinstance(genotype_ddG_df, pd.DataFrame)
     assert "genotype" in genotype_ddG_df.columns
+
+def test_thermo_to_growth_propagates_rng(mocker, test_genotypes, test_sample_df):
+    """
+    Tests that the rng argument is correctly propagated to internal functions.
+    """
+    rng = np.random.default_rng(12345)
+    
+    # Mock dependencies
+    mocker.patch("tfscreen.simulate.thermo_to_growth.standardize_genotypes", return_value=test_genotypes)
+    mocker.patch("tfscreen.simulate.thermo_to_growth.argsort_genotypes", return_value=np.arange(len(test_genotypes)))
+    
+    mocker.patch("tfscreen.simulate.thermo_to_growth.setup_observable", 
+                 return_value=(MagicMock(return_value=np.zeros(len(test_sample_df))), pd.DataFrame()))
+    
+    mocker.patch("tfscreen.simulate.thermo_to_growth._assign_ddG", return_value=pd.DataFrame({"col": [0]*len(test_genotypes)}, index=test_genotypes))
+    
+    # We want to check this mock call
+    mock_assign_dk = mocker.patch("tfscreen.simulate.thermo_to_growth._assign_dk_geno", 
+                                  return_value=pd.Series(0, index=test_genotypes))
+
+    mocker.patch("tfscreen.simulate.thermo_to_growth.get_wt_k", return_value=np.zeros(len(test_sample_df)*len(test_genotypes)))
+    mocker.patch("tfscreen.simulate.thermo_to_growth.set_categorical_genotype", side_effect=lambda x: x)
+    
+    thermo_to_growth(
+        genotypes=test_genotypes,
+        sample_df=test_sample_df,
+        observable_calculator="mock_calc",
+        observable_calc_kwargs={"e_name": "IPTG"},
+        ddG_df="dummy.csv",
+        calibration_data={},
+        rng=rng
+    )
+    
+    # Verify rng was passed
+    args, kwargs = mock_assign_dk.call_args
+    assert args[4] is rng

@@ -126,10 +126,10 @@ def _do_gee(times,
     
     gee_results = gee_model.fit()
 
-    A0_est = np.asarray(gee_results.param[:cfu.shape[0]])
-    A0_std = np.asarray(gee_results.base[:cfu.shape[0]])
-    k_est = np.asarray(gee_results.param[cfu.shape[0]:])
-    k_std = np.asarray(gee_results.base[cfu.shape[0]:])
+    A0_est = np.asarray(gee_results.params[:cfu.shape[0]])
+    A0_std = np.asarray(gee_results.bse[:cfu.shape[0]])
+    k_est = np.asarray(gee_results.params[cfu.shape[0]:])
+    k_std = np.asarray(gee_results.bse[cfu.shape[0]:])
     
     pred = gee_results.fittedvalues
     obs = y_long

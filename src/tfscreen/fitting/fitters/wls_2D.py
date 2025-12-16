@@ -50,7 +50,7 @@ def run_wls_2D(x_arrays,
     n_points = x.shape[1]
     if n_points < 2:
         nan_array = np.full(x.shape[0], np.nan)
-        return nan_array, nan_array, nan_array, nan_array
+        return nan_array, nan_array, nan_array, nan_array, nan_array
 
     # --- Step 1: Calculate Weights and Weighted Sums ---
     # The weight of each point is the inverse of its variance.
