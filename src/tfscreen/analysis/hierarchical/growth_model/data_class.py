@@ -82,7 +82,7 @@ class DataClass:
 
     num_genotype: int = field(pytree_node=False)
     
-    not_binding_idx: int = field(pytree_node=False)
+    not_binding_idx: jnp.ndarray
     not_binding_batch_size: int = field(pytree_node=False)
     num_binding: int = field(pytree_node=False) 
 

@@ -340,6 +340,12 @@ class RunInference:
         total_num_genotypes = self.model.data.num_genotype 
         num_latent_batches = -(-num_posterior_samples // sampling_batch_size)
 
+        # Create a full-batch data object for sampling latents
+        # We need this because latent_sampler needs to know about ALL genotypes
+        # to generate the correct shape for parameters like (num_titrants, num_genotypes)
+        all_indices = jnp.arange(total_num_genotypes)
+        full_data = self.model.get_batch(self.model.data, all_indices)
+
         for _ in tqdm(range(num_latent_batches),desc="sampling posterior"):
 
             # Sample the entire guide posterior distribution 
@@ -349,7 +355,7 @@ class RunInference:
                                         num_samples=sampling_batch_size)
             latent_samples = latent_sampler(post_key,
                                             priors=self.model.priors,
-                                            data=self.model.data)
+                                            data=full_data)
 
             # Sample batches of genotypes
             batched_results = {}
@@ -374,7 +380,8 @@ class RunInference:
 
 
                 # Get a batch of data
-                batch_data = self.model.get_batch(batch_indices)
+                batch_data = self.model.get_batch(self.model.data,
+                batch_indices)
                 
                 # Create a sampler that will predict outputs using the full
                 # model given those latent samples
@@ -427,7 +434,7 @@ class RunInference:
                 if len(v) == 1:
                     combined_results[k].append(v[0])
                 else:
-                    full_width = np.concatenate(v,axis=1)
+                    full_width = np.concatenate(v,axis=-1)
                     combined_results[k].append(full_width)
     
         # assemble final results
@@ -656,6 +663,13 @@ class RunInference:
             np.array(losses).tofile(f)
             f.flush()
             os.fsync(f.fileno())
+
+        # Write a human-readable losses file
+        readable_losses_file = f"{out_root}_losses.txt"
+        with open(readable_losses_file,"a") as f:
+            f.write(f"{losses[-1]},{self._relative_change}\n")
+            f.flush()
+            os.fsync(f.fileno())    
 
 
     def _write_posteriors(self,posterior_samples,out_root):
