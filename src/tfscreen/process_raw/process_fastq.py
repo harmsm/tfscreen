@@ -1,5 +1,5 @@
 from .fastq_to_counts import FastqToCounts
-from tfscreen.util import generalized_main
+from tfscreen.util.cli import generalized_main
 from tfscreen.genetics import (
     LibraryManager,
     set_categorical_genotype

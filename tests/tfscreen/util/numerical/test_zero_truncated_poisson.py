@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from tfscreen.util.zero_truncated_poisson import zero_truncated_poisson
+from tfscreen.util.numerical.zero_truncated_poisson import zero_truncated_poisson
 
 @pytest.fixture
 def rng():

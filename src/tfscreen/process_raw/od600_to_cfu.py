@@ -1,4 +1,4 @@
-from tfscreen.util import read_yaml
+from tfscreen.util.io import read_yaml
 
 import numpy as np
 from typing import Tuple

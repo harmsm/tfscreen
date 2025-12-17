@@ -1,5 +1,5 @@
 
-from tfscreen.util import (
+from tfscreen.util.dataframe import (
     df_to_arrays,
     get_scaled_cfu,
     check_columns,

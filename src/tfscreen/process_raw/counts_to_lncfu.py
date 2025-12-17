@@ -1,7 +1,5 @@
-from tfscreen.util import (
-    read_dataframe,
-    check_columns,
-)
+from tfscreen.util.io import read_dataframe
+from tfscreen.util.dataframe import check_columns
 
 from tfscreen.genetics import (
     set_categorical_genotype

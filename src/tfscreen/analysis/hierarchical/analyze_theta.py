@@ -1,6 +1,6 @@
 from tfscreen.analysis.hierarchical.run_inference import RunInference
 from tfscreen.analysis.hierarchical.growth_model import GrowthModel
-from tfscreen.util.generalized_main import generalized_main
+from tfscreen.util.cli.generalized_main import generalized_main
 
 import os
 

@@ -1,6 +1,6 @@
 import tfscreen
 
-from tfscreen.util import add_group_columns
+from tfscreen.util.dataframe import add_group_columns
 from tfscreen.analysis.hierarchical import (
     TensorManager,
     populate_dataclass
@@ -79,9 +79,9 @@ def _read_growth_df(growth_df,
 
     # Read dataframe, make sure genotypes are categorical, and validate or
     # calculate ln_cfu and ln_cfu_std
-    growth_df = tfscreen.util.read_dataframe(growth_df)
+    growth_df = tfscreen.util.io.read_dataframe(growth_df)
     growth_df = tfscreen.genetics.set_categorical_genotype(growth_df,standardize=True)
-    growth_df = tfscreen.util.get_scaled_cfu(growth_df,need_columns=["ln_cfu","ln_cfu_std"])
+    growth_df = tfscreen.util.dataframe.get_scaled_cfu(growth_df,need_columns=["ln_cfu","ln_cfu_std"])
 
     # make a replicate column if not defined
     if "replicate" not in growth_df.columns:
@@ -91,7 +91,7 @@ def _read_growth_df(growth_df,
     required = theta_group_cols[:]
     required.extend(treatment_cols)
     required.extend(["ln_cfu","ln_cfu_std","replicate","t_pre","t_sel"])
-    tfscreen.util.check_columns(growth_df,required_columns=required)
+    tfscreen.util.dataframe.check_columns(growth_df,required_columns=required)
 
     # These two maps are used to look up parameters after sampling posteriors
     growth_df = add_group_columns(target_df=growth_df,
@@ -220,14 +220,14 @@ def _read_binding_df(binding_df,
         theta_group_cols = ["genotype","titrant_name"]
 
     # Load dataframe (either loads from file or works on copy)
-    binding_df = tfscreen.util.read_dataframe(binding_df)
+    binding_df = tfscreen.util.io.read_dataframe(binding_df)
     binding_df = tfscreen.genetics.set_categorical_genotype(binding_df,
                                                             standardize=True)
 
     # check for all required columns
     required = theta_group_cols[:]
     required.extend(["theta_obs","theta_std","titrant_conc"])
-    tfscreen.util.check_columns(binding_df,required_columns=required)
+    tfscreen.util.dataframe.check_columns(binding_df,required_columns=required)
 
 
     cols = ["genotype","titrant_name"]

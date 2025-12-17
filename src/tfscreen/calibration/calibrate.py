@@ -13,8 +13,8 @@ from tfscreen.fitting import (
     parse_patsy
 )
 
-from tfscreen.util import (
-    read_dataframe,
+from tfscreen.util.io import read_dataframe
+from tfscreen.util.dataframe import (
     check_columns,
     get_scaled_cfu
 )

@@ -44,7 +44,7 @@ def fx_counts_dir(tmp_path):
 
 @patch('glob.glob')
 @patch('os.path.isdir', return_value=True)
-@patch('tfscreen.util.read_dataframe')
+@patch('tfscreen.util.io.read_dataframe')
 def test_prep_sample_df_happy_path(mock_read_df, mock_isdir, mock_glob, fx_sample_df):
     """Tests successful validation and file matching."""
     mock_read_df.return_value = fx_sample_df.set_index("sample")
@@ -71,7 +71,7 @@ def test_prep_sample_df_happy_path(mock_read_df, mock_isdir, mock_glob, fx_sampl
 @patch('builtins.print')
 @patch('glob.glob')
 @patch('os.path.isdir', return_value=True)
-@patch('tfscreen.util.read_dataframe')
+@patch('tfscreen.util.io.read_dataframe')
 def test_prep_sample_df_verbose_output(mock_read_df, mock_isdir, mock_glob, mock_print, fx_sample_df):
     """Tests that verbose=True produces print output."""
     mock_read_df.return_value = fx_sample_df.set_index("sample")
@@ -85,7 +85,7 @@ def test_prep_sample_df_verbose_output(mock_read_df, mock_isdir, mock_glob, mock
 
 def test_prep_sample_df_dir_not_found(fx_sample_df):
     """Tests that FileNotFoundError is raised for an invalid directory."""
-    with patch('tfscreen.util.read_dataframe', return_value=fx_sample_df.set_index("sample")):
+    with patch('tfscreen.util.io.read_dataframe', return_value=fx_sample_df.set_index("sample")):
         with patch('os.path.isdir', return_value=False):
             with pytest.raises(FileNotFoundError, match="is not a directory"):
                 _prep_sample_df(fx_sample_df, "invalid_path")
@@ -93,27 +93,27 @@ def test_prep_sample_df_dir_not_found(fx_sample_df):
 def test_prep_sample_df_duplicate_samples(fx_sample_df):
     """Tests that ValueError is raised for non-unique samples."""
     dup_df = pd.concat([fx_sample_df, fx_sample_df.iloc[[0]]]).set_index("sample")
-    with patch('tfscreen.util.read_dataframe', return_value=dup_df):
+    with patch('tfscreen.util.io.read_dataframe', return_value=dup_df):
         with pytest.raises(ValueError, match="samples must be unique"):
             _prep_sample_df("dummy_path", "dummy_dir")
 
 def test_prep_sample_df_missing_file(fx_sample_df, fx_counts_dir):
     """Tests that ValueError is raised when a sample's file is missing."""
-    with patch('tfscreen.util.read_dataframe', return_value=fx_sample_df.set_index("sample")):
+    with patch('tfscreen.util.io.read_dataframe', return_value=fx_sample_df.set_index("sample")):
         with pytest.raises(ValueError, match="MISSING: No files found for sample 's1'"):
              # s1 file does not have the default 'obs' prefix
             _prep_sample_df(fx_sample_df, str(fx_counts_dir), counts_glob_prefix="obs")
 
 def test_prep_sample_df_ambiguous_files(fx_sample_df, fx_counts_dir):
     """Tests that ValueError is raised when a sample has multiple file matches."""
-    with patch('tfscreen.util.read_dataframe', return_value=fx_sample_df.set_index("sample")):
+    with patch('tfscreen.util.io.read_dataframe', return_value=fx_sample_df.set_index("sample")):
         with pytest.raises(ValueError, match="AMBIGUOUS: 2 files found for sample 's2'"):
             _prep_sample_df(fx_sample_df, str(fx_counts_dir), counts_glob_prefix="counts")
 
 def test_prep_sample_df_bad_index(fx_sample_df):
     """Tests that ValueError is raised if 'sample' is not the index."""
     # Return a DataFrame where 'sample' is just a column
-    with patch('tfscreen.util.read_dataframe', return_value=fx_sample_df):
+    with patch('tfscreen.util.io.read_dataframe', return_value=fx_sample_df):
         with pytest.raises(ValueError, match="sample_df must be indexed by 'sample'"):
             _prep_sample_df(fx_sample_df, "dummy_dir")
 

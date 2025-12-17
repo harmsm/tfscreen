@@ -99,10 +99,10 @@ def mock_growth_dependencies(mocker, base_growth_df):
     mock_df = base_growth_df.copy()
     
     mocks = {
-        "read": mocker.patch("tfscreen.util.read_dataframe", return_value=mock_df),
+        "read": mocker.patch("tfscreen.util.io.read_dataframe", return_value=mock_df),
         "set_geno": mocker.patch("tfscreen.genetics.set_categorical_genotype", return_value=mock_df),
-        "get_cfu": mocker.patch("tfscreen.util.get_scaled_cfu", return_value=mock_df),
-        "check": mocker.patch("tfscreen.util.check_columns"),
+        "get_cfu": mocker.patch("tfscreen.util.dataframe.get_scaled_cfu", return_value=mock_df),
+        "check": mocker.patch("tfscreen.util.dataframe.check_columns"),
         "add_group": mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class.add_group_columns", return_value=mock_df),
         "df": mock_df
     }
@@ -154,9 +154,9 @@ def base_binding_df():
 def mock_binding_dependencies(mocker, base_binding_df):
     mock_df = base_binding_df.copy()
     return {
-        "read": mocker.patch("tfscreen.util.read_dataframe", return_value=mock_df),
+        "read": mocker.patch("tfscreen.util.io.read_dataframe", return_value=mock_df),
         "set_geno": mocker.patch("tfscreen.genetics.set_categorical_genotype", return_value=mock_df),
-        "check": mocker.patch("tfscreen.util.check_columns"),
+        "check": mocker.patch("tfscreen.util.dataframe.check_columns"),
         "df": mock_df
     }
 

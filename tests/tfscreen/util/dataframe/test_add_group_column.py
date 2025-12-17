@@ -5,7 +5,7 @@ from pandas.testing import assert_frame_equal
 from pandas.api.types import is_integer_dtype
 
 # Import the function as requested
-from tfscreen.util.add_group_columns import add_group_columns
+from tfscreen.util.dataframe.add_group_columns import add_group_columns
 
 # --- Fixtures ---
 

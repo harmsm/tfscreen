@@ -2,8 +2,8 @@ import numpy as np
 import pytest
 from numpy.testing import assert_equal
 
-from tfscreen.util.array_search import strict_array_search
-from tfscreen.util.array_search import fuzzy_array_search
+from tfscreen.util.numerical.array_search import strict_array_search
+from tfscreen.util.numerical.array_search import fuzzy_array_search
 
 
 # ----------------------------------------------------------------------------

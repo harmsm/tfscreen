@@ -1,5 +1,5 @@
 
-from tfscreen.util import (
+from tfscreen.util.dataframe import (
     check_columns,
 )
 

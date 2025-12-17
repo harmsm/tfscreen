@@ -2,7 +2,7 @@ import os
 import pytest
 import yaml
 import tempfile
-from tfscreen.util.read_yaml import read_yaml, _normalize_types
+from tfscreen.util.io.read_yaml import read_yaml, _normalize_types
 
 class TestNormalizeTypes:
     def test_scientific_notation_strings(self):

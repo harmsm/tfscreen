@@ -1,4 +1,4 @@
-from tfscreen.util import (
+from tfscreen.util.numerical.transform import (
     to_log,
     from_log
 )

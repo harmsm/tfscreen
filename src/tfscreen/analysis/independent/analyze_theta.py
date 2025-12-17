@@ -1,7 +1,7 @@
 
 from tfscreen.analysis.independent.cfu_to_theta import cfu_to_theta
 from tfscreen.analysis.independent.process_theta_fit import process_theta_fit
-from tfscreen.util import generalized_main
+from tfscreen.util.cli import generalized_main
 
 def analyze_theta(df,
                   calibration_data,

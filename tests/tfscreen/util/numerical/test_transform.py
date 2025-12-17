@@ -4,7 +4,7 @@ import pandas as pd
 
 # Assuming the functions to_log and from_log are in a file named `log_conversions.py`
 # If they are in the same file, you can remove the import statement.
-from tfscreen.util.numerical import (
+from tfscreen.util.numerical.transform import (
     to_log,
     from_log
 )

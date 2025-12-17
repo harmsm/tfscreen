@@ -247,7 +247,7 @@ def test_counts_to_lncfu_all_filtered(sample_df, counts_df, mocker):
     """
     Tests that if all genotypes are filtered out, an empty DataFrame is returned.
     """
-    mocker.patch('tfscreen.util.read_dataframe', side_effect=lambda df, **kwargs: df.copy())
+    mocker.patch('tfscreen.util.io.read_dataframe', side_effect=lambda df, **kwargs: df.copy())
 
     # Set min_obs so high that all genotypes are removed
     result = counts_to_lncfu(sample_df, counts_df, min_genotype_obs=1000)

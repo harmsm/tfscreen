@@ -2,7 +2,7 @@
 
 import pytest
 import numpy as np
-from tfscreen.util.vstack_padded import vstack_padded
+from tfscreen.util.numerical.padding import vstack_padded
 
 def test_vstack_padded_different_widths():
     """Tests the primary functionality with arrays of different widths."""

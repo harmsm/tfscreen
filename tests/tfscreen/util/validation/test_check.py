@@ -1,5 +1,5 @@
 import pytest
-from tfscreen.util.check import check_number
+from tfscreen.util.validation.check import check_number
 
 # ----------------------------------------------------------------------------
 # test check_number

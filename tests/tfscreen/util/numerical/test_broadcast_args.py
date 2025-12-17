@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 
-from tfscreen.util.broadcast_args import broadcast_args
+from tfscreen.util.numerical.broadcast_args import broadcast_args
 
 def test_broadcast_args_standard_case():
     """Tests broadcasting a scalar and a string to match an array's length."""

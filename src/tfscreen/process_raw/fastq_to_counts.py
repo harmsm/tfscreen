@@ -1,12 +1,13 @@
+
 from tfscreen.data import (
     COMPLEMENT_DICT
 )
 
 from tfscreen.genetics import LibraryManager
-from tfscreen.util.check import (
+from tfscreen.util.validation import (
     check_number,
 )
-from tfscreen.util import (
+from tfscreen.util.numerical import (
     strict_array_search,
     fuzzy_array_search
 )

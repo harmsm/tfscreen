@@ -6,7 +6,7 @@ from tfscreen.fitting import (
     run_matrix_wls
 )
 
-from tfscreen.util import xfill
+from tfscreen.util.numerical import xfill
 
 import numpy as np
 import pandas as pd

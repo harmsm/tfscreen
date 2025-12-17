@@ -1,5 +1,5 @@
 from ._get_indiv_growth import _get_indiv_growth
-from tfscreen.util import get_scaled_cfu
+from tfscreen.util.dataframe import get_scaled_cfu
 
 import pandas as pd
 

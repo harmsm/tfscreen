@@ -2,7 +2,7 @@ import argparse
 import sys
 import pytest
 from unittest.mock import MagicMock
-from tfscreen.util.generalized_main import generalized_main
+from tfscreen.util.cli.generalized_main import generalized_main
 
 class TestGeneralizedMain:
     def test_required_args(self):
