@@ -19,13 +19,24 @@ def define_model(name: str,
     The pleiotropic effect of a genotype on growth rate independent of
     transcription factor occupancy. Fixed to zero. Returns a full tensor. 
 
-    Priors
-    ------
-
-    Data
-    ----
-    data.num_genotype
-    data.map_genotype
+    Parameters
+    ----------
+    name : str
+        The prefix for all Numpyro deterministic sites.
+    data : GrowthData
+        A Pytree (Flax dataclass) containing experimental data and metadata.
+        This function primarily uses:
+        - ``data.num_genotype`` : (int) The total number of genotypes.
+        - ``data.map_genotype`` : (jnp.ndarray) Index array to map
+          per-genotype parameters to the full set of observations.
+    priors : ModelPriors
+        A Pytree of hyperparameters. (Unused in this model).
+        
+    Returns
+    -------
+    jnp.ndarray
+        A tensor of zeros, expanded to match the shape of
+        the observations via ``data.map_genotype``.
     """
 
     # Create fixed dk_geno (0)
@@ -43,6 +54,10 @@ def guide(name: str,
           data: GrowthData, 
           priors: ModelPriors) -> jnp.ndarray:
     """
+    Guide for the fixed dk_geno model.
+
+    Since all parameters are fixed and deterministic (to 0.0), this guide
+    simply returns zeros and does not register any learnable parameters.
     """
 
     # Create fixed dk_geno (0)
@@ -56,13 +71,23 @@ def guide(name: str,
 def get_hyperparameters():
     """
     Get default values for the model hyperparameters.
+
+    Returns
+    -------
+    dict[str, Any]
+        An empty dictionary, as this model has no hyperparameters.
     """
     return {}
 
 
 def get_guesses(name,data):
     """
-    Get guesses for the model parameters. 
+    Get guess values for the model parameters. 
+
+    Returns
+    -------
+    dict[str, Any]
+        An empty dictionary, as this model has no latent parameters.
     """
     return {}
 

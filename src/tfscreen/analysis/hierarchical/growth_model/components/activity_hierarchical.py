@@ -99,6 +99,12 @@ def guide(name: str,
           data: GrowthData, 
           priors: ModelPriors) -> jnp.ndarray:
     """
+    Guide corresponding to the hierarchical activity model.
+
+    This guide uses:
+    - Normal distributions for the hyper-location mean.
+    - LogNormal distributions for hyper-scale and positive scale parameters.
+    - A non-centered parameterization for the per-genotype offsets.
     """
 
     a_loc_loc = pyro.param(f"{name}_a_hyper_loc_loc", jnp.array(priors.activity_hyper_loc_loc))

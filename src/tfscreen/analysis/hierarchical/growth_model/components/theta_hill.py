@@ -60,8 +60,8 @@ class ThetaParam:
         The minimum fractional occupancy (baseline).
     theta_high : jnp.ndarray
         The maximum fractional occupancy (saturation).
-    hill_K : jnp.ndarray
-        The Hill constant (K_D).
+    log_hill_K : jnp.ndarray
+        The Hill constant (K_D) in log-space.
     hill_n : jnp.ndarray
         The Hill coefficient.
     """
@@ -208,6 +208,13 @@ def guide(name: str,
           priors: ModelPriors) -> ThetaParam:
     """
     Guide corresponding to the hierarchical Hill model.
+
+    This guide defines the variational family for the Hill model parameters,
+    using:
+    - Normal distributions for location hyperparameters (`_loc`).
+    - LogNormal distributions for scale hyperparameters (`_scale`) and positive
+      variables.
+    - An amortized/offset parameterization for the local (per-group) parameters.
     """
 
     # ==========================================================================

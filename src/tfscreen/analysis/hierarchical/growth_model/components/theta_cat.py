@@ -122,6 +122,12 @@ def guide(name: str,
           priors: ModelPriors) -> ThetaParam:
     """
     Guide corresponding to the categorical theta model.
+
+    This guide defines the variational family for the categorical theta
+    parameters. It uses:
+    - Normal/LogNormal distributions for global location/scale hyperparameters.
+    - An amortized parameterization for the local 3D tensor of parameters
+      (titrant x conc x genotype).
     """
 
     # --- 1. Global Hypers ---

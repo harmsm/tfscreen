@@ -97,7 +97,13 @@ def guide(name: str,
           data: GrowthData, 
           priors: ModelPriors) -> jnp.ndarray:
     """
-    Guide
+    Guide corresponding to the hierarchical ln_cfu0 model.
+
+    This guide defines the variational family for the initial cell count
+    model. It uses:
+    - Normal distributions for the hyper-location mean.
+    - LogNormal distributions for the hyper-scale.
+    - Normal distributions for the per-replicate/group offsets.
     """
 
     # -------------------------------------------------------------------------

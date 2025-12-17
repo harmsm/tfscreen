@@ -393,6 +393,12 @@ def analyze_theta(growth_df,
 
 
 def main():
+    """
+    CLI entry point for running the hierarchical analysis.
+
+    This function wraps `analyze_theta` using `generalized_main`, allowing
+    execution from the command line with argument parsing.
+    """
 
     return generalized_main(analyze_theta,
                             manual_arg_types={"seed":int,

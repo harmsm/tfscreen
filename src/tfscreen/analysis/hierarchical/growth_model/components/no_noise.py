@@ -47,7 +47,10 @@ def guide(name: str,
           fx_calc: jnp.ndarray, 
           priors: ModelPriors) -> jnp.ndarray:
     """
-    Guide for define_model
+    Guide for the no-noise model.
+
+    This guide corresponds to the deterministic (null) noise model.
+    It simply returns the input calculated value and registers no parameters.
     """
 
     return fx_calc

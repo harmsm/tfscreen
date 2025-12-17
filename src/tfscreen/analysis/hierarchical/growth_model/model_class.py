@@ -291,6 +291,34 @@ def _build_binding_tm(binding_df):
 def _setup_batching(growth_genotypes,
                     binding_genotypes,
                     batch_size):
+    """
+    Calculates batching indices and scale factors.
+
+    This function determines how to batch genotypes, handling the fact that
+    binding data is only available for a subset of genotypes. It ensures
+    that binding genotypes are always prioritized and handled correctly
+    relative to the growth-only genotypes.
+
+    Parameters
+    ----------
+    growth_genotypes : np.ndarray
+        Array of genotype names in the growth dataset.
+    binding_genotypes : np.ndarray
+        Array of genotype names in the binding dataset.
+    batch_size : int, optional
+        The desired size of the batch.
+
+    Returns
+    -------
+    dict
+        A dictionary containing:
+        - `batch_idx`: Indices for the current batch.
+        - `batch_size`: The actual size of the batch.
+        - `scale_vector`: Scaling factors for subsampling correction.
+        - `num_binding`: Number of overlapping binding genotypes.
+        - `not_binding_idx`: Indices of genotypes without binding data.
+        - `not_binding_batch_size`: Number of non-binding genotypes in batch.
+    """
     
     if batch_size is None:
         batch_size = len(growth_genotypes)
@@ -483,7 +511,7 @@ class ModelClass:
         Loads, processes, and wrangles all data into JAX Pytrees.
 
         This method orchestrates the entire data pipeline:
-        1.  Calls `_read_growth_df` and `_build_growth_tm` / `_build_growth_theta_tm`.
+        1.  Calls `_read_growth_df` and `_build_growth_tm`.
         2.  Calls `_read_binding_df` and `_build_binding_tm`, passing the
             growth data to ensure map consistency.
         3.  Extracts tensors and metadata from the TensorManagers.
@@ -622,7 +650,7 @@ class ModelClass:
         This method:
         1.  Maps the model name strings (e.g., "hierarchical") to their
             corresponding integer codes and component objects from
-            `MODEL_COMPONENT_NAMES`.
+            `model_registry`.
         2.  Populates and creates the `ControlClass` instance.
         3.  Populates and creates the `PriorsClass` instance by calling
             `get_priors()` on each component.

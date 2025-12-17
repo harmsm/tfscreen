@@ -6,6 +6,24 @@ import jax.numpy as jnp
 def get_batch(full_data: DataClass, idx: jnp.ndarray) -> DataClass:
     """
     Extracts a deterministic batch of data given specific indices.
+
+    This function creates a new `DataClass` structure containing subsets of
+    the growth and binding data corresponding to the indices in `idx`.
+    It handles slicing of all relevant tensors (ln_cfu, std, time points,
+    masks) and updates the batch size information.
+
+    Parameters
+    ----------
+    full_data : DataClass
+        The complete dataset containing all observations.
+    idx : jnp.ndarray
+        An array of indices (integers) specifying which elements (genotypes/
+        conditions) to include in the batch.
+
+    Returns
+    -------
+    DataClass
+        A new DataClass instance containing only the batched data.
     """
     
     batch_size = len(idx)

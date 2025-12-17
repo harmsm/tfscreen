@@ -58,6 +58,10 @@ def guide(name: str,
           data: BindingData,
           binding_pred: jnp.ndarray):
     """
+    Guide corresponding to the observation function.
+
+    This function does nothing, as there are no latent variables to infer
+    in the binding model (only observed data).
     """
 
     return
