@@ -60,6 +60,7 @@ def mock_control():
     # Create mocks
     theta_model = MagicMock(return_value=10.0) # theta
     calc_theta = MagicMock(side_effect=lambda t, d: t * 2.0) # theta_growth/binding = 20.0
+    get_moments = MagicMock(return_value=(0.0, 1.0)) # (mu, sigma) anchors
     
     # Growth Param Model returns (k_pre, m_pre, k_sel, m_sel)
     # k=1.0, m=1.0
@@ -69,7 +70,7 @@ def mock_control():
     activity_model = MagicMock(return_value=1.0) # activity
     dk_geno_model = MagicMock(return_value=0.0) # dk_geno
     
-    transformation_model = MagicMock(return_value=(1.0, 1.0, 1.0)) # (lam, a, b)
+    transformation_model = MagicMock(return_value=(1.0, 1.0, 1.0)) # (lam, mu, sigma)
     transformation_update = MagicMock(side_effect=lambda t, params, mask=None: t) # pass-through
     
     # Noise models just pass through or add noise. Let's pass through for simplicity.
@@ -80,7 +81,7 @@ def mock_control():
     growth_observer = MagicMock()
 
     return {
-        "theta": (theta_model, calc_theta),
+        "theta": (theta_model, calc_theta, get_moments),
         "condition_growth": condition_growth_model,
         "ln_cfu0": ln_cfu0_model,
         "activity": activity_model,
@@ -112,6 +113,9 @@ def test_jax_model_execution_flow(mock_data, mock_priors, mock_control):
     # Theta
     # theta_model called with (name, growth_data, theta_priors)
     mock_control["theta"][0].assert_called_once_with("theta", mock_data.growth, "prior_theta")
+
+    # get_moments called with (theta, growth_data)
+    mock_control["theta"][2].assert_called_once_with(10.0, mock_data.growth)
     
     # Calc Theta
     # Called twice: once for binding, once for growth
@@ -135,7 +139,7 @@ def test_jax_model_execution_flow(mock_data, mock_priors, mock_control):
     
     # Transformation
     mock_control["transformation"][0].assert_called_once_with(
-        "transformation", mock_data.growth, "prior_trans"
+        "transformation", mock_data.growth, "prior_trans", anchors=(0.0, 1.0)
     )
     mock_control["transformation"][1].assert_called_once_with(
         jnp.array(20.0), # theta_growth

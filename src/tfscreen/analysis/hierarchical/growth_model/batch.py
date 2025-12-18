@@ -30,8 +30,10 @@ def get_batch(full_data: DataClass, idx: jnp.ndarray) -> DataClass:
     batch_data = full_data.replace(
         growth=full_data.growth.replace(
             batch_size=batch_size,
+            num_genotype=batch_size,
             batch_idx=idx,
             scale_vector=full_data.growth.scale_vector[...,idx],
+            geno_theta_idx=jnp.arange(batch_size, dtype=jnp.int32),
             ln_cfu=full_data.growth.ln_cfu[...,idx],
             ln_cfu_std=full_data.growth.ln_cfu_std[...,idx],
             t_pre=full_data.growth.t_pre[...,idx],

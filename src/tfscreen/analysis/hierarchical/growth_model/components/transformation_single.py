@@ -13,7 +13,8 @@ class ModelPriors:
 
 def define_model(name: str, 
                  data: GrowthData, 
-                 priors: ModelPriors) -> jnp.ndarray:
+                 priors: ModelPriors,
+                 anchors: tuple = None) -> jnp.ndarray:
     """
     Dummy model definition for single transformation.
     """
@@ -21,7 +22,8 @@ def define_model(name: str,
 
 def guide(name: str, 
           data: GrowthData, 
-          priors: ModelPriors) -> jnp.ndarray:
+          priors: ModelPriors,
+          anchors: tuple = None) -> jnp.ndarray:
     """
     Dummy guide for single transformation.
     """

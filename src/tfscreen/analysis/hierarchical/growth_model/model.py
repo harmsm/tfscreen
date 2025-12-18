@@ -44,7 +44,7 @@ def jax_model(data: DataClass,
     # -------------------------------------------------------------------------
     # Parse control inputs 
 
-    theta_model, calc_theta = control["theta"]    
+    theta_model, calc_theta, get_moments = control["theta"]    
     
     condition_growth_model = control["condition_growth"]
     ln_cfu0_model = control["ln_cfu0"]
@@ -67,6 +67,9 @@ def jax_model(data: DataClass,
     theta = theta_model("theta",
                         data.growth,
                         priors.theta)
+    
+    # Get population moments as anchors for the transformation model
+    anchors = get_moments(theta, data.growth)
     
     # -------------------------------------------------------------------------
     # Make prediction for the binding experiment
@@ -104,10 +107,11 @@ def jax_model(data: DataClass,
     theta_growth = calc_theta(theta,data.growth)
     pyro.deterministic(f"theta_growth_pred",theta_growth)
     
-    # Transformation parameters (lam, a, b)
+    # Transformation parameters (lam, mu, sigma)
     trans_params = transformation_model("transformation",
                                         data.growth,
-                                        priors.growth.transformation)
+                                        priors.growth.transformation,
+                                        anchors=anchors)
     
     # Correct theta for transformation
     # theta_growth shape: (..., titrant_name, titrant_conc, geno) or scattered

@@ -727,9 +727,11 @@ class ModelClass:
             # Record control parameters for the main and guide functions
             if key == "theta":
                 main_control_kwargs[key] = (component_module.define_model, 
-                                            component_module.run_model)
+                                            component_module.run_model,
+                                            component_module.get_population_moments)
                 guide_control_kwargs[key] = (component_module.guide, 
-                                             component_module.run_model)
+                                             component_module.run_model,
+                                             component_module.get_population_moments)
             elif key == "transformation":
                 main_control_kwargs[key] = (component_module.define_model, 
                                             component_module.update_thetas)

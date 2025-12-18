@@ -9,8 +9,8 @@ def test_update_thetas_with_mask():
     num_geno = 4
     theta = jnp.ones((2, num_geno)) * 0.5
     
-    # params: lam=1.0, a=1.0, b=1.0 (some correction will happen)
-    params = (1.0, 1.0, 1.0)
+    # params: lam=1.0, mu=0.0, sigma=1.0 (some correction will happen)
+    params = (1.0, 0.0, 1.0)
     
     # Mask: genotypes 0 and 2 are corrected (True), 1 and 3 are NOT (False)
     mask = jnp.array([True, False, True, False])
@@ -34,20 +34,17 @@ def test_update_thetas_with_mask():
     assert jnp.allclose(res_with_mask[:, 3], theta[:, 3])
     
     # Sanity check: verify that correction actually did something
-    # For a=1, b=1, lam=1, Fx = x, prob_is_max = exp(lam*(x-1)) = exp(x-1)
-    # integral part: integral(m * lam * exp(lam*(m-1)) dm, m=x..1)
-    # = [m * exp(m-1) - exp(m-1)] from x to 1
-    # = (1*1 - 1) - (x*exp(x-1) - exp(x-1)) = exp(x-1) - x*exp(x-1)
-    # total = x*exp(x-1) + exp(x-1) - x*exp(x-1) = exp(x-1)
-    # For x=0.5, exp(-0.5) approx 0.606
+    # For mu=0, sigma=1, lam=1, F(0.5) = 0.5
     assert not jnp.allclose(res_no_mask[:, 0], theta[:, 0])
-    assert jnp.isclose(res_no_mask[0, 0], jnp.exp(-0.5), atol=1e-3)
+    # Expected value should be > 0.5 (shifts towards the mean of 0.5)
+    assert jnp.all(res_no_mask > 0.5)
+    assert jnp.all(res_no_mask < 0.8)
 
 def test_update_thetas_no_mask_is_default():
     """Verify that passing mask=None is the same as all True."""
     num_geno = 3
     theta = jnp.ones((1, num_geno)) * 0.4
-    params = (1.0, 2.0, 2.0)
+    params = (1.0, 0.0, 1.0)
     
     res1 = transformation_congression.update_thetas(theta, params, mask=None)
     res2 = transformation_congression.update_thetas(theta, params, mask=jnp.ones(num_geno, dtype=bool))

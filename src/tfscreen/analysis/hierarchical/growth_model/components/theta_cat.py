@@ -36,11 +36,15 @@ class ThetaParam:
     Attributes
     ----------
     theta : jnp.ndarray
+    mu : jnp.ndarray
+    sigma : jnp.ndarray
         A tensor of sampled fractional occupancy values, with shape
         ``[num_titrant_name, num_titrant_conc, num_genotype]``.
     """
 
     theta: jnp.ndarray
+    mu: jnp.ndarray
+    sigma: jnp.ndarray
 
 
 def define_model(name: str,
@@ -77,17 +81,20 @@ def define_model(name: str,
     """
 
     # --------------------------------------------------------------------------
-    # Hyperpriors for the logit(theta) parameters
+    # Hyperpriors for the logit(theta) parameters (now condition specific)
     
-    logit_theta_hyper_loc = pyro.sample(
-        f"{name}_logit_theta_hyper_loc",
-        dist.Normal(priors.logit_theta_hyper_loc_loc,
-                    priors.logit_theta_hyper_loc_scale)
-    )
-    logit_theta_hyper_scale = pyro.sample(
-        f"{name}_logit_theta_hyper_scale",
-        dist.HalfNormal(priors.logit_theta_hyper_scale)
-    )
+    with pyro.plate(f"{name}_titrant_name_plate", data.num_titrant_name, dim=-3):
+        with pyro.plate(f"{name}_titrant_conc_plate", data.num_titrant_conc, dim=-2):
+    
+            logit_theta_hyper_loc = pyro.sample(
+                f"{name}_logit_theta_hyper_loc",
+                dist.Normal(priors.logit_theta_hyper_loc_loc,
+                            priors.logit_theta_hyper_loc_scale)
+            )
+            logit_theta_hyper_scale = pyro.sample(
+                f"{name}_logit_theta_hyper_scale",
+                dist.HalfNormal(priors.logit_theta_hyper_scale)
+            )
 
     # --------------------------------------------------------------------------
     # Sample parameters for each (titrant_name, titrant_conc, genotype) group 
@@ -113,7 +120,9 @@ def define_model(name: str,
     # Register parameter values
     pyro.deterministic(f"{name}_theta", theta)
 
-    theta_param = ThetaParam(theta=theta)
+    theta_param = ThetaParam(theta=theta,
+                             mu=logit_theta_hyper_loc,
+                             sigma=logit_theta_hyper_scale)
     
     return theta_param
 
@@ -130,31 +139,32 @@ def guide(name: str,
       (titrant x conc x genotype).
     """
 
-    # --- 1. Global Hypers ---
+    # --- 1. Global Hypers (now plated) ---
+    
+    local_shape_global = (data.num_titrant_name, data.num_titrant_conc, 1)
 
     # Logit Theta Hyper Loc (Normal)
-    # Using the prior loc as the initial value for the variational mean
     h_loc_loc = pyro.param(f"{name}_logit_theta_hyper_loc_loc", 
-                           jnp.array(priors.logit_theta_hyper_loc_loc))
+                           jnp.full(local_shape_global, priors.logit_theta_hyper_loc_loc))
     h_loc_scale = pyro.param(f"{name}_logit_theta_hyper_loc_scale", 
-                             jnp.array(priors.logit_theta_hyper_loc_scale),
+                             jnp.full(local_shape_global, priors.logit_theta_hyper_loc_scale),
                              constraint=dist.constraints.positive)
     
-    logit_theta_hyper_loc = pyro.sample(
-        f"{name}_logit_theta_hyper_loc",
-        dist.Normal(h_loc_loc, h_loc_scale)
-    )
-
-    # Logit Theta Hyper Scale (LogNormal guide for HalfNormal prior)
-    # Initializing small (-1.0 => ~0.37)
-    h_scale_loc = pyro.param(f"{name}_logit_theta_hyper_scale_loc", jnp.array(-1.0))
-    h_scale_scale = pyro.param(f"{name}_logit_theta_hyper_scale_scale", jnp.array(0.1),
+    # Logit Theta Hyper Scale (LogNormal guide)
+    h_scale_loc = pyro.param(f"{name}_logit_theta_hyper_scale_loc", jnp.full(local_shape_global, -1.0))
+    h_scale_scale = pyro.param(f"{name}_logit_theta_hyper_scale_scale", jnp.full(local_shape_global, 0.1),
                                constraint=dist.constraints.positive)
-    
-    logit_theta_hyper_scale = pyro.sample(
-        f"{name}_logit_theta_hyper_scale",
-        dist.LogNormal(h_scale_loc, h_scale_scale)
-    )
+
+    with pyro.plate(f"{name}_titrant_name_plate", data.num_titrant_name, dim=-3):
+        with pyro.plate(f"{name}_titrant_conc_plate", data.num_titrant_conc, dim=-2):
+            logit_theta_hyper_loc = pyro.sample(
+                f"{name}_logit_theta_hyper_loc",
+                dist.Normal(h_loc_loc, h_loc_scale)
+            )
+            logit_theta_hyper_scale = pyro.sample(
+                f"{name}_logit_theta_hyper_scale",
+                dist.LogNormal(h_scale_loc, h_scale_scale)
+            )
 
     # --- 2. Local Parameters (3D Tensor) ---
     
@@ -193,7 +203,9 @@ def guide(name: str,
     # Transform parameters to natural scale
     theta = dist.transforms.SigmoidTransform()(logit_theta)
 
-    theta_param = ThetaParam(theta=theta)
+    theta_param = ThetaParam(theta=theta,
+                             mu=logit_theta_hyper_loc,
+                             sigma=logit_theta_hyper_scale)
     
     return theta_param
 
@@ -237,6 +249,20 @@ def run_model(theta_param: ThetaParam, data: DataClass) -> jnp.ndarray:
         theta_calc = theta_calc[None,None,None,None,:,:,:]
     
     return theta_calc
+
+
+def get_population_moments(theta_param: ThetaParam, data: DataClass) -> tuple:
+    """
+    Returns the expected population moments (mu, sigma) in logit-space.
+    
+    For the categorical model, these are simply the hyper-parameters.
+    
+    Returns
+    -------
+    tuple
+        (mu, sigma) with shape broadcastable to (titrant_name, titrant_conc, 1).
+    """
+    return theta_param.mu, theta_param.sigma
 
 
 def get_hyperparameters() -> Dict[str, Any]:
@@ -283,8 +309,8 @@ def get_guesses(name: str, data: DataClass) -> Dict[str, Any]:
     guesses = {}
 
     # Guess hyperparams
-    guesses[f"{name}_logit_theta_hyper_loc"] = 0.0
-    guesses[f"{name}_logit_theta_hyper_scale"] = 1.0
+    guesses[f"{name}_logit_theta_hyper_loc"] = jnp.zeros((data.num_titrant_name, data.num_titrant_conc, 1))
+    guesses[f"{name}_logit_theta_hyper_scale"] = jnp.ones((data.num_titrant_name, data.num_titrant_conc, 1))
 
     # Guess offsets (all zeros)
     shape = (data.num_titrant_name, data.num_titrant_conc, data.num_genotype)

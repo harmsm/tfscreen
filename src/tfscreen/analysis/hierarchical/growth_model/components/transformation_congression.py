@@ -5,46 +5,38 @@ import numpyro.distributions as dist
 from flax.struct import dataclass
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
 
-def _kumaraswamy_cdf(x, a, b):
+def _logit_normal_cdf(x, mu, sigma):
     """
-    Cumulative Distribution Function: F(x) = 1 - (1 - x^a)^b
+    Cumulative Distribution Function for Logit-Normal distribution:
+    F(x) = Phi((logit(x) - mu) / sigma)
     
-    Refactored for numerical stability using log1p and expm1.
-
     Parameters
     ----------
     x : jax.array
         occupancy value between 0 and 1
-    a : float
-        CDF shape parameter
-    b : float
-        CDF shape parameter
+    mu : float
+        Mean of the underlying Normal distribution in logit-space.
+    sigma : float
+        Standard deviation of the underlying Normal distribution in logit-space.
 
     Returns
     -------
     jax.array
         cdf array
     """
-    # Clip x to [0, 1] for safety
-    x = jnp.clip(x, 0.0, 1.0)
-    
-    # We use a small epsilon to avoid log(0) and gradient singularities.
-    # 1e-6 is safer for float32 precision.
+    # Clip x to [eps, 1-eps] for stability in logit
     eps = 1e-6
     x_safe = jnp.clip(x, eps, 1.0 - eps)
-
-    # F(x) = 1 - (1 - x^a)^b
-    # Let u = log(1 - x^a). Then F(x) = 1 - exp(b * u).
-    # To calculate u = log(1 - x^a) stably near x=1:
-    # 1 - x^a = 1 - exp(a * log(x)) = -expm1(a * log(x))
-    # u = log(-expm1(a * log(x)))
     
-    u = jnp.log(-jnp.expm1(a * jnp.log(x_safe)))
-    return -jnp.expm1(b * u)
+    # Calculate logit(x)
+    logit_x = jax.scipy.special.logit(x_safe)
+    
+    # Return Phi((logit(x) - mu) / sigma)
+    return jax.scipy.stats.norm.cdf(logit_x, loc=mu, scale=sigma)
 
 
 
-def update_thetas(theta, params, mask=None):
+def update_thetas(theta, params, mask=None, n_grid=512):
     """
     Corrects theta values for co-transformation using the method of 
     re-sampling from the background distribution.
@@ -55,14 +47,16 @@ def update_thetas(theta, params, mask=None):
         Array of theta values. 
         Expected shape: (..., num_genotype)
     params : tuple
-        Tuple of (lam, a, b) parameters from the model/guide.
+        Tuple of (lam, mu, sigma) parameters from the model/guide.
         lam : co-transformation rate
-        a : Kumaraswamy background shape parameter a
-        b : Kumaraswamy background shape parameter b
+        mu : Logit-Normal background location parameter
+        sigma : Logit-Normal background scale parameter
     mask : jnp.array, optional
         Boolean array of shape (num_genotype,) where True indicates the 
         genotype should be corrected for congression. If None, all genotypes
         are corrected.
+    n_grid : int, optional
+        Number of points for grid-based numerical integration (default 512).
 
     Returns
     -------
@@ -70,64 +64,77 @@ def update_thetas(theta, params, mask=None):
         Corrected theta array with shape broadcasted from inputs.
     """
     
-    lam, a, b = params
+    lam, mu, sigma = params
 
     # 1. Broadcast shapes against each other (excluding the last dimension)
     # Theta shape: (..., titrant_name, titrant_conc, geno) or similar
-    # a, b shape: (titrant_name, titrant_conc, 1) or broadcastable
     
     # Calculate target shape (batch dims)
     target_shape = theta.shape[:-1]
+    num_genotypes = theta.shape[-1]
     
     # Broadcast theta
-    theta_b = jnp.broadcast_to(theta, target_shape + (theta.shape[-1],))
+    theta_b = jnp.broadcast_to(theta, target_shape + (num_genotypes,))
     
     # Broadcast params to match target_shape (excluding genotype dim)
-    # lam is scalar, a/b are (name, conc, 1)
-    # We broadcast them to (target_shape + (1,)) to align with theta rows
-    
     lam_b = jnp.broadcast_to(lam, target_shape + (1,))
-    a_b   = jnp.broadcast_to(a,   target_shape + (1,))
-    b_b   = jnp.broadcast_to(b,   target_shape + (1,))
+    mu_b    = jnp.broadcast_to(mu,    target_shape + (1,))
+    sigma_b = jnp.broadcast_to(sigma, target_shape + (1,))
 
+    # Flatten batch dimensions
+    flat_theta = theta_b.reshape(-1, num_genotypes) # (TotalBatch, Genotype)
+    flat_lam   = lam_b.reshape(-1) # (TotalBatch,)
+    flat_mu    = mu_b.reshape(-1)   # (TotalBatch,)
+    flat_sigma = sigma_b.reshape(-1)   # (TotalBatch,)
+    
+    num_batches = flat_theta.shape[0]
 
-    # Flatten batch dimensions for vmap
-    # We process each genotype curve (dim -1) independently across the batch
-    flat_theta = theta_b.reshape(-1, theta_b.shape[-1]) # (TotalBatch, Genotype)
+    # 2. Pre-calculate integration on a grid for each batch element
+    # Grid of occupancy values
+    t_grid = jnp.linspace(0.0, 1.0, n_grid)
     
-    flat_lam = lam_b.reshape(-1) # (TotalBatch,)
-    flat_a   = a_b.reshape(-1)   # (TotalBatch,)
-    flat_b   = b_b.reshape(-1)   # (TotalBatch,)
+    # Calculate logit-normal CDF on grid for all batch elements
+    # Ft_grid shape: (TotalBatch, n_grid)
+    Ft_grid = jax.vmap(lambda m, s: _logit_normal_cdf(t_grid, m, s))(flat_mu, flat_sigma)
     
-    # 2. Correct each theta value
-    # We use vmap to apply correction over the batch.
+    # Calculate integrand: exp(lam * (F(t) - 1))
+    # integrand_grid shape: (TotalBatch, n_grid)
+    integrand_grid = jnp.exp(flat_lam[:, None] * (Ft_grid - 1.0))
     
-    # Correction function for a single row (vectorized over batch)
-    def correct_row(t_row, l_val, a_val, b_val):
-        # Apply correction to each element in the row (vectorized over genotype)
-        # Note: calculate_expected... is scalar-wise, so we vmap it over the row
-        calc_max = lambda t: calculate_expected_observed_max(t, a_val, b_val, l_val)
-        return jax.vmap(calc_max)(t_row)
+    # Cumulative integration using trapezoidal rule
+    # J(x) = integrate_0^x I(t) dt
+    h = 1.0 / (n_grid - 1)
+    f_mid = (integrand_grid[:, :-1] + integrand_grid[:, 1:]) * h / 2.0
+    J_grid = jnp.concatenate([jnp.zeros((num_batches, 1)), jnp.cumsum(f_mid, axis=1)], axis=1)
+    
+    # Expected value calculation part 1: G(x) = integrate_x^1 I(t) dt
+    # G(x) = J(1) - J(x)
+    G1 = J_grid[:, -1:]
+    Gx_grid = G1 - J_grid
+    
+    # 3. Interpolate G(x) for each genotype in the batch
+    # Use vmap to apply interpolation over batch rows
+    def interp_row(g_row, th_row):
+        return jnp.interp(th_row, t_grid, g_row)
+    
+    integral_vals = jax.vmap(interp_row)(Gx_grid, flat_theta)
+    
+    # Expected observed value E[max(x, M)] = 1 - G(x)
+    corrected_flat = 1.0 - integral_vals
+    
+    # Reshape back to original dimensions
+    corrected_theta = corrected_flat.reshape(target_shape + (num_genotypes,))
 
-    corrected_flat = jax.vmap(correct_row)(flat_theta, flat_lam, flat_a, flat_b)
-    
-    # Reshape back
-    full_theta_shape = target_shape + (theta.shape[-1],)
-    corrected_theta = corrected_flat.reshape(full_theta_shape)
-
-    # 3. Apply mask if provided
+    # 4. Apply mask if provided
     if mask is not None:
-        # mask shape: (num_genotype,)
-        # corrected_theta shape: (..., num_genotype)
-        # We need to broadcast the mask to match corrected_theta
         corrected_theta = jnp.where(mask, corrected_theta, theta_b)
     
     return corrected_theta
 
-def calculate_expected_observed_max(x_val, a, b, lam, n_grid=100):
+def calculate_expected_observed_max(x_val, mu, sigma, lam, n_grid=100):
     """
     Calculate E[max(x, M)] where M is the maximum of a Poisson(lam) number
-    of samples from the background Kumaraswamy(a, b) distribution.
+    of samples from the background Logit-Normal(mu, sigma) distribution.
     
     Use the stable formula:
     E[max(x, M)] = 1 - integrate_{x}^1 exp(lam * (F(t) - 1)) dt
@@ -136,7 +143,7 @@ def calculate_expected_observed_max(x_val, a, b, lam, n_grid=100):
     ----------
     x_val : float
         the true value of the object (float)
-    a, b : float, float
+    mu, sigma : float, float
         shape parameters of the background population
     lam : float
         poisson parameter lambda
@@ -152,7 +159,7 @@ def calculate_expected_observed_max(x_val, a, b, lam, n_grid=100):
     
     # 1. Integration part: integrate_{x}^1 exp(lam * (F(t) - 1)) dt
     def integrand(t):
-        Ft = _kumaraswamy_cdf(t, a, b)
+        Ft = _logit_normal_cdf(t, mu, sigma)
         return jnp.exp(lam * (Ft - 1.0))
 
     t_grid = jnp.linspace(x_safe, 1.0, n_grid)
@@ -162,10 +169,10 @@ def calculate_expected_observed_max(x_val, a, b, lam, n_grid=100):
     return 1.0 - integral_val
 
 
-def calculate_expected_observed_min(x_val, a, b, lam, n_grid=100):
+def calculate_expected_observed_min(x_val, mu, sigma, lam, n_grid=100):
     """
     Calculate E[min(x, M)] where M is the minimum of a Poisson(lam) number
-    of samples from the background Kumaraswamy(a, b) distribution.
+    of samples from the background Logit-Normal(mu, sigma) distribution.
     
     Use the stable formula:
     E[min(x, M)] = integrate_{0}^x exp(-lam * F(t)) dt
@@ -174,7 +181,7 @@ def calculate_expected_observed_min(x_val, a, b, lam, n_grid=100):
     ----------
     x_val : float
         the true value of the object (float)
-    a, b : float, float
+    mu, sigma : float, float
         shape parameters of the background population
     lam : float
         poisson parameter lambda
@@ -190,7 +197,7 @@ def calculate_expected_observed_min(x_val, a, b, lam, n_grid=100):
     
     # 1. Integration part: integrate_{0}^x exp(-lam * F(t)) dt
     def integrand(t):
-        Ft = _kumaraswamy_cdf(t, a, b)
+        Ft = _logit_normal_cdf(t, mu, sigma)
         return jnp.exp(-lam * Ft)
 
     t_grid = jnp.linspace(0.0, x_safe, n_grid)
@@ -211,45 +218,42 @@ class ModelPriors:
         Mean of the LogNormal prior for lambda.
     lam_scale : float
         Scale (sigma) of the LogNormal prior for lambda.
-    a_loc : float
-        Mean of LogNormal prior for a.
-    a_scale : float
-        Scale for a.
-    b_loc : float
-        Mean of LogNormal prior for b.
-    b_scale : float
-        Scale for b.
+    mu_anchoring_scale : float
+        Scale factor for the consistency prior anchoring mu_bg to prior_mu.
+    sigma_anchoring_scale : float
+        Scale factor for the consistency prior anchoring sigma_bg to prior_sigma.
     """
 
     lam_loc: float
     lam_scale: float
-    a_loc: float
-    a_scale: float
-    b_loc: float
-    b_scale: float
+    mu_anchoring_scale: float
+    sigma_anchoring_scale: float
     
 
 def define_model(name: str, 
                  data: GrowthData, 
-                 priors: ModelPriors) -> jnp.ndarray:
+                 priors: ModelPriors,
+                 anchors: tuple = None) -> jnp.ndarray:
     """
     Defines the hierarchical model for the co-transformation parameter (lambda)
-    and background parameters (a, b).
+    and background parameters (mu, sigma).
 
     Parameters
     ----------
     name : str
         The prefix for the Numpyro sample sites.
     data : GrowthData
-        A data object containing metadata (not currently used for lambda 
-        dimensions, but required by interface).
+        A data object containing metadata.
     priors : ModelPriors
         A Pytree containing the hyperparameters.
+    anchors : tuple, optional
+        (prior_mu, prior_sigma) expected population moments from the theta model.
+        Shape: (num_titrant_name, num_titrant_conc, 1)
 
     Returns
     -------
     tuple
-        (lam, a, b) sampled values.
+        (lam, mu, sigma) sampled values.
     """
     
     # Global shared lambda
@@ -262,30 +266,38 @@ def define_model(name: str,
     )
     pyro.deterministic(f"{name}_lam_value", lam)
 
+    if anchors is None:
+        # Fallback to defaults if no anchors provided
+        anc_mu = 0.0
+        anc_sigma = 1.0
+    else:
+        anc_mu, anc_sigma = anchors
+
     # Nested plates for titrant_name and titrant_conc
     with pyro.plate(f"{name}_titrant_name_plate", data.num_titrant_name, dim=-3):
         with pyro.plate(f"{name}_titrant_conc_plate", data.num_titrant_conc, dim=-2):
     
-            a = pyro.sample(
-                f"{name}_a",
-                dist.LogNormal(priors.a_loc, priors.a_scale)
+            mu = pyro.sample(
+                f"{name}_mu",
+                dist.Normal(anc_mu, priors.mu_anchoring_scale)
             )
-            pyro.deterministic(f"{name}_a_value", a)
+            pyro.deterministic(f"{name}_mu_value", mu)
 
-            b = pyro.sample(
-                f"{name}_b",
-                dist.LogNormal(priors.b_loc, priors.b_scale)
+            sigma = pyro.sample(
+                f"{name}_sigma",
+                dist.LogNormal(jnp.log(anc_sigma), priors.sigma_anchoring_scale)
             )
-            pyro.deterministic(f"{name}_b_value", b)
+            pyro.deterministic(f"{name}_sigma_value", sigma)
     
-    return lam, a, b
+    return lam, mu, sigma
 
 def guide(name: str, 
           data: GrowthData, 
-          priors: ModelPriors) -> jnp.ndarray:
+          priors: ModelPriors,
+          anchors: tuple = None) -> jnp.ndarray:
     """
     Guide corresponding to the co-transformation model.
-    Learns variational posteriors for lam, a, and b.
+    Learns variational posteriors for lam, mu, and sigma.
 
     Parameters
     ----------
@@ -295,11 +307,13 @@ def guide(name: str,
         A data object containing metadata.
     priors : ModelPriors
         A Pytree containing the hyperparameters for initialization.
+    anchors : tuple, optional
+        Population anchors (dummy here, but needed for interface).
 
     Returns
     -------
     tuple
-        (lam, a, b) sampled values from guide.
+        (lam, mu, sigma) sampled values from guide.
     """
     
     # Variational approximation for lambda
@@ -310,26 +324,31 @@ def guide(name: str,
                              constraint=dist.constraints.positive)
     lam = pyro.sample(f"{name}_lam", dist.LogNormal(h_lam_loc, h_lam_scale))
 
-    # Variational approximation for a and b (plated)
-    # Shape: (num_name, num_conc, 1) to broadcast against (..., num_name, num_conc, num_geno)
+    # Variational approximation for mu and sigma (plated)
     
     local_shape = (data.num_titrant_name, data.num_titrant_conc, 1)
 
-    h_a_loc = pyro.param(f"{name}_a_loc", jnp.full(local_shape, priors.a_loc))
-    h_a_scale = pyro.param(f"{name}_a_scale", jnp.full(local_shape, priors.a_scale),
-                           constraint=dist.constraints.positive)
+    if anchors is None:
+        init_mu = 0.0
+        init_sigma = 1.0
+    else:
+        init_mu, init_sigma = anchors
+
+    h_mu_loc = pyro.param(f"{name}_mu_loc", jnp.full(local_shape, init_mu))
+    h_mu_scale = pyro.param(f"{name}_mu_scale", jnp.full(local_shape, 0.1),
+                            constraint=dist.constraints.positive)
     
-    h_b_loc = pyro.param(f"{name}_b_loc", jnp.full(local_shape, priors.b_loc))
-    h_b_scale = pyro.param(f"{name}_b_scale", jnp.full(local_shape, priors.b_scale),
-                           constraint=dist.constraints.positive)
+    h_sigma_loc = pyro.param(f"{name}_sigma_loc", jnp.full(local_shape, jnp.log(init_sigma)))
+    h_sigma_scale = pyro.param(f"{name}_sigma_scale", jnp.full(local_shape, 0.1),
+                               constraint=dist.constraints.positive)
 
     with pyro.plate(f"{name}_titrant_name_plate", data.num_titrant_name, dim=-3):
         with pyro.plate(f"{name}_titrant_conc_plate", data.num_titrant_conc, dim=-2):
             
-            a = pyro.sample(f"{name}_a", dist.LogNormal(h_a_loc, h_a_scale))
-            b = pyro.sample(f"{name}_b", dist.LogNormal(h_b_loc, h_b_scale))
+            mu = pyro.sample(f"{name}_mu", dist.Normal(h_mu_loc, h_mu_scale))
+            sigma = pyro.sample(f"{name}_sigma", dist.LogNormal(h_sigma_loc, h_sigma_scale))
 
-    return lam, a, b
+    return lam, mu, sigma
 
 
 def get_hyperparameters():
@@ -348,12 +367,9 @@ def get_hyperparameters():
     parameters["lam_loc"] = 0.0 
     parameters["lam_scale"] = 1.0 
     
-    # Background priors (a, b)
-    # Centered on 1.0 (Uniform-ish)
-    parameters["a_loc"] = 0.0
-    parameters["a_scale"] = 1.0
-    parameters["b_loc"] = 0.0
-    parameters["b_scale"] = 1.0
+    # Anchoring scales (tightening this makes the background track the prior more closely)
+    parameters["mu_anchoring_scale"] = 0.5
+    parameters["sigma_anchoring_scale"] = 0.2
                
     return parameters
     
@@ -383,8 +399,8 @@ def get_guesses(name,data):
 
     guesses = {}
     guesses[f"{name}_lam"] = 1.0
-    guesses[f"{name}_a"] = 1.0
-    guesses[f"{name}_b"] = 1.0
+    guesses[f"{name}_mu"] = 0.0
+    guesses[f"{name}_sigma"] = 1.0
     
     return guesses
 
