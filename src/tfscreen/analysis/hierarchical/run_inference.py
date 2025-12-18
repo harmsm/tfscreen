@@ -12,6 +12,7 @@ from numpyro.infer import (
     init_to_value
 )
 from numpyro.optim import ClippedAdam
+import optax
 
 from numpyro.handlers import (
     trace, 
@@ -72,14 +73,15 @@ class RunInference:
     def setup_map(self,
                   adam_step_size=1e-6,
                   adam_clip_norm=1.0,
-                  elbo_num_particles=1):
+                  elbo_num_particles=2):
         """
         Set up SVI for MAP estimation using an AutoDelta guide.
         
         Parameters
         ----------
-        adam_step_size : float, optional
-            Step size for the ClippedAdam optimizer.
+        adam_step_size : float or callable, optional
+            Step size for the ClippedAdam optimizer. Can be a fixed float or 
+             a callable (e.g., an optax schedule).
         adam_clip_norm : float, optional
             Gradient clipping norm for the ClippedAdam optimizer.
         elbo_num_particles : int, optional
@@ -105,7 +107,7 @@ class RunInference:
                   init_params=None,
                   adam_step_size=1e-6,
                   adam_clip_norm=1.0,
-                  elbo_num_particles=10,
+                  elbo_num_particles=2,
                   init_param_jitter=0.1,
                   init_scale=0.01):
         """
@@ -115,8 +117,9 @@ class RunInference:
         ----------
         init_params : dict, optional
             starting parameter values. 
-        adam_step_size : float, optional
-            Step size for the ClippedAdam optimizer.
+        adam_step_size : float or callable, optional
+            Step size for the ClippedAdam optimizer. Can be a fixed float or 
+             a callable (e.g., an optax schedule).
         adam_clip_norm : float, optional
             Gradient clipping norm for the ClippedAdam optimizer.
         elbo_num_particles : int, optional
@@ -212,17 +215,28 @@ class RunInference:
         if init_params is not None:
             init_params = self._jitter_init_parameters(init_params=init_params,
                                                        init_param_jitter=init_param_jitter)
-        
+
+        # JAX-optimized update function for use with lax.scan
+        def scan_fn(carry, batch):
+            svi_state = carry
+            new_svi_state, loss = update_function(svi_state,
+                                                  priors=self.model.priors,
+                                                  data=batch)
+            return new_svi_state, loss
+
+        # JIT the scan function
+        fast_scan = jax.jit(lambda state, batches: jax.lax.scan(scan_fn, state, batches))
+
         # Put the data on to the gpu
         data_on_gpu = jax.device_put(self.model.data)
 
-        # compile the batch slicing function
-        get_batch = jax.jit(self.model.get_batch)
+        # JIT the vmapped batch extraction function
+        vmap_get_batch = jax.jit(jax.vmap(lambda idx: self.model.get_batch(data_on_gpu, idx)))
 
         # Create an initial batch to initialize SVI
         init_batch_key = int(self.get_key()[1])
         gpu_batch_idx = jax.device_put(self.model.get_random_idx(init_batch_key))
-        batch_data = get_batch(data_on_gpu,gpu_batch_idx)
+        batch_data = self.model.get_batch(data_on_gpu, gpu_batch_idx)
 
         # Initialize svi with a batch of data
         init_key = self.get_key()
@@ -248,56 +262,56 @@ class RunInference:
         self._loss_deque = deque(maxlen=(convergence_window*2))
         converged = False
         
-        # Loop over all steps
-        losses = []
-        for i in range(num_steps):
+        # Loop over steps in chunks of checkpoint_interval
+        current_optimization_step = 0
+        while current_optimization_step < num_steps:
 
-            # Create a batch of data
-            gpu_batch_idx = jax.device_put(self.model.get_random_idx())
-            batch_data = get_batch(data_on_gpu,gpu_batch_idx)
+            # Determine size of this block
+            block_size = min(checkpoint_interval, num_steps - current_optimization_step)
 
-            # Update the loss function
-            svi_state, loss = update_function(svi_state,
-                                              priors=self.model.priors,
-                                              data=batch_data)
-            losses.append(loss)
+            # Generate a block of random indices (using NumPy/Python)
+            gpu_block_idx = jax.device_put(self.model.get_random_idx(num_batches=block_size))
 
-            if i % checkpoint_interval == 0:
+            # Extract data for these indices (JIT-ted and vmapped)
+            block_data = vmap_get_batch(gpu_block_idx)
 
-                self._current_step += i
+            # Run the block of updates using lax.scan (entirely on GPU)
+            svi_state, block_losses = fast_scan(svi_state, block_data)
+            
+            # Convert JAX array to NumPy for host-side metadata management
+            # Ensure it is at least 1D for deque/IO
+            interval_losses = np.atleast_1d(np.array(block_losses))
+            
+            # Update counters
+            current_optimization_step += block_size
+            self._current_step += block_size
 
-                # Update loss deque
-                self._update_loss_deque(losses,convergence_window)
+            # Update loss deque for convergence check
+            self._update_loss_deque(interval_losses, convergence_window)
 
-                # stdout
-                print(f"Step: {i:10d}, Loss: {loss:10.5e}, Change: {self._relative_change:10.5e}",flush=True)
+            # stdout
+            # Print status using the last loss in the block
+            print(f"Step: {current_optimization_step - block_size:10d}, Loss: {interval_losses[-1]:10.5e}, Change: {self._relative_change:10.5e}", flush=True)
 
-                # Check for explosion in parameters
-                params = svi.get_params(svi_state)
-                for k in params:
-                    if np.any(np.isnan(params[k])):
-                        raise RuntimeError(
-                            f"model exploded (observed at step {i})."
-                        )
-                    
-                # Write outputs
-                self._write_checkpoint(svi_state,out_root)
-                self._write_losses(losses,out_root) 
+            # Check for explosion in parameters
+            params = svi.get_params(svi_state)
+            for k in params:
+                if np.any(np.isnan(params[k])):
+                    raise RuntimeError(
+                        f"model exploded (observed at step {self._current_step})."
+                    )
+                
+            # Write outputs
+            self._write_checkpoint(svi_state, out_root)
+            self._write_losses(interval_losses, out_root) 
 
-                # Check for convergence               
-                if convergence_tolerance is not None: 
-                    if self._relative_change < convergence_tolerance:
-                        converged = True
-                        break
+            # Check for convergence               
+            if convergence_tolerance is not None: 
+                if self._relative_change < convergence_tolerance:
+                    converged = True
+                    break
 
-                # Reset losses list
-                losses = []
-
-        # Write final checkpoint and losses
-        self._write_checkpoint(svi_state,out_root)
-        self._write_losses(losses,out_root) 
-
-        # Get current parameters
+        # Get final parameters
         params = svi.get_params(svi_state)
         
         return svi_state, params, converged

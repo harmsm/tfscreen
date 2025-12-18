@@ -938,28 +938,60 @@ class ModelClass:
         """Get a deterministic batch of data."""
         return get_batch
     
-    def get_random_idx(self,batch_key=None):
+    def get_random_idx(self, batch_key=None, num_batches=1):
         """
-        Get a random set of integers corresponding, keeping binding data 
-        every time.
+        Get a random set of integers corresponding to genotypes for mini-batching.
+        The first `num_binding` entries are always the fixed binding genotypes.
+        The remaining entries are sampled from the non-binding genotypes.
+
+        Parameters
+        ----------
+        batch_key : int, optional
+            If provided, re-initializes the NumPy random number generator. 
+            Must be called once to initialize.
+        num_batches : int, optional
+            Number of batches of indices to generate. Default is 1.
+
+        Returns
+        -------
+        jnp.ndarray
+            If `num_batches == 1`, returns an array of shape `(batch_size,)`.
+            If `num_batches > 1`, returns an array of shape `(num_batches, batch_size)`.
         """
 
         if batch_key is not None:
             self._batch_rng = np.random.default_rng(batch_key)
-            self._batch_idx = np.array(self.data.growth.batch_idx,dtype=int)
+            self._batch_idx = np.array(self.data.growth.batch_idx, dtype=int)
             self._batch_choose_from = np.array(self.data.not_binding_idx)
             self._batch_choose_size = self.data.not_binding_batch_size
 
-        if not hasattr(self,"_batch_rng"):
+        if not hasattr(self, "_batch_rng"):
             raise ValueError(
                 "get_random_idx must be called with an integer batch key the "
                 "first time it is called."
             )
 
-        self._batch_idx[-self._batch_choose_size:] = self._batch_rng.choice(self._batch_choose_from,
-                                                                            self._batch_choose_size,
-                                                                            replace=False)
-        return jnp.array(self._batch_idx,dtype=jnp.int32)
+        # Generate a single batch
+        if num_batches == 1:
+            self._batch_idx[-self._batch_choose_size:] = self._batch_rng.choice(
+                self._batch_choose_from,
+                self._batch_choose_size,
+                replace=False
+            )
+            return jnp.array(self._batch_idx, dtype=jnp.int32)
+        
+        # Generate a block of batches
+        else:
+            block_idx = np.zeros((num_batches, len(self._batch_idx)), dtype=int)
+            for i in range(num_batches):
+                self._batch_idx[-self._batch_choose_size:] = self._batch_rng.choice(
+                    self._batch_choose_from,
+                    self._batch_choose_size,
+                    replace=False
+                )
+                block_idx[i, :] = self._batch_idx
+                
+            return jnp.array(block_idx, dtype=jnp.int32)
 
     @property
     def data(self):

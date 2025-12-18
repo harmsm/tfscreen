@@ -3,14 +3,16 @@ from tfscreen.analysis.hierarchical.growth_model import GrowthModel
 from tfscreen.util.cli.generalized_main import generalized_main
 
 import os
+import optax
 
 def _run_map(ri,
              init_params,
              checkpoint_file=None,
              out_root="tfs",
-             adam_step_size=1e-6,
+             adam_step_size=1e-3,
+             adam_final_step_size=1e-6,
              adam_clip_norm=1.0,
-             elbo_num_particles=10,
+             elbo_num_particles=2,
              convergence_tolerance=1e-5,
              convergence_window=1000,
              checkpoint_interval=1000,
@@ -34,11 +36,13 @@ def _run_map(ri,
     out_root : str, optional
         Output file root for checkpoints and results (default "tfs").
     adam_step_size : float, optional
-        Step size for the Adam optimizer (default 1e-6).
+        Starting step size for the Adam optimizer (default 1e-3).
+    adam_final_step_size : float, optional
+        Final step size for the Adam optimizer (default 1e-6).
     adam_clip_norm : float, optional
         Gradient clipping norm for Adam optimizer (default 1.0).
     elbo_num_particles : int, optional
-        Number of particles for ELBO estimation during MAP (default 10).
+        Number of particles for ELBO estimation during MAP (default 2).
     convergence_tolerance : float, optional
         Relative change in loss to declare MAP convergence (default 1e-5).
     convergence_window : int, optional
@@ -58,8 +62,15 @@ def _run_map(ri,
         True if MAP converged according to the specified tolerance.
     """
 
+     # Create a learning rate schedule
+    schedule = optax.exponential_decay(
+        init_value=adam_step_size,
+        transition_steps=int(map_num_steps * 0.25),
+        decay_rate=adam_final_step_size / adam_step_size
+    )
+
      # Create a maximum a posteriori svi object
-    map_obj = ri.setup_map(adam_step_size=adam_step_size,
+    map_obj = ri.setup_map(adam_step_size=schedule,
                            adam_clip_norm=adam_clip_norm,
                            elbo_num_particles=elbo_num_particles)
     
@@ -93,9 +104,10 @@ def _run_svi(ri,
              init_params,
              checkpoint_file=None,
              out_root="tfs",
-             adam_step_size=1e-6,
+             adam_step_size=1e-3,
+             adam_final_step_size=1e-6,
              adam_clip_norm=1.0,
-             elbo_num_particles=10,
+             elbo_num_particles=2,
              convergence_tolerance=1e-4,
              convergence_window=1000,
              checkpoint_interval=1000,
@@ -123,13 +135,15 @@ def _run_svi(ri,
     out_root : str, optional
         Output file root for checkpoints and results (default "tfs").
     adam_step_size : float, optional
-        Step size for the Adam optimizer (default 1e-6).
+        Starting step size for the Adam optimizer (default 1e-3).
+    adam_final_step_size : float, optional
+        Final step size for the Adam optimizer (default 1e-6).
     adam_clip_norm : float, optional
         Gradient clipping norm for Adam optimizer (default 1.0).
     elbo_num_particles : int, optional
-        Number of particles for ELBO estimation during SVI (default 10).
+        Number of particles for ELBO estimation during SVI (default 2).
     convergence_tolerance : float, optional
-        Relative change in loss to declare SVI convergence (default 1e-7).
+        Relative change in loss to declare SVI convergence (default 1e-4).
     convergence_window : int, optional
         Number of steps to average for convergence check (default 1000).
     checkpoint_interval : int, optional
@@ -157,8 +171,15 @@ def _run_svi(ri,
         True if SVI converged according to the specified tolerance.
     """
     
+    # Create a learning rate schedule
+    schedule = optax.exponential_decay(
+        init_value=adam_step_size,
+        transition_steps=int(num_steps * 0.25),
+        decay_rate=adam_final_step_size / adam_step_size
+    )
+
     # Create an svi object
-    svi_obj = ri.setup_svi(adam_step_size=adam_step_size,
+    svi_obj = ri.setup_svi(adam_step_size=schedule,
                            adam_clip_norm=adam_clip_norm,
                            elbo_num_particles=elbo_num_particles,
                            init_params=init_params)
@@ -205,9 +226,10 @@ def analyze_theta(growth_df,
                   checkpoint_file=None,
                   analysis_method="svi",
                   out_root="tfs",
-                  adam_step_size=1e-6,
+                  adam_step_size=1e-3,
+                  adam_final_step_size=1e-6,
                   adam_clip_norm=1.0,
-                  elbo_num_particles=10,
+                  elbo_num_particles=2,
                   convergence_tolerance=1e-6,
                   convergence_window=10000,
                   checkpoint_interval=10000,
@@ -270,11 +292,13 @@ def analyze_theta(growth_df,
     out_root : str, optional
         Output file root for checkpoints and results (default 'tfs').
     adam_step_size : float, optional
-        Step size for the Adam optimizer (default 1e-6).
+        Starting step size for the Adam optimizer (default 1e-3).
+    adam_final_step_size : float, optional
+        Final step size for the Adam optimizer (default 1e-6).
     adam_clip_norm : float, optional
         Gradient clipping norm for Adam optimizer (default 1.0).
     elbo_num_particles : int, optional
-        Number of particles for ELBO estimation (default 10).
+        Number of particles for ELBO estimation (default 2).
     convergence_tolerance : float, optional
         Relative change in loss to declare SVI convergence (default 1e-5).
     convergence_window : int, optional
@@ -340,6 +364,7 @@ def analyze_theta(growth_df,
                         checkpoint_file=checkpoint_file,
                         out_root=out_root,
                         adam_step_size=adam_step_size,
+                        adam_final_step_size=adam_final_step_size,
                         adam_clip_norm=adam_clip_norm,
                         elbo_num_particles=elbo_num_particles,
                         convergence_tolerance=convergence_tolerance,
@@ -359,9 +384,10 @@ def analyze_theta(growth_df,
                         checkpoint_file=checkpoint_file,
                         out_root=out_root,
                         adam_step_size=adam_step_size,
+                        adam_final_step_size=adam_final_step_size,
                         adam_clip_norm=adam_clip_norm,
-                        map_elbo_num_particles=elbo_num_particles,
-                        map_convergence_tolerance=convergence_tolerance,
+                        elbo_num_particles=elbo_num_particles,
+                        convergence_tolerance=convergence_tolerance,
                         convergence_window=convergence_window,
                         checkpoint_interval=checkpoint_interval,
                         map_num_steps=num_steps)
@@ -373,6 +399,7 @@ def analyze_theta(growth_df,
                         checkpoint_file=checkpoint_file,
                         out_root=out_root,
                         adam_step_size=adam_step_size,
+                        adam_final_step_size=adam_final_step_size,
                         adam_clip_norm=adam_clip_norm,
                         elbo_num_particles=elbo_num_particles,
                         convergence_tolerance=convergence_tolerance,

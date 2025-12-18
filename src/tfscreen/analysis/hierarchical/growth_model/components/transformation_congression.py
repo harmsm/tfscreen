@@ -35,7 +35,6 @@ def _logit_normal_cdf(x, mu, sigma):
     return jax.scipy.stats.norm.cdf(logit_x, loc=mu, scale=sigma)
 
 
-
 def update_thetas(theta, params, mask=None, n_grid=512):
     """
     Corrects theta values for co-transformation using the method of 
