@@ -1,6 +1,6 @@
 from tfscreen.models.generic import MODEL_LIBRARY
 from tfscreen.calibration import read_calibration
-from tfscreen.util import broadcast_args
+from tfscreen.util.numerical import broadcast_args
 
 import numpy as np
 import pandas as pd

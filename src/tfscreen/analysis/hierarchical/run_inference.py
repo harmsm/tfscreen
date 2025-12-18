@@ -12,6 +12,7 @@ from numpyro.infer import (
     init_to_value
 )
 from numpyro.optim import ClippedAdam
+import optax
 
 from numpyro.handlers import (
     trace, 
@@ -66,19 +67,21 @@ class RunInference:
         self._seed = seed
         self._main_key = random.PRNGKey(self._seed)
         self._current_step = 0
+        self._relative_change = np.inf
 
 
     def setup_map(self,
                   adam_step_size=1e-6,
                   adam_clip_norm=1.0,
-                  elbo_num_particles=1):
+                  elbo_num_particles=2):
         """
         Set up SVI for MAP estimation using an AutoDelta guide.
         
         Parameters
         ----------
-        adam_step_size : float, optional
-            Step size for the ClippedAdam optimizer.
+        adam_step_size : float or callable, optional
+            Step size for the ClippedAdam optimizer. Can be a fixed float or 
+             a callable (e.g., an optax schedule).
         adam_clip_norm : float, optional
             Gradient clipping norm for the ClippedAdam optimizer.
         elbo_num_particles : int, optional
@@ -104,7 +107,7 @@ class RunInference:
                   init_params=None,
                   adam_step_size=1e-6,
                   adam_clip_norm=1.0,
-                  elbo_num_particles=10,
+                  elbo_num_particles=2,
                   init_param_jitter=0.1,
                   init_scale=0.01):
         """
@@ -114,8 +117,9 @@ class RunInference:
         ----------
         init_params : dict, optional
             starting parameter values. 
-        adam_step_size : float, optional
-            Step size for the ClippedAdam optimizer.
+        adam_step_size : float or callable, optional
+            Step size for the ClippedAdam optimizer. Can be a fixed float or 
+             a callable (e.g., an optax schedule).
         adam_clip_norm : float, optional
             Gradient clipping norm for the ClippedAdam optimizer.
         elbo_num_particles : int, optional
@@ -211,17 +215,28 @@ class RunInference:
         if init_params is not None:
             init_params = self._jitter_init_parameters(init_params=init_params,
                                                        init_param_jitter=init_param_jitter)
-        
+
+        # JAX-optimized update function for use with lax.scan
+        def scan_fn(carry, batch):
+            svi_state = carry
+            new_svi_state, loss = update_function(svi_state,
+                                                  priors=self.model.priors,
+                                                  data=batch)
+            return new_svi_state, loss
+
+        # JIT the scan function
+        fast_scan = jax.jit(lambda state, batches: jax.lax.scan(scan_fn, state, batches))
+
         # Put the data on to the gpu
         data_on_gpu = jax.device_put(self.model.data)
 
-        # compile the batch slicing function
-        get_batch = jax.jit(self.model.get_batch)
+        # JIT the vmapped batch extraction function
+        vmap_get_batch = jax.jit(jax.vmap(lambda idx: self.model.get_batch(data_on_gpu, idx)))
 
         # Create an initial batch to initialize SVI
         init_batch_key = int(self.get_key()[1])
         gpu_batch_idx = jax.device_put(self.model.get_random_idx(init_batch_key))
-        batch_data = get_batch(data_on_gpu,gpu_batch_idx)
+        batch_data = self.model.get_batch(data_on_gpu, gpu_batch_idx)
 
         # Initialize svi with a batch of data
         init_key = self.get_key()
@@ -247,56 +262,56 @@ class RunInference:
         self._loss_deque = deque(maxlen=(convergence_window*2))
         converged = False
         
-        # Loop over all steps
-        losses = []
-        for i in range(num_steps):
+        # Loop over steps in chunks of checkpoint_interval
+        current_optimization_step = 0
+        while current_optimization_step < num_steps:
 
-            # Create a batch of data
-            gpu_batch_idx = jax.device_put(self.model.get_random_idx())
-            batch_data = get_batch(data_on_gpu,gpu_batch_idx)
+            # Determine size of this block
+            block_size = min(checkpoint_interval, num_steps - current_optimization_step)
 
-            # Update the loss function
-            svi_state, loss = update_function(svi_state,
-                                              priors=self.model.priors,
-                                              data=batch_data)
-            losses.append(loss)
+            # Generate a block of random indices (using NumPy/Python)
+            gpu_block_idx = jax.device_put(self.model.get_random_idx(num_batches=block_size))
 
-            if i % checkpoint_interval == 0:
+            # Extract data for these indices (JIT-ted and vmapped)
+            block_data = vmap_get_batch(gpu_block_idx)
 
-                self._current_step += i
+            # Run the block of updates using lax.scan (entirely on GPU)
+            svi_state, block_losses = fast_scan(svi_state, block_data)
+            
+            # Convert JAX array to NumPy for host-side metadata management
+            # Ensure it is at least 1D for deque/IO
+            interval_losses = np.atleast_1d(np.array(block_losses))
+            
+            # Update counters
+            current_optimization_step += block_size
+            self._current_step += block_size
 
-                # Update loss deque
-                self._update_loss_deque(losses,convergence_window)
+            # Update loss deque for convergence check
+            self._update_loss_deque(interval_losses, convergence_window)
 
-                # stdout
-                print(f"Step: {i:10d}, Loss: {loss:10.5e}, Change: {self._relative_change:10.5e}",flush=True)
+            # stdout
+            # Print status using the last loss in the block
+            print(f"Step: {current_optimization_step - block_size:10d}, Loss: {interval_losses[-1]:10.5e}, Change: {self._relative_change:10.5e}", flush=True)
 
-                # Check for explosion in parameters
-                params = svi.get_params(svi_state)
-                for k in params:
-                    if np.any(np.isnan(params[k])):
-                        raise RuntimeError(
-                            f"model exploded (observed at step {i})."
-                        )
-                    
-                # Write outputs
-                self._write_checkpoint(svi_state,out_root)
-                self._write_losses(losses,out_root) 
+            # Check for explosion in parameters
+            params = svi.get_params(svi_state)
+            for k in params:
+                if np.any(np.isnan(params[k])):
+                    raise RuntimeError(
+                        f"model exploded (observed at step {self._current_step})."
+                    )
+                
+            # Write outputs
+            self._write_checkpoint(svi_state, out_root)
+            self._write_losses(interval_losses, out_root) 
 
-                # Check for convergence               
-                if convergence_tolerance is not None: 
-                    if self._relative_change < convergence_tolerance:
-                        converged = True
-                        break
+            # Check for convergence               
+            if convergence_tolerance is not None: 
+                if self._relative_change < convergence_tolerance:
+                    converged = True
+                    break
 
-                # Reset losses list
-                losses = []
-
-        # Write final checkpoint and losses
-        self._write_checkpoint(svi_state,out_root)
-        self._write_losses(losses,out_root) 
-
-        # Get current parameters
+        # Get final parameters
         params = svi.get_params(svi_state)
         
         return svi_state, params, converged
@@ -317,19 +332,19 @@ class RunInference:
 
         Parameters
         ----------
-
         svi : numpyro.infer.SVI
-            svi object being used for the inference
-        svi_state : 
-            current state of the svi object
+            The SVI object being used for inference.
+        svi_state : Any
+            The current state of the SVI object (optimizer state).
         out_root : str
             Root name for the output .npz file.
         num_posterior_samples : int, optional
-            Number of posterior samples to draw.
+            Number of posterior samples to draw (default 10000).
         sampling_batch_size : int, optional
-            Generate posteriors in blocks of this size
+            Batch size for generating posterior samples of latent parameters
+            (default 100).
         forward_batch_size : int, optional
-            calculate forward predictions in batches of this size
+            Batch size for calculating forward predictions (default 512).
         """
 
         guide = svi.guide
@@ -340,6 +355,12 @@ class RunInference:
         total_num_genotypes = self.model.data.num_genotype 
         num_latent_batches = -(-num_posterior_samples // sampling_batch_size)
 
+        # Create a full-batch data object for sampling latents
+        # We need this because latent_sampler needs to know about ALL genotypes
+        # to generate the correct shape for parameters like (num_titrants, num_genotypes)
+        all_indices = jnp.arange(total_num_genotypes)
+        full_data = self.model.get_batch(self.model.data, all_indices)
+
         for _ in tqdm(range(num_latent_batches),desc="sampling posterior"):
 
             # Sample the entire guide posterior distribution 
@@ -347,7 +368,9 @@ class RunInference:
             latent_sampler = Predictive(guide,
                                         params=params,
                                         num_samples=sampling_batch_size)
-            latent_samples = latent_sampler(post_key)
+            latent_samples = latent_sampler(post_key,
+                                            priors=self.model.priors,
+                                            data=full_data)
 
             # Sample batches of genotypes
             batched_results = {}
@@ -372,12 +395,13 @@ class RunInference:
 
 
                 # Get a batch of data
-                batch_data = self.model.get_batch(batch_indices)
+                batch_data = self.model.get_batch(self.model.data,
+                batch_indices)
                 
                 # Create a sampler that will predict outputs using the full
                 # model given those latent samples
                 forward_sampler = Predictive(self.model.jax_model, 
-                                                posterior_samples=batch_latents)
+                                             posterior_samples=batch_latents)
 
                 # Run the forward pass for this batch of genotypes
                 sample_key = self.get_key()
@@ -425,7 +449,7 @@ class RunInference:
                 if len(v) == 1:
                     combined_results[k].append(v[0])
                 else:
-                    full_width = np.concatenate(v,axis=1)
+                    full_width = np.concatenate(v,axis=-1)
                     combined_results[k].append(full_width)
     
         # assemble final results
@@ -440,22 +464,30 @@ class RunInference:
                 predict_sites=None,
                 data_for_predict=None):
         """
-        Use the model to predict values of deterministic parameters in 
-        predict_sites given the model and the model parameter samples in the
-        posteriors_file. 
+        Use the model to predict values of deterministic sites.
 
+        This method uses `numpyro.infer.Predictive` to generate predictions
+        for specified sites, given posterior samples and potentially new
+        input data.
+
+        Parameters
+        ----------
         posterior_samples : dict or str
-            posteriors dictionary or path to a file holding posterior samples
-            (usually generated by self.get_posteriors()) 
-        predict_sites : list of str or str
-            list of sites defined in the model we should predict. If None, 
-            get all 'deterministic' sites. 
-        data_for_predict : flax.dataclass
-            dataclass exactly matching self.model.data in its parameters but 
-            with (possibly) different independent variables (e.g. t_sel, 
-            titrant_conc, etc.). This lets us predict at more titrant
-            concentrations than the training set, for example. If None, use the
-            data class used for training. 
+            A dictionary of posterior samples or a path to a .npz file
+            containing them (typically from `get_posteriors`).
+        predict_sites : list of str or str, optional
+            List of model sites to predict. If None, defaults to all
+            'deterministic' sites found in the model trace.
+        data_for_predict : object, optional
+            A dataclass matching the structure of `self.model.data` but
+            potentially containing different independent variables (e.g.,
+            new time points or concentrations). If None, uses the original
+            training data.
+
+        Returns
+        -------
+        dict
+            A dictionary mapping site names to predicted value arrays.
         """
 
         # Get all deterministic sites
@@ -646,6 +678,13 @@ class RunInference:
             np.array(losses).tofile(f)
             f.flush()
             os.fsync(f.fileno())
+
+        # Write a human-readable losses file
+        readable_losses_file = f"{out_root}_losses.txt"
+        with open(readable_losses_file,"a") as f:
+            f.write(f"{losses[-1]},{self._relative_change}\n")
+            f.flush()
+            os.fsync(f.fileno())    
 
 
     def _write_posteriors(self,posterior_samples,out_root):

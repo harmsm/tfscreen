@@ -6,7 +6,7 @@ from tfscreen.calibration import (
     get_k_vs_theta
 )
 
-from tfscreen.util import (
+from tfscreen.util.numerical import (
     broadcast_args
 )
 

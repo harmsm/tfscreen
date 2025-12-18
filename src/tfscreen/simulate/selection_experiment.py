@@ -1,9 +1,11 @@
 
 from __future__ import annotations
 
-from tfscreen.util import (
+from tfscreen.util.io import (
     read_dataframe,
     read_yaml,
+)
+from tfscreen.util.numerical import (
     vstack_padded,
     zero_truncated_poisson,
 )

@@ -70,12 +70,12 @@ def guide(name: str,
     Guide corresponding to the observation function.
 
     This function handles the inference for the latent degrees of freedom
-    parameter `nu`. It deliberately excludes the `pyro.plate` context
-    and the `growth_obs` sample site because those are observed data,
-    not latent variables.
-    """
+    parameter `nu`. It uses a LogNormal distribution to approximate the
+    posterior of `nu`, ensuring positive support.
 
-    # --- 1. Latent Variable (nu) ---
+    It deliberately excludes the `pyro.plate` context and the `growth_obs`
+    sample site because those are observed data, not latent variables.
+    """
     
     # The prior is Gamma(2.0, 0.1), which has a mean of 20.0.
     # We use a LogNormal guide to ensure positive support.

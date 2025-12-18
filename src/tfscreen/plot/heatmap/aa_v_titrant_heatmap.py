@@ -1,5 +1,5 @@
 import tfscreen
-from tfscreen.util import check_columns
+from tfscreen.util.dataframe import check_columns
 
 import numpy as np
 

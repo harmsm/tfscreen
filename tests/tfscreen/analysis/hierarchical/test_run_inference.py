@@ -93,47 +93,59 @@ def test_setup_svi(run_inference, mock_svi_class):
 # Run Optimization
 # ----------------------------------------------------------------------------
 
+@patch("jax.lax.scan")
+@patch("jax.vmap")
 @patch("jax.jit")
 @patch("jax.device_put")
-def test_run_optimization_standard_flow(mock_device_put, mock_jit, run_inference, mock_model):
+def test_run_optimization_standard_flow(mock_device_put, mock_jit, mock_vmap, mock_scan, run_inference, mock_model):
     """Test the main optimization loop."""
     svi = MagicMock()
     mock_update_fn = MagicMock(return_value=("new_state", 1.5))
     mock_init_fn = MagicMock(return_value="initial_state")
     
-    def jit_side_effect(fun):
-        if fun == svi.update: return mock_update_fn
-        elif fun == svi.init: return mock_init_fn
-        return fun 
+    # Simple pass-through for jit and vmap
+    mock_jit.side_effect = lambda f: f
+    mock_vmap.side_effect = lambda f, **kwargs: f
+    mock_device_put.side_effect = lambda x: x
     
-    mock_jit.side_effect = jit_side_effect
-    mock_device_put.return_value = "gpu_data"
+    # Mock scan to return a block of losses
+    def scan_side_effect(f, init, xs):
+        # xs is dummy_batch_data in this test
+        return ("new_state", jnp.array([1.5] * len(xs) if hasattr(xs, "__len__") else [1.5]))
+    mock_scan.side_effect = scan_side_effect
 
     run_inference._write_checkpoint = MagicMock()
     run_inference._write_losses = MagicMock()
     svi.get_params.return_value = {"x": np.array([1.0])}
+    svi.init = mock_init_fn
     run_inference._relative_change = 0.0
 
     state, params, converged = run_inference.run_optimization(
         svi, 
         num_steps=5, 
         checkpoint_interval=2, 
-        convergence_window=10
+        convergence_window=10,
+        convergence_tolerance=None
     )
 
     mock_init_fn.assert_called_once()
-    assert mock_update_fn.call_count == 5
-    assert run_inference._write_checkpoint.call_count == 4
-    assert run_inference._write_losses.call_count == 4
-    assert mock_model.get_random_idx.call_count == 6
+    # 5 steps total, with checkpoint_interval=2, 
+    # blocks of size 2, 2, 1.
+    assert mock_scan.call_count == 3
+    assert run_inference._write_checkpoint.call_count == 3
+    assert run_inference._write_losses.call_count == 3
 
+@patch("jax.lax.scan")
+@patch("jax.vmap")
 @patch("jax.jit")
 @patch("jax.device_put")
-def test_run_optimization_resume_checkpoint(mock_device_put, mock_jit, run_inference):
+def test_run_optimization_resume_checkpoint(mock_device_put, mock_jit, mock_vmap, mock_scan, run_inference):
     """Test resuming from a file path."""
     svi = MagicMock()
-    mock_update_fn = MagicMock(return_value=("state", 1.0))
-    mock_jit.side_effect = lambda f: mock_update_fn # return callable for all jit calls
+    mock_jit.side_effect = lambda f: f
+    mock_vmap.side_effect = lambda f, **kwargs: f
+    mock_device_put.side_effect = lambda x: x
+    mock_scan.return_value = ("state", jnp.array([1.0]))
     
     run_inference._write_checkpoint = MagicMock()
     run_inference._write_losses = MagicMock()
@@ -144,16 +156,20 @@ def test_run_optimization_resume_checkpoint(mock_device_put, mock_jit, run_infer
             run_inference.run_optimization(svi, svi_state="ckpt.pkl", num_steps=1)
             
             mock_restore.assert_called_once_with("ckpt.pkl")
-            args, _ = mock_update_fn.call_args
-            assert args[0] == "restored_state"
+            # In the block, svi_state starts as restored_state
+            assert mock_scan.call_args[0][1] == "restored_state"
 
+@patch("jax.lax.scan")
+@patch("jax.vmap")
 @patch("jax.jit")
 @patch("jax.device_put")
-def test_run_optimization_explosion(mock_device_put, mock_jit, run_inference):
+def test_run_optimization_explosion(mock_device_put, mock_jit, mock_vmap, mock_scan, run_inference):
     """Test RuntimeError is raised if params become NaN."""
     svi = MagicMock()
-    mock_update_fn = MagicMock(return_value=("state", 1.0))
-    mock_jit.side_effect = lambda f: mock_update_fn
+    mock_jit.side_effect = lambda f: f
+    mock_vmap.side_effect = lambda f, **kwargs: f
+    mock_device_put.side_effect = lambda x: x
+    mock_scan.return_value = ("state", jnp.array([1.0]))
 
     # Return NaN params to trigger explosion check
     svi.get_params.return_value = {"x": np.array([np.nan])}
@@ -172,13 +188,17 @@ def test_run_optimization_explosion(mock_device_put, mock_jit, run_inference):
             checkpoint_interval=1
         )
 
+@patch("jax.lax.scan")
+@patch("jax.vmap")
 @patch("jax.jit")
 @patch("jax.device_put")
-def test_run_optimization_convergence(mock_device_put, mock_jit, run_inference):
+def test_run_optimization_convergence(mock_device_put, mock_jit, mock_vmap, mock_scan, run_inference):
     """Test that optimization stops early if convergence tolerance is met."""
     svi = MagicMock()
-    mock_update_fn = MagicMock(return_value=("state", 0.0))
-    mock_jit.side_effect = lambda f: mock_update_fn
+    mock_jit.side_effect = lambda f: f
+    mock_vmap.side_effect = lambda f, **kwargs: f
+    mock_device_put.side_effect = lambda x: x
+    mock_scan.return_value = ("state", jnp.array([0.0]))
 
     svi.get_params.return_value = {"x": np.array([1.0])}
     
@@ -241,7 +261,7 @@ def test_get_posteriors_batching_logic(run_inference, mock_model):
                 forward_batch_size=4
             )
             
-            assert mock_model.get_batch.call_count == 3
+            assert mock_model.get_batch.call_count == 4
             run_inference._write_posteriors.assert_called_once()
             results = run_inference._write_posteriors.call_args[0][0]
             assert results["obs"].shape == (1, 10)

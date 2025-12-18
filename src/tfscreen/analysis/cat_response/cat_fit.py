@@ -6,7 +6,7 @@ from tfscreen.fitting import (
     run_matrix_wls
 )
 
-from tfscreen.util import xfill
+from tfscreen.util.numerical import xfill
 
 import numpy as np
 import pandas as pd
@@ -87,8 +87,8 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, verbose=False):
         model_pred_out = np.repeat(models_to_run,len(x_pred))
         pred_df = pd.DataFrame({"model":model_pred_out,
                                 "x":np.tile(x_pred,len(models_to_run)),
-                                "y":np.full(np.nan,len(model_pred_out)),
-                                "y_std":np.full(np.nan,len(model_pred_out)),
+                                "y":np.full(len(model_pred_out), np.nan),
+                                "y_std":np.full(len(model_pred_out), np.nan),
                                 "is_best_model":np.zeros(len(model_pred_out),
                                                          dtype=bool)})
         

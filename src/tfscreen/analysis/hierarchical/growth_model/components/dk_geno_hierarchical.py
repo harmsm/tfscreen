@@ -34,19 +34,19 @@ def define_model(name: str,
     Parameters
     ----------
     name : str
-        The prefix for all Numpyro sample sites (e.g., "theta").
+        The prefix for all Numpyro sample sites (e.g., "dk_geno").
     data : DataClass
         A data object containing metadata, primarily:
-        - data.num_genotype
-        - data.wt_indexes
-        - data.map_genotype
+        - ``data.num_genotype``
+        - ``data.wt_indexes``
+        - ``data.map_genotype``
     priors : ModelPriors
         A Pytree containing all hyperparameters for the model, including:
-        - priors.dk_geno_hyper_shift_loc
-        - priors.dk_geno_hyper_shift_scale
-        - priors.dk_geno_hyper_loc_loc
-        - priors.dk_geno_hyper_loc_scale
-        - priors.dk_geno_hyper_scale_loc
+        - ``priors.dk_geno_hyper_shift_loc``
+        - ``priors.dk_geno_hyper_shift_scale``
+        - ``priors.dk_geno_hyper_loc_loc``
+        - ``priors.dk_geno_hyper_loc_scale``
+        - ``priors.dk_geno_hyper_scale_loc``
 
     Returns
     -------
@@ -94,7 +94,13 @@ def guide(name: str,
           data: GrowthData, 
           priors: ModelPriors) -> jnp.ndarray:
     """
-    Guide corresponding to the define_model function for dk_geno.
+    Guide corresponding to the hierarchical dk_geno model.
+
+    This guide defines the variational family for the pleiotropic growth
+    effect model. It handles:
+    - Normal distributions for the hyper-location and shift.
+    - LogNormal distribution for the hyper-scale.
+    - Normal distributions for the per-genotype offsets.
     """
 
     # --- Global Parameters ---

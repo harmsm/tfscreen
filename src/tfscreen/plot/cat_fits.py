@@ -120,9 +120,9 @@ def cat_fits(x,y,y_std,
     # Build in ax. If ax is already around, grab the fig for a consistent 
     # return. 
     if ax is None:
-        fig, ax = fig, ax = plt.subplots(1,figsize=(6,6))
+        fig, ax = plt.subplots(1,figsize=(6,6))
     else:
-        fig = ax.get_figures()
+        fig = ax.get_figure()
 
     # plot data
     ax.scatter(x_plot,y,**final_scatter_kwargs)

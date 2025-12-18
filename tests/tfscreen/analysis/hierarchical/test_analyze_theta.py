@@ -169,12 +169,14 @@ def test_analyze_theta_svi_mode(mock_growth_model, mock_run_inference):
             binding_df="binding.csv",
             seed=42,
             analysis_method="svi",
-            batch_size=512
+            batch_size=512,
+            spiked=["A10G"]
         )
         
         # 1. Initialize GrowthModel
         gm_class.assert_called_once()
         assert gm_class.call_args[1]["batch_size"] == 512
+        assert gm_class.call_args[1]["spiked_genotypes"] == ["A10G"]
         
         # 2. Initialize RunInference
         ri_class.assert_called_once_with(gm_inst, 42)
@@ -244,5 +246,6 @@ def test_main():
         main()
         mock_gen_main.assert_called_once_with(
             analyze_theta,
-            manual_arg_types={"seed": int, "checkpoint_file": str}
+            manual_arg_types={"seed": int, "checkpoint_file": str, "spiked": list},
+            manual_arg_nargs={"spiked": "+"}
         )

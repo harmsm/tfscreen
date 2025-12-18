@@ -2,7 +2,7 @@
 from tfscreen.models.lac_model import LacModel
 from tfscreen.models.eee_model import EEEModel
 
-from tfscreen.util import read_dataframe
+from tfscreen.util.io import read_dataframe
 
 import numpy as np
 import pandas as pd

@@ -4,10 +4,8 @@ from tfscreen.process_raw import (
     od600_to_cfu,
     counts_to_lncfu
 )
-from tfscreen.util import (
-    generalized_main,
-    check_columns
-)
+from tfscreen.util.cli import generalized_main
+from tfscreen.util.dataframe import check_columns
     
 import glob
 import os
@@ -59,7 +57,7 @@ def _prep_sample_df(
 
     # Load sample_df, making sure the sample_df index is set to the sample 
     # column. 
-    sample_df = tfscreen.util.read_dataframe(sample_df,index_column="sample")
+    sample_df = tfscreen.util.io.read_dataframe(sample_df,index_column="sample")
 
     # Make sure that the sample_df is indexed by sample 
     if not sample_df.index.name == "sample":

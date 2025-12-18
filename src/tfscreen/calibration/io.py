@@ -58,7 +58,7 @@ def read_calibration(json_file):
     bs = []
     for k in calibration_dict["dk_cond"]["m"]:
         if k not in calibration_dict["dk_cond"]["b"]:
-            err = f"condition {k} only seen in k_bg slope not intercept\n"
+            err = f"condition {k} only seen in dk_cond slope not intercept\n"
             raise ValueError(err)
         dk_cond_keys.append(k)
         bs.append(calibration_dict["dk_cond"]["b"][k])

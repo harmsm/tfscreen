@@ -14,6 +14,8 @@ from .components import activity_horseshoe
 
 from .components import theta_cat 
 from .components import theta_hill 
+from .components import transformation_congression
+from .components import transformation_single 
 
 from .components import no_noise 
 from .components import beta_noise 
@@ -38,6 +40,10 @@ model_registry = {
         "fixed":activity_fixed,
         "hierarchical":activity_hierarchical,
         "horseshoe":activity_horseshoe,
+    },
+    "transformation":{
+        "congression": transformation_congression,
+        "single": transformation_single,
     },
     "theta":{
         "categorical":theta_cat,

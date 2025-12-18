@@ -3,7 +3,7 @@ from tfscreen.calibration import (
     read_calibration
 )
 
-from tfscreen.util import (
+from tfscreen.util.numerical import (
     broadcast_args
 )
 

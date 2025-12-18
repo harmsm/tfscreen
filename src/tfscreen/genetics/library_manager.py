@@ -1,8 +1,6 @@
 
-from tfscreen.util import (
-    read_yaml,
-    check_number
-)
+from tfscreen.util.io import read_yaml
+from tfscreen.util.validation import check_number
 from tfscreen.data import (
     CODON_TO_AA,
     DEGEN_BASE_SPECIFIER,

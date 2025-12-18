@@ -54,6 +54,7 @@ def full_data_setup():
     map_condition_pre = jnp.arange(total_size, dtype=int)
     map_condition_sel = jnp.arange(total_size, dtype=int)
     good_mask = jnp.ones(total_size, dtype=bool)
+    congression_mask = jnp.ones(total_size, dtype=bool)
     
     # Initial batch metadata
     batch_idx = jnp.arange(total_size, dtype=int)
@@ -68,7 +69,8 @@ def full_data_setup():
         t_sel=t_sel,
         map_condition_pre=map_condition_pre,
         map_condition_sel=map_condition_sel,
-        good_mask=good_mask
+        good_mask=good_mask,
+        congression_mask=congression_mask
     )
     
     return MockDataClass(growth=growth)

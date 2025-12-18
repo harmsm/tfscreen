@@ -1,5 +1,5 @@
 
-from tfscreen.util import (
+from tfscreen.util.dataframe import (
     check_columns,
 )
 
@@ -81,8 +81,16 @@ class TensorManager:
                                select_cols,
                                name=None):
         """
-        Add a new parameter map to the tensor. Create c-order indexes for 
-        unique combinations of select_cols.
+        Add a new parameter map to the tensor.
+
+        Creates C-order indexes for unique combinations of `select_cols`.
+
+        Parameters
+        ----------
+        select_cols : list of str
+            Columns to group by.
+        name : str, optional
+            Base name for the map. If None, defaults to "-".join(select_cols).
         """
 
         if name is None:
@@ -120,10 +128,22 @@ class TensorManager:
                               select_pool_cols,
                               name=None):
         """
-        Add a new parameter map to the tensor. Harder case that requires pooling
-        across select_pool_cols. Create c-order indexes for unique combinations
-        of select_cols + select_pool_cols[0] OR select_cols + select_pool_cols[1]
-        ... 
+        Add a new parameter map to the tensor with column pooling.
+
+        This handles the case where multiple columns should share the same
+        parameter map (e.g., different conditions mapping to the same
+        underlying set of parameters). Creates C-order indexes for unique
+        combinations of `select_cols` pooled with each of `select_pool_cols`.
+
+        Parameters
+        ----------
+        select_cols : list of str
+            Base columns to group by.
+        select_pool_cols : list of str
+            Columns to pool with `select_cols` to define the full set of
+            unique keys.
+        name : str, optional
+            Base name for the map.
         """
         
         if name is None:
@@ -262,6 +282,15 @@ class TensorManager:
     def _register_pivot_dimension(self, tensor_dim_name, new_index_column, cat_column):
         """
         Private helper to register a new tensor dimension.
+
+        Parameters
+        ----------
+        tensor_dim_name : str
+            Name of the tensor dimension.
+        new_index_column : str
+            Name of the column in `_df` containing the integer index.
+        cat_column : str
+            Name of the categorical column in `_df` defining the labels.
         """
         
         # Record the new index column

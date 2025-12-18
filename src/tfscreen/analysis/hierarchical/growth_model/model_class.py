@@ -1,6 +1,6 @@
 import tfscreen
 
-from tfscreen.util import add_group_columns
+from tfscreen.util.dataframe import add_group_columns
 from tfscreen.analysis.hierarchical import (
     TensorManager,
     populate_dataclass
@@ -79,9 +79,9 @@ def _read_growth_df(growth_df,
 
     # Read dataframe, make sure genotypes are categorical, and validate or
     # calculate ln_cfu and ln_cfu_std
-    growth_df = tfscreen.util.read_dataframe(growth_df)
+    growth_df = tfscreen.util.io.read_dataframe(growth_df)
     growth_df = tfscreen.genetics.set_categorical_genotype(growth_df,standardize=True)
-    growth_df = tfscreen.util.get_scaled_cfu(growth_df,need_columns=["ln_cfu","ln_cfu_std"])
+    growth_df = tfscreen.util.dataframe.get_scaled_cfu(growth_df,need_columns=["ln_cfu","ln_cfu_std"])
 
     # make a replicate column if not defined
     if "replicate" not in growth_df.columns:
@@ -91,7 +91,7 @@ def _read_growth_df(growth_df,
     required = theta_group_cols[:]
     required.extend(treatment_cols)
     required.extend(["ln_cfu","ln_cfu_std","replicate","t_pre","t_sel"])
-    tfscreen.util.check_columns(growth_df,required_columns=required)
+    tfscreen.util.dataframe.check_columns(growth_df,required_columns=required)
 
     # These two maps are used to look up parameters after sampling posteriors
     growth_df = add_group_columns(target_df=growth_df,
@@ -220,14 +220,14 @@ def _read_binding_df(binding_df,
         theta_group_cols = ["genotype","titrant_name"]
 
     # Load dataframe (either loads from file or works on copy)
-    binding_df = tfscreen.util.read_dataframe(binding_df)
+    binding_df = tfscreen.util.io.read_dataframe(binding_df)
     binding_df = tfscreen.genetics.set_categorical_genotype(binding_df,
                                                             standardize=True)
 
     # check for all required columns
     required = theta_group_cols[:]
     required.extend(["theta_obs","theta_std","titrant_conc"])
-    tfscreen.util.check_columns(binding_df,required_columns=required)
+    tfscreen.util.dataframe.check_columns(binding_df,required_columns=required)
 
 
     cols = ["genotype","titrant_name"]
@@ -291,6 +291,34 @@ def _build_binding_tm(binding_df):
 def _setup_batching(growth_genotypes,
                     binding_genotypes,
                     batch_size):
+    """
+    Calculates batching indices and scale factors.
+
+    This function determines how to batch genotypes, handling the fact that
+    binding data is only available for a subset of genotypes. It ensures
+    that binding genotypes are always prioritized and handled correctly
+    relative to the growth-only genotypes.
+
+    Parameters
+    ----------
+    growth_genotypes : np.ndarray
+        Array of genotype names in the growth dataset.
+    binding_genotypes : np.ndarray
+        Array of genotype names in the binding dataset.
+    batch_size : int, optional
+        The desired size of the batch.
+
+    Returns
+    -------
+    dict
+        A dictionary containing:
+        - `batch_idx`: Indices for the current batch.
+        - `batch_size`: The actual size of the batch.
+        - `scale_vector`: Scaling factors for subsampling correction.
+        - `num_binding`: Number of overlapping binding genotypes.
+        - `not_binding_idx`: Indices of genotypes without binding data.
+        - `not_binding_batch_size`: Number of non-binding genotypes in batch.
+    """
     
     if batch_size is None:
         batch_size = len(growth_genotypes)
@@ -312,7 +340,8 @@ def _setup_batching(growth_genotypes,
 
     # Calculate scale vector, which will be the same for all rounds
     scale_vector = np.ones(batch_size,dtype=float)
-    scale_vector[num_binding:] = num_not_binding/not_binding_batch_size
+    if not_binding_batch_size > 0:
+        scale_vector[num_binding:] = num_not_binding/not_binding_batch_size
 
     # Return output as a dictionary so this can be loaded into the dataclass
     out = {}
@@ -428,6 +457,8 @@ class ModelClass:
         Model name for genotype activity.
     theta : str, optional
         Model name for theta calculation (e.g., "hill").
+    transformation : str, optional
+        Model name for transformation correction (e.g., "congression" or "single").
     theta_growth_noise : str, optional
         Model name for noise on theta in the growth model.
     theta_binding_noise : str, optional
@@ -458,8 +489,10 @@ class ModelClass:
                  dk_geno="hierarchical",
                  activity="horseshoe",
                  theta="hill",
+                 transformation="congression",
                  theta_growth_noise="none",
-                 theta_binding_noise="none"):
+                 theta_binding_noise="none",
+                 spiked_genotypes=None):
 
         self._ln_cfu_df = growth_df
         self._binding_df = binding_df
@@ -471,8 +504,10 @@ class ModelClass:
         self._dk_geno = dk_geno
         self._activity = activity
         self._theta = theta
+        self._transformation = transformation
         self._theta_growth_noise = theta_growth_noise
         self._theta_binding_noise = theta_binding_noise
+        self._spiked_genotypes = spiked_genotypes
 
         self._initialize_data()
         self._initialize_classes()
@@ -483,7 +518,7 @@ class ModelClass:
         Loads, processes, and wrangles all data into JAX Pytrees.
 
         This method orchestrates the entire data pipeline:
-        1.  Calls `_read_growth_df` and `_build_growth_tm` / `_build_growth_theta_tm`.
+        1.  Calls `_read_growth_df` and `_build_growth_tm`.
         2.  Calls `_read_binding_df` and `_build_binding_tm`, passing the
             growth data to ensure map consistency.
         3.  Extracts tensors and metadata from the TensorManagers.
@@ -524,9 +559,40 @@ class ModelClass:
         wt_loc = np.where(self.growth_tm.tensor_dim_labels[genotype_idx] == "wt")
         wt_info = {"wt_indexes":jnp.array(wt_loc[0], dtype=jnp.int32)}
 
-        # scatter_theta tells the theta model caller to return a full-sized
+         # scatter_theta tells the theta model caller to return a full-sized
         # growth_tm tensor instead of the smaller growth_theta_tm-sized tensor
-        other_data = {"scatter_theta":1}
+        # congression_mask is a boolean array of shape (num_genotype,) that 
+        # tells the model which genotypes should be corrected for congression.
+        # Initialize to all True (no masking).
+        mask = np.ones(sizes["num_genotype"],dtype=bool)
+        if self._spiked_genotypes is not None:
+            
+            # Make sure spiked_genotypes is a list or array
+            if isinstance(self._spiked_genotypes,str):
+                self._spiked_genotypes = [self._spiked_genotypes]
+
+            # Get names of genotypes in the growth dataset
+            genotype_idx = self.growth_tm.tensor_dim_names.index("genotype")
+            genotype_names = self.growth_tm.tensor_dim_labels[genotype_idx]
+
+            # Check for genotypes not in the dataset
+            missing = []
+            for g in self._spiked_genotypes:
+                if g not in genotype_names:
+                    missing.append(g)
+            
+            if len(missing) > 0:
+                raise ValueError(
+                    f"The following spiked_genotypes were not found in the growth "
+                    f"dataset: {missing}"
+                )
+
+            # Update mask
+            spiked_idx = np.where(np.isin(genotype_names,self._spiked_genotypes))[0]
+            mask[spiked_idx] = False
+
+        other_data = {"scatter_theta":1,
+                      "congression_mask":jnp.array(mask,dtype=bool)}
 
         # Grab the titrant concentration and log_titrant_conc (1D array from 
         # the tensor labels along dimension 6)
@@ -622,7 +688,7 @@ class ModelClass:
         This method:
         1.  Maps the model name strings (e.g., "hierarchical") to their
             corresponding integer codes and component objects from
-            `MODEL_COMPONENT_NAMES`.
+            `model_registry`.
         2.  Populates and creates the `ControlClass` instance.
         3.  Populates and creates the `PriorsClass` instance by calling
             `get_priors()` on each component.
@@ -649,6 +715,7 @@ class ModelClass:
                     ("dk_geno",self._dk_geno,"growth"),
                     ("activity",self._activity,"growth"),
                     ("theta",self._theta,"theta"),
+                    ("transformation",self._transformation,"growth"),
                     ("theta_growth_noise",self._theta_growth_noise,"growth"),
                     ("theta_binding_noise",self._theta_binding_noise,"binding")]
         
@@ -690,9 +757,16 @@ class ModelClass:
             # Record control parameters for the main and guide functions
             if key == "theta":
                 main_control_kwargs[key] = (component_module.define_model, 
-                                            component_module.run_model)
+                                            component_module.run_model,
+                                            component_module.get_population_moments)
                 guide_control_kwargs[key] = (component_module.guide, 
-                                             component_module.run_model)
+                                             component_module.run_model,
+                                             component_module.get_population_moments)
+            elif key == "transformation":
+                main_control_kwargs[key] = (component_module.define_model, 
+                                            component_module.update_thetas)
+                guide_control_kwargs[key] = (component_module.guide, 
+                                             component_module.update_thetas)
             else:
                 main_control_kwargs[key] = component_module.define_model
                 guide_control_kwargs[key] = component_module.guide
@@ -894,28 +968,60 @@ class ModelClass:
         """Get a deterministic batch of data."""
         return get_batch
     
-    def get_random_idx(self,batch_key=None):
+    def get_random_idx(self, batch_key=None, num_batches=1):
         """
-        Get a random set of integers corresponding, keeping binding data 
-        every time.
+        Get a random set of integers corresponding to genotypes for mini-batching.
+        The first `num_binding` entries are always the fixed binding genotypes.
+        The remaining entries are sampled from the non-binding genotypes.
+
+        Parameters
+        ----------
+        batch_key : int, optional
+            If provided, re-initializes the NumPy random number generator. 
+            Must be called once to initialize.
+        num_batches : int, optional
+            Number of batches of indices to generate. Default is 1.
+
+        Returns
+        -------
+        jnp.ndarray
+            If `num_batches == 1`, returns an array of shape `(batch_size,)`.
+            If `num_batches > 1`, returns an array of shape `(num_batches, batch_size)`.
         """
 
         if batch_key is not None:
             self._batch_rng = np.random.default_rng(batch_key)
-            self._batch_idx = np.array(self.data.growth.batch_idx,dtype=int)
+            self._batch_idx = np.array(self.data.growth.batch_idx, dtype=int)
             self._batch_choose_from = np.array(self.data.not_binding_idx)
             self._batch_choose_size = self.data.not_binding_batch_size
 
-        if not hasattr(self,"_batch_rng"):
+        if not hasattr(self, "_batch_rng"):
             raise ValueError(
                 "get_random_idx must be called with an integer batch key the "
                 "first time it is called."
             )
 
-        self._batch_idx[-self._batch_choose_size:] = self._batch_rng.choice(self._batch_choose_from,
-                                                                            self._batch_choose_size,
-                                                                            replace=False)
-        return jnp.array(self._batch_idx,dtype=jnp.int32)
+        # Generate a single batch
+        if num_batches == 1:
+            self._batch_idx[-self._batch_choose_size:] = self._batch_rng.choice(
+                self._batch_choose_from,
+                self._batch_choose_size,
+                replace=False
+            )
+            return jnp.array(self._batch_idx, dtype=jnp.int32)
+        
+        # Generate a block of batches
+        else:
+            block_idx = np.zeros((num_batches, len(self._batch_idx)), dtype=int)
+            for i in range(num_batches):
+                self._batch_idx[-self._batch_choose_size:] = self._batch_rng.choice(
+                    self._batch_choose_from,
+                    self._batch_choose_size,
+                    replace=False
+                )
+                block_idx[i, :] = self._batch_idx
+                
+            return jnp.array(block_idx, dtype=jnp.int32)
 
     @property
     def data(self):

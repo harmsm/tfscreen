@@ -1,7 +1,6 @@
 
 from .fitters import (
     run_least_squares,
-    run_map,
     run_matrix_nls,
     run_matrix_wls,
     run_ols_2D,

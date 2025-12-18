@@ -61,6 +61,11 @@ def guide(name: str,
           data: GrowthData, 
           priors: ModelPriors) -> jnp.ndarray:
     """
+    Guide for the fixed activity model.
+
+    Since all parameters are fixed and deterministic, this guide simply
+    returns the fixed values (1.0) and does not register any learnable
+    parameters.
     """
 
     # Set activity for all genotypes to 1.0

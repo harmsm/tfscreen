@@ -98,6 +98,12 @@ def guide(name: str,
           data: GrowthData, 
           priors: ModelPriors) -> jnp.ndarray:
     """
+    Guide corresponding to the Horseshoe-regularized activity model.
+
+    This guide implements the variational family for the Horseshoe prior,
+    using:
+    - LogNormal distributions for the global scale `tau` and local scales `lambda`.
+    - Normal distributions for the non-centered offsets `z`.
     """
 
     t_scale_loc = pyro.param(f"{name}_t_hyper_scale_loc", jnp.array(-5.0))

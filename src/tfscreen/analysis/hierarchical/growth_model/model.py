@@ -5,6 +5,7 @@ from .data_class import (
     PriorsClass,
 )
 
+import jax
 import jax.numpy as jnp
 import numpyro as pyro
 from typing import Dict, Any
@@ -29,6 +30,7 @@ def jax_model(data: DataClass,
         - condition_growth
         - ln_cfu0
         - activity
+        - transformation
         - dk_geno
         - theta_binding_noise
         - theta_growth_noise
@@ -42,12 +44,13 @@ def jax_model(data: DataClass,
     # -------------------------------------------------------------------------
     # Parse control inputs 
 
-    theta_model, calc_theta = control["theta"]    
+    theta_model, calc_theta, get_moments = control["theta"]    
     
     condition_growth_model = control["condition_growth"]
     ln_cfu0_model = control["ln_cfu0"]
     activity_model = control["activity"]
     dk_geno_model = control["dk_geno"]
+    transformation_model, transformation_update = control["transformation"]
     
     theta_binding_noise_model = control["theta_binding_noise"]
     theta_growth_noise_model = control["theta_growth_noise"]
@@ -65,6 +68,9 @@ def jax_model(data: DataClass,
                         data.growth,
                         priors.theta)
     
+    # Get population moments as anchors for the transformation model
+    anchors = get_moments(theta, data.growth)
+    
     # -------------------------------------------------------------------------
     # Make prediction for the binding experiment
 
@@ -76,13 +82,6 @@ def jax_model(data: DataClass,
     
     # -------------------------------------------------------------------------
     # Make prediction for the growth experiment
-
-    # theta
-    theta_growth = calc_theta(theta,data.growth)
-    pyro.deterministic(f"theta_growth_pred",theta_growth)
-    noisy_theta_growth = theta_growth_noise_model("theta_growth_noise",
-                                                  theta_growth,
-                                                  priors.growth.theta_growth_noise)
     
     # Get growth parameters
     k_pre, m_pre, k_sel, m_sel = condition_growth_model("condition_growth",
@@ -103,7 +102,30 @@ def jax_model(data: DataClass,
     activity = activity_model("activity",
                               data.growth,
                               priors.growth.activity)
+
+    # theta
+    theta_growth = calc_theta(theta,data.growth)
+    pyro.deterministic(f"theta_growth_pred",theta_growth)
     
+    # Transformation parameters (lam, mu, sigma)
+    trans_params = transformation_model("transformation",
+                                        data.growth,
+                                        priors.growth.transformation,
+                                        anchors=anchors)
+    
+    # Correct theta for transformation
+    # theta_growth shape: (..., titrant_name, titrant_conc, geno) or scattered
+    # Result broadcasts to interaction of (rep, pre) and (titrant)
+    # Parameters passed as tuple
+    corr_theta_growth = transformation_update(theta_growth, 
+                                              params=trans_params,
+                                              mask=data.growth.congression_mask)
+    
+    noisy_theta_growth = theta_growth_noise_model("theta_growth_noise",
+                                                  corr_theta_growth,
+                                                  priors.growth.theta_growth_noise)
+
+
     # -------------------------------------------------------------------------
     # finalize
 

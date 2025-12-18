@@ -114,7 +114,7 @@ def parse_patsy(df,
                     except Exception as e:
                         err = "There was a problem coercing the factor values\n"
                         err += "extracted from the patsy parameter names.\n"
-                        raise RuntimeError from e
+                        raise RuntimeError(err) from e
 
             # Record information
             raw_param_names.append(param.strip())

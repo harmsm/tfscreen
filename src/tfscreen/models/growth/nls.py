@@ -120,12 +120,12 @@ def nls(times,
     ln_cfu = np.log(cfu)
     ln_cfu_var = cfu_var/(cfu**2)
 
-    wls_param_df, _ = wls(times=times,
+    wls_param_df, _ = wls(t_sel=times,
                           ln_cfu=ln_cfu,
                           ln_cfu_var=ln_cfu_var)
     
     k_guess = np.array(wls_param_df["k_est"])
-    A0_guess = np.exp(np.array(wls_param_df["A0_est"]))
+    A0_guess = np.exp(np.array(wls_param_df["lnA0_est"]))
         
     for i in tqdm(range(0, num_genotypes, block_size), desc="Fitting Growth Rates"):
 

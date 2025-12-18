@@ -23,21 +23,32 @@ def define_model(name: str,
     each condition/replicate a normal prior. Returns full k_pre, m_pre, k_sel
     and m_sel tensors.
 
-    Priors
-    ------
-    priors.growth_k_hyper_loc_loc
-    priors.growth_k_hyper_loc_scale
-    priors.growth_k_hyper_scale
-    priors.growth_m_hyper_loc_loc
-    priors.growth_m_hyper_loc_scale
-    priors.growth_m_hyper_scale
+    Parameters
+    ----------
+    name : str
+        The prefix for all Numpyro sample sites.
+    data : GrowthData
+        A Pytree (Flax dataclass) containing experimental data and metadata.
+        This function primarily uses:
+        - ``data.num_condition``
+        - ``data.num_replicate``
+        - ``data.map_condition_pre``
+        - ``data.map_condition_sel``
+    priors : ModelPriors
+        A Pytree containing all hyperparameters for the model, including:
+        - ``priors.growth_k_per_cond_rep``
+        - ``priors.growth_m_per_cond_rep``
 
-    Data
-    ----
-    data.num_condition
-    data.num_replicate
-    data.map_condition_pre
-    data.map_condition_sel
+    Returns
+    -------
+    k_pre : jnp.ndarray
+        Growth rate k for pre-selection conditions.
+    m_pre : jnp.ndarray
+        Growth rate m for pre-selection conditions.
+    k_sel : jnp.ndarray
+        Growth rate k for selection conditions.
+    m_sel : jnp.ndarray
+        Growth rate m for selection conditions.
     """
 
     # Expand to full-sized tensors
@@ -53,7 +64,10 @@ def guide(name: str,
           data: GrowthData, 
           priors: ModelPriors) -> Tuple[jnp.ndarray, ...]:
     """
-    Guide
+    Guide for the fixed growth model.
+
+    This guide simply returns the fixed per-condition/replicate values
+    defined in the priors, without registering any learnable parameters.
     """
 
     # Expand to full-sized tensors

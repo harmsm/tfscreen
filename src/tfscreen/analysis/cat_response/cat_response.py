@@ -2,7 +2,7 @@
 from .cat_fit import cat_fit
 from tfscreen.models.generic import MODEL_LIBRARY
 
-from tfscreen.util import xfill
+from tfscreen.util.numerical import xfill
 
 import pandas as pd
 

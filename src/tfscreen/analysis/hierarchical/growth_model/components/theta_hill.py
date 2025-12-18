@@ -60,8 +60,8 @@ class ThetaParam:
         The minimum fractional occupancy (baseline).
     theta_high : jnp.ndarray
         The maximum fractional occupancy (saturation).
-    hill_K : jnp.ndarray
-        The Hill constant (K_D).
+    log_hill_K : jnp.ndarray
+        The Hill constant (K_D) in log-space.
     hill_n : jnp.ndarray
         The Hill coefficient.
     """
@@ -70,6 +70,8 @@ class ThetaParam:
     theta_high: jnp.ndarray
     log_hill_K: jnp.ndarray
     hill_n: jnp.ndarray
+    mu: jnp.ndarray = None
+    sigma: jnp.ndarray = None
 
 
 def define_model(name: str,
@@ -182,6 +184,37 @@ def define_model(name: str,
     log_hill_n = log_hill_n_hyper_loc + log_hill_n_offset * log_hill_n_hyper_scale
 
     # --------------------------------------------------------------------------
+    # Calculate population moments (mu, sigma) using a "ghost population"
+    
+    # We sample a fixed-size population from the hyper-priors to estimate 
+    # the distribution of logit(theta) at each concentration.
+    n_ghost = 100
+    ghost_low = logit_theta_low_hyper_loc + dist.Normal(0.0, 1.0).sample(jax.random.PRNGKey(0), (n_ghost,)) * logit_theta_low_hyper_scale
+    ghost_delta = logit_theta_delta_hyper_loc + dist.Normal(0.0, 1.0).sample(jax.random.PRNGKey(1), (n_ghost,)) * logit_theta_delta_hyper_scale
+    ghost_high = ghost_low + ghost_delta
+    ghost_K = log_hill_K_hyper_loc + dist.Normal(0.0, 1.0).sample(jax.random.PRNGKey(2), (n_ghost,)) * log_hill_K_hyper_scale
+    ghost_n = log_hill_n_hyper_loc + dist.Normal(0.0, 1.0).sample(jax.random.PRNGKey(3), (n_ghost,)) * log_hill_n_hyper_scale
+    
+    # Calculate logit(theta) for ghost population across all concentrations
+    # Concentrations shape: (NumName, NumConc, 1) or broadcastable
+    log_conc = data.log_titrant_conc[None, :, None] # (1, Conc, 1)
+    
+    # Ghost parameters shape: (Name, 1, Ghost)
+    # Note: hyper-params are (Name,)
+    g_low = ghost_low[None, None, :]
+    g_high = ghost_high[None, None, :]
+    g_K = ghost_K[None, None, :]
+    g_n = jnp.exp(ghost_n[None, None, :])
+    
+    eps = 1e-6
+    g_occ = jax.nn.sigmoid(g_n * (log_conc - g_K))
+    g_theta = jnp.clip(dist.transforms.SigmoidTransform()(g_low) + (dist.transforms.SigmoidTransform()(g_high) - dist.transforms.SigmoidTransform()(g_low)) * g_occ, eps, 1.0 - eps)
+    g_logit_theta = jax.scipy.special.logit(g_theta)
+    
+    mu_pop = jnp.mean(g_logit_theta, axis=-1, keepdims=True)
+    sigma_pop = jnp.std(g_logit_theta, axis=-1, keepdims=True)
+
+    # --------------------------------------------------------------------------
     # Expand parameters 
 
     # Transform parameters to their natural scale
@@ -199,7 +232,9 @@ def define_model(name: str,
     theta_param = ThetaParam(theta_low=theta_low,
                              theta_high=theta_high,
                              log_hill_K=log_hill_K,
-                             hill_n=hill_n)
+                             hill_n=hill_n,
+                             mu=mu_pop,
+                             sigma=sigma_pop)
     
     return theta_param
 
@@ -208,6 +243,13 @@ def guide(name: str,
           priors: ModelPriors) -> ThetaParam:
     """
     Guide corresponding to the hierarchical Hill model.
+
+    This guide defines the variational family for the Hill model parameters,
+    using:
+    - Normal distributions for location hyperparameters (`_loc`).
+    - LogNormal distributions for scale hyperparameters (`_scale`) and positive
+      variables.
+    - An amortized/offset parameterization for the local (per-group) parameters.
     """
 
     # ==========================================================================
@@ -345,10 +387,37 @@ def guide(name: str,
     theta_high = dist.transforms.SigmoidTransform()(logit_theta_high)
     hill_n = jnp.exp(log_hill_n)
 
+    # --------------------------------------------------------------------------
+    # Calculate population moments (mu, sigma) using a "ghost population"
+    
+    n_ghost = 100
+    ghost_low = logit_theta_low_hyper_loc + dist.Normal(0.0, 1.0).sample(jax.random.PRNGKey(0), (n_ghost,)) * logit_theta_low_hyper_scale
+    ghost_delta = logit_theta_delta_hyper_loc + dist.Normal(0.0, 1.0).sample(jax.random.PRNGKey(1), (n_ghost,)) * logit_theta_delta_hyper_scale
+    ghost_high = ghost_low + ghost_delta
+    ghost_K = log_hill_K_hyper_loc + dist.Normal(0.0, 1.0).sample(jax.random.PRNGKey(2), (n_ghost,)) * log_hill_K_hyper_scale
+    ghost_n = log_hill_n_hyper_loc + dist.Normal(0.0, 1.0).sample(jax.random.PRNGKey(3), (n_ghost,)) * log_hill_n_hyper_scale
+    
+    log_conc = data.log_titrant_conc[None, :, None] # (1, Conc, 1)
+    
+    g_low = ghost_low[None, None, :]
+    g_high = ghost_high[None, None, :]
+    g_K = ghost_K[None, None, :]
+    g_n = jnp.exp(ghost_n[None, None, :])
+    
+    eps = 1e-6
+    g_occ = jax.nn.sigmoid(g_n * (log_conc - g_K))
+    g_theta = jnp.clip(dist.transforms.SigmoidTransform()(g_low) + (dist.transforms.SigmoidTransform()(g_high) - dist.transforms.SigmoidTransform()(g_low)) * g_occ, eps, 1.0 - eps)
+    g_logit_theta = jax.scipy.special.logit(g_theta)
+    
+    mu_pop = jnp.mean(g_logit_theta, axis=-1, keepdims=True)
+    sigma_pop = jnp.std(g_logit_theta, axis=-1, keepdims=True)
+
     theta_param = ThetaParam(theta_low=theta_low,
                              theta_high=theta_high,
                              log_hill_K=log_hill_K,
-                             hill_n=hill_n)
+                             hill_n=hill_n,
+                             mu=mu_pop,
+                             sigma=sigma_pop)
     
     return theta_param
 
@@ -403,6 +472,13 @@ def run_model(theta_param: ThetaParam, data: DataClass) -> jnp.ndarray:
         theta_calc = theta_calc[None,None,None,None,:,:,:]
     
     return theta_calc
+
+
+def get_population_moments(theta_param: ThetaParam, data: DataClass) -> tuple:
+    """
+    Returns the expected population moments (mu, sigma) in logit-space.
+    """
+    return theta_param.mu, theta_param.sigma
 
 
 def get_hyperparameters() -> Dict[str, Any]:

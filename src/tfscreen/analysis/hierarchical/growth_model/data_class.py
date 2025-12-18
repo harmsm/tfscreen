@@ -22,6 +22,8 @@ class GrowthData:
     t_pre: jnp.ndarray
     t_sel: jnp.ndarray
     good_mask: jnp.ndarray
+    congression_mask: jnp.ndarray
+
         
     # Tensor shape
     num_replicate: int = field(pytree_node=False)
@@ -82,7 +84,7 @@ class DataClass:
 
     num_genotype: int = field(pytree_node=False)
     
-    not_binding_idx: int = field(pytree_node=False)
+    not_binding_idx: jnp.ndarray
     not_binding_batch_size: int = field(pytree_node=False)
     num_binding: int = field(pytree_node=False) 
 
@@ -97,6 +99,7 @@ class GrowthPriors:
     ln_cfu0: Any
     dk_geno: Any
     activity: Any
+    transformation: Any
     theta_growth_noise: Any
 
 @dataclass(frozen=True)
