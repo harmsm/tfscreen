@@ -82,7 +82,7 @@ def generalized_main(fcn,
         else:
             nargs = None
 
-        # Add the appropriate argument to the parser. 
+            # Add the appropriate argument to the parser. 
         if required:
             parser.add_argument(p,type=arg_type,nargs=nargs)
         else:
@@ -93,6 +93,14 @@ def generalized_main(fcn,
                 else:
                     parser.add_argument(arg_name,action="store_true")
             else:
+                # If nargs is specified, the type should be the type of the elements,
+                # not the list itself. 
+                if nargs is not None and arg_type is list:
+                    if default is not None and len(default) > 0:
+                        arg_type = type(default[0])
+                    else:
+                        arg_type = str
+
                 parser.add_argument(arg_name,type=arg_type,default=default,nargs=nargs)
                 
     # Parse stats

@@ -134,6 +134,28 @@ class TestGeneralizedMain:
             
         assert result['a'] == 'from_sys'
 
+    def test_list_handling(self):
+        """Test inferred type and nargs for list defaults."""
+        result = {}
+        def target_func(items=['a']):
+            result['items'] = items
+            
+        # Should infer type=str and accept multiple args if manual_arg_nargs is set
+        generalized_main(target_func, 
+                         argv=['--items', 'x', 'y'], 
+                         manual_arg_nargs={'items': '+'})
+        assert result['items'] == ['x', 'y']
+
+        # Test with empty list default (should default to str elements)
+        result2 = {}
+        def target_func2(items=[]):
+            result2['items'] = items
+        
+        generalized_main(target_func2, 
+                         argv=['--items', '1', '2'], 
+                         manual_arg_nargs={'items': '+'})
+        assert result2['items'] == ['1', '2'] # Stay as strings by default
+
 from unittest.mock import patch
 
 class PatchSysArgv:

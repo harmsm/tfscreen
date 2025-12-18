@@ -340,7 +340,8 @@ def _setup_batching(growth_genotypes,
 
     # Calculate scale vector, which will be the same for all rounds
     scale_vector = np.ones(batch_size,dtype=float)
-    scale_vector[num_binding:] = num_not_binding/not_binding_batch_size
+    if not_binding_batch_size > 0:
+        scale_vector[num_binding:] = num_not_binding/not_binding_batch_size
 
     # Return output as a dictionary so this can be loaded into the dataclass
     out = {}
@@ -490,7 +491,8 @@ class ModelClass:
                  theta="hill",
                  transformation="congression",
                  theta_growth_noise="none",
-                 theta_binding_noise="none"):
+                 theta_binding_noise="none",
+                 spiked_genotypes=None):
 
         self._ln_cfu_df = growth_df
         self._binding_df = binding_df
@@ -505,6 +507,7 @@ class ModelClass:
         self._transformation = transformation
         self._theta_growth_noise = theta_growth_noise
         self._theta_binding_noise = theta_binding_noise
+        self._spiked_genotypes = spiked_genotypes
 
         self._initialize_data()
         self._initialize_classes()
@@ -556,13 +559,40 @@ class ModelClass:
         wt_loc = np.where(self.growth_tm.tensor_dim_labels[genotype_idx] == "wt")
         wt_info = {"wt_indexes":jnp.array(wt_loc[0], dtype=jnp.int32)}
 
-        # scatter_theta tells the theta model caller to return a full-sized
+         # scatter_theta tells the theta model caller to return a full-sized
         # growth_tm tensor instead of the smaller growth_theta_tm-sized tensor
         # congression_mask is a boolean array of shape (num_genotype,) that 
         # tells the model which genotypes should be corrected for congression.
         # Initialize to all True (no masking).
+        mask = np.ones(sizes["num_genotype"],dtype=bool)
+        if self._spiked_genotypes is not None:
+            
+            # Make sure spiked_genotypes is a list or array
+            if isinstance(self._spiked_genotypes,str):
+                self._spiked_genotypes = [self._spiked_genotypes]
+
+            # Get names of genotypes in the growth dataset
+            genotype_idx = self.growth_tm.tensor_dim_names.index("genotype")
+            genotype_names = self.growth_tm.tensor_dim_labels[genotype_idx]
+
+            # Check for genotypes not in the dataset
+            missing = []
+            for g in self._spiked_genotypes:
+                if g not in genotype_names:
+                    missing.append(g)
+            
+            if len(missing) > 0:
+                raise ValueError(
+                    f"The following spiked_genotypes were not found in the growth "
+                    f"dataset: {missing}"
+                )
+
+            # Update mask
+            spiked_idx = np.where(np.isin(genotype_names,self._spiked_genotypes))[0]
+            mask[spiked_idx] = False
+
         other_data = {"scatter_theta":1,
-                      "congression_mask":jnp.ones(sizes["num_genotype"],dtype=bool)}
+                      "congression_mask":jnp.array(mask,dtype=bool)}
 
         # Grab the titrant concentration and log_titrant_conc (1D array from 
         # the tensor labels along dimension 6)

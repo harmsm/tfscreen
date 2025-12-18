@@ -238,7 +238,8 @@ def analyze_theta(growth_df,
                   num_posterior_samples=10000,
                   sampling_batch_size=100,
                   forward_batch_size=512,
-                  always_get_posterior=False):
+                  always_get_posterior=False,
+                  spiked=None):
     """
     Run the joint hierarchical growth model to extract estimates of
     transcription factor fractional occupancy (theta) and other latent
@@ -286,9 +287,7 @@ def analyze_theta(growth_df,
         binding. Allowed values are 'beta' (default) or 'none' (written as a
         string)
     checkpoint_file : str or None, optional
-        Path to a checkpoint file to resume SVI from, or None to start fresh. If
-        `map_only` is False, the checkpoint_file is assumed to be from the SVI
-        run started after a MAP run. 
+        Path to a checkpoint file to resume SVI from, or None to start fresh.
     out_root : str, optional
         Output file root for checkpoints and results (default 'tfs').
     adam_step_size : float, optional
@@ -319,6 +318,8 @@ def analyze_theta(growth_df,
         this size (default 512)
     always_get_posterior : bool, optional
         If True, always sample posteriors even if not converged (default False).
+    spiked : list, optional
+        List of genotypes to mask from theta correction (e.g. spiked-in variants).
 
     Returns
     -------
@@ -350,7 +351,8 @@ def analyze_theta(growth_df,
                      activity=activity_model,
                      theta=theta_model,
                      theta_growth_noise=theta_growth_noise_model,
-                     theta_binding_noise=theta_binding_noise_model)
+                     theta_binding_noise=theta_binding_noise_model,
+                     spiked_genotypes=spiked)
     
     # Create a run inference object, which manages things like checking for 
     # ELBO convergence.
@@ -429,4 +431,9 @@ def main():
 
     return generalized_main(analyze_theta,
                             manual_arg_types={"seed":int,
-                                              "checkpoint_file":str})
+                                              "checkpoint_file":str,
+                                              "spiked":list},
+                            manual_arg_nargs={"spiked":"+"})
+
+if __name__ == "__main__":
+    main()
