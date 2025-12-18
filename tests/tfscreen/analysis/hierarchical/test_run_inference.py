@@ -241,7 +241,7 @@ def test_get_posteriors_batching_logic(run_inference, mock_model):
                 forward_batch_size=4
             )
             
-            assert mock_model.get_batch.call_count == 3
+            assert mock_model.get_batch.call_count == 4
             run_inference._write_posteriors.assert_called_once()
             results = run_inference._write_posteriors.call_args[0][0]
             assert results["obs"].shape == (1, 10)

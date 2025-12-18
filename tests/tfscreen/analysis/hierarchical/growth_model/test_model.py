@@ -15,12 +15,12 @@ from tfscreen.analysis.hierarchical.growth_model.data_class import (
 # --- Mocks ---
 
 # Define minimal mocks for the nested data structures
-MockGrowthData = namedtuple("MockGrowthData", ["t_pre", "t_sel"])
+MockGrowthData = namedtuple("MockGrowthData", ["t_pre", "t_sel", "congression_mask"])
 MockBindingData = namedtuple("MockBindingData", [])
 MockData = namedtuple("MockData", ["growth", "binding"])
 
 MockGrowthPriors = namedtuple("MockGrowthPriors", [
-    "theta_growth_noise", "condition_growth", "ln_cfu0", "dk_geno", "activity"
+    "theta_growth_noise", "condition_growth", "ln_cfu0", "dk_geno", "activity", "transformation"
 ])
 MockBindingPriors = namedtuple("MockBindingPriors", ["theta_binding_noise"])
 MockPriors = namedtuple("MockPriors", ["theta", "growth", "binding"])
@@ -33,7 +33,7 @@ def mock_data():
     t_pre = jnp.array(2.0)
     t_sel = jnp.array(3.0)
     
-    growth = MockGrowthData(t_pre=t_pre, t_sel=t_sel)
+    growth = MockGrowthData(t_pre=t_pre, t_sel=t_sel, congression_mask="mock_mask")
     binding = MockBindingData()
     return MockData(growth=growth, binding=binding)
 
@@ -45,7 +45,8 @@ def mock_priors():
         condition_growth="prior_cg",
         ln_cfu0="prior_cfu0", 
         dk_geno="prior_dk", 
-        activity="prior_act"
+        activity="prior_act",
+        transformation="prior_trans"
     )
     binding = MockBindingPriors(theta_binding_noise="prior_bn")
     return MockPriors(theta="prior_theta", growth=growth, binding=binding)
@@ -64,9 +65,12 @@ def mock_control():
     # k=1.0, m=1.0
     condition_growth_model = MagicMock(return_value=(1.0, 1.0, 1.0, 1.0))
     
-    ln_cfu0_model = MagicMock(return_value=5.0) # ln_cfu0
+    ln_cfu0_model = MagicMock(return_value=jnp.array([5.0])) # ln_cfu0 (must be array for softmax)
     activity_model = MagicMock(return_value=1.0) # activity
     dk_geno_model = MagicMock(return_value=0.0) # dk_geno
+    
+    transformation_model = MagicMock(return_value=(1.0, 1.0, 1.0)) # (lam, a, b)
+    transformation_update = MagicMock(side_effect=lambda t, params, mask=None: t) # pass-through
     
     # Noise models just pass through or add noise. Let's pass through for simplicity.
     theta_binding_noise_model = MagicMock(side_effect=lambda n, x, p: x) 
@@ -81,6 +85,7 @@ def mock_control():
         "ln_cfu0": ln_cfu0_model,
         "activity": activity_model,
         "dk_geno": dk_geno_model,
+        "transformation": (transformation_model, transformation_update),
         "theta_binding_noise": theta_binding_noise_model,
         "theta_growth_noise": theta_growth_noise_model,
         "observe_binding": binding_observer,
@@ -126,6 +131,16 @@ def test_jax_model_execution_flow(mock_data, mock_priors, mock_control):
     # ln_cfu0
     mock_control["ln_cfu0"].assert_called_once_with(
         "ln_cfu0", mock_data.growth, "prior_cfu0"
+    )
+    
+    # Transformation
+    mock_control["transformation"][0].assert_called_once_with(
+        "transformation", mock_data.growth, "prior_trans"
+    )
+    mock_control["transformation"][1].assert_called_once_with(
+        jnp.array(20.0), # theta_growth
+        params=(1.0, 1.0, 1.0),
+        mask="mock_mask"
     )
     
     # Observers
@@ -183,6 +198,7 @@ def test_jax_model_guide_flow(mock_data, mock_priors, mock_control):
     # The guide still needs to run the parameter guides
     mock_control["theta"][0].assert_called_once()
     mock_control["condition_growth"].assert_called_once()
+    mock_control["transformation"][0].assert_called_once()
     
     # --- Verify Observers called with None ---
     # growth_observer("final_binding_obs", data.growth, None)

@@ -66,6 +66,7 @@ class RunInference:
         self._seed = seed
         self._main_key = random.PRNGKey(self._seed)
         self._current_step = 0
+        self._relative_change = np.inf
 
 
     def setup_map(self,

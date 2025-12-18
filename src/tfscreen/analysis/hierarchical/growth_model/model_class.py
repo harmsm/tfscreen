@@ -456,6 +456,8 @@ class ModelClass:
         Model name for genotype activity.
     theta : str, optional
         Model name for theta calculation (e.g., "hill").
+    transformation : str, optional
+        Model name for transformation correction (e.g., "congression" or "single").
     theta_growth_noise : str, optional
         Model name for noise on theta in the growth model.
     theta_binding_noise : str, optional
@@ -486,6 +488,7 @@ class ModelClass:
                  dk_geno="hierarchical",
                  activity="horseshoe",
                  theta="hill",
+                 transformation="congression",
                  theta_growth_noise="none",
                  theta_binding_noise="none"):
 
@@ -499,6 +502,7 @@ class ModelClass:
         self._dk_geno = dk_geno
         self._activity = activity
         self._theta = theta
+        self._transformation = transformation
         self._theta_growth_noise = theta_growth_noise
         self._theta_binding_noise = theta_binding_noise
 
@@ -554,7 +558,11 @@ class ModelClass:
 
         # scatter_theta tells the theta model caller to return a full-sized
         # growth_tm tensor instead of the smaller growth_theta_tm-sized tensor
-        other_data = {"scatter_theta":1}
+        # congression_mask is a boolean array of shape (num_genotype,) that 
+        # tells the model which genotypes should be corrected for congression.
+        # Initialize to all True (no masking).
+        other_data = {"scatter_theta":1,
+                      "congression_mask":jnp.ones(sizes["num_genotype"],dtype=bool)}
 
         # Grab the titrant concentration and log_titrant_conc (1D array from 
         # the tensor labels along dimension 6)
@@ -677,6 +685,7 @@ class ModelClass:
                     ("dk_geno",self._dk_geno,"growth"),
                     ("activity",self._activity,"growth"),
                     ("theta",self._theta,"theta"),
+                    ("transformation",self._transformation,"growth"),
                     ("theta_growth_noise",self._theta_growth_noise,"growth"),
                     ("theta_binding_noise",self._theta_binding_noise,"binding")]
         
@@ -721,6 +730,11 @@ class ModelClass:
                                             component_module.run_model)
                 guide_control_kwargs[key] = (component_module.guide, 
                                              component_module.run_model)
+            elif key == "transformation":
+                main_control_kwargs[key] = (component_module.define_model, 
+                                            component_module.update_thetas)
+                guide_control_kwargs[key] = (component_module.guide, 
+                                             component_module.update_thetas)
             else:
                 main_control_kwargs[key] = component_module.define_model
                 guide_control_kwargs[key] = component_module.guide

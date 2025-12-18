@@ -275,6 +275,7 @@ def model_class_dependencies(mocker):
             "dk_geno": {"hierarchical": MagicMock()},
             "activity": {"horseshoe": MagicMock()},
             "theta": {"hill": MagicMock()},
+            "transformation": {"congression": MagicMock(), "single": MagicMock()},
             "theta_growth_noise": {"none": MagicMock()},
             "theta_binding_noise": {"none": MagicMock()},
             "observe_binding": MagicMock(),

@@ -26,6 +26,7 @@ def test_data_class_jit_stability():
             t_pre=jnp.zeros((2, 5, 2, 2, 2, 2, 10)),
             t_sel=jnp.zeros((2, 5, 2, 2, 2, 2, 10)),
             good_mask=jnp.ones((2, 5, 2, 2, 2, 2, 10), dtype=bool),
+            congression_mask=jnp.ones(10, dtype=bool),
             num_replicate=2,
             num_time=5,
             num_condition_pre=2,
