@@ -4,6 +4,7 @@ from jax import random
 from jax import numpy as jnp
 
 import numpyro
+from numpyro.handlers import seed, trace
 
 from numpyro.infer import (
     SVI,
@@ -14,11 +15,7 @@ from numpyro.infer import (
 from numpyro.optim import ClippedAdam
 import optax
 
-from numpyro.handlers import (
-    trace, 
-    seed
-)
-
+from numpyro.infer.autoguide import AutoDelta, AutoLaplaceApproximation
 import numpy as np
 import dill
 from tqdm.auto import tqdm
@@ -73,9 +70,10 @@ class RunInference:
     def setup_map(self,
                   adam_step_size=1e-6,
                   adam_clip_norm=1.0,
-                  elbo_num_particles=2):
+                  elbo_num_particles=2,
+                  guide_type="component"):
         """
-        Set up SVI for MAP estimation using an AutoDelta guide.
+        Set up SVI for MAP estimation.
         
         Parameters
         ----------
@@ -86,18 +84,32 @@ class RunInference:
             Gradient clipping norm for the ClippedAdam optimizer.
         elbo_num_particles : int, optional
             Number of particles for ELBO estimation.
+        guide_type : str, optional
+            Type of guide to use. 
+            - 'component' (default): Use the guide defined in the model components.
+            - 'delta': Use numpyro.infer.autoguide.AutoDelta.
+            - 'laplace': Use numpyro.infer.autoguide.AutoLaplaceApproximation.
 
         Returns
         -------
         numpyro.infer.SVI
-            An SVI object configured with an AutoDelta guide.
+            An SVI object.
         """
 
-        # Create optimizer, guide, and svi object 
+        if guide_type == "component":
+            guide = self.model.jax_model_guide
+        elif guide_type == "delta":
+            guide = AutoDelta(self.model.jax_model)
+        elif guide_type == "laplace":
+            guide = AutoLaplaceApproximation(self.model.jax_model)
+        else:
+            raise ValueError(f"guide_type '{guide_type}' not recognized.")
+
+        # Create optimizer and svi object 
         optimizer = ClippedAdam(step_size=adam_step_size,clip_norm=adam_clip_norm)
 
         svi = SVI(self.model.jax_model,
-                  self.model.jax_model_guide,
+                  guide,
                   optimizer,
                   loss=Trace_ELBO(num_particles=elbo_num_particles))
         
@@ -216,22 +228,20 @@ class RunInference:
             init_params = self._jitter_init_parameters(init_params=init_params,
                                                        init_param_jitter=init_param_jitter)
 
+        # Put the data on to the gpu
+        data_on_gpu = jax.device_put(self.model.data)
+
         # JAX-optimized update function for use with lax.scan
-        def scan_fn(carry, batch):
+        def scan_fn(carry, indices):
             svi_state = carry
+            batch = self.model.get_batch(data_on_gpu, indices)
             new_svi_state, loss = update_function(svi_state,
                                                   priors=self.model.priors,
                                                   data=batch)
             return new_svi_state, loss
 
         # JIT the scan function
-        fast_scan = jax.jit(lambda state, batches: jax.lax.scan(scan_fn, state, batches))
-
-        # Put the data on to the gpu
-        data_on_gpu = jax.device_put(self.model.data)
-
-        # JIT the vmapped batch extraction function
-        vmap_get_batch = jax.jit(jax.vmap(lambda idx: self.model.get_batch(data_on_gpu, idx)))
+        fast_scan = jax.jit(lambda state, indices: jax.lax.scan(scan_fn, state, indices))
 
         # Create an initial batch to initialize SVI
         init_batch_key = int(self.get_key()[1])
@@ -270,13 +280,13 @@ class RunInference:
             block_size = min(checkpoint_interval, num_steps - current_optimization_step)
 
             # Generate a block of random indices (using NumPy/Python)
-            gpu_block_idx = jax.device_put(self.model.get_random_idx(num_batches=block_size))
-
-            # Extract data for these indices (JIT-ted and vmapped)
-            block_data = vmap_get_batch(gpu_block_idx)
+            block_idx = self.model.get_random_idx(num_batches=block_size)
+            if block_idx.ndim == 1:
+                block_idx = block_idx.reshape(1,-1)
+            gpu_block_idx = jax.device_put(block_idx)
 
             # Run the block of updates using lax.scan (entirely on GPU)
-            svi_state, block_losses = fast_scan(svi_state, block_data)
+            svi_state, block_losses = fast_scan(svi_state, gpu_block_idx)
             
             # Convert JAX array to NumPy for host-side metadata management
             # Ensure it is at least 1D for deque/IO
@@ -322,7 +332,8 @@ class RunInference:
                        out_root,
                        num_posterior_samples=10000,
                        sampling_batch_size=100,
-                       forward_batch_size=512):
+                       forward_batch_size=512,
+                       write_csv=True):
         """
         Generate and save posterior samples using the trained guide.
 
@@ -345,6 +356,8 @@ class RunInference:
             (default 100).
         forward_batch_size : int, optional
             Batch size for calculating forward predictions (default 512).
+        write_csv : bool, optional
+            If True, extract parameter summaries and write to CSV (default True).
         """
 
         guide = svi.guide
@@ -353,6 +366,9 @@ class RunInference:
         combined_results = {}
 
         total_num_genotypes = self.model.data.num_genotype 
+        
+        # Adjust sampling_batch_size if smaller than num_posterior_samples
+        sampling_batch_size = min(sampling_batch_size, num_posterior_samples)
         num_latent_batches = -(-num_posterior_samples // sampling_batch_size)
 
         # Create a full-batch data object for sampling latents
@@ -458,6 +474,12 @@ class RunInference:
             final_results[k] = np.concatenate(combined_results[k],axis=0)
 
         self._write_posteriors(final_results, out_root=out_root)
+
+        if write_csv:
+            print("Extracting parameter summaries and writing CSVs...", flush=True)
+            summaries = self.model.extract_parameters(final_results)
+            for k, df in summaries.items():
+                df.to_csv(f"{out_root}_{k}.csv", index=False)
 
     def predict(self,
                 posterior_samples,
