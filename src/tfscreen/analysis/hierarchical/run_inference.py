@@ -72,7 +72,7 @@ class AutoDiagonalLaplace(AutoLaplaceApproximation):
                 # Wrap in seed to avoid AssertionError if the model tries to 
                 # sample any non-latent sites during the potential call.
                 with numpyro.handlers.seed(rng_seed=random.PRNGKey(0)):
-                    return self._potential_fn(z).reshape(())[0]
+                    return jnp.reshape(self._potential_fn(z), ())
             
             unit_vector = jnp.zeros_like(loc).at[i].set(1.0)
             # jvp(grad(f), (x,), (v,)) returns (grad(f)(x), Hessian(f)(x) @ v)

@@ -842,7 +842,7 @@ class ModelClass:
         """
 
         # Load the posterior file
-        if isinstance(posteriors,dict):
+        if isinstance(posteriors,(dict,np.lib.npyio.NpzFile)):
             param_posteriors = posteriors
         else:
             param_posteriors = np.load(posteriors)
@@ -1042,7 +1042,7 @@ class ModelClass:
             )
 
         # Load the posterior file
-        if isinstance(posteriors,dict):
+        if isinstance(posteriors,(dict,np.lib.npyio.NpzFile)):
             param_posteriors = posteriors
         else:
             param_posteriors = np.load(posteriors)
@@ -1188,7 +1188,7 @@ class ModelClass:
         """
 
         # Load the posterior file
-        if isinstance(posteriors,dict):
+        if isinstance(posteriors,(dict,np.lib.npyio.NpzFile)):
             param_posteriors = posteriors
         else:
             param_posteriors = np.load(posteriors)
