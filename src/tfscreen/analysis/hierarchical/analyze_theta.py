@@ -374,16 +374,14 @@ def analyze_theta(growth_df=None,
 
     # If config_file is provided, load settings from it. Overwrite any
     # settings provided as arguments.
+
     if config_file is not None:
+
         c_growth_df, c_binding_df, c_settings = GrowthModel.load_config(config_file)
 
-        # Overwrite growth_df and binding_df if they were NOT provided as args
-        if growth_df is None:
-            growth_df = c_growth_df
-        if binding_df is None:
-            binding_df = c_binding_df
-
         # Overwrite all other settings from the config
+        growth_df = c_growth_df
+        binding_df = c_binding_df
         condition_growth_model = c_settings["condition_growth"]
         ln_cfu0_model = c_settings["ln_cfu0"]
         dk_geno_model = c_settings["dk_geno"]
@@ -395,11 +393,11 @@ def analyze_theta(growth_df=None,
         spiked = c_settings["spiked_genotypes"]
 
     # validation
+    if growth_df is None or binding_df is None:
+        raise ValueError("growth_df and binding_df must be provided if config_file is not provided.")
+
     if seed is None and checkpoint_file is None:
         raise ValueError("seed must be provided unless loading from a checkpoint.")
-
-    if growth_df is None or binding_df is None:
-        raise ValueError("growth_df and binding_df must be provided or in config.")
 
     # Kind of a hack, but this forces no batching for the posterior calc
     if analysis_method == "posterior":
@@ -508,7 +506,9 @@ def main():
     """
 
     return generalized_main(analyze_theta,
-                            manual_arg_types={"seed":int,
+                            manual_arg_types={"growth_df":str,
+                                              "binding_df":str,
+                                              "seed":int,
                                               "checkpoint_file":str,
                                               "config_file":str,
                                               "spiked":list},

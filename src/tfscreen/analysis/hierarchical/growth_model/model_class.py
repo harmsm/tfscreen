@@ -29,6 +29,7 @@ import numpy as np
 
 from functools import partial
 import os
+import warnings
 
 # Declare float datatype
 FLOAT_DTYPE = jnp.float64 if jax.config.read("jax_enable_x64") else jnp.float32
@@ -1261,7 +1262,8 @@ class ModelClass:
                 # Heuristic for scale/std parameters (Normal, HalfNormal, LogNormal)
                 if "scale" in field_name or "std" in field_name:
                     # Special case: Growth model rate parameters are sometimes named 'scale'
-                    # but behave as rates in Gamma distributions. 
+                    # but behave as rates in Gamma distributions so they should be small
+                    # to imply high uncertainty.
                     if "beta_kappa_scale" in field_name or "rate" in field_name:
                         updates[field_name] = 1e-6
                     else:
@@ -1410,6 +1412,15 @@ class ModelClass:
 
         with open(config_file, "r") as f:
             config = yaml.safe_load(f)
+
+        # Check for required fields
+        required_fields = ["growth_df", "binding_df", "settings","tfscreen_version"]
+        for field in required_fields:
+            if field not in config:
+                raise ValueError(f"Missing required field: {field}")
+
+        if config["tfscreen_version"] != __version__:
+            warnings.warn(f"Configuration file version {config['tfscreen_version']} does not match current tfscreen version {__version__}")
 
         return config["growth_df"], config["binding_df"], config["settings"]
 

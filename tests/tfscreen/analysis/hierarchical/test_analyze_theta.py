@@ -322,7 +322,9 @@ def test_main():
         main()
         mock_gen_main.assert_called_once_with(
             analyze_theta,
-            manual_arg_types={"seed": int,
+            manual_arg_types={"growth_df": str,
+                              "binding_df": str,
+                              "seed": int,
                               "checkpoint_file": str,
                               "config_file": str,
                               "spiked": list},

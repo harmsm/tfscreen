@@ -529,5 +529,10 @@ def test_load_config_errors(tmpdir):
     path = os.path.join(tmpdir, "bad.yaml")
     with open(path, "w") as f:
         yaml.dump({"growth_df": "g.csv"}, f)
-    with pytest.raises(KeyError):
+    with pytest.raises(ValueError, match="Missing required field: binding_df"):
+        ModelClass.load_config(path)
+
+    with open(path, "w") as f:
+        yaml.dump({"growth_df": "g.csv", "binding_df": "b.csv", "settings": {}}, f)
+    with pytest.raises(ValueError, match="Missing required field: tfscreen_version"):
         ModelClass.load_config(path)
