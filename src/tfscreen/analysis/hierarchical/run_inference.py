@@ -23,6 +23,76 @@ from tqdm.auto import tqdm
 from collections import deque
 import os
 
+class AutoDiagonalLaplace(AutoLaplaceApproximation):
+    """
+    Maximum a posteriori (MAP) approximation with diagonal uncertainty.
+    
+    This guide behaves like AutoDelta (MAP) during optimization, but computes
+    a diagonal Laplace approximation (diagonal of the Hessian) for the
+    posterior. 
+
+    This is much more memory efficient than AutoLaplaceApproximation, which 
+    computes the full Hessian. 
+    """
+
+    def get_posterior(self, params):
+        """
+        Compute the diagonal Laplace approximation to the posterior.
+        """
+        # AutoContinuous guides usually store the flattened unconstrained 
+        # parameters in prefix + "_latent" or prefix + "_loc".
+        # AutoLaplaceApproximation specifically uses "_loc".
+        loc_key = self.prefix + "_loc"
+        latent_key = self.prefix + "_latent"
+        
+        if loc_key in params:
+            loc = params[loc_key]
+        elif latent_key in params:
+            loc = params[latent_key]
+        else:
+            # Fallback for site-by-site guides or other variations: 
+            # try to flatten what's there
+            print("Warning: Could not find latent/loc key. Attempting to flatten params.", 
+                  flush=True)
+            loc, _ = jax.flatten_util.ravel_pytree(params)
+
+        # We need the potential function. In AutoContinuous, this is 
+        # self._potential_fn. It is created during the first call to the guide.
+        if not hasattr(self, "_potential_fn"):
+            raise RuntimeError(
+                "AutoDiagonalLaplace.get_posterior requires the guide to be "
+                "initialized. Call it once with model arguments (data, priors)."
+            )
+
+        # Define a function to compute one element of the diagonal of the Hessian
+        # of the potential function.
+        def get_diag_element(i):
+            def grad_fn(z):
+                # Ensure we are returning a scalar for jax.grad
+                # Wrap in seed to avoid AssertionError if the model tries to 
+                # sample any non-latent sites during the potential call.
+                with numpyro.handlers.seed(rng_seed=random.PRNGKey(0)):
+                    return self._potential_fn(z).reshape(())[0]
+            
+            unit_vector = jnp.zeros_like(loc).at[i].set(1.0)
+            # jvp(grad(f), (x,), (v,)) returns (grad(f)(x), Hessian(f)(x) @ v)
+            # Since v is a unit vector e_i, Hessian(f)(x) @ e_i is the i-th column.
+            _, hess_column = jax.jvp(jax.grad(grad_fn), (loc,), (unit_vector,))
+            return hess_column[i]
+
+        # Compute the diagonal of the Hessian element-by-element using scan
+        # This is O(N) memory but O(N) calls to grad. 
+        print(f"Computing diagonal Hessian for {len(loc)} parameters...", flush=True)
+        _, hessian_diag = jax.lax.scan(lambda _, i: (None, get_diag_element(i)), 
+                                      None, 
+                                      jnp.arange(len(loc)))
+
+        # The covariance scale is the inverse square root of the Hessian diagonal
+        scale = jnp.sqrt(1.0 / jnp.maximum(hessian_diag, 1e-8))
+        
+        # Return a Normal distribution with the MAP mean and diagonal scale
+        return numpyro.distributions.Normal(loc, scale).to_event(1)
+
 
 class RunInference:
     """
@@ -88,6 +158,7 @@ class RunInference:
             Type of guide to use. 
             - 'component' (default): Use the guide defined in the model components.
             - 'delta': Use numpyro.infer.autoguide.AutoDelta.
+            - 'normal': Use numpyro.infer.autoguide.AutoNormal.
             - 'laplace': Use numpyro.infer.autoguide.AutoLaplaceApproximation.
 
         Returns
@@ -99,9 +170,13 @@ class RunInference:
         if guide_type == "component":
             guide = self.model.jax_model_guide
         elif guide_type == "delta":
-            guide = AutoDelta(self.model.jax_model)
+            guide = numpyro.infer.autoguide.AutoDelta(self.model.jax_model)
+        elif guide_type == "normal":
+            guide = numpyro.infer.autoguide.AutoNormal(self.model.jax_model)
         elif guide_type == "laplace":
-            guide = AutoLaplaceApproximation(self.model.jax_model)
+            guide = numpyro.infer.autoguide.AutoLaplaceApproximation(self.model.jax_model)
+        elif guide_type == "diagonal_laplace":
+            guide = AutoDiagonalLaplace(self.model.jax_model)
         else:
             raise ValueError(f"guide_type '{guide_type}' not recognized.")
 
@@ -365,7 +440,6 @@ class RunInference:
         combined_results = {}
 
         total_num_genotypes = self.model.data.num_genotype 
-        
         # Adjust sampling_batch_size if smaller than num_posterior_samples
         sampling_batch_size = min(sampling_batch_size, num_posterior_samples)
         num_latent_batches = -(-num_posterior_samples // sampling_batch_size)
@@ -376,24 +450,61 @@ class RunInference:
         all_indices = jnp.arange(total_num_genotypes)
         full_data = self.model.get_batch(self.model.data, all_indices)
 
+        # Prepare for sampling. If guide is Laplace, pre-calculate the 
+        # posterior (Hessian calculation) on the CPU to avoid OOM on the GPU.
+        if isinstance(guide, numpyro.infer.autoguide.AutoLaplaceApproximation) or \
+           isinstance(guide, AutoDiagonalLaplace) or \
+           (hasattr(guide, "__class__") and guide.__class__.__name__ in ["AutoLaplaceApproximation", "AutoDiagonalLaplace"]):
+            
+            # Ensure guide is initialized (has _potential_fn)
+            if not hasattr(guide, "_potential_fn"):
+                print("Initializing guide...", flush=True)
+                # Call guide once with the model arguments to create the internal 
+                # potential function which is needed for Hessian calculation.
+                # Use a dummy key and pass through any control dict.
+                dummy_key = self.get_key()
+                control = getattr(self.model, "control", {})
+                with numpyro.handlers.seed(rng_seed=dummy_key):
+                    guide(full_data, self.model.priors, **control)
+
+            print("Calculating Hessian and preparing Laplace posterior (on CPU)...", 
+                  flush=True)
+            
+            # Move data and params to CPU
+            cpu_device = jax.devices("cpu")[0]
+            cpu_params = jax.device_put(params, cpu_device)
+            cpu_full_data = jax.device_put(full_data, cpu_device)
+            cpu_priors = jax.device_put(self.model.priors, cpu_device)
+
+            # Draw one posterior sample on CPU to trigger Hessian calculation
+            # and get back a posterior distribution object. 
+            with jax.default_device(cpu_device):
+                laplace_posterior = guide.get_posterior(cpu_params)
+        
+        else:
+            latent_sampler = Predictive(guide,
+                                        params=params,
+                                        num_samples=sampling_batch_size)
+
         for _ in tqdm(range(num_latent_batches),desc="sampling posterior"):
 
             # Sample the entire guide posterior distribution 
             post_key = self.get_key()
             
-            # If the guide is Laplace, we must use sample_posterior to trigger 
-            # Hessian calculation and get uncertainty. Predictive(guide) only
-            # returns the MAP point. 
-            if isinstance(guide, AutoLaplaceApproximation):
-                latent_samples = guide.sample_posterior(post_key, 
-                                                        params, 
-                                                        sample_shape=(sampling_batch_size,),
-                                                        priors=self.model.priors,
-                                                        data=full_data)
+            # If the guide is Laplace, we use the pre-calculated posterior
+            if isinstance(guide, numpyro.infer.autoguide.AutoLaplaceApproximation) or \
+               isinstance(guide, AutoDiagonalLaplace):
+                
+                # Sample on CPU
+                cpu_device = jax.devices("cpu")[0]
+                with jax.default_device(cpu_device):
+                    latent_sample = laplace_posterior.sample(post_key, (sampling_batch_size,))
+                
+                # Unpack and move to original device
+                latent_samples = guide._unpack_latent(latent_sample)
+                latent_samples = jax.device_put(latent_samples)
+
             else:
-                latent_sampler = Predictive(guide,
-                                            params=params,
-                                            num_samples=sampling_batch_size)
                 latent_samples = latent_sampler(post_key,
                                                 priors=self.model.priors,
                                                 data=full_data)

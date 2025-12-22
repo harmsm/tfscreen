@@ -287,11 +287,19 @@ def test_get_posteriors_laplace(tmpdir, mocker):
     out_root = os.path.join(tmpdir, "test_laplace")
     
     mock_svi = mocker.Mock()
-    mock_svi.guide = mocker.create_autospec(AutoLaplaceApproximation)
+    # Mock guide to satisfy isinstance and provide required methods
+    mock_svi.guide = mocker.Mock()
+    mock_svi.guide.__class__ = AutoLaplaceApproximation
     mock_svi.get_params.return_value = {}
     
-    # Mock guide.sample_posterior
+    # Mock guide.get_posterior and sample
+    mock_posterior = mocker.Mock()
+    mock_posterior.sample.return_value = jnp.zeros((10, 5)) # Unpacked shape
+    mock_svi.guide.get_posterior.return_value = mock_posterior
+    
+    # Mock guide.sample_posterior and _unpack_latent
     mock_svi.guide.sample_posterior.return_value = {"param": jnp.zeros((10, 10))}
+    mock_svi.guide._unpack_latent.side_effect = lambda x: {"param": x}
     
     # Mock Predictive
     mock_predictive = mocker.patch("tfscreen.analysis.hierarchical.run_inference.Predictive")

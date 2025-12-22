@@ -327,7 +327,8 @@ def test_main():
                               "seed": int,
                               "checkpoint_file": str,
                               "config_file": str,
-                              "spiked": list},
+                              "spiked": list,
+                              "map_guide_type": str},
             manual_arg_nargs={"spiked": "+"}
         )
 def test_analyze_theta_mle_mode(mock_growth_model, mock_run_inference):

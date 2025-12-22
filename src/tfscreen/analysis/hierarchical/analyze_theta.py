@@ -21,7 +21,8 @@ def _run_map(ri,
              num_posterior_samples=10000,
              sampling_batch_size=100,
              forward_batch_size=512,
-             always_get_posterior=False):
+             always_get_posterior=False,
+             map_guide_type="diagonal_laplace"):
     """
     Run maximum a posteriori (MAP) optimization for hierarchical model inference.
 
@@ -48,14 +49,17 @@ def _run_map(ri,
         Gradient clipping norm for Adam optimizer (default 1.0).
     elbo_num_particles : int, optional
         Number of particles for ELBO estimation during MAP (default 2).
+    map_num_steps : int, optional
+        Number of MAP optimization steps (default 100000).
     convergence_tolerance : float, optional
         Relative change in loss to declare MAP convergence (default 1e-5).
     convergence_window : int, optional
         Number of steps to average for convergence check (default 1000).
     checkpoint_interval : int, optional
         Steps between checkpoints and convergence checks (default 1000).
-    map_num_steps : int, optional
-        Number of MAP optimization steps (default 100000).
+    map_guide_type : str, optional
+        Type of guide to use for MAP. Allowed values are 'laplace',
+        'diagonal_laplace' (default), 'normal', or 'delta'.
 
     Returns
     -------
@@ -78,7 +82,7 @@ def _run_map(ri,
     map_obj = ri.setup_map(adam_step_size=schedule,
                            adam_clip_norm=adam_clip_norm,
                            elbo_num_particles=elbo_num_particles,
-                           guide_type="laplace")
+                           guide_type=map_guide_type)
     
     if os.path.isfile(f"{out_root}_losses.csv"):
         os.remove(f"{out_root}_losses.csv")
@@ -247,8 +251,8 @@ def analyze_theta(growth_df=None,
                   activity_model="horseshoe",
                   theta_model="hill",
                   transformation_model="congression",
-                  theta_growth_noise_model="beta",
-                  theta_binding_noise_model="beta",
+                  theta_growth_noise_model="none",
+                  theta_binding_noise_model="none",
                   checkpoint_file=None,
                   analysis_method="svi",
                   out_root="tfs",
@@ -265,7 +269,8 @@ def analyze_theta(growth_df=None,
                   sampling_batch_size=100,
                   forward_batch_size=512,
                   always_get_posterior=False,
-                  spiked=None):
+                  spiked=None,
+                  map_guide_type="diagonal_laplace"):
     """
     Run the joint hierarchical growth model to extract estimates of
     transcription factor fractional occupancy (theta) and other latent
@@ -356,6 +361,9 @@ def analyze_theta(growth_df=None,
         If True, always sample posteriors even if not converged (default False).
     spiked : list, optional
         List of genotypes to mask from theta correction (e.g. spiked-in variants).
+    map_guide_type : str, optional
+        Type of guide to use for MAP. Allowed values are 'laplace',
+        'diagonal_laplace' (default), 'normal', or 'delta'.
 
     Returns
     -------
@@ -468,7 +476,8 @@ def analyze_theta(growth_df=None,
                         num_posterior_samples=num_posterior_samples,
                         sampling_batch_size=sampling_batch_size,
                         forward_batch_size=forward_batch_size,
-                        always_get_posterior=always_get_posterior)
+                        always_get_posterior=always_get_posterior,
+                        map_guide_type=map_guide_type)
     
     elif analysis_method == "posterior":
 
@@ -511,7 +520,8 @@ def main():
                                               "seed":int,
                                               "checkpoint_file":str,
                                               "config_file":str,
-                                              "spiked":list},
+                                              "spiked":list,
+                                              "map_guide_type":str},
                             manual_arg_nargs={"spiked":"+"})
 
 if __name__ == "__main__":
