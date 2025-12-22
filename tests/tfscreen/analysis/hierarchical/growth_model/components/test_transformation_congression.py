@@ -71,8 +71,15 @@ def test_update_thetas_shapes():
     params = (lam, mu, sigma)
     
     res = transformation_congression.update_thetas(theta, params=params)
-    
     assert res.shape == (2, 5)
+
+    # With mask (line 129)
+    mask = jnp.array([True, False, True, False, True]) # Length must match num_genotypes (5)
+    res_mask = transformation_congression.update_thetas(theta, params=params, mask=mask)
+    assert res_mask.shape == (2, 5)
+    # Check that entries where mask is False are unchanged
+    assert jnp.all(res_mask[:, 1] == theta[:, 1])
+    assert jnp.all(res_mask[:, 3] == theta[:, 3])
 
 def test_update_thetas_broadcasting():
     """Verify complex broadcasting."""
@@ -137,3 +144,9 @@ def test_guide():
     
     assert mu.shape == (2, 3, 1)
     assert sigma.shape == (2, 3, 1)
+
+    # Run with anchors to hit line 334
+    with numpyro.handlers.seed(rng_seed=1):
+        anchors = (jnp.zeros((2, 3, 1)), jnp.ones((2, 3, 1)))
+        lam_anc, mu_anc, sigma_anc = transformation_congression.guide("test_anc", data, priors, anchors=anchors)
+        assert mu_anc.shape == (2, 3, 1)

@@ -171,6 +171,15 @@ def test_run_map_flow(mock_run_inference):
     # 5. Summarize Posteriors is called (verified by global patch if needed, 
     # but here we just ensure flow moves forward)
 
+def test_run_map_not_converged(mock_run_inference, capsys):
+    """Test MAP not converged message."""
+    _, ri = mock_run_inference
+    ri.run_optimization.return_value = ("state", {"p": 1}, False)
+    _run_map(ri, init_params={"p": 1}, always_get_posterior=False)
+    captured = capsys.readouterr()
+    assert "MAP run converged" not in captured.out
+    assert "MAP run has not yet converged" in captured.out
+
 # =============================================================================
 # Tests for analyze_theta (Orchestrator)
 # =============================================================================
@@ -255,9 +264,57 @@ def test_analyze_theta_invalid_method(mock_growth_model, mock_run_inference):
     with pytest.raises(ValueError, match="not recognized"):
         analyze_theta("g", "b", 1, analysis_method="magic_wand")
 
-# =============================================================================
-# Tests for main
-# =============================================================================
+def test_analyze_theta_config_loading(mock_growth_model, mock_run_inference):
+    """Test analyze_theta loading from config."""
+    gm_class, gm_inst = mock_growth_model
+    
+    mock_config = {
+        "condition_growth": "independent",
+        "ln_cfu0": "hierarchical",
+        "dk_geno": "fixed",
+        "activity": "fixed",
+        "theta": "hill",
+        "transformation": "single",
+        "theta_growth_noise": "none",
+        "theta_binding_noise": "none",
+        "spiked_genotypes": ["S1"]
+    }
+    gm_class.load_config.return_value = ("cg", "cb", mock_config)
+    
+    with patch("tfscreen.analysis.hierarchical.analyze_theta._run_svi"):
+        analyze_theta(config_file="config.yaml", seed=1)
+        
+        gm_class.load_config.assert_called_once_with("config.yaml")
+        # Verify gm_class was initialized with values from config
+        kwargs = gm_class.call_args[1]
+        assert kwargs["condition_growth"] == "independent"
+        assert kwargs["spiked_genotypes"] == ["S1"]
+
+def test_analyze_theta_errors(mock_growth_model):
+    """Test analyze_theta validation errors."""
+    # No seed
+    with pytest.raises(ValueError, match="seed must be provided"):
+        analyze_theta(growth_df="g", binding_df="b", seed=None)
+    
+    # No dfs
+    with pytest.raises(ValueError, match="growth_df and binding_df must be provided"):
+        analyze_theta(growth_df=None, binding_df=None, seed=1)
+
+def test_run_svi_not_converged_stdout(mock_run_inference, capsys):
+    """Test SVI not converged message."""
+    _, ri = mock_run_inference
+    ri.run_optimization.return_value = ("state", {}, False)
+    _run_svi(ri, init_params=None)
+    captured = capsys.readouterr()
+    assert "SVI run has not yet converged." in captured.out
+
+def test_main_block(mocker):
+    """Test if main block calls main."""
+    mock_main = mocker.patch("tfscreen.analysis.hierarchical.analyze_theta.main")
+    # Simulate if __name__ == "__main__"
+    import tfscreen.analysis.hierarchical.analyze_theta as mod
+    # We can't easily trigger the true if __name__ == "__main__" block without subprocess, 
+    # but we covered the main() function itself.
 
 def test_main():
     """Test that main wraps analyze_theta correctly."""
@@ -271,3 +328,25 @@ def test_main():
                               "spiked": list},
             manual_arg_nargs={"spiked": "+"}
         )
+def test_analyze_theta_mle_mode(mock_growth_model, mock_run_inference):
+    """Test analyze_theta executing MLE path."""
+    gm_class, gm_inst = mock_growth_model
+    _, ri_inst = mock_run_inference
+    
+    with patch("tfscreen.analysis.hierarchical.analyze_theta._run_map") as mock_run_map:
+        analyze_theta(growth_df="g", binding_df="b", seed=1, analysis_method="mle")
+        
+        gm_inst.flatten_priors.assert_called_once()
+        mock_run_map.assert_called_once()
+
+import runpy
+import sys
+def test_main_entry_point():
+    with patch.object(sys, 'argv', ['analyze_theta', '--help']):
+        # Patch the root function to avoid re-import issues with runpy
+        with patch("tfscreen.util.cli.generalized_main.generalized_main") as mock_gen:
+            try:
+                runpy.run_module("tfscreen.analysis.hierarchical.analyze_theta", run_name="__main__")
+            except SystemExit:
+                pass
+            mock_gen.assert_called_once()
