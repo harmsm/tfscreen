@@ -219,8 +219,7 @@ class RunInference:
             If parameters explode to NaN during optimization.
         """
 
-        # Set up initialization and update functions (triggers jit)
-        init_function = jax.jit(svi.init)
+        # Set up update function (triggers jit)
         update_function = jax.jit(svi.update)
 
         # Add jitter to the input parameters if they are specified
@@ -250,10 +249,10 @@ class RunInference:
 
         # Initialize svi with a batch of data
         init_key = self.get_key()
-        initial_svi_state = init_function(init_key,
-                                          init_params=init_params,
-                                          priors=self.model.priors,
-                                          data=batch_data)
+        initial_svi_state = svi.init(init_key,
+                                     init_params=init_params,
+                                     priors=self.model.priors,
+                                     data=batch_data)
             
         if svi_state is None:
             svi_state = initial_svi_state
