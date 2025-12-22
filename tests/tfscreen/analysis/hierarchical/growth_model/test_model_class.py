@@ -473,6 +473,7 @@ def initialized_model_class():
     """
     # Create a barebones object
     model = MagicMock(spec=ModelClass)
+    model._transformation = "none"
     
     # Mock the TensorManager and its dataframes
     mock_tm = MagicMock()

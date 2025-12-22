@@ -213,14 +213,16 @@ def _run_svi(ri,
     return svi_state, params, converged
 
     
-def analyze_theta(growth_df,
-                  binding_df,
-                  seed,
+def analyze_theta(growth_df=None,
+                  binding_df=None,
+                  seed=None,
+                  config_file=None,
                   condition_growth_model="hierarchical",
                   ln_cfu0_model="hierarchical",
                   dk_geno_model="hierarchical",
                   activity_model="horseshoe",
                   theta_model="hill",
+                  transformation_model="congression",
                   theta_growth_noise_model="beta",
                   theta_binding_noise_model="beta",
                   checkpoint_file=None,
@@ -253,12 +255,16 @@ def analyze_theta(growth_df,
 
     Parameters
     ----------
-    growth_df : pandas.DataFrame
+    growth_df : pandas.DataFrame or str, optional
         Input data for the growth model (e.g., genotype/cfu measurements).
-    binding_df : pandas.DataFrame
+        If config_file is provided, this overrides the config path.
+    binding_df : pandas.DataFrame or str, optional
         Input data for the binding model (e.g., theta vs. titrant measurements)
-    seed : int
-        Random seed for reproducibility.
+        If config_file is provided, this overrides the config path.
+    seed : int, optional
+        Random seed for reproducibility. Must be provided if not loading from SVI.
+    config_file : str, optional
+        Path to a YAML configuration file to load settings from.
     condition_growth_model: str, optional
         model to use to describe growth under different conditions (e.g., 
         pheS+4CP). Allowed values are 'hierarchical' (default) or 'independent'.
@@ -278,6 +284,9 @@ def analyze_theta(growth_df,
         model to use to describe theta, the fractional occupancy of a genotype
         on the transcription factor binding site. Allowed values are 'hill' 
         (default) or 'categorical'. 
+    transformation_model : str, optional
+        model for transformation correction. Allowed values are 'congression'
+        (default) or 'single'.
     theta_growth_noise_model : str, optional
         model to use for stochastic experimental noise in theta measured by 
         bacterial growth. Allowed values are 'beta' (default) or 'none' (written
@@ -336,6 +345,35 @@ def analyze_theta(growth_df,
     output root. 
     """
 
+    # If config_file is provided, load settings from it. Overwrite any
+    # settings provided as arguments.
+    if config_file is not None:
+        c_growth_df, c_binding_df, c_settings = GrowthModel.load_config(config_file)
+
+        # Overwrite growth_df and binding_df if they were NOT provided as args
+        if growth_df is None:
+            growth_df = c_growth_df
+        if binding_df is None:
+            binding_df = c_binding_df
+
+        # Overwrite all other settings from the config
+        condition_growth_model = c_settings["condition_growth"]
+        ln_cfu0_model = c_settings["ln_cfu0"]
+        dk_geno_model = c_settings["dk_geno"]
+        activity_model = c_settings["activity"]
+        theta_model = c_settings["theta"]
+        transformation_model = c_settings["transformation"]
+        theta_growth_noise_model = c_settings["theta_growth_noise"]
+        theta_binding_noise_model = c_settings["theta_binding_noise"]
+        spiked = c_settings["spiked_genotypes"]
+
+    # validation
+    if seed is None and checkpoint_file is None:
+        raise ValueError("seed must be provided unless loading from a checkpoint.")
+
+    if growth_df is None or binding_df is None:
+        raise ValueError("growth_df and binding_df must be provided or in config.")
+
     # Kind of a hack, but this forces no batching for the posterior calc
     if analysis_method == "posterior":
         batch_size = None
@@ -350,9 +388,13 @@ def analyze_theta(growth_df,
                      dk_geno=dk_geno_model,
                      activity=activity_model,
                      theta=theta_model,
+                     transformation=transformation_model,
                      theta_growth_noise=theta_growth_noise_model,
                      theta_binding_noise=theta_binding_noise_model,
                      spiked_genotypes=spiked)
+    
+    # Save the model configuration
+    gm.write_config(growth_df, binding_df, out_root)
     
     # Create a run inference object, which manages things like checking for 
     # ELBO convergence.
@@ -432,6 +474,7 @@ def main():
     return generalized_main(analyze_theta,
                             manual_arg_types={"seed":int,
                                               "checkpoint_file":str,
+                                              "config_file":str,
                                               "spiked":list},
                             manual_arg_nargs={"spiked":"+"})
 

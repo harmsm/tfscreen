@@ -1,4 +1,7 @@
 import tfscreen
+from tfscreen.__version__ import __version__
+
+import yaml
 
 from tfscreen.util.dataframe import add_group_columns
 from tfscreen.analysis.hierarchical import (
@@ -25,6 +28,7 @@ import pandas as pd
 import numpy as np
 
 from functools import partial
+import os
 
 # Declare float datatype
 FLOAT_DTYPE = jnp.float64 if jax.config.read("jax_enable_x64") else jnp.float32
@@ -939,6 +943,46 @@ class ModelClass:
                 )
             )
 
+        # transformation
+        if self._transformation == "congression":
+            # lam is global
+            lam_df = pd.DataFrame({"parameter":["lam"], "map_all":[0]})
+            extract.append(
+                dict(
+                    input_df = lam_df,
+                    params_to_get = ["lam"],
+                    map_column = "map_all",
+                    get_columns = ["parameter"],
+                    in_run_prefix = "transformation_"
+                )
+            )
+
+            # mu and sigma are (titrant_name, titrant_conc)
+            # We can use the growth_tm.df to find the unique (titrant_name, titrant_conc) pairs 
+            # and their indices.
+            trans_df = (self.growth_tm.df[["titrant_name", "titrant_conc", 
+                                          "titrant_name_idx", "titrant_conc_idx"]]
+                        .drop_duplicates()
+                        .copy())
+            
+            # num_titrant_conc
+            idx = np.where(np.array(self.growth_tm.tensor_dim_names) == "titrant_conc")[0][0]
+            num_titrant_conc = len(self.growth_tm.tensor_dim_labels[idx])
+            
+            # Map column
+            trans_df["map_trans"] = (trans_df["titrant_name_idx"] * num_titrant_conc + 
+                                     trans_df["titrant_conc_idx"])
+            
+            extract.append(
+                dict(
+                    input_df = trans_df,
+                    params_to_get = ["mu","sigma"],
+                    map_column = "map_trans",
+                    get_columns = ["titrant_name","titrant_conc"],
+                    in_run_prefix = "transformation_"
+                )
+            )
+
         params = {}
         for kwargs in extract:
             params.update(_extract_param_est(param_posteriors=param_posteriors,
@@ -946,6 +990,257 @@ class ModelClass:
                                              **kwargs))
 
         return params
+
+    def extract_theta_curves(self,
+                             posteriors,
+                             q_to_get=None,
+                             manual_titrant_df=None):
+        """
+        Extract theta curves by sampling from the joint posterior distribution.
+
+        This method calculates fractional occupancy (theta) across a range of
+        titrant concentrations by sampling from the joint posterior of Hill
+        parameters (hill_n, log_hill_K, theta_high, theta_low).
+
+        Parameters
+        ----------
+        posteriors : dict or str
+            Assumes this is a dictionary of posteriors keying parameters to
+            numpy arrays or a path to a .npz file containing posterior samples
+            for model parameters.
+        q_to_get : dict, optional
+            Dictionary mapping output column names to quantile values (between 0 and 1)
+            to extract from the posterior samples. If None, a default set of quantiles
+            is used (min, lower_95, lower_std, lower_quartile, median, upper_std,
+            upper_quartile, upper_95, max).
+        manual_titrant_df : pd.DataFrame, optional
+            A DataFrame specifying 'titrant_name' and 'titrant_conc' values
+            at which to calculate theta. If provided, it overrides the default
+            calculation at the concentrations present in the input data.
+            If 'genotype' is present, it will be used; otherwise, the method
+            will calculate theta for all genotypes in the model.
+
+        Returns
+        -------
+        pd.DataFrame
+            A DataFrame with columns: 'genotype', 'titrant_name', 'titrant_conc',
+            and requested quantiles of theta.
+
+        Raises
+        ------
+        ValueError
+            If the model was not initialized with theta='hill'.
+            If `q_to_get` is not a dictionary.
+            If `manual_titrant_df` is missing required columns.
+        """
+
+        if self._theta != "hill":
+            raise ValueError(
+                "extract_theta_curves is only available for models where "
+                "theta='hill'."
+            )
+
+        # Load the posterior file
+        if isinstance(posteriors,dict):
+            param_posteriors = posteriors
+        else:
+            param_posteriors = np.load(posteriors)
+
+        # Named quantiles to pull from the posterior distribution
+        if q_to_get is None:
+            q_to_get = {"min":0.0,
+                        "lower_95":0.025,
+                        "lower_std":0.159,
+                        "lower_quartile":0.25,
+                        "median":0.5,
+                        "upper_quartile":0.75,
+                        "upper_std":0.841,
+                        "upper_95":0.975,
+                        "max":1.0}
+
+        # make sure q_to_get is a dictionary
+        if not isinstance(q_to_get,dict):
+            raise ValueError(
+                "q_to_get should be a dictionary keying column names to quantiles"
+            )
+
+        # Construct calculation DataFrame
+        if manual_titrant_df is None:
+            # Use unique (genotype, titrant_name, titrant_conc) from input data
+            calc_df = (self.growth_tm.df[["genotype", "titrant_name", "titrant_conc", "map_theta_group"]]
+                       .drop_duplicates()
+                       .reset_index(drop=True))
+        else:
+            tfscreen.util.dataframe.check_columns(manual_titrant_df,
+                                                  required_columns=["titrant_name", "titrant_conc"])
+            
+            # If genotype is not provided, broadcast across all genotypes
+            if "genotype" not in manual_titrant_df.columns:
+                genotypes = self.growth_tm.df["genotype"].unique()
+                dfs = []
+                for g in genotypes:
+                    tmp = manual_titrant_df.copy()
+                    tmp["genotype"] = g
+                    dfs.append(tmp)
+                calc_df = pd.concat(dfs).reset_index(drop=True)
+            else:
+                calc_df = manual_titrant_df.copy()
+
+            # Map to theta groups
+            # We need to reach into the GROWTH_TM to find the mapping
+            # This is a bit tricky because the manual_titrant_df might have new concentrations.
+            # BUT the parameters (hill_n, etc) are mapped to (genotype, titrant_name).
+            # The mapper used in _extract_param_est for Hill model is "map_theta_group"
+            # which maps (genotype, titrant_name) to an index.
+            
+            # Find the (genotype, titrant_name) -> map_theta_group mapping
+            mapping = (self.growth_tm.df[["genotype", "titrant_name", "map_theta_group"]]
+                       .drop_duplicates()
+                       .set_index(["genotype", "titrant_name"])["map_theta_group"]
+                       .to_dict())
+            
+            # Apply mapping. If a (genotype, titrant_name) pair is not in the model, it's an error.
+            try:
+                calc_df["map_theta_group"] = calc_df.set_index(["genotype", "titrant_name"]).index.map(mapping)
+            except Exception as e:
+                raise ValueError(
+                    "Some (genotype, titrant_name) pairs in manual_titrant_df "
+                    "were not found in the model data."
+                ) from e
+            
+            if calc_df["map_theta_group"].isna().any():
+                missing = calc_df[calc_df["map_theta_group"].isna()]
+                raise ValueError(
+                    f"The following (genotype, titrant_name) pairs were not found in the model data: "
+                    f"{missing[['genotype', 'titrant_name']].drop_duplicates().values}"
+                )
+
+        # Extract posterior parameters and flatten (num_samples, num_groups)
+        # Note: their common prefix is "theta_" (see extract_parameters)
+        hill_n = param_posteriors["theta_hill_n"].reshape(param_posteriors["theta_hill_n"].shape[0], -1)
+        log_hill_K = param_posteriors["theta_log_hill_K"].reshape(param_posteriors["theta_log_hill_K"].shape[0], -1)
+        theta_high = param_posteriors["theta_theta_high"].reshape(param_posteriors["theta_theta_high"].shape[0], -1)
+        theta_low = param_posteriors["theta_theta_low"].reshape(param_posteriors["theta_theta_low"].shape[0], -1)
+
+        # Vectorized calculation of theta for all samples
+        # titrant_conc shape: (N_points,)
+        # mapping shape: (N_points,)
+        # params shape: (N_samples, N_groups)
+        
+        # log_titrant shape: (1, N_points)
+        log_titrant = calc_df["titrant_conc"].values.copy()
+        log_titrant[log_titrant == 0] = ZERO_CONC_VALUE
+        log_titrant = np.log(log_titrant)[None, :]
+        
+        # indices shape: (N_points,)
+        indices = calc_df["map_theta_group"].values.astype(int)
+        
+        # Indexed params shape: (N_samples, N_points)
+        h_n = hill_n[:, indices]
+        l_K = log_hill_K[:, indices]
+        t_h = theta_high[:, indices]
+        t_l = theta_low[:, indices]
+        
+        # Calculate theta using Hill equation: (N_samples, N_points)
+        # occupancy = 1 / (1 + exp(-hill_n * (log(conc) - log_K)))
+        occupancy = 1.0 / (1.0 + np.exp(-h_n * (log_titrant - l_K)))
+        theta_samples = t_l + (t_h - t_l) * occupancy
+        
+        # Calculate quantiles across samples (axis 0)
+        for q_name, q_val in q_to_get.items():
+            calc_df[q_name] = np.quantile(theta_samples, q_val, axis=0)
+
+        return calc_df.drop(columns=["map_theta_group"])
+
+    def extract_growth_predictions(self,
+                                  posteriors,
+                                  q_to_get=None):
+        """
+        Extract predicted ln_cfu values matching the input growth data.
+
+        This method pulls the 'growth_pred' values from the posterior samples
+        and maps them back to the original rows in `self.growth_df`.
+
+        Parameters
+        ----------
+        posteriors : dict or str
+            Assumes this is a dictionary of posteriors keying parameters to
+            numpy arrays or a path to a .npz file containing posterior samples
+            for model parameters.
+        q_to_get : dict, optional
+            Dictionary mapping output column names to quantile values (between 0 and 1)
+            to extract from the posterior samples. If None, a default set of quantiles
+            is used (min, lower_95, lower_std, lower_quartile, median, upper_std,
+            upper_quartile, upper_95, max).
+
+        Returns
+        -------
+        pd.DataFrame
+            A copy of `self.growth_df` with new columns for the requested
+            quantiles of 'ln_cfu_pred'.
+
+        Raises
+        ------
+        ValueError
+            If 'growth_pred' is not in the posterior samples.
+            If `q_to_get` is not a dictionary.
+        """
+
+        # Load the posterior file
+        if isinstance(posteriors,dict):
+            param_posteriors = posteriors
+        else:
+            param_posteriors = np.load(posteriors)
+
+        if "growth_pred" not in param_posteriors:
+            raise ValueError(
+                "'growth_pred' not found in posterior samples. Make sure the "
+                "model was run in a way that generates growth predictions."
+            )
+
+        # Named quantiles to pull from the posterior distribution
+        if q_to_get is None:
+            q_to_get = {"min":0.0,
+                        "lower_95":0.025,
+                        "lower_std":0.159,
+                        "lower_quartile":0.25,
+                        "median":0.5,
+                        "upper_quartile":0.75,
+                        "upper_std":0.841,
+                        "upper_95":0.975,
+                        "max":1.0}
+
+        # make sure q_to_get is a dictionary
+        if not isinstance(q_to_get,dict):
+            raise ValueError(
+                "q_to_get should be a dictionary keying column names to quantiles"
+            )
+
+        # Grab the growth_pred tensor
+        growth_pred = param_posteriors["growth_pred"]
+
+        # The tensor shape is (num_samples, replicate, time, condition_pre, 
+        # condition_sel, titrant_name, titrant_conc, genotype)
+        
+        # Get the index columns from the growth_df
+        rep_idx = self.growth_df["replicate_idx"].values
+        time_idx = self.growth_df["time_idx"].values
+        pre_idx = self.growth_df["condition_pre_idx"].values
+        sel_idx = self.growth_df["condition_sel_idx"].values
+        name_idx = self.growth_df["titrant_name_idx"].values
+        conc_idx = self.growth_df["titrant_conc_idx"].values
+        geno_idx = self.growth_df["genotype_idx"].values
+
+        # Pull predictions for each row across all samples
+        # shape: (num_samples, num_rows)
+        preds = growth_pred[:, rep_idx, time_idx, pre_idx, sel_idx, name_idx, conc_idx, geno_idx]
+
+        # Calculate quantiles and load into output dataframe
+        out_df = self.growth_df.copy()
+        for q_name, q_val in q_to_get.items():
+            out_df[q_name] = np.quantile(preds, q_val, axis=0)
+
+        return out_df
 
 
     @property
@@ -1044,7 +1339,62 @@ class ModelClass:
             "dk_geno":self._dk_geno,
             "activity":self._activity,
             "theta":self._theta,
+            "transformation":self._transformation,
             "theta_growth_noise":self._theta_growth_noise,
             "theta_binding_noise":self._theta_binding_noise,
+            "spiked_genotypes":self._spiked_genotypes,
         }
+
+    @staticmethod
+    def load_config(config_file):
+        """
+        Load model configuration from a YAML file.
+
+        Parameters
+        ----------
+        config_file : str
+            Path to the YAML configuration file.
+
+        Returns
+        -------
+        growth_df : str
+            Path to the growth data CSV file.
+        binding_df : str
+            Path to the binding data CSV file.
+        settings : dict
+            Dictionary of model settings.
+        """
+        if not os.path.exists(config_file):
+            raise FileNotFoundError(f"Configuration file not found: {config_file}")
+
+        with open(config_file, "r") as f:
+            config = yaml.safe_load(f)
+
+        return config["growth_df"], config["binding_df"], config["settings"]
+
+    def write_config(self, 
+                     growth_df_path, 
+                     binding_df_path, 
+                     out_root):
+        """
+        Write model configuration to a YAML file.
+
+        Parameters
+        ----------
+        growth_df_path : str
+            Path to the growth data CSV file.
+        binding_df_path : str
+            Path to the binding data CSV file.
+        out_root : str
+            Root filename for the configuration file ({out_root}_config.yaml).
+        """
+        config = {
+            "tfscreen_version": __version__,
+            "growth_df": growth_df_path,
+            "binding_df": binding_df_path,
+            "settings": self.settings
+        }
+
+        with open(f"{out_root}_config.yaml", "w") as f:
+            yaml.dump(config, f, default_flow_style=False)
 

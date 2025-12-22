@@ -246,6 +246,9 @@ def test_main():
         main()
         mock_gen_main.assert_called_once_with(
             analyze_theta,
-            manual_arg_types={"seed": int, "checkpoint_file": str, "spiked": list},
+            manual_arg_types={"seed": int,
+                              "checkpoint_file": str,
+                              "config_file": str,
+                              "spiked": list},
             manual_arg_nargs={"spiked": "+"}
         )
