@@ -381,12 +381,23 @@ class RunInference:
 
             # Sample the entire guide posterior distribution 
             post_key = self.get_key()
-            latent_sampler = Predictive(guide,
-                                        params=params,
-                                        num_samples=sampling_batch_size)
-            latent_samples = latent_sampler(post_key,
-                                            priors=self.model.priors,
-                                            data=full_data)
+            
+            # If the guide is Laplace, we must use sample_posterior to trigger 
+            # Hessian calculation and get uncertainty. Predictive(guide) only
+            # returns the MAP point. 
+            if isinstance(guide, AutoLaplaceApproximation):
+                latent_samples = guide.sample_posterior(post_key, 
+                                                        params, 
+                                                        sample_shape=(sampling_batch_size,),
+                                                        priors=self.model.priors,
+                                                        data=full_data)
+            else:
+                latent_sampler = Predictive(guide,
+                                            params=params,
+                                            num_samples=sampling_batch_size)
+                latent_samples = latent_sampler(post_key,
+                                                priors=self.model.priors,
+                                                data=full_data)
 
             # Sample batches of genotypes
             batched_results = {}

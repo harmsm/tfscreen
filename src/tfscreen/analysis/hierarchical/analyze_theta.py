@@ -1,5 +1,6 @@
 from tfscreen.analysis.hierarchical.run_inference import RunInference
 from tfscreen.analysis.hierarchical.growth_model import GrowthModel
+from tfscreen.analysis.hierarchical.summarize_posteriors import summarize_posteriors
 from tfscreen.util.cli.generalized_main import generalized_main
 
 import os
@@ -16,7 +17,11 @@ def _run_map(ri,
              convergence_tolerance=1e-5,
              convergence_window=1000,
              checkpoint_interval=1000,
-             map_num_steps=100000):
+             map_num_steps=100000,
+             num_posterior_samples=10000,
+             sampling_batch_size=100,
+             forward_batch_size=512,
+             always_get_posterior=False):
     """
     Run maximum a posteriori (MAP) optimization for hierarchical model inference.
 
@@ -72,7 +77,8 @@ def _run_map(ri,
      # Create a maximum a posteriori svi object
     map_obj = ri.setup_map(adam_step_size=schedule,
                            adam_clip_norm=adam_clip_norm,
-                           elbo_num_particles=elbo_num_particles)
+                           elbo_num_particles=elbo_num_particles,
+                           guide_type="laplace")
     
     if os.path.isfile(f"{out_root}_losses.csv"):
         os.remove(f"{out_root}_losses.csv")
@@ -91,6 +97,19 @@ def _run_map(ri,
 
     # Write the current parameter values
     ri.write_params(params,out_root=out_root)
+
+    if converged or always_get_posterior:
+        ri.get_posteriors(svi=map_obj,
+                          svi_state=svi_state,
+                          out_root=out_root,
+                          num_posterior_samples=num_posterior_samples,
+                          sampling_batch_size=sampling_batch_size,
+                          forward_batch_size=forward_batch_size)
+        
+        # Write summary files
+        summarize_posteriors(posterior_file=f"{out_root}_posterior.npz",
+                             config_file=f"{out_root}_config.yaml",
+                             out_root=out_root)
 
     # Write convergence information to stdout
     if converged:
@@ -204,6 +223,11 @@ def _run_svi(ri,
                           sampling_batch_size=sampling_batch_size,
                           forward_batch_size=forward_batch_size)
         
+        # Write summary files
+        summarize_posteriors(posterior_file=f"{out_root}_posterior.npz",
+                             config_file=f"{out_root}_config.yaml",
+                             out_root=out_root)
+        
     # Write convergence information to stdout
     if converged:
         print("SVI run converged.",flush=True)
@@ -297,6 +321,9 @@ def analyze_theta(growth_df=None,
         string)
     checkpoint_file : str or None, optional
         Path to a checkpoint file to resume SVI from, or None to start fresh.
+    analysis_method : str, optional
+        Method for inference. Allowed values are 'svi' (default), 'map', 'mle', 
+        or 'posterior'.
     out_root : str, optional
         Output file root for checkpoints and results (default 'tfs').
     adam_step_size : float, optional
@@ -400,6 +427,11 @@ def analyze_theta(growth_df=None,
     # ELBO convergence.
     ri = RunInference(gm,seed)
 
+    # For MLE, flatten the priors and then run MAP
+    if analysis_method == "mle":
+        gm.flatten_priors()
+        analysis_method = "map"
+
     # Run SVI
     if analysis_method == "svi":
 
@@ -434,7 +466,11 @@ def analyze_theta(growth_df=None,
                         convergence_tolerance=convergence_tolerance,
                         convergence_window=convergence_window,
                         checkpoint_interval=checkpoint_interval,
-                        map_num_steps=num_steps)
+                        map_num_steps=num_steps,
+                        num_posterior_samples=num_posterior_samples,
+                        sampling_batch_size=sampling_batch_size,
+                        forward_batch_size=forward_batch_size,
+                        always_get_posterior=always_get_posterior)
     
     elif analysis_method == "posterior":
 
@@ -459,7 +495,7 @@ def analyze_theta(growth_df=None,
     else:
         raise ValueError(
             f"analysis method '{analysis_method}' not recognized. This should "
-            "be 'SVI', 'MAP', or 'posterior'"
+            "be 'svi', 'map', 'mle', or 'posterior'"
         )
 
 

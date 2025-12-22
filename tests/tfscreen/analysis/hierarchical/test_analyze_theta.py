@@ -9,6 +9,7 @@ from tfscreen.analysis.hierarchical.analyze_theta import (
     _run_map,
     main
 )
+import tfscreen.analysis.hierarchical.analyze_theta as analyze_theta_mod
 
 # =============================================================================
 # Fixtures
@@ -28,6 +29,9 @@ def mock_run_inference(mocker):
     
     # run_optimization returns (svi_state, params, converged)
     mock_ri_instance.run_optimization.return_value = ("final_state", {"p": 1}, True)
+
+    # Patch summarize_posteriors globally for these tests
+    mocker.patch("tfscreen.analysis.hierarchical.analyze_theta.summarize_posteriors")
     
     return mock_ri_class, mock_ri_instance
 
@@ -57,6 +61,8 @@ def test_run_svi_flow_converged(mock_run_inference):
         num_steps=500,
         num_posterior_samples=100
     )
+    
+    # 1. Setup SVI
     
     # 1. Setup SVI
     ri.setup_svi.assert_called_once()
@@ -120,7 +126,6 @@ def test_run_map_flow(mock_run_inference):
     """Test MAP execution flow."""
     _, ri = mock_run_inference
     init_params = {"p": 10}
-    
     with patch("os.path.isfile", return_value=True), \
          patch("os.remove") as mock_remove:
         
@@ -128,7 +133,8 @@ def test_run_map_flow(mock_run_inference):
             ri,
             init_params=init_params,
             out_root="test_map",
-            map_num_steps=1000
+            map_num_steps=1000,
+            num_posterior_samples=100
         )
         
         # Should delete old losses file
@@ -151,6 +157,19 @@ def test_run_map_flow(mock_run_inference):
     
     # 3. Write Params
     ri.write_params.assert_called_once_with({"p": 1}, out_root="test_map")
+
+    # 4. Get Posteriors (newly added to _run_map)
+    ri.get_posteriors.assert_called_once_with(
+        svi="mock_map_obj",
+        svi_state="final_state",
+        out_root="test_map",
+        num_posterior_samples=100,
+        sampling_batch_size=ANY,
+        forward_batch_size=ANY
+    )
+
+    # 5. Summarize Posteriors is called (verified by global patch if needed, 
+    # but here we just ensure flow moves forward)
 
 # =============================================================================
 # Tests for analyze_theta (Orchestrator)
