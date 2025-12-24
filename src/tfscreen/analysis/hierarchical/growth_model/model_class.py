@@ -1244,48 +1244,6 @@ class ModelClass:
         return out_df
 
 
-    def flatten_priors(self):
-        """
-        Flatten all priors by setting scale and std hyperparameters to large values.
-        This effectively turns MAP into MLE.
-        """
-        
-        def _flatten_recursive(obj):
-            # If not a flax/standard dataclass, return as is
-            if not hasattr(obj, "__dataclass_fields__"):
-                return obj
-            
-            updates = {}
-            for field_name in obj.__dataclass_fields__:
-                val = getattr(obj, field_name)
-                
-                # Heuristic for scale/std parameters (Normal, HalfNormal, LogNormal)
-                if "scale" in field_name or "std" in field_name:
-                    # Special case: Growth model rate parameters are sometimes named 'scale'
-                    # but behave as rates in Gamma distributions so they should be small
-                    # to imply high uncertainty.
-                    if "beta_kappa_scale" in field_name or "rate" in field_name:
-                        updates[field_name] = 1e-6
-                    else:
-                        updates[field_name] = 100.0
-                
-                # Heuristic for rate parameters (Gamma, Exponential)
-                elif "rate" in field_name:
-                    updates[field_name] = 1e-6
-                
-                # Recurse if the value is itself a dataclass
-                elif hasattr(val, "__dataclass_fields__"):
-                    updates[field_name] = _flatten_recursive(val)
-            
-            # Apply all updates to this dataclass
-            if updates:
-                return obj.replace(**updates)
-            
-            return obj
-
-        self._priors = _flatten_recursive(self._priors)
-
-
     @property
     def init_params(self):
         """A dictionary of initial parameter guesses for optimization."""

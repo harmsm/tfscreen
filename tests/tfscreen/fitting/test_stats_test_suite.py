@@ -77,7 +77,7 @@ def test_het_breuschpagan_linalg_error(mocker):
     mocker.patch("tfscreen.fitting.stats_test_suite.het_breuschpagan", side_effect=np.linalg.LinAlgError)
     
     param_real = np.array([1.0, 2.0, 3.0])
-    param_est = np.array([1.1, 2.1, 3.1])
+    param_est = np.array([1.1, 2.2, 3.3])
     param_std = np.array([0.1, 0.1, 0.1])
     
     with pytest.warns(UserWarning, match="het_breuschpagan test did not converge"):

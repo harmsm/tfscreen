@@ -471,39 +471,6 @@ def test_extract_growth_predictions_full(initialized_model_class, tmpdir):
     res = ModelClass.extract_growth_predictions(model, path)
     assert len(res) > 0
 
-def test_flatten_priors(initialized_model_class):
-    model = initialized_model_class
-    class Dummy:
-        def __init__(self, **kwargs):
-            self.__dataclass_fields__ = list(kwargs.keys())
-            for k, v in kwargs.items():
-                setattr(self, k, v)
-        def replace(self, **kwargs):
-            new = Dummy(**{k:getattr(self,k) for k in self.__dataclass_fields__})
-            for k, v in kwargs.items():
-                setattr(new, k, v)
-            return new
-            
-    priors = Dummy(scale_param=1.0, beta_kappa_scale=1.0, sub=Dummy(std_param=1.0, rate_param=1.0), other=Dummy())
-    model._priors = priors
-    ModelClass.flatten_priors(model)
-    assert model._priors.scale_param == 100.0
-    assert model._priors.beta_kappa_scale == 1e-6
-    assert model._priors.sub.std_param == 100.0
-    assert model._priors.sub.rate_param == 1e-6
-    
-    # 1255: not a dataclass inside recursion
-    priors = Dummy(val=1.0, sub="not_a_dataclass")
-    model._priors = priors
-    ModelClass.flatten_priors(model)
-    assert model._priors.val == 1.0
-    assert model._priors.sub == "not_a_dataclass"
-
-    # 1255: not a dataclass at root
-    model._priors = 1.0
-    ModelClass.flatten_priors(model)
-    assert model._priors == 1.0
-
 def test_get_random_idx_logic(initialized_model_class):
     model = initialized_model_class
     model.data = MagicMock()

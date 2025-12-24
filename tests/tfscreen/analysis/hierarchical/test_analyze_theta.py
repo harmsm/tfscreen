@@ -75,6 +75,8 @@ def test_run_svi_flow_converged(mock_run_inference):
         svi_state=None,
         convergence_tolerance=ANY,
         convergence_window=ANY,
+        patience=ANY,
+        convergence_check_interval=ANY,
         checkpoint_interval=ANY,
         num_steps=500
     )
@@ -126,31 +128,27 @@ def test_run_map_flow(mock_run_inference):
     """Test MAP execution flow."""
     _, ri = mock_run_inference
     init_params = {"p": 10}
-    with patch("os.path.isfile", return_value=True), \
-         patch("os.remove") as mock_remove:
-        
-        state, params, converged = _run_map(
-            ri,
-            init_params=init_params,
-            out_root="test_map",
-            map_num_steps=1000,
-            num_posterior_samples=100
-        )
-        
-        # Should delete old losses file
-        mock_remove.assert_called_once_with("test_map_losses.csv")
+    state, params, converged = _run_map(
+        ri,
+        init_params=init_params,
+        out_root="test_map",
+        map_num_steps=1000,
+        num_posterior_samples=100
+    )
     
     # 1. Setup MAP
-    ri.setup_map.assert_called_once()
+    ri.setup_svi.assert_called_once()
     
     # 2. Run Optimization
     ri.run_optimization.assert_called_once_with(
-        "mock_map_obj",
+        "mock_svi_obj",
         init_params=init_params,
         out_root="test_map",
         svi_state=None,
         convergence_tolerance=ANY,
         convergence_window=ANY,
+        patience=ANY,
+        convergence_check_interval=ANY,
         checkpoint_interval=ANY,
         num_steps=1000
     )
@@ -158,15 +156,8 @@ def test_run_map_flow(mock_run_inference):
     # 3. Write Params
     ri.write_params.assert_called_once_with({"p": 1}, out_root="test_map")
 
-    # 4. Get Posteriors (newly added to _run_map)
-    ri.get_posteriors.assert_called_once_with(
-        svi="mock_map_obj",
-        svi_state="final_state",
-        out_root="test_map",
-        num_posterior_samples=100,
-        sampling_batch_size=ANY,
-        forward_batch_size=ANY
-    )
+    # 4. Get Posteriors (REMOVED from _run_map in recent cleanup)
+    ri.get_posteriors.assert_not_called()
 
     # 5. Summarize Posteriors is called (verified by global patch if needed, 
     # but here we just ensure flow moves forward)
@@ -216,7 +207,7 @@ def test_analyze_theta_svi_mode(mock_growth_model, mock_run_inference):
         # ri is positional arg 0
         args, kwargs = mock_run_svi.call_args
         assert args[0] == ri_inst
-        assert kwargs["init_params"] is None
+        assert kwargs["init_params"] == gm_inst.init_params
 
 def test_analyze_theta_map_mode(mock_growth_model, mock_run_inference):
     """Test analyze_theta executing MAP path."""
@@ -327,29 +318,17 @@ def test_main():
                               "seed": int,
                               "checkpoint_file": str,
                               "config_file": str,
-                              "spiked": list,
-                              "map_guide_type": str},
+                              "spiked": list},
             manual_arg_nargs={"spiked": "+"}
         )
-def test_analyze_theta_mle_mode(mock_growth_model, mock_run_inference):
-    """Test analyze_theta executing MLE path."""
-    gm_class, gm_inst = mock_growth_model
-    _, ri_inst = mock_run_inference
-    
-    with patch("tfscreen.analysis.hierarchical.analyze_theta._run_map") as mock_run_map:
-        analyze_theta(growth_df="g", binding_df="b", seed=1, analysis_method="mle")
-        
-        gm_inst.flatten_priors.assert_called_once()
-        mock_run_map.assert_called_once()
-
 import runpy
 import sys
 def test_main_entry_point():
     with patch.object(sys, 'argv', ['analyze_theta', '--help']):
-        # Patch the root function to avoid re-import issues with runpy
-        with patch("tfscreen.util.cli.generalized_main.generalized_main") as mock_gen:
+        # Patch the function where it is used in the module
+        with patch("tfscreen.analysis.hierarchical.analyze_theta.generalized_main") as mock_gen:
             try:
-                runpy.run_module("tfscreen.analysis.hierarchical.analyze_theta", run_name="__main__")
+                main()
             except SystemExit:
                 pass
             mock_gen.assert_called_once()

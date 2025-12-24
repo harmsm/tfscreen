@@ -99,7 +99,11 @@ def stats_test_suite(param_est,param_std,param_real):
         normalized_rmse = np.inf 
 
     # R and R^2
-    r_val, _ = pearsonr(param_real, param_est)
+    # Avoid pearsonr warnings if inputs are constant
+    if np.all(param_real == param_real[0]) or np.all(param_est == param_est[0]):
+        r_val, _ = np.nan, np.nan
+    else:
+        r_val, _ = pearsonr(param_real, param_est)
     r_squared = r_val**2
 
     mean_error = np.mean(diff)
@@ -114,11 +118,17 @@ def stats_test_suite(param_est,param_std,param_real):
     coverage_prob = np.sum(in_ci)/param_est.shape[0]
 
     # Look for correlation in residuals
-    residual_corr, residual_corr_p_value = pearsonr(diff, param_real)
+    if np.var(diff) < 1e-12 or np.var(param_real) < 1e-12:
+        residual_corr, residual_corr_p_value = np.nan, np.nan
+    else:
+        residual_corr, residual_corr_p_value = pearsonr(diff, param_real)
     
     # Look for heteroscedasticity in the residuals
     try:
-        bp_test = het_breuschpagan(diff, sm.add_constant(param_real))
+        if np.var(diff) < 1e-12 or np.var(param_real) < 1e-12:
+            bp_test = [np.nan, np.nan]
+        else:
+            bp_test = het_breuschpagan(diff, sm.add_constant(param_real))
     except (np.linalg.LinAlgError, ValueError):
         warnings.warn("het_breuschpagan test did not converge or invalid input.\n")
         bp_test = [np.nan,np.nan]

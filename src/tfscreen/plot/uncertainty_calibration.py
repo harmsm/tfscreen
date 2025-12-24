@@ -83,6 +83,8 @@ def uncertainty_calibration(
                               percentile=percentile,
                               pad_by=pad_by)
     ax_max = np.abs(ax_max)
+    if ax_max == 0:
+        ax_max = 1.0
     
     ax.scatter(diff,param_std,**final_scatter_kwargs)
     ax.set_xlabel("est_value - real_value")

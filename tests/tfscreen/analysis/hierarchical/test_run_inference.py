@@ -43,42 +43,18 @@ def test_init():
     with pytest.raises(ValueError, match="`model` must have attribute data"):
         RunInference(model, seed=42)
 
-def test_setup_map():
-    model = MockModel()
-    ri = RunInference(model, seed=42)
-    
-    svi = ri.setup_map(guide_type="component")
-    assert svi.guide == model.jax_model_guide
-    
-    svi = ri.setup_map(guide_type="delta")
-    assert isinstance(svi.guide, AutoDelta)
-    
-    svi = ri.setup_map(guide_type="laplace")
-    assert isinstance(svi.guide, AutoLaplaceApproximation)
-    
-    with pytest.raises(ValueError, match="guide_type 'bad' not recognized"):
-        ri.setup_map(guide_type="bad")
-
-def test_setup_map_optax():
-    model = MockModel()
-    ri = RunInference(model, seed=42)
-    
-    # Optax schedule
-    schedule = optax.exponential_decay(init_value=1e-3, transition_steps=1000, decay_rate=0.9)
-    svi = ri.setup_map(adam_step_size=schedule)
-    assert svi.optim is not None
 
 def test_setup_svi():
     model = MockModel()
     ri = RunInference(model, seed=42)
     
-    svi = ri.setup_svi()
+    # Test with default guide_type
+    svi = ri.setup_svi(guide_type="component")
     assert svi.guide == model.jax_model_guide
     
-    # Test with init_params
-    svi = ri.setup_svi(init_params={"p": jnp.array(1.0)})
-    assert svi.guide == model.jax_model_guide
-
+    svi = ri.setup_svi(guide_type="delta")
+    assert isinstance(svi.guide, AutoDelta)
+    
 def test_run_optimization(tmpdir, mocker):
     model = MockModel()
     ri = RunInference(model, seed=42)
@@ -101,9 +77,11 @@ def test_run_optimization(tmpdir, mocker):
     state, params, converged = ri.run_optimization(
         mock_svi, 
         num_steps=10, 
-        checkpoint_interval=5, 
+        convergence_check_interval=1,
+        checkpoint_interval=1,
         out_root=out_root,
-        convergence_tolerance=0.01
+        convergence_tolerance=0.01,
+        patience=1
     )
     
     assert state is not None
@@ -127,7 +105,7 @@ def test_run_optimization_no_patch_scan(mocker):
     # 236-241: scan_fn
     # Don't patch lax.scan, let it run
     # 228: Call jitter
-    ri.run_optimization(mock_svi, num_steps=2, checkpoint_interval=1, init_params={"p": jnp.array(1.0)})
+    ri.run_optimization(mock_svi, num_steps=2, convergence_check_interval=1, checkpoint_interval=1, init_params={"p": jnp.array(1.0)})
     assert len(ri._loss_deque) > 0
 
 def test_run_optimization_svi_state_types(tmpdir, mocker):
@@ -163,9 +141,11 @@ def test_run_optimization_convergence(mocker):
     state, params, converged = ri.run_optimization(
         mock_svi, 
         num_steps=100, 
-        checkpoint_interval=10,
+        convergence_check_interval=1,
+        checkpoint_interval=1,
         convergence_tolerance=1e-1,
-        convergence_window=10
+        convergence_window=1,
+        patience=1
     )
     # It might not converge in exactly this setup due to how scan returns, 
     # but it covers the logic in _update_loss_deque and _check_convergence
@@ -183,7 +163,7 @@ def test_run_optimization_nan_explosion(mocker):
     mock_svi.get_params.return_value = {"p": jnp.array(np.nan)}
     
     with pytest.raises(RuntimeError, match="model exploded"):
-        ri.run_optimization(mock_svi, num_steps=1, checkpoint_interval=1)
+        ri.run_optimization(mock_svi, num_steps=1, convergence_check_interval=1, checkpoint_interval=1)
 
 def test_get_posteriors(tmpdir, mocker):
     model = MockModel()
@@ -205,7 +185,6 @@ def test_get_posteriors(tmpdir, mocker):
     ri.get_posteriors(mock_svi, "state", out_root, num_posterior_samples=20, sampling_batch_size=10)
     
     assert os.path.exists(f"{out_root}_posterior.npz")
-    assert os.path.exists(f"{out_root}_p.csv")
 
 def test_get_posteriors_batching_logic(tmpdir, mocker):
     model = MockModel()
@@ -225,35 +204,17 @@ def test_get_posteriors_batching_logic(tmpdir, mocker):
     # Total 6 calls.
     mock_sampler.side_effect = [
         {"p": jnp.zeros((10, 5))}, # latent 1
-        {"p": jnp.zeros((10, 5))}, # forward 1
+        {"obs": jnp.zeros((10, 5))}, # forward 1
         {"p": jnp.zeros((10, 5))}, # latent 2
-        {"p": jnp.zeros((10, 5))}, # forward 2
+        {"obs": jnp.zeros((10, 5))}, # forward 2
         {"p": jnp.zeros((5, 5))},  # latent 3
-        {"p": jnp.zeros((5, 5))}   # forward 3
+        {"obs": jnp.zeros((5, 5))}   # forward 3
     ]
     
     mocker.patch("jax.device_get", side_effect=lambda x: x)
     
     ri.get_posteriors(mock_svi, "state", out_root, num_posterior_samples=25, sampling_batch_size=10)
     assert os.path.exists(f"{out_root}_posterior.npz")
-
-def test_get_posteriors_csv_sort(tmpdir, mocker):
-    model = MockModel()
-    # 465-466: sorting results
-    model.extract_parameters = mocker.Mock(return_value={"p": pd.DataFrame({"a": [2, 1]})})
-    ri = RunInference(model, seed=42)
-    out_root = os.path.join(tmpdir, "test_sort")
-    
-    mock_svi = mocker.Mock()
-    mock_svi.guide = mocker.Mock()
-    mock_svi.get_params.return_value = {}
-    
-    mocker.patch("tfscreen.analysis.hierarchical.run_inference.Predictive").return_value.return_value = {"p": jnp.zeros((1, 1))}
-    mocker.patch("jax.device_get", side_effect=lambda x: x)
-    
-    # 479-480: write_csv=True
-    ri.get_posteriors(mock_svi, "state", out_root, num_posterior_samples=1, sampling_batch_size=1, write_csv=True)
-    assert os.path.exists(f"{out_root}_p.csv")
 
 def test_get_posteriors_full_logic(tmpdir, mocker):
     model = MockModel(num_genotype=10)
@@ -280,37 +241,6 @@ def test_get_posteriors_full_logic(tmpdir, mocker):
                      sampling_batch_size=1, forward_batch_size=5)
     assert os.path.exists(f"{out_root}_posterior.npz")
 
-def test_get_posteriors_laplace(tmpdir, mocker):
-    model = MockModel()
-    model.extract_parameters = mocker.Mock(return_value={})
-    ri = RunInference(model, seed=42)
-    out_root = os.path.join(tmpdir, "test_laplace")
-    
-    mock_svi = mocker.Mock()
-    # Mock guide to satisfy isinstance and provide required methods
-    mock_svi.guide = mocker.Mock()
-    mock_svi.guide.__class__ = AutoLaplaceApproximation
-    mock_svi.get_params.return_value = {}
-    
-    # Mock guide.get_posterior and sample
-    mock_posterior = mocker.Mock()
-    mock_posterior.sample.return_value = jnp.zeros((10, 5)) # Unpacked shape
-    mock_svi.guide.get_posterior.return_value = mock_posterior
-    
-    # Mock guide.sample_posterior and _unpack_latent
-    mock_svi.guide.sample_posterior.return_value = {"param": jnp.zeros((10, 10))}
-    mock_svi.guide._unpack_latent.side_effect = lambda x: {"param": x}
-    
-    # Mock Predictive
-    mock_predictive = mocker.patch("tfscreen.analysis.hierarchical.run_inference.Predictive")
-    mock_forward_sampler = mock_predictive.return_value
-    mock_forward_sampler.return_value = {"site": jnp.zeros((10, 10))}
-    
-    mocker.patch("jax.device_get", side_effect=lambda x: x)
-    
-    ri.get_posteriors(mock_svi, "state", out_root, num_posterior_samples=10, sampling_batch_size=10)
-    assert os.path.exists(f"{out_root}_posterior.npz")
-
 def test_run_optimization_restore(tmpdir, mocker):
     model = MockModel()
     ri = RunInference(model, seed=42)
@@ -335,7 +265,7 @@ def test_run_optimization_restore(tmpdir, mocker):
     mock_svi.get_params.return_value = {"p": jnp.array(1.0)}
     
     # Run with checkpoint path
-    ri.run_optimization(mock_svi, svi_state=checkpoint_file, num_steps=1, checkpoint_interval=1)
+    ri.run_optimization(mock_svi, svi_state=checkpoint_file, num_steps=1, convergence_check_interval=1, checkpoint_interval=1)
 
 def test_write_params(tmpdir):
     model = MockModel()
@@ -364,7 +294,9 @@ def test_update_loss_deque():
     from collections import deque
     ri._loss_deque = deque(maxlen=200)
     # Fill deque to trigger relative change calculation
-    ri._update_loss_deque(np.ones(200), convergence_window=100)
+    ri._update_loss_deque(np.ones(200))
+    # std will be 0, so 1e-10 epsilon prevents div by zero. 
+    # (1 - 1) / 1e-10 = 0
     assert ri._relative_change == 0.0
 
 def test_predict_from_file(tmpdir, mocker):

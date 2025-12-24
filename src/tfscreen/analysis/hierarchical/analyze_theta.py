@@ -14,15 +14,16 @@ def _run_map(ri,
              adam_final_step_size=1e-6,
              adam_clip_norm=1.0,
              elbo_num_particles=2,
-             convergence_tolerance=1e-5,
-             convergence_window=1000,
-             checkpoint_interval=1000,
+             convergence_tolerance=0.01,
+             convergence_window=10,
+             patience=10,
+             convergence_check_interval=2,
+             checkpoint_interval=10,
              map_num_steps=100000,
              num_posterior_samples=10000,
              sampling_batch_size=100,
              forward_batch_size=512,
-             always_get_posterior=False,
-             map_guide_type="diagonal_laplace"):
+             always_get_posterior=False):
     """
     Run maximum a posteriori (MAP) optimization for hierarchical model inference.
 
@@ -52,11 +53,16 @@ def _run_map(ri,
     map_num_steps : int, optional
         Number of MAP optimization steps (default 100000).
     convergence_tolerance : float, optional
-        Relative change in loss to declare MAP convergence (default 1e-5).
+        Relative change in smoothed loss to declare MAP convergence (default 0.01).
     convergence_window : int, optional
-        Number of steps to average for convergence check (default 1000).
+        Number of epochs to average for convergence check (default 10).
+    patience : int, optional
+        Number of consecutive checks meeting tolerance to declare convergence
+        (default 10).
+    convergence_check_interval : int, optional
+        Frequency (in epochs) to check for convergence (default 2).
     checkpoint_interval : int, optional
-        Steps between checkpoints and convergence checks (default 1000).
+        Steps between checkpoints and convergence checks (default 10).
     map_guide_type : str, optional
         Type of guide to use for MAP. Allowed values are 'laplace',
         'diagonal_laplace' (default), 'normal', or 'delta'.
@@ -71,7 +77,7 @@ def _run_map(ri,
         True if MAP converged according to the specified tolerance.
     """
 
-     # Create a learning rate schedule
+    # Create a learning rate schedule
     schedule = optax.exponential_decay(
         init_value=adam_step_size,
         transition_steps=int(map_num_steps * 0.25),
@@ -79,13 +85,10 @@ def _run_map(ri,
     )
 
      # Create a maximum a posteriori svi object
-    map_obj = ri.setup_map(adam_step_size=schedule,
+    map_obj = ri.setup_svi(adam_step_size=schedule,
                            adam_clip_norm=adam_clip_norm,
                            elbo_num_particles=elbo_num_particles,
-                           guide_type=map_guide_type)
-    
-    if os.path.isfile(f"{out_root}_losses.csv"):
-        os.remove(f"{out_root}_losses.csv")
+                           guide_type="delta")
 
     # Run MAP
     svi_state, params, converged = ri.run_optimization(
@@ -95,25 +98,14 @@ def _run_map(ri,
         svi_state=checkpoint_file,
         convergence_tolerance=convergence_tolerance,
         convergence_window=convergence_window,
+        patience=patience,
+        convergence_check_interval=convergence_check_interval,
         checkpoint_interval=checkpoint_interval,
         num_steps=map_num_steps,
     )
 
     # Write the current parameter values
     ri.write_params(params,out_root=out_root)
-
-    if converged or always_get_posterior:
-        ri.get_posteriors(svi=map_obj,
-                          svi_state=svi_state,
-                          out_root=out_root,
-                          num_posterior_samples=num_posterior_samples,
-                          sampling_batch_size=sampling_batch_size,
-                          forward_batch_size=forward_batch_size)
-        
-        # Write summary files
-        summarize_posteriors(posterior_file=f"{out_root}_posterior.npz",
-                             config_file=f"{out_root}_config.yaml",
-                             out_root=out_root)
 
     # Write convergence information to stdout
     if converged:
@@ -131,9 +123,11 @@ def _run_svi(ri,
              adam_final_step_size=1e-6,
              adam_clip_norm=1.0,
              elbo_num_particles=2,
-             convergence_tolerance=1e-4,
-             convergence_window=1000,
-             checkpoint_interval=1000,
+             convergence_tolerance=0.01,
+             convergence_window=10,
+             patience=10,
+             convergence_check_interval=2,
+             checkpoint_interval=10,
              num_steps=100000,
              num_posterior_samples=10000,
              sampling_batch_size=100,
@@ -166,11 +160,16 @@ def _run_svi(ri,
     elbo_num_particles : int, optional
         Number of particles for ELBO estimation during SVI (default 2).
     convergence_tolerance : float, optional
-        Relative change in loss to declare SVI convergence (default 1e-4).
+        Relative change in loss to declare SVI convergence (default 0.01).
     convergence_window : int, optional
-        Number of steps to average for convergence check (default 1000).
+        Number of epochs to average for convergence check (default 10).
+    patience : int, optional
+        Number of consecutive checks meeting tolerance to declare convergence
+        (default 10).
+    convergence_check_interval : int, optional
+        Frequency (in epochs) to check for convergence (default 2).
     checkpoint_interval : int, optional
-        Steps between checkpoints and convergence checks (default 1000).
+        Frequency (in epochs) between checkpoints (default 10).
     num_steps : int, optional
         Number of SVI optimization steps (default 100000).
     num_posterior_samples : int, optional
@@ -205,21 +204,25 @@ def _run_svi(ri,
     svi_obj = ri.setup_svi(adam_step_size=schedule,
                            adam_clip_norm=adam_clip_norm,
                            elbo_num_particles=elbo_num_particles,
-                           init_params=init_params)
+                           guide_type="component")
  
-    # Run svi
+    # Run svi. Note that `init_params` is not used here, but is required by the
+    # run_optimization method.
     svi_state, params, converged = ri.run_optimization(
         svi_obj,
-        init_params=None, # init_params captured during svi_obj initialization
+        init_params=init_params, 
         out_root=f"{out_root}",
         svi_state=checkpoint_file,
         convergence_tolerance=convergence_tolerance,
         convergence_window=convergence_window,
+        patience=patience,
+        convergence_check_interval=convergence_check_interval,
         checkpoint_interval=checkpoint_interval,
         num_steps=num_steps,
     )
 
     if converged or always_get_posterior:
+
         ri.get_posteriors(svi=svi_obj,
                           svi_state=svi_state,
                           out_root=out_root,
@@ -260,17 +263,18 @@ def analyze_theta(growth_df=None,
                   adam_final_step_size=1e-6,
                   adam_clip_norm=1.0,
                   elbo_num_particles=2,
-                  convergence_tolerance=1e-6,
-                  convergence_window=10000,
-                  checkpoint_interval=10000,
+                  convergence_tolerance=0.01,
+                  convergence_window=10,
+                  patience=10,
+                  convergence_check_interval=2,
+                  checkpoint_interval=10,
                   num_steps=100000,
                   batch_size=1024,
                   num_posterior_samples=10000,
                   sampling_batch_size=100,
                   forward_batch_size=512,
                   always_get_posterior=False,
-                  spiked=None,
-                  map_guide_type="diagonal_laplace"):
+                  spiked=None):
     """
     Run the joint hierarchical growth model to extract estimates of
     transcription factor fractional occupancy (theta) and other latent
@@ -327,8 +331,8 @@ def analyze_theta(growth_df=None,
     checkpoint_file : str or None, optional
         Path to a checkpoint file to resume SVI from, or None to start fresh.
     analysis_method : str, optional
-        Method for inference. Allowed values are 'svi' (default), 'map', 'mle', 
-        or 'posterior'.
+        Method for inference. Allowed values are 'svi' (default), 'map', or 
+        'posterior'.
     out_root : str, optional
         Output file root for checkpoints and results (default 'tfs').
     adam_step_size : float, optional
@@ -340,11 +344,16 @@ def analyze_theta(growth_df=None,
     elbo_num_particles : int, optional
         Number of particles for ELBO estimation (default 2).
     convergence_tolerance : float, optional
-        Relative change in loss to declare SVI convergence (default 1e-5).
+        Relative change in loss to declare SVI convergence (default 0.01).
     convergence_window : int, optional
-        Number of steps to average for convergence check (default 1000).
+        Number of epochs to average for convergence check (default 10).
+    patience : int, optional
+        Number of consecutive checks meeting tolerance to declare convergence
+        (default 10).
+    convergence_check_interval : int, optional
+        Frequency (in epochs) to check for convergence (default 2).
     checkpoint_interval : int, optional
-        Steps between checkpoints and convergence checks (default 1000).
+        Frequency (in epochs) between checkpoints (default 10).
     num_steps : int, optional
         Number of SVI optimization steps (default 100000).
     batch_size : int, optional
@@ -361,9 +370,6 @@ def analyze_theta(growth_df=None,
         If True, always sample posteriors even if not converged (default False).
     spiked : list, optional
         List of genotypes to mask from theta correction (e.g. spiked-in variants).
-    map_guide_type : str, optional
-        Type of guide to use for MAP. Allowed values are 'laplace',
-        'diagonal_laplace' (default), 'normal', or 'delta'.
 
     Returns
     -------
@@ -433,16 +439,11 @@ def analyze_theta(growth_df=None,
     # ELBO convergence.
     ri = RunInference(gm,seed)
 
-    # For MLE, flatten the priors and then run MAP
-    if analysis_method == "mle":
-        gm.flatten_priors()
-        analysis_method = "map"
-
     # Run SVI
     if analysis_method == "svi":
 
         return _run_svi(ri,
-                        init_params=None,
+                        init_params=gm.init_params,
                         checkpoint_file=checkpoint_file,
                         out_root=out_root,
                         adam_step_size=adam_step_size,
@@ -451,6 +452,8 @@ def analyze_theta(growth_df=None,
                         elbo_num_particles=elbo_num_particles,
                         convergence_tolerance=convergence_tolerance,
                         convergence_window=convergence_window,
+                        patience=patience,
+                        convergence_check_interval=convergence_check_interval,
                         checkpoint_interval=checkpoint_interval,
                         num_steps=num_steps,
                         num_posterior_samples=num_posterior_samples,
@@ -471,14 +474,15 @@ def analyze_theta(growth_df=None,
                         elbo_num_particles=elbo_num_particles,
                         convergence_tolerance=convergence_tolerance,
                         convergence_window=convergence_window,
+                        patience=patience,
+                        convergence_check_interval=convergence_check_interval,
                         checkpoint_interval=checkpoint_interval,
                         map_num_steps=num_steps,
                         num_posterior_samples=num_posterior_samples,
                         sampling_batch_size=sampling_batch_size,
                         forward_batch_size=forward_batch_size,
-                        always_get_posterior=always_get_posterior,
-                        map_guide_type=map_guide_type)
-    
+                        always_get_posterior=always_get_posterior)
+                          
     elif analysis_method == "posterior":
 
         return _run_svi(ri,
@@ -491,6 +495,8 @@ def analyze_theta(growth_df=None,
                         elbo_num_particles=elbo_num_particles,
                         convergence_tolerance=convergence_tolerance,
                         convergence_window=convergence_window,
+                        patience=patience,
+                        convergence_check_interval=convergence_check_interval,
                         checkpoint_interval=checkpoint_interval,
                         num_steps=0, # Don't do any optimization
                         num_posterior_samples=num_posterior_samples,
@@ -502,7 +508,7 @@ def analyze_theta(growth_df=None,
     else:
         raise ValueError(
             f"analysis method '{analysis_method}' not recognized. This should "
-            "be 'svi', 'map', 'mle', or 'posterior'"
+            "be 'svi', 'map', or 'posterior'"
         )
 
 
@@ -520,8 +526,7 @@ def main():
                                               "seed":int,
                                               "checkpoint_file":str,
                                               "config_file":str,
-                                              "spiked":list,
-                                              "map_guide_type":str},
+                                              "spiked":list},
                             manual_arg_nargs={"spiked":"+"})
 
 if __name__ == "__main__":

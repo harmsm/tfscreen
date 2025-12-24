@@ -73,10 +73,14 @@ def run_ols_2D(x_arrays,y_arrays):
         rse = np.sqrt(rss / df)
     
         # Standard Error of the Slope (SE_b1)
-        se_slopes = rse / np.sqrt(ss_xx)
+        se_slopes = np.divide(rse, np.sqrt(ss_xx), 
+                              out=np.full_like(ss_xx, np.nan), where=ss_xx!=0)
     
         # Standard Error of the Intercept (SE_b0)
-        term_in_sqrt = (1/n_points) + (x_mean**2 / ss_xx)
+        # Handle ss_xx=0 to avoid divide by zero
+        term2 = np.divide(x_mean**2, ss_xx, 
+                          out=np.full_like(ss_xx, np.nan), where=ss_xx!=0)
+        term_in_sqrt = (1/n_points) + term2
         se_intercepts = rse * np.sqrt(term_in_sqrt)
     else:
         se_slopes = np.nan*np.ones(len(slopes))

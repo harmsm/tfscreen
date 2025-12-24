@@ -41,9 +41,9 @@ def test_summarize_posteriors_full(tmpdir, mock_config):
         out_root = os.path.join(tmpdir, "tfs")
         summarize_posteriors(posterior_file, config_file, out_root=out_root)
         
-        assert os.path.exists(f"{out_root}_sum_param1.csv")
-        assert os.path.exists(f"{out_root}_sum_growth_pred.csv")
-        assert os.path.exists(f"{out_root}_sum_theta_curves.csv")
+        assert os.path.exists(f"{out_root}_param1.csv")
+        assert os.path.exists(f"{out_root}_growth_pred.csv")
+        assert os.path.exists(f"{out_root}_theta_curves.csv")
 
 def test_summarize_posteriors_errors():
     with pytest.raises(FileNotFoundError, match="Configuration file not found"):
@@ -86,17 +86,17 @@ def test_summarize_posteriors_no_hill(tmpdir, mock_config):
         summarize_posteriors(posterior_file, config_file, out_root=out_root)
         
         # Should NOT have theta_curves
-        assert not os.path.exists(f"{out_root}_sum_theta_curves.csv")
+        assert not os.path.exists(f"{out_root}_theta_curves.csv")
 
 import runpy
 import sys
 def test_entry_point():
     # Mock sys.argv to avoid parser error/exit
     with patch.object(sys, 'argv', ['summarize_posteriors', '--help']):
-        # Patch the root function to avoid re-import issues with runpy
-        with patch("tfscreen.util.cli.generalized_main.generalized_main") as mock_gen:
+        # Patch the function where it is used in the module
+        with patch("tfscreen.analysis.hierarchical.summarize_posteriors.generalized_main") as mock_gen:
             try:
-                runpy.run_module("tfscreen.analysis.hierarchical.summarize_posteriors", run_name="__main__")
+                main()
             except SystemExit:
                 pass
             mock_gen.assert_called_once()

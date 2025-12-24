@@ -15,84 +15,13 @@ from numpyro.infer import (
 from numpyro.optim import ClippedAdam
 import optax
 
-from numpyro.infer.autoguide import AutoDelta, AutoLaplaceApproximation
+from numpyro.infer.autoguide import AutoDelta
 import numpy as np
 import dill
 from tqdm.auto import tqdm
 
 from collections import deque
 import os
-
-class AutoDiagonalLaplace(AutoLaplaceApproximation):
-    """
-    Maximum a posteriori (MAP) approximation with diagonal uncertainty.
-    
-    This guide behaves like AutoDelta (MAP) during optimization, but computes
-    a diagonal Laplace approximation (diagonal of the Hessian) for the
-    posterior. 
-
-    This is much more memory efficient than AutoLaplaceApproximation, which 
-    computes the full Hessian. 
-    """
-
-    def get_posterior(self, params):
-        """
-        Compute the diagonal Laplace approximation to the posterior.
-        """
-        # AutoContinuous guides usually store the flattened unconstrained 
-        # parameters in prefix + "_latent" or prefix + "_loc".
-        # AutoLaplaceApproximation specifically uses "_loc".
-        loc_key = self.prefix + "_loc"
-        latent_key = self.prefix + "_latent"
-        
-        if loc_key in params:
-            loc = params[loc_key]
-        elif latent_key in params:
-            loc = params[latent_key]
-        else:
-            # Fallback for site-by-site guides or other variations: 
-            # try to flatten what's there
-            print("Warning: Could not find latent/loc key. Attempting to flatten params.", 
-                  flush=True)
-            loc, _ = jax.flatten_util.ravel_pytree(params)
-
-        # We need the potential function. In AutoContinuous, this is 
-        # self._potential_fn. It is created during the first call to the guide.
-        if not hasattr(self, "_potential_fn"):
-            raise RuntimeError(
-                "AutoDiagonalLaplace.get_posterior requires the guide to be "
-                "initialized. Call it once with model arguments (data, priors)."
-            )
-
-        # Define a function to compute one element of the diagonal of the Hessian
-        # of the potential function.
-        def get_diag_element(i):
-            def grad_fn(z):
-                # Ensure we are returning a scalar for jax.grad
-                # Wrap in seed to avoid AssertionError if the model tries to 
-                # sample any non-latent sites during the potential call.
-                with numpyro.handlers.seed(rng_seed=random.PRNGKey(0)):
-                    return jnp.reshape(self._potential_fn(z), ())
-            
-            unit_vector = jnp.zeros_like(loc).at[i].set(1.0)
-            # jvp(grad(f), (x,), (v,)) returns (grad(f)(x), Hessian(f)(x) @ v)
-            # Since v is a unit vector e_i, Hessian(f)(x) @ e_i is the i-th column.
-            _, hess_column = jax.jvp(jax.grad(grad_fn), (loc,), (unit_vector,))
-            return hess_column[i]
-
-        # Compute the diagonal of the Hessian element-by-element using scan
-        # This is O(N) memory but O(N) calls to grad. 
-        print(f"Computing diagonal Hessian for {len(loc)} parameters...", flush=True)
-        _, hessian_diag = jax.lax.scan(lambda _, i: (None, get_diag_element(i)), 
-                                      None, 
-                                      jnp.arange(len(loc)))
-
-        # The covariance scale is the inverse square root of the Hessian diagonal
-        scale = jnp.sqrt(1.0 / jnp.maximum(hessian_diag, 1e-8))
-        
-        # Return a Normal distribution with the MAP mean and diagonal scale
-        return numpyro.distributions.Normal(loc, scale).to_event(1)
-
 
 class RunInference:
     """
@@ -112,11 +41,10 @@ class RunInference:
         ----------
         model : object
             A model object that must expose the following attributes:
-            - `jax_model` (callable): The Numpyro model.
             - `data` (flax.struct.dataclass): Data object, expected to have `num_genotype`.
             - `priors` (flax.struct.dataclass): Data object holding model priors
-            - `init_params` (dict): Initial parameter guesses.
-            - `sample_batch` (callable): Function to sample a data batch.
+            - `jax_model` (callable): The Numpyro model.
+            - `jax_model_guide` (callable): The guide for the Numpyro model.
         seed : int
             Random seed for JAX PRNG key generation.
         """
@@ -124,8 +52,7 @@ class RunInference:
         required_attr = ["data",
                          "priors",
                          "jax_model",
-                         "jax_model_guide",
-                         "init_params"]
+                         "jax_model_guide"]
         for attr in required_attr:
             if not hasattr(model,attr):
                 raise ValueError(f"`model` must have attribute {attr}")
@@ -135,16 +62,27 @@ class RunInference:
         self._main_key = random.PRNGKey(self._seed)
         self._current_step = 0
         self._relative_change = np.inf
+        
+        # Calculate iterations per epoch
+        num_genotypes = self.model.data.num_genotype
+        
+        # Determine batch size by dry-running get_random_idx
+        test_idx = self.model.get_random_idx(num_batches=1)
+        batch_size = len(test_idx.flatten())
+        
+        self._iterations_per_epoch = int(np.ceil(num_genotypes / batch_size))
+        
+        self._patience_counter = 0
 
 
-    def setup_map(self,
+    def setup_svi(self,
                   adam_step_size=1e-6,
                   adam_clip_norm=1.0,
                   elbo_num_particles=2,
-                  guide_type="component"):
+                  guide_type="delta"):
         """
-        Set up SVI for MAP estimation.
-        
+        Set up SVI. 
+
         Parameters
         ----------
         adam_step_size : float or callable, optional
@@ -157,66 +95,7 @@ class RunInference:
         guide_type : str, optional
             Type of guide to use. 
             - 'component' (default): Use the guide defined in the model components.
-            - 'delta': Use numpyro.infer.autoguide.AutoDelta.
-            - 'normal': Use numpyro.infer.autoguide.AutoNormal.
-            - 'laplace': Use numpyro.infer.autoguide.AutoLaplaceApproximation.
-
-        Returns
-        -------
-        numpyro.infer.SVI
-            An SVI object.
-        """
-
-        if guide_type == "component":
-            guide = self.model.jax_model_guide
-        elif guide_type == "delta":
-            guide = numpyro.infer.autoguide.AutoDelta(self.model.jax_model)
-        elif guide_type == "normal":
-            guide = numpyro.infer.autoguide.AutoNormal(self.model.jax_model)
-        elif guide_type == "laplace":
-            guide = numpyro.infer.autoguide.AutoLaplaceApproximation(self.model.jax_model)
-        elif guide_type == "diagonal_laplace":
-            guide = AutoDiagonalLaplace(self.model.jax_model)
-        else:
-            raise ValueError(f"guide_type '{guide_type}' not recognized.")
-
-        # Create optimizer and svi object 
-        optimizer = ClippedAdam(step_size=adam_step_size,clip_norm=adam_clip_norm)
-
-        svi = SVI(self.model.jax_model,
-                  guide,
-                  optimizer,
-                  loss=Trace_ELBO(num_particles=elbo_num_particles))
-        
-        return svi
-
-    def setup_svi(self,
-                  init_params=None,
-                  adam_step_size=1e-6,
-                  adam_clip_norm=1.0,
-                  elbo_num_particles=2,
-                  init_param_jitter=0.1,
-                  init_scale=0.01):
-        """
-        Set up SVI. 
-
-        Parameters
-        ----------
-        init_params : dict, optional
-            starting parameter values. 
-        adam_step_size : float or callable, optional
-            Step size for the ClippedAdam optimizer. Can be a fixed float or 
-             a callable (e.g., an optax schedule).
-        adam_clip_norm : float, optional
-            Gradient clipping norm for the ClippedAdam optimizer.
-        elbo_num_particles : int, optional
-            Number of particles for ELBO estimation.
-        init_param_jitter : float, optional
-            amount of jitter to apply to each parameter guess (log-normal). 
-            Is only applied if init_params is not None. Default = 0.1. 
-        init_scale : float, optional
-            scale to apply to the initial parameter values. Is only applied if
-            init_params is not None. 
+            - 'delta': Use numpyro.infer.autoguide.AutoDelta. Sets up a MAP estimator. 
 
         Returns
         -------
@@ -224,18 +103,18 @@ class RunInference:
             An SVI object
         """
 
-        guide_kwargs = {}
-        if init_params is not None:
-            jittered_params = self._jitter_init_parameters(init_params,init_param_jitter)
-            guide_kwargs["init_loc_fn"] = init_to_value(values=jittered_params)
-            guide_kwargs["init_scale"] = init_scale
-            
-        optimizer = ClippedAdam(
-            step_size=adam_step_size,
-            clip_norm=adam_clip_norm)
+        if guide_type == "delta":
+            guide = numpyro.infer.autoguide.AutoDelta(self.model.jax_model)
+        elif guide_type == "component":
+            guide = self.model.jax_model_guide
+        else:
+            raise ValueError(f"guide_type '{guide_type}' not recognized.")
+
+        optimizer = ClippedAdam(step_size=adam_step_size,
+                                clip_norm=adam_clip_norm)   
         
         svi = SVI(self.model.jax_model,
-                  self.model.jax_model_guide,
+                  guide,
                   optimizer,
                   loss=Trace_ELBO(num_particles=elbo_num_particles))
         
@@ -246,9 +125,11 @@ class RunInference:
                          svi_state=None,
                          init_params=None,
                          out_root="tfs",
-                         convergence_tolerance=1e-5,
-                         convergence_window=1000,
-                         checkpoint_interval=1000,
+                         convergence_tolerance=0.01,
+                         convergence_window=10,
+                         patience=10,
+                         convergence_check_interval=2,
+                         checkpoint_interval=10,
                          num_steps=10000000,
                          init_param_jitter=0.1):
         """
@@ -260,7 +141,7 @@ class RunInference:
         Parameters
         ----------
         svi : numpyro.infer.SVI
-            The SVI object (from `setup_svi` or `setup_map`).
+            The SVI object from `setup_svi`.
         svi_state : Any, optional
             An existing SVI state to resume from. If None, a new state is
             initialized. If a checkpoint file, restore from the checkpoint. 
@@ -271,9 +152,14 @@ class RunInference:
         convergence_tolerance : float, optional
             Relative change in smoothed loss to declare convergence.
         convergence_window : int, optional
-            Number of steps to average over for convergence check.
+            Number of epochs to average over for convergence check.
+        patience : int, optional
+            Number of consecutive convergence checks that must meet tolerance
+            to declare convergence.
+        convergence_check_interval : int, optional
+            Frequency (in epochs) to check for convergence.
         checkpoint_interval : int, optional
-            Frequency (in steps) to write checkpoints and check convergence.
+            Frequency (in epochs) to write checkpoints.
         num_steps : int, optional
             Total number of optimization steps to run.
         init_param_jitter : float, optional
@@ -343,15 +229,30 @@ class RunInference:
             svi_state = svi_state
             
         # loss deque holds loss values for smoothing to check for convergence
-        self._loss_deque = deque(maxlen=(convergence_window*2))
+        # The window represents epochs, so we multiply by iterations_per_epoch.
+        # We need two such windows (one old, one new) to compare.
+        deque_maxlen = 2 * convergence_window * self._iterations_per_epoch
+        self._loss_deque = deque(maxlen=deque_maxlen)
         converged = False
         
-        # Loop over steps in chunks of checkpoint_interval
+        # Convert intervals from epochs to iterations
+        check_interval_steps = convergence_check_interval * self._iterations_per_epoch
+        checkpoint_interval_steps = checkpoint_interval * self._iterations_per_epoch
+        
+        # Track next checkpoint in steps
+        # If resuming, we want to write checkpoint at the next multiple of 
+        # checkpoint_interval_steps.
+        self._next_checkpoint_step = ((self._current_step // checkpoint_interval_steps) + 1) * checkpoint_interval_steps
+        
+        # Reset patience counter
+        self._patience_counter = 0
+        
+        # Loop over steps in chunks of check_interval_steps
         current_optimization_step = 0
         while current_optimization_step < num_steps:
 
             # Determine size of this block
-            block_size = min(checkpoint_interval, num_steps - current_optimization_step)
+            block_size = min(check_interval_steps, num_steps - current_optimization_step)
 
             # Generate a block of random indices (using NumPy/Python)
             block_idx = self.model.get_random_idx(num_batches=block_size)
@@ -371,11 +272,11 @@ class RunInference:
             self._current_step += block_size
 
             # Update loss deque for convergence check
-            self._update_loss_deque(interval_losses, convergence_window)
+            self._update_loss_deque(interval_losses)
 
             # stdout
             # Print status using the last loss in the block
-            print(f"Step: {current_optimization_step - block_size:10d}, Loss: {interval_losses[-1]:10.5e}, Change: {self._relative_change:10.5e}", flush=True)
+            print(f"Step: {self._current_step:10d}, Loss: {interval_losses[-1]:10.5e}, Change: {self._relative_change:10.5e}, Patience: {self._patience_counter:3d}", flush=True)
 
             # Check for explosion in parameters
             params = svi.get_params(svi_state)
@@ -385,14 +286,27 @@ class RunInference:
                         f"model exploded (observed at step {self._current_step})."
                     )
                 
-            # Write outputs
-            self._write_checkpoint(svi_state, out_root)
+            # Write outputs (checkpoints and losses)
             self._write_losses(interval_losses, out_root) 
+
+            # Check if we should write a checkpoint
+            if self._current_step >= self._next_checkpoint_step:
+                self._write_checkpoint(svi_state, out_root)
+                self._next_checkpoint_step += checkpoint_interval_steps
 
             # Check for convergence               
             if convergence_tolerance is not None: 
+                
+                # Formula: (mean(old) - mean(new)) / std(total)
                 if self._relative_change < convergence_tolerance:
+                    self._patience_counter += 1
+                else:
+                    self._patience_counter = 0
+
+                if self._patience_counter >= patience:
                     converged = True
+                    # Final checkpoint before exiting
+                    self._write_checkpoint(svi_state, out_root)
                     break
 
         # Get final parameters
@@ -400,14 +314,42 @@ class RunInference:
         
         return svi_state, params, converged
 
+    def _get_genotype_dim_map(self):
+        """
+        Identify which sites are in the genotype plate and what that dimension is.
+
+        Returns
+        -------
+        dict
+            Dictionary mapping site names to their genotype dimension index.
+        """
+
+        # Run a trace of the model to identify plate structure
+        seeded_model = seed(self.model.jax_model, rng_seed=0)
+        traced_model = trace(seeded_model)
+        model_trace = traced_model.get_trace(data=self.model.data,
+                                             priors=self.model.priors)
+
+        dim_map = {}
+        for name, site in model_trace.items():
+            if site["type"] not in ["sample", "deterministic"]:
+                continue
+
+            # Look for the genotype plate in the stack
+            for frame in site.get("cond_indep_stack", []):
+                if frame.name == "shared_genotype_plate":
+                    dim_map[name] = frame.dim
+                    break
+
+        return dim_map
+
     def get_posteriors(self,
                        svi,
                        svi_state,
                        out_root,
                        num_posterior_samples=10000,
                        sampling_batch_size=100,
-                       forward_batch_size=512,
-                       write_csv=True):
+                       forward_batch_size=512):
         """
         Generate and save posterior samples using the trained guide.
 
@@ -430,177 +372,107 @@ class RunInference:
             (default 100).
         forward_batch_size : int, optional
             Batch size for calculating forward predictions (default 512).
-        write_csv : bool, optional
-            If True, extract parameter summaries and write to CSV (default True).
         """
 
         guide = svi.guide
         params = svi.get_params(svi_state)
 
-        combined_results = {}
+        # Get the mapping of site names to genotype dimension
+        dim_map = self._get_genotype_dim_map()
 
         total_num_genotypes = self.model.data.num_genotype 
+
         # Adjust sampling_batch_size if smaller than num_posterior_samples
         sampling_batch_size = min(sampling_batch_size, num_posterior_samples)
         num_latent_batches = -(-num_posterior_samples // sampling_batch_size)
 
         # Create a full-batch data object for sampling latents
-        # We need this because latent_sampler needs to know about ALL genotypes
-        # to generate the correct shape for parameters like (num_titrants, num_genotypes)
         all_indices = jnp.arange(total_num_genotypes)
         full_data = self.model.get_batch(self.model.data, all_indices)
 
-        # Prepare for sampling. If guide is Laplace, pre-calculate the 
-        # posterior (Hessian calculation) on the CPU to avoid OOM on the GPU.
-        if isinstance(guide, numpyro.infer.autoguide.AutoLaplaceApproximation) or \
-           isinstance(guide, AutoDiagonalLaplace) or \
-           (hasattr(guide, "__class__") and guide.__class__.__name__ in ["AutoLaplaceApproximation", "AutoDiagonalLaplace"]):
-            
-            # Ensure guide is initialized (has _potential_fn)
-            if not hasattr(guide, "_potential_fn"):
-                print("Initializing guide...", flush=True)
-                # Call guide once with the model arguments to create the internal 
-                # potential function which is needed for Hessian calculation.
-                # Use a dummy key and pass through any control dict.
-                dummy_key = self.get_key()
-                control = getattr(self.model, "control", {})
-                with numpyro.handlers.seed(rng_seed=dummy_key):
-                    guide(full_data, self.model.priors, **control)
+        latent_sampler = Predictive(guide,
+                                    params=params,
+                                    num_samples=sampling_batch_size)
 
-            print("Calculating Hessian and preparing Laplace posterior (on CPU)...", 
-                  flush=True)
-            
-            # Move data and params to CPU
-            cpu_device = jax.devices("cpu")[0]
-            cpu_params = jax.device_put(params, cpu_device)
-            cpu_full_data = jax.device_put(full_data, cpu_device)
-            cpu_priors = jax.device_put(self.model.priors, cpu_device)
+        combined_results = {}
 
-            # Draw one posterior sample on CPU to trigger Hessian calculation
-            # and get back a posterior distribution object. 
-            with jax.default_device(cpu_device):
-                laplace_posterior = guide.get_posterior(cpu_params)
-        
-        else:
-            latent_sampler = Predictive(guide,
-                                        params=params,
-                                        num_samples=sampling_batch_size)
+        for _ in tqdm(range(num_latent_batches), desc="sampling posterior"):
 
-        for _ in tqdm(range(num_latent_batches),desc="sampling posterior"):
-
-            # Sample the entire guide posterior distribution 
+            # Sample the guide posterior
             post_key = self.get_key()
-            
-            # If the guide is Laplace, we use the pre-calculated posterior
-            if isinstance(guide, numpyro.infer.autoguide.AutoLaplaceApproximation) or \
-               isinstance(guide, AutoDiagonalLaplace):
-                
-                # Sample on CPU
-                cpu_device = jax.devices("cpu")[0]
-                with jax.default_device(cpu_device):
-                    latent_sample = laplace_posterior.sample(post_key, (sampling_batch_size,))
-                
-                # Unpack and move to original device
-                latent_samples = guide._unpack_latent(latent_sample)
-                latent_samples = jax.device_put(latent_samples)
-
-            else:
-                latent_samples = latent_sampler(post_key,
-                                                priors=self.model.priors,
-                                                data=full_data)
+            latent_samples = latent_sampler(post_key,
+                                            priors=self.model.priors,
+                                            data=full_data)
 
             # Sample batches of genotypes
-            batched_results = {}
+            batch_collector = {}
             for start_idx in range(0, total_num_genotypes, forward_batch_size):
                 
-                # Create indexes for slicing a batch
                 end_idx = min(start_idx + forward_batch_size, total_num_genotypes)
                 batch_indices = jnp.arange(start_idx, end_idx)
 
-                # Slice the Latent Samples to match this batch
+                # Slice latent samples using the dim_map
                 batch_latents = {}
                 for k, v in latent_samples.items():
-
-                    # Heuristic: if last dim matches total genotypes, slice it.
-                    # Otherwise, treat it as a global parameter (keep full).
-                    is_genotype_param = (v.ndim > 1) and (v.shape[-1] == total_num_genotypes)
-                    
-                    if is_genotype_param:
-                        batch_latents[k] = v[..., start_idx:end_idx]
+                    if k in dim_map:
+                        batch_latents[k] = jnp.take(v, jnp.arange(start_idx, end_idx), axis=dim_map[k])
                     else:
                         batch_latents[k] = v
 
-
                 # Get a batch of data
-                batch_data = self.model.get_batch(self.model.data,
-                batch_indices)
+                batch_data = self.model.get_batch(self.model.data, batch_indices)
                 
-                # Create a sampler that will predict outputs using the full
-                # model given those latent samples
+                # Forward pass for this batch
                 forward_sampler = Predictive(self.model.jax_model, 
                                              posterior_samples=batch_latents)
-
-                # Run the forward pass for this batch of genotypes
                 sample_key = self.get_key()
                 batch_pred = forward_sampler(sample_key,
-                                                priors=self.model.priors,
-                                                data=batch_data)
+                                             priors=self.model.priors,
+                                             data=batch_data)
 
-                batch_pred_cpu = jax.device_get(batch_pred)
-
-                # Grab the parameters we sampled in this batch
-                for k, v in batch_pred_cpu.items():
-                    if k not in batched_results:
-                        batched_results[k] = []
-                    batched_results[k].append(v)
+                # Collect all samples (latents + predictions) for this batch
+                # Predictions from forward pass
+                for k, v in batch_pred.items():
+                    if k not in batch_collector:
+                        batch_collector[k] = []
+                    batch_collector[k].append(jax.device_get(v))
             
-                # Grab the latent parameters we sampled in this batch. If 
-                # the latent parameter has a genotype axis (last dimension
-                # is length total_num_genotypes) slice and append it. If 
-                # it does not have a genotype axis, just append it on the 
-                # first iteration.
-                for k, v in latent_samples.items():
-
-                    if k in batch_pred_cpu:
+                # Latents that weren't in predictions (e.g. guide-only parameters)
+                for k, v in batch_latents.items():
+                    if k in batch_pred:
                         continue
-
-                    if k not in batched_results:
-                        batched_results[k] = []
                         
-                    is_genotype_param = (v.ndim > 1) and (v.shape[-1] == (end_idx - start_idx))
-
-                    if is_genotype_param:
-                        batched_results[k].append(v)
-                    else:
+                    if k not in batch_collector:
+                        batch_collector[k] = []
+                    
+                    # If global (not in dim_map), only add on first genotype batch
+                    if k not in dim_map:
                         if start_idx == 0:
-                            batched_results[k].append(v)
+                            batch_collector[k].append(jax.device_get(v))
+                    else:
+                        # Geno-specific, always add
+                        batch_collector[k].append(jax.device_get(v))
 
-            # Combine our batched results. The result of this will be a 
-            # dictionary of lists. Each list will be an array whose first
-            # dimension is the number of latent samples. 
-            for k, v in batched_results.items():
-
+            # Concatenate genotype batches into the main results
+            for k, v_list in batch_collector.items():
                 if k not in combined_results:
                     combined_results[k] = []
-
-                if len(v) == 1:
-                    combined_results[k].append(v[0])
+                
+                if k in dim_map:
+                    # Concatenate along the genotype dimension (same as originally traced)
+                    axis = dim_map[k]
+                    combined_results[k].append(np.concatenate(v_list, axis=axis))
                 else:
-                    full_width = np.concatenate(v,axis=-1)
-                    combined_results[k].append(full_width)
+                    # Global parameter, just take the first (and only) entry
+                    combined_results[k].append(v_list[0])
     
-        # assemble final results
+        # Final concatenation across latent batches
         final_results = {}
-        for k in combined_results:
-            final_results[k] = np.concatenate(combined_results[k],axis=0)
+        for k, v_list in combined_results.items():
+            final_results[k] = np.concatenate(v_list, axis=0)
 
         self._write_posteriors(final_results, out_root=out_root)
 
-        if write_csv:
-            print("Extracting parameter summaries and writing CSVs...", flush=True)
-            summaries = self.model.extract_parameters(final_results)
-            for k, df in summaries.items():
-                df.to_csv(f"{out_root}_{k}.csv", index=False)
 
     def predict(self,
                 posterior_samples,
@@ -805,12 +677,16 @@ class RunInference:
 
         # Name of output file
         losses_file = f"{out_root}_losses.bin"
+        readable_losses_file = f"{out_root}_losses.txt"
 
         # Delete an existing losses_file if it is here and we are just starting
         # the run. 
         if self._current_step == 0:
             if os.path.exists(losses_file):
                 os.remove(losses_file)
+    
+            if os.path.exists(readable_losses_file):
+                os.remove(readable_losses_file)
 
         # No losses to write this iteration, continue
         if len(losses) == 0:
@@ -823,7 +699,6 @@ class RunInference:
             os.fsync(f.fileno())
 
         # Write a human-readable losses file
-        readable_losses_file = f"{out_root}_losses.txt"
         with open(readable_losses_file,"a") as f:
             f.write(f"{losses[-1]},{self._relative_change}\n")
             f.flush()
@@ -850,40 +725,42 @@ class RunInference:
         os.replace(tmp_out_file,out_file)
 
 
-    def _update_loss_deque(self,losses,convergence_window):
+    def _update_loss_deque(self, losses):
         """
-        Update the loss deque and calculate the relative change.
+        Update the loss deque and calculate the convergence metric.
         
-        Compares the mean of the first half of the deque to the mean
-        of the second half. The deque's maxlen is `2 * convergence_window`.
+        The metric is defined as:
+        (mean(old_half) - mean(new_half)) / std(total_history)
 
         Parameters
         ----------
         losses : list
             List of new losses to add to the deque.
-        convergence_window : int
-            The size of the window for averaging.
         """
 
         # Update loss history
         self._loss_deque.extend(list(losses))
 
-        # Check if the deque is full (i.e., we have enough history)
+        # Check if the deque is full (i.e., we have enough history to compare windows)
         if len(self._loss_deque) < self._loss_deque.maxlen:
             self._relative_change = np.inf
             return 
 
-        # Split the history into the "previous" and "current" windows
+        # Split the history into the "previous" and "current" halves
         history = np.array(self._loss_deque)
-        prev_window_losses = history[:convergence_window]
-        curr_window_losses = history[convergence_window:]
+        half = len(history) // 2
+        
+        old_half = history[:half]
+        new_half = history[half:]
 
-        # Calculate the mean of each window
-        mean_prev = np.mean(prev_window_losses)
-        mean_curr = np.mean(curr_window_losses)
+        # Calculate means and standard deviation
+        mean_old = np.mean(old_half)
+        mean_new = np.mean(new_half)
+        std_history = np.std(history)
 
-        # Calculate relative change
-        self._relative_change = np.abs(mean_curr - mean_prev) / (np.abs(mean_prev) + 1e-10)
+        # Calculate convergence metric
+        # Use a small epsilon to avoid division by zero
+        self._relative_change = (mean_old - mean_new) / (std_history + 1e-10)
 
     def write_params(self,params,out_root):
         """

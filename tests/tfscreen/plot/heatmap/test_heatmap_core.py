@@ -642,7 +642,10 @@ class TestHeatmap:
             "colorbar": mocker.patch("matplotlib.figure.Figure.colorbar")
         }
         # The collection needs to be a mock that can be added to an ax
-        mocks["build_heatmap_collection"].return_value = MagicMock(spec=PatchCollection)
+        mock_p_collection = MagicMock(spec=PatchCollection)
+        mock_p_collection.get_transform().contains_branch_seperately.return_value = (True, True)
+        mock_p_collection.get_offset_transform().contains_branch_seperately.return_value = (True, True)
+        mocks["build_heatmap_collection"].return_value = mock_p_collection
         return mocks
 
     def test_happy_path_creates_new_ax(self, plot_df, mock_helpers, mocker):

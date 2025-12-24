@@ -16,7 +16,8 @@ def hill_fit(obs_df,
 			 fit_line_kwargs=None,
 			 ax=None):
   
-	this_obs_df = obs_df[obs_df["genotype"] == genotype]
+	this_obs_df = obs_df[obs_df["genotype"] == genotype].copy()
+	this_obs_df["titrant_conc"] = this_obs_df["titrant_conc"].astype(float)
 	this_obs_df.loc[this_obs_df["titrant_conc"] == 0,"titrant_conc"] = zero_titrant_value
 	this_pred_df = pred_df[pred_df["genotype"] == genotype]
 

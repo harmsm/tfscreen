@@ -53,24 +53,24 @@ def summarize_posteriors(posterior_file,
     if not os.path.exists(posterior_file):
         raise FileNotFoundError(f"Posterior file not found: {posterior_file}")
     
-    posteriors = np.load(posterior_file)
+    with np.load(posterior_file) as posteriors:
 
-    # 1. Extract and save parameters
-    print(f"Extracting parameters to {out_root}_sum_*.csv...", flush=True)
-    params = gm.extract_parameters(posteriors)
-    for p_name, p_df in params.items():
-        p_df.to_csv(f"{out_root}_sum_{p_name}.csv", index=False)
+        # Extract and save parameters
+        print(f"Extracting parameters to {out_root}_*.csv...", flush=True)
+        params = gm.extract_parameters(posteriors)
+        for p_name, p_df in params.items():
+            p_df.to_csv(f"{out_root}_{p_name}.csv", index=False)
 
-    # 2. Extract and save growth predictions
-    print(f"Extracting growth predictions to {out_root}_sum_growth_pred.csv...", flush=True)
-    growth_pred_df = gm.extract_growth_predictions(posteriors)
-    growth_pred_df.to_csv(f"{out_root}_sum_growth_pred.csv", index=False)
+        # Extract and save growth predictions
+        print(f"Extracting growth predictions to {out_root}_growth_pred.csv...", flush=True)
+        growth_pred_df = gm.extract_growth_predictions(posteriors)
+        growth_pred_df.to_csv(f"{out_root}_growth_pred.csv", index=False)
 
-    # 3. Extract and save theta curves (if applicable)
-    if settings["theta"] == "hill":
-        print(f"Extracting theta curves to {out_root}_sum_theta_curves.csv...", flush=True)
-        theta_curves_df = gm.extract_theta_curves(posteriors)
-        theta_curves_df.to_csv(f"{out_root}_sum_theta_curves.csv", index=False)
+        # Extract and save theta curves (if applicable)
+        if settings["theta"] == "hill":
+            print(f"Extracting theta curves to {out_root}_theta_curves.csv...", flush=True)
+            theta_curves_df = gm.extract_theta_curves(posteriors)
+            theta_curves_df.to_csv(f"{out_root}_theta_curves.csv", index=False)
 
     print("Summarization complete.", flush=True)
 
