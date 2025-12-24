@@ -364,7 +364,7 @@ def get_hyperparameters():
     
     # Lambda prior: centered on 1.0
     parameters["lam_loc"] = 0.0 
-    parameters["lam_scale"] = 1.0 
+    parameters["lam_scale"] = 0.01
     
     # Anchoring scales (tightening this makes the background track the prior more closely)
     parameters["mu_anchoring_scale"] = 0.5

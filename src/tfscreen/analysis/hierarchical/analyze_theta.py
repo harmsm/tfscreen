@@ -78,8 +78,6 @@ def _run_map(ri,
     """
 
     # Create a learning rate schedule
-    # Note: max_num_epochs is used here to define transition steps, assuming
-    # iterations_per_epoch is roughly constant. 
     schedule = optax.exponential_decay(
         init_value=adam_step_size,
         transition_steps=int(max_num_epochs * ri._iterations_per_epoch * 0.25),

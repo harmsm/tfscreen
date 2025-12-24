@@ -67,7 +67,8 @@ class RunInference:
         num_genotypes = self.model.data.num_genotype
         
         # Determine batch size by dry-running get_random_idx
-        test_idx = self.model.get_random_idx(num_batches=1)
+        init_batch_key = int(self.get_key()[1])
+        test_idx = self.model.get_random_idx(init_batch_key,num_batches=1)
         batch_size = len(test_idx.flatten())
         
         self._iterations_per_epoch = int(np.ceil(num_genotypes / batch_size))
@@ -204,8 +205,7 @@ class RunInference:
         fast_scan = jax.jit(lambda state, indices: jax.lax.scan(scan_fn, state, indices))
 
         # Create an initial batch to initialize SVI
-        init_batch_key = int(self.get_key()[1])
-        gpu_batch_idx = jax.device_put(self.model.get_random_idx(init_batch_key))
+        gpu_batch_idx = jax.device_put(self.model.get_random_idx())
         batch_data = self.model.get_batch(data_on_gpu, gpu_batch_idx)
 
         # Initialize svi with a batch of data
@@ -331,16 +331,45 @@ class RunInference:
         model_trace = traced_model.get_trace(data=self.model.data,
                                              priors=self.model.priors)
 
+        total_num_genotypes = self.model.data.num_genotype
+
         dim_map = {}
+        genotype_dim = -1 # default fallback
+        
+        # First pass: find a site with the genotype plate to identify the dim index
+        for name, site in model_trace.items():
+            for frame in site.get("cond_indep_stack", []):
+                if "genotype" in frame.name.lower():
+                    genotype_dim = frame.dim
+                    break
+            if genotype_dim != -1:
+                break
+        
+        # Second pass: map all sites that are in the plate or match the genotype size
         for name, site in model_trace.items():
             if site["type"] not in ["sample", "deterministic"]:
                 continue
 
-            # Look for the genotype plate in the stack
+            # Check plate stack first (most robust)
+            in_plate = False
             for frame in site.get("cond_indep_stack", []):
-                if frame.name == "shared_genotype_plate":
+                if "genotype" in frame.name.lower():
                     dim_map[name] = frame.dim
+                    in_plate = True
                     break
+            
+            if in_plate:
+                continue
+                
+            # Fallback for deterministics computed outside the plate 
+            # but matching the genotype size at the expected dimension.
+            val = site["value"]
+            if hasattr(val, "shape"):
+                # Handle negative indexing for the dimension check
+                actual_dim = genotype_dim if genotype_dim >= 0 else len(val.shape) + genotype_dim
+                if actual_dim >= 0 and actual_dim < len(val.shape):
+                    if val.shape[actual_dim] == total_num_genotypes:
+                        dim_map[name] = genotype_dim
 
         return dim_map
 

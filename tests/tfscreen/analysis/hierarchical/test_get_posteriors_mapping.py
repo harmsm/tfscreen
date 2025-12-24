@@ -29,14 +29,21 @@ class MockModel:
         
         # Local parameter (genotype specific)
         with numpyro.plate("shared_genotype_plate", data.num_genotype, dim=-1):
-            numpyro.sample("geno_p", dist.Normal(0, 1))
+            p = numpyro.sample("geno_p", dist.Normal(0, 1))
+            
+        # Deterministic outside plate but matching genotype size
+        numpyro.deterministic("geno_p_det", p * 2.0)
             
         # Matrix parameter (e.g. titrant x genotype)
         num_titrants = 3
         with numpyro.plate("titrant_plate", num_titrants, dim=-2):
             with numpyro.plate("shared_genotype_plate", data.num_genotype, dim=-1):
                 numpyro.sample("matrix_p", dist.Normal(0, 1))
-                numpyro.deterministic("det_p", jnp.ones((num_titrants, data.num_genotype)))
+                # Deterministic inside plate
+                numpyro.deterministic("det_p_in", jnp.ones((num_titrants, data.num_genotype)))
+        
+        # Deterministic outside both plates but matching genotype size
+        numpyro.deterministic("det_p_out", jnp.ones((num_titrants, data.num_genotype)))
 
     @property
     def jax_model_guide(self):
@@ -58,8 +65,10 @@ def test_get_genotype_dim_map():
     
     # NumPyro normally uses negative indices for dims in plates
     assert dim_map["geno_p"] == -1
+    assert dim_map["geno_p_det"] == -1
     assert dim_map["matrix_p"] == -1
-    assert dim_map["det_p"] == -1
+    assert dim_map["det_p_in"] == -1
+    assert dim_map["det_p_out"] == -1
     assert "global_p" not in dim_map
 
 def test_get_posteriors_batching_mapping(tmpdir):
@@ -81,8 +90,10 @@ def test_get_posteriors_batching_mapping(tmpdir):
     post = np.load(f"{out_root}_posterior.npz")
     assert post["global_p"].shape == (10,)
     assert post["geno_p"].shape == (10, 10) # (samples, genotypes)
+    assert post["geno_p_det"].shape == (10, 10)
     assert post["matrix_p"].shape == (10, 3, 10) # (samples, titrants, genotypes)
-    assert post["det_p"].shape == (10, 3, 10)
+    assert post["det_p_in"].shape == (10, 3, 10)
+    assert post["det_p_out"].shape == (10, 3, 10)
 
     # Test 2: batch_size < num_genotypes (e.g. forward_batch_size=3)
     ri.get_posteriors(svi, svi_state, out_root + "_batched", 
@@ -93,13 +104,17 @@ def test_get_posteriors_batching_mapping(tmpdir):
     post_batched = np.load(f"{out_root}_batched_posterior.npz")
     assert post_batched["global_p"].shape == (10,)
     assert post_batched["geno_p"].shape == (10, 10)
+    assert post_batched["geno_p_det"].shape == (10, 10)
     assert post_batched["matrix_p"].shape == (10, 3, 10)
-    assert post_batched["det_p"].shape == (10, 3, 10)
+    assert post_batched["det_p_in"].shape == (10, 3, 10)
+    assert post_batched["det_p_out"].shape == (10, 3, 10)
     
     # Verify values match (they should be identical since AutoDelta is deterministic given params)
     np.testing.assert_allclose(post["geno_p"], post_batched["geno_p"])
+    np.testing.assert_allclose(post["geno_p_det"], post_batched["geno_p_det"])
     np.testing.assert_allclose(post["matrix_p"], post_batched["matrix_p"])
-    np.testing.assert_allclose(post["det_p"], post_batched["det_p"])
+    np.testing.assert_allclose(post["det_p_in"], post_batched["det_p_in"])
+    np.testing.assert_allclose(post["det_p_out"], post_batched["det_p_out"])
 
 def test_get_posteriors_shape_ambiguity(tmpdir):
     # Test with num_genotypes == num_titrants to ensure it doesn't get "mixed up"
