@@ -76,7 +76,7 @@ def test_run_optimization(tmpdir, mocker):
     
     state, params, converged = ri.run_optimization(
         mock_svi, 
-        num_steps=10, 
+        max_num_epochs=10, 
         convergence_check_interval=1,
         checkpoint_interval=1,
         out_root=out_root,
@@ -105,7 +105,7 @@ def test_run_optimization_no_patch_scan(mocker):
     # 236-241: scan_fn
     # Don't patch lax.scan, let it run
     # 228: Call jitter
-    ri.run_optimization(mock_svi, num_steps=2, convergence_check_interval=1, checkpoint_interval=1, init_params={"p": jnp.array(1.0)})
+    ri.run_optimization(mock_svi, max_num_epochs=2, convergence_check_interval=1, checkpoint_interval=1, init_params={"p": jnp.array(1.0)})
     assert len(ri._loss_deque) > 0
 
 def test_run_optimization_svi_state_types(tmpdir, mocker):
@@ -118,11 +118,11 @@ def test_run_optimization_svi_state_types(tmpdir, mocker):
     mock_svi.get_params.return_value = {"p": jnp.array(1.0)}
     
     # 269: Passing a non-string, non-None state
-    ri.run_optimization(mock_svi, svi_state=jnp.array([1.0]), num_steps=1)
+    ri.run_optimization(mock_svi, svi_state=jnp.array([1.0]), max_num_epochs=1)
     
     # 265-266: Passing an invalid string
     with pytest.raises(ValueError, match="is not valid"):
-        ri.run_optimization(mock_svi, svi_state="invalid_path_to_svi_state", num_steps=1)
+        ri.run_optimization(mock_svi, svi_state="invalid_path_to_svi_state", max_num_epochs=1)
 
 def test_run_optimization_convergence(mocker):
     model = MockModel()
@@ -140,7 +140,7 @@ def test_run_optimization_convergence(mocker):
     
     state, params, converged = ri.run_optimization(
         mock_svi, 
-        num_steps=100, 
+        max_num_epochs=100, 
         convergence_check_interval=1,
         checkpoint_interval=1,
         convergence_tolerance=1e-1,
@@ -163,7 +163,7 @@ def test_run_optimization_nan_explosion(mocker):
     mock_svi.get_params.return_value = {"p": jnp.array(np.nan)}
     
     with pytest.raises(RuntimeError, match="model exploded"):
-        ri.run_optimization(mock_svi, num_steps=1, convergence_check_interval=1, checkpoint_interval=1)
+        ri.run_optimization(mock_svi, max_num_epochs=1, convergence_check_interval=1, checkpoint_interval=1)
 
 def test_get_posteriors(tmpdir, mocker):
     model = MockModel()
@@ -265,7 +265,7 @@ def test_run_optimization_restore(tmpdir, mocker):
     mock_svi.get_params.return_value = {"p": jnp.array(1.0)}
     
     # Run with checkpoint path
-    ri.run_optimization(mock_svi, svi_state=checkpoint_file, num_steps=1, convergence_check_interval=1, checkpoint_interval=1)
+    ri.run_optimization(mock_svi, svi_state=checkpoint_file, max_num_epochs=1, convergence_check_interval=1, checkpoint_interval=1)
 
 def test_write_params(tmpdir):
     model = MockModel()

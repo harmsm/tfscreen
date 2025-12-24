@@ -58,7 +58,7 @@ def test_run_svi_flow_converged(mock_run_inference):
         ri, 
         init_params=None,
         out_root="test_root",
-        num_steps=500,
+        max_num_epochs=500,
         num_posterior_samples=100
     )
     
@@ -78,7 +78,7 @@ def test_run_svi_flow_converged(mock_run_inference):
         patience=ANY,
         convergence_check_interval=ANY,
         checkpoint_interval=ANY,
-        num_steps=500
+        max_num_epochs=500
     )
     
     # 3. Get Posteriors (because converged=True)
@@ -132,7 +132,7 @@ def test_run_map_flow(mock_run_inference):
         ri,
         init_params=init_params,
         out_root="test_map",
-        map_num_steps=1000,
+        max_num_epochs=1000,
         num_posterior_samples=100
     )
     
@@ -150,7 +150,7 @@ def test_run_map_flow(mock_run_inference):
         patience=ANY,
         convergence_check_interval=ANY,
         checkpoint_interval=ANY,
-        num_steps=1000
+        max_num_epochs=1000
     )
     
     # 3. Write Params
@@ -247,7 +247,7 @@ def test_analyze_theta_posterior_mode(mock_growth_model, mock_run_inference):
         assert args[0] == ri_inst
         
         # Check keyword overrides
-        assert kwargs["num_steps"] == 0
+        assert kwargs["max_num_epochs"] == 0
         assert kwargs["always_get_posterior"] is True
 
 def test_analyze_theta_invalid_method(mock_growth_model, mock_run_inference):

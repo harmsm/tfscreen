@@ -19,7 +19,7 @@ def _run_map(ri,
              patience=10,
              convergence_check_interval=2,
              checkpoint_interval=10,
-             map_num_steps=100000,
+             max_num_epochs=100000,
              num_posterior_samples=10000,
              sampling_batch_size=100,
              forward_batch_size=512,
@@ -50,8 +50,8 @@ def _run_map(ri,
         Gradient clipping norm for Adam optimizer (default 1.0).
     elbo_num_particles : int, optional
         Number of particles for ELBO estimation during MAP (default 2).
-    map_num_steps : int, optional
-        Number of MAP optimization steps (default 100000).
+    max_num_epochs : int, optional
+        Maximum number of MAP optimization epochs (default 100000).
     convergence_tolerance : float, optional
         Relative change in smoothed loss to declare MAP convergence (default 0.01).
     convergence_window : int, optional
@@ -78,9 +78,11 @@ def _run_map(ri,
     """
 
     # Create a learning rate schedule
+    # Note: max_num_epochs is used here to define transition steps, assuming
+    # iterations_per_epoch is roughly constant. 
     schedule = optax.exponential_decay(
         init_value=adam_step_size,
-        transition_steps=int(map_num_steps * 0.25),
+        transition_steps=int(max_num_epochs * ri._iterations_per_epoch * 0.25),
         decay_rate=adam_final_step_size / adam_step_size
     )
 
@@ -101,7 +103,7 @@ def _run_map(ri,
         patience=patience,
         convergence_check_interval=convergence_check_interval,
         checkpoint_interval=checkpoint_interval,
-        num_steps=map_num_steps,
+        max_num_epochs=max_num_epochs,
     )
 
     # Write the current parameter values
@@ -128,7 +130,7 @@ def _run_svi(ri,
              patience=10,
              convergence_check_interval=2,
              checkpoint_interval=10,
-             num_steps=100000,
+             max_num_epochs=100000,
              num_posterior_samples=10000,
              sampling_batch_size=100,
              forward_batch_size=512,
@@ -170,8 +172,8 @@ def _run_svi(ri,
         Frequency (in epochs) to check for convergence (default 2).
     checkpoint_interval : int, optional
         Frequency (in epochs) between checkpoints (default 10).
-    num_steps : int, optional
-        Number of SVI optimization steps (default 100000).
+    max_num_epochs : int, optional
+        Maximum number of SVI optimization epochs (default 100000).
     num_posterior_samples : int, optional
         Number of posterior samples to draw after convergence (default 10000).
     sampling_batch_size : int, optional
@@ -196,7 +198,7 @@ def _run_svi(ri,
     # Create a learning rate schedule
     schedule = optax.exponential_decay(
         init_value=adam_step_size,
-        transition_steps=int(num_steps * 0.25),
+        transition_steps=int(max_num_epochs * ri._iterations_per_epoch * 0.25),
         decay_rate=adam_final_step_size / adam_step_size
     )
 
@@ -218,7 +220,7 @@ def _run_svi(ri,
         patience=patience,
         convergence_check_interval=convergence_check_interval,
         checkpoint_interval=checkpoint_interval,
-        num_steps=num_steps,
+        max_num_epochs=max_num_epochs,
     )
 
     if converged or always_get_posterior:
@@ -268,7 +270,7 @@ def analyze_theta(growth_df=None,
                   patience=10,
                   convergence_check_interval=2,
                   checkpoint_interval=10,
-                  num_steps=100000,
+                  max_num_epochs=100000,
                   batch_size=1024,
                   num_posterior_samples=10000,
                   sampling_batch_size=100,
@@ -354,8 +356,8 @@ def analyze_theta(growth_df=None,
         Frequency (in epochs) to check for convergence (default 2).
     checkpoint_interval : int, optional
         Frequency (in epochs) between checkpoints (default 10).
-    num_steps : int, optional
-        Number of SVI optimization steps (default 100000).
+    max_num_epochs : int, optional
+        Maximum number of SVI optimization epochs (default 100000).
     batch_size : int, optional
         Mini-batch size for optimization (default 1024).
     num_posterior_samples : int, optional
@@ -455,7 +457,7 @@ def analyze_theta(growth_df=None,
                         patience=patience,
                         convergence_check_interval=convergence_check_interval,
                         checkpoint_interval=checkpoint_interval,
-                        num_steps=num_steps,
+                        max_num_epochs=max_num_epochs,
                         num_posterior_samples=num_posterior_samples,
                         sampling_batch_size=sampling_batch_size,
                         forward_batch_size=forward_batch_size,
@@ -477,7 +479,7 @@ def analyze_theta(growth_df=None,
                         patience=patience,
                         convergence_check_interval=convergence_check_interval,
                         checkpoint_interval=checkpoint_interval,
-                        map_num_steps=num_steps,
+                        max_num_epochs=max_num_epochs,
                         num_posterior_samples=num_posterior_samples,
                         sampling_batch_size=sampling_batch_size,
                         forward_batch_size=forward_batch_size,
@@ -498,7 +500,7 @@ def analyze_theta(growth_df=None,
                         patience=patience,
                         convergence_check_interval=convergence_check_interval,
                         checkpoint_interval=checkpoint_interval,
-                        num_steps=0, # Don't do any optimization
+                        max_num_epochs=0, # Don't do any optimization
                         num_posterior_samples=num_posterior_samples,
                         sampling_batch_size=sampling_batch_size,
                         forward_batch_size=forward_batch_size,

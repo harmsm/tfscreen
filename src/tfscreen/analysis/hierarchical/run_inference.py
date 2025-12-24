@@ -130,7 +130,7 @@ class RunInference:
                          patience=10,
                          convergence_check_interval=2,
                          checkpoint_interval=10,
-                         num_steps=10000000,
+                         max_num_epochs=10000000,
                          init_param_jitter=0.1):
         """
         Run the SVI optimization loop.
@@ -160,8 +160,8 @@ class RunInference:
             Frequency (in epochs) to check for convergence.
         checkpoint_interval : int, optional
             Frequency (in epochs) to write checkpoints.
-        num_steps : int, optional
-            Total number of optimization steps to run.
+        max_num_epochs : int, optional
+            Maximum number of optimization epochs to run.
         init_param_jitter : float, optional
             amount of jitter to add to init_params. To turn off, set to 0.
 
@@ -238,6 +238,7 @@ class RunInference:
         # Convert intervals from epochs to iterations
         check_interval_steps = convergence_check_interval * self._iterations_per_epoch
         checkpoint_interval_steps = checkpoint_interval * self._iterations_per_epoch
+        total_steps = max_num_epochs * self._iterations_per_epoch
         
         # Track next checkpoint in steps
         # If resuming, we want to write checkpoint at the next multiple of 
@@ -249,10 +250,10 @@ class RunInference:
         
         # Loop over steps in chunks of check_interval_steps
         current_optimization_step = 0
-        while current_optimization_step < num_steps:
+        while current_optimization_step < total_steps:
 
             # Determine size of this block
-            block_size = min(check_interval_steps, num_steps - current_optimization_step)
+            block_size = min(check_interval_steps, total_steps - current_optimization_step)
 
             # Generate a block of random indices (using NumPy/Python)
             block_idx = self.model.get_random_idx(num_batches=block_size)
