@@ -78,6 +78,11 @@ def define_model(name: str,
     with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
         with pyro.handlers.scale(scale=data.scale_vector):
             activity_offset = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
+
+    # Guard against full-sized array substitution during initialization or re-runs 
+    # with full-sized initial values
+    if activity_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+        activity_offset = activity_offset[..., data.batch_idx]
     
     # Calculate in log-space, then exponentiate
     log_activity_mutant_dists = log_activity_hyper_loc + activity_offset * log_activity_hyper_scale
@@ -137,6 +142,11 @@ def guide(name: str,
             batch_scales = offset_scales[data.batch_idx]
 
             activity_offset = pyro.sample(f"{name}_offset", dist.Normal(batch_locs, batch_scales))
+
+    # Guard against full-sized array substitution during initialization or re-runs 
+    # with full-sized initial values
+    if activity_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+        activity_offset = activity_offset[..., data.batch_idx]
     
     # Calculate in log-space, then exponentiate
     log_activity_mutant_dists = log_activity_hyper_loc + activity_offset * log_activity_hyper_scale

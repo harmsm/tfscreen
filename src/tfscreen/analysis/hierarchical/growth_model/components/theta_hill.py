@@ -177,6 +177,14 @@ def define_model(name: str,
                 log_hill_K_offset = pyro.sample(f"{name}_log_hill_K_offset", dist.Normal(0.0, 1.0))
                 log_hill_n_offset = pyro.sample(f"{name}_log_hill_n_offset", dist.Normal(0.0, 1.0))
 
+    # Guard against full-sized array substitution during initialization or re-runs 
+    # with full-sized initial values
+    if logit_theta_low_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+        logit_theta_low_offset = logit_theta_low_offset[..., data.batch_idx]
+        logit_theta_delta_offset = logit_theta_delta_offset[..., data.batch_idx]
+        log_hill_K_offset = log_hill_K_offset[..., data.batch_idx]
+        log_hill_n_offset = log_hill_n_offset[..., data.batch_idx]
+
     logit_theta_low = logit_theta_low_hyper_loc + logit_theta_low_offset * logit_theta_low_hyper_scale
     logit_theta_delta = logit_theta_delta_hyper_loc + logit_theta_delta_offset * logit_theta_delta_hyper_scale
     logit_theta_high = logit_theta_low + logit_theta_delta
@@ -371,6 +379,14 @@ def guide(name: str,
                 # n
                 log_hill_n_offset = pyro.sample(f"{name}_log_hill_n_offset", 
                     dist.Normal(n_offset_locs[..., data.batch_idx], n_offset_scales[..., data.batch_idx]))
+
+    # Guard against full-sized array substitution during initialization or re-runs 
+    # with full-sized initial values
+    if logit_theta_low_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+        logit_theta_low_offset = logit_theta_low_offset[..., data.batch_idx]
+        logit_theta_delta_offset = logit_theta_delta_offset[..., data.batch_idx]
+        log_hill_K_offset = log_hill_K_offset[..., data.batch_idx]
+        log_hill_n_offset = log_hill_n_offset[..., data.batch_idx]
 
     # ==========================================================================
     # 4. Reconstruction

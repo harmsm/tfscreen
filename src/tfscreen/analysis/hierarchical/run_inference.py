@@ -790,7 +790,7 @@ class RunInference:
 
         # Calculate convergence metric
         # Use a small epsilon to avoid division by zero
-        self._relative_change = (mean_old - mean_new) / (std_history + 1e-10)
+        self._relative_change = np.abs(mean_old - mean_new) / (std_history + 1e-10)
 
     def write_params(self,params,out_root):
         """

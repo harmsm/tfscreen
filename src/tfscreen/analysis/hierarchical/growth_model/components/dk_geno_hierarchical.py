@@ -74,6 +74,11 @@ def define_model(name: str,
     with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
         with pyro.handlers.scale(scale=data.scale_vector):
             dk_geno_offset = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
+
+    # Guard against full-sized array substitution during initialization or re-runs 
+    # with full-sized initial values
+    if dk_geno_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+        dk_geno_offset = dk_geno_offset[..., data.batch_idx]
     
     dk_geno_lognormal_values = jnp.clip(jnp.exp(dk_geno_hyper_loc + dk_geno_offset * dk_geno_hyper_scale),max=1e30)
     dk_geno_per_genotype = dk_geno_hyper_shift - dk_geno_lognormal_values
@@ -138,6 +143,11 @@ def guide(name: str,
             batch_scales = offset_scales[...,data.batch_idx]
 
             dk_geno_offset = pyro.sample(f"{name}_offset", dist.Normal(batch_locs, batch_scales))
+
+    # Guard against full-sized array substitution during initialization or re-runs 
+    # with full-sized initial values
+    if dk_geno_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+        dk_geno_offset = dk_geno_offset[..., data.batch_idx]
 
     # --- Deterministic Calculation ---
     

@@ -82,6 +82,11 @@ def define_model(name: str,
                 with pyro.handlers.scale(scale=data.scale_vector):
                     ln_cfu0_offsets = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
 
+    # Guard against full-sized array substitution during initialization or re-runs 
+    # with full-sized initial values
+    if ln_cfu0_offsets.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+        ln_cfu0_offsets = ln_cfu0_offsets[..., data.batch_idx]
+
     # Calculate the per-group ln_cfu0 values
     ln_cfu0_per_rep_cond_geno = ln_cfu0_hyper_loc + ln_cfu0_offsets * ln_cfu0_hyper_scale
 
@@ -139,6 +144,11 @@ def guide(name: str,
                     batch_locs = offset_locs[...,data.batch_idx]
                     batch_scales = offset_scales[...,data.batch_idx]
                     ln_cfu0_offsets = pyro.sample(f"{name}_offset", dist.Normal(batch_locs,batch_scales))
+
+    # Guard against full-sized array substitution during initialization or re-runs 
+    # with full-sized initial values
+    if ln_cfu0_offsets.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+        ln_cfu0_offsets = ln_cfu0_offsets[..., data.batch_idx]
 
     # Calculate the per-group ln_cfu0 values
     ln_cfu0_per_rep_cond_geno = ln_cfu0_hyper_loc + ln_cfu0_offsets * ln_cfu0_hyper_scale

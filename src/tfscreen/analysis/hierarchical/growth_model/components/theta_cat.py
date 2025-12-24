@@ -109,6 +109,11 @@ def define_model(name: str,
                         dist.Normal(0.0, 1.0)
                     )
 
+    # Guard against full-sized array substitution during initialization or re-runs 
+    # with full-sized initial values
+    if logit_theta_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+        logit_theta_offset = logit_theta_offset[..., data.batch_idx]
+
     # Calculate parameters in logit-space
     logit_theta = logit_theta_hyper_loc + logit_theta_offset * logit_theta_hyper_scale
 
@@ -194,6 +199,12 @@ def guide(name: str,
                         f"{name}_logit_theta_offset", 
                         dist.Normal(batch_locs, batch_scales)
                     )
+
+    # Guard against full-sized array substitution during initialization or re-runs 
+    # with full-sized initial values
+    if logit_theta_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+        logit_theta_offset = logit_theta_offset[..., data.batch_idx]
+        
 
     # --- 4. Reconstruction (Deterministic) ---
     
