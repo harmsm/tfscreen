@@ -181,6 +181,9 @@ class RunInference:
             If parameters explode to NaN during optimization.
         """
 
+        # Initialize loss file
+        self._write_losses(np.array([]), out_root) 
+
         # Set up update function (triggers jit)
         update_function = jax.jit(svi.update)
 
@@ -298,7 +301,6 @@ class RunInference:
             # Check for convergence               
             if convergence_tolerance is not None: 
                 
-                # Formula: (mean(old) - mean(new)) / std(total)
                 if self._relative_change < convergence_tolerance:
                     self._patience_counter += 1
                 else:
@@ -712,6 +714,7 @@ class RunInference:
         # Delete an existing losses_file if it is here and we are just starting
         # the run. 
         if self._current_step == 0:
+
             if os.path.exists(losses_file):
                 os.remove(losses_file)
     
@@ -760,7 +763,7 @@ class RunInference:
         Update the loss deque and calculate the convergence metric.
         
         The metric is defined as:
-        (mean(old_half) - mean(new_half)) / std(total_history)
+        abs(mean(old_half) - mean(new_half)) / std(total_history)
 
         Parameters
         ----------
@@ -786,11 +789,23 @@ class RunInference:
         # Calculate means and standard deviation
         mean_old = np.mean(old_half)
         mean_new = np.mean(new_half)
-        std_history = np.std(history)
 
-        # Calculate convergence metric
-        # Use a small epsilon to avoid division by zero
-        self._relative_change = np.abs(mean_old - mean_new) / (std_history + 1e-10)
+        # Estimate noise in the data
+        diffs = np.diff(history) 
+        std_history = np.std(diffs) / np.sqrt(2)
+
+        print("Y",np.std(history))
+        print("S",std_history)
+
+        # Numerical stability here
+        if std_history < 1e-9:
+            self._relative_change = np.inf
+            return 
+        
+        se = 2 * std_history / np.sqrt(self._loss_deque.maxlen)
+        z_score = (mean_new - mean_old) / se
+
+        self._relative_change = np.abs(z_score)
 
     def write_params(self,params,out_root):
         """

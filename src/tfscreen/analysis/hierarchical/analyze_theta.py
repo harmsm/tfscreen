@@ -80,7 +80,7 @@ def _run_map(ri,
     # Create a learning rate schedule
     schedule = optax.exponential_decay(
         init_value=adam_step_size,
-        transition_steps=int(max_num_epochs * ri._iterations_per_epoch * 0.25),
+        transition_steps=int(max_num_epochs * ri._iterations_per_epoch * 1.0),
         decay_rate=adam_final_step_size / adam_step_size
     )
 
@@ -196,7 +196,7 @@ def _run_svi(ri,
     # Create a learning rate schedule
     schedule = optax.exponential_decay(
         init_value=adam_step_size,
-        transition_steps=int(max_num_epochs * ri._iterations_per_epoch * 0.25),
+        transition_steps=int(max_num_epochs * ri._iterations_per_epoch * 1.0),
         decay_rate=adam_final_step_size / adam_step_size
     )
 
