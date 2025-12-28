@@ -35,7 +35,7 @@ def _logit_normal_cdf(x, mu, sigma):
     return jax.scipy.stats.norm.cdf(logit_x, loc=mu, scale=sigma)
 
 
-def update_thetas(theta, params, mask=None, n_grid=512):
+def update_thetas(theta, params, mask=None, n_grid=256):
     """
     Corrects theta values for co-transformation using the method of 
     re-sampling from the background distribution.
@@ -55,7 +55,7 @@ def update_thetas(theta, params, mask=None, n_grid=512):
         genotype should be corrected for congression. If None, all genotypes
         are corrected.
     n_grid : int, optional
-        Number of points for grid-based numerical integration (default 512).
+        Number of points for grid-based numerical integration (default 256).
 
     Returns
     -------
@@ -65,58 +65,65 @@ def update_thetas(theta, params, mask=None, n_grid=512):
     
     lam, mu, sigma = params
 
-    # 1. Broadcast shapes against each other (excluding the last dimension)
-    # Theta shape: (..., titrant_name, titrant_conc, geno) or similar
+    # 1. Identify the minimal parameter batch shape to avoid redundant integration
+    # Combine parameters and identify their shared batch shape (excluding 
+    # genotype dimension if present in params, though usually they are (..., 1))
+    lam_p, mu_p, sigma_p = jnp.broadcast_arrays(lam, mu, sigma)
+    p_batch_shape = lam_p.shape
     
-    # Calculate target shape (batch dims)
-    target_shape = theta.shape[:-1]
-    num_genotypes = theta.shape[-1]
+    # Flatten parameter batch dimensions for vmap
+    flat_lam   = lam_p.reshape(-1)
+    flat_mu    = mu_p.reshape(-1)
+    flat_sigma = sigma_p.reshape(-1)
     
-    # Broadcast theta
-    theta_b = jnp.broadcast_to(theta, target_shape + (num_genotypes,))
-    
-    # Broadcast params to match target_shape (excluding genotype dim)
-    lam_b = jnp.broadcast_to(lam, target_shape + (1,))
-    mu_b    = jnp.broadcast_to(mu,    target_shape + (1,))
-    sigma_b = jnp.broadcast_to(sigma, target_shape + (1,))
+    num_p_batches = flat_lam.shape[0]
 
-    # Flatten batch dimensions
-    flat_theta = theta_b.reshape(-1, num_genotypes) # (TotalBatch, Genotype)
-    flat_lam   = lam_b.reshape(-1) # (TotalBatch,)
-    flat_mu    = mu_b.reshape(-1)   # (TotalBatch,)
-    flat_sigma = sigma_b.reshape(-1)   # (TotalBatch,)
-    
-    num_batches = flat_theta.shape[0]
-
-    # 2. Pre-calculate integration on a grid for each batch element
-    # Grid of occupancy values
+    # 2. Pre-calculate integration on a grid for each unique parameter set
     t_grid = jnp.linspace(0.0, 1.0, n_grid)
     
-    # Calculate logit-normal CDF on grid for all batch elements
-    # Ft_grid shape: (TotalBatch, n_grid)
+    # Calculate logit-normal CDF on grid for parameter batches
+    # Ft_grid shape: (num_p_batches, n_grid)
     Ft_grid = jax.vmap(lambda m, s: _logit_normal_cdf(t_grid, m, s))(flat_mu, flat_sigma)
     
     # Calculate integrand: exp(lam * (F(t) - 1))
-    # integrand_grid shape: (TotalBatch, n_grid)
+    # integrand_grid shape: (num_p_batches, n_grid)
     integrand_grid = jnp.exp(flat_lam[:, None] * (Ft_grid - 1.0))
     
     # Cumulative integration using trapezoidal rule
     # J(x) = integrate_0^x I(t) dt
     h = 1.0 / (n_grid - 1)
     f_mid = (integrand_grid[:, :-1] + integrand_grid[:, 1:]) * h / 2.0
-    J_grid = jnp.concatenate([jnp.zeros((num_batches, 1)), jnp.cumsum(f_mid, axis=1)], axis=1)
+    J_grid = jnp.concatenate([jnp.zeros((num_p_batches, 1)), jnp.cumsum(f_mid, axis=1)], axis=1)
     
     # Expected value calculation part 1: G(x) = integrate_x^1 I(t) dt
     # G(x) = J(1) - J(x)
     G1 = J_grid[:, -1:]
-    Gx_grid = G1 - J_grid
+    Gx_grid_p = G1 - J_grid
     
-    # 3. Interpolate G(x) for each genotype in the batch
-    # Use vmap to apply interpolation over batch rows
+    # Reshape Gx_grid back to p_batch_shape (broadcasting-ready)
+    # If p_batch_shape ends in 1 (genotype dim), replace it with n_grid
+    if len(p_batch_shape) > 0 and p_batch_shape[-1] == 1:
+        integration_shape = p_batch_shape[:-1] + (n_grid,)
+    else:
+        integration_shape = p_batch_shape + (n_grid,)
+        
+    Gx_grid_final = Gx_grid_p.reshape(integration_shape)
+    
+    # 3. Broadcast integration results to match theta's batch dimensions
+    target_shape = theta.shape[:-1]
+    num_genotypes = theta.shape[-1]
+    
+    # Broadcast Gx_grid to (..., n_grid) where ... matches theta's batch dims
+    Gx_grid_b = jnp.broadcast_to(Gx_grid_final, target_shape + (n_grid,))
+    
+    # 4. Interpolate G(x) for each genotype in the full batch
+    flat_theta = theta.reshape(-1, num_genotypes)
+    flat_Gx = Gx_grid_b.reshape(-1, n_grid)
+    
     def interp_row(g_row, th_row):
         return jnp.interp(th_row, t_grid, g_row)
     
-    integral_vals = jax.vmap(interp_row)(Gx_grid, flat_theta)
+    integral_vals = jax.vmap(interp_row)(flat_Gx, flat_theta)
     
     # Expected observed value E[max(x, M)] = 1 - G(x)
     corrected_flat = 1.0 - integral_vals
@@ -124,9 +131,9 @@ def update_thetas(theta, params, mask=None, n_grid=512):
     # Reshape back to original dimensions
     corrected_theta = corrected_flat.reshape(target_shape + (num_genotypes,))
 
-    # 4. Apply mask if provided
+    # 5. Apply mask if provided
     if mask is not None:
-        corrected_theta = jnp.where(mask, corrected_theta, theta_b)
+        corrected_theta = jnp.where(mask, corrected_theta, theta)
     
     return corrected_theta
 

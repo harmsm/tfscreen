@@ -793,13 +793,12 @@ class RunInference:
         # Estimate noise in the data
         diffs = np.diff(history) 
         std_history = np.std(diffs) / np.sqrt(2)
-
-        print("Y",np.std(history))
-        print("S",std_history)
-
         # Numerical stability here
         if std_history < 1e-9:
-            self._relative_change = np.inf
+            if np.isclose(mean_new, mean_old):
+                self._relative_change = 0.0
+            else:
+                self._relative_change = np.inf
             return 
         
         se = 2 * std_history / np.sqrt(self._loss_deque.maxlen)

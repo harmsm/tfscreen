@@ -1,4 +1,5 @@
 import numpy as np
+import warnings
 from scipy.optimize import least_squares
 
 from ._util import get_cov
@@ -102,13 +103,31 @@ def run_least_squares(some_model,
         upper_bounds = np.full_like(guesses, np.inf)
 
     # Run the regression
-    fit = least_squares(
-        _weighted_residuals,
-        x0=guesses,
-        bounds=(lower_bounds, upper_bounds),
-        args=residuals_args,
-        method='trf'
-    )
+    try:
+        fit = least_squares(
+            _weighted_residuals,
+            x0=guesses,
+            bounds=(lower_bounds, upper_bounds),
+            args=residuals_args,
+            method='trf'
+        )
+    except np.linalg.LinAlgError as e:
+        
+        # If the SVD did not converge, warn the user and return nan
+        if "SVD did not converge" in str(e):
+            
+            w = (f"Fit failed because SVD did not converge. Returning nan "
+                 f"for all parameters.")
+            warnings.warn(w)
+            
+            params = np.full_like(guesses, np.nan)
+            std_errors = np.full_like(guesses, np.nan)
+            cov_matrix = np.full((len(guesses), len(guesses)), np.nan)
+            
+            return params, std_errors, cov_matrix, e
+        
+        # If it was some other LinAlgError, re-raise
+        raise e
 
     # Extract results
     params = fit.x

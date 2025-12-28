@@ -431,7 +431,7 @@ def test_extract_theta_curves_manual(initialized_model_class):
     # Test mapping error (1103-1109)
     # Trigger 1106 by mocking Index.map to raise
     with patch("pandas.Index.map", side_effect=Exception("forced failure")):
-        with pytest.raises(ValueError, match="Some \(genotype, titrant_name\) pairs"):
+        with pytest.raises(ValueError, match=r"Some \(genotype, titrant_name\) pairs"):
             ModelClass.extract_theta_curves(model, post, manual_titrant_df=manual)
 
     # Trigger 1113 by passing a genotype that doesn't exist
