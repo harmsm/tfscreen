@@ -285,7 +285,7 @@ def guide(name: str,
     return k_pre, m_pre, k_sel, m_sel
 
 
-def get_hyperparameters(num_condition: int) -> Dict[str, Any]:
+def get_hyperparameters(num_condition: int=1) -> Dict[str, Any]:
     """
     Get default values for the model hyperparameters.
 
@@ -362,15 +362,15 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
 
     return guesses
 
-def get_priors(num_condition: int) -> ModelPriors:
+def get_priors(num_condition: int=1) -> ModelPriors:
     """
     Utility function to create a populated ModelPriors object.
 
     Parameters
     ----------
-    num_condition : int
+    num_condition : int, optional
         The number of experimental conditions, which is required by
-        `get_hyperparameters`.
+        `get_hyperparameters`. Default is 1.
 
     Returns
     -------

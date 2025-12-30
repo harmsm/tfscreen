@@ -19,6 +19,7 @@ flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statist
 echo "Running coverage.py"
 coverage erase
 NUMBA_DISABLE_JIT=1 coverage run --branch -m pytest tests/tfscreen --runslow --junit-xml=reports/junit/junit.xml
+NUMBA_DISABLE_JIT=1 pytest tests/smoke-tests --runslow 
 
 echo "Generating reports"
 coverage html

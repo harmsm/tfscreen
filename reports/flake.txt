@@ -535,6 +535,8 @@
 ./src/tfscreen/analysis/hierarchical/growth_model/components/growth_independent.py:260:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/components/growth_independent.py:268:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/components/growth_independent.py:273:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/growth_independent.py:288:43: E252 missing whitespace around parameter equals
+./src/tfscreen/analysis/hierarchical/growth_model/components/growth_independent.py:288:44: E252 missing whitespace around parameter equals
 ./src/tfscreen/analysis/hierarchical/growth_model/components/growth_independent.py:306:66: E231 missing whitespace after ','
 ./src/tfscreen/analysis/hierarchical/growth_model/components/growth_independent.py:307:68: E231 missing whitespace after ','
 ./src/tfscreen/analysis/hierarchical/growth_model/components/growth_independent.py:308:64: E231 missing whitespace after ','
@@ -552,6 +554,8 @@
 ./src/tfscreen/analysis/hierarchical/growth_model/components/growth_independent.py:360:50: E231 missing whitespace after ','
 ./src/tfscreen/analysis/hierarchical/growth_model/components/growth_independent.py:361:50: E231 missing whitespace after ','
 ./src/tfscreen/analysis/hierarchical/growth_model/components/growth_independent.py:365:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/analysis/hierarchical/growth_model/components/growth_independent.py:365:34: E252 missing whitespace around parameter equals
+./src/tfscreen/analysis/hierarchical/growth_model/components/growth_independent.py:365:35: E252 missing whitespace around parameter equals
 ./src/tfscreen/analysis/hierarchical/growth_model/components/growth_independent.py:384:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/components/growth_independent.py:384:5: W292 no newline at end of file
 ./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0.py:29:1: E302 expected 2 blank lines, found 1
@@ -4304,6 +4308,57 @@
 ./tests/conftest.py:98:1: E302 expected 2 blank lines, found 1
 ./tests/conftest.py:104:1: E302 expected 2 blank lines, found 1
 ./tests/conftest.py:107:1: E302 expected 2 blank lines, found 1
+./tests/smoke-tests/conftest.py:4:1: E302 expected 2 blank lines, found 1
+./tests/smoke-tests/conftest.py:9:1: E302 expected 2 blank lines, found 1
+./tests/smoke-tests/conftest.py:14:1: E302 expected 2 blank lines, found 1
+./tests/smoke-tests/test_model_smoke.py:3:1: F401 'shutil' imported but unused
+./tests/smoke-tests/test_model_smoke.py:4:1: F401 'jax.numpy as jnp' imported but unused
+./tests/smoke-tests/test_model_smoke.py:13:22: E261 at least two spaces before inline comment
+./tests/smoke-tests/test_model_smoke.py:15:1: E302 expected 2 blank lines, found 1
+./tests/smoke-tests/test_model_smoke.py:19:43: W291 trailing whitespace
+./tests/smoke-tests/test_model_smoke.py:20:44: W291 trailing whitespace
+./tests/smoke-tests/test_model_smoke.py:21:43: W291 trailing whitespace
+./tests/smoke-tests/test_model_smoke.py:22:41: W291 trailing whitespace
+./tests/smoke-tests/test_model_smoke.py:23:32: W291 trailing whitespace
+./tests/smoke-tests/test_model_smoke.py:27:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_model_smoke.py:28:68: W291 trailing whitespace
+./tests/smoke-tests/test_model_smoke.py:32:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_model_smoke.py:40:24: E261 at least two spaces before inline comment
+./tests/smoke-tests/test_model_smoke.py:42:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_model_smoke.py:45:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_model_smoke.py:48:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_model_smoke.py:55:31: E261 at least two spaces before inline comment
+./tests/smoke-tests/test_model_smoke.py:57:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_model_smoke.py:61:1: E302 expected 2 blank lines, found 1
+./tests/smoke-tests/test_model_smoke.py:67:62: W291 trailing whitespace
+./tests/smoke-tests/test_posteriors_smoke.py:3:1: F401 'jax.numpy as jnp' imported but unused
+./tests/smoke-tests/test_posteriors_smoke.py:8:1: E302 expected 2 blank lines, found 1
+./tests/smoke-tests/test_posteriors_smoke.py:9:58: W291 trailing whitespace
+./tests/smoke-tests/test_posteriors_smoke.py:10:59: W291 trailing whitespace
+./tests/smoke-tests/test_posteriors_smoke.py:16:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_posteriors_smoke.py:26:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_posteriors_smoke.py:29:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_posteriors_smoke.py:31:59: W291 trailing whitespace
+./tests/smoke-tests/test_posteriors_smoke.py:37:30: W291 trailing whitespace
+./tests/smoke-tests/test_posteriors_smoke.py:39:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_posteriors_smoke.py:42:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_posteriors_smoke.py:44:55: E261 at least two spaces before inline comment
+./tests/smoke-tests/test_posteriors_smoke.py:46:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_posteriors_smoke.py:48:80: W291 trailing whitespace
+./tests/smoke-tests/test_posteriors_smoke.py:50:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_posteriors_smoke.py:61:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_posteriors_smoke.py:64:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_posteriors_smoke.py:68:46: E261 at least two spaces before inline comment
+./tests/smoke-tests/test_posteriors_smoke.py:70:1: E302 expected 2 blank lines, found 1
+./tests/smoke-tests/test_posteriors_smoke.py:71:52: W291 trailing whitespace
+./tests/smoke-tests/test_posteriors_smoke.py:72:53: W291 trailing whitespace
+./tests/smoke-tests/test_posteriors_smoke.py:78:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_posteriors_smoke.py:85:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_posteriors_smoke.py:88:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_posteriors_smoke.py:94:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_posteriors_smoke.py:102:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_posteriors_smoke.py:107:30: E261 at least two spaces before inline comment
+./tests/smoke-tests/test_posteriors_smoke.py:108:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/cat_response/test_cat_fit.py:4:1: F401 'pandas as pd' imported but unused
 ./tests/tfscreen/analysis/cat_response/test_cat_fit.py:10:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/analysis/cat_response/test_cat_fit.py:17:1: E302 expected 2 blank lines, found 1
@@ -7467,15 +7522,15 @@
 12    E225 missing whitespace around operator
 1629  E231 missing whitespace after ','
 81    E251 unexpected spaces around keyword / parameter equals
-16    E252 missing whitespace around parameter equals
-280   E261 at least two spaces before inline comment
+20    E252 missing whitespace around parameter equals
+286   E261 at least two spaces before inline comment
 2     E262 inline comment should start with '# '
 7     E265 block comment should start with '# '
 2     E266 too many leading '#' for block comment
 1     E271 multiple spaces after keyword
 1     E275 missing whitespace after keyword
 1     E301 expected 1 blank line, found 0
-925   E302 expected 2 blank lines, found 1
+932   E302 expected 2 blank lines, found 1
 81    E303 too many blank lines (2)
 11    E305 expected 2 blank lines after class or function definition, found 1
 11    E306 expected 1 blank line before a nested definition, found 0
@@ -7488,13 +7543,13 @@
 1     E722 do not use bare 'except'
 1     E731 do not assign a lambda expression, use a def
 3     E741 ambiguous variable name 'I'
-264   F401 '.calibration' imported but unused
+267   F401 '.calibration' imported but unused
 10    F541 f-string is missing placeholders
 7     F811 redefinition of unused 'np' from line 1
 16    F841 local variable 'nu' is assigned to but never used
 47    W191 indentation contains tabs
-1060  W291 trailing whitespace
+1074  W291 trailing whitespace
 127   W292 no newline at end of file
-2436  W293 blank line contains whitespace
+2457  W293 blank line contains whitespace
 46    W391 blank line at end of file
-7449
+7504
