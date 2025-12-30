@@ -45,9 +45,8 @@ class MockModel:
         # Deterministic outside both plates but matching genotype size
         numpyro.deterministic("det_p_out", jnp.ones((num_titrants, data.num_genotype)))
 
-    @property
-    def jax_model_guide(self):
-        return AutoDelta(self.jax_model)
+    def jax_model_guide(self, data, priors):
+        return AutoDelta(self.jax_model)(data, priors)
 
     def get_random_idx(self, key=None, num_batches=1):
         if num_batches == 1:
@@ -143,6 +142,52 @@ def test_get_posteriors_shape_ambiguity(tmpdir):
     
     post = np.load(f"{out_root}_posterior.npz")
     assert post["ambiguous_p"].shape == (4, 3, 3) # (samples, titrants, genotypes)
+
+def test_get_posteriors_manual_guide_indexing(tmpdir):
+    # This test mimics the failure in growth_hierarchical.py where a guide
+    # does manual indexing on a parameter using a plate index.
+    model = MockModel(num_genotype=10)
+    
+    # Custom guide with manual indexing (TracerArrayConversionError trigger)
+    def manual_guide(data, priors):
+        local_p_locs = numpyro.param("local_p_locs", jnp.zeros(10))
+        local_p_scales = numpyro.param("local_p_scales", jnp.ones(10))
+        
+        with numpyro.plate("shared_genotype_plate", data.num_genotype, dim=-1) as idx:
+            # Indexing local_p_locs (which might be NumPy) with idx (which is a JAX tracer in Predictive)
+            numpyro.sample("geno_p", dist.Normal(local_p_locs[idx], local_p_scales[idx]))
+
+    model.jax_model_guide = manual_guide
+    ri = RunInference(model, seed=42)
+    
+    # Mock parameters as NumPy arrays (simulating restored checkpoint)
+    params = {
+        "local_p_locs": np.zeros(10),
+        "local_p_scales": np.ones(10)
+    }
+    
+    # We need to wrap the guide to use these params
+    svi = ri.setup_svi(guide_type="component")
+    
+    # Mock svi_state as a simple object that svi.get_params can handle if we mock it
+    from unittest.mock import MagicMock
+    svi_state = MagicMock()
+    
+    # Mock get_params to return our NumPy params
+    with MagicMock() as mock_svi:
+        mock_svi.guide = manual_guide
+        mock_svi.get_params.return_value = params
+        
+        out_root = str(tmpdir.join("test_manual"))
+        
+        # This should NOT fail now because we device_put the params and data
+        ri.get_posteriors(mock_svi, svi_state, out_root, 
+                           num_posterior_samples=4, 
+                           sampling_batch_size=2, 
+                           forward_batch_size=5)
+        
+    post = np.load(f"{out_root}_posterior.npz")
+    assert post["geno_p"].shape == (4, 10)
 
 if __name__ == "__main__":
     pytest.main([__file__])

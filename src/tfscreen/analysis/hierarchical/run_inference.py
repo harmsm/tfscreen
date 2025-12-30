@@ -328,9 +328,10 @@ class RunInference:
         """
 
         # Run a trace of the model to identify plate structure
+        data_on_gpu = jax.device_put(self.model.data)
         seeded_model = seed(self.model.jax_model, rng_seed=0)
         traced_model = trace(seeded_model)
-        model_trace = traced_model.get_trace(data=self.model.data,
+        model_trace = traced_model.get_trace(data=data_on_gpu,
                                              priors=self.model.priors)
 
         total_num_genotypes = self.model.data.num_genotype
@@ -407,7 +408,8 @@ class RunInference:
         """
 
         guide = svi.guide
-        params = svi.get_params(svi_state)
+        params = jax.device_put(svi.get_params(svi_state))
+        data_on_gpu = jax.device_put(self.model.data)
 
         # Get the mapping of site names to genotype dimension
         dim_map = self._get_genotype_dim_map()
@@ -420,7 +422,7 @@ class RunInference:
 
         # Create a full-batch data object for sampling latents
         all_indices = jnp.arange(total_num_genotypes)
-        full_data = self.model.get_batch(self.model.data, all_indices)
+        full_data = self.model.get_batch(data_on_gpu, all_indices)
 
         latent_sampler = Predictive(guide,
                                     params=params,
@@ -452,7 +454,7 @@ class RunInference:
                         batch_latents[k] = v
 
                 # Get a batch of data
-                batch_data = self.model.get_batch(self.model.data, batch_indices)
+                batch_data = self.model.get_batch(data_on_gpu, batch_indices)
                 
                 # Forward pass for this batch
                 forward_sampler = Predictive(self.model.jax_model, 
@@ -547,7 +549,7 @@ class RunInference:
 
         # Load posterior samples from a file if necessary
         if isinstance(posterior_samples,str):
-            posterior_samples = jnp.load(posterior_samples)
+            posterior_samples = np.load(posterior_samples)
  
         # Convert to a dict if not a dict (for example, numpy.npz)
         if not isinstance(posterior_samples,dict):
@@ -556,6 +558,9 @@ class RunInference:
         # No data specified. Predict using the inputs
         if data_for_predict is None:
             data_for_predict = self.model.data
+            
+        data_for_predict = jax.device_put(data_for_predict)
+        posterior_samples = jax.device_put(posterior_samples)
 
         # Set of predictor class
         predictor = Predictive(self.model.jax_model, 
