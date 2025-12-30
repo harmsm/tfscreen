@@ -73,6 +73,13 @@ def define_model(name: str,
             # Non-centered offset `z` (always Normal(0,1))
             activity_offset = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
 
+    # Guard against full-sized array substitution during initialization or re-runs 
+    # with full-sized initial values
+    if local_scale_lambda.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+        local_scale_lambda = local_scale_lambda[..., data.batch_idx]
+    if activity_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+        activity_offset = activity_offset[..., data.batch_idx]
+
     # Combine scales: `beta = z * (tau * lambda)`
     # The mean `log(activity)` is 0.0 (i.e., activity = 1.0)
     # The effective scale allows for deviations from 0.0
@@ -140,6 +147,13 @@ def guide(name: str,
 
             # Non-centered offset `z` (always Normal(0,1))
             activity_offset = pyro.sample(f"{name}_offset", dist.Normal(activity_batch_locs, activity_batch_scales))
+
+    # Guard against full-sized array substitution during initialization or re-runs 
+    # with full-sized initial values
+    if local_scale_lambda.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+        local_scale_lambda = local_scale_lambda[..., data.batch_idx]
+    if activity_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+        activity_offset = activity_offset[..., data.batch_idx]
 
     # Combine scales: `beta = z * (tau * lambda)`
     # The mean `log(activity)` is 0.0 (i.e., activity = 1.0)

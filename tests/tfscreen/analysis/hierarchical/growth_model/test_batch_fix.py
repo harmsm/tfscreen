@@ -54,7 +54,7 @@ def test_get_batch_metadata_updates():
     
     # VERIFY
     assert batch_data.growth.batch_size == new_batch_size
-    assert batch_data.growth.num_genotype == new_batch_size
+    assert batch_data.growth.num_genotype == batch_size # original value preserved
     assert jnp.array_equal(batch_data.growth.batch_idx, new_indices)
     assert jnp.array_equal(batch_data.growth.geno_theta_idx, jnp.arange(new_batch_size))
     

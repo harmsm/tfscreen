@@ -178,15 +178,15 @@
 ./src/tfscreen/analysis/hierarchical/growth_model/batch.py:3:1: F401 'jax' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/batch.py:6:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/hierarchical/growth_model/batch.py:28:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/batch.py:35:59: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/batch.py:37:47: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/batch.py:38:55: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/batch.py:34:59: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/batch.py:36:47: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/batch.py:37:55: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/batch.py:38:45: E231 missing whitespace after ','
 ./src/tfscreen/analysis/hierarchical/growth_model/batch.py:39:45: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/batch.py:40:45: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/batch.py:40:69: E231 missing whitespace after ','
 ./src/tfscreen/analysis/hierarchical/growth_model/batch.py:41:69: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/batch.py:42:69: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/batch.py:43:53: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/batch.py:44:67: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/batch.py:42:53: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/batch.py:43:67: E231 missing whitespace after ','
 ./src/tfscreen/analysis/hierarchical/growth_model/components/__init__.py:2:1: F401 '.growth_independent' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/components/__init__.py:3:1: F401 '.growth_hierarchical' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/components/__init__.py:4:1: F401 '.growth_fixed' imported but unused
@@ -273,44 +273,46 @@
 ./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:66:66: E231 missing whitespace after ','
 ./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:68:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:71:45: E128 continuation line under-indented for visual indent
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:81:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:89:39: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:92:29: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:92:34: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:92:39: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:92:44: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:92:49: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:92:54: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:97:21: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:98:28: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:110:61: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:113:79: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:114:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:116:37: E127 continuation line over-indented for visual indent
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:116:64: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:118:39: E127 continuation line over-indented for visual indent
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:118:65: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:119:39: E127 continuation line over-indented for visual indent
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:120:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:122:66: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:124:67: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:127:38: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:128:66: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:130:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:139:45: E128 continuation line under-indented for visual indent
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:149:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:157:29: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:157:34: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:157:39: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:157:44: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:157:49: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:157:54: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:161:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:171:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:205:64: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:206:60: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:210:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:219:48: W292 no newline at end of file
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:76:83: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:88:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:96:39: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:99:29: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:99:34: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:99:39: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:99:44: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:99:49: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:99:54: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:104:21: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:105:28: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:117:61: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:120:79: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:121:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:123:37: E127 continuation line over-indented for visual indent
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:123:64: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:125:39: E127 continuation line over-indented for visual indent
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:125:65: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:126:39: E127 continuation line over-indented for visual indent
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:127:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:129:66: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:131:67: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:134:38: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:135:66: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:137:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:146:45: E128 continuation line under-indented for visual indent
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:151:83: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:163:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:171:29: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:171:34: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:171:39: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:171:44: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:171:49: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:171:54: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:175:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:185:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:219:64: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:220:60: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:224:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/analysis/hierarchical/growth_model/components/activity_horseshoe.py:233:48: W292 no newline at end of file
 ./src/tfscreen/analysis/hierarchical/growth_model/components/beta_noise.py:10:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/hierarchical/growth_model/components/beta_noise.py:27:28: W291 trailing whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/components/beta_noise.py:28:39: W291 trailing whitespace
@@ -5035,6 +5037,21 @@
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_batch.py:140:52: E261 at least two spaces before inline comment
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_batch.py:141:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_batch.py:142:46: W292 no newline at end of file
+./tests/tfscreen/analysis/hierarchical/growth_model/test_batch_consistency.py:1:1: F401 'pytest' imported but unused
+./tests/tfscreen/analysis/hierarchical/growth_model/test_batch_consistency.py:3:1: F401 'numpy as np' imported but unused
+./tests/tfscreen/analysis/hierarchical/growth_model/test_batch_consistency.py:9:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/test_batch_consistency.py:15:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/test_batch_consistency.py:43:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/test_batch_consistency.py:60:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/test_batch_consistency.py:69:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/test_batch_consistency.py:73:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/test_batch_consistency.py:76:61: E261 at least two spaces before inline comment
+./tests/tfscreen/analysis/hierarchical/growth_model/test_batch_consistency.py:79:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/test_batch_consistency.py:86:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/test_batch_consistency.py:114:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/test_batch_consistency.py:116:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/test_batch_consistency.py:121:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/test_batch_consistency.py:134:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_batch_fix.py:1:1: F401 'pytest' imported but unused
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_batch_fix.py:5:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_batch_fix.py:8:1: W293 blank line contains whitespace
@@ -5046,6 +5063,7 @@
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_batch_fix.py:47:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_batch_fix.py:51:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_batch_fix.py:54:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/test_batch_fix.py:57:56: E261 at least two spaces before inline comment
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_batch_fix.py:60:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_congression_mask.py:1:1: F401 'pytest' imported but unused
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_congression_mask.py:5:1: E302 expected 2 blank lines, found 1
@@ -7523,14 +7541,14 @@
 1629  E231 missing whitespace after ','
 81    E251 unexpected spaces around keyword / parameter equals
 20    E252 missing whitespace around parameter equals
-286   E261 at least two spaces before inline comment
+288   E261 at least two spaces before inline comment
 2     E262 inline comment should start with '# '
 7     E265 block comment should start with '# '
 2     E266 too many leading '#' for block comment
 1     E271 multiple spaces after keyword
 1     E275 missing whitespace after keyword
 1     E301 expected 1 blank line, found 0
-932   E302 expected 2 blank lines, found 1
+934   E302 expected 2 blank lines, found 1
 81    E303 too many blank lines (2)
 11    E305 expected 2 blank lines after class or function definition, found 1
 11    E306 expected 1 blank line before a nested definition, found 0
@@ -7543,13 +7561,13 @@
 1     E722 do not use bare 'except'
 1     E731 do not assign a lambda expression, use a def
 3     E741 ambiguous variable name 'I'
-267   F401 '.calibration' imported but unused
+269   F401 '.calibration' imported but unused
 10    F541 f-string is missing placeholders
 7     F811 redefinition of unused 'np' from line 1
 16    F841 local variable 'nu' is assigned to but never used
 47    W191 indentation contains tabs
-1074  W291 trailing whitespace
+1076  W291 trailing whitespace
 127   W292 no newline at end of file
-2457  W293 blank line contains whitespace
+2467  W293 blank line contains whitespace
 46    W391 blank line at end of file
-7504
+7522
