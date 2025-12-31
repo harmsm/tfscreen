@@ -45,6 +45,29 @@ def test_summarize_posteriors_full(tmpdir, mock_config):
         assert os.path.exists(f"{out_root}_growth_pred.csv")
         assert os.path.exists(f"{out_root}_theta_curves.csv")
 
+def test_summarize_posteriors_h5(tmpdir, mock_config):
+    import h5py
+    config_file = os.path.join(tmpdir, "config_h5.yaml")
+    with open(config_file, "w") as f:
+        yaml.dump(mock_config, f)
+    
+    posterior_file = os.path.join(tmpdir, "post.h5")
+    with h5py.File(posterior_file, 'w') as f:
+        f.create_dataset("a", data=np.array([1]))
+    
+    with patch("tfscreen.analysis.hierarchical.summarize_posteriors.GrowthModel") as MockGM:
+        mock_gm = MockGM.return_value
+        mock_gm.extract_parameters.return_value = {"param1": pd.DataFrame({"x": [1]})}
+        mock_gm.extract_growth_predictions.return_value = pd.DataFrame({"y": [2]})
+        mock_gm.extract_theta_curves.return_value = pd.DataFrame({"z": [3]})
+        
+        out_root = os.path.join(tmpdir, "tfs_h5")
+        summarize_posteriors(posterior_file, config_file, out_root=out_root)
+        
+        assert os.path.exists(f"{out_root}_param1.csv")
+        assert os.path.exists(f"{out_root}_growth_pred.csv")
+        assert os.path.exists(f"{out_root}_theta_curves.csv")
+
 def test_summarize_posteriors_errors():
     with pytest.raises(FileNotFoundError, match="Configuration file not found"):
         summarize_posteriors("p.npz", "nonexistent.yaml")

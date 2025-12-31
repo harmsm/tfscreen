@@ -9,6 +9,7 @@ from numpyro.infer.autoguide import AutoDelta
 from tfscreen.analysis.hierarchical.run_inference import RunInference
 from flax import struct
 import jax
+import h5py
 
 @struct.dataclass
 class MockData:
@@ -86,13 +87,20 @@ def test_get_posteriors_batching_mapping(tmpdir):
                        sampling_batch_size=5, 
                        forward_batch_size=10)
     
-    post = np.load(f"{out_root}_posterior.npz")
-    assert post["global_p"].shape == (10,)
-    assert post["geno_p"].shape == (10, 10) # (samples, genotypes)
-    assert post["geno_p_det"].shape == (10, 10)
-    assert post["matrix_p"].shape == (10, 3, 10) # (samples, titrants, genotypes)
-    assert post["det_p_in"].shape == (10, 3, 10)
-    assert post["det_p_out"].shape == (10, 3, 10)
+    with h5py.File(f"{out_root}_posterior.h5", 'r') as post:
+        assert post["global_p"].shape == (10,)
+        assert post["geno_p"].shape == (10, 10) # (samples, genotypes)
+        assert post["geno_p_det"].shape == (10, 10)
+        assert post["matrix_p"].shape == (10, 3, 10) # (samples, titrants, genotypes)
+        assert post["det_p_in"].shape == (10, 3, 10)
+        assert post["det_p_out"].shape == (10, 3, 10)
+
+        # Cache for comparison
+        geno_p = post["geno_p"][:]
+        geno_p_det = post["geno_p_det"][:]
+        matrix_p = post["matrix_p"][:]
+        det_p_in = post["det_p_in"][:]
+        det_p_out = post["det_p_out"][:]
 
     # Test 2: batch_size < num_genotypes (e.g. forward_batch_size=3)
     ri.get_posteriors(svi, svi_state, out_root + "_batched", 
@@ -100,20 +108,20 @@ def test_get_posteriors_batching_mapping(tmpdir):
                        sampling_batch_size=5, 
                        forward_batch_size=3)
     
-    post_batched = np.load(f"{out_root}_batched_posterior.npz")
-    assert post_batched["global_p"].shape == (10,)
-    assert post_batched["geno_p"].shape == (10, 10)
-    assert post_batched["geno_p_det"].shape == (10, 10)
-    assert post_batched["matrix_p"].shape == (10, 3, 10)
-    assert post_batched["det_p_in"].shape == (10, 3, 10)
-    assert post_batched["det_p_out"].shape == (10, 3, 10)
-    
-    # Verify values match (they should be identical since AutoDelta is deterministic given params)
-    np.testing.assert_allclose(post["geno_p"], post_batched["geno_p"])
-    np.testing.assert_allclose(post["geno_p_det"], post_batched["geno_p_det"])
-    np.testing.assert_allclose(post["matrix_p"], post_batched["matrix_p"])
-    np.testing.assert_allclose(post["det_p_in"], post_batched["det_p_in"])
-    np.testing.assert_allclose(post["det_p_out"], post_batched["det_p_out"])
+    with h5py.File(f"{out_root}_batched_posterior.h5", 'r') as post_batched:
+        assert post_batched["global_p"].shape == (10,)
+        assert post_batched["geno_p"].shape == (10, 10)
+        assert post_batched["geno_p_det"].shape == (10, 10)
+        assert post_batched["matrix_p"].shape == (10, 3, 10)
+        assert post_batched["det_p_in"].shape == (10, 3, 10)
+        assert post_batched["det_p_out"].shape == (10, 3, 10)
+        
+        # Verify values match (they should be identical since AutoDelta is deterministic given params)
+        np.testing.assert_allclose(geno_p, post_batched["geno_p"][:])
+        np.testing.assert_allclose(geno_p_det, post_batched["geno_p_det"][:])
+        np.testing.assert_allclose(matrix_p, post_batched["matrix_p"][:])
+        np.testing.assert_allclose(det_p_in, post_batched["det_p_in"][:])
+        np.testing.assert_allclose(det_p_out, post_batched["det_p_out"][:])
 
 def test_get_posteriors_shape_ambiguity(tmpdir):
     # Test with num_genotypes == num_titrants to ensure it doesn't get "mixed up"
@@ -140,8 +148,8 @@ def test_get_posteriors_shape_ambiguity(tmpdir):
                        sampling_batch_size=2, 
                        forward_batch_size=1)
     
-    post = np.load(f"{out_root}_posterior.npz")
-    assert post["ambiguous_p"].shape == (4, 3, 3) # (samples, titrants, genotypes)
+    with h5py.File(f"{out_root}_posterior.h5", 'r') as post:
+        assert post["ambiguous_p"].shape == (4, 3, 3) # (samples, titrants, genotypes)
 
 def test_get_posteriors_manual_guide_indexing(tmpdir):
     # This test mimics the failure in growth_hierarchical.py where a guide
@@ -186,8 +194,8 @@ def test_get_posteriors_manual_guide_indexing(tmpdir):
                            sampling_batch_size=2, 
                            forward_batch_size=5)
         
-    post = np.load(f"{out_root}_posterior.npz")
-    assert post["geno_p"].shape == (4, 10)
+        with h5py.File(f"{out_root}_posterior.h5", 'r') as post:
+            assert post["geno_p"].shape == (4, 10)
 
 if __name__ == "__main__":
     pytest.main([__file__])

@@ -4,6 +4,7 @@ import jax.numpy as jnp
 import numpy as np
 from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass
 from tfscreen.analysis.hierarchical.run_inference import RunInference
+import h5py
 
 @pytest.mark.slow
 def test_checkpoint_and_posterior_smoke(growth_smoke_csv, 
@@ -59,13 +60,13 @@ def test_checkpoint_and_posterior_smoke(growth_smoke_csv,
         forward_batch_size=10
     )
     
-    posterior_file = f"{out_root}_posterior.npz"
+    posterior_file = f"{out_root}_posterior.h5"
     assert os.path.exists(posterior_file)
     
     # Load and check the saved file
-    data = np.load(posterior_file)
-    assert "growth_pred" in data
-    assert data["growth_pred"].shape[0] == 10 # num_posterior_samples
+    with h5py.File(posterior_file, 'r') as data:
+        assert "growth_pred" in data
+        assert data["growth_pred"].shape[0] == 10 # num_posterior_samples
 
 @pytest.mark.slow
 def test_extract_parameters_smoke(growth_smoke_csv, 
@@ -98,7 +99,7 @@ def test_extract_parameters_smoke(growth_smoke_csv,
         out_root=out_root,
         num_posterior_samples=5
     )
-    posterior_file = f"{out_root}_posterior.npz"
+    posterior_file = f"{out_root}_posterior.h5"
     
     # Test extraction
     param_dfs = model.extract_parameters(posterior_file)

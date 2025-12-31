@@ -36,6 +36,7 @@ dependencies = [
   "flax",
   "jax",
   "jaxlib",
+  "h5py",
 ]
 
 requires-python = ">=3.10"

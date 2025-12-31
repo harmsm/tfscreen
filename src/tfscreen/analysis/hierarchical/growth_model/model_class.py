@@ -30,6 +30,7 @@ import numpy as np
 from functools import partial
 import os
 import warnings
+import h5py
 
 # Declare float datatype
 FLOAT_DTYPE = jnp.float64 if jax.config.read("jax_enable_x64") else jnp.float32
@@ -419,7 +420,10 @@ def _extract_param_est(input_df,
 
         # Grab the posterior distribution of this parameters and flatten. 
         model_param = f"{in_run_prefix}{param}"
-        flat_param = (param_posteriors[model_param].reshape(param_posteriors[model_param].shape[0],-1))
+        val = param_posteriors[model_param]
+        if hasattr(val, "shape") and not hasattr(val, "reshape"):
+            val = val[:]
+        flat_param = val.reshape(val.shape[0],-1)
 
         # Create dataframe for loading the data
         to_write = df.copy()
@@ -864,10 +868,13 @@ class ModelClass:
         """
 
         # Load the posterior file
-        if isinstance(posteriors,(dict,np.lib.npyio.NpzFile)):
+        if isinstance(posteriors,(dict,np.lib.npyio.NpzFile,h5py.File,h5py.Group)):
             param_posteriors = posteriors
         else:
-            param_posteriors = np.load(posteriors)
+            if posteriors.endswith(".h5") or posteriors.endswith(".hdf5"):
+                param_posteriors = h5py.File(posteriors, 'r')
+            else:
+                param_posteriors = np.load(posteriors)
         
 
         # Named quantiles to pull from the posterior distribution
@@ -1064,10 +1071,14 @@ class ModelClass:
             )
 
         # Load the posterior file
-        if isinstance(posteriors,(dict,np.lib.npyio.NpzFile)):
+        if isinstance(posteriors,(dict,np.lib.npyio.NpzFile,h5py.File,h5py.Group)):
             param_posteriors = posteriors
         else:
-            param_posteriors = np.load(posteriors)
+            if posteriors.endswith(".h5") or posteriors.endswith(".hdf5"):
+                param_posteriors = h5py.File(posteriors, 'r')
+            else:
+                param_posteriors = np.load(posteriors)
+        
 
         # Named quantiles to pull from the posterior distribution
         if q_to_get is None:
@@ -1138,25 +1149,35 @@ class ModelClass:
                     f"{missing[['genotype', 'titrant_name']].drop_duplicates().values}"
                 )
 
-        # Extract posterior parameters and flatten (num_samples, num_groups)
-        # Note: their common prefix is "theta_" (see extract_parameters)
-        hill_n = param_posteriors["theta_hill_n"].reshape(param_posteriors["theta_hill_n"].shape[0], -1)
-        log_hill_K = param_posteriors["theta_log_hill_K"].reshape(param_posteriors["theta_log_hill_K"].shape[0], -1)
-        theta_high = param_posteriors["theta_theta_high"].reshape(param_posteriors["theta_theta_high"].shape[0], -1)
-        theta_low = param_posteriors["theta_theta_low"].reshape(param_posteriors["theta_theta_low"].shape[0], -1)
+        # indices shape: (N_points,)
+        indices = calc_df["map_theta_group"].values.astype(int)
 
-        # Vectorized calculation of theta for all samples
-        # titrant_conc shape: (N_points,)
-        # mapping shape: (N_points,)
-        # params shape: (N_samples, N_groups)
-        
         # log_titrant shape: (1, N_points)
         log_titrant = calc_df["titrant_conc"].values.copy()
         log_titrant[log_titrant == 0] = ZERO_CONC_VALUE
         log_titrant = np.log(log_titrant)[None, :]
+
+        # Handle HDF5 by loading samples in manageable blocks if necessary,
+        # but for theta parameters (Hill N etc), they are usually small (1 per genotype).
+        # We'll load the full parameters into memory here for simplicity unless they are huge.
+        def get_p(key):
+            val = param_posteriors[key]
+            if hasattr(val, "shape"): # h5py dataset
+                return val[:]
+            return val
+
+        # Extract posterior parameters and flatten (num_samples, num_groups)
+        hill_n = get_p("theta_hill_n")
+        hill_n = hill_n.reshape(hill_n.shape[0], -1)
         
-        # indices shape: (N_points,)
-        indices = calc_df["map_theta_group"].values.astype(int)
+        log_hill_K = get_p("theta_log_hill_K")
+        log_hill_K = log_hill_K.reshape(log_hill_K.shape[0], -1)
+        
+        theta_high = get_p("theta_theta_high")
+        theta_high = theta_high.reshape(theta_high.shape[0], -1)
+        
+        theta_low = get_p("theta_theta_low")
+        theta_low = theta_low.reshape(theta_low.shape[0], -1)
         
         # Indexed params shape: (N_samples, N_points)
         h_n = hill_n[:, indices]
@@ -1210,10 +1231,13 @@ class ModelClass:
         """
 
         # Load the posterior file
-        if isinstance(posteriors,(dict,np.lib.npyio.NpzFile)):
+        if isinstance(posteriors,(dict,np.lib.npyio.NpzFile,h5py.File,h5py.Group)):
             param_posteriors = posteriors
         else:
-            param_posteriors = np.load(posteriors)
+            if posteriors.endswith(".h5") or posteriors.endswith(".hdf5"):
+                param_posteriors = h5py.File(posteriors, 'r')
+            else:
+                param_posteriors = np.load(posteriors)
 
         if "growth_pred" not in param_posteriors:
             raise ValueError(
@@ -1254,14 +1278,54 @@ class ModelClass:
         conc_idx = self.growth_df["titrant_conc_idx"].values
         geno_idx = self.growth_df["genotype_idx"].values
 
-        # Pull predictions for each row across all samples
-        # shape: (num_samples, num_rows)
-        preds = growth_pred[:, rep_idx, time_idx, pre_idx, sel_idx, name_idx, conc_idx, geno_idx]
-
-        # Calculate quantiles and load into output dataframe
+        total_rows = len(self.growth_df)
         out_df = self.growth_df.copy()
-        for q_name, q_val in q_to_get.items():
-            out_df[q_name] = np.quantile(preds, q_val, axis=0)
+
+        # Initialize quantile columns
+        for q_name in q_to_get:
+            out_df[q_name] = np.nan
+
+        # Chunk the extraction to avoid OOM
+        # 1,000,000 samples might be too much if we have 10,000 samples and 100 genotypes
+        # A typical row has 10,000 float64 samples -> 80 KB.
+        # 12,500 rows -> 1 GB.
+        row_chunk_size = getattr(self, "row_chunk_size", 10000)
+        
+        is_h5 = isinstance(growth_pred, h5py.Dataset)
+
+        for start_r in range(0, total_rows, row_chunk_size):
+            end_r = min(start_r + row_chunk_size, total_rows)
+            
+            # Slices for this chunk
+            r_slice = rep_idx[start_r:end_r]
+            t_slice = time_idx[start_r:end_r]
+            p_slice = pre_idx[start_r:end_r]
+            s_slice = sel_idx[start_r:end_r]
+            n_slice = name_idx[start_r:end_r]
+            c_slice = conc_idx[start_r:end_r]
+            g_slice = geno_idx[start_r:end_r]
+
+            if is_h5:
+                # h5py fancy indexing requires monotonic indices for ALL dimensions, 
+                # which is hard to guarantee for arbitrary slices. 
+                # We'll use a loop for now. While slower than a single block read, 
+                # it avoids OOM and is more robust. 
+                preds_chunk_list = []
+                for idx in range(len(r_slice)):
+                    # Fetch one row's samples
+                    row_data = growth_pred[:, r_slice[idx], t_slice[idx], p_slice[idx], 
+                                           s_slice[idx], n_slice[idx], c_slice[idx], g_slice[idx]]
+                    preds_chunk_list.append(row_data)
+                
+                # Stack to (num_samples, chunk_size)
+                preds_chunk = np.stack(preds_chunk_list, axis=1)
+            else:
+                # Standard numpy indexing
+                preds_chunk = growth_pred[:, r_slice, t_slice, p_slice, s_slice, n_slice, c_slice, g_slice]
+
+            # Calculate quantiles for this chunk
+            for q_name, q_val in q_to_get.items():
+                out_df.loc[out_df.index[start_r:end_r], q_name] = np.quantile(preds_chunk, q_val, axis=0)
 
         return out_df
 

@@ -22,6 +22,7 @@ from tqdm.auto import tqdm
 
 from collections import deque
 import os
+import h5py
 
 class RunInference:
     """
@@ -382,13 +383,14 @@ class RunInference:
                        out_root,
                        num_posterior_samples=10000,
                        sampling_batch_size=100,
-                       forward_batch_size=512):
+                       forward_batch_size=512,
+                       use_h5=True):
         """
         Generate and save posterior samples using the trained guide.
 
         Uses `numpyro.infer.Predictive` to sample from the posterior
         distribution defined by the guide and parameters. Handles large
-        datasets by batching predictions.
+        datasets by batching predictions and writing to disk (HDF5 or NPZ).
 
         Parameters
         ----------
@@ -397,7 +399,7 @@ class RunInference:
         svi_state : Any
             The current state of the SVI object (optimizer state).
         out_root : str
-            Root name for the output .npz file.
+            Root name for the output file.
         num_posterior_samples : int, optional
             Number of posterior samples to draw (default 10000).
         sampling_batch_size : int, optional
@@ -405,6 +407,9 @@ class RunInference:
             (default 100).
         forward_batch_size : int, optional
             Batch size for calculating forward predictions (default 512).
+        use_h5 : bool, optional
+            If True (default), write to an HDF5 file. If False, write to 
+            a compressed .npz file (warning: may cause OOM for large runs).
         """
 
         guide = svi.guide
@@ -428,9 +433,16 @@ class RunInference:
                                     params=params,
                                     num_samples=sampling_batch_size)
 
+        # Initialize HDF5 file if requested
+        hf = None
+        if use_h5:
+            h5_file = f"{out_root}_posterior.h5"
+            hf = h5py.File(h5_file, 'w')
+        
         combined_results = {}
+        samples_written = 0
 
-        for _ in tqdm(range(num_latent_batches), desc="sampling posterior"):
+        for batch_i in tqdm(range(num_latent_batches), desc="sampling posterior"):
 
             # Sample the guide posterior
             post_key = self.get_key()
@@ -487,25 +499,48 @@ class RunInference:
                         # Geno-specific, always add
                         batch_collector[k].append(jax.device_get(v))
 
-            # Concatenate genotype batches into the main results
+            # Concatenate genotype batches for this latent batch
+            this_batch_results = {}
             for k, v_list in batch_collector.items():
-                if k not in combined_results:
-                    combined_results[k] = []
-                
                 if k in dim_map:
                     # Concatenate along the genotype dimension (same as originally traced)
                     axis = dim_map[k]
-                    combined_results[k].append(np.concatenate(v_list, axis=axis))
+                    this_batch_results[k] = np.concatenate(v_list, axis=axis)
                 else:
                     # Global parameter, just take the first (and only) entry
-                    combined_results[k].append(v_list[0])
+                    this_batch_results[k] = v_list[0]
+            
+            # Write to file
+            batch_size_actual = next(iter(this_batch_results.values())).shape[0]
+            if use_h5:
+                for k, v in this_batch_results.items():
+                    if k not in hf:
+                        # Create dataset on first write
+                        maxshape = (num_posterior_samples,) + v.shape[1:]
+                        chunks = (min(sampling_batch_size, 100),) + v.shape[1:]
+                        hf.create_dataset(k, shape=maxshape, dtype=v.dtype, chunks=chunks)
+                    
+                    hf[k][samples_written:samples_written + batch_size_actual] = v
+            else:
+                # Accumulate for NPZ
+                for k, v in this_batch_results.items():
+                    if k not in combined_results:
+                        combined_results[k] = []
+                    combined_results[k].append(v)
+            
+            samples_written += batch_size_actual
     
-        # Final concatenation across latent batches
-        final_results = {}
-        for k, v_list in combined_results.items():
-            final_results[k] = np.concatenate(v_list, axis=0)
+        if use_h5:
+            # Add metadata to HDF5 file
+            hf.attrs["num_samples"] = samples_written
+            hf.close()
+        else:
+            # Final concatenation across latent batches for NPZ
+            final_results = {}
+            for k, v_list in combined_results.items():
+                final_results[k] = np.concatenate(v_list, axis=0)
 
-        self._write_posteriors(final_results, out_root=out_root)
+            self._write_posteriors(final_results, out_root=out_root)
 
 
     def predict(self,

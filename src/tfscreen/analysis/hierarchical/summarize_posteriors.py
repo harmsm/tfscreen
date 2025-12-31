@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import h5py
 import os
 import yaml
 from tfscreen.analysis.hierarchical.growth_model import GrowthModel
@@ -51,9 +52,20 @@ def summarize_posteriors(posterior_file,
 
     # Load posteriors
     if not os.path.exists(posterior_file):
-        raise FileNotFoundError(f"Posterior file not found: {posterior_file}")
+        # Check if it's a root name and we can find .h5 or .npz
+        if os.path.exists(f"{posterior_file}_posterior.h5"):
+            posterior_file = f"{posterior_file}_posterior.h5"
+        elif os.path.exists(f"{posterior_file}_posterior.npz"):
+            posterior_file = f"{posterior_file}_posterior.npz"
+        else:
+            raise FileNotFoundError(f"Posterior file not found: {posterior_file}")
     
-    with np.load(posterior_file) as posteriors:
+    if posterior_file.endswith(".h5") or posterior_file.endswith(".hdf5"):
+        context_manager = h5py.File(posterior_file, 'r')
+    else:
+        context_manager = np.load(posterior_file)
+
+    with context_manager as posteriors:
 
         # Extract and save parameters
         print(f"Extracting parameters to {out_root}_*.csv...", flush=True)

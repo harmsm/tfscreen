@@ -184,7 +184,7 @@ def test_get_posteriors(tmpdir, mocker):
     
     ri.get_posteriors(mock_svi, "state", out_root, num_posterior_samples=20, sampling_batch_size=10)
     
-    assert os.path.exists(f"{out_root}_posterior.npz")
+    assert os.path.exists(f"{out_root}_posterior.h5")
 
 def test_get_posteriors_batching_logic(tmpdir, mocker):
     model = MockModel()
@@ -214,7 +214,7 @@ def test_get_posteriors_batching_logic(tmpdir, mocker):
     mocker.patch("jax.device_get", side_effect=lambda x: x)
     
     ri.get_posteriors(mock_svi, "state", out_root, num_posterior_samples=25, sampling_batch_size=10)
-    assert os.path.exists(f"{out_root}_posterior.npz")
+    assert os.path.exists(f"{out_root}_posterior.h5")
 
 def test_get_posteriors_full_logic(tmpdir, mocker):
     model = MockModel(num_genotype=10)
@@ -239,7 +239,7 @@ def test_get_posteriors_full_logic(tmpdir, mocker):
     
     ri.get_posteriors(mock_svi, "state", out_root, num_posterior_samples=1, 
                      sampling_batch_size=1, forward_batch_size=5)
-    assert os.path.exists(f"{out_root}_posterior.npz")
+    assert os.path.exists(f"{out_root}_posterior.h5")
 
 def test_run_optimization_restore(tmpdir, mocker):
     model = MockModel()
