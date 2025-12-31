@@ -474,9 +474,13 @@ def test_extract_growth_predictions_full(initialized_model_class, tmpdir):
 def test_get_random_idx_logic(initialized_model_class):
     model = initialized_model_class
     model.data = MagicMock()
-    model.data.growth.batch_idx = jnp.array([0, 1])
-    model.data.not_binding_idx = jnp.array([2, 3])
-    model.data.not_binding_batch_size = 1
+    model.data.num_genotype = 10
+    model.data.num_binding = 1
+    model.data.batch_idx = jnp.arange(10)
+    model.data.growth.batch_idx = model.data.batch_idx
+    model.data.not_binding_idx = jnp.arange(1, 10)
+    model.data.not_binding_batch_size = 9
+    model._batch_size = 2 # At least num_binding
     
     with pytest.raises(ValueError, match="must be called with an integer batch key"):
         ModelClass.get_random_idx(model)

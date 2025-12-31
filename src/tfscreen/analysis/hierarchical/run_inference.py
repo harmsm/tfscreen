@@ -181,9 +181,6 @@ class RunInference:
             If parameters explode to NaN during optimization.
         """
 
-        # Initialize loss file
-        self._write_losses(np.array([]), out_root) 
-
         # Set up update function (triggers jit)
         update_function = jax.jit(svi.update)
 
@@ -231,6 +228,9 @@ class RunInference:
         else:
             svi_state = svi_state
             
+        # Initialize loss file
+        self._write_losses(np.array([]), out_root) 
+
         # loss deque holds loss values for smoothing to check for convergence
         # The window represents epochs, so we multiply by iterations_per_epoch.
         # We need two such windows (one old, one new) to compare.

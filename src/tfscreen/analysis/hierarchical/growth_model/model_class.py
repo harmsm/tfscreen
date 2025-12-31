@@ -642,26 +642,48 @@ class ModelClass:
         binding_data_sources = [self.binding_tm.tensors,sizes,other_data]
 
         # ---------------------------------------------------------------------
-        # Create batching information 
+        # Create full-batch data (source of truth for indices and shapes) 
        
-        batch_data = _setup_batching(self.growth_tm.tensor_dim_labels[-1],
-                                     self.binding_tm.tensor_dim_labels[-1],
-                                     self._batch_size)
+        # Pass None as batch_size to get full indices and scale factors of 1.0
+        full_batch_data = _setup_batching(self.growth_tm.tensor_dim_labels[-1],
+                                          self.binding_tm.tensor_dim_labels[-1],
+                                          batch_size=None)
         
-        # Record relevant batch data for the growth dataset
+        # If mini-batching is requested, pre-calculate the scale vector that 
+        # will be used for all mini-batches of this size. 
+        if self._batch_size is not None and self._batch_size < self.growth_tm.tensor_shape[-1]:
+            
+            # Use the helper to find indices and scale factor for the target batch size
+            scaling_info = _setup_batching(self.growth_tm.tensor_dim_labels[-1],
+                                           self.binding_tm.tensor_dim_labels[-1],
+                                           self._batch_size)
+            
+            # Create a full-sized vector with these scale factors
+            num_genotype = self.growth_tm.tensor_shape[-1]
+            scale_vector = np.ones(num_genotype, dtype=float)
+            
+            # Non-binding genotypes get scaled up
+            not_bind_idx = full_batch_data["not_binding_idx"]
+            scale_vector[not_bind_idx] = scaling_info["scale_vector"][-1]
+            
+            # Inject this pre-calculated vector into the full_batch_data
+            full_batch_data["scale_vector"] = scale_vector
+        
+        # Record relevant batch data for the growth dataset (full-sized)
         growth_batch_data = {}
-        growth_batch_data["batch_idx"] = batch_data["batch_idx"]
-        growth_batch_data["batch_size"] = batch_data["batch_size"]
-        growth_batch_data["scale_vector"] = batch_data["scale_vector"]
-        growth_batch_data["geno_theta_idx"] = np.arange(batch_data["batch_size"],dtype=int)
+        growth_batch_data["batch_idx"] = full_batch_data["batch_idx"]
+        growth_batch_data["batch_size"] = full_batch_data["batch_size"]
+        growth_batch_data["scale_vector"] = full_batch_data["scale_vector"]
+        growth_batch_data["geno_theta_idx"] = np.arange(full_batch_data["batch_size"],dtype=int)
         growth_data_sources.append(growth_batch_data)
         
         # Record relevant batch data for the binding dataset
         binding_batch_data = {}
-        binding_batch_data["batch_idx"] = batch_data["batch_idx"][:batch_data["num_binding"]]
-        binding_batch_data["batch_size"] = batch_data["num_binding"]
-        binding_batch_data["scale_vector"] = batch_data["scale_vector"][:batch_data["num_binding"]]
-        binding_batch_data["geno_theta_idx"] = np.arange(batch_data["num_binding"],dtype=int)
+        binding_num_binding = full_batch_data["num_binding"]
+        binding_batch_data["batch_idx"] = full_batch_data["batch_idx"][:binding_num_binding]
+        binding_batch_data["batch_size"] = binding_num_binding
+        binding_batch_data["scale_vector"] = full_batch_data["scale_vector"][:binding_num_binding]
+        binding_batch_data["geno_theta_idx"] = np.arange(binding_num_binding,dtype=int)
         binding_data_sources.append(binding_batch_data)
 
         # ---------------------------------------------------------------------
@@ -678,7 +700,7 @@ class ModelClass:
         source_data = [{"growth":growth_dataclass,
                         "binding":binding_dataclass,
                         "num_genotype":self.growth_tm.tensor_shape[-1]}]
-        source_data.append(batch_data)
+        source_data.append(full_batch_data)
 
         # Build the aggregated `DataClass` flax dataclass with the growth
         # and binding dataclasses. Expose as a model attribute. 
@@ -1287,9 +1309,22 @@ class ModelClass:
 
         if batch_key is not None:
             self._batch_rng = np.random.default_rng(batch_key)
-            self._batch_idx = np.array(self.data.growth.batch_idx, dtype=int)
-            self._batch_choose_from = np.array(self.data.not_binding_idx)
-            self._batch_choose_size = self.data.not_binding_batch_size
+            
+            # Use the data consistency properties to setup the batching buffer
+            num_bind = self.data.num_binding
+            
+            if self._batch_size is not None and self._batch_size < self.data.num_genotype:
+                # Setup for mini-batching
+                self._batch_idx = np.zeros(self._batch_size, dtype=int)
+                # The first num_binding entries are always the same
+                self._batch_idx[:num_bind] = self.data.batch_idx[:num_bind]
+                self._batch_choose_from = np.array(self.data.not_binding_idx)
+                self._batch_choose_size = self._batch_size - num_bind
+            else:
+                # Use full dataset
+                self._batch_idx = np.array(self.data.batch_idx, dtype=int)
+                self._batch_choose_from = np.array(self.data.not_binding_idx)
+                self._batch_choose_size = self.data.not_binding_batch_size
 
         if not hasattr(self, "_batch_rng"):
             raise ValueError(
@@ -1299,22 +1334,24 @@ class ModelClass:
 
         # Generate a single batch
         if num_batches == 1:
-            self._batch_idx[-self._batch_choose_size:] = self._batch_rng.choice(
-                self._batch_choose_from,
-                self._batch_choose_size,
-                replace=False
-            )
+            if self._batch_choose_size > 0:
+                self._batch_idx[-self._batch_choose_size:] = self._batch_rng.choice(
+                    self._batch_choose_from,
+                    self._batch_choose_size,
+                    replace=False
+                )
             return jnp.array(self._batch_idx, dtype=jnp.int32)
         
         # Generate a block of batches
         else:
             block_idx = np.zeros((num_batches, len(self._batch_idx)), dtype=int)
             for i in range(num_batches):
-                self._batch_idx[-self._batch_choose_size:] = self._batch_rng.choice(
-                    self._batch_choose_from,
-                    self._batch_choose_size,
-                    replace=False
-                )
+                if self._batch_choose_size > 0:
+                    self._batch_idx[-self._batch_choose_size:] = self._batch_rng.choice(
+                        self._batch_choose_from,
+                        self._batch_choose_size,
+                        replace=False
+                    )
                 block_idx[i, :] = self._batch_idx
                 
             return jnp.array(block_idx, dtype=jnp.int32)

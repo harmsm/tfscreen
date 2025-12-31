@@ -65,6 +65,8 @@ def test_data_class_jit_stability():
 
         return DataClass(
             num_genotype=10,
+            batch_idx=jnp.arange(10),
+            batch_size=10,
             not_binding_idx=not_binding_idx,
             not_binding_batch_size=5,
             num_binding=5,
