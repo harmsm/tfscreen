@@ -231,7 +231,7 @@ def _run_svi(ri,
                           forward_batch_size=forward_batch_size)
         
         # Write summary files
-        summarize_posteriors(posterior_file=f"{out_root}_posterior.npz",
+        summarize_posteriors(posterior_file=f"{out_root}_posterior.h5",
                              config_file=f"{out_root}_config.yaml",
                              out_root=out_root)
         
