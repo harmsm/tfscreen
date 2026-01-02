@@ -1305,44 +1305,44 @@
 ./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1292:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1311:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1318:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1340:60: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1341:60: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1342:60: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1345:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1348:43: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1349:66: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1341:66: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1342:66: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1343:66: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1346:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1349:43: W291 trailing whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1350:66: W291 trailing whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1351:66: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1353:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1355:43: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1356:72: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1352:66: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1354:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1356:43: W291 trailing whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1357:72: W291 trailing whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1358:72: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1364:92: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1390:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1400:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1410:75: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1424:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1427:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1456:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1468:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1480:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1486:25: E231 missing whitespace after ':'
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1487:31: E231 missing whitespace after ':'
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1488:22: E231 missing whitespace after ':'
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1359:72: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1365:92: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1391:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1401:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1411:75: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1425:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1428:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1457:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1469:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1481:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1487:25: E231 missing whitespace after ':'
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1488:31: E231 missing whitespace after ':'
 ./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1489:22: E231 missing whitespace after ':'
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1490:23: E231 missing whitespace after ':'
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1491:20: E231 missing whitespace after ':'
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1492:29: E231 missing whitespace after ':'
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1493:33: E231 missing whitespace after ':'
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1494:34: E231 missing whitespace after ':'
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1495:31: E231 missing whitespace after ':'
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1524:65: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1530:128: E501 line too long (139 > 127 characters)
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1534:27: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1535:37: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1536:38: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1559:1: W391 blank line at end of file
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1490:22: E231 missing whitespace after ':'
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1491:23: E231 missing whitespace after ':'
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1492:20: E231 missing whitespace after ':'
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1493:29: E231 missing whitespace after ':'
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1494:33: E231 missing whitespace after ':'
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1495:34: E231 missing whitespace after ':'
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1496:31: E231 missing whitespace after ':'
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1525:65: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1531:128: E501 line too long (139 > 127 characters)
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1535:27: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1536:37: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1537:38: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/model_class.py:1560:1: W391 blank line at end of file
 ./src/tfscreen/analysis/hierarchical/growth_model/observe/binding.py:9:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/hierarchical/growth_model/observe/binding.py:42:79: E231 missing whitespace after ','
 ./src/tfscreen/analysis/hierarchical/growth_model/observe/binding.py:43:83: E231 missing whitespace after ','

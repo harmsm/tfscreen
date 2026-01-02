@@ -1336,14 +1336,15 @@ class ModelClass:
                 gmin, gmax = g_slice.min(), g_slice.max()
 
                 # Calculate volume of bounding box (excluding num_samples)
+                # Cast to Python int to avoid numpy fixed-width overflow warnings
                 spatial_volume = (
-                    (rmax - rmin + 1) * (tmax - tmin + 1) * 
-                    (pmax - pmin + 1) * (smax - smin + 1) * 
-                    (nmax - nmin + 1) * (cmax - cmin + 1) * 
-                    (gmax - gmin + 1)
+                    int(rmax - rmin + 1) * int(tmax - tmin + 1) * 
+                    int(pmax - pmin + 1) * int(smax - smin + 1) * 
+                    int(nmax - nmin + 1) * int(cmax - cmin + 1) * 
+                    int(gmax - gmin + 1)
                 )
                 
-                if (spatial_volume * num_samples) <= max_block_elements:
+                if (spatial_volume * int(num_samples)) <= max_block_elements:
                     # Read the entire block at once
                     block = growth_pred[:, 
                                         rmin:rmax+1, tmin:tmax+1, 
