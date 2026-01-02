@@ -1206,8 +1206,8 @@ class ModelClass:
     def extract_growth_predictions(self,
                                    posteriors,
                                    q_to_get=None,
-                                   row_chunk_size=10000,
-                                   max_block_elements=10000000):
+                                   row_chunk_size=100,
+                                   max_block_elements=1_000_000_000):
         """
         Extract predicted ln_cfu values matching the input growth data.
 
@@ -1226,9 +1226,9 @@ class ModelClass:
             is used (min, lower_95, lower_std, lower_quartile, median, upper_std,
             upper_quartile, upper_95, max).
         row_chunk_size : int, optional
-            Number of rows to process at a time. Defaults to 10,000.
+            Number of rows to process at a time. Defaults to 100.
         max_block_elements : int, optional
-            Maximum number of elements to read in a single HDF5 block. Defaults to 10,000,000.
+            Maximum number of elements to read in a single HDF5 block. Defaults to 1,000,000,000.
 
         Returns
         -------
@@ -1299,6 +1299,15 @@ class ModelClass:
         conc_idx = out_df["titrant_conc_idx"].values
         geno_idx = out_df["genotype_idx"].values
 
+        # Create a clean dataframe for output
+        keep_columns = ["replicate", "genotype",
+                        "condition_pre", "condition_sel", 
+                        "titrant_name", "titrant_conc",
+                        "t_pre", "t_sel",
+                        "ln_cfu","ln_cfu_std"]
+    
+        out_df = out_df[keep_columns].reset_index(drop=True)
+
         total_rows = len(out_df)
 
         # Initialize quantile columns
@@ -1314,6 +1323,7 @@ class ModelClass:
 
         # Grab chunks of rows to avoid OOM
         for start_r in tqdm(range(0, total_rows, row_chunk_size)):
+
             end_r = min(start_r + row_chunk_size, total_rows)
             
             # Slices for this chunk

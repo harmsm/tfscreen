@@ -12,15 +12,26 @@ def mock_model():
     # Mock growth_df with index columns
     # We need: replicate, time, condition_pre, condition_sel, titrant_name, titrant_conc, genotype
     # Plus their _idx versions
+    # Mock growth_df with index columns and labels
     df = pd.DataFrame({
+        "replicate": [0, 0],
+        "genotype": ["G0", "G0"],
+        "condition_pre": ["C0", "C0"],
+        "condition_sel": ["C1", "C1"],
+        "titrant_name": ["T", "T"],
+        "titrant_conc": [0, 1],
+        "t_pre": [1.0, 1.0],
+        "t_sel": [2.0, 2.0],
         "ln_cfu": [10.0, 11.0],
+        "ln_cfu_std": [0.1, 0.1],
         "replicate_idx": [0, 0],
         "time_idx": [0, 1],
         "condition_pre_idx": [0, 0],
         "condition_sel_idx": [0, 0],
         "titrant_name_idx": [0, 0],
-        "titrant_conc_idx": [0, 0],
-        "genotype_idx": [0, 0]
+        "titrant_conc_idx": [0, 1],
+        "genotype_idx": [0, 0],
+
     })
     model.growth_df = df
     
@@ -33,16 +44,12 @@ def mock_model():
 def mock_posteriors():
     """Create a dictionary of mock posterior samples."""
     # (num_samples, replicate, time, condition_pre, condition_sel, titrant_name, titrant_conc, genotype)
-    # Shape: (5, 1, 2, 1, 1, 1, 1, 1)
+    # Shape: (5, 1, 2, 1, 1, 1, 2, 1)
     num_samples = 5
-    shape = (num_samples, 1, 2, 1, 1, 1, 1, 1)
-    
-    # Fill with predictable values
-    # row 0 (time 0) -> all 10.5
-    # row 1 (time 1) -> all 11.5
+    shape = (num_samples, 1, 2, 1, 1, 1, 2, 1)
     growth_pred = np.zeros(shape)
     growth_pred[:, 0, 0, 0, 0, 0, 0, 0] = 10.5
-    growth_pred[:, 0, 1, 0, 0, 0, 0, 0] = 11.5
+    growth_pred[:, 0, 1, 0, 0, 0, 1, 0] = 11.5 # conc_idx 1 at time 1
     
     return {
         "growth_pred": growth_pred
@@ -66,6 +73,9 @@ def test_extract_growth_predictions_basic(mock_model, mock_posteriors):
 def test_extract_growth_predictions_custom_quantiles(mock_model, mock_posteriors):
     """Test extracting custom quantiles."""
     q_to_get = {"mean": 0.5, "low": 0.1, "high": 0.9}
+    # Add columns to mock_model.growth_df for this test
+    for q in q_to_get:
+        mock_model.growth_df[q] = np.nan
     results = mock_model.extract_growth_predictions(mock_posteriors, q_to_get=q_to_get)
     
     assert "mean" in results.columns
@@ -91,13 +101,23 @@ def test_extract_growth_predictions_file_loading(mock_model):
     
     # Set up growth_df with one row for the single element in growth_pred
     mock_model.growth_df = pd.DataFrame({
+        "replicate": [0],
+        "genotype": ["G0"],
+        "condition_pre": ["C0"],
+        "condition_sel": ["C1"],
+        "titrant_name": ["T"],
+        "titrant_conc": [0],
+        "t_pre": [1.0],
+        "t_sel": [2.0],
+        "ln_cfu": [10.0],
+        "ln_cfu_std": [0.1],
         "replicate_idx": [0],
         "time_idx": [0],
         "condition_pre_idx": [0],
         "condition_sel_idx": [0],
         "titrant_name_idx": [0],
         "titrant_conc_idx": [0],
-        "genotype_idx": [0]
+        "genotype_idx": [0],
     })
     
     with patch("numpy.load", return_value=mock_posteriors_data) as mock_load:

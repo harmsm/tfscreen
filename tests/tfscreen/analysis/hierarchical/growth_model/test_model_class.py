@@ -452,10 +452,23 @@ def test_extract_growth_predictions_full(initialized_model_class, tmpdir):
     model = initialized_model_class
     model._transformation = "none"
     model.growth_df = pd.DataFrame({
-        "genotype": ["wt"], "titrant_name": ["T"], "titrant_conc": [1.0],
-        "replicate_idx": [0], "time_idx": [0], "condition_pre_idx": [0],
-        "condition_sel_idx": [0], "titrant_name_idx": [0], "titrant_conc_idx": [0],
-        "genotype_idx": [0]
+        "replicate": [1], 
+        "genotype": ["wt"],
+        "condition_pre": ["A"],
+        "condition_sel": ["B"],
+        "titrant_name": ["T"],
+        "titrant_conc": [1.0],
+        "t_pre": [1.0],
+        "t_sel": [1.0],
+        "ln_cfu": [10.0],
+        "ln_cfu_std": [0.1],
+        "replicate_idx": [0], 
+        "time_idx": [0], 
+        "condition_pre_idx": [0],
+        "condition_sel_idx": [0], 
+        "titrant_name_idx": [0], 
+        "titrant_conc_idx": [0],
+        "genotype_idx": [0],
     })
     post = {"growth_pred": np.zeros((1, 1, 1, 1, 1, 1, 1, 1))}
     res = ModelClass.extract_growth_predictions(model, post)
