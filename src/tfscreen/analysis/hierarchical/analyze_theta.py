@@ -367,9 +367,11 @@ def analyze_theta(growth_df=None,
         when getting posteriors, calculate forward predictions in batches of
         this size (default 512)
     always_get_posterior : bool, optional
-        If True, always sample posteriors even if not converged (default False).
-    spiked : list, optional
-        List of genotypes to mask from theta correction (e.g. spiked-in variants).
+        If True, always generate and save posterior samples, even if the
+        optimization did not formally converge (default False).
+    spiked : list or str, optional
+        Names of genotypes that should be excluded from congression
+        correction.
 
     Returns
     -------

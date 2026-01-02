@@ -208,7 +208,7 @@ def _read_binding_df(binding_df,
     ----------
     binding_df : pd.DataFrame or str
         DataFrame or path to file holding binding data.
-    existing_df : pd.DataFrame, optional
+    growth_df : pd.DataFrame, optional
         The processed growth DataFrame (`growth_tm.df`). This is used to
         enforce consistent 'map_theta_group' indexing.
     theta_group_cols : list, optional
@@ -472,6 +472,11 @@ class ModelClass:
         Model name for noise on theta in the growth model.
     theta_binding_noise : str, optional
         Model name for noise on theta in the binding model.
+    spiked_genotypes : list or str, optional
+        Names of genotypes that should be excluded from congression
+        correction.
+    batch_size : int, optional
+        The batch size for SVI. If None (default), use full batch.
 
     Attributes
     ----------
@@ -846,14 +851,15 @@ class ModelClass:
         Parameters
         ----------
         posteriors : dict or str
-            Assumes this is a dictionary of posteriors keying parameters to 
-            numpy arrays or a path to a .npz file containing posterior samples
-            for model parameters.
-        q_to_get : dict, optional
-            Dictionary mapping output column names to quantile values (between 0 and 1)
-            to extract from the posterior samples. If None, a default set of quantiles
-            is used (min, lower_95, lower_std, lower_quartile, median, upper_std,
-            upper_quartile, upper_95, max).
+        Assumes this is a dictionary of posteriors keying parameters to 
+        numpy arrays, a numpy.lib.npyio.NpzFile object, or a path to a 
+        .npz or .h5/.hdf5 file containing posterior samples for model 
+        parameters.
+    q_to_get : dict, optional
+        Dictionary mapping output column names to quantile values (between 0 and 1)
+        to extract from the posterior samples. If None, a default set of quantiles
+        is used (min, lower_95, lower_std, lower_quartile, median, upper_std,
+        upper_quartile, upper_95, max).
 
         Returns
         -------
@@ -1197,8 +1203,10 @@ class ModelClass:
         return calc_df.drop(columns=["map_theta_group"])
 
     def extract_growth_predictions(self,
-                                  posteriors,
-                                  q_to_get=None):
+                                   posteriors,
+                                   q_to_get=None,
+                                   row_chunk_size=None,
+                                   max_block_elements=None):
         """
         Extract predicted ln_cfu values matching the input growth data.
 
@@ -1216,6 +1224,10 @@ class ModelClass:
             to extract from the posterior samples. If None, a default set of quantiles
             is used (min, lower_95, lower_std, lower_quartile, median, upper_std,
             upper_quartile, upper_95, max).
+        row_chunk_size : int, optional
+            Number of rows to process at a time. Defaults to 10,000.
+        max_block_elements : int, optional
+            Maximum number of elements to read in a single HDF5 block. Defaults to 10,000,000.
 
         Returns
         -------
@@ -1269,29 +1281,42 @@ class ModelClass:
         # The tensor shape is (num_samples, replicate, time, condition_pre, 
         # condition_sel, titrant_name, titrant_conc, genotype)
         
-        # Get the index columns from the growth_df
-        rep_idx = self.growth_df["replicate_idx"].values
-        time_idx = self.growth_df["time_idx"].values
-        pre_idx = self.growth_df["condition_pre_idx"].values
-        sel_idx = self.growth_df["condition_sel_idx"].values
-        name_idx = self.growth_df["titrant_name_idx"].values
-        conc_idx = self.growth_df["titrant_conc_idx"].values
-        geno_idx = self.growth_df["genotype_idx"].values
-
-        total_rows = len(self.growth_df)
+        # Sort the dataframe by index columns to improve HDF5 access locality
+        index_cols = ["replicate_idx", "time_idx", "condition_pre_idx", 
+                      "condition_sel_idx", "titrant_name_idx", 
+                      "titrant_conc_idx", "genotype_idx"]
+        
         out_df = self.growth_df.copy()
+        out_df = out_df.sort_values(by=index_cols)
+        
+        # Get the sorted index columns
+        rep_idx = out_df["replicate_idx"].values
+        time_idx = out_df["time_idx"].values
+        pre_idx = out_df["condition_pre_idx"].values
+        sel_idx = out_df["condition_sel_idx"].values
+        name_idx = out_df["titrant_name_idx"].values
+        conc_idx = out_df["titrant_conc_idx"].values
+        geno_idx = out_df["genotype_idx"].values
+
+        total_rows = len(out_df)
 
         # Initialize quantile columns
         for q_name in q_to_get:
             out_df[q_name] = np.nan
 
-        # Chunk the extraction to avoid OOM
-        # 1,000,000 samples might be too much if we have 10,000 samples and 100 genotypes
-        # A typical row has 10,000 float64 samples -> 80 KB.
-        # 12,500 rows -> 1 GB.
-        row_chunk_size = getattr(self, "row_chunk_size", 10000)
+        # Sort quantiles to ensure predictable behavior
+        q_names = list(q_to_get.keys())
+        q_values = np.array([q_to_get[name] for name in q_names])
         
         is_h5 = isinstance(growth_pred, h5py.Dataset)
+        num_samples = growth_pred.shape[0]
+
+        # Grab chunks of rows to avoid OOM
+        if row_chunk_size is None:
+            row_chunk_size = getattr(self, "row_chunk_size", 10000)
+
+        if max_block_elements is None:
+            max_block_elements = getattr(self, "max_block_elements", 10_000_000)
 
         for start_r in range(0, total_rows, row_chunk_size):
             end_r = min(start_r + row_chunk_size, total_rows)
@@ -1306,29 +1331,57 @@ class ModelClass:
             g_slice = geno_idx[start_r:end_r]
 
             if is_h5:
-                # h5py fancy indexing requires monotonic indices for ALL dimensions, 
-                # which is hard to guarantee for arbitrary slices. 
-                # We'll use a loop for now. While slower than a single block read, 
-                # it avoids OOM and is more robust. 
-                preds_chunk_list = []
-                for idx in range(len(r_slice)):
-                    # Fetch one row's samples
-                    row_data = growth_pred[:, r_slice[idx], t_slice[idx], p_slice[idx], 
-                                           s_slice[idx], n_slice[idx], c_slice[idx], g_slice[idx]]
-                    preds_chunk_list.append(row_data)
+                # Calculate bounding box for this chunk
+                rmin, rmax = r_slice.min(), r_slice.max()
+                tmin, tmax = t_slice.min(), t_slice.max()
+                pmin, pmax = p_slice.min(), p_slice.max()
+                smin, smax = s_slice.min(), s_slice.max()
+                nmin, nmax = n_slice.min(), n_slice.max()
+                cmin, cmax = c_slice.min(), c_slice.max()
+                gmin, gmax = g_slice.min(), g_slice.max()
+
+                # Calculate volume of bounding box (excluding num_samples)
+                spatial_volume = (
+                    (rmax - rmin + 1) * (tmax - tmin + 1) * 
+                    (pmax - pmin + 1) * (smax - smin + 1) * 
+                    (nmax - nmin + 1) * (cmax - cmin + 1) * 
+                    (gmax - gmin + 1)
+                )
                 
-                # Stack to (num_samples, chunk_size)
-                preds_chunk = np.stack(preds_chunk_list, axis=1)
+                if (spatial_volume * num_samples) <= max_block_elements:
+                    # Read the entire block at once
+                    block = growth_pred[:, 
+                                        rmin:rmax+1, tmin:tmax+1, 
+                                        pmin:pmax+1, smin:smax+1, 
+                                        nmin:nmax+1, cmin:cmax+1, 
+                                        gmin:gmax+1]
+                    
+                    # Index into the block using relative indices
+                    preds_chunk = block[:, 
+                                        r_slice - rmin, t_slice - tmin, 
+                                        p_slice - pmin, s_slice - smin, 
+                                        n_slice - nmin, c_slice - cmin, 
+                                        g_slice - gmin]
+                else:
+                    # Fallback to row-by-row if the block is too sparse/large
+                    preds_chunk_list = []
+                    for idx in range(len(r_slice)):
+                        row_data = growth_pred[:, r_slice[idx], t_slice[idx], p_slice[idx], 
+                                               s_slice[idx], n_slice[idx], c_slice[idx], g_slice[idx]]
+                        preds_chunk_list.append(row_data)
+                    preds_chunk = np.stack(preds_chunk_list, axis=1)
             else:
-                # Standard numpy indexing
+                # Standard numpy indexing for non-HDF5
                 preds_chunk = growth_pred[:, r_slice, t_slice, p_slice, s_slice, n_slice, c_slice, g_slice]
 
-            # Calculate quantiles for this chunk
-            for q_name, q_val in q_to_get.items():
-                out_df.loc[out_df.index[start_r:end_r], q_name] = np.quantile(preds_chunk, q_val, axis=0)
+            # Calculate all quantiles in one go: (len(q_values), chunk_size)
+            all_quantiles = np.quantile(preds_chunk, q_values, axis=0)
+
+            # Assign to out_df
+            for i, q_name in enumerate(q_names):
+                out_df.loc[out_df.index[start_r:end_r], q_name] = all_quantiles[i]
 
         return out_df
-
 
     @property
     def init_params(self):

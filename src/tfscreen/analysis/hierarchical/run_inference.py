@@ -737,14 +737,14 @@ class RunInference:
 
     def _write_losses(self,losses,out_root):
         """
-        Write losses to a binary file. 
+        Write losses to binary (.bin) and text (.txt) files. 
 
         Parameters
         ----------
         losses : list
             A list of loss values from the recent optimization interval.
         out_root : str
-            Root name for the output losses CSV file.
+            Root name for the output files.
         """
 
         # Name of output file

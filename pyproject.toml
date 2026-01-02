@@ -6,11 +6,10 @@ build-backend = "setuptools.build_meta"
 universal = true
 
 [tool.setuptools.dynamic]
-version = {attr = "tfscreen.__version__.__version__"}
+version = { attr = "tfscreen.__version__.__version__" }
 
 [tool.setuptools.package-data]
-"*" = [
-]
+"*" = []
 
 [project]
 name = "tfscreen"
@@ -24,8 +23,6 @@ dependencies = [
   "statsmodels",
   "PyYAML",
   "corner",
-  "dataclasses",
-  "typing",
   "numba",
   "patsy",
   "pybktree",
@@ -37,22 +34,26 @@ dependencies = [
   "jax",
   "jaxlib",
   "h5py",
+  "scipy",
 ]
 
 requires-python = ">=3.10"
-authors = [
-  {name = "Mike Harms", email = "harms@uoregon.edu"},
-]
-maintainers = [
-  {name = "Mike Harms", email = "harms@uoregon.edu"}
-]
+authors = [{ name = "Mike Harms", email = "harms@uoregon.edu" }]
+maintainers = [{ name = "Mike Harms", email = "harms@uoregon.edu" }]
 description = "Simulate or analyze a high-throughput screen of a transcription factor library"
 readme = "README.rst"
-license = {file = "LICENSE"}
-keywords = ["high-throughput","protein","transcription factor","analysis","statistics","simulation"]
+license = { file = "LICENSE" }
+keywords = [
+  "high-throughput",
+  "protein",
+  "transcription factor",
+  "analysis",
+  "statistics",
+  "simulation",
+]
 classifiers = [
   "Development Status :: 5 - Production/Stable",
-  "Programming Language :: Python"
+  "Programming Language :: Python",
 ]
 
 [project.urls]
@@ -60,16 +61,8 @@ Repository = "https://github.com/harmslab/tfscreen.git"
 "Bug Tracker" = "https://github.com/harmslab/tfscreen/issues"
 
 [project.optional-dependencies]
-test = [
-  "coverage",
-  "flake8",
-  "pytest",
-  "genbadge",
-  "pytest-mock"
- ]
-docs = [
-  "pydata-sphinx-theme"
-]
+test = ["coverage", "flake8", "pytest", "genbadge", "pytest-mock"]
+docs = ["pydata-sphinx-theme"]
 
 [project.scripts]
 tfs-process-fastq = "tfscreen.process_raw.process_fastq:main"
@@ -77,4 +70,3 @@ tfs-process-counts = "tfscreen.process_raw.process_counts:main"
 tfs-hier-theta = "tfscreen.analysis.hierarchical.analyze_theta:main"
 tfs-indep-theta = "tfscreen.analysis.independent.analyze_theta:main"
 tfs-summarize-posteriors = "tfscreen.analysis.hierarchical.summarize_posteriors:main"
-
