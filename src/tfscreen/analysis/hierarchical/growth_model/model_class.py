@@ -31,6 +31,7 @@ from functools import partial
 import os
 import warnings
 import h5py
+from tqdm import tqdm
 
 # Declare float datatype
 FLOAT_DTYPE = jnp.float64 if jax.config.read("jax_enable_x64") else jnp.float32
@@ -1205,8 +1206,8 @@ class ModelClass:
     def extract_growth_predictions(self,
                                    posteriors,
                                    q_to_get=None,
-                                   row_chunk_size=None,
-                                   max_block_elements=None):
+                                   row_chunk_size=10000,
+                                   max_block_elements=10000000):
         """
         Extract predicted ln_cfu values matching the input growth data.
 
@@ -1312,13 +1313,7 @@ class ModelClass:
         num_samples = growth_pred.shape[0]
 
         # Grab chunks of rows to avoid OOM
-        if row_chunk_size is None:
-            row_chunk_size = getattr(self, "row_chunk_size", 10000)
-
-        if max_block_elements is None:
-            max_block_elements = getattr(self, "max_block_elements", 10_000_000)
-
-        for start_r in range(0, total_rows, row_chunk_size):
+        for start_r in tqdm(range(0, total_rows, row_chunk_size)):
             end_r = min(start_r + row_chunk_size, total_rows)
             
             # Slices for this chunk
