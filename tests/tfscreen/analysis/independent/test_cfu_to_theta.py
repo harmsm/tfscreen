@@ -369,6 +369,7 @@ def test_setup_inference_happy_path(mocker, setup_df):
     last_call_args, last_call_kwargs = mock_builder.call_args_list[2]
     # offset = max lnA0 idx (2) + max dk_geno idx (4) = 5
     assert last_call_kwargs["offset"] == 5
+    assert last_call_kwargs["transform"] == "none"
 
     # 2. Verify the final param_df
     # Total params = 3 (lnA0) + 2 (dk_geno) + 2 (theta) = 7
@@ -398,6 +399,49 @@ def test_setup_inference_happy_path(mocker, setup_df):
                       (k_bg + row0["dk_b_sel"]) * row0["t_sel"])
     expected_y_obs_0 = row0["ln_cfu"] - constant_terms
     assert np.isclose(y_obs[0], expected_y_obs_0)
+
+
+def test_setup_inference_logistic_theta(mocker, setup_df):
+    """
+    Tests that _setup_inference correctly passes logistic_theta to 
+    _build_param_df.
+    """
+    # --- Mock the _build_param_df helper function ---
+    # We expect it to be called 3 times. We'll define the return value
+    # for each call.
+
+    # 1. Mock return for lnA0
+    lnA0_idx = np.array([0, 1, 2]) # Three unique lnA0 groups
+    lnA0_df = pd.DataFrame({"idx": [0, 1, 2], "class": "lnA0"})
+
+    # 2. Mock return for dk_geno
+    dk_geno_idx = np.array([3, 4, 3]) # Two unique genotype groups
+    dk_geno_df = pd.DataFrame({"idx": [3, 4], "class": "dk_geno"})
+
+    # 3. Mock return for theta
+    theta_idx = np.array([5, 5, 6]) # Two unique titrant groups
+    theta_df = pd.DataFrame({"idx": [5, 6], "class": "theta"})
+
+    mock_builder = mocker.patch(
+        "tfscreen.analysis.independent.cfu_to_theta._build_param_df",
+        side_effect=[
+            (lnA0_idx, lnA0_df),
+            (dk_geno_idx, dk_geno_df),
+            (theta_idx, theta_df),
+        ]
+    )
+
+    # --- Run the function with logistic_theta=True ---
+    _setup_inference(setup_df, logistic_theta=True)
+
+    # --- Assertions ---
+
+    # Verify calls to the mock
+    assert mock_builder.call_count == 3
+    
+    # Check that the transform was correct for the last call
+    last_call_args, last_call_kwargs = mock_builder.call_args_list[2]
+    assert last_call_kwargs["transform"] == "logistic"
 
 
 

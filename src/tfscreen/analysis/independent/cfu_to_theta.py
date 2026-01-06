@@ -353,7 +353,7 @@ def _build_param_df(df,
     return df_idx, final_df
 
     
-def _setup_inference(df):
+def _setup_inference(df, logistic_theta=False):
     """
     Assemble the final design matrix and response vector for regression.
 
@@ -371,6 +371,9 @@ def _setup_inference(df):
         must contain all columns needed for parameter assignment (e.g.,
         'genotype', 'library') and for predictor value calculation (e.g.,
         't_pre', 't_sel', 'dk_m_pre').
+    logistic_theta : bool, optional
+        Whether to use a "logistic" transform for the `theta` variable. If
+        False (default), use "none".
 
     Returns
     -------
@@ -430,13 +433,15 @@ def _setup_inference(df):
     
     offset = dk_geno_df["idx"].max() + 1
     
+    transform = "logistic" if logistic_theta else "none"
+
     theta_selector = ["genotype","titrant_name","titrant_conc"]
     theta_idx, theta_df = _build_param_df(
         df=df,
         base_name="theta",
         series_selector=theta_selector,
         guess_column="wt_theta",
-        transform="logistic",
+        transform=transform,
         offset=offset
     )
 
@@ -553,7 +558,8 @@ def _run_inference(fm):
 def cfu_to_theta(df,
                  non_sel_conditions,
                  calibration_data,
-                 max_batch_size=250):
+                 max_batch_size=250,
+                 logistic_theta=False):
     """
     Estimate transcription factor occupancy (theta) from cell growth data.
 
@@ -584,6 +590,9 @@ def cfu_to_theta(df,
         The maximum number of experiments to include in a single regression
         batch. This helps manage memory usage for large datasets.
         (default is 250).
+    logistic_theta : bool, optional
+        Whether to use a "logistic" transform for the `theta` variable. If
+        False (default), use "none".
 
     Returns
     -------
@@ -617,7 +626,8 @@ def cfu_to_theta(df,
     for batch_idx, batch_df in tqdm(df.groupby(["_batch_idx"])):
 
         # Build the design matrix
-        y_obs, y_std, X, fit_param_df = _setup_inference(batch_df)
+        y_obs, y_std, X, fit_param_df = _setup_inference(batch_df,
+                                                         logistic_theta=logistic_theta)
 
         # Construct a FitManager object to manage the fit. 
         fm = FitManager(y_obs,y_std,X,fit_param_df)

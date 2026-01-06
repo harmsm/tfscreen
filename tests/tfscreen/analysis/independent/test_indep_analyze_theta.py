@@ -41,7 +41,8 @@ class TestAnalyzeTheta:
             df=df,
             non_sel_conditions="test_cond",
             calibration_data=calibration_data,
-            max_batch_size=100
+            max_batch_size=100,
+            logistic_theta=False
         )
         
         mock_process.assert_called_once_with(param_df_mock, pred_df_mock)
@@ -54,6 +55,43 @@ class TestAnalyzeTheta:
         out_mocks["dk_geno"].to_csv.assert_called_once_with("test_root_dk_geno.csv", index=False)
         out_mocks["ln_cfu0"].to_csv.assert_called_once_with("test_root_ln_cfu0.csv", index=False)
         out_mocks["pred"].to_csv.assert_called_once_with("test_root_pred_proc.csv", index=False)
+
+    @patch("tfscreen.analysis.independent.analyze_theta.cfu_to_theta")
+    @patch("tfscreen.analysis.independent.analyze_theta.process_theta_fit")
+    def test_analyze_theta_logistic(self, mock_process, mock_cfu_to_theta):
+        
+        # Setup mocks
+        df = MagicMock(spec=pd.DataFrame)
+        calibration_data = {"some": "data"}
+        
+        param_df_mock = MagicMock(spec=pd.DataFrame)
+        pred_df_mock = MagicMock(spec=pd.DataFrame)
+        mock_cfu_to_theta.return_value = (param_df_mock, pred_df_mock)
+        
+        # Create mocks for the output components of process_theta_fit
+        out_mocks = {
+            "theta": MagicMock(spec=pd.DataFrame),
+            "dk_geno": MagicMock(spec=pd.DataFrame),
+            "ln_cfu0": MagicMock(spec=pd.DataFrame),
+            "pred": MagicMock(spec=pd.DataFrame)
+        }
+        mock_process.return_value = out_mocks
+        
+        # Call function with logistic_theta=True
+        analyze_theta(
+            df=df,
+            calibration_data=calibration_data,
+            logistic_theta=True
+        )
+        
+        # Verify call to cfu_to_theta has logistic_theta=True
+        mock_cfu_to_theta.assert_called_once_with(
+            df=df,
+            non_sel_conditions=None,
+            calibration_data=calibration_data,
+            max_batch_size=250,
+            logistic_theta=True
+        )
 
     @patch("tfscreen.analysis.independent.analyze_theta.generalized_main")
     def test_main(self, mock_generalized_main):

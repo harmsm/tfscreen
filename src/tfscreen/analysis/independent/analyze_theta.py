@@ -7,13 +7,15 @@ def analyze_theta(df,
                   calibration_data,
                   non_sel_conditions=None,
                   out_root="tfs",
-                  max_batch_size=250):
+                  max_batch_size=250,
+                  logistic_theta=False):
     
     print("--> Performing fit.",flush=True)
     param_df, pred_df = cfu_to_theta(df=df,
                                      non_sel_conditions=non_sel_conditions,
                                      calibration_data=calibration_data,
-                                     max_batch_size=max_batch_size)
+                                     max_batch_size=max_batch_size,
+                                     logistic_theta=logistic_theta)
 
     print("--> Aggregating results results.",flush=True)
     out = process_theta_fit(param_df,pred_df)
