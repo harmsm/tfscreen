@@ -1,9 +1,11 @@
 import tfscreen
 from tfscreen.__version__ import __version__
+from typing import Optional, Union, List
 
 import yaml
 
 from tfscreen.util.dataframe import add_group_columns
+from tfscreen.genetics import expand_genotype_columns
 from tfscreen.analysis.hierarchical import (
     TensorManager,
     populate_dataclass
@@ -338,17 +340,16 @@ def _setup_batching(growth_genotypes,
     not_binding_idx = np.where(~np.isin(growth_genotypes,binding_genotypes))[0]
     num_binding = len(binding_idx)
     num_not_binding = len(not_binding_idx)
-    not_binding_batch_size = batch_size - num_binding
+    num_binding_to_keep = min(num_binding, batch_size)
+    not_binding_batch_size = batch_size - num_binding_to_keep
 
-    # Build idx array. The first entries correspond to the binding data and are 
-    # the same for all rounds
     idx = np.zeros(batch_size,dtype=int)
-    idx[:num_binding] = binding_idx
+    idx[:num_binding_to_keep] = binding_idx[:num_binding_to_keep]
 
     # Calculate scale vector, which will be the same for all rounds
     scale_vector = np.ones(batch_size,dtype=float)
     if not_binding_batch_size > 0:
-        scale_vector[num_binding:] = num_not_binding/not_binding_batch_size
+        scale_vector[num_binding_to_keep:] = num_not_binding/not_binding_batch_size
 
     # Return output as a dictionary so this can be loaded into the dataclass
     out = {}
@@ -358,7 +359,7 @@ def _setup_batching(growth_genotypes,
     out["num_binding"] = num_binding
     out["not_binding_idx"] = not_binding_idx
     out["not_binding_batch_size"] = not_binding_batch_size
-
+    
     return out
 
 
@@ -498,7 +499,6 @@ class ModelClass:
     def __init__(self,
                  growth_df,
                  binding_df,
-                 batch_size=None,
                  condition_growth="hierarchical",
                  ln_cfu0="hierarchical",
                  dk_geno="hierarchical",
@@ -506,8 +506,10 @@ class ModelClass:
                  theta="hill",
                  transformation="congression",
                  theta_growth_noise="none",
-                 theta_binding_noise="none",
-                 spiked_genotypes=None):
+                 theta_binding_noise: str = "none",
+                 spiked_genotypes: Optional[Union[List[str], str]] = None,
+                 epistasis_mode: str = "genotype",
+                 batch_size: Optional[int] = None):
 
         self._ln_cfu_df = growth_df
         self._binding_df = binding_df
@@ -523,6 +525,8 @@ class ModelClass:
         self._theta_growth_noise = theta_growth_noise
         self._theta_binding_noise = theta_binding_noise
         self._spiked_genotypes = spiked_genotypes
+        self._epistasis_mode = epistasis_mode
+        self._batch_size = batch_size
 
         self._initialize_data()
         self._initialize_classes()
@@ -620,6 +624,58 @@ class ModelClass:
         other_data["titrant_conc"] = titrant_conc
         other_data["log_titrant_conc"] = log_titrant_conc
 
+        # ---------------------------------------------------------------------
+        # Create mutation-level translation layer mapping
+        
+        # Get names of genotypes in the growth dataset
+        genotype_idx = self.growth_tm.tensor_dim_names.index("genotype")
+        genotype_names = self.growth_tm.tensor_dim_labels[genotype_idx]
+        
+        # Decompose genotypes into mutations
+        expanded_df = expand_genotype_columns(genotype_names)
+        
+        # Extract mutation columns (wt_aa_1, resid_1, mut_aa_1, etc.)
+        # Build list of unique single mutations
+        resid_cols = [c for c in expanded_df.columns if c.startswith('resid_')]
+        max_muts = len(resid_cols)
+        
+        all_mutations = []
+        for i in range(1, max_muts + 1):
+            wt_col = f"wt_aa_{i}"
+            resid_col = f"resid_{i}"
+            mut_col = f"mut_aa_{i}"
+            
+            # Create mutation string e.g. "A15G"
+            mask = expanded_df[resid_col].notna()
+            muts = (expanded_df.loc[mask, wt_col].astype(str) + 
+                    expanded_df.loc[mask, resid_col].astype(str) + 
+                    expanded_df.loc[mask, mut_col].astype(str))
+            all_mutations.extend(muts.tolist())
+            
+        unique_mutations = sorted(list(set(all_mutations)))
+        mutation_to_idx = {m: i + 1 for i, m in enumerate(unique_mutations)}
+        mutation_to_idx["wt"] = 0 # wt or empty padding
+        
+        # Create mapping tensor (num_genotype, max_muts)
+        map_genotype_to_mutations = np.zeros((len(genotype_names), max_muts), dtype=int)
+        for i in range(1, max_muts + 1):
+            wt_col = f"wt_aa_{i}"
+            resid_col = f"resid_{i}"
+            mut_col = f"mut_aa_{i}"
+            
+            mask = expanded_df[resid_col].notna()
+            muts = (expanded_df.loc[mask, wt_col].astype(str) + 
+                    expanded_df.loc[mask, resid_col].astype(str) + 
+                    expanded_df.loc[mask, mut_col].astype(str))
+            
+            indices = [mutation_to_idx[m] for m in muts]
+            map_genotype_to_mutations[mask, i-1] = indices
+
+        other_data["epistasis_mode"] = self._epistasis_mode
+        other_data["num_mutation"] = len(unique_mutations)
+        other_data["map_genotype_to_mutations"] = jnp.array(map_genotype_to_mutations, dtype=jnp.int32)
+        other_data["genotype_num_mutations"] = jnp.array(expanded_df["num_muts"].values, dtype=jnp.int32)
+
         growth_data_sources = [tensors,sizes,wt_info,other_data]
         
         # ---------------------------------------------------------------------
@@ -648,6 +704,23 @@ class ModelClass:
 
         other_data["titrant_conc"] = titrant_conc
         other_data["log_titrant_conc"] = log_titrant_conc
+
+        # Inherit mutation mappings from growth (must be consistent)
+        other_data["num_mutation"] = growth_data_sources[-1]["num_mutation"]
+        
+        # The binding dataset only has a subset of genotypes, but we use the 
+        # Metadata for mutation mapping
+        growth_genotype_names = self.growth_tm.tensor_dim_labels[self.growth_tm.tensor_dim_names.index("genotype")]
+        expanded_df = expand_genotype_columns(growth_genotype_names)
+        binding_genotype_names = self.binding_tm.tensor_dim_labels[self.binding_tm.tensor_dim_names.index("genotype")]
+        
+        # Create a map for the subset of genotypes in binding
+        growth_to_idx = {name: i for i, name in enumerate(growth_genotype_names)}
+        binding_indices_in_growth = jnp.array([growth_to_idx[name] for name in binding_genotype_names])
+        
+        other_data["epistasis_mode"] = self._epistasis_mode
+        other_data["map_genotype_to_mutations"] = growth_data_sources[-1]["map_genotype_to_mutations"][binding_indices_in_growth]
+        other_data["genotype_num_mutations"] = growth_data_sources[-1]["genotype_num_mutations"][binding_indices_in_growth]
 
         binding_data_sources = [self.binding_tm.tensors,sizes,other_data]
 

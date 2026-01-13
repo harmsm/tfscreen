@@ -24,7 +24,8 @@ MockGrowthData = namedtuple("MockGrowthData", [
     "batch_size",
     "batch_idx",
     "scale_vector",
-    "map_ln_cfu0" # Kept for API compatibility if needed, though updated model relies on expansion
+    "map_ln_cfu0",
+    "epistasis_mode"
 ])
 
 @pytest.fixture
@@ -56,7 +57,8 @@ def mock_data():
         batch_size=batch_size,
         batch_idx=batch_idx,
         scale_vector=scale_vector,
-        map_ln_cfu0=map_ln_cfu0
+        map_ln_cfu0=map_ln_cfu0,
+        epistasis_mode="genotype"
     )
 
 # --- Test Cases ---

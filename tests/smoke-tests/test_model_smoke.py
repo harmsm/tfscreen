@@ -11,16 +11,19 @@ from tfscreen.analysis.hierarchical.growth_model.registry import model_registry
 CONDITION_GROWTH_OPTS = ["independent", "hierarchical"]
 TRANSFORMATION_OPTS = ["congression", "single"]
 THETA_OPTS = ["hill"] # categorical is also possible but hill is the most complex
+EPISTASIS_MODE_OPTS = ["genotype", "none","horseshoe","spikeslab"]
 
 @pytest.mark.slow
 @pytest.mark.parametrize("condition_growth", CONDITION_GROWTH_OPTS)
 @pytest.mark.parametrize("transformation", TRANSFORMATION_OPTS)
 @pytest.mark.parametrize("theta", THETA_OPTS)
+@pytest.mark.parametrize("epistasis_mode", EPISTASIS_MODE_OPTS)
 def test_model_svi_smoke(growth_smoke_csv, 
                          binding_smoke_csv, 
                          condition_growth, 
                          transformation, 
                          theta, 
+                         epistasis_mode,
                          tmpdir):
     """
     Perform a very short SVI run for different model configurations.
@@ -37,6 +40,7 @@ def test_model_svi_smoke(growth_smoke_csv,
         condition_growth=condition_growth,
         transformation=transformation,
         theta=theta,
+        epistasis_mode=epistasis_mode,
         batch_size=None # Use all data for smoke test
     )
     

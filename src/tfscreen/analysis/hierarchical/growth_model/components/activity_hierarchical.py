@@ -5,6 +5,9 @@ from flax.struct import dataclass
 from typing import Dict, Any
 
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
+from .genotype_utils import (sample_genotype_parameter, 
+                             sample_genotype_parameter_guide,
+                             get_genotype_parameter_guesses)
 
 @dataclass(frozen=True)
 class ModelPriors:
@@ -74,19 +77,20 @@ def define_model(name: str,
         dist.HalfNormal(priors.activity_hyper_scale_loc) # Using HalfNormal
     )
 
-    # Sample non-centered offsets for mutant genotypes only
-    with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
-        with pyro.handlers.scale(scale=data.scale_vector):
-            activity_offset = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
+    def sample_activity_per_unit(site_name, size):
+        activity_offset = pyro.sample(f"{site_name}_offset", dist.Normal(0.0, 1.0))
+        
+        # Guard against full-sized array substitution during initialization or re-runs 
+        # with full-sized initial values
+        if data.epistasis_mode == "genotype":
+            if activity_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+                activity_offset = activity_offset[..., data.batch_idx]
+        
+        # Calculate in log-space
+        return log_activity_hyper_loc + activity_offset * log_activity_hyper_scale
 
-    # Guard against full-sized array substitution during initialization or re-runs 
-    # with full-sized initial values
-    if activity_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
-        activity_offset = activity_offset[..., data.batch_idx]
-    
-    # Calculate in log-space, then exponentiate
-    log_activity_mutant_dists = log_activity_hyper_loc + activity_offset * log_activity_hyper_scale
-    activity = jnp.clip(jnp.exp(log_activity_mutant_dists), max=1e30)
+    log_activity_per_genotype = sample_genotype_parameter(name, data, sample_activity_per_unit)
+    activity = jnp.clip(jnp.exp(log_activity_per_genotype), max=1e30)
 
     # Set wildtype activity to 1.0
     is_wt_mask = jnp.isin(data.batch_idx, data.wt_indexes)
@@ -128,29 +132,32 @@ def guide(name: str,
         dist.LogNormal(a_scale_loc, a_scale_scale)
     )
 
-    offset_locs = pyro.param(f"{name}_offset_locs",
-                             jnp.zeros(data.num_genotype,dtype=float))
-    offset_scales = pyro.param(f"{name}_offset_scales",
-                               jnp.ones(data.num_genotype,dtype=float),
-                               constraint=dist.constraints.positive)
+    def guide_activity_per_unit(site_name, size):
+        actual_size = data.num_genotype if data.epistasis_mode == "genotype" else data.num_mutation
+        
+        g_offset_locs = pyro.param(f"{site_name}_offset_locs", jnp.zeros(actual_size))
+        g_offset_scales = pyro.param(f"{site_name}_offset_scales", jnp.ones(actual_size), 
+                                     constraint=dist.constraints.positive)
+        
+        if data.epistasis_mode == "genotype":
+            batch_locs = g_offset_locs[data.batch_idx]
+            batch_scales = g_offset_scales[data.batch_idx]
+        else:
+            batch_locs = g_offset_locs
+            batch_scales = g_offset_scales
 
-    # Sample non-centered offsets for mutant genotypes only
-    with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
-        with pyro.handlers.scale(scale=data.scale_vector):
+        activity_offset = pyro.sample(f"{site_name}_offset", dist.Normal(batch_locs, batch_scales))
 
-            batch_locs = offset_locs[data.batch_idx]
-            batch_scales = offset_scales[data.batch_idx]
+        # Guard against full-sized array substitution during initialization or
+        # re-runs with full-sized initial values
+        if activity_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+             activity_offset = activity_offset[..., data.batch_idx]
 
-            activity_offset = pyro.sample(f"{name}_offset", dist.Normal(batch_locs, batch_scales))
+        # Calculate in log-space
+        return log_activity_hyper_loc + activity_offset * log_activity_hyper_scale
 
-    # Guard against full-sized array substitution during initialization or re-runs 
-    # with full-sized initial values
-    if activity_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
-        activity_offset = activity_offset[..., data.batch_idx]
-    
-    # Calculate in log-space, then exponentiate
-    log_activity_mutant_dists = log_activity_hyper_loc + activity_offset * log_activity_hyper_scale
-    activity = jnp.clip(jnp.exp(log_activity_mutant_dists), max=1e30)
+    log_activity_per_genotype = sample_genotype_parameter_guide(name, data, guide_activity_per_unit)
+    activity = jnp.clip(jnp.exp(log_activity_per_genotype), max=1e30)
 
     # Set wildtype activity to 1.0
     is_wt_mask = jnp.isin(data.batch_idx, data.wt_indexes)
@@ -208,10 +215,14 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
         guess values.
     """
 
+    def guess_activity_per_unit(site_name, size):
+        return {f"{site_name}_offset": jnp.zeros(size)}
+
     guesses = {}
     guesses[f"{name}_log_hyper_loc"] = 0.0
     guesses[f"{name}_log_hyper_scale"] = 0.1
-    guesses[f"{name}_offset"] = jnp.zeros(data.num_genotype,dtype=float)
+    
+    guesses.update(get_genotype_parameter_guesses(name, data, guess_activity_per_unit))
 
     return guesses
 

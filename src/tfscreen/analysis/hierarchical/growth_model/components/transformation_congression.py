@@ -137,10 +137,16 @@ def update_thetas(theta, params, mask=None, n_grid=256):
     
     return corrected_theta
 
-def calculate_expected_observed_max(x_val, mu, sigma, lam, n_grid=100):
+def calculate_expected_observed_max(x_val, mu, sigma, lam, n_grid=256):
     """
     Calculate E[max(x, M)] where M is the maximum of a Poisson(lam) number
     of samples from the background Logit-Normal(mu, sigma) distribution.
+    
+    Note: If the total number of plasmids per cell follows a Zero-Truncated
+    Poisson(lam) distribution, the number of *additional* plasmids in a cell
+    known to contain a specific genotype follows a standard Poisson(lam)
+    distribution. Thus, this formula is exactly correct for ZTP-simulated 
+    data if lam is the ZTP parameter.
     
     Use the stable formula:
     E[max(x, M)] = 1 - integrate_{x}^1 exp(lam * (F(t) - 1)) dt
@@ -175,7 +181,7 @@ def calculate_expected_observed_max(x_val, mu, sigma, lam, n_grid=100):
     return 1.0 - integral_val
 
 
-def calculate_expected_observed_min(x_val, mu, sigma, lam, n_grid=100):
+def calculate_expected_observed_min(x_val, mu, sigma, lam, n_grid=256):
     """
     Calculate E[min(x, M)] where M is the minimum of a Poisson(lam) number
     of samples from the background Logit-Normal(mu, sigma) distribution.
@@ -374,8 +380,8 @@ def get_hyperparameters():
     parameters["lam_scale"] = 0.5
     
     # Anchoring scales (tightening this makes the background track the prior more closely)
-    parameters["mu_anchoring_scale"] = 0.5
-    parameters["sigma_anchoring_scale"] = 0.2
+    parameters["mu_anchoring_scale"] = 2.0
+    parameters["sigma_anchoring_scale"] = 1.0
                
     return parameters
     

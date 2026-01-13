@@ -78,7 +78,9 @@ def test_setup_batching_zero_division():
     num_binding_to_keep = 2 # All are binding
     
     # This result should not raise ZeroDivisionError anymore
-    result = _setup_batching(genotypes, batch_size, num_binding_to_keep)
+    # The new signature is (growth_genotypes, binding_genotypes, batch_size=None)
+    # Passing the same genotypes for both growth and binding
+    result = _setup_batching(genotypes, genotypes, batch_size)
     
     assert "scale_vector" in result
     assert np.all(result["scale_vector"] == 1.0)

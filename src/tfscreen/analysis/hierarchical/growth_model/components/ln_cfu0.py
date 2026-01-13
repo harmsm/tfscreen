@@ -5,6 +5,9 @@ from flax.struct import dataclass
 
 from typing import Dict, Any
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
+from .genotype_utils import (sample_genotype_parameter, 
+                             sample_genotype_parameter_guide,
+                             get_genotype_parameter_guesses)
 
 
 @dataclass(frozen=True)
@@ -49,10 +52,10 @@ def define_model(name: str,
     data : GrowthData
         A Pytree (Flax dataclass) containing experimental data and metadata.
         This function primarily uses:
-        - ``data.num_ln_cfu0`` : (int) The number of independent ln_cfu0
-          groups.
-        - ``data.map_ln_cfu0`` : (jnp.ndarray) Index array to map
-          per-group parameters to the full set of observations.
+        - ``data.num_replicate``
+        - ``data.num_condition_pre``
+        - ``data.batch_size``
+        - ``data.batch_idx``
     priors : ModelPriors
         A Pytree (Flax dataclass) containing the hyperparameters for
         the pooled priors.
@@ -61,7 +64,7 @@ def define_model(name: str,
     -------
     jnp.ndarray
         The sampled ``ln_cfu0`` values, expanded to match the shape of
-        the observations via ``data.map_ln_cfu0``.
+        the observations.
     """
     
     # Define hyper-priors for the pooled distribution
@@ -78,17 +81,20 @@ def define_model(name: str,
     # Sample non-centered offsets for each ln_cfu0 group
     with pyro.plate(f"{name}_replicate",data.num_replicate,dim=-3):
         with pyro.plate(f"{name}_condition_pre",data.num_condition_pre,dim=-2):
-            with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
-                with pyro.handlers.scale(scale=data.scale_vector):
-                    ln_cfu0_offsets = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
+            
+            def sample_ln_cfu0_per_unit(site_name, size):
+                ln_cfu0_offsets = pyro.sample(f"{site_name}_offset", dist.Normal(0.0, 1.0))
 
-    # Guard against full-sized array substitution during initialization or re-runs 
-    # with full-sized initial values
-    if ln_cfu0_offsets.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
-        ln_cfu0_offsets = ln_cfu0_offsets[..., data.batch_idx]
+                # Guard against full-sized array substitution during initialization or re-runs 
+                # with full-sized initial values
+                if data.epistasis_mode == "genotype":
+                    if ln_cfu0_offsets.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+                        ln_cfu0_offsets = ln_cfu0_offsets[..., data.batch_idx]
 
-    # Calculate the per-group ln_cfu0 values
-    ln_cfu0_per_rep_cond_geno = ln_cfu0_hyper_loc + ln_cfu0_offsets * ln_cfu0_hyper_scale
+                # Calculate the per-group ln_cfu0 values
+                return ln_cfu0_hyper_loc + ln_cfu0_offsets * ln_cfu0_hyper_scale
+
+            ln_cfu0_per_rep_cond_geno = sample_genotype_parameter(name, data, sample_ln_cfu0_per_unit)
 
     # Register deterministic values for inspection
     pyro.deterministic(name, ln_cfu0_per_rep_cond_geno)
@@ -128,30 +134,35 @@ def guide(name: str,
     # -------------------------------------------------------------------------
     # Genotype-specific parameter
 
-    param_shape = (data.num_replicate, data.num_condition_pre, data.num_genotype)
+    param_shape = (data.num_replicate, data.num_condition_pre, data.num_genotype if data.epistasis_mode == "genotype" else data.num_mutation)
     offset_locs = pyro.param(f"{name}_offset_locs",
-                             jnp.zeros(param_shape,dtype=float))
+                             jnp.zeros(param_shape))
     offset_scales = pyro.param(f"{name}_offset_scales",
-                               jnp.ones(param_shape,dtype=float),
+                               jnp.ones(param_shape),
                                constraint=dist.constraints.positive)
 
     # Sample non-centered offsets for each ln_cfu0 group
     with pyro.plate(f"{name}_replicate",data.num_replicate,dim=-3):
         with pyro.plate(f"{name}_condition_pre",data.num_condition_pre,dim=-2):
-            with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
-                with pyro.handlers.scale(scale=data.scale_vector):
-                    
+            
+            def guide_ln_cfu0_per_unit(site_name, size):
+                if data.epistasis_mode == "genotype":
                     batch_locs = offset_locs[...,data.batch_idx]
                     batch_scales = offset_scales[...,data.batch_idx]
-                    ln_cfu0_offsets = pyro.sample(f"{name}_offset", dist.Normal(batch_locs,batch_scales))
+                else:
+                    batch_locs = offset_locs
+                    batch_scales = offset_scales
+                    
+                ln_cfu0_offsets = pyro.sample(f"{site_name}_offset", dist.Normal(batch_locs,batch_scales))
 
-    # Guard against full-sized array substitution during initialization or re-runs 
-    # with full-sized initial values
-    if ln_cfu0_offsets.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
-        ln_cfu0_offsets = ln_cfu0_offsets[..., data.batch_idx]
+                # Guard against full-sized array substitution during initialization or
+                # re-runs with full-sized initial values
+                if ln_cfu0_offsets.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+                     ln_cfu0_offsets = ln_cfu0_offsets[..., data.batch_idx]
 
-    # Calculate the per-group ln_cfu0 values
-    ln_cfu0_per_rep_cond_geno = ln_cfu0_hyper_loc + ln_cfu0_offsets * ln_cfu0_hyper_scale
+                return ln_cfu0_hyper_loc + ln_cfu0_offsets * ln_cfu0_hyper_scale
+
+            ln_cfu0_per_rep_cond_geno = sample_genotype_parameter_guide(name, data, guide_ln_cfu0_per_unit)
 
     # Expand tensor to match all observations
     ln_cfu0 = ln_cfu0_per_rep_cond_geno[:,None,:,None,None,None,:]
@@ -202,12 +213,16 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
         to JAX arrays of guess values.
     """
     
+    def guess_ln_cfu0_per_unit(site_name, size):
+        return {f"{site_name}_offset": jnp.zeros((data.num_replicate,
+                                                data.num_condition_pre,
+                                                size))}
+
     guesses = {}
     guesses[f"{name}_hyper_loc"] = -2.5
     guesses[f"{name}_hyper_scale"] = 3.0
-    guesses[f"{name}_offset"] = jnp.zeros((data.num_replicate,
-                                           data.num_condition_pre,
-                                           data.num_genotype),dtype=float)
+    
+    guesses.update(get_genotype_parameter_guesses(name, data, guess_ln_cfu0_per_unit))
 
     return guesses
 

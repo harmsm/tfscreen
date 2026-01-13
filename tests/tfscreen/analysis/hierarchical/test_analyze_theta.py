@@ -318,7 +318,8 @@ def test_main():
                               "seed": int,
                               "checkpoint_file": str,
                               "config_file": str,
-                              "spiked": list},
+                              "spiked": list,
+                              "epistasis_mode": str},
             manual_arg_nargs={"spiked": "+"}
         )
 import runpy

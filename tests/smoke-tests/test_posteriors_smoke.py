@@ -7,8 +7,10 @@ from tfscreen.analysis.hierarchical.run_inference import RunInference
 import h5py
 
 @pytest.mark.slow
+@pytest.mark.parametrize("epistasis_mode", ["genotype", "none","horseshoe","spikeslab"])
 def test_checkpoint_and_posterior_smoke(growth_smoke_csv, 
                                         binding_smoke_csv, 
+                                        epistasis_mode,
                                         tmpdir):
     """
     Test the full workflow: Run SVI, save checkpoint, restore, and generate posteriors.
@@ -22,6 +24,7 @@ def test_checkpoint_and_posterior_smoke(growth_smoke_csv,
         condition_growth="hierarchical",
         transformation="congression",
         theta="hill",
+        epistasis_mode=epistasis_mode,
         batch_size=None
     )
     
@@ -69,8 +72,10 @@ def test_checkpoint_and_posterior_smoke(growth_smoke_csv,
         assert data["growth_pred"].shape[0] == 10 # num_posterior_samples
 
 @pytest.mark.slow
+@pytest.mark.parametrize("epistasis_mode", ["genotype", "none","horseshoe","spikeslab"])
 def test_extract_parameters_smoke(growth_smoke_csv, 
                                   binding_smoke_csv, 
+                                  epistasis_mode,
                                   tmpdir):
     """
     Test extracting parameter DataFrames from generated posteriors.
@@ -81,7 +86,8 @@ def test_extract_parameters_smoke(growth_smoke_csv,
         growth_df=growth_smoke_csv,
         binding_df=binding_smoke_csv,
         theta="hill",
-        transformation="congression"
+        transformation="congression",
+        epistasis_mode=epistasis_mode
     )
     
     inference = RunInference(model=model, seed=42)

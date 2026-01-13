@@ -27,7 +27,8 @@ MockDataClass = namedtuple("MockDataClass", [
     "scale_vector",
     "log_titrant_conc",
     "geno_theta_idx",
-    "scatter_theta"
+    "scatter_theta",
+    "epistasis_mode"
 ])
 
 @pytest.fixture
@@ -55,7 +56,8 @@ def mock_data():
         scale_vector=scale_vector,
         log_titrant_conc=log_titrant_conc,
         geno_theta_idx=geno_theta_idx,
-        scatter_theta=1
+        scatter_theta=1,
+        epistasis_mode="genotype"
     )
 
 @pytest.fixture

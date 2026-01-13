@@ -24,7 +24,8 @@ MockGrowthData = namedtuple("MockGrowthData", [
     "scale_vector",
     "map_genotype",
     "num_not_wt", 
-    "not_wt_mask" 
+    "not_wt_mask",
+    "epistasis_mode"
 ])
 
 @pytest.fixture
@@ -60,7 +61,8 @@ def mock_data():
         scale_vector=scale_vector,
         map_genotype=map_genotype,
         num_not_wt=num_not_wt,
-        not_wt_mask=not_wt_mask
+        not_wt_mask=not_wt_mask,
+        epistasis_mode="genotype"
     )
 
 # --- Test Cases ---

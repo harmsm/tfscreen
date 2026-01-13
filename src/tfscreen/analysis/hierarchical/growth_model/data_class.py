@@ -48,6 +48,12 @@ class GrowthData:
     wt_indexes: jnp.ndarray    
     scatter_theta: int = field(pytree_node=False) 
 
+    # Mutation mapping (optional translation layer)
+    epistasis_mode: str = field(pytree_node=False, default="genotype")
+    num_mutation: int = field(pytree_node=False, default=0)
+    map_genotype_to_mutations: jnp.ndarray = field(default=None)
+    genotype_num_mutations: jnp.ndarray = field(default=None)
+
 @dataclass(frozen=True)
 class BindingData:
 
@@ -73,6 +79,12 @@ class BindingData:
     log_titrant_conc: jnp.ndarray
 
     scatter_theta: int = field(pytree_node=False) 
+
+    # Mutation mapping (optional translation layer)
+    epistasis_mode: str = field(pytree_node=False, default="genotype")
+    num_mutation: int = field(pytree_node=False, default=0)
+    map_genotype_to_mutations: jnp.ndarray = field(default=None)
+    genotype_num_mutations: jnp.ndarray = field(default=None)
 
 
 @dataclass(frozen=True)

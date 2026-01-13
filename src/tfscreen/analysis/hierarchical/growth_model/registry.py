@@ -1,4 +1,3 @@
-
 from .components import growth_independent 
 from .components import growth_hierarchical
 from .components import growth_fixed
@@ -33,13 +32,12 @@ model_registry = {
         "hierarchical":ln_cfu0,
     },
     "dk_geno":{
-        "fixed":dk_geno_fixed,
-        "hierarchical":dk_geno_hierarchical,
+        "hierarchical": dk_geno_hierarchical,
     },
     "activity":{
-        "fixed":activity_fixed,
-        "hierarchical":activity_hierarchical,
+        "hierarchical": activity_hierarchical,
         "horseshoe":activity_horseshoe,
+        "fixed":activity_fixed,
     },
     "transformation":{
         "congression": transformation_congression,

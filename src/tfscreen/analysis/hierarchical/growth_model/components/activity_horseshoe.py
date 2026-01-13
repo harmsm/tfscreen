@@ -5,6 +5,9 @@ from flax.struct import dataclass
 from typing import Dict, Any
 
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
+from .genotype_utils import (sample_genotype_parameter, 
+                             sample_genotype_parameter_guide,
+                             get_genotype_parameter_guesses)
 
 @dataclass(frozen=True)
 class ModelPriors:
@@ -62,31 +65,27 @@ def define_model(name: str,
     global_scale_tau = pyro.sample(f"{name}_global_scale",
                                    dist.HalfNormal(priors.global_scale_tau_scale)) 
     
-    # Sample local scales and offsets 
-    with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
-        with pyro.handlers.scale(scale=data.scale_vector):
-        
-            # Local scale `lambda`. HalfNormal(1) is the standard Horseshoe.
-            local_scale_lambda = pyro.sample(f"{name}_local_scale",
-                                            dist.HalfNormal(1.0))
+    def sample_activity_per_unit(site_name, size):
+        # Local scale `lambda`. HalfNormal(1) is the standard Horseshoe.
+        local_scale_lambda = pyro.sample(f"{site_name}_local_scale",
+                                        dist.HalfNormal(1.0))
 
-            # Non-centered offset `z` (always Normal(0,1))
-            activity_offset = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
+        # Non-centered offset `z` (always Normal(0,1))
+        activity_offset = pyro.sample(f"{site_name}_offset", dist.Normal(0.0, 1.0))
 
-    # Guard against full-sized array substitution during initialization or re-runs 
-    # with full-sized initial values
-    if local_scale_lambda.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
-        local_scale_lambda = local_scale_lambda[..., data.batch_idx]
-    if activity_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
-        activity_offset = activity_offset[..., data.batch_idx]
+        # Guard against full-sized array substitution during initialization or re-runs 
+        # with full-sized initial values
+        if data.epistasis_mode == "genotype":
+            if local_scale_lambda.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+                local_scale_lambda = local_scale_lambda[..., data.batch_idx]
+            if activity_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+                activity_offset = activity_offset[..., data.batch_idx]
 
-    # Combine scales: `beta = z * (tau * lambda)`
-    # The mean `log(activity)` is 0.0 (i.e., activity = 1.0)
-    # The effective scale allows for deviations from 0.0
-    effective_scale = global_scale_tau * local_scale_lambda
-    log_activity_mutant_dists = activity_offset * effective_scale
-    
-    activity = jnp.clip(jnp.exp(log_activity_mutant_dists), max=1e30)
+        # Combine scales: `beta = z * (tau * lambda)`
+        return activity_offset * (global_scale_tau * local_scale_lambda)
+
+    log_activity_per_genotype = sample_genotype_parameter(name, data, sample_activity_per_unit)
+    activity = jnp.clip(jnp.exp(log_activity_per_genotype), max=1e30)
 
     # Set wildtype activity to 1.0
     is_wt_mask = jnp.isin(data.batch_idx, data.wt_indexes)
@@ -119,49 +118,46 @@ def guide(name: str,
     global_scale_tau = pyro.sample(f"{name}_global_scale",
                                    dist.LogNormal(t_scale_loc, t_scale_scale)) 
     
-    lambda_locs = pyro.param(f"{name}_lambda_offset_locs",
-                                    jnp.zeros(data.num_genotype,dtype=float))
-    lambda_scales = pyro.param(f"{name}_lambda_offset_scales",
-                                      jnp.ones(data.num_genotype,dtype=float),
-                                      constraint=dist.constraints.positive)
-    
-    activity_offset_locs = pyro.param(f"{name}_activity_offset_locs",
-                                      jnp.zeros(data.num_genotype,dtype=float))
-    activity_offset_scales = pyro.param(f"{name}_activity_offset_scales",
-                                        jnp.ones(data.num_genotype,dtype=float),
-                                        constraint=dist.constraints.positive)
-
-    # Sample local scales and offsets 
-    with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
-        with pyro.handlers.scale(scale=data.scale_vector):
+    def guide_activity_per_unit(site_name, size):
+        actual_size = data.num_genotype if data.epistasis_mode == "genotype" else data.num_mutation
         
-            lambda_batch_locs = lambda_locs[data.batch_idx]
-            lambda_batch_scales = lambda_scales[data.batch_idx]
+        l_locs = pyro.param(f"{site_name}_lambda_offset_locs", jnp.zeros(actual_size))
+        l_scales = pyro.param(f"{site_name}_lambda_offset_scales", jnp.ones(actual_size),
+                               constraint=dist.constraints.positive)
+        
+        z_locs = pyro.param(f"{site_name}_activity_offset_locs", jnp.zeros(actual_size))
+        z_scales = pyro.param(f"{site_name}_activity_offset_scales", jnp.ones(actual_size),
+                                constraint=dist.constraints.positive)
 
-            activity_batch_locs = activity_offset_locs[data.batch_idx]
-            activity_batch_scales = activity_offset_scales[data.batch_idx]
+        if data.epistasis_mode == "genotype":
+            l_batch_locs = l_locs[data.batch_idx]
+            l_batch_scales = l_scales[data.batch_idx]
+            z_batch_locs = z_locs[data.batch_idx]
+            z_batch_scales = z_scales[data.batch_idx]
+        else:
+            l_batch_locs = l_locs
+            l_batch_scales = l_scales
+            z_batch_locs = z_locs
+            z_batch_scales = z_scales
 
-            # Local scale `lambda`. HalfNormal(1) is the standard Horseshoe.
-            local_scale_lambda = pyro.sample(f"{name}_local_scale",
-                                            dist.LogNormal(lambda_batch_locs, lambda_batch_scales))
+        # Local scale `lambda`
+        local_scale_lambda = pyro.sample(f"{site_name}_local_scale",
+                                        dist.LogNormal(l_batch_locs, l_batch_scales))
 
-            # Non-centered offset `z` (always Normal(0,1))
-            activity_offset = pyro.sample(f"{name}_offset", dist.Normal(activity_batch_locs, activity_batch_scales))
+        if local_scale_lambda.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+             local_scale_lambda = local_scale_lambda[..., data.batch_idx]
 
-    # Guard against full-sized array substitution during initialization or re-runs 
-    # with full-sized initial values
-    if local_scale_lambda.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
-        local_scale_lambda = local_scale_lambda[..., data.batch_idx]
-    if activity_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
-        activity_offset = activity_offset[..., data.batch_idx]
+        # Non-centered offset `z`
+        activity_offset = pyro.sample(f"{site_name}_offset", dist.Normal(z_batch_locs, z_batch_scales))
 
-    # Combine scales: `beta = z * (tau * lambda)`
-    # The mean `log(activity)` is 0.0 (i.e., activity = 1.0)
-    # The effective scale allows for deviations from 0.0
-    effective_scale = global_scale_tau * local_scale_lambda
-    log_activity_mutant_dists = activity_offset * effective_scale
-    
-    activity = jnp.clip(jnp.exp(log_activity_mutant_dists), max=1e30)
+        if activity_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+             activity_offset = activity_offset[..., data.batch_idx]
+
+        # Combine
+        return activity_offset * (global_scale_tau * local_scale_lambda)
+
+    log_activity_per_genotype = sample_genotype_parameter_guide(name, data, guide_activity_per_unit)
+    activity = jnp.clip(jnp.exp(log_activity_per_genotype), max=1e30)
 
     # Set wildtype activity to 1.0
     is_wt_mask = jnp.isin(data.batch_idx, data.wt_indexes)
@@ -214,10 +210,16 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
         guess values.
     """
 
+    def guess_activity_per_unit(site_name, size):
+        return {
+            f"{site_name}_local_scale": jnp.ones(size) * 0.1,
+            f"{site_name}_offset": jnp.zeros(size)
+        }
+
     guesses = {}
     guesses[f"{name}_global_scale"] = 0.1
-    guesses[f"{name}_local_scale"] = jnp.ones(data.num_genotype,dtype=float)*0.1
-    guesses[f"{name}_offset"] = jnp.zeros(data.num_genotype,dtype=float)
+    
+    guesses.update(get_genotype_parameter_guesses(name, data, guess_activity_per_unit))
 
     return guesses
 

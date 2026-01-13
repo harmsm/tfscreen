@@ -4,6 +4,9 @@ import numpyro.distributions as dist
 from flax.struct import dataclass
 
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
+from .genotype_utils import (sample_genotype_parameter, 
+                             sample_genotype_parameter_guide,
+                             get_genotype_parameter_guesses)
 
 @dataclass(frozen=True)
 class ModelPriors:
@@ -71,17 +74,19 @@ def define_model(name: str,
                     priors.dk_geno_hyper_shift_scale)
     )
 
-    with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
-        with pyro.handlers.scale(scale=data.scale_vector):
-            dk_geno_offset = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
+    def sample_dk_geno_per_unit(site_name, size):
+        dk_geno_offset = pyro.sample(f"{site_name}_offset", dist.Normal(0.0, 1.0))
+        
+        # Guard against full-sized array substitution during initialization or re-runs 
+        # with full-sized initial values (only relevant in genotype mode)
+        if data.epistasis_mode == "genotype":
+            if dk_geno_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+                dk_geno_offset = dk_geno_offset[..., data.batch_idx]
+        
+        lognormal_values = jnp.clip(jnp.exp(dk_geno_hyper_loc + dk_geno_offset * dk_geno_hyper_scale), max=1e30)
+        return dk_geno_hyper_shift - lognormal_values
 
-    # Guard against full-sized array substitution during initialization or re-runs 
-    # with full-sized initial values
-    if dk_geno_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
-        dk_geno_offset = dk_geno_offset[..., data.batch_idx]
-    
-    dk_geno_lognormal_values = jnp.clip(jnp.exp(dk_geno_hyper_loc + dk_geno_offset * dk_geno_hyper_scale),max=1e30)
-    dk_geno_per_genotype = dk_geno_hyper_shift - dk_geno_lognormal_values
+    dk_geno_per_genotype = sample_genotype_parameter(name, data, sample_dk_geno_per_unit)
 
     # Force wildtype to be zero. 
     is_wt_mask = jnp.isin(data.batch_idx, data.wt_indexes)
@@ -129,31 +134,43 @@ def guide(name: str,
                              constraint=dist.constraints.positive)
     dk_geno_hyper_shift = pyro.sample(f"{name}_shift", dist.Normal(shift_loc, shift_scale))
 
-    # --- Local Parameters (Per Genotype) ---
+    # --- Local Parameters (Per Genotype/Mutation) ---
     
-    offset_locs = pyro.param(f"{name}_offset_locs", jnp.zeros(data.num_genotype,dtype=float))
-    offset_scales = pyro.param(f"{name}_offset_scales", jnp.ones(data.num_genotype,dtype=float), 
-                               constraint=dist.constraints.positive)
-
-    # --- Batching ---
-    with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
-        with pyro.handlers.scale(scale=data.scale_vector):
+    # We use num_genotype as the total size for local parameters even in mutation mode
+    # for simplicity in parameter mapping, or we could use num_mutation.
+    # Actually, the guide needs to know the correct size.
+    # In genotype_utils, we handle the size.
+    
+    def guide_dk_geno_per_unit(site_name, size):
+        # Determine actual size needed for param initialization
+        actual_size = data.num_genotype if data.epistasis_mode == "genotype" else data.num_mutation
         
-            batch_locs = offset_locs[...,data.batch_idx]
-            batch_scales = offset_scales[...,data.batch_idx]
+        g_offset_locs = pyro.param(f"{site_name}_offset_locs", jnp.zeros(actual_size))
+        g_offset_scales = pyro.param(f"{site_name}_offset_scales", jnp.ones(actual_size), 
+                                     constraint=dist.constraints.positive)
+        
+        # In genotype mode, we index by batch_idx
+        if data.epistasis_mode == "genotype":
+            batch_locs = g_offset_locs[data.batch_idx]
+            batch_scales = g_offset_scales[data.batch_idx]
+        else:
+            # In mutation mode, sample_genotype_parameter_guide calls this inside 
+            # shared_mutation_plate, so it already handles the "size" dimension.
+            batch_locs = g_offset_locs
+            batch_scales = g_offset_scales
 
-            dk_geno_offset = pyro.sample(f"{name}_offset", dist.Normal(batch_locs, batch_scales))
+        dk_geno_offset = pyro.sample(f"{site_name}_offset", dist.Normal(batch_locs, batch_scales))
 
-    # Guard against full-sized array substitution during initialization or re-runs 
-    # with full-sized initial values
-    if dk_geno_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
-        dk_geno_offset = dk_geno_offset[..., data.batch_idx]
+        # Guard against full-sized array substitution during initialization or
+        # re-runs with full-sized initial values
+        if dk_geno_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+             dk_geno_offset = dk_geno_offset[..., data.batch_idx]
 
-    # --- Deterministic Calculation ---
-    
-    # Replicate the Shift - LogNormal logic
-    dk_geno_lognormal_values = jnp.clip(jnp.exp(dk_geno_hyper_loc + dk_geno_offset * dk_geno_hyper_scale), max=1e30)
-    dk_geno_per_genotype = dk_geno_hyper_shift - dk_geno_lognormal_values
+        # Replicate the Shift - LogNormal logic
+        dk_geno_lognormal_values = jnp.clip(jnp.exp(dk_geno_hyper_loc + dk_geno_offset * dk_geno_hyper_scale), max=1e30)
+        return dk_geno_hyper_shift - dk_geno_lognormal_values
+
+    dk_geno_per_genotype = sample_genotype_parameter_guide(name, data, guide_dk_geno_per_unit)
 
     # Force wildtype to be zero
     is_wt_mask = jnp.isin(data.batch_idx, data.wt_indexes)
@@ -206,19 +223,15 @@ def get_guesses(name,data):
         guess values.
     """
 
-    # these values give a distribution that looks right by eye, clustering 
-    # slightly below zero with a few above zero and a tail reaching down to 
-    # to -0.02. 
-    # dk_geno_hyper_loc = -3.5
-    # dk_geno_hyper_scale = 0.5
-    # dk_geno_hyper_shift = 0.02
-    # The offset of -0.-0.8240460108562919 is dk_geno = 0 on this distribution
+    def guess_dk_geno_per_unit(site_name, size):
+        return {f"{site_name}_offset": -0.8240460108562919 * jnp.ones(size)}
 
     guesses = {}
     guesses[f"{name}_hyper_loc"] = -3.5
     guesses[f"{name}_hyper_scale"] = 0.5
     guesses[f"{name}_shift"] = 0.02
-    guesses[f"{name}_offset"] = -0.8240460108562919*jnp.ones(data.num_genotype,dtype=float)
+    
+    guesses.update(get_genotype_parameter_guesses(name, data, guess_dk_geno_per_unit))
 
     return guesses
 

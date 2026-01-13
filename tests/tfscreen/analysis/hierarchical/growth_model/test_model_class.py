@@ -223,7 +223,14 @@ def test_model_class_invalid_component(mocker):
     mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class._read_binding_df")
     mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class._build_binding_tm", return_value=mock_binding_tm)
     mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class.populate_dataclass", return_value=MagicMock())
-    mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class._setup_batching", return_value={"batch_idx": jnp.array([0]), "batch_size": 1, "scale_vector": jnp.array([1.0]), "num_binding": 0})
+    mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class._setup_batching", return_value={
+        "batch_idx": jnp.array([0]), 
+        "batch_size": 1, 
+        "scale_vector": jnp.array([1.0]), 
+        "num_binding": 0,
+        "not_binding_idx": np.array([0]),
+        "not_binding_batch_size": 1
+    })
     
     # 741: dk_geno unrecognized
     with pytest.raises(ValueError, match="not recognized"):
@@ -248,7 +255,14 @@ def test_initialize_data_spiked(mocker):
     mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class._read_binding_df")
     mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class._build_binding_tm", return_value=mock_binding_tm)
     mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class.populate_dataclass", return_value=MagicMock())
-    mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class._setup_batching", return_value={"batch_idx": jnp.array([0,1]), "batch_size": 2, "scale_vector": jnp.array([1.0, 1.0]), "num_binding": 0})
+    mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class._setup_batching", return_value={
+        "batch_idx": jnp.array([0,1]), 
+        "batch_size": 2, 
+        "scale_vector": jnp.array([1.0, 1.0]), 
+        "num_binding": 0,
+        "not_binding_idx": np.array([0,1]),
+        "not_binding_batch_size": 2
+    })
     mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class.ModelClass._initialize_classes")
 
     model = ModelClass("g.csv", "b.csv", spiked_genotypes=["m1"])
@@ -267,7 +281,14 @@ def test_initialize_classes_logic(mocker):
     mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class._build_growth_tm", return_value=mock_growth_tm)
     mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class._read_binding_df")
     mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class._build_binding_tm", return_value=mock_binding_tm)
-    mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class._setup_batching", return_value={"batch_idx": jnp.array([0]), "batch_size": 1, "scale_vector": jnp.array([1.0]), "num_binding": 0})
+    mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class._setup_batching", return_value={
+        "batch_idx": jnp.array([0]), 
+        "batch_size": 1, 
+        "scale_vector": jnp.array([1.0]), 
+        "num_binding": 0,
+        "not_binding_idx": np.array([0]),
+        "not_binding_batch_size": 1
+    })
     mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class.populate_dataclass", return_value=MagicMock())
 
     with patch.dict("tfscreen.analysis.hierarchical.growth_model.model_class.model_registry", {

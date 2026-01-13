@@ -9,6 +9,9 @@ from flax.struct import (
 from typing import Dict, Any
 
 from tfscreen.analysis.hierarchical.growth_model.data_class import DataClass
+from .genotype_utils import (sample_genotype_parameter, 
+                             sample_genotype_parameter_guide,
+                             get_genotype_parameter_guesses)
 
 @dataclass(frozen=True)
 class ModelPriors:
@@ -52,18 +55,12 @@ class ThetaParam:
     """
     JAX Pytree holding the sampled Hill equation parameters.
     
-    These are the parameters sampled in their natural scale.
-
     Attributes
     ----------
     theta_low : jnp.ndarray
-        The minimum fractional occupancy (baseline).
     theta_high : jnp.ndarray
-        The maximum fractional occupancy (saturation).
     log_hill_K : jnp.ndarray
-        The Hill constant (K_D) in log-space.
     hill_n : jnp.ndarray
-        The Hill coefficient.
     """
 
     theta_low: jnp.ndarray
@@ -79,50 +76,11 @@ def define_model(name: str,
                  priors: ModelPriors) -> ThetaParam:
     """
     Defines the hierarchical Hill model parameters.
-    
-    This function defines the Numpyro ``sample`` sites for a non-centered
-    hierarchical model of Hill parameters (theta_low, theta_high, K, and n).
-    
-    - ``theta_low`` and ``theta_delta`` use pooled logit-scaled hyperpriors. 
-      We convert ``theta_low`` and ``theta_delta`` into ``theta_high`` prior
-      to the sigmoid transform to enforce [0,1] bounds on both.
-    - ``hill_K`` and ``hill_n`` use pooled log-scaled hyperpriors.
-
-    Parameters
-    ----------
-    name : str
-        The prefix for all Numpyro sample sites (e.g., "theta").
-    data : DataClass
-        A data object containing metadata, primarily:
-        - ``data.num_titrant_name`` : (int) Number of titrants.
-        - ``data.num_genotype`` : (int) Number of genotypes.
-    priors : ModelPriors
-        A Pytree containing all hyperparameters for the model, including:
-        - ``priors.theta_logit_low_hyper_loc_loc``
-        - ``priors.theta_logit_low_hyper_loc_scale``
-        - ``priors.theta_logit_low_hyper_scale``
-        - ``priors.theta_logit_delta_hyper_loc_loc``
-        - ``priors.theta_logit_delta_hyper_loc_scale``
-        - ``priors.theta_logit_delta_hyper_scale``
-        - ``priors.theta_log_hill_K_hyper_loc_loc``
-        - ``priors.theta_log_hill_K_hyper_loc_scale``
-        - ``priors.theta_log_hill_K_hyper_scale``
-        - ``priors.theta_log_hill_n_hyper_loc_loc``
-        - ``priors.theta_log_hill_n_hyper_loc_scale``
-        - ``priors.theta_log_hill_n_hyper_scale``
-
-    Returns
-    -------
-    ThetaParam
-        A Pytree containing the sampled Hill parameters (theta_low,
-        theta_high, log_hill_K, hill_n), each with shape
-        ``[num_titrant_name, num_genotype]``.
     """
 
     # --------------------------------------------------------------------------
-    # Hyperpriors for the Hill model parameters to be inferred 
+    # Hyperpriors
     
-    # hyperpriors for the min theta (logit scale)
     logit_theta_low_hyper_loc = pyro.sample(
         f"{name}_logit_low_hyper_loc",
         dist.Normal(priors.theta_logit_low_hyper_loc_loc,
@@ -133,7 +91,6 @@ def define_model(name: str,
         dist.HalfNormal(priors.theta_logit_low_hyper_scale)
     )
 
-    # hyperpriors for delta theta (logit scale)
     logit_theta_delta_hyper_loc = pyro.sample(
         f"{name}_logit_delta_hyper_loc",
         dist.Normal(priors.theta_logit_delta_hyper_loc_loc,
@@ -144,7 +101,6 @@ def define_model(name: str,
         dist.HalfNormal(priors.theta_logit_delta_hyper_scale)
     )
     
-     # hyperpriors for hill K (log scale)
     log_hill_K_hyper_loc = pyro.sample(
         f"{name}_log_hill_K_hyper_loc",
         dist.Normal(priors.theta_log_hill_K_hyper_loc_loc,
@@ -155,7 +111,6 @@ def define_model(name: str,
         dist.HalfNormal(priors.theta_log_hill_K_hyper_scale)
     )
 
-    # hyperpriors for hill n (log scale)
     log_hill_n_hyper_loc = pyro.sample(
         f"{name}_log_hill_n_hyper_loc",
         dist.Normal(priors.theta_log_hill_n_hyper_loc_loc,
@@ -170,32 +125,28 @@ def define_model(name: str,
     # Sample curve parameters for each (genotype, titrant_name) group 
 
     with pyro.plate(f"{name}_titrant_name_plate",data.num_titrant_name,dim=-2):
-        with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
-            with pyro.handlers.scale(scale=data.scale_vector):
-                logit_theta_low_offset = pyro.sample(f"{name}_logit_low_offset", dist.Normal(0.0, 1.0))
-                logit_theta_delta_offset = pyro.sample(f"{name}_logit_delta_offset", dist.Normal(0.0, 1.0))
-                log_hill_K_offset = pyro.sample(f"{name}_log_hill_K_offset", dist.Normal(0.0, 1.0))
-                log_hill_n_offset = pyro.sample(f"{name}_log_hill_n_offset", dist.Normal(0.0, 1.0))
+        
+        # We define a helper to sample each Hill parameter
+        def sample_hill_param(site_suffix, h_loc, h_scale):
+            def sample_fn(site_name, size):
+                offset = pyro.sample(f"{site_name}_offset", dist.Normal(0.0, 1.0))
+                if data.epistasis_mode == "genotype":
+                    if offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+                        offset = offset[..., data.batch_idx]
+                return h_loc + offset * h_scale
+            
+            return sample_genotype_parameter(f"{name}_{site_suffix}", data, sample_fn)
 
-    # Guard against full-sized array substitution during initialization or re-runs 
-    # with full-sized initial values
-    if logit_theta_low_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
-        logit_theta_low_offset = logit_theta_low_offset[..., data.batch_idx]
-        logit_theta_delta_offset = logit_theta_delta_offset[..., data.batch_idx]
-        log_hill_K_offset = log_hill_K_offset[..., data.batch_idx]
-        log_hill_n_offset = log_hill_n_offset[..., data.batch_idx]
+        logit_theta_low = sample_hill_param("logit_low", logit_theta_low_hyper_loc, logit_theta_low_hyper_scale)
+        logit_theta_delta = sample_hill_param("logit_delta", logit_theta_delta_hyper_loc, logit_theta_delta_hyper_scale)
+        log_hill_K = sample_hill_param("log_hill_K", log_hill_K_hyper_loc, log_hill_K_hyper_scale)
+        log_hill_n = sample_hill_param("log_hill_n", log_hill_n_hyper_loc, log_hill_n_hyper_scale)
 
-    logit_theta_low = logit_theta_low_hyper_loc + logit_theta_low_offset * logit_theta_low_hyper_scale
-    logit_theta_delta = logit_theta_delta_hyper_loc + logit_theta_delta_offset * logit_theta_delta_hyper_scale
     logit_theta_high = logit_theta_low + logit_theta_delta
-    log_hill_K = log_hill_K_hyper_loc + log_hill_K_offset * log_hill_K_hyper_scale
-    log_hill_n = log_hill_n_hyper_loc + log_hill_n_offset * log_hill_n_hyper_scale
 
     # --------------------------------------------------------------------------
-    # Calculate population moments (mu, sigma) using a "ghost population"
+    # Calculate population moments
     
-    # We sample a fixed-size population from the hyper-priors to estimate 
-    # the distribution of logit(theta) at each concentration.
     n_ghost = 100
     ghost_low = logit_theta_low_hyper_loc + dist.Normal(0.0, 1.0).sample(jax.random.PRNGKey(0), (n_ghost,)) * logit_theta_low_hyper_scale
     ghost_delta = logit_theta_delta_hyper_loc + dist.Normal(0.0, 1.0).sample(jax.random.PRNGKey(1), (n_ghost,)) * logit_theta_delta_hyper_scale
@@ -203,12 +154,8 @@ def define_model(name: str,
     ghost_K = log_hill_K_hyper_loc + dist.Normal(0.0, 1.0).sample(jax.random.PRNGKey(2), (n_ghost,)) * log_hill_K_hyper_scale
     ghost_n = log_hill_n_hyper_loc + dist.Normal(0.0, 1.0).sample(jax.random.PRNGKey(3), (n_ghost,)) * log_hill_n_hyper_scale
     
-    # Calculate logit(theta) for ghost population across all concentrations
-    # Concentrations shape: (NumName, NumConc, 1) or broadcastable
-    log_conc = data.log_titrant_conc[None, :, None] # (1, Conc, 1)
+    log_conc = data.log_titrant_conc[None, :, None] 
     
-    # Ghost parameters shape: (Name, 1, Ghost)
-    # Note: hyper-params are (Name,)
     g_low = ghost_low[None, None, :]
     g_high = ghost_high[None, None, :]
     g_K = ghost_K[None, None, :]
@@ -225,13 +172,10 @@ def define_model(name: str,
     # --------------------------------------------------------------------------
     # Expand parameters 
 
-    # Transform parameters to their natural scale
     theta_low = dist.transforms.SigmoidTransform()(logit_theta_low)
     theta_high = dist.transforms.SigmoidTransform()(logit_theta_high)
-    # log_hill_K is already on its natural scale
     hill_n = jnp.exp(log_hill_n)
 
-    # Register parameter values
     pyro.deterministic(f"{name}_theta_low",theta_low)
     pyro.deterministic(f"{name}_theta_high",theta_high)
     pyro.deterministic(f"{name}_log_hill_K",log_hill_K)
@@ -246,166 +190,72 @@ def define_model(name: str,
     
     return theta_param
 
+
 def guide(name: str,
           data: DataClass,
           priors: ModelPriors) -> ThetaParam:
     """
     Guide corresponding to the hierarchical Hill model.
-
-    This guide defines the variational family for the Hill model parameters,
-    using:
-    - Normal distributions for location hyperparameters (`_loc`).
-    - LogNormal distributions for scale hyperparameters (`_scale`) and positive
-      variables.
-    - An amortized/offset parameterization for the local (per-group) parameters.
     """
 
-    # ==========================================================================
-    # 1. Global Hyperparameters
-    # ==========================================================================
+    # Global Hyperparameters
+    def sample_hyper(h_name, h_p_loc, h_p_scale, is_scale=False):
+        g_loc = pyro.param(f"{name}_{h_name}_loc", jnp.array(h_p_loc))
+        g_scale = pyro.param(f"{name}_{h_name}_scale", jnp.array(h_p_scale if not is_scale else 0.1), 
+                             constraint=dist.constraints.positive)
+        if is_scale:
+            return pyro.sample(f"{name}_{h_name}", dist.LogNormal(g_loc, g_scale))
+        else:
+            return pyro.sample(f"{name}_{h_name}", dist.Normal(g_loc, g_scale))
 
-    # --- Theta Low (Logit Scale) ---
-    # Loc
-    h_low_loc_loc = pyro.param(f"{name}_logit_low_hyper_loc_loc", jnp.array(priors.theta_logit_low_hyper_loc_loc))
-    h_low_loc_scale = pyro.param(f"{name}_logit_low_hyper_loc_scale", jnp.array(priors.theta_logit_low_hyper_loc_scale),
-                                 constraint=dist.constraints.positive)
-    logit_theta_low_hyper_loc = pyro.sample(f"{name}_logit_low_hyper_loc", 
-                                            dist.Normal(h_low_loc_loc, h_low_loc_scale))
+    logit_theta_low_hyper_loc = sample_hyper("logit_low_hyper_loc", priors.theta_logit_low_hyper_loc_loc, priors.theta_logit_low_hyper_loc_scale)
+    logit_theta_low_hyper_scale = sample_hyper("logit_low_hyper_scale", -1.0, 0.1, is_scale=True)
 
-    # Scale (LogNormal guide)
-    h_low_scale_loc = pyro.param(f"{name}_logit_low_hyper_scale_loc", jnp.array(-1.0))
-    h_low_scale_scale = pyro.param(f"{name}_logit_low_hyper_scale_scale", jnp.array(0.1),
-                                   constraint=dist.constraints.positive)
-    logit_theta_low_hyper_scale = pyro.sample(f"{name}_logit_low_hyper_scale", 
-                                              dist.LogNormal(h_low_scale_loc, h_low_scale_scale))
+    logit_theta_delta_hyper_loc = sample_hyper("logit_delta_hyper_loc", priors.theta_logit_delta_hyper_loc_loc, priors.theta_logit_delta_hyper_loc_scale)
+    logit_theta_delta_hyper_scale = sample_hyper("logit_delta_hyper_scale", -1.0, 0.1, is_scale=True)
 
-    # --- Theta Delta (Logit Scale) ---
-    # Loc
-    h_delta_loc_loc = pyro.param(f"{name}_logit_delta_hyper_loc_loc", jnp.array(priors.theta_logit_delta_hyper_loc_loc))
-    h_delta_loc_scale = pyro.param(f"{name}_logit_delta_hyper_loc_scale", jnp.array(priors.theta_logit_delta_hyper_loc_scale),
-                                   constraint=dist.constraints.positive)
-    logit_theta_delta_hyper_loc = pyro.sample(f"{name}_logit_delta_hyper_loc", 
-                                              dist.Normal(h_delta_loc_loc, h_delta_loc_scale))
+    log_hill_K_hyper_loc = sample_hyper("log_hill_K_hyper_loc", priors.theta_log_hill_K_hyper_loc_loc, priors.theta_log_hill_K_hyper_loc_scale)
+    log_hill_K_hyper_scale = sample_hyper("log_hill_K_hyper_scale", -1.0, 0.1, is_scale=True)
 
-    # Scale (LogNormal guide)
-    h_delta_scale_loc = pyro.param(f"{name}_logit_delta_hyper_scale_loc", jnp.array(-1.0))
-    h_delta_scale_scale = pyro.param(f"{name}_logit_delta_hyper_scale_scale", jnp.array(0.1),
+    log_hill_n_hyper_loc = sample_hyper("log_hill_n_hyper_loc", priors.theta_log_hill_n_hyper_loc_loc, priors.theta_log_hill_n_hyper_loc_scale)
+    log_hill_n_hyper_scale = sample_hyper("log_hill_n_hyper_scale", -1.0, 0.1, is_scale=True)
+
+    # Local Parameters
+    actual_size = data.num_genotype if data.epistasis_mode == "genotype" else data.num_mutation
+    local_shape = (data.num_titrant_name, actual_size)
+
+    def guide_hill_param(site_suffix, h_loc, h_scale):
+        g_offset_locs = pyro.param(f"{name}_{site_suffix}_offset_locs", jnp.zeros(local_shape))
+        g_offset_scales = pyro.param(f"{name}_{site_suffix}_offset_scales", jnp.ones(local_shape), 
                                      constraint=dist.constraints.positive)
-    logit_theta_delta_hyper_scale = pyro.sample(f"{name}_logit_delta_hyper_scale", 
-                                                dist.LogNormal(h_delta_scale_loc, h_delta_scale_scale))
+        
+        def guide_fn(site_name, size):
+            if data.epistasis_mode == "genotype":
+                batch_locs = g_offset_locs[..., data.batch_idx]
+                batch_scales = g_offset_scales[..., data.batch_idx]
+            else:
+                batch_locs = g_offset_locs
+                batch_scales = g_offset_scales
 
-    # --- Hill K (Log Scale) ---
-    # Loc
-    h_K_loc_loc = pyro.param(f"{name}_log_hill_K_hyper_loc_loc", jnp.array(priors.theta_log_hill_K_hyper_loc_loc))
-    h_K_loc_scale = pyro.param(f"{name}_log_hill_K_hyper_loc_scale", jnp.array(priors.theta_log_hill_K_hyper_loc_scale),
-                               constraint=dist.constraints.positive)
-    log_hill_K_hyper_loc = pyro.sample(f"{name}_log_hill_K_hyper_loc", 
-                                       dist.Normal(h_K_loc_loc, h_K_loc_scale))
-
-    # Scale (LogNormal guide)
-    h_K_scale_loc = pyro.param(f"{name}_log_hill_K_hyper_scale_loc", jnp.array(-1.0))
-    h_K_scale_scale = pyro.param(f"{name}_log_hill_K_hyper_scale_scale", jnp.array(0.1),
-                                 constraint=dist.constraints.positive)
-    log_hill_K_hyper_scale = pyro.sample(f"{name}_log_hill_K_hyper_scale", 
-                                         dist.LogNormal(h_K_scale_loc, h_K_scale_scale))
-
-    # --- Hill n (Log Scale) ---
-    # Loc
-    h_n_loc_loc = pyro.param(f"{name}_log_hill_n_hyper_loc_loc", jnp.array(priors.theta_log_hill_n_hyper_loc_loc))
-    h_n_loc_scale = pyro.param(f"{name}_log_hill_n_hyper_loc_scale", jnp.array(priors.theta_log_hill_n_hyper_loc_scale),
-                               constraint=dist.constraints.positive)
-    log_hill_n_hyper_loc = pyro.sample(f"{name}_log_hill_n_hyper_loc", 
-                                       dist.Normal(h_n_loc_loc, h_n_loc_scale))
-
-    # Scale (LogNormal guide)
-    h_n_scale_loc = pyro.param(f"{name}_log_hill_n_hyper_scale_loc", jnp.array(-1.0))
-    h_n_scale_scale = pyro.param(f"{name}_log_hill_n_hyper_scale_scale", jnp.array(0.1),
-                                 constraint=dist.constraints.positive)
-    log_hill_n_hyper_scale = pyro.sample(f"{name}_log_hill_n_hyper_scale", 
-                                         dist.LogNormal(h_n_scale_loc, h_n_scale_scale))
-
-
-    # ==========================================================================
-    # 2. Local Parameters (Offset Variational Params)
-    # ==========================================================================
-    
-    # Shape: (NumTitrants, NumGenotypes)
-    local_shape = (data.num_titrant_name, data.num_genotype)
-
-    # Low Offsets
-    low_offset_locs = pyro.param(f"{name}_logit_low_offset_locs", jnp.zeros(local_shape,dtype=float))
-    low_offset_scales = pyro.param(f"{name}_logit_low_offset_scales", jnp.ones(local_shape,dtype=float), 
-                                   constraint=dist.constraints.positive)
-
-    # Delta Offsets
-    delta_offset_locs = pyro.param(f"{name}_logit_delta_offset_locs", jnp.zeros(local_shape,dtype=float))
-    delta_offset_scales = pyro.param(f"{name}_logit_delta_offset_scales", jnp.ones(local_shape,dtype=float), 
-                                     constraint=dist.constraints.positive)
-
-    # K Offsets
-    K_offset_locs = pyro.param(f"{name}_log_hill_K_offset_locs", jnp.zeros(local_shape,dtype=float))
-    K_offset_scales = pyro.param(f"{name}_log_hill_K_offset_scales", jnp.ones(local_shape,dtype=float), 
-                                 constraint=dist.constraints.positive)
-
-    # n Offsets
-    n_offset_locs = pyro.param(f"{name}_log_hill_n_offset_locs", jnp.zeros(local_shape,dtype=float))
-    n_offset_scales = pyro.param(f"{name}_log_hill_n_offset_scales", jnp.ones(local_shape,dtype=float), 
-                                 constraint=dist.constraints.positive)
-
-
-    # ==========================================================================
-    # 3. Sampling (Sliced by Genotype)
-    # ==========================================================================
+            offset = pyro.sample(f"{site_name}_offset", dist.Normal(batch_locs, batch_scales))
+            return h_loc + offset * h_scale
+        
+        return sample_genotype_parameter_guide(f"{name}_{site_suffix}", data, guide_fn)
 
     with pyro.plate(f"{name}_titrant_name_plate", data.num_titrant_name, dim=-2):
-        # Batching on Genotype (dim=-1)
-        with pyro.plate("shared_genotype_plate", size=data.batch_size, dim=-1):
-            
-            # Scale data for sub-sampling
-            with pyro.handlers.scale(scale=data.scale_vector):
-            
-                # Low
-                logit_theta_low_offset = pyro.sample(f"{name}_logit_low_offset", 
-                    dist.Normal(low_offset_locs[..., data.batch_idx], low_offset_scales[..., data.batch_idx]))
-                
-                # Delta
-                logit_theta_delta_offset = pyro.sample(f"{name}_logit_delta_offset", 
-                    dist.Normal(delta_offset_locs[..., data.batch_idx], delta_offset_scales[..., data.batch_idx]))
-                
-                # K
-                log_hill_K_offset = pyro.sample(f"{name}_log_hill_K_offset", 
-                    dist.Normal(K_offset_locs[..., data.batch_idx], K_offset_scales[..., data.batch_idx]))
-                
-                # n
-                log_hill_n_offset = pyro.sample(f"{name}_log_hill_n_offset", 
-                    dist.Normal(n_offset_locs[..., data.batch_idx], n_offset_scales[..., data.batch_idx]))
+        logit_theta_low = guide_hill_param("logit_low", logit_theta_low_hyper_loc, logit_theta_low_hyper_scale)
+        logit_theta_delta = guide_hill_param("logit_delta", logit_theta_delta_hyper_loc, logit_theta_delta_hyper_scale)
+        log_hill_K = guide_hill_param("log_hill_K", log_hill_K_hyper_loc, log_hill_K_hyper_scale)
+        log_hill_n = guide_hill_param("log_hill_n", log_hill_n_hyper_loc, log_hill_n_hyper_scale)
 
-    # Guard against full-sized array substitution during initialization or re-runs 
-    # with full-sized initial values
-    if logit_theta_low_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
-        logit_theta_low_offset = logit_theta_low_offset[..., data.batch_idx]
-        logit_theta_delta_offset = logit_theta_delta_offset[..., data.batch_idx]
-        log_hill_K_offset = log_hill_K_offset[..., data.batch_idx]
-        log_hill_n_offset = log_hill_n_offset[..., data.batch_idx]
-
-    # ==========================================================================
-    # 4. Reconstruction
-    # ==========================================================================
-
-    logit_theta_low = logit_theta_low_hyper_loc + logit_theta_low_offset * logit_theta_low_hyper_scale
-    logit_theta_delta = logit_theta_delta_hyper_loc + logit_theta_delta_offset * logit_theta_delta_hyper_scale
     logit_theta_high = logit_theta_low + logit_theta_delta
-    log_hill_K = log_hill_K_hyper_loc + log_hill_K_offset * log_hill_K_hyper_scale
-    log_hill_n = log_hill_n_hyper_loc + log_hill_n_offset * log_hill_n_hyper_scale
 
     # Transform
     theta_low = dist.transforms.SigmoidTransform()(logit_theta_low)
     theta_high = dist.transforms.SigmoidTransform()(logit_theta_high)
     hill_n = jnp.exp(log_hill_n)
 
-    # --------------------------------------------------------------------------
-    # Calculate population moments (mu, sigma) using a "ghost population"
-    
+    # Ghost population calculation (copied from model)
     n_ghost = 100
     ghost_low = logit_theta_low_hyper_loc + dist.Normal(0.0, 1.0).sample(jax.random.PRNGKey(0), (n_ghost,)) * logit_theta_low_hyper_scale
     ghost_delta = logit_theta_delta_hyper_loc + dist.Normal(0.0, 1.0).sample(jax.random.PRNGKey(1), (n_ghost,)) * logit_theta_delta_hyper_scale
@@ -413,7 +263,7 @@ def guide(name: str,
     ghost_K = log_hill_K_hyper_loc + dist.Normal(0.0, 1.0).sample(jax.random.PRNGKey(2), (n_ghost,)) * log_hill_K_hyper_scale
     ghost_n = log_hill_n_hyper_loc + dist.Normal(0.0, 1.0).sample(jax.random.PRNGKey(3), (n_ghost,)) * log_hill_n_hyper_scale
     
-    log_conc = data.log_titrant_conc[None, :, None] # (1, Conc, 1)
+    log_conc = data.log_titrant_conc[None, :, None] 
     
     g_low = ghost_low[None, None, :]
     g_high = ghost_high[None, None, :]
@@ -436,6 +286,7 @@ def guide(name: str,
                              sigma=sigma_pop)
     
     return theta_param
+
 
 def run_model(theta_param: ThetaParam, data: DataClass) -> jnp.ndarray:
     """
@@ -510,11 +361,11 @@ def get_hyperparameters() -> Dict[str, Any]:
 
     parameters = {}
 
-    parameters["theta_logit_low_hyper_loc_loc"] = 2.0
+    parameters["theta_logit_low_hyper_loc_loc"] = 0.0
     parameters["theta_logit_low_hyper_loc_scale"] = 2.0
     parameters["theta_logit_low_hyper_scale"] = 1.0
 
-    parameters["theta_logit_delta_hyper_loc_loc"] = -4.0
+    parameters["theta_logit_delta_hyper_loc_loc"] = -2.0
     parameters["theta_logit_delta_hyper_loc_scale"] = 2.0
     parameters["theta_logit_delta_hyper_scale"] = 1.0
 
@@ -532,31 +383,13 @@ def get_hyperparameters() -> Dict[str, Any]:
 def get_guesses(name: str, data: DataClass) -> Dict[str, Any]:
     """
     Gets initial guess values for model parameters.
-
-    These are used to initialize the MCMC sampler (e.g., via
-    ``numpyro.infer.init_to_value``).
-
-    Parameters
-    ----------
-    name : str
-        The prefix for the parameter names (e.g., "theta").
-    data : DataClass
-        A data object containing metadata, primarily:
-        - ``data.num_titrant_name`` : (int) Number of titrants.
-        - ``data.num_genotype`` : (int) Number of genotypes.
-
-    Returns
-    -------
-    dict[str, Any]
-        A dictionary mapping parameter names to their initial
-        guess values.
     """
     
     guesses = {}
 
-    guesses[f"{name}_logit_low_hyper_loc"] = 2.0
+    guesses[f"{name}_logit_low_hyper_loc"] = 0.0
     guesses[f"{name}_logit_low_hyper_scale"] = 2.0
-    guesses[f"{name}_logit_delta_hyper_loc"] = -4.0
+    guesses[f"{name}_logit_delta_hyper_loc"] = -2.0
     guesses[f"{name}_logit_delta_hyper_scale"] = 2.0
     
     guesses[f"{name}_log_hill_K_hyper_loc"] = -4.1 # ln(0.017 mM)
@@ -564,10 +397,13 @@ def get_guesses(name: str, data: DataClass) -> Dict[str, Any]:
     guesses[f"{name}_log_hill_n_hyper_loc"] = 0.7
     guesses[f"{name}_log_hill_n_hyper_scale"] = 0.3
 
-    guesses[f"{name}_logit_low_offset"] = jnp.zeros((data.num_titrant_name,data.num_genotype),dtype=float)
-    guesses[f"{name}_logit_delta_offset"] = jnp.zeros((data.num_titrant_name,data.num_genotype),dtype=float)
-    guesses[f"{name}_log_hill_K_offset"] = jnp.zeros((data.num_titrant_name,data.num_genotype),dtype=float)
-    guesses[f"{name}_log_hill_n_offset"] = jnp.zeros((data.num_titrant_name,data.num_genotype),dtype=float)
+    def guess_hill_per_unit(site_name, size):
+        return {f"{site_name}_offset": jnp.zeros((data.num_titrant_name, size))}
+
+    # For Hill, we have four parameters, each needs its own guesses via genotype_utils
+    hill_param_sites = ["logit_low", "logit_delta", "log_hill_K", "log_hill_n"]
+    for suffix in hill_param_sites:
+        guesses.update(get_genotype_parameter_guesses(f"{name}_{suffix}", data, guess_hill_per_unit))
 
     return guesses
 

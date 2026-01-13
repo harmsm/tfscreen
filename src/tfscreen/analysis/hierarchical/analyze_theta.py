@@ -274,6 +274,7 @@ def analyze_theta(growth_df=None,
                   sampling_batch_size=100,
                   forward_batch_size=512,
                   always_get_posterior=False,
+                  epistasis_mode="genotype",
                   spiked=None):
     """
     Run the joint hierarchical growth model to extract estimates of
@@ -407,6 +408,7 @@ def analyze_theta(growth_df=None,
         theta_growth_noise_model = c_settings["theta_growth_noise"]
         theta_binding_noise_model = c_settings["theta_binding_noise"]
         spiked = c_settings["spiked_genotypes"]
+        epistasis_mode = c_settings.get("epistasis_mode","genotype")
 
     # validation
     if growth_df is None or binding_df is None:
@@ -432,7 +434,8 @@ def analyze_theta(growth_df=None,
                      transformation=transformation_model,
                      theta_growth_noise=theta_growth_noise_model,
                      theta_binding_noise=theta_binding_noise_model,
-                     spiked_genotypes=spiked)
+                     spiked_genotypes=spiked,
+                     epistasis_mode=epistasis_mode)
     
     # Save the model configuration
     gm.write_config(growth_df, binding_df, out_root)
@@ -528,7 +531,8 @@ def main():
                                               "seed":int,
                                               "checkpoint_file":str,
                                               "config_file":str,
-                                              "spiked":list},
+                                              "spiked":list,
+                                              "epistasis_mode":str},
                             manual_arg_nargs={"spiked":"+"})
 
 if __name__ == "__main__":
