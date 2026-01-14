@@ -23,7 +23,8 @@ def _run_map(ri,
              num_posterior_samples=10000,
              sampling_batch_size=100,
              forward_batch_size=512,
-             always_get_posterior=False):
+             always_get_posterior=False,
+             init_param_jitter=0.0):
     """
     Run maximum a posteriori (MAP) optimization for hierarchical model inference.
 
@@ -63,9 +64,8 @@ def _run_map(ri,
         Frequency (in epochs) to check for convergence (default 2).
     checkpoint_interval : int, optional
         Steps between checkpoints and convergence checks (default 10).
-    map_guide_type : str, optional
-        Type of guide to use for MAP. Allowed values are 'laplace',
-        'diagonal_laplace' (default), 'normal', or 'delta'.
+    init_param_jitter : float, optional
+        Amount of jitter to add to init_params (default 0.0).
 
     Returns
     -------
@@ -102,6 +102,7 @@ def _run_map(ri,
         convergence_check_interval=convergence_check_interval,
         checkpoint_interval=checkpoint_interval,
         max_num_epochs=max_num_epochs,
+        init_param_jitter=init_param_jitter
     )
 
     # Write the current parameter values
@@ -132,7 +133,8 @@ def _run_svi(ri,
              num_posterior_samples=10000,
              sampling_batch_size=100,
              forward_batch_size=512,
-             always_get_posterior=False):
+             always_get_posterior=False,
+             init_param_jitter=0.1):
     """
     Run stochastic variational inference (SVI) for hierarchical model inference.
 
@@ -182,6 +184,8 @@ def _run_svi(ri,
         this size (default 512)
     always_get_posterior : bool, optional
         If True, always sample posteriors even if not converged (default False).
+    init_param_jitter : float, optional
+        Amount of jitter to add to init_params (default 0.1).
 
     Returns
     -------
@@ -219,6 +223,7 @@ def _run_svi(ri,
         convergence_check_interval=convergence_check_interval,
         checkpoint_interval=checkpoint_interval,
         max_num_epochs=max_num_epochs,
+        init_param_jitter=init_param_jitter
     )
 
     if converged or always_get_posterior:
@@ -274,7 +279,9 @@ def analyze_theta(growth_df=None,
                   sampling_batch_size=100,
                   forward_batch_size=512,
                   always_get_posterior=False,
-                  spiked=None):
+                  spiked=None,
+                  pre_map_num_epoch=1000,
+                  init_param_jitter=0.1):
     """
     Run the joint hierarchical growth model to extract estimates of
     transcription factor fractional occupancy (theta) and other latent
@@ -372,6 +379,12 @@ def analyze_theta(growth_df=None,
     spiked : list or str, optional
         Names of genotypes that should be excluded from congression
         correction.
+    pre_map_num_epoch : int, optional
+        Number of MAP iterations to run prior to SVI (default 1000). Only used
+        if analysis_method is 'svi'. 
+    init_param_jitter : float, optional
+        Amount of jitter to add after the (optional) MAP run to break symmetry
+        (default 0.1).
 
     Returns
     -------
@@ -441,11 +454,30 @@ def analyze_theta(growth_df=None,
     # ELBO convergence.
     ri = RunInference(gm,seed)
 
+    # Initial parameters
+    init_params = gm.init_params
+
     # Run SVI
     if analysis_method == "svi":
 
+        # Run MAP before SVI if requested. 
+        if pre_map_num_epoch > 0 and checkpoint_file is None:
+            
+            # Run MAP. Note we turn off jitter for the MAP run. 
+            _, init_params, _ = _run_map(ri,
+                                         init_params=init_params,
+                                         checkpoint_file=None,
+                                         out_root=f"{out_root}_premap",
+                                         adam_step_size=adam_step_size,
+                                         adam_final_step_size=adam_final_step_size,
+                                         adam_clip_norm=adam_clip_norm,
+                                         elbo_num_particles=elbo_num_particles,
+                                         checkpoint_interval=pre_map_num_epoch,
+                                         max_num_epochs=pre_map_num_epoch,
+                                         init_param_jitter=0.0)
+
         return _run_svi(ri,
-                        init_params=gm.init_params,
+                        init_params=init_params,
                         checkpoint_file=checkpoint_file,
                         out_root=out_root,
                         adam_step_size=adam_step_size,
@@ -461,13 +493,14 @@ def analyze_theta(growth_df=None,
                         num_posterior_samples=num_posterior_samples,
                         sampling_batch_size=sampling_batch_size,
                         forward_batch_size=forward_batch_size,
-                        always_get_posterior=always_get_posterior)
+                        always_get_posterior=always_get_posterior,
+                        init_param_jitter=init_param_jitter)
     
     # Run MAP
     elif analysis_method == "map":
 
         return _run_map(ri,
-                        gm.init_params,
+                        init_params,
                         checkpoint_file=checkpoint_file,
                         out_root=out_root,
                         adam_step_size=adam_step_size,
@@ -483,7 +516,8 @@ def analyze_theta(growth_df=None,
                         num_posterior_samples=num_posterior_samples,
                         sampling_batch_size=sampling_batch_size,
                         forward_batch_size=forward_batch_size,
-                        always_get_posterior=always_get_posterior)
+                        always_get_posterior=always_get_posterior,
+                        init_param_jitter=init_param_jitter)
                           
     elif analysis_method == "posterior":
 
@@ -504,7 +538,8 @@ def analyze_theta(growth_df=None,
                         num_posterior_samples=num_posterior_samples,
                         sampling_batch_size=sampling_batch_size,
                         forward_batch_size=forward_batch_size,
-                        always_get_posterior=True) # Force grabbing the posterior
+                        always_get_posterior=True, # Force grabbing the posterior
+                        init_param_jitter=0.0) # No jitter for posterior run
 
     # Not recognized
     else:
@@ -528,7 +563,9 @@ def main():
                                               "seed":int,
                                               "checkpoint_file":str,
                                               "config_file":str,
-                                              "spiked":list},
+                                              "spiked":list,
+                                              "pre_map_num_epoch":int,
+                                              "init_param_jitter":float},
                             manual_arg_nargs={"spiked":"+"})
 
 if __name__ == "__main__":

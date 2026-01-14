@@ -78,7 +78,8 @@ def test_run_svi_flow_converged(mock_run_inference):
         patience=ANY,
         convergence_check_interval=ANY,
         checkpoint_interval=ANY,
-        max_num_epochs=500
+        max_num_epochs=500,
+        init_param_jitter=ANY
     )
     
     # 3. Get Posteriors (because converged=True)
@@ -150,7 +151,8 @@ def test_run_map_flow(mock_run_inference):
         patience=ANY,
         convergence_check_interval=ANY,
         checkpoint_interval=ANY,
-        max_num_epochs=1000
+        max_num_epochs=1000,
+        init_param_jitter=ANY
     )
     
     # 3. Write Params
@@ -189,7 +191,8 @@ def test_analyze_theta_svi_mode(mock_growth_model, mock_run_inference):
             seed=42,
             analysis_method="svi",
             batch_size=512,
-            spiked=["A10G"]
+            spiked=["A10G"],
+            pre_map_num_epoch=0
         )
         
         # 1. Initialize GrowthModel
@@ -208,6 +211,38 @@ def test_analyze_theta_svi_mode(mock_growth_model, mock_run_inference):
         args, kwargs = mock_run_svi.call_args
         assert args[0] == ri_inst
         assert kwargs["init_params"] == gm_inst.init_params
+        assert "init_param_jitter" in kwargs
+
+def test_analyze_theta_svi_pre_map_flow(mock_growth_model, mock_run_inference):
+    """Test analyze_theta executing SVI path with pre-MAP optimization."""
+    gm_class, gm_inst = mock_growth_model
+    ri_class, ri_inst = mock_run_inference
+    
+    with patch("tfscreen.analysis.hierarchical.analyze_theta._run_svi") as mock_run_svi:
+        with patch("tfscreen.analysis.hierarchical.analyze_theta._run_map") as mock_run_map:
+            # Set return for _run_map to simulate parameter update
+            mock_run_map.return_value = ("map_state", {"p_map": 2}, True)
+            
+            analyze_theta(
+                growth_df="growth.csv",
+                binding_df="binding.csv",
+                seed=42,
+                analysis_method="svi",
+                pre_map_num_epoch=50
+            )
+            
+            # 1. MAP should be called
+            mock_run_map.assert_called_once()
+            map_args, map_kwargs = mock_run_map.call_args
+            assert map_kwargs["max_num_epochs"] == 50
+            assert map_kwargs["init_param_jitter"] == 0.0
+            assert "adam_step_size" in map_kwargs
+            
+            # 2. SVI should be called with parameters from MAP
+            mock_run_svi.assert_called_once()
+            svi_args, svi_kwargs = mock_run_svi.call_args
+            assert svi_kwargs["init_params"] == {"p_map": 2}
+            assert svi_kwargs["init_param_jitter"] == 0.1 # default
 
 def test_analyze_theta_map_mode(mock_growth_model, mock_run_inference):
     """Test analyze_theta executing MAP path."""
@@ -318,7 +353,9 @@ def test_main():
                               "seed": int,
                               "checkpoint_file": str,
                               "config_file": str,
-                              "spiked": list},
+                              "spiked": list,
+                              "pre_map_num_epoch": int,
+                              "init_param_jitter": float},
             manual_arg_nargs={"spiked": "+"}
         )
 import runpy
