@@ -428,6 +428,20 @@ def analyze_theta(growth_df=None,
     if seed is None and checkpoint_file is None:
         raise ValueError("seed must be provided unless loading from a checkpoint.")
 
+    # Check for existing checkpoint files to prevent accidental overwrite
+    if checkpoint_file is None:
+        possible_checkpoints = [f"{out_root}_checkpoint.pkl"]
+        if pre_map_num_epoch > 0:
+            possible_checkpoints.append(f"{out_root}_premap_checkpoint.pkl")
+
+        for cp in possible_checkpoints:
+            if os.path.exists(cp):
+                raise FileExistsError(
+                    f"Checkpoint file '{cp}' already exists. To resume, "
+                    "provide it via --checkpoint_file. To overwrite, delete "
+                    "the file or change --out_root."
+                )
+
     # Kind of a hack, but this forces no batching for the posterior calc
     if analysis_method == "posterior":
         batch_size = None

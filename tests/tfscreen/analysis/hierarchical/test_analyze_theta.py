@@ -33,6 +33,9 @@ def mock_run_inference(mocker):
     # Patch summarize_posteriors globally for these tests
     mocker.patch("tfscreen.analysis.hierarchical.analyze_theta.summarize_posteriors")
     
+    # Mock os.path.exists to return False by default to prevent FileExistsError
+    mocker.patch("os.path.exists", return_value=False)
+
     return mock_ri_class, mock_ri_instance
 
 @pytest.fixture
