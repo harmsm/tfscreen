@@ -2,8 +2,12 @@ import jax
 import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
-from flax.struct import dataclass
+from flax.struct import (
+    dataclass,
+    field
+)
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
+from typing import Optional, Tuple, Union
 
 def _logit_normal_cdf(x, mu, sigma):
     """
@@ -35,7 +39,30 @@ def _logit_normal_cdf(x, mu, sigma):
     return jax.scipy.stats.norm.cdf(logit_x, loc=mu, scale=sigma)
 
 
-def update_thetas(theta, params, mask=None, n_grid=256):
+def _empirical_cdf(theta, t_grid):
+    """
+    Cumulative Distribution Function estimated from the observed population
+    of theta values.
+    """
+    n = theta.shape[-1]
+    sorted_theta = jnp.sort(theta, axis=-1)
+    
+    # Empirical CDF values at the sorted points.
+    # We use (i + 0.5) / n to be unbiased for a continuous distribution.
+    y = (jnp.arange(n) + 0.5) / n
+    
+    # Interpolate to the integration grid
+    shape = theta.shape[:-1]
+    flat_sorted = sorted_theta.reshape(-1, n)
+    
+    def get_cdf(s):
+        return jnp.interp(t_grid, s, y)
+    
+    flat_cdf = jax.vmap(get_cdf)(flat_sorted)
+    return flat_cdf.reshape(shape + (len(t_grid),))
+
+
+def update_thetas(theta, params, theta_dist=None, mask=None, n_grid=256):
     """
     Corrects theta values for co-transformation using the method of 
     re-sampling from the background distribution.
@@ -46,10 +73,12 @@ def update_thetas(theta, params, mask=None, n_grid=256):
         Array of theta values. 
         Expected shape: (..., num_genotype)
     params : tuple
-        Tuple of (lam, mu, sigma) parameters from the model/guide.
-        lam : co-transformation rate
-        mu : Logit-Normal background location parameter
-        sigma : Logit-Normal background scale parameter
+        Tuple of parameters defining the background distribution.
+        If theta_dist is "logit_norm" (default): (lam, mu, sigma)
+        If theta_dist is "empirical": (lam,)
+    theta_dist : str, optional
+        One of "logit_norm" or "empirical".
+        If None, the distribution is inferred from the length of params.
     mask : jnp.array, optional
         Boolean array of shape (num_genotype,) where True indicates the 
         genotype should be corrected for congression. If None, all genotypes
@@ -62,29 +91,46 @@ def update_thetas(theta, params, mask=None, n_grid=256):
     jnp.array
         Corrected theta array with shape broadcasted from inputs.
     """
-    
-    lam, mu, sigma = params
+    # Extract parameters. We assume the first is always lam.
+    lam = params[0]
+    bg_params = params[1:]
 
-    # 1. Identify the minimal parameter batch shape to avoid redundant integration
-    # Combine parameters and identify their shared batch shape (excluding 
-    # genotype dimension if present in params, though usually they are (..., 1))
-    lam_p, mu_p, sigma_p = jnp.broadcast_arrays(lam, mu, sigma)
-    p_batch_shape = lam_p.shape
-    
-    # Flatten parameter batch dimensions for vmap
-    flat_lam   = lam_p.reshape(-1)
-    flat_mu    = mu_p.reshape(-1)
-    flat_sigma = sigma_p.reshape(-1)
-    
-    num_p_batches = flat_lam.shape[0]
+    # Infer theta_dist if not provided
+    if theta_dist is None:
+        if len(bg_params) == 2:
+            theta_dist = "logit_norm"
+        elif len(bg_params) == 0:
+            theta_dist = "empirical"
+        else:
+            raise ValueError(f"Ambiguous parameter count: {len(params)}. Please specify theta_dist.")
 
-    # 2. Pre-calculate integration on a grid for each unique parameter set
+    # Integration grid
     t_grid = jnp.linspace(0.0, 1.0, n_grid)
-    
-    # Calculate logit-normal CDF on grid for parameter batches
-    # Ft_grid shape: (num_p_batches, n_grid)
-    Ft_grid = jax.vmap(lambda m, s: _logit_normal_cdf(t_grid, m, s))(flat_mu, flat_sigma)
-    
+
+    if theta_dist == "logit_norm":
+        # (lam, mu, sigma)
+        b_arrays = jnp.broadcast_arrays(*params[:3])
+        flat_params = [jnp.reshape(a, -1) for a in b_arrays]
+        num_p_batches = flat_params[0].shape[0]
+        integration_shape = b_arrays[0].shape
+        flat_lam = flat_params[0]
+        
+        Ft_grid = jax.vmap(lambda m, s: _logit_normal_cdf(t_grid, m, s))(flat_params[1], flat_params[2])
+        
+    elif theta_dist == "empirical":
+        Ft_grid_raw = _empirical_cdf(theta, t_grid)
+        num_p_batches = Ft_grid_raw.reshape(-1, n_grid).shape[0]
+        
+        # Broadcast lambda to match theta's batch dimension
+        lam_b = jnp.broadcast_to(lam, theta.shape[:-1])
+        flat_lam = lam_b.reshape(-1)
+        
+        Ft_grid = Ft_grid_raw.reshape(-1, n_grid)
+        integration_shape = theta.shape[:-1]
+        
+    else:
+        raise ValueError(f"Unsupported theta_dist: {theta_dist}")
+
     # Calculate integrand: exp(lam * (F(t) - 1))
     # integrand_grid shape: (num_p_batches, n_grid)
     integrand_grid = jnp.exp(flat_lam[:, None] * (Ft_grid - 1.0))
@@ -100,20 +146,22 @@ def update_thetas(theta, params, mask=None, n_grid=256):
     G1 = J_grid[:, -1:]
     Gx_grid_p = G1 - J_grid
     
-    # Reshape Gx_grid back to p_batch_shape (broadcasting-ready)
-    # If p_batch_shape ends in 1 (genotype dim), replace it with n_grid
-    if len(p_batch_shape) > 0 and p_batch_shape[-1] == 1:
-        integration_shape = p_batch_shape[:-1] + (n_grid,)
+    # Reshape Gx_grid back to broadcasting-ready shape
+    # If integration_shape has a trailing 1 (genotype dim), remove it so we can broadcast
+    # to (target_shape + n_grid) correctly.
+    if len(integration_shape) > 0 and integration_shape[-1] == 1:
+        res_batch_shape = integration_shape[:-1]
     else:
-        integration_shape = p_batch_shape + (n_grid,)
+        res_batch_shape = integration_shape
         
-    Gx_grid_final = Gx_grid_p.reshape(integration_shape)
+    Gx_grid_final = Gx_grid_p.reshape(res_batch_shape + (n_grid,))
     
     # 3. Broadcast integration results to match theta's batch dimensions
     target_shape = theta.shape[:-1]
     num_genotypes = theta.shape[-1]
     
-    # Broadcast Gx_grid to (..., n_grid) where ... matches theta's batch dims
+    # Gx_grid_final is already (integration_shape, n_grid)
+    # If integration_shape matches target_shape, we are good.
     Gx_grid_b = jnp.broadcast_to(Gx_grid_final, target_shape + (n_grid,))
     
     # 4. Interpolate G(x) for each genotype in the full batch
@@ -234,15 +282,15 @@ class ModelPriors:
     lam_scale: float
     mu_anchoring_scale: float
     sigma_anchoring_scale: float
+    mode: str = field(default="logit_norm", pytree_node=False)
     
-
 def define_model(name: str, 
                  data: GrowthData, 
                  priors: ModelPriors,
-                 anchors: tuple = None) -> jnp.ndarray:
+                 anchors: tuple = None) -> tuple:
     """
     Defines the hierarchical model for the co-transformation parameter (lambda)
-    and background parameters (mu, sigma).
+    and background parameters (mu, sigma, etc.).
 
     Parameters
     ----------
@@ -259,48 +307,48 @@ def define_model(name: str,
     Returns
     -------
     tuple
-        (lam, mu, sigma) sampled values.
+        (lam, ...) sampled values depending on priors.mode.
     """
     
     # Global shared lambda
-    # Prior: LogNormal(loc, scale)
-    # Using LogNormal ensures lambda is positive
-    
     lam = pyro.sample(
         f"{name}_lam",
         dist.LogNormal(priors.lam_loc, priors.lam_scale)
     )
     pyro.deterministic(f"{name}_lam_value", lam)
 
+    if priors.mode == "empirical":
+        return (lam,)
+
     if anchors is None:
-        # Fallback to defaults if no anchors provided
         anc_mu = 0.0
         anc_sigma = 1.0
     else:
         anc_mu, anc_sigma = anchors
 
-    # Nested plates for titrant_name and titrant_conc
-    with pyro.plate(f"{name}_titrant_name_plate", data.num_titrant_name, dim=-3):
-        with pyro.plate(f"{name}_titrant_conc_plate", data.num_titrant_conc, dim=-2):
-    
-            mu = pyro.sample(
-                f"{name}_mu",
-                dist.Normal(anc_mu, priors.mu_anchoring_scale)
-            )
-            pyro.deterministic(f"{name}_mu_value", mu)
+    if priors.mode == "logit_norm":
+        # Nested plates for titrant_name and titrant_conc
+        with pyro.plate(f"{name}_titrant_name_plate", data.num_titrant_name, dim=-3):
+            with pyro.plate(f"{name}_titrant_conc_plate", data.num_titrant_conc, dim=-2):
+        
+                mu = pyro.sample(
+                    f"{name}_mu",
+                    dist.Normal(anc_mu, priors.mu_anchoring_scale)
+                )
+                pyro.deterministic(f"{name}_mu_value", mu)
 
-            sigma = pyro.sample(
-                f"{name}_sigma",
-                dist.LogNormal(jnp.log(anc_sigma), priors.sigma_anchoring_scale)
-            )
-            pyro.deterministic(f"{name}_sigma_value", sigma)
-    
+                sigma = pyro.sample(
+                    f"{name}_sigma",
+                    dist.LogNormal(jnp.log(anc_sigma), priors.sigma_anchoring_scale)
+                )
+                pyro.deterministic(f"{name}_sigma_value", sigma)
+        
     return lam, mu, sigma
 
 def guide(name: str, 
           data: GrowthData, 
           priors: ModelPriors,
-          anchors: tuple = None) -> jnp.ndarray:
+          anchors: tuple = None) -> tuple:
     """
     Guide corresponding to the co-transformation model.
     Learns variational posteriors for lam, mu, and sigma.
@@ -319,19 +367,19 @@ def guide(name: str,
     Returns
     -------
     tuple
-        (lam, mu, sigma) sampled values from guide.
+        (lam, ...) sampled values from guide.
     """
     
     # Variational approximation for lambda
-    # Using LogNormal family
-    
     h_lam_loc = pyro.param(f"{name}_lam_loc", jnp.array(priors.lam_loc))
     h_lam_scale = pyro.param(f"{name}_lam_scale", jnp.array(priors.lam_scale),
                              constraint=dist.constraints.positive)
     lam = pyro.sample(f"{name}_lam", dist.LogNormal(h_lam_loc, h_lam_scale))
 
+    if priors.mode == "empirical":
+        return (lam,)
+
     # Variational approximation for mu and sigma (plated)
-    
     local_shape = (data.num_titrant_name, data.num_titrant_conc, 1)
 
     if anchors is None:
@@ -340,21 +388,24 @@ def guide(name: str,
     else:
         init_mu, init_sigma = anchors
 
-    h_mu_loc = pyro.param(f"{name}_mu_loc", jnp.full(local_shape, init_mu))
-    h_mu_scale = pyro.param(f"{name}_mu_scale", jnp.full(local_shape, 0.1),
-                            constraint=dist.constraints.positive)
-    
-    h_sigma_loc = pyro.param(f"{name}_sigma_loc", jnp.full(local_shape, jnp.log(init_sigma)))
-    h_sigma_scale = pyro.param(f"{name}_sigma_scale", jnp.full(local_shape, 0.1),
-                               constraint=dist.constraints.positive)
+    if priors.mode == "logit_norm":
+        h_mu_loc = pyro.param(f"{name}_mu_loc", jnp.full(local_shape, init_mu))
+        h_mu_scale = pyro.param(f"{name}_mu_scale", jnp.full(local_shape, 0.1),
+                                constraint=dist.constraints.positive)
+        
+        h_sigma_loc = pyro.param(f"{name}_sigma_loc", jnp.full(local_shape, jnp.log(init_sigma)))
+        h_sigma_scale = pyro.param(f"{name}_sigma_scale", jnp.full(local_shape, 0.1),
+                                   constraint=dist.constraints.positive)
 
-    with pyro.plate(f"{name}_titrant_name_plate", data.num_titrant_name, dim=-3):
-        with pyro.plate(f"{name}_titrant_conc_plate", data.num_titrant_conc, dim=-2):
-            
-            mu = pyro.sample(f"{name}_mu", dist.Normal(h_mu_loc, h_mu_scale))
-            sigma = pyro.sample(f"{name}_sigma", dist.LogNormal(h_sigma_loc, h_sigma_scale))
+        with pyro.plate(f"{name}_titrant_name_plate", data.num_titrant_name, dim=-3):
+            with pyro.plate(f"{name}_titrant_conc_plate", data.num_titrant_conc, dim=-2):
+                
+                mu = pyro.sample(f"{name}_mu", dist.Normal(h_mu_loc, h_mu_scale))
+                sigma = pyro.sample(f"{name}_sigma", dist.LogNormal(h_sigma_loc, h_sigma_scale))
 
-    return lam, mu, sigma
+        return lam, mu, sigma
+
+    raise ValueError(f"Unsupported mode: {priors.mode}")
 
 
 def get_hyperparameters():
@@ -371,11 +422,14 @@ def get_hyperparameters():
     
     # Lambda prior: centered on 1.0
     parameters["lam_loc"] = 0.0 
-    parameters["lam_scale"] = 0.5
+    parameters["lam_scale"] = 0.01
     
     # Anchoring scales (tightening this makes the background track the prior more closely)
     parameters["mu_anchoring_scale"] = 0.5
     parameters["sigma_anchoring_scale"] = 0.2
+    
+    # Background model mode: 'logit_normal' (default) or 'empirical'
+    parameters["mode"] = "logit_norm"
                
     return parameters
     
@@ -405,6 +459,12 @@ def get_guesses(name,data):
 
     guesses = {}
     guesses[f"{name}_lam"] = 1.0
+    
+    # Only add these if we are not in empirical mode. 
+    # NOTE: get_guesses currently doesn't know the mode from the config easily 
+    # during initialization in model_class.py unless we pass it. 
+    # For now, we'll keep them as guesses; they just won't be used if not 
+    # in the model/guide.
     guesses[f"{name}_mu"] = 0.0
     guesses[f"{name}_sigma"] = 1.0
     

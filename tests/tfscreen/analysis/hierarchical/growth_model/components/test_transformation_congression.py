@@ -24,6 +24,20 @@ def test_logit_normal_cdf():
     assert jnp.isclose(cdf[1], 0.5, atol=1e-5)
     assert jnp.isclose(cdf[2], 1.0, atol=1e-5)
 
+def test_empirical_cdf():
+    """Test empirical CDF calculation."""
+    theta = jnp.array([0.1, 0.5, 0.9])
+    t_grid = jnp.array([0.0, 0.2, 0.5, 0.8, 1.0])
+    
+    # theta has 3 elements. y = [0.166, 0.5, 0.833] (using 0.5/n)
+    # Sorted: 0.1, 0.5, 0.9
+    cdf = transformation_congression._empirical_cdf(theta, t_grid)
+    
+    assert cdf.shape == (5,)
+    assert cdf[0] == 0.16666667 # Interp 0.0 at 0.1 returns y[0]
+    assert jnp.isclose(cdf[2], 0.5) # 0.5 is exactly in theta
+    assert cdf[4] == 0.8333333 # Interp 1.0 at 0.9 returns y[2]
+
 
 # -------------------------------------------------------------------------
 # Correction Logic
@@ -81,13 +95,21 @@ def test_update_thetas_shapes():
     assert jnp.all(res_mask[:, 1] == theta[:, 1])
     assert jnp.all(res_mask[:, 3] == theta[:, 3])
 
-def test_update_thetas_broadcasting():
-    """Verify complex broadcasting."""
-    theta = jnp.ones((2, 5)) * 0.5
-    params = (1.0, 0.0, 1.0)
+    # Empirical mode call within shapes test
+    res_emp = transformation_congression.update_thetas(theta, params=(lam,), theta_dist="empirical")
+    assert res_emp.shape == (2, 5)
     
-    res = transformation_congression.update_thetas(theta, params=params)
-    assert res.shape == (2, 5)
+def test_update_thetas_empirical_values():
+    """Verify empirical mode update_thetas with realistic values."""
+    theta = jnp.array([[0.1, 0.5, 0.9], [0.2, 0.6, 1.0]])
+    lam = 1.0
+    params = (lam,)
+    
+    res = transformation_congression.update_thetas(theta, params=params, theta_dist="empirical")
+    assert res.shape == (2, 3)
+    # Result should be >= input for max-congression
+    assert jnp.all(res >= theta - 1e-6)
+
 
 # -------------------------------------------------------------------------
 # Model Interface
@@ -127,6 +149,7 @@ def test_define_model():
         lam2, mu2, sigma2 = transformation_congression.define_model("test_anc", data, priors, anchors=anchors)
         assert mu2.shape == (2, 3, 1)
 
+
 def test_guide():
     """Test Numpyro guide definition with plates."""
     priors = transformation_congression.get_priors()
@@ -145,8 +168,16 @@ def test_guide():
     assert mu.shape == (2, 3, 1)
     assert sigma.shape == (2, 3, 1)
 
+    # Run with empirical mode
+    priors_emp = transformation_congression.ModelPriors(0.0, 0.1, 0.5, 0.2, mode="empirical")
+    with numpyro.handlers.seed(rng_seed=2):
+        res_emp = transformation_congression.guide("test_emp", data, priors_emp)
+        assert len(res_emp) == 1
+        assert res_emp[0].shape == ()
+
     # Run with anchors to hit line 334
     with numpyro.handlers.seed(rng_seed=1):
         anchors = (jnp.zeros((2, 3, 1)), jnp.ones((2, 3, 1)))
         lam_anc, mu_anc, sigma_anc = transformation_congression.guide("test_anc", data, priors, anchors=anchors)
         assert mu_anc.shape == (2, 3, 1)
+

@@ -15,6 +15,8 @@ from .components import activity_horseshoe
 from .components import theta_cat 
 from .components import theta_hill 
 from .components import transformation_congression
+from .components import transformation_empirical
+from .components import transformation_logit_norm
 from .components import transformation_single 
 
 from .components import no_noise 
@@ -43,6 +45,8 @@ model_registry = {
     },
     "transformation":{
         "congression": transformation_congression,
+        "empirical": transformation_empirical,
+        "logit_norm": transformation_logit_norm,
         "single": transformation_single,
     },
     "theta":{

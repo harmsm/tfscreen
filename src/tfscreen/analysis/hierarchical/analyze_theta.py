@@ -258,7 +258,7 @@ def analyze_theta(growth_df=None,
                   dk_geno_model="hierarchical",
                   activity_model="horseshoe",
                   theta_model="hill",
-                  transformation_model="congression",
+                  transformation_model="empirical",
                   theta_growth_noise_model="none",
                   theta_binding_noise_model="none",
                   checkpoint_file=None,
@@ -325,8 +325,8 @@ def analyze_theta(growth_df=None,
         on the transcription factor binding site. Allowed values are 'hill' 
         (default) or 'categorical'. 
     transformation_model : str, optional
-        model for transformation correction. Allowed values are 'congression'
-        (default) or 'single'.
+        model for transformation correction. Allowed values are 'single', 
+        'empirical', or 'logit_theta'. Default 'empirical'
     theta_growth_noise_model : str, optional
         model to use for stochastic experimental noise in theta measured by 
         bacterial growth. Allowed values are 'beta' (default) or 'none' (written
