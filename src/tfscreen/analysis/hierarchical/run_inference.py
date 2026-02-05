@@ -21,6 +21,7 @@ import dill
 from tqdm.auto import tqdm
 
 from collections import deque
+from functools import partial
 import os
 import h5py
 
@@ -194,7 +195,7 @@ class RunInference:
         data_on_gpu = jax.device_put(self.model.data)
 
         # JAX-optimized update function for use with lax.scan
-        def scan_fn(carry, indices):
+        def scan_fn(data_on_gpu, carry, indices):
             svi_state = carry
             batch = self.model.get_batch(data_on_gpu, indices)
             new_svi_state, loss = update_function(svi_state,
@@ -202,8 +203,10 @@ class RunInference:
                                                   data=batch)
             return new_svi_state, loss
 
-        # JIT the scan function
-        fast_scan = jax.jit(lambda state, indices: jax.lax.scan(scan_fn, state, indices))
+        # JIT the scan function. We pass data_on_gpu as a formal argument to 
+        # the jitted function to avoid capturing it as a constant in the 
+        # closure (which triggers expensive constant folding for large datasets)
+        fast_scan = jax.jit(lambda data, state, indices: jax.lax.scan(partial(scan_fn, data), state, indices))
 
         # Create an initial batch to initialize SVI
         gpu_batch_idx = jax.device_put(self.model.get_random_idx())
@@ -266,7 +269,7 @@ class RunInference:
             gpu_block_idx = jax.device_put(block_idx)
 
             # Run the block of updates using lax.scan (entirely on GPU)
-            svi_state, block_losses = fast_scan(svi_state, gpu_block_idx)
+            svi_state, block_losses = fast_scan(data_on_gpu, svi_state, gpu_block_idx)
             
             # Convert JAX array to NumPy for host-side metadata management
             # Ensure it is at least 1D for deque/IO
