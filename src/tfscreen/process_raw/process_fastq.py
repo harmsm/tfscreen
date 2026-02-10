@@ -254,7 +254,10 @@ def _create_stats_df(messages: Counter) -> pd.DataFrame:
 
     return df[['success', 'result', 'counts', 'fraction']]
 
-def _create_counts_df(sequences: Counter, expected_genotypes: Iterable[str]) -> pd.DataFrame:
+def _create_counts_df(sequences: Counter,
+                     expected_genotypes: Iterable[str],
+                     messages: Optional[Counter] = None,
+                     unknown_genotype_label: str = "__unknown__") -> pd.DataFrame:
     """
     Build a counts DataFrame for expected genotypes from a sequence counter.
 
@@ -265,6 +268,12 @@ def _create_counts_df(sequences: Counter, expected_genotypes: Iterable[str]) -> 
     expected_genotypes : iterable of str
         List/iterable of expected genotype strings to include in the
         output DataFrame. Missing genotypes will have a count of zero.
+    messages : collections.Counter, optional
+        Counter mapping processing messages (strings) to counts. If provided,
+        messages indicating valid but unknown/ambiguous genotypes will be
+        aggregated into `unknown_genotype_label`.
+    unknown_genotype_label : str, default "__unknown__"
+        Label to use for the aggregated unknown genotype counts.
 
     Returns
     -------
@@ -285,6 +294,27 @@ def _create_counts_df(sequences: Counter, expected_genotypes: Iterable[str]) -> 
         out_dict["genotype"].append(g)
         out_dict["counts"].append(sequences[g])
     
+    # Aggregrate unknown genotypes from messages. This looks for any 
+    # failure mode that occurs AFTER the reads are successfully oriented 
+    # and trimmed (e.g. they look like valid payload but are not in the 
+    # library or are too ambiguous to call uniquely). 
+    if messages is not None:
+
+        unknown_messages = [
+            "fail, F/R agree but their sequence is not in the expected library",
+            "fail, F/R agree but match more than one expected sequence",
+            "fail, F/R disagree and neither sequence is expected",
+            "fail, F/R disagree and F is not expected and R is ambiguous",
+            "fail, F/R disagree and R is not expected and F is ambiguous",
+            "fail, F/R match different sequences in expected",
+        ]
+        num_unknown = 0
+        for m in unknown_messages:
+            num_unknown += messages[m]
+        
+        out_dict["genotype"].append(unknown_genotype_label)
+        out_dict["counts"].append(num_unknown)
+
     df = pd.DataFrame(out_dict)
     df = set_categorical_genotype(df,standardize=True,sort=True)
 
@@ -381,7 +411,9 @@ def process_fastq(f1_fastq: str,
     stats_df.to_csv(stats_file,index=False)
 
     # summarize and write out counts    
-    counts_df = _create_counts_df(sequences,ftc_instance.all_expected_genotypes)
+    counts_df = _create_counts_df(sequences,
+                                  ftc_instance.all_expected_genotypes,
+                                  messages=messages)
     counts_file = os.path.join(out_dir,f"counts_{os.path.basename(f1_fastq)}.csv")
     counts_df.to_csv(counts_file,index=False)
 

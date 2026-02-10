@@ -116,24 +116,33 @@ def test_impute_missing_genotypes_empty_input(sample_df):
 def test_calculate_frequencies():
     """
     Tests calculation of adjusted counts and frequencies. Ensures frequencies
-    are calculated on a per-sample basis.
+    are calculated on a per-sample basis using pre-calculated totals.
     """
     df = pd.DataFrame({
         'sample': ['s1', 's1', 's2'],
         'counts': [99, 1, 50]
     })
-    result = _calculate_frequencies(df.copy(), pseudocount=1)
+    
+    # Pre-calculated totals (e.g. s1 had another genotype that was filtered)
+    # s1: 100 + 2 + 10 (filtered) = 112
+    # s2: 51
+    total_counts_per_sample = pd.Series({'s1': 112, 's2': 51})
+    
+    result = _calculate_frequencies(df.copy(), 
+                                    pseudocount=1,
+                                    total_counts_per_sample=total_counts_per_sample)
 
     # Check adjusted counts
     expected_adj = pd.Series([100, 2, 51], name='adjusted_counts')
     pd.testing.assert_series_equal(result['adjusted_counts'], expected_adj, check_names=False)
     
-    # Check frequencies for s1 (total adjusted counts = 100 + 2 = 102)
+    # Check frequencies for s1 (total adjusted counts = 112)
     s1_freqs = result[result['sample'] == 's1']['frequency']
-    np.testing.assert_allclose(s1_freqs, [100/102, 2/102])
+    np.testing.assert_allclose(s1_freqs, [100/112, 2/112])
     
-    # Check sum of frequencies per sample is 1.0
-    assert np.allclose(result.groupby('sample')['frequency'].sum(), 1.0)
+    # Check frequencies for s2 (total adjusted counts = 51)
+    s2_freqs = result[result['sample'] == 's2']['frequency']
+    assert np.isclose(s2_freqs.iloc[0], 51/51)
 
 def test_calculate_concentrations_and_variance():
     """
@@ -227,11 +236,24 @@ def test_counts_to_lncfu_full_pipeline(sample_df, counts_df, mocker):
     assert s4_g2_row['counts'].iloc[0] == 0
     assert s4_g2_row['adjusted_counts'].iloc[0] == 1 # Check pseudocount
     
+    # In libA (s1, s2), genotype G1 and G2 were both observed in counts_df.
+    # Even if G2 is filtered, its counts + pseudocount should be in the denominator.
+    # s1: G1=100, G2=5. Adj: G1=101, G2=6. Total = 107.
+    # s2: G1=50. G2 not in s2 in counts_df? Wait, let's check counts_df fixture.
+    # counts_df s2 has G1=50 only. But G2 is in libA.
+    # total_counts_per_sample uses UNIQUE genotypes in combined_df.
+    # combined_df has s1(G1,G2), s2(G1), s2(G2)? 
+    # pd.merge(counts_df, sample_df) -> s2 ONLY has G1.
+    # So denominator for s2 is 50 + 1*1 = 51. 
+    
+    s1_g1_freq = result[result['sample'] == 's1']['frequency'].iloc[0]
+    assert np.isclose(s1_g1_freq, 101 / 107)
+
     # Check frequency calculation on a sample with observed and preserved values (s3)
     s3_rows = result[result['sample'] == 's3']
     
-    # With a pseudocount of 1, the adjusted counts are 201 and 3.
-    # The total adjusted count for sample s3 is 201 + 3 = 204.
+    # s3 has G2=200, G3=2. (G1 is NOT in s3).
+    # denominator for s3 is 201 + 3 = 204.
     g2_freq = s3_rows[s3_rows['genotype'] == 'G2']['frequency'].iloc[0]
     g3_freq = s3_rows[s3_rows['genotype'] == 'G3']['frequency'].iloc[0]
     
