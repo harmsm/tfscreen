@@ -73,3 +73,23 @@ def test_wls_2D_delta_zero():
     
     slopes, intercepts, _, _, _ = run_wls_2D(x, y, y_err)
     assert np.all(np.isnan(slopes))
+
+def test_wls_2D_with_nans():
+    """
+    Verify that the fitter handles NaNs (e.g., from padding) by ignoring them
+    using nansum.
+    """
+    x = np.array([[0.0, 1.0, 2.0]])
+    y = np.array([[0.0, 1.0, np.nan]]) # Last point is NaN
+    y_err = np.array([[1.0, 1.0, 1.0]])
+    
+    slopes, intercepts, _, _, _ = run_wls_2D(x, y, y_err)
+    
+    # Fit should be on (0,0) and (1,1) -> slope 1, intercept 0
+    assert np.allclose(slopes, [1.0])
+    assert np.allclose(intercepts, [0.0])
+    
+    # What if y_err is NaN?
+    y_err_nan = np.array([[1.0, 1.0, np.nan]])
+    slopes_nan, _, _, _, _ = run_wls_2D(x, y, y_err_nan)
+    assert np.allclose(slopes_nan, [1.0])

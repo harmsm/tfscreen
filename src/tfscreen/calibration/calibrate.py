@@ -506,11 +506,37 @@ def calibrate(df,
                             "calc_std":pred_std})
 
     pred_df = pd.concat([df,pred_df],axis=1)
-
     # Extract parameter estimates
     param_df = fm.param_df.copy()
     param_df["est"] = fm.back_transform(params)
     param_df["std"] = fm.back_transform_std_err(params,std_errors)
+
+    # -------------------------------------------------------------------------
+    # Add -t_pre points to pred_df for plotting. These points have y_obs = NaN
+    # and calc_est = ln_cfu_0. 
+    
+    # Grab unique series
+    series_cols = ["genotype","replicate","titrant_name","titrant_conc"]
+    series_metadata = pred_df.groupby(series_cols,observed=True).min().reset_index()
+
+    # Create new rows at -t_pre
+    new_rows = series_metadata.copy()
+    new_rows["t_sel"] = -new_rows["t_pre"]
+    new_rows["y_obs"] = np.nan
+    new_rows["y_std"] = np.nan
+    
+    # Map ln_cfu_0 from param_df to these new rows
+    lnA0_map = param_df.loc[param_df["param_class"] == "ln_cfu_0"].copy()
+    lnA0_map = lnA0_map.set_index(["genotype","replicate"])
+    
+    # Get estimates and stds
+    idx = list(zip(new_rows["genotype"],new_rows["replicate"]))
+    new_rows["calc_est"] = lnA0_map.loc[idx,"est"].values
+    new_rows["calc_std"] = lnA0_map.loc[idx,"std"].values
+    
+    # Append new rows and sort
+    pred_df = pd.concat([pred_df,new_rows],ignore_index=True)
+    pred_df = pred_df.sort_values(series_cols + ["t_sel"])
 
     # Fit a hill model to the observed theta values so we can calculate
     # approximate wildtype theta on the fly for any titrant conc

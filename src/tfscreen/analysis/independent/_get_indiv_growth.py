@@ -9,6 +9,7 @@ from tfscreen.calibration import get_wt_k
 from tfscreen.models.growth import MODEL_LIBRARY
 
 import pandas as pd
+import numpy as np
 
 def _prepare_and_validate_growth_data(df,
                                       series_selector,
@@ -88,14 +89,33 @@ def _run_batch_fits(df,
         param_dfs.append(param_df_batch)
 
         # Append predictions
-        sub_df_with_pred = sub_df.copy()
+        sub_df_sorted = sub_df.sort_values(by=series_selector + ["_t_sel_row_number"])
+        
+        # pred_df_batch is flattened from (N_series, Max_obs). 
+        # We need to filter it to only include rows that match actual observations
+        # in sub_df_sorted. 
+        # To do this safely, we'll create a full temporary frame and merge.
+        num_series = len(row_ids)
+        max_obs = (sub_df['_t_sel_row_number'].max() + 1)
+        
+        # Reconstruct identifiers for EACH flattened row
+        full_ids = row_ids.to_frame(index=False).iloc[np.repeat(np.arange(num_series), max_obs)].reset_index(drop=True)
+        full_ids["_t_sel_row_number"] = np.tile(np.arange(max_obs), num_series)
+        
+        # Combine with predictions
+        pred_df_batch_full = pd.concat([full_ids, pred_df_batch.reset_index(drop=True)], axis=1)
+        
+        # Drop columns in sub_df_sorted that will be replaced by pred_df_batch_full
+        # (avoid suffixes in merge)
+        to_drop = [c for c in pred_df_batch_full.columns if c in sub_df_sorted.columns and c not in (series_selector + ["_t_sel_row_number"])]
+        sub_df_sorted = sub_df_sorted.drop(columns=to_drop)
 
-        # Drop overlapping dataframes from sub_df_with_pred and concat
-        overlapping_cols = sub_df_with_pred.columns.intersection(pred_df_batch.columns)
-        sub_df_with_pred = sub_df_with_pred.drop(columns=overlapping_cols)
-        sub_df_with_pred = pd.concat([sub_df_with_pred.reset_index(drop=True),
-                                      pred_df_batch.reset_index(drop=True)],
-                                      axis=1)
+        # Merge back into sub_df_sorted to ensure perfect alignment
+        sub_df_with_pred = pd.merge(sub_df_sorted,
+                                    pred_df_batch_full,
+                                    on=series_selector + ["_t_sel_row_number"],
+                                    how="left")
+        
         pred_dfs.append(sub_df_with_pred)
             
     # Combine results from all batches

@@ -86,6 +86,13 @@ def df_to_arrays(df, pivot_on="genotype"):
     # even if they were dropped because they only contained NaNs.
     pivoted = pivoted.reindex(row_ids)
 
+    # Ensure all Level 0 items have the full set of Level 1 columns. This 
+    # handles cases where pivot_table drops columns that are all NaNs for a 
+    # specific value. 
+    avail_level_0 = pivoted.columns.get_level_values(0).unique()
+    avail_level_1 = pivoted.columns.get_level_values(1).unique()
+    new_cols = pd.MultiIndex.from_product([avail_level_0, avail_level_1])
+    pivoted = pivoted.reindex(columns=new_cols)
 
     available_cols = pivoted.columns.get_level_values(0).unique()
     out = {col: pivoted[col].values for col in available_cols}

@@ -120,6 +120,8 @@ def k_vs_titrant(df,
     max_titr = np.log(np.max(df["titrant_conc"])*10)
     titr_span = np.exp(np.linspace(min_titr,max_titr,100))
 
+    
+
     if plot_color_dict is None:
         plot_color_dict = {}
 
@@ -146,7 +148,7 @@ def k_vs_titrant(df,
         ax.plot(titr_span,k_total,'-',lw=2,color=plot_color_dict[condition])
 
     ax.set_xscale('log')
-    ax.set_ylim(0,0.03)
+    ax.set_ylim(-0.03,0.03)
     ax.set_xlabel("titrant ln(mM)")
     ax.set_ylabel("growth rate (cfu/mL/min)")
 
@@ -210,25 +212,30 @@ def fit_summary(pred_df,
 
     calibration_dict = read_calibration(calibration_data)
 
-    fig, ax = plt.subplots(2,2,figsize=(12,12))
-    growth_rate_fit(pred_df["y_obs"],
-                    pred_df["y_std"],
-                    pred_df["calc_est"],
-                    pred_df["calc_std"],
-                    ax=ax[0,0])
-    
-    A0_est = param_df.loc[param_df["param_class"] == "ln_cfu_0","est"]
-
-    A0_hist(A0_est,ax=ax[0,1])
-
     pred_df = pred_df.copy()
     if "genotype" not in pred_df:
         pred_df["genotype"] = "wt"
     
     pred_df["dk_geno_mask"] = pred_df["condition_sel"].isin(no_selection_conditions)
 
+    fig, ax = plt.subplots(2,2,figsize=(12,12))
+
+    # Filter rows that have observations (drop -t_pre rows)
+    mask = ~np.isnan(pred_df["y_obs"])
+    clean_pred_df = pred_df.loc[mask,:].copy()
+
+    growth_rate_fit(clean_pred_df["y_obs"],
+                    clean_pred_df["y_std"],
+                    clean_pred_df["calc_est"],
+                    clean_pred_df["calc_std"],
+                    ax=ax[0,0])
+    
+    A0_est = param_df.loc[param_df["param_class"] == "ln_cfu_0","est"]
+
+    A0_hist(A0_est,ax=ax[0,1])
+
     manual_param_df, manual_pre_df = get_indiv_growth(
-        pred_df,
+        clean_pred_df,
         series_selector=["replicate","condition_sel","titrant_name","titrant_conc"],
         calibration_data=calibration_dict,
         dk_geno_selector=["genotype"],
@@ -252,7 +259,7 @@ def fit_summary(pred_df,
     return fig, ax
 
 
-def indiv_replicates(pred_df,rgb_map=None):
+def indiv_replicates(pred_df,calibration_dict=None,rgb_map=None):
     """
     Plot observed and predicted ln(A0) vs. time for all replicates used in the
     calibration.
@@ -263,6 +270,8 @@ def indiv_replicates(pred_df,rgb_map=None):
         prediction dataframe returned by calibrate. The function expects the 
         dataframe has columns: "time", "replicate", "titrant_conc", "y_obs",
         "y_std", and "calc_est". 
+    calibration_dict : dict, optional
+        calibration dictionary used to calculate pre-growth rates.
     rgb_map : list or None, optional
         rgb_map defines how the series colors should change as a function of 
         log(titrant). Should be a list of three values indicating how the 
@@ -340,7 +349,10 @@ def indiv_replicates(pred_df,rgb_map=None):
     norm_values = np.log(norm_values)
     mx = np.max(norm_values)
     mn = np.min(norm_values)
-    norm_values = (norm_values - mn)/(mx - mn)
+    if mx == mn:
+        norm_values = np.ones(len(norm_values), dtype=float) * 0.5
+    else:
+        norm_values = (norm_values - mn)/(mx - mn)
     
     # Get RGBA values for these norm values.
     rgba = [(rgb_fcns[0](v),
@@ -368,7 +380,12 @@ def indiv_replicates(pred_df,rgb_map=None):
                                  pred_df["calc_est"],
                                  pad_by=0.05,percentile=0)
         
-    fig, axes = plt.subplots(size,size,figsize=(12,12),sharex=True,sharey=True)
+    fig, axes = plt.subplots(size,
+                             size,
+                             figsize=(12,12),
+                             sharex=True,
+                             sharey=True,
+                             squeeze=False)
 
     # -------------------------------------------------------------------------
     # Go through all replicates and generate plots
@@ -393,11 +410,52 @@ def indiv_replicates(pred_df,rgb_map=None):
             t = cond_df["titrant_conc"].iloc[0]
             color = tuple(rgba_df.loc[t,"color"])
             label = f"titrant: {t:.3f}"
+
+            # Plot data 
+            mask = ~np.isnan(y)
+            ax.scatter(x[mask],y[mask],s=30,facecolor="none",edgecolor=color,label=label)
+            ax.errorbar(x[mask],y[mask],y_std[mask],lw=0,color=color,capsize=5,elinewidth=1)
             
-            # Plot data and fit values
-            ax.scatter(x,y,s=30,facecolor="none",edgecolor=color,label=label)
-            ax.errorbar(x,y,y_std,lw=0,color=color,capsize=5,elinewidth=1)
-            ax.plot(cond_df["t_sel"],cond_df["calc_est"],'-',color=color,lw=2)
+            # --- TWO PHASE GROWTH CALCULATION ---
+            
+            # Sort for plotting line
+            order = np.argsort(x)
+            plot_x = x[order]
+            plot_y = cond_df["calc_est"].to_numpy()[order]
+            
+            # If we have a calibration dict and a -t_pre point, calculate the
+            # t = 0 point to show the two-phase growth. 
+            if calibration_dict is not None and np.any(plot_x < 0):
+                
+                # Identify lnA0 row (t = -t_pre)
+                lnA0_mask = (plot_x < 0)
+                if np.any(lnA0_mask):
+                    
+                    # Population size at t = -t_pre
+                    lnA0 = plot_y[lnA0_mask][0]
+                    t_pre = abs(plot_x[lnA0_mask][0])
+                    
+                    # Calculate growth rate for condition_pre
+                    k_pre = get_wt_k(condition=cond_df["condition_pre"].iloc[0],
+                                     titrant_name=cond_df["titrant_name"].iloc[0],
+                                     titrant_conc=cond_df["titrant_conc"].iloc[0],
+                                     calibration_data=calibration_dict)
+                    
+                    # Population size at t = 0
+                    lnA_at_0 = lnA0 + k_pre*t_pre
+                    
+                    # Inject t = 0 point into plot_x and plot_y. 
+                    # If t=0 is already there, we update it. 
+                    if np.any(plot_x == 0):
+                        plot_y[plot_x == 0] = lnA_at_0
+                    else:
+                        # Find insertion point
+                        idx = np.searchsorted(plot_x, 0)
+                        plot_x = np.insert(plot_x, idx, 0)
+                        plot_y = np.insert(plot_y, idx, lnA_at_0)
+
+            # Plot fit values
+            ax.plot(plot_x,plot_y,'-',color=color,lw=2)
 
             # Put legend on top-left plot
             if row_counter == 0 and col_counter == 0:

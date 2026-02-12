@@ -140,3 +140,27 @@ def test_empty_dataframe_multi_pivot():
     assert isinstance(row_ids, pd.MultiIndex)
     assert row_ids.names == ["strain", "condition"]
     assert isinstance(out, dict) and not out
+
+def test_pivot_mismatched_nan_patterns():
+    """
+    Verify that even if some columns are all-NaN for some series (especially 
+    trailing NaNs), all returned arrays have identical widths. This tests the
+    MultiIndex reindexing fix.
+    """
+    data = {
+        "series": ["A", "A", "B", "B"],
+        "obs_idx": [0, 1, 0, 1],
+        "val1": [1, 2, 3, 4],
+        "val2": [10, 20, 30, np.nan] # Trailing NaN for series B
+    }
+    df = pd.DataFrame(data)
+    
+    # We need to use pivot_on="series" and ensure _observation_idx is correct
+    # Actually df_to_arrays uses its own _observation_idx calculation
+    
+    row_ids, out = df_to_arrays(df, pivot_on="series")
+    
+    assert out["val1"].shape == (2, 2)
+    assert out["val2"].shape == (2, 2)
+    assert np.isnan(out["val2"][1, 1])
+    assert out["val2"][1, 0] == 30.0
