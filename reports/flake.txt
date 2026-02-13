@@ -1994,102 +1994,96 @@
 ./src/tfscreen/calibration/calibrate.py:261:1: W293 blank line contains whitespace
 ./src/tfscreen/calibration/calibrate.py:267:1: W293 blank line contains whitespace
 ./src/tfscreen/calibration/calibrate.py:270:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/calibration/calibrate.py:273:22: W291 trailing whitespace
-./src/tfscreen/calibration/calibrate.py:274:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/calibrate.py:278:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/calibrate.py:281:75: W291 trailing whitespace
-./src/tfscreen/calibration/calibrate.py:282:74: W291 trailing whitespace
-./src/tfscreen/calibration/calibrate.py:284:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/calibrate.py:291:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/calibrate.py:293:76: W291 trailing whitespace
-./src/tfscreen/calibration/calibrate.py:294:25: W291 trailing whitespace
-./src/tfscreen/calibration/calibrate.py:300:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/calibrate.py:302:41: W291 trailing whitespace
-./src/tfscreen/calibration/calibrate.py:304:45: E231 missing whitespace after ','
-./src/tfscreen/calibration/calibrate.py:307:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/calibrate.py:309:75: W291 trailing whitespace
-./src/tfscreen/calibration/calibrate.py:310:66: W291 trailing whitespace
-./src/tfscreen/calibration/calibrate.py:311:52: W291 trailing whitespace
-./src/tfscreen/calibration/calibrate.py:315:38: E261 at least two spaces before inline comment
-./src/tfscreen/calibration/calibrate.py:321:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/calibrate.py:322:40: W291 trailing whitespace
-./src/tfscreen/calibration/calibrate.py:324:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/calibrate.py:330:43: E231 missing whitespace after ','
-./src/tfscreen/calibration/calibrate.py:331:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/calibrate.py:333:80: W291 trailing whitespace
-./src/tfscreen/calibration/calibrate.py:336:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/calibrate.py:339:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/calibrate.py:341:40: W291 trailing whitespace
-./src/tfscreen/calibration/calibrate.py:345:74: W291 trailing whitespace
-./src/tfscreen/calibration/calibrate.py:347:47: W291 trailing whitespace
-./src/tfscreen/calibration/calibrate.py:350:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/calibrate.py:359:40: E231 missing whitespace after ','
-./src/tfscreen/calibration/calibrate.py:363:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/calibrate.py:365:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/calibrate.py:370:37: W291 trailing whitespace
-./src/tfscreen/calibration/calibrate.py:371:52: W291 trailing whitespace
-./src/tfscreen/calibration/calibrate.py:372:38: W291 trailing whitespace
-./src/tfscreen/calibration/calibrate.py:373:43: W291 trailing whitespace
-./src/tfscreen/calibration/calibrate.py:384:75: W291 trailing whitespace
-./src/tfscreen/calibration/calibrate.py:385:68: W291 trailing whitespace
-./src/tfscreen/calibration/calibrate.py:386:41: W291 trailing whitespace
-./src/tfscreen/calibration/calibrate.py:390:12: E231 missing whitespace after ','
-./src/tfscreen/calibration/calibrate.py:394:68: W291 trailing whitespace
-./src/tfscreen/calibration/calibrate.py:395:17: W291 trailing whitespace
-./src/tfscreen/calibration/calibrate.py:400:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/calibrate.py:401:37: W291 trailing whitespace
-./src/tfscreen/calibration/calibrate.py:409:61: W291 trailing whitespace
+./src/tfscreen/calibration/calibrate.py:330:41: W291 trailing whitespace
+./src/tfscreen/calibration/calibrate.py:332:45: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:332:61: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:335:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/calibrate.py:337:75: W291 trailing whitespace
+./src/tfscreen/calibration/calibrate.py:338:66: W291 trailing whitespace
+./src/tfscreen/calibration/calibrate.py:339:52: W291 trailing whitespace
+./src/tfscreen/calibration/calibrate.py:343:38: E261 at least two spaces before inline comment
+./src/tfscreen/calibration/calibrate.py:349:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/calibrate.py:350:40: W291 trailing whitespace
+./src/tfscreen/calibration/calibrate.py:352:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/calibrate.py:358:43: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:358:55: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:359:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/calibrate.py:361:80: W291 trailing whitespace
+./src/tfscreen/calibration/calibrate.py:364:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/calibrate.py:367:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/calibrate.py:369:40: W291 trailing whitespace
+./src/tfscreen/calibration/calibrate.py:373:74: W291 trailing whitespace
+./src/tfscreen/calibration/calibrate.py:375:47: W291 trailing whitespace
+./src/tfscreen/calibration/calibrate.py:378:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/calibrate.py:387:40: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:391:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/calibrate.py:393:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/calibrate.py:398:37: W291 trailing whitespace
+./src/tfscreen/calibration/calibrate.py:399:52: W291 trailing whitespace
+./src/tfscreen/calibration/calibrate.py:400:38: W291 trailing whitespace
+./src/tfscreen/calibration/calibrate.py:401:43: W291 trailing whitespace
+./src/tfscreen/calibration/calibrate.py:412:75: W291 trailing whitespace
+./src/tfscreen/calibration/calibrate.py:413:68: W291 trailing whitespace
+./src/tfscreen/calibration/calibrate.py:414:41: W291 trailing whitespace
+./src/tfscreen/calibration/calibrate.py:418:12: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:422:68: W291 trailing whitespace
+./src/tfscreen/calibration/calibrate.py:423:17: W291 trailing whitespace
 ./src/tfscreen/calibration/calibrate.py:428:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/calibrate.py:431:57: E231 missing whitespace after ','
-./src/tfscreen/calibration/calibrate.py:432:57: E231 missing whitespace after ','
-./src/tfscreen/calibration/calibrate.py:435:26: E231 missing whitespace after ','
-./src/tfscreen/calibration/calibrate.py:435:32: E231 missing whitespace after ','
-./src/tfscreen/calibration/calibrate.py:435:34: E231 missing whitespace after ','
-./src/tfscreen/calibration/calibrate.py:439:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/calibration/calibrate.py:466:76: W291 trailing whitespace
-./src/tfscreen/calibration/calibrate.py:477:75: W291 trailing whitespace
-./src/tfscreen/calibration/calibrate.py:481:55: W291 trailing whitespace
-./src/tfscreen/calibration/calibrate.py:496:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/calibrate.py:497:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/calibrate.py:498:5: E303 too many blank lines (2)
-./src/tfscreen/calibration/calibrate.py:502:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/calibrate.py:503:36: E231 missing whitespace after ':'
-./src/tfscreen/calibration/calibrate.py:504:36: E231 missing whitespace after ':'
-./src/tfscreen/calibration/calibrate.py:505:39: E231 missing whitespace after ':'
-./src/tfscreen/calibration/calibrate.py:506:39: E231 missing whitespace after ':'
-./src/tfscreen/calibration/calibrate.py:508:28: E231 missing whitespace after ','
-./src/tfscreen/calibration/calibrate.py:508:37: E231 missing whitespace after ','
-./src/tfscreen/calibration/calibrate.py:512:55: E231 missing whitespace after ','
-./src/tfscreen/calibration/calibrate.py:516:31: W291 trailing whitespace
-./src/tfscreen/calibration/calibrate.py:517:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/calibrate.py:519:30: E231 missing whitespace after ','
-./src/tfscreen/calibration/calibrate.py:519:42: E231 missing whitespace after ','
-./src/tfscreen/calibration/calibrate.py:519:57: E231 missing whitespace after ','
-./src/tfscreen/calibration/calibrate.py:520:50: E231 missing whitespace after ','
-./src/tfscreen/calibration/calibrate.py:527:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/calibrate.py:530:46: E231 missing whitespace after ','
-./src/tfscreen/calibration/calibrate.py:531:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/calibrate.py:533:40: E231 missing whitespace after ','
-./src/tfscreen/calibration/calibrate.py:534:44: E231 missing whitespace after ','
-./src/tfscreen/calibration/calibrate.py:535:44: E231 missing whitespace after ','
-./src/tfscreen/calibration/calibrate.py:536:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/calibrate.py:538:33: E231 missing whitespace after ','
-./src/tfscreen/calibration/calibrate.py:538:43: E231 missing whitespace after ','
-./src/tfscreen/calibration/calibrate.py:544:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/calibrate.py:550:62: E231 missing whitespace after ','
-./src/tfscreen/calibration/calibrate.py:550:78: E231 missing whitespace after ','
-./src/tfscreen/calibration/calibrate.py:552:62: E231 missing whitespace after ','
-./src/tfscreen/calibration/calibrate.py:552:78: E231 missing whitespace after ','
-./src/tfscreen/calibration/calibrate.py:557:65: E231 missing whitespace after ','
-./src/tfscreen/calibration/calibrate.py:557:78: E231 missing whitespace after ','
-./src/tfscreen/calibration/calibrate.py:557:86: W291 trailing whitespace
-./src/tfscreen/calibration/calibrate.py:559:65: E231 missing whitespace after ','
-./src/tfscreen/calibration/calibrate.py:559:78: E231 missing whitespace after ','
-./src/tfscreen/calibration/calibrate.py:559:86: W291 trailing whitespace
-./src/tfscreen/calibration/calibrate.py:561:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/calibrate.py:570:21: E128 continuation line under-indented for visual indent
-./src/tfscreen/calibration/calibrate.py:575:5: E303 too many blank lines (2)
-./src/tfscreen/calibration/calibrate.py:577:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/calibrate.py:429:37: W291 trailing whitespace
+./src/tfscreen/calibration/calibrate.py:460:61: W291 trailing whitespace
+./src/tfscreen/calibration/calibrate.py:479:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/calibrate.py:482:57: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:483:57: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:486:26: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:486:32: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:486:34: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:490:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/calibration/calibrate.py:536:55: W291 trailing whitespace
+./src/tfscreen/calibration/calibrate.py:552:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/calibrate.py:553:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/calibrate.py:554:5: E303 too many blank lines (2)
+./src/tfscreen/calibration/calibrate.py:558:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/calibrate.py:559:36: E231 missing whitespace after ':'
+./src/tfscreen/calibration/calibrate.py:560:36: E231 missing whitespace after ':'
+./src/tfscreen/calibration/calibrate.py:561:39: E231 missing whitespace after ':'
+./src/tfscreen/calibration/calibrate.py:562:39: E231 missing whitespace after ':'
+./src/tfscreen/calibration/calibrate.py:568:34: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:568:43: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:578:55: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:582:31: W291 trailing whitespace
+./src/tfscreen/calibration/calibrate.py:583:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/calibrate.py:585:30: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:585:42: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:585:58: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:585:74: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:585:89: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:586:50: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:593:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/calibrate.py:596:46: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:596:58: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:597:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/calibrate.py:599:40: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:599:62: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:600:44: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:601:44: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:602:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/calibrate.py:604:33: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:604:43: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:610:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/calibrate.py:616:62: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:616:78: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:618:62: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:618:78: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:623:65: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:623:78: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:623:86: W291 trailing whitespace
+./src/tfscreen/calibration/calibrate.py:625:65: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:625:78: E231 missing whitespace after ','
+./src/tfscreen/calibration/calibrate.py:625:86: W291 trailing whitespace
+./src/tfscreen/calibration/calibrate.py:627:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/calibrate.py:637:21: E128 continuation line under-indented for visual indent
+./src/tfscreen/calibration/calibrate.py:642:5: E303 too many blank lines (2)
+./src/tfscreen/calibration/calibrate.py:644:1: W293 blank line contains whitespace
 ./src/tfscreen/calibration/get_background.py:12:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/calibration/get_background.py:43:61: E231 missing whitespace after ','
 ./src/tfscreen/calibration/get_background.py:49:33: E231 missing whitespace after ','
@@ -2230,7 +2224,7 @@
 ./src/tfscreen/calibration/plot.py:239:68: E231 missing whitespace after ','
 ./src/tfscreen/calibration/plot.py:251:22: E231 missing whitespace after ','
 ./src/tfscreen/calibration/plot.py:255:21: E231 missing whitespace after ','
-./src/tfscreen/calibration/plot.py:262:1: C901 'indiv_replicates' is too complex (23)
+./src/tfscreen/calibration/plot.py:262:1: C901 'indiv_replicates' is too complex (25)
 ./src/tfscreen/calibration/plot.py:262:29: E231 missing whitespace after ','
 ./src/tfscreen/calibration/plot.py:262:51: E231 missing whitespace after ','
 ./src/tfscreen/calibration/plot.py:266:1: W293 blank line contains whitespace
@@ -2270,55 +2264,62 @@
 ./src/tfscreen/calibration/plot.py:365:36: E231 missing whitespace after ':'
 ./src/tfscreen/calibration/plot.py:369:79: W291 trailing whitespace
 ./src/tfscreen/calibration/plot.py:371:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/plot.py:374:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/plot.py:378:45: E231 missing whitespace after ','
-./src/tfscreen/calibration/plot.py:381:45: E231 missing whitespace after ','
-./src/tfscreen/calibration/plot.py:382:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/plot.py:385:41: E231 missing whitespace after ','
-./src/tfscreen/calibration/plot.py:392:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/plot.py:398:30: E231 missing whitespace after ','
-./src/tfscreen/calibration/plot.py:403:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/plot.py:408:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/plot.py:411:40: E231 missing whitespace after ','
-./src/tfscreen/calibration/plot.py:414:24: W291 trailing whitespace
-./src/tfscreen/calibration/plot.py:416:31: E231 missing whitespace after ','
-./src/tfscreen/calibration/plot.py:416:39: E231 missing whitespace after ','
-./src/tfscreen/calibration/plot.py:416:44: E231 missing whitespace after ','
-./src/tfscreen/calibration/plot.py:416:61: E231 missing whitespace after ','
-./src/tfscreen/calibration/plot.py:416:77: E231 missing whitespace after ','
-./src/tfscreen/calibration/plot.py:417:32: E231 missing whitespace after ','
-./src/tfscreen/calibration/plot.py:417:40: E231 missing whitespace after ','
-./src/tfscreen/calibration/plot.py:417:52: E231 missing whitespace after ','
-./src/tfscreen/calibration/plot.py:417:57: E231 missing whitespace after ','
-./src/tfscreen/calibration/plot.py:417:69: E231 missing whitespace after ','
-./src/tfscreen/calibration/plot.py:417:79: E231 missing whitespace after ','
-./src/tfscreen/calibration/plot.py:418:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/plot.py:420:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/plot.py:425:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/plot.py:427:56: W291 trailing whitespace
-./src/tfscreen/calibration/plot.py:429:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/plot.py:433:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/plot.py:372:68: W291 trailing whitespace
+./src/tfscreen/calibration/plot.py:373:44: W291 trailing whitespace
+./src/tfscreen/calibration/plot.py:374:31: E231 missing whitespace after ','
+./src/tfscreen/calibration/plot.py:374:43: E231 missing whitespace after ','
+./src/tfscreen/calibration/plot.py:376:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/plot.py:380:45: E231 missing whitespace after ','
+./src/tfscreen/calibration/plot.py:383:45: E231 missing whitespace after ','
+./src/tfscreen/calibration/plot.py:384:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/plot.py:387:41: E231 missing whitespace after ','
+./src/tfscreen/calibration/plot.py:394:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/plot.py:398:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/plot.py:405:30: E231 missing whitespace after ','
+./src/tfscreen/calibration/plot.py:409:38: E231 missing whitespace after ','
+./src/tfscreen/calibration/plot.py:409:53: E231 missing whitespace after ','
+./src/tfscreen/calibration/plot.py:411:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/plot.py:427:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/plot.py:430:40: E231 missing whitespace after ','
+./src/tfscreen/calibration/plot.py:433:24: W291 trailing whitespace
+./src/tfscreen/calibration/plot.py:435:31: E231 missing whitespace after ','
+./src/tfscreen/calibration/plot.py:435:39: E231 missing whitespace after ','
+./src/tfscreen/calibration/plot.py:435:44: E231 missing whitespace after ','
+./src/tfscreen/calibration/plot.py:435:61: E231 missing whitespace after ','
+./src/tfscreen/calibration/plot.py:435:77: E231 missing whitespace after ','
+./src/tfscreen/calibration/plot.py:436:32: E231 missing whitespace after ','
+./src/tfscreen/calibration/plot.py:436:40: E231 missing whitespace after ','
+./src/tfscreen/calibration/plot.py:436:52: E231 missing whitespace after ','
+./src/tfscreen/calibration/plot.py:436:57: E231 missing whitespace after ','
+./src/tfscreen/calibration/plot.py:436:69: E231 missing whitespace after ','
+./src/tfscreen/calibration/plot.py:436:79: E231 missing whitespace after ','
 ./src/tfscreen/calibration/plot.py:437:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/plot.py:443:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/plot.py:446:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/plot.py:447:65: W291 trailing whitespace
-./src/tfscreen/calibration/plot.py:448:61: W291 trailing whitespace
-./src/tfscreen/calibration/plot.py:458:27: E231 missing whitespace after ','
-./src/tfscreen/calibration/plot.py:458:34: E231 missing whitespace after ','
-./src/tfscreen/calibration/plot.py:458:38: E231 missing whitespace after ','
-./src/tfscreen/calibration/plot.py:458:50: E231 missing whitespace after ','
-./src/tfscreen/calibration/plot.py:462:40: E231 missing whitespace after ','
-./src/tfscreen/calibration/plot.py:465:26: E231 missing whitespace after ','
-./src/tfscreen/calibration/plot.py:466:26: E231 missing whitespace after ','
-./src/tfscreen/calibration/plot.py:473:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/plot.py:477:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/plot.py:480:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/plot.py:489:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/plot.py:491:25: E231 missing whitespace after ','
-./src/tfscreen/calibration/plot.py:495:31: E231 missing whitespace after ','
-./src/tfscreen/calibration/plot.py:495:69: W291 trailing whitespace
-./src/tfscreen/calibration/plot.py:501:1: W293 blank line contains whitespace
-./src/tfscreen/calibration/plot.py:504:19: W292 no newline at end of file
+./src/tfscreen/calibration/plot.py:439:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/plot.py:444:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/plot.py:448:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/plot.py:452:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/plot.py:456:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/plot.py:459:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/plot.py:465:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/plot.py:469:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/plot.py:470:77: W291 trailing whitespace
+./src/tfscreen/calibration/plot.py:472:39: W291 trailing whitespace
+./src/tfscreen/calibration/plot.py:483:27: E231 missing whitespace after ','
+./src/tfscreen/calibration/plot.py:483:34: E231 missing whitespace after ','
+./src/tfscreen/calibration/plot.py:483:38: E231 missing whitespace after ','
+./src/tfscreen/calibration/plot.py:483:50: E231 missing whitespace after ','
+./src/tfscreen/calibration/plot.py:487:40: E231 missing whitespace after ','
+./src/tfscreen/calibration/plot.py:490:26: E231 missing whitespace after ','
+./src/tfscreen/calibration/plot.py:491:26: E231 missing whitespace after ','
+./src/tfscreen/calibration/plot.py:498:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/plot.py:502:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/plot.py:505:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/plot.py:514:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/plot.py:516:25: E231 missing whitespace after ','
+./src/tfscreen/calibration/plot.py:520:31: E231 missing whitespace after ','
+./src/tfscreen/calibration/plot.py:520:69: W291 trailing whitespace
+./src/tfscreen/calibration/plot.py:526:1: W293 blank line contains whitespace
+./src/tfscreen/calibration/plot.py:529:19: W292 no newline at end of file
 ./src/tfscreen/data.py:25:8: E231 missing whitespace after ':'
 ./src/tfscreen/data.py:26:8: E231 missing whitespace after ':'
 ./src/tfscreen/data.py:27:8: E231 missing whitespace after ':'
@@ -3539,19 +3540,20 @@
 ./src/tfscreen/plot/helper.py:28:78: W291 trailing whitespace
 ./src/tfscreen/plot/helper.py:29:40: W291 trailing whitespace
 ./src/tfscreen/plot/helper.py:31:55: W291 trailing whitespace
-./src/tfscreen/plot/helper.py:48:40: E231 missing whitespace after ','
-./src/tfscreen/plot/helper.py:56:1: W293 blank line contains whitespace
-./src/tfscreen/plot/helper.py:57:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/plot/helper.py:59:71: W291 trailing whitespace
-./src/tfscreen/plot/helper.py:61:61: W291 trailing whitespace
-./src/tfscreen/plot/helper.py:66:47: E231 missing whitespace after ','
-./src/tfscreen/plot/helper.py:67:26: E231 missing whitespace after ','
-./src/tfscreen/plot/helper.py:71:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/plot/helper.py:81:76: W291 trailing whitespace
-./src/tfscreen/plot/helper.py:89:1: W293 blank line contains whitespace
-./src/tfscreen/plot/helper.py:90:38: E231 missing whitespace after ','
-./src/tfscreen/plot/helper.py:96:1: W293 blank line contains whitespace
-./src/tfscreen/plot/helper.py:97:17: W292 no newline at end of file
+./src/tfscreen/plot/helper.py:46:1: W293 blank line contains whitespace
+./src/tfscreen/plot/helper.py:51:40: E231 missing whitespace after ','
+./src/tfscreen/plot/helper.py:59:1: W293 blank line contains whitespace
+./src/tfscreen/plot/helper.py:60:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/plot/helper.py:62:71: W291 trailing whitespace
+./src/tfscreen/plot/helper.py:64:61: W291 trailing whitespace
+./src/tfscreen/plot/helper.py:69:47: E231 missing whitespace after ','
+./src/tfscreen/plot/helper.py:70:26: E231 missing whitespace after ','
+./src/tfscreen/plot/helper.py:74:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/plot/helper.py:84:76: W291 trailing whitespace
+./src/tfscreen/plot/helper.py:92:1: W293 blank line contains whitespace
+./src/tfscreen/plot/helper.py:93:38: E231 missing whitespace after ','
+./src/tfscreen/plot/helper.py:99:1: W293 blank line contains whitespace
+./src/tfscreen/plot/helper.py:100:17: W292 no newline at end of file
 ./src/tfscreen/plot/hill_fit.py:11:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/plot/hill_fit.py:12:1: W191 indentation contains tabs
 ./src/tfscreen/plot/hill_fit.py:12:1: E101 indentation contains mixed spaces and tabs
@@ -6175,35 +6177,43 @@
 ./tests/tfscreen/calibration/test_calibrate.py:37:1: W293 blank line contains whitespace
 ./tests/tfscreen/calibration/test_calibrate.py:40:1: W293 blank line contains whitespace
 ./tests/tfscreen/calibration/test_calibrate.py:46:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/calibration/test_calibrate.py:49:1: W293 blank line contains whitespace
-./tests/tfscreen/calibration/test_calibrate.py:50:90: W291 trailing whitespace
-./tests/tfscreen/calibration/test_calibrate.py:51:128: E501 line too long (134 > 127 characters)
-./tests/tfscreen/calibration/test_calibrate.py:53:1: W293 blank line contains whitespace
-./tests/tfscreen/calibration/test_calibrate.py:55:1: W293 blank line contains whitespace
-./tests/tfscreen/calibration/test_calibrate.py:62:1: W293 blank line contains whitespace
-./tests/tfscreen/calibration/test_calibrate.py:69:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/calibration/test_calibrate.py:71:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_calibrate.py:65:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/calibration/test_calibrate.py:67:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_calibrate.py:70:1: W293 blank line contains whitespace
 ./tests/tfscreen/calibration/test_calibrate.py:74:1: W293 blank line contains whitespace
-./tests/tfscreen/calibration/test_calibrate.py:78:1: W293 blank line contains whitespace
-./tests/tfscreen/calibration/test_calibrate.py:81:1: W293 blank line contains whitespace
-./tests/tfscreen/calibration/test_calibrate.py:85:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/calibration/test_calibrate.py:88:1: W293 blank line contains whitespace
-./tests/tfscreen/calibration/test_calibrate.py:94:1: W293 blank line contains whitespace
-./tests/tfscreen/calibration/test_calibrate.py:97:54: W291 trailing whitespace
-./tests/tfscreen/calibration/test_calibrate.py:101:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_calibrate.py:77:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_calibrate.py:81:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/calibration/test_calibrate.py:84:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_calibrate.py:90:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_calibrate.py:93:54: W291 trailing whitespace
+./tests/tfscreen/calibration/test_calibrate.py:97:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_calibrate.py:99:1: W293 blank line contains whitespace
 ./tests/tfscreen/calibration/test_calibrate.py:103:1: W293 blank line contains whitespace
-./tests/tfscreen/calibration/test_calibrate.py:107:1: W293 blank line contains whitespace
-./tests/tfscreen/calibration/test_calibrate.py:109:48: E231 missing whitespace after ','
-./tests/tfscreen/calibration/test_calibrate.py:109:50: E231 missing whitespace after ','
-./tests/tfscreen/calibration/test_calibrate.py:109:52: E231 missing whitespace after ','
+./tests/tfscreen/calibration/test_calibrate.py:105:48: E231 missing whitespace after ','
+./tests/tfscreen/calibration/test_calibrate.py:105:50: E231 missing whitespace after ','
+./tests/tfscreen/calibration/test_calibrate.py:105:52: E231 missing whitespace after ','
+./tests/tfscreen/calibration/test_calibrate.py:106:1: W293 blank line contains whitespace
 ./tests/tfscreen/calibration/test_calibrate.py:110:1: W293 blank line contains whitespace
-./tests/tfscreen/calibration/test_calibrate.py:114:1: W293 blank line contains whitespace
-./tests/tfscreen/calibration/test_calibrate.py:117:1: W293 blank line contains whitespace
-./tests/tfscreen/calibration/test_calibrate.py:124:1: W293 blank line contains whitespace
-./tests/tfscreen/calibration/test_calibrate.py:125:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/calibration/test_calibrate.py:129:1: W293 blank line contains whitespace
-./tests/tfscreen/calibration/test_calibrate.py:133:1: W293 blank line contains whitespace
-./tests/tfscreen/calibration/test_calibrate.py:137:1: W391 blank line at end of file
+./tests/tfscreen/calibration/test_calibrate.py:113:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_calibrate.py:122:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_calibrate.py:123:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/calibration/test_calibrate.py:127:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_calibrate.py:131:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_calibrate.py:161:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/calibration/test_calibrate.py:170:43: E261 at least two spaces before inline comment
+./tests/tfscreen/calibration/test_calibrate.py:179:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_calibrate.py:185:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_calibrate.py:191:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_calibrate.py:194:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_calibrate.py:195:34: W291 trailing whitespace
+./tests/tfscreen/calibration/test_calibrate.py:199:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_calibrate.py:206:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/calibration/test_calibrate.py:208:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_calibrate.py:213:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_calibrate.py:216:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_calibrate.py:218:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_calibrate.py:228:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_calibrate.py:237:1: W293 blank line contains whitespace
 ./tests/tfscreen/calibration/test_calibration_getters.py:12:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/calibration/test_calibration_getters.py:16:1: W293 blank line contains whitespace
 ./tests/tfscreen/calibration/test_calibration_getters.py:22:1: W293 blank line contains whitespace
@@ -6260,16 +6270,40 @@
 ./tests/tfscreen/calibration/test_plot.py:42:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/calibration/test_plot.py:48:1: W293 blank line contains whitespace
 ./tests/tfscreen/calibration/test_plot.py:52:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/calibration/test_plot.py:63:1: W293 blank line contains whitespace
-./tests/tfscreen/calibration/test_plot.py:67:1: W293 blank line contains whitespace
-./tests/tfscreen/calibration/test_plot.py:68:30: W291 trailing whitespace
-./tests/tfscreen/calibration/test_plot.py:69:26: E231 missing whitespace after ','
-./tests/tfscreen/calibration/test_plot.py:70:14: E231 missing whitespace after ','
-./tests/tfscreen/calibration/test_plot.py:71:1: W293 blank line contains whitespace
-./tests/tfscreen/calibration/test_plot.py:73:1: W293 blank line contains whitespace
-./tests/tfscreen/calibration/test_plot.py:75:1: W293 blank line contains whitespace
-./tests/tfscreen/calibration/test_plot.py:78:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/calibration/test_plot.py:82:1: W391 blank line at end of file
+./tests/tfscreen/calibration/test_plot.py:66:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_plot.py:70:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_plot.py:71:30: W291 trailing whitespace
+./tests/tfscreen/calibration/test_plot.py:72:26: E231 missing whitespace after ','
+./tests/tfscreen/calibration/test_plot.py:73:14: E231 missing whitespace after ','
+./tests/tfscreen/calibration/test_plot.py:74:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_plot.py:76:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_plot.py:78:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_plot.py:81:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/calibration/test_plot.py:102:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_plot.py:104:33: W291 trailing whitespace
+./tests/tfscreen/calibration/test_plot.py:105:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_plot.py:108:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_plot.py:109:41: E261 at least two spaces before inline comment
+./tests/tfscreen/calibration/test_plot.py:110:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_plot.py:113:26: E231 missing whitespace after ','
+./tests/tfscreen/calibration/test_plot.py:114:14: E231 missing whitespace after ','
+./tests/tfscreen/calibration/test_plot.py:116:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_plot.py:118:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_plot.py:119:34: W291 trailing whitespace
+./tests/tfscreen/calibration/test_plot.py:123:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_plot.py:140:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_plot.py:143:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/calibration/test_plot.py:159:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_plot.py:160:81: W291 trailing whitespace
+./tests/tfscreen/calibration/test_plot.py:163:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_plot.py:165:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_plot.py:168:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_plot.py:170:26: E702 multiple statements on one line (semicolon)
+./tests/tfscreen/calibration/test_plot.py:171:26: E231 missing whitespace after ','
+./tests/tfscreen/calibration/test_plot.py:171:44: E702 multiple statements on one line (semicolon)
+./tests/tfscreen/calibration/test_plot.py:171:51: E231 missing whitespace after ','
+./tests/tfscreen/calibration/test_plot.py:173:1: W293 blank line contains whitespace
+./tests/tfscreen/calibration/test_plot.py:176:1: W293 blank line contains whitespace
 ./tests/tfscreen/fitting/fitters/test_least_squares.py:3:1: F401 'pytest' imported but unused
 ./tests/tfscreen/fitting/fitters/test_least_squares.py:6:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/fitting/fitters/test_least_squares.py:10:1: E302 expected 2 blank lines, found 1
@@ -7851,25 +7885,25 @@
 4     E221 multiple spaces before operator
 22    E222 multiple spaces after operator
 14    E225 missing whitespace around operator
-1655  E231 missing whitespace after ':'
+1669  E231 missing whitespace after ':'
 81    E251 unexpected spaces around keyword / parameter equals
 20    E252 missing whitespace around parameter equals
-308   E261 at least two spaces before inline comment
+310   E261 at least two spaces before inline comment
 2     E262 inline comment should start with '# '
 7     E265 block comment should start with '# '
 2     E266 too many leading '#' for block comment
 1     E271 multiple spaces after keyword
 1     E275 missing whitespace after keyword
 1     E301 expected 1 blank line, found 0
-956   E302 expected 2 blank lines, found 1
+959   E302 expected 2 blank lines, found 1
 81    E303 too many blank lines (2)
 16    E305 expected 2 blank lines after class or function definition, found 1
 11    E306 expected 1 blank line before a nested definition, found 0
 1     E401 multiple imports on one line
 9     E402 module level import not at top of file
-37    E501 line too long (129 > 127 characters)
+36    E501 line too long (129 > 127 characters)
 14    E701 multiple statements on one line (colon)
-7     E702 multiple statements on one line (semicolon)
+9     E702 multiple statements on one line (semicolon)
 2     E712 comparison to True should be 'if cond is True:' or 'if cond:'
 1     E722 do not use bare 'except'
 1     E731 do not assign a lambda expression, use a def
@@ -7879,8 +7913,8 @@
 8     F811 redefinition of unused 'np' from line 1
 24    F841 local variable 'conditions' is assigned to but never used
 47    W191 indentation contains tabs
-1147  W291 trailing whitespace
+1144  W291 trailing whitespace
 127   W292 no newline at end of file
-2601  W293 blank line contains whitespace
-47    W391 blank line at end of file
-7835
+2620  W293 blank line contains whitespace
+45    W391 blank line at end of file
+7869

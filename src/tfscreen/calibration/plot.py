@@ -369,8 +369,10 @@ def indiv_replicates(pred_df,calibration_dict=None,rgb_map=None):
     # We're going to plot each replicate on its own subplot. Figure out global 
     # plot information.
     
-    # Figure out number of plots to create
-    size = int(np.ceil(np.sqrt(len(pred_df.groupby(["replicate"])))))
+    # Figure out number of plots to create. Subplots are defined by 
+    # (genotype, replicate, condition_pre). 
+    subplot_cols = ["genotype","replicate","condition_pre"]
+    size = int(np.ceil(np.sqrt(len(pred_df.groupby(subplot_cols)))))
     
     # Get axis limits
     min_x, max_x = get_ax_limits(pred_df["t_sel"],
@@ -392,22 +394,39 @@ def indiv_replicates(pred_df,calibration_dict=None,rgb_map=None):
     
     row_counter = 0
     col_counter = 0
-    for key, sub_df in pred_df.groupby(["replicate"]):
+    for key, sub_df in pred_df.groupby(subplot_cols):
+        
+        # Unpack key for identification
+        genotype = key[0]
+        replicate = key[1]
+        condition_pre = key[2]
 
         # Axis for plot
         ax = axes[row_counter,col_counter]
 
-        # Go through all conditions...
-        condition = sub_df[["condition_sel"]].drop_duplicates()["condition_sel"].iloc[0]
-        for _, cond_df in sub_df.groupby(["titrant_conc"]):
+        # Go through all conditions in this series. Series are defined by
+        # (titrant_name, titrant_conc, condition_sel).
+        series_cols = ["titrant_name","titrant_conc","condition_sel"]
+        for _, cond_df in sub_df.groupby(series_cols):
     
-            # Get values to plot
-            x = cond_df["t_sel"].to_numpy()
-            y = cond_df["y_obs"].to_numpy()
-            y_std = cond_df["y_std"].to_numpy()
+            # Get values to plot. We use .to_numpy() and then ensure they are 1D
+            # in case columns were somehow duplicated or multidimensional.
+            def to_1d(data):
+                v = np.asarray(data)
+                if v.ndim > 1:
+                    return v.ravel()
+                return v
+
+            # Helper to get a scalar value from potentially redundant columns
+            def to_scalar(data):
+                return to_1d(data)[0]
+
+            x = to_1d(cond_df["t_sel"])
+            y = to_1d(cond_df["y_obs"])
+            y_std = to_1d(cond_df["y_std"])
             
             # Get color and titrant label
-            t = cond_df["titrant_conc"].iloc[0]
+            t = to_scalar(cond_df["titrant_conc"])
             color = tuple(rgba_df.loc[t,"color"])
             label = f"titrant: {t:.3f}"
 
@@ -421,10 +440,10 @@ def indiv_replicates(pred_df,calibration_dict=None,rgb_map=None):
             # Sort for plotting line
             order = np.argsort(x)
             plot_x = x[order]
-            plot_y = cond_df["calc_est"].to_numpy()[order]
+            plot_y = to_1d(cond_df["calc_est"])[order]
             
             # If we have a calibration dict and a -t_pre point, calculate the
-            # t = 0 point to show the two-phase growth. 
+            # t = 0 point to show the two-phase growth and dilution drop.
             if calibration_dict is not None and np.any(plot_x < 0):
                 
                 # Identify lnA0 row (t = -t_pre)
@@ -432,27 +451,33 @@ def indiv_replicates(pred_df,calibration_dict=None,rgb_map=None):
                 if np.any(lnA0_mask):
                     
                     # Population size at t = -t_pre
-                    lnA0 = plot_y[lnA0_mask][0]
-                    t_pre = abs(plot_x[lnA0_mask][0])
+                    lnA0 = to_scalar(plot_y[lnA0_mask])
+                    t_pre = abs(to_scalar(plot_x[lnA0_mask]))
+                    
+                    # Get dilution from calibration dict (default to 1.0)
+                    dilution = calibration_dict.get("dilution", 1.0)
                     
                     # Calculate growth rate for condition_pre
-                    k_pre = get_wt_k(condition=cond_df["condition_pre"].iloc[0],
-                                     titrant_name=cond_df["titrant_name"].iloc[0],
-                                     titrant_conc=cond_df["titrant_conc"].iloc[0],
+                    k_pre = get_wt_k(condition=to_scalar(cond_df["condition_pre"]),
+                                     titrant_name=to_scalar(cond_df["titrant_name"]),
+                                     titrant_conc=to_scalar(cond_df["titrant_conc"]),
                                      calibration_data=calibration_dict)
                     
-                    # Population size at t = 0
-                    lnA_at_0 = lnA0 + k_pre*t_pre
+                    # Population size at t = 0 (before and after dilution)
+                    lnA_at_0_pre = float(lnA0 + k_pre*t_pre)
+                    lnA_at_0_sel = float(lnA_at_0_pre + np.log(dilution))
                     
-                    # Inject t = 0 point into plot_x and plot_y. 
-                    # If t=0 is already there, we update it. 
-                    if np.any(plot_x == 0):
-                        plot_y[plot_x == 0] = lnA_at_0
-                    else:
-                        # Find insertion point
-                        idx = np.searchsorted(plot_x, 0)
-                        plot_x = np.insert(plot_x, idx, 0)
-                        plot_y = np.insert(plot_y, idx, lnA_at_0)
+                    # Inject two t = 0 points into plot_x and plot_y to show 
+                    # vertical drop. Remove any existing t=0 points first to
+                    # avoid confusion. 
+                    mask = (plot_x != 0)
+                    plot_x = plot_x[mask]
+                    plot_y = plot_y[mask]
+
+                    # Find insertion point
+                    idx = np.searchsorted(plot_x, 0)
+                    plot_x = np.insert(plot_x, idx, [0, 0])
+                    plot_y = np.insert(plot_y, idx, [lnA_at_0_pre, lnA_at_0_sel])
 
             # Plot fit values
             ax.plot(plot_x,plot_y,'-',color=color,lw=2)
@@ -476,7 +501,7 @@ def indiv_replicates(pred_df,calibration_dict=None,rgb_map=None):
             ax.set_xlabel("time (min)")
         
         # Set title
-        ax.set_title(f"{condition}, replicate {key[0]}")
+        ax.set_title(f"{genotype}, {condition_pre}, rep {replicate}")
         
         # update row/column counters
         col_counter += 1

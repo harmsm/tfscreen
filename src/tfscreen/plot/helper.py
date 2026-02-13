@@ -38,11 +38,14 @@ def get_ax_limits(x_values,
         The calculated upper axis limit.
     """
 
-    all_values = list(x_values)
+    # Ensure x and y values are converted to 1D numpy arrays of numerical values
+    # before combining to avoid including column names if they are DataFrames.
+    all_values = [np.asarray(x_values).ravel()]
     if y_values is not None:
-        all_values.extend(y_values)
-    all_values = np.array(all_values)
-    ax_min, ax_max = np.nanquantile(all_values, [percentile, 1-percentile])
+        all_values.append(np.asarray(y_values).ravel())
+    
+    combined = np.concatenate(all_values)
+    ax_min, ax_max = np.nanquantile(combined, [percentile, 1-percentile])
 
     if center_on_zero:
         ax_max = np.max([np.abs(ax_min),np.abs(ax_max)])

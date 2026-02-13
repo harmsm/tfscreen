@@ -267,41 +267,69 @@ def _build_calibration_X_new(df):
     
     return y_obs, y_std, X, param_df
 
-def _build_calibration_X(df):
+def _build_calibration_X(df, dilution=0.0196):
     """
     Build a design matrix that allows fitting of k and dk parameters given known
-    values for theta. 
-    
-    ln_cfu ~ ln_cfu_0 + pre_growth + sel_growth
+    values for theta.
+
+    ln_cfu ~ ln_cfu_0 + pre_growth + ln(dilution) + sel_growth
     pre_growth: (k_bg_b + k_bg_m*titrant + dk_geno + dk_pre_b + dk_pre_m*theta)*t_pre
     sel_growth: (k_bg_b + k_bg_m*titrant + dk_geno + dk_sel_b + dk_sel_m*theta)*t_sel
-    
+
     We are going to describe k_bg as a linear model in titrant_conc,
     accounting for any changes in growth rate of background cells due to change
-    in titrant but not theta. If we distribute terms to isolate individual 
-    variables, we end up with the following terms, which are shared among 
+    in titrant but not theta. If we distribute terms to isolate individual
+    variables, we end up with the following terms, which are shared among
     experiments by the following scheme.
-    
+
     1. ln_cfu_0  * (           1                ): genotype:replicate
     2. k_bg_b    * ( t_pre + t_sel              ): titrant_name
     3. k_bg_m    * ((t_pre + t_sel)*titrant_conc): titrant_name
     4. dk_geno   * ( t_pre + t_sel              ): genotype, ref = wt
     5. dk_cond_b * ( t_pre OR t_sel             ): condition, ref = background
     6. dk_cond_m * ( t_pre OR t_sel             ): condition, ref = background
-    
+
     The OR on dk_cond_b comes about because a condition can either be a pre-
-    or sel-condition. We have to take care of that with a wide-to-long move 
-    when constructing X. 
+    or sel-condition. We have to take care of that with a wide-to-long move
+    when constructing X.
+
+    For rows where ``t_sel > 0``, ``ln(dilution)`` is subtracted from
+    ``y_obs`` so the design matrix captures growth-only signal. The offset
+    is added back to predictions in the calling function.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Prepared calibration dataframe.
+    dilution : float, optional
+        Dilution factor applied between pre-growth and selection
+        (e.g. 200 µL into 10 mL = 0.0196). Default is 0.0196.
+
+    Returns
+    -------
+    y_obs : numpy.ndarray
+        Observed log(cfu) with dilution offset subtracted for diluted rows.
+    y_std : numpy.ndarray
+        Standard errors for each observation.
+    X : numpy.ndarray
+        Design matrix.
+    param_df : pandas.DataFrame
+        Parameter definitions.
     """
 
     # Grab y_obs and y_std from the wide dataframe.
-    y_obs = df["ln_cfu"].to_numpy()
+    y_obs = df["ln_cfu"].to_numpy().copy()
     y_std = df["ln_cfu_std"].to_numpy()
-    
+
+    # Subtract dilution offset from rows where selection occurred so the
+    # design matrix captures growth-only signal.
+    sel_mask = df["t_sel"].to_numpy() > 0
+    y_obs[sel_mask] -= np.log(dilution)
+
     # Make aggregate variables involving t_pre and t_sel for the linear regression
     # before the wide to long transform. 
-    # genotype:replicate, t_pre + t_sel, (t_pre + t_sel)*titrant_conc
-    df["geno_rep"] = list(zip(df["genotype"],df["replicate"]))
+    # genotype:replicate:condition_pre, t_pre + t_sel, (t_pre + t_sel)*titrant_conc
+    df["geno_rep"] = list(zip(df["genotype"],df["replicate"],df["condition_pre"]))
     df["t_tot"] = df["t_pre"] + df["t_sel"]
     df["t_tot_titr"] = df["t_tot"]*df["titrant_conc"]
     
@@ -327,7 +355,7 @@ def _build_calibration_X(df):
 
     # Use a different ln_cfu0 for every genotype/replicate
     model_terms["ln_cfu_0"] = "C(geno_rep)"
-    factor_terms["ln_cfu_0"] = ("genotype","replicate")
+    factor_terms["ln_cfu_0"] = ("genotype","replicate","condition_pre")
     
     # background growth vs titrant depends on titrant_name. The intercept depends
     # on total time. The slope depends on total time multipled by titrant conc. 
@@ -404,13 +432,36 @@ def _build_calibration_X(df):
 def setup_calibration(df,
                       ln_cfu_0_guess=16,
                       k_bg_guess=0.02,
-                      no_bg_slope=False):
+                      no_bg_slope=False,
+                      dilution=0.0196):
+    """
+    Prepare the calibration fit.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame or str
+        Raw calibration data or path to a data file.
+    ln_cfu_0_guess : float, optional
+        Initial guess for log initial population, by default 16.
+    k_bg_guess : float, optional
+        Initial guess for background growth rate, by default 0.02.
+    no_bg_slope : bool, optional
+        Fix the background slope to 0, by default False.
+    dilution : float, optional
+        Dilution factor between pre-growth and selection
+        (e.g. 200 µL into 10 mL = 0.0196). Default is 0.0196.
+
+    Returns
+    -------
+    FitManager
+        Configured fit manager ready for least-squares optimization.
+    """
 
     # Prepare dataframe, creating all necessary columns etc. 
     df = _prep_calibration_df(df)
 
     # Build the design matrix
-    y_obs, y_std, X, param_df = _build_calibration_X(df)
+    y_obs, y_std, X, param_df = _build_calibration_X(df, dilution=dilution)
 
     # Build guesses
     guesses = np.zeros(len(param_df))
@@ -440,14 +491,15 @@ def calibrate(df,
               output_file,
               ln_cfu_0_guess=16,
               k_bg_guess=0.02,
-              no_bg_slope=False):
+              no_bg_slope=False,
+              dilution=0.0196):
     """
     Run the full calibration workflow on experimental data.
 
     Takes experimental data, performs validation, runs a global non-linear
-    fit to determine growth parameters (`b` and `m` vs. theta for each titrant),
-    fits a Hill model to the `theta` vs. titrant data, and saves the resulting
-    calibration parameters to a JSON file.
+    fit to determine growth parameters (`b` and `m` vs. theta for each
+    titrant), fits a Hill model to the `theta` vs. titrant data, and saves
+    the resulting calibration parameters to a JSON file.
 
     Parameters
     ----------
@@ -455,34 +507,38 @@ def calibrate(df,
         A pre-loaded DataFrame or a file path (e.g., to an Excel file)
         containing the compiled experimental data.
     output_file : str
-        The file path where the output JSON calibration data will be written.
+        The file path where the output JSON calibration data will be
+        written.
     ln_cfu_0_guess : float, optional
-        An initial guess for the log-transformed initial population size (lnA0),
-        by default 16.
-    bg_k_guess : float, optional
-        An initial guess for the constant term (c_0) of the background
-        growth model, by default 0.025.
+        An initial guess for the log-transformed initial population size
+        (lnA0), by default 16.
+    k_bg_guess : float, optional
+        An initial guess for the constant term of the background growth
+        model, by default 0.02.
     no_bg_slope : bool, optional
-        whether or not to fix the background slope to 0. defaults to False. 
+        Whether or not to fix the background slope to 0. Default is False.
+    dilution : float, optional
+        Dilution factor between pre-growth and selection
+        (e.g. 200 µL into 10 mL = 0.0196). Default is 0.0196.
 
     Returns
     -------
     dict
-        A dictionary containing the final calibration parameters. The primary keys
-        are 'm', 'b', 'theta_param', and 'bg_model_param'.
-    pd.DataFrame
-        A dataframe holding the predicted and observed ln(A) for all data points
-        used for the calibration
-    pd.DataFrame
-        A dataframe holding the fit ln(A0) for all replicates used for the 
-        calibration
+        A dictionary containing the final calibration parameters.
+    pandas.DataFrame
+        A dataframe holding the predicted and observed ln(A) for all data
+        points used for the calibration.
+    pandas.DataFrame
+        A dataframe holding the fit ln(A0) for all replicates used for the
+        calibration.
     """
 
     # Construct a FitManager object to manage the fit. 
     fm = setup_calibration(df,
                            ln_cfu_0_guess=ln_cfu_0_guess,
                            k_bg_guess=k_bg_guess,
-                           no_bg_slope=no_bg_slope)
+                           no_bg_slope=no_bg_slope,
+                           dilution=dilution)
 
     # Run least squares fit
     params, std_errors, cov_matrix, _ = run_least_squares(
@@ -505,7 +561,17 @@ def calibrate(df,
                             "calc_est":pred,
                             "calc_std":pred_std})
 
-    pred_df = pd.concat([df,pred_df],axis=1)
+    # Avoid duplicate columns during concat by dropping them from the original df
+    # if they already exist.
+    to_drop = ["y_obs", "y_std", "calc_est", "calc_std"]
+    df_clean = df.drop(columns=[c for c in to_drop if c in df.columns])
+    pred_df = pd.concat([df_clean,pred_df],axis=1)
+
+    # Add dilution offset back to y_obs and calc_est so they are on the
+    # same scale as the raw observed data.
+    sel_mask = pred_df["t_sel"].to_numpy() > 0
+    pred_df.loc[sel_mask, "y_obs"] += np.log(dilution)
+    pred_df.loc[sel_mask, "calc_est"] += np.log(dilution)
     # Extract parameter estimates
     param_df = fm.param_df.copy()
     param_df["est"] = fm.back_transform(params)
@@ -516,8 +582,8 @@ def calibrate(df,
     # and calc_est = ln_cfu_0. 
     
     # Grab unique series
-    series_cols = ["genotype","replicate","titrant_name","titrant_conc"]
-    series_metadata = pred_df.groupby(series_cols,observed=True).min().reset_index()
+    series_cols = ["genotype","replicate","condition_pre","condition_sel","titrant_name","titrant_conc"]
+    series_metadata = pred_df.groupby(series_cols,observed=True).min(numeric_only=False).reset_index()
 
     # Create new rows at -t_pre
     new_rows = series_metadata.copy()
@@ -527,10 +593,10 @@ def calibrate(df,
     
     # Map ln_cfu_0 from param_df to these new rows
     lnA0_map = param_df.loc[param_df["param_class"] == "ln_cfu_0"].copy()
-    lnA0_map = lnA0_map.set_index(["genotype","replicate"])
+    lnA0_map = lnA0_map.set_index(["genotype","replicate","condition_pre"])
     
     # Get estimates and stds
-    idx = list(zip(new_rows["genotype"],new_rows["replicate"]))
+    idx = list(zip(new_rows["genotype"],new_rows["replicate"],new_rows["condition_pre"]))
     new_rows["calc_est"] = lnA0_map.loc[idx,"est"].values
     new_rows["calc_std"] = lnA0_map.loc[idx,"std"].values
     
@@ -565,6 +631,7 @@ def calibrate(df,
 
     # Write out theta fit
     calibration_dict["theta_param"] = theta_param
+    calibration_dict["dilution"] = dilution
 
     write_calibration(calibration_dict=calibration_dict,
                     json_file=output_file)
