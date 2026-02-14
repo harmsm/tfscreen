@@ -41,6 +41,12 @@ def _prepare_and_validate_growth_data(df,
         required_columns.extend(lnA0_selector)
     check_columns(df, required_columns=list(set(required_columns)))
 
+    # Force dtypes for critical columns
+    try:
+        df["titrant_conc"] = df["titrant_conc"].astype(float)
+    except ValueError:
+        pass # If it fails, let it be (might catch later)
+
     # 4. Sort to ensure consistent processing order
     df = df.sort_values(by=series_selector + ["t_sel"])
 

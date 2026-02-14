@@ -6,6 +6,7 @@ from tfscreen.calibration import (
 )
 from tfscreen.plot.helper import get_ax_limits
 from tfscreen.analysis.independent.get_indiv_growth import get_indiv_growth
+from tfscreen.models.occupancy_growth_model import OccupancyGrowthModel
 
 import pandas as pd
 import numpy as np
@@ -115,12 +116,23 @@ def k_vs_titrant(df,
     if ax is None:
         _, ax = plt.subplots(1,figsize=(6,6))
 
- 
-    min_titr = np.log(np.min(df.loc[df["titrant_conc"] > 0,"titrant_conc"])/10)
-    max_titr = np.log(np.max(df["titrant_conc"])*10)
-    titr_span = np.exp(np.linspace(min_titr,max_titr,100))
-
+    positive_titrants = df.loc[df["titrant_conc"] > 1e-12, "titrant_conc"]
+    if len(positive_titrants) > 0:
+        min_titr_raw = np.min(positive_titrants)
+        max_titr_raw = np.max(positive_titrants)
+        
+        min_titr = np.log(min_titr_raw / 10)
+        max_titr = np.log(max_titr_raw * 10)
+        
+        # Use a small positive value for 0 titrant in log scale
+        floor_titr = min_titr_raw / 100 
+    else:
+        # If only 0 titrant is present, define a reasonable range
+        min_titr = np.log(0.01) # arbitrary small log value
+        max_titr = np.log(1.0)  # arbitrary larger log value
+        floor_titr = 0.01 # arbitrary small value
     
+    titr_span = np.exp(np.linspace(min_titr,max_titr,100))
 
     if plot_color_dict is None:
         plot_color_dict = {}
@@ -136,7 +148,7 @@ def k_vs_titrant(df,
             k_total = get_wt_k(key[0],key[1],titrant_conc=titr_span,calibration_data=calibration_dict)
 
         x = sub_df["titrant_conc"].to_numpy()
-        x[x == 0] = min_titr
+        x[x == 0] = floor_titr # Replace 0 with a small positive value for log scale
         y = sub_df["k_est"].to_numpy()
         y_err = sub_df["k_std"].to_numpy()
         
@@ -148,8 +160,13 @@ def k_vs_titrant(df,
         ax.plot(titr_span,k_total,'-',lw=2,color=plot_color_dict[condition])
 
     ax.set_xscale('log')
-    ax.set_ylim(-0.03,0.03)
-    ax.set_xlabel("titrant ln(mM)")
+    ax.set_xlim(np.exp(min_titr), np.exp(max_titr))
+    
+    # Set dynamic y-axis limits based on data
+    ax_min, ax_max = get_ax_limits(manual_df["k_est"], center_on_zero=True, pad_by=0.1)
+    ax.set_ylim(ax_min, ax_max)
+
+    ax.set_xlabel("titrant conc (mM)")
     ax.set_ylabel("growth rate (cfu/mL/min)")
 
     return ax
@@ -201,6 +218,66 @@ def k_pred_corr(manual_df,
 
     return ax
 
+def _plot_calibrated_param_vs_titrant(calibration_dict,
+                                      param_name="tau",
+                                      plot_color_dict=None,
+                                      ax=None):
+    """
+    Plot calibrated parameters vs titrant concentration.
+    """
+    if ax is None:
+        _, ax = plt.subplots(1, figsize=(6, 6))
+
+    if plot_color_dict is None:
+        plot_color_dict = {}
+
+    data = calibration_dict.get("dk_cond", {}).get(param_name, {})
+    
+    # Extract granular items: "cond:titrant:conc" -> value
+    items = []
+    for k, v in data.items():
+        if ":" in k:
+            parts = k.split(":")
+            if len(parts) == 3:
+                try:
+                    items.append({"condition": parts[0], 
+                                  "titrant": parts[1], 
+                                  "conc": float(parts[2]), 
+                                  "value": v})
+                except ValueError:
+                    continue
+    
+    if not items:
+        ax.text(0.5, 0.5, f"No granular {param_name} data", 
+                ha='center', va='center', transform=ax.transAxes)
+        return ax
+
+    df = pd.DataFrame(items).sort_values("conc")
+    
+    # Replace 0 conc with small floor for log scale
+    concs = df["conc"].unique()
+    positive = concs[concs > 0]
+    floor = 0.1 * np.min(positive) if len(positive) > 0 else 1.0
+    
+    # Color map handling
+    for key, sub_df in df.groupby(["condition", "titrant"]):
+        condition = key[0]
+        color = plot_color_dict.get(condition, "gray")
+        
+        sub_df = sub_df.sort_values("conc")
+        x = sub_df["conc"].to_numpy()
+        x[x == 0] = floor
+        
+        # Plot points and lines
+        ax.scatter(x, sub_df["value"], facecolor="none", edgecolor=color)
+        ax.plot(x, sub_df["value"], '--', lw=1, color=color, label=f"{condition}")
+
+    ax.set_xscale('log')
+    ax.set_xlabel("titrant conc (mM)")
+    ax.set_ylabel(f"calibrated {param_name}")
+    
+    return ax
+
 def fit_summary(pred_df,
                 param_df,
                 calibration_data,
@@ -218,7 +295,11 @@ def fit_summary(pred_df,
     
     pred_df["dk_geno_mask"] = pred_df["condition_sel"].isin(no_selection_conditions)
 
-    fig, ax = plt.subplots(2,2,figsize=(12,12))
+    per_titrant_tau = calibration_dict.get("per_titrant_tau", False)
+    if per_titrant_tau:
+        fig, ax = plt.subplots(3,2,figsize=(12,18))
+    else:
+        fig, ax = plt.subplots(2,2,figsize=(12,12))
 
     # Filter rows that have observations (drop -t_pre rows)
     mask = ~np.isnan(pred_df["y_obs"])
@@ -230,7 +311,7 @@ def fit_summary(pred_df,
                     clean_pred_df["calc_std"],
                     ax=ax[0,0])
     
-    A0_est = param_df.loc[param_df["param_class"] == "ln_cfu_0","est"]
+    A0_est = param_df.loc[param_df["class"] == "ln_cfu_0","est"]
 
     A0_hist(A0_est,ax=ax[0,1])
 
@@ -253,6 +334,16 @@ def fit_summary(pred_df,
     k_pred_corr(manual_param_df,
                 calibration_dict,
                 ax[1,1])
+    
+    if per_titrant_tau:
+        _plot_calibrated_param_vs_titrant(calibration_dict,
+                                          param_name="tau",
+                                          plot_color_dict=plot_color_dict,
+                                          ax=ax[2,0])
+        _plot_calibrated_param_vs_titrant(calibration_dict,
+                                          param_name="k_sharp",
+                                          plot_color_dict=plot_color_dict,
+                                          ax=ax[2,1])
 
     fig.tight_layout()
 
@@ -341,8 +432,12 @@ def indiv_replicates(pred_df,calibration_dict=None,rgb_map=None):
     titrants.sort()
     
     # Get value to assign to zero titrant value. 0.1 times minimum non-zero value
-    floor = 0.1*np.min(titrants[titrants > 0])
-
+    positive_titrants = titrants[titrants > 0]
+    if len(positive_titrants) > 0:
+        floor = 0.1*np.min(positive_titrants)
+    else:
+        floor = 1.0 # arbitrary if no positive titrants
+    
     # Normalize log(titrant) between 0 and 1. 
     norm_values = titrants.copy()
     norm_values[norm_values == 0] = floor 
@@ -374,13 +469,12 @@ def indiv_replicates(pred_df,calibration_dict=None,rgb_map=None):
     subplot_cols = ["genotype","replicate","condition_pre"]
     size = int(np.ceil(np.sqrt(len(pred_df.groupby(subplot_cols)))))
     
-    # Get axis limits
-    min_x, max_x = get_ax_limits(pred_df["t_sel"],
-                                 pred_df["t_sel"],
-                                 pad_by=0.05,percentile=0)
+    # Get axis limits. Use quantile-based limits for robustness to outliers.
+    min_x, max_x = get_ax_limits(pred_df["t_sel"], pad_by=0.05, percentile=0.005)
+    
     min_y, max_y = get_ax_limits(pred_df["y_obs"],
                                  pred_df["calc_est"],
-                                 pad_by=0.05,percentile=0)
+                                 pad_by=0.05,percentile=0.005)
         
     fig, axes = plt.subplots(size,
                              size,
@@ -435,52 +529,128 @@ def indiv_replicates(pred_df,calibration_dict=None,rgb_map=None):
             ax.scatter(x[mask],y[mask],s=30,facecolor="none",edgecolor=color,label=label)
             ax.errorbar(x[mask],y[mask],y_std[mask],lw=0,color=color,capsize=5,elinewidth=1)
             
-            # --- TWO PHASE GROWTH CALCULATION ---
+            # --- FULL SHIFT GROWTH MODEL CALCULATION ---
             
-            # Sort for plotting line
-            order = np.argsort(x)
-            plot_x = x[order]
-            plot_y = to_1d(cond_df["calc_est"])[order]
-            
-            # If we have a calibration dict and a -t_pre point, calculate the
-            # t = 0 point to show the two-phase growth and dilution drop.
-            if calibration_dict is not None and np.any(plot_x < 0):
+            # Helper to draw a dashed connecting line if complex fails
+            def draw_fallback():
+                order = np.argsort(x)
+                sort_x = x[order]
+                sort_y = to_1d(cond_df["calc_est"])[order]
+                valid = np.isfinite(sort_x) & np.isfinite(sort_y)
+                ax.plot(sort_x[valid], sort_y[valid], color=color, lw=2)
+
+            # If we have a calibration dict and a -t_pre point, we can draw a 
+            # continuous curve based on the shift model.
+            if calibration_dict is not None and np.any(to_1d(cond_df["t_sel"]) < 0):
                 
-                # Identify lnA0 row (t = -t_pre)
-                lnA0_mask = (plot_x < 0)
-                if np.any(lnA0_mask):
+                try:
+                    # Sort for extracting points
+                    order = np.argsort(x)
+                    sort_x = x[order]
+                    # sort_y = to_1d(cond_df["calc_est"])[order]
                     
-                    # Population size at t = -t_pre
-                    lnA0 = to_scalar(plot_y[lnA0_mask])
-                    t_pre = abs(to_scalar(plot_x[lnA0_mask]))
+                    # Identify lnA0 (t = -t_pre)
+                    neg_mask = sort_x < 0
+                    if not np.any(neg_mask):
+                        raise ValueError("No negative time points found")
+                        
+                    lnA0 = to_scalar(to_1d(cond_df["calc_est"])[order][neg_mask])
+                    t_pre = abs(to_scalar(sort_x[neg_mask]))
                     
-                    # Get dilution from calibration dict (default to 1.0)
+                    # Get parameters
                     dilution = calibration_dict.get("dilution", 1.0)
+                    cond_pre = to_scalar(cond_df["condition_pre"])
+                    cond_sel = to_scalar(cond_df["condition_sel"])
+                    titr_name = to_scalar(cond_df["titrant_name"])
+                    titr_conc = to_scalar(cond_df["titrant_conc"])
                     
-                    # Calculate growth rate for condition_pre
-                    k_pre = get_wt_k(condition=to_scalar(cond_df["condition_pre"]),
-                                     titrant_name=to_scalar(cond_df["titrant_name"]),
-                                     titrant_conc=to_scalar(cond_df["titrant_conc"]),
-                                     calibration_data=calibration_dict)
+                    # Growth rates
+                    mu1 = float(get_wt_k(condition=cond_pre,
+                                        titrant_name=titr_name,
+                                        titrant_conc=0.0,
+                                        calibration_data=calibration_dict))
+                    mu2 = float(get_wt_k(condition=cond_sel,
+                                        titrant_name=titr_name,
+                                        titrant_conc=titr_conc,
+                                        calibration_data=calibration_dict))
                     
-                    # Population size at t = 0 (before and after dilution)
-                    lnA_at_0_pre = float(lnA0 + k_pre*t_pre)
-                    lnA_at_0_sel = float(lnA_at_0_pre + np.log(dilution))
+                    # Add genotype effect if available
+                    dk_geno_val = 0.0
+                    if "dk_geno" in calibration_dict:
+                        dk_geno_val = calibration_dict["dk_geno"].get(genotype, 0.0)
                     
-                    # Inject two t = 0 points into plot_x and plot_y to show 
-                    # vertical drop. Remove any existing t=0 points first to
-                    # avoid confusion. 
-                    mask = (plot_x != 0)
-                    plot_x = plot_x[mask]
-                    plot_y = plot_y[mask]
+                    mu1 += dk_geno_val
+                    mu2 += dk_geno_val
+                    
+                    # Shift parameters
+                    dk_cond = calibration_dict.get("dk_cond", {})
+                    per_titrant_tau = calibration_dict.get("per_titrant_tau", False)
+                    
+                    if per_titrant_tau:
+                        granular_key = f"{cond_sel}:{titr_name}:{titr_conc}"
+                        tau = dk_cond.get("tau", {}).get(granular_key)
+                        if tau is None:
+                            tau = dk_cond.get("tau", {}).get(cond_sel, 0.0)
+                            
+                        k_sharp = dk_cond.get("k_sharp", {}).get(granular_key)
+                        if k_sharp is None:
+                            k_sharp = dk_cond.get("k_sharp", {}).get(cond_sel, 1.0)
+                    else:
+                        tau = dk_cond.get("tau", {}).get(cond_sel, 0.0)
+                        k_sharp = dk_cond.get("k_sharp", {}).get(cond_sel, 1.0)
+                    
+                    # Generate dense time points
+                    max_t = np.max(x)
+                    if max_t > 0:
+                        # Pre-growth: [-t_pre, 0]
+                        t_model_pre = np.linspace(-t_pre, -1e-6, 50)
+                        # Post-growth: [0, max_t]
+                        t_model_post = np.linspace(0, max_t, 100)
+                        
+                        # Use model to predict
+                        gm = OccupancyGrowthModel()
+                        
+                        y_model_pre = gm.predict_trajectory(
+                            t_pre=t_pre, t_sel=t_model_pre, 
+                            ln_cfu0=lnA0, mu1=mu1, mu2=mu2, 
+                            dilution=dilution, tau=tau, k_sharp=k_sharp
+                        )
+                        
+                        y_model_post = gm.predict_trajectory(
+                            t_pre=t_pre, t_sel=t_model_post, 
+                            ln_cfu0=lnA0, mu1=mu1, mu2=mu2, 
+                            dilution=dilution, tau=tau, k_sharp=k_sharp
+                        )
+                        
+                        # Plot with a gap (NaN) to show dilution
+                        # Concatenate
+                        plot_x = np.concatenate([t_model_pre, [0], t_model_post])
+                        plot_y = np.concatenate([y_model_pre, [np.nan], y_model_post])
+                        
+                        # Plot with a gap (NaN) to show dilution
+                        # Concatenate
+                        plot_x = np.concatenate([t_model_pre, [0], t_model_post])
+                        plot_y = np.concatenate([y_model_pre, [np.nan], y_model_post])
+                        
+                        ax.plot(plot_x, plot_y, color=color, lw=2)
+                    else:
+                        # Only pre-growth
+                        t_model_pre = np.linspace(-t_pre, 0, 50)
+                        gm = OccupancyGrowthModel()
+                        y_model_pre = gm.predict_trajectory(
+                            t_pre=t_pre, t_sel=t_model_pre, 
+                            ln_cfu0=lnA0, mu1=mu1, mu2=mu2, 
+                            dilution=dilution, tau=tau, k_sharp=k_sharp
+                        )
+                        ax.plot(t_model_pre, y_model_pre, color=color, lw=2)
 
-                    # Find insertion point
-                    idx = np.searchsorted(plot_x, 0)
-                    plot_x = np.insert(plot_x, idx, [0, 0])
-                    plot_y = np.insert(plot_y, idx, [lnA_at_0_pre, lnA_at_0_sel])
-
-            # Plot fit values
-            ax.plot(plot_x,plot_y,'-',color=color,lw=2)
+                except Exception:
+                    import traceback
+                    traceback.print_exc()
+                    draw_fallback()
+                
+            else:
+                draw_fallback()
 
             # Put legend on top-left plot
             if row_counter == 0 and col_counter == 0:

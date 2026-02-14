@@ -100,13 +100,15 @@ def test_indiv_replicates_with_dilution():
         "condition_sel": "cond1"
     })
     
-    # Needs to match what get_wt_k expects or we mock get_wt_k
-    cal_dict = {"dilution": 0.1} 
+    cal_dict = {
+        "dilution": 0.1,
+        "dk_cond": {"tau": {"cond1": 0.0}, "k_sharp": {"cond1": 1.0}}
+    } 
     
     with patch("matplotlib.pyplot.subplots") as mock_subplots, \
          patch("tfscreen.calibration.plot.get_wt_k") as mock_get_wt_k:
         
-        mock_get_wt_k.return_value = 0.2 # k_pre
+        mock_get_wt_k.return_value = 0.2 # k_pre and k_sel
         
         fig = MagicMock()
         ax = MagicMock()
@@ -116,29 +118,18 @@ def test_indiv_replicates_with_dilution():
         
         indiv_replicates(df, calibration_dict=cal_dict)
         
-        # Verify plot was called. 
-        # Original points: 3 (-5, 0, 5)
-        # We add 2 points at t=0 (pre and post dilution) and remove existing t=0.
-        # So final points should be 4: -5, 0 (pre), 0 (post), 5.
-        
-        # Check that plot was called with a 4-element array for x and y
-        # We can't easily check the call arguments of ax.plot if they are numpy arrays without iteration
-        # but we can look for the call.
-        found_plot = False
+        # Verify integrated plot was called (length 151: 50 pre + 1 NaN + 100 smooth)
+        found_curve = False
         for call in ax.plot.call_args_list:
             args, _ = call
-            if len(args[0]) == 4:
-                found_plot = True
-                # x should be [-5, 0, 0, 5]
-                assert np.allclose(args[0], [-5, 0, 0, 5])
-                # y calculation:
-                # lnA0 = 10.0
-                # k_pre = 0.2, t_pre = 5.0 => lnA_at_0_pre = 10.0 + 0.2*5 = 11.0
-                # lnA_at_0_sel = 11.0 + ln(0.1) = 11.0 - 2.3025... = 8.697...
-                # plot_y should be [10.0, 11.0, 8.697..., 12.0]
-                assert np.allclose(args[1], [10.0, 11.0, 11.0 + np.log(0.1), 12.0])
-                
-        assert found_plot
+            if len(args[0]) == 151:
+                found_curve = True
+                # Check start and end X
+                assert np.allclose(args[0][0], -5)
+                assert np.allclose(args[0][-1], 5)
+                # Check NaN separator at index 50
+                assert np.isnan(args[1][50])
+        assert found_curve
 
 def test_indiv_replicates_broadcast_repro():
     """Reproduce the ValueError: could not broadcast input array from shape (2,1) into (2,)"""
@@ -157,11 +148,13 @@ def test_indiv_replicates_broadcast_repro():
         "condition_sel": "cond1"
     })
     
-    # Create duplicate calc_est columns. This causes cond_df["calc_est"] to be a 
-    # DataFrame, and .to_numpy() to be (N, 2). Then slicing might yield (N, 1) etc.
+    # Create duplicate calc_est columns. 
     bad_df = pd.concat([df, pd.Series([10, 11, 12], name="calc_est")], axis=1)
     
-    cal_dict = {"dilution": 0.1}
+    cal_dict = {
+        "dilution": 0.1,
+        "dk_cond": {"tau": {"cond1": 0.0}, "k_sharp": {"cond1": 1.0}}
+    }
     
     with patch("matplotlib.pyplot.subplots") as mock_subplots, \
          patch("tfscreen.calibration.plot.get_wt_k") as mock_get_wt_k:
@@ -174,10 +167,69 @@ def test_indiv_replicates_broadcast_repro():
         # This should NO LONGER trigger the bug because of .ravel()
         indiv_replicates(bad_df, calibration_dict=cal_dict)
         
-        # Check that the plot call with 4 points happened
-        found_plot = False
+        # Check that the plot calls happened
+        found_curve = False
         for call in ax.plot.call_args_list:
             args, _ = call
-            if len(args[0]) == 4:
-                found_plot = True
-        assert found_plot
+            if len(args[0]) == 151:
+                found_curve = True
+        assert found_curve
+
+def test_indiv_replicates_with_dk_geno():
+    """Verify that dk_geno from calibration_dict is used in growth rate calculation."""
+    df = pd.DataFrame({
+        "time": [-5.0, 0.0, 5.0],
+        "replicate": 1,
+        "genotype": "mutant",
+        "titrant_name": "t1",
+        "titrant_conc": 1.0,
+        "y_obs": [10.0, 11.0, 12.0],
+        "y_std": 0.1,
+        "calc_est": [10.0, 11.0, 12.0],
+        "t_pre": 5.0,
+        "t_sel": [-5.0, 0.0, 5.0],
+        "condition_pre": "bg",
+        "condition_sel": "cond1"
+    })
+    
+    # Define calibration with a significant dk_geno for 'mutant'
+    # Base growth (k_bg) = 0.2 (from mock_get_wt_k)
+    # dk_geno = 0.1
+    # Expected mu = 0.3
+    
+    cal_dict = {
+        "dilution": 1.0, # No dilution for simplicity
+        "dk_cond": {"tau": {"cond1": 0.0}, "k_sharp": {"cond1": 1.0}},
+        "dk_geno": {"mutant": 0.1}
+    } 
+    
+    with patch("matplotlib.pyplot.subplots") as mock_subplots, \
+         patch("tfscreen.calibration.plot.get_wt_k") as mock_get_wt_k:
+        
+        mock_get_wt_k.return_value = 0.2 
+        
+        fig = MagicMock(); ax = MagicMock()
+        val = np.empty((1,1), dtype=object); val[0,0] = ax
+        mock_subplots.return_value = (fig, val)
+        
+        # We need to spy on OccupancyGrowthModel or calculate expectation.
+        # Let's mock OccupancyGrowthModel to check inputs?
+        
+        with patch("tfscreen.calibration.plot.OccupancyGrowthModel") as MockOGM:
+            instance = MockOGM.return_value
+            # return some dummy value for predict to avoid errors
+            instance.predict_trajectory.return_value = np.zeros(100) # dummy
+
+            indiv_replicates(df, calibration_dict=cal_dict)
+            
+            # Check what mu1/mu2 were passed to predict_trajectory
+            assert instance.predict_trajectory.called
+            args, kwargs = instance.predict_trajectory.call_args
+            
+            # kwargs should contain mu1, mu2
+            assert "mu1" in kwargs
+            assert "mu2" in kwargs
+            
+            # Expected: 0.2 + 0.1 = 0.3
+            assert np.isclose(kwargs["mu1"], 0.3)
+            assert np.isclose(kwargs["mu2"], 0.3)

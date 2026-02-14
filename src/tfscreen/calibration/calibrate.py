@@ -9,23 +9,22 @@ from tfscreen.calibration import (
 from tfscreen.fitting import (
     run_least_squares,
     predict_with_error,
-    FitManager,
-    parse_patsy
+    FitManager
 )
+
+import numpy as np
+import pandas as pd
+
+import warnings
 
 from tfscreen.util.io import read_dataframe
 from tfscreen.util.dataframe import (
     check_columns,
     get_scaled_cfu
 )
-
-import numpy as np
-import pandas as pd
-import patsy
-
-import warnings
-
-from tfscreen.analysis.independent.cfu_to_theta import _build_param_df
+from tfscreen.util.design import build_param_df
+from tfscreen.models.growth_linkage import get_model
+from tfscreen.models.occupancy_growth_model import OccupancyGrowthModel
 
 def _fit_theta(df):
     """
@@ -118,6 +117,7 @@ def _prep_calibration_df(df):
                         "titrant_name",
                         "titrant_conc",
                         "theta",
+                        "theta_std",
                         "censored"]
     
     # Check for required columns
@@ -130,310 +130,306 @@ def _prep_calibration_df(df):
     return df
 
 
-def _build_calibration_X_new(df):
+class CalibrationPredictor:
+    """Wrapper to handle non-linear calibration predictions."""
+    def __init__(self, model, num_model_params, dilution):
+        self.model = model
+        self.num_model_params = num_model_params
+        self.dilution = dilution
+        self._growth_model = OccupancyGrowthModel()
+
+    def predict(self, params, X):
+        """
+        Predict ln_cfu based on parameters and design matrix X.
+        
+        X layout:
+        0: lnA0_idx
+        1: k_bg_b_idx
+        2: k_bg_m_idx
+        3: titrant_conc
+        4: t_total (t_pre + t_sel)
+        5: dk_geno_idx
+        6: t_pre
+        7: t_sel
+        8: theta
+        9: dk_cond_pre_start_idx
+        10: dk_cond_sel_start_idx
+        11: lag_idx (deprecated, now part of dk_cond block)
+        """
+        # Unpack indices (cast to int for indexing)
+        lnA0_idx = X[:, 0].astype(int)
+        k_bg_b_idx = X[:, 1].astype(int)
+        k_bg_m_idx = X[:, 2].astype(int)
+        dk_geno_idx = X[:, 5].astype(int)
+        dk_cond_pre_idx = X[:, 9].astype(int)
+        dk_cond_sel_idx = X[:, 10].astype(int)
+        
+        # Unpack floats
+        titrant_conc = X[:, 3]
+        # t_total = X[:, 4] # Unused now
+        t_pre = X[:, 6]
+        t_sel = X[:, 7]
+        theta_sel = X[:, 8]
+        theta_pre = X[:, 11]
+        
+        # 1. Base components
+        # ln_cfu0
+        ln_cfu0 = params[lnA0_idx]
+        
+        # Genotype effect: dk_geno
+        dk_geno = params[dk_geno_idx]
+        
+        # Background growth: 
+        # k_bg_sel uses selection titrant
+        k_bg_sel = params[k_bg_b_idx] + params[k_bg_m_idx] * titrant_conc
+        # k_bg_pre uses 0 titrant
+        k_bg_pre = params[k_bg_b_idx]
+        
+        # 2. Condition-specific growth and shift (tau, k_sharp)
+        # We need to gather parameters for the model. 
+        # The last two parameters in each dk_cond block are now 'tau' and 'k_sharp'
+        
+        # Helper to extract (N, num_params) array of parameters
+        def get_model_params(start_indices):
+            # Create a 2D index array: row i contains [start[i], start[i]+1, ...]
+            # specific_indices shape: (N, num_model_params + 2)
+            offsets = np.arange(self.num_model_params + 2)
+            specific_indices = start_indices[:, None] + offsets[None, :]
+            return params[specific_indices]
+
+        params_pre_all = get_model_params(dk_cond_pre_idx)
+        params_sel_all = get_model_params(dk_cond_sel_idx)
+        
+        # Split into model params and shift parameters
+        params_pre = params_pre_all[:, :-2]
+        
+        params_sel = params_sel_all[:, :-2]
+        tau_sel = params_sel_all[:, -2]
+        k_sel = params_sel_all[:, -1]
+        
+        # Predict growth rate perturbation from theta and model params
+        # dk_pre uses theta at 0 titrant (theta_pre)
+        # dk_sel uses selection theta
+        dk_pre = self.model.predict(theta_pre, params_pre.T) 
+        dk_sel = self.model.predict(theta_sel, params_sel.T) 
+        
+        # Calculate full growth rates
+        mu1 = k_bg_pre + dk_geno + dk_pre
+        mu2 = k_bg_sel + dk_geno + dk_sel
+        
+        # Use centralized model
+        return self._growth_model.predict_trajectory(
+            t_pre=t_pre,
+            t_sel=t_sel,
+            ln_cfu0=ln_cfu0,
+            mu1=mu1,
+            mu2=mu2,
+            dilution=self.dilution,
+            tau=tau_sel,
+            k_sharp=k_sel
+        )
+
+
+def _build_calibration_data(df, model_name="linear", dilution=0.0196, per_titrant_tau=False):
     """
     Assemble the design matrix and response vector for calibration.
-
-    This function constructs the necessary inputs for a least-squares fit to
-    calibrate the model's growth rate parameters. It defines parameters for
-    initial cell counts (lnA0), global background growth (k_bg), and
-    condition-specific growth effects (dk), then builds the corresponding
-    design matrix `X` and response vector `y_obs`.
-
-    Parameters
-    ----------
-    df : pandas.DataFrame
-        A fully prepared dataframe containing all necessary columns for the
-        calibration model, including 'ln_cfu', 'ln_cfu_std', 'genotype',
-        'library', 'replicate', 't_pre', 't_sel', 'condition_pre',
-        'condition_sel', 'titrant_conc', and 'theta'.
-
-    Returns
-    -------
-    y_obs : numpy.ndarray
-        A 1D array of shape (n_obs,) representing the response variable,
-        which is the observed log(cfu).
-    y_std : numpy.ndarray
-        A 1D array of shape (n_obs,) holding the standard error for each
-        observation in ``y_obs``.
-    X : numpy.ndarray
-        A 2D design matrix of shape (n_obs, n_params).
-    param_df : pandas.DataFrame
-        A dataframe defining each parameter's name, class, initial guess,
-        and transformation properties.
-
-    Notes
-    -----
-    A key step in this function is handling the condition parameters. The
-    model uses the same `dk_b` and `dk_m` parameters for a given condition
-    (e.g., 'kanR-kan') regardless of whether it appears in the 'pre' or 'sel'
-    phase. To achieve this, the dataframe is internally reshaped into a "long"
-    format where each growth phase is its own row.
     """
-    # -------------------------------------------------------------------------
-    # 1. Reshape data to handle shared condition parameters
-    # -------------------------------------------------------------------------
     
-    # Create a unique index for each original row to map back to later
-    df['_original_row_idx'] = np.arange(len(df))
-
-    # Create a "long" dataframe where each row is one growth phase ('pre' or 'sel')
-    pre_df = df[['_original_row_idx', 'condition_pre', 't_pre', 'theta']].copy()
-    pre_df.rename(columns={'condition_pre': 'condition', 't_pre': 't'}, inplace=True)
+    # Get model definition
+    model = get_model(model_name)
+    model_param_defs = model.get_param_defs()
+    num_model_params = len(model_param_defs)
     
-    sel_df = df[['_original_row_idx', 'condition_sel', 't_sel', 'theta']].copy()
-    sel_df.rename(columns={'condition_sel': 'condition', 't_sel': 't'}, inplace=True)
-
-    long_df = pd.concat([pre_df, sel_df], ignore_index=True)
-    long_df = long_df[long_df['t'] > 0].copy() # Drop phases with no duration
-
     # -------------------------------------------------------------------------
-    # 2. Define all parameter blocks using the helper function
+    # 1. Define all parameter blocks
     # -------------------------------------------------------------------------
 
     offset = 0
+    
     # lnA0 parameters (one per unique experimental series)
-    lnA0_idx, lnA0_df = _build_param_df(
-        df=df, base_name="lnA0", series_selector=["genotype", "replicate"], #"library", "replicate"],
+    lnA0_idx, lnA0_df = build_param_df(
+        df=df, base_name="ln_cfu_0", series_selector=["genotype", "replicate", "condition_pre"],
         guess_column="ln_cfu", transform="none", offset=offset
     )
     offset = lnA0_df["idx"].max() + 1
 
     # Global background growth parameters (k_bg_b and k_bg_m)
-    # Use a dummy column to group all rows together.
-    df['_global_selector'] = 1
-    _, k_bg_df = _build_param_df(
-        df=df, base_name="k_bg", series_selector=["_global_selector"],
-        guess_column="none", transform="none", offset=offset # Guesses added manually
+    # k_bg = b + m * titrant_conc
+    # fitted per titrant
+    k_bg_b_idx, k_bg_b_df = build_param_df(
+        df=df, base_name="k_bg_b", series_selector=["titrant_name"],
+        guess_column="none", transform="none", offset=offset 
     )
-    # Manually create the two k_bg parameters from the single group
-    k_bg_b_df = k_bg_df.copy(); k_bg_b_df['name'] = 'k_bg_b'
-    k_bg_m_df = k_bg_df.copy(); k_bg_m_df['name'] = 'k_bg_m'; k_bg_m_df['idx'] += 1
+    # Set guess for b
+    k_bg_b_df["guess"] = 0.02
+    
+    offset = k_bg_b_df["idx"].max() + 1
+    
+    k_bg_m_idx, k_bg_m_df = build_param_df(
+        df=df, base_name="k_bg_m", series_selector=["titrant_name"],
+        guess_column="none", transform="none", offset=offset 
+    )
+    # Set guess for m
+    k_bg_m_df["guess"] = 0.0
+    
     k_bg_df = pd.concat([k_bg_b_df, k_bg_m_df], ignore_index=True)
+    
     offset = k_bg_df["idx"].max() + 1
     
-    # Condition-specific parameters (dk_b and dk_m)
-    # Defined from the unified 'condition' column in the long dataframe
-    dk_idx, dk_df = _build_param_df(
-        df=long_df, base_name="dk", series_selector=["condition"],
-        guess_column="none", transform="none", offset=offset # Guesses added manually
+    # Genotype effect parameters (dk_geno)
+    dk_geno_idx, dk_geno_df = build_param_df(
+        df=df, base_name="dk_geno", series_selector=["genotype"],
+        guess_column="none", transform="none", offset=offset
     )
-    # Manually create b and m parameters for each condition
-    dk_b_df = dk_df.copy(); dk_b_df['name'] += '_b'
-    dk_m_df = dk_df.copy(); dk_m_df['name'] += '_m'; dk_m_df['idx'] += len(dk_df)
-    dk_df = pd.concat([dk_b_df, dk_m_df], ignore_index=True)
+    
+    # Fix 'wt' genotype parameter to 0 for identifiability
+    # This prevents collinearity between global background growth and genotype effect
+    dk_geno_df.loc[dk_geno_df["name"] == "dk_geno_wt", "fixed"] = True
+    dk_geno_df.loc[dk_geno_df["name"] == "dk_geno_wt", "guess"] = 0.0
+    
+    offset = dk_geno_df["idx"].max() + 1
+    
+    # Condition-specific parameters (dk_cond)
+    # We need to generate N parameters per condition, where N = num_model_params
+    
+    if per_titrant_tau:
+        # Group by condition, titrant_name, titrant_conc
+        # We only care about condition_sel here, as that's what we usually fit
+        # specifically if we want per-concentration shifts.
+        # But we need to handle condition_pre as well if it's different.
+        # Actually, for calibration, condition_pre is usually "background".
+        
+        # Let's find all unique (condition, titrant_name, titrant_conc) combos.
+        # For condition_pre, titrant is usually 0, so it will just be "cond:titrant:0"
+        pre_groups = df.apply(lambda r: f"{r['condition_pre']}:{r['titrant_name']}:0.0", axis=1)
+        sel_groups = df.apply(lambda r: f"{r['condition_sel']}:{r['titrant_name']}:{r['titrant_conc']}", axis=1)
+        unique_groups = pd.concat([pre_groups, sel_groups]).unique()
+        unique_groups = np.sort(unique_groups)
+        
+        group_to_idx_col = "dk_group"
+        df["dk_group_pre"] = pre_groups
+        df["dk_group_sel"] = sel_groups
+    else:
+        unique_groups = pd.concat([df['condition_pre'], df['condition_sel']]).unique()
+        unique_groups = np.sort(unique_groups)
+        group_to_idx_col = "condition"
 
+    dk_cond_rows = []
+    current_idx = offset
+    
+    group_to_start_idx = {}
+    
+    for group in unique_groups:
+        group_to_start_idx[group] = current_idx
+        
+        # Is this background?
+        # If per_titrant_tau, group is "cond:titrant:conc"
+        if per_titrant_tau:
+            is_bg = group.startswith("background:")
+        else:
+            is_bg = (group == "background")
+        
+        for suffix, guess, transform, desc in model_param_defs:
+            row = {
+                "class": f"dk_cond",
+                "name": f"dk_cond_{group}_{suffix}",
+                "guess": 0.0 if is_bg else guess, # Force background guesses to 0
+                "transform": transform,
+                "scale_mu": 0,
+                "scale_sigma": 1,
+                "idx": current_idx,
+                "fixed": is_bg # Fix background parameters to 0
+            }
+            dk_cond_rows.append(row)
+            current_idx += 1
+            
+        # Add shift parameters (tau, k_sharp) for this condition
+        row = {
+            "class": "dk_cond",
+            "name": f"dk_cond_{group}_tau",
+            "guess": 0.0,
+            "transform": "none",
+            "scale_mu": 0,
+            "scale_sigma": 1,
+            "idx": current_idx,
+            "fixed": is_bg
+        }
+        dk_cond_rows.append(row)
+        current_idx += 1
+
+        row = {
+            "class": "dk_cond",
+            "name": f"dk_cond_{group}_k_sharp",
+            "guess": 1.0,
+            "transform": "none",
+            "scale_mu": 0,
+            "scale_sigma": 1,
+            "idx": current_idx,
+            "fixed": is_bg
+        }
+        dk_cond_rows.append(row)
+        current_idx += 1
+            
+    dk_cond_df = pd.DataFrame(dk_cond_rows)
+    
     # Combine all parameter definitions
-    param_df = pd.concat([lnA0_df, k_bg_df, dk_df], ignore_index=True)
+    param_df = pd.concat([lnA0_df, k_bg_df, dk_geno_df, dk_cond_df], ignore_index=True)
+    
+    # Ensure 'fixed' column is boolean and No NaNs (concatenation can introduce them)
+    if "fixed" not in param_df.columns:
+        param_df["fixed"] = False
+    param_df.loc[pd.isna(param_df["fixed"]), "fixed"] = False
+    param_df["fixed"] = param_df["fixed"].astype(bool)
 
     # -------------------------------------------------------------------------
-    # 3. Construct the final design matrix X
+    # 2. Construct the data matrix X
     # -------------------------------------------------------------------------
 
-    X = np.zeros((len(df), len(param_df)))
-
-    # Populate lnA0 columns (predictor is 1)
-    X[df['_original_row_idx'], lnA0_idx] = 1.0
-
-    # Populate global k_bg columns
-    k_bg_b_idx = k_bg_df[k_bg_df['name'] == 'k_bg_b']['idx'].iloc[0]
-    k_bg_m_idx = k_bg_df[k_bg_df['name'] == 'k_bg_m']['idx'].iloc[0]
-    total_time = (df['t_pre'] + df['t_sel']).to_numpy()
-    X[:, k_bg_b_idx] = total_time
-    X[:, k_bg_m_idx] = total_time * df['titrant_conc'].to_numpy()
-
-    # Populate condition-specific dk columns using the long_df
-    # This loop adds the predictor values for each growth phase back to the
-    # appropriate row and parameter column in the main design matrix.
-    dk_b_map = pd.Series(dk_b_df['idx'].values, index=dk_b_df['condition'])
-    dk_m_map = pd.Series(dk_m_df['idx'].values, index=dk_m_df['condition'])
+    # Initialize X with zeros
+    # Columns:
+    # 0: lnA0_idx, 1: k_bg_b, 2: k_bg_m, 3: titr, 4: t_tot, 5: dk_geno, 
+    # 6: t_pre, 7: t_sel, 8: theta, 9: pre_idx, 10: sel_idx, 11: theta_pre
+    X = np.zeros((len(df), 12))
     
-    long_df['dk_b_idx'] = long_df['condition'].map(dk_b_map)
-    long_df['dk_m_idx'] = long_df['condition'].map(dk_m_map)
+    # Calculate theta_pre (baseline theta for each titrant)
+    theta_param = _fit_theta(df)
+    theta_pre_map = {k: v[0] for k, v in theta_param.items()}
     
-    # Vectorized update using np.add.at for efficiency
-    np.add.at(X, (long_df['_original_row_idx'], long_df['dk_b_idx']), long_df['t'])
-    np.add.at(X, (long_df['_original_row_idx'], long_df['dk_m_idx']), long_df['t'] * long_df['theta'])
+    X[:, 0] = lnA0_idx
+    X[:, 1] = k_bg_b_idx
+    X[:, 2] = k_bg_m_idx
+    X[:, 3] = df['titrant_conc']
+    X[:, 4] = df['t_pre'] + df['t_sel']
+    X[:, 5] = dk_geno_idx
+    X[:, 6] = df['t_pre']
+    X[:, 7] = df['t_sel']
+    X[:, 8] = df['theta']
+    X[:, 9] = df["dk_group_pre" if per_titrant_tau else "condition_pre"].map(group_to_start_idx).astype(int)
+    X[:, 10] = df["dk_group_sel" if per_titrant_tau else "condition_sel"].map(group_to_start_idx).astype(int)
+    X[:, 11] = df['titrant_name'].map(theta_pre_map).fillna(1.0).to_numpy() # Default to 1.0 if not found
     
     # -------------------------------------------------------------------------
-    # 4. Construct response vectors y_obs and y_std
+    # 3. Construct response vectors y_obs and y_std
     # -------------------------------------------------------------------------
     
-    y_obs = df["ln_cfu"].to_numpy()
-    y_std = df["ln_cfu_std"].to_numpy()
-
-    # Clean up temporary columns from the original df before returning
-    df.drop(columns=['_original_row_idx', '_global_selector'], inplace=True)
-    
-    return y_obs, y_std, X, param_df
-
-def _build_calibration_X(df, dilution=0.0196):
-    """
-    Build a design matrix that allows fitting of k and dk parameters given known
-    values for theta.
-
-    ln_cfu ~ ln_cfu_0 + pre_growth + ln(dilution) + sel_growth
-    pre_growth: (k_bg_b + k_bg_m*titrant + dk_geno + dk_pre_b + dk_pre_m*theta)*t_pre
-    sel_growth: (k_bg_b + k_bg_m*titrant + dk_geno + dk_sel_b + dk_sel_m*theta)*t_sel
-
-    We are going to describe k_bg as a linear model in titrant_conc,
-    accounting for any changes in growth rate of background cells due to change
-    in titrant but not theta. If we distribute terms to isolate individual
-    variables, we end up with the following terms, which are shared among
-    experiments by the following scheme.
-
-    1. ln_cfu_0  * (           1                ): genotype:replicate
-    2. k_bg_b    * ( t_pre + t_sel              ): titrant_name
-    3. k_bg_m    * ((t_pre + t_sel)*titrant_conc): titrant_name
-    4. dk_geno   * ( t_pre + t_sel              ): genotype, ref = wt
-    5. dk_cond_b * ( t_pre OR t_sel             ): condition, ref = background
-    6. dk_cond_m * ( t_pre OR t_sel             ): condition, ref = background
-
-    The OR on dk_cond_b comes about because a condition can either be a pre-
-    or sel-condition. We have to take care of that with a wide-to-long move
-    when constructing X.
-
-    For rows where ``t_sel > 0``, ``ln(dilution)`` is subtracted from
-    ``y_obs`` so the design matrix captures growth-only signal. The offset
-    is added back to predictions in the calling function.
-
-    Parameters
-    ----------
-    df : pandas.DataFrame
-        Prepared calibration dataframe.
-    dilution : float, optional
-        Dilution factor applied between pre-growth and selection
-        (e.g. 200 µL into 10 mL = 0.0196). Default is 0.0196.
-
-    Returns
-    -------
-    y_obs : numpy.ndarray
-        Observed log(cfu) with dilution offset subtracted for diluted rows.
-    y_std : numpy.ndarray
-        Standard errors for each observation.
-    X : numpy.ndarray
-        Design matrix.
-    param_df : pandas.DataFrame
-        Parameter definitions.
-    """
-
-    # Grab y_obs and y_std from the wide dataframe.
     y_obs = df["ln_cfu"].to_numpy().copy()
     y_std = df["ln_cfu_std"].to_numpy()
 
-    # Subtract dilution offset from rows where selection occurred so the
-    # design matrix captures growth-only signal.
-    sel_mask = df["t_sel"].to_numpy() > 0
-    y_obs[sel_mask] -= np.log(dilution)
-
-    # Make aggregate variables involving t_pre and t_sel for the linear regression
-    # before the wide to long transform. 
-    # genotype:replicate:condition_pre, t_pre + t_sel, (t_pre + t_sel)*titrant_conc
-    df["geno_rep"] = list(zip(df["genotype"],df["replicate"],df["condition_pre"]))
-    df["t_tot"] = df["t_pre"] + df["t_sel"]
-    df["t_tot_titr"] = df["t_tot"]*df["titrant_conc"]
+    # Clean up temporary columns from the original df before returning
+    df.drop(columns=['_global_selector', 'dk_group_pre', 'dk_group_sel'], inplace=True, errors='ignore')
     
-    # The dataframe has t_pre, t_sel, condition_pre and condition_sel. Convert
-    # to a long dataframe that doubles the number of rows. The pre and sel 
-    # phases each get their own row with t_pre and t_sel -> t and 
-    # condition_pre and condition_sel -> condition. 
-    df_for_reshape = df.reset_index()
-    df_long = pd.wide_to_long(
-        df_for_reshape,
-        stubnames=['t', 'condition'], # The prefixes of columns to melt
-        i='index',                    # The identifier for each row
-        j='phase',                    # The name for the new phase column
-        sep='_',                      # The separator between stubname and phase
-        suffix='(pre|sel)'            # The suffixes to look for
-    ).reset_index()
+    predictor = CalibrationPredictor(model, num_model_params, dilution)
     
-    # Create aggregate t_theta variable 
-    df_long["theta_t"] = df_long["theta"]*df_long["t"]
-    
-    model_terms = {}
-    factor_terms = {}
-
-    # Use a different ln_cfu0 for every genotype/replicate
-    model_terms["ln_cfu_0"] = "C(geno_rep)"
-    factor_terms["ln_cfu_0"] = ("genotype","replicate","condition_pre")
-    
-    # background growth vs titrant depends on titrant_name. The intercept depends
-    # on total time. The slope depends on total time multipled by titrant conc. 
-    model_terms["k_bg_b"] = "C(titrant_name):t_tot"
-    factor_terms["k_bg_b"] = "titrant_name"
-    
-    model_terms["k_bg_m"] = "C(titrant_name):t_tot_titr"
-    factor_terms["k_bg_m"] = "titrant_name"
-    
-    # The global effect of the genotype depends on genotype. Define wt parameter
-    # as 0 with Treatment('wt') syntax. 
-    model_terms["dk_geno"] = "C(genotype, Treatment('wt'))"
-    factor_terms["dk_geno"] = "genotype"
-
-    # The relationship between the known theta values and the growth rate 
-    # perturbation. Note we set the 'background' treatment has have no effect
-    # with the Treatment('background') syntax. 
-    model_terms["dk_cond_b"] = "C(condition, Treatment('background')):t"
-    factor_terms["dk_cond_b"] = "condition"
-    
-    model_terms["dk_cond_m"] = "C(condition, Treatment('background')):theta_t"
-    factor_terms["dk_cond_m"] = "condition"
-
-    # Build final formula. We're predicting ln_cfu with our model. Drop
-    # default intercept (0)
-    formula = " + ".join(model_terms.values())
-    formula = f"ln_cfu ~ 0 + {formula}"
-
-    _, X_long = patsy.dmatrices(formula,df_long,)
-
-    param_names = X_long.design_info.column_names
-    X_long_df = pd.DataFrame(X_long, columns=param_names)
-    
-    X_long_df['index'] = df_long['index']
-    
-    # Group by the original experiment and sum the contributions
-    X_final_df = X_long_df.groupby('index').sum()
-
-    # The sum just doubled the values for ln_cfu_0, k_bg*, and dk_geno. Divide
-    # by two to get the values back. 
-    cols_to_fix = [c for c in X_final_df.columns if 
-                   "geno_rep" in c or 
-                   c.endswith(':t_tot') or 
-                   c.endswith(':t_tot_titr')]
-
-    X_final_df[cols_to_fix] /= 2.0
-
-    # Get the final design matrix as a numpy array, ready for fitting
-    X = X_final_df.values
-
-    # Get param names
-    patsy_param_names = X_final_df.columns.to_numpy()
-
-    # patsy is finicky with intercepts attached continuous variables. This 
-    # drops columns that use [background] or [wt] -- both reference 
-    # conditions that should be dropped. 
-    good_mask = ~X_final_df.columns.str.contains(r"\[background\]|\[wt\]")
-
-    # Clean up X and parameter names
-    X = X[:,good_mask]
-    patsy_param_names = patsy_param_names[good_mask]
-
-    # Construct initial parameter dataframe with parameter names indexed
-    # by parameter order, linked back to the factors of the initial 
-    # dataframe. 
-    param_df = parse_patsy(df,
-                           patsy_param_names,
-                           model_terms,
-                           factor_terms)
-    
-    return y_obs, y_std, X, param_df 
+    return y_obs, y_std, X, param_df, predictor
 
 
 def setup_calibration(df,
                       ln_cfu_0_guess=16,
                       k_bg_guess=0.02,
                       no_bg_slope=False,
-                      dilution=0.0196):
+                      dilution=0.0196,
+                      model_name="linear",
+                      per_titrant_tau=False):
     """
     Prepare the calibration fit.
 
@@ -450,6 +446,9 @@ def setup_calibration(df,
     dilution : float, optional
         Dilution factor between pre-growth and selection
         (e.g. 200 µL into 10 mL = 0.0196). Default is 0.0196.
+    model_name : str, optional
+        Name of the growth linkage model to use ('linear', 'power_law', 'saturation'),
+        by default "linear".
 
     Returns
     -------
@@ -461,29 +460,46 @@ def setup_calibration(df,
     df = _prep_calibration_df(df)
 
     # Build the design matrix
-    y_obs, y_std, X, param_df = _build_calibration_X(df, dilution=dilution)
+    y_obs, y_std, X, param_df, predictor = _build_calibration_data(
+        df, 
+        model_name=model_name,
+        dilution=dilution,
+        per_titrant_tau=per_titrant_tau
+    )
 
     # Build guesses
     guesses = np.zeros(len(param_df))
+    
+    # We populate guesses from param_df if they exist (which they do from build_param_df)
+    guesses = param_df["guess"].to_numpy().copy()
 
+    # Apply overrides for ln_cfu_0 and k_bg_b if simple guesses are provided 
+    # and not already set by more specific logic (though _build_calibration_data uses 
+    # calibration guesses logic).
+    
     # ln_cfu_0
-    ln_cfu_0_mask = param_df["param_class"] == "ln_cfu_0"
-    guesses[ln_cfu_0_mask] = ln_cfu_0_guess
+    ln_cfu_0_mask = param_df["class"] == "ln_cfu_0"
+    if ln_cfu_0_guess is not None:
+        guesses[ln_cfu_0_mask] = ln_cfu_0_guess
 
     # k_bg_b
-    k_bg_b_mask = param_df["param_class"] == "k_bg_b"
-    guesses[k_bg_b_mask] = k_bg_guess
+    k_bg_b_mask = param_df["class"] == "k_bg_b"
+    if k_bg_guess is not None:
+        guesses[k_bg_b_mask] = k_bg_guess
 
     # Record the guesses
     param_df["guess"] = guesses
     
-    param_df["fixed"] = False
+    # Handle fixed background slope
     if no_bg_slope:
-        param_df.loc[param_df["param_class"] == "k_bg_m","guess"] = 0.0
-        param_df.loc[param_df["param_class"] == "k_bg_m","fixed"] = True
+        param_df.loc[param_df["class"] == "k_bg_m","guess"] = 0.0
+        param_df.loc[param_df["class"] == "k_bg_m","fixed"] = True
 
     # Build fit manager
     fm = FitManager(y_obs,y_std,X,param_df)
+    
+    # Set the prediction model
+    fm.set_model_func(predictor.predict)
 
     return fm
 
@@ -492,7 +508,9 @@ def calibrate(df,
               ln_cfu_0_guess=16,
               k_bg_guess=0.02,
               no_bg_slope=False,
-              dilution=0.0196):
+              dilution=0.0196,
+              model_name="linear",
+              per_titrant_tau=False):
     """
     Run the full calibration workflow on experimental data.
 
@@ -520,6 +538,9 @@ def calibrate(df,
     dilution : float, optional
         Dilution factor between pre-growth and selection
         (e.g. 200 µL into 10 mL = 0.0196). Default is 0.0196.
+    model_name : str, optional
+        Name of the growth linkage model to use ('linear', 'power_law', 'saturation'),
+        by default "linear".
 
     Returns
     -------
@@ -538,7 +559,9 @@ def calibrate(df,
                            ln_cfu_0_guess=ln_cfu_0_guess,
                            k_bg_guess=k_bg_guess,
                            no_bg_slope=no_bg_slope,
-                           dilution=dilution)
+                           dilution=dilution,
+                           model_name=model_name,
+                           per_titrant_tau=per_titrant_tau)
 
     # Run least squares fit
     params, std_errors, cov_matrix, _ = run_least_squares(
@@ -567,11 +590,6 @@ def calibrate(df,
     df_clean = df.drop(columns=[c for c in to_drop if c in df.columns])
     pred_df = pd.concat([df_clean,pred_df],axis=1)
 
-    # Add dilution offset back to y_obs and calc_est so they are on the
-    # same scale as the raw observed data.
-    sel_mask = pred_df["t_sel"].to_numpy() > 0
-    pred_df.loc[sel_mask, "y_obs"] += np.log(dilution)
-    pred_df.loc[sel_mask, "calc_est"] += np.log(dilution)
     # Extract parameter estimates
     param_df = fm.param_df.copy()
     param_df["est"] = fm.back_transform(params)
@@ -592,13 +610,20 @@ def calibrate(df,
     new_rows["y_std"] = np.nan
     
     # Map ln_cfu_0 from param_df to these new rows
-    lnA0_map = param_df.loc[param_df["param_class"] == "ln_cfu_0"].copy()
-    lnA0_map = lnA0_map.set_index(["genotype","replicate","condition_pre"])
+    lnA0_map_df = param_df.loc[param_df["class"] == "ln_cfu_0"].copy()
+    lnA0_map_df["genotype"] = lnA0_map_df["genotype"].astype(str)
+    lnA0_map_df["replicate"] = lnA0_map_df["replicate"].astype(str)
+    lnA0_map_df["condition_pre"] = lnA0_map_df["condition_pre"].astype(str)
+    
+    lnA0_map = lnA0_map_df.set_index(["genotype","replicate","condition_pre"])["est"]
+    lnA0_std_map = lnA0_map_df.set_index(["genotype","replicate","condition_pre"])["std"]
     
     # Get estimates and stds
-    idx = list(zip(new_rows["genotype"],new_rows["replicate"],new_rows["condition_pre"]))
-    new_rows["calc_est"] = lnA0_map.loc[idx,"est"].values
-    new_rows["calc_std"] = lnA0_map.loc[idx,"std"].values
+    lookup_df = new_rows[["genotype","replicate","condition_pre"]].astype(str)
+    lookup_idx = pd.MultiIndex.from_frame(lookup_df)
+    
+    new_rows["calc_est"] = lnA0_map.reindex(lookup_idx).values
+    new_rows["calc_std"] = lnA0_std_map.reindex(lookup_idx).values
     
     # Append new rows and sort
     pred_df = pd.concat([pred_df,new_rows],ignore_index=True)
@@ -611,23 +636,90 @@ def calibrate(df,
     # # Build output dictionary with fit results
     calibration_dict = {}
 
+    # Extract ln_cfu_0
+    tmp_df = param_df.loc[param_df["class"] == "ln_cfu_0",["genotype","replicate","condition_pre","est"]]
+    # Create a colon-separated index string: genotype:replicate:condition_pre
+    index_str = tmp_df["genotype"].astype(str) + ":" + \
+                tmp_df["replicate"].astype(str) + ":" + \
+                tmp_df["condition_pre"].astype(str)
+    calibration_dict["ln_cfu_0"] = pd.Series(tmp_df["est"].values, index=index_str).to_dict()
+
     # Extract k_bg vs. titrant slopes and interecepts
     calibration_dict["k_bg"] = {}
-    tmp_df = param_df.loc[param_df["param_class"] == "k_bg_b",["titrant_name","est"]]
+    tmp_df = param_df.loc[param_df["class"] == "k_bg_b",["titrant_name","est"]]
     calibration_dict["k_bg"]["b"] = tmp_df.set_index('titrant_name')['est'].to_dict()
-    tmp_df = param_df.loc[param_df["param_class"] == "k_bg_m",["titrant_name","est"]]
+    tmp_df = param_df.loc[param_df["class"] == "k_bg_m",["titrant_name","est"]]
     calibration_dict["k_bg"]["m"] = tmp_df.set_index('titrant_name')['est'].to_dict()
 
-    # Extract dk_cond vs. theta slopes and interecepts
+    # Extract dk_cond vs. theta parameters
+    # The structure depends on the model.
+    # We will just dump all dk_cond parameters into a sub-dictionary.
     calibration_dict["dk_cond"] = {}
-    tmp_df = param_df.loc[param_df["param_class"] == "dk_cond_m",["condition","est"]] 
-    calibration_dict["dk_cond"]["m"] = tmp_df.set_index('condition')['est'].to_dict()
-    tmp_df = param_df.loc[param_df["param_class"] == "dk_cond_b",["condition","est"]] 
-    calibration_dict["dk_cond"]["b"] = tmp_df.set_index('condition')['est'].to_dict()
+    calibration_dict["dk_cond_params"] = {} # Store raw parameter values by condition
     
-    # Put background values (defined as as 0) into dk_cond
-    calibration_dict["dk_cond"]["m"]["background"] = 0.0
-    calibration_dict["dk_cond"]["b"]["background"] = 0.0
+    # Get the suffix list from the model
+    # (re-get model to be safe, though fm has predictor.model)
+    # predictor is hidden in fm._model_func closure/class, but we can assume model_name
+    model = get_model(model_name)
+    suffixes = [p[0] for p in model.get_param_defs()]
+    suffixes.extend(["tau", "k_sharp"])
+    
+    # Iterate over unique conditions in param_df
+    # dk_cond parameters are named like "dk_cond_{condition}_{suffix}"
+    
+    # Extract all dk_cond parameters
+    dk_cond_df = param_df[param_df["class"] == "dk_cond"].copy()
+    
+    # We need to map back to condition. 
+    # Name format: dk_cond_{condition}_{suffix}
+    # This is slightly fragile if condition has underscores and matches suffix. 
+    # But suffix is from fixed set.
+    
+    # Safer way: earlier construction used name = f"dk_cond_{cond}_{suffix}"
+    # regex extract?
+    
+    for suffix in suffixes:
+        # Create a dictionary for this parameter type (e.g. "m", "b", "n", "min", "max") 
+        calibration_dict["dk_cond"][suffix] = {}
+        
+        # Filter for names ending in _{suffix}
+        mask = dk_cond_df["name"].str.endswith(f"_{suffix}")
+        sub_df = dk_cond_df[mask]
+        
+        for _, row in sub_df.iterrows():
+            # extract condition from name: dk_cond_{cond}_{suffix}
+            # Remove prefix and suffix
+            cond = row["name"][len("dk_cond_") : -len(f"_{suffix}")]
+            calibration_dict["dk_cond"][suffix][cond] = row["est"]
+            
+        # If we have granular keys, also store a "base" condition average for
+        # fallback/plotting (e.g., in summary plots).
+        if per_titrant_tau:
+            bases = {}
+            for k, v in calibration_dict["dk_cond"][suffix].items():
+                if ":" in k:
+                    b = k.split(":")[0]
+                    if b not in bases: bases[b] = []
+                    bases[b].append(v)
+            
+            for b, vals in bases.items():
+                if b not in calibration_dict["dk_cond"][suffix]:
+                    calibration_dict["dk_cond"][suffix][b] = np.mean(vals)
+
+        # Ensure background is 0 (it was fixed, so est should be 0/guess)
+        calibration_dict["dk_cond"][suffix]["background"] = 0.0
+
+    # Extract dk_geno
+    calibration_dict["dk_geno"] = {}
+    tmp_df = param_df.loc[param_df["class"] == "dk_geno", ["name", "est"]]
+    for i, r in tmp_df.iterrows():
+        # name is dk_geno_{genotype}
+        if r["name"].startswith("dk_geno_"):
+            geno = r["name"][8:] 
+            calibration_dict["dk_geno"][geno] = r["est"]
+
+    calibration_dict["model_name"] = model_name
+    calibration_dict["per_titrant_tau"] = per_titrant_tau
 
     # Write out theta fit
     calibration_dict["theta_param"] = theta_param

@@ -22,6 +22,9 @@ from tfscreen.genetics import (
 )
 
 from tfscreen.analysis.independent.get_indiv_growth import get_indiv_growth
+from tfscreen.util.design import build_param_df
+from tfscreen.models.growth_linkage import get_model
+from tfscreen.models.occupancy_growth_model import OccupancyGrowthModel
 
 import numpy as np
 import pandas as pd
@@ -30,7 +33,8 @@ from tqdm.auto import tqdm
 
 def _prep_inference_df(df,
                        calibration_data,
-                       max_batch_size):
+                       max_batch_size,
+                       model_name=None):
     """
     Prepare a DataFrame for regression analysis.
 
@@ -157,27 +161,98 @@ def _prep_inference_df(df,
     # Read calibration data
     calibration_data = read_calibration(calibration_data)
     
+    # Check for model name, default to linear if missing (backward compatibility)
+    if model_name is None:
+        model_name = calibration_data.get("model_name", "linear")
+        
+    model = get_model(model_name)
+    model_param_defs = model.get_param_defs()
+    suffixes = [p[0] for p in model_param_defs]
+    suffixes.extend(["tau", "k_sharp"])
+
     # Background slope and titrant vs titrant
     bg_df = calibration_data["k_bg_df"]
-    k_bg_m = bg_df.loc[df["titrant_name"],"m"].to_numpy()
-    k_bg_b = bg_df.loc[df["titrant_name"],"b"].to_numpy()
+    
+    # Background slope and titrant vs titrant
+    bg_df = calibration_data["k_bg_df"]
+    
+    # Calculate k_bg for each row: k_bg = b + m * titrant_conc
+    # bg_df is indexed by titrant_name
+    k_bg_m_map = bg_df["m"]
+    k_bg_b_map = bg_df["b"]
+    
+    k_bg_m = df["titrant_name"].map(k_bg_m_map).to_numpy()
+    k_bg_b = df["titrant_name"].map(k_bg_b_map).to_numpy()
+    
+    # Compute total background growth rate
+    df["k_bg"] = k_bg_b + k_bg_m * df["titrant_conc"]
 
-    # Condition slope and intercept vs. theta
-    dk_df = calibration_data["dk_cond_df"]
-    dk_m_pre = dk_df.loc[df["condition_pre"],"m"].to_numpy()
-    dk_b_pre = dk_df.loc[df["condition_pre"],"b"].to_numpy()
-    dk_m_sel = dk_df.loc[df["condition_sel"],"m"].to_numpy()
-    dk_b_sel = dk_df.loc[df["condition_sel"],"b"].to_numpy()
+    # Condition parameters
+    # We need to map condition_pre/sel -> params
 
-    # Record these values as entries in the dataframe. 
-    df["k_bg_m"] = k_bg_m
-    df["k_bg_b"] = k_bg_b
-    df["dk_m_pre"] = dk_m_pre
-    df["dk_b_pre"] = dk_b_pre
-    df["dk_m_sel"] = dk_m_sel
-    df["dk_b_sel"] = dk_b_sel
+    # If "dk_cond" in dict is dict of dicts:
+    dk_cond_data = calibration_data.get("dk_cond", {})
+    
+    # Helper to map params
+    def map_params(condition_col, prefix):
+        for suffix in suffixes:
+            # Check if we have this suffix
+            if suffix not in dk_cond_data:
+                # Fallback for "linear" if using old calibration file that had "m" and "b" but no "model_name"
+                # Old keys: "dk_cond_m", "dk_cond_b" in calibration_data?
+                # or calibration_data["dk_cond"]["m"]?
+                pass
+            
+            # Map values
+            # dk_cond_data[suffix] is {condition: value}
+            param_map = dk_cond_data[suffix]
+            # Handle if map is Series (if read_calibration converted it)
+            if hasattr(param_map, "get"):
+                vals = df[condition_col].map(param_map)
+            else:
+                 # If it's a dataframe or something else
+                 pass
+            
+            # If using old calibration data (linear), "dk_cond_df" might be present with "m" and "b".
+            # The code I wrote in calibrate saved to "dk_cond" -> {suffix: {cond: val}}.
+            
+            df[f"{prefix}_{suffix}"] = vals
 
-    return df
+    # If new format exists
+    if isinstance(dk_cond_data, dict) and len(dk_cond_data) > 0:
+        per_titrant_tau = calibration_data.get("per_titrant_tau", False)
+        for suffix in suffixes:
+            param_map = dk_cond_data[suffix]
+            
+            if per_titrant_tau:
+
+                pre_keys = df.apply(lambda r: f"{r['condition_pre']}:{r['titrant_name']}:0.0", axis=1)
+                sel_keys = df.apply(lambda r: f"{r['condition_sel']}:{r['titrant_name']}:{r['titrant_conc']}", axis=1)
+                
+                # Optimized map with fallback
+                def map_with_fallback(keys, cond_col):
+                    # Try granular first
+                    res = keys.map(param_map)
+                    # For those that failed, try condition only
+                    mask = res.isna()
+                    if mask.any():
+                        res.loc[mask] = df.loc[mask, cond_col].map(param_map)
+                    return res
+
+                df[f"dk_pre_{suffix}"] = map_with_fallback(pre_keys, "condition_pre")
+                df[f"dk_sel_{suffix}"] = map_with_fallback(sel_keys, "condition_sel")
+            else:
+                df[f"dk_pre_{suffix}"] = df["condition_pre"].map(param_map)
+                df[f"dk_sel_{suffix}"] = df["condition_sel"].map(param_map)
+    else:
+        # Fallback for old linear calibration files
+        # They usually have dk_cond_df with m and b cols.
+        dk_df = calibration_data["dk_cond_df"]
+        df["dk_pre_m"] = dk_df.loc[df["condition_pre"],"m"].to_numpy()
+        df["dk_pre_b"] = dk_df.loc[df["condition_pre"],"b"].to_numpy()
+        df["dk_sel_m"] = dk_df.loc[df["condition_sel"],"m"].to_numpy()
+        df["dk_sel_b"] = dk_df.loc[df["condition_sel"],"b"].to_numpy()
+    return df, model_name
 
 def _prep_param_guesses(df,
                         non_sel_conditions,
@@ -219,7 +294,7 @@ def _prep_param_guesses(df,
     - ``wt_theta``: Initial guess for the fractional occupancy of the binding
       site, calculated assuming a wild-type response to the titrant.
     """
-
+    
     # _dk_geno_mask is a boolean mask holding whether a condition has no
     # selection and thus is a good sample to try to get a guess of 
     # dk_geno (the global effect of the genotype on growth independent of
@@ -227,26 +302,30 @@ def _prep_param_guesses(df,
     df["_dk_geno_mask"] = df["condition_sel"].isin(non_sel_conditions)
 
     # genotype/library/replicate uniquely specifies a series that will 
-    # have its own lnA0 that must be estimated. 
-    series_selector = ["genotype","library","replicate"]
+    # have its own lnA0 that must be estimated. But for *growth rate* estimation,
+    # we must fit each condition separately.
+    lnA0_selector = ["genotype","library","replicate"]
+    fit_series_selector = ["genotype","library","replicate", "titrant_name", "titrant_conc"]
 
     # Run individual fits on all genotype/library/replicate growth rates. 
     indiv_param_df, _ = get_indiv_growth(df,
-                                         series_selector=series_selector,
+                                         series_selector=fit_series_selector,
                                          calibration_data=calibration_data,
                                          dk_geno_selector=["genotype"],
                                          dk_geno_mask_col="_dk_geno_mask",
-                                         lnA0_selector=series_selector)
+                                         lnA0_selector=lnA0_selector)
 
     # make sure the genotype column is preserved as a category (which preserves
     # it's pretty sorting). 
     indiv_param_df["genotype"] = indiv_param_df["genotype"].astype(df["genotype"].dtype)
-    
-    # Grab guess values from the individual fits. This will bring lnA0_est 
-    # and dk_geno into the parameter dataframe.
-    df = df.merge(indiv_param_df,
-                  on=series_selector,
-                  how='left')
+    if "titrant_conc" in indiv_param_df.columns:
+        indiv_param_df["titrant_conc"] = indiv_param_df["titrant_conc"].astype(float)
+        
+    # Merge estimates back into the main dataframe so we can use them to build
+    # guesses for the final fit parameters.
+    df = pd.merge(df, indiv_param_df,
+                  on=fit_series_selector,
+                  how="left")
     
     # Get the theta for wildtype under these conditions
     df["wt_theta"] = get_wt_theta(df["titrant_name"].to_numpy(),
@@ -353,64 +432,98 @@ def _build_param_df(df,
     return df_idx, final_df
 
     
-def _setup_inference(df, logistic_theta=False):
+
+class InferencePredictor:
+    """Wrapper to handle non-linear inference predictions."""
+    def __init__(self, model, num_model_params, dilution):
+        self.model = model
+        self.num_model_params = num_model_params
+        self.dilution = dilution
+        self._growth_model = OccupancyGrowthModel()
+
+    def predict(self, params, X):
+        """
+        Predict ln_cfu (offset adjusted) based on parameters and design matrix X.
+        
+        X layout:
+        0: lnA0_idx
+        1: dk_geno_idx
+        2: theta_idx
+        3: t_total
+        4: t_pre
+        5: t_sel
+        6..N: params_pre
+        N..M: params_sel
+        """
+        # Extract indices from first row (same for all rows in a batch?)
+        # X Cols: lnA0_idx(0), dk_geno_idx(1), theta_idx(2), ...
+        lnA0_idx = X[:, 0].astype(int)
+        dk_geno_idx = X[:, 1].astype(int)
+        theta_idx = X[:, 2].astype(int)
+        
+        # Unpack floats
+        # t_total = X[:, 3] # Unused now
+        t_pre = X[:, 4]
+        t_sel = X[:, 5]
+        
+        # Extract model params for pre and sel
+        # Shape of X is (N_obs, 6 + 2*(num_model_params + 2))
+        # params_pre starts at 6
+        pre_start = 6
+        sel_start = 6 + self.num_model_params + 2
+        
+        params_pre_all = X[:, pre_start : sel_start]
+        params_sel_all = X[:, sel_start : sel_start + self.num_model_params + 2]
+
+        # Split into model params and shift parameters (tau, k_sharp)
+        params_pre = params_pre_all[:, :-2]
+        
+        params_sel = params_sel_all[:, :-2]
+        tau_sel = params_sel_all[:, -2]
+        k_sel = params_sel_all[:, -1]
+        
+        # Get parameter values
+        ln_cfu0 = params[lnA0_idx]
+        dk_geno = params[dk_geno_idx]
+        theta = params[theta_idx]
+        
+        # Predict growth pertubations
+        dk_pre = self.model.predict(theta, params_pre.T)
+        dk_sel = self.model.predict(theta, params_sel.T)
+        
+        # Calculate full growth rates
+        mu1 = dk_geno + dk_pre
+        mu2 = dk_geno + dk_sel
+        
+        # Use centralized model
+        return self._growth_model.predict_trajectory(
+            t_pre=t_pre,
+            t_sel=t_sel,
+            ln_cfu0=ln_cfu0,
+            mu1=mu1,
+            mu2=mu2,
+            dilution=self.dilution,
+            tau=tau_sel,
+            k_sharp=k_sel
+        )
+
+def _setup_inference(df, logistic_theta=False, model_name="linear", dilution=1.0):
     """
     Assemble the final design matrix and response vector for regression.
-
-    This function serves as the final step in preparing data for a
-    least-squares fit. It orchestrates the creation of the complete parameter
-    specification dataframe (`param_df`) by calling the `_build_param_df`
-    helper for each parameter class (`lnA0`, `dk_geno`, `theta`). It then uses
-    the parameter definitions and indices to construct the final design matrix
-    `X` and the response vector `y_obs`.
-
-    Parameters
-    ----------
-    df : pandas.DataFrame
-        A fully prepared dataframe, typically from `_prep_param_guesses`. It
-        must contain all columns needed for parameter assignment (e.g.,
-        'genotype', 'library') and for predictor value calculation (e.g.,
-        't_pre', 't_sel', 'dk_m_pre').
-    logistic_theta : bool, optional
-        Whether to use a "logistic" transform for the `theta` variable. If
-        False (default), use "none".
-
-    Returns
-    -------
-    y_obs : numpy.ndarray
-        A 1D array of shape (n_obs,) representing the response variable. This
-        is the observed log(cfu) with all known constant growth terms
-        subtracted out.
-    y_std : numpy.ndarray
-        A 1D array of shape (n_obs,) holding the standard error for each
-        observation in ``y_obs``.
-    X : numpy.ndarray
-        A 2D design matrix of shape (n_obs, n_params). Each row is an
-        observation and each column corresponds to a model parameter.
-    param_df : pandas.DataFrame
-        A dataframe where each row corresponds to a column in ``X``, defining
-        the parameter's name, class, initial guess, and transformation.
-
-    Notes
-    -----
-    The function constructs `X` and `y_obs` to represent the linear model:
-    `y_obs ≈ X @ p`, where `p` is the vector of parameters to be fit.
-    This corresponds to the underlying model for log-growth:
-    `ln(cfu) - constants ≈ lnA0 + dk_geno*t_total + theta*mtp_mts`
     """
+    
+    model = get_model(model_name)
+    model_param_defs = model.get_param_defs()
+    num_model_params = len(model_param_defs)
+    suffixes = [p[0] for p in model_param_defs]
+    suffixes.extend(["tau", "k_sharp"])
 
     # -----------------------------------------------------------------------------
     # Infer column/value combination to parameter mapping. 
 
-    # Each of these calls builds a dataframe with parameters for all unique 
-    # combinations of the selector (lnA0_selector, etc.) and then populates that
-    # dataframe with guesses and parameter transformation info. The function
-    # also returns an index (lnA0_idx, etc.) that indicates which rows in the main
-    # dataframe correspond to which parameters in the parameter dataframe. 
-
     offset = 0
     lnA0_selector = ["genotype","library","replicate"]
-    lnA0_idx, lnA0_df = _build_param_df(
+    lnA0_idx, lnA0_df = build_param_df(
         df=df,
         base_name="lnA0",
         series_selector=lnA0_selector,
@@ -422,7 +535,7 @@ def _setup_inference(df, logistic_theta=False):
     offset = lnA0_df["idx"].max() + 1
     
     dk_geno_selector = ["genotype"]
-    dk_geno_idx, dk_geno_df = _build_param_df(
+    dk_geno_idx, dk_geno_df = build_param_df(
         df=df,
         base_name="dk_geno",
         series_selector=dk_geno_selector,
@@ -436,7 +549,7 @@ def _setup_inference(df, logistic_theta=False):
     transform = "logistic" if logistic_theta else "none"
 
     theta_selector = ["genotype","titrant_name","titrant_conc"]
-    theta_idx, theta_df = _build_param_df(
+    theta_idx, theta_df = build_param_df(
         df=df,
         base_name="theta",
         series_selector=theta_selector,
@@ -453,27 +566,63 @@ def _setup_inference(df, logistic_theta=False):
     # -----------------------------------------------------------------------------
     # Construct design matrix
     
-    # Initialize design matrix
-    X = np.zeros((df.shape[0],param_df.shape[0]),dtype=float)
+    # Cols: lnA0_idx(0), dk_geno_idx(1), theta_idx(2), t_total(3), t_pre(4), t_sel(5),
+    #       [params_pre (6..)], [params_sel (..)]
+    # Each condition block now has num_model_params + 2 (for tau and k_sharp)
+    num_cols = 6 + 2 * (num_model_params + 2)
+    X = np.zeros((df.shape[0], num_cols), dtype=float)
     
-    # Populate design matrix
-    row_indexer = np.arange(X.shape[0],dtype=int)
-    X[row_indexer,lnA0_idx] = np.ones(len(df),dtype=float)
-    X[row_indexer,dk_geno_idx] = df["t_pre"] + df["t_sel"]
-    X[row_indexer,theta_idx] = df["dk_m_pre"]*df["t_pre"] + df["dk_m_sel"]*df["t_sel"]
+    X[:, 0] = lnA0_idx
+    X[:, 1] = dk_geno_idx
+    X[:, 2] = theta_idx
+    X[:, 3] = df["t_pre"] + df["t_sel"]
+    X[:, 4] = df["t_pre"]
+    X[:, 5] = df["t_sel"]
+    
+    # Fill model params
+    # We expect columns like "dk_pre_{suffix}" to exist in df
+    current_col = 6
+    for suffix in suffixes:
+        col_name = f"dk_pre_{suffix}"
+        if col_name in df.columns:
+             X[:, current_col] = df[col_name]
+        else:
+             # Fallback for old linear names
+             if model_name == "linear":
+                 if suffix == "m": X[:, current_col] = df.get("dk_m_pre", 0.0)
+                 if suffix == "b": X[:, current_col] = df.get("dk_b_pre", 0.0)
+             if suffix == "tau": X[:, current_col] = 0.0
+             if suffix == "k_sharp": X[:, current_col] = 1.0
+        current_col += 1
+        
+    for suffix in suffixes:
+        col_name = f"dk_sel_{suffix}"
+        if col_name in df.columns:
+             X[:, current_col] = df[col_name]
+        else:
+             if model_name == "linear":
+                 if suffix == "m": X[:, current_col] = df.get("dk_m_sel", 0.0)
+                 if suffix == "b": X[:, current_col] = df.get("dk_b_sel", 0.0)
+             if suffix == "tau": X[:, current_col] = 0.0
+             if suffix == "k_sharp": X[:, current_col] = 1.0
+        current_col += 1
 
     # -----------------------------------------------------------------------------
     # build y_obs and y_std
     
     # Build final y_obs  (ln_cfu - constant terms)
-    k_bg = df["k_bg_b"] + df["k_bg_m"]*df["titrant_conc"]
-    y_offset = (k_bg + df["dk_b_pre"])*df["t_pre"] + (k_bg + df["dk_b_sel"])*df["t_sel"]
+    # k_bg is constant (parameters fixed).
+    # t_total * k_bg
+    y_offset = df["k_bg"] * (df["t_pre"] + df["t_sel"])
     y_obs = (df["ln_cfu"] - y_offset).to_numpy()
 
     # y_std is unchanged
+    # y_std is unchanged
     y_std = df["ln_cfu_std"].to_numpy()
+        
+    predictor = InferencePredictor(model, num_model_params, dilution=dilution)
 
-    return y_obs, y_std, X, param_df
+    return y_obs, y_std, X, param_df, predictor
 
 
 def _run_inference(fm):
@@ -527,14 +676,20 @@ def _run_inference(fm):
         )
 
     # Run least squares fit
-    params, std_errors, cov_matrix, _ = run_least_squares(
+    guesses = np.clip(fm.guesses_transformed, 
+                      fm.lower_bounds_transformed,
+                      fm.upper_bounds_transformed)
+    
+
+    params, std_errors, cov_matrix, fit = run_least_squares(
         fm.predict_from_transformed,
         obs=fm.y_obs,
         obs_std=fm.y_std,
-        guesses=clipped_guesses,
+        guesses=guesses,
         lower_bounds=fm.lower_bounds_transformed,
         upper_bounds=fm.upper_bounds_transformed
     )
+    
     
     # Make predictions at each data point and store
     pred, pred_std = predict_with_error(fm.predict_from_transformed,
@@ -548,10 +703,17 @@ def _run_inference(fm):
                             "calc_std":pred_std})
 
     # Extract parameter estimates
-    param_df = fm.param_df.copy()
+    param_df = fm.param_df.copy()    # Extract parameters
     param_df["est"] = fm.back_transform(params)
     param_df["std"] = fm.back_transform_std_err(params,std_errors)
 
+    
+    # Add grouping columns to param_df. 
+    # This assumes we want to parse the "name" column or rely on "class" + "idx"?
+    # The original logic might have relied on "param_class".
+    # Since we built this using build_param_df, it has "class" and "name".
+    # We can perform any necessary clean up here. 
+    
     return param_df, pred_df
 
 
@@ -559,7 +721,8 @@ def cfu_to_theta(df,
                  non_sel_conditions,
                  calibration_data,
                  max_batch_size=250,
-                 logistic_theta=False):
+                 logistic_theta=False,
+                 model_name=None):
     """
     Estimate transcription factor occupancy (theta) from cell growth data.
 
@@ -607,16 +770,29 @@ def cfu_to_theta(df,
     """
     
     
+    # Prepare calibration data
+    calibration_data = read_calibration(calibration_data)
+    
     # Prepare dataframe, creating all necessary columns etc. 
-    df = _prep_inference_df(df,
-                            max_batch_size=max_batch_size,
-                            calibration_data=calibration_data)
+    # cfu_to_theta is the main entry point
+    df = df.copy()
+    
+    # Enforce titrant_conc is float for proper grouping and math
+    if "titrant_conc" in df.columns:
+        try:
+            df["titrant_conc"] = df["titrant_conc"].astype(float)
+        except Exception:
+            pass
+        
+    df, model_name = _prep_inference_df(df,
+                                        max_batch_size=max_batch_size,
+                                        calibration_data=calibration_data,
+                                        model_name=model_name)
     
     # get parameter guesses
     df = _prep_param_guesses(df,
                              non_sel_conditions=non_sel_conditions,
-                             calibration_data=calibration_data)
-
+                              calibration_data=calibration_data)
     
     # Lists to store batch-wise results
     batch_param_dfs = []
@@ -625,12 +801,20 @@ def cfu_to_theta(df,
     # For batches of genotypes...
     for batch_idx, batch_df in tqdm(df.groupby(["_batch_idx"])):
 
+        # Extract dilution
+        dilution = calibration_data.get("dilution", 0.0196)
+
         # Build the design matrix
-        y_obs, y_std, X, fit_param_df = _setup_inference(batch_df,
-                                                         logistic_theta=logistic_theta)
+        y_obs, y_std, X, fit_param_df, predictor = _setup_inference(
+            batch_df,
+            logistic_theta=logistic_theta,
+            model_name=model_name,
+            dilution=dilution
+        )
 
         # Construct a FitManager object to manage the fit. 
         fm = FitManager(y_obs,y_std,X,fit_param_df)
+        fm.set_model_func(predictor.predict)
 
         # Run the inference
         batch_param_df, batch_pred_df = _run_inference(fm)

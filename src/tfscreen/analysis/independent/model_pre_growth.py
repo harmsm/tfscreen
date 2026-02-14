@@ -170,7 +170,6 @@ def model_pre_growth(k_est,
     """
 
     # --- Parameter Sanity Checking ---
-    # (Validation code remains here, with a new check for dk_geno_mask)
     if not (k_est.ndim == 1 and k_est.shape == lnA0_est.shape and k_est.shape == lnA0_std.shape):
         raise ValueError("k_est, lnA0_est, and lnA0_std must be 1D arrays of the same length.")
 

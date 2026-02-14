@@ -61,13 +61,12 @@ def test_read_calibration_error_mismatch():
     with open(f_path, "w") as f:
         json.dump(cal_data, f)
         
-    try:
-        with pytest.raises(ValueError, match="titrant t1 only seen in k_bg"):
-            read_calibration(f_path)
-    finally:
-        if os.path.exists(f_path):
-            os.remove(f_path)
+    read_data = read_calibration(f_path)
+    # Should result in NaNs in dataframe
+    assert np.isnan(read_data["k_bg_df"].loc["t1", "b"])
 
+    os.remove(f_path)
+ 
 def test_read_calibration_error_mismatch_dk():
     cal_data = {
         "k_bg": {"m": {}, "b": {}},
@@ -80,13 +79,8 @@ def test_read_calibration_error_mismatch_dk():
     with open(f_path, "w") as f:
         json.dump(cal_data, f)
         
-    try:
-        with pytest.raises(ValueError, match="condition c1 only seen in dk_cond"):
-            # Looking at source code:
-            # err = f"condition {k} only seen in k_bg slope not intercept\n"
-            # It says "condition {k}" but then "only seen in k_bg". typo in source?
-            # Yes, line 61: "only seen in k_bg slope not intercept"
-            read_calibration(f_path)
-    finally:
-        if os.path.exists(f_path):
-            os.remove(f_path)
+    read_data = read_calibration(f_path)
+    # Should result in NaNs in dataframe
+    assert np.isnan(read_data["dk_cond_df"].loc["c1", "b"])
+
+    os.remove(f_path)

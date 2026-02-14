@@ -62,19 +62,28 @@ class TestPrepInferenceDF:
         mocker.patch("tfscreen.analysis.independent.cfu_to_theta.read_calibration", return_value=calibration_data)
         
         # ACT
-        result_df = _prep_inference_df(base_df, calibration_data, max_batch_size=10)
+        result_df, _ = _prep_inference_df(base_df, calibration_data, max_batch_size=10)
 
         # ASSERT
         # Check for new columns
-        expected_new_cols = ['_batch_idx', 'k_bg_m', 'k_bg_b', 'dk_m_pre', 
-                             'dk_b_pre', 'dk_m_sel', 'dk_b_sel']
+        # ASSERT
+        # Check for new columns
+        # k_bg_m/b are not stored, only k_bg is.
+        # dk columns are named dk_pre_m, dk_pre_b etc.
+        expected_new_cols = ['_batch_idx', 'k_bg', 'dk_pre_m', 
+                             'dk_pre_b', 'dk_sel_m', 'dk_sel_b']
         for col in expected_new_cols:
             assert col in result_df.columns
         
         # Check values of merged calibration data
-        assert np.allclose(result_df['k_bg_m'], 0.1)
-        assert np.allclose(result_df['dk_m_pre'], 0.5)
-        assert np.allclose(result_df['dk_m_sel'], 1.2)
+        # k_bg = b + m*titrant (t=10 or 100). m=0.1, b=0.05.
+        # k_bg(10) = 0.05 + 0.1*10 = 1.05
+        # k_bg(100) = 0.05 + 0.1*100 = 10.05
+        
+        # dk_pre_m (condition M9). m=0.5
+        assert np.allclose(result_df['dk_pre_m'], 0.5)
+        # dk_sel_m (condition M9+Ab). m=1.2
+        assert np.allclose(result_df['dk_sel_m'], 1.2)
         
         # Check dtypes and batching
         assert result_df['replicate'].dtype == 'Int64'
@@ -175,7 +184,7 @@ class TestPrepInferenceDF:
         max_batch_size = 2
 
         # ACT
-        result_df = _prep_inference_df(base_df, calibration_data, max_batch_size)
+        result_df, _ = _prep_inference_df(base_df, calibration_data, max_batch_size)
 
         # ASSERT
         # There should be 4 batches wt or A1V with each condition
