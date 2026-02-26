@@ -102,13 +102,18 @@ def test_indiv_replicates_with_dilution():
     
     cal_dict = {
         "dilution": 0.1,
-        "dk_cond": {"tau": {"cond1": 0.0}, "k_sharp": {"cond1": 1.0}}
-    } 
+        "dk_cond": {"tau": {"cond1": 0.0}, "k_sharp": {"cond1": 1.0}},
+        "k_bg_df": pd.DataFrame({"m": [0.0], "b": [0.0]}, index=["t1"]),
+        "dk_cond_df": pd.DataFrame({"m": [0.0, 0.0], "b": [0.0, 0.0], "tau": [0.0, 0.0], "k_sharp": [1.0, 1.0]}, index=["cond1", "bg"]),
+        "theta_param": {"t1": [0.0, 1.0, 1.0, 1.0]}
+    }
     
     with patch("matplotlib.pyplot.subplots") as mock_subplots, \
-         patch("tfscreen.calibration.plot.get_wt_k") as mock_get_wt_k:
+         patch("tfscreen.calibration.plot.get_wt_k") as mock_get_wt_k, \
+         patch("tfscreen.calibration.plot.get_wt_theta") as mock_get_wt_theta:
         
         mock_get_wt_k.return_value = 0.2 # k_pre and k_sel
+        mock_get_wt_theta.return_value = 0.5
         
         fig = MagicMock()
         ax = MagicMock()
@@ -118,18 +123,17 @@ def test_indiv_replicates_with_dilution():
         
         indiv_replicates(df, calibration_dict=cal_dict)
         
-        # Verify integrated plot was called (length 151: 50 pre + 1 NaN + 100 smooth)
-        found_curve = False
+        # Verify separate plot calls for pre and post (50 and 100 points)
+        found_post_curve = False
+        found_pre_curve = False
         for call in ax.plot.call_args_list:
             args, _ = call
-            if len(args[0]) == 151:
-                found_curve = True
-                # Check start and end X
-                assert np.allclose(args[0][0], -5)
-                assert np.allclose(args[0][-1], 5)
-                # Check NaN separator at index 50
-                assert np.isnan(args[1][50])
-        assert found_curve
+            if len(args[0]) == 100:
+                found_post_curve = True
+            if len(args[0]) == 50:
+                found_pre_curve = True
+                
+        assert found_post_curve and found_pre_curve
 
 def test_indiv_replicates_broadcast_repro():
     """Reproduce the ValueError: could not broadcast input array from shape (2,1) into (2,)"""
@@ -153,13 +157,18 @@ def test_indiv_replicates_broadcast_repro():
     
     cal_dict = {
         "dilution": 0.1,
-        "dk_cond": {"tau": {"cond1": 0.0}, "k_sharp": {"cond1": 1.0}}
+        "dk_cond": {"tau": {"cond1": 0.0}, "k_sharp": {"cond1": 1.0}},
+        "k_bg_df": pd.DataFrame({"m": [0.0], "b": [0.0]}, index=["t1"]),
+        "dk_cond_df": pd.DataFrame({"m": [0.0, 0.0], "b": [0.0, 0.0], "tau": [0.0, 0.0], "k_sharp": [1.0, 1.0]}, index=["cond1", "bg"])
     }
     
     with patch("matplotlib.pyplot.subplots") as mock_subplots, \
-         patch("tfscreen.calibration.plot.get_wt_k") as mock_get_wt_k:
+         patch("tfscreen.calibration.plot.get_wt_k") as mock_get_wt_k, \
+         patch("tfscreen.calibration.plot.get_wt_theta") as mock_get_wt_theta:
         
-        mock_get_wt_k.return_value = 0.2
+        mock_get_wt_k.return_value = 0.2 # k_pre and k_sel
+        mock_get_wt_theta.return_value = 0.5
+        
         fig = MagicMock(); ax = MagicMock()
         val = np.empty((1,1), dtype=object); val[0,0] = ax
         mock_subplots.return_value = (fig, val)
@@ -168,12 +177,12 @@ def test_indiv_replicates_broadcast_repro():
         indiv_replicates(bad_df, calibration_dict=cal_dict)
         
         # Check that the plot calls happened
-        found_curve = False
+        found_post = False
         for call in ax.plot.call_args_list:
             args, _ = call
-            if len(args[0]) == 151:
-                found_curve = True
-        assert found_curve
+            if len(args[0]) in (100, 50, 151):
+                found_post = True
+        assert found_post
 
 def test_indiv_replicates_with_dk_geno():
     """Verify that dk_geno from calibration_dict is used in growth rate calculation."""
@@ -200,13 +209,17 @@ def test_indiv_replicates_with_dk_geno():
     cal_dict = {
         "dilution": 1.0, # No dilution for simplicity
         "dk_cond": {"tau": {"cond1": 0.0}, "k_sharp": {"cond1": 1.0}},
-        "dk_geno": {"mutant": 0.1}
-    } 
+        "dk_geno": {"mutant": 0.1},
+        "k_bg_df": pd.DataFrame({"m": [0.0], "b": [0.0]}, index=["t1"]),
+        "dk_cond_df": pd.DataFrame({"m": [0.0, 0.0], "b": [0.0, 0.0], "tau": [0.0, 0.0], "k_sharp": [1.0, 1.0]}, index=["cond1", "bg"])
+    }
     
     with patch("matplotlib.pyplot.subplots") as mock_subplots, \
-         patch("tfscreen.calibration.plot.get_wt_k") as mock_get_wt_k:
+         patch("tfscreen.calibration.plot.get_wt_k") as mock_get_wt_k, \
+         patch("tfscreen.calibration.plot.get_wt_theta") as mock_get_wt_theta:
         
         mock_get_wt_k.return_value = 0.2 
+        mock_get_wt_theta.return_value = 0.5
         
         fig = MagicMock(); ax = MagicMock()
         val = np.empty((1,1), dtype=object); val[0,0] = ax

@@ -62,7 +62,7 @@ class TestPrepInferenceDF:
         mocker.patch("tfscreen.analysis.independent.cfu_to_theta.read_calibration", return_value=calibration_data)
         
         # ACT
-        result_df, _ = _prep_inference_df(base_df, calibration_data, max_batch_size=10)
+        result_df, _, _, _ = _prep_inference_df(base_df, calibration_data, max_batch_size=10)
 
         # ASSERT
         # Check for new columns
@@ -184,7 +184,7 @@ class TestPrepInferenceDF:
         max_batch_size = 2
 
         # ACT
-        result_df, _ = _prep_inference_df(base_df, calibration_data, max_batch_size)
+        result_df, _, _, _ = _prep_inference_df(base_df, calibration_data, max_batch_size)
 
         # ASSERT
         # There should be 4 batches wt or A1V with each condition

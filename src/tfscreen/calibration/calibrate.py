@@ -24,6 +24,7 @@ from tfscreen.util.dataframe import (
 )
 from tfscreen.util.design import build_param_df
 from tfscreen.models.growth_linkage import get_model
+from tfscreen.models.transition_linkage import get_transition_model
 from tfscreen.models.occupancy_growth_model import OccupancyGrowthModel
 
 def _fit_theta(df):
@@ -132,9 +133,11 @@ def _prep_calibration_df(df):
 
 class CalibrationPredictor:
     """Wrapper to handle non-linear calibration predictions."""
-    def __init__(self, model, num_model_params, dilution):
-        self.model = model
-        self.num_model_params = num_model_params
+    def __init__(self, growth_model, transition_model, num_growth_params, num_transition_params, dilution):
+        self.growth_model = growth_model
+        self.transition_model = transition_model
+        self.num_growth_params = num_growth_params
+        self.num_transition_params = num_transition_params
         self.dilution = dilution
         self._growth_model = OccupancyGrowthModel()
 
@@ -190,28 +193,32 @@ class CalibrationPredictor:
         # The last two parameters in each dk_cond block are now 'tau' and 'k_sharp'
         
         # Helper to extract (N, num_params) array of parameters
-        def get_model_params(start_indices):
+        def get_model_params(start_indices, num_params):
             # Create a 2D index array: row i contains [start[i], start[i]+1, ...]
-            # specific_indices shape: (N, num_model_params + 2)
-            offsets = np.arange(self.num_model_params + 2)
+            # specific_indices shape: (N, num_params)
+            offsets = np.arange(num_params)
             specific_indices = start_indices[:, None] + offsets[None, :]
             return params[specific_indices]
 
-        params_pre_all = get_model_params(dk_cond_pre_idx)
-        params_sel_all = get_model_params(dk_cond_sel_idx)
+        params_pre_all = get_model_params(dk_cond_pre_idx, self.num_growth_params + self.num_transition_params)
+        params_sel_all = get_model_params(dk_cond_sel_idx, self.num_growth_params + self.num_transition_params)
         
-        # Split into model params and shift parameters
-        params_pre = params_pre_all[:, :-2]
+        # Split into growth model params and transition model parameters
+        params_pre_growth = params_pre_all[:, :self.num_growth_params]
+        params_pre_trans = params_pre_all[:, self.num_growth_params:]
         
-        params_sel = params_sel_all[:, :-2]
-        tau_sel = params_sel_all[:, -2]
-        k_sel = params_sel_all[:, -1]
+        params_sel_growth = params_sel_all[:, :self.num_growth_params]
+        params_sel_trans = params_sel_all[:, self.num_growth_params:]
         
         # Predict growth rate perturbation from theta and model params
         # dk_pre uses theta at 0 titrant (theta_pre)
         # dk_sel uses selection theta
-        dk_pre = self.model.predict(theta_pre, params_pre.T) 
-        dk_sel = self.model.predict(theta_sel, params_sel.T) 
+        dk_pre = self.growth_model.predict(theta_pre, params_pre_growth.T) 
+        dk_sel = self.growth_model.predict(theta_sel, params_sel_growth.T) 
+        
+        # Transition parameters
+        tau_sel = self.transition_model.predict_tau(theta_sel, params_sel_trans.T)
+        k_sel = self.transition_model.predict_k_sharp(theta_sel, params_sel_trans.T)
         
         # Calculate full growth rates
         mu1 = k_bg_pre + dk_geno + dk_pre
@@ -230,15 +237,19 @@ class CalibrationPredictor:
         )
 
 
-def _build_calibration_data(df, model_name="linear", dilution=0.0196, per_titrant_tau=False):
+def _build_calibration_data(df, model_name="linear", transition_model_name="constant", dilution=0.0196, per_titrant_tau=False):
     """
     Assemble the design matrix and response vector for calibration.
     """
     
-    # Get model definition
-    model = get_model(model_name)
-    model_param_defs = model.get_param_defs()
-    num_model_params = len(model_param_defs)
+    # Get model definitions
+    growth_model = get_model(model_name)
+    growth_param_defs = growth_model.get_param_defs()
+    num_growth_params = len(growth_param_defs)
+
+    transition_model = get_transition_model(transition_model_name)
+    transition_param_defs = transition_model.get_param_defs()
+    num_transition_params = len(transition_param_defs)
     
     # -------------------------------------------------------------------------
     # 1. Define all parameter blocks
@@ -329,7 +340,8 @@ def _build_calibration_data(df, model_name="linear", dilution=0.0196, per_titran
         else:
             is_bg = (group == "background")
         
-        for suffix, guess, transform, desc in model_param_defs:
+        # Growth model parameters
+        for suffix, guess, transform, desc in growth_param_defs:
             row = {
                 "class": f"dk_cond",
                 "name": f"dk_cond_{group}_{suffix}",
@@ -341,34 +353,20 @@ def _build_calibration_data(df, model_name="linear", dilution=0.0196, per_titran
                 "fixed": is_bg # Fix background parameters to 0
             }
             dk_cond_rows.append(row)
+        # Transition model parameters (tau, k_sharp, etc.)
+        for suffix, guess, transform, desc in transition_param_defs:
+            row = {
+                "class": "dk_cond",
+                "name": f"dk_cond_{group}_{suffix}",
+                "guess": 0.0 if is_bg else guess,
+                "transform": transform,
+                "scale_mu": 0,
+                "scale_sigma": 1,
+                "idx": current_idx,
+                "fixed": is_bg
+            }
+            dk_cond_rows.append(row)
             current_idx += 1
-            
-        # Add shift parameters (tau, k_sharp) for this condition
-        row = {
-            "class": "dk_cond",
-            "name": f"dk_cond_{group}_tau",
-            "guess": 0.0,
-            "transform": "none",
-            "scale_mu": 0,
-            "scale_sigma": 1,
-            "idx": current_idx,
-            "fixed": is_bg
-        }
-        dk_cond_rows.append(row)
-        current_idx += 1
-
-        row = {
-            "class": "dk_cond",
-            "name": f"dk_cond_{group}_k_sharp",
-            "guess": 1.0,
-            "transform": "none",
-            "scale_mu": 0,
-            "scale_sigma": 1,
-            "idx": current_idx,
-            "fixed": is_bg
-        }
-        dk_cond_rows.append(row)
-        current_idx += 1
             
     dk_cond_df = pd.DataFrame(dk_cond_rows)
     
@@ -418,7 +416,7 @@ def _build_calibration_data(df, model_name="linear", dilution=0.0196, per_titran
     # Clean up temporary columns from the original df before returning
     df.drop(columns=['_global_selector', 'dk_group_pre', 'dk_group_sel'], inplace=True, errors='ignore')
     
-    predictor = CalibrationPredictor(model, num_model_params, dilution)
+    predictor = CalibrationPredictor(growth_model, transition_model, num_growth_params, num_transition_params, dilution)
     
     return y_obs, y_std, X, param_df, predictor
 
@@ -429,6 +427,7 @@ def setup_calibration(df,
                       no_bg_slope=False,
                       dilution=0.0196,
                       model_name="linear",
+                      transition_model_name="constant",
                       per_titrant_tau=False):
     """
     Prepare the calibration fit.
@@ -449,6 +448,9 @@ def setup_calibration(df,
     model_name : str, optional
         Name of the growth linkage model to use ('linear', 'power_law', 'saturation'),
         by default "linear".
+    transition_model_name : str, optional
+        Name of the transition model to use ('constant', 'protein_dilution'),
+        by default "constant".
 
     Returns
     -------
@@ -463,6 +465,7 @@ def setup_calibration(df,
     y_obs, y_std, X, param_df, predictor = _build_calibration_data(
         df, 
         model_name=model_name,
+        transition_model_name=transition_model_name,
         dilution=dilution,
         per_titrant_tau=per_titrant_tau
     )
@@ -510,6 +513,7 @@ def calibrate(df,
               no_bg_slope=False,
               dilution=0.0196,
               model_name="linear",
+              transition_model_name="constant",
               per_titrant_tau=False):
     """
     Run the full calibration workflow on experimental data.
@@ -541,6 +545,9 @@ def calibrate(df,
     model_name : str, optional
         Name of the growth linkage model to use ('linear', 'power_law', 'saturation'),
         by default "linear".
+    transition_model_name : str, optional
+        Name of the transition model to use ('constant', 'protein_dilution'),
+        by default "constant".
 
     Returns
     -------
@@ -561,6 +568,7 @@ def calibrate(df,
                            no_bg_slope=no_bg_slope,
                            dilution=dilution,
                            model_name=model_name,
+                           transition_model_name=transition_model_name,
                            per_titrant_tau=per_titrant_tau)
 
     # Run least squares fit
@@ -657,12 +665,13 @@ def calibrate(df,
     calibration_dict["dk_cond"] = {}
     calibration_dict["dk_cond_params"] = {} # Store raw parameter values by condition
     
-    # Get the suffix list from the model
-    # (re-get model to be safe, though fm has predictor.model)
-    # predictor is hidden in fm._model_func closure/class, but we can assume model_name
-    model = get_model(model_name)
-    suffixes = [p[0] for p in model.get_param_defs()]
-    suffixes.extend(["tau", "k_sharp"])
+    # Get the suffix list from the models
+    # (re-get models to be safe, though fm has predictor.models)
+    growth_model = get_model(model_name)
+    transition_model = get_transition_model(transition_model_name)
+    
+    suffixes = [p[0] for p in growth_model.get_param_defs()]
+    suffixes.extend([p[0] for p in transition_model.get_param_defs()])
     
     # Iterate over unique conditions in param_df
     # dk_cond parameters are named like "dk_cond_{condition}_{suffix}"
@@ -719,6 +728,7 @@ def calibrate(df,
             calibration_dict["dk_geno"][geno] = r["est"]
 
     calibration_dict["model_name"] = model_name
+    calibration_dict["transition_model_name"] = transition_model_name
     calibration_dict["per_titrant_tau"] = per_titrant_tau
 
     # Write out theta fit

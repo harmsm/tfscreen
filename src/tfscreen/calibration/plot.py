@@ -2,8 +2,11 @@
 from tfscreen.calibration import (
     read_calibration,
     get_background,
-    get_wt_k
+    get_wt_k,
+    get_wt_theta
 )
+from tfscreen.models.growth_linkage import get_model
+from tfscreen.models.transition_linkage import get_transition_model
 from tfscreen.plot.helper import get_ax_limits
 from tfscreen.analysis.independent.get_indiv_growth import get_indiv_growth
 from tfscreen.models.occupancy_growth_model import OccupancyGrowthModel
@@ -295,11 +298,18 @@ def fit_summary(pred_df,
     
     pred_df["dk_geno_mask"] = pred_df["condition_sel"].isin(no_selection_conditions)
 
+    trans_model_name = calibration_dict.get("transition_model_name", "constant")
+    trans_model = get_transition_model(trans_model_name)
+    trans_param_defs = trans_model.get_param_defs()
+    num_trans_params = len(trans_param_defs)
+
     per_titrant_tau = calibration_dict.get("per_titrant_tau", False)
-    if per_titrant_tau:
-        fig, ax = plt.subplots(3,2,figsize=(12,18))
+    if per_titrant_tau and num_trans_params > 0:
+        # Determine grid size
+        num_rows = 2 + int(np.ceil(num_trans_params / 2))
+        fig, ax = plt.subplots(num_rows, 2, figsize=(12, 6 * num_rows))
     else:
-        fig, ax = plt.subplots(2,2,figsize=(12,12))
+        fig, ax = plt.subplots(2, 2, figsize=(12, 12))
 
     # Filter rows that have observations (drop -t_pre rows)
     mask = ~np.isnan(pred_df["y_obs"])
@@ -335,15 +345,18 @@ def fit_summary(pred_df,
                 calibration_dict,
                 ax[1,1])
     
-    if per_titrant_tau:
-        _plot_calibrated_param_vs_titrant(calibration_dict,
-                                          param_name="tau",
-                                          plot_color_dict=plot_color_dict,
-                                          ax=ax[2,0])
-        _plot_calibrated_param_vs_titrant(calibration_dict,
-                                          param_name="k_sharp",
-                                          plot_color_dict=plot_color_dict,
-                                          ax=ax[2,1])
+    if per_titrant_tau and num_trans_params > 0:
+        for i, (suffix, _, _, _) in enumerate(trans_param_defs):
+            row = 2 + i // 2
+            col = i % 2
+            _plot_calibrated_param_vs_titrant(calibration_dict,
+                                              param_name=suffix,
+                                              plot_color_dict=plot_color_dict,
+                                              ax=ax[row, col])
+        
+        # Turn off last axis if odd number of parameters
+        if num_trans_params % 2 != 0:
+            ax[-1, -1].axis("off")
 
     fig.tight_layout()
 
@@ -508,8 +521,8 @@ def indiv_replicates(pred_df,calibration_dict=None,rgb_map=None):
             def to_1d(data):
                 v = np.asarray(data)
                 if v.ndim > 1:
-                    return v.ravel()
-                return v
+                    return v[:, 0]
+                return v.ravel()
 
             # Helper to get a scalar value from potentially redundant columns
             def to_scalar(data):
@@ -564,85 +577,120 @@ def indiv_replicates(pred_df,calibration_dict=None,rgb_map=None):
                     titr_name = to_scalar(cond_df["titrant_name"])
                     titr_conc = to_scalar(cond_df["titrant_conc"])
                     
+                    def as_float(val):
+                        return float(np.asarray(val).ravel()[0])
+
                     # Growth rates
-                    mu1 = float(get_wt_k(condition=cond_pre,
-                                        titrant_name=titr_name,
-                                        titrant_conc=0.0,
-                                        calibration_data=calibration_dict))
-                    mu2 = float(get_wt_k(condition=cond_sel,
-                                        titrant_name=titr_name,
-                                        titrant_conc=titr_conc,
-                                        calibration_data=calibration_dict))
+                    mu1 = as_float(get_wt_k(condition=cond_pre,
+                                            titrant_name=titr_name,
+                                            titrant_conc=0.0,
+                                            calibration_data=calibration_dict))
+                    
+                    # Get background components for mu2
+                    k_bg_val = as_float(get_background(titr_name, titr_conc, calibration_dict))
+                    
+                    # Get growth perturbation
+                    mu_wt_val = as_float(get_wt_k(condition=cond_sel,
+                                                  titrant_name=titr_name,
+                                                  titrant_conc=titr_conc,
+                                                  calibration_data=calibration_dict))
+                    
+                    dk_val = mu_wt_val - k_bg_val
                     
                     # Add genotype effect if available
                     dk_geno_val = 0.0
                     if "dk_geno" in calibration_dict:
                         dk_geno_val = calibration_dict["dk_geno"].get(genotype, 0.0)
                     
-                    mu1 += dk_geno_val
-                    mu2 += dk_geno_val
+                    mu1 = mu1 + dk_geno_val
+                    mu2 = mu_wt_val + dk_geno_val
                     
-                    # Shift parameters
-                    dk_cond = calibration_dict.get("dk_cond", {})
+                    # Model selection
+                    growth_model_name = calibration_dict.get("model_name", "linear")
+                    trans_model_name = calibration_dict.get("transition_model_name", "constant")
+                    
+                    growth_model = get_model(growth_model_name)
+                    trans_model = get_transition_model(trans_model_name)
+
+                    # Extract theta for transition model prediction (if needed)
+                    # For indiv_replicates, we don't have individual theta fit yet usually,
+                    # but we can use wt_theta or 1.0/0.0 as appropriate.
+                    # Calibration usually assumes wt response.
+                    theta_wt = as_float(get_wt_theta(titr_name, titr_conc, calibration_dict))
+                    
+                    # Shift parameters from transition model
+                    dk_cond_df = calibration_dict.get("dk_cond_df")
                     per_titrant_tau = calibration_dict.get("per_titrant_tau", False)
                     
-                    if per_titrant_tau:
-                        granular_key = f"{cond_sel}:{titr_name}:{titr_conc}"
-                        tau = dk_cond.get("tau", {}).get(granular_key)
-                        if tau is None:
-                            tau = dk_cond.get("tau", {}).get(cond_sel, 0.0)
-                            
-                        k_sharp = dk_cond.get("k_sharp", {}).get(granular_key)
-                        if k_sharp is None:
-                            k_sharp = dk_cond.get("k_sharp", {}).get(cond_sel, 1.0)
-                    else:
-                        tau = dk_cond.get("tau", {}).get(cond_sel, 0.0)
-                        k_sharp = dk_cond.get("k_sharp", {}).get(cond_sel, 1.0)
+                    # DEBUG: Print dk_cond_df to see what we're working with
+                    # print("DEBUG: dk_cond_df contents:")
+                    # print(dk_cond_df)
+                    
+                    trans_param_list = []
+                    for suffix, _, _, _ in trans_model.get_param_defs():
+                        if per_titrant_tau:
+                            granular_key = f"{cond_sel}:{titr_name}:{titr_conc}"
+                            val = dk_cond_df.loc[granular_key, suffix] if granular_key in dk_cond_df.index else dk_cond_df.loc[cond_sel, suffix]
+                        else:
+                            val = dk_cond_df.loc[cond_sel, suffix]
+                        trans_param_list.append(val)
+                    
+                    trans_params = np.array(trans_param_list)
+                    tau = trans_model.predict_tau(theta_wt, trans_params)
+                    k_sharp = trans_model.predict_k_sharp(theta_wt, trans_params)
                     
                     # Generate dense time points
-                    max_t = np.max(x)
-                    if max_t > 0:
-                        # Pre-growth: [-t_pre, 0]
-                        t_model_pre = np.linspace(-t_pre, -1e-6, 50)
-                        # Post-growth: [0, max_t]
-                        t_model_post = np.linspace(0, max_t, 100)
+                    # Pre-growth: [min_x, 0]
+                    # Post-growth: [0, max_x]
+                    
+                    if max_x > 0:
+                        # Post-growth: [0, max_x]
+                        t_model_post = np.linspace(0, max_x, 100)
                         
-                        # Use model to predict
                         gm = OccupancyGrowthModel()
                         
-                        y_model_pre = gm.predict_trajectory(
-                            t_pre=t_pre, t_sel=t_model_pre, 
-                            ln_cfu0=lnA0, mu1=mu1, mu2=mu2, 
-                            dilution=dilution, tau=tau, k_sharp=k_sharp
+                        # Calculate growth component (without C offset)
+                        growth_sel_comp = gm.predict_trajectory(
+                            t_pre=0, t_sel=t_model_post, 
+                            ln_cfu0=0, mu1=mu1, mu2=mu2, 
+                            dilution=1.0, tau=tau, k_sharp=k_sharp
                         )
                         
-                        y_model_post = gm.predict_trajectory(
-                            t_pre=t_pre, t_sel=t_model_post, 
-                            ln_cfu0=lnA0, mu1=mu1, mu2=mu2, 
-                            dilution=dilution, tau=tau, k_sharp=k_sharp
-                        )
+                        # Find anchor: average(calc_est - growth_sel_comp) for observed points
+                        obs_mask = x >= 0
+                        if np.any(obs_mask):
+                            obs_x = x[obs_mask]
+                            obs_y = to_1d(cond_df["calc_est"])[obs_mask]
+                            
+                            obs_growth_comp = gm.predict_trajectory(
+                                t_pre=0, t_sel=obs_x, 
+                                ln_cfu0=0, mu1=mu1, mu2=mu2, 
+                                dilution=1.0, tau=tau, k_sharp=k_sharp
+                            )
+                            C_post = np.mean(obs_y - obs_growth_comp)
+                            ax.plot(t_model_post, growth_sel_comp + C_post, color=color, lw=2)
+                        else:
+                            # Fallback if no selection points, though unlikely in this loop
+                            draw_fallback()
+
+                    if min_x < 0:
+                        # Pre-growth segment: [min_x, 0]
+                        t_model_pre = np.linspace(min_x, -1e-6, 50)
                         
-                        # Plot with a gap (NaN) to show dilution
-                        # Concatenate
-                        plot_x = np.concatenate([t_model_pre, [0], t_model_post])
-                        plot_y = np.concatenate([y_model_pre, [np.nan], y_model_post])
-                        
-                        # Plot with a gap (NaN) to show dilution
-                        # Concatenate
-                        plot_x = np.concatenate([t_model_pre, [0], t_model_post])
-                        plot_y = np.concatenate([y_model_pre, [np.nan], y_model_post])
-                        
-                        ax.plot(plot_x, plot_y, color=color, lw=2)
-                    else:
-                        # Only pre-growth
-                        t_model_pre = np.linspace(-t_pre, 0, 50)
-                        gm = OccupancyGrowthModel()
-                        y_model_pre = gm.predict_trajectory(
-                            t_pre=t_pre, t_sel=t_model_pre, 
-                            ln_cfu0=lnA0, mu1=mu1, mu2=mu2, 
-                            dilution=dilution, tau=tau, k_sharp=k_sharp
-                        )
-                        ax.plot(t_model_pre, y_model_pre, color=color, lw=2)
+                        # Linear growth: y = mu1 * t + C
+                        # Find anchor from pre-growth points
+                        obs_mask = x < 0
+                        if np.any(obs_mask):
+                            obs_x = x[obs_mask]
+                            obs_y = to_1d(cond_df["calc_est"])[obs_mask]
+                            C_pre = np.mean(obs_y - mu1 * obs_x)
+                            
+                            ax.plot(t_model_pre, mu1 * t_model_pre + C_pre, color=color, lw=2)
+                        else:
+                            # If no pre-growth points observed but we're in this block, 
+                            # we could anchor to the selection start? 
+                            # But better to just skip or fallback.
+                            pass
 
                 except Exception:
                     import traceback
@@ -696,4 +744,4 @@ def indiv_replicates(pred_df,calibration_dict=None,rgb_map=None):
     
     fig.tight_layout()
 
-    return fig, ax
+    return fig, axes

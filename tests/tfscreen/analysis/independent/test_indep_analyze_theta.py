@@ -43,7 +43,8 @@ class TestAnalyzeTheta:
             calibration_data=calibration_data,
             max_batch_size=100,
             logistic_theta=False,
-            model_name=None
+            model_name=None,
+            transition_model_name=None
         )
         
         mock_process.assert_called_once_with(param_df_mock, pred_df_mock)
@@ -92,7 +93,8 @@ class TestAnalyzeTheta:
             calibration_data=calibration_data,
             max_batch_size=250,
             logistic_theta=True,
-            model_name=None
+            model_name=None,
+            transition_model_name=None
         )
 
     @patch("tfscreen.analysis.independent.analyze_theta.generalized_main")
