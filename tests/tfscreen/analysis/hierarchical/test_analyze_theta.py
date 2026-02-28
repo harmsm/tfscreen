@@ -299,6 +299,7 @@ def test_analyze_theta_config_loading(mock_growth_model, mock_run_inference):
     
     mock_config = {
         "condition_growth": "independent",
+        "growth_transition": "instant",
         "ln_cfu0": "hierarchical",
         "dk_geno": "fixed",
         "activity": "fixed",

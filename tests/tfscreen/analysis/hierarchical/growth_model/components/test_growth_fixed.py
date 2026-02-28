@@ -26,7 +26,11 @@ def test_define_model():
     data.map_condition_pre = jnp.array([0, 1])
     data.map_condition_sel = jnp.array([2, 3])
     
-    k_pre, m_pre, k_sel, m_sel = growth_fixed.define_model("test", data, priors)
+    params = growth_fixed.define_model("test", data, priors)
+    k_pre = params.k_pre
+    m_pre = params.m_pre
+    k_sel = params.k_sel
+    m_sel = params.m_sel
     
     assert k_pre.shape == (2,)
     assert k_sel.shape == (2,)
@@ -40,7 +44,11 @@ def test_guide():
     data.map_condition_pre = jnp.array([0])
     data.map_condition_sel = jnp.array([1])
     
-    k_pre, m_pre, k_sel, m_sel = growth_fixed.guide("test", data, priors)
+    params = growth_fixed.guide("test", data, priors)
+    k_pre = params.k_pre
+    m_pre = params.m_pre
+    k_sel = params.k_sel
+    m_sel = params.m_sel
     
     assert k_pre.shape == (1,)
     assert jnp.isclose(k_pre[0], priors.growth_k_per_cond_rep[0])

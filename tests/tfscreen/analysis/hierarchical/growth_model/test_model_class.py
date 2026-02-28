@@ -171,6 +171,7 @@ def initialized_model_class():
     model = MagicMock(spec=ModelClass)
     model._theta = "hill"
     model._condition_growth = "hierarchical"
+    model._growth_transition = "instant"
     model._ln_cfu0 = "hierarchical"
     model._dk_geno = "hierarchical"
     model._activity = "hierarchical"
@@ -272,6 +273,7 @@ def test_initialize_classes_logic(mocker):
 
     with patch.dict("tfscreen.analysis.hierarchical.growth_model.model_class.model_registry", {
         "condition_growth": {"hierarchical": MagicMock(), "independent": MagicMock()},
+        "growth_transition": {"instant": MagicMock(), "linear": MagicMock()},
         "ln_cfu0": {"hierarchical": MagicMock()},
         "dk_geno": {"hierarchical": MagicMock()},
         "activity": {"hierarchical": MagicMock(), "horseshoe": MagicMock()},
@@ -282,12 +284,12 @@ def test_initialize_classes_logic(mocker):
         "observe_binding": MagicMock(),
         "observe_growth": MagicMock()
     }, clear=True):
-        for k in ["condition_growth", "ln_cfu0", "dk_geno", "activity", "theta", "transformation", "theta_growth_noise", "theta_binding_noise"]:
+        for k in ["condition_growth", "growth_transition", "ln_cfu0", "dk_geno", "activity", "theta", "transformation", "theta_growth_noise", "theta_binding_noise"]:
             for sub_k in tfscreen.analysis.hierarchical.growth_model.model_class.model_registry[k]:
                 tfscreen.analysis.hierarchical.growth_model.model_class.model_registry[k][sub_k].get_priors.return_value = {}
                 tfscreen.analysis.hierarchical.growth_model.model_class.model_registry[k][sub_k].get_guesses.return_value = {}
 
-        model = ModelClass("g.csv", "b.csv", theta="categorical", transformation="congression", condition_growth="independent")
+        model = ModelClass("g.csv", "b.csv", theta="categorical", transformation="congression", condition_growth="independent", growth_transition="instant")
         assert model._theta == "categorical"
 
 def test_model_class_write_config(initialized_model_class, tmpdir):
@@ -308,6 +310,7 @@ def test_model_class_properties(initialized_model_class):
     model._theta = "t"
     model._transformation = "tr"
     model._condition_growth = "cg"
+    model._growth_transition = "gt"
     model._ln_cfu0 = "ln"
     model._dk_geno = "dk"
     model._theta_growth_noise = "gn"
@@ -323,6 +326,7 @@ def test_model_class_properties(initialized_model_class):
     assert ModelClass.settings.fget(model)["theta"] == "t"
     assert ModelClass.settings.fget(model)["transformation"] == "tr"
     assert ModelClass.settings.fget(model)["condition_growth"] == "cg"
+    assert ModelClass.settings.fget(model)["growth_transition"] == "gt"
     assert ModelClass.settings.fget(model)["ln_cfu0"] == "ln"
     assert ModelClass.settings.fget(model)["dk_geno"] == "dk"
     assert ModelClass.settings.fget(model)["theta_growth_noise"] == "gn"

@@ -500,6 +500,7 @@ class ModelClass:
                  binding_df,
                  batch_size=None,
                  condition_growth="hierarchical",
+                 growth_transition="instant",
                  ln_cfu0="hierarchical",
                  dk_geno="hierarchical",
                  activity="horseshoe",
@@ -515,6 +516,7 @@ class ModelClass:
         self._batch_size = batch_size
 
         self._condition_growth = condition_growth
+        self._growth_transition = growth_transition
         self._ln_cfu0 = ln_cfu0
         self._dk_geno = dk_geno
         self._activity = activity
@@ -748,6 +750,7 @@ class ModelClass:
         # The last value determines whether this is used to initialize the 
         # data.growth and data.binding. 
         load_map = [("condition_growth",self._condition_growth,"growth"),
+                    ("growth_transition",self._growth_transition,"growth"),
                     ("ln_cfu0",self._ln_cfu0,"growth"),
                     ("dk_geno",self._dk_geno,"growth"),
                     ("activity",self._activity,"growth"),
@@ -804,6 +807,11 @@ class ModelClass:
                                             component_module.update_thetas)
                 guide_control_kwargs[key] = (component_module.guide, 
                                              component_module.update_thetas)
+            elif key == "condition_growth":
+                main_control_kwargs[key] = component_module.define_model
+                guide_control_kwargs[key] = component_module.guide
+                main_control_kwargs["calculate_growth"] = component_module.calculate_growth
+                guide_control_kwargs["calculate_growth"] = component_module.calculate_growth
             else:
                 main_control_kwargs[key] = component_module.define_model
                 guide_control_kwargs[key] = component_module.guide
@@ -1496,6 +1504,7 @@ class ModelClass:
         return {
             "batch_size":self._batch_size,
             "condition_growth":self._condition_growth,
+            "growth_transition":self._growth_transition,
             "ln_cfu0":self._ln_cfu0,
             "dk_geno":self._dk_geno,
             "activity":self._activity,

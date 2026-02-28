@@ -97,10 +97,13 @@ def test_define_model_structure_and_shapes(mock_data):
     substituted_model = substitute(define_model, data=guesses)
     
     # 2. Run the substituted model to get the final return tuple
-    return_tuple = substituted_model(name=name, 
+    params = substituted_model(name=name, 
                                      data=mock_data, 
                                      priors=priors)
-    k_pre, m_pre, k_sel, m_sel = return_tuple
+    k_pre = params.k_pre
+    m_pre = params.m_pre
+    k_sel = params.k_sel
+    m_sel = params.m_sel
     
     # 3. Trace to inspect internal deterministic sites
     model_trace = trace(substituted_model).get_trace(
@@ -108,10 +111,6 @@ def test_define_model_structure_and_shapes(mock_data):
         data=mock_data, 
         priors=priors
     )
-    
-    # --- Check Return Types and Shapes ---
-    assert isinstance(return_tuple, tuple)
-    assert len(return_tuple) == 4
     
     # The outputs should match the size of the mapping arrays (observations)
     assert k_pre.shape == mock_data.map_condition_pre.shape
@@ -157,9 +156,11 @@ def test_define_model_calculation_logic(mock_data):
     substituted_model = substitute(define_model, data=custom_guesses)
     
     # Run
-    k_pre, _, k_sel, _ = substituted_model(name=name, 
+    params = substituted_model(name=name, 
                                            data=mock_data, 
                                            priors=priors)
+    k_pre = params.k_pre
+    k_sel = params.k_sel
     
     # Expected values per condition: [10, 12, 8]
     expected_k_per_condition = jnp.array([10.0, 12.0, 8.0])
@@ -189,11 +190,14 @@ def test_guide_logic_and_shapes(mock_data):
         )
         
         # Run guide to check return values
-        return_tuple = guide(name=name,
+        params = guide(name=name,
                              data=mock_data,
                              priors=priors)
     
-    k_pre, m_pre, k_sel, m_sel = return_tuple
+    k_pre = params.k_pre
+    m_pre = params.m_pre
+    k_sel = params.k_sel
+    m_sel = params.m_sel
 
     # --- 1. Check Parameter Sites ---
     # Global params

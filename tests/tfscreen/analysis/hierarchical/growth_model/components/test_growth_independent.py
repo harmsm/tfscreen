@@ -97,10 +97,13 @@ def test_define_model_logic_and_shapes(mock_data):
     substituted_model = substitute(define_model, data=guesses)
     
     # 2. Run the substituted model to get the final return tuple
-    return_tuple = substituted_model(name=name, 
+    params = substituted_model(name=name, 
                                      data=mock_data, 
                                      priors=priors)
-    k_pre, m_pre, k_sel, m_sel = return_tuple
+    k_pre = params.k_pre
+    m_pre = params.m_pre
+    k_sel = params.k_sel
+    m_sel = params.m_sel
     
     # 3. Trace the execution to capture intermediate (deterministic) values
     model_trace = trace(substituted_model).get_trace(
@@ -108,10 +111,6 @@ def test_define_model_logic_and_shapes(mock_data):
         data=mock_data, 
         priors=priors
     )
-    
-    # --- 1. Check Return Types and Shapes ---
-    assert isinstance(return_tuple, tuple)
-    assert len(return_tuple) == 4
     
     assert k_pre.shape == mock_data.map_condition_pre.shape
     assert m_pre.shape == mock_data.map_condition_pre.shape
@@ -181,11 +180,14 @@ def test_guide_logic_and_shapes(mock_data):
         )
         
         # Run guide to check return values
-        return_tuple = guide(name=name,
+        params = guide(name=name,
                              data=mock_data,
                              priors=priors)
     
-    k_pre, m_pre, k_sel, m_sel = return_tuple
+    k_pre = params.k_pre
+    m_pre = params.m_pre
+    k_sel = params.k_sel
+    m_sel = params.m_sel
 
     # --- 1. Check Global Parameter Sites ---
     # Should have shape (num_condition,)

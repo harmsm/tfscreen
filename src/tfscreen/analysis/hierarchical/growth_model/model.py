@@ -55,6 +55,9 @@ def jax_model(data: DataClass,
     theta_binding_noise_model = control["theta_binding_noise"]
     theta_growth_noise_model = control["theta_growth_noise"]
 
+    growth_transition_model = control["growth_transition"]
+    calculate_growth = control["calculate_growth"]
+
     binding_observer = control["observe_binding"]
     growth_observer = control["observe_growth"]
 
@@ -84,9 +87,9 @@ def jax_model(data: DataClass,
     # Make prediction for the growth experiment
     
     # Get growth parameters
-    k_pre, m_pre, k_sel, m_sel = condition_growth_model("condition_growth",
-                                                        data.growth,
-                                                        priors.growth.condition_growth)
+    growth_params = condition_growth_model("condition_growth",
+                                           data.growth,
+                                           priors.growth.condition_growth)
 
     # initial populations
     ln_cfu0 = ln_cfu0_model("ln_cfu0",
@@ -140,10 +143,20 @@ def jax_model(data: DataClass,
     else:
 
         # calculate observable (all tensors have correct dimensions)
-        g_pre = k_pre + dk_geno + activity*m_pre*noisy_theta_growth
-        g_sel = k_sel + dk_geno + activity*m_sel*noisy_theta_growth
+        g_pre, g_sel = calculate_growth(params=growth_params,
+                                        dk_geno=dk_geno,
+                                        activity=activity,
+                                        theta=noisy_theta_growth)
 
-        ln_cfu_pred = ln_cfu0 + g_pre*data.growth.t_pre + g_sel*data.growth.t_sel
+        total_growth = growth_transition_model("growth_transition",
+                                               data.growth,
+                                               priors.growth.growth_transition,
+                                               g_pre=g_pre,
+                                               g_sel=g_sel,
+                                               t_pre=data.growth.t_pre,
+                                               t_sel=data.growth.t_sel)
+
+        ln_cfu_pred = ln_cfu0 + total_growth
 
         # Register results
         pyro.deterministic(f"binding_pred",binding_pred)

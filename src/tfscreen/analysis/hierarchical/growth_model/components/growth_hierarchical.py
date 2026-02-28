@@ -4,7 +4,10 @@ import numpyro.distributions as dist
 from flax.struct import dataclass
 from typing import Tuple
 
-from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
+from tfscreen.analysis.hierarchical.growth_model.data_class import (
+    GrowthData
+    ConditionGrowthParams
+)
 
 @dataclass(frozen=True)
 class ModelPriors:
@@ -23,7 +26,7 @@ class ModelPriors:
 
 def define_model(name: str, 
                  data: GrowthData, 
-                 priors: ModelPriors) -> Tuple[jnp.ndarray, ...]:
+                 priors: ModelPriors) -> ConditionGrowthParams:
     """
     Growth parameters k_xx and m_xx versus condition, where xx are things like
     pheS+4CP, kanR-kan, etc. These go into the model as k + m*theta. Assigns
@@ -52,14 +55,8 @@ def define_model(name: str,
 
     Returns
     -------
-    k_pre : jnp.ndarray
-        Growth rate k for pre-selection conditions.
-    m_pre : jnp.ndarray
-        Growth rate m for pre-selection conditions.
-    k_sel : jnp.ndarray
-        Growth rate k for selection conditions.
-    m_sel : jnp.ndarray
-        Growth rate m for selection conditions.
+    params : ConditionGrowthParams
+        A dataclass containing k_pre, m_pre, k_sel, and m_sel.
     """
 
     growth_k_hyper_loc = pyro.sample(
@@ -100,11 +97,11 @@ def define_model(name: str,
     k_sel = growth_k_per_condition[data.map_condition_sel]
     m_sel = growth_m_per_condition[data.map_condition_sel]
 
-    return k_pre, m_pre, k_sel, m_sel
+    return ConditionGrowthParams(k_pre=k_pre, m_pre=m_pre, k_sel=k_sel, m_sel=m_sel)
 
 def guide(name: str, 
           data: GrowthData, 
-          priors: ModelPriors) -> Tuple[jnp.ndarray, ...]:
+          priors: ModelPriors) -> ConditionGrowthParams:
     """
     Guide corresponding to the pooled growth model.
     
@@ -181,7 +178,38 @@ def guide(name: str,
     k_sel = growth_k_per_condition[data.map_condition_sel]
     m_sel = growth_m_per_condition[data.map_condition_sel]
 
-    return k_pre, m_pre, k_sel, m_sel
+    return ConditionGrowthParams(k_pre=k_pre, m_pre=m_pre, k_sel=k_sel, m_sel=m_sel)
+
+def calculate_growth(params: ConditionGrowthParams,
+                     dk_geno: jnp.ndarray,
+                     activity: jnp.ndarray,
+                     theta: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    """
+    Calculate the growth rates for pre-selection and selection phases.
+
+    Parameters
+    ----------
+    params : ConditionGrowthParams
+        A dataclass containing k_pre, m_pre, k_sel, m_sel. 
+    dk_geno : jnp.ndarray
+        Genotype-specific death rate. 
+    activity : jnp.ndarray
+        Genotype activity. 
+    theta : jnp.ndarray
+        Occupancy/binding probability. 
+
+    Returns
+    -------
+    g_pre : jnp.ndarray
+        Pre-selection growth rate tensor.
+    g_sel : jnp.ndarray
+        Selection growth rate tensor.
+    """
+    
+    g_pre = params.k_pre + dk_geno + activity * params.m_pre * theta
+    g_sel = params.k_sel + dk_geno + activity * params.m_sel * theta
+    
+    return g_pre, g_sel
 
 
 def get_hyperparameters():

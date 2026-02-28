@@ -2,6 +2,7 @@
 from .components import growth_independent 
 from .components import growth_hierarchical
 from .components import growth_fixed
+from .components import growth_transition_instant
 
 from .components import ln_cfu0
 
@@ -60,6 +61,9 @@ model_registry = {
     "theta_binding_noise":{
         "none":no_noise,
         "beta":beta_noise,
+    },
+    "growth_transition":{
+        "instant":growth_transition_instant,
     },
     "observe_binding":binding,
     "observe_growth":growth,

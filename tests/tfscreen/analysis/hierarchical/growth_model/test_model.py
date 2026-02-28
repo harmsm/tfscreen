@@ -2,7 +2,7 @@ import pytest
 import jax.numpy as jnp
 import numpyro
 from numpyro.handlers import trace, seed
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, ANY
 from collections import namedtuple
 
 # --- Import Module Under Test (MUT) ---
@@ -20,7 +20,7 @@ MockBindingData = namedtuple("MockBindingData", [])
 MockData = namedtuple("MockData", ["growth", "binding"])
 
 MockGrowthPriors = namedtuple("MockGrowthPriors", [
-    "theta_growth_noise", "condition_growth", "ln_cfu0", "dk_geno", "activity", "transformation"
+    "theta_growth_noise", "condition_growth", "growth_transition", "ln_cfu0", "dk_geno", "activity", "transformation"
 ])
 MockBindingPriors = namedtuple("MockBindingPriors", ["theta_binding_noise"])
 MockPriors = namedtuple("MockPriors", ["theta", "growth", "binding"])
@@ -43,6 +43,7 @@ def mock_priors():
     growth = MockGrowthPriors(
         theta_growth_noise="prior_gn", 
         condition_growth="prior_cg",
+        growth_transition="prior_gt",
         ln_cfu0="prior_cfu0", 
         dk_geno="prior_dk", 
         activity="prior_act",
@@ -62,9 +63,16 @@ def mock_control():
     calc_theta = MagicMock(side_effect=lambda t, d: t * 2.0) # theta_growth/binding = 20.0
     get_moments = MagicMock(return_value=(0.0, 1.0)) # (mu, sigma) anchors
     
-    # Growth Param Model returns (k_pre, m_pre, k_sel, m_sel)
+    # Growth Param Model returns params
     # k=1.0, m=1.0
-    condition_growth_model = MagicMock(return_value=(1.0, 1.0, 1.0, 1.0))
+    mock_params = MagicMock()
+    condition_growth_model = MagicMock(return_value=mock_params)
+    
+    # calculate growth returns g_pre, g_sel
+    calculate_growth = MagicMock(return_value=(21.0, 21.0))
+    
+    # Growth Transition returns total growth
+    growth_transition_model = MagicMock(return_value=105.0)
     
     ln_cfu0_model = MagicMock(return_value=jnp.array([5.0])) # ln_cfu0 (must be array for softmax)
     activity_model = MagicMock(return_value=1.0) # activity
@@ -83,6 +91,8 @@ def mock_control():
     return {
         "theta": (theta_model, calc_theta, get_moments),
         "condition_growth": condition_growth_model,
+        "calculate_growth": calculate_growth,
+        "growth_transition": growth_transition_model,
         "ln_cfu0": ln_cfu0_model,
         "activity": activity_model,
         "dk_geno": dk_geno_model,
@@ -132,6 +142,14 @@ def test_jax_model_execution_flow(mock_data, mock_priors, mock_control):
         "condition_growth", mock_data.growth, "prior_cg"
     )
     
+    # calculate_growth
+    mock_control["calculate_growth"].assert_called_once()
+    
+    # Growth Transition
+    mock_control["growth_transition"].assert_called_once_with(
+        "growth_transition", mock_data.growth, ANY, g_pre=21.0, g_sel=21.0, t_pre=jnp.array(2.0), t_sel=jnp.array(3.0)
+    )
+    
     # ln_cfu0
     mock_control["ln_cfu0"].assert_called_once_with(
         "ln_cfu0", mock_data.growth, "prior_cfu0"
@@ -153,21 +171,7 @@ def test_jax_model_execution_flow(mock_data, mock_priors, mock_control):
 
     # --- 2. Verify Calculation Logic ---
     
-    # Based on fixture return values:
-    # theta = 10.0
-    # theta_growth = 20.0 (calc_theta doubles it)
-    # noisy_theta = 20.0 (noise passes through)
-    # k_pre=1, m_pre=1, k_sel=1, m_sel=1
-    # dk_geno=0, activity=1
-    # ln_cfu0 = 5.0
-    # t_pre = 2.0, t_sel = 3.0
-    
-    # g_pre = k_pre + dk + act*m*theta = 1 + 0 + 1*1*20 = 21.0
-    # g_sel = k_sel + dk + act*m*theta = 1 + 0 + 1*1*20 = 21.0
-    
-    # ln_cfu_pred = ln_cfu0 + g_pre*t_pre + g_sel*t_sel
-    #             = 5.0 + 21.0*2.0 + 21.0*3.0
-    #             = 5.0 + 42.0 + 63.0 = 110.0
+    # expected_pred = 5.0 + 105.0 = 110.0
     
     expected_pred = 110.0
     
