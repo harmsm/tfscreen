@@ -11,6 +11,29 @@ def analyze_theta(df,
                   logistic_theta=False,
                   model_name=None,
                   transition_model_name=None):
+    """
+    Perform a theta/growth rate fit on the provided experimental data.
+
+    Parameters
+    ----------
+    df : pd.DataFrame or str
+        Experimental data (ln_cfu, etc).
+    calibration_data : dict or str
+        Calibration constants for the models.
+    non_sel_conditions : list, optional
+        Conditions where selection is absent, used to guess dk_geno.
+    out_root : str, optional
+        Root name for output files.
+    max_batch_size : int, optional
+        Maximum number of genotypes per fitting batch.
+    logistic_theta : bool, optional
+        Whether to use a logistic transformation for theta.
+    model_name : str, optional
+        Growth model to use: 'linear', 'power_law', or 'saturation'. 
+        If None, use value from calibration_data or 'linear'.
+    transition_model_name : str, optional
+        Transition model to use. If None, use value from calibration_data or 'constant'.
+    """
     
     print("--> Performing fit.",flush=True)
     param_df, pred_df = cfu_to_theta(df=df,

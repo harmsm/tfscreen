@@ -308,7 +308,8 @@ def analyze_theta(growth_df=None,
         Path to a YAML configuration file to load settings from.
     condition_growth_model: str, optional
         model to use to describe growth under different conditions (e.g., 
-        pheS+4CP). Allowed values are 'hierarchical' (default) or 'independent'.
+        pheS+4CP). Allowed values are 'linear' (default), 'linear_independent',
+        'linear_fixed', 'power', or 'saturation'.
     growth_transition_model : str, optional
         model to use to describe the transition between the pre-selection
         and selection phases. Allowed values are 'instant' (default), 'memory',
@@ -331,7 +332,7 @@ def analyze_theta(growth_df=None,
         (default) or 'categorical'. 
     transformation_model : str, optional
         model for transformation correction. Allowed values are 'single', 
-        'empirical', or 'logit_theta'. Default 'empirical'
+        'empirical', 'congression', or 'logit_norm'. Default 'empirical'
     theta_growth_noise_model : str, optional
         model to use for stochastic experimental noise in theta measured by 
         bacterial growth. Allowed values are 'beta' (default) or 'zero'

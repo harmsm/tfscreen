@@ -2,7 +2,7 @@ import pytest
 import jax.numpy as jnp
 from unittest.mock import MagicMock
 import numpyro
-from tfscreen.analysis.hierarchical.growth_model.components.growth import fixed as growth_fixed
+from tfscreen.analysis.hierarchical.growth_model.components.growth import linear_fixed as growth_fixed
 
 def test_getters():
     """Test get_hyperparameters, get_guesses, get_priors."""

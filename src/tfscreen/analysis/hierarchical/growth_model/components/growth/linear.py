@@ -5,9 +5,19 @@ from flax.struct import dataclass
 from typing import Tuple
 
 from tfscreen.analysis.hierarchical.growth_model.data_class import (
-    GrowthData,
-    ConditionGrowthParams
+    GrowthData
 )
+
+@dataclass(frozen=True)
+class LinearParams:
+    """
+    Holds linear growth parameters (intercept and slope) for pre-selection 
+    and selection phases.
+    """
+    k_pre: jnp.ndarray
+    m_pre: jnp.ndarray
+    k_sel: jnp.ndarray
+    m_sel: jnp.ndarray
 
 @dataclass(frozen=True)
 class ModelPriors:
@@ -26,7 +36,7 @@ class ModelPriors:
 
 def define_model(name: str, 
                  data: GrowthData, 
-                 priors: ModelPriors) -> ConditionGrowthParams:
+                 priors: ModelPriors) -> LinearParams:
     """
     Growth parameters k_xx and m_xx versus condition, where xx are things like
     pheS+4CP, kanR-kan, etc. These go into the model as k + m*theta. Assigns
@@ -55,7 +65,7 @@ def define_model(name: str,
 
     Returns
     -------
-    params : ConditionGrowthParams
+    params : LinearParams
         A dataclass containing k_pre, m_pre, k_sel, and m_sel.
     """
 
@@ -97,11 +107,11 @@ def define_model(name: str,
     k_sel = growth_k_per_condition[data.map_condition_sel]
     m_sel = growth_m_per_condition[data.map_condition_sel]
 
-    return ConditionGrowthParams(k_pre=k_pre, m_pre=m_pre, k_sel=k_sel, m_sel=m_sel)
+    return LinearParams(k_pre=k_pre, m_pre=m_pre, k_sel=k_sel, m_sel=m_sel)
 
 def guide(name: str, 
           data: GrowthData, 
-          priors: ModelPriors) -> ConditionGrowthParams:
+          priors: ModelPriors) -> LinearParams:
     """
     Guide corresponding to the pooled growth model.
     
@@ -178,9 +188,9 @@ def guide(name: str,
     k_sel = growth_k_per_condition[data.map_condition_sel]
     m_sel = growth_m_per_condition[data.map_condition_sel]
 
-    return ConditionGrowthParams(k_pre=k_pre, m_pre=m_pre, k_sel=k_sel, m_sel=m_sel)
+    return LinearParams(k_pre=k_pre, m_pre=m_pre, k_sel=k_sel, m_sel=m_sel)
 
-def calculate_growth(params: ConditionGrowthParams,
+def calculate_growth(params: LinearParams,
                      dk_geno: jnp.ndarray,
                      activity: jnp.ndarray,
                      theta: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
@@ -189,7 +199,7 @@ def calculate_growth(params: ConditionGrowthParams,
 
     Parameters
     ----------
-    params : ConditionGrowthParams
+    params : LinearParams
         A dataclass containing k_pre, m_pre, k_sel, m_sel. 
     dk_geno : jnp.ndarray
         Genotype-specific death rate. 

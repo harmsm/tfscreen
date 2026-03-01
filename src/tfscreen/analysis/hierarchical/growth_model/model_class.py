@@ -458,17 +458,24 @@ class ModelClass:
     binding_df : pd.DataFrame or str
         DataFrame or path to file with binding data.
     condition_growth : str, optional
-        Model name for condition-specific growth.
+        Model name for condition-specific growth. Allowed values are 'linear' 
+        (default), 'linear_independent', 'linear_fixed', 'power', or 'saturation'.
+    growth_transition : str, optional
+        Model name for growth transition. Allowed values are 'instant' (default), 
+        'memory', or 'baranyi'.
     ln_cfu0 : str, optional
-        Model name for initial cell counts.
+        Model name for initial cell counts. Allowed value is 'hierarchical'.
     dk_geno : str, optional
-        Model name for genotype-specific death rate.
+        Model name for genotype-specific death rate. Allowed values are 'hierarchical' 
+        (default) or 'fixed'.
     activity : str, optional
-        Model name for genotype activity.
+        Model name for genotype activity. Allowed values are "horseshoe" (default), 
+        "hierarchical", or "fixed".
     theta : str, optional
         Model name for theta calculation (e.g., "hill").
     transformation : str, optional
-        Model name for transformation correction (e.g., "congression" or "single").
+        Model name for transformation correction. Allowed values are 'single', 
+        'empirical', 'congression', or 'logit_norm'. Default 'empirical'
     theta_growth_noise : str, optional
         Model name for noise on theta in the growth model ('zero' or 'beta').
     theta_binding_noise : str, optional
@@ -499,7 +506,7 @@ class ModelClass:
                  growth_df,
                  binding_df,
                  batch_size=None,
-                 condition_growth="hierarchical",
+                 condition_growth="linear",
                  growth_transition="instant",
                  ln_cfu0="hierarchical",
                  dk_geno="hierarchical",
@@ -937,11 +944,31 @@ class ModelClass:
             )
         
         # condition
-        if self._condition_growth in ["independent","hierarchical"]:
+        if self._condition_growth in ["linear", "linear_independent", "hierarchical", "independent"]:
             extract.append(
                 dict(
                     input_df = self.growth_tm.map_groups['condition'],
                     params_to_get = ["growth_m","growth_k"],
+                    map_column = "map_condition",
+                    get_columns = ["replicate","condition"],
+                    in_run_prefix = "condition_"
+                )
+            )
+        elif self._condition_growth == "power":
+             extract.append(
+                dict(
+                    input_df = self.growth_tm.map_groups['condition'],
+                    params_to_get = ["growth_k","growth_m","growth_n"],
+                    map_column = "map_condition",
+                    get_columns = ["replicate","condition"],
+                    in_run_prefix = "condition_"
+                )
+            )
+        elif self._condition_growth == "saturation":
+             extract.append(
+                dict(
+                    input_df = self.growth_tm.map_groups['condition'],
+                    params_to_get = ["growth_min","growth_max"],
                     map_column = "map_condition",
                     get_columns = ["replicate","condition"],
                     in_run_prefix = "condition_"

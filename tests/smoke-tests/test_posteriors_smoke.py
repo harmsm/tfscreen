@@ -19,7 +19,7 @@ def test_checkpoint_and_posterior_smoke(growth_smoke_csv,
     model = ModelClass(
         growth_df=growth_smoke_csv,
         binding_df=binding_smoke_csv,
-        condition_growth="hierarchical",
+        condition_growth="linear",
         transformation="congression",
         theta="hill",
         batch_size=None

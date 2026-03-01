@@ -32,6 +32,8 @@ def jax_model(data: DataClass,
         - activity
         - transformation
         - dk_geno
+        - growth_transition
+        - calculate_growth
         - theta_binding_noise
         - theta_growth_noise
         - binding_observer

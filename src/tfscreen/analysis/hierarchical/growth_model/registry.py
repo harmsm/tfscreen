@@ -1,7 +1,9 @@
 
-from .components.growth import independent as growth_independent
-from .components.growth import hierarchical as growth_hierarchical
-from .components.growth import fixed as growth_fixed
+from .components.growth import linear_independent as growth_independent
+from .components.growth import linear as growth_hierarchical
+from .components.growth import linear_fixed as growth_fixed
+from .components.growth import power as growth_power
+from .components.growth import saturation as growth_saturation
 from .components.growth_transition import instant as growth_transition_instant
 from .components.growth_transition import memory as growth_transition_memory
 from .components.growth_transition import baranyi as growth_transition_baranyi
@@ -30,9 +32,11 @@ from .observe import growth
 
 model_registry = {
     "condition_growth":{
-        "independent":growth_independent,
-        "hierarchical":growth_hierarchical,
-        "fixed":growth_fixed,
+        "linear":growth_hierarchical,
+        "linear_independent":growth_independent,
+        "linear_fixed":growth_fixed,
+        "power":growth_power,
+        "saturation":growth_saturation,
     },
     "ln_cfu0":{
         "hierarchical":ln_cfu0,

@@ -97,16 +97,6 @@ class DataClass:
 
 
 @dataclass(frozen=True)
-class ConditionGrowthParams:
-    """
-    Holds condition growth parameters for pre-selection and selection phases.
-    """
-    k_pre: jnp.ndarray
-    m_pre: jnp.ndarray
-    k_sel: jnp.ndarray
-    m_sel: jnp.ndarray
-
-@dataclass(frozen=True)
 class GrowthPriors:
     condition_growth: Any
     growth_transition: Any

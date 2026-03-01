@@ -1,8 +1,8 @@
 import pytest
 import jax.numpy as jnp
-from tfscreen.analysis.hierarchical.growth_model.data_class import ConditionGrowthParams
-from tfscreen.analysis.hierarchical.growth_model.components.growth.fixed import (
-    calculate_growth
+from tfscreen.analysis.hierarchical.growth_model.components.growth.linear_fixed import (
+    calculate_growth,
+    LinearParams
 )
 
 def test_calculate_growth():
@@ -13,7 +13,7 @@ def test_calculate_growth():
     k_sel = jnp.array([1.5, 2.5])
     m_sel = jnp.array([0.7, 0.8])
     
-    params = ConditionGrowthParams(
+    params = LinearParams(
         k_pre=k_pre,
         m_pre=m_pre,
         k_sel=k_sel,

@@ -6,13 +6,14 @@ from numpyro.handlers import trace, substitute, seed
 from collections import namedtuple
 
 # --- Import Module Under Test (MUT) ---
-from tfscreen.analysis.hierarchical.growth_model.components.growth.independent import (
+from tfscreen.analysis.hierarchical.growth_model.components.growth.linear_independent import (
     ModelPriors,
     define_model,
     guide,
     get_hyperparameters,
     get_priors,
-    get_guesses
+    get_guesses,
+    LinearParams
 )
 
 # --- Mock Data Fixture ---
