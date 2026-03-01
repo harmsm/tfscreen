@@ -175,9 +175,9 @@ def initialized_model_class():
     model._ln_cfu0 = "hierarchical"
     model._dk_geno = "hierarchical"
     model._activity = "hierarchical"
-    model._transformation = "none"
-    model._theta_growth_noise = "none"
-    model._theta_binding_noise = "none"
+    model._transformation = "single"
+    model._theta_growth_noise = "zero"
+    model._theta_binding_noise = "zero"
     model._spiked_genotypes = None
     model._batch_size = 1
     model.growth_tm = MagicMock()
@@ -278,9 +278,9 @@ def test_initialize_classes_logic(mocker):
         "dk_geno": {"hierarchical": MagicMock()},
         "activity": {"hierarchical": MagicMock(), "horseshoe": MagicMock()},
         "theta": {"categorical": MagicMock(), "hill": MagicMock(), "fixed": MagicMock()},
-        "transformation": {"congression": MagicMock(), "none": MagicMock()},
-        "theta_growth_noise": {"none": MagicMock()},
-        "theta_binding_noise": {"none": MagicMock()},
+        "transformation": {"congression": MagicMock(), "single": MagicMock()},
+        "theta_growth_noise": {"zero": MagicMock()},
+        "theta_binding_noise": {"zero": MagicMock()},
         "observe_binding": MagicMock(),
         "observe_growth": MagicMock()
     }, clear=True):
@@ -372,9 +372,11 @@ def test_extract_parameters_errors(initialized_model_class):
 
 def test_extract_parameters_npz(initialized_model_class, tmpdir):
     model = initialized_model_class
-    model._theta = "hill"
-    model._condition_growth = "none"
-    model._dk_geno = "none"
+    model._transformation = "single"
+    model._theta_growth_noise = "zero"
+    model._theta_binding_noise = "zero"
+    model._condition_growth = "zero"
+    model._dk_geno = "zero"
     model._activity = "fixed"
     model.growth_tm.df = pd.DataFrame({"genotype": ["wt"], "titrant_name": ["T"], "map_theta_group": [0], "map_ln_cfu0": [0]})
     post = {"theta_hill_n": np.zeros((1, 1)), "theta_log_hill_K": np.zeros((1, 1)), 

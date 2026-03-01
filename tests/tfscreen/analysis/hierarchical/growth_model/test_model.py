@@ -147,7 +147,8 @@ def test_jax_model_execution_flow(mock_data, mock_priors, mock_control):
     
     # Growth Transition
     mock_control["growth_transition"].assert_called_once_with(
-        "growth_transition", mock_data.growth, ANY, g_pre=21.0, g_sel=21.0, t_pre=jnp.array(2.0), t_sel=jnp.array(3.0)
+        "growth_transition", mock_data.growth, ANY, g_pre=21.0, g_sel=21.0, 
+        t_pre=jnp.array(2.0), t_sel=jnp.array(3.0), theta=jnp.array(20.0)
     )
     
     # ln_cfu0

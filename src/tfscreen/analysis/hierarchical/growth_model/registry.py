@@ -1,27 +1,29 @@
 
-from .components import growth_independent 
-from .components import growth_hierarchical
-from .components import growth_fixed
-from .components import growth_transition_instant
+from .components.growth import independent as growth_independent
+from .components.growth import hierarchical as growth_hierarchical
+from .components.growth import fixed as growth_fixed
+from .components.growth_transition import instant as growth_transition_instant
+from .components.growth_transition import memory as growth_transition_memory
+from .components.growth_transition import baranyi as growth_transition_baranyi
 
-from .components import ln_cfu0
+from .components.ln_cfu0 import hierarchical as ln_cfu0
 
-from .components import dk_geno_fixed 
-from .components import dk_geno_hierarchical
+from .components.dk_geno import fixed as dk_geno_fixed 
+from .components.dk_geno import hierarchical as dk_geno_hierarchical
 
-from .components import activity_fixed
-from .components import activity_hierarchical 
-from .components import activity_horseshoe 
+from .components.activity import fixed as activity_fixed
+from .components.activity import hierarchical as activity_hierarchical 
+from .components.activity import horseshoe as activity_horseshoe 
 
-from .components import theta_cat 
-from .components import theta_hill 
-from .components import transformation_congression
-from .components import transformation_empirical
-from .components import transformation_logit_norm
-from .components import transformation_single 
+from .components.theta import categorical as theta_cat 
+from .components.theta import hill as theta_hill 
+from .components.transformation import congression as transformation_congression
+from .components.transformation import empirical as transformation_empirical
+from .components.transformation import logit_norm as transformation_logit_norm
+from .components.transformation import single as transformation_single 
 
-from .components import no_noise 
-from .components import beta_noise 
+from .components.noise import zero as no_noise 
+from .components.noise import beta as beta_noise 
 
 from .observe import binding 
 from .observe import growth 
@@ -55,15 +57,17 @@ model_registry = {
         "hill":theta_hill,
     },
     "theta_growth_noise":{
-        "none":no_noise,
+        "zero":no_noise,
         "beta":beta_noise,
     },
     "theta_binding_noise":{
-        "none":no_noise,
+        "zero":no_noise,
         "beta":beta_noise,
     },
     "growth_transition":{
         "instant":growth_transition_instant,
+        "memory":growth_transition_memory,
+        "baranyi":growth_transition_baranyi,
     },
     "observe_binding":binding,
     "observe_growth":growth,

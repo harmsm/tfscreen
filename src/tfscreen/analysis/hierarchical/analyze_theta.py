@@ -260,8 +260,8 @@ def analyze_theta(growth_df=None,
                   activity_model="horseshoe",
                   theta_model="hill",
                   transformation_model="empirical",
-                  theta_growth_noise_model="none",
-                  theta_binding_noise_model="none",
+                  theta_growth_noise_model="zero",
+                  theta_binding_noise_model="zero",
                   checkpoint_file=None,
                   analysis_method="svi",
                   out_root="tfs",
@@ -309,6 +309,10 @@ def analyze_theta(growth_df=None,
     condition_growth_model: str, optional
         model to use to describe growth under different conditions (e.g., 
         pheS+4CP). Allowed values are 'hierarchical' (default) or 'independent'.
+    growth_transition_model : str, optional
+        model to use to describe the transition between the pre-selection
+        and selection phases. Allowed values are 'instant' (default), 'memory',
+        or 'baranyi'.
     ln_cfu0_model : str, optional
         model to use to describe ln_cfu0, the initial populations of genotypes
         in each replicate. Only 'hierarchical' is allowed at this point. 
@@ -330,12 +334,10 @@ def analyze_theta(growth_df=None,
         'empirical', or 'logit_theta'. Default 'empirical'
     theta_growth_noise_model : str, optional
         model to use for stochastic experimental noise in theta measured by 
-        bacterial growth. Allowed values are 'beta' (default) or 'none' (written
-        as a string)
+        bacterial growth. Allowed values are 'beta' (default) or 'zero'
     theta_binding_noise_model : str, optional
         model to use for stochastic experimental noise in theta measured by 
-        binding. Allowed values are 'beta' (default) or 'none' (written as a
-        string)
+        binding. Allowed values are 'beta' (default) or 'zero'
     checkpoint_file : str or None, optional
         Path to a checkpoint file to resume SVI from, or None to start fresh.
     analysis_method : str, optional

@@ -154,7 +154,8 @@ def jax_model(data: DataClass,
                                                g_pre=g_pre,
                                                g_sel=g_sel,
                                                t_pre=data.growth.t_pre,
-                                               t_sel=data.growth.t_sel)
+                                               t_sel=data.growth.t_sel,
+                                               theta=noisy_theta_growth)
 
         ln_cfu_pred = ln_cfu0 + total_growth
 

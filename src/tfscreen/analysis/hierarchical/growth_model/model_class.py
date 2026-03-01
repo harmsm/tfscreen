@@ -470,9 +470,9 @@ class ModelClass:
     transformation : str, optional
         Model name for transformation correction (e.g., "congression" or "single").
     theta_growth_noise : str, optional
-        Model name for noise on theta in the growth model.
+        Model name for noise on theta in the growth model ('zero' or 'beta').
     theta_binding_noise : str, optional
-        Model name for noise on theta in the binding model.
+        Model name for noise on theta in the binding model ('zero' or 'beta').
     spiked_genotypes : list or str, optional
         Names of genotypes that should be excluded from congression
         correction.
@@ -506,8 +506,8 @@ class ModelClass:
                  activity="horseshoe",
                  theta="hill",
                  transformation="congression",
-                 theta_growth_noise="none",
-                 theta_binding_noise="none",
+                 theta_growth_noise="zero",
+                 theta_binding_noise="zero",
                  spiked_genotypes=None):
 
         self._ln_cfu_df = growth_df
@@ -860,15 +860,15 @@ class ModelClass:
         Parameters
         ----------
         posteriors : dict or str
-        Assumes this is a dictionary of posteriors keying parameters to 
-        numpy arrays, a numpy.lib.npyio.NpzFile object, or a path to a 
-        .npz or .h5/.hdf5 file containing posterior samples for model 
-        parameters.
-    q_to_get : dict, optional
-        Dictionary mapping output column names to quantile values (between 0 and 1)
-        to extract from the posterior samples. If None, a default set of quantiles
-        is used (min, lower_95, lower_std, lower_quartile, median, upper_std,
-        upper_quartile, upper_95, max).
+            Assumes this is a dictionary of posteriors keying parameters to 
+            numpy arrays, a numpy.lib.npyio.NpzFile object, or a path to a 
+            .npz or .h5/.hdf5 file containing posterior samples for model 
+            parameters.
+        q_to_get : dict, optional
+            Dictionary mapping output column names to quantile values (between 0 and 1)
+            to extract from the posterior samples. If None, a default set of quantiles
+            is used (min, lower_95, lower_std, lower_quartile, median, upper_std,
+            upper_quartile, upper_95, max).
 
         Returns
         -------
@@ -945,6 +945,31 @@ class ModelClass:
                     map_column = "map_condition",
                     get_columns = ["replicate","condition"],
                     in_run_prefix = "condition_"
+                )
+            )
+
+        # growth_transition
+        if self._growth_transition == "memory":
+            extract.append(
+                dict(
+                    input_df = self.growth_tm.map_groups['condition'],
+                    params_to_get = ["growth_transition_tau0", 
+                                     "growth_transition_k1", 
+                                     "growth_transition_k2"],
+                    map_column = "map_condition",
+                    get_columns = ["replicate","condition"],
+                    in_run_prefix = ""
+                )
+            )
+        elif self._growth_transition == "baranyi":
+             extract.append(
+                dict(
+                    input_df = self.growth_tm.map_groups['condition'],
+                    params_to_get = ["growth_transition_tau_lag", 
+                                     "growth_transition_k_sharp"],
+                    map_column = "map_condition",
+                    get_columns = ["replicate","condition"],
+                    in_run_prefix = ""
                 )
             )
 

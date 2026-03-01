@@ -11,16 +11,19 @@ from tfscreen.analysis.hierarchical.growth_model.registry import model_registry
 CONDITION_GROWTH_OPTS = ["independent", "hierarchical"]
 TRANSFORMATION_OPTS = ["congression", "single"]
 THETA_OPTS = ["hill"] # categorical is also possible but hill is the most complex
+GROWTH_TRANSITION_OPTS = ["instant","baranyi","memory"]
 
 @pytest.mark.slow
 @pytest.mark.parametrize("condition_growth", CONDITION_GROWTH_OPTS)
 @pytest.mark.parametrize("transformation", TRANSFORMATION_OPTS)
 @pytest.mark.parametrize("theta", THETA_OPTS)
+@pytest.mark.parametrize("growth_transition",GROWTH_TRANSITION_OPTS)
 def test_model_svi_smoke(growth_smoke_csv, 
                          binding_smoke_csv, 
                          condition_growth, 
                          transformation, 
-                         theta, 
+                         theta,
+                         growth_transition,
                          tmpdir):
     """
     Perform a very short SVI run for different model configurations.
