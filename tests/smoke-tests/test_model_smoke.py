@@ -10,7 +10,7 @@ from tfscreen.analysis.hierarchical.growth_model.registry import model_registry
 # We want to test a representative subset of the registry
 CONDITION_GROWTH_OPTS = ["independent", "hierarchical"]
 TRANSFORMATION_OPTS = ["congression", "single"]
-THETA_OPTS = ["hill"] # categorical is also possible but hill is the most complex
+THETA_OPTS = ["hill","categorical"]
 GROWTH_TRANSITION_OPTS = ["instant","baranyi","memory"]
 
 @pytest.mark.slow

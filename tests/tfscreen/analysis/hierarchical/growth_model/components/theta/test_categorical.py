@@ -26,7 +26,9 @@ MockData = namedtuple("MockData", [
     "batch_idx",
     "scale_vector",
     "map_theta",
-    "scatter_theta"
+    "scatter_theta",
+    "geno_theta_idx",
+    "titrant_conc"
 ])
 
 @pytest.fixture
@@ -43,6 +45,10 @@ def mock_data():
     scale_vector = jnp.ones(batch_size, dtype=float)
     map_theta = jnp.array([0, 5, 10, 23, 1], dtype=jnp.int32)
     
+    # New required fields
+    geno_theta_idx = jnp.array([1, 3], dtype=jnp.int32)
+    titrant_conc = jnp.array([0.0, 1.0, 10.0])
+    
     return MockData(
         num_titrant_name=num_titrant_name,
         num_titrant_conc=num_titrant_conc,
@@ -51,7 +57,9 @@ def mock_data():
         batch_idx=batch_idx,
         scale_vector=scale_vector,
         map_theta=map_theta,
-        scatter_theta=1
+        scatter_theta=1,
+        geno_theta_idx=geno_theta_idx,
+        titrant_conc=titrant_conc
     )
 
 @pytest.fixture
@@ -75,6 +83,7 @@ def model_setup(mock_data):
     # Ensure mu/sigma are present (since define_model returns them)
     assert theta_param.mu is not None
     assert theta_param.sigma is not None
+    assert theta_param.concentrations is not None
     
     return theta_param
 
@@ -128,6 +137,7 @@ def test_define_model_shapes_and_values(mock_data):
     assert theta_param.theta.shape == expected_batch_shape
     assert theta_param.mu.shape == (mock_data.num_titrant_name, mock_data.num_titrant_conc, 1)
     assert jnp.allclose(theta_param.theta, 0.5)
+    assert jnp.allclose(theta_param.concentrations, mock_data.titrant_conc)
 
 def test_run_model_no_scatter(model_setup, mock_data):
     """
@@ -136,13 +146,19 @@ def test_run_model_no_scatter(model_setup, mock_data):
     theta_param = model_setup
     data = mock_data._replace(scatter_theta=0)
     theta_calc = run_model(theta_param, data)
-    assert theta_calc is theta_param.theta
+    
+    # We no longer assert 'is' because run_model slices genotypes
+    # it should be equal if indices match full theta_param.theta
+    # In model_setup, theta_param.theta already has batch_size genotypes.
+    # mock_data.geno_theta_idx is [1, 3] which matches mock_data.batch_idx.
+    
     expected_shape = (
         mock_data.num_titrant_name,
         mock_data.num_titrant_conc,
         mock_data.batch_size
     )
     assert theta_calc.shape == expected_shape
+    assert jnp.allclose(theta_calc, theta_param.theta)
 
 def test_run_model_with_scatter(model_setup, mock_data):
     """
@@ -156,6 +172,26 @@ def test_run_model_with_scatter(model_setup, mock_data):
                       mock_data.num_titrant_conc, 
                       mock_data.batch_size)
     assert theta_calc.shape == expected_shape
+
+def test_run_model_concentration_mapping(model_setup, mock_data):
+    """
+    Tests 'run_model' concentration mapping logic.
+    """
+    theta_param = model_setup
+    # Data has different concentrations
+    new_conc = jnp.array([1.0, 0.0]) # Swapped and subset
+    data = mock_data._replace(titrant_conc=new_conc, scatter_theta=0)
+    
+    theta_calc = run_model(theta_param, data)
+    
+    # Shape should follow new_conc
+    assert theta_calc.shape == (mock_data.num_titrant_name, 2, mock_data.batch_size)
+    
+    # Check values mapping
+    # Orig concentrations: [0.0, 1.0, 10.0] -> indices [0, 1, 2]
+    # new_conc [1.0, 0.0] should map to indices [1, 0]
+    expected = theta_param.theta[:, [1, 0], :]
+    assert jnp.allclose(theta_calc, expected)
 
 def test_guide_logic_and_shapes(mock_data):
     """
