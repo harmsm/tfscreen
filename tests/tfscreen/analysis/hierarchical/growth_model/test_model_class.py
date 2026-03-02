@@ -15,8 +15,13 @@ from tfscreen.analysis.hierarchical.growth_model.model_class import (
     _build_growth_tm,
     _build_binding_tm,
     _setup_batching,
-    _extract_param_est,
     get_batch
+)
+from tfscreen.analysis.hierarchical.growth_model.extraction import (
+    _extract_param_est,
+    extract_parameters,
+    extract_theta_curves,
+    extract_growth_predictions
 )
 
 # ----------------------------------------------------------------------------
@@ -360,7 +365,7 @@ def test_extract_parameters_full(initialized_model_class):
         "activity": np.zeros((1, 1, 1)),
         "transformation_lam": np.zeros((1,)), "transformation_mu": np.zeros((1, 1)), "transformation_sigma": np.zeros((1, 1))
     }
-    res = ModelClass.extract_parameters(model, post)
+    res = extract_parameters(model, post)
     assert "hill_n" in res
     assert "activity" in res
     assert "lam" in res
@@ -368,7 +373,7 @@ def test_extract_parameters_full(initialized_model_class):
 def test_extract_parameters_errors(initialized_model_class):
     model = initialized_model_class
     with pytest.raises(ValueError, match="should be a dictionary"):
-        ModelClass.extract_parameters(model, {}, q_to_get="not_a_dict")
+        extract_parameters(model, {}, q_to_get="not_a_dict")
 
 def test_extract_parameters_npz(initialized_model_class, tmpdir):
     model = initialized_model_class
@@ -384,7 +389,7 @@ def test_extract_parameters_npz(initialized_model_class, tmpdir):
             "ln_cfu0": np.zeros((1, 1))}
     path = os.path.join(tmpdir, "post.npz")
     np.savez(path, **post)
-    res = ModelClass.extract_parameters(model, path)
+    res = extract_parameters(model, path)
     assert "hill_n" in res
 
 def test_extract_parameters_categorical(initialized_model_class):
@@ -395,7 +400,7 @@ def test_extract_parameters_categorical(initialized_model_class):
     model._activity = "fixed"
     model.growth_tm.df = pd.DataFrame({"genotype": ["wt"], "titrant_name": ["T"], "titrant_conc": [1.0], "map_theta": [0]})
     post = {"theta_theta": np.zeros((1, 1))}
-    res = ModelClass.extract_parameters(model, post)
+    res = extract_parameters(model, post)
     assert "theta" in res
 
 def test_extract_theta_curves_full(initialized_model_class, tmpdir):
@@ -406,13 +411,13 @@ def test_extract_theta_curves_full(initialized_model_class, tmpdir):
         "theta_hill_n": np.zeros((1, 1, 1)), "theta_log_hill_K": np.zeros((1, 1, 1)),
         "theta_theta_high": np.zeros((1, 1, 1)), "theta_theta_low": np.zeros((1, 1, 1))
     }
-    res = ModelClass.extract_theta_curves(model, post)
+    res = extract_theta_curves(model, post)
     assert len(res) > 0
     
     # Test path for extract_theta_curves (1047)
     path = os.path.join(tmpdir, "theta.npz")
     np.savez(path, **post)
-    res = ModelClass.extract_theta_curves(model, path)
+    res = extract_theta_curves(model, path)
     assert len(res) > 0
 
 def test_extract_theta_curves_manual(initialized_model_class):
@@ -426,33 +431,33 @@ def test_extract_theta_curves_manual(initialized_model_class):
     
     # Test manual_titrant_df (1074-1085)
     manual = pd.DataFrame({"titrant_name": ["T"], "titrant_conc": [0.5]})
-    res = ModelClass.extract_theta_curves(model, post, manual_titrant_df=manual)
+    res = extract_theta_curves(model, post, manual_titrant_df=manual)
     assert len(res) == 1
     
-    # Test manual_titrant_df with genotype (1087)
+    # Test manual_titrant_df with genotype
     manual["genotype"] = "wt"
-    res = ModelClass.extract_theta_curves(model, post, manual_titrant_df=manual)
+    res = extract_theta_curves(model, post, manual_titrant_df=manual)
     assert len(res) == 1
     
     # Test mapping error (1103-1109)
     # Trigger 1106 by mocking Index.map to raise
     with patch("pandas.Index.map", side_effect=Exception("forced failure")):
         with pytest.raises(ValueError, match=r"Some \(genotype, titrant_name\) pairs"):
-            ModelClass.extract_theta_curves(model, post, manual_titrant_df=manual)
+            extract_theta_curves(model, post, manual_titrant_df=manual)
 
     # Trigger 1113 by passing a genotype that doesn't exist
     manual["genotype"] = "missing"
     with pytest.raises(ValueError, match="were not found in the model data"):
-        ModelClass.extract_theta_curves(model, post, manual_titrant_df=manual)
+        extract_theta_curves(model, post, manual_titrant_df=manual)
 
 def test_extract_theta_curves_errors(initialized_model_class):
     model = initialized_model_class
     model._theta = "categorical"
     with pytest.raises(ValueError, match="only available for models where theta='hill'"):
-        ModelClass.extract_theta_curves(model, {})
+        extract_theta_curves(model, {})
     model._theta = "hill"
     with pytest.raises(ValueError, match="should be a dictionary"):
-        ModelClass.extract_theta_curves(model, {}, q_to_get="not_a_dict")
+        extract_theta_curves(model, {}, q_to_get="not_a_dict")
 
 def test_extract_growth_predictions_full(initialized_model_class, tmpdir):
     model = initialized_model_class
@@ -477,17 +482,17 @@ def test_extract_growth_predictions_full(initialized_model_class, tmpdir):
         "genotype_idx": [0],
     })
     post = {"growth_pred": np.zeros((1, 1, 1, 1, 1, 1, 1, 1))}
-    res = ModelClass.extract_growth_predictions(model, post)
+    res = extract_growth_predictions(model, post)
     assert "median" in res.columns
     
     with pytest.raises(ValueError, match="'growth_pred' not found"):
-        ModelClass.extract_growth_predictions(model, {})
+        extract_growth_predictions(model, {})
     with pytest.raises(ValueError, match="should be a dictionary"):
-        ModelClass.extract_growth_predictions(model, {"growth_pred": None}, q_to_get="bad")
+        extract_growth_predictions(model, {"growth_pred": None}, q_to_get="bad")
         
     path = os.path.join(tmpdir, "gp.npz")
     np.savez(path, growth_pred=np.zeros((1,1,1,1,1,1,1,1)))
-    res = ModelClass.extract_growth_predictions(model, path)
+    res = extract_growth_predictions(model, path)
     assert len(res) > 0
 
 def test_get_random_idx_logic(initialized_model_class):

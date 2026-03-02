@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from unittest.mock import MagicMock
 from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass
+from tfscreen.analysis.hierarchical.growth_model.extraction import extract_parameters
 
 @pytest.fixture
 def mock_model_congression():
@@ -27,9 +28,6 @@ def mock_model_congression():
     mock_tm.tensor_dim_labels = [["1"], ["1"], ["1"], ["1"], ["iptg"], [0.0, 1.0], ["wt"]]
     model.growth_tm = mock_tm
     
-    # Bind the method under test
-    model.extract_parameters = ModelClass.extract_parameters.__get__(model, ModelClass)
-    
     return model
 
 @pytest.fixture
@@ -47,7 +45,7 @@ def mock_posteriors_congression():
 
 def test_extract_parameters_congression(mock_model_congression, mock_posteriors_congression):
     """Test extracting lam, mu, and sigma."""
-    params = mock_model_congression.extract_parameters(mock_posteriors_congression)
+    params = extract_parameters(mock_model_congression, mock_posteriors_congression)
     
     assert "lam" in params
     assert "mu" in params
@@ -73,7 +71,7 @@ def test_extract_parameters_congression(mock_model_congression, mock_posteriors_
 def test_extract_parameters_no_congression(mock_model_congression):
     """Test that congression parameters are NOT extracted when transformation is none."""
     mock_model_congression._transformation = "none"
-    params = mock_model_congression.extract_parameters({})
+    params = extract_parameters(mock_model_congression, {})
     
     assert "lam" not in params
     assert "mu" not in params

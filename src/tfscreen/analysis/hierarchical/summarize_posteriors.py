@@ -3,7 +3,12 @@ import numpy as np
 import h5py
 import os
 import yaml
-from tfscreen.analysis.hierarchical.growth_model import GrowthModel
+from tfscreen.analysis.hierarchical.growth_model import (
+    GrowthModel,
+    extract_parameters,
+    extract_growth_predictions,
+    extract_theta_curves
+)
 from tfscreen.util.cli.generalized_main import generalized_main
 
 def summarize_posteriors(posterior_file,
@@ -69,19 +74,19 @@ def summarize_posteriors(posterior_file,
 
         # Extract and save parameters
         print(f"Extracting parameters to {out_root}_*.csv...", flush=True)
-        params = gm.extract_parameters(posteriors)
+        params = extract_parameters(gm, posteriors)
         for p_name, p_df in params.items():
             p_df.to_csv(f"{out_root}_{p_name}.csv", index=False)
 
         # Extract and save growth predictions
         print(f"Extracting growth predictions to {out_root}_growth_pred.csv...", flush=True)
-        growth_pred_df = gm.extract_growth_predictions(posteriors)
+        growth_pred_df = extract_growth_predictions(gm, posteriors)
         growth_pred_df.to_csv(f"{out_root}_growth_pred.csv", index=False)
 
         # Extract and save theta curves (if applicable)
         if settings["theta"] == "hill":
             print(f"Extracting theta curves to {out_root}_theta_curves.csv...", flush=True)
-            theta_curves_df = gm.extract_theta_curves(posteriors)
+            theta_curves_df = extract_theta_curves(gm, posteriors)
             theta_curves_df.to_csv(f"{out_root}_theta_curves.csv", index=False)
 
     print("Summarization complete.", flush=True)

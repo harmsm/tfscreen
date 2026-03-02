@@ -32,11 +32,14 @@ def test_summarize_posteriors_full(tmpdir, mock_config):
     posterior_file = os.path.join(tmpdir, "post.npz")
     np.savez(posterior_file, a=np.array([1]))
     
-    with patch("tfscreen.analysis.hierarchical.summarize_posteriors.GrowthModel") as MockGM:
-        mock_gm = MockGM.return_value
-        mock_gm.extract_parameters.return_value = {"param1": pd.DataFrame({"x": [1]})}
-        mock_gm.extract_growth_predictions.return_value = pd.DataFrame({"y": [2]})
-        mock_gm.extract_theta_curves.return_value = pd.DataFrame({"z": [3]})
+    with patch("tfscreen.analysis.hierarchical.summarize_posteriors.GrowthModel") as MockGM, \
+         patch("tfscreen.analysis.hierarchical.summarize_posteriors.extract_parameters") as mock_extract_params, \
+         patch("tfscreen.analysis.hierarchical.summarize_posteriors.extract_growth_predictions") as mock_extract_pred, \
+         patch("tfscreen.analysis.hierarchical.summarize_posteriors.extract_theta_curves") as mock_extract_theta:
+        
+        mock_extract_params.return_value = {"param1": pd.DataFrame({"x": [1]})}
+        mock_extract_pred.return_value = pd.DataFrame({"y": [2]})
+        mock_extract_theta.return_value = pd.DataFrame({"z": [3]})
         
         out_root = os.path.join(tmpdir, "tfs")
         summarize_posteriors(posterior_file, config_file, out_root=out_root)
@@ -55,11 +58,14 @@ def test_summarize_posteriors_h5(tmpdir, mock_config):
     with h5py.File(posterior_file, 'w') as f:
         f.create_dataset("a", data=np.array([1]))
     
-    with patch("tfscreen.analysis.hierarchical.summarize_posteriors.GrowthModel") as MockGM:
-        mock_gm = MockGM.return_value
-        mock_gm.extract_parameters.return_value = {"param1": pd.DataFrame({"x": [1]})}
-        mock_gm.extract_growth_predictions.return_value = pd.DataFrame({"y": [2]})
-        mock_gm.extract_theta_curves.return_value = pd.DataFrame({"z": [3]})
+    with patch("tfscreen.analysis.hierarchical.summarize_posteriors.GrowthModel") as MockGM, \
+         patch("tfscreen.analysis.hierarchical.summarize_posteriors.extract_parameters") as mock_extract_params, \
+         patch("tfscreen.analysis.hierarchical.summarize_posteriors.extract_growth_predictions") as mock_extract_pred, \
+         patch("tfscreen.analysis.hierarchical.summarize_posteriors.extract_theta_curves") as mock_extract_theta:
+
+        mock_extract_params.return_value = {"param1": pd.DataFrame({"x": [1]})}
+        mock_extract_pred.return_value = pd.DataFrame({"y": [2]})
+        mock_extract_theta.return_value = pd.DataFrame({"z": [3]})
         
         out_root = os.path.join(tmpdir, "tfs_h5")
         summarize_posteriors(posterior_file, config_file, out_root=out_root)
@@ -100,10 +106,12 @@ def test_summarize_posteriors_no_hill(tmpdir, mock_config):
     posterior_file = os.path.join(tmpdir, "post.npz")
     np.savez(posterior_file, a=np.array([1]))
     
-    with patch("tfscreen.analysis.hierarchical.summarize_posteriors.GrowthModel") as MockGM:
-        mock_gm = MockGM.return_value
-        mock_gm.extract_parameters.return_value = {}
-        mock_gm.extract_growth_predictions.return_value = pd.DataFrame()
+    with patch("tfscreen.analysis.hierarchical.summarize_posteriors.GrowthModel") as MockGM, \
+         patch("tfscreen.analysis.hierarchical.summarize_posteriors.extract_parameters") as mock_extract_params, \
+         patch("tfscreen.analysis.hierarchical.summarize_posteriors.extract_growth_predictions") as mock_extract_pred:
+
+        mock_extract_params.return_value = {}
+        mock_extract_pred.return_value = pd.DataFrame()
         
         out_root = os.path.join(tmpdir, "tfs_cat")
         summarize_posteriors(posterior_file, config_file, out_root=out_root)

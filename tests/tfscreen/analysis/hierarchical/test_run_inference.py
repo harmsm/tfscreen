@@ -167,7 +167,6 @@ def test_run_optimization_nan_explosion(mocker):
 
 def test_get_posteriors(tmpdir, mocker):
     model = MockModel()
-    model.extract_parameters = mocker.Mock(return_value={"p": pd.DataFrame({"a": [1]})})
     ri = RunInference(model, seed=42)
     out_root = os.path.join(tmpdir, "test")
     
@@ -188,7 +187,6 @@ def test_get_posteriors(tmpdir, mocker):
 
 def test_get_posteriors_batching_logic(tmpdir, mocker):
     model = MockModel()
-    model.extract_parameters = mocker.Mock(return_value={})
     ri = RunInference(model, seed=42)
     out_root = os.path.join(tmpdir, "test_batching")
     
@@ -217,8 +215,7 @@ def test_get_posteriors_batching_logic(tmpdir, mocker):
     assert os.path.exists(f"{out_root}_posterior.h5")
 
 def test_get_posteriors_full_logic(tmpdir, mocker):
-    model = MockModel(num_genotype=10)
-    model.extract_parameters = mocker.Mock(return_value={})
+    model = MockModel()
     ri = RunInference(model, seed=42)
     out_root = os.path.join(tmpdir, "test_full")
     
