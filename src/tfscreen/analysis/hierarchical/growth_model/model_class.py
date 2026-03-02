@@ -421,6 +421,20 @@ def _extract_param_est(input_df,
 
         # Grab the posterior distribution of this parameters and flatten. 
         model_param = f"{in_run_prefix}{param}"
+        if model_param not in param_posteriors:
+            # Try suffixes
+            found = False
+            for suffix in ["_auto_loc", "_mean"]:
+                if f"{model_param}{suffix}" in param_posteriors:
+                    model_param = f"{model_param}{suffix}"
+                    found = True
+                    break
+            
+            if not found:
+                # If we still haven't found it, raise the error with the original name
+                # but it will be descriptive.
+                val = param_posteriors[model_param]
+        
         val = param_posteriors[model_param]
         if hasattr(val, "shape") and not hasattr(val, "reshape"):
             val = val[:]

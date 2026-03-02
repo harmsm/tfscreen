@@ -108,6 +108,20 @@ def _run_map(ri,
     # Write the current parameter values
     ri.write_params(params,out_root=out_root)
 
+    if always_get_posterior:
+
+        ri.get_posteriors(svi=map_obj,
+                          svi_state=svi_state,
+                          out_root=out_root,
+                          num_posterior_samples=num_posterior_samples,
+                          sampling_batch_size=sampling_batch_size,
+                          forward_batch_size=forward_batch_size)
+        
+        # Write summary files
+        summarize_posteriors(posterior_file=f"{out_root}_posterior.h5",
+                             config_file=f"{out_root}_config.yaml",
+                             out_root=out_root)
+
     # Write convergence information to stdout
     if converged:
         print("MAP run converged.",flush=True)
@@ -404,6 +418,15 @@ def analyze_theta(growth_df=None,
     This function writes checkpoints and posterior samples to disk using the provided
     output root. 
     """
+    
+    import warnings
+    warnings.warn(
+        "analyze_theta is deprecated. Please split your analysis into two steps: "
+        "1) configure_growth_analysis to generate configuration files, and "
+        "2) run_growth_analysis to execute the model inference.",
+        DeprecationWarning,
+        stacklevel=2
+    )
 
     # If config_file is provided, load settings from it. Overwrite any
     # settings provided as arguments.
