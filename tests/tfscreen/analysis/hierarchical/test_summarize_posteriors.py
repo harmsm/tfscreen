@@ -42,7 +42,11 @@ def test_summarize_posteriors_full(tmpdir, mock_config):
         mock_extract_theta.return_value = pd.DataFrame({"z": [3]})
         
         out_root = os.path.join(tmpdir, "tfs")
-        summarize_posteriors(posterior_file, config_file, out_root=out_root)
+        with patch("tfscreen.analysis.hierarchical.summarize_posteriors.read_configuration") as mock_read:
+            gm = MockGM.return_value
+            gm.settings = {"theta": "hill"}
+            mock_read.return_value = (gm, {})
+            summarize_posteriors(config_file, posterior_file, out_root=out_root)
         
         assert os.path.exists(f"{out_root}_param1.csv")
         assert os.path.exists(f"{out_root}_growth_pred.csv")
@@ -68,7 +72,11 @@ def test_summarize_posteriors_h5(tmpdir, mock_config):
         mock_extract_theta.return_value = pd.DataFrame({"z": [3]})
         
         out_root = os.path.join(tmpdir, "tfs_h5")
-        summarize_posteriors(posterior_file, config_file, out_root=out_root)
+        with patch("tfscreen.analysis.hierarchical.summarize_posteriors.read_configuration") as mock_read:
+            gm = MockGM.return_value
+            gm.settings = {"theta": "hill"}
+            mock_read.return_value = (gm, {})
+            summarize_posteriors(config_file, posterior_file, out_root=out_root)
         
         assert os.path.exists(f"{out_root}_param1.csv")
         assert os.path.exists(f"{out_root}_growth_pred.csv")
@@ -76,7 +84,7 @@ def test_summarize_posteriors_h5(tmpdir, mock_config):
 
 def test_summarize_posteriors_errors():
     with pytest.raises(FileNotFoundError, match="Configuration file not found"):
-        summarize_posteriors("p.npz", "nonexistent.yaml")
+        summarize_posteriors("nonexistent.yaml", "p.npz")
     
     # Create a dummy config with all required keys
     full_config = {
@@ -86,11 +94,11 @@ def test_summarize_posteriors_errors():
         ]},
         "growth_df": "g", "binding_df": "b"
     }
-    with patch("builtins.open", mock_open(read_data=yaml.dump(full_config))):
-        with patch("os.path.exists", side_effect=lambda x: x == "config.yaml"):
-            with patch("tfscreen.analysis.hierarchical.summarize_posteriors.GrowthModel"):
-                with pytest.raises(FileNotFoundError, match="Posterior file not found"):
-                    summarize_posteriors("missing.npz", "config.yaml")
+    with patch("os.path.exists", side_effect=lambda x: x == "config.yaml"):
+        with patch("tfscreen.analysis.hierarchical.summarize_posteriors.read_configuration") as mock_read:
+            mock_read.return_value = (MagicMock(), {})
+            with pytest.raises(FileNotFoundError, match="Posterior file not found"):
+                summarize_posteriors("config.yaml", "missing.npz")
 
 def test_main():
     with patch("tfscreen.analysis.hierarchical.summarize_posteriors.generalized_main") as mock_gen:
@@ -114,7 +122,11 @@ def test_summarize_posteriors_no_hill(tmpdir, mock_config):
         mock_extract_pred.return_value = pd.DataFrame()
         
         out_root = os.path.join(tmpdir, "tfs_cat")
-        summarize_posteriors(posterior_file, config_file, out_root=out_root)
+        with patch("tfscreen.analysis.hierarchical.summarize_posteriors.read_configuration") as mock_read:
+            gm = MockGM.return_value
+            gm.settings = {"theta": "categorical"}
+            mock_read.return_value = (gm, {})
+            summarize_posteriors(config_file, posterior_file, out_root=out_root)
         
         # Should NOT have theta_curves
         assert not os.path.exists(f"{out_root}_theta_curves.csv")

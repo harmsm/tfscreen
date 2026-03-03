@@ -5,38 +5,275 @@ import numpy as np
 import jax.numpy as jnp
 from flax import struct
 
+import optax
+
 from tfscreen.analysis.hierarchical.growth_model import GrowthModel
 from tfscreen.analysis.hierarchical.run_inference import RunInference
+from tfscreen.analysis.hierarchical.summarize_posteriors import summarize_posteriors
 from tfscreen.util.cli.generalized_main import generalized_main
-from tfscreen.analysis.hierarchical.analyze_theta import _run_svi, _run_map
 
-def update_dataclass(dc, prefix, flat_dict):
-    import dataclasses
-    updates = {}
-    
-    # Check if this is a standard dataclass or a flax struct dataclass
-    if hasattr(dc, '__dataclass_fields__'):
-        fields = dataclasses.fields(dc) if dataclasses.is_dataclass(dc) else dc.__dataclass_fields__.values()
+from tfscreen.analysis.hierarchical.growth_model.configuration_io import (
+    read_configuration,
+    write_configuration
+)
+
+def _run_map(ri,
+             init_params,
+             checkpoint_file=None,
+             out_root="tfs",
+             adam_step_size=1e-3,
+             adam_final_step_size=1e-6,
+             adam_clip_norm=1.0,
+             elbo_num_particles=2,
+             convergence_tolerance=0.01,
+             convergence_window=10,
+             patience=10,
+             convergence_check_interval=2,
+             checkpoint_interval=10,
+             max_num_epochs=100000,
+             num_posterior_samples=10000,
+             sampling_batch_size=100,
+             forward_batch_size=512,
+             always_get_posterior=False,
+             init_param_jitter=0.0):
+    """
+    Run maximum a posteriori (MAP) optimization for hierarchical model inference.
+
+    This function sets up and runs MAP optimization using the provided RunInference
+    object and initial parameters. It manages checkpointing, convergence checking,
+    and writes parameter values to disk. Returns the final optimizer state, parameters,
+    and convergence status.
+
+    Parameters
+    ----------
+    ri : RunInference
+        RunInference object that manages model setup and optimization routines.
+    init_params : dict
+        Initial parameter values for MAP optimization.
+    checkpoint_file : str or None, optional
+        Path to a checkpoint file to resume optimization from, or None to start fresh.
+    out_root : str, optional
+        Output file root for checkpoints and results (default "tfs").
+    adam_step_size : float, optional
+        Starting step size for the Adam optimizer (default 1e-3).
+    adam_final_step_size : float, optional
+        Final step size for the Adam optimizer (default 1e-6).
+    adam_clip_norm : float, optional
+        Gradient clipping norm for Adam optimizer (default 1.0).
+    elbo_num_particles : int, optional
+        Number of particles for ELBO estimation during MAP (default 2).
+    max_num_epochs : int, optional
+        Maximum number of MAP optimization epochs (default 100000).
+    convergence_tolerance : float, optional
+        Relative change in smoothed loss to declare MAP convergence (default 0.01).
+    convergence_window : int, optional
+        Number of epochs to average for convergence check (default 10).
+    patience : int, optional
+        Number of consecutive checks meeting tolerance to declare convergence
+        (default 10).
+    convergence_check_interval : int, optional
+        Frequency (in epochs) to check for convergence (default 2).
+    checkpoint_interval : int, optional
+        Steps between checkpoints and convergence checks (default 10).
+    init_param_jitter : float, optional
+        Amount of jitter to add to init_params (default 0.0).
+
+    Returns
+    -------
+    svi_state : Any
+        Final optimizer state object from MAP.
+    params : dict
+        Final optimized parameters from MAP.
+    converged : bool
+        True if MAP converged according to the specified tolerance.
+    """
+
+    # Create a learning rate schedule
+    schedule = optax.exponential_decay(
+        init_value=adam_step_size,
+        transition_steps=float(max_num_epochs * ri._iterations_per_epoch),
+        decay_rate=adam_final_step_size / adam_step_size
+    )
+
+     # Create a maximum a posteriori svi object
+    map_obj = ri.setup_svi(adam_step_size=schedule,
+                           adam_clip_norm=adam_clip_norm,
+                           elbo_num_particles=elbo_num_particles,
+                           guide_type="delta")
+
+    # Run MAP
+    svi_state, params, converged = ri.run_optimization(
+        map_obj,
+        init_params=init_params, 
+        out_root=out_root,
+        svi_state=checkpoint_file,
+        convergence_tolerance=convergence_tolerance,
+        convergence_window=convergence_window,
+        patience=patience,
+        convergence_check_interval=convergence_check_interval,
+        checkpoint_interval=checkpoint_interval,
+        max_num_epochs=max_num_epochs,
+        init_param_jitter=init_param_jitter
+    )
+
+    # Write the current parameter values
+    ri.write_params(params,out_root=out_root)
+
+    if always_get_posterior:
+
+        ri.get_posteriors(svi=map_obj,
+                          svi_state=svi_state,
+                          out_root=out_root,
+                          num_posterior_samples=num_posterior_samples,
+                          sampling_batch_size=sampling_batch_size,
+                          forward_batch_size=forward_batch_size)
         
-        for field in fields:
-            field_name = field.name
-            full_key = f"{prefix}{field_name}" if prefix else field_name
-            attr_val = getattr(dc, field_name)
-            
-            if hasattr(attr_val, '__dataclass_fields__'):
-                updates[field_name] = update_dataclass(attr_val, full_key + ".", flat_dict)
-            elif full_key in flat_dict:
-                updates[field_name] = flat_dict[full_key]
-                
-        if len(updates) > 0:
-            if hasattr(dc, "replace"):
-                return dc.replace(**updates)
-            else:
-                return dataclasses.replace(dc, **updates)
-    return dc
+        # Write summary files
+        summarize_posteriors(posterior_file=f"{out_root}_posterior.h5",
+                             config_file=f"{out_root}_config.yaml",
+                             out_root=out_root)
+
+    # Write convergence information to stdout
+    if converged:
+        print("MAP run converged.",flush=True)
+    else:
+        print("MAP run has not yet converged.",flush=True)
+
+    return svi_state, params, converged
+
+def _run_svi(ri,
+             init_params,
+             checkpoint_file=None,
+             out_root="tfs",
+             adam_step_size=1e-3,
+             adam_final_step_size=1e-6,
+             adam_clip_norm=1.0,
+             elbo_num_particles=2,
+             convergence_tolerance=0.01,
+             convergence_window=10,
+             patience=10,
+             convergence_check_interval=2,
+             checkpoint_interval=10,
+             max_num_epochs=100000,
+             num_posterior_samples=10000,
+             sampling_batch_size=100,
+             forward_batch_size=512,
+             always_get_posterior=False,
+             init_param_jitter=0.1):
+    """
+    Run stochastic variational inference (SVI) for hierarchical model inference.
+
+    This function sets up and runs SVI optimization using the provided RunInference
+    object and initial parameters. It manages checkpointing, convergence checking,
+    and optionally draws posterior samples after convergence.
+
+    Parameters
+    ----------
+    ri : RunInference
+        RunInference object that manages model setup and optimization routines.
+    init_params : dict or None
+        Initial parameter values for SVI optimization. If None, uses parameters
+        captured during SVI object initialization.
+    checkpoint_file : str or None, optional
+        Path to a checkpoint file to resume optimization from, or None to start fresh.
+    out_root : str, optional
+        Output file root for checkpoints and results (default "tfs").
+    adam_step_size : float, optional
+        Starting step size for the Adam optimizer (default 1e-3).
+    adam_final_step_size : float, optional
+        Final step size for the Adam optimizer (default 1e-6).
+    adam_clip_norm : float, optional
+        Gradient clipping norm for Adam optimizer (default 1.0).
+    elbo_num_particles : int, optional
+        Number of particles for ELBO estimation during SVI (default 2).
+    convergence_tolerance : float, optional
+        Relative change in loss to declare SVI convergence (default 0.01).
+    convergence_window : int, optional
+        Number of epochs to average for convergence check (default 10).
+    patience : int, optional
+        Number of consecutive checks meeting tolerance to declare convergence
+        (default 10).
+    convergence_check_interval : int, optional
+        Frequency (in epochs) to check for convergence (default 2).
+    checkpoint_interval : int, optional
+        Frequency (in epochs) between checkpoints (default 10).
+    max_num_epochs : int, optional
+        Maximum number of SVI optimization epochs (default 100000).
+    num_posterior_samples : int, optional
+        Number of posterior samples to draw after convergence (default 10000).
+    sampling_batch_size : int, optional
+        When getting posteriors, sample parameter posteriors in batches of this
+        size (default 100).
+    forward_batch_size : int, optional
+        when getting posteriors, calculate forward predictions in batches of
+        this size (default 512)
+    always_get_posterior : bool, optional
+        If True, always sample posteriors even if not converged (default False).
+    init_param_jitter : float, optional
+        Amount of jitter to add to init_params (default 0.1).
+
+    Returns
+    -------
+    svi_state : Any
+        Final optimizer state object from SVI.
+    svi_params : dict
+        Final optimized parameters from SVI.
+    converged : bool
+        True if SVI converged according to the specified tolerance.
+    """
+    
+    # Create a learning rate schedule
+    schedule = optax.exponential_decay(
+        init_value=adam_step_size,
+        transition_steps=float(max_num_epochs * ri._iterations_per_epoch),
+        decay_rate=adam_final_step_size / adam_step_size
+    )
+
+    # Create an svi object
+    svi_obj = ri.setup_svi(adam_step_size=schedule,
+                           adam_clip_norm=adam_clip_norm,
+                           elbo_num_particles=elbo_num_particles,
+                           guide_type="component")
+ 
+    # Run svi. Note that `init_params` is not used here, but is required by the
+    # run_optimization method.
+    svi_state, params, converged = ri.run_optimization(
+        svi_obj,
+        init_params=init_params, 
+        out_root=f"{out_root}",
+        svi_state=checkpoint_file,
+        convergence_tolerance=convergence_tolerance,
+        convergence_window=convergence_window,
+        patience=patience,
+        convergence_check_interval=convergence_check_interval,
+        checkpoint_interval=checkpoint_interval,
+        max_num_epochs=max_num_epochs,
+        init_param_jitter=init_param_jitter
+    )
+
+    if converged or always_get_posterior:
+
+        ri.get_posteriors(svi=svi_obj,
+                          svi_state=svi_state,
+                          out_root=out_root,
+                          num_posterior_samples=num_posterior_samples,
+                          sampling_batch_size=sampling_batch_size,
+                          forward_batch_size=forward_batch_size)
+        
+        # Write summary files
+        summarize_posteriors(posterior_file=f"{out_root}_posterior.h5",
+                             config_file=f"{out_root}_config.yaml",
+                             out_root=out_root)
+        
+    # Write convergence information to stdout
+    if converged:
+        print("SVI run converged.",flush=True)
+    else:
+        print("SVI run has not yet converged.",flush=True)
+    
+    return svi_state, params, converged
 
 def run_growth_analysis(config_file,
-                        guesses_file=None,
                         seed=None,
                         checkpoint_file=None,
                         analysis_method="svi",
@@ -68,9 +305,6 @@ def run_growth_analysis(config_file,
     ----------
     config_file : str
         Path to a YAML configuration file to load settings from.
-    guesses_file : str, optional
-        Path to a CSV file containing initial array parameter guesses, typically 
-        generated by configure_growth_analysis.
     seed : int, optional
         Random seed for reproducibility. Must be provided if not loading from a checkpoint.
     checkpoint_file : str or None, optional
@@ -132,61 +366,34 @@ def run_growth_analysis(config_file,
     if seed is None and checkpoint_file is None:
         raise ValueError("seed must be provided unless loading from a checkpoint.")
 
-    if not os.path.exists(config_file):
-        raise FileNotFoundError(f"Configuration file not found: {config_file}")
+    # Check for existing results to avoid overwriting unless resuming
+    if checkpoint_file is None:
+        checkpoint_path = f"{out_root}_checkpoint.pkl"
+        if os.path.exists(checkpoint_path):
+            raise FileExistsError(
+                f"Checkpoint file '{checkpoint_path}' already exists. To resume, "
+                "provide this file as checkpoint_file. To overwrite, delete "
+                "the file or change out_root."
+            )
+        
+        if pre_map_num_epoch > 0:
+            premap_path = f"{out_root}_premap_checkpoint.pkl"
+            if os.path.exists(premap_path):
+                raise FileExistsError(
+                    f"Premap checkpoint file '{premap_path}' already exists. To "
+                    "overwrite, delete the file or change out_root."
+                )
 
-    with open(config_file, "r") as f:
-        config = yaml.safe_load(f)
-
-    # 1. Initialize GrowthModel with components from config
-    growth_df_path = config["data"]["growth"]
-    binding_df_path = config["data"]["binding"]
-    components = config["components"]
+    gm, init_params = read_configuration(config_file)
     
-    batch_size = components.pop("batch_size", None)
-
-    gm = GrowthModel(growth_df_path,
-                     binding_df_path,
-                     batch_size=batch_size,
-                     **components)
-
-    # 2. Update Priors
-    new_priors = update_dataclass(gm.priors, "", config.get("priors", {}))
-    # Python allows us to overwrite the property's underlying storage
-    gm._priors = new_priors
-
-    # 3. Construct init_params
-    base_init_params = config.get("init_params", {})
-    init_params = {}
-    
-    # Load scalar guesses
-    for k, v in gm.init_params.items():
-        if not hasattr(v, 'shape') or len(v.shape) == 0:
-            init_params[k] = base_init_params.get(k, float(v))
-
-    # Load array guesses from existing arrays or from CSV overrides
-    array_guesses = {}
-    if guesses_file is not None and os.path.exists(guesses_file):
-        guesses_df = pd.read_csv(guesses_file)
-        # Groups parameter flat array
-        for param_name, df_group in guesses_df.groupby("parameter"):
-            sorted_group = df_group.sort_values("flat_index")
-            val_array = sorted_group["value"].values
-            
-            # Look up original shape
-            if param_name in gm.init_params:
-                orig_shape = gm.init_params[param_name].shape
-                array_guesses[param_name] = jnp.array(val_array.reshape(orig_shape))
+    # Write the configuration to the output root so summarize_posteriors and 
+    # other tools can find it. 
+    write_configuration(gm=gm, 
+                        out_root=out_root,
+                        growth_df_path=gm._ln_cfu_df, 
+                        binding_df_path=gm._binding_df)
                 
-    # Fill in any missing array guesses with original guesses
-    for k, v in gm.init_params.items():
-        if hasattr(v, 'shape') and len(v.shape) > 0:
-            if k in array_guesses:
-                init_params[k] = array_guesses[k]
-            else:
-                init_params[k] = v
-                
-    # 4. Run SVI / MAP
+    # Run SVI / MAP
     ri = RunInference(gm, seed)
 
     if analysis_method == "svi":
@@ -274,7 +481,6 @@ def run_growth_analysis(config_file,
 def main():
     return generalized_main(run_growth_analysis,
                             manual_arg_types={"config_file":str,
-                                              "guesses_file":str,
                                               "seed":int,
                                               "checkpoint_file":str,
                                               "pre_map_num_epoch":int,

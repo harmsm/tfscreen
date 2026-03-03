@@ -9,51 +9,34 @@ from tfscreen.analysis.hierarchical.growth_model import (
     extract_growth_predictions,
     extract_theta_curves
 )
+from tfscreen.analysis.hierarchical.growth_model.configuration_io import read_configuration
 from tfscreen.util.cli.generalized_main import generalized_main
 
-def summarize_posteriors(posterior_file,
-                         config_file,
-                         out_root="tfs"):
+def summarize_posteriors(config_file,
+                        posterior_file,
+                        out_root="tfs",
+                        q_to_get=None):
     """
-    Summarize posterior samples from a hierarchical growth model run.
-
-    This function loads the model configuration and posterior samples,
-    extracts various parameter estimates and predictions, and saves them
-    as CSV files.
+    Summarize posterior samples and write to CSV files.
 
     Parameters
     ----------
-    posterior_file : str
-        Path to the .npz file containing posterior samples.
     config_file : str
         Path to the YAML configuration file.
+    posterior_file : str
+        Path to the .npz or .h5 file containing posterior samples.
     out_root : str, optional
-        Root filename for output CSV files (default "tfs").
+        Root filename for output files.
+    q_to_get : dict, optional
+        Dictionary mapping column names to quantiles.
+
+    Returns
+    -------
+    None
     """
 
     # Load configuration
-    if not os.path.exists(config_file):
-        raise FileNotFoundError(f"Configuration file not found: {config_file}")
-    
-    with open(config_file, "r") as f:
-        config = yaml.safe_load(f)
-    
-    settings = config["settings"]
-    growth_df = config["growth_df"]
-    binding_df = config["binding_df"]
-
-    # Initialize the model with the settings from the config
-    gm = GrowthModel(growth_df,
-                     binding_df,
-                     condition_growth=settings["condition_growth"],
-                     ln_cfu0=settings["ln_cfu0"],
-                     dk_geno=settings["dk_geno"],
-                     activity=settings["activity"],
-                     theta=settings["theta"],
-                     transformation=settings["transformation"],
-                     theta_growth_noise=settings["theta_growth_noise"],
-                     theta_binding_noise=settings["theta_binding_noise"],
-                     spiked_genotypes=settings["spiked_genotypes"])
+    gm, _ = read_configuration(config_file)
 
     # Load posteriors
     if not os.path.exists(posterior_file):
@@ -84,7 +67,7 @@ def summarize_posteriors(posterior_file,
         growth_pred_df.to_csv(f"{out_root}_growth_pred.csv", index=False)
 
         # Extract and save theta curves (if applicable)
-        if settings["theta"] == "hill":
+        if gm.settings["theta"] == "hill":
             print(f"Extracting theta curves to {out_root}_theta_curves.csv...", flush=True)
             theta_curves_df = extract_theta_curves(gm, posteriors)
             theta_curves_df.to_csv(f"{out_root}_theta_curves.csv", index=False)

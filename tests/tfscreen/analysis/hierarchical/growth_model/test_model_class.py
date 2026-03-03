@@ -297,11 +297,6 @@ def test_initialize_classes_logic(mocker):
         model = ModelClass("g.csv", "b.csv", theta="categorical", transformation="congression", condition_growth="independent", growth_transition="instant")
         assert model._theta == "categorical"
 
-def test_model_class_write_config(initialized_model_class, tmpdir):
-    model = initialized_model_class
-    model.settings = {"a":1}
-    ModelClass.write_config(model, "g.csv", "b.csv", os.path.join(tmpdir, "out"))
-    assert os.path.exists(os.path.join(tmpdir, "out_config.yaml"))
 
 def test_model_class_properties(initialized_model_class):
     model = initialized_model_class
@@ -515,19 +510,3 @@ def test_get_random_idx_logic(initialized_model_class):
     # num_batches > 1 (1351-1360)
     res = ModelClass.get_random_idx(model, num_batches=2)
     assert res.shape == (2, 2)
-
-def test_load_config_errors(tmpdir):
-    # 1409: FileNotFoundError
-    with pytest.raises(FileNotFoundError):
-        ModelClass.load_config("missing.yaml")
-        
-    path = os.path.join(tmpdir, "bad.yaml")
-    with open(path, "w") as f:
-        yaml.dump({"growth_df": "g.csv"}, f)
-    with pytest.raises(ValueError, match="Missing required field: binding_df"):
-        ModelClass.load_config(path)
-
-    with open(path, "w") as f:
-        yaml.dump({"growth_df": "g.csv", "binding_df": "b.csv", "settings": {}}, f)
-    with pytest.raises(ValueError, match="Missing required field: tfscreen_version"):
-        ModelClass.load_config(path)
