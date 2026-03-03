@@ -44,8 +44,15 @@ def _get_posterior_samples(param_posteriors, param_name):
                 break
 
         if not found:
-            # Trigger KeyError with original name
-            _ = param_posteriors[param_name]
+            # Provide more helpful error message if possible
+            available_keys = list(param_posteriors.keys())
+            if len(available_keys) > 10:
+                keys_str = ", ".join(available_keys[:5]) + " ... " + ", ".join(available_keys[-5:])
+            else:
+                keys_str = ", ".join(available_keys)
+            
+            error_msg = f"Parameter '{param_name}' not found in posteriors. Available keys: {keys_str}"
+            raise KeyError(error_msg)
 
     val = param_posteriors[param_name]
 

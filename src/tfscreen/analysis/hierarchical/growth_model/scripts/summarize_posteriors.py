@@ -48,12 +48,26 @@ def summarize_posteriors(config_file,
         else:
             raise FileNotFoundError(f"Posterior file not found: {posterior_file}")
     
+    print(f"Loading posteriors from {posterior_file}...", flush=True)
     if posterior_file.endswith(".h5") or posterior_file.endswith(".hdf5"):
         context_manager = h5py.File(posterior_file, 'r')
     else:
         context_manager = np.load(posterior_file)
 
     with context_manager as posteriors:
+
+        # Check for common params-only keys that suggest this is not the sample file
+        is_params_file = False
+        for k in posteriors.keys():
+            if k.endswith("_auto_loc"):
+                is_params_file = True
+                break
+        
+        if is_params_file:
+            print("WARNING: The provided file appears to contain guide parameters "
+                  "rather than posterior samples. This usually happens if you provide "
+                  "the '_params.npz' file instead of the '_posterior.h5' file. "
+                  "Extraction of natural parameters may fail.", flush=True)
 
         # Extract and save parameters
         print(f"Extracting parameters to {out_root}_*.csv...", flush=True)

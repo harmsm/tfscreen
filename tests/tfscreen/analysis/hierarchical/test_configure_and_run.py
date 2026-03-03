@@ -6,8 +6,8 @@ import yaml
 import jax.numpy as jnp
 from unittest.mock import MagicMock, patch
 
-from tfscreen.analysis.hierarchical.configure_growth_analysis import configure_growth_analysis
-from tfscreen.analysis.hierarchical.run_growth_analysis import run_growth_analysis
+from tfscreen.analysis.hierarchical.growth_model.scripts.configure_growth_analysis import configure_growth_analysis
+from tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis import run_growth_analysis
 from tfscreen.analysis.hierarchical.growth_model.configuration_io import (
     read_configuration,
     _update_dataclass
@@ -15,7 +15,7 @@ from tfscreen.analysis.hierarchical.growth_model.configuration_io import (
 
 @pytest.fixture
 def mock_gm(mocker):
-    mock_gm_class = mocker.patch("tfscreen.analysis.hierarchical.configure_growth_analysis.GrowthModel")
+    mock_gm_class = mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.configure_growth_analysis.GrowthModel")
     mock_gm_inst = mock_gm_class.return_value
     
     # Mock settings
@@ -200,14 +200,14 @@ def test_mains(mocker):
     # Test main functions via mocker to cover boilerplate
     mocker.patch("sys.argv", ["tfs-configure", "--growth_df", "g.csv", "--binding_df", "b.csv"])
     # Mock the internal call so we don't actually run it
-    mock_run = mocker.patch("tfscreen.analysis.hierarchical.configure_growth_analysis.configure_growth_analysis", autospec=True)
-    from tfscreen.analysis.hierarchical.configure_growth_analysis import main
+    mock_run = mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.configure_growth_analysis.configure_growth_analysis", autospec=True)
+    from tfscreen.analysis.hierarchical.growth_model.scripts.configure_growth_analysis import main
     main()
     assert mock_run.called
 
     mocker.patch("sys.argv", ["tfs-run", "c.yaml", "--seed", "42"])
-    mock_run_analysis = mocker.patch("tfscreen.analysis.hierarchical.run_growth_analysis.run_growth_analysis", autospec=True)
-    from tfscreen.analysis.hierarchical.run_growth_analysis import main as main_run
+    mock_run_analysis = mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis.run_growth_analysis", autospec=True)
+    from tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis import main as main_run
     main_run()
     assert mock_run_analysis.called
 
@@ -219,13 +219,13 @@ def test_run_growth_analysis_svi_full(tmpdir, mocker):
         mock_gm_run.settings = {"batch_size": 256}
         mock_gm_run._ln_cfu_df = "g.csv"
         mock_gm_run._binding_df = "b.csv"
-        mocker.patch("tfscreen.analysis.hierarchical.run_growth_analysis.read_configuration", return_value=(mock_gm_run, {"p":1.0}))
+        mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis.read_configuration", return_value=(mock_gm_run, {"p":1.0}))
         
         # Mock write_configuration to avoid yaml problems with mocks
-        mocker.patch("tfscreen.analysis.hierarchical.run_growth_analysis.write_configuration")
-        mock_ri_class = mocker.patch("tfscreen.analysis.hierarchical.run_growth_analysis.RunInference")
-        mock_svi = mocker.patch("tfscreen.analysis.hierarchical.run_growth_analysis._run_svi")
-        mock_map = mocker.patch("tfscreen.analysis.hierarchical.run_growth_analysis._run_map")
+        mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis.write_configuration")
+        mock_ri_class = mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis.RunInference")
+        mock_svi = mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis._run_svi")
+        mock_map = mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis._run_map")
         mock_map.return_value = (None, {"p":1.1}, True)
 
         # Test SVI with pre-map. 

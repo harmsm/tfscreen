@@ -67,6 +67,6 @@ docs = ["pydata-sphinx-theme"]
 [project.scripts]
 tfs-process-fastq = "tfscreen.process_raw.process_fastq:main"
 tfs-process-counts = "tfscreen.process_raw.process_counts:main"
-tfs-growth-analysis = "tfscreen.analysis.hierarchical.run_growth_analysis:main"
-tfs-configure-growth-analysis = "tfscreen.analysis.hierarchical.configure_growth_analysis:main"
-tfs-summarize-posteriors = "tfscreen.analysis.hierarchical.summarize_posteriors:main"
+tfs-growth-analysis = "tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis:main"
+tfs-configure-growth-analysis = "tfscreen.analysis.hierarchical.growth_model.scripts.configure_growth_analysis:main"
+tfs-summarize-posteriors = "tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors:main"

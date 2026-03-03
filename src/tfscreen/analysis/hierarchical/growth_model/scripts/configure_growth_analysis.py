@@ -7,8 +7,8 @@ from tfscreen.analysis.hierarchical.growth_model import GrowthModel
 from tfscreen.analysis.hierarchical.growth_model.configuration_io import write_configuration
 from tfscreen.util.cli.generalized_main import generalized_main
 
-def configure_growth_analysis(growth_df=None,
-                              binding_df=None,
+def configure_growth_analysis(growth_df,
+                              binding_df,
                               out_root="tfs",
                               condition_growth_model="linear",
                               growth_transition_model="instant",
@@ -74,9 +74,6 @@ def configure_growth_analysis(growth_df=None,
     None
     """
 
-    if growth_df is None or binding_df is None:
-        raise ValueError("growth_df and binding_df must be provided.")
-
     # Initialize model to build mappings and get guesses
     gm = GrowthModel(growth_df,
                      binding_df,
@@ -91,7 +88,8 @@ def configure_growth_analysis(growth_df=None,
                      theta_binding_noise=theta_binding_noise_model,
                      spiked_genotypes=spiked)
 
-    # Use the centralized writing function
+    # Write the model configuration to a file. This includes the model component
+    # names, the data file paths, and the parameter guesses/priors.
     write_configuration(gm=gm,
                         out_root=out_root,
                         growth_df_path=growth_df if isinstance(growth_df, str) else "growth.csv",

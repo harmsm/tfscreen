@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import MagicMock, ANY
 import os
 
-from tfscreen.analysis.hierarchical.run_growth_analysis import (
+from tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis import (
     _run_svi,
     _run_map
 )
@@ -17,7 +17,7 @@ def mock_run_inference(mocker):
     Mocks the RunInference class and its instance methods.
     """
     # Mock where RunInference is imported in run_growth_analysis
-    mock_ri_class = mocker.patch("tfscreen.analysis.hierarchical.run_growth_analysis.RunInference")
+    mock_ri_class = mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis.RunInference")
     mock_ri_instance = mock_ri_class.return_value
     
     # Setup default returns for instance methods
@@ -29,7 +29,7 @@ def mock_run_inference(mocker):
     mock_ri_instance.run_optimization.return_value = ("final_state", {"p": 1}, True)
 
     # Patch summarize_posteriors where it is imported in run_growth_analysis
-    mocker.patch("tfscreen.analysis.hierarchical.run_growth_analysis.summarize_posteriors")
+    mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis.summarize_posteriors")
     
     # Mock os.path.exists to return False by default
     mocker.patch("os.path.exists", return_value=False)

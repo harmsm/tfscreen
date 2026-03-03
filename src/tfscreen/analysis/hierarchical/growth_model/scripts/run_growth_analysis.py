@@ -9,13 +9,10 @@ import optax
 
 from tfscreen.analysis.hierarchical.growth_model import GrowthModel
 from tfscreen.analysis.hierarchical.run_inference import RunInference
-from tfscreen.analysis.hierarchical.summarize_posteriors import summarize_posteriors
+from .summarize_posteriors import summarize_posteriors
 from tfscreen.util.cli.generalized_main import generalized_main
 
-from tfscreen.analysis.hierarchical.growth_model.configuration_io import (
-    read_configuration,
-    write_configuration
-)
+from tfscreen.analysis.hierarchical.growth_model.configuration_io import read_configuration
 
 def _run_map(ri,
              init_params,
@@ -385,14 +382,7 @@ def run_growth_analysis(config_file,
                 )
 
     gm, init_params = read_configuration(config_file)
-    
-    # Write the configuration to the output root so summarize_posteriors and 
-    # other tools can find it. 
-    write_configuration(gm=gm, 
-                        out_root=out_root,
-                        growth_df_path=gm._ln_cfu_df, 
-                        binding_df_path=gm._binding_df)
-                
+     
     # Run SVI / MAP
     ri = RunInference(gm, seed)
 

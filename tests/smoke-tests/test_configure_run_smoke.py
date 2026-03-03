@@ -2,8 +2,8 @@ import pytest
 import pandas as pd
 import os
 import yaml
-from tfscreen.analysis.hierarchical.configure_growth_analysis import configure_growth_analysis
-from tfscreen.analysis.hierarchical.run_growth_analysis import run_growth_analysis
+from tfscreen.analysis.hierarchical.growth_model.scripts.configure_growth_analysis import configure_growth_analysis
+from tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis import run_growth_analysis
 
 @pytest.mark.slow
 def test_configure_run_pipeline_smoke(tmpdir):

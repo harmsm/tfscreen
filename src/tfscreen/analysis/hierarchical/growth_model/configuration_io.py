@@ -200,15 +200,11 @@ def read_configuration(config_file):
     with open(config_file, "r") as f:
         config = yaml.safe_load(f)
 
-    # Handle both old and new formats
+    # Check sanity of format and read in data paths and components
     if "data" in config and "components" in config:
         growth_df_path = config["data"]["growth"]
         binding_df_path = config["data"]["binding"]
         settings = config["components"]
-    elif "growth_df" in config and "binding_df" in config and "settings" in config:
-        growth_df_path = config["growth_df"]
-        binding_df_path = config["binding_df"]
-        settings = config["settings"]
     else:
         raise ValueError(f"Configuration file '{config_file}' has an unrecognized format.")
 

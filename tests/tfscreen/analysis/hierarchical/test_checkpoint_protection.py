@@ -1,11 +1,11 @@
 import pytest
 import os
 from unittest.mock import patch, MagicMock
-from tfscreen.analysis.hierarchical.run_growth_analysis import run_growth_analysis
+from tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis import run_growth_analysis
 
 @pytest.fixture
 def mock_growth_model(mocker):
-    mock_gm_class = mocker.patch("tfscreen.analysis.hierarchical.run_growth_analysis.read_configuration")
+    mock_gm_class = mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis.read_configuration")
     mock_gm_instance = MagicMock()
     mock_init_params = {"a": 1.0}
     mock_gm_class.return_value = (mock_gm_instance, mock_init_params)
@@ -13,7 +13,7 @@ def mock_growth_model(mocker):
 
 @pytest.fixture
 def mock_run_inference(mocker):
-    mock_ri_class = mocker.patch("tfscreen.analysis.hierarchical.run_growth_analysis.RunInference")
+    mock_ri_class = mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis.RunInference")
     mock_ri_instance = mock_ri_class.return_value
     
     # Setup default returns for instance methods
@@ -22,7 +22,7 @@ def mock_run_inference(mocker):
     mock_ri_instance._iterations_per_epoch = 1
 
     # Mock write_configuration to avoid YAML errors
-    mocker.patch("tfscreen.analysis.hierarchical.run_growth_analysis.write_configuration")
+    mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis.write_configuration")
     
     return mock_ri_class, mock_ri_instance
 
@@ -67,7 +67,7 @@ def test_analyze_theta_checkpoint_exists_with_resume(mock_growth_model, mock_run
     """
     # Mock os.path.exists to return True
     with patch("os.path.exists", return_value=True):
-        with patch("tfscreen.analysis.hierarchical.run_growth_analysis._run_svi") as mock_run_svi:
+        with patch("tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis._run_svi") as mock_run_svi:
             run_growth_analysis(
                 config_file="config.yaml",
                 seed=1,
@@ -83,7 +83,7 @@ def test_analyze_theta_no_checkpoint_no_resume(mock_growth_model, mock_run_infer
     """
     # Mock os.path.exists to return False
     with patch("os.path.exists", return_value=False):
-        with patch("tfscreen.analysis.hierarchical.run_growth_analysis._run_svi") as mock_run_svi:
+        with patch("tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis._run_svi") as mock_run_svi:
             run_growth_analysis(
                 config_file="config.yaml",
                 seed=1,
