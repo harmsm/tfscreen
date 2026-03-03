@@ -12,6 +12,45 @@ FLOAT_DTYPE = jnp.float64 if jax.config.read("jax_enable_x64") else jnp.float32
 # Set zero conc to this when taking log
 ZERO_CONC_VALUE = 1e-20
 
+def _get_posterior_samples(param_posteriors, param_name):
+    """
+    Get posterior samples for a parameter, handling name fallbacks and HDF5.
+
+    Parameters
+    ----------
+    param_posteriors : dict
+        Dictionary mapping parameter names to posterior samples.
+    param_name : str
+        Name of the parameter to extract.
+
+    Returns
+    -------
+    val : numpy.ndarray
+        Posterior samples for the requested parameter.
+
+    Raises
+    ------
+    KeyError
+        If the parameter is not found in `param_posteriors`.
+    """
+
+    if param_name not in param_posteriors:
+        # Try suffixes for MAP/guide keys
+        found = False
+        for suffix in ["_auto_loc", "_mean"]:
+            if f"{param_name}{suffix}" in param_posteriors:
+                param_name = f"{param_name}{suffix}"
+                found = True
+                break
+
+        if not found:
+            # Trigger KeyError with original name
+            _ = param_posteriors[param_name]
+
+    val = param_posteriors[param_name]
+
+    return val
+
 def _extract_param_est(input_df,
                        params_to_get,
                        map_column,
@@ -56,8 +95,8 @@ def _extract_param_est(input_df,
     KeyError
         If a requested parameter or quantile is not found in `param_posteriors`.
     """
-    # Create dataframe with unique rows for map_column that has columns 
-    # get_columns + map_column. Rows will be sorted by map_column. 
+    # Create dataframe with unique rows for map_column that has columns
+    # get_columns + map_column. Rows will be sorted by map_column.
     get_columns.append(map_column)
     df = (input_df
           .drop_duplicates(map_column)[get_columns]
@@ -69,26 +108,15 @@ def _extract_param_est(input_df,
     out_dfs = {}
     for param in params_to_get:
 
-        # Grab the posterior distribution of this parameters and flatten. 
+        # Grab the posterior distribution of this parameters and flatten.
         model_param = f"{in_run_prefix}{param}"
-        if model_param not in param_posteriors:
-            # Try suffixes
-            found = False
-            for suffix in ["_auto_loc", "_mean"]:
-                if f"{model_param}{suffix}" in param_posteriors:
-                    model_param = f"{model_param}{suffix}"
-                    found = True
-                    break
-            
-            if not found:
-                # If we still haven't found it, raise the error with the original name
-                # but it will be descriptive.
-                val = param_posteriors[model_param]
+        val = _get_posterior_samples(param_posteriors, model_param)
         
-        val = param_posteriors[model_param]
+        # Load HDF5 into memory if needed for reshape
         if hasattr(val, "shape") and not hasattr(val, "reshape"):
             val = val[:]
-        flat_param = val.reshape(val.shape[0],-1)
+            
+        flat_param = val.reshape(val.shape[0], -1)
 
         # Create dataframe for loading the data
         to_write = df.copy()
@@ -97,12 +125,12 @@ def _extract_param_est(input_df,
         for q_name in q_to_get:
 
             # Calculate quantile and load into the output dataframe
-            q = np.quantile(flat_param,q_to_get[q_name],axis=0)
+            q = np.quantile(flat_param, q_to_get[q_name], axis=0)
             to_write[q_name] = q[to_write[map_column].values]
 
         # Record the final dataframe
         out_dfs[param] = to_write.drop(columns=[map_column])
-    
+
     return out_dfs
 
 def extract_parameters(model, posteriors, q_to_get=None):
@@ -474,26 +502,25 @@ def extract_theta_curves(model, posteriors, q_to_get=None, manual_titrant_df=Non
     log_titrant[log_titrant == 0] = ZERO_CONC_VALUE
     log_titrant = np.log(log_titrant)[None, :]
 
-    # Handle HDF5 by loading samples in manageable blocks if necessary,
-    # but for theta parameters (Hill N etc), they are usually small (1 per genotype).
-    # We'll load the full parameters into memory here for simplicity unless they are huge.
-    def get_p(key):
-        val = param_posteriors[key]
-        if hasattr(val, "shape"): # h5py dataset
-            return val[:]
-        return val
-
     # Extract posterior parameters and flatten (num_samples, num_groups)
-    hill_n = get_p("theta_hill_n")
+    hill_n = _get_posterior_samples(param_posteriors, "theta_hill_n")
+    if hasattr(hill_n, "shape") and not hasattr(hill_n, "reshape"):
+        hill_n = hill_n[:]
     hill_n = hill_n.reshape(hill_n.shape[0], -1)
-    
-    log_hill_K = get_p("theta_log_hill_K")
+
+    log_hill_K = _get_posterior_samples(param_posteriors, "theta_log_hill_K")
+    if hasattr(log_hill_K, "shape") and not hasattr(log_hill_K, "reshape"):
+        log_hill_K = log_hill_K[:]
     log_hill_K = log_hill_K.reshape(log_hill_K.shape[0], -1)
-    
-    theta_high = get_p("theta_theta_high")
+
+    theta_high = _get_posterior_samples(param_posteriors, "theta_theta_high")
+    if hasattr(theta_high, "shape") and not hasattr(theta_high, "reshape"):
+        theta_high = theta_high[:]
     theta_high = theta_high.reshape(theta_high.shape[0], -1)
-    
-    theta_low = get_p("theta_theta_low")
+
+    theta_low = _get_posterior_samples(param_posteriors, "theta_theta_low")
+    if hasattr(theta_low, "shape") and not hasattr(theta_low, "reshape"):
+        theta_low = theta_low[:]
     theta_low = theta_low.reshape(theta_low.shape[0], -1)
     
     # Indexed params shape: (N_samples, N_points)
@@ -589,7 +616,7 @@ def extract_growth_predictions(model,
         )
 
     # Grab the growth_pred tensor
-    growth_pred = param_posteriors["growth_pred"]
+    growth_pred = _get_posterior_samples(param_posteriors, "growth_pred")
 
     # The tensor shape is (num_samples, replicate, time, condition_pre, 
     # condition_sel, titrant_name, titrant_conc, genotype)
