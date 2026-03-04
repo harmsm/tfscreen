@@ -152,20 +152,21 @@ def copy_model_class(model_class,
         **settings
     )
 
-def predict_lncfu(model_class,
-                  param_posteriors,
-                  q_to_get=None,
-                  num_samples=100,
-                  t_pre=None,
-                  t_sel=None,
-                  titrant_conc=None,
-                  genotypes=None,
-                  condition_pre=None,
-                  condition_sel=None,
-                  titrant_name=None,
-                  replicate=None):
+def predict(model_class,
+            param_posteriors,
+            predict_sites=None,
+            q_to_get=None,
+            num_samples=100,
+            t_pre=None,
+            t_sel=None,
+            titrant_conc=None,
+            genotypes=None,
+            condition_pre=None,
+            condition_sel=None,
+            titrant_name=None,
+            replicate=None):
     """
-    Predict ln_cfu for each row in ModelClass.growth_df using posterior samples,
+    Predict values for specified sites in the model using posterior samples,
     handling subsetting and expansion of inputs.
 
     Parameters
@@ -174,6 +175,8 @@ def predict_lncfu(model_class,
         The original ModelClass used for training. 
     param_posteriors : dict or str
         Posterior samples. Can be a dictionary, .npz file, or .h5 file.
+    predict_sites : list of str, optional
+        List of model sites to predict. If None, defaults to ["growth_pred"].
     q_to_get : dict, optional
         Quantiles to calculate. If None, uses default.
     num_samples : int, optional
@@ -206,12 +209,20 @@ def predict_lncfu(model_class,
 
     Returns
     -------
-    pd.DataFrame
-        A copy of the growth_df from the fresh model with added quantile columns.
+    pd.DataFrame or dict
+        If a single site is requested, returns a pd.DataFrame with quantile 
+        columns. If multiple sites are requested, returns a dictionary mapping 
+        site names to pd.DataFrames.
     """
 
     # Load and validate quantiles
     q_to_get, param_posteriors = load_posteriors(param_posteriors, q_to_get)
+
+    if predict_sites is None:
+        predict_sites = ["growth_pred"]
+    
+    if isinstance(predict_sites, str):
+        predict_sites = [predict_sites]
 
     # Create the prediction model
     new_mc = copy_model_class(model_class,
@@ -301,7 +312,7 @@ def predict_lncfu(model_class,
     
     predictive = Predictive(new_mc.jax_model, 
                             posterior_samples=sliced_samples, 
-                            return_sites=["growth_pred"])
+                            return_sites=predict_sites)
     
     # We need a key, even if not used for randomness in deterministic sites
     predict_key = jax.random.PRNGKey(0) 
@@ -309,24 +320,47 @@ def predict_lncfu(model_class,
                              data=new_mc.data, 
                              priors=new_mc.priors)
     
-    growth_pred = predictions["growth_pred"] # shape: (num_samples, ...)
-    
     # -------------------------------------------------------------------------
     # Calculate Quantiles and Join
     
     # Get the flat index for each row in new_mc.growth_df
     tm = new_mc.growth_tm
-    df = new_mc.growth_df.copy()
+    base_df = new_mc.growth_df.copy()
     
     # tm._pivot_index columns in df contain the integer codes for each dimension
     # (replicate_idx, time_idx, etc.)
-    indices = [df[f"{dim}_idx"].values for dim in tm.tensor_dim_names]
+    indices = [base_df[f"{dim}_idx"].values for dim in tm.tensor_dim_names]
     
-    for q_name, q_val in q_to_get.items():
-        # Calculate quantiles along the sample dimension (axis 0)
-        q_arr = np.quantile(growth_pred, q_val, axis=0)
-        
-        # Pull values for each row. q_arr has the same shape as the tensor
-        df[q_name] = q_arr[tuple(indices)]
+    all_dfs = {}
+    for site in predict_sites:
+        site_samples = predictions[site] # shape: (num_samples, ...)
+        df = base_df.copy()
 
-    return df
+        for q_name, q_val in q_to_get.items():
+            # Calculate quantiles along the sample dimension (axis 0)
+            q_arr = np.quantile(site_samples, q_val, axis=0)
+            
+            # Pull values for each row. 
+            # If q_arr matches the tensor shape, we use the indices.
+            if q_arr.shape == tm.tensor_shape:
+                df[q_name] = q_arr[tuple(indices)]
+            else:
+                # Try to broadcast to tensor shape (handles scalars and partial plates)
+                try:
+                    broadcast_q = np.broadcast_to(q_arr, tm.tensor_shape)
+                    df[q_name] = broadcast_q[tuple(indices)]
+                except ValueError:
+                    # If we can't broadcast, it means there's a shape mismatch we 
+                    # can't easily resolve here without more complex metadata.
+                    # We'll just assign a dummy value or raise a helpful error.
+                    raise ValueError(
+                        f"Site '{site}' with shape {q_arr.shape} cannot be "
+                        f"mapped to the growth dataframe (tensor shape {tm.tensor_shape})."
+                    )
+        
+        all_dfs[site] = df
+
+    if len(predict_sites) == 1:
+        return all_dfs[predict_sites[0]]
+
+    return all_dfs

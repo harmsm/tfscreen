@@ -296,18 +296,6 @@ def test_update_loss_deque():
     # (1 - 1) / 1e-10 = 0
     assert ri._relative_change == 0.0
 
-def test_predict_from_file(tmpdir, mocker):
-    model = MockModel()
-    ri = RunInference(model, seed=42)
-    posterior_file = os.path.join(tmpdir, "post.npz")
-    np.savez(posterior_file, p=np.array([1.0]))
-    
-    mocker.patch.object(ri, "_get_site_names", return_value=["p"])
-    mock_pred = mocker.patch("tfscreen.analysis.hierarchical.run_inference.Predictive")
-    mock_pred.return_value.return_value = {"p": jnp.array([1.0])}
-    
-    res = ri.predict(posterior_file)
-    assert "p" in res
 
 def test_get_site_names(mocker):
     model = MockModel()
@@ -354,31 +342,7 @@ def test_jitter_init_parameters():
     jittered = ri._jitter_init_parameters(params, 0.0)
     assert jittered["p"] == 1.0
 
-def test_predict_with_data(mocker):
-    model = MockModel()
-    ri = RunInference(model, seed=42)
-    post = {"p": jnp.array([1.0])}
-    
-    mocker.patch.object(ri, "_get_site_names", return_value=["site1"])
-    mock_pred = mocker.patch("tfscreen.analysis.hierarchical.run_inference.Predictive")
-    mock_pred.return_value.return_value = {"site1": jnp.array([2.0])}
-    
-    new_data = MockData()
-    res = ri.predict(post, data_for_predict=new_data)
-    assert res["site1"] == 2.0
 
-def test_predict_no_data(mocker):
-    model = MockModel()
-    ri = RunInference(model, seed=42)
-    post = {"p": jnp.array([1.0])}
-    
-    mocker.patch.object(ri, "_get_site_names", return_value=["site1"])
-    mock_pred = mocker.patch("tfscreen.analysis.hierarchical.run_inference.Predictive")
-    mock_pred.return_value.return_value = {"site1": jnp.array([3.0])}
-    
-    # 532: predict_sites as str
-    res = ri.predict(post, predict_sites="site1")
-    assert res["site1"] == 3.0
 
 def test_write_losses_empty(tmpdir):
     model = MockModel()

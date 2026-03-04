@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import jax
 from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass
-from tfscreen.analysis.hierarchical.growth_model.prediction import predict_lncfu
+from tfscreen.analysis.hierarchical.growth_model.prediction import predict
 from numpyro.handlers import seed, trace
 
 @pytest.fixture
@@ -44,17 +44,17 @@ def test_setup():
             
     return mc, posteriors
 
-def test_predict_lncfu_basic(test_setup):
+def test_predict_basic(test_setup):
     """Test basic functionality."""
     mc, posteriors = test_setup
-    df = predict_lncfu(mc, posteriors, num_samples=5)
+    df = predict(mc, posteriors, num_samples=5)
     
     # 8 rows expected
     assert len(df) == 8
     assert "median" in df.columns
     assert not df["median"].isna().any()
 
-def test_predict_lncfu_subset(test_setup):
+def test_predict_subset(test_setup):
     """Test categorical subsetting and basic mapping."""
     mc, posteriors = test_setup
     
@@ -72,7 +72,7 @@ def test_predict_lncfu_subset(test_setup):
         posteriors.pop("ln_cfu0")
 
     # Subset to only wt
-    df = predict_lncfu(mc, posteriors, genotypes=["wt"], num_samples=1)
+    df = predict(mc, posteriors, genotypes=["wt"], num_samples=1)
     
     # 4 rows expected
     assert len(df) == 4
@@ -80,24 +80,52 @@ def test_predict_lncfu_subset(test_setup):
     # Confirm it correctly mapped to index 1 (wt) and pulled 200.0
     assert np.isclose(df["median"].mean(), 200.0)
 
-def test_predict_lncfu_expansion(test_setup):
+def test_predict_expansion(test_setup):
     """Test quantitative expansion."""
     mc, posteriors = test_setup
     # Expand time points
-    df = predict_lncfu(mc, posteriors, t_sel=[0.0, 10.0, 20.0], num_samples=5)
+    df = predict(mc, posteriors, t_sel=[0.0, 10.0, 20.0], num_samples=5)
     
     # 12 rows expected
     assert len(df) == 12
     assert set(df["t_sel"]) == {0.0, 10.0, 20.0}
 
-def test_predict_lncfu_error_handling(test_setup):
+def test_predict_multiple_sites(test_setup):
+    """Test predicting multiple sites."""
+    mc, posteriors = test_setup
+    
+    # Predict growth_pred AND some other site (e.g. ln_cfu0)
+    sites = ["growth_pred", "ln_cfu0"]
+    results = predict(mc, posteriors, predict_sites=sites, num_samples=2)
+    
+    assert isinstance(results, dict)
+    assert set(results.keys()) == set(sites)
+    for s in sites:
+        assert isinstance(results[s], pd.DataFrame)
+        assert "median" in results[s].columns
+
+def test_predict_broadcasting(test_setup):
+    """Test predicting a global site (broadcasting)."""
+    mc, posteriors = test_setup
+    
+    # theta_mu_hyper_loc is a scalar in this model (if configured as such)
+    # Let's check a site we know is likely scalar or small
+    # For this dummy, let's just use something global
+    sites = ["ln_cfu0_hyper_loc"]
+    df = predict(mc, posteriors, predict_sites=sites, num_samples=1)
+    
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 8
+    assert "median" in df.columns
+
+def test_predict_error_handling(test_setup):
     """Test error handling."""
     mc, posteriors = test_setup
     
     # Invalid genotype
     with pytest.raises(ValueError, match="not found in model_class.growth_df"):
-        predict_lncfu(mc, posteriors, genotypes=["bad_geno"])
+        predict(mc, posteriors, genotypes=["bad_geno"])
     
     # Invalid posterior type
     with pytest.raises(ValueError, match="posteriors should be"):
-        predict_lncfu(mc, [1, 2, 3])
+        predict(mc, [1, 2, 3])
