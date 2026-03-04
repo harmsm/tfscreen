@@ -24,6 +24,7 @@ from collections import deque
 from functools import partial
 import os
 import h5py
+from .posteriors import load_posteriors
 
 class RunInference:
     """
@@ -386,14 +387,13 @@ class RunInference:
                        out_root,
                        num_posterior_samples=10000,
                        sampling_batch_size=100,
-                       forward_batch_size=512,
-                       use_h5=True):
+                       forward_batch_size=512):
         """
         Generate and save posterior samples using the trained guide.
 
         Uses `numpyro.infer.Predictive` to sample from the posterior
         distribution defined by the guide and parameters. Handles large
-        datasets by batching predictions and writing to disk (HDF5 or NPZ).
+        datasets by batching predictions and writing to disk (HDF5).
 
         Parameters
         ----------
@@ -410,9 +410,6 @@ class RunInference:
             (default 100).
         forward_batch_size : int, optional
             Batch size for calculating forward predictions (default 512).
-        use_h5 : bool, optional
-            If True (default), write to an HDF5 file. If False, write to 
-            a compressed .npz file (warning: may cause OOM for large runs).
         """
 
         guide = svi.guide
@@ -436,86 +433,82 @@ class RunInference:
                                     params=params,
                                     num_samples=sampling_batch_size)
 
-        # Initialize HDF5 file if requested
-        hf = None
-        if use_h5:
-            h5_file = f"{out_root}_posterior.h5"
-            hf = h5py.File(h5_file, 'w')
+        # Prepare HDF5 file
+        h5_file = f"{out_root}_posterior.h5"
         
-        combined_results = {}
         samples_written = 0
+        with h5py.File(h5_file, 'w') as hf:
 
-        for batch_i in tqdm(range(num_latent_batches), desc="sampling posterior"):
+            for batch_i in tqdm(range(num_latent_batches), desc="sampling posterior"):
 
-            # Sample the guide posterior
-            post_key = self.get_key()
-            latent_samples = latent_sampler(post_key,
-                                            priors=self.model.priors,
-                                            data=full_data)
+                # Sample the guide posterior
+                post_key = self.get_key()
+                latent_samples = latent_sampler(post_key,
+                                                priors=self.model.priors,
+                                                data=full_data)
 
-            # Sample batches of genotypes
-            batch_collector = {}
-            for start_idx in range(0, total_num_genotypes, forward_batch_size):
-                
-                end_idx = min(start_idx + forward_batch_size, total_num_genotypes)
-                batch_indices = jnp.arange(start_idx, end_idx)
-
-                # Slice latent samples using the dim_map
-                batch_latents = {}
-                for k, v in latent_samples.items():
-                    if k in dim_map:
-                        batch_latents[k] = jnp.take(v, jnp.arange(start_idx, end_idx), axis=dim_map[k])
-                    else:
-                        batch_latents[k] = v
-
-                # Get a batch of data
-                batch_data = self.model.get_batch(data_on_gpu, batch_indices)
-                
-                # Forward pass for this batch
-                forward_sampler = Predictive(self.model.jax_model, 
-                                             posterior_samples=batch_latents)
-                sample_key = self.get_key()
-                batch_pred = forward_sampler(sample_key,
-                                             priors=self.model.priors,
-                                             data=batch_data)
-
-                # Collect all samples (latents + predictions) for this batch
-                # Predictions from forward pass
-                for k, v in batch_pred.items():
-                    if k not in batch_collector:
-                        batch_collector[k] = []
-                    batch_collector[k].append(jax.device_get(v))
-            
-                # Latents that weren't in predictions (e.g. guide-only parameters)
-                for k, v in batch_latents.items():
-                    if k in batch_pred:
-                        continue
-                        
-                    if k not in batch_collector:
-                        batch_collector[k] = []
+                # Sample batches of genotypes
+                batch_collector = {}
+                for start_idx in range(0, total_num_genotypes, forward_batch_size):
                     
-                    # If global (not in dim_map), only add on first genotype batch
-                    if k not in dim_map:
-                        if start_idx == 0:
-                            batch_collector[k].append(jax.device_get(v))
-                    else:
-                        # Geno-specific, always add
-                        batch_collector[k].append(jax.device_get(v))
+                    end_idx = min(start_idx + forward_batch_size, total_num_genotypes)
+                    batch_indices = jnp.arange(start_idx, end_idx)
 
-            # Concatenate genotype batches for this latent batch
-            this_batch_results = {}
-            for k, v_list in batch_collector.items():
-                if k in dim_map:
-                    # Concatenate along the genotype dimension (same as originally traced)
-                    axis = dim_map[k]
-                    this_batch_results[k] = np.concatenate(v_list, axis=axis)
-                else:
-                    # Global parameter, just take the first (and only) entry
-                    this_batch_results[k] = v_list[0]
-            
-            # Write to file
-            batch_size_actual = next(iter(this_batch_results.values())).shape[0]
-            if use_h5:
+                    # Slice latent samples using the dim_map
+                    batch_latents = {}
+                    for k, v in latent_samples.items():
+                        if k in dim_map:
+                            batch_latents[k] = jnp.take(v, jnp.arange(start_idx, end_idx), axis=dim_map[k])
+                        else:
+                            batch_latents[k] = v
+
+                    # Get a batch of data
+                    batch_data = self.model.get_batch(data_on_gpu, batch_indices)
+                    
+                    # Forward pass for this batch
+                    forward_sampler = Predictive(self.model.jax_model, 
+                                                 posterior_samples=batch_latents)
+                    sample_key = self.get_key()
+                    batch_pred = forward_sampler(sample_key,
+                                                 priors=self.model.priors,
+                                                 data=batch_data)
+
+                    # Collect all samples (latents + predictions) for this batch
+                    # Predictions from forward pass
+                    for k, v in batch_pred.items():
+                        if k not in batch_collector:
+                            batch_collector[k] = []
+                        batch_collector[k].append(jax.device_get(v))
+                
+                    # Latents that weren't in predictions (e.g. guide-only parameters)
+                    for k, v in batch_latents.items():
+                        if k in batch_pred:
+                            continue
+                            
+                        if k not in batch_collector:
+                            batch_collector[k] = []
+                        
+                        # If global (not in dim_map), only add on first genotype batch
+                        if k not in dim_map:
+                            if start_idx == 0:
+                                batch_collector[k].append(jax.device_get(v))
+                        else:
+                            # Geno-specific, always add
+                            batch_collector[k].append(jax.device_get(v))
+
+                # Concatenate genotype batches for this latent batch
+                this_batch_results = {}
+                for k, v_list in batch_collector.items():
+                    if k in dim_map:
+                        # Concatenate along the genotype dimension (same as originally traced)
+                        axis = dim_map[k]
+                        this_batch_results[k] = np.concatenate(v_list, axis=axis)
+                    else:
+                        # Global parameter, just take the first (and only) entry
+                        this_batch_results[k] = v_list[0]
+                
+                # Write to file
+                batch_size_actual = next(iter(this_batch_results.values())).shape[0]
                 for k, v in this_batch_results.items():
                     if k not in hf:
                         # Create dataset on first write
@@ -524,26 +517,11 @@ class RunInference:
                         hf.create_dataset(k, shape=maxshape, dtype=v.dtype, chunks=chunks)
                     
                     hf[k][samples_written:samples_written + batch_size_actual] = v
-            else:
-                # Accumulate for NPZ
-                for k, v in this_batch_results.items():
-                    if k not in combined_results:
-                        combined_results[k] = []
-                    combined_results[k].append(v)
-            
-            samples_written += batch_size_actual
-    
-        if use_h5:
+                
+                samples_written += batch_size_actual
+        
             # Add metadata to HDF5 file
             hf.attrs["num_samples"] = samples_written
-            hf.close()
-        else:
-            # Final concatenation across latent batches for NPZ
-            final_results = {}
-            for k, v_list in combined_results.items():
-                final_results[k] = np.concatenate(v_list, axis=0)
-
-            self._write_posteriors(final_results, out_root=out_root)
 
 
     def predict(self,
@@ -587,10 +565,10 @@ class RunInference:
 
         # Load posterior samples from a file if necessary
         if isinstance(posterior_samples,str):
-            posterior_samples = np.load(posterior_samples)
+            _, posterior_samples = load_posteriors(posterior_samples)
  
         # Convert to a dict if not a dict (for example, numpy.npz)
-        if not isinstance(posterior_samples,dict):
+        if not isinstance(posterior_samples,(dict, h5py.File, h5py.Group)):
             posterior_samples = dict(posterior_samples)
 
         # No data specified. Predict using the inputs
@@ -781,24 +759,6 @@ class RunInference:
             os.fsync(f.fileno())    
 
 
-    def _write_posteriors(self,posterior_samples,out_root):
-        """
-        Atomically save posterior samples to a compressed .npz file.
-
-        Parameters
-        ----------
-        posterior_samples : dict
-            A dictionary of samples (pytree) from `numpyro.infer.Predictive`.
-        out_root : str
-            Root name for the output .npz file.
-        """
-
-        tmp_out_file = f"{out_root}_posterior.tmp.npz"
-        out_file = f"{out_root}_posterior.npz"
-
-        np.savez_compressed(tmp_out_file,**posterior_samples)
-
-        os.replace(tmp_out_file,out_file)
 
 
     def _update_loss_deque(self, losses):
