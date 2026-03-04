@@ -222,7 +222,6 @@ def test_run_growth_analysis_svi_full(tmpdir, mocker):
         mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis.read_configuration", return_value=(mock_gm_run, {"p":1.0}))
         
         # Mock write_configuration to avoid yaml problems with mocks
-        mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis.write_configuration")
         mock_ri_class = mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis.RunInference")
         mock_svi = mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis._run_svi")
         mock_map = mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis._run_map")

@@ -21,8 +21,6 @@ def mock_run_inference(mocker):
     mock_ri_instance.run_optimization.return_value = ("final_state", {"p": 1}, True)
     mock_ri_instance._iterations_per_epoch = 1
 
-    # Mock write_configuration to avoid YAML errors
-    mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis.write_configuration")
     
     return mock_ri_class, mock_ri_instance
 

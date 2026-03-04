@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 import h5py
 from tqdm import tqdm
+from tfscreen.analysis.hierarchical.posteriors import load_posteriors, get_posterior_samples
 
 # Declare float datatype
 FLOAT_DTYPE = jnp.float64 if jax.config.read("jax_enable_x64") else jnp.float32
@@ -12,51 +13,6 @@ FLOAT_DTYPE = jnp.float64 if jax.config.read("jax_enable_x64") else jnp.float32
 # Set zero conc to this when taking log
 ZERO_CONC_VALUE = 1e-20
 
-def _get_posterior_samples(param_posteriors, param_name):
-    """
-    Get posterior samples for a parameter, handling name fallbacks and HDF5.
-
-    Parameters
-    ----------
-    param_posteriors : dict
-        Dictionary mapping parameter names to posterior samples.
-    param_name : str
-        Name of the parameter to extract.
-
-    Returns
-    -------
-    val : numpy.ndarray
-        Posterior samples for the requested parameter.
-
-    Raises
-    ------
-    KeyError
-        If the parameter is not found in `param_posteriors`.
-    """
-
-    if param_name not in param_posteriors:
-        # Try suffixes for MAP/guide keys
-        found = False
-        for suffix in ["_auto_loc", "_mean"]:
-            if f"{param_name}{suffix}" in param_posteriors:
-                param_name = f"{param_name}{suffix}"
-                found = True
-                break
-
-        if not found:
-            # Provide more helpful error message if possible
-            available_keys = list(param_posteriors.keys())
-            if len(available_keys) > 10:
-                keys_str = ", ".join(available_keys[:5]) + " ... " + ", ".join(available_keys[-5:])
-            else:
-                keys_str = ", ".join(available_keys)
-            
-            error_msg = f"Parameter '{param_name}' not found in posteriors. Available keys: {keys_str}"
-            raise KeyError(error_msg)
-
-    val = param_posteriors[param_name]
-
-    return val
 
 def _extract_param_est(input_df,
                        params_to_get,
@@ -117,7 +73,7 @@ def _extract_param_est(input_df,
 
         # Grab the posterior distribution of this parameters and flatten.
         model_param = f"{in_run_prefix}{param}"
-        val = _get_posterior_samples(param_posteriors, model_param)
+        val = get_posterior_samples(param_posteriors, model_param)
         
         # Load HDF5 into memory if needed for reshape
         if hasattr(val, "shape") and not hasattr(val, "reshape"):
@@ -175,33 +131,7 @@ def extract_parameters(model, posteriors, q_to_get=None):
         If `q_to_get` is not a dictionary.
     """
 
-    # Load the posterior file
-    if isinstance(posteriors,(dict,np.lib.npyio.NpzFile,h5py.File,h5py.Group)):
-        param_posteriors = posteriors
-    else:
-        if posteriors.endswith(".h5") or posteriors.endswith(".hdf5"):
-            param_posteriors = h5py.File(posteriors, 'r')
-        else:
-            param_posteriors = np.load(posteriors)
-    
-
-    # Named quantiles to pull from the posterior distribution
-    if q_to_get is None:
-        q_to_get = {"min":0.0,
-                    "lower_95":0.025,
-                    "lower_std":0.159,
-                    "lower_quartile":0.25,
-                    "median":0.5,
-                    "upper_quartile":0.75,
-                    "upper_std":0.841,
-                    "upper_95":0.975,
-                    "max":1.0}
-        
-    # make sure q_to_get is a dictionary
-    if not isinstance(q_to_get,dict):
-        raise ValueError(
-            "q_to_get should be a dictionary keying column names to quantiles"
-        )
+    q_to_get, param_posteriors = load_posteriors(posteriors, q_to_get)
 
     # Define how to go about constructing dataframes to store the parameter
     # estimates. 
@@ -422,33 +352,7 @@ def extract_theta_curves(model, posteriors, q_to_get=None, manual_titrant_df=Non
             "theta='hill'."
         )
 
-    # Load the posterior file
-    if isinstance(posteriors,(dict,np.lib.npyio.NpzFile,h5py.File,h5py.Group)):
-        param_posteriors = posteriors
-    else:
-        if posteriors.endswith(".h5") or posteriors.endswith(".hdf5"):
-            param_posteriors = h5py.File(posteriors, 'r')
-        else:
-            param_posteriors = np.load(posteriors)
-    
-
-    # Named quantiles to pull from the posterior distribution
-    if q_to_get is None:
-        q_to_get = {"min":0.0,
-                    "lower_95":0.025,
-                    "lower_std":0.159,
-                    "lower_quartile":0.25,
-                    "median":0.5,
-                    "upper_quartile":0.75,
-                    "upper_std":0.841,
-                    "upper_95":0.975,
-                    "max":1.0}
-
-    # make sure q_to_get is a dictionary
-    if not isinstance(q_to_get,dict):
-        raise ValueError(
-            "q_to_get should be a dictionary keying column names to quantiles"
-        )
+    q_to_get, param_posteriors = load_posteriors(posteriors, q_to_get)
 
     # Construct calculation DataFrame
     if manual_titrant_df is None:
@@ -510,22 +414,22 @@ def extract_theta_curves(model, posteriors, q_to_get=None, manual_titrant_df=Non
     log_titrant = np.log(log_titrant)[None, :]
 
     # Extract posterior parameters and flatten (num_samples, num_groups)
-    hill_n = _get_posterior_samples(param_posteriors, "theta_hill_n")
+    hill_n = get_posterior_samples(param_posteriors, "theta_hill_n")
     if hasattr(hill_n, "shape") and not hasattr(hill_n, "reshape"):
         hill_n = hill_n[:]
     hill_n = hill_n.reshape(hill_n.shape[0], -1)
 
-    log_hill_K = _get_posterior_samples(param_posteriors, "theta_log_hill_K")
+    log_hill_K = get_posterior_samples(param_posteriors, "theta_log_hill_K")
     if hasattr(log_hill_K, "shape") and not hasattr(log_hill_K, "reshape"):
         log_hill_K = log_hill_K[:]
     log_hill_K = log_hill_K.reshape(log_hill_K.shape[0], -1)
 
-    theta_high = _get_posterior_samples(param_posteriors, "theta_theta_high")
+    theta_high = get_posterior_samples(param_posteriors, "theta_theta_high")
     if hasattr(theta_high, "shape") and not hasattr(theta_high, "reshape"):
         theta_high = theta_high[:]
     theta_high = theta_high.reshape(theta_high.shape[0], -1)
 
-    theta_low = _get_posterior_samples(param_posteriors, "theta_theta_low")
+    theta_low = get_posterior_samples(param_posteriors, "theta_theta_low")
     if hasattr(theta_low, "shape") and not hasattr(theta_low, "reshape"):
         theta_low = theta_low[:]
     theta_low = theta_low.reshape(theta_low.shape[0], -1)
@@ -589,14 +493,7 @@ def extract_growth_predictions(model,
         If `q_to_get` is not a dictionary.
     """
 
-    # Load the posterior file
-    if isinstance(posteriors,(dict,np.lib.npyio.NpzFile,h5py.File,h5py.Group)):
-        param_posteriors = posteriors
-    else:
-        if posteriors.endswith(".h5") or posteriors.endswith(".hdf5"):
-            param_posteriors = h5py.File(posteriors, 'r')
-        else:
-            param_posteriors = np.load(posteriors)
+    q_to_get, param_posteriors = load_posteriors(posteriors, q_to_get)
 
     if "growth_pred" not in param_posteriors:
         raise ValueError(
@@ -604,26 +501,8 @@ def extract_growth_predictions(model,
             "model was run in a way that generates growth predictions."
         )
 
-    # Named quantiles to pull from the posterior distribution
-    if q_to_get is None:
-        q_to_get = {"min":0.0,
-                    "lower_95":0.025,
-                    "lower_std":0.159,
-                    "lower_quartile":0.25,
-                    "median":0.5,
-                    "upper_quartile":0.75,
-                    "upper_std":0.841,
-                    "upper_95":0.975,
-                    "max":1.0}
-
-    # make sure q_to_get is a dictionary
-    if not isinstance(q_to_get,dict):
-        raise ValueError(
-            "q_to_get should be a dictionary keying column names to quantiles"
-        )
-
     # Grab the growth_pred tensor
-    growth_pred = _get_posterior_samples(param_posteriors, "growth_pred")
+    growth_pred = get_posterior_samples(param_posteriors, "growth_pred")
 
     # The tensor shape is (num_samples, replicate, time, condition_pre, 
     # condition_sel, titrant_name, titrant_conc, genotype)

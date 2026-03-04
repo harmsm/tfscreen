@@ -48,6 +48,7 @@ def test_run_svi_flow_converged(mock_run_inference):
     state, params, converged = _run_svi(
         ri, 
         init_params=None,
+        config_file="config.yaml",
         out_root="test_root",
         max_num_epochs=500,
         num_posterior_samples=100
@@ -93,6 +94,7 @@ def test_run_svi_flow_not_converged_no_posterior(mock_run_inference):
     state, params, converged = _run_svi(
         ri, 
         init_params=None,
+        config_file="config.yaml",
         always_get_posterior=False
     )
     
@@ -105,7 +107,7 @@ def test_run_svi_flow_always_posterior(mock_run_inference):
     _, ri = mock_run_inference
     ri.run_optimization.return_value = ("state", {}, False)
     
-    _run_svi(ri, init_params=None, always_get_posterior=True)
+    _run_svi(ri, init_params=None, config_file="config.yaml", always_get_posterior=True)
     
     # Should get posteriors despite no convergence
     ri.get_posteriors.assert_called_once()
@@ -114,7 +116,7 @@ def test_run_svi_not_converged_stdout(mock_run_inference, capsys):
     """Test SVI not converged message."""
     _, ri = mock_run_inference
     ri.run_optimization.return_value = ("state", {}, False)
-    _run_svi(ri, init_params=None)
+    _run_svi(ri, init_params=None, config_file="config.yaml")
     captured = capsys.readouterr()
     assert "SVI run has not yet converged." in captured.out
 
@@ -129,6 +131,7 @@ def test_run_map_flow(mock_run_inference):
     state, params, converged = _run_map(
         ri,
         init_params=init_params,
+        config_file="config.yaml",
         out_root="test_map",
         max_num_epochs=1000,
         num_posterior_samples=100
@@ -163,7 +166,7 @@ def test_run_map_not_converged(mock_run_inference, capsys):
     """Test MAP not converged message."""
     _, ri = mock_run_inference
     ri.run_optimization.return_value = ("state", {"p": 1}, False)
-    _run_map(ri, init_params={"p": 1}, always_get_posterior=False)
+    _run_map(ri, init_params={"p": 1}, config_file="config.yaml", always_get_posterior=False)
     captured = capsys.readouterr()
     assert "MAP run converged" not in captured.out
     assert "MAP run has not yet converged" in captured.out

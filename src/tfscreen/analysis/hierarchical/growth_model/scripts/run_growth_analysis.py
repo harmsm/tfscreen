@@ -16,6 +16,7 @@ from tfscreen.analysis.hierarchical.growth_model.configuration_io import read_co
 
 def _run_map(ri,
              init_params,
+             config_file,
              checkpoint_file=None,
              out_root="tfs",
              adam_step_size=1e-3,
@@ -127,7 +128,7 @@ def _run_map(ri,
         
         # Write summary files
         summarize_posteriors(posterior_file=f"{out_root}_posterior.h5",
-                             config_file=f"{out_root}_config.yaml",
+                             config_file=config_file,
                              out_root=out_root)
 
     # Write convergence information to stdout
@@ -140,6 +141,7 @@ def _run_map(ri,
 
 def _run_svi(ri,
              init_params,
+             config_file,
              checkpoint_file=None,
              out_root="tfs",
              adam_step_size=1e-3,
@@ -259,7 +261,7 @@ def _run_svi(ri,
         
         # Write summary files
         summarize_posteriors(posterior_file=f"{out_root}_posterior.h5",
-                             config_file=f"{out_root}_config.yaml",
+                             config_file=config_file,
                              out_root=out_root)
         
     # Write convergence information to stdout
@@ -390,6 +392,7 @@ def run_growth_analysis(config_file,
         if pre_map_num_epoch > 0 and checkpoint_file is None:
             _, init_params, _ = _run_map(ri,
                                          init_params=init_params,
+                                         config_file=config_file,
                                          checkpoint_file=None,
                                          out_root=f"{out_root}_premap",
                                          adam_step_size=adam_step_size,
@@ -402,6 +405,7 @@ def run_growth_analysis(config_file,
 
         return _run_svi(ri,
                         init_params=init_params,
+                        config_file=config_file,
                         checkpoint_file=checkpoint_file,
                         out_root=out_root,
                         adam_step_size=adam_step_size,
@@ -423,6 +427,7 @@ def run_growth_analysis(config_file,
     elif analysis_method == "map":
         return _run_map(ri,
                         init_params=init_params,
+                        config_file=config_file,
                         checkpoint_file=checkpoint_file,
                         out_root=out_root,
                         adam_step_size=adam_step_size,
@@ -444,6 +449,7 @@ def run_growth_analysis(config_file,
     elif analysis_method == "posterior":
         return _run_svi(ri,
                         init_params=init_params,  # Use our constructed init_params instead of None 
+                        config_file=config_file,
                         checkpoint_file=checkpoint_file,
                         out_root=out_root,
                         adam_step_size=adam_step_size,
@@ -460,7 +466,7 @@ def run_growth_analysis(config_file,
                         sampling_batch_size=sampling_batch_size,
                         forward_batch_size=forward_batch_size,
                         always_get_posterior=True, 
-                        init_param_jitter=0.0)
+                         init_param_jitter=0.0)
 
     else:
         raise ValueError(

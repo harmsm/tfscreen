@@ -7,10 +7,10 @@ from unittest.mock import MagicMock, patch
 from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass
 from tfscreen.analysis.hierarchical.growth_model.extraction import (
     extract_parameters, 
-    _get_posterior_samples, 
     extract_theta_curves,
     extract_growth_predictions
 )
+from tfscreen.analysis.hierarchical.posteriors import get_posterior_samples
 
 @pytest.fixture
 def mock_model():
@@ -62,31 +62,6 @@ def mock_model():
     
     return model
 
-def test_get_posterior_samples_fallbacks():
-    """Test _get_posterior_samples with name fallbacks."""
-    posteriors = {
-        "param1": np.array([1, 2, 3]),
-        "param2_auto_loc": np.array([4, 5, 6]),
-        "param3_mean": np.array([7, 8, 9])
-    }
-    
-    assert np.array_equal(_get_posterior_samples(posteriors, "param1"), np.array([1, 2, 3]))
-    assert np.array_equal(_get_posterior_samples(posteriors, "param2"), np.array([4, 5, 6]))
-    assert np.array_equal(_get_posterior_samples(posteriors, "param3"), np.array([7, 8, 9]))
-    
-    with pytest.raises(KeyError):
-        _get_posterior_samples(posteriors, "missing")
-
-def test_get_posterior_samples_h5py(tmp_path):
-    """Test _get_posterior_samples with h5py objects."""
-    h5_path = os.path.join(tmp_path, "test.h5")
-    with h5py.File(h5_path, "w") as f:
-        f.create_dataset("param", data=np.array([1, 2, 3]))
-    
-    with h5py.File(h5_path, "r") as f:
-        val = _get_posterior_samples(f, "param")
-        assert isinstance(val, h5py.Dataset)
-        assert np.array_equal(val, np.array([1, 2, 3]))
 
 def test_extract_parameters_all_models(mock_model):
     """Test extract_parameters with various model configurations to hit coverage."""

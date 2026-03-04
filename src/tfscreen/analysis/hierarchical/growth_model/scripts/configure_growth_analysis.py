@@ -7,8 +7,8 @@ from tfscreen.analysis.hierarchical.growth_model import GrowthModel
 from tfscreen.analysis.hierarchical.growth_model.configuration_io import write_configuration
 from tfscreen.util.cli.generalized_main import generalized_main
 
-def configure_growth_analysis(growth_df,
-                              binding_df,
+def configure_growth_analysis(growth_df=None,
+                              binding_df=None,
                               out_root="tfs",
                               condition_growth_model="linear",
                               growth_transition_model="instant",
@@ -73,6 +73,8 @@ def configure_growth_analysis(growth_df,
     -------
     None
     """
+    if growth_df is None or binding_df is None:
+        raise ValueError("growth_df and binding_df must be provided")
 
     # Initialize model to build mappings and get guesses
     gm = GrowthModel(growth_df,
