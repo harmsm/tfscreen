@@ -81,17 +81,30 @@ def test_prediction_smoke(growth_smoke_csv,
             titrant_conc=[999.9] # Not in original data
         )
 
-    # 4. Test categorical theta restriction (as requested)
-    # Create model with categorical theta
-    model_cat = ModelClass(
-        growth_df=growth_smoke_csv,
-        binding_df=binding_smoke_csv,
-        theta="categorical"
-    )
-    
     with pytest.raises(ValueError, match="is plated on .* and cannot be expanded"):
+        
+        # 4. Test categorical theta restriction (as requested)
+        # Create model with categorical theta
+        model_cat = ModelClass(
+            growth_df=growth_smoke_csv,
+            binding_df=binding_smoke_csv,
+            theta="categorical"
+        )
+        
+        # Generate a valid posterior file for model_cat
+        inference_cat = RunInference(model=model_cat, seed=42)
+        svi_cat = inference_cat.setup_svi(adam_step_size=1e-3)
+        svi_state_cat, _, _ = inference_cat.run_optimization(
+            svi=svi_cat, max_num_epochs=1, out_root=f"{out_root}_cat"
+        )
+        inference_cat.get_posteriors(
+            svi=svi_cat, svi_state=svi_state_cat, 
+            out_root=f"{out_root}_cat", num_posterior_samples=5
+        )
+        posterior_file_cat = f"{out_root}_cat_posterior.h5"
+
         predict(
             model_cat,
-            posterior_file, # Reuse old posterior; it will fail during Predictive run or slicing
+            posterior_file_cat,
             titrant_conc=[999.9]
         )

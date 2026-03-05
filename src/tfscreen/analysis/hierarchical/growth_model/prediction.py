@@ -217,6 +217,9 @@ def predict(model_class,
     for site_name, site in model_trace.items():
         if site["type"] != "sample":
             continue
+            
+        if site.get("is_observed", False):
+            continue
         
         try:
             val = get_posterior_samples(param_posteriors, site_name)
@@ -306,8 +309,14 @@ def predict(model_class,
             
             # Pull values for each row using the relative indices.
             # q_arr shape will reflect the subsetted genotypes (and potentially expanded others).
-            # We use the full tensor indexing but with the subsetted genotype indices.
-            df[q_name] = q_arr[tuple(indices)]
+            # It may have fewer dimensions than `indices`, or length-1 dimensions due to broadcasting.
+            # We align right-to-left and use modulo logic to correctly broadcast size-1 axes.
+            aligned_indices = tuple(
+                indices[len(indices) - len(q_arr.shape) + i] % q_arr.shape[i]
+                for i in range(len(q_arr.shape))
+            )
+
+            df[q_name] = q_arr[aligned_indices]
         
         all_dfs[site] = df
 
