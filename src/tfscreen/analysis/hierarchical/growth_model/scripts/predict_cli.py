@@ -9,15 +9,11 @@ def predict_cli(config_file,
                 posterior_file,
                 out_prefix="tfs",
                 predict_sites=None,
-                num_samples=100,
+                num_samples=None,
                 t_pre=None,
                 t_sel=None,
                 titrant_conc=None,
-                genotypes=None,
-                condition_pre=None,
-                condition_sel=None,
-                titrant_name=None,
-                replicate=None):
+                genotypes=None):
     """
     Predict model sites using configuration and posterior samples.
 
@@ -34,23 +30,16 @@ def predict_cli(config_file,
         List of strings specifying the sites to predict. If None,
         defaults to ["growth_pred"].
     num_samples : int, optional
-        Number of posterior samples to use for prediction.
-    t_pre : float, optional
-        A single timepoint for pre-growth.
+        Number of posterior samples to use for prediction. If None, uses all
+        available samples.
+    t_pre : list, optional
+        List of timepoints for pre-growth.
     t_sel : list, optional
         List of timepoints for selection.
     titrant_conc : list, optional
         List of titrant concentrations.
     genotypes : list, optional
         List of genotypes to include.
-    condition_pre : list, optional
-        List of pre-growth conditions to include.
-    condition_sel : list, optional
-        List of selection conditions to include.
-    titrant_name : list, optional
-        List of titrant names to include.
-    replicate : list, optional
-        List of replicates to include.
     """
     
     if predict_sites is None:
@@ -69,11 +58,7 @@ def predict_cli(config_file,
                       t_pre=t_pre,
                       t_sel=t_sel,
                       titrant_conc=titrant_conc,
-                      genotypes=genotypes,
-                      condition_pre=condition_pre,
-                      condition_sel=condition_sel,
-                      titrant_name=titrant_name,
-                      replicate=replicate)
+                      genotypes=genotypes)
     
     # Save output(s)
     if isinstance(results, pd.DataFrame):
@@ -93,23 +78,17 @@ def main():
     # Define manual overrides for generalized_main
     manual_arg_types = {
         "predict_sites": str,
+        "t_pre": float,
         "t_sel": float,
         "titrant_conc": float,
-        "genotypes": str,
-        "condition_pre": str,
-        "condition_sel": str,
-        "titrant_name": str,
-        "replicate": str
+        "genotypes": str
     }
     manual_arg_nargs = {
         "predict_sites": "+",
+        "t_pre": "+",
         "t_sel": "+",
         "titrant_conc": "+",
-        "genotypes": "+",
-        "condition_pre": "+",
-        "condition_sel": "+",
-        "titrant_name": "+",
-        "replicate": "+"
+        "genotypes": "+"
     }
     
     generalized_main(predict_cli,

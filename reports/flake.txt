@@ -1416,69 +1416,62 @@
 ./src/tfscreen/analysis/hierarchical/growth_model/observe/growth.py:87:5: F841 local variable 'nu' is assigned to but never used
 ./src/tfscreen/analysis/hierarchical/growth_model/observe/growth.py:89:11: W292 no newline at end of file
 ./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:11:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:25:76: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:26:73: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:34:75: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:35:72: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:38:70: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:41:68: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:44:67: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:47:67: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:50:66: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:53:62: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:56:59: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:62:66: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:86:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:92:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:138:77: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:139:72: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:140:42: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:148:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:155:1: C901 'predict' is too complex (22)
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:155:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:175:51: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:183:59: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:185:75: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:186:72: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:189:70: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:192:68: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:195:67: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:198:67: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:201:66: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:204:62: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:207:59: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:213:76: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:214:79: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:223:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:20:76: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:21:37: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:28:75: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:29:47: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:31:70: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:34:68: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:40:66: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:77:71: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:98:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:105:1: C901 'predict' is too complex (22)
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:105:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:121:51: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:129:59: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:131:75: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:132:47: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:134:70: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:137:68: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:140:73: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:146:76: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:147:79: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:156:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:167:5: E303 too many blank lines (2)
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:169:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:182:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:184:18: E111 indentation is not a multiple of 4
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:184:18: E117 over-indented
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:193:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:197:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:208:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:220:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:225:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:228:67: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:229:76: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:233:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:240:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:244:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:253:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:264:71: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:266:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:249:58: E741 ambiguous variable name 'l'
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:252:26: E111 indentation is not a multiple of 4
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:252:26: E117 over-indented
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:255:25: E122 continuation line missing indentation or outdented
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:261:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:262:46: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:263:62: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:265:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:267:40: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:268:42: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:269:47: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:271:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:274:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:278:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:284:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:296:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:301:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:306:50: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:312:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:320:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:329:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:330:46: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:331:62: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:333:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:335:40: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:336:42: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:337:47: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:339:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:342:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:346:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:350:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:353:41: E261 at least two spaces before inline comment
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:359:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:360:40: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:370:82: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:377:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:280:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:281:71: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:285:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:290:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:294:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:300:41: E261 at least two spaces before inline comment
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:306:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/prediction.py:311:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/registry.py:13:55: W291 trailing whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/registry.py:17:71: W291 trailing whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/registry.py:18:65: W291 trailing whitespace
@@ -1545,13 +1538,13 @@
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/predict_cli.py:2:1: F401 'numpy as np' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/predict_cli.py:3:1: F401 'os' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/predict_cli.py:8:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/predict_cli.py:55:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/predict_cli.py:44:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/predict_cli.py:51:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/predict_cli.py:62:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/predict_cli.py:75:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/predict_cli.py:77:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/predict_cli.py:90:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/predict_cli.py:92:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/predict_cli.py:114:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/predict_cli.py:119:1: E305 expected 2 blank lines after class or function definition, found 1
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/predict_cli.py:93:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/predict_cli.py:98:1: E305 expected 2 blank lines after class or function definition, found 1
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_growth_analysis.py:2:1: F401 'yaml' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_growth_analysis.py:3:1: F401 'pandas as pd' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_growth_analysis.py:4:1: F401 'numpy as np' imported but unused
@@ -4931,6 +4924,30 @@
 ./tests/smoke-tests/test_posteriors_smoke.py:106:1: W293 blank line contains whitespace
 ./tests/smoke-tests/test_posteriors_smoke.py:111:30: E261 at least two spaces before inline comment
 ./tests/smoke-tests/test_posteriors_smoke.py:112:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_prediction_smoke.py:4:1: F401 'numpy as np' imported but unused
+./tests/smoke-tests/test_prediction_smoke.py:5:1: F401 'jax.numpy as jnp' imported but unused
+./tests/smoke-tests/test_prediction_smoke.py:10:1: E302 expected 2 blank lines, found 1
+./tests/smoke-tests/test_prediction_smoke.py:11:44: W291 trailing whitespace
+./tests/smoke-tests/test_prediction_smoke.py:12:28: E127 continuation line over-indented for visual indent
+./tests/smoke-tests/test_prediction_smoke.py:12:46: W291 trailing whitespace
+./tests/smoke-tests/test_prediction_smoke.py:13:28: E127 continuation line over-indented for visual indent
+./tests/smoke-tests/test_prediction_smoke.py:18:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_prediction_smoke.py:26:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_prediction_smoke.py:29:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_prediction_smoke.py:35:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_prediction_smoke.py:43:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_prediction_smoke.py:46:42: E261 at least two spaces before inline comment
+./tests/smoke-tests/test_prediction_smoke.py:47:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_prediction_smoke.py:49:39: E261 at least two spaces before inline comment
+./tests/smoke-tests/test_prediction_smoke.py:50:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_prediction_smoke.py:58:25: E261 at least two spaces before inline comment
+./tests/smoke-tests/test_prediction_smoke.py:60:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_prediction_smoke.py:62:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_prediction_smoke.py:65:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_prediction_smoke.py:69:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_prediction_smoke.py:81:33: E261 at least two spaces before inline comment
+./tests/smoke-tests/test_prediction_smoke.py:91:1: W293 blank line contains whitespace
+./tests/smoke-tests/test_prediction_smoke.py:95:28: E261 at least two spaces before inline comment
 ./tests/smoke-tests/test_run_growth_analysis_smoke.py:8:1: E302 expected 2 blank lines, found 1
 ./tests/smoke-tests/test_run_growth_analysis_smoke.py:14:1: W293 blank line contains whitespace
 ./tests/smoke-tests/test_run_growth_analysis_smoke.py:24:1: W293 blank line contains whitespace
@@ -5957,7 +5974,8 @@
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_h5_indexing.py:49:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_h5_indexing.py:50:43: W291 trailing whitespace
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_h5_indexing.py:55:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/test_h5_indexing.py:59:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/test_h5_indexing.py:58:35: W291 trailing whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/test_h5_indexing.py:61:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_model.py:4:1: F401 'numpyro.handlers.seed' imported but unused
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_model.py:10:1: F401 'tfscreen.analysis.hierarchical.growth_model.data_class.DataClass' imported but unused
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_model.py:10:1: F401 'tfscreen.analysis.hierarchical.growth_model.data_class.PriorsClass' imported but unused
@@ -6129,46 +6147,18 @@
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_predict_cli.py:84:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_predict_cli.py:87:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_predict_cli.py:91:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/test_predict_lncfu.py:4:1: F401 'jax' imported but unused
-./tests/tfscreen/analysis/hierarchical/growth_model/test_predict_lncfu.py:9:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/test_predict_lncfu.py:32:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/test_predict_lncfu.py:37:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/test_predict_lncfu.py:44:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/test_predict_lncfu.py:47:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/test_predict_lncfu.py:51:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/test_predict_lncfu.py:57:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/test_predict_lncfu.py:60:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/test_predict_lncfu.py:64:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/test_predict_lncfu.py:70:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/test_predict_lncfu.py:76:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/test_predict_lncfu.py:83:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/test_predict_lncfu.py:88:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/test_predict_lncfu.py:93:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/test_predict_lncfu.py:96:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/test_predict_lncfu.py:100:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/test_predict_lncfu.py:107:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/test_predict_lncfu.py:110:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/test_predict_lncfu.py:116:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/test_predict_lncfu.py:121:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/test_predict_lncfu.py:124:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/test_predict_lncfu.py:128:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_prediction.py:3:1: F401 'numpy as np' imported but unused
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_prediction.py:7:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_prediction.py:33:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/test_prediction.py:40:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/test_prediction.py:53:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/test_prediction.py:68:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/test_prediction.py:78:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/test_prediction.py:82:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/test_prediction.py:85:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/test_prediction.py:89:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/test_prediction.py:93:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/test_prediction.py:97:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/test_prediction.py:102:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/test_prediction.py:110:41: W291 trailing whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/test_prediction.py:127:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/test_prediction.py:131:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/test_prediction.py:134:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/test_prediction.py:42:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/test_prediction.py:54:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/test_prediction.py:64:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/test_prediction.py:68:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/test_prediction.py:71:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/test_prediction.py:75:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/test_prediction.py:85:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/test_prediction.py:89:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/test_prediction.py:91:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_spiked_genotypes.py:5:1: F401 'jax.numpy as jnp' imported but unused
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_spiked_genotypes.py:7:1: F401 'unittest.mock.MagicMock' imported but unused
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_spiked_genotypes.py:7:1: F401 'unittest.mock.patch' imported but unused
@@ -8645,14 +8635,14 @@
 ./tests/tfscreen/util/validation/test_check.py:42:38: W292 no newline at end of file
 27    C901 'cat_fit' is too complex (19)
 47    E101 indentation contains mixed spaces and tabs
-37    E111 indentation is not a multiple of 4
+39    E111 indentation is not a multiple of 4
 16    E114 indentation is not a multiple of 4 (comment)
 8     E116 unexpected indentation (comment)
-32    E117 over-indented
-3     E122 continuation line missing indentation or outdented
+34    E117 over-indented
+4     E122 continuation line missing indentation or outdented
 3     E124 closing bracket does not match visual indentation
 6     E125 continuation line with same indent as next logical line
-59    E127 continuation line over-indented for visual indent
+61    E127 continuation line over-indented for visual indent
 65    E128 continuation line under-indented for visual indent
 1     E131 continuation line unaligned for hanging indent
 22    E201 whitespace after '['
@@ -8665,15 +8655,15 @@
 1643  E231 missing whitespace after ','
 121   E251 unexpected spaces around keyword / parameter equals
 20    E252 missing whitespace around parameter equals
-349   E261 at least two spaces before inline comment
+354   E261 at least two spaces before inline comment
 1     E262 inline comment should start with '# '
 7     E265 block comment should start with '# '
 2     E266 too many leading '#' for block comment
 1     E271 multiple spaces after keyword
 1     E275 missing whitespace after keyword
 1     E301 expected 1 blank line, found 0
-1060  E302 expected 2 blank lines, found 1
-84    E303 too many blank lines (2)
+1052  E302 expected 2 blank lines, found 1
+85    E303 too many blank lines (2)
 18    E305 expected 2 blank lines after class or function definition, found 0
 13    E306 expected 1 blank line before a nested definition, found 0
 1     E401 multiple imports on one line
@@ -8685,14 +8675,14 @@
 2     E713 test for membership should be 'not in'
 1     E722 do not use bare 'except'
 1     E731 do not assign a lambda expression, use a def
-3     E741 ambiguous variable name 'I'
-314   F401 '.calibration' imported but unused
+4     E741 ambiguous variable name 'l'
+315   F401 '.calibration' imported but unused
 11    F541 f-string is missing placeholders
 9     F811 redefinition of unused 'dataclasses' from line 6
 37    F841 local variable 'nu' is assigned to but never used
 47    W191 indentation contains tabs
-1238  W291 trailing whitespace
+1228  W291 trailing whitespace
 127   W292 no newline at end of file
-3012  W293 blank line contains whitespace
+3005  W293 blank line contains whitespace
 46    W391 blank line at end of file
-8645
+8635

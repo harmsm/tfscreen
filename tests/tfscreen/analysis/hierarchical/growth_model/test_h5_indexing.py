@@ -55,7 +55,9 @@ def test_predict_h5_indexing(tmp_path):
     
     from unittest.mock import patch
     with patch("tfscreen.analysis.hierarchical.growth_model.prediction.Predictive") as mock_pred:
-        mock_pred.return_value.return_value = {"growth_pred": np.zeros((10, 1, 1, 1, 1, 1, 1))}
+        # Mock growth_pred output. 
+        # TensorManager has 7 dimensions. Prediction output is (num_samples, *tensor_shape)
+        mock_pred.return_value.return_value = {"growth_pred": np.zeros((10, 1, 1, 1, 1, 1, 1, 1))}
         
         # This calls val = val[sample_indices] inside prediction.py
         try:

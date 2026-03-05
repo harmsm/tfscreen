@@ -251,7 +251,7 @@ def read_configuration(config_file):
     guesses_df = pd.read_csv(guesses_path)
     init_params = {}
     
-    for param_name, df_group in guesses_df.groupby("parameter"):
+    for param_name, df_group in guesses_df.groupby("parameter", observed=True):
         if "flat_index" in df_group or any(c.startswith("dim_") for c in df_group.columns):
             sorted_group = df_group.sort_values("flat_index") if "flat_index" in df_group else df_group
             val_array = sorted_group["value"].values

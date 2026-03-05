@@ -110,7 +110,7 @@ def _read_growth_df(growth_df,
                                   group_name="map_theta_group")
     
     mapper = {}
-    for _, sub_df in growth_df.groupby(["condition_pre"]):
+    for _, sub_df in growth_df.groupby(["condition_pre"], observed=True):
         cond_sel = list(pd.unique(sub_df["condition_sel"]))
         mapper.update({c:i for i, c in enumerate(cond_sel)})
 
