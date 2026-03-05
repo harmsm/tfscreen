@@ -1,5 +1,5 @@
 from functools import partial
-from . import congression
+from . import _congression as congression
 
 def get_hyperparameters():
     """

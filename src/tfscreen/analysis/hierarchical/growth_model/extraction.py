@@ -257,8 +257,9 @@ def extract_parameters(model, posteriors, q_to_get=None):
         )
 
     # transformation
-    if model._transformation == "congression":
-        # lam is global
+    if model._transformation in ["logit_norm", "empirical"]:
+        
+        # lam is global for both models
         lam_df = pd.DataFrame({"parameter":["lam"], "map_all":[0]})
         extract.append(
             dict(
@@ -270,31 +271,34 @@ def extract_parameters(model, posteriors, q_to_get=None):
             )
         )
 
-        # mu and sigma are (titrant_name, titrant_conc)
-        # We can use the growth_tm.df to find the unique (titrant_name, titrant_conc) pairs 
-        # and their indices.
-        trans_df = (model.growth_tm.df[["titrant_name", "titrant_conc", 
-                                       "titrant_name_idx", "titrant_conc_idx"]]
-                    .drop_duplicates()
-                    .copy())
-        
-        # num_titrant_conc
-        idx = np.where(np.array(model.growth_tm.tensor_dim_names) == "titrant_conc")[0][0]
-        num_titrant_conc = len(model.growth_tm.tensor_dim_labels[idx])
-        
-        # Map column
-        trans_df["map_trans"] = (trans_df["titrant_name_idx"] * num_titrant_conc + 
-                                 trans_df["titrant_conc_idx"])
-        
-        extract.append(
-            dict(
-                input_df = trans_df,
-                params_to_get = ["mu","sigma"],
-                map_column = "map_trans",
-                get_columns = ["titrant_name","titrant_conc"],
-                in_run_prefix = "transformation_"
+        # mu and sigma are only for logit_norm
+        if model._transformation == "logit_norm":
+
+            # mu and sigma are (titrant_name, titrant_conc)
+            # We can use the growth_tm.df to find the unique (titrant_name, titrant_conc) pairs 
+            # and their indices.
+            trans_df = (model.growth_tm.df[["titrant_name", "titrant_conc", 
+                                           "titrant_name_idx", "titrant_conc_idx"]]
+                        .drop_duplicates()
+                        .copy())
+            
+            # num_titrant_conc
+            idx = np.where(np.array(model.growth_tm.tensor_dim_names) == "titrant_conc")[0][0]
+            num_titrant_conc = len(model.growth_tm.tensor_dim_labels[idx])
+            
+            # Map column
+            trans_df["map_trans"] = (trans_df["titrant_name_idx"] * num_titrant_conc + 
+                                     trans_df["titrant_conc_idx"])
+            
+            extract.append(
+                dict(
+                    input_df = trans_df,
+                    params_to_get = ["mu","sigma"],
+                    map_column = "map_trans",
+                    get_columns = ["titrant_name","titrant_conc"],
+                    in_run_prefix = "transformation_"
+                )
             )
-        )
 
     params = {}
     for kwargs in extract:

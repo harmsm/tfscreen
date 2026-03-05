@@ -58,7 +58,7 @@ def configure_growth_analysis(growth_df=None,
         (default) or 'categorical'. 
     transformation_model : str, optional
         Model for transformation correction. Allowed values are 'single', 
-        'empirical', 'congression', or 'logit_norm'. Default 'empirical'.
+        'empirical', or 'logit_norm'. Default 'empirical'.
     theta_growth_noise_model : str, optional
         Model to use for stochastic experimental noise in theta measured by 
         bacterial growth. Allowed values are 'beta' (default) or 'zero'.

@@ -251,7 +251,7 @@ def test_extract_parameters_h5_file(mock_model, tmp_path):
     h5_path = os.path.join(tmp_path, "params.h5")
     
     # We need a model config that actually extracts something
-    mock_model._transformation = "congression"
+    mock_model._transformation = "logit_norm"
     
     with h5py.File(h5_path, "w") as f:
         f.create_dataset("transformation_lam", data=np.random.rand(10, 1))

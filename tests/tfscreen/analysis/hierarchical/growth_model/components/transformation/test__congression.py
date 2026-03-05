@@ -6,7 +6,7 @@ from numpyro import distributions as dist
 from unittest.mock import MagicMock, patch
 
 from tfscreen.analysis.hierarchical.growth_model.components.transformation import (
-    congression as transformation_congression,
+    _congression as transformation_congression,
 )
 
 # -------------------------------------------------------------------------

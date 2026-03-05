@@ -397,13 +397,13 @@ class ModelClass:
         Model name for theta calculation (e.g., "hill").
     transformation : str, optional
         Model name for transformation correction. Allowed values are 'single', 
-        'empirical', 'congression', or 'logit_norm'. Default 'empirical'
+        'empirical', or 'logit_norm'. Default 'empirical'
     theta_growth_noise : str, optional
         Model name for noise on theta in the growth model ('zero' or 'beta').
     theta_binding_noise : str, optional
         Model name for noise on theta in the binding model ('zero' or 'beta').
     spiked_genotypes : list or str, optional
-        Names of genotypes that should be excluded from congression
+        Names of genotypes that should be excluded from transformation
         correction.
     batch_size : int, optional
         The batch size for SVI. If None (default), use full batch.
@@ -434,7 +434,7 @@ class ModelClass:
                  dk_geno="hierarchical",
                  activity="horseshoe",
                  theta="hill",
-                 transformation="congression",
+                 transformation="empirical",
                  theta_growth_noise="zero",
                  theta_binding_noise="zero",
                  spiked_genotypes=None):

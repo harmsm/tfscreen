@@ -17,7 +17,7 @@ def test_run_growth_analysis_smoke(growth_smoke_csv, binding_smoke_csv, tmpdir):
         growth_df=growth_smoke_csv,
         binding_df=binding_smoke_csv,
         condition_growth="linear",
-        transformation="congression",
+        transformation="logit_norm",
         theta="hill",
         batch_size=None
     )

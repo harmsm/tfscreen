@@ -9,7 +9,7 @@ from tfscreen.analysis.hierarchical.growth_model.extraction import extract_param
 def mock_model_congression():
     """Create a ModelClass instance with minimal mocked internals for congression."""
     model = MagicMock(spec=ModelClass)
-    model._transformation = "congression"
+    model._transformation = "logit_norm"
     model._theta = "none"
     model._condition_growth = "none"
     model._dk_geno = "none"

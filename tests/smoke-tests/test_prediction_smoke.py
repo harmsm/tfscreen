@@ -21,7 +21,7 @@ def test_prediction_smoke(growth_smoke_csv,
         growth_df=growth_smoke_csv,
         binding_df=binding_smoke_csv,
         theta="hill",
-        transformation="congression"
+        transformation="logit_norm"
     )
     
     inference = RunInference(model=model, seed=42)
@@ -73,7 +73,7 @@ def test_prediction_smoke(growth_smoke_csv,
     assert "upper_95" in pred_df.columns
 
     # 3. Test expansion restriction for plated dimensions
-    # 'congression' plates on titrant_conc, so expanding it should fail.
+    # 'logit_norm' plates on titrant_conc, so expanding it should fail.
     with pytest.raises(ValueError, match="is plated on .* and cannot be expanded"):
         predict(
             model,

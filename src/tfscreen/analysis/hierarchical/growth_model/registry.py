@@ -19,7 +19,6 @@ from .components.activity import horseshoe as activity_horseshoe
 
 from .components.theta import categorical as theta_cat 
 from .components.theta import hill as theta_hill 
-from .components.transformation import congression as transformation_congression
 from .components.transformation import empirical as transformation_empirical
 from .components.transformation import logit_norm as transformation_logit_norm
 from .components.transformation import single as transformation_single 
@@ -51,7 +50,6 @@ model_registry = {
         "horseshoe":activity_horseshoe,
     },
     "transformation":{
-        "congression": transformation_congression,
         "empirical": transformation_empirical,
         "logit_norm": transformation_logit_norm,
         "single": transformation_single,

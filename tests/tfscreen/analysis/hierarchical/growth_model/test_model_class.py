@@ -283,7 +283,7 @@ def test_initialize_classes_logic(mocker):
         "dk_geno": {"hierarchical": MagicMock()},
         "activity": {"hierarchical": MagicMock(), "horseshoe": MagicMock()},
         "theta": {"categorical": MagicMock(), "hill": MagicMock(), "fixed": MagicMock()},
-        "transformation": {"congression": MagicMock(), "single": MagicMock()},
+        "transformation": {"logit_norm": MagicMock(), "single": MagicMock()},
         "theta_growth_noise": {"zero": MagicMock()},
         "theta_binding_noise": {"zero": MagicMock()},
         "observe_binding": MagicMock(),
@@ -294,7 +294,7 @@ def test_initialize_classes_logic(mocker):
                 tfscreen.analysis.hierarchical.growth_model.model_class.model_registry[k][sub_k].get_priors.return_value = {}
                 tfscreen.analysis.hierarchical.growth_model.model_class.model_registry[k][sub_k].get_guesses.return_value = {}
 
-        model = ModelClass("g.csv", "b.csv", theta="categorical", transformation="congression", condition_growth="independent", growth_transition="instant")
+        model = ModelClass("g.csv", "b.csv", theta="categorical", transformation="logit_norm", condition_growth="independent", growth_transition="instant")
         assert model._theta == "categorical"
 
 
@@ -340,7 +340,7 @@ def test_extract_parameters_full(initialized_model_class):
     model._condition_growth = "hierarchical"
     model._dk_geno = "hierarchical"
     model._activity = "hierarchical"
-    model._transformation = "congression"
+    model._transformation = "logit_norm"
     model.growth_tm.df = pd.DataFrame({
         "genotype": ["wt"], "titrant_name": ["T"], 
         "replicate": [1], "condition_pre": ["A"],
