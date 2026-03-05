@@ -246,6 +246,7 @@ def predict(model_class,
     num_samples = min(num_samples, total_available)
     rng = np.random.default_rng()
     sample_indices = rng.choice(total_available, size=num_samples, replace=False)
+    sample_indices = np.sort(sample_indices)
 
     # -------------------------------------------------------------------------
     # Categorical re-mapping logic
