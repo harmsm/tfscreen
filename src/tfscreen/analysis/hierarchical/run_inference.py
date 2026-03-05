@@ -522,7 +522,9 @@ class RunInference:
         
             # Add metadata to HDF5 file
             hf.attrs["num_samples"] = samples_written
-
+            
+            # Force flush to disk to avoid read issues on cluster file systems
+            hf.flush()
 
     def get_key(self):
         """

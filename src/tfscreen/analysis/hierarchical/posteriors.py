@@ -75,7 +75,18 @@ def load_posteriors(posteriors, q_to_get=None):
         param_posteriors = posteriors
     elif isinstance(posteriors, str):
         if posteriors.endswith(".h5") or posteriors.endswith(".hdf5"):
-            param_posteriors = h5py.File(posteriors, 'r')
+            import time
+            max_retries = 15
+            for attempt in range(max_retries):
+                try:
+                    param_posteriors = h5py.File(posteriors, 'r')
+                    break
+                except OSError as e:
+                    # Retry on OSError to allow cluster file systems to sync
+                    if attempt < max_retries - 1:
+                        time.sleep(2)
+                        continue
+                    raise
         else:
             param_posteriors = np.load(posteriors)
     else:
