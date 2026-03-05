@@ -300,7 +300,23 @@ def predict(model_class,
                 new_labels = new_mc.growth_tm.tensor_dim_labels[dim_idx]
                 
                 # Find indices of new labels in old labels
-                indices = np.array([np.where(old_labels == lab)[0][0] for lab in new_labels])
+                indices = []
+                for lab in new_labels:
+                    # np.where can be fragile with type mismatches.
+                    # We use a more robust check. 
+                    matches = np.where(old_labels == lab)[0]
+                    if len(matches) == 0:
+                        # Try string conversion as fallback for common type mismatches
+                        # (e.g. integer vs string from CLI)
+                        matches = np.where(old_labels.astype(str) == str(lab))[0]
+                    
+                    if len(matches) == 0:
+                        raise ValueError(
+                            f"Label '{lab}' for dimension '{p_name}' (plate '{plate_name}') "
+                            f"not found in original model labels: {old_labels}"
+                        )
+                    indices.append(matches[0])
+                indices = np.array(indices)
                 
                 # Slice the array along frame.dim
                 # frame.dim is relative to the right-most dimension of the trace value.
