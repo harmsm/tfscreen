@@ -19,7 +19,8 @@ def configure_growth_analysis(growth_df=None,
                               transformation_model="empirical",
                               theta_growth_noise_model="zero",
                               theta_binding_noise_model="zero",
-                              spiked=None):
+                              spiked=None,
+                              growth_shares_replicates=False):
     """
     Construct the analysis configuration step. This creates a tfs_config.yaml file
     along with tfs_priors.csv and tfs_guesses.csv (if any array parameters exist).
@@ -68,6 +69,9 @@ def configure_growth_analysis(growth_df=None,
     spiked : list or str, optional
         Names of genotypes that should be excluded from congression
         correction.
+    growth_shares_replicates : bool, optional
+        Whether replicates should share the same parameters for the growth and 
+        growth transition models. Default is False.
 
     Returns
     -------
@@ -88,7 +92,8 @@ def configure_growth_analysis(growth_df=None,
                      transformation=transformation_model,
                      theta_growth_noise=theta_growth_noise_model,
                      theta_binding_noise=theta_binding_noise_model,
-                     spiked_genotypes=spiked)
+                     spiked_genotypes=spiked,
+                     growth_shares_replicates=growth_shares_replicates)
 
     # Write the model configuration to a file. This includes the model component
     # names, the data file paths, and the parameter guesses/priors.

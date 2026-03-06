@@ -47,6 +47,7 @@ class GrowthData:
     # meta data
     wt_indexes: jnp.ndarray    
     scatter_theta: int = field(pytree_node=False) 
+    growth_shares_replicates: bool = field(pytree_node=False, default=False)
 
 @dataclass(frozen=True)
 class BindingData:

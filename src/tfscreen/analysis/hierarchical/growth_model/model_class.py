@@ -119,7 +119,7 @@ def _read_growth_df(growth_df,
         
     return growth_df
 
-def _build_growth_tm(growth_df):
+def _build_growth_tm(growth_df, growth_shares_replicates=False):
     """
     Builds a TensorManager for the main growth data.
 
@@ -136,6 +136,8 @@ def _build_growth_tm(growth_df):
     growth_df : pd.DataFrame
         The processed growth DataFrame, typically from `_read_growth_df`.
         Must contain all columns required for pivots and maps.
+    growth_shares_replicates : bool, optional
+        Whether to exclude replicate when mapping identical parameters.
 
     Returns
     -------
@@ -174,7 +176,11 @@ def _build_growth_tm(growth_df):
     # condition_pre and condition_sel. Basically this does the operation 
     # unique(replicate + condition_pre OR replicate + condition_sel). This
     # will create map_condition_pre and map_condition_sel. 
-    growth_tm.add_map_tensor(select_cols=["replicate"],
+    # If growth_shares_replicates is True, we drop replicate from the 
+    # map tensor creation columns so that condition mapping is entirely 
+    # coordinate-agnostic across replicates.
+    select_cols = [] if growth_shares_replicates else ["replicate"]
+    growth_tm.add_map_tensor(select_cols=select_cols,
                              select_pool_cols=["condition_pre","condition_sel"],
                              name="condition_rep")
 
@@ -437,7 +443,8 @@ class ModelClass:
                  transformation="empirical",
                  theta_growth_noise="zero",
                  theta_binding_noise="zero",
-                 spiked_genotypes=None):
+                 spiked_genotypes=None,
+                 growth_shares_replicates=False):
 
         self._ln_cfu_df = growth_df
         self._binding_df = binding_df
@@ -454,6 +461,7 @@ class ModelClass:
         self._theta_growth_noise = theta_growth_noise
         self._theta_binding_noise = theta_binding_noise
         self._spiked_genotypes = spiked_genotypes
+        self._growth_shares_replicates = growth_shares_replicates
 
         self._initialize_data()
         self._initialize_classes()
@@ -479,7 +487,7 @@ class ModelClass:
         # growth (replicate,time,condition,genotype) data. The other holds 
         # the theta (titrant_conc,theta_group) tensor. 
         self.growth_df = _read_growth_df(self._ln_cfu_df)
-        self.growth_tm = _build_growth_tm(self.growth_df)
+        self.growth_tm = _build_growth_tm(self.growth_df, self._growth_shares_replicates)
                    
         # Assemble tensors. 
         tensors = {}
@@ -550,6 +558,7 @@ class ModelClass:
         
         other_data["titrant_conc"] = titrant_conc
         other_data["log_titrant_conc"] = log_titrant_conc
+        other_data["growth_shares_replicates"] = bool(self._growth_shares_replicates)
 
         growth_data_sources = [tensors,sizes,wt_info,other_data]
         
@@ -893,6 +902,5 @@ class ModelClass:
             "theta_growth_noise":self._theta_growth_noise,
             "theta_binding_noise":self._theta_binding_noise,
             "spiked_genotypes":self._spiked_genotypes,
+            "growth_shares_replicates": self._growth_shares_replicates
         }
-
-

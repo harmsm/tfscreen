@@ -97,6 +97,10 @@ def define_model(name: str,
         A dataclass containing k_pre, m_pre, k_sel, and m_sel.
     """
 
+    # Data assertions
+    if data.growth_shares_replicates:
+        raise ValueError("linear_independent cannot be used with growth_shares_replicates=True. Use 'linear' instead.")
+
     # Loop over conditions. NOTE THE FLIPPED PLATES. I need each condition to 
     # have its own priors (outer loop) for each replicate (inner loop). The 
     # data are ordered in the parameters as rep0, cond0 \ rep0, cond1 \ etc.
@@ -188,6 +192,8 @@ def guide(name: str,
     """
 
     # --- 1. Global Parameters (Per Condition) ---
+    if data.growth_shares_replicates:
+        raise ValueError("linear_independent cannot be used with growth_shares_replicates=True. Use 'linear' instead.")
     
     # K Hyper Loc (Normal)
     k_hl_loc = pyro.param(f"{name}_k_hyper_loc_loc", jnp.array(priors.growth_k_hyper_loc_loc))

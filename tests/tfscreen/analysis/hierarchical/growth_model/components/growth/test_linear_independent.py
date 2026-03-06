@@ -22,7 +22,8 @@ MockGrowthData = namedtuple("MockGrowthData", [
     "num_condition_rep", 
     "num_replicate",
     "map_condition_pre",
-    "map_condition_sel"
+    "map_condition_sel",
+    "growth_shares_replicates"
 ])
 
 @pytest.fixture
@@ -45,7 +46,8 @@ def mock_data():
         num_condition_rep=num_condition_rep,
         num_replicate=num_replicate,
         map_condition_pre=map_condition_pre,
-        map_condition_sel=map_condition_sel
+        map_condition_sel=map_condition_sel,
+        growth_shares_replicates=False
     )
 
 
