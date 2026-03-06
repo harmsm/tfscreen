@@ -34,7 +34,7 @@ def test_data_class_jit_stability():
             num_titrant_name=2,
             num_titrant_conc=2,
             num_genotype=10,
-            num_condition=4,
+            num_condition_rep=4,
             map_condition_pre=jnp.zeros((2, 5, 2, 2, 2, 2, 10), dtype=int),
             map_condition_sel=jnp.zeros((2, 5, 2, 2, 2, 2, 10), dtype=int),
             titrant_conc=jnp.zeros(2),

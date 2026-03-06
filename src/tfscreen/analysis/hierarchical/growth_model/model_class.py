@@ -176,7 +176,7 @@ def _build_growth_tm(growth_df):
     # will create map_condition_pre and map_condition_sel. 
     growth_tm.add_map_tensor(select_cols=["replicate"],
                              select_pool_cols=["condition_pre","condition_sel"],
-                             name="condition")
+                             name="condition_rep")
 
     # These maps will allow us to extract parameter values from posterior 
     # samples. 

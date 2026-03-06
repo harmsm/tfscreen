@@ -30,12 +30,12 @@ def mock_model():
         "titrant_name": ["iptg"],
         "titrant_conc": [1.0],
         "replicate": ["1"],
-        "condition": ["cond1"],
+        "condition_rep": ["cond1"],
         "condition_pre": ["pre1"],
         "condition_sel": ["sel1"],
         "map_theta": [0],
         "map_theta_group": [0],
-        "map_condition": [0],
+        "map_condition_rep": [0],
         "map_ln_cfu0": [0],
         "map_genotype": [0],
         "time_idx": [0],
@@ -47,7 +47,7 @@ def mock_model():
         "genotype_idx": [0]
     })
     mock_tm.map_groups = {
-        'condition': pd.DataFrame({"replicate": ["1"], "condition": ["cond1"], "map_condition": [0]})
+        'condition_rep': pd.DataFrame({"replicate": ["1"], "condition_rep": ["cond1"], "map_condition_rep": [0]})
     }
     mock_tm.tensor_dim_names = ["replicate", "time", "condition_pre", "condition_sel", "titrant_name", "titrant_conc", "genotype"]
     mock_tm.tensor_dim_labels = [["1"], ["1"], ["pre1"], ["sel1"], ["iptg"], [1.0], ["wt"]]

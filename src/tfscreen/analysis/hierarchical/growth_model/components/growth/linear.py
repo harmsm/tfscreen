@@ -50,7 +50,7 @@ def define_model(name: str,
     data : GrowthData
         A Pytree (Flax dataclass) containing experimental data and metadata.
         This function primarily uses:
-        - ``data.num_condition``
+        - ``data.num_condition_rep``
         - ``data.num_replicate``
         - ``data.map_condition_pre``
         - ``data.map_condition_sel``
@@ -90,7 +90,7 @@ def define_model(name: str,
     )
     
     # Loop over conditions and replicates
-    with pyro.plate(f"{name}_condition_parameters",data.num_condition):
+    with pyro.plate(f"{name}_condition_parameters",data.num_condition_rep):
         growth_k_offset = pyro.sample(f"{name}_k_offset", dist.Normal(0.0, 1.0))
         growth_m_offset = pyro.sample(f"{name}_m_offset", dist.Normal(0.0, 1.0))
     
@@ -155,21 +155,21 @@ def guide(name: str,
     )
     
     k_offset_locs = pyro.param(f"{name}_k_offset_locs",
-                               jnp.zeros(data.num_condition,dtype=float))
+                               jnp.zeros(data.num_condition_rep,dtype=float))
     k_offset_scales = pyro.param(f"{name}_k_offset_scales",
-                                 jnp.ones(data.num_condition,dtype=float),
+                                 jnp.ones(data.num_condition_rep,dtype=float),
                                  constraint=dist.constraints.positive)
 
 
     m_offset_locs = pyro.param(f"{name}_m_offset_locs",
-                               jnp.zeros(data.num_condition,dtype=float))
+                               jnp.zeros(data.num_condition_rep,dtype=float))
     m_offset_scales = pyro.param(f"{name}_m_offset_scales",
-                                 jnp.ones(data.num_condition,dtype=float),
+                                 jnp.ones(data.num_condition_rep,dtype=float),
                                  constraint=dist.constraints.positive)
 
 
     # Loop over conditions and replicates
-    with pyro.plate(f"{name}_condition_parameters",data.num_condition) as idx:
+    with pyro.plate(f"{name}_condition_parameters",data.num_condition_rep) as idx:
 
         k_batch_locs = k_offset_locs[...,idx]
         k_batch_scales = k_offset_scales[...,idx]
@@ -243,7 +243,7 @@ def get_guesses(name,data):
     Get guesses for the model parameters. 
     """
 
-    shape = data.num_condition
+    shape = data.num_condition_rep
 
     guesses = {}
     guesses[f"{name}_k_hyper_loc"] = 0.025

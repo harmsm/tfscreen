@@ -106,7 +106,7 @@ def write_configuration(gm,
 
     # Process array guesses and any others
     tm = gm.growth_tm
-    cond_map = tm.map_groups.get("condition", pd.DataFrame())
+    cond_rep_map = tm.map_groups.get("condition_rep", pd.DataFrame())
     geno_map = tm.map_groups.get("genotype", pd.DataFrame())
     theta_map = tm.map_groups.get("theta", pd.DataFrame())
     ln_cfu0_map = tm.map_groups.get("ln_cfu0", pd.DataFrame())
@@ -121,9 +121,9 @@ def write_configuration(gm,
         df = pd.DataFrame({"parameter": k, "value": flat_val, "flat_index": range(len(flat_val))})
         
         if "condition_growth" in k and not "hyper" in k:
-            if not cond_map.empty and len(flat_val) == len(cond_map):
-                sorted_map = cond_map.sort_values("map_condition").reset_index(drop=True)
-                for col in ["replicate", "condition"]:
+            if not cond_rep_map.empty and len(flat_val) == len(cond_rep_map):
+                sorted_map = cond_rep_map.sort_values("map_condition_rep").reset_index(drop=True)
+                for col in ["replicate", "condition_rep"]:
                     if col in sorted_map.columns:
                         df[col] = sorted_map[col].values
         

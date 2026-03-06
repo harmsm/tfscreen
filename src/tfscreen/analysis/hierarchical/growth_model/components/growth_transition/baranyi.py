@@ -82,7 +82,7 @@ def define_model(name: str,
     )
 
     # Plate over conditions
-    with pyro.plate(f"{name}_condition_parameters", data.num_condition):
+    with pyro.plate(f"{name}_condition_parameters", data.num_condition_rep):
         tau_lag_offset = pyro.sample(f"{name}_tau_lag_offset", dist.Normal(0.0, 1.0))
         k_sharp_offset = pyro.sample(f"{name}_k_sharp_offset", dist.Normal(0.0, 1.0))
 
@@ -144,15 +144,15 @@ def guide(name: str,
     k_sharp_hyper_scale = pyro.sample(f"{name}_k_sharp_hyper_scale", dist.LogNormal(k_sharp_scale_loc, k_sharp_scale_scale))
 
     # Offsets
-    tau_lag_offset_locs = pyro.param(f"{name}_tau_lag_offset_locs", jnp.zeros(data.num_condition))
-    tau_lag_offset_scales = pyro.param(f"{name}_tau_lag_offset_scales", jnp.ones(data.num_condition),
+    tau_lag_offset_locs = pyro.param(f"{name}_tau_lag_offset_locs", jnp.zeros(data.num_condition_rep))
+    tau_lag_offset_scales = pyro.param(f"{name}_tau_lag_offset_scales", jnp.ones(data.num_condition_rep),
                                     constraint=dist.constraints.positive)
     
-    k_sharp_offset_locs = pyro.param(f"{name}_k_sharp_offset_locs", jnp.zeros(data.num_condition))
-    k_sharp_offset_scales = pyro.param(f"{name}_k_sharp_offset_scales", jnp.ones(data.num_condition),
+    k_sharp_offset_locs = pyro.param(f"{name}_k_sharp_offset_locs", jnp.zeros(data.num_condition_rep))
+    k_sharp_offset_scales = pyro.param(f"{name}_k_sharp_offset_scales", jnp.ones(data.num_condition_rep),
                                    constraint=dist.constraints.positive)
 
-    with pyro.plate(f"{name}_condition_parameters", data.num_condition) as idx:
+    with pyro.plate(f"{name}_condition_parameters", data.num_condition_rep) as idx:
         tau_lag_offset = pyro.sample(f"{name}_tau_lag_offset", dist.Normal(tau_lag_offset_locs[idx], tau_lag_offset_scales[idx]))
         k_sharp_offset = pyro.sample(f"{name}_k_sharp_offset", dist.Normal(k_sharp_offset_locs[idx], k_sharp_offset_scales[idx]))
 
@@ -196,8 +196,8 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
         f"{name}_tau_lag_hyper_scale": 0.1,
         f"{name}_k_sharp_hyper_loc": 1.0,
         f"{name}_k_sharp_hyper_scale": 0.1,
-        f"{name}_tau_lag_offset": jnp.zeros(data.num_condition),
-        f"{name}_k_sharp_offset": jnp.zeros(data.num_condition),
+        f"{name}_tau_lag_offset": jnp.zeros(data.num_condition_rep),
+        f"{name}_k_sharp_offset": jnp.zeros(data.num_condition_rep),
     }
     return guesses
 

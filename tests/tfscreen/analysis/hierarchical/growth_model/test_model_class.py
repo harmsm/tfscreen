@@ -194,7 +194,7 @@ def create_mock_tm(is_growth=True):
     tm = MagicMock()
     tm.map_sizes = {}
     if is_growth:
-        tm.map_sizes = {"condition": 1}
+        tm.map_sizes = {"condition_rep": 1}
         tm.tensor_shape = [1, 1, 1, 1, 1, 1, 7]
         tm.tensor_dim_names = ["replicate", "time", "condition_pre", "condition_sel", "titrant_name", "titrant_conc", "genotype"]
         tm.tensor_dim_labels = [
@@ -348,7 +348,7 @@ def test_extract_parameters_full(initialized_model_class):
         "map_genotype": [0], "titrant_name_idx": [0], "titrant_conc_idx": [0],
         "titrant_conc": [1.0]
     })
-    model.growth_tm.map_groups = {"condition": pd.DataFrame({"replicate":[1], "condition":["A"], "map_condition":[0]})}
+    model.growth_tm.map_groups = {"condition_rep": pd.DataFrame({"replicate":[1], "condition_rep":["A"], "map_condition_rep":[0]})}
     model.growth_tm.tensor_dim_names = ["replicate", "time", "condition_pre", "condition_sel", "titrant_name", "titrant_conc", "genotype"]
     model.growth_tm.tensor_dim_labels = [[], [], [], [], [], [1.0], []]
     

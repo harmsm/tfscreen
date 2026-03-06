@@ -93,7 +93,7 @@ def define_model(name: str,
     )
 
     # Plate over conditions
-    with pyro.plate(f"{name}_condition_parameters", data.num_condition):
+    with pyro.plate(f"{name}_condition_parameters", data.num_condition_rep):
         tau0_offset = pyro.sample(f"{name}_tau0_offset", dist.Normal(0.0, 1.0))
         k1_offset = pyro.sample(f"{name}_k1_offset", dist.Normal(0.0, 1.0))
         k2_offset = pyro.sample(f"{name}_k2_offset", dist.Normal(0.0, 1.0))
@@ -176,19 +176,19 @@ def guide(name: str,
     k2_hyper_scale = pyro.sample(f"{name}_k2_hyper_scale", dist.LogNormal(k2_scale_loc, k2_scale_scale))
 
     # Offsets
-    tau0_offset_locs = pyro.param(f"{name}_tau0_offset_locs", jnp.zeros(data.num_condition))
-    tau0_offset_scales = pyro.param(f"{name}_tau0_offset_scales", jnp.ones(data.num_condition),
+    tau0_offset_locs = pyro.param(f"{name}_tau0_offset_locs", jnp.zeros(data.num_condition_rep))
+    tau0_offset_scales = pyro.param(f"{name}_tau0_offset_scales", jnp.ones(data.num_condition_rep),
                                     constraint=dist.constraints.positive)
     
-    k1_offset_locs = pyro.param(f"{name}_k1_offset_locs", jnp.zeros(data.num_condition))
-    k1_offset_scales = pyro.param(f"{name}_k1_offset_scales", jnp.ones(data.num_condition),
+    k1_offset_locs = pyro.param(f"{name}_k1_offset_locs", jnp.zeros(data.num_condition_rep))
+    k1_offset_scales = pyro.param(f"{name}_k1_offset_scales", jnp.ones(data.num_condition_rep),
                                    constraint=dist.constraints.positive)
 
-    k2_offset_locs = pyro.param(f"{name}_k2_offset_locs", jnp.zeros(data.num_condition))
-    k2_offset_scales = pyro.param(f"{name}_k2_offset_scales", jnp.ones(data.num_condition),
+    k2_offset_locs = pyro.param(f"{name}_k2_offset_locs", jnp.zeros(data.num_condition_rep))
+    k2_offset_scales = pyro.param(f"{name}_k2_offset_scales", jnp.ones(data.num_condition_rep),
                                    constraint=dist.constraints.positive)
 
-    with pyro.plate(f"{name}_condition_parameters", data.num_condition) as idx:
+    with pyro.plate(f"{name}_condition_parameters", data.num_condition_rep) as idx:
         tau0_offset = pyro.sample(f"{name}_tau0_offset", dist.Normal(tau0_offset_locs[idx], tau0_offset_scales[idx]))
         k1_offset = pyro.sample(f"{name}_k1_offset", dist.Normal(k1_offset_locs[idx], k1_offset_scales[idx]))
         k2_offset = pyro.sample(f"{name}_k2_offset", dist.Normal(k2_offset_locs[idx], k2_offset_scales[idx]))
@@ -242,9 +242,9 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
         f"{name}_k1_hyper_scale": 0.01,
         f"{name}_k2_hyper_loc": 0.1,
         f"{name}_k2_hyper_scale": 0.01,
-        f"{name}_tau0_offset": jnp.zeros(data.num_condition),
-        f"{name}_k1_offset": jnp.zeros(data.num_condition),
-        f"{name}_k2_offset": jnp.zeros(data.num_condition),
+        f"{name}_tau0_offset": jnp.zeros(data.num_condition_rep),
+        f"{name}_k1_offset": jnp.zeros(data.num_condition_rep),
+        f"{name}_k2_offset": jnp.zeros(data.num_condition_rep),
     }
     return guesses
 

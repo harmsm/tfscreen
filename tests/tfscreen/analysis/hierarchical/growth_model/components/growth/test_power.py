@@ -18,7 +18,7 @@ from tfscreen.analysis.hierarchical.growth_model.components.growth.power import 
 # --- Mock Data Fixture ---
 
 MockGrowthData = namedtuple("MockGrowthData", [
-    "num_condition", 
+    "num_condition_rep", 
     "num_replicate",
     "map_condition_pre",
     "map_condition_sel"
@@ -31,7 +31,7 @@ def mock_data():
     - 3 conditions
     - Maps index into these 3 conditions
     """
-    num_condition = 3
+    num_condition_rep = 3
     num_replicate = 2 
     
     # 4 observations mapping into the [0, 1, 2] condition array
@@ -39,7 +39,7 @@ def mock_data():
     map_condition_sel = jnp.array([1, 0, 1, 2], dtype=jnp.int32)
     
     return MockGrowthData(
-        num_condition=num_condition,
+        num_condition_rep=num_condition_rep,
         num_replicate=num_replicate,
         map_condition_pre=map_condition_pre,
         map_condition_sel=map_condition_sel
@@ -80,7 +80,7 @@ def test_get_guesses(mock_data):
     assert f"{name}_n_offset" in guesses
     
     # The new model has one offset per condition
-    expected_shape = (mock_data.num_condition,)
+    expected_shape = (mock_data.num_condition_rep,)
     
     assert guesses[f"{name}_k_offset"].shape == expected_shape
     assert guesses[f"{name}_n_offset"].shape == expected_shape
@@ -131,8 +131,8 @@ def test_define_model_structure_and_shapes(mock_data):
     k_per_condition = model_trace[k_name]["value"]
     n_per_condition = model_trace[n_name]["value"]
     
-    # Check shape is (num_condition,)
-    expected_shape = (mock_data.num_condition,)
+    # Check shape is (num_condition_rep,)
+    expected_shape = (mock_data.num_condition_rep,)
     assert k_per_condition.shape == expected_shape
     assert n_per_condition.shape == expected_shape
 
@@ -169,11 +169,11 @@ def test_guide_logic_and_shapes(mock_data):
     # Local params (Condition-specific)
     assert f"{name}_k_offset_locs" in guide_trace
     k_locs = guide_trace[f"{name}_k_offset_locs"]["value"]
-    assert k_locs.shape == (mock_data.num_condition,)
+    assert k_locs.shape == (mock_data.num_condition_rep,)
 
     assert f"{name}_n_offset_scales" in guide_trace
     n_scales = guide_trace[f"{name}_n_offset_scales"]["value"]
-    assert n_scales.shape == (mock_data.num_condition,)
+    assert n_scales.shape == (mock_data.num_condition_rep,)
 
     # --- 2. Check Sample Sites ---
     assert f"{name}_k_hyper_loc" in guide_trace

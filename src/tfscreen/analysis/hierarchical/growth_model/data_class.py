@@ -35,7 +35,7 @@ class GrowthData:
     num_genotype: int = field(pytree_node=False)
 
     # mappers
-    num_condition: int = field(pytree_node=False)
+    num_condition_rep: int = field(pytree_node=False)
     map_condition_pre: jnp.ndarray
     map_condition_sel: jnp.ndarray
 

@@ -163,30 +163,30 @@ def extract_parameters(model, posteriors, q_to_get=None):
     if model._condition_growth in ["linear", "linear_independent", "hierarchical", "independent"]:
         extract.append(
             dict(
-                input_df = model.growth_tm.map_groups['condition'],
+                input_df = model.growth_tm.map_groups['condition_rep'],
                 params_to_get = ["growth_m","growth_k"],
-                map_column = "map_condition",
-                get_columns = ["replicate","condition"],
+                map_column = "map_condition_rep",
+                get_columns = ["replicate","condition_rep"],
                 in_run_prefix = "condition_"
             )
         )
     elif model._condition_growth == "power":
          extract.append(
             dict(
-                input_df = model.growth_tm.map_groups['condition'],
+                input_df = model.growth_tm.map_groups['condition_rep'],
                 params_to_get = ["growth_k","growth_m","growth_n"],
-                map_column = "map_condition",
-                get_columns = ["replicate","condition"],
+                map_column = "map_condition_rep",
+                get_columns = ["replicate","condition_rep"],
                 in_run_prefix = "condition_"
             )
         )
     elif model._condition_growth == "saturation":
          extract.append(
             dict(
-                input_df = model.growth_tm.map_groups['condition'],
+                input_df = model.growth_tm.map_groups['condition_rep'],
                 params_to_get = ["growth_min","growth_max"],
-                map_column = "map_condition",
-                get_columns = ["replicate","condition"],
+                map_column = "map_condition_rep",
+                get_columns = ["replicate","condition_rep"],
                 in_run_prefix = "condition_"
             )
         )
@@ -195,23 +195,23 @@ def extract_parameters(model, posteriors, q_to_get=None):
     if model._growth_transition == "memory":
         extract.append(
             dict(
-                input_df = model.growth_tm.map_groups['condition'],
+                input_df = model.growth_tm.map_groups['condition_rep'],
                 params_to_get = ["growth_transition_tau0", 
                                  "growth_transition_k1", 
                                  "growth_transition_k2"],
-                map_column = "map_condition",
-                get_columns = ["replicate","condition"],
+                map_column = "map_condition_rep",
+                get_columns = ["replicate","condition_rep"],
                 in_run_prefix = ""
             )
         )
     elif model._growth_transition == "baranyi":
          extract.append(
             dict(
-                input_df = model.growth_tm.map_groups['condition'],
+                input_df = model.growth_tm.map_groups['condition_rep'],
                 params_to_get = ["growth_transition_tau_lag", 
                                  "growth_transition_k_sharp"],
-                map_column = "map_condition",
-                get_columns = ["replicate","condition"],
+                map_column = "map_condition_rep",
+                get_columns = ["replicate","condition_rep"],
                 in_run_prefix = ""
             )
         )

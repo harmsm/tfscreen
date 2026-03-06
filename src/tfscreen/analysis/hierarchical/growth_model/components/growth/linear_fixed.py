@@ -43,7 +43,7 @@ def define_model(name: str,
     data : GrowthData
         A Pytree (Flax dataclass) containing experimental data and metadata.
         This function primarily uses:
-        - ``data.num_condition``
+        - ``data.num_condition_rep``
         - ``data.num_replicate``
         - ``data.map_condition_pre``
         - ``data.map_condition_sel``

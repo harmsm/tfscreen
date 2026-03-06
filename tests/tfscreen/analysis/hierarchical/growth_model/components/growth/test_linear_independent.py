@@ -19,7 +19,7 @@ from tfscreen.analysis.hierarchical.growth_model.components.growth.linear_indepe
 # --- Mock Data Fixture ---
 
 MockGrowthData = namedtuple("MockGrowthData", [
-    "num_condition", 
+    "num_condition_rep", 
     "num_replicate",
     "map_condition_pre",
     "map_condition_sel"
@@ -35,14 +35,14 @@ def mock_data():
     - 4 'pre' observations
     - 4 'sel' observations
     """
-    num_condition = 2
+    num_condition_rep = 2
     num_replicate = 3
     
     map_condition_pre = jnp.array([0, 2, 4, 1], dtype=jnp.int32)
     map_condition_sel = jnp.array([5, 3, 1, 0], dtype=jnp.int32)
     
     return MockGrowthData(
-        num_condition=num_condition,
+        num_condition_rep=num_condition_rep,
         num_replicate=num_replicate,
         map_condition_pre=map_condition_pre,
         map_condition_sel=map_condition_sel
@@ -53,19 +53,19 @@ def mock_data():
 
 def test_get_hyperparameters(mock_data):
     """Tests that get_hyperparameters returns correctly shaped arrays."""
-    params = get_hyperparameters(mock_data.num_condition)
+    params = get_hyperparameters(mock_data.num_condition_rep)
     assert isinstance(params, dict)
     
     k_loc = params["growth_k_hyper_loc_loc"]
-    assert k_loc.shape == (mock_data.num_condition,)
+    assert k_loc.shape == (mock_data.num_condition_rep,)
     assert jnp.allclose(k_loc, 0.025)
 
 def test_get_priors(mock_data):
     """Tests our corrected get_priors function."""
-    priors = get_priors(mock_data.num_condition)
+    priors = get_priors(mock_data.num_condition_rep)
     assert isinstance(priors, ModelPriors)
-    assert priors.growth_k_hyper_loc_loc.shape == (mock_data.num_condition,)
-    assert priors.growth_m_hyper_loc_loc.shape == (mock_data.num_condition,)
+    assert priors.growth_k_hyper_loc_loc.shape == (mock_data.num_condition_rep,)
+    assert priors.growth_m_hyper_loc_loc.shape == (mock_data.num_condition_rep,)
 
 def test_get_guesses(mock_data):
     """Tests our corrected get_guesses function."""
@@ -75,12 +75,12 @@ def test_get_guesses(mock_data):
     assert isinstance(guesses, dict)
     
     # Check hyper-parameter guess shapes
-    hyper_shape = (mock_data.num_condition, 1)
+    hyper_shape = (mock_data.num_condition_rep, 1)
     assert guesses[f"{name}_k_hyper_loc"].shape == hyper_shape
     assert guesses[f"{name}_m_hyper_loc"].shape == hyper_shape
     
     # Check offset guess shapes
-    offset_shape = (mock_data.num_condition, mock_data.num_replicate)
+    offset_shape = (mock_data.num_condition_rep, mock_data.num_replicate)
     assert guesses[f"{name}_k_offset"].shape == offset_shape
     assert guesses[f"{name}_m_offset"].shape == offset_shape
 
@@ -91,7 +91,7 @@ def test_define_model_logic_and_shapes(mock_data):
     name = "test_growth_ind"
     
     # Use our fixed helper functions
-    priors = get_priors(mock_data.num_condition)
+    priors = get_priors(mock_data.num_condition_rep)
     guesses = get_guesses(name, mock_data)
     
     # 1. Substitute sample sites with our guess values
@@ -128,7 +128,7 @@ def test_define_model_logic_and_shapes(mock_data):
     m_per_cond_rep_1d = model_trace[m_name]["value"]
     
     # Check shape (must be flattened)
-    expected_flat_shape = (mock_data.num_condition * mock_data.num_replicate,)
+    expected_flat_shape = (mock_data.num_condition_rep * mock_data.num_replicate,)
     assert k_per_cond_rep_1d.shape == expected_flat_shape
     
     # --- 3. Check Values ---
@@ -169,7 +169,7 @@ def test_guide_logic_and_shapes(mock_data):
     Tests the guide function shapes, parameter creation, and execution.
     """
     name = "test_growth_ind_guide"
-    priors = get_priors(mock_data.num_condition)
+    priors = get_priors(mock_data.num_condition_rep)
 
     # Seed the guide execution to handle sampling
     with seed(rng_seed=0):
@@ -191,26 +191,26 @@ def test_guide_logic_and_shapes(mock_data):
     m_sel = params.m_sel
 
     # --- 1. Check Global Parameter Sites ---
-    # Should have shape (num_condition,)
+    # Should have shape (num_condition_rep,)
     assert f"{name}_k_hyper_loc_loc" in guide_trace
     k_hl_loc = guide_trace[f"{name}_k_hyper_loc_loc"]["value"]
-    assert k_hl_loc.shape == (mock_data.num_condition,)
+    assert k_hl_loc.shape == (mock_data.num_condition_rep,)
 
     # --- 2. Check Local Parameter Sites ---
-    # The guide initializes local params with shape (num_replicate, num_condition)
+    # The guide initializes local params with shape (num_replicate, num_condition_rep)
     # due to how the nested plates index into them.
     assert f"{name}_k_offset_locs" in guide_trace
     k_offset_locs = guide_trace[f"{name}_k_offset_locs"]["value"]
-    expected_local_shape = (mock_data.num_replicate, mock_data.num_condition)
+    expected_local_shape = (mock_data.num_replicate, mock_data.num_condition_rep)
     assert k_offset_locs.shape == expected_local_shape
     
     # --- 3. Check Sample Sites ---
-    # Global samples should have shape (num_condition,)
+    # Global samples should have shape (num_condition_rep,)
     assert f"{name}_k_hyper_loc" in guide_trace
     k_hyper = guide_trace[f"{name}_k_hyper_loc"]["value"]
-    assert k_hyper.shape == (mock_data.num_condition,)
+    assert k_hyper.shape == (mock_data.num_condition_rep,)
 
-    # Local samples should broadcast to (num_replicate, num_condition)
+    # Local samples should broadcast to (num_replicate, num_condition_rep)
     # because of the nested plates dim=-1 and dim=-2
     assert f"{name}_k_offset" in guide_trace
     k_offset = guide_trace[f"{name}_k_offset"]["value"]

@@ -39,7 +39,7 @@ def mock_gm(mocker):
     # Mock tensor manager maps
     mock_tm = MagicMock()
     mock_tm.map_groups = {
-        "condition": pd.DataFrame({"replicate": ["R1"], "condition": ["C1"], "map_condition": [0]}),
+        "condition": pd.DataFrame({"replicate": ["R1"], "condition": ["C1"], "map_condition_rep": [0]}),
         "genotype": pd.DataFrame({"genotype": ["G1"], "map_genotype": [0]}),
         "theta": pd.DataFrame({"titrant_name": ["T1"], "titrant_conc": [0.1], "genotype": ["G1"], "map_theta": [0]}),
         "ln_cfu0": pd.DataFrame({"replicate": ["R1"], "condition_pre": ["CP1"], "genotype": ["G1"], "map_ln_cfu0": [0]})

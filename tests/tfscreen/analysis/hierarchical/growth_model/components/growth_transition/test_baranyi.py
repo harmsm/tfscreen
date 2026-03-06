@@ -14,7 +14,7 @@ def test_getters():
     assert "k_sharp_hyper_loc_loc" in params
     
     data = MagicMock()
-    data.num_condition = 5
+    data.num_condition_rep = 5
     guesses = get_guesses("test", data)
     assert "test_tau_lag_hyper_loc" in guesses
     assert "test_tau_lag_offset" in guesses
@@ -27,7 +27,7 @@ def test_getters():
 def test_define_model():
     """Test define_model growth transition calculation."""
     data = MagicMock()
-    data.num_condition = 1
+    data.num_condition_rep = 1
     data.map_condition_pre = jnp.zeros((1,), dtype=int)
     
     priors = get_priors()
@@ -51,7 +51,7 @@ def test_define_model():
     
     with patch("numpyro.sample", side_effect=sample_values) as mock_sample:
         plate_mock = MagicMock()
-        plate_mock.__enter__.return_value = jnp.arange(data.num_condition)
+        plate_mock.__enter__.return_value = jnp.arange(data.num_condition_rep)
         with patch("numpyro.plate", return_value=plate_mock):
             total_growth = define_model("test", data, priors, g_pre, g_sel, t_pre, t_sel, theta)
             
@@ -74,7 +74,7 @@ def test_define_model():
 def test_guide():
     """Test guide logic follows the same structure."""
     data = MagicMock()
-    data.num_condition = 1
+    data.num_condition_rep = 1
     data.map_condition_pre = jnp.zeros((1,), dtype=int)
     priors = get_priors()
     
@@ -88,7 +88,7 @@ def test_guide():
     
     with patch("numpyro.sample", side_effect=sample_values):
         plate_mock = MagicMock()
-        plate_mock.__enter__.return_value = jnp.arange(data.num_condition)
+        plate_mock.__enter__.return_value = jnp.arange(data.num_condition_rep)
         with patch("numpyro.plate", return_value=plate_mock):
             total_growth = guide("test", data, priors, g_pre, g_sel, t_pre, t_sel)
             

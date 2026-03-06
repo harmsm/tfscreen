@@ -74,7 +74,7 @@ def define_model(name: str,
     data : GrowthData
         A Pytree (Flax dataclass) containing experimental data and metadata.
         This function primarily uses:
-        - ``data.num_condition`` : (int) Number of experimental conditions.
+        - ``data.num_condition_rep`` : (int) Number of experimental conditions.
         - ``data.num_replicate`` : (int) Number of replicates per condition.
         - ``data.map_condition_pre`` : (jnp.ndarray) Index array to map
           per-condition/replicate parameters to pre-selection observations.
@@ -83,7 +83,7 @@ def define_model(name: str,
     priors : ModelPriors
         A Pytree (Flax dataclass) containing the hyperparameters for the
         priors. All attributes are ``jnp.ndarray``s of shape
-        ``(data.num_condition,)``.
+        ``(data.num_condition_rep,)``.
         - priors.growth_k_hyper_loc_loc
         - priors.growth_k_hyper_loc_scale
         - priors.growth_k_hyper_scale
@@ -101,7 +101,7 @@ def define_model(name: str,
     # have its own priors (outer loop) for each replicate (inner loop). The 
     # data are ordered in the parameters as rep0, cond0 \ rep0, cond1 \ etc.
     # which means they ravel with these dimensions. 
-    with pyro.plate(f"{name}_condition_parameters",data.num_condition,dim=-1):
+    with pyro.plate(f"{name}_condition_parameters",data.num_condition_rep,dim=-1):
 
         growth_k_hyper_loc = pyro.sample(
             f"{name}_k_hyper_loc",
@@ -196,9 +196,9 @@ def guide(name: str,
     
     # K Hyper Scale (LogNormal guide for HalfNormal prior)
     k_hs_loc = pyro.param(f"{name}_k_hyper_scale_loc", 
-                          jnp.full(data.num_condition, -1.0))
+                          jnp.full(data.num_condition_rep, -1.0))
     k_hs_scale = pyro.param(f"{name}_k_hyper_scale_scale", 
-                            jnp.full(data.num_condition, 0.1),
+                            jnp.full(data.num_condition_rep, 0.1),
                             constraint=dist.constraints.positive)
 
     # M Hyper Loc (Normal)
@@ -208,16 +208,16 @@ def guide(name: str,
     
     # M Hyper Scale (LogNormal guide for HalfNormal prior)
     m_hs_loc = pyro.param(f"{name}_m_hyper_scale_loc", 
-                          jnp.full(data.num_condition, -1.0))
+                          jnp.full(data.num_condition_rep, -1.0))
     m_hs_scale = pyro.param(f"{name}_m_hyper_scale_scale", 
-                            jnp.full(data.num_condition, 0.1),
+                            jnp.full(data.num_condition_rep, 0.1),
                             constraint=dist.constraints.positive)
 
     # --- 2. Local Parameters (Per Replicate AND Condition) ---
-    # Shape: (num_replicate, num_condition)
+    # Shape: (num_replicate, num_condition_rep)
     # Note: dim 0 is replicate (-2), dim 1 is condition (-1)
     
-    local_shape = (data.num_replicate, data.num_condition)
+    local_shape = (data.num_replicate, data.num_condition_rep)
 
     k_offset_locs = pyro.param(f"{name}_k_offset_locs", jnp.zeros(local_shape,dtype=float))
     k_offset_scales = pyro.param(f"{name}_k_offset_scales", jnp.ones(local_shape,dtype=float),
@@ -231,7 +231,7 @@ def guide(name: str,
     # --- 3. Sampling with Nested Plates ---
     
     # Outer Loop: Conditions (dim=-1)
-    with pyro.plate(f"{name}_condition_parameters", data.num_condition, dim=-1) as idx_c:
+    with pyro.plate(f"{name}_condition_parameters", data.num_condition_rep, dim=-1) as idx_c:
 
         # Sample Hypers (Sliced by Condition)
         growth_k_hyper_loc = pyro.sample(f"{name}_k_hyper_loc", 
@@ -313,13 +313,13 @@ def calculate_growth(params: LinearParams,
     return g_pre, g_sel
 
 
-def get_hyperparameters(num_condition: int=1) -> Dict[str, Any]:
+def get_hyperparameters(num_condition_rep: int=1) -> Dict[str, Any]:
     """
     Get default values for the model hyperparameters.
 
     Parameters
     ----------
-    num_condition : int
+    num_condition_rep : int
         The number of experimental conditions, used to shape the
         hyperparameter arrays.
 
@@ -331,12 +331,12 @@ def get_hyperparameters(num_condition: int=1) -> Dict[str, Any]:
     """
 
     parameters = {}
-    parameters["growth_k_hyper_loc_loc"] = jnp.ones(num_condition,dtype=float)*0.025
-    parameters["growth_k_hyper_loc_scale"] = jnp.ones(num_condition,dtype=float)*0.1
-    parameters["growth_k_hyper_scale"] = jnp.ones(num_condition,dtype=float)
-    parameters["growth_m_hyper_loc_loc"] = jnp.zeros(num_condition,dtype=float)
-    parameters["growth_m_hyper_loc_scale"] = jnp.ones(num_condition,dtype=float)*0.01
-    parameters["growth_m_hyper_scale"] = jnp.ones(num_condition,dtype=float)
+    parameters["growth_k_hyper_loc_loc"] = jnp.ones(num_condition_rep,dtype=float)*0.025
+    parameters["growth_k_hyper_loc_scale"] = jnp.ones(num_condition_rep,dtype=float)*0.1
+    parameters["growth_k_hyper_scale"] = jnp.ones(num_condition_rep,dtype=float)
+    parameters["growth_m_hyper_loc_loc"] = jnp.zeros(num_condition_rep,dtype=float)
+    parameters["growth_m_hyper_loc_scale"] = jnp.ones(num_condition_rep,dtype=float)*0.01
+    parameters["growth_m_hyper_scale"] = jnp.ones(num_condition_rep,dtype=float)
 
     return parameters
 
@@ -355,7 +355,7 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
     data : GrowthData
         A Pytree containing data metadata, used to determine the
         shape of the guess arrays. Requires:
-        - ``data.num_condition``
+        - ``data.num_condition_rep``
         - ``data.num_replicate``
 
     Returns
@@ -369,15 +369,15 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
     The shapes of the guesses are critical:
     - ``_hyper_loc``/``_hyper_scale`` sites are sampled within the
       ``condition_parameters`` plate, so their shape must be
-      ``(data.num_condition, 1)``.
+      ``(data.num_condition_rep, 1)``.
     - ``_offset`` sites are sampled within both plates, so their shape
-      must be ``(data.num_condition, data.num_replicate)``.
+      must be ``(data.num_condition_rep, data.num_replicate)``.
     """
 
-    shape = (data.num_condition, data.num_replicate)
+    shape = (data.num_condition_rep, data.num_replicate)
 
     # Shape for hyper-parameters sampled inside the condition plate
-    hyper_shape = (data.num_condition, 1) 
+    hyper_shape = (data.num_condition_rep, 1) 
 
     guesses = {}
     guesses[f"{name}_k_hyper_loc"] = jnp.ones(hyper_shape,dtype=float)
@@ -390,13 +390,13 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
 
     return guesses
 
-def get_priors(num_condition: int=1) -> ModelPriors:
+def get_priors(num_condition_rep: int=1) -> ModelPriors:
     """
     Utility function to create a populated ModelPriors object.
 
     Parameters
     ----------
-    num_condition : int, optional
+    num_condition_rep : int, optional
         The number of experimental conditions, which is required by
         `get_hyperparameters`. Default is 1.
 
@@ -406,7 +406,7 @@ def get_priors(num_condition: int=1) -> ModelPriors:
         A populated Pytree (Flax dataclass) of hyperparameters.
     """
     # Call the imported get_hyperparameters
-    params = get_hyperparameters(num_condition)
+    params = get_hyperparameters(num_condition_rep)
     return ModelPriors(**params)
 
     

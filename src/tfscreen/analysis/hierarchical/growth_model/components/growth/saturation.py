@@ -67,7 +67,7 @@ def define_model(name: str,
             dist.HalfNormal(hyper_scale)
         )
         
-        with pyro.plate(f"{name}_{param_name}_condition_parameters", data.num_condition):
+        with pyro.plate(f"{name}_{param_name}_condition_parameters", data.num_condition_rep):
             offset = pyro.sample(f"{name}_{param_name}_offset", dist.Normal(0.0, 1.0))
         
         param_per_condition = hyper_loc + offset * hyper_scale_val
@@ -105,11 +105,11 @@ def guide(name: str,
                                    constraint=dist.constraints.positive)
         hyper_scale = pyro.sample(f"{name}_{param_name}_hyper_scale", dist.LogNormal(p_scale_loc, p_scale_scale))
         
-        offset_locs = pyro.param(f"{name}_{param_name}_offset_locs", jnp.zeros(data.num_condition, dtype=float))
-        offset_scales = pyro.param(f"{name}_{param_name}_offset_scales", jnp.ones(data.num_condition, dtype=float),
+        offset_locs = pyro.param(f"{name}_{param_name}_offset_locs", jnp.zeros(data.num_condition_rep, dtype=float))
+        offset_scales = pyro.param(f"{name}_{param_name}_offset_scales", jnp.ones(data.num_condition_rep, dtype=float),
                                    constraint=dist.constraints.positive)
 
-        with pyro.plate(f"{name}_{param_name}_condition_parameters", data.num_condition) as idx:
+        with pyro.plate(f"{name}_{param_name}_condition_parameters", data.num_condition_rep) as idx:
             offset = pyro.sample(f"{name}_{param_name}_offset", dist.Normal(offset_locs[idx], offset_scales[idx]))
         
         param_per_condition = hyper_loc + offset * hyper_scale
@@ -164,7 +164,7 @@ def get_guesses(name, data):
     Get guesses for the model parameters. 
     """
 
-    shape = data.num_condition
+    shape = data.num_condition_rep
 
     guesses = {}
     guesses[f"{name}_min_hyper_loc"] = 0.025
