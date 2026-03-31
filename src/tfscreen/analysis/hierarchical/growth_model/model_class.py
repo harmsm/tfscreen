@@ -561,6 +561,28 @@ class ModelClass:
         other_data["growth_shares_replicates"] = bool(self._growth_shares_replicates)
 
         growth_data_sources = [tensors,sizes,wt_info,other_data]
+
+        # Build mutation-to-genotype indicator matrices when any hierarchical_mut
+        # component is selected.  Stored as static (pytree_node=False) fields
+        # on GrowthData; downstream components convert to jnp arrays as needed.
+        _needs_mut = (self._theta == "hill_mut" or
+                      self._activity == "hierarchical_mut" or
+                      self._dk_geno == "hierarchical_mut")
+        if _needs_mut:
+            _geno_idx = self.growth_tm.tensor_dim_names.index("genotype")
+            _genotypes = list(self.growth_tm.tensor_dim_labels[_geno_idx])
+            from tfscreen.genetics import build_mut_geno_matrix
+            (mut_labels, pair_labels,
+             mut_geno_matrix, pair_geno_matrix) = build_mut_geno_matrix(_genotypes)
+            # Expose labels as model attributes for downstream interpretation
+            self.mut_labels = mut_labels
+            self.pair_labels = pair_labels
+            growth_data_sources.append({
+                "num_mutation":    len(mut_labels),
+                "num_pair":        len(pair_labels),
+                "mut_geno_matrix":  mut_geno_matrix,
+                "pair_geno_matrix": pair_geno_matrix,
+            })
         
         # ---------------------------------------------------------------------
         # binding dataclass

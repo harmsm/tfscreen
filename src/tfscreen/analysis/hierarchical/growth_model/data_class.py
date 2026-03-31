@@ -1,5 +1,6 @@
 
 import jax.numpy as jnp
+import numpy as np
 from flax.struct import (
     dataclass,
     field
@@ -45,9 +46,18 @@ class GrowthData:
     log_titrant_conc: jnp.ndarray
 
     # meta data
-    wt_indexes: jnp.ndarray    
-    scatter_theta: int = field(pytree_node=False) 
+    wt_indexes: jnp.ndarray
+    scatter_theta: int = field(pytree_node=False)
     growth_shares_replicates: bool = field(pytree_node=False, default=False)
+
+    # Optional mutation-decomposition matrices (set when using *_mut_decomp components).
+    # Stored as pytree_node=False so they are treated as static by JAX tracing.
+    # Shape: mut_geno_matrix (num_mutation, num_genotype),
+    #        pair_geno_matrix (num_pair, num_genotype).
+    num_mutation: int = field(pytree_node=False, default=0)
+    num_pair: int = field(pytree_node=False, default=0)
+    mut_geno_matrix: Any = field(pytree_node=False, default=None)
+    pair_geno_matrix: Any = field(pytree_node=False, default=None)
 
 @dataclass(frozen=True)
 class BindingData:

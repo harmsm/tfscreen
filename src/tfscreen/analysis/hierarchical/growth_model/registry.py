@@ -10,15 +10,18 @@ from .components.growth_transition import baranyi as growth_transition_baranyi
 
 from .components.ln_cfu0 import hierarchical as ln_cfu0
 
-from .components.dk_geno import fixed as dk_geno_fixed 
+from .components.dk_geno import fixed as dk_geno_fixed
 from .components.dk_geno import hierarchical as dk_geno_hierarchical
+from .components.dk_geno import hierarchical_mut as dk_geno_mut_decomp
 
 from .components.activity import fixed as activity_fixed
-from .components.activity import hierarchical as activity_hierarchical 
-from .components.activity import horseshoe as activity_horseshoe 
+from .components.activity import hierarchical as activity_hierarchical
+from .components.activity import horseshoe as activity_horseshoe
+from .components.activity import hierarchical_mut as activity_mut_decomp
 
-from .components.theta import categorical as theta_cat 
-from .components.theta import hill as theta_hill 
+from .components.theta import categorical as theta_cat
+from .components.theta import hill as theta_hill
+from .components.theta import hill_mut as theta_hill_mut
 from .components.transformation import empirical as transformation_empirical
 from .components.transformation import logit_norm as transformation_logit_norm
 from .components.transformation import single as transformation_single 
@@ -43,11 +46,13 @@ model_registry = {
     "dk_geno":{
         "fixed":dk_geno_fixed,
         "hierarchical":dk_geno_hierarchical,
+        "hierarchical_mut":dk_geno_mut_decomp,
     },
     "activity":{
         "fixed":activity_fixed,
         "hierarchical":activity_hierarchical,
         "horseshoe":activity_horseshoe,
+        "hierarchical_mut":activity_mut_decomp,
     },
     "transformation":{
         "empirical": transformation_empirical,
@@ -57,6 +62,7 @@ model_registry = {
     "theta":{
         "categorical":theta_cat,
         "hill":theta_hill,
+        "hill_mut":theta_hill_mut,
     },
     "theta_growth_noise":{
         "zero":no_noise,

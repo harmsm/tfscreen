@@ -46,17 +46,17 @@ def configure_growth_analysis(growth_df=None,
         in each replicate. Only 'hierarchical' is allowed at this point. 
     dk_geno_model : str, optional
         Model to use to describe dk_geno, the pleiotropic effect of a genotype
-        on growth, independent of occupancy. Allowed values are 'hierarchical' 
-        (default) or 'fixed'.
+        on growth, independent of occupancy. Allowed values are 'hierarchical'
+        (default), 'fixed', or 'hierarchical_mut'.
     activity_model : str, optional
-        Model to use to describe activity, a scalar multiplied against 
-        occupancy that defines how strongly a genotype alters transcription 
+        Model to use to describe activity, a scalar multiplied against
+        occupancy that defines how strongly a genotype alters transcription
         given its occupancy. Allowed values are 'fixed' (default), 'hierarchical',
-        and 'horseshoe'.
+        'horseshoe', or 'hierarchical_mut'.
     theta_model : str, optional
         Model to use to describe theta, the fractional occupancy of a genotype
-        on the transcription factor binding site. Allowed values are 'hill' 
-        (default) or 'categorical'. 
+        on the transcription factor binding site. Allowed values are 'hill'
+        (default), 'categorical', or 'hill_mut'.
     transformation_model : str, optional
         Model for transformation correction. Allowed values are 'single', 
         'empirical', or 'logit_norm'. Default 'empirical'.
