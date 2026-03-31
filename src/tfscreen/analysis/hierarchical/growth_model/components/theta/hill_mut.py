@@ -251,6 +251,30 @@ def define_model(name: str,
         epi_low_off = epi_delta_off = epi_K_off = epi_n_off = None
 
     # ------------------------------------------------------------------
+    # Per-mutation deltas in transformed space: shape (T, M)
+    # ------------------------------------------------------------------
+    d_logit_low   = d_low_off   * sigma_d_low[:, None]    # [T, M]
+    d_logit_delta = d_delta_off * sigma_d_delta[:, None]
+    d_log_hill_K  = d_K_off     * sigma_d_K[:, None]
+    d_log_hill_n  = d_n_off     * sigma_d_n[:, None]
+
+    pyro.deterministic(f"{name}_d_logit_low",   d_logit_low)
+    pyro.deterministic(f"{name}_d_logit_delta", d_logit_delta)
+    pyro.deterministic(f"{name}_d_log_hill_K",  d_log_hill_K)
+    pyro.deterministic(f"{name}_d_log_hill_n",  d_log_hill_n)
+
+    if has_epi:
+        epi_logit_low   = epi_low_off   * sigma_epi_low[:, None]    # [T, P]
+        epi_logit_delta = epi_delta_off * sigma_epi_delta[:, None]
+        epi_log_hill_K  = epi_K_off     * sigma_epi_K[:, None]
+        epi_log_hill_n  = epi_n_off     * sigma_epi_n[:, None]
+
+        pyro.deterministic(f"{name}_epi_logit_low",   epi_logit_low)
+        pyro.deterministic(f"{name}_epi_logit_delta", epi_logit_delta)
+        pyro.deterministic(f"{name}_epi_log_hill_K",  epi_log_hill_K)
+        pyro.deterministic(f"{name}_epi_log_hill_n",  epi_log_hill_n)
+
+    # ------------------------------------------------------------------
     # Assemble per-genotype parameters: shape (T, G)
     # ------------------------------------------------------------------
     logit_theta_low = _assemble(logit_low_wt, d_low_off, sigma_d_low, M_mat,

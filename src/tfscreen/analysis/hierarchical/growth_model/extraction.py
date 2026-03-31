@@ -148,6 +148,64 @@ def extract_parameters(model, posteriors, q_to_get=None):
                 in_run_prefix = "theta_"
             )
         )
+    elif model._theta == "hill_mut":
+        # Assembled per-genotype parameters shaped (T, G);
+        # flat index = titrant_name_idx * num_genotype + genotype_idx
+        _geno_dim = model.growth_tm.tensor_dim_names.index("genotype")
+        _num_genotype = len(model.growth_tm.tensor_dim_labels[_geno_dim])
+        theta_mut_df = (model.growth_tm.df[["genotype", "titrant_name",
+                                            "genotype_idx", "titrant_name_idx"]]
+                        .drop_duplicates()
+                        .copy())
+        theta_mut_df["map_theta_mut"] = (theta_mut_df["titrant_name_idx"] * _num_genotype
+                                         + theta_mut_df["genotype_idx"])
+        extract.append(
+            dict(
+                input_df = theta_mut_df,
+                params_to_get = ["theta_low","theta_high","log_hill_K","hill_n"],
+                map_column = "map_theta_mut",
+                get_columns = ["genotype","titrant_name"],
+                in_run_prefix = "theta_"
+            )
+        )
+        # Per-mutation deltas shaped (T, M);
+        # flat index = titrant_name_idx * num_mutation + mutation_idx
+        _titrant_dim = model.growth_tm.tensor_dim_names.index("titrant_name")
+        _titrant_names = list(model.growth_tm.tensor_dim_labels[_titrant_dim])
+        _num_mut = len(model.mut_labels)
+        _theta_d_rows = [
+            {"titrant_name": t, "mutation": m,
+             "map_theta_d_mut": ti * _num_mut + mi}
+            for ti, t in enumerate(_titrant_names)
+            for mi, m in enumerate(model.mut_labels)
+        ]
+        extract.append(
+            dict(
+                input_df = pd.DataFrame(_theta_d_rows),
+                params_to_get = ["d_logit_low","d_logit_delta","d_log_hill_K","d_log_hill_n"],
+                map_column = "map_theta_d_mut",
+                get_columns = ["titrant_name","mutation"],
+                in_run_prefix = "theta_"
+            )
+        )
+        if model.pair_labels:
+            _num_pair = len(model.pair_labels)
+            _theta_epi_rows = [
+                {"titrant_name": t, "pair": p,
+                 "map_theta_epi": ti * _num_pair + pi}
+                for ti, t in enumerate(_titrant_names)
+                for pi, p in enumerate(model.pair_labels)
+            ]
+            extract.append(
+                dict(
+                    input_df = pd.DataFrame(_theta_epi_rows),
+                    params_to_get = ["epi_logit_low","epi_logit_delta",
+                                     "epi_log_hill_K","epi_log_hill_n"],
+                    map_column = "map_theta_epi",
+                    get_columns = ["titrant_name","pair"],
+                    in_run_prefix = "theta_"
+                )
+            )
     elif model._theta == "categorical":
         extract.append(
             dict(
@@ -217,7 +275,7 @@ def extract_parameters(model, posteriors, q_to_get=None):
         )
 
     # ln_cfu0
-    if model._dk_geno == "hierarchical":
+    if model._dk_geno in ["hierarchical", "hierarchical_mut"]:
         extract.append(
             dict(
                 input_df = model.growth_tm.df,
@@ -231,7 +289,7 @@ def extract_parameters(model, posteriors, q_to_get=None):
     # dk_geno
     if model._dk_geno == "none":
         pass
-    elif model._dk_geno == "hierarchical":
+    elif model._dk_geno in ["hierarchical", "hierarchical_mut"]:
         extract.append(
             dict(
                 input_df = model.growth_tm.df,
@@ -241,11 +299,39 @@ def extract_parameters(model, posteriors, q_to_get=None):
                 in_run_prefix = ""
             )
         )
+        if model._dk_geno == "hierarchical_mut":
+            _mut_df = pd.DataFrame({
+                "mutation": model.mut_labels,
+                "map_mutation": range(len(model.mut_labels)),
+            })
+            extract.append(
+                dict(
+                    input_df = _mut_df,
+                    params_to_get = ["d_dk_geno"],
+                    map_column = "map_mutation",
+                    get_columns = ["mutation"],
+                    in_run_prefix = "dk_geno_"
+                )
+            )
+            if model.pair_labels:
+                _pair_df = pd.DataFrame({
+                    "pair": model.pair_labels,
+                    "map_pair": range(len(model.pair_labels)),
+                })
+                extract.append(
+                    dict(
+                        input_df = _pair_df,
+                        params_to_get = ["epi_dk_geno"],
+                        map_column = "map_pair",
+                        get_columns = ["pair"],
+                        in_run_prefix = "dk_geno_"
+                    )
+                )
 
     # activity
     if model._activity == "fixed":
         pass
-    elif model._activity in ["hierarchical","horseshoe"]:
+    elif model._activity in ["hierarchical", "horseshoe", "hierarchical_mut"]:
         extract.append(
             dict(
                 input_df = model.growth_tm.df,
@@ -255,6 +341,34 @@ def extract_parameters(model, posteriors, q_to_get=None):
                 in_run_prefix = ""
             )
         )
+        if model._activity == "hierarchical_mut":
+            _mut_df = pd.DataFrame({
+                "mutation": model.mut_labels,
+                "map_mutation": range(len(model.mut_labels)),
+            })
+            extract.append(
+                dict(
+                    input_df = _mut_df,
+                    params_to_get = ["d_log_activity"],
+                    map_column = "map_mutation",
+                    get_columns = ["mutation"],
+                    in_run_prefix = "activity_"
+                )
+            )
+            if model.pair_labels:
+                _pair_df = pd.DataFrame({
+                    "pair": model.pair_labels,
+                    "map_pair": range(len(model.pair_labels)),
+                })
+                extract.append(
+                    dict(
+                        input_df = _pair_df,
+                        params_to_get = ["epi_log_activity"],
+                        map_column = "map_pair",
+                        get_columns = ["pair"],
+                        in_run_prefix = "activity_"
+                    )
+                )
 
     # transformation
     if model._transformation in ["logit_norm", "empirical"]:
@@ -308,13 +422,196 @@ def extract_parameters(model, posteriors, q_to_get=None):
 
     return params
 
+def _build_manual_calc_df_hill(model, manual_titrant_df):
+    """
+    Expand *manual_titrant_df* to include all genotypes (if 'genotype' is absent)
+    and attach the ``map_theta_group`` index used by the ``hill`` model.
+    """
+    tfscreen.util.dataframe.check_columns(manual_titrant_df,
+                                          required_columns=["titrant_name", "titrant_conc"])
+    if "genotype" not in manual_titrant_df.columns:
+        genotypes = model.growth_tm.df["genotype"].unique()
+        dfs = []
+        for g in genotypes:
+            tmp = manual_titrant_df.copy()
+            tmp["genotype"] = g
+            dfs.append(tmp)
+        calc_df = pd.concat(dfs).reset_index(drop=True)
+    else:
+        calc_df = manual_titrant_df.copy()
+
+    mapping = (model.growth_tm.df[["genotype", "titrant_name", "map_theta_group"]]
+               .drop_duplicates()
+               .set_index(["genotype", "titrant_name"])["map_theta_group"]
+               .to_dict())
+
+    try:
+        calc_df["map_theta_group"] = (calc_df
+                                      .set_index(["genotype", "titrant_name"])
+                                      .index.map(mapping))
+    except Exception as e:
+        raise ValueError(
+            "Some (genotype, titrant_name) pairs in manual_titrant_df "
+            "were not found in the model data."
+        ) from e
+
+    if calc_df["map_theta_group"].isna().any():
+        missing = calc_df[calc_df["map_theta_group"].isna()]
+        raise ValueError(
+            f"The following (genotype, titrant_name) pairs were not found in the model data: "
+            f"{missing[['genotype', 'titrant_name']].drop_duplicates().values}"
+        )
+    return calc_df
+
+
+def _build_manual_calc_df_hill_mut(model, manual_titrant_df):
+    """
+    Expand *manual_titrant_df* to include all genotypes (if 'genotype' is absent)
+    and attach ``genotype_idx`` / ``titrant_name_idx`` used by the ``hill_mut`` model.
+    """
+    tfscreen.util.dataframe.check_columns(manual_titrant_df,
+                                          required_columns=["titrant_name", "titrant_conc"])
+    if "genotype" not in manual_titrant_df.columns:
+        genotypes = model.growth_tm.df["genotype"].unique()
+        dfs = []
+        for g in genotypes:
+            tmp = manual_titrant_df.copy()
+            tmp["genotype"] = g
+            dfs.append(tmp)
+        calc_df = pd.concat(dfs).reset_index(drop=True)
+    else:
+        calc_df = manual_titrant_df.copy()
+
+    geno_map = (model.growth_tm.df[["genotype", "genotype_idx"]]
+                .drop_duplicates()
+                .set_index("genotype")["genotype_idx"]
+                .to_dict())
+    titrant_map = (model.growth_tm.df[["titrant_name", "titrant_name_idx"]]
+                   .drop_duplicates()
+                   .set_index("titrant_name")["titrant_name_idx"]
+                   .to_dict())
+
+    calc_df["genotype_idx"] = calc_df["genotype"].map(geno_map)
+    calc_df["titrant_name_idx"] = calc_df["titrant_name"].map(titrant_map)
+
+    missing_geno = calc_df["genotype_idx"].isna()
+    missing_titrant = calc_df["titrant_name_idx"].isna()
+    if missing_geno.any() or missing_titrant.any():
+        bad = calc_df[missing_geno | missing_titrant][["genotype", "titrant_name"]].drop_duplicates()
+        raise ValueError(
+            f"The following (genotype, titrant_name) pairs were not found in the model data: "
+            f"{bad.values}"
+        )
+    return calc_df
+
+
+def _extract_theta_curves_hill(model, posteriors, q_to_get, manual_titrant_df):
+    """
+    Compute theta curves for the ``hill`` model.
+
+    Posterior parameters are indexed per ``map_theta_group`` (one group per
+    (genotype, titrant_name) pair).
+    """
+    q_to_get, param_posteriors = load_posteriors(posteriors, q_to_get)
+
+    if manual_titrant_df is None:
+        calc_df = (model.growth_tm.df[["genotype", "titrant_name", "titrant_conc",
+                                       "map_theta_group"]]
+                   .drop_duplicates()
+                   .reset_index(drop=True))
+    else:
+        calc_df = _build_manual_calc_df_hill(model, manual_titrant_df)
+
+    indices = calc_df["map_theta_group"].values.astype(int)
+
+    log_titrant = calc_df["titrant_conc"].values.copy()
+    log_titrant[log_titrant == 0] = ZERO_CONC_VALUE
+    log_titrant = np.log(log_titrant)[None, :]   # (1, N_points)
+
+    def _load_flat(key):
+        v = get_posterior_samples(param_posteriors, key)
+        if hasattr(v, "shape") and not hasattr(v, "reshape"):
+            v = v[:]
+        return v.reshape(v.shape[0], -1)          # (S, num_groups)
+
+    hill_n    = _load_flat("theta_hill_n")
+    log_hill_K = _load_flat("theta_log_hill_K")
+    theta_high = _load_flat("theta_theta_high")
+    theta_low  = _load_flat("theta_theta_low")
+
+    h_n = hill_n[:, indices]
+    l_K = log_hill_K[:, indices]
+    t_h = theta_high[:, indices]
+    t_l = theta_low[:, indices]
+
+    occupancy = 1.0 / (1.0 + np.exp(-h_n * (log_titrant - l_K)))
+    theta_samples = t_l + (t_h - t_l) * occupancy
+
+    for q_name, q_val in q_to_get.items():
+        calc_df[q_name] = np.quantile(theta_samples, q_val, axis=0)
+
+    return calc_df.drop(columns=["map_theta_group"])
+
+
+def _extract_theta_curves_hill_mut(model, posteriors, q_to_get, manual_titrant_df):
+    """
+    Compute theta curves for the ``hill_mut`` model.
+
+    Posterior parameters are shaped ``(S, T, G)`` — indexed by
+    ``titrant_name_idx`` and ``genotype_idx`` independently.
+    """
+    q_to_get, param_posteriors = load_posteriors(posteriors, q_to_get)
+
+    if manual_titrant_df is None:
+        calc_df = (model.growth_tm.df[["genotype", "titrant_name", "titrant_conc",
+                                       "genotype_idx", "titrant_name_idx"]]
+                   .drop_duplicates()
+                   .reset_index(drop=True))
+    else:
+        calc_df = _build_manual_calc_df_hill_mut(model, manual_titrant_df)
+
+    geno_indices    = calc_df["genotype_idx"].values.astype(int)
+    titrant_indices = calc_df["titrant_name_idx"].values.astype(int)
+
+    log_titrant = calc_df["titrant_conc"].values.copy()
+    log_titrant[log_titrant == 0] = ZERO_CONC_VALUE
+    log_titrant = np.log(log_titrant)   # (N_points,)
+
+    def _load(key):
+        v = get_posterior_samples(param_posteriors, key)
+        if hasattr(v, "shape") and not hasattr(v, "reshape"):
+            v = v[:]
+        return v   # (S, T, G)
+
+    hill_n    = _load("theta_hill_n")
+    log_hill_K = _load("theta_log_hill_K")
+    theta_high = _load("theta_theta_high")
+    theta_low  = _load("theta_theta_low")
+
+    # Index per row: (S, N_points)
+    h_n = hill_n[:, titrant_indices, geno_indices]
+    l_K = log_hill_K[:, titrant_indices, geno_indices]
+    t_h = theta_high[:, titrant_indices, geno_indices]
+    t_l = theta_low[:, titrant_indices, geno_indices]
+
+    occupancy = 1.0 / (1.0 + np.exp(-h_n * (log_titrant[None, :] - l_K)))
+    theta_samples = t_l + (t_h - t_l) * occupancy
+
+    for q_name, q_val in q_to_get.items():
+        calc_df[q_name] = np.quantile(theta_samples, q_val, axis=0)
+
+    return calc_df.drop(columns=["genotype_idx", "titrant_name_idx"])
+
+
 def extract_theta_curves(model, posteriors, q_to_get=None, manual_titrant_df=None):
     """
     Extract theta curves by sampling from the joint posterior distribution.
 
-    This method calculates fractional occupancy (theta) across a range of
-    titrant concentrations by sampling from the joint posterior of Hill
-    parameters (hill_n, log_hill_K, theta_high, theta_low).
+    Calculates fractional occupancy (theta) across a range of titrant
+    concentrations from the posterior of Hill parameters.  Supports both the
+    ``hill`` model (one set of parameters per (genotype, titrant_name) group)
+    and the ``hill_mut`` model (per-genotype, per-titrant parameters assembled
+    from WT values and per-mutation deltas).
 
     Parameters
     ----------
@@ -345,115 +642,19 @@ def extract_theta_curves(model, posteriors, q_to_get=None, manual_titrant_df=Non
     Raises
     ------
     ValueError
-        If the model was not initialized with theta='hill'.
+        If the model was not initialized with theta='hill' or theta='hill_mut'.
         If `q_to_get` is not a dictionary.
         If `manual_titrant_df` is missing required columns.
     """
-
-    if model._theta != "hill":
+    if model._theta == "hill":
+        return _extract_theta_curves_hill(model, posteriors, q_to_get, manual_titrant_df)
+    elif model._theta == "hill_mut":
+        return _extract_theta_curves_hill_mut(model, posteriors, q_to_get, manual_titrant_df)
+    else:
         raise ValueError(
             "extract_theta_curves is only available for models where "
-            "theta='hill'."
+            "theta='hill' or theta='hill_mut'."
         )
-
-    q_to_get, param_posteriors = load_posteriors(posteriors, q_to_get)
-
-    # Construct calculation DataFrame
-    if manual_titrant_df is None:
-        # Use unique (genotype, titrant_name, titrant_conc) from input data
-        calc_df = (model.growth_tm.df[["genotype", "titrant_name", "titrant_conc", "map_theta_group"]]
-                   .drop_duplicates()
-                   .reset_index(drop=True))
-    else:
-        tfscreen.util.dataframe.check_columns(manual_titrant_df,
-                                              required_columns=["titrant_name", "titrant_conc"])
-        
-        # If genotype is not provided, broadcast across all genotypes
-        if "genotype" not in manual_titrant_df.columns:
-            genotypes = model.growth_tm.df["genotype"].unique()
-            dfs = []
-            for g in genotypes:
-                tmp = manual_titrant_df.copy()
-                tmp["genotype"] = g
-                dfs.append(tmp)
-            calc_df = pd.concat(dfs).reset_index(drop=True)
-        else:
-            calc_df = manual_titrant_df.copy()
-
-        # Map to theta groups
-        # We need to reach into the GROWTH_TM to find the mapping
-        # This is a bit tricky because the manual_titrant_df might have new concentrations.
-        # BUT the parameters (hill_n, etc) are mapped to (genotype, titrant_name).
-        # The mapper used in _extract_param_est for Hill model is "map_theta_group"
-        # which maps (genotype, titrant_name) to an index.
-        
-        # Find the (genotype, titrant_name) -> map_theta_group mapping
-        mapping = (model.growth_tm.df[["genotype", "titrant_name", "map_theta_group"]]
-                   .drop_duplicates()
-                   .set_index(["genotype", "titrant_name"])["map_theta_group"]
-                   .to_dict())
-        
-        # Apply mapping. If a (genotype, titrant_name) pair is not in the model, it's an error.
-        try:
-            calc_df["map_theta_group"] = calc_df.set_index(["genotype", "titrant_name"]).index.map(mapping)
-        except Exception as e:
-            raise ValueError(
-                "Some (genotype, titrant_name) pairs in manual_titrant_df "
-                "were not found in the model data."
-            ) from e
-        
-        if calc_df["map_theta_group"].isna().any():
-            missing = calc_df[calc_df["map_theta_group"].isna()]
-            raise ValueError(
-                f"The following (genotype, titrant_name) pairs were not found in the model data: "
-                f"{missing[['genotype', 'titrant_name']].drop_duplicates().values}"
-            )
-
-    # indices shape: (N_points,)
-    indices = calc_df["map_theta_group"].values.astype(int)
-
-    # log_titrant shape: (1, N_points)
-    log_titrant = calc_df["titrant_conc"].values.copy()
-    log_titrant[log_titrant == 0] = ZERO_CONC_VALUE
-    log_titrant = np.log(log_titrant)[None, :]
-
-    # Extract posterior parameters and flatten (num_samples, num_groups)
-    hill_n = get_posterior_samples(param_posteriors, "theta_hill_n")
-    if hasattr(hill_n, "shape") and not hasattr(hill_n, "reshape"):
-        hill_n = hill_n[:]
-    hill_n = hill_n.reshape(hill_n.shape[0], -1)
-
-    log_hill_K = get_posterior_samples(param_posteriors, "theta_log_hill_K")
-    if hasattr(log_hill_K, "shape") and not hasattr(log_hill_K, "reshape"):
-        log_hill_K = log_hill_K[:]
-    log_hill_K = log_hill_K.reshape(log_hill_K.shape[0], -1)
-
-    theta_high = get_posterior_samples(param_posteriors, "theta_theta_high")
-    if hasattr(theta_high, "shape") and not hasattr(theta_high, "reshape"):
-        theta_high = theta_high[:]
-    theta_high = theta_high.reshape(theta_high.shape[0], -1)
-
-    theta_low = get_posterior_samples(param_posteriors, "theta_theta_low")
-    if hasattr(theta_low, "shape") and not hasattr(theta_low, "reshape"):
-        theta_low = theta_low[:]
-    theta_low = theta_low.reshape(theta_low.shape[0], -1)
-    
-    # Indexed params shape: (N_samples, N_points)
-    h_n = hill_n[:, indices]
-    l_K = log_hill_K[:, indices]
-    t_h = theta_high[:, indices]
-    t_l = theta_low[:, indices]
-    
-    # Calculate theta using Hill equation: (N_samples, N_points)
-    # occupancy = 1 / (1 + exp(-hill_n * (log(conc) - log_K)))
-    occupancy = 1.0 / (1.0 + np.exp(-h_n * (log_titrant - l_K)))
-    theta_samples = t_l + (t_h - t_l) * occupancy
-    
-    # Calculate quantiles across samples (axis 0)
-    for q_name, q_val in q_to_get.items():
-        calc_df[q_name] = np.quantile(theta_samples, q_val, axis=0)
-
-    return calc_df.drop(columns=["map_theta_group"])
 
 def extract_growth_predictions(model,
                                posteriors,

@@ -348,7 +348,64 @@ def test_write_losses_empty(tmpdir):
     model = MockModel()
     ri = RunInference(model, seed=42)
     out_root = os.path.join(tmpdir, "test_losses_empty")
-    
+
     # 707: empty losses returns early
     ri._write_losses([], out_root)
     assert not os.path.exists(f"{out_root}_losses.bin")
+
+def test_setup_svi_invalid_guide_type():
+    """setup_svi raises ValueError for unrecognized guide_type."""
+    model = MockModel()
+    ri = RunInference(model, seed=42)
+    with pytest.raises(ValueError, match="not recognized"):
+        ri.setup_svi(guide_type="bad_guide")
+
+def test_restore_checkpoint_current_step(tmpdir):
+    """_restore_checkpoint restores _current_step when present in checkpoint."""
+    model = MockModel()
+    ri = RunInference(model, seed=42)
+    out_root = os.path.join(tmpdir, "test_step")
+
+    try:
+        state = SVIState(None, None, None)
+    except Exception:
+        state = SVIState(None, None)
+
+    # Write checkpoint that includes 'current_step'
+    checkpoint_file = f"{out_root}_checkpoint.pkl"
+    checkpoint_data = {
+        'svi_state': state,
+        'main_key': ri._main_key,
+        'current_step': 999,
+    }
+    import dill as _dill
+    with open(checkpoint_file, "wb") as f:
+        _dill.dump(checkpoint_data, f)
+
+    restored = ri._restore_checkpoint(checkpoint_file)
+    assert ri._current_step == 999
+    assert isinstance(restored, SVIState)
+
+def test_run_optimization_1d_block_idx(mocker):
+    """1D block_idx is reshaped to 2D before passing to fast_scan."""
+
+    class MockModel1D(MockModel):
+        def get_random_idx(self, key=None, num_batches=1):
+            # Always return a 1D array regardless of num_batches
+            return np.array([0])
+
+    model = MockModel1D()
+    ri = RunInference(model, seed=42)
+
+    mocker.patch("jax.jit", side_effect=lambda x: x)
+    mocker.patch("jax.lax.scan", return_value=("state", jnp.array([1.0])))
+
+    mock_svi = mocker.Mock()
+    mock_svi.init.return_value = "state"
+    mock_svi.update.return_value = ("state", 1.0)
+    mock_svi.get_params.return_value = {"p": jnp.array(1.0)}
+
+    # Should not raise; the reshape path is exercised
+    ri.run_optimization(mock_svi, max_num_epochs=1,
+                        convergence_check_interval=1,
+                        checkpoint_interval=1)

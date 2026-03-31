@@ -20,7 +20,8 @@ def configure_growth_analysis(growth_df=None,
                               theta_growth_noise_model="zero",
                               theta_binding_noise_model="zero",
                               spiked=None,
-                              growth_shares_replicates=False):
+                              growth_shares_replicates=False,
+                              epistasis=False):
     """
     Construct the analysis configuration step. This creates a tfs_config.yaml file
     along with tfs_priors.csv and tfs_guesses.csv (if any array parameters exist).
@@ -70,8 +71,14 @@ def configure_growth_analysis(growth_df=None,
         Names of genotypes that should be excluded from congression
         correction.
     growth_shares_replicates : bool, optional
-        Whether replicates should share the same parameters for the growth and 
+        Whether replicates should share the same parameters for the growth and
         growth transition models. Default is False.
+    epistasis : bool, optional
+        Whether to model pairwise epistatic interactions between mutations in
+        any mutation-level model (``hill_mut``, ``hierarchical_mut``). When
+        True, each pair of mutations present in the same genotype gets an
+        independent epistasis term. When False (default), effects are purely
+        additive at the mutation level.
 
     Returns
     -------
@@ -93,7 +100,8 @@ def configure_growth_analysis(growth_df=None,
                      theta_growth_noise=theta_growth_noise_model,
                      theta_binding_noise=theta_binding_noise_model,
                      spiked_genotypes=spiked,
-                     growth_shares_replicates=growth_shares_replicates)
+                     growth_shares_replicates=growth_shares_replicates,
+                     epistasis=epistasis)
 
     # Write the model configuration to a file. This includes the model component
     # names, the data file paths, and the parameter guesses/priors.

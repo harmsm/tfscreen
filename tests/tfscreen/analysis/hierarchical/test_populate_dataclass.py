@@ -114,6 +114,11 @@ class TestPopulateDataclass:
         with pytest.raises(ValueError, match="Parameter 'c' is a '<class 'tuple'>'"):
             populate_dataclass(SampleDataClass, source)
 
+    def test_empty_sources_list_raises_on_missing_required(self):
+        """Empty sources list raises ValueError for required (no-default) params."""
+        with pytest.raises(ValueError, match="could not find required parameter 'a'"):
+            populate_dataclass(SampleDataClass, [])
+
     def test_success_all_params_provided(self):
         """Tests success when all params, including defaults, are provided."""
         source = {

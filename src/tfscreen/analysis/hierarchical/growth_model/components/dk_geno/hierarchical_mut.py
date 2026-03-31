@@ -91,6 +91,7 @@ def define_model(name: str,
         jnp.exp(dk_geno_hyper_loc + dk_geno_offset * dk_geno_hyper_scale),
         max=1e30)
     d_dk_geno = dk_geno_hyper_shift - dk_geno_lognormal  # [num_mutation]
+    pyro.deterministic(f"{name}_d_dk_geno", d_dk_geno)
 
     # Assembly: dk_geno[g] = d_dk_geno @ M[:, g]
     dk_geno_per_genotype = d_dk_geno @ M_mat               # [G]
@@ -110,6 +111,7 @@ def define_model(name: str,
             epi_offset = pyro.sample(f"{name}_epi_offset", dist.Normal(0.0, 1.0))
 
         epi_dk_geno = epi_offset * sigma_epi
+        pyro.deterministic(f"{name}_epi_dk_geno", epi_dk_geno)
         dk_geno_per_genotype = dk_geno_per_genotype + epi_dk_geno @ P_mat  # [G]
 
     pyro.deterministic(name, dk_geno_per_genotype)

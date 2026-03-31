@@ -82,3 +82,70 @@ def test_get_posterior_samples():
     # Not found
     with pytest.raises(KeyError, match="Parameter 'bad_param' not found"):
         get_posterior_samples(posteriors, "bad_param")
+
+def test_get_posterior_samples_auto_loc_priority():
+    """_auto_loc should be preferred over _mean when both exist."""
+    posteriors = {
+        "param_auto_loc": np.array([10, 20]),
+        "param_mean": np.array([30, 40]),
+    }
+    result = get_posterior_samples(posteriors, "param")
+    assert np.array_equal(result, [10, 20])
+
+def test_get_posterior_samples_error_truncates_long_key_list():
+    """Error message truncates key list when more than 10 keys exist."""
+    posteriors = {f"key_{i}": np.array([i]) for i in range(15)}
+    with pytest.raises(KeyError, match=r"\.\.\."):
+        get_posterior_samples(posteriors, "missing_param")
+
+def test_get_posterior_samples_error_no_truncation_short_key_list():
+    """Error message does not truncate when <=10 keys exist."""
+    posteriors = {f"key_{i}": np.array([i]) for i in range(5)}
+    with pytest.raises(KeyError) as exc_info:
+        get_posterior_samples(posteriors, "missing_param")
+    assert "..." not in str(exc_info.value)
+
+def test_load_posteriors_h5_oserror_retries(tmp_path, mocker):
+    """OSError on h5py.File is retried up to max_retries-1 times."""
+    d = tmp_path / "post.h5"
+    with h5py.File(d, "w") as f:
+        f.create_dataset("x", data=np.array([1]))
+
+    mock_sleep = mocker.patch("time.sleep")
+
+    # Build a class (not a Mock) so isinstance(..., h5py.File) in posteriors.py
+    # still receives a proper type and doesn't raise TypeError.
+    _real_open = h5py.File
+    _call_count = {"n": 0}
+    _real_file_holder = {}
+
+    class _SometimesFailing(h5py.File):
+        def __new__(cls, *args, **kwargs):
+            _call_count["n"] += 1
+            if _call_count["n"] <= 2:
+                raise OSError("busy")
+            obj = _real_open(*args, **kwargs)
+            _real_file_holder["f"] = obj
+            return obj
+
+    mocker.patch.object(h5py, "File", _SometimesFailing)
+
+    q, p = load_posteriors(str(d))
+    assert mock_sleep.call_count == 2
+    assert "x" in p
+    p.close()
+
+def test_load_posteriors_h5_oserror_exhausted(tmp_path, mocker):
+    """OSError is re-raised after all retries are exhausted."""
+    d = tmp_path / "post.h5"
+
+    mocker.patch("time.sleep")
+
+    class _AlwaysFails(h5py.File):
+        def __new__(cls, *args, **kwargs):
+            raise OSError("always fails")
+
+    mocker.patch.object(h5py, "File", _AlwaysFails)
+
+    with pytest.raises(OSError, match="always fails"):
+        load_posteriors(str(d))

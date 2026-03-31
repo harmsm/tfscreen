@@ -444,7 +444,8 @@ class ModelClass:
                  theta_growth_noise="zero",
                  theta_binding_noise="zero",
                  spiked_genotypes=None,
-                 growth_shares_replicates=False):
+                 growth_shares_replicates=False,
+                 epistasis=False):
 
         self._ln_cfu_df = growth_df
         self._binding_df = binding_df
@@ -462,6 +463,7 @@ class ModelClass:
         self._theta_binding_noise = theta_binding_noise
         self._spiked_genotypes = spiked_genotypes
         self._growth_shares_replicates = growth_shares_replicates
+        self._epistasis = epistasis
 
         self._initialize_data()
         self._initialize_classes()
@@ -574,6 +576,9 @@ class ModelClass:
             from tfscreen.genetics import build_mut_geno_matrix
             (mut_labels, pair_labels,
              mut_geno_matrix, pair_geno_matrix) = build_mut_geno_matrix(_genotypes)
+            if not self._epistasis:
+                pair_labels = []
+                pair_geno_matrix = np.zeros((0, len(_genotypes)), dtype=np.float32)
             # Expose labels as model attributes for downstream interpretation
             self.mut_labels = mut_labels
             self.pair_labels = pair_labels

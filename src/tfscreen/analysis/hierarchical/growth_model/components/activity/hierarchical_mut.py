@@ -65,6 +65,7 @@ def define_model(name: str,
 
     # Non-centered: d_log_activity[m] ~ Normal(0, sigma_d)
     d_log_activity = d_offset * sigma_d    # [num_mutation]
+    pyro.deterministic(f"{name}_d_log_activity", d_log_activity)
 
     # Assembly: log_activity[g] = d_log_activity @ M[:, g]
     log_activity = d_log_activity @ M_mat  # [G]
@@ -84,6 +85,7 @@ def define_model(name: str,
             epi_offset = pyro.sample(f"{name}_epi_offset", dist.Normal(0.0, 1.0))
 
         epi_log_activity = epi_offset * sigma_epi   # [num_pair]
+        pyro.deterministic(f"{name}_epi_log_activity", epi_log_activity)
         log_activity = log_activity + epi_log_activity @ P_mat  # [G]
 
     activity = jnp.clip(jnp.exp(log_activity), max=1e30)
