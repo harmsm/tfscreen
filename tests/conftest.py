@@ -94,6 +94,20 @@ def dummy():
     """
     return None
 
+## Skip marker for tests that require PyTorch/Pyro (used during the NumPyro→Pyro port).
+## Tests decorated with @pytest.mark.requires_torch are skipped if torch is not installed.
+try:
+    import torch  # noqa: F401
+    import pyro   # noqa: F401
+    _torch_available = True
+except ImportError:
+    _torch_available = False
+
+requires_torch = pytest.mark.skipif(
+    not _torch_available,
+    reason="PyTorch/Pyro not installed (NumPyro env)"
+)
+
 ## Code for skipping slow tests.
 def pytest_addoption(parser):
     parser.addoption("--runslow",
@@ -103,6 +117,7 @@ def pytest_addoption(parser):
 
 def pytest_configure(config):
     config.addinivalue_line("markers", "slow: mark test as slow to run")
+    config.addinivalue_line("markers", "requires_torch: skip if PyTorch/Pyro not installed")
 
 def pytest_collection_modifyitems(config, items):
     if config.getoption("--runslow"):
