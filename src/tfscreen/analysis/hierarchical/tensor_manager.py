@@ -3,7 +3,7 @@ from tfscreen.util.dataframe import (
     check_columns,
 )
 
-import jax.numpy as jnp
+import torch
 
 import numpy as np
 import pandas as pd
@@ -13,11 +13,11 @@ import copy
 class TensorManager:
     """
     Manages the wrangling of experimental data from a DataFrame into
-    JAX-compatible tensors.
+    PyTorch tensors.
 
     This class handles data preprocessing and pivoting to create
     dense, multi-dimensional tensors required for hierarchical models in
-    JAX/Numpyro. It creates integer-based parameter maps based on column
+    PyTorch/Pyro. It creates integer-based parameter maps based on column
     values and builds a final dictionary of tensors.
 
     Attributes
@@ -28,7 +28,7 @@ class TensorManager:
         A dictionary holding the sizes (max index + 1) of the generated
         parameter maps.
     tensors : dict
-        A dictionary of the final, dense JAX tensors (e.g., "ln_cfu",
+        A dictionary of the final, dense PyTorch tensors (e.g., "ln_cfu",
         "good_mask"). This is populated after create_tensors() is called.
     tensor_shape : tuple
         The shape of the generated tensors. Populated after
@@ -253,7 +253,7 @@ class TensorManager:
                                        select_cols=select_cols,
                                        select_pool_cols=select_pool_cols)
 
-    def add_data_tensor(self,name,dtype=jnp.float32):
+    def add_data_tensor(self, name, dtype=torch.float32):
         """
         Registers a DataFrame column to be included in the final tensors.
 
@@ -265,7 +265,7 @@ class TensorManager:
         name : str
             The name of the column in `self._df` to be converted into a tensor.
         dtype : type, optional
-            Cast to this type. Default is jnp.float32
+            Cast to this type. Default is torch.float32
         """
 
         if name not in self._df.columns:
@@ -458,9 +458,9 @@ class TensorManager:
         # coordinate that is a nan in at least one of the tensor. 
         pivot_non_nan = ~np.any(pivoted_df[self._to_tensor_columns]
                                 .isna().to_numpy(),axis=1)
-        self._tensors["good_mask"] = jnp.asarray(
+        self._tensors["good_mask"] = torch.as_tensor(
             pivot_non_nan.reshape(self._tensor_shape),
-            dtype=bool
+            dtype=torch.bool
         )
 
         # df cleanup -- remove nan prior to building tensors. We can set them 
@@ -478,13 +478,13 @@ class TensorManager:
             if c in self._tensor_column_dtypes:
                 dtype = self._tensor_column_dtypes[c]
             elif c.startswith("map_"):
-                dtype = int
+                dtype = torch.int32
             else:
-                dtype = jnp.float32
+                dtype = torch.float32
 
-            # Resize, cast, and convert to jnumpy array
-            values = pivoted_df[c].to_numpy().reshape(self._tensor_shape)
-            tensor = jnp.asarray(values,dtype=dtype)
+            # Resize, cast, and convert to torch tensor
+            values = pivoted_df[c].to_numpy().copy().reshape(self._tensor_shape)
+            tensor = torch.as_tensor(values, dtype=dtype)
 
             # Record the tensor
             self._tensors[c] = tensor
@@ -507,7 +507,7 @@ class TensorManager:
 
     @property
     def tensors(self):
-        """A dictionary of the final, dense JAX tensors."""
+        """A dictionary of the final, dense PyTorch tensors."""
         return self._tensors
     
     @property

@@ -1,25 +1,24 @@
 
 import inspect
 import numpy as np
-from jax import numpy as jnp
+import torch
 
 def populate_dataclass(target_dataclass, sources):
     """
-    Populates a target (e.g., flax) dataclass with data from sources.
+    Populates a frozen dataclass with data from sources.
 
     This method inspects the `__init__` signature of `target_dataclass`
     and populates its arguments using keys from the list of dictionaries
     in `sources`.
 
     It includes validation to ensure no Python lists or tuples are
-    passed, as these are not valid JAX Pytree nodes. It also checks for
-    duplicate keys in source dictionaries and respects parameters with
-    default values.
+    passed. It also checks for duplicate keys in source dictionaries and
+    respects parameters with default values.
 
     Parameters
     ----------
     target_dataclass : type
-        The (e.g., flax) dataclass to instantiate.
+        The dataclass to instantiate.
     sources : dict or list
         A dict or list of dicts holding keys to load.
 
@@ -36,8 +35,7 @@ def populate_dataclass(target_dataclass, sources):
         If a required dataclass parameter (one without a default
         value) is not found in `sources`.
     ValueError
-        If a value is a Python `list` or `tuple`, which are
-        not valid JAX Pytree nodes.
+        If a value is a Python `list` or `tuple`.
     """
 
     # Standardize sources as a list of dicts
@@ -83,17 +81,17 @@ def populate_dataclass(target_dataclass, sources):
             # dataclass constructor will use its default.
             continue
 
-        # Check for types that are not valid jax/pytree types. 
+        # Check for types that are not valid tensor types.
         if isinstance(value, (list, tuple)):
             raise ValueError(
                 f"Parameter '{k}' is a '{type(value)}', but must be a "
-                f"jnp.ndarray, np.ndarray, scalar, or dict. Python lists/tuples are not "
-                f"valid JAX Pytree nodes."
+                f"torch.Tensor, np.ndarray, or scalar. Python lists/tuples are not "
+                f"supported."
             )
 
-        # Coerce any numpy arrays into jax arrays
-        if isinstance(value,np.ndarray):
-            value = jnp.array(value)
+        # Coerce any numpy arrays into torch tensors
+        if isinstance(value, np.ndarray):
+            value = torch.as_tensor(value)
 
         dataclass_kwargs[k] = value
 

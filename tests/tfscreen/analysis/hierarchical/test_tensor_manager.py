@@ -1,7 +1,7 @@
 import pytest
 import pandas as pd
 import numpy as np
-import jax.numpy as jnp
+import torch
 from tfscreen.analysis.hierarchical.tensor_manager import TensorManager
 
 @pytest.fixture
@@ -57,7 +57,7 @@ def test_add_data_tensor(sample_df):
     tm = TensorManager(sample_df)
     tm.add_data_tensor("value")
     assert "value" in tm._to_tensor_columns
-    assert tm._tensor_column_dtypes["value"] == jnp.float32
+    assert tm._tensor_column_dtypes["value"] == torch.float32
 
     with pytest.raises(ValueError, match="column 'nonexistent' not found"):
         tm.add_data_tensor("nonexistent")
@@ -94,7 +94,7 @@ def test_create_tensors(sample_df):
     assert "map_gm" in tm.tensors
     assert "good_mask" in tm.tensors
     assert tm.tensors["value"].shape == (2, 2)
-    assert jnp.issubdtype(tm.tensors["map_gm"].dtype, jnp.integer)
+    assert tm.tensors["map_gm"].dtype in (torch.int32, torch.int64)
 
 def test_create_tensors_errors(sample_df):
     tm = TensorManager(sample_df)
@@ -135,12 +135,12 @@ def test_add_map_tensor_pool_cols_str(sample_df):
     assert "map_condition" in tm.df.columns
 
 def test_create_tensors_dtype_default(sample_df):
-    # Cover line 483 (default dtype jnp.float32)
+    # Cover the default dtype (torch.float32)
     tm = TensorManager(sample_df)
     tm.add_pivot_index("geno", "genotype")
-    tm.add_data_tensor("value", dtype=None) # Forces line 483
+    tm.add_data_tensor("value", dtype=None) # Forces default dtype branch
     tm.create_tensors()
-    assert tm.tensors["value"].dtype == jnp.float32
+    assert tm.tensors["value"].dtype == torch.float32
 
 def test_create_tensors_3d():
     """Three pivot indexes produce a 3D tensor."""

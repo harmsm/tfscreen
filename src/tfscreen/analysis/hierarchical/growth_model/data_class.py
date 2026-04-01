@@ -1,106 +1,101 @@
 
-import jax.numpy as jnp
+import torch
 import numpy as np
-from flax.struct import (
-    dataclass,
-    field
-)
+from dataclasses import dataclass, field
 from typing import Any
 
 
 @dataclass(frozen=True)
 class GrowthData:
-    
+
     # Batch information
-    batch_size: int = field(pytree_node=False)
-    batch_idx: jnp.ndarray
-    scale_vector: jnp.ndarray
-    geno_theta_idx: jnp.ndarray
+    batch_size: int
+    batch_idx: torch.Tensor
+    scale_vector: torch.Tensor
+    geno_theta_idx: torch.Tensor
 
     # Data tensors
-    ln_cfu: jnp.ndarray
-    ln_cfu_std: jnp.ndarray
-    t_pre: jnp.ndarray
-    t_sel: jnp.ndarray
-    good_mask: jnp.ndarray
-    congression_mask: jnp.ndarray
+    ln_cfu: torch.Tensor
+    ln_cfu_std: torch.Tensor
+    t_pre: torch.Tensor
+    t_sel: torch.Tensor
+    good_mask: torch.Tensor
+    congression_mask: torch.Tensor
 
-        
+
     # Tensor shape
-    num_replicate: int = field(pytree_node=False)
-    num_time: int = field(pytree_node=False)
-    num_condition_pre: int = field(pytree_node=False)
-    num_condition_sel: int = field(pytree_node=False)
-    num_titrant_name: int = field(pytree_node=False)
-    num_titrant_conc: int = field(pytree_node=False)
-    num_genotype: int = field(pytree_node=False)
+    num_replicate: int
+    num_time: int
+    num_condition_pre: int
+    num_condition_sel: int
+    num_titrant_name: int
+    num_titrant_conc: int
+    num_genotype: int
 
     # mappers
-    num_condition_rep: int = field(pytree_node=False)
-    map_condition_pre: jnp.ndarray
-    map_condition_sel: jnp.ndarray
+    num_condition_rep: int
+    map_condition_pre: torch.Tensor
+    map_condition_sel: torch.Tensor
 
-    # 1D arrays of titrant concentration (corresponds to the second-to-last 
+    # 1D arrays of titrant concentration (corresponds to the second-to-last
     # tensor dimension)
-    titrant_conc: jnp.ndarray
-    log_titrant_conc: jnp.ndarray
+    titrant_conc: torch.Tensor
+    log_titrant_conc: torch.Tensor
 
     # meta data
-    wt_indexes: jnp.ndarray
-    scatter_theta: int = field(pytree_node=False)
-    growth_shares_replicates: bool = field(pytree_node=False, default=False)
+    wt_indexes: torch.Tensor
+    scatter_theta: int
+    growth_shares_replicates: bool = False
 
     # Optional mutation-decomposition matrices (set when using *_mut_decomp components).
-    # Stored as pytree_node=False so they are treated as static by JAX tracing.
     # Shape: mut_geno_matrix (num_mutation, num_genotype),
     #        pair_geno_matrix (num_pair, num_genotype).
-    num_mutation: int = field(pytree_node=False, default=0)
-    num_pair: int = field(pytree_node=False, default=0)
-    mut_geno_matrix: Any = field(pytree_node=False, default=None)
-    pair_geno_matrix: Any = field(pytree_node=False, default=None)
+    num_mutation: int = 0
+    num_pair: int = 0
+    mut_geno_matrix: Any = None
+    pair_geno_matrix: Any = None
 
 @dataclass(frozen=True)
 class BindingData:
 
     # Batch information
-    batch_size: int = field(pytree_node=False)
-    batch_idx: jnp.ndarray
-    scale_vector: jnp.ndarray
-    geno_theta_idx: jnp.ndarray
+    batch_size: int
+    batch_idx: torch.Tensor
+    scale_vector: torch.Tensor
+    geno_theta_idx: torch.Tensor
 
     # Main data tensors
-    theta_obs: jnp.ndarray
-    theta_std: jnp.ndarray
-    good_mask: jnp.ndarray
+    theta_obs: torch.Tensor
+    theta_std: torch.Tensor
+    good_mask: torch.Tensor
 
     # Tensor dimensions
-    num_titrant_name: int = field(pytree_node=False)
-    num_titrant_conc: int = field(pytree_node=False)
-    num_genotype: int = field(pytree_node=False) 
+    num_titrant_name: int
+    num_titrant_conc: int
+    num_genotype: int
 
-    # 1D arrays of titrant concentration (corresponds to the second-to-last 
+    # 1D arrays of titrant concentration (corresponds to the second-to-last
     # tensor dimension)
-    titrant_conc: jnp.ndarray
-    log_titrant_conc: jnp.ndarray
+    titrant_conc: torch.Tensor
+    log_titrant_conc: torch.Tensor
 
-    scatter_theta: int = field(pytree_node=False) 
+    scatter_theta: int
 
 
 @dataclass(frozen=True)
 class DataClass:
     """
-    A container holding data needed to specify growth_model, treated as a JAX
-    Pytree.
+    A container holding data needed to specify growth_model.
     """
 
-    num_genotype: int = field(pytree_node=False)
-    
-    batch_idx: jnp.ndarray
-    batch_size: int = field(pytree_node=False)
+    num_genotype: int
 
-    not_binding_idx: jnp.ndarray
-    not_binding_batch_size: int = field(pytree_node=False)
-    num_binding: int = field(pytree_node=False) 
+    batch_idx: torch.Tensor
+    batch_size: int
+
+    not_binding_idx: torch.Tensor
+    not_binding_batch_size: int
+    num_binding: int
 
     # This will be a GrowthData and BindingData
     growth: GrowthData
@@ -124,7 +119,7 @@ class BindingPriors:
 
 @dataclass(frozen=True)
 class PriorsClass:
-    
+
     ## GrowthPriors and BindingPriors
     theta: BindingPriors
     growth: GrowthPriors

@@ -1,7 +1,7 @@
 import pytest
-import jax.numpy as jnp
+import torch
 import numpy as np
-from flax.struct import dataclass
+from dataclasses import dataclass
 
 # Assuming the function is in this module
 from tfscreen.analysis.hierarchical import populate_dataclass
@@ -10,15 +10,14 @@ from tfscreen.analysis.hierarchical import populate_dataclass
 
 @dataclass
 class SampleDataClass:
-    # --- FIX: Non-default fields must come first ---
+    # Non-default fields must come first
     a: int
-    c: jnp.ndarray
+    c: torch.Tensor
     d: np.ndarray
     # Default fields
     b: str = "default_b"
     e: float = 0.0
     f: dict = None
-    # -----------------------------------------------
 
 # --- Fixtures ---
 
@@ -26,7 +25,7 @@ class SampleDataClass:
 def source_dict_1():
     return {
         "a": 10,
-        "c": jnp.array([1, 2]),
+        "c": torch.tensor([1, 2]),
     }
 
 @pytest.fixture
@@ -48,7 +47,7 @@ class TestPopulateDataclass:
         assert isinstance(instance, SampleDataClass)
         assert instance.a == 10
         assert instance.b == "default_b"  # Correctly uses default
-        assert jnp.array_equal(instance.c, jnp.array([1, 2]))
+        assert torch.equal(instance.c, torch.tensor([1, 2]))
         assert np.array_equal(instance.d, np.array([3.0, 4.0]))
         assert instance.e == 0.0  # Correctly uses default
         assert instance.f == {"nested": "value"}
@@ -57,15 +56,15 @@ class TestPopulateDataclass:
         """Tests successful population from a single dict."""
         source = {
             "a": 1,
-            "c": jnp.array([1]),
+            "c": torch.tensor([1]),
             "d": np.array([2]),
-            "b": "override" # Override default
+            "b": "override"  # Override default
         }
         instance = populate_dataclass(SampleDataClass, source)
-        
+
         assert instance.a == 1
         assert instance.b == "override"
-        assert jnp.array_equal(instance.c, jnp.array([1]))
+        assert torch.equal(instance.c, torch.tensor([1]))
         assert np.array_equal(instance.d, np.array([2]))
 
     def test_raises_missing_required_param(self, source_dict_2):
@@ -76,10 +75,9 @@ class TestPopulateDataclass:
 
     def test_raises_duplicate_keys(self, source_dict_1):
         """Tests error if keys are duplicated across source dicts."""
-        source_duplicate = {"a": 999} # 'a' also in source_dict_1
+        source_duplicate = {"a": 999}  # 'a' also in source_dict_1
         sources = [source_dict_1, source_duplicate]
-        
-        # Use set formatting in match for f-string "{'a'}"
+
         with pytest.raises(ValueError, match=f"the keys '{{'a'}}' are duplicated"):
             populate_dataclass(SampleDataClass, sources)
 
@@ -98,7 +96,7 @@ class TestPopulateDataclass:
         """Tests error if a value is a Python list."""
         source = {
             "a": 1,
-            "c": jnp.array([1]),
+            "c": torch.tensor([1]),
             "d": [3.0, 4.0]  # This is a Python list, not np.ndarray
         }
         with pytest.raises(ValueError, match="Parameter 'd' is a '<class 'list'>'"):
@@ -124,14 +122,25 @@ class TestPopulateDataclass:
         source = {
             "a": 1,
             "b": "custom_b",
-            "c": jnp.array([1]),
+            "c": torch.tensor([1]),
             "d": np.array([2]),
             "e": 1.5,
             "f": {"key": "val"}
         }
         instance = populate_dataclass(SampleDataClass, source)
-        
+
         assert instance.a == 1
         assert instance.b == "custom_b"
         assert instance.e == 1.5
         assert instance.f == {"key": "val"}
+
+    def test_numpy_array_coerced_to_tensor(self):
+        """numpy arrays passed for tensor fields are coerced to torch.Tensor."""
+        source = {
+            "a": 1,
+            "c": np.array([1, 2]),   # will be coerced
+            "d": np.array([3.0]),
+        }
+        instance = populate_dataclass(SampleDataClass, source)
+        assert isinstance(instance.c, torch.Tensor)
+        assert torch.equal(instance.c, torch.tensor([1, 2]))
