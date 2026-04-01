@@ -14,16 +14,16 @@ Each d_log_activity[m] ~ Normal(0, sigma_d) where sigma_d ~ HalfNormal(scale).
 Epistasis terms ~ Normal(0, sigma_epi) similarly.
 """
 
-import jax.numpy as jnp
-import numpyro as pyro
-import numpyro.distributions as dist
-from flax.struct import dataclass
+import torch
+import pyro
+import pyro.distributions as dist
+from dataclasses import dataclass
 from typing import Dict, Any
 
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
 
 
-@dataclass(frozen=True)
+@dataclass
 class ModelPriors:
     """Hyperparameters for the mutation-decomposed activity model."""
     activity_sigma_d_scale: float       # HalfNormal scale for mutation delta spread
@@ -32,7 +32,7 @@ class ModelPriors:
 
 def define_model(name: str,
                  data: GrowthData,
-                 priors: ModelPriors) -> jnp.ndarray:
+                 priors: ModelPriors) -> torch.Tensor:
     """
     Define the mutation-decomposed activity model.
 
@@ -46,10 +46,10 @@ def define_model(name: str,
 
     Returns
     -------
-    jnp.ndarray
+    torch.Tensor
         Activity values broadcast to shape ``(1, 1, 1, 1, 1, 1, num_genotype)``.
     """
-    M_mat = jnp.array(data.mut_geno_matrix)   # [num_mutation, G]
+    M_mat = torch.as_tensor(data.mut_geno_matrix)   # [num_mutation, G]
     num_mut = data.num_mutation
     has_epi = data.num_pair > 0
 
@@ -74,7 +74,7 @@ def define_model(name: str,
     # Optional epistasis
     # ------------------------------------------------------------------
     if has_epi:
-        P_mat = jnp.array(data.pair_geno_matrix)
+        P_mat = torch.as_tensor(data.pair_geno_matrix)
         num_pair = data.num_pair
 
         sigma_epi = pyro.sample(
@@ -88,7 +88,7 @@ def define_model(name: str,
         pyro.deterministic(f"{name}_epi_log_activity", epi_log_activity)
         log_activity = log_activity + epi_log_activity @ P_mat  # [G]
 
-    activity = jnp.clip(jnp.exp(log_activity), max=1e30)
+    activity = torch.clamp(torch.exp(log_activity), max=1e30)
 
     pyro.deterministic(name, activity)
 
@@ -97,26 +97,24 @@ def define_model(name: str,
 
 def guide(name: str,
           data: GrowthData,
-          priors: ModelPriors) -> jnp.ndarray:
+          priors: ModelPriors) -> torch.Tensor:
     """Variational guide for the mutation-decomposed activity model."""
 
     num_mut = data.num_mutation
-    M_mat = jnp.array(data.mut_geno_matrix)
+    M_mat = torch.as_tensor(data.mut_geno_matrix)
     has_epi = data.num_pair > 0
 
     # sigma_d variational params (LogNormal guide for HalfNormal prior)
-    sigma_d_loc = pyro.param(f"{name}_sigma_d_loc", jnp.array(-1.0))
-    sigma_d_scale = pyro.param(f"{name}_sigma_d_scale", jnp.array(0.1),
-                               constraint=dist.constraints.positive)
+    sigma_d_loc = pyro.param(f"{name}_sigma_d_loc", torch.tensor(-1.0))
+    sigma_d_scale = pyro.param(f"{name}_sigma_d_scale", torch.tensor(0.1),
+                               constraint=torch.distributions.constraints.positive)
     sigma_d = pyro.sample(f"{name}_sigma_d",
                           dist.LogNormal(sigma_d_loc, sigma_d_scale))
 
     # Per-mutation offset variational params
-    d_offset_locs = pyro.param(f"{name}_d_offset_locs",
-                               jnp.zeros(num_mut))
-    d_offset_scales = pyro.param(f"{name}_d_offset_scales",
-                                 jnp.ones(num_mut),
-                                 constraint=dist.constraints.positive)
+    d_offset_locs = pyro.param(f"{name}_d_offset_locs", torch.zeros(num_mut))
+    d_offset_scales = pyro.param(f"{name}_d_offset_scales", torch.ones(num_mut),
+                                 constraint=torch.distributions.constraints.positive)
     with pyro.plate(f"{name}_mutation_plate", num_mut, dim=-1):
         d_offset = pyro.sample(f"{name}_d_offset",
                                dist.Normal(d_offset_locs, d_offset_scales))
@@ -125,20 +123,18 @@ def guide(name: str,
     log_activity = d_log_activity @ M_mat
 
     if has_epi:
-        P_mat = jnp.array(data.pair_geno_matrix)
+        P_mat = torch.as_tensor(data.pair_geno_matrix)
         num_pair = data.num_pair
 
-        sigma_epi_loc = pyro.param(f"{name}_sigma_epi_loc", jnp.array(-1.0))
-        sigma_epi_scale = pyro.param(f"{name}_sigma_epi_scale", jnp.array(0.1),
-                                     constraint=dist.constraints.positive)
+        sigma_epi_loc = pyro.param(f"{name}_sigma_epi_loc", torch.tensor(-1.0))
+        sigma_epi_scale = pyro.param(f"{name}_sigma_epi_scale", torch.tensor(0.1),
+                                     constraint=torch.distributions.constraints.positive)
         sigma_epi = pyro.sample(f"{name}_sigma_epi",
                                 dist.LogNormal(sigma_epi_loc, sigma_epi_scale))
 
-        epi_offset_locs = pyro.param(f"{name}_epi_offset_locs",
-                                     jnp.zeros(num_pair))
-        epi_offset_scales = pyro.param(f"{name}_epi_offset_scales",
-                                       jnp.ones(num_pair),
-                                       constraint=dist.constraints.positive)
+        epi_offset_locs = pyro.param(f"{name}_epi_offset_locs", torch.zeros(num_pair))
+        epi_offset_scales = pyro.param(f"{name}_epi_offset_scales", torch.ones(num_pair),
+                                       constraint=torch.distributions.constraints.positive)
         with pyro.plate(f"{name}_pair_plate", num_pair, dim=-1):
             epi_offset = pyro.sample(f"{name}_epi_offset",
                                      dist.Normal(epi_offset_locs, epi_offset_scales))
@@ -146,7 +142,7 @@ def guide(name: str,
         epi_log_activity = epi_offset * sigma_epi
         log_activity = log_activity + epi_log_activity @ P_mat
 
-    activity = jnp.clip(jnp.exp(log_activity), max=1e30)
+    activity = torch.clamp(torch.exp(log_activity), max=1e30)
 
     return activity[None, None, None, None, None, None, :]
 
@@ -161,10 +157,10 @@ def get_hyperparameters() -> Dict[str, Any]:
 def get_guesses(name: str, data: GrowthData) -> Dict[str, Any]:
     guesses = {}
     guesses[f"{name}_sigma_d"] = 0.3
-    guesses[f"{name}_d_offset"] = jnp.zeros(data.num_mutation)
+    guesses[f"{name}_d_offset"] = torch.zeros(data.num_mutation)
     if data.num_pair > 0:
         guesses[f"{name}_sigma_epi"] = 0.2
-        guesses[f"{name}_epi_offset"] = jnp.zeros(data.num_pair)
+        guesses[f"{name}_epi_offset"] = torch.zeros(data.num_pair)
     return guesses
 
 

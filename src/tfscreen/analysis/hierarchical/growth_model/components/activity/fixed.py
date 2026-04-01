@@ -1,22 +1,21 @@
-import jax.numpy as jnp
-import numpyro as pyro
-import numpyro.distributions as dist
-from flax.struct import dataclass
+import torch
+import pyro
+from dataclasses import dataclass
 from typing import Dict, Any
 
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
 
-@dataclass(frozen=True)
+@dataclass
 class ModelPriors:
     """
-    JAX Pytree holding hyperparameters for the fixed activity model.
+    Holds hyperparameters for the fixed activity model.
     This is an empty placeholder, as this model has no priors.
     """
     pass
 
-def define_model(name: str, 
-                 data: GrowthData, 
-                 priors: ModelPriors) -> jnp.ndarray:
+def define_model(name: str,
+                 data: GrowthData,
+                 priors: ModelPriors) -> torch.Tensor:
     """
     Defines the fixed model for genotype-specific activity.
 
@@ -28,28 +27,25 @@ def define_model(name: str,
     Parameters
     ----------
     name : str
-        The prefix for all Numpyro deterministic sites.
+        The prefix for all Pyro deterministic sites.
     data : GrowthData
-        A Pytree (Flax dataclass) containing experimental data and metadata.
+        A data object containing experimental data and metadata.
         This function primarily uses:
-        - ``data.num_genotype`` : (int) The total number of genotypes.
-        - ``data.map_genotype`` : (jnp.ndarray) Index array to map
-          per-genotype parameters to the full set of observations.
+        - ``data.batch_size`` : (int) The total number of observations.
     priors : ModelPriors
-        A Pytree of hyperparameters. (Unused in this model).
+        A dataclass of hyperparameters. (Unused in this model).
 
     Returns
     -------
-    jnp.ndarray
-        An array of 1.0s, expanded to match the shape of
-        the observations via ``data.map_genotype``.
+    torch.Tensor
+        An array of 1.0s, expanded to match the shape of the observations.
     """
 
     # Set activity for all genotypes to 1.0
-    activity_dists = jnp.ones(data.batch_size,dtype=float)
+    activity_dists = torch.ones(data.batch_size)
 
     # Register per-genotype values for inspection
-    pyro.deterministic(name, activity_dists)  
+    pyro.deterministic(name, activity_dists)
 
     # Broadcast to full-sized tensor
     activity = activity_dists[None,None,None,None,None,None,:]
@@ -57,9 +53,9 @@ def define_model(name: str,
     return activity
 
 
-def guide(name: str, 
-          data: GrowthData, 
-          priors: ModelPriors) -> jnp.ndarray:
+def guide(name: str,
+          data: GrowthData,
+          priors: ModelPriors) -> torch.Tensor:
     """
     Guide for the fixed activity model.
 
@@ -69,7 +65,7 @@ def guide(name: str,
     """
 
     # Set activity for all genotypes to 1.0
-    activity_dists = jnp.ones(data.batch_size,dtype=float)
+    activity_dists = torch.ones(data.batch_size)
 
     # Broadcast to full-sized tensor
     activity = activity_dists[None,None,None,None,None,None,:]
@@ -97,7 +93,7 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, Any]:
     name : str
         The prefix used for all sample sites. (Unused).
     data : GrowthData
-        A Pytree containing data metadata. (Unused).
+        A data object containing data metadata. (Unused).
 
     Returns
     -------
@@ -113,6 +109,6 @@ def get_priors() -> ModelPriors:
     Returns
     -------
     ModelPriors
-        An empty, populated Pytree (Flax dataclass).
+        An empty, populated dataclass.
     """
     return ModelPriors(**get_hyperparameters())

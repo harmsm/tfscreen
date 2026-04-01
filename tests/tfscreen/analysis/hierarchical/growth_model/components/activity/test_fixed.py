@@ -1,6 +1,7 @@
 import pytest
-import jax.numpy as jnp
-from numpyro.handlers import trace
+import torch
+import pyro
+import pyro.poutine as poutine
 from collections import namedtuple
 
 # --- Import Module Under Test (MUT) ---
@@ -26,7 +27,7 @@ def mock_data():
     Provides a mock data object for testing.
     """
     batch_size = 8
-    
+
     return MockGrowthData(
         batch_size=batch_size
     )
@@ -54,47 +55,47 @@ def test_get_priors():
 def test_define_model_logic_and_shapes(mock_data):
     """
     Tests the core logic of define_model for the fixed (1.0) case.
-    
+
     This test checks:
     1. The deterministic site has the correct shape (batch_size) and values (1.0).
     2. The final returned value has the correct broadcasted shape.
     """
     name = "test_activity_fixed"
     priors = get_priors()
-    
+
     # --- 1. Get the final return value ---
-    final_activity = define_model(name=name, 
-                                  data=mock_data, 
+    final_activity = define_model(name=name,
+                                  data=mock_data,
                                   priors=priors)
 
     # --- 2. Trace the execution to capture intermediate values ---
-    model_trace = trace(define_model).get_trace(
-        name=name, 
-        data=mock_data, 
+    model_trace = poutine.trace(define_model).get_trace(
+        name=name,
+        data=mock_data,
         priors=priors
     )
-    
+
     # --- 3. Check the Deterministic Site ---
-    assert name in model_trace
-    activity_site = model_trace[name]["value"]
-    
-    # Check shape: Code uses jnp.ones(data.batch_size)
+    assert name in model_trace.nodes
+    activity_site = model_trace.nodes[name]["value"]
+
+    # Check shape: Code uses torch.ones(data.batch_size)
     assert activity_site.shape == (mock_data.batch_size,)
-    
+
     # Check values (must be all 1.0)
-    assert jnp.all(activity_site == 1.0)
-    
+    assert torch.all(activity_site == 1.0)
+
     # --- 4. Check the Final Returned (Expanded) Tensor ---
     # Code broadcasts: activity_dists[None,None,None,None,None,None,:]
     expected_shape = (1, 1, 1, 1, 1, 1, mock_data.batch_size)
-    
+
     assert final_activity.shape == expected_shape
-    assert jnp.all(final_activity == 1.0)
+    assert torch.all(final_activity == 1.0)
 
 def test_guide_logic_and_shapes(mock_data):
     """
     Tests the guide function.
-    
+
     This test checks:
     1. The guide returns the correct broadcasted shape.
     2. The values are all 1.0.
@@ -110,4 +111,4 @@ def test_guide_logic_and_shapes(mock_data):
     expected_shape = (1, 1, 1, 1, 1, 1, mock_data.batch_size)
 
     assert final_activity.shape == expected_shape
-    assert jnp.all(final_activity == 1.0)
+    assert torch.all(final_activity == 1.0)

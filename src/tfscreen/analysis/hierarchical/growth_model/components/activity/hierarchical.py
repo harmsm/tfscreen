@@ -1,15 +1,15 @@
-import jax.numpy as jnp
-import numpyro as pyro
-import numpyro.distributions as dist
-from flax.struct import dataclass
+import torch
+import pyro
+import pyro.distributions as dist
+from dataclasses import dataclass
 from typing import Dict, Any
 
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
 
-@dataclass(frozen=True)
+@dataclass
 class ModelPriors:
     """
-    JAX Pytree holding hyperparameters for the hierarchical activity model.
+    Holds hyperparameters for the hierarchical activity model.
 
     Attributes
     ----------
@@ -25,9 +25,9 @@ class ModelPriors:
     activity_hyper_loc_scale: float
     activity_hyper_scale_loc: float
 
-def define_model(name: str, 
-                 data: GrowthData, 
-                 priors: ModelPriors) -> jnp.ndarray:
+def define_model(name: str,
+                 data: GrowthData,
+                 priors: ModelPriors) -> torch.Tensor:
     """
     Defines the hierarchical model for genotype-specific activity.
 
@@ -37,72 +37,66 @@ def define_model(name: str,
     drawn from a shared, pooled LogNormal distribution (i.e., a Normal
     distribution in log-space).
 
-    This function returns the final `activity` values expanded to match
-    the full set of observations.
-
     Parameters
     ----------
     name : str
-        The prefix for all Numpyro sample/deterministic sites in this
-        component.
+        The prefix for all Pyro sample/deterministic sites in this component.
     data : GrowthData
-        A Pytree (Flax dataclass) containing experimental data and metadata.
+        A data object containing experimental data and metadata.
         This function primarily uses:
         - ``data.num_genotype`` : (int) The total number of genotypes.
-        - ``data.wt_indexes`` : (jnp.ndarray) integer indexes of wt elements
-        - ``data.map_genotype`` : (jnp.ndarray) Index array to map
-          per-genotype parameters to the full set of observations.
+        - ``data.wt_indexes`` : (torch.Tensor) integer indexes of wt elements
+        - ``data.batch_idx`` : (torch.Tensor) Index array mapping observations to genotypes.
     priors : ModelPriors
-        A Pytree (Flax dataclass) containing the hyperparameters for
-        the pooled priors.
+        A dataclass containing the hyperparameters for the pooled priors.
 
     Returns
     -------
-    jnp.ndarray
+    torch.Tensor
         The sampled `activity` values, expanded to match the shape of
-        the observations via ``data.map_genotype``.
+        the observations.
     """
 
     # Priors are on log(activity), so their mean is log(1.0) = 0.0
     log_activity_hyper_loc = pyro.sample(
         f"{name}_log_hyper_loc",
-        dist.Normal(priors.activity_hyper_loc_loc, # This prior should be ~Normal(0.0, ...)
+        dist.Normal(priors.activity_hyper_loc_loc,
                     priors.activity_hyper_loc_scale)
     )
     log_activity_hyper_scale = pyro.sample(
         f"{name}_log_hyper_scale",
-        dist.HalfNormal(priors.activity_hyper_scale_loc) # Using HalfNormal
+        dist.HalfNormal(priors.activity_hyper_scale_loc)
     )
 
     # Sample non-centered offsets for mutant genotypes only
-    with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
-        with pyro.handlers.scale(scale=data.scale_vector):
+    with pyro.plate("shared_genotype_plate", size=data.batch_size, dim=-1):
+        with pyro.poutine.scale(scale=data.scale_vector):
             activity_offset = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
 
-    # Guard against full-sized array substitution during initialization or re-runs 
+    # Guard against full-sized array substitution during initialization or re-runs
     # with full-sized initial values
     if activity_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
         activity_offset = activity_offset[..., data.batch_idx]
-    
+
     # Calculate in log-space, then exponentiate
     log_activity_mutant_dists = log_activity_hyper_loc + activity_offset * log_activity_hyper_scale
-    activity = jnp.clip(jnp.exp(log_activity_mutant_dists), max=1e30)
+    activity = torch.clamp(torch.exp(log_activity_mutant_dists), max=1e30)
 
     # Set wildtype activity to 1.0
-    is_wt_mask = jnp.isin(data.batch_idx, data.wt_indexes)
-    activity = jnp.where(is_wt_mask, 1.0, activity)
+    is_wt_mask = torch.isin(data.batch_idx, data.wt_indexes)
+    activity = torch.where(is_wt_mask, torch.tensor(1.0), activity)
 
     # Register per-genotype values for inspection
-    pyro.deterministic(name, activity)  
+    pyro.deterministic(name, activity)
 
     # Broadcast to full-sized tensor
-    activity = activity[None,None,None,None,None,None,:] 
+    activity = activity[None,None,None,None,None,None,:]
 
     return activity
 
-def guide(name: str, 
-          data: GrowthData, 
-          priors: ModelPriors) -> jnp.ndarray:
+def guide(name: str,
+          data: GrowthData,
+          priors: ModelPriors) -> torch.Tensor:
     """
     Guide corresponding to the hierarchical activity model.
 
@@ -112,52 +106,50 @@ def guide(name: str,
     - A non-centered parameterization for the per-genotype offsets.
     """
 
-    a_loc_loc = pyro.param(f"{name}_a_hyper_loc_loc", jnp.array(priors.activity_hyper_loc_loc))
-    a_loc_scale = pyro.param(f"{name}_a_hyper_loc_scale", jnp.array(priors.activity_hyper_loc_scale),
-                             constraint=dist.constraints.positive)
+    a_loc_loc = pyro.param(f"{name}_a_hyper_loc_loc", torch.tensor(priors.activity_hyper_loc_loc))
+    a_loc_scale = pyro.param(f"{name}_a_hyper_loc_scale", torch.tensor(priors.activity_hyper_loc_scale),
+                             constraint=torch.distributions.constraints.positive)
     log_activity_hyper_loc = pyro.sample(
         f"{name}_log_hyper_loc",
-        dist.Normal(a_loc_loc,a_loc_scale)
+        dist.Normal(a_loc_loc, a_loc_scale)
     )
 
-    a_scale_loc = pyro.param(f"{name}_a_hyper_scale_loc", jnp.array(-1.0))
-    a_scale_scale = pyro.param(f"{name}_a_hyper_scale_scale",jnp.array(0.1),
-                               constraint=dist.constraints.positive)
+    a_scale_loc = pyro.param(f"{name}_a_hyper_scale_loc", torch.tensor(-1.0))
+    a_scale_scale = pyro.param(f"{name}_a_hyper_scale_scale", torch.tensor(0.1),
+                               constraint=torch.distributions.constraints.positive)
     log_activity_hyper_scale = pyro.sample(
         f"{name}_log_hyper_scale",
         dist.LogNormal(a_scale_loc, a_scale_scale)
     )
 
-    offset_locs = pyro.param(f"{name}_offset_locs",
-                             jnp.zeros(data.num_genotype,dtype=float))
-    offset_scales = pyro.param(f"{name}_offset_scales",
-                               jnp.ones(data.num_genotype,dtype=float),
-                               constraint=dist.constraints.positive)
+    offset_locs = pyro.param(f"{name}_offset_locs", torch.zeros(data.num_genotype))
+    offset_scales = pyro.param(f"{name}_offset_scales", torch.ones(data.num_genotype),
+                               constraint=torch.distributions.constraints.positive)
 
     # Sample non-centered offsets for mutant genotypes only
-    with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
-        with pyro.handlers.scale(scale=data.scale_vector):
+    with pyro.plate("shared_genotype_plate", size=data.batch_size, dim=-1):
+        with pyro.poutine.scale(scale=data.scale_vector):
 
             batch_locs = offset_locs[data.batch_idx]
             batch_scales = offset_scales[data.batch_idx]
 
             activity_offset = pyro.sample(f"{name}_offset", dist.Normal(batch_locs, batch_scales))
 
-    # Guard against full-sized array substitution during initialization or re-runs 
+    # Guard against full-sized array substitution during initialization or re-runs
     # with full-sized initial values
     if activity_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
         activity_offset = activity_offset[..., data.batch_idx]
-    
+
     # Calculate in log-space, then exponentiate
     log_activity_mutant_dists = log_activity_hyper_loc + activity_offset * log_activity_hyper_scale
-    activity = jnp.clip(jnp.exp(log_activity_mutant_dists), max=1e30)
+    activity = torch.clamp(torch.exp(log_activity_mutant_dists), max=1e30)
 
     # Set wildtype activity to 1.0
-    is_wt_mask = jnp.isin(data.batch_idx, data.wt_indexes)
-    activity = jnp.where(is_wt_mask, 1.0, activity)
+    is_wt_mask = torch.isin(data.batch_idx, data.wt_indexes)
+    activity = torch.where(is_wt_mask, torch.tensor(1.0), activity)
 
     # Broadcast to full-sized tensor
-    activity = activity[None,None,None,None,None,None,:] 
+    activity = activity[None,None,None,None,None,None,:]
 
     return activity
 
@@ -172,10 +164,9 @@ def get_hyperparameters() -> Dict[str, Any]:
     Returns
     -------
     dict[str, Any]
-        A dictionary mapping hyperparameter names to their
-        default values.
+        A dictionary mapping hyperparameter names to their default values.
     """
-    
+
     parameters = {}
     parameters["activity_hyper_loc_loc"] = 0.0
     parameters["activity_hyper_loc_scale"] = 0.01
@@ -184,11 +175,11 @@ def get_hyperparameters() -> Dict[str, Any]:
     return parameters
 
 
-def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
+def get_guesses(name: str, data: GrowthData) -> Dict[str, torch.Tensor]:
     """
     Get guess values for the model's latent parameters.
 
-    These values are used in `numpyro.handlers.substitute` for testing
+    These values are used in `pyro.poutine.condition` for testing
     or initializing inference. The offsets are set to zero, meaning
     all mutant activities will be guessed as 1.0 (same as wild-type).
 
@@ -197,21 +188,19 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
     name : str
         The prefix used for all sample sites (e.g., "my_model").
     data : GrowthData
-        A Pytree containing data metadata, used to determine the
-        shape of the guess arrays. Requires:
+        A data object containing data metadata. Requires:
         - ``data.num_genotype``
 
     Returns
     -------
-    dict[str, jnp.ndarray]
-        A dictionary mapping sample site names to JAX arrays of
-        guess values.
+    dict[str, torch.Tensor]
+        A dictionary mapping sample site names to tensors of guess values.
     """
 
     guesses = {}
     guesses[f"{name}_log_hyper_loc"] = 0.0
     guesses[f"{name}_log_hyper_scale"] = 0.1
-    guesses[f"{name}_offset"] = jnp.zeros(data.num_genotype,dtype=float)
+    guesses[f"{name}_offset"] = torch.zeros(data.num_genotype)
 
     return guesses
 
@@ -222,6 +211,6 @@ def get_priors() -> ModelPriors:
     Returns
     -------
     ModelPriors
-        A populated Pytree (Flax dataclass) of hyperparameters.
+        A populated dataclass of hyperparameters.
     """
     return ModelPriors(**get_hyperparameters())
