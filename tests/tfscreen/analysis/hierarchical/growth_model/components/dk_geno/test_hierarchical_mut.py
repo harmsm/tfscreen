@@ -1,7 +1,8 @@
 import pytest
 import numpy as np
-import jax.numpy as jnp
-from numpyro.handlers import trace, substitute, seed
+import torch
+import pyro
+import pyro.poutine as poutine
 from collections import namedtuple
 
 from tfscreen.analysis.hierarchical.growth_model.components.dk_geno.hierarchical_mut import (
@@ -86,8 +87,8 @@ def test_get_guesses_no_epi(mock_data_no_epi):
     assert f"{name}_offset" in guesses
     assert guesses[f"{name}_offset"].shape == (mock_data_no_epi.num_mutation,)
     # Every offset initialised to the neutral value
-    assert jnp.allclose(guesses[f"{name}_offset"],
-                        jnp.full(mock_data_no_epi.num_mutation, _NEUTRAL_OFFSET))
+    assert torch.allclose(guesses[f"{name}_offset"],
+                          torch.full((mock_data_no_epi.num_mutation,), _NEUTRAL_OFFSET))
     assert f"{name}_epi_offset" not in guesses
 
 
@@ -96,7 +97,7 @@ def test_get_guesses_with_epi(mock_data_epi):
     guesses = get_guesses(name, mock_data_epi)
     assert f"{name}_epi_offset" in guesses
     assert guesses[f"{name}_epi_offset"].shape == (mock_data_epi.num_pair,)
-    assert jnp.all(guesses[f"{name}_epi_offset"] == 0.0)
+    assert torch.all(guesses[f"{name}_epi_offset"] == 0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -108,7 +109,7 @@ class TestDefineModelNoEpi:
     def test_output_shape(self, mock_data_no_epi):
         priors = get_priors()
         guesses = get_guesses("dk_geno", mock_data_no_epi)
-        result = substitute(define_model, data=guesses)(
+        result = poutine.condition(define_model, data=guesses)(
             name="dk_geno", data=mock_data_no_epi, priors=priors)
         G = mock_data_no_epi.num_genotype
         assert result.shape == (1, 1, 1, 1, 1, 1, G)
@@ -117,7 +118,7 @@ class TestDefineModelNoEpi:
         """WT column of M is all-zero, so dk_geno[wt] = 0 always."""
         priors = get_priors()
         guesses = get_guesses("dk_geno", mock_data_no_epi)
-        result = substitute(define_model, data=guesses)(
+        result = poutine.condition(define_model, data=guesses)(
             name="dk_geno", data=mock_data_no_epi, priors=priors)
         flat = result[0, 0, 0, 0, 0, 0, :]
         assert flat[0] == pytest.approx(0.0, abs=1e-6)
@@ -130,10 +131,10 @@ class TestDefineModelNoEpi:
         """
         priors = get_priors()
         guesses = get_guesses("dk_geno", mock_data_no_epi)
-        result = substitute(define_model, data=guesses)(
+        result = poutine.condition(define_model, data=guesses)(
             name="dk_geno", data=mock_data_no_epi, priors=priors)
         flat = result[0, 0, 0, 0, 0, 0, :]
-        assert jnp.allclose(flat, 0.0, atol=1e-5)
+        assert torch.allclose(flat, torch.tensor(0.0), atol=1e-5)
 
     def test_assembly_additive(self, mock_data_no_epi):
         """
@@ -148,15 +149,15 @@ class TestDefineModelNoEpi:
         guesses["dk_geno_hyper_scale"] = 0.5
         guesses["dk_geno_shift"] = 0.02
         # Use different offsets per mutation to make them distinguishable
-        guesses["dk_geno_offset"] = jnp.array([0.0, 1.0])
+        guesses["dk_geno_offset"] = torch.tensor([0.0, 1.0])
 
-        result = substitute(define_model, data=guesses)(
+        result = poutine.condition(define_model, data=guesses)(
             name="dk_geno", data=mock_data_no_epi, priors=priors)
         flat = result[0, 0, 0, 0, 0, 0, :]
 
         # Compute expected per-mutation dk values
         def dk(offset):
-            return 0.02 - float(jnp.clip(jnp.exp(-3.5 + offset * 0.5), max=1e30))
+            return 0.02 - float(torch.clamp(torch.exp(torch.tensor(-3.5 + offset * 0.5)), max=1e30))
 
         expected_M42I = dk(0.0)
         expected_K84L = dk(1.0)
@@ -172,19 +173,21 @@ class TestDefineModelNoEpi:
     def test_deterministic_site_in_trace(self, mock_data_no_epi):
         priors = get_priors()
         guesses = get_guesses("dk_geno", mock_data_no_epi)
-        model = substitute(define_model, data=guesses)
-        tr = trace(model).get_trace(
+        model = poutine.condition(define_model, data=guesses)
+        tr = poutine.trace(model).get_trace(
             name="dk_geno", data=mock_data_no_epi, priors=priors)
-        assert "dk_geno" in tr
-        assert tr["dk_geno"]["type"] == "deterministic"
+        # In Pyro, pyro.deterministic() is implemented as a masked Delta sample,
+        # so the site type is "sample" (not "deterministic" as in NumPyro).
+        assert "dk_geno" in tr.nodes
+        assert tr.nodes["dk_geno"]["type"] in ("sample", "deterministic")
 
     def test_no_epistasis_sample_sites(self, mock_data_no_epi):
         priors = get_priors()
         guesses = get_guesses("dk_geno", mock_data_no_epi)
-        model = substitute(define_model, data=guesses)
-        tr = trace(model).get_trace(
+        model = poutine.condition(define_model, data=guesses)
+        tr = poutine.trace(model).get_trace(
             name="dk_geno", data=mock_data_no_epi, priors=priors)
-        sample_names = {k for k, v in tr.items() if v["type"] == "sample"}
+        sample_names = {k for k, v in tr.nodes.items() if v["type"] == "sample"}
         assert not any("epi" in k for k in sample_names)
 
 
@@ -197,7 +200,7 @@ class TestDefineModelWithEpi:
     def test_output_shape(self, mock_data_epi):
         priors = get_priors()
         guesses = get_guesses("dk_geno", mock_data_epi)
-        result = substitute(define_model, data=guesses)(
+        result = poutine.condition(define_model, data=guesses)(
             name="dk_geno", data=mock_data_epi, priors=priors)
         G = mock_data_epi.num_genotype
         assert result.shape == (1, 1, 1, 1, 1, 1, G)
@@ -210,24 +213,24 @@ class TestDefineModelWithEpi:
         priors = get_priors()
         guesses = get_guesses("dk_geno", mock_data_epi)
         guesses["dk_geno_sigma_epi"] = 1.0
-        guesses["dk_geno_epi_offset"] = jnp.array([0.5])
+        guesses["dk_geno_epi_offset"] = torch.tensor([0.5])
 
-        result = substitute(define_model, data=guesses)(
+        result = poutine.condition(define_model, data=guesses)(
             name="dk_geno", data=mock_data_epi, priors=priors)
         flat = result[0, 0, 0, 0, 0, 0, :]
 
         # wt, M42I, K84L should all be ~0 (neutral offset)
-        assert jnp.allclose(flat[:3], 0.0, atol=1e-5)
+        assert torch.allclose(flat[:3], torch.tensor(0.0), atol=1e-5)
         # M42I/K84L = 0 (mut contribution) + 0.5*1.0 (epistasis)
         assert flat[3] == pytest.approx(0.5, rel=1e-5)
 
     def test_epistasis_sample_sites_present(self, mock_data_epi):
         priors = get_priors()
         guesses = get_guesses("dk_geno", mock_data_epi)
-        model = substitute(define_model, data=guesses)
-        tr = trace(model).get_trace(
+        model = poutine.condition(define_model, data=guesses)
+        tr = poutine.trace(model).get_trace(
             name="dk_geno", data=mock_data_epi, priors=priors)
-        sample_names = {k for k, v in tr.items() if v["type"] == "sample"}
+        sample_names = {k for k, v in tr.nodes.items() if v["type"] == "sample"}
         assert "dk_geno_epi_offset" in sample_names
         assert "dk_geno_sigma_epi" in sample_names
 
@@ -235,8 +238,8 @@ class TestDefineModelWithEpi:
         priors = get_priors()
         guesses = get_guesses("dk_geno", mock_data_epi)
         guesses["dk_geno_sigma_epi"] = 1.0
-        guesses["dk_geno_epi_offset"] = jnp.array([1.0])
-        result = substitute(define_model, data=guesses)(
+        guesses["dk_geno_epi_offset"] = torch.tensor([1.0])
+        result = poutine.condition(define_model, data=guesses)(
             name="dk_geno", data=mock_data_epi, priors=priors)
         flat = result[0, 0, 0, 0, 0, 0, :]
         assert flat[0] == pytest.approx(0.0, abs=1e-5)   # WT is always 0
@@ -249,42 +252,47 @@ class TestDefineModelWithEpi:
 class TestGuide:
 
     def test_guide_no_epi_shape(self, mock_data_no_epi):
+        pyro.clear_param_store()
         priors = get_priors()
-        with seed(rng_seed=0):
-            result = guide(name="dk_geno", data=mock_data_no_epi, priors=priors)
+        torch.manual_seed(0)
+        result = guide(name="dk_geno", data=mock_data_no_epi, priors=priors)
         G = mock_data_no_epi.num_genotype
         assert result.shape == (1, 1, 1, 1, 1, 1, G)
 
     def test_guide_no_epi_no_epistasis_sample_sites(self, mock_data_no_epi):
+        pyro.clear_param_store()
         priors = get_priors()
-        with seed(rng_seed=0):
-            tr = trace(guide).get_trace(
-                name="dk_geno", data=mock_data_no_epi, priors=priors)
-        sample_names = {k for k, v in tr.items() if v["type"] == "sample"}
+        torch.manual_seed(0)
+        tr = poutine.trace(guide).get_trace(
+            name="dk_geno", data=mock_data_no_epi, priors=priors)
+        sample_names = {k for k, v in tr.nodes.items() if v["type"] == "sample"}
         assert not any("epi" in k for k in sample_names)
 
     def test_guide_with_epi_shape(self, mock_data_epi):
+        pyro.clear_param_store()
         priors = get_priors()
-        with seed(rng_seed=1):
-            result = guide(name="dk_geno", data=mock_data_epi, priors=priors)
+        torch.manual_seed(1)
+        result = guide(name="dk_geno", data=mock_data_epi, priors=priors)
         G = mock_data_epi.num_genotype
         assert result.shape == (1, 1, 1, 1, 1, 1, G)
 
     def test_guide_with_epi_sample_sites(self, mock_data_epi):
+        pyro.clear_param_store()
         priors = get_priors()
-        with seed(rng_seed=1):
-            tr = trace(guide).get_trace(
-                name="dk_geno", data=mock_data_epi, priors=priors)
-        sample_names = {k for k, v in tr.items() if v["type"] == "sample"}
+        torch.manual_seed(1)
+        tr = poutine.trace(guide).get_trace(
+            name="dk_geno", data=mock_data_epi, priors=priors)
+        sample_names = {k for k, v in tr.nodes.items() if v["type"] == "sample"}
         assert "dk_geno_epi_offset" in sample_names
         assert "dk_geno_sigma_epi" in sample_names
 
     def test_guide_all_hyperprior_sites_sampled(self, mock_data_no_epi):
+        pyro.clear_param_store()
         priors = get_priors()
-        with seed(rng_seed=0):
-            tr = trace(guide).get_trace(
-                name="dk_geno", data=mock_data_no_epi, priors=priors)
-        sample_names = {k for k, v in tr.items() if v["type"] == "sample"}
+        torch.manual_seed(0)
+        tr = poutine.trace(guide).get_trace(
+            name="dk_geno", data=mock_data_no_epi, priors=priors)
+        sample_names = {k for k, v in tr.nodes.items() if v["type"] == "sample"}
         assert "dk_geno_hyper_loc" in sample_names
         assert "dk_geno_hyper_scale" in sample_names
         assert "dk_geno_shift" in sample_names

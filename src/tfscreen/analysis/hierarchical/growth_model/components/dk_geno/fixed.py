@@ -1,58 +1,58 @@
-import jax.numpy as jnp
-import numpyro as pyro
-import numpyro.distributions as dist
-from flax.struct import dataclass
+import torch
+import pyro
+import pyro.distributions as dist
+from dataclasses import dataclass
 
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
 
-@dataclass(frozen=True)
+@dataclass
 class ModelPriors:
     """
-    JAX Pytree holding data needed to specify model priors.
+    Holds data needed to specify model priors.
     """
     pass
 
-def define_model(name: str, 
-                 data: GrowthData, 
-                 priors: ModelPriors) -> jnp.ndarray:
+def define_model(name: str,
+                 data: GrowthData,
+                 priors: ModelPriors) -> torch.Tensor:
     """
     The pleiotropic effect of a genotype on growth rate independent of
-    transcription factor occupancy. Fixed to zero. Returns a full tensor. 
+    transcription factor occupancy. Fixed to zero. Returns a full tensor.
 
     Parameters
     ----------
     name : str
-        The prefix for all Numpyro deterministic sites.
+        The prefix for all Pyro deterministic sites.
     data : GrowthData
-        A Pytree (Flax dataclass) containing experimental data and metadata.
+        A dataclass containing experimental data and metadata.
         This function primarily uses:
         - ``data.num_genotype`` : (int) The total number of genotypes.
-        - ``data.map_genotype`` : (jnp.ndarray) Index array to map
+        - ``data.map_genotype`` : (torch.Tensor) Index array to map
           per-genotype parameters to the full set of observations.
     priors : ModelPriors
-        A Pytree of hyperparameters. (Unused in this model).
-        
+        A dataclass of hyperparameters. (Unused in this model).
+
     Returns
     -------
-    jnp.ndarray
+    torch.Tensor
         A tensor of zeros, expanded to match the shape of
         the observations via ``data.map_genotype``.
     """
 
     # Create fixed dk_geno (0)
-    dk_geno_per_genotype = jnp.zeros(data.batch_size,dtype=float)
+    dk_geno_per_genotype = torch.zeros(data.batch_size)
 
     # Register dists
-    pyro.deterministic(name, dk_geno_per_genotype)  
+    pyro.deterministic(name, dk_geno_per_genotype)
 
     # Expand to full-sized tensor
-    dk_geno = dk_geno_per_genotype[None,None,None,None,None,None,:]
+    dk_geno = dk_geno_per_genotype[None, None, None, None, None, None, :]
 
     return dk_geno
 
-def guide(name: str, 
-          data: GrowthData, 
-          priors: ModelPriors) -> jnp.ndarray:
+def guide(name: str,
+          data: GrowthData,
+          priors: ModelPriors) -> torch.Tensor:
     """
     Guide for the fixed dk_geno model.
 
@@ -61,10 +61,10 @@ def guide(name: str,
     """
 
     # Create fixed dk_geno (0)
-    dk_geno_per_genotype = jnp.zeros(data.batch_size,dtype=float)
+    dk_geno_per_genotype = torch.zeros(data.batch_size)
 
     # Expand to full-sized tensor
-    dk_geno = dk_geno_per_genotype[None,None,None,None,None,None,:]
+    dk_geno = dk_geno_per_genotype[None, None, None, None, None, None, :]
 
     return dk_geno
 
@@ -80,9 +80,9 @@ def get_hyperparameters():
     return {}
 
 
-def get_guesses(name,data):
+def get_guesses(name, data):
     """
-    Get guess values for the model parameters. 
+    Get guess values for the model parameters.
 
     Returns
     -------

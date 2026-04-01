@@ -1,6 +1,7 @@
 import pytest
-import jax.numpy as jnp
-from numpyro.handlers import trace
+import torch
+import pyro
+import pyro.poutine as poutine
 from collections import namedtuple
 
 # --- Import Module Under Test (MUT) ---
@@ -15,7 +16,6 @@ from tfscreen.analysis.hierarchical.growth_model.components.dk_geno.fixed import
 
 # --- Mock Data Fixture ---
 
-# Updated mock to include batch_size
 MockGrowthData = namedtuple("MockGrowthData", [
     "batch_size"
 ])
@@ -26,7 +26,7 @@ def mock_data():
     Provides a mock data object for testing.
     """
     batch_size = 8
-    
+
     return MockGrowthData(
         batch_size=batch_size
     )
@@ -54,47 +54,47 @@ def test_get_priors():
 def test_define_model_logic_and_shapes(mock_data):
     """
     Tests the core logic of define_model for the fixed (zero) case.
-    
+
     This test checks:
     1.  The deterministic site has the correct shape (batch_size) and is all zeros.
     2.  The final returned value has the correct expanded shape and is all zeros.
     """
     name = "test_dk_fixed"
     priors = get_priors()
-    
+
     # --- 1. Get the final return value ---
-    final_dk_geno = define_model(name=name, 
-                                 data=mock_data, 
+    final_dk_geno = define_model(name=name,
+                                 data=mock_data,
                                  priors=priors)
 
     # --- 2. Trace the execution to capture intermediate values ---
-    model_trace = trace(define_model).get_trace(
-        name=name, 
-        data=mock_data, 
+    model_trace = poutine.trace(define_model).get_trace(
+        name=name,
+        data=mock_data,
         priors=priors
     )
-    
+
     # --- 3. Check the Deterministic Site ---
-    assert name in model_trace
-    dk_geno_site = model_trace[name]["value"]
-    
-    # Check shape: Code uses jnp.zeros(data.batch_size)
+    assert name in model_trace.nodes
+    dk_geno_site = model_trace.nodes[name]["value"]
+
+    # Check shape: Code uses torch.zeros(data.batch_size)
     assert dk_geno_site.shape == (mock_data.batch_size,)
-    
+
     # Check values (must be all zero)
-    assert jnp.all(dk_geno_site == 0.0)
-    
+    assert torch.all(dk_geno_site == 0.0)
+
     # --- 4. Check the Final Returned (Expanded) Tensor ---
     # Code broadcasts: dk_geno_per_genotype[None,None,None,None,None,None,:]
     expected_shape = (1, 1, 1, 1, 1, 1, mock_data.batch_size)
-    
+
     assert final_dk_geno.shape == expected_shape
-    assert jnp.all(final_dk_geno == 0.0)
+    assert torch.all(final_dk_geno == 0.0)
 
 def test_guide_logic_and_shapes(mock_data):
     """
     Tests the guide function.
-    
+
     This test checks:
     1. The guide returns the correct broadcasted shape.
     2. The values are all 0.0.
@@ -110,4 +110,4 @@ def test_guide_logic_and_shapes(mock_data):
     expected_shape = (1, 1, 1, 1, 1, 1, mock_data.batch_size)
 
     assert final_dk_geno.shape == expected_shape
-    assert jnp.all(final_dk_geno == 0.0)
+    assert torch.all(final_dk_geno == 0.0)
