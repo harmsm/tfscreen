@@ -1,7 +1,7 @@
-import jax.numpy as jnp
-import numpyro as pyro
-import numpyro.distributions as dist
-from flax.struct import dataclass
+import torch
+import pyro
+import pyro.distributions as dist
+from dataclasses import dataclass
 
 from typing import Dict, Any
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
@@ -10,7 +10,7 @@ from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
 @dataclass(frozen=True)
 class ModelPriors:
     """
-    JAX Pytree holding hyperparameters for the ln_cfu0 model.
+    Holds hyperparameters for the ln_cfu0 model.
 
     Attributes
     ----------
@@ -26,9 +26,9 @@ class ModelPriors:
     ln_cfu0_hyper_loc_scale: float
     ln_cfu0_hyper_scale_loc: float
 
-def define_model(name: str, 
-                 data: GrowthData, 
-                 priors: ModelPriors) -> jnp.ndarray:
+def define_model(name: str,
+                 data: GrowthData,
+                 priors: ModelPriors) -> torch.Tensor:
     """
     Defines the hierarchical model for initial cell counts (ln_cfu0).
 
@@ -37,33 +37,23 @@ def define_model(name: str,
     from a shared, pooled Normal distribution. The location and scale
     of this distribution are learned hyper-parameters.
 
-    This function defines the non-centered parameterization for these
-    parameters and returns the final `ln_cfu0` values expanded to match
-    the full set of observations.
-
     Parameters
     ----------
     name : str
-        The prefix for all Numpyro sample/deterministic sites in this
+        The prefix for all Pyro sample/deterministic sites in this
         component.
     data : GrowthData
-        A Pytree (Flax dataclass) containing experimental data and metadata.
-        This function primarily uses:
-        - ``data.num_ln_cfu0`` : (int) The number of independent ln_cfu0
-          groups.
-        - ``data.map_ln_cfu0`` : (jnp.ndarray) Index array to map
-          per-group parameters to the full set of observations.
+        Container holding experimental data and metadata.
     priors : ModelPriors
-        A Pytree (Flax dataclass) containing the hyperparameters for
-        the pooled priors.
+        Hyperparameters for the pooled priors.
 
     Returns
     -------
-    jnp.ndarray
+    torch.Tensor
         The sampled ``ln_cfu0`` values, expanded to match the shape of
         the observations via ``data.map_ln_cfu0``.
     """
-    
+
     # Define hyper-priors for the pooled distribution
     ln_cfu0_hyper_loc = pyro.sample(
         f"{name}_hyper_loc",
@@ -74,15 +64,15 @@ def define_model(name: str,
         f"{name}_hyper_scale",
         dist.HalfNormal(priors.ln_cfu0_hyper_scale_loc)
     )
-    
+
     # Sample non-centered offsets for each ln_cfu0 group
-    with pyro.plate(f"{name}_replicate",data.num_replicate,dim=-3):
-        with pyro.plate(f"{name}_condition_pre",data.num_condition_pre,dim=-2):
-            with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
-                with pyro.handlers.scale(scale=data.scale_vector):
+    with pyro.plate(f"{name}_replicate", data.num_replicate, dim=-3):
+        with pyro.plate(f"{name}_condition_pre", data.num_condition_pre, dim=-2):
+            with pyro.plate("shared_genotype_plate", size=data.batch_size, dim=-1):
+                with pyro.poutine.scale(scale=data.scale_vector):
                     ln_cfu0_offsets = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
 
-    # Guard against full-sized array substitution during initialization or re-runs 
+    # Guard against full-sized array substitution during initialization or re-runs
     # with full-sized initial values
     if ln_cfu0_offsets.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
         ln_cfu0_offsets = ln_cfu0_offsets[..., data.batch_idx]
@@ -94,13 +84,13 @@ def define_model(name: str,
     pyro.deterministic(name, ln_cfu0_per_rep_cond_geno)
 
     # Expand tensor to match all observations
-    ln_cfu0 = ln_cfu0_per_rep_cond_geno[:,None,:,None,None,None,:]
+    ln_cfu0 = ln_cfu0_per_rep_cond_geno[:, None, :, None, None, None, :]
 
     return ln_cfu0
 
-def guide(name: str, 
-          data: GrowthData, 
-          priors: ModelPriors) -> jnp.ndarray:
+def guide(name: str,
+          data: GrowthData,
+          priors: ModelPriors) -> torch.Tensor:
     """
     Guide corresponding to the hierarchical ln_cfu0 model.
 
@@ -115,37 +105,35 @@ def guide(name: str,
     # Global parameters
 
     # Hyper Loc (Normal posterior approximation)
-    h_loc_loc = pyro.param(f"{name}_hyper_loc_loc", jnp.array(priors.ln_cfu0_hyper_loc_loc))
-    h_loc_scale = pyro.param(f"{name}_hyper_loc_scale", jnp.array(priors.ln_cfu0_hyper_loc_scale), constraint=dist.constraints.positive)
+    h_loc_loc = pyro.param(f"{name}_hyper_loc_loc", torch.tensor(priors.ln_cfu0_hyper_loc_loc))
+    h_loc_scale = pyro.param(f"{name}_hyper_loc_scale", torch.tensor(priors.ln_cfu0_hyper_loc_scale),
+                             constraint=torch.distributions.constraints.positive)
     ln_cfu0_hyper_loc = pyro.sample(f"{name}_hyper_loc", dist.Normal(h_loc_loc, h_loc_scale))
 
     # Hyper Scale (LogNormal posterior approximation for positive variable)
-    # We use LogNormal because HalfNormal (prior) support is positive.
-    h_scale_loc = pyro.param(f"{name}_hyper_scale_loc", jnp.array(-1.0)) # Init small
-    h_scale_scale = pyro.param(f"{name}_hyper_scale_scale", jnp.array(0.1), constraint=dist.constraints.positive)
+    h_scale_loc = pyro.param(f"{name}_hyper_scale_loc", torch.tensor(-1.0))
+    h_scale_scale = pyro.param(f"{name}_hyper_scale_scale", torch.tensor(0.1),
+                               constraint=torch.distributions.constraints.positive)
     ln_cfu0_hyper_scale = pyro.sample(f"{name}_hyper_scale", dist.LogNormal(h_scale_loc, h_scale_scale))
-    
+
     # -------------------------------------------------------------------------
     # Genotype-specific parameter
 
     param_shape = (data.num_replicate, data.num_condition_pre, data.num_genotype)
-    offset_locs = pyro.param(f"{name}_offset_locs",
-                             jnp.zeros(param_shape,dtype=float))
-    offset_scales = pyro.param(f"{name}_offset_scales",
-                               jnp.ones(param_shape,dtype=float),
-                               constraint=dist.constraints.positive)
+    offset_locs = pyro.param(f"{name}_offset_locs", torch.zeros(param_shape))
+    offset_scales = pyro.param(f"{name}_offset_scales", torch.ones(param_shape),
+                               constraint=torch.distributions.constraints.positive)
 
     # Sample non-centered offsets for each ln_cfu0 group
-    with pyro.plate(f"{name}_replicate",data.num_replicate,dim=-3):
-        with pyro.plate(f"{name}_condition_pre",data.num_condition_pre,dim=-2):
-            with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
-                with pyro.handlers.scale(scale=data.scale_vector):
-                    
-                    batch_locs = offset_locs[...,data.batch_idx]
-                    batch_scales = offset_scales[...,data.batch_idx]
-                    ln_cfu0_offsets = pyro.sample(f"{name}_offset", dist.Normal(batch_locs,batch_scales))
+    with pyro.plate(f"{name}_replicate", data.num_replicate, dim=-3):
+        with pyro.plate(f"{name}_condition_pre", data.num_condition_pre, dim=-2):
+            with pyro.plate("shared_genotype_plate", size=data.batch_size, dim=-1):
+                with pyro.poutine.scale(scale=data.scale_vector):
+                    batch_locs = offset_locs[..., data.batch_idx]
+                    batch_scales = offset_scales[..., data.batch_idx]
+                    ln_cfu0_offsets = pyro.sample(f"{name}_offset", dist.Normal(batch_locs, batch_scales))
 
-    # Guard against full-sized array substitution during initialization or re-runs 
+    # Guard against full-sized array substitution during initialization or re-runs
     # with full-sized initial values
     if ln_cfu0_offsets.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
         ln_cfu0_offsets = ln_cfu0_offsets[..., data.batch_idx]
@@ -154,7 +142,7 @@ def guide(name: str,
     ln_cfu0_per_rep_cond_geno = ln_cfu0_hyper_loc + ln_cfu0_offsets * ln_cfu0_hyper_scale
 
     # Expand tensor to match all observations
-    ln_cfu0 = ln_cfu0_per_rep_cond_geno[:,None,:,None,None,None,:]
+    ln_cfu0 = ln_cfu0_per_rep_cond_geno[:, None, :, None, None, None, :]
 
     return ln_cfu0
 
@@ -174,40 +162,33 @@ def get_hyperparameters() -> Dict[str, Any]:
     parameters["ln_cfu0_hyper_loc_loc"] = -2.5
     parameters["ln_cfu0_hyper_loc_scale"] = 3.0
     parameters["ln_cfu0_hyper_scale_loc"] = 2.0
-               
+
     return parameters
 
 
-def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
+def get_guesses(name: str, data: GrowthData) -> Dict[str, torch.Tensor]:
     """
     Get guess values for the model's latent parameters.
-
-    These values are used in `numpyro.handlers.substitute` for testing
-    or initializing inference. The offsets are set to zero, meaning
-    all per-group ``ln_cfu0`` values will equal the ``_hyper_loc`` guess.
 
     Parameters
     ----------
     name : str
         The prefix used for all sample sites (e.g., "my_model").
     data : GrowthData
-        A Pytree containing data metadata, used to determine the
-        shape of the guess arrays. Requires:
-        - ``data.num_ln_cfu0``
+        Container holding data metadata.
 
     Returns
     -------
-    dict[str, jnp.ndarray]
-        A dictionary mapping sample site names (e.g., "my_model_offset")
-        to JAX arrays of guess values.
+    dict[str, torch.Tensor]
+        A dictionary mapping sample site names to guess values.
     """
-    
+
     guesses = {}
     guesses[f"{name}_hyper_loc"] = -2.5
     guesses[f"{name}_hyper_scale"] = 3.0
-    guesses[f"{name}_offset"] = jnp.zeros((data.num_replicate,
-                                           data.num_condition_pre,
-                                           data.num_genotype),dtype=float)
+    guesses[f"{name}_offset"] = torch.zeros((data.num_replicate,
+                                             data.num_condition_pre,
+                                             data.num_genotype))
 
     return guesses
 
@@ -218,6 +199,6 @@ def get_priors() -> ModelPriors:
     Returns
     -------
     ModelPriors
-        A populated Pytree (Flax dataclass) of hyperparameters.
+        A populated dataclass of hyperparameters.
     """
     return ModelPriors(**get_hyperparameters())

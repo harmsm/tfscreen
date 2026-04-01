@@ -1,16 +1,14 @@
-import jax.numpy as jnp
-import numpyro as pyro
-import numpyro.distributions as dist
-from flax.struct import (
-    dataclass
-)
+import torch
+import pyro
+import pyro.distributions as dist
+from dataclasses import dataclass
 from typing import Dict, Any
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
 
 @dataclass(frozen=True)
 class ModelPriors:
     """
-    JAX Pytree holding hyperparameters for the Beta noise model.
+    Holds hyperparameters for the Beta noise model.
 
     Attributes
     ----------
@@ -24,9 +22,9 @@ class ModelPriors:
     beta_kappa_scale: float
 
 
-def define_model(name: str, 
-                 fx_calc: jnp.ndarray, 
-                 priors: ModelPriors) -> jnp.ndarray:
+def define_model(name: str,
+                 fx_calc: torch.Tensor,
+                 priors: ModelPriors) -> torch.Tensor:
     """
     Applies Beta-distributed noise to a deterministic value.
 
@@ -44,17 +42,16 @@ def define_model(name: str,
     Parameters
     ----------
     name : str
-        The prefix for all Numpyro sample/deterministic sites.
-    fx_calc : jnp.ndarray
+        The prefix for all Pyro sample/deterministic sites.
+    fx_calc : torch.Tensor
         The deterministically calculated mean value (e.g., fractional
         occupancy), which must be in the range (0, 1).
     priors : ModelPriors
-        A Pytree (Flax dataclass) containing the hyperparameters for
-        the `kappa` prior.
+        Hyperparameters for the `kappa` prior.
 
     Returns
     -------
-    jnp.ndarray
+    torch.Tensor
         The noisy value, `fx_noisy`, sampled from `Beta(alpha, beta)`.
     """
 
@@ -64,8 +61,8 @@ def define_model(name: str,
         f"{name}_beta_kappa",
         dist.Gamma(priors.beta_kappa_loc,
                    priors.beta_kappa_scale)
-    ) 
-    
+    )
+
     # Reparameterize: alpha = mean * concentration
     alpha = fx_calc * kappa
     # Reparameterize: beta = (1.0 - mean) * concentration
@@ -73,41 +70,40 @@ def define_model(name: str,
 
     # Clip alpha and beta for stability
     # The Beta distribution requires alpha > 0 and beta > 0.
-    alpha = jnp.clip(alpha, min=1e-10, max=1e10)
-    beta = jnp.clip(beta, min=1e-10, max=1e10)
+    alpha = torch.clamp(alpha, min=1e-10, max=1e10)
+    beta = torch.clamp(beta, min=1e-10, max=1e10)
 
     # Sample from beta distribution centered on fx_calc with spread dictated
     # by kappa
     fx_noisy = pyro.sample(f"{name}_dist", dist.Beta(alpha, beta))
-    
+
     # Register final tensors (optional, as fx_noisy is already sampled)
     pyro.deterministic(name, fx_noisy)
-    
+
     return fx_noisy
 
-def guide(name: str, 
-          fx_calc: jnp.ndarray, 
-          priors: ModelPriors) -> jnp.ndarray:
+def guide(name: str,
+          fx_calc: torch.Tensor,
+          priors: ModelPriors) -> torch.Tensor:
     """
     Guide for the Beta noise model.
-    
-    Since 'fx_calc' is passed without indices/plates, we cannot store 
-    variational parameters for each individual 'fx_noisy' value. 
-    Instead, we use an amortized strategy: we learn the global 'kappa' 
-    parameter, and then sample 'fx_noisy' from a Beta distribution 
+
+    Since 'fx_calc' is passed without indices/plates, we cannot store
+    variational parameters for each individual 'fx_noisy' value.
+    Instead, we use an amortized strategy: we learn the global 'kappa'
+    parameter, and then sample 'fx_noisy' from a Beta distribution
     derived from that learned 'kappa' and the input 'fx_calc'.
     """
 
     # --- 1. Global Parameter (Kappa) ---
-    
+
     # We use a LogNormal guide for the Gamma prior (positive support).
     # Initialize loc to log(prior_loc) to start near the prior mean.
-    # (Adding a small epsilon safety or defaulting to log(10.0) if priors are complex)
-    kappa_init = jnp.log(priors.beta_kappa_loc)
-    
+    kappa_init = torch.log(torch.tensor(priors.beta_kappa_loc))
+
     kappa_loc = pyro.param(f"{name}_beta_kappa_loc", kappa_init)
-    kappa_scale = pyro.param(f"{name}_beta_kappa_scale", jnp.array(0.1),
-                             constraint=dist.constraints.positive)
+    kappa_scale = pyro.param(f"{name}_beta_kappa_scale", torch.tensor(0.1),
+                             constraint=torch.distributions.constraints.positive)
 
     kappa = pyro.sample(
         f"{name}_beta_kappa",
@@ -115,22 +111,19 @@ def guide(name: str,
     )
 
     # --- 2. Local Latent Variable (Amortized fx_noisy) ---
-    
+
     # Calculate the variational alpha/beta using the input fx_calc
-    # and the sampled variational kappa. 
+    # and the sampled variational kappa.
     alpha = fx_calc * kappa
     beta = (1.0 - fx_calc) * kappa
 
     # Clip for stability (exactly mirroring the model)
-    alpha = jnp.clip(alpha, min=1e-10, max=1e10)
-    beta = jnp.clip(beta, min=1e-10, max=1e10)
+    alpha = torch.clamp(alpha, min=1e-10, max=1e10)
+    beta = torch.clamp(beta, min=1e-10, max=1e10)
 
     # Sample fx_noisy
-    # Note: Because we are mirroring the model's structure exactly, 
-    # the KL divergence contribution from this term will largely cancel,
-    # focusing the optimization on learning 'kappa'.
     fx_noisy = pyro.sample(f"{name}_dist", dist.Beta(alpha, beta))
-    
+
     return fx_noisy
 
 def get_hyperparameters() -> Dict[str, Any]:
@@ -155,12 +148,9 @@ def get_hyperparameters() -> Dict[str, Any]:
     return parameters
 
 
-def get_guesses(name: str,data: GrowthData) -> Dict[str, Any]:
+def get_guesses(name: str, data: GrowthData) -> Dict[str, Any]:
     """
     Get guess values for the model's latent parameters.
-
-    These values are used in `numpyro.handlers.substitute` for testing
-    or initializing inference.
 
     Parameters
     ----------
@@ -172,7 +162,7 @@ def get_guesses(name: str,data: GrowthData) -> Dict[str, Any]:
     dict[str, Any]
         A dictionary mapping sample site names to guess values.
     """
-    
+
     guesses = {}
 
     # Guess the mean of the prior distribution for kappa
@@ -189,6 +179,6 @@ def get_priors() -> ModelPriors:
     Returns
     -------
     ModelPriors
-        A populated Pytree (Flax dataclass) of hyperparameters.
+        A populated dataclass of hyperparameters.
     """
     return ModelPriors(**get_hyperparameters())

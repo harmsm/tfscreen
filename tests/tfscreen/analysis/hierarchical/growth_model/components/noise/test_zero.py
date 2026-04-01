@@ -1,10 +1,8 @@
 import pytest
-import jax.numpy as jnp
-import numpyro
-from numpyro.handlers import trace
-from collections import namedtuple
+import torch
+import pyro
+import pyro.poutine as poutine
 
-# --- Import Module Under Test (MUT) ---
 from tfscreen.analysis.hierarchical.growth_model.components.noise.zero import (
     ModelPriors,
     define_model,
@@ -14,14 +12,11 @@ from tfscreen.analysis.hierarchical.growth_model.components.noise.zero import (
     get_priors
 )
 
-# --- Mock Data Fixture ---
-# (Using a simple tuple as a placeholder since 'data' is not used)
 @pytest.fixture
 def mock_data():
     """Provides a minimal placeholder for the 'data' argument."""
-    return (1, 2) 
+    return (1, 2)
 
-# --- Test Cases ---
 
 def test_get_hyperparameters():
     """Tests that get_hyperparameters returns an empty dict."""
@@ -48,29 +43,26 @@ def test_define_model_pass_through_logic(mock_data):
     """
     name = "test_no_noise"
     priors = get_priors()
-    
-    # Define a test input array
-    fx_calc_in = jnp.array([0.1, 0.5, 0.9])
-    
-    # --- 1. Get the final return value ---
-    fx_calc_out = define_model(name=name, 
-                               fx_calc=fx_calc_in, 
-                               priors=priors)
 
-    # --- 2. Check that input and output are identical ---
-    assert fx_calc_out is fx_calc_in # Should be the exact same object
-    assert jnp.all(fx_calc_out == fx_calc_in)
-    
-    # --- 3. Trace the execution ---
-    model_trace = trace(define_model).get_trace(
-        name=name, 
-        fx_calc=fx_calc_in, 
+    fx_calc_in = torch.tensor([0.1, 0.5, 0.9])
+
+    # Check that input and output are identical
+    fx_calc_out = define_model(name=name, fx_calc=fx_calc_in, priors=priors)
+    assert fx_calc_out is fx_calc_in
+    assert torch.all(fx_calc_out == fx_calc_in)
+
+    # Trace the execution
+    model_trace = poutine.trace(define_model).get_trace(
+        name=name,
+        fx_calc=fx_calc_in,
         priors=priors
     )
-    
-    # --- 4. Check that no sample or deterministic sites were added ---
-    # The trace should be empty
-    assert len(model_trace) == 0
+
+    # No sample or deterministic sites should have been added
+    # (Pyro trace may include _INPUT/_RETURN internal nodes; filter those out)
+    pyro_sites = [v for v in model_trace.nodes.values()
+                  if v["type"] in ("sample", "deterministic", "param")]
+    assert len(pyro_sites) == 0
 
 def test_guide_pass_through_logic(mock_data):
     """
@@ -79,15 +71,9 @@ def test_guide_pass_through_logic(mock_data):
     """
     name = "test_no_noise_guide"
     priors = get_priors()
-    
-    # Define a test input array
-    fx_calc_in = jnp.array([0.1, 0.5, 0.9])
-    
-    # --- 1. Get the final return value ---
-    fx_calc_out = guide(name=name, 
-                        fx_calc=fx_calc_in, 
-                        priors=priors)
 
-    # --- 2. Check that input and output are identical ---
+    fx_calc_in = torch.tensor([0.1, 0.5, 0.9])
+
+    fx_calc_out = guide(name=name, fx_calc=fx_calc_in, priors=priors)
     assert fx_calc_out is fx_calc_in
-    assert jnp.all(fx_calc_out == fx_calc_in)
+    assert torch.all(fx_calc_out == fx_calc_in)
