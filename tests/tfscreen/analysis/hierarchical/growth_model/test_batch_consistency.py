@@ -1,13 +1,43 @@
 import pytest
-import jax.numpy as jnp
+import torch
 import numpy as np
-import numpyro.handlers
-import numpyro.distributions as dist
+import pyro
+import pyro.poutine as poutine
 from tfscreen.analysis.hierarchical.growth_model.data_class import DataClass, GrowthData, BindingData
 from tfscreen.analysis.hierarchical.growth_model.batch import get_batch
 from tfscreen.analysis.hierarchical.growth_model.components.dk_geno import hierarchical as dk_geno_hierarchical
 from tfscreen.analysis.hierarchical.growth_model.components.activity import horseshoe as activity_horseshoe
 from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass
+
+
+def _make_growth_data(batch_size, total_genotypes):
+    return GrowthData(
+        batch_size=batch_size,
+        batch_idx=torch.arange(batch_size, dtype=torch.int64),
+        scale_vector=torch.ones(batch_size),
+        geno_theta_idx=torch.arange(batch_size, dtype=torch.int32),
+        ln_cfu=torch.zeros((1, 1, 1, batch_size)),
+        ln_cfu_std=torch.ones((1, 1, 1, batch_size)),
+        t_pre=torch.zeros((1, 1, 1, batch_size)),
+        t_sel=torch.zeros((1, 1, 1, batch_size)),
+        good_mask=torch.ones((1, 1, 1, batch_size), dtype=torch.bool),
+        congression_mask=torch.ones(batch_size, dtype=torch.bool),
+        num_replicate=1,
+        num_time=1,
+        num_condition_pre=1,
+        num_condition_sel=1,
+        num_titrant_name=1,
+        num_titrant_conc=1,
+        num_genotype=total_genotypes,
+        num_condition_rep=1,
+        map_condition_pre=torch.zeros(batch_size, dtype=torch.int64),
+        map_condition_sel=torch.zeros(batch_size, dtype=torch.int64),
+        titrant_conc=torch.tensor([1.0]),
+        log_titrant_conc=torch.tensor([0.0]),
+        wt_indexes=torch.tensor([0], dtype=torch.int64),
+        scatter_theta=1,
+    )
+
 
 def test_batch_scaling_unbiased():
     """
@@ -16,30 +46,24 @@ def test_batch_scaling_unbiased():
     total_genotypes = 100
     batch_size = 10
     num_binding = 5
-    
-    # Calculate expected scale factors
-    # num_not_binding = 100 - 5 = 95
-    # not_binding_batch_size = 10 - 5 = 5
-    # scale_factor = 95 / 5 = 19.0
-    expected_scale = 19.0
-    
-    # Create scale vector as it would be in ModelClass.data
-    full_scale_vector = jnp.ones(total_genotypes)
-    not_binding_idx = jnp.arange(num_binding, total_genotypes)
-    full_scale_vector = full_scale_vector.at[not_binding_idx].set(expected_scale)
-    
-    # Mock data objects
+
+    expected_scale = 19.0  # (100-5) / (10-5)
+
+    full_scale_vector = torch.ones(total_genotypes)
+    not_binding_idx = torch.arange(num_binding, total_genotypes, dtype=torch.int64)
+    full_scale_vector[not_binding_idx] = expected_scale
+
     growth = GrowthData(
         batch_size=total_genotypes,
-        batch_idx=jnp.arange(total_genotypes),
+        batch_idx=torch.arange(total_genotypes, dtype=torch.int64),
         scale_vector=full_scale_vector,
-        geno_theta_idx=jnp.arange(total_genotypes),
-        ln_cfu=jnp.zeros((1, 1, 1, total_genotypes)),
-        ln_cfu_std=jnp.ones((1, 1, 1, total_genotypes)),
-        t_pre=jnp.zeros((1, 1, 1, total_genotypes)),
-        t_sel=jnp.zeros((1, 1, 1, total_genotypes)),
-        good_mask=jnp.ones((1, 1, 1, total_genotypes), dtype=bool),
-        congression_mask=jnp.ones(total_genotypes, dtype=bool),
+        geno_theta_idx=torch.arange(total_genotypes, dtype=torch.int32),
+        ln_cfu=torch.zeros((1, 1, 1, total_genotypes)),
+        ln_cfu_std=torch.ones((1, 1, 1, total_genotypes)),
+        t_pre=torch.zeros((1, 1, 1, total_genotypes)),
+        t_sel=torch.zeros((1, 1, 1, total_genotypes)),
+        good_mask=torch.ones((1, 1, 1, total_genotypes), dtype=torch.bool),
+        congression_mask=torch.ones(total_genotypes, dtype=torch.bool),
         num_replicate=1,
         num_time=1,
         num_condition_pre=1,
@@ -48,34 +72,31 @@ def test_batch_scaling_unbiased():
         num_titrant_conc=1,
         num_genotype=total_genotypes,
         num_condition_rep=1,
-        map_condition_pre=jnp.array([0]),
-        map_condition_sel=jnp.array([0]),
-        titrant_conc=jnp.array([1.0]),
-        log_titrant_conc=jnp.array([0.0]),
-        wt_indexes=jnp.array([0]),
-        scatter_theta=1
+        map_condition_pre=torch.zeros(total_genotypes, dtype=torch.int64),
+        map_condition_sel=torch.zeros(total_genotypes, dtype=torch.int64),
+        titrant_conc=torch.tensor([1.0]),
+        log_titrant_conc=torch.tensor([0.0]),
+        wt_indexes=torch.tensor([0], dtype=torch.int64),
+        scatter_theta=1,
     )
-    
+
     full_data = DataClass(
         num_genotype=total_genotypes,
-        batch_idx=jnp.arange(total_genotypes),
+        batch_idx=torch.arange(total_genotypes, dtype=torch.int64),
         batch_size=total_genotypes,
         not_binding_idx=not_binding_idx,
         not_binding_batch_size=95,
         num_binding=num_binding,
         growth=growth,
-        binding=None
+        binding=None,
     )
-    
-    # Get a batch
-    batch_idx = jnp.array([0, 1, 2, 3, 4, 5, 20, 50, 80, 99])
+
+    batch_idx = torch.tensor([0, 1, 2, 3, 4, 5, 20, 50, 80, 99], dtype=torch.int64)
     batch_data = get_batch(full_data, batch_idx)
-    
-    # Verify scale_vector
-    # First 5 are binding (idx 0-4) -> scale 1.0
-    assert jnp.all(batch_data.growth.scale_vector[:5] == 1.0)
-    # Remaining are non-binding -> scale 19.0
-    assert jnp.all(batch_data.growth.scale_vector[5:] == expected_scale)
+
+    assert torch.all(batch_data.growth.scale_vector[:5] == 1.0)
+    assert torch.all(batch_data.growth.scale_vector[5:] == expected_scale)
+
 
 def test_component_shape_guards():
     """
@@ -83,58 +104,35 @@ def test_component_shape_guards():
     """
     total_genotypes = 100
     batch_size = 10
-    batch_idx = jnp.arange(batch_size)
-    
-    growth = GrowthData(
-        batch_size=batch_size,
-        batch_idx=batch_idx,
-        scale_vector=jnp.ones(batch_size),
-        geno_theta_idx=jnp.arange(batch_size),
-        ln_cfu=jnp.zeros((1, 1, 1, batch_size)),
-        ln_cfu_std=jnp.ones((1, 1, 1, batch_size)),
-        t_pre=jnp.zeros((1, 1, 1, batch_size)),
-        t_sel=jnp.zeros((1, 1, 1, batch_size)),
-        good_mask=jnp.ones((1, 1, 1, batch_size), dtype=bool),
-        congression_mask=jnp.ones(batch_size, dtype=bool),
-        num_replicate=1,
-        num_time=1,
-        num_condition_pre=1,
-        num_condition_sel=1,
-        num_titrant_name=1,
-        num_titrant_conc=1,
-        num_genotype=total_genotypes,
-        num_condition_rep=1,
-        map_condition_pre=jnp.array([0]),
-        map_condition_sel=jnp.array([0]),
-        titrant_conc=jnp.array([1.0]),
-        log_titrant_conc=jnp.array([0.0]),
-        wt_indexes=jnp.array([0]),
-        scatter_theta=1
-    )
-    
+
+    growth = _make_growth_data(batch_size, total_genotypes)
+
     priors = dk_geno_hierarchical.get_priors()
-    
+
     # Create full-sized substitution values (100 genotypes)
     substitutions = {
-        "dk_geno_offset": jnp.zeros(total_genotypes)
+        "dk_geno_offset": torch.zeros(total_genotypes),
     }
-    
-    # This should NOT raise a broadcasting error because of the shape guard
-    with numpyro.handlers.seed(rng_seed=0):
-        with numpyro.handlers.substitute(substitute_fn=lambda site: substitutions.get(site["name"])):
-            dk_geno_hierarchical.guide("dk_geno", growth, priors)
+
+    # Use poutine.do to substitute latent values (equivalent to numpyro substitute)
+    pyro.clear_param_store()
+    torch.manual_seed(0)
+    with poutine.do(data=substitutions):
+        dk_geno_hierarchical.guide("dk_geno", growth, priors)
 
     # Test activity_horseshoe
     priors_hs = activity_horseshoe.get_priors()
     substitutions_hs = {
-        "activity_global_scale": 0.1,
-        "activity_local_scale": jnp.ones(total_genotypes),
-        "activity_offset": jnp.zeros(total_genotypes)
+        "activity_global_scale": torch.tensor(0.1),
+        "activity_local_scale": torch.ones(total_genotypes),
+        "activity_offset": torch.zeros(total_genotypes),
     }
-    
-    with numpyro.handlers.seed(rng_seed=1):
-        with numpyro.handlers.substitute(substitute_fn=lambda site: substitutions_hs.get(site["name"])):
-            activity_horseshoe.guide("activity", growth, priors_hs)
+
+    pyro.clear_param_store()
+    torch.manual_seed(1)
+    with poutine.do(data=substitutions_hs):
+        activity_horseshoe.guide("activity", growth, priors_hs)
+
 
 def test_num_genotype_preserved():
     """
@@ -142,18 +140,18 @@ def test_num_genotype_preserved():
     """
     total_genotypes = 100
     batch_size = 10
-    
+
     growth = GrowthData(
         batch_size=total_genotypes,
-        batch_idx=jnp.arange(total_genotypes),
-        scale_vector=jnp.ones(total_genotypes),
-        geno_theta_idx=jnp.arange(total_genotypes),
-        ln_cfu=jnp.zeros((1, 1, 1, total_genotypes)),
-        ln_cfu_std=jnp.ones((1, 1, 1, total_genotypes)),
-        t_pre=jnp.zeros((1, 1, 1, total_genotypes)),
-        t_sel=jnp.zeros((1, 1, 1, total_genotypes)),
-        good_mask=jnp.ones((1, 1, 1, total_genotypes), dtype=bool),
-        congression_mask=jnp.ones(total_genotypes, dtype=bool),
+        batch_idx=torch.arange(total_genotypes, dtype=torch.int64),
+        scale_vector=torch.ones(total_genotypes),
+        geno_theta_idx=torch.arange(total_genotypes, dtype=torch.int32),
+        ln_cfu=torch.zeros((1, 1, 1, total_genotypes)),
+        ln_cfu_std=torch.ones((1, 1, 1, total_genotypes)),
+        t_pre=torch.zeros((1, 1, 1, total_genotypes)),
+        t_sel=torch.zeros((1, 1, 1, total_genotypes)),
+        good_mask=torch.ones((1, 1, 1, total_genotypes), dtype=torch.bool),
+        congression_mask=torch.ones(total_genotypes, dtype=torch.bool),
         num_replicate=1,
         num_time=1,
         num_condition_pre=1,
@@ -162,28 +160,28 @@ def test_num_genotype_preserved():
         num_titrant_conc=1,
         num_genotype=total_genotypes,
         num_condition_rep=1,
-        map_condition_pre=jnp.array([0]),
-        map_condition_sel=jnp.array([0]),
-        titrant_conc=jnp.array([1.0]),
-        log_titrant_conc=jnp.array([0.0]),
-        wt_indexes=jnp.array([0]),
-        scatter_theta=1
+        map_condition_pre=torch.zeros(total_genotypes, dtype=torch.int64),
+        map_condition_sel=torch.zeros(total_genotypes, dtype=torch.int64),
+        titrant_conc=torch.tensor([1.0]),
+        log_titrant_conc=torch.tensor([0.0]),
+        wt_indexes=torch.tensor([0], dtype=torch.int64),
+        scatter_theta=1,
     )
-    
+
     full_data = DataClass(
         num_genotype=total_genotypes,
-        batch_idx=jnp.arange(total_genotypes),
+        batch_idx=torch.arange(total_genotypes, dtype=torch.int64),
         batch_size=total_genotypes,
-        not_binding_idx=jnp.arange(total_genotypes),
+        not_binding_idx=torch.arange(total_genotypes, dtype=torch.int64),
         not_binding_batch_size=total_genotypes,
         num_binding=0,
         growth=growth,
-        binding=None
+        binding=None,
     )
-    
-    batch_idx = jnp.arange(batch_size)
+
+    batch_idx = torch.arange(batch_size, dtype=torch.int64)
     batch_data = get_batch(full_data, batch_idx)
-    
+
     assert batch_data.growth.batch_size == batch_size
     assert batch_data.growth.num_genotype == total_genotypes
     assert batch_data.num_genotype == total_genotypes

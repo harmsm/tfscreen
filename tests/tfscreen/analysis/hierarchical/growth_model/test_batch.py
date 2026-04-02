@@ -1,64 +1,58 @@
 import pytest
-import jax.numpy as jnp
+import torch
 import numpy as np
-from collections import namedtuple
+from dataclasses import dataclass, field
+from typing import Optional
 
 # --- Import Module Under Test (MUT) ---
 from tfscreen.analysis.hierarchical.growth_model.batch import get_batch
 
 # --- Mock Data Structures ---
+# Must be proper stdlib dataclasses so dataclasses.replace() works inside get_batch.
 
-# We need to simulate the nested DataClass structure: DataClass -> GrowthData
-# Using namedtuples to mimic the flax dataclasses behavior (replace method)
-
+@dataclass
 class MockGrowthData:
-    def __init__(self, **kwargs):
-        self.__dict__.update(kwargs)
-    
-    def replace(self, **updates):
-        # Create a new instance with updated fields
-        new_data = MockGrowthData(**self.__dict__)
-        new_data.__dict__.update(updates)
-        return new_data
+    batch_size: int
+    batch_idx: torch.Tensor
+    scale_vector: torch.Tensor
+    ln_cfu: torch.Tensor
+    ln_cfu_std: torch.Tensor
+    t_pre: torch.Tensor
+    t_sel: torch.Tensor
+    map_condition_pre: torch.Tensor
+    map_condition_sel: torch.Tensor
+    good_mask: torch.Tensor
+    congression_mask: torch.Tensor
+    geno_theta_idx: Optional[torch.Tensor] = None
 
+@dataclass
 class MockDataClass:
-    def __init__(self, growth):
-        self.growth = growth
-    
-    def replace(self, **updates):
-        # Only 'growth' is expected to be updated in this context
-        new_growth = updates.get("growth", self.growth)
-        return MockDataClass(growth=new_growth)
+    growth: MockGrowthData
+
 
 @pytest.fixture
 def full_data_setup():
     """
     Creates a 'full' dataset with known values for testing slicing.
-    Dimensions: 
+    Dimensions:
       - Genotypes (Total): 10
       - Other dims (Rep, Time, etc.): 1
     """
     total_size = 10
-    
-    # Create arrays with distinct values for verification
-    # Shape: (1, 1, 1, 1, 1, 1, total_size) for most data tensors
-    # We will use simple 1D arrays for the mock to verify the slicing logic on the *last* dimension,
-    # assuming the real data follows the ellipsis (...) indexing pattern.
-    
-    scale_vector = jnp.arange(total_size, dtype=float)
-    ln_cfu = jnp.arange(total_size, dtype=float) * 10.0
-    ln_cfu_std = jnp.arange(total_size, dtype=float) * 0.1
-    t_pre = jnp.arange(total_size, dtype=float) + 100.0
-    t_sel = jnp.arange(total_size, dtype=float) + 200.0
-    
-    map_condition_pre = jnp.arange(total_size, dtype=int)
-    map_condition_sel = jnp.arange(total_size, dtype=int)
-    good_mask = jnp.ones(total_size, dtype=bool)
-    congression_mask = jnp.ones(total_size, dtype=bool)
-    
-    # Initial batch metadata
-    batch_idx = jnp.arange(total_size, dtype=int)
-    
+
+    scale_vector = torch.arange(total_size, dtype=torch.float64)
+    ln_cfu = torch.arange(total_size, dtype=torch.float64) * 10.0
+    ln_cfu_std = torch.arange(total_size, dtype=torch.float64) * 0.1
+    t_pre = torch.arange(total_size, dtype=torch.float64) + 100.0
+    t_sel = torch.arange(total_size, dtype=torch.float64) + 200.0
+
+    map_condition_pre = torch.arange(total_size, dtype=torch.int64)
+    map_condition_sel = torch.arange(total_size, dtype=torch.int64)
+    good_mask = torch.ones(total_size, dtype=torch.bool)
+    congression_mask = torch.ones(total_size, dtype=torch.bool)
+
+    batch_idx = torch.arange(total_size, dtype=torch.int64)
+
     growth = MockGrowthData(
         batch_size=total_size,
         batch_idx=batch_idx,
@@ -70,45 +64,39 @@ def full_data_setup():
         map_condition_pre=map_condition_pre,
         map_condition_sel=map_condition_sel,
         good_mask=good_mask,
-        congression_mask=congression_mask
+        congression_mask=congression_mask,
+        geno_theta_idx=torch.arange(total_size, dtype=torch.int32),
     )
-    
+
     return MockDataClass(growth=growth)
 
-# --- Test Cases ---
 
 def test_get_batch_slicing(full_data_setup):
     """
     Tests that get_batch correctly slices data based on the index array.
     """
     full_data = full_data_setup
-    
-    # INDICES TO SELECT: [2, 5, 8]
-    indices = jnp.array([2, 5, 8], dtype=int)
-    
-    # Run MUT
+
+    indices = torch.tensor([2, 5, 8], dtype=torch.int64)
+
     batch_data = get_batch(full_data, indices)
-    
-    # --- 1. Check Metadata Updates ---
+
+    # 1. Check Metadata Updates
     assert batch_data.growth.batch_size == 3
-    assert jnp.array_equal(batch_data.growth.batch_idx, indices)
-    
-    # --- 2. Check Data Slicing ---
-    
-    # Scale Vector
+    assert torch.equal(batch_data.growth.batch_idx, indices)
+
+    # 2. Check Data Slicing
     expected_scale = full_data.growth.scale_vector[indices]
-    assert jnp.array_equal(batch_data.growth.scale_vector, expected_scale)
-    
-    # ln_cfu (Values: 20.0, 50.0, 80.0)
-    expected_ln_cfu = jnp.array([20.0, 50.0, 80.0], dtype=float)
-    assert jnp.allclose(batch_data.growth.ln_cfu, expected_ln_cfu)
-    
-    # t_pre (Values: 102.0, 105.0, 108.0)
-    expected_t_pre = jnp.array([102.0, 105.0, 108.0], dtype=float)
-    assert jnp.allclose(batch_data.growth.t_pre, expected_t_pre)
-    
-    # Maps
-    assert jnp.array_equal(batch_data.growth.map_condition_pre, indices) # Mapped 1-to-1 in setup
+    assert torch.equal(batch_data.growth.scale_vector, expected_scale)
+
+    expected_ln_cfu = torch.tensor([20.0, 50.0, 80.0], dtype=torch.float64)
+    assert torch.allclose(batch_data.growth.ln_cfu, expected_ln_cfu)
+
+    expected_t_pre = torch.tensor([102.0, 105.0, 108.0], dtype=torch.float64)
+    assert torch.allclose(batch_data.growth.t_pre, expected_t_pre)
+
+    assert torch.equal(batch_data.growth.map_condition_pre, indices)
+
 
 def test_get_batch_ordering(full_data_setup):
     """
@@ -116,27 +104,28 @@ def test_get_batch_ordering(full_data_setup):
     even if they are not sorted.
     """
     full_data = full_data_setup
-    
-    # INDICES: [8, 0, 5] (Unsorted)
-    indices = jnp.array([8, 0, 5], dtype=int)
-    
+
+    indices = torch.tensor([8, 0, 5], dtype=torch.int64)
+
     batch_data = get_batch(full_data, indices)
-    
-    # Check ln_cfu order: Should be [80.0, 0.0, 50.0]
-    expected_ln_cfu = jnp.array([80.0, 0.0, 50.0], dtype=float)
-    
-    assert jnp.allclose(batch_data.growth.ln_cfu, expected_ln_cfu)
-    assert jnp.array_equal(batch_data.growth.batch_idx, indices)
+
+    expected_ln_cfu = torch.tensor([80.0, 0.0, 50.0], dtype=torch.float64)
+
+    assert torch.allclose(batch_data.growth.ln_cfu, expected_ln_cfu)
+    assert torch.equal(batch_data.growth.batch_idx, indices)
+
 
 def test_get_batch_full_multidimensional_support():
     """
-    Tests get_batch with actual multi-dimensional arrays to ensure the 
+    Tests get_batch with actual multi-dimensional arrays to ensure the
     ellipsis (...) slicing works as intended.
     """
-    # Shape: (2, 2, 5) -> (Rep, Time, Genotype)
-    # We want to slice the last dimension (Genotype)
-    
     data_shape = (2, 2, 5)
-    full_array = jnp.arange(20).reshape(data_shape) # 0..19
-    
-    # indices to select from last dim: [1, 3]
+    full_array = torch.arange(20).reshape(data_shape)
+
+    indices = torch.tensor([1, 3], dtype=torch.int64)
+    expected = full_array[..., indices]
+
+    assert expected.shape == (2, 2, 2)
+    assert torch.equal(expected[:, :, 0], full_array[:, :, 1])
+    assert torch.equal(expected[:, :, 1], full_array[:, :, 3])

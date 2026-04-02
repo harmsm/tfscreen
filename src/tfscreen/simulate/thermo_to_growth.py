@@ -103,7 +103,7 @@ def _assign_dk_geno(unique_genotypes,
                          index=unique_genotypes).str.split("/", expand=True)
     if "wt" in g_lookup.index:
         g_lookup.loc["wt", :] = np.nan
-    single_mutations = g_lookup.stack().unique()
+    single_mutations = g_lookup.stack().dropna().unique()
 
     # Sample a fitness cost for each unique single mutation
     dk_geno_values = scale_param / 2 - gamma.rvs(

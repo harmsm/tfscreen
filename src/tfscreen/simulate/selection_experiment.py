@@ -957,7 +957,7 @@ def _simulate_library_group(
     genotype_vs_kt_pivot = sparse_pivot.reindex(ordered_genotypes, fill_value=0)
     
     # Create a 2D array of (genotype,conditions) holding kt. 
-    genotype_vs_kt = genotype_vs_kt_pivot.to_numpy()
+    genotype_vs_kt = genotype_vs_kt_pivot.to_numpy().copy()
     
     # Add noise to the growth rate
     if growth_rate_noise is not None:

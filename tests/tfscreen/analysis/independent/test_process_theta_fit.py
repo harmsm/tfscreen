@@ -126,7 +126,7 @@ class TestProcessThetaFitHelpers:
         assert "ln_cfu_0" in res.columns
         assert "genotype" in res.columns
         assert "cfu" not in res.columns
-        assert res["replicate"].dtype == object # str
+        assert pd.api.types.is_string_dtype(res["replicate"])  # str (object or StringDtype)
         assert res["titrant_conc"].dtype == float
 
     def test_clean_pred_df(self):

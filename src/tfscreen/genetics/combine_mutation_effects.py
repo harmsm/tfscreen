@@ -68,7 +68,7 @@ def combine_mutation_effects(
         g_lookup.loc["wt", :] = np.nan
 
     # Convert from wide (genotypes) to long (single mutations) format
-    stacked_muts = g_lookup.stack()
+    stacked_muts = g_lookup.stack().dropna()
     if stacked_muts.empty: # Case where only 'wt' or no multi-mutants exist
          return single_mutant_effects.iloc[0:0].reindex(g_lookup.index, fill_value=0)
 
