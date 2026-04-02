@@ -1,12 +1,11 @@
 import pandas as pd
 import numpy as np
 import itertools
+import torch
+import pyro.poutine as poutine
+from pyro.infer import Predictive
 from .model_class import ModelClass
 from tfscreen.analysis.hierarchical.posteriors import load_posteriors, get_posterior_samples
-import jax
-from jax import numpy as jnp
-from numpyro.handlers import seed, trace
-from numpyro.infer import Predictive
 
 def copy_model_class(model_class,
                      t_pre=None,
@@ -186,7 +185,7 @@ def predict(model_class,
         genotype_indices = np.array(genotype_indices)
 
     # Use existing get_batch to subset the data tensors
-    subset_data = new_mc.get_batch(new_mc.data, jnp.array(genotype_indices))
+    subset_data = new_mc.get_batch(new_mc.data, torch.tensor(genotype_indices, dtype=torch.long))
 
     # -------------------------------------------------------------------------
     # Sample selection from posterior
@@ -208,13 +207,12 @@ def predict(model_class,
     
     # Run a trace of the original model to identify plate structure
     # We use the original model class because posteriors match its structure.
-    seeded_model = seed(model_class.jax_model, rng_seed=0)
-    traced_model = trace(seeded_model)
-    model_trace = traced_model.get_trace(data=model_class.data,
-                                         priors=model_class.priors)
+    torch.manual_seed(0)
+    model_trace = poutine.trace(model_class.pyro_model).get_trace(data=model_class.data,
+                                                                   priors=model_class.priors)
 
     sliced_samples = {}
-    for site_name, site in model_trace.items():
+    for site_name, site in model_trace.nodes.items():
         if site["type"] != "sample":
             continue
             
@@ -250,7 +248,7 @@ def predict(model_class,
                         # Map new labels to old indices via list lookup
                         old_list = old_labels.tolist()
                         indices = [old_list.index(l) for l in new_labels.tolist()]
-                        val = jnp.take(val, jnp.array(indices), axis=frame.dim)
+                        val = np.take(np.asarray(val), np.array(indices), axis=frame.dim)
                     except ValueError:
                          raise ValueError(
                             f"Site '{site_name}' is plated on '{plate_name}' "
@@ -262,15 +260,13 @@ def predict(model_class,
     # -------------------------------------------------------------------------
     # Run Prediction
     
-    predictive = Predictive(new_mc.jax_model, 
-                            posterior_samples=sliced_samples, 
+    # Convert sliced_samples (numpy arrays) to torch tensors for Predictive
+    torch_samples = {k: torch.as_tensor(v) for k, v in sliced_samples.items()}
+
+    predictive = Predictive(new_mc.pyro_model,
+                            posterior_samples=torch_samples,
                             return_sites=predict_sites)
-    
-    # We need a key, even if not used for randomness in deterministic sites
-    predict_key = jax.random.PRNGKey(0) 
-    predictions = predictive(predict_key, 
-                             data=subset_data, 
-                             priors=new_mc.priors)
+    predictions = predictive(data=subset_data, priors=new_mc.priors)
     
     # -------------------------------------------------------------------------
     # Calculate Quantiles and Join
@@ -300,7 +296,7 @@ def predict(model_class,
 
     all_dfs = {}
     for site in predict_sites:
-        site_samples = predictions[site] # shape: (num_samples, ...)
+        site_samples = np.asarray(predictions[site].detach().cpu())  # shape: (num_samples, ...)
         df = base_df.copy()
 
         for q_name, q_val in q_to_get.items():
