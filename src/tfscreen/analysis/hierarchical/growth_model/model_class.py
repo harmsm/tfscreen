@@ -9,7 +9,7 @@ from tfscreen.analysis.hierarchical import (
     populate_dataclass
 )
 
-from tfscreen.analysis.hierarchical.growth_model.model import jax_model
+from tfscreen.analysis.hierarchical.growth_model.model import pyro_model
 from tfscreen.analysis.hierarchical.growth_model.registry import model_registry
 from tfscreen.analysis.hierarchical.growth_model.batch import get_batch
 
@@ -22,8 +22,7 @@ from tfscreen.analysis.hierarchical.growth_model.data_class import (
     BindingPriors
 )
 
-import jax
-from jax import numpy as jnp
+import torch
 import pandas as pd
 import numpy as np
 
@@ -34,7 +33,7 @@ import h5py
 from tqdm import tqdm
 
 # Declare float datatype
-FLOAT_DTYPE = jnp.float64 if jax.config.read("jax_enable_x64") else jnp.float32
+FLOAT_DTYPE = torch.float32
 
 # Set zero conc to this when taking log
 ZERO_CONC_VALUE = 1e-20
@@ -513,7 +512,7 @@ class ModelClass:
         # Get wildtype information
         genotype_idx = self.growth_tm.tensor_dim_names.index("genotype")
         wt_loc = np.where(self.growth_tm.tensor_dim_labels[genotype_idx] == "wt")
-        wt_info = {"wt_indexes":jnp.array(wt_loc[0], dtype=jnp.int32)}
+        wt_info = {"wt_indexes": torch.tensor(wt_loc[0], dtype=torch.int32)}
 
          # scatter_theta tells the theta model caller to return a full-sized
         # growth_tm tensor instead of the smaller growth_theta_tm-sized tensor
@@ -548,7 +547,7 @@ class ModelClass:
             mask[spiked_idx] = False
 
         other_data = {"scatter_theta":1,
-                      "congression_mask":jnp.array(mask,dtype=bool)}
+                      "congression_mask": torch.tensor(mask, dtype=torch.bool)}
 
         # Grab the titrant concentration and log_titrant_conc (1D array from 
         # the tensor labels along dimension 6)
@@ -796,8 +795,8 @@ class ModelClass:
         self.main_control_kwargs = main_control_kwargs
 
         # bake the control arguments into the main and guide models
-        self._jax_model = partial(jax_model, **main_control_kwargs)
-        self._jax_model_guide = partial(jax_model, **guide_control_kwargs)
+        self._jax_model = partial(pyro_model, **main_control_kwargs)
+        self._jax_model_guide = partial(pyro_model, **guide_control_kwargs)
                 
         # Build priors class
         growth_priors = populate_dataclass(GrowthPriors,
@@ -819,13 +818,13 @@ class ModelClass:
         return self._init_params
 
     @property
-    def jax_model(self):
-        """The top-level JAX model function."""
+    def pyro_model(self):
+        """The top-level Pyro model function."""
         return self._jax_model
-    
+
     @property
-    def jax_model_guide(self):
-        """Guide for the jax function."""
+    def pyro_model_guide(self):
+        """Guide for the Pyro model function."""
         return self._jax_model_guide
 
     @property
@@ -887,8 +886,8 @@ class ModelClass:
                     self._batch_choose_size,
                     replace=False
                 )
-            return jnp.array(self._batch_idx, dtype=jnp.int32)
-        
+            return torch.tensor(self._batch_idx, dtype=torch.int32)
+
         # Generate a block of batches
         else:
             block_idx = np.zeros((num_batches, len(self._batch_idx)), dtype=int)
@@ -900,8 +899,8 @@ class ModelClass:
                         replace=False
                     )
                 block_idx[i, :] = self._batch_idx
-                
-            return jnp.array(block_idx, dtype=jnp.int32)
+
+            return torch.tensor(block_idx, dtype=torch.int32)
 
     @property
     def data(self):

@@ -1,13 +1,12 @@
-import jax.numpy as jnp
-import numpyro as pyro
-
-import numpyro.distributions as dist
+import torch
+import pyro
+import pyro.distributions as dist
 
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
 
 def observe(name: str,
             data: GrowthData,
-            ln_cfu_pred: jnp.ndarray):
+            ln_cfu_pred: torch.Tensor):
     """
     Defines the observation site for the growth (ln_CFU) data.
 
@@ -53,10 +52,10 @@ def observe(name: str,
                             with pyro.plate("shared_genotype_plate",size=data.batch_size,dim=-1):
 
                                 # Scale data for sub-sampling
-                                with pyro.handlers.scale(scale=data.scale_vector):
+                                with pyro.poutine.scale(scale=data.scale_vector):
 
                                     # Apply mask for good observations
-                                    with pyro.handlers.mask(mask=data.good_mask):
+                                    with pyro.poutine.mask(mask=data.good_mask):
                                         
                                         # Define the observation site
                                         pyro.sample(f"{name}_growth_obs",
@@ -65,7 +64,7 @@ def observe(name: str,
 
 def guide(name: str,
           data: GrowthData,
-          ln_cfu_pred: jnp.ndarray):
+          ln_cfu_pred: torch.Tensor):
     """
     Guide corresponding to the observation function.
 
@@ -80,9 +79,9 @@ def guide(name: str,
     # The prior is Gamma(2.0, 0.1), which has a mean of 20.0.
     # We use a LogNormal guide to ensure positive support.
     # Initialize loc at log(20) ≈ 3.0 to start the optimization near the prior mean.
-    nu_loc = pyro.param(f"{name}_nu_loc", jnp.array(3.0))
-    nu_scale = pyro.param(f"{name}_nu_scale", jnp.array(0.1),
-                          constraint=dist.constraints.positive)
+    nu_loc = pyro.param(f"{name}_nu_loc", torch.tensor(3.0))
+    nu_scale = pyro.param(f"{name}_nu_scale", torch.tensor(0.1),
+                          constraint=torch.distributions.constraints.positive)
 
     nu = pyro.sample(f"{name}_nu", dist.LogNormal(nu_loc, nu_scale))
 

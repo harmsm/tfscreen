@@ -5,12 +5,11 @@ from .data_class import (
     PriorsClass,
 )
 
-import jax
-import jax.numpy as jnp
-import numpyro as pyro
+import torch
+import pyro
 from typing import Dict, Any
 
-def jax_model(data: DataClass,
+def pyro_model(data: DataClass,
               priors: PriorsClass,
               **control):
     """
@@ -80,7 +79,7 @@ def jax_model(data: DataClass,
     # Make prediction for the binding experiment
 
     theta_binding = calc_theta(theta,data.binding)
-    pyro.deterministic(f"theta_binding_pred",theta_binding)
+    pyro.deterministic(f"theta_binding_pred", torch.as_tensor(theta_binding))
     binding_pred = theta_binding_noise_model("theta_binding_noise",
                                              theta_binding,
                                              priors.binding.theta_binding_noise)
@@ -110,7 +109,7 @@ def jax_model(data: DataClass,
 
     # theta
     theta_growth = calc_theta(theta,data.growth)
-    pyro.deterministic(f"theta_growth_pred",theta_growth)
+    pyro.deterministic(f"theta_growth_pred", torch.as_tensor(theta_growth))
     
     # Transformation parameters (lam, mu, sigma)
     trans_params = transformation_model("transformation",
@@ -162,8 +161,8 @@ def jax_model(data: DataClass,
         ln_cfu_pred = ln_cfu0 + total_growth
 
         # Register results
-        pyro.deterministic(f"binding_pred",binding_pred)
-        pyro.deterministic(f"growth_pred",ln_cfu_pred)
+        pyro.deterministic(f"binding_pred", torch.as_tensor(binding_pred))
+        pyro.deterministic(f"growth_pred", torch.as_tensor(ln_cfu_pred))
     
         # Calculate likelihood
         growth_observer("final_binding_obs",data.growth,ln_cfu_pred)

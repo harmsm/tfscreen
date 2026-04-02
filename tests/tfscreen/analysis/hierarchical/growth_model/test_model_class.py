@@ -1,6 +1,5 @@
 import pytest
 import pandas as pd
-import jax.numpy as jnp
 import numpy as np
 import os
 import yaml
@@ -230,7 +229,7 @@ def test_model_class_invalid_component(mocker):
     mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class._read_binding_df")
     mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class._build_binding_tm", return_value=mock_binding_tm)
     mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class.populate_dataclass", return_value=MagicMock())
-    mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class._setup_batching", return_value={"batch_idx": jnp.array([0]), "batch_size": 1, "scale_vector": jnp.array([1.0]), "num_binding": 0})
+    mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class._setup_batching", return_value={"batch_idx": np.array([0]), "batch_size": 1, "scale_vector": np.array([1.0]), "num_binding": 0})
     
     # 741: dk_geno unrecognized
     with pytest.raises(ValueError, match="not recognized"):
@@ -255,7 +254,7 @@ def test_initialize_data_spiked(mocker):
     mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class._read_binding_df")
     mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class._build_binding_tm", return_value=mock_binding_tm)
     mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class.populate_dataclass", return_value=MagicMock())
-    mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class._setup_batching", return_value={"batch_idx": jnp.array([0,1]), "batch_size": 2, "scale_vector": jnp.array([1.0, 1.0]), "num_binding": 0})
+    mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class._setup_batching", return_value={"batch_idx": np.array([0,1]), "batch_size": 2, "scale_vector": np.array([1.0, 1.0]), "num_binding": 0})
     mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class.ModelClass._initialize_classes")
 
     model = ModelClass("g.csv", "b.csv", spiked_genotypes=["m1"])
@@ -274,7 +273,7 @@ def test_initialize_classes_logic(mocker):
     mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class._build_growth_tm", return_value=mock_growth_tm)
     mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class._read_binding_df")
     mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class._build_binding_tm", return_value=mock_binding_tm)
-    mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class._setup_batching", return_value={"batch_idx": jnp.array([0]), "batch_size": 1, "scale_vector": jnp.array([1.0]), "num_binding": 0})
+    mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class._setup_batching", return_value={"batch_idx": np.array([0]), "batch_size": 1, "scale_vector": np.array([1.0]), "num_binding": 0})
     mocker.patch("tfscreen.analysis.hierarchical.growth_model.model_class.populate_dataclass", return_value=MagicMock())
 
     with patch.dict("tfscreen.analysis.hierarchical.growth_model.model_class.model_registry", {
@@ -303,6 +302,7 @@ def test_model_class_properties(initialized_model_class):
     model = initialized_model_class
     model._jax_model = "jm"
     model._jax_model_guide = "jmg"
+
     model._data = "d"
     model._priors = "p"
     model._init_params = "ip"
@@ -319,8 +319,8 @@ def test_model_class_properties(initialized_model_class):
     model._spiked_genotypes = ["s"]
     model._growth_shares_replicates = False
     
-    assert ModelClass.jax_model.fget(model) == "jm"
-    assert ModelClass.jax_model_guide.fget(model) == "jmg"
+    assert ModelClass.pyro_model.fget(model) == "jm"
+    assert ModelClass.pyro_model_guide.fget(model) == "jmg"
     assert ModelClass.data.fget(model) == "d"
     assert ModelClass.priors.fget(model) == "p"
     assert ModelClass.init_params.fget(model) == "ip"
@@ -498,9 +498,9 @@ def test_get_random_idx_logic(initialized_model_class):
     model.data = MagicMock()
     model.data.num_genotype = 10
     model.data.num_binding = 1
-    model.data.batch_idx = jnp.arange(10)
+    model.data.batch_idx = np.arange(10)
     model.data.growth.batch_idx = model.data.batch_idx
-    model.data.not_binding_idx = jnp.arange(1, 10)
+    model.data.not_binding_idx = np.arange(1, 10)
     model.data.not_binding_batch_size = 9
     model._batch_size = 2 # At least num_binding
     

@@ -1,14 +1,12 @@
-import numpyro as pyro
-import numpyro.distributions as dist
+import torch
+import pyro
+import pyro.distributions as dist
 
-from jax import numpy as jnp
-
-# Assuming data_class is in a relative path
 from tfscreen.analysis.hierarchical.growth_model.data_class import BindingData
 
 def observe(name: str,
             data: BindingData,
-            binding_pred: jnp.ndarray):
+            binding_pred: torch.Tensor):
     """
     Defines the observation site for the binding data.
 
@@ -44,10 +42,10 @@ def observe(name: str,
             with pyro.plate(f"{name}_binding_genotype_plate",size=data.batch_size,dim=-1):
                 
                 # Scale data for sub-sampling
-                with pyro.handlers.scale(scale=data.scale_vector):
+                with pyro.poutine.scale(scale=data.scale_vector):
 
                     # Apply mask for good observations
-                    with pyro.handlers.mask(mask=data.good_mask):
+                    with pyro.poutine.mask(mask=data.good_mask):
                         
                         # Define the observation site
                         pyro.sample(f"{name}_binding_obs",
@@ -56,7 +54,7 @@ def observe(name: str,
                         
 def guide(name: str,
           data: BindingData,
-          binding_pred: jnp.ndarray):
+          binding_pred: torch.Tensor):
     """
     Guide corresponding to the observation function.
 

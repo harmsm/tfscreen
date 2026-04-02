@@ -2,7 +2,7 @@ import os
 import yaml
 import pandas as pd
 import numpy as np
-import jax.numpy as jnp
+import torch
 import dataclasses
 import warnings
 import tfscreen
@@ -260,7 +260,7 @@ def read_configuration(config_file):
                 orig_val = gm.init_params[param_name]
                 if hasattr(orig_val, 'shape') and orig_val.shape != ():
                     orig_shape = orig_val.shape
-                    init_params[param_name] = jnp.array(val_array.reshape(orig_shape))
+                    init_params[param_name] = torch.tensor(val_array.reshape(orig_shape), dtype=torch.float32)
                 else:
                     init_params[param_name] = float(val_array[0])
         else:
