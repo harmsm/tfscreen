@@ -1,8 +1,8 @@
 import pytest
 import numpy as np
-import jax.numpy as jnp
-import numpyro.distributions as dist
-from numpyro.handlers import trace, substitute, seed
+import torch
+import pyro
+import pyro.poutine as poutine
 from collections import namedtuple
 
 from tfscreen.analysis.hierarchical.growth_model.components.theta.hill_mut import (
@@ -51,8 +51,8 @@ def mock_data_epi():
         num_titrant_name=2,
         num_titrant_conc=3,
         num_genotype=4,
-        log_titrant_conc=jnp.linspace(-5, 5, 3),
-        geno_theta_idx=jnp.arange(4, dtype=jnp.int32),
+        log_titrant_conc=torch.linspace(-5, 5, 3),
+        geno_theta_idx=torch.arange(4, dtype=torch.int32),
         scatter_theta=1,
         num_mutation=2,
         num_pair=1,
@@ -68,8 +68,8 @@ def mock_data_no_epi():
         num_titrant_name=2,
         num_titrant_conc=3,
         num_genotype=4,
-        log_titrant_conc=jnp.linspace(-5, 5, 3),
-        geno_theta_idx=jnp.arange(4, dtype=jnp.int32),
+        log_titrant_conc=torch.linspace(-5, 5, 3),
+        geno_theta_idx=torch.arange(4, dtype=torch.int32),
         scatter_theta=1,
         num_mutation=2,
         num_pair=0,
@@ -86,29 +86,29 @@ class TestAssemble:
 
     def test_no_epistasis(self):
         T, M, G = 2, 2, 4
-        wt = jnp.array([1.0, 2.0])
-        d_offsets = jnp.ones((T, M))
-        sigma_d = jnp.array([0.5, 1.0])
-        M_mat = jnp.array(_MUT_GENO)
+        wt = torch.tensor([1.0, 2.0])
+        d_offsets = torch.ones((T, M))
+        sigma_d = torch.tensor([0.5, 1.0])
+        M_mat = torch.tensor(_MUT_GENO)
 
         result = _assemble(wt, d_offsets, sigma_d, M_mat)
         # d = [[0.5, 0.5], [1.0, 1.0]]
         # d @ M = [[0,0.5,0.5,1.0], [0,1.0,1.0,2.0]]
         # wt[:, None] = [[1.0], [2.0]]
         # result = [[1.0, 1.5, 1.5, 2.0], [2.0, 3.0, 3.0, 4.0]]
-        expected = jnp.array([[1.0, 1.5, 1.5, 2.0],
-                               [2.0, 3.0, 3.0, 4.0]])
-        assert jnp.allclose(result, expected)
+        expected = torch.tensor([[1.0, 1.5, 1.5, 2.0],
+                                  [2.0, 3.0, 3.0, 4.0]])
+        assert torch.allclose(result, expected)
 
     def test_with_epistasis(self):
         T, M, G, P = 1, 2, 4, 1
-        wt = jnp.array([0.0])
-        d_offsets = jnp.zeros((T, M))
-        sigma_d = jnp.array([1.0])
-        M_mat = jnp.array(_MUT_GENO)
-        epi_offsets = jnp.array([[3.0]])   # shape (T=1, P=1)
-        sigma_epi = jnp.array([1.0])
-        P_mat = jnp.array(_PAIR_GENO)
+        wt = torch.tensor([0.0])
+        d_offsets = torch.zeros((T, M))
+        sigma_d = torch.tensor([1.0])
+        M_mat = torch.tensor(_MUT_GENO)
+        epi_offsets = torch.tensor([[3.0]])   # shape (T=1, P=1)
+        sigma_epi = torch.tensor([1.0])
+        P_mat = torch.tensor(_PAIR_GENO)
 
         result = _assemble(wt, d_offsets, sigma_d, M_mat,
                            epi_offsets, sigma_epi, P_mat)
@@ -166,14 +166,14 @@ class TestDefineModelNoEpi:
     def test_output_is_theta_param(self, mock_data_no_epi):
         priors = get_priors()
         guesses = get_guesses("theta", mock_data_no_epi)
-        tp = substitute(define_model, data=guesses)(
+        tp = poutine.condition(define_model, data=guesses)(
             name="theta", data=mock_data_no_epi, priors=priors)
         assert isinstance(tp, ThetaParam)
 
     def test_theta_low_shape(self, mock_data_no_epi):
         priors = get_priors()
         guesses = get_guesses("theta", mock_data_no_epi)
-        tp = substitute(define_model, data=guesses)(
+        tp = poutine.condition(define_model, data=guesses)(
             name="theta", data=mock_data_no_epi, priors=priors)
         T, G = mock_data_no_epi.num_titrant_name, mock_data_no_epi.num_genotype
         assert tp.theta_low.shape == (T, G)
@@ -184,24 +184,24 @@ class TestDefineModelNoEpi:
     def test_population_moments_shape(self, mock_data_no_epi):
         priors = get_priors()
         guesses = get_guesses("theta", mock_data_no_epi)
-        tp = substitute(define_model, data=guesses)(
+        tp = poutine.condition(define_model, data=guesses)(
             name="theta", data=mock_data_no_epi, priors=priors)
         T, C = mock_data_no_epi.num_titrant_name, mock_data_no_epi.num_titrant_conc
         assert tp.mu.shape == (T, C, 1)
         assert tp.sigma.shape == (T, C, 1)
         # sigma >= 0 always; it is 0 when all genotypes are identical (zero offsets)
-        assert jnp.all(tp.sigma >= 0)
+        assert torch.all(tp.sigma >= 0)
 
     def test_wt_column_equals_wt_param_when_deltas_zero(self, mock_data_no_epi):
         """With zero offsets, all genotypes should have the same theta_low = f(wt param)."""
         priors = get_priors()
         guesses = get_guesses("theta", mock_data_no_epi)
-        tp = substitute(define_model, data=guesses)(
+        tp = poutine.condition(define_model, data=guesses)(
             name="theta", data=mock_data_no_epi, priors=priors)
         # With zero offsets, d_logit_low = 0, so every genotype column == wt value
         wt_val = tp.theta_low[:, 0]   # WT column
         for g in range(mock_data_no_epi.num_genotype):
-            assert jnp.allclose(tp.theta_low[:, g], wt_val, atol=1e-5)
+            assert torch.allclose(tp.theta_low[:, g], wt_val, atol=1e-5)
 
     def test_assembly_with_nonzero_deltas(self, mock_data_no_epi):
         """Verify matrix-multiply assembly produces correct per-genotype values."""
@@ -212,38 +212,38 @@ class TestDefineModelNoEpi:
         guesses = get_guesses(name, mock_data_no_epi)
 
         # Fix sigma=1 and set known offsets: d = [[1.0, -0.5], [0.5, -1.0]]
-        guesses[f"{name}_sigma_d_logit_low"] = jnp.ones(T)
-        guesses[f"{name}_d_logit_low_offset"] = jnp.array([[1.0, -0.5],
-                                                             [0.5, -1.0]])
-        guesses[f"{name}_logit_low_wt"] = jnp.zeros(T)
+        guesses[f"{name}_sigma_d_logit_low"] = torch.ones(T)
+        guesses[f"{name}_d_logit_low_offset"] = torch.tensor([[1.0, -0.5],
+                                                               [0.5, -1.0]])
+        guesses[f"{name}_logit_low_wt"] = torch.zeros(T)
 
-        tp = substitute(define_model, data=guesses)(
+        tp = poutine.condition(define_model, data=guesses)(
             name=name, data=mock_data_no_epi, priors=priors)
 
-        M_mat = jnp.array(_MUT_GENO)
+        M_mat = torch.tensor(_MUT_GENO)
         d = guesses[f"{name}_d_logit_low_offset"]
         expected_logit_low = d @ M_mat    # [T, G] (wt=0 so just d@M)
-        expected_theta_low = dist.transforms.SigmoidTransform()(expected_logit_low)
-        assert jnp.allclose(tp.theta_low, expected_theta_low, atol=1e-5)
+        expected_theta_low = torch.sigmoid(expected_logit_low)
+        assert torch.allclose(tp.theta_low, expected_theta_low, atol=1e-5)
 
     def test_theta_values_in_valid_range(self, mock_data_no_epi):
         priors = get_priors()
         guesses = get_guesses("theta", mock_data_no_epi)
-        tp = substitute(define_model, data=guesses)(
+        tp = poutine.condition(define_model, data=guesses)(
             name="theta", data=mock_data_no_epi, priors=priors)
         # Both theta_low and theta_high must be probabilities in [0, 1].
         # Note: the repressor convention allows theta_low > theta_high
         # (logit_delta_wt is negative by default), so no ordering assertion here.
-        assert jnp.all(tp.theta_low >= 0) and jnp.all(tp.theta_low <= 1)
-        assert jnp.all(tp.theta_high >= 0) and jnp.all(tp.theta_high <= 1)
+        assert torch.all(tp.theta_low >= 0) and torch.all(tp.theta_low <= 1)
+        assert torch.all(tp.theta_high >= 0) and torch.all(tp.theta_high <= 1)
 
     def test_sample_sites_in_trace(self, mock_data_no_epi):
         priors = get_priors()
         guesses = get_guesses("theta", mock_data_no_epi)
-        model = substitute(define_model, data=guesses)
-        tr = trace(model).get_trace(
+        model = poutine.condition(define_model, data=guesses)
+        tr = poutine.trace(model).get_trace(
             name="theta", data=mock_data_no_epi, priors=priors)
-        sample_names = {k for k, v in tr.items() if v["type"] == "sample"}
+        sample_names = {k for k, v in tr.nodes.items() if v["type"] == "sample"}
         assert "theta_logit_low_wt" in sample_names
         assert "theta_d_logit_low_offset" in sample_names
         # No epistasis sites expected
@@ -259,7 +259,7 @@ class TestDefineModelWithEpi:
     def test_output_shapes(self, mock_data_epi):
         priors = get_priors()
         guesses = get_guesses("theta", mock_data_epi)
-        tp = substitute(define_model, data=guesses)(
+        tp = poutine.condition(define_model, data=guesses)(
             name="theta", data=mock_data_epi, priors=priors)
         T, G = mock_data_epi.num_titrant_name, mock_data_epi.num_genotype
         assert tp.theta_low.shape == (T, G)
@@ -271,28 +271,28 @@ class TestDefineModelWithEpi:
         priors = get_priors()
         guesses = get_guesses(name, mock_data_epi)
 
-        guesses[f"{name}_logit_low_wt"] = jnp.zeros(T)
-        guesses[f"{name}_sigma_d_logit_low"] = jnp.ones(T)
-        guesses[f"{name}_d_logit_low_offset"] = jnp.zeros((T, 2))
-        guesses[f"{name}_sigma_epi_logit_low"] = jnp.ones(T)
-        guesses[f"{name}_epi_logit_low_offset"] = jnp.ones((T, 1))
+        guesses[f"{name}_logit_low_wt"] = torch.zeros(T)
+        guesses[f"{name}_sigma_d_logit_low"] = torch.ones(T)
+        guesses[f"{name}_d_logit_low_offset"] = torch.zeros((T, 2))
+        guesses[f"{name}_sigma_epi_logit_low"] = torch.ones(T)
+        guesses[f"{name}_epi_logit_low_offset"] = torch.ones((T, 1))
 
-        tp = substitute(define_model, data=guesses)(
+        tp = poutine.condition(define_model, data=guesses)(
             name=name, data=mock_data_epi, priors=priors)
 
-        logit_low = dist.transforms.SigmoidTransform().inv(tp.theta_low)
+        logit_low = torch.logit(tp.theta_low)
         # wt(0), M42I(1), K84L(2) → logit_low should be 0
-        assert jnp.allclose(logit_low[:, :3], 0.0, atol=1e-5)
+        assert torch.allclose(logit_low[:, :3], torch.tensor(0.0), atol=1e-5)
         # M42I/K84L(3) → logit_low should be epi * sigma_epi = 1.0
-        assert jnp.allclose(logit_low[:, 3], 1.0, atol=1e-5)
+        assert torch.allclose(logit_low[:, 3], torch.tensor(1.0), atol=1e-5)
 
     def test_epistasis_sample_sites_present(self, mock_data_epi):
         priors = get_priors()
         guesses = get_guesses("theta", mock_data_epi)
-        model = substitute(define_model, data=guesses)
-        tr = trace(model).get_trace(
+        model = poutine.condition(define_model, data=guesses)
+        tr = poutine.trace(model).get_trace(
             name="theta", data=mock_data_epi, priors=priors)
-        sample_names = {k for k, v in tr.items() if v["type"] == "sample"}
+        sample_names = {k for k, v in tr.nodes.items() if v["type"] == "sample"}
         assert "theta_epi_logit_low_offset" in sample_names
         assert "theta_sigma_epi_logit_low" in sample_names
 
@@ -308,12 +308,12 @@ class TestRunModel:
         T, G = mock_data_no_epi.num_titrant_name, mock_data_no_epi.num_genotype
         C = mock_data_no_epi.num_titrant_conc
         return ThetaParam(
-            theta_low=jnp.zeros((T, G)),
-            theta_high=jnp.ones((T, G)),
-            log_hill_K=jnp.zeros((T, G)),
-            hill_n=jnp.ones((T, G)),
-            mu=jnp.zeros((T, C, 1)),
-            sigma=jnp.ones((T, C, 1)),
+            theta_low=torch.zeros((T, G)),
+            theta_high=torch.ones((T, G)),
+            log_hill_K=torch.zeros((T, G)),
+            hill_n=torch.ones((T, G)),
+            mu=torch.zeros((T, C, 1)),
+            sigma=torch.ones((T, C, 1)),
         )
 
     def test_scatter_theta_1_shape(self, theta_param, mock_data_no_epi):
@@ -337,20 +337,20 @@ class TestRunModel:
         T, G = mock_data_no_epi.num_titrant_name, mock_data_no_epi.num_genotype
         # three concentrations: -10, 0.0, +10  → occupancy ~ 0, 0.5, 1
         data = mock_data_no_epi._replace(
-            log_titrant_conc=jnp.array([-10.0, 0.0, 10.0]),
+            log_titrant_conc=torch.tensor([-10.0, 0.0, 10.0]),
             scatter_theta=0)
         tp = ThetaParam(
-            theta_low=jnp.zeros((T, G)),
-            theta_high=jnp.ones((T, G)),
-            log_hill_K=jnp.zeros((T, G)),
-            hill_n=jnp.ones((T, G)),
-            mu=jnp.zeros((T, 3, 1)),
-            sigma=jnp.ones((T, 3, 1)),
+            theta_low=torch.zeros((T, G)),
+            theta_high=torch.ones((T, G)),
+            log_hill_K=torch.zeros((T, G)),
+            hill_n=torch.ones((T, G)),
+            mu=torch.zeros((T, 3, 1)),
+            sigma=torch.ones((T, 3, 1)),
         )
         result = run_model(tp, data)
-        assert jnp.allclose(result[:, 0, :], 0.0, atol=1e-3)
-        assert jnp.allclose(result[:, 1, :], 0.5, atol=1e-5)
-        assert jnp.allclose(result[:, 2, :], 1.0, atol=1e-3)
+        assert torch.allclose(result[:, 0, :], torch.tensor(0.0), atol=1e-3)
+        assert torch.allclose(result[:, 1, :], torch.tensor(0.5), atol=1e-5)
+        assert torch.allclose(result[:, 2, :], torch.tensor(1.0), atol=1e-3)
 
 
 # ---------------------------------------------------------------------------
@@ -360,15 +360,17 @@ class TestRunModel:
 class TestGuide:
 
     def test_guide_no_epi_returns_theta_param(self, mock_data_no_epi):
+        pyro.clear_param_store()
         priors = get_priors()
-        with seed(rng_seed=0):
-            tp = guide(name="theta", data=mock_data_no_epi, priors=priors)
+        torch.manual_seed(0)
+        tp = guide(name="theta", data=mock_data_no_epi, priors=priors)
         assert isinstance(tp, ThetaParam)
 
     def test_guide_no_epi_shapes(self, mock_data_no_epi):
+        pyro.clear_param_store()
         priors = get_priors()
-        with seed(rng_seed=0):
-            tp = guide(name="theta", data=mock_data_no_epi, priors=priors)
+        torch.manual_seed(0)
+        tp = guide(name="theta", data=mock_data_no_epi, priors=priors)
         T = mock_data_no_epi.num_titrant_name
         G = mock_data_no_epi.num_genotype
         C = mock_data_no_epi.num_titrant_conc
@@ -376,26 +378,29 @@ class TestGuide:
         assert tp.mu.shape == (T, C, 1)
 
     def test_guide_with_epi_runs(self, mock_data_epi):
+        pyro.clear_param_store()
         priors = get_priors()
-        with seed(rng_seed=1):
-            tp = guide(name="theta", data=mock_data_epi, priors=priors)
+        torch.manual_seed(1)
+        tp = guide(name="theta", data=mock_data_epi, priors=priors)
         T, G = mock_data_epi.num_titrant_name, mock_data_epi.num_genotype
         assert tp.theta_low.shape == (T, G)
 
     def test_guide_no_epi_no_epistasis_sample_sites(self, mock_data_no_epi):
+        pyro.clear_param_store()
         priors = get_priors()
-        with seed(rng_seed=0):
-            tr = trace(guide).get_trace(
-                name="theta", data=mock_data_no_epi, priors=priors)
-        sample_names = {k for k, v in tr.items() if v["type"] == "sample"}
+        torch.manual_seed(0)
+        tr = poutine.trace(guide).get_trace(
+            name="theta", data=mock_data_no_epi, priors=priors)
+        sample_names = {k for k, v in tr.nodes.items() if v["type"] == "sample"}
         assert not any("epi" in k for k in sample_names)
 
     def test_guide_values_in_valid_range(self, mock_data_no_epi):
+        pyro.clear_param_store()
         priors = get_priors()
-        with seed(rng_seed=42):
-            tp = guide(name="theta", data=mock_data_no_epi, priors=priors)
-        assert jnp.all(tp.theta_low >= 0) and jnp.all(tp.theta_low <= 1)
-        assert jnp.all(tp.theta_high >= 0) and jnp.all(tp.theta_high <= 1)
+        torch.manual_seed(42)
+        tp = guide(name="theta", data=mock_data_no_epi, priors=priors)
+        assert torch.all(tp.theta_low >= 0) and torch.all(tp.theta_low <= 1)
+        assert torch.all(tp.theta_high >= 0) and torch.all(tp.theta_high <= 1)
 
 
 # ---------------------------------------------------------------------------
@@ -406,12 +411,12 @@ def test_get_population_moments_shape(mock_data_no_epi):
     priors = get_priors()
     guesses = get_guesses("theta", mock_data_no_epi)
     # Use non-zero offsets so genotypes differ and sigma > 0
-    guesses["theta_d_logit_low_offset"] = jnp.array([[1.0, -0.5],
-                                                       [0.5, -1.0]])
-    tp = substitute(define_model, data=guesses)(
+    guesses["theta_d_logit_low_offset"] = torch.tensor([[1.0, -0.5],
+                                                         [0.5, -1.0]])
+    tp = poutine.condition(define_model, data=guesses)(
         name="theta", data=mock_data_no_epi, priors=priors)
     mu, sigma = get_population_moments(tp, mock_data_no_epi)
     T, C = mock_data_no_epi.num_titrant_name, mock_data_no_epi.num_titrant_conc
     assert mu.shape == (T, C, 1)
     assert sigma.shape == (T, C, 1)
-    assert jnp.all(sigma > 0)
+    assert torch.all(sigma > 0)

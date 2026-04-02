@@ -1,7 +1,7 @@
 import pytest
-import jax.numpy as jnp
-import numpyro.distributions as dist
-from numpyro.handlers import trace, substitute, seed
+import torch
+import pyro
+import pyro.poutine as poutine
 from collections import namedtuple
 
 # --- Import Module Under Test (MUT) ---
@@ -38,14 +38,14 @@ def mock_data():
     num_titrant_name = 2
     num_titrant_conc = 3
     num_genotype = 3
-    
+
     batch_size = 3
-    batch_idx = jnp.arange(batch_size, dtype=jnp.int32)
-    scale_vector = jnp.ones(batch_size, dtype=float)
-    
-    log_titrant_conc = jnp.linspace(-5, 5, num_titrant_conc)
-    geno_theta_idx = jnp.arange(num_genotype, dtype=jnp.int32)
-    
+    batch_idx = torch.arange(batch_size, dtype=torch.int32)
+    scale_vector = torch.ones(batch_size)
+
+    log_titrant_conc = torch.linspace(-5, 5, num_titrant_conc)
+    geno_theta_idx = torch.arange(num_genotype, dtype=torch.int32)
+
     return MockDataClass(
         num_titrant_name=num_titrant_name,
         num_titrant_conc=num_titrant_conc,
@@ -65,15 +65,15 @@ def theta_param_setup(mock_data):
     """
     name = "test_hill"
     priors = get_priors()
-    
+
     base_guesses = get_guesses(name, mock_data)
     batch_guesses = base_guesses.copy()
-    
+
     for k in batch_guesses:
         if "offset" in k:
             batch_guesses[k] = batch_guesses[k][..., mock_data.batch_idx]
 
-    substituted_model = substitute(define_model, data=batch_guesses)
+    substituted_model = poutine.condition(define_model, data=batch_guesses)
     theta_param = substituted_model(name=name,
                                     data=mock_data,
                                     priors=priors)
@@ -106,47 +106,48 @@ def test_define_model_shapes_and_values(mock_data):
     """
     name = "test_hill"
     priors = get_priors()
-    
+
     base_guesses = get_guesses(name, mock_data)
     batch_guesses = base_guesses.copy()
     for k in batch_guesses:
         if "offset" in k:
             batch_guesses[k] = batch_guesses[k][..., mock_data.batch_idx]
 
-    substituted_model = substitute(define_model, data=batch_guesses)
-    
+    substituted_model = poutine.condition(define_model, data=batch_guesses)
+
     theta_param = substituted_model(name=name,
                                     data=mock_data,
                                     priors=priors)
-    
+
     expected_shape = (mock_data.num_titrant_name, mock_data.batch_size)
     assert theta_param.theta_low.shape == expected_shape
     assert theta_param.log_hill_K.shape == expected_shape
-    assert theta_param.mu.shape == (1, mock_data.num_titrant_conc, 1) or theta_param.mu.shape == (mock_data.num_titrant_name, mock_data.num_titrant_conc, 1)
+    assert (theta_param.mu.shape == (1, mock_data.num_titrant_conc, 1) or
+            theta_param.mu.shape == (mock_data.num_titrant_name, mock_data.num_titrant_conc, 1))
 
 def test_run_model_calculation(mock_data):
     """
     Strict calculation test.
     """
     shape = (mock_data.num_titrant_name, mock_data.num_genotype)
-    
-    theta_low = jnp.zeros(shape)
-    theta_high = jnp.ones(shape)
-    log_hill_K = jnp.zeros(shape)
-    hill_n = jnp.ones(shape)
-    mu_pop = jnp.zeros((mock_data.num_titrant_name, mock_data.num_titrant_conc, 1))
-    sigma_pop = jnp.ones((mock_data.num_titrant_name, mock_data.num_titrant_conc, 1))
-    
+
+    theta_low = torch.zeros(shape)
+    theta_high = torch.ones(shape)
+    log_hill_K = torch.zeros(shape)
+    hill_n = torch.ones(shape)
+    mu_pop = torch.zeros((mock_data.num_titrant_name, mock_data.num_titrant_conc, 1))
+    sigma_pop = torch.ones((mock_data.num_titrant_name, mock_data.num_titrant_conc, 1))
+
     theta_param = ThetaParam(theta_low, theta_high, log_hill_K, hill_n, mu_pop, sigma_pop)
 
-    new_concs = jnp.array([-10.0, 0.0, 10.0])
+    new_concs = torch.tensor([-10.0, 0.0, 10.0])
     mock_data = mock_data._replace(log_titrant_conc=new_concs, scatter_theta=0)
-    
+
     result = run_model(theta_param, mock_data)
-    
-    assert jnp.allclose(result[:, 0, :], 0.0, atol=1e-3)
-    assert jnp.allclose(result[:, 1, :], 0.5)
-    assert jnp.allclose(result[:, 2, :], 1.0, atol=1e-3)
+
+    assert torch.allclose(result[:, 0, :], torch.tensor(0.0), atol=1e-3)
+    assert torch.allclose(result[:, 1, :], torch.tensor(0.5))
+    assert torch.allclose(result[:, 2, :], torch.tensor(1.0), atol=1e-3)
 
 def test_run_model_scatter(theta_param_setup, mock_data):
     """
@@ -166,18 +167,14 @@ def test_guide_logic_and_shapes(mock_data):
     """
     Tests the guide function shapes, parameter creation, and execution.
     """
+    pyro.clear_param_store()
     name = "test_hill_guide"
     priors = get_priors()
 
-    with seed(rng_seed=0):
-        guide_trace = trace(guide).get_trace(
-            name=name,
-            data=mock_data,
-            priors=priors
-        )
-        theta_param = guide(name=name,
-                            data=mock_data,
-                            priors=priors)
+    torch.manual_seed(0)
+    theta_param = guide(name=name,
+                        data=mock_data,
+                        priors=priors)
 
     expected_batch_shape = (mock_data.num_titrant_name, mock_data.batch_size)
     assert theta_param.theta_low.shape == expected_batch_shape
@@ -189,14 +186,14 @@ def test_population_moments_logic(mock_data):
     """
     name = "test_moments"
     priors = get_priors()
-    
-    with seed(rng_seed=0):
-        theta_param = define_model(name, mock_data, priors)
-        
+
+    torch.manual_seed(0)
+    theta_param = define_model(name, mock_data, priors)
+
     from tfscreen.analysis.hierarchical.growth_model.components.theta.hill import get_population_moments
     mu, sigma = get_population_moments(theta_param, mock_data)
-    
+
     # Expected shape (1, Conc, 1) because hyper-params are global
     assert mu.shape == (1, mock_data.num_titrant_conc, 1)
     assert sigma.shape == (1, mock_data.num_titrant_conc, 1)
-    assert jnp.all(sigma > 0)
+    assert torch.all(sigma > 0)

@@ -1,18 +1,15 @@
-import jax.numpy as jnp
-import numpyro as pyro
-import numpyro.distributions as dist
-from flax.struct import (
-    dataclass,
-    field
-)
+import torch
+import pyro
+import pyro.distributions as dist
+from dataclasses import dataclass
 from typing import Dict, Any
 from tfscreen.analysis.hierarchical.growth_model.data_class import DataClass
 
 
-@dataclass(frozen=True)
+@dataclass
 class ModelPriors:
     """
-    JAX Pytree holding hyperparameters for the categorical theta model.
+    Holds hyperparameters for the categorical theta model.
 
     Attributes
     ----------
@@ -29,24 +26,24 @@ class ModelPriors:
     logit_theta_hyper_scale: float
 
 
-@dataclass(frozen=True)
+@dataclass
 class ThetaParam:
     """
-    JAX Pytree holding the sampled categorical theta parameters.
+    Holds the sampled categorical theta parameters.
 
     Attributes
     ----------
-    theta : jnp.ndarray
-    mu : jnp.ndarray
-    sigma : jnp.ndarray
-    concentrations : jnp.ndarray
+    theta : torch.Tensor
+    mu : torch.Tensor
+    sigma : torch.Tensor
+    concentrations : torch.Tensor
         The concentrations associated with the categories in theta.
     """
 
-    theta: jnp.ndarray
-    mu: jnp.ndarray
-    sigma: jnp.ndarray
-    concentrations: jnp.ndarray
+    theta: torch.Tensor
+    mu: torch.Tensor
+    sigma: torch.Tensor
+    concentrations: torch.Tensor
 
 
 def define_model(name: str,
@@ -64,20 +61,19 @@ def define_model(name: str,
     Parameters
     ----------
     name : str
-        The prefix for all Numpyro sample sites (e.g., "theta").
+        The prefix for all Pyro sample sites (e.g., "theta").
     data : DataClass
-        A data object (e.g., `GrowthData`) containing metadata, primarily:
+        A data object containing metadata, primarily:
         - ``data.num_titrant_name`` : (int) Number of titrants.
         - ``data.num_titrant_conc`` : (int) Number of titrant concentrations.
         - ``data.num_genotype`` : (int) Number of genotypes.
     priors : ModelPriors
-        A Pytree (Flax dataclass) containing all hyperparameters for the
-        pooled logit-space prior.
+        A dataclass containing all hyperparameters for the pooled logit-space prior.
 
     Returns
     -------
     ThetaParam
-        A Pytree containing the sampled theta parameters in their
+        A dataclass containing the sampled theta parameters in their
         natural scale, with shape
         ``[num_titrant_name, num_titrant_conc, num_genotype]``.
     """
@@ -106,7 +102,7 @@ def define_model(name: str,
     with pyro.plate(f"{name}_titrant_name_plate", data.num_titrant_name, dim=-3):
         with pyro.plate(f"{name}_titrant_conc_plate", data.num_titrant_conc, dim=-2):
             with pyro.plate("theta_genotype_plate", size=data.batch_size, dim=-1):
-                with pyro.handlers.scale(scale=data.scale_vector):
+                with pyro.poutine.scale(scale=data.scale_vector):
 
                     logit_theta_offset = pyro.sample(
                         f"{name}_logit_theta_offset",
@@ -119,18 +115,16 @@ def define_model(name: str,
         logit_theta_offset = logit_theta_offset[..., data.batch_idx]
 
     # Calculate parameters in logit-space
-    # logit_theta_hyper_loc result from plating is (Name, Conc) if rank-minimized,
-    # or (Name, Conc, 1) if plated at -3, -2 with some other dim at -1.
-    # We ensure it's (Name, Conc, 1) for the broadcast.
-    lh_loc = jnp.reshape(logit_theta_hyper_loc, (data.num_titrant_name, data.num_titrant_conc, 1))
-    lh_scale = jnp.reshape(logit_theta_hyper_scale, (data.num_titrant_name, data.num_titrant_conc, 1))
-    
+    # Reshape to (Name, Conc, 1) for broadcast with offset (Name, Conc, batch_size)
+    lh_loc = logit_theta_hyper_loc.reshape(data.num_titrant_name, data.num_titrant_conc, 1)
+    lh_scale = logit_theta_hyper_scale.reshape(data.num_titrant_name, data.num_titrant_conc, 1)
+
     logit_theta = lh_loc + logit_theta_offset * lh_scale
 
     # --------------------------------------------------------------------------
     # Transform parameters to natural scale
 
-    theta = dist.transforms.SigmoidTransform()(logit_theta)
+    theta = torch.sigmoid(logit_theta)
 
     # Register parameter values
     pyro.deterministic(f"{name}_theta", theta)
@@ -138,7 +132,7 @@ def define_model(name: str,
     theta_param = ThetaParam(theta=theta,
                              mu=lh_loc,
                              sigma=lh_scale,
-                             concentrations=data.titrant_conc)
+                             concentrations=torch.as_tensor(data.titrant_conc).float())
 
     return theta_param
 
@@ -163,15 +157,15 @@ def guide(name: str,
 
     # Logit Theta Hyper Loc (Normal)
     h_loc_loc = pyro.param(f"{name}_logit_theta_hyper_loc_loc",
-                           jnp.full(local_shape_global, priors.logit_theta_hyper_loc_loc))
+                           torch.full(local_shape_global, float(priors.logit_theta_hyper_loc_loc)))
     h_loc_scale = pyro.param(f"{name}_logit_theta_hyper_loc_scale",
-                             jnp.full(local_shape_global, priors.logit_theta_hyper_loc_scale),
-                             constraint=dist.constraints.positive)
+                             torch.full(local_shape_global, float(priors.logit_theta_hyper_loc_scale)),
+                             constraint=torch.distributions.constraints.positive)
 
     # Logit Theta Hyper Scale (LogNormal guide)
-    h_scale_loc = pyro.param(f"{name}_logit_theta_hyper_scale_loc", jnp.full(local_shape_global, -1.0))
-    h_scale_scale = pyro.param(f"{name}_logit_theta_hyper_scale_scale", jnp.full(local_shape_global, 0.1),
-                               constraint=dist.constraints.positive)
+    h_scale_loc = pyro.param(f"{name}_logit_theta_hyper_scale_loc", torch.full(local_shape_global, -1.0))
+    h_scale_scale = pyro.param(f"{name}_logit_theta_hyper_scale_scale", torch.full(local_shape_global, 0.1),
+                               constraint=torch.distributions.constraints.positive)
 
     with pyro.plate(f"{name}_titrant_name_plate", data.num_titrant_name, dim=-3):
         with pyro.plate(f"{name}_titrant_conc_plate", data.num_titrant_conc, dim=-2):
@@ -190,10 +184,10 @@ def guide(name: str,
     param_shape = (data.num_titrant_name, data.num_titrant_conc, data.num_genotype)
 
     offset_locs = pyro.param(f"{name}_logit_theta_offset_locs",
-                             jnp.zeros(param_shape, dtype=float))
+                             torch.zeros(param_shape))
     offset_scales = pyro.param(f"{name}_logit_theta_offset_scales",
-                               jnp.ones(param_shape, dtype=float),
-                               constraint=dist.constraints.positive)
+                               torch.ones(param_shape),
+                               constraint=torch.distributions.constraints.positive)
 
     # --- 3. Sampling (Sliced by Genotype) ---
 
@@ -201,10 +195,9 @@ def guide(name: str,
         with pyro.plate(f"{name}_titrant_conc_plate", data.num_titrant_conc, dim=-2):
             # Batching on Genotype (dim=-1)
             with pyro.plate("theta_genotype_plate", size=data.batch_size, dim=-1):
-                with pyro.handlers.scale(scale=data.scale_vector):
+                with pyro.poutine.scale(scale=data.scale_vector):
 
                     # Slice the last dimension (Genotype) using the batch indices
-                    # The ellipsis (...) preserves the TitrantName and TitrantConc dimensions
                     batch_locs = offset_locs[..., data.batch_idx]
                     batch_scales = offset_scales[..., data.batch_idx]
 
@@ -221,27 +214,27 @@ def guide(name: str,
     # --- 4. Reconstruction (Deterministic) ---
 
     # Calculate parameters in logit-space
-    lh_loc = jnp.reshape(logit_theta_hyper_loc, (data.num_titrant_name, data.num_titrant_conc, 1))
-    lh_scale = jnp.reshape(logit_theta_hyper_scale, (data.num_titrant_name, data.num_titrant_conc, 1))
-    
+    lh_loc = logit_theta_hyper_loc.reshape(data.num_titrant_name, data.num_titrant_conc, 1)
+    lh_scale = logit_theta_hyper_scale.reshape(data.num_titrant_name, data.num_titrant_conc, 1)
+
     logit_theta = lh_loc + logit_theta_offset * lh_scale
 
     # Transform parameters to natural scale
-    theta = dist.transforms.SigmoidTransform()(logit_theta)
+    theta = torch.sigmoid(logit_theta)
 
     theta_param = ThetaParam(theta=theta,
                              mu=lh_loc,
                              sigma=lh_scale,
-                             concentrations=data.titrant_conc)
+                             concentrations=torch.as_tensor(data.titrant_conc).float())
 
     return theta_param
 
 
-def run_model(theta_param: ThetaParam, data: DataClass) -> jnp.ndarray:
+def run_model(theta_param: ThetaParam, data: DataClass) -> torch.Tensor:
     """
     "Calculates" fractional occupancy (theta) by looking it up.
 
-    This is a pure JAX function that returns the sampled categorical
+    This is a pure PyTorch function that returns the sampled categorical
     theta values. Unlike the Hill model, no calculation is needed.
     It simply passes the sampled tensor and handles the final optional
     scattering.
@@ -249,21 +242,19 @@ def run_model(theta_param: ThetaParam, data: DataClass) -> jnp.ndarray:
     Parameters
     ----------
     theta_param : ThetaParam
-        A Pytree generated by ``define_model`` containing the sampled
+        A dataclass generated by ``define_model`` containing the sampled
         theta parameters. ``theta_param.theta`` has dimensions
         ``[titrant_name, titrant_conc, genotype]``.
     data : DataClass
-        A data object (e.g., ``GrowthData`` or ``BindingData``) containing:
-        - ``data.map_theta``: (jnp.ndarray) Mapper with dimensions
-          ``[replicate, time, treatment, genotype]``, used for scattering.
+        A data object containing:
         - ``data.scatter_theta``: (int) A flag (0 or 1) indicating
           whether to scatter the final tensor.
-        - ``data.geno_theta_idx``: (jnp.ndarray) Indices of genotypes to select.
-        - ``data.titrant_conc``: (jnp.ndarray) Titrant concentrations in the data.
+        - ``data.geno_theta_idx``: (torch.Tensor) Indices of genotypes to select.
+        - ``data.titrant_conc``: (torch.Tensor) Titrant concentrations in the data.
 
     Returns
     -------
-    jnp.ndarray
+    torch.Tensor
         A tensor of theta values.
         - If ``data.scatter_theta == 0``, shape is
           ``[titrant_name, titrant_conc, genotype]``.
@@ -276,14 +267,13 @@ def run_model(theta_param: ThetaParam, data: DataClass) -> jnp.ndarray:
     theta_base = theta_param.theta[..., data.geno_theta_idx]
 
     # 2. Map concentrations
-    # We find the indices of data.titrant_conc in theta_param.concentrations.
-    # This assumes that the concentrations in theta_param.concentrations are ordered.
-    # In practice, they are the labels of the growth_tm's conc dimension.
-    conc_idx = jnp.searchsorted(theta_param.concentrations, data.titrant_conc)
-    
+    titrant_conc = torch.as_tensor(data.titrant_conc).float()
+    conc_idx = torch.searchsorted(theta_param.concentrations.contiguous(),
+                                  titrant_conc.contiguous())
+
     # Clip to avoid out-of-bounds (fallback to nearest category)
-    conc_idx = jnp.clip(conc_idx, 0, theta_param.concentrations.shape[0] - 1)
-    
+    conc_idx = torch.clamp(conc_idx, 0, theta_param.concentrations.shape[0] - 1)
+
     # Select the mapped concentrations
     # theta_base is (Name, OrigConc, Geno)
     # conc_idx is (NewConc,)
@@ -340,7 +330,7 @@ def get_guesses(name: str, data: DataClass) -> Dict[str, Any]:
     name : str
         The prefix for the parameter names (e.g., "theta").
     data : DataClass
-        A data object (e.g., `GrowthData`) containing metadata, primarily:
+        A data object containing metadata, primarily:
         - ``data.num_titrant_name``
         - ``data.num_titrant_conc``
         - ``data.num_genotype``
@@ -348,19 +338,18 @@ def get_guesses(name: str, data: DataClass) -> Dict[str, Any]:
     Returns
     -------
     dict[str, Any]
-        A dictionary mapping parameter names to their initial
-        guess values.
+        A dictionary mapping parameter names to their initial guess values.
     """
 
     guesses = {}
 
     # Guess hyperparams
-    guesses[f"{name}_logit_theta_hyper_loc"] = jnp.zeros((data.num_titrant_name, data.num_titrant_conc))
-    guesses[f"{name}_logit_theta_hyper_scale"] = jnp.ones((data.num_titrant_name, data.num_titrant_conc))
+    guesses[f"{name}_logit_theta_hyper_loc"] = torch.zeros(data.num_titrant_name, data.num_titrant_conc)
+    guesses[f"{name}_logit_theta_hyper_scale"] = torch.ones(data.num_titrant_name, data.num_titrant_conc)
 
     # Guess offsets (all zeros)
     shape = (data.num_titrant_name, data.num_titrant_conc, data.num_genotype)
-    guesses[f"{name}_logit_theta_offset"] = jnp.zeros(shape, dtype=float)
+    guesses[f"{name}_logit_theta_offset"] = torch.zeros(shape)
 
     return guesses
 
@@ -372,6 +361,6 @@ def get_priors() -> ModelPriors:
     Returns
     -------
     ModelPriors
-        A populated Pytree (Flax dataclass) of hyperparameters.
+        A populated dataclass of hyperparameters.
     """
     return ModelPriors(**get_hyperparameters())

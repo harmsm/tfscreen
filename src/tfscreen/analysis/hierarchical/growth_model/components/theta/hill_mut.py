@@ -25,21 +25,20 @@ The four Hill parameters and their spaces:
 Epistasis is only sampled when data.num_pair > 0.
 """
 
-import jax
-import jax.numpy as jnp
-import numpyro as pyro
-import numpyro.distributions as dist
-from flax.struct import dataclass, field
+import torch
+import pyro
+import pyro.distributions as dist
+from dataclasses import dataclass
 from typing import Dict, Any
 
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
 
 
 # ---------------------------------------------------------------------------
-# Pytrees
+# Dataclasses
 # ---------------------------------------------------------------------------
 
-@dataclass(frozen=True)
+@dataclass
 class ModelPriors:
     """Hyperparameters for the mutation-decomposed Hill model priors."""
 
@@ -66,16 +65,16 @@ class ModelPriors:
     theta_sigma_epi_log_hill_n_scale: float
 
 
-@dataclass(frozen=True)
+@dataclass
 class ThetaParam:
     """Assembled Hill equation parameters, shape (num_titrant_name, num_genotype)."""
 
-    theta_low: jnp.ndarray
-    theta_high: jnp.ndarray
-    log_hill_K: jnp.ndarray
-    hill_n: jnp.ndarray
-    mu: jnp.ndarray
-    sigma: jnp.ndarray
+    theta_low: torch.Tensor
+    theta_high: torch.Tensor
+    log_hill_K: torch.Tensor
+    hill_n: torch.Tensor
+    mu: torch.Tensor
+    sigma: torch.Tensor
 
 
 # ---------------------------------------------------------------------------
@@ -89,17 +88,17 @@ def _assemble(wt, d_offsets, sigma_d, M,
 
     Parameters
     ----------
-    wt : array, shape (T,)
-    d_offsets : array, shape (T, num_mutation)
-    sigma_d : array, shape (T,)
-    M : array, shape (num_mutation, G)
-    epi_offsets : array, shape (T, num_pair) or None
-    sigma_epi : array, shape (T,) or None
-    P : array, shape (num_pair, G) or None
+    wt : tensor, shape (T,)
+    d_offsets : tensor, shape (T, num_mutation)
+    sigma_d : tensor, shape (T,)
+    M : tensor, shape (num_mutation, G)
+    epi_offsets : tensor, shape (T, num_pair) or None
+    sigma_epi : tensor, shape (T,) or None
+    P : tensor, shape (num_pair, G) or None
 
     Returns
     -------
-    array, shape (T, G)
+    tensor, shape (T, G)
     """
     d = d_offsets * sigma_d[:, None]           # [T, M]
     result = wt[:, None] + d @ M               # [T, G]
@@ -115,21 +114,21 @@ def _population_moments(logit_theta_low, logit_theta_high,
     Compute per-concentration population moments (mu, sigma) of logit(theta)
     over the assembled genotype population.
 
-    Returns arrays of shape (T, num_conc, 1).
+    Returns tensors of shape (T, num_conc, 1).
     """
     eps = 1e-6
-    log_conc = data.log_titrant_conc[None, :, None]       # [1, C, 1]
-    K = jnp.exp(log_hill_K[:, None, :])                   # [T, 1, G]
-    n = jnp.exp(log_hill_n[:, None, :])                   # [T, 1, G]
-    low = dist.transforms.SigmoidTransform()(logit_theta_low[:, None, :])   # [T, 1, G]
-    high = dist.transforms.SigmoidTransform()(logit_theta_high[:, None, :]) # [T, 1, G]
+    log_conc = torch.as_tensor(data.log_titrant_conc).float()[None, :, None]  # [1, C, 1]
+    K = torch.exp(log_hill_K[:, None, :])                   # [T, 1, G]
+    n = torch.exp(log_hill_n[:, None, :])                   # [T, 1, G]
+    low = torch.sigmoid(logit_theta_low[:, None, :])        # [T, 1, G]
+    high = torch.sigmoid(logit_theta_high[:, None, :])      # [T, 1, G]
 
-    occ = jax.nn.sigmoid(n * (log_conc - K))              # [T, C, G]
-    theta_all = jnp.clip(low + (high - low) * occ, eps, 1.0 - eps)
-    logit_theta_all = jax.scipy.special.logit(theta_all)  # [T, C, G]
+    occ = torch.sigmoid(n * (log_conc - K))                 # [T, C, G]
+    theta_all = torch.clamp(low + (high - low) * occ, eps, 1.0 - eps)
+    logit_theta_all = torch.logit(theta_all)                # [T, C, G]
 
-    mu = jnp.mean(logit_theta_all, axis=-1, keepdims=True)    # [T, C, 1]
-    sigma = jnp.std(logit_theta_all, axis=-1, keepdims=True)  # [T, C, 1]
+    mu = logit_theta_all.mean(dim=-1, keepdim=True)    # [T, C, 1]
+    sigma = logit_theta_all.std(dim=-1, keepdim=True)  # [T, C, 1]
     return mu, sigma
 
 
@@ -149,7 +148,7 @@ def define_model(name: str,
     Parameters
     ----------
     name : str
-        Prefix for all Numpyro sample sites.
+        Prefix for all Pyro sample sites.
     data : GrowthData
         Must have ``mut_geno_matrix`` (num_mutation x G) and ``num_mutation``.
         If ``num_pair > 0``, must also have ``pair_geno_matrix`` (num_pair x G).
@@ -161,7 +160,7 @@ def define_model(name: str,
         Assembled parameters with shape ``(num_titrant_name, num_genotype)``.
     """
     T = data.num_titrant_name
-    M_mat = jnp.array(data.mut_geno_matrix)   # [num_mutation, G]
+    M_mat = torch.as_tensor(data.mut_geno_matrix)   # [num_mutation, G]
     num_mut = data.num_mutation
     has_epi = data.num_pair > 0
 
@@ -218,7 +217,7 @@ def define_model(name: str,
     # Optional epistasis: shape (T, num_pair)
     # ------------------------------------------------------------------
     if has_epi:
-        P_mat = jnp.array(data.pair_geno_matrix)  # [num_pair, G]
+        P_mat = torch.as_tensor(data.pair_geno_matrix)  # [num_pair, G]
         num_pair = data.num_pair
 
         with pyro.plate(f"{name}_wt_epi_plate", T, dim=-1):
@@ -288,9 +287,9 @@ def define_model(name: str,
                            epi_n_off, sigma_epi_n, P_mat)
 
     # Transform to natural scale and register
-    theta_low = dist.transforms.SigmoidTransform()(logit_theta_low)
-    theta_high = dist.transforms.SigmoidTransform()(logit_theta_high)
-    hill_n = jnp.exp(log_hill_n)
+    theta_low = torch.sigmoid(logit_theta_low)
+    theta_high = torch.sigmoid(logit_theta_high)
+    hill_n = torch.exp(log_hill_n)
 
     pyro.deterministic(f"{name}_theta_low", theta_low)
     pyro.deterministic(f"{name}_theta_high", theta_high)
@@ -319,7 +318,7 @@ def guide(name: str,
 
     T = data.num_titrant_name
     num_mut = data.num_mutation
-    M_mat = jnp.array(data.mut_geno_matrix)
+    M_mat = torch.as_tensor(data.mut_geno_matrix)
     has_epi = data.num_pair > 0
 
     # ------------------------------------------------------------------
@@ -336,10 +335,10 @@ def guide(name: str,
     wt_scale_params = {}
     for k, (loc0, scale0) in wt_init.items():
         wt_loc_params[k] = pyro.param(
-            f"{name}_{k}_loc", jnp.full(T, loc0))
+            f"{name}_{k}_loc", torch.full((T,), float(loc0)))
         wt_scale_params[k] = pyro.param(
-            f"{name}_{k}_scale", jnp.full(T, scale0),
-            constraint=dist.constraints.positive)
+            f"{name}_{k}_scale", torch.full((T,), float(scale0)),
+            constraint=torch.distributions.constraints.positive)
 
     # sigma hyperpriors (LogNormal guide for HalfNormal prior)
     sigma_names = ["sigma_d_logit_low", "sigma_d_logit_delta",
@@ -348,10 +347,10 @@ def guide(name: str,
     sigma_scale_params = {}
     for k in sigma_names:
         sigma_loc_params[k] = pyro.param(
-            f"{name}_{k}_loc", jnp.full(T, -1.0))
+            f"{name}_{k}_loc", torch.full((T,), -1.0))
         sigma_scale_params[k] = pyro.param(
-            f"{name}_{k}_scale", jnp.full(T, 0.1),
-            constraint=dist.constraints.positive)
+            f"{name}_{k}_scale", torch.full((T,), 0.1),
+            constraint=torch.distributions.constraints.positive)
 
     # ------------------------------------------------------------------
     # Variational parameters for mutation delta offsets: shape (T, M)
@@ -362,16 +361,16 @@ def guide(name: str,
     d_scale_params = {}
     for k in delta_names:
         d_loc_params[k] = pyro.param(
-            f"{name}_{k}_locs", jnp.zeros((T, num_mut)))
+            f"{name}_{k}_locs", torch.zeros(T, num_mut))
         d_scale_params[k] = pyro.param(
-            f"{name}_{k}_scales", jnp.ones((T, num_mut)),
-            constraint=dist.constraints.positive)
+            f"{name}_{k}_scales", torch.ones(T, num_mut),
+            constraint=torch.distributions.constraints.positive)
 
     # ------------------------------------------------------------------
     # Optional epistasis variational parameters
     # ------------------------------------------------------------------
     if has_epi:
-        P_mat = jnp.array(data.pair_geno_matrix)
+        P_mat = torch.as_tensor(data.pair_geno_matrix)
         num_pair = data.num_pair
         epi_sigma_names = ["sigma_epi_logit_low", "sigma_epi_logit_delta",
                            "sigma_epi_log_hill_K", "sigma_epi_log_hill_n"]
@@ -379,10 +378,10 @@ def guide(name: str,
         epi_sigma_scale_params = {}
         for k in epi_sigma_names:
             epi_sigma_loc_params[k] = pyro.param(
-                f"{name}_{k}_loc", jnp.full(T, -1.0))
+                f"{name}_{k}_loc", torch.full((T,), -1.0))
             epi_sigma_scale_params[k] = pyro.param(
-                f"{name}_{k}_scale", jnp.full(T, 0.1),
-                constraint=dist.constraints.positive)
+                f"{name}_{k}_scale", torch.full((T,), 0.1),
+                constraint=torch.distributions.constraints.positive)
 
         epi_names = ["epi_logit_low_offset", "epi_logit_delta_offset",
                      "epi_log_hill_K_offset", "epi_log_hill_n_offset"]
@@ -390,10 +389,10 @@ def guide(name: str,
         epi_scale_params = {}
         for k in epi_names:
             epi_loc_params[k] = pyro.param(
-                f"{name}_{k}_locs", jnp.zeros((T, num_pair)))
+                f"{name}_{k}_locs", torch.zeros(T, num_pair))
             epi_scale_params[k] = pyro.param(
-                f"{name}_{k}_scales", jnp.ones((T, num_pair)),
-                constraint=dist.constraints.positive)
+                f"{name}_{k}_scales", torch.ones(T, num_pair),
+                constraint=torch.distributions.constraints.positive)
     else:
         P_mat = None
 
@@ -508,9 +507,9 @@ def guide(name: str,
     log_hill_n = _assemble(log_n_wt, d_n_off, sigma_d_n, M_mat,
                            epi_n_off, sigma_epi_n, P_mat)
 
-    theta_low = dist.transforms.SigmoidTransform()(logit_theta_low)
-    theta_high = dist.transforms.SigmoidTransform()(logit_theta_high)
-    hill_n = jnp.exp(log_hill_n)
+    theta_low = torch.sigmoid(logit_theta_low)
+    theta_high = torch.sigmoid(logit_theta_high)
+    hill_n = torch.exp(log_hill_n)
 
     mu, sigma = _population_moments(logit_theta_low, logit_theta_high,
                                     log_hill_K, log_hill_n, data)
@@ -527,7 +526,7 @@ def guide(name: str,
 # run_model – identical to hill.py
 # ---------------------------------------------------------------------------
 
-def run_model(theta_param: ThetaParam, data) -> jnp.ndarray:
+def run_model(theta_param: ThetaParam, data) -> torch.Tensor:
     """
     Calculate theta via the Hill equation using the assembled parameters.
 
@@ -539,8 +538,8 @@ def run_model(theta_param: ThetaParam, data) -> jnp.ndarray:
     log_hill_K = theta_param.log_hill_K[:, None, data.geno_theta_idx]
     hill_n = theta_param.hill_n[:, None, data.geno_theta_idx]
 
-    log_titrant = data.log_titrant_conc[None, :, None]
-    occupancy = jax.nn.sigmoid(hill_n * (log_titrant - log_hill_K))
+    log_titrant = torch.as_tensor(data.log_titrant_conc).float()[None, :, None]
+    occupancy = torch.sigmoid(hill_n * (log_titrant - log_hill_K))
     theta_calc = theta_low + (theta_high - theta_low) * occupancy
 
     if data.scatter_theta == 1:
@@ -582,28 +581,28 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, Any]:
     T = data.num_titrant_name
     M = data.num_mutation
     guesses = {}
-    guesses[f"{name}_logit_low_wt"] = jnp.full(T, 2.0)
-    guesses[f"{name}_logit_delta_wt"] = jnp.full(T, -4.0)
-    guesses[f"{name}_log_hill_K_wt"] = jnp.full(T, -4.1)
-    guesses[f"{name}_log_hill_n_wt"] = jnp.full(T, 0.7)
-    guesses[f"{name}_sigma_d_logit_low"] = jnp.full(T, 0.5)
-    guesses[f"{name}_sigma_d_logit_delta"] = jnp.full(T, 0.5)
-    guesses[f"{name}_sigma_d_log_hill_K"] = jnp.full(T, 0.5)
-    guesses[f"{name}_sigma_d_log_hill_n"] = jnp.full(T, 0.3)
-    guesses[f"{name}_d_logit_low_offset"] = jnp.zeros((T, M))
-    guesses[f"{name}_d_logit_delta_offset"] = jnp.zeros((T, M))
-    guesses[f"{name}_d_log_hill_K_offset"] = jnp.zeros((T, M))
-    guesses[f"{name}_d_log_hill_n_offset"] = jnp.zeros((T, M))
+    guesses[f"{name}_logit_low_wt"] = torch.full((T,), 2.0)
+    guesses[f"{name}_logit_delta_wt"] = torch.full((T,), -4.0)
+    guesses[f"{name}_log_hill_K_wt"] = torch.full((T,), -4.1)
+    guesses[f"{name}_log_hill_n_wt"] = torch.full((T,), 0.7)
+    guesses[f"{name}_sigma_d_logit_low"] = torch.full((T,), 0.5)
+    guesses[f"{name}_sigma_d_logit_delta"] = torch.full((T,), 0.5)
+    guesses[f"{name}_sigma_d_log_hill_K"] = torch.full((T,), 0.5)
+    guesses[f"{name}_sigma_d_log_hill_n"] = torch.full((T,), 0.3)
+    guesses[f"{name}_d_logit_low_offset"] = torch.zeros(T, M)
+    guesses[f"{name}_d_logit_delta_offset"] = torch.zeros(T, M)
+    guesses[f"{name}_d_log_hill_K_offset"] = torch.zeros(T, M)
+    guesses[f"{name}_d_log_hill_n_offset"] = torch.zeros(T, M)
     if data.num_pair > 0:
         P = data.num_pair
-        guesses[f"{name}_sigma_epi_logit_low"] = jnp.full(T, 0.3)
-        guesses[f"{name}_sigma_epi_logit_delta"] = jnp.full(T, 0.3)
-        guesses[f"{name}_sigma_epi_log_hill_K"] = jnp.full(T, 0.3)
-        guesses[f"{name}_sigma_epi_log_hill_n"] = jnp.full(T, 0.2)
-        guesses[f"{name}_epi_logit_low_offset"] = jnp.zeros((T, P))
-        guesses[f"{name}_epi_logit_delta_offset"] = jnp.zeros((T, P))
-        guesses[f"{name}_epi_log_hill_K_offset"] = jnp.zeros((T, P))
-        guesses[f"{name}_epi_log_hill_n_offset"] = jnp.zeros((T, P))
+        guesses[f"{name}_sigma_epi_logit_low"] = torch.full((T,), 0.3)
+        guesses[f"{name}_sigma_epi_logit_delta"] = torch.full((T,), 0.3)
+        guesses[f"{name}_sigma_epi_log_hill_K"] = torch.full((T,), 0.3)
+        guesses[f"{name}_sigma_epi_log_hill_n"] = torch.full((T,), 0.2)
+        guesses[f"{name}_epi_logit_low_offset"] = torch.zeros(T, P)
+        guesses[f"{name}_epi_logit_delta_offset"] = torch.zeros(T, P)
+        guesses[f"{name}_epi_log_hill_K_offset"] = torch.zeros(T, P)
+        guesses[f"{name}_epi_log_hill_n_offset"] = torch.zeros(T, P)
     return guesses
 
 
