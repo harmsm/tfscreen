@@ -69,7 +69,7 @@ def define_model(name: str,
     )
 
     # Sample non-centered offsets for mutant genotypes only
-    with pyro.plate("shared_genotype_plate", size=data.batch_size, dim=-1):
+    with pyro.plate(f"{name}_genotype_plate", size=data.batch_size, dim=-1):
         with pyro.poutine.scale(scale=data.scale_vector):
             activity_offset = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
 
@@ -127,7 +127,7 @@ def guide(name: str,
                                constraint=torch.distributions.constraints.positive)
 
     # Sample non-centered offsets for mutant genotypes only
-    with pyro.plate("shared_genotype_plate", size=data.batch_size, dim=-1):
+    with pyro.plate(f"{name}_genotype_plate", size=data.batch_size, dim=-1):
         with pyro.poutine.scale(scale=data.scale_vector):
 
             batch_locs = offset_locs[data.batch_idx]

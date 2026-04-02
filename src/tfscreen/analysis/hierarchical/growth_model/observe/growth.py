@@ -49,7 +49,7 @@ def observe(name: str,
                 with pyro.plate(f"{name}_condition_sel", size=data.num_condition_sel, dim=-4):
                     with pyro.plate(f"{name}_titrant_name", size=data.num_titrant_name, dim=-3):
                         with pyro.plate(f"{name}_titrant_conc", size=data.num_titrant_conc, dim=-2):
-                            with pyro.plate("shared_genotype_plate",size=data.batch_size,dim=-1):
+                            with pyro.plate(f"{name}_genotype_plate",size=data.batch_size,dim=-1):
 
                                 # Scale data for sub-sampling
                                 with pyro.poutine.scale(scale=data.scale_vector):

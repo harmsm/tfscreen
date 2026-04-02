@@ -79,9 +79,8 @@ def define_model(name: str,
     """
 
     # --------------------------------------------------------------------------
-    # Hyperpriors for the logit(theta) parameters (titrant name x conc)
-    # We use a 3D shape (Name, Conc, 1) to ensure correct broadcasting
-    # and plating at -3, -2, -1.
+    # Hyperpriors and per-genotype offsets sampled in a single plate context
+    # to avoid duplicate plate name collisions in Pyro's trace.
 
     with pyro.plate(f"{name}_titrant_name_plate", data.num_titrant_name, dim=-3):
         with pyro.plate(f"{name}_titrant_conc_plate", data.num_titrant_conc, dim=-2):
@@ -96,12 +95,10 @@ def define_model(name: str,
                 dist.HalfNormal(priors.logit_theta_hyper_scale)
             )
 
-    # --------------------------------------------------------------------------
-    # Sample parameters for each (titrant_name, titrant_conc, genotype) group
+            # --------------------------------------------------------------------------
+            # Sample parameters for each (titrant_name, titrant_conc, genotype) group
 
-    with pyro.plate(f"{name}_titrant_name_plate", data.num_titrant_name, dim=-3):
-        with pyro.plate(f"{name}_titrant_conc_plate", data.num_titrant_conc, dim=-2):
-            with pyro.plate("theta_genotype_plate", size=data.batch_size, dim=-1):
+            with pyro.plate(f"{name}_genotype_plate", size=data.batch_size, dim=-1):
                 with pyro.poutine.scale(scale=data.scale_vector):
 
                     logit_theta_offset = pyro.sample(
@@ -167,17 +164,6 @@ def guide(name: str,
     h_scale_scale = pyro.param(f"{name}_logit_theta_hyper_scale_scale", torch.full(local_shape_global, 0.1),
                                constraint=torch.distributions.constraints.positive)
 
-    with pyro.plate(f"{name}_titrant_name_plate", data.num_titrant_name, dim=-3):
-        with pyro.plate(f"{name}_titrant_conc_plate", data.num_titrant_conc, dim=-2):
-            logit_theta_hyper_loc = pyro.sample(
-                f"{name}_logit_theta_hyper_loc",
-                dist.Normal(h_loc_loc, h_loc_scale)
-            )
-            logit_theta_hyper_scale = pyro.sample(
-                f"{name}_logit_theta_hyper_scale",
-                dist.LogNormal(h_scale_loc, h_scale_scale)
-            )
-
     # --- 2. Local Parameters (3D Tensor) ---
 
     # Shape: (NumTitrantName, NumTitrantConc, NumGenotype)
@@ -189,12 +175,21 @@ def guide(name: str,
                                torch.ones(param_shape),
                                constraint=torch.distributions.constraints.positive)
 
-    # --- 3. Sampling (Sliced by Genotype) ---
+    # --- 3. Sampling (all in one plate context to avoid duplicate plate names) ---
 
     with pyro.plate(f"{name}_titrant_name_plate", data.num_titrant_name, dim=-3):
         with pyro.plate(f"{name}_titrant_conc_plate", data.num_titrant_conc, dim=-2):
+            logit_theta_hyper_loc = pyro.sample(
+                f"{name}_logit_theta_hyper_loc",
+                dist.Normal(h_loc_loc, h_loc_scale)
+            )
+            logit_theta_hyper_scale = pyro.sample(
+                f"{name}_logit_theta_hyper_scale",
+                dist.LogNormal(h_scale_loc, h_scale_scale)
+            )
+
             # Batching on Genotype (dim=-1)
-            with pyro.plate("theta_genotype_plate", size=data.batch_size, dim=-1):
+            with pyro.plate(f"{name}_genotype_plate", size=data.batch_size, dim=-1):
                 with pyro.poutine.scale(scale=data.scale_vector):
 
                     # Slice the last dimension (Genotype) using the batch indices

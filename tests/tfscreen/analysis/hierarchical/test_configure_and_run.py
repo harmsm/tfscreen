@@ -3,7 +3,7 @@ import os
 import pandas as pd
 import numpy as np
 import yaml
-import jax.numpy as jnp
+import torch
 from unittest.mock import MagicMock, patch
 
 from tfscreen.analysis.hierarchical.growth_model.scripts.configure_growth_analysis import configure_growth_analysis
@@ -113,7 +113,7 @@ def test_read_configuration_logic(tmpdir, mocker):
     
     mock_gm_class = mocker.patch("tfscreen.analysis.hierarchical.growth_model.configuration_io.GrowthModel")
     mock_gm_inst = mock_gm_class.return_value
-    mock_gm_inst.init_params = {"param1": 0.0, "param2": jnp.zeros((1,)), "param3": 0.0}
+    mock_gm_inst.init_params = {"param1": 0.0, "param2": torch.zeros((1,)), "param3": 0.0}
     
     # Mock update_dataclass
     mocker.patch("tfscreen.analysis.hierarchical.growth_model.configuration_io._update_dataclass"
@@ -123,7 +123,7 @@ def test_read_configuration_logic(tmpdir, mocker):
     
     assert gm == mock_gm_inst
     assert init_params["param1"] == 0.5
-    assert isinstance(init_params["param2"], jnp.ndarray)
+    assert isinstance(init_params["param2"], torch.Tensor)
 
 def test_read_configuration_errors(tmpdir):
     config_path = os.path.join(tmpdir, "bad_config.yaml")

@@ -441,9 +441,22 @@ class RunInference:
                     if k in dim_map:
                         # Concatenate along the genotype dimension
                         axis = dim_map[k]
-                        this_batch_results[k] = np.concatenate(v_list, axis=axis)
+                        v = np.concatenate(v_list, axis=axis)
+                        # Squeeze intermediate singleton dims added by Pyro
+                        # plate broadcasting (between sample dim 0 and genotype
+                        # dim -1). Keep dims 0 and -1 always.
+                        if v.ndim > 2:
+                            keep = [0] + [i for i in range(1, v.ndim - 1)
+                                          if v.shape[i] != 1] + [v.ndim - 1]
+                            v = v.reshape(tuple(v.shape[i] for i in keep))
+                        this_batch_results[k] = v
                     else:
-                        this_batch_results[k] = v_list[0]
+                        v = v_list[0]
+                        # Strip trailing singleton dims added by Pyro plate
+                        # broadcasting for global (non-genotype) parameters.
+                        while v.ndim > 1 and v.shape[-1] == 1:
+                            v = v[..., 0]
+                        this_batch_results[k] = v
 
                 # Write to HDF5 file
                 batch_size_actual = next(iter(this_batch_results.values())).shape[0]

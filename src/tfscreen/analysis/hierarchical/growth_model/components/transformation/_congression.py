@@ -70,6 +70,8 @@ def _empirical_cdf(theta, t_grid):
     Cumulative Distribution Function estimated from the observed population
     of theta values.
     """
+    theta = torch.as_tensor(theta, dtype=torch.float32)
+    t_grid = torch.as_tensor(t_grid, dtype=torch.float32)
     n = theta.shape[-1]
     sorted_theta, _ = torch.sort(theta, dim=-1)
 
@@ -118,6 +120,8 @@ def update_thetas(theta, params, theta_dist=None, mask=None, n_grid=256):
     torch.Tensor
         Corrected theta array with shape broadcasted from inputs.
     """
+    theta = torch.as_tensor(theta, dtype=torch.float32)
+
     # Extract parameters. We assume the first is always lam.
     lam = params[0]
     bg_params = params[1:]

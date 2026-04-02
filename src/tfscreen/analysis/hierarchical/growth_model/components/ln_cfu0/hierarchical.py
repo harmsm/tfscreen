@@ -68,7 +68,7 @@ def define_model(name: str,
     # Sample non-centered offsets for each ln_cfu0 group
     with pyro.plate(f"{name}_replicate", data.num_replicate, dim=-3):
         with pyro.plate(f"{name}_condition_pre", data.num_condition_pre, dim=-2):
-            with pyro.plate("shared_genotype_plate", size=data.batch_size, dim=-1):
+            with pyro.plate(f"{name}_genotype_plate", size=data.batch_size, dim=-1):
                 with pyro.poutine.scale(scale=data.scale_vector):
                     ln_cfu0_offsets = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
 
@@ -127,7 +127,7 @@ def guide(name: str,
     # Sample non-centered offsets for each ln_cfu0 group
     with pyro.plate(f"{name}_replicate", data.num_replicate, dim=-3):
         with pyro.plate(f"{name}_condition_pre", data.num_condition_pre, dim=-2):
-            with pyro.plate("shared_genotype_plate", size=data.batch_size, dim=-1):
+            with pyro.plate(f"{name}_genotype_plate", size=data.batch_size, dim=-1):
                 with pyro.poutine.scale(scale=data.scale_vector):
                     batch_locs = offset_locs[..., data.batch_idx]
                     batch_scales = offset_scales[..., data.batch_idx]

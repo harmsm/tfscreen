@@ -296,7 +296,8 @@ def predict(model_class,
 
     all_dfs = {}
     for site in predict_sites:
-        site_samples = np.asarray(predictions[site].detach().cpu())  # shape: (num_samples, ...)
+        _p = predictions[site]
+        site_samples = np.asarray(_p.detach().cpu() if isinstance(_p, torch.Tensor) else _p)  # shape: (num_samples, ...)
         df = base_df.copy()
 
         for q_name, q_val in q_to_get.items():

@@ -58,7 +58,7 @@ def define_model(name: str,
                                    dist.HalfNormal(priors.global_scale_tau_scale))
 
     # Sample local scales and offsets
-    with pyro.plate("shared_genotype_plate", size=data.batch_size, dim=-1):
+    with pyro.plate(f"{name}_genotype_plate", size=data.batch_size, dim=-1):
         with pyro.poutine.scale(scale=data.scale_vector):
 
             # Local scale `lambda`. HalfNormal(1) is the standard Horseshoe.
@@ -127,7 +127,7 @@ def guide(name: str,
                                         constraint=torch.distributions.constraints.positive)
 
     # Sample local scales and offsets
-    with pyro.plate("shared_genotype_plate", size=data.batch_size, dim=-1):
+    with pyro.plate(f"{name}_genotype_plate", size=data.batch_size, dim=-1):
         with pyro.poutine.scale(scale=data.scale_vector):
 
             lambda_batch_locs = lambda_locs[data.batch_idx]

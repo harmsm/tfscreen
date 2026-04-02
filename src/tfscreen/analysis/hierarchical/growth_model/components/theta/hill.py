@@ -154,7 +154,7 @@ def define_model(name: str,
     # Sample curve parameters for each (genotype, titrant_name) group
 
     with pyro.plate(f"{name}_titrant_name_plate", data.num_titrant_name, dim=-2):
-        with pyro.plate("shared_genotype_plate", size=data.batch_size, dim=-1):
+        with pyro.plate(f"{name}_genotype_plate", size=data.batch_size, dim=-1):
             with pyro.poutine.scale(scale=data.scale_vector):
                 logit_theta_low_offset = pyro.sample(f"{name}_logit_low_offset", dist.Normal(0.0, 1.0))
                 logit_theta_delta_offset = pyro.sample(f"{name}_logit_delta_offset", dist.Normal(0.0, 1.0))
@@ -343,7 +343,7 @@ def guide(name: str,
 
     with pyro.plate(f"{name}_titrant_name_plate", data.num_titrant_name, dim=-2):
         # Batching on Genotype (dim=-1)
-        with pyro.plate("shared_genotype_plate", size=data.batch_size, dim=-1):
+        with pyro.plate(f"{name}_genotype_plate", size=data.batch_size, dim=-1):
 
             # Scale data for sub-sampling
             with pyro.poutine.scale(scale=data.scale_vector):
@@ -454,13 +454,14 @@ def run_model(theta_param: ThetaParam, data: DataClass) -> torch.Tensor:
     """
 
     # Create [titrant_name,titrant_conc,genotype]-sized tensors of all
-    # parameters.
-    theta_low = theta_param.theta_low[:, None, data.geno_theta_idx]
-    theta_high = theta_param.theta_high[:, None, data.geno_theta_idx]
-    log_hill_K = theta_param.log_hill_K[:, None, data.geno_theta_idx]
-    hill_n = theta_param.hill_n[:, None, data.geno_theta_idx]
+    # parameters. Convert to tensors explicitly so numpy arrays work too.
+    geno_idx = torch.as_tensor(data.geno_theta_idx, dtype=torch.long)
+    theta_low = torch.as_tensor(theta_param.theta_low, dtype=torch.float32)[:, None, geno_idx]
+    theta_high = torch.as_tensor(theta_param.theta_high, dtype=torch.float32)[:, None, geno_idx]
+    log_hill_K = torch.as_tensor(theta_param.log_hill_K, dtype=torch.float32)[:, None, geno_idx]
+    hill_n = torch.as_tensor(theta_param.hill_n, dtype=torch.float32)[:, None, geno_idx]
 
-    log_titrant = torch.as_tensor(data.log_titrant_conc).float()[None, :, None]
+    log_titrant = torch.as_tensor(data.log_titrant_conc, dtype=torch.float32)[None, :, None]
 
     occupancy = torch.sigmoid(hill_n * (log_titrant - log_hill_K))
     theta_calc = theta_low + (theta_high - theta_low) * occupancy

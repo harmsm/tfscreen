@@ -54,31 +54,31 @@ class TestLinearGrowthMath:
 
     def test_scalar_inputs(self):
         calculate_growth, LP = self._import()
-        import jax.numpy as jnp
+        
         params = LP(
-            k_pre=jnp.array(0.02),
-            m_pre=jnp.array(0.01),
-            k_sel=jnp.array(-0.05),
-            m_sel=jnp.array(-0.03),
+            k_pre=np.array(0.02),
+            m_pre=np.array(0.01),
+            k_sel=np.array(-0.05),
+            m_sel=np.array(-0.03),
         )
         g_pre, g_sel = calculate_growth(params,
-                                        dk_geno=jnp.array(0.0),
-                                        activity=jnp.array(1.0),
-                                        theta=jnp.array(0.5))
+                                        dk_geno=np.array(0.0),
+                                        activity=np.array(1.0),
+                                        theta=np.array(0.5))
         npt.assert_allclose(float(g_pre), 0.02 + 0.0 + 1.0 * 0.01 * 0.5, rtol=1e-6)
         npt.assert_allclose(float(g_sel), -0.05 + 0.0 + 1.0 * -0.03 * 0.5, rtol=1e-6)
 
     def test_vector_inputs_and_mapping(self):
         """Verifies element-wise broadcasting over a genotype batch."""
         calculate_growth, LP = self._import()
-        import jax.numpy as jnp
-        k_pre  = jnp.array([0.02, 0.03, 0.015])
-        m_pre  = jnp.array([0.01, 0.02, 0.005])
-        k_sel  = jnp.array([-0.05, -0.04, -0.06])
-        m_sel  = jnp.array([-0.03, -0.02, -0.04])
-        dk     = jnp.array([0.0, 0.001, -0.001])
-        act    = jnp.array([1.0, 0.8, 1.2])
-        theta  = jnp.array([0.5, 0.3, 0.7])
+        
+        k_pre  = np.array([0.02, 0.03, 0.015])
+        m_pre  = np.array([0.01, 0.02, 0.005])
+        k_sel  = np.array([-0.05, -0.04, -0.06])
+        m_sel  = np.array([-0.03, -0.02, -0.04])
+        dk     = np.array([0.0, 0.001, -0.001])
+        act    = np.array([1.0, 0.8, 1.2])
+        theta  = np.array([0.5, 0.3, 0.7])
 
         params = LP(k_pre=k_pre, m_pre=m_pre, k_sel=k_sel, m_sel=m_sel)
         g_pre, g_sel = calculate_growth(params, dk_geno=dk, activity=act, theta=theta)
@@ -91,11 +91,11 @@ class TestLinearGrowthMath:
     def test_zero_activity_zeroes_modulator(self):
         """If activity=0, m terms drop out and growth equals k + dk."""
         calculate_growth, LP = self._import()
-        import jax.numpy as jnp
-        params = LP(k_pre=jnp.array(0.025), m_pre=jnp.array(0.05),
-                    k_sel=jnp.array(-0.04), m_sel=jnp.array(-0.03))
-        g_pre, g_sel = calculate_growth(params, dk_geno=jnp.array(0.0),
-                                        activity=jnp.array(0.0), theta=jnp.array(0.9))
+        
+        params = LP(k_pre=np.array(0.025), m_pre=np.array(0.05),
+                    k_sel=np.array(-0.04), m_sel=np.array(-0.03))
+        g_pre, g_sel = calculate_growth(params, dk_geno=np.array(0.0),
+                                        activity=np.array(0.0), theta=np.array(0.9))
         npt.assert_allclose(float(g_pre), 0.025, rtol=1e-6)
         npt.assert_allclose(float(g_sel), -0.04, rtol=1e-6)
 
@@ -108,13 +108,13 @@ class TestLinearGrowthMath:
         g_sel = -0.05 + 0.002 + 1.5*(-0.03)*0.8 = -0.084
         """
         calculate_growth, LP = self._import()
-        import jax.numpy as jnp
-        params = LP(k_pre=jnp.array(0.02), m_pre=jnp.array(0.01),
-                    k_sel=jnp.array(-0.05), m_sel=jnp.array(-0.03))
+        
+        params = LP(k_pre=np.array(0.02), m_pre=np.array(0.01),
+                    k_sel=np.array(-0.05), m_sel=np.array(-0.03))
         g_pre, g_sel = calculate_growth(params,
-                                        dk_geno=jnp.array(0.002),
-                                        activity=jnp.array(1.5),
-                                        theta=jnp.array(0.8))
+                                        dk_geno=np.array(0.002),
+                                        activity=np.array(1.5),
+                                        theta=np.array(0.8))
         npt.assert_allclose(float(g_pre),  0.034, rtol=1e-6)
         npt.assert_allclose(float(g_sel), -0.084, rtol=1e-5)
 
@@ -140,26 +140,26 @@ class TestHillRunModel:
         return run_model, TP
 
     def _make_data(self, n_titrant_conc=4, n_geno=3):
-        import jax.numpy as jnp
-        log_conc = jnp.log(jnp.array([0.001, 0.01, 0.1, 1.0]))[:n_titrant_conc]
+        
+        log_conc = np.log(np.array([0.001, 0.01, 0.1, 1.0]))[:n_titrant_conc]
         MockThetaData = namedtuple("MockThetaData",
                                    ["geno_theta_idx", "log_titrant_conc", "scatter_theta"])
         return MockThetaData(
-            geno_theta_idx   = jnp.arange(n_geno, dtype=jnp.int32),
+            geno_theta_idx   = np.arange(n_geno, dtype=np.int32),
             log_titrant_conc = log_conc,
             scatter_theta    = 0,
         )
 
     def test_output_shape(self):
         run_model, TP = self._import()
-        import jax.numpy as jnp
+        
         n_geno, n_conc, n_titrant = 3, 4, 1
         data = self._make_data(n_titrant_conc=n_conc, n_geno=n_geno)
         theta_param = TP(
-            theta_low  = jnp.full((n_titrant, n_geno), 0.05),
-            theta_high = jnp.full((n_titrant, n_geno), 0.95),
-            log_hill_K = jnp.zeros((n_titrant, n_geno)),
-            hill_n     = jnp.ones((n_titrant, n_geno)),
+            theta_low  = np.full((n_titrant, n_geno), 0.05),
+            theta_high = np.full((n_titrant, n_geno), 0.95),
+            log_hill_K = np.zeros((n_titrant, n_geno)),
+            hill_n     = np.ones((n_titrant, n_geno)),
             mu=None, sigma=None,
         )
         theta_out = run_model(theta_param, data)
@@ -169,16 +169,16 @@ class TestHillRunModel:
     def test_bounds(self):
         """Theta values must stay within (theta_low, theta_high)."""
         run_model, TP = self._import()
-        import jax.numpy as jnp
+        
         n_geno, n_conc, n_titrant = 5, 8, 1
         low  = 0.05
         high = 0.90
         data = self._make_data(n_titrant_conc=n_conc, n_geno=n_geno)
         theta_param = TP(
-            theta_low  = jnp.full((n_titrant, n_geno), low),
-            theta_high = jnp.full((n_titrant, n_geno), high),
-            log_hill_K = jnp.zeros((n_titrant, n_geno)),
-            hill_n     = jnp.ones((n_titrant, n_geno)),
+            theta_low  = np.full((n_titrant, n_geno), low),
+            theta_high = np.full((n_titrant, n_geno), high),
+            log_hill_K = np.zeros((n_titrant, n_geno)),
+            hill_n     = np.ones((n_titrant, n_geno)),
             mu=None, sigma=None,
         )
         theta_out = np.array(run_model(theta_param, data))
@@ -188,14 +188,14 @@ class TestHillRunModel:
     def test_monotone_in_concentration(self):
         """Theta should be monotonically increasing in concentration for Hill n>0."""
         run_model, TP = self._import()
-        import jax.numpy as jnp
+        
         n_geno, n_conc, n_titrant = 3, 6, 1
         data = self._make_data(n_titrant_conc=n_conc, n_geno=n_geno)
         theta_param = TP(
-            theta_low  = jnp.full((n_titrant, n_geno), 0.02),
-            theta_high = jnp.full((n_titrant, n_geno), 0.98),
-            log_hill_K = jnp.zeros((n_titrant, n_geno)),
-            hill_n     = jnp.full((n_titrant, n_geno), 2.0),
+            theta_low  = np.full((n_titrant, n_geno), 0.02),
+            theta_high = np.full((n_titrant, n_geno), 0.98),
+            log_hill_K = np.zeros((n_titrant, n_geno)),
+            hill_n     = np.full((n_titrant, n_geno), 2.0),
             mu=None, sigma=None,
         )
         theta_out = np.array(run_model(theta_param, data))  # (1, 6, 3)
@@ -209,21 +209,21 @@ class TestHillRunModel:
                       = (theta_low + theta_high) / 2.
         """
         run_model, TP = self._import()
-        import jax.numpy as jnp
+        
         # One concentration exactly at K (log_conc = log_K = 0 → conc = 1)
         MockThetaData = namedtuple("MockThetaData",
                                    ["geno_theta_idx", "log_titrant_conc", "scatter_theta"])
         data = MockThetaData(
-            geno_theta_idx   = jnp.array([0, 1], dtype=jnp.int32),
-            log_titrant_conc = jnp.array([0.0]),   # one concentration at log_K=0
+            geno_theta_idx   = np.array([0, 1], dtype=np.int32),
+            log_titrant_conc = np.array([0.0]),   # one concentration at log_K=0
             scatter_theta    = 0,
         )
         low, high = 0.1, 0.8
         theta_param = TP(
-            theta_low  = jnp.full((1, 2), low),
-            theta_high = jnp.full((1, 2), high),
-            log_hill_K = jnp.zeros((1, 2)),
-            hill_n     = jnp.ones((1, 2)),
+            theta_low  = np.full((1, 2), low),
+            theta_high = np.full((1, 2), high),
+            log_hill_K = np.zeros((1, 2)),
+            hill_n     = np.ones((1, 2)),
             mu=None, sigma=None,
         )
         theta_out = np.array(run_model(theta_param, data))  # (1, 1, 2)
@@ -239,19 +239,19 @@ class TestHillRunModel:
           theta = 0.05 + (0.95-0.05)*0.009901 ≈ 0.058911
         """
         run_model, TP = self._import()
-        import jax.numpy as jnp
+        
         MockThetaData = namedtuple("MockThetaData",
                                    ["geno_theta_idx", "log_titrant_conc", "scatter_theta"])
         data = MockThetaData(
-            geno_theta_idx   = jnp.array([0], dtype=jnp.int32),
-            log_titrant_conc = jnp.log(jnp.array([0.1])),
+            geno_theta_idx   = np.array([0], dtype=np.int32),
+            log_titrant_conc = np.log(np.array([0.1])),
             scatter_theta    = 0,
         )
         theta_param = TP(
-            theta_low  = jnp.array([[0.05]]),
-            theta_high = jnp.array([[0.95]]),
-            log_hill_K = jnp.array([[0.0]]),
-            hill_n     = jnp.array([[2.0]]),
+            theta_low  = np.array([[0.05]]),
+            theta_high = np.array([[0.95]]),
+            log_hill_K = np.array([[0.0]]),
+            hill_n     = np.array([[2.0]]),
             mu=None, sigma=None,
         )
         theta_out = float(run_model(theta_param, data)[0, 0, 0])
@@ -283,15 +283,15 @@ class TestCongression:
     def test_logit_normal_cdf_at_midpoint(self):
         """CDF(0.5) when mu=0, sigma=1 should equal 0.5 (symmetric)."""
         _logit_normal_cdf, _, _ = self._import()
-        import jax.numpy as jnp
-        result = float(_logit_normal_cdf(jnp.array(0.5), mu=0.0, sigma=1.0))
+        
+        result = float(_logit_normal_cdf(np.array(0.5), mu=0.0, sigma=1.0))
         npt.assert_allclose(result, 0.5, atol=1e-6)
 
     def test_logit_normal_cdf_monotone(self):
         """CDF must be strictly increasing over (0, 1)."""
         _logit_normal_cdf, _, _ = self._import()
-        import jax.numpy as jnp
-        xs = jnp.linspace(0.01, 0.99, 20)
+        
+        xs = np.linspace(0.01, 0.99, 20)
         cdfs = np.array([float(_logit_normal_cdf(x, mu=0.0, sigma=1.0)) for x in xs])
         assert np.all(np.diff(cdfs) > 0)
 
@@ -303,8 +303,8 @@ class TestCongression:
         Phi((0.8473 - 0.5) / 0.8) = Phi(0.4341) ≈ 0.6679
         """
         _logit_normal_cdf, _, _ = self._import()
-        import jax.numpy as jnp
-        result = float(_logit_normal_cdf(jnp.array(0.7), mu=0.5, sigma=0.8))
+        
+        result = float(_logit_normal_cdf(np.array(0.7), mu=0.5, sigma=0.8))
         npt.assert_allclose(result, 0.6679, atol=1e-3)
 
     # ── _empirical_cdf ───────────────────────────────────────────────────────
@@ -312,30 +312,30 @@ class TestCongression:
     def test_empirical_cdf_shape(self):
         """Output grid length should match t_grid."""
         _, _empirical_cdf, _ = self._import()
-        import jax.numpy as jnp
-        theta = jnp.array([[0.1, 0.3, 0.5, 0.7, 0.9],
+        
+        theta = np.array([[0.1, 0.3, 0.5, 0.7, 0.9],
                             [0.2, 0.4, 0.6, 0.8, 0.95]])
-        t_grid = jnp.linspace(0.0, 1.0, 32)
+        t_grid = np.linspace(0.0, 1.0, 32)
         result = _empirical_cdf(theta, t_grid)
         assert result.shape == (2, 32)
 
     def test_empirical_cdf_monotone(self):
         """Empirical CDF must be non-decreasing over the grid."""
         _, _empirical_cdf, _ = self._import()
-        import jax.numpy as jnp
+        
         rng = np.random.default_rng(0)
-        theta = jnp.array(rng.uniform(0.05, 0.95, (3, 20)))
-        t_grid = jnp.linspace(0.0, 1.0, 64)
+        theta = np.array(rng.uniform(0.05, 0.95, (3, 20)))
+        t_grid = np.linspace(0.0, 1.0, 64)
         result = np.array(_empirical_cdf(theta, t_grid))
         assert np.all(np.diff(result, axis=-1) >= -1e-7)
 
     def test_empirical_cdf_bounds(self):
         """CDF values should lie in [0, 1]."""
         _, _empirical_cdf, _ = self._import()
-        import jax.numpy as jnp
+        
         rng = np.random.default_rng(1)
-        theta = jnp.array(rng.uniform(0.05, 0.95, (4, 15)))
-        t_grid = jnp.linspace(0.01, 0.99, 50)
+        theta = np.array(rng.uniform(0.05, 0.95, (4, 15)))
+        t_grid = np.linspace(0.01, 0.99, 50)
         result = np.array(_empirical_cdf(theta, t_grid))
         assert result.min() >= 0.0 - 1e-7
         assert result.max() <= 1.0 + 1e-7
@@ -347,9 +347,9 @@ class TestCongression:
         Empirical CDF at 0.0 ≈ 0.0, at 0.5 = 0.5 (median), at 1.0 ≈ 1.0.
         """
         _, _empirical_cdf, _ = self._import()
-        import jax.numpy as jnp
-        theta  = jnp.array([[0.1, 0.3, 0.5, 0.7, 0.9]])
-        t_grid = jnp.array([0.0, 0.5, 1.0])
+        
+        theta  = np.array([[0.1, 0.3, 0.5, 0.7, 0.9]])
+        t_grid = np.array([0.0, 0.5, 1.0])
         result = np.array(_empirical_cdf(theta, t_grid))  # (1, 3)
         # At 0.0: below all sorted values → interpolates to 0.1
         # At 0.5: exactly the 3rd point (i=2, y=(2+0.5)/5=0.5)
@@ -362,9 +362,9 @@ class TestCongression:
     def test_update_thetas_logit_norm_shape(self):
         """update_thetas with logit_norm dist returns same shape as input."""
         _, _, update_thetas = self._import()
-        import jax.numpy as jnp
+        
         rng = np.random.default_rng(2)
-        theta = jnp.array(rng.uniform(0.1, 0.9, (2, 10)))
+        theta = np.array(rng.uniform(0.1, 0.9, (2, 10)))
         lam, mu, sigma = 0.5, 0.0, 1.0
         result = update_thetas(theta, params=(lam, mu, sigma), theta_dist="logit_norm")
         assert result.shape == theta.shape
@@ -372,18 +372,18 @@ class TestCongression:
     def test_update_thetas_empirical_shape(self):
         """update_thetas with empirical dist returns same shape as input."""
         _, _, update_thetas = self._import()
-        import jax.numpy as jnp
+        
         rng = np.random.default_rng(3)
-        theta = jnp.array(rng.uniform(0.1, 0.9, (2, 12)))
+        theta = np.array(rng.uniform(0.1, 0.9, (2, 12)))
         result = update_thetas(theta, params=(0.3,), theta_dist="empirical")
         assert result.shape == theta.shape
 
     def test_update_thetas_zero_lambda_is_identity(self):
         """When lam=0 (no cotransformation), output equals input."""
         _, _, update_thetas = self._import()
-        import jax.numpy as jnp
+        
         rng = np.random.default_rng(4)
-        theta = jnp.array(rng.uniform(0.1, 0.9, (3, 8)))
+        theta = np.array(rng.uniform(0.1, 0.9, (3, 8)))
         result = update_thetas(theta, params=(0.0, 0.0, 1.0), theta_dist="logit_norm")
         npt.assert_allclose(np.array(result), np.array(theta), rtol=1e-5)
 
@@ -402,18 +402,18 @@ class TestBetaNoiseMath:
     """
 
     def test_alpha_beta_values(self):
-        import jax.numpy as jnp
-        fx_calc = jnp.array([0.2, 0.5, 0.8])
-        kappa   = jnp.array(100.0)
-        alpha   = jnp.clip(fx_calc * kappa, 1e-10, 1e10)
-        beta    = jnp.clip((1.0 - fx_calc) * kappa, 1e-10, 1e10)
+        
+        fx_calc = np.array([0.2, 0.5, 0.8])
+        kappa   = np.array(100.0)
+        alpha   = np.clip(fx_calc * kappa, 1e-10, 1e10)
+        beta    = np.clip((1.0 - fx_calc) * kappa, 1e-10, 1e10)
         npt.assert_allclose(np.array(alpha), [20.0, 50.0, 80.0],  rtol=1e-6)
         npt.assert_allclose(np.array(beta),  [80.0, 50.0, 20.0],  rtol=1e-6)
 
     def test_alpha_plus_beta_equals_kappa(self):
         """alpha + beta == kappa (before clipping at boundary values)."""
-        import jax.numpy as jnp
-        fx = jnp.linspace(0.01, 0.99, 50)
+        
+        fx = np.linspace(0.01, 0.99, 50)
         kappa = 200.0
         alpha = fx * kappa
         beta  = (1.0 - fx) * kappa
@@ -422,10 +422,10 @@ class TestBetaNoiseMath:
 
     def test_clip_prevents_zero(self):
         """Extreme fx values must not produce zero alpha or beta."""
-        import jax.numpy as jnp
-        fx    = jnp.array([0.0, 1.0])
-        kappa = jnp.array(100.0)
-        alpha = jnp.clip(fx * kappa, 1e-10, 1e10)
-        beta  = jnp.clip((1.0 - fx) * kappa, 1e-10, 1e10)
+        
+        fx    = np.array([0.0, 1.0])
+        kappa = np.array(100.0)
+        alpha = np.clip(fx * kappa, 1e-10, 1e10)
+        beta  = np.clip((1.0 - fx) * kappa, 1e-10, 1e10)
         assert float(alpha[0]) == pytest.approx(1e-10)
         assert float(beta[-1]) == pytest.approx(1e-10)

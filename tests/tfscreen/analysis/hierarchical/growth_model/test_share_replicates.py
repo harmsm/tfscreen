@@ -75,10 +75,10 @@ def test_linear_independent_fails_with_share_replicates():
                               growth_shares_replicates=True)
     
     # We need to trigger define_model to run it
-    import numpyro.handlers as handlers
-    
+    import torch
+    import pyro.poutine as poutine
+
     with pytest.raises(ValueError, match="linear_independent cannot be used"):
-        with handlers.seed(rng_seed=0):
-            model_shared.jax_model(data=model_shared.data, 
-                                   priors=model_shared._priors, 
-                                   control=model_shared.main_control_kwargs)
+        torch.manual_seed(0)
+        poutine.trace(model_shared.pyro_model).get_trace(
+            data=model_shared.data, priors=model_shared._priors)

@@ -71,7 +71,7 @@ def define_model(name: str,
                     priors.dk_geno_hyper_shift_scale)
     )
 
-    with pyro.plate("shared_genotype_plate", size=data.batch_size, dim=-1):
+    with pyro.plate(f"{name}_genotype_plate", size=data.batch_size, dim=-1):
         with pyro.poutine.scale(scale=data.scale_vector):
             dk_geno_offset = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
 
@@ -136,7 +136,7 @@ def guide(name: str,
                                constraint=torch.distributions.constraints.positive)
 
     # --- Batching ---
-    with pyro.plate("shared_genotype_plate", size=data.batch_size, dim=-1):
+    with pyro.plate(f"{name}_genotype_plate", size=data.batch_size, dim=-1):
         with pyro.poutine.scale(scale=data.scale_vector):
 
             batch_locs = offset_locs[..., data.batch_idx]

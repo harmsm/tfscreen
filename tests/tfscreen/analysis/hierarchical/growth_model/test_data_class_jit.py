@@ -1,7 +1,8 @@
 
 import pytest
-import jax
-import jax.numpy as jnp
+
+pytestmark = pytest.mark.skip(reason="JAX JIT test not applicable to PyTorch port")
+
 import numpy as np
 from tfscreen.analysis.hierarchical.growth_model.data_class import DataClass, GrowthData, BindingData
 
