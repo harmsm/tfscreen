@@ -798,3 +798,70 @@ class RunInference:
         ]
         
         return site_names
+
+    def run_nuts(self,
+                 num_warmup=500,
+                 num_samples=500,
+                 num_chains=1,
+                 target_accept_prob=0.9):
+        """
+        Run NUTS (No-U-Turn Sampler) MCMC on the full dataset.
+
+        Parameters
+        ----------
+        num_warmup : int
+            Number of warmup/adaptation steps.
+        num_samples : int
+            Number of posterior samples to draw.
+        num_chains : int
+            Number of MCMC chains.
+        target_accept_prob : float
+            Target acceptance probability for step-size adaptation.
+
+        Returns
+        -------
+        numpyro.infer.MCMC
+            The MCMC object after sampling. Call `.get_samples()` to get
+            posterior samples as a dict of {site_name: jnp.array}.
+        """
+        from numpyro.infer import MCMC, NUTS, init_to_value, init_to_median
+        import numpyro.infer.util
+
+        main_key = random.PRNGKey(self._seed)
+
+        jax_model_kwargs = {
+            "priors": self.model.priors,
+            "data": self.model.data,
+        }
+
+        # Initialise from prior median — more robust than random for
+        # hierarchical models with constrained parameters.
+        init_params, _, _, _ = numpyro.infer.util.initialize_model(
+            main_key,
+            self.model.jax_model,
+            model_args=[],
+            model_kwargs=jax_model_kwargs,
+            init_strategy=init_to_median,
+        )
+        init_strategy = init_to_value(values=init_params)
+
+        kernel = NUTS(self.model.jax_model,
+                      init_strategy=init_strategy,
+                      target_accept_prob=target_accept_prob)
+
+        mcmc = MCMC(kernel,
+                    num_warmup=num_warmup,
+                    num_samples=num_samples,
+                    num_chains=num_chains,
+                    progress_bar=True)
+
+        run_key, _ = random.split(main_key)
+        mcmc.run(run_key, **jax_model_kwargs)
+
+        divergences = mcmc.get_extra_fields().get("diverging", None)
+        if divergences is not None:
+            num_div = int(jnp.sum(divergences))
+            total = num_samples * num_chains
+            print(f"NUTS: {num_div} divergences out of {total} samples")
+
+        return mcmc
