@@ -9,11 +9,16 @@ tfscreen
    :caption: Contents:
 
    simulation
+   process-raw
    analysis
 
 Simulation
 ----------
 `tfscreen` allows you to simulate high-throughput screens starting from thermodynamic models of transcription factor binding and activity. See the :doc:`simulation` page for more details.
+
+Raw Data Processing
+-------------------
+`tfscreen` includes utilities to convert raw sequencing data into quantitative inputs for analysis. See the :doc:`process-raw` page for more details.
 
 Analysis
 --------
