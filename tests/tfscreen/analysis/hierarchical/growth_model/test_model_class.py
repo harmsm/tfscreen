@@ -300,8 +300,8 @@ def test_initialize_classes_logic(mocker):
 
 def test_model_class_properties(initialized_model_class):
     model = initialized_model_class
-    model._jax_model = "jm"
-    model._jax_model_guide = "jmg"
+    model._pyro_model = "jm"
+    model._pyro_model_guide = "jmg"
 
     model._data = "d"
     model._priors = "p"

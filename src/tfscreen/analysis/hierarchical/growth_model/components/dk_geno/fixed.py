@@ -46,7 +46,7 @@ def define_model(name: str,
     pyro.deterministic(name, dk_geno_per_genotype)
 
     # Expand to full-sized tensor
-    dk_geno = dk_geno_per_genotype[None, None, None, None, None, None, :]
+    dk_geno = dk_geno_per_genotype.reshape(-1)[None, None, None, None, None, None, :]
 
     return dk_geno
 
@@ -64,7 +64,7 @@ def guide(name: str,
     dk_geno_per_genotype = torch.zeros(data.batch_size)
 
     # Expand to full-sized tensor
-    dk_geno = dk_geno_per_genotype[None, None, None, None, None, None, :]
+    dk_geno = dk_geno_per_genotype.reshape(-1)[None, None, None, None, None, None, :]
 
     return dk_geno
 

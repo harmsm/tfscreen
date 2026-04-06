@@ -74,8 +74,9 @@ def define_model(name: str,
     beta = torch.clamp(beta, min=1e-10, max=1e10)
 
     # Sample from beta distribution centered on fx_calc with spread dictated
-    # by kappa
-    fx_noisy = pyro.sample(f"{name}_dist", dist.Beta(alpha, beta))
+    # by kappa. Use .to_event() so all batch dims are treated as event dims,
+    # since this site is outside any plate context.
+    fx_noisy = pyro.sample(f"{name}_dist", dist.Beta(alpha, beta).to_event(alpha.dim()))
 
     # Register final tensors (optional, as fx_noisy is already sampled)
     pyro.deterministic(name, fx_noisy)
@@ -121,8 +122,8 @@ def guide(name: str,
     alpha = torch.clamp(alpha, min=1e-10, max=1e10)
     beta = torch.clamp(beta, min=1e-10, max=1e10)
 
-    # Sample fx_noisy
-    fx_noisy = pyro.sample(f"{name}_dist", dist.Beta(alpha, beta))
+    # Sample fx_noisy. Use .to_event() to match the model's shape convention.
+    fx_noisy = pyro.sample(f"{name}_dist", dist.Beta(alpha, beta).to_event(alpha.dim()))
 
     return fx_noisy
 

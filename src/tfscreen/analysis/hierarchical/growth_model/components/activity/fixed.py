@@ -48,7 +48,7 @@ def define_model(name: str,
     pyro.deterministic(name, activity_dists)
 
     # Broadcast to full-sized tensor
-    activity = activity_dists[None,None,None,None,None,None,:]
+    activity = activity_dists.reshape(-1)[None,None,None,None,None,None,:]
 
     return activity
 
@@ -68,7 +68,7 @@ def guide(name: str,
     activity_dists = torch.ones(data.batch_size)
 
     # Broadcast to full-sized tensor
-    activity = activity_dists[None,None,None,None,None,None,:]
+    activity = activity_dists.reshape(-1)[None,None,None,None,None,None,:]
 
     return activity
 

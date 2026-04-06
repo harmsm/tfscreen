@@ -1,5 +1,13 @@
 import pytest
 import os
+import pyro
+
+@pytest.fixture(autouse=True)
+def clear_pyro_param_store():
+    """Clear Pyro param store before each test to prevent contamination."""
+    pyro.clear_param_store()
+    yield
+    pyro.clear_param_store()
 
 @pytest.fixture(scope="session")
 def smoke_test_dir():

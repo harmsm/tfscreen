@@ -116,7 +116,7 @@ def define_model(name: str,
 
     pyro.deterministic(name, dk_geno_per_genotype)
 
-    return dk_geno_per_genotype[None, None, None, None, None, None, :]
+    return dk_geno_per_genotype.reshape(-1)[None, None, None, None, None, None, :]
 
 
 def guide(name: str,
@@ -188,7 +188,7 @@ def guide(name: str,
         epi_dk_geno = epi_offset * sigma_epi
         dk_geno_per_genotype = dk_geno_per_genotype + epi_dk_geno @ P_mat
 
-    return dk_geno_per_genotype[None, None, None, None, None, None, :]
+    return dk_geno_per_genotype.reshape(-1)[None, None, None, None, None, None, :]
 
 
 def get_hyperparameters() -> Dict[str, Any]:

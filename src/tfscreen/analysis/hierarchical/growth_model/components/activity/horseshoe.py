@@ -91,7 +91,7 @@ def define_model(name: str,
     pyro.deterministic(name, activity)
 
     # Broadcast to full-sized tensor
-    activity = activity[None,None,None,None,None,None,:]
+    activity = activity.reshape(-1)[None,None,None,None,None,None,:]
 
     return activity
 
@@ -161,7 +161,7 @@ def guide(name: str,
     activity = torch.where(is_wt_mask, torch.tensor(1.0), activity)
 
     # Broadcast to full-sized tensor
-    activity = activity[None,None,None,None,None,None,:]
+    activity = activity.reshape(-1)[None,None,None,None,None,None,:]
 
     return activity
 

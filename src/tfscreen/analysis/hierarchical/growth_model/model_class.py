@@ -370,13 +370,13 @@ def _setup_batching(growth_genotypes,
     
 class ModelClass:
     """
-    Manages the data wrangling and configuration for the JAX growth model.
+    Manages the data wrangling and configuration for the Pyro growth model.
 
     This class serves as the main entry point for fitting the hierarchical
     growth and binding model. It takes raw DataFrames for ln(CFU) and
-    theta observations, processes them into JAX-compatible Pytrees, and
+    theta observations, processes them into PyTorch-compatible dataclasses, and
     assembles the final `data`, `priors`, and `control` objects required
-    by the `jax_model`.
+    by the `pyro_model`.
 
     Parameters
     ----------
@@ -416,15 +416,15 @@ class ModelClass:
     Attributes
     ----------
     data : DataClass
-        A JAX Pytree (flax dataclass) holding all data tensors.
+        Frozen dataclass holding all data tensors.
     priors : PriorsClass
-        A JAX Pytree holding all prior definitions.
+        Frozen dataclass holding all prior definitions.
     control : ControlClass
-        A JAX Pytree holding integer codes that control model behavior.
+        Frozen dataclass holding integer codes that control model behavior.
     init_params : dict
         A dictionary of initial parameter guesses for optimization.
-    jax_model : function
-        The top-level JAX model function (from `model.py`).
+    pyro_model : function
+        The top-level Pyro model function (from `model.py`).
     settings : dict
         A dictionary of the model choice strings used.
     """
@@ -470,7 +470,7 @@ class ModelClass:
 
     def _initialize_data(self):
         """
-        Loads, processes, and wrangles all data into JAX Pytrees.
+        Loads, processes, and wrangles all data into frozen dataclasses.
 
         This method orchestrates the entire data pipeline:
         1.  Calls `_read_growth_df` and `_build_growth_tm`.
@@ -478,7 +478,7 @@ class ModelClass:
             growth data to ensure map consistency.
         3.  Extracts tensors and metadata from the TensorManagers.
         4.  Uses `populate_dataclass` to build the `GrowthData`, `BindingData`,
-            and final `DataClass` Pytrees.
+            and final `DataClass` frozen dataclasses.
         5.  Sets the final `self._data` attribute.
         """
         # ---------------------------------------------------------------------
@@ -564,8 +564,8 @@ class ModelClass:
         growth_data_sources = [tensors,sizes,wt_info,other_data]
 
         # Build mutation-to-genotype indicator matrices when any hierarchical_mut
-        # component is selected.  Stored as static (pytree_node=False) fields
-        # on GrowthData; downstream components convert to jnp arrays as needed.
+        # component is selected.  Stored as static fields on GrowthData;
+        # downstream components convert to torch tensors as needed.
         _needs_mut = (self._theta == "hill_mut" or
                       self._activity == "hierarchical_mut" or
                       self._dk_geno == "hierarchical_mut")
@@ -665,11 +665,11 @@ class ModelClass:
         # ---------------------------------------------------------------------
         # Populate dataclasses
 
-        # Populate a GrowthData flax dataclass with all keys in `sources`. 
+        # Populate a GrowthData frozen dataclass with all keys in `sources`.
         growth_dataclass = populate_dataclass(GrowthData,
                                               sources=growth_data_sources)
 
-        # Populate a BindingData flax dataclass with all keys in `sources`
+        # Populate a BindingData frozen dataclass with all keys in `sources`
         binding_dataclass = populate_dataclass(BindingData,
                                                sources=binding_data_sources)
 
@@ -678,8 +678,8 @@ class ModelClass:
                         "num_genotype":self.growth_tm.tensor_shape[-1]}]
         source_data.append(full_batch_data)
 
-        # Build the aggregated `DataClass` flax dataclass with the growth
-        # and binding dataclasses. Expose as a model attribute. 
+        # Build the aggregated `DataClass` frozen dataclass with the growth
+        # and binding dataclasses. Expose as a model attribute.
         self._data = populate_dataclass(DataClass,
                                         sources=source_data)
         
@@ -795,8 +795,8 @@ class ModelClass:
         self.main_control_kwargs = main_control_kwargs
 
         # bake the control arguments into the main and guide models
-        self._jax_model = partial(pyro_model, **main_control_kwargs)
-        self._jax_model_guide = partial(pyro_model, **guide_control_kwargs)
+        self._pyro_model = partial(pyro_model, **main_control_kwargs)
+        self._pyro_model_guide = partial(pyro_model, **guide_control_kwargs)
                 
         # Build priors class
         growth_priors = populate_dataclass(GrowthPriors,
@@ -820,12 +820,12 @@ class ModelClass:
     @property
     def pyro_model(self):
         """The top-level Pyro model function."""
-        return self._jax_model
+        return self._pyro_model
 
     @property
     def pyro_model_guide(self):
         """Guide for the Pyro model function."""
-        return self._jax_model_guide
+        return self._pyro_model_guide
 
     @property
     def get_batch(self):
@@ -848,7 +848,7 @@ class ModelClass:
 
         Returns
         -------
-        jnp.ndarray
+        torch.Tensor
             If `num_batches == 1`, returns an array of shape `(batch_size,)`.
             If `num_batches > 1`, returns an array of shape `(num_batches, batch_size)`.
         """
@@ -868,8 +868,8 @@ class ModelClass:
                 self._batch_choose_size = self._batch_size - num_bind
             else:
                 # Use full dataset
-                self._batch_idx = np.array(self.data.batch_idx, dtype=int)
-                self._batch_choose_from = np.array(self.data.not_binding_idx)
+                self._batch_idx = self.data.batch_idx.detach().cpu().numpy().astype(int)
+                self._batch_choose_from = self.data.not_binding_idx.detach().cpu().numpy()
                 self._batch_choose_size = self.data.not_binding_batch_size
 
         if not hasattr(self, "_batch_rng"):
@@ -904,12 +904,12 @@ class ModelClass:
 
     @property
     def data(self):
-        """The DataClass Pytree holding all input data."""
+        """The DataClass frozen dataclass holding all input data."""
         return self._data
 
     @property
     def priors(self):
-        """The PriorsClass Pytree holding all model priors."""
+        """The PriorsClass frozen dataclass holding all model priors."""
         return self._priors
             
     @property

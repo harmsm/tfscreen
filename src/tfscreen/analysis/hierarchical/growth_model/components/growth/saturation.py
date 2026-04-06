@@ -77,12 +77,14 @@ def define_model(name: str,
     min_per_condition = sample_param("min", priors.growth_min_hyper_loc_loc, priors.growth_min_hyper_loc_scale, priors.growth_min_hyper_scale)
     max_per_condition = sample_param("max", priors.growth_max_hyper_loc_loc, priors.growth_max_hyper_loc_scale, priors.growth_max_hyper_scale)
 
-    # Expand to full-sized tensors
-    min_pre = min_per_condition[data.map_condition_pre]
-    max_pre = max_per_condition[data.map_condition_pre]
-
-    min_sel = min_per_condition[data.map_condition_sel]
-    max_sel = max_per_condition[data.map_condition_sel]
+    # Flatten to 1D before indexing to handle extra leading singleton dims
+    # added by AutoDelta's plate broadcasting during Predictive.
+    min_1d = min_per_condition.reshape(-1)
+    max_1d = max_per_condition.reshape(-1)
+    min_pre = min_1d[data.map_condition_pre]
+    max_pre = max_1d[data.map_condition_pre]
+    min_sel = min_1d[data.map_condition_sel]
+    max_sel = max_1d[data.map_condition_sel]
 
     return SaturationParams(min_pre=min_pre, max_pre=max_pre,
                             min_sel=min_sel, max_sel=max_sel)
@@ -118,12 +120,14 @@ def guide(name: str,
     min_per_condition = sample_guide_param("min", priors.growth_min_hyper_loc_loc, priors.growth_min_hyper_loc_scale)
     max_per_condition = sample_guide_param("max", priors.growth_max_hyper_loc_loc, priors.growth_max_hyper_loc_scale)
 
-    # Expand to full-sized tensors
-    min_pre = min_per_condition[data.map_condition_pre]
-    max_pre = max_per_condition[data.map_condition_pre]
-
-    min_sel = min_per_condition[data.map_condition_sel]
-    max_sel = max_per_condition[data.map_condition_sel]
+    # Flatten to 1D before indexing to handle extra leading singleton dims
+    # added by AutoDelta's plate broadcasting during Predictive.
+    min_1d = min_per_condition.reshape(-1)
+    max_1d = max_per_condition.reshape(-1)
+    min_pre = min_1d[data.map_condition_pre]
+    max_pre = max_1d[data.map_condition_pre]
+    min_sel = min_1d[data.map_condition_sel]
+    max_sel = max_1d[data.map_condition_sel]
 
     return SaturationParams(min_pre=min_pre, max_pre=max_pre,
                             min_sel=min_sel, max_sel=max_sel)

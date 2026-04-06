@@ -108,22 +108,27 @@ requires_torch = pytest.mark.skipif(
     reason="PyTorch/Pyro not installed (NumPyro env)"
 )
 
-## Code for skipping slow tests.
+## Code for skipping slow tests and numerical equivalence tests.
 def pytest_addoption(parser):
     parser.addoption("--runslow",
                      action="store_true",
                      default=False,
                      help="run slow tests")
+    parser.addoption("--runnuts",
+                     action="store_true",
+                     default=False,
+                     help="run NUTS equivalence tests (very slow, requires reference fixtures)")
 
 def pytest_configure(config):
     config.addinivalue_line("markers", "slow: mark test as slow to run")
+    config.addinivalue_line("markers", "nuts: mark test as a NUTS equivalence test (requires --runnuts)")
     config.addinivalue_line("markers", "requires_torch: skip if PyTorch/Pyro not installed")
 
 def pytest_collection_modifyitems(config, items):
-    if config.getoption("--runslow"):
-        # --runslow given in cli: do not skip slow tests
-        return
     skip_slow = pytest.mark.skip(reason="need --runslow option to run")
+    skip_nuts = pytest.mark.skip(reason="need --runnuts option to run")
     for item in items:
-        if "slow" in item.keywords:
+        if "slow" in item.keywords and not config.getoption("--runslow"):
             item.add_marker(skip_slow)
+        if "nuts" in item.keywords and not config.getoption("--runnuts"):
+            item.add_marker(skip_nuts)

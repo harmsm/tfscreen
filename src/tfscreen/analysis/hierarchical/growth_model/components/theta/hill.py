@@ -453,22 +453,43 @@ def run_model(theta_param: ThetaParam, data: DataClass) -> torch.Tensor:
           ``[replicate, time, treatment, genotype]``.
     """
 
-    # Create [titrant_name,titrant_conc,genotype]-sized tensors of all
-    # parameters. Convert to tensors explicitly so numpy arrays work too.
+    # Select genotypes from the last dimension using [..., geno_idx].
+    # This handles both 2D [titrant_name, genotype] during normal inference
+    # and 3D [num_samples, titrant_name, genotype] during posterior prediction
+    # (when Predictive adds a leading sample dimension).
     geno_idx = torch.as_tensor(data.geno_theta_idx, dtype=torch.long)
-    theta_low = torch.as_tensor(theta_param.theta_low, dtype=torch.float32)[:, None, geno_idx]
-    theta_high = torch.as_tensor(theta_param.theta_high, dtype=torch.float32)[:, None, geno_idx]
-    log_hill_K = torch.as_tensor(theta_param.log_hill_K, dtype=torch.float32)[:, None, geno_idx]
-    hill_n = torch.as_tensor(theta_param.hill_n, dtype=torch.float32)[:, None, geno_idx]
+    theta_low = torch.as_tensor(theta_param.theta_low, dtype=torch.float32)[..., geno_idx]
+    theta_high = torch.as_tensor(theta_param.theta_high, dtype=torch.float32)[..., geno_idx]
+    log_hill_K = torch.as_tensor(theta_param.log_hill_K, dtype=torch.float32)[..., geno_idx]
+    hill_n = torch.as_tensor(theta_param.hill_n, dtype=torch.float32)[..., geno_idx]
 
+    # Insert titrant_conc dim at -2 position:
+    # 2D: [T, B_geno] -> [T, 1, B_geno]
+    # 3D: [S, T, B_geno] -> [S, T, 1, B_geno]
+    theta_low = theta_low.unsqueeze(-2)
+    theta_high = theta_high.unsqueeze(-2)
+    log_hill_K = log_hill_K.unsqueeze(-2)
+    hill_n = hill_n.unsqueeze(-2)
+
+    # log_titrant [C] -> [1, C, 1] to broadcast at the -2 position
     log_titrant = torch.as_tensor(data.log_titrant_conc, dtype=torch.float32)[None, :, None]
 
     occupancy = torch.sigmoid(hill_n * (log_titrant - log_hill_K))
     theta_calc = theta_low + (theta_high - theta_low) * occupancy
 
-    # Broadcast to the full-sized tensor
+    # Broadcast to the full-sized tensor by inserting 4 leading size-1 dims
+    # (for rep, time, cond_pre, cond_sel).
+    # Extra leading singleton dims may be added by AutoDelta/Predictive's plate
+    # depth tracking. Collapse all leading dims into a single batch dim, then
+    # insert 4 spatial singletons. Result shape: (..., 1, 1, 1, 1, T, C, G).
     if data.scatter_theta == 1:
-        theta_calc = theta_calc[None, None, None, None, :, :, :]
+        # Insert 4 spatial singleton dims between any leading batch dims and the
+        # trailing (titrant_name, titrant_conc, genotype) dims.
+        # 3D input (T, C, G) -> (1, 1, 1, 1, T, C, G)
+        # 4D input (S, T, C, G) -> (S, 1, 1, 1, 1, T, C, G)
+        leading = theta_calc.shape[:-3]
+        trailing = theta_calc.shape[-3:]
+        theta_calc = theta_calc.reshape(*leading, 1, 1, 1, 1, *trailing)
 
     return theta_calc
 

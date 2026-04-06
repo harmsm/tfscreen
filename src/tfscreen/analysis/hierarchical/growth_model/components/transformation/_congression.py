@@ -31,7 +31,11 @@ def _torch_interp(x, xp, fp):
     x0, x1 = xp[lo], xp[hi]
     y0, y1 = fp[lo], fp[hi]
     denom = x1 - x0
-    t = torch.where(denom > 0, (x - x0) / denom, torch.zeros_like(x))
+    # Use a safe denominator (1 where denom=0) to avoid NaN gradients from
+    # torch.where, which back-propagates through both branches regardless of
+    # which is selected.
+    safe_denom = torch.where(denom > 0, denom, torch.ones_like(denom))
+    t = torch.where(denom > 0, (x - x0) / safe_denom, torch.zeros_like(x))
     return y0 + t * (y1 - y0)
 
 

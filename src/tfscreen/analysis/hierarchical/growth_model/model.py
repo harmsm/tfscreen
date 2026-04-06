@@ -18,11 +18,11 @@ def pyro_model(data: DataClass,
     Parameters
     ----------
     data : DataClass
-        A DataClass pytree containing all observed data and experimental
+        A DataClass frozen dataclass containing all observed data and experimental
         metadata for both growth and binding assays.
     priors : PriorsClass
-        A PriorsClass pytree containing the prior distributions
-        (as Numpyro distribution objects) for all latent parameters.
+        A PriorsClass frozen dataclass containing the prior distributions
+        (as Pyro distribution objects) for all latent parameters.
     control : dict
         dictionary of keyword arguments necessary to specify the model. Expects:
         - theta

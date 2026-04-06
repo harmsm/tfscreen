@@ -1,14 +1,9 @@
 import tfscreen
-import jax
-from jax import numpy as jnp
 import pandas as pd
 import numpy as np
 import h5py
 from tqdm import tqdm
 from tfscreen.analysis.hierarchical.posteriors import load_posteriors, get_posterior_samples
-
-# Declare float datatype
-FLOAT_DTYPE = jnp.float64 if jax.config.read("jax_enable_x64") else jnp.float32
 
 # Set zero conc to this when taking log
 ZERO_CONC_VALUE = 1e-20

@@ -405,7 +405,7 @@ class TensorManager:
         
     def create_tensors(self):
         """
-        Converts the DataFrame into a dictionary of JAX tensors.
+        Converts the DataFrame into a dictionary of PyTorch tensors.
         
         This pivots the tidy DataFrame into a dense, multi-dimensional structure, 
         keeping track of columns the user asked to grab. Each of those columns
@@ -465,7 +465,7 @@ class TensorManager:
 
         # df cleanup -- remove nan prior to building tensors. We can set them 
         # to whatever we want as long as we apply good_mask when doing the 
-        # analysis. Has to be above zero because jax/numpyro demands non-zero
+        # analysis. Has to be above zero because Pyro demands non-zero
         # values when it checks std on final obs/Normal samples -- even with 
         # the mask
         pivoted_df = pivoted_df.fillna(1.0)

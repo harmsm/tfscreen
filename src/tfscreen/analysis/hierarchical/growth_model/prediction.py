@@ -184,8 +184,12 @@ def predict(model_class,
             genotype_indices.append(matches[0])
         genotype_indices = np.array(genotype_indices)
 
-    # Use existing get_batch to subset the data tensors
-    subset_data = new_mc.get_batch(new_mc.data, torch.tensor(genotype_indices, dtype=torch.long))
+    # Run Predictive with the FULL genotype data (all N genotypes).
+    # Using a subset here would mismatch the theta plate size (plate.size = batch_size)
+    # with the full-N posterior theta params, causing Pyro to truncate theta to
+    # batch_size elements and breaking the binding model's geno_theta_idx lookup.
+    # Output is filtered to user-requested genotypes in the quantile step below.
+    full_data = new_mc.data
 
     # -------------------------------------------------------------------------
     # Sample selection from posterior
@@ -266,7 +270,7 @@ def predict(model_class,
     predictive = Predictive(new_mc.pyro_model,
                             posterior_samples=torch_samples,
                             return_sites=predict_sites)
-    predictions = predictive(data=subset_data, priors=new_mc.priors)
+    predictions = predictive(data=full_data, priors=new_mc.priors)
     
     # -------------------------------------------------------------------------
     # Calculate Quantiles and Join
@@ -282,22 +286,24 @@ def predict(model_class,
     tm = new_mc.growth_tm
     indices = [base_df[f"{dim}_idx"].values for dim in tm.tensor_dim_names]
     
-    # Since we used get_batch, the predictions only have the subsetted genotypes.
-    # The last dimension of predictions[site] will match the length of genotype_indices.
-    # To map back to the tensor indices, we need to map genotype_idx in base_df
-    # to its relative position in the genotype_indices array.
-    
-    # Mapping from original genotype index to new relative index
-    geno_map = {orig_idx: i for i, orig_idx in enumerate(genotype_indices)}
-    relative_geno_indices = base_df["genotype_idx"].map(geno_map).values
-    
-    # Update indices for genotype to be relative for the prediction tensor
-    indices[-1] = relative_geno_indices
+    # Predictions were run on the full dataset (all N genotypes).
+    # The genotype_idx values in base_df directly index the last dim of
+    # the prediction tensor — no remapping needed.
+    indices[-1] = base_df["genotype_idx"].values
 
     all_dfs = {}
+    n_spatial_dims = len(tm.tensor_dim_names)  # typically 7
+
     for site in predict_sites:
         _p = predictions[site]
         site_samples = np.asarray(_p.detach().cpu() if isinstance(_p, torch.Tensor) else _p)  # shape: (num_samples, ...)
+
+        # Predictive may add extra leading singleton dims from Pyro's plate depth
+        # tracking. Collapse them so the spatial dims align with `indices`.
+        expected_ndim = 1 + n_spatial_dims  # sample dim + spatial dims
+        if site_samples.ndim > expected_ndim:
+            site_samples = site_samples.reshape(site_samples.shape[0], *site_samples.shape[-n_spatial_dims:])
+
         df = base_df.copy()
 
         for q_name, q_val in q_to_get.items():

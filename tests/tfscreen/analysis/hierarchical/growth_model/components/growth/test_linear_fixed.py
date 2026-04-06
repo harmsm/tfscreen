@@ -23,6 +23,7 @@ def test_define_model():
     data = MagicMock()
     # 2 conditions, 2 replicates -> total 4 entries in priors
     # Let's map them
+    data.num_condition_rep = 4
     data.map_condition_pre = torch.tensor([0, 1])
     data.map_condition_sel = torch.tensor([2, 3])
 
@@ -41,6 +42,7 @@ def test_guide():
     """Test guide expansion logic."""
     priors = growth_fixed.get_priors()
     data = MagicMock()
+    data.num_condition_rep = 4
     data.map_condition_pre = torch.tensor([0])
     data.map_condition_sel = torch.tensor([1])
 

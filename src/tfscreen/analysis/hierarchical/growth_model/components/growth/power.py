@@ -87,14 +87,17 @@ def define_model(name: str,
     m_per_condition = sample_param("m", priors.growth_m_hyper_loc_loc, priors.growth_m_hyper_loc_scale, priors.growth_m_hyper_scale)
     n_per_condition = sample_param("n", priors.growth_n_hyper_loc_loc, priors.growth_n_hyper_loc_scale, priors.growth_n_hyper_scale, is_positive=True)
 
-    # Expand to full-sized tensors
-    k_pre = k_per_condition[data.map_condition_pre]
-    m_pre = m_per_condition[data.map_condition_pre]
-    n_pre = n_per_condition[data.map_condition_pre]
-
-    k_sel = k_per_condition[data.map_condition_sel]
-    m_sel = m_per_condition[data.map_condition_sel]
-    n_sel = n_per_condition[data.map_condition_sel]
+    # Flatten to 1D before indexing to handle extra leading singleton dims
+    # added by AutoDelta's plate broadcasting during Predictive.
+    k_1d = k_per_condition.reshape(-1)
+    m_1d = m_per_condition.reshape(-1)
+    n_1d = n_per_condition.reshape(-1)
+    k_pre = k_1d[data.map_condition_pre]
+    m_pre = m_1d[data.map_condition_pre]
+    n_pre = n_1d[data.map_condition_pre]
+    k_sel = k_1d[data.map_condition_sel]
+    m_sel = m_1d[data.map_condition_sel]
+    n_sel = n_1d[data.map_condition_sel]
 
     return PowerParams(k_pre=k_pre, m_pre=m_pre, n_pre=n_pre,
                        k_sel=k_sel, m_sel=m_sel, n_sel=n_sel)
@@ -133,14 +136,17 @@ def guide(name: str,
     m_per_condition = sample_guide_param("m", priors.growth_m_hyper_loc_loc, priors.growth_m_hyper_loc_scale)
     n_per_condition = sample_guide_param("n", priors.growth_n_hyper_loc_loc, priors.growth_n_hyper_loc_scale, is_positive=True)
 
-    # Expand to full-sized tensors
-    k_pre = k_per_condition[data.map_condition_pre]
-    m_pre = m_per_condition[data.map_condition_pre]
-    n_pre = n_per_condition[data.map_condition_pre]
-
-    k_sel = k_per_condition[data.map_condition_sel]
-    m_sel = m_per_condition[data.map_condition_sel]
-    n_sel = n_per_condition[data.map_condition_sel]
+    # Flatten to 1D before indexing to handle extra leading singleton dims
+    # added by AutoDelta's plate broadcasting during Predictive.
+    k_1d = k_per_condition.reshape(-1)
+    m_1d = m_per_condition.reshape(-1)
+    n_1d = n_per_condition.reshape(-1)
+    k_pre = k_1d[data.map_condition_pre]
+    m_pre = m_1d[data.map_condition_pre]
+    n_pre = n_1d[data.map_condition_pre]
+    k_sel = k_1d[data.map_condition_sel]
+    m_sel = m_1d[data.map_condition_sel]
+    n_sel = n_1d[data.map_condition_sel]
 
     return PowerParams(k_pre=k_pre, m_pre=m_pre, n_pre=n_pre,
                        k_sel=k_sel, m_sel=m_sel, n_sel=n_sel)

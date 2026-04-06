@@ -2,10 +2,6 @@ import os
 import yaml
 import pandas as pd
 import numpy as np
-import jax.numpy as jnp
-from flax import struct
-
-import optax
 
 from tfscreen.analysis.hierarchical.growth_model import GrowthModel
 from tfscreen.analysis.hierarchical.run_inference import RunInference
@@ -86,15 +82,18 @@ def _run_map(ri,
         True if MAP converged according to the specified tolerance.
     """
 
-    # Create a learning rate schedule
-    schedule = optax.exponential_decay(
-        init_value=adam_step_size,
-        transition_steps=float(max_num_epochs * ri._iterations_per_epoch),
-        decay_rate=adam_final_step_size / adam_step_size
-    )
+    # Compute per-step learning rate decay (lrd) for ClippedAdam.
+    # ClippedAdam applies lr *= lrd at each step, so after total_steps steps:
+    # lr_final = lr_init * lrd^total_steps => lrd = (lr_final/lr_init)^(1/total_steps)
+    total_steps = max_num_epochs * ri._iterations_per_epoch
+    if total_steps > 0 and adam_final_step_size != adam_step_size:
+        adam_lrd = (adam_final_step_size / adam_step_size) ** (1.0 / total_steps)
+    else:
+        adam_lrd = 1.0
 
      # Create a maximum a posteriori svi object
-    map_obj = ri.setup_svi(adam_step_size=schedule,
+    map_obj = ri.setup_svi(adam_step_size=adam_step_size,
+                           adam_lrd=adam_lrd,
                            adam_clip_norm=adam_clip_norm,
                            elbo_num_particles=elbo_num_particles,
                            guide_type="delta")
@@ -221,15 +220,16 @@ def _run_svi(ri,
         True if SVI converged according to the specified tolerance.
     """
     
-    # Create a learning rate schedule
-    schedule = optax.exponential_decay(
-        init_value=adam_step_size,
-        transition_steps=float(max_num_epochs * ri._iterations_per_epoch),
-        decay_rate=adam_final_step_size / adam_step_size
-    )
+    # Compute per-step learning rate decay (lrd) for ClippedAdam.
+    total_steps = max_num_epochs * ri._iterations_per_epoch
+    if total_steps > 0 and adam_final_step_size != adam_step_size:
+        adam_lrd = (adam_final_step_size / adam_step_size) ** (1.0 / total_steps)
+    else:
+        adam_lrd = 1.0
 
     # Create an svi object
-    svi_obj = ri.setup_svi(adam_step_size=schedule,
+    svi_obj = ri.setup_svi(adam_step_size=adam_step_size,
+                           adam_lrd=adam_lrd,
                            adam_clip_norm=adam_clip_norm,
                            elbo_num_particles=elbo_num_particles,
                            guide_type="component")

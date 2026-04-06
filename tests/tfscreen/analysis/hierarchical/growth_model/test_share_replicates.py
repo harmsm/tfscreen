@@ -68,7 +68,7 @@ def test_growth_shares_replicates():
 def test_linear_independent_fails_with_share_replicates():
     growth_df, binding_df = get_mock_df()
     
-    # It shouldn't crash until jax_model is evaluated in linear_independent logic
+    # It shouldn't crash until pyro_model is evaluated in linear_independent logic
     # Actually wait - we put the Data assertions directly inside `define_model` of linear_independent
     model_shared = ModelClass(growth_df=growth_df, binding_df=binding_df, 
                               condition_growth="linear_independent",

@@ -114,7 +114,7 @@ def test_component_shape_guards():
         "dk_geno_offset": torch.zeros(total_genotypes),
     }
 
-    # Use poutine.do to substitute latent values (equivalent to numpyro substitute)
+    # Use poutine.do to substitute latent values
     pyro.clear_param_store()
     torch.manual_seed(0)
     with poutine.do(data=substitutions):

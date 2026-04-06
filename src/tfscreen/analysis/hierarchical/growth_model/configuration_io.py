@@ -31,7 +31,7 @@ def _update_dataclass(dc, prefix, flat_dict):
     import dataclasses
     updates = {}
     
-    # Check if this is a standard dataclass or a flax struct dataclass
+    # Check if this is a standard dataclass
     if hasattr(dc, '__dataclass_fields__'):
         fields = dataclasses.fields(dc) if dataclasses.is_dataclass(dc) else dc.__dataclass_fields__.values()
         
@@ -115,7 +115,7 @@ def write_configuration(gm,
         if not hasattr(v, 'shape') or len(v.shape) == 0:
             continue
             
-        arr = np.array(v)
+        arr = v.detach().cpu().numpy() if isinstance(v, torch.Tensor) else np.array(v)
         flat_val = arr.flatten()
         
         df = pd.DataFrame({"parameter": k, "value": flat_val, "flat_index": range(len(flat_val))})

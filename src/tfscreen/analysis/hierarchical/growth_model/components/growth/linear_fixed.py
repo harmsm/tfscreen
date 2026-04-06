@@ -59,11 +59,24 @@ def define_model(name: str,
         A dataclass containing k_pre, m_pre, k_sel, and m_sel.
     """
 
-    # Expand to full-sized tensors
-    k_pre = priors.growth_k_per_cond_rep[data.map_condition_pre]
-    m_pre = priors.growth_m_per_cond_rep[data.map_condition_pre]
-    k_sel = priors.growth_k_per_cond_rep[data.map_condition_sel]
-    m_sel = priors.growth_m_per_cond_rep[data.map_condition_sel]
+    # Tile priors to cover data.num_condition_rep if the provided arrays are
+    # shorter (e.g., when calibration values don't match the data structure).
+    import math
+    n = data.num_condition_rep
+    k_vals = priors.growth_k_per_cond_rep
+    m_vals = priors.growth_m_per_cond_rep
+    if k_vals.shape[0] < n:
+        k_vals = k_vals.repeat(math.ceil(n / k_vals.shape[0]))[:n]
+        m_vals = m_vals.repeat(math.ceil(n / m_vals.shape[0]))[:n]
+
+    # Flatten to 1D before indexing to handle extra leading singleton dims
+    # added by AutoDelta's plate broadcasting during Predictive.
+    k_1d = k_vals.reshape(-1)
+    m_1d = m_vals.reshape(-1)
+    k_pre = k_1d[data.map_condition_pre]
+    m_pre = m_1d[data.map_condition_pre]
+    k_sel = k_1d[data.map_condition_sel]
+    m_sel = m_1d[data.map_condition_sel]
 
     return LinearParams(k_pre=k_pre, m_pre=m_pre, k_sel=k_sel, m_sel=m_sel)
 
@@ -78,11 +91,22 @@ def guide(name: str,
     defined in the priors, without registering any learnable parameters.
     """
 
-    # Expand to full-sized tensors
-    k_pre = priors.growth_k_per_cond_rep[data.map_condition_pre]
-    m_pre = priors.growth_m_per_cond_rep[data.map_condition_pre]
-    k_sel = priors.growth_k_per_cond_rep[data.map_condition_sel]
-    m_sel = priors.growth_m_per_cond_rep[data.map_condition_sel]
+    import math
+    n = data.num_condition_rep
+    k_vals = priors.growth_k_per_cond_rep
+    m_vals = priors.growth_m_per_cond_rep
+    if k_vals.shape[0] < n:
+        k_vals = k_vals.repeat(math.ceil(n / k_vals.shape[0]))[:n]
+        m_vals = m_vals.repeat(math.ceil(n / m_vals.shape[0]))[:n]
+
+    # Flatten to 1D before indexing to handle extra leading singleton dims
+    # added by AutoDelta's plate broadcasting during Predictive.
+    k_1d = k_vals.reshape(-1)
+    m_1d = m_vals.reshape(-1)
+    k_pre = k_1d[data.map_condition_pre]
+    m_pre = m_1d[data.map_condition_pre]
+    k_sel = k_1d[data.map_condition_sel]
+    m_sel = m_1d[data.map_condition_sel]
 
     return LinearParams(k_pre=k_pre, m_pre=m_pre, k_sel=k_sel, m_sel=m_sel)
 

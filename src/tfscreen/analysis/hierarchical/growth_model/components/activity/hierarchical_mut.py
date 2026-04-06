@@ -92,7 +92,7 @@ def define_model(name: str,
 
     pyro.deterministic(name, activity)
 
-    return activity[None, None, None, None, None, None, :]
+    return activity.reshape(-1)[None, None, None, None, None, None, :]
 
 
 def guide(name: str,
@@ -144,7 +144,7 @@ def guide(name: str,
 
     activity = torch.clamp(torch.exp(log_activity), max=1e30)
 
-    return activity[None, None, None, None, None, None, :]
+    return activity.reshape(-1)[None, None, None, None, None, None, :]
 
 
 def get_hyperparameters() -> Dict[str, Any]:

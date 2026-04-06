@@ -101,11 +101,14 @@ def define_model(name: str,
     pyro.deterministic(f"{name}_k", growth_k_per_condition)
     pyro.deterministic(f"{name}_m", growth_m_per_condition)
 
-    # Expand to full-sized tensors
-    k_pre = growth_k_per_condition[data.map_condition_pre]
-    m_pre = growth_m_per_condition[data.map_condition_pre]
-    k_sel = growth_k_per_condition[data.map_condition_sel]
-    m_sel = growth_m_per_condition[data.map_condition_sel]
+    # Flatten to 1D before indexing to handle extra leading singleton dims
+    # added by AutoDelta's plate broadcasting during Predictive.
+    k_1d = growth_k_per_condition.reshape(-1)
+    m_1d = growth_m_per_condition.reshape(-1)
+    k_pre = k_1d[data.map_condition_pre]
+    m_pre = m_1d[data.map_condition_pre]
+    k_sel = k_1d[data.map_condition_sel]
+    m_sel = m_1d[data.map_condition_sel]
 
     return LinearParams(k_pre=k_pre, m_pre=m_pre, k_sel=k_sel, m_sel=m_sel)
 
@@ -180,11 +183,14 @@ def guide(name: str,
     growth_k_per_condition = growth_k_hyper_loc + growth_k_offset * growth_k_hyper_scale
     growth_m_per_condition = growth_m_hyper_loc + growth_m_offset * growth_m_hyper_scale
 
-    # Expand to full-sized tensors
-    k_pre = growth_k_per_condition[data.map_condition_pre]
-    m_pre = growth_m_per_condition[data.map_condition_pre]
-    k_sel = growth_k_per_condition[data.map_condition_sel]
-    m_sel = growth_m_per_condition[data.map_condition_sel]
+    # Flatten to 1D before indexing to handle extra leading singleton dims
+    # added by AutoDelta's plate broadcasting during Predictive.
+    k_1d = growth_k_per_condition.reshape(-1)
+    m_1d = growth_m_per_condition.reshape(-1)
+    k_pre = k_1d[data.map_condition_pre]
+    m_pre = m_1d[data.map_condition_pre]
+    k_sel = k_1d[data.map_condition_sel]
+    m_sel = m_1d[data.map_condition_sel]
 
     return LinearParams(k_pre=k_pre, m_pre=m_pre, k_sel=k_sel, m_sel=m_sel)
 

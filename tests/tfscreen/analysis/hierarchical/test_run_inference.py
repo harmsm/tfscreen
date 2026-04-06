@@ -180,7 +180,7 @@ def test_get_posteriors(tmpdir, mocker):
     mock_svi.guide = mocker.Mock()
 
     # Mock _get_genotype_dim_map so we don't need a real model trace
-    mocker.patch.object(ri, "_get_genotype_dim_map", return_value={})
+    mocker.patch.object(ri, "_get_genotype_dim_map", return_value=({}, {}))
 
     # Mock Predictive
     mock_predictive = mocker.patch("tfscreen.analysis.hierarchical.run_inference.Predictive")
@@ -201,7 +201,7 @@ def test_get_posteriors_batching_logic(tmpdir, mocker):
     mock_svi = mocker.Mock()
     mock_svi.guide = mocker.Mock()
 
-    mocker.patch.object(ri, "_get_genotype_dim_map", return_value={})
+    mocker.patch.object(ri, "_get_genotype_dim_map", return_value=({}, {}))
 
     mock_predictive = mocker.patch("tfscreen.analysis.hierarchical.run_inference.Predictive")
     mock_sampler = mock_predictive.return_value
@@ -228,7 +228,7 @@ def test_get_posteriors_full_logic(tmpdir, mocker):
     mock_svi = mocker.Mock()
 
     # global_p: not in dim_map; geno_p: in dim_map at dim -1
-    mocker.patch.object(ri, "_get_genotype_dim_map", return_value={"geno_p": -1})
+    mocker.patch.object(ri, "_get_genotype_dim_map", return_value=({"geno_p": -1}, {}))
 
     mock_predictive = mocker.patch("tfscreen.analysis.hierarchical.run_inference.Predictive")
     mock_sampler = mock_predictive.return_value

@@ -68,7 +68,7 @@ class MockModel:
 def test_get_genotype_dim_map():
     model = MockModel(num_genotype=5)
     ri = RunInference(model, seed=42)
-    dim_map = ri._get_genotype_dim_map()
+    dim_map, shape_map = ri._get_genotype_dim_map()
 
     assert dim_map["geno_p"] == -1
     assert dim_map["geno_p_det"] == -1
@@ -76,6 +76,9 @@ def test_get_genotype_dim_map():
     assert dim_map["det_p_in"] == -1
     assert dim_map["det_p_out"] == -1
     assert "global_p" not in dim_map
+
+    assert shape_map["geno_p"][-1] == 5       # genotype dim
+    assert shape_map["matrix_p"] == (3, 5)    # (titrants, genotypes)
 
 
 def test_get_posteriors_batching_mapping(tmpdir):

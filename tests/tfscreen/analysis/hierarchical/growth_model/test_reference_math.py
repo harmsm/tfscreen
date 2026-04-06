@@ -181,7 +181,7 @@ class TestHillRunModel:
             hill_n     = np.ones((n_titrant, n_geno)),
             mu=None, sigma=None,
         )
-        theta_out = np.array(run_model(theta_param, data))
+        theta_out = run_model(theta_param, data).detach().numpy()
         assert theta_out.min() >= low  - 1e-6
         assert theta_out.max() <= high + 1e-6
 
@@ -198,7 +198,7 @@ class TestHillRunModel:
             hill_n     = np.full((n_titrant, n_geno), 2.0),
             mu=None, sigma=None,
         )
-        theta_out = np.array(run_model(theta_param, data))  # (1, 6, 3)
+        theta_out = run_model(theta_param, data).detach().numpy()  # (1, 6, 3)
         # Along concentration axis (dim 1) should be non-decreasing
         assert np.all(np.diff(theta_out[0, :, :], axis=0) >= -1e-7)
 
@@ -226,7 +226,7 @@ class TestHillRunModel:
             hill_n     = np.ones((1, 2)),
             mu=None, sigma=None,
         )
-        theta_out = np.array(run_model(theta_param, data))  # (1, 1, 2)
+        theta_out = run_model(theta_param, data).detach().numpy()  # (1, 1, 2)
         expected  = (low + high) / 2.0
         npt.assert_allclose(theta_out[0, 0, :], expected, rtol=1e-6)
 
@@ -265,9 +265,9 @@ class TestHillRunModel:
 
 class TestCongression:
     """
-    The congression (co-transformation correction) functions use jax.vmap and
-    jax.scipy — the most JAX-specific code in the codebase.  These golden-value
-    tests catch any divergence introduced by the vmap→loop/torch.vmap port.
+    The congression (co-transformation correction) functions use torch.vmap and
+    torch — the most framework-specific code in the codebase.  These golden-value
+    tests catch any divergence introduced by porting.
     """
 
     def _import(self):
@@ -326,17 +326,17 @@ class TestCongression:
         rng = np.random.default_rng(0)
         theta = np.array(rng.uniform(0.05, 0.95, (3, 20)))
         t_grid = np.linspace(0.0, 1.0, 64)
-        result = np.array(_empirical_cdf(theta, t_grid))
+        result = _empirical_cdf(theta, t_grid).detach().numpy()
         assert np.all(np.diff(result, axis=-1) >= -1e-7)
 
     def test_empirical_cdf_bounds(self):
         """CDF values should lie in [0, 1]."""
         _, _empirical_cdf, _ = self._import()
-        
+
         rng = np.random.default_rng(1)
         theta = np.array(rng.uniform(0.05, 0.95, (4, 15)))
         t_grid = np.linspace(0.01, 0.99, 50)
-        result = np.array(_empirical_cdf(theta, t_grid))
+        result = _empirical_cdf(theta, t_grid).detach().numpy()
         assert result.min() >= 0.0 - 1e-7
         assert result.max() <= 1.0 + 1e-7
 
@@ -347,10 +347,10 @@ class TestCongression:
         Empirical CDF at 0.0 ≈ 0.0, at 0.5 = 0.5 (median), at 1.0 ≈ 1.0.
         """
         _, _empirical_cdf, _ = self._import()
-        
+
         theta  = np.array([[0.1, 0.3, 0.5, 0.7, 0.9]])
         t_grid = np.array([0.0, 0.5, 1.0])
-        result = np.array(_empirical_cdf(theta, t_grid))  # (1, 3)
+        result = _empirical_cdf(theta, t_grid).detach().numpy()  # (1, 3)
         # At 0.0: below all sorted values → interpolates to 0.1
         # At 0.5: exactly the 3rd point (i=2, y=(2+0.5)/5=0.5)
         # At 1.0: beyond all sorted values → 0.9
@@ -385,7 +385,7 @@ class TestCongression:
         rng = np.random.default_rng(4)
         theta = np.array(rng.uniform(0.1, 0.9, (3, 8)))
         result = update_thetas(theta, params=(0.0, 0.0, 1.0), theta_dist="logit_norm")
-        npt.assert_allclose(np.array(result), np.array(theta), rtol=1e-5)
+        npt.assert_allclose(result.detach().numpy(), np.array(theta), rtol=1e-5)
 
 
 # ══════════════════════════════════════════════════════════════════════════════

@@ -23,19 +23,19 @@ def observe(name: str,
     Parameters
     ----------
     name : str
-        The prefix for all Numpyro sample/plate sites.
+        The prefix for all Pyro sample/plate sites.
     data : GrowthData
-        A Pytree (Flax dataclass) containing the observed growth data
+        A frozen dataclass containing the observed growth data
         and metadata. This function primarily uses:
-        - ``data.ln_cfu`` : (jnp.ndarray) Observed ln(CFU) data,
+        - ``data.ln_cfu`` : (torch.Tensor) Observed ln(CFU) data,
           potentially a mini-batch.
-        - ``data.ln_cfu_std`` : (jnp.ndarray) Observed std dev of ln(CFU).
+        - ``data.ln_cfu_std`` : (torch.Tensor) Observed std dev of ln(CFU).
         - ``data.num_replicate`` : (int)
         - ``data.num_time`` : (int)
         - ``data.num_treatment`` : (int)
         - ``data.num_genotype`` : (int) Total size of the genotype dimension.
-        - ``data.good_mask`` : (jnp.ndarray) Boolean mask for valid data.
-    ln_cfu_pred : jnp.ndarray
+        - ``data.good_mask`` : (torch.Tensor) Boolean mask for valid data.
+    ln_cfu_pred : torch.Tensor
         The deterministically predicted ln(CFU) values from the model,
         with a shape matching `data.ln_cfu`.
     """

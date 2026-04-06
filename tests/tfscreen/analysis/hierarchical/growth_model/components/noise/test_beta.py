@@ -94,15 +94,17 @@ def test_define_model_logic_and_outputs(model_setup):
     assert dist_site in model_trace.nodes
 
     dist_obj = model_trace.nodes[dist_site]["fn"]
-    assert isinstance(dist_obj, dist.Beta)
+    # dist.Beta(...).to_event(1) wraps Beta in Independent
+    assert isinstance(dist_obj, dist.Independent)
+    assert isinstance(dist_obj.base_dist, dist.Beta)
 
     # Check alpha = fx_calc * kappa
     expected_alpha = fx_calc * kappa_val
-    assert torch.allclose(dist_obj.concentration1, expected_alpha)
+    assert torch.allclose(dist_obj.base_dist.concentration1, expected_alpha)
 
     # Check beta = (1.0 - fx_calc) * kappa
     expected_beta = (1.0 - fx_calc) * kappa_val
-    assert torch.allclose(dist_obj.concentration0, expected_beta)
+    assert torch.allclose(dist_obj.base_dist.concentration0, expected_beta)
 
     # Check Deterministic Site and Return Value
     assert name in model_trace.nodes
@@ -131,7 +133,7 @@ def test_define_model_clipping_logic(model_setup):
         priors=priors
     )
 
-    dist_obj = model_trace.nodes[f"{name}_dist"]["fn"]
+    dist_obj = model_trace.nodes[f"{name}_dist"]["fn"].base_dist
 
     # Check that alpha[0] was clipped
     assert dist_obj.concentration1[0] == 1e-10
@@ -178,7 +180,8 @@ def test_guide_logic_and_params():
 
     assert f"{name}_dist" in guide_trace.nodes
     dist_obj = guide_trace.nodes[f"{name}_dist"]["fn"]
-    assert isinstance(dist_obj, dist.Beta)
+    assert isinstance(dist_obj, dist.Independent)
+    assert isinstance(dist_obj.base_dist, dist.Beta)
 
     # Verify shape of sampled output
     fx_noisy = guide_trace.nodes[f"{name}_dist"]["value"]

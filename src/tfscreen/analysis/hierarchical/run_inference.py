@@ -69,6 +69,7 @@ class RunInference:
 
     def setup_svi(self,
                   adam_step_size=1e-6,
+                  adam_lrd=1.0,
                   adam_clip_norm=1.0,
                   elbo_num_particles=2,
                   guide_type="delta"):
@@ -101,7 +102,7 @@ class RunInference:
         else:
             raise ValueError(f"guide_type '{guide_type}' not recognized.")
 
-        optimizer = ClippedAdam({"lr": adam_step_size, "clip_norm": adam_clip_norm})
+        optimizer = ClippedAdam({"lr": adam_step_size, "lrd": adam_lrd, "clip_norm": adam_clip_norm})
 
         svi = SVI(self.model.pyro_model,
                   guide,
@@ -274,8 +275,14 @@ class RunInference:
 
         Returns
         -------
-        dict
-            Dictionary mapping site names to their genotype dimension index.
+        dim_map : dict
+            Maps site names to their genotype dimension index (always -1).
+        shape_map : dict
+            Maps site names to the expected value shape (excluding sample dim)
+            as recorded from the full-data model trace.  Used by
+            ``get_posteriors`` to reshape Predictive output correctly —
+            particularly to distinguish a real size-1 model dimension (e.g.
+            num_titrant_name=1) from a Pyro plate-broadcasting singleton.
         """
 
         torch.manual_seed(0)
@@ -287,6 +294,7 @@ class RunInference:
         total_num_genotypes = self.model.data.num_genotype
 
         dim_map = {}
+        shape_map = {}
         genotype_dim = -1  # default fallback
 
         # First pass: find a site with the genotype plate to identify the dim index
@@ -298,10 +306,17 @@ class RunInference:
             if genotype_dim != -1:
                 break
 
-        # Second pass: map all sites that are in the plate or match the genotype size
+        # Second pass: map all sites that are in the plate or match the genotype size.
+        # Also record expected shapes for ALL sample/deterministic sites so that
+        # get_posteriors can reshape Predictive output correctly for both
+        # genotype-plated and non-genotype sites.
         for name, site in model_trace.nodes.items():
             if site["type"] not in ["sample", "deterministic"]:
                 continue
+
+            val = site["value"]
+            if hasattr(val, "shape"):
+                shape_map[name] = tuple(val.shape)
 
             # Check plate stack first (most robust)
             in_plate = False
@@ -316,14 +331,13 @@ class RunInference:
 
             # Fallback for deterministics computed outside the plate
             # but matching the genotype size at the expected dimension.
-            val = site["value"]
             if hasattr(val, "shape"):
                 actual_dim = genotype_dim if genotype_dim >= 0 else len(val.shape) + genotype_dim
                 if actual_dim >= 0 and actual_dim < len(val.shape):
                     if val.shape[actual_dim] == total_num_genotypes:
                         dim_map[name] = genotype_dim
 
-        return dim_map
+        return dim_map, shape_map
 
     def get_posteriors(self,
                        svi,
@@ -358,8 +372,8 @@ class RunInference:
 
         guide = svi.guide
 
-        # Get the mapping of site names to genotype dimension
-        dim_map = self._get_genotype_dim_map()
+        # Get the mapping of site names to genotype dimension and expected shapes
+        dim_map, shape_map = self._get_genotype_dim_map()
 
         total_num_genotypes = self.model.data.num_genotype
 
@@ -445,17 +459,31 @@ class RunInference:
                         # Squeeze intermediate singleton dims added by Pyro
                         # plate broadcasting (between sample dim 0 and genotype
                         # dim -1). Keep dims 0 and -1 always.
-                        if v.ndim > 2:
-                            keep = [0] + [i for i in range(1, v.ndim - 1)
-                                          if v.shape[i] != 1] + [v.ndim - 1]
-                            v = v.reshape(tuple(v.shape[i] for i in keep))
+                        if k == 'growth_pred' and v.ndim > 8:
+                            # growth_pred must be exactly 8D:
+                            # (samples, rep, time, cond_pre, cond_sel,
+                            # titrant_name, titrant_conc, genotype).
+                            # Collapse all intermediate singletons by keeping
+                            # dim 0 (samples) and last 7 spatial dims.
+                            v = v.reshape(v.shape[0], *v.shape[-7:])
+                        elif k in shape_map:
+                            # Reshape to the expected (S, *model_shape) where
+                            # model_shape is the site's shape from the full-data
+                            # trace.  This removes Pyro plate-broadcasting
+                            # singletons while preserving legitimate size-1 model
+                            # dims (e.g. num_titrant_name == 1) and correctly
+                            # handles binding sites whose genotype count differs
+                            # from the growth genotype count.
+                            v = v.reshape(v.shape[0], *shape_map[k])
                         this_batch_results[k] = v
                     else:
                         v = v_list[0]
-                        # Strip trailing singleton dims added by Pyro plate
-                        # broadcasting for global (non-genotype) parameters.
-                        while v.ndim > 1 and v.shape[-1] == 1:
-                            v = v[..., 0]
+                        # Reshape using the model-trace shape to remove Pyro
+                        # plate-broadcasting singletons while preserving all
+                        # legitimate dims (including real size-1 dims such as
+                        # num_titrant_name == 1 in _congression sites).
+                        if k in shape_map:
+                            v = v.reshape(v.shape[0], *shape_map[k])
                         this_batch_results[k] = v
 
                 # Write to HDF5 file
@@ -697,3 +725,60 @@ class RunInference:
         ]
 
         return site_names
+
+    def run_nuts(self,
+                 num_warmup=500,
+                 num_samples=500,
+                 num_chains=1,
+                 target_accept_prob=0.9,
+                 jit_compile=False):
+        """
+        Run NUTS (No-U-Turn Sampler) MCMC on the full dataset.
+
+        Parameters
+        ----------
+        num_warmup : int
+            Number of warmup/adaptation steps.
+        num_samples : int
+            Number of posterior samples to draw.
+        num_chains : int
+            Number of MCMC chains.
+        target_accept_prob : float
+            Target acceptance probability for step-size adaptation.
+
+        Returns
+        -------
+        pyro.infer.MCMC
+            The MCMC object after sampling. Call `.get_samples()` to get
+            posterior samples as a dict of {site_name: torch.Tensor}.
+        """
+        from pyro.infer import MCMC, NUTS
+
+        torch.manual_seed(self._seed)
+
+        # Use the full dataset — NUTS is run on all genotypes, not batches
+        all_indices = torch.arange(self.model.data.num_genotype, dtype=torch.long)
+        full_data = self.model.get_batch(self.model.data, all_indices)
+
+        kernel = NUTS(self.model.pyro_model,
+                      target_accept_prob=target_accept_prob,
+                      jit_compile=jit_compile,
+                      ignore_jit_warnings=True)
+
+        mcmc = MCMC(kernel,
+                    num_samples=num_samples,
+                    warmup_steps=num_warmup,
+                    num_chains=num_chains)
+
+        mcmc.run(priors=self.model.priors, data=full_data)
+
+        # Pyro stores divergences in mcmc._diagnostics (list of dicts, one per chain)
+        if hasattr(mcmc, "_diagnostics") and mcmc._diagnostics:
+            num_div = sum(
+                len(mcmc._diagnostics[i].get("divergences", []))
+                for i in range(num_chains)
+            )
+            total = num_samples * num_chains
+            print(f"NUTS: {num_div} divergences out of {total} samples")
+
+        return mcmc

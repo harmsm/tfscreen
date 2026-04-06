@@ -21,17 +21,17 @@ def observe(name: str,
     Parameters
     ----------
     name : str
-        The prefix for all Numpyro sample/plate sites.
+        The prefix for all Pyro sample/plate sites.
     data : BindingData
-        A Pytree (Flax dataclass) containing the observed binding data
+        A frozen dataclass containing the observed binding data
         and metadata. This function primarily uses:
         - ``data.num_titrant_name`` : (int)
         - ``data.num_titrant_conc`` : (int)
         - ``data.num_genotype`` : (int)
-        - ``data.good_mask`` : (jnp.ndarray) Boolean mask for valid data.
-        - ``data.theta_std`` : (jnp.ndarray) Observed std dev of theta.
-        - ``data.theta_obs`` : (jnp.ndarray) Observed mean of theta.
-    binding_pred : jnp.ndarray
+        - ``data.good_mask`` : (torch.Tensor) Boolean mask for valid data.
+        - ``data.theta_std`` : (torch.Tensor) Observed std dev of theta.
+        - ``data.theta_obs`` : (torch.Tensor) Observed mean of theta.
+    binding_pred : torch.Tensor
         The deterministically predicted mean theta values from the model,
         with a shape matching `data.theta_obs`.
     """

@@ -1,6 +1,5 @@
 import pytest
 import os
-import jax.numpy as jnp
 import numpy as np
 from tfscreen.analysis.hierarchical.growth_model import (
     GrowthModel as ModelClass,
@@ -50,7 +49,7 @@ def test_checkpoint_and_posterior_smoke(growth_smoke_csv,
     
     assert restored_state is not None
     # We could theoretically check if parameters match, but the state structure 
-    # is internal to numpyro/optax.
+    # is internal to pyro/optax.
     
     # 3. Generate posteriors from the restored state
     # We use a very small number of samples for speed

@@ -2,7 +2,6 @@
 import pytest
 import pandas as pd
 import numpy as np
-import jax.numpy as jnp
 from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass, _setup_batching
 from unittest.mock import MagicMock, patch
 
@@ -55,7 +54,7 @@ def test_spiked_genotypes_masking(dummy_data):
     genotype_labels = gm.growth_tm.tensor_dim_labels[genotype_idx]
     
     # Check the congression_mask in the data object
-    mask = np.array(gm.data.growth.congression_mask)
+    mask = gm.data.growth.congression_mask.detach().numpy()
     for i, label in enumerate(genotype_labels):
         if label == "A10G":
             assert not mask[i], f"Genotype {label} should be masked (False)"
@@ -92,7 +91,7 @@ def test_spiked_genotypes_single_string(dummy_data):
     genotype_idx = gm.growth_tm.tensor_dim_names.index("genotype")
     genotype_labels = gm.growth_tm.tensor_dim_labels[genotype_idx]
     
-    mask = np.array(gm.data.growth.congression_mask)
+    mask = gm.data.growth.congression_mask.detach().numpy()
     for i, label in enumerate(genotype_labels):
         if label == "A10G":
             assert not mask[i]

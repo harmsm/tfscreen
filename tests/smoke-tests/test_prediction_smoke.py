@@ -2,7 +2,6 @@ import pytest
 import os
 import pandas as pd
 import numpy as np
-import jax.numpy as jnp
 from tfscreen.analysis.hierarchical.growth_model import GrowthModel as ModelClass
 from tfscreen.analysis.hierarchical.growth_model.prediction import predict
 from tfscreen.analysis.hierarchical.run_inference import RunInference

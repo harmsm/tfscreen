@@ -257,8 +257,9 @@ def run_model(theta_param: ThetaParam, data: DataClass) -> torch.Tensor:
           ``[replicate, time, treatment, genotype]``.
     """
 
-    # 1. Select the correct genotypes for this dataset
-    # theta_param.theta: (Name, Conc, Genotypes)
+    # 1. Select the correct genotypes from the last dimension.
+    # theta_param.theta: (..., Name, Conc, Genotypes)
+    # Uses [..., idx] to handle both 2D (inference) and 3D (prediction) shapes.
     theta_base = theta_param.theta[..., data.geno_theta_idx]
 
     # 2. Map concentrations
@@ -269,15 +270,17 @@ def run_model(theta_param: ThetaParam, data: DataClass) -> torch.Tensor:
     # Clip to avoid out-of-bounds (fallback to nearest category)
     conc_idx = torch.clamp(conc_idx, 0, theta_param.concentrations.shape[0] - 1)
 
-    # Select the mapped concentrations
-    # theta_base is (Name, OrigConc, Geno)
+    # Select the mapped concentrations from the -2 dimension.
+    # theta_base is (..., Name, OrigConc, Geno)
     # conc_idx is (NewConc,)
-    # theta_calc should be (Name, NewConc, Geno)
-    theta_calc = theta_base[:, conc_idx, :]
+    # theta_calc should be (..., Name, NewConc, Geno)
+    theta_calc = theta_base[..., conc_idx, :]
 
-    # Broadcast to the full-sized tensor if required (for growth experiment)
+    # Broadcast to the full-sized tensor by inserting 4 leading size-1 dims
+    # (for rep, time, cond_pre, cond_sel). Works for both 2D and 3D shapes.
     if data.scatter_theta == 1:
-        theta_calc = theta_calc[None, None, None, None, :, :, :]
+        new_shape = theta_calc.shape[:-3] + (1, 1, 1, 1) + theta_calc.shape[-3:]
+        theta_calc = theta_calc.reshape(new_shape)
 
     return theta_calc
 

@@ -533,17 +533,20 @@ def run_model(theta_param: ThetaParam, data) -> torch.Tensor:
     Identical to ``hill.run_model``; the assembled ``ThetaParam`` already
     has the correct per-genotype shape so no additional transformation is needed.
     """
-    theta_low = theta_param.theta_low[:, None, data.geno_theta_idx]
-    theta_high = theta_param.theta_high[:, None, data.geno_theta_idx]
-    log_hill_K = theta_param.log_hill_K[:, None, data.geno_theta_idx]
-    hill_n = theta_param.hill_n[:, None, data.geno_theta_idx]
+    # Select genotypes from the last dim; handles 2D [T,G] and 3D [S,T,G] shapes.
+    geno_idx = torch.as_tensor(data.geno_theta_idx, dtype=torch.long)
+    theta_low = theta_param.theta_low[..., geno_idx].unsqueeze(-2)
+    theta_high = theta_param.theta_high[..., geno_idx].unsqueeze(-2)
+    log_hill_K = theta_param.log_hill_K[..., geno_idx].unsqueeze(-2)
+    hill_n = theta_param.hill_n[..., geno_idx].unsqueeze(-2)
 
     log_titrant = torch.as_tensor(data.log_titrant_conc).float()[None, :, None]
     occupancy = torch.sigmoid(hill_n * (log_titrant - log_hill_K))
     theta_calc = theta_low + (theta_high - theta_low) * occupancy
 
     if data.scatter_theta == 1:
-        theta_calc = theta_calc[None, None, None, None, :, :, :]
+        new_shape = theta_calc.shape[:-3] + (1, 1, 1, 1) + theta_calc.shape[-3:]
+        theta_calc = theta_calc.reshape(new_shape)
 
     return theta_calc
 
