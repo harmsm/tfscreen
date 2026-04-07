@@ -206,6 +206,110 @@ def extract_parameters(model, posteriors, q_to_get=None):
                     in_run_prefix = "theta_"
                 )
             )
+    elif model._theta == "lac_dimer_mut":
+        _geno_dim = model.growth_tm.tensor_dim_names.index("genotype")
+        _num_genotype = len(model.growth_tm.tensor_dim_labels[_geno_dim])
+        _titrant_dim = model.growth_tm.tensor_dim_names.index("titrant_name")
+        _titrant_names = list(model.growth_tm.tensor_dim_labels[_titrant_dim])
+
+        # ln_K_op, ln_K_HL: assembled (G,); index by genotype_idx
+        geno_df = (model.growth_tm.df[["genotype", "genotype_idx"]]
+                   .drop_duplicates()
+                   .copy())
+        geno_df["map_geno"] = geno_df["genotype_idx"]
+        extract.append(
+            dict(
+                input_df=geno_df,
+                params_to_get=["ln_K_op", "ln_K_HL"],
+                map_column="map_geno",
+                get_columns=["genotype"],
+                in_run_prefix="theta_"
+            )
+        )
+
+        # ln_K_E: assembled (T, G); flat index = titrant_name_idx * G + genotype_idx
+        theta_KE_df = (model.growth_tm.df[["genotype", "titrant_name",
+                                           "genotype_idx", "titrant_name_idx"]]
+                       .drop_duplicates()
+                       .copy())
+        theta_KE_df["map_theta_KE"] = (theta_KE_df["titrant_name_idx"] * _num_genotype
+                                       + theta_KE_df["genotype_idx"])
+        extract.append(
+            dict(
+                input_df=theta_KE_df,
+                params_to_get=["ln_K_E"],
+                map_column="map_theta_KE",
+                get_columns=["genotype", "titrant_name"],
+                in_run_prefix="theta_"
+            )
+        )
+
+        # Per-mutation assembled deltas: d_ln_K_op, d_ln_K_HL (M,)
+        _num_mut = len(model.mut_labels)
+        _mut_df = pd.DataFrame({
+            "mutation": model.mut_labels,
+            "map_mut": range(_num_mut),
+        })
+        extract.append(
+            dict(
+                input_df=_mut_df,
+                params_to_get=["d_ln_K_op", "d_ln_K_HL"],
+                map_column="map_mut",
+                get_columns=["mutation"],
+                in_run_prefix="theta_"
+            )
+        )
+
+        # d_ln_K_E: assembled (T, M); flat index = titrant_name_idx * M + mutation_idx
+        _theta_d_KE_rows = [
+            {"titrant_name": t, "mutation": m,
+             "map_theta_d_KE": ti * _num_mut + mi}
+            for ti, t in enumerate(_titrant_names)
+            for mi, m in enumerate(model.mut_labels)
+        ]
+        extract.append(
+            dict(
+                input_df=pd.DataFrame(_theta_d_KE_rows),
+                params_to_get=["d_ln_K_E"],
+                map_column="map_theta_d_KE",
+                get_columns=["titrant_name", "mutation"],
+                in_run_prefix="theta_"
+            )
+        )
+
+        if model.pair_labels:
+            _num_pair = len(model.pair_labels)
+            # epi_ln_K_op, epi_ln_K_HL: assembled (P,)
+            _pair_df = pd.DataFrame({
+                "pair": model.pair_labels,
+                "map_pair": range(_num_pair),
+            })
+            extract.append(
+                dict(
+                    input_df=_pair_df,
+                    params_to_get=["epi_ln_K_op", "epi_ln_K_HL"],
+                    map_column="map_pair",
+                    get_columns=["pair"],
+                    in_run_prefix="theta_"
+                )
+            )
+            # epi_ln_K_E: assembled (T, P); flat index = titrant_name_idx * P + pair_idx
+            _theta_epi_KE_rows = [
+                {"titrant_name": t, "pair": p,
+                 "map_theta_epi_KE": ti * _num_pair + pi}
+                for ti, t in enumerate(_titrant_names)
+                for pi, p in enumerate(model.pair_labels)
+            ]
+            extract.append(
+                dict(
+                    input_df=pd.DataFrame(_theta_epi_KE_rows),
+                    params_to_get=["epi_ln_K_E"],
+                    map_column="map_theta_epi_KE",
+                    get_columns=["titrant_name", "pair"],
+                    in_run_prefix="theta_"
+                )
+            )
+
     elif model._theta == "categorical":
         extract.append(
             dict(
@@ -603,6 +707,76 @@ def _extract_theta_curves_hill_mut(model, posteriors, q_to_get, manual_titrant_d
     return calc_df.drop(columns=["genotype_idx", "titrant_name_idx"])
 
 
+def _extract_theta_curves_lac_dimer_mut(model, posteriors, q_to_get, manual_titrant_df):
+    """
+    Compute theta curves for the ``lac_dimer_mut`` model.
+
+    Posterior parameters ``ln_K_op`` (S, G), ``ln_K_HL`` (S, G), and
+    ``ln_K_E`` (S, T, G) are indexed per row of *calc_df*, then theta is
+    evaluated via the partition-function Newton solver (8 iterations,
+    identical to the JAX model).
+    """
+    q_to_get, param_posteriors = load_posteriors(posteriors, q_to_get)
+
+    if manual_titrant_df is None:
+        calc_df = (model.growth_tm.df[["genotype", "titrant_name", "titrant_conc",
+                                       "genotype_idx", "titrant_name_idx"]]
+                   .drop_duplicates()
+                   .reset_index(drop=True))
+    else:
+        calc_df = _build_manual_calc_df_hill_mut(model, manual_titrant_df)
+
+    geno_indices    = calc_df["genotype_idx"].values.astype(int)
+    titrant_indices = calc_df["titrant_name_idx"].values.astype(int)
+
+    conc = calc_df["titrant_conc"].values.copy()   # (N,)
+    conc[conc == 0] = ZERO_CONC_VALUE
+
+    def _load(key):
+        v = get_posterior_samples(param_posteriors, key)
+        if hasattr(v, "shape") and not hasattr(v, "reshape"):
+            v = v[:]
+        return v
+
+    ln_K_op_all = _load("theta_ln_K_op")   # (S, G)
+    ln_K_HL_all = _load("theta_ln_K_HL")   # (S, G)
+    ln_K_E_all  = _load("theta_ln_K_E")    # (S, T, G)
+
+    # Index to per-row parameters: (S, N)
+    ln_K_op_pts = ln_K_op_all[:, geno_indices]
+    ln_K_HL_pts = ln_K_HL_all[:, geno_indices]
+    ln_K_E_pts  = ln_K_E_all[:, titrant_indices, geno_indices]
+
+    K_op = np.exp(ln_K_op_pts)   # (S, N)
+    K_HL = np.exp(ln_K_HL_pts)   # (S, N)
+    K_E  = np.exp(ln_K_E_pts)    # (S, N)
+
+    tf_total = float(model.priors.theta.theta_tf_total_nM)
+    op_total = float(model.priors.theta.theta_op_total_nM)
+
+    e_total  = conc[None, :]              # (1, N) → broadcasts to (S, N)
+    Z0       = 1.0 + K_op * op_total + K_HL
+    a        = K_HL * K_E
+    coeff_b  = a * (2.0 * tf_total - e_total)
+
+    e_free = e_total * np.ones_like(a)    # (S, N) initialised to e_total
+    for _ in range(8):
+        f  = a * e_free**3 + coeff_b * e_free**2 + Z0 * e_free - Z0 * e_total
+        df = 3.0 * a * e_free**2 + 2.0 * coeff_b * e_free + Z0
+        e_free = e_free - f / np.where(np.abs(df) < 1e-30, 1e-30, df)
+    e_free = np.clip(e_free, 0.0, e_total)
+
+    w_Hop = K_op * op_total
+    w_LE  = a * e_free**2
+    Z     = 1.0 + w_Hop + K_HL + w_LE
+    theta_samples = w_Hop / Z             # (S, N)
+
+    for q_name, q_val in q_to_get.items():
+        calc_df[q_name] = np.quantile(theta_samples, q_val, axis=0)
+
+    return calc_df.drop(columns=["genotype_idx", "titrant_name_idx"])
+
+
 def extract_theta_curves(model, posteriors, q_to_get=None, manual_titrant_df=None):
     """
     Extract theta curves by sampling from the joint posterior distribution.
@@ -642,7 +816,7 @@ def extract_theta_curves(model, posteriors, q_to_get=None, manual_titrant_df=Non
     Raises
     ------
     ValueError
-        If the model was not initialized with theta='hill' or theta='hill_mut'.
+        If the model was not initialized with a supported theta model.
         If `q_to_get` is not a dictionary.
         If `manual_titrant_df` is missing required columns.
     """
@@ -650,10 +824,12 @@ def extract_theta_curves(model, posteriors, q_to_get=None, manual_titrant_df=Non
         return _extract_theta_curves_hill(model, posteriors, q_to_get, manual_titrant_df)
     elif model._theta == "hill_mut":
         return _extract_theta_curves_hill_mut(model, posteriors, q_to_get, manual_titrant_df)
+    elif model._theta == "lac_dimer_mut":
+        return _extract_theta_curves_lac_dimer_mut(model, posteriors, q_to_get, manual_titrant_df)
     else:
         raise ValueError(
             "extract_theta_curves is only available for models where "
-            "theta='hill' or theta='hill_mut'."
+            "theta='hill', 'hill_mut', or 'lac_dimer_mut'."
         )
 
 def extract_growth_predictions(model,

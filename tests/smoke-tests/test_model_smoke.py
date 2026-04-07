@@ -50,7 +50,19 @@ SMOKE_CONFIGS = [
     },
     {
         "condition_growth":"saturation",
-    }
+    },
+    # test mutation-decomposed Hill theta
+    {
+        "theta":"hill_mut",
+        "dk_geno":"hierarchical_mut",
+        "activity":"hierarchical_mut",
+        "epistasis":False,
+    },
+    # test lac_dimer_mut theta (partition-function model)
+    {
+        "theta":"lac_dimer_mut",
+        "epistasis":False,
+    },
 ]
 
 @pytest.mark.slow

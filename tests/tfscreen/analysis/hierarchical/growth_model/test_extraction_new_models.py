@@ -514,12 +514,12 @@ class TestExtractThetaCurvesDispatcher:
 
     def test_raises_for_categorical(self):
         model = _make_model(theta="categorical")
-        with pytest.raises(ValueError, match=r"theta='hill' or theta='hill_mut'"):
+        with pytest.raises(ValueError, match=r"theta='hill', 'hill_mut', or 'lac_dimer_mut'"):
             extract_theta_curves(model, {})
 
     def test_raises_for_unknown_theta(self):
         model = _make_model(theta="something_new")
-        with pytest.raises(ValueError, match=r"theta='hill' or theta='hill_mut'"):
+        with pytest.raises(ValueError, match=r"theta='hill', 'hill_mut', or 'lac_dimer_mut'"):
             extract_theta_curves(model, {})
 
     def test_hill_and_hill_mut_agree_on_math(self):

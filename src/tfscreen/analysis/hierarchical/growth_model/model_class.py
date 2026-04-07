@@ -567,7 +567,7 @@ class ModelClass:
         # Build mutation-to-genotype indicator matrices when any hierarchical_mut
         # component is selected.  Stored as static (pytree_node=False) fields
         # on GrowthData; downstream components convert to jnp arrays as needed.
-        _needs_mut = (self._theta == "hill_mut" or
+        _needs_mut = (self._theta in ("hill_mut", "lac_dimer_mut") or
                       self._activity == "hierarchical_mut" or
                       self._dk_geno == "hierarchical_mut")
         if _needs_mut:
