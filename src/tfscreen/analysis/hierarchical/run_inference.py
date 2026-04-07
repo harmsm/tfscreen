@@ -700,8 +700,8 @@ class RunInference:
         """
         Update the loss deque and calculate the convergence metric.
         
-        The metric is defined as:
-        abs(mean(old_half) - mean(new_half)) / std(total_history)
+        The metric is defined as the absolute fractional change:
+        abs(mean(old_half) - mean(new_half)) / abs(mean(old_half))
 
         Parameters
         ----------
@@ -724,25 +724,19 @@ class RunInference:
         old_half = history[:half]
         new_half = history[half:]
 
-        # Calculate means and standard deviation
+        # Calculate means
         mean_old = np.mean(old_half)
         mean_new = np.mean(new_half)
 
-        # Estimate noise in the data
-        diffs = np.diff(history) 
-        std_history = np.std(diffs) / np.sqrt(2)
-        # Numerical stability here
-        if std_history < 1e-9:
+        # Prevent division by zero if mean_old is effectively zero
+        if np.abs(mean_old) < 1e-9:
             if np.isclose(mean_new, mean_old):
                 self._relative_change = 0.0
             else:
                 self._relative_change = np.inf
             return 
         
-        se = 2 * std_history / np.sqrt(self._loss_deque.maxlen)
-        z_score = (mean_new - mean_old) / se
-
-        self._relative_change = np.abs(z_score)
+        self._relative_change = np.abs((mean_old - mean_new) / mean_old)
 
     def write_params(self,params,out_root):
         """
