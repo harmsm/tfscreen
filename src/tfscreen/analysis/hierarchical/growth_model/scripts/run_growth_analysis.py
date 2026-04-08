@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import jax.numpy as jnp
 from flax import struct
+import dill
 
 import optax
 
@@ -13,6 +14,47 @@ from .summarize_posteriors import summarize_posteriors
 from tfscreen.util.cli.generalized_main import generalized_main
 
 from tfscreen.analysis.hierarchical.growth_model.configuration_io import read_configuration
+
+
+def _init_from_map_params(map_params):
+    """
+    Convert MAP (AutoDelta) scalar parameters to component SVI guide init params.
+
+    AutoDelta stores point estimates as ``{site_name}_auto_loc`` in the
+    unconstrained parameter space (i.e., ``log(value)`` for positive-constrained
+    sites, raw value for unconstrained sites).
+
+    The component guide's variational location parameters follow the naming
+    convention ``{site_name}_loc``. For positive-constrained hyperpriors the
+    guide uses a LogNormal whose ``loc`` is also ``log(value)``, so no
+    additional value-space transformation is required — only the name suffix
+    changes.
+
+    Only scalar (0-dimensional) MAP params are remapped here because those
+    correspond to global hyperpriors, which are the most important for fast
+    SVI convergence. Array-valued params (per-genotype offsets) are not
+    remapped: the naming convention is inconsistent across components and
+    the offsets start at zero (their prior mean) anyway, which is acceptable
+    for the non-centered parameterisation.
+
+    Parameters
+    ----------
+    map_params : dict
+        Parameter dict from a MAP (AutoDelta) optimizer state, as returned by
+        ``svi.get_params(svi_state)``.
+
+    Returns
+    -------
+    dict
+        Init-params dict suitable for passing to ``svi.init(init_params=...)``.
+    """
+    svi_init_params = {}
+    for k, v in map_params.items():
+        if k.endswith("_auto_loc") and jnp.ndim(v) == 0:
+            base = k[: -len("_auto_loc")]
+            svi_init_params[f"{base}_loc"] = v
+    return svi_init_params
+
 
 def _run_map(ri,
              init_params,
@@ -447,10 +489,46 @@ def run_growth_analysis(config_file,
                         init_param_jitter=init_param_jitter)
                           
     elif analysis_method == "posterior":
+        # Two cases depending on the checkpoint type:
+        #
+        # 1. SVI checkpoint (component guide): already converged — load it,
+        #    run 0 extra epochs, and sample posteriors directly.
+        #
+        # 2. MAP checkpoint (AutoDelta guide): incompatible as svi_state because
+        #    AutoDelta uses _auto_loc param names while the component guide uses
+        #    _loc names — the guide would permanently fall back to default init.
+        #    Instead, extract the scalar MAP params, remap their names to _loc
+        #    via _init_from_map_params(), and use them to seed the component
+        #    guide's variational means.  This puts the SVI near the MAP solution
+        #    so that only the scale (uncertainty) params need to converge, making
+        #    a short max_num_epochs run sufficient for a quick-and-dirty posterior.
+        if checkpoint_file is None or not os.path.isfile(checkpoint_file):
+            raise ValueError(
+                "analysis_method='posterior' requires an existing MAP or SVI "
+                "checkpoint. Pass checkpoint_file pointing to a previously "
+                "saved checkpoint."
+            )
+
+        compatible_checkpoint = None
+        svi_epochs = max_num_epochs
+
+        with open(checkpoint_file, "rb") as f:
+            chk_data = dill.load(f)
+        temp_svi = ri.setup_svi(guide_type="component")
+        chk_params = temp_svi.optim.get_params(chk_data["svi_state"].optim_state)
+
+        if any("_auto_loc" in k for k in chk_params):
+            # MAP checkpoint: seed SVI init from remapped MAP params.
+            init_params = _init_from_map_params(chk_params)
+        else:
+            # SVI checkpoint: load directly, no further optimization needed.
+            compatible_checkpoint = checkpoint_file
+            svi_epochs = 0
+
         return _run_svi(ri,
-                        init_params=init_params,  # Use our constructed init_params instead of None 
+                        init_params=init_params,
                         config_file=config_file,
-                        checkpoint_file=checkpoint_file,
+                        checkpoint_file=compatible_checkpoint,
                         out_root=out_root,
                         adam_step_size=adam_step_size,
                         adam_final_step_size=adam_final_step_size,
@@ -461,12 +539,12 @@ def run_growth_analysis(config_file,
                         patience=patience,
                         convergence_check_interval=convergence_check_interval,
                         checkpoint_interval=checkpoint_interval,
-                        max_num_epochs=0, 
+                        max_num_epochs=svi_epochs,
                         num_posterior_samples=num_posterior_samples,
                         sampling_batch_size=sampling_batch_size,
                         forward_batch_size=forward_batch_size,
-                        always_get_posterior=True, 
-                         init_param_jitter=0.0)
+                        always_get_posterior=True,
+                        init_param_jitter=init_param_jitter)
 
     else:
         raise ValueError(

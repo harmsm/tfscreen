@@ -237,10 +237,22 @@ def test_run_growth_analysis_svi_full(tmpdir, mocker):
         run_growth_analysis(config_path, seed=42, analysis_method="map")
         mock_map.assert_called_once()
         
-        # Test posterior
-        run_growth_analysis(config_path, seed=42, analysis_method="posterior")
-        # posterior calls _run_svi with max_num_epochs=0
-        assert mock_svi.call_count == 2
+        # Test posterior — requires an existing checkpoint file.
+        # Write a minimal dill checkpoint that looks like an SVI state
+        # (no _auto_loc keys) so the code takes the load-directly path.
+        import dill
+        import types
+        fake_chk_path = os.path.join(tmpdir, "fake_svi.pkl")
+        fake_chk = {"svi_state": types.SimpleNamespace(optim_state=None)}
+        with open(fake_chk_path, "wb") as f:
+            dill.dump(fake_chk, f)
+        # The mocked ri.setup_svi().optim.get_params() returns a MagicMock
+        # which iterates as empty, so no _auto_loc keys → SVI path, 0 epochs.
+        mock_svi.reset_mock()
+        run_growth_analysis(config_path, seed=42, analysis_method="posterior",
+                            checkpoint_file=fake_chk_path)
+        mock_svi.assert_called_once()
+        assert mock_svi.call_args.kwargs["max_num_epochs"] == 0
         
         # Test invalid method
         with pytest.raises(ValueError, match="not recognized"):

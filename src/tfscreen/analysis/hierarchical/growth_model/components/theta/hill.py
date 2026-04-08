@@ -519,11 +519,11 @@ def get_hyperparameters() -> Dict[str, Any]:
     parameters["theta_logit_delta_hyper_scale"] = 1.0
 
     parameters["theta_log_hill_K_hyper_loc_loc"] = -4.1
-    parameters["theta_log_hill_K_hyper_loc_scale"] = 2.0
-    parameters["theta_log_hill_K_hyper_scale"] = 1.0
+    parameters["theta_log_hill_K_hyper_loc_scale"] = 0.2
+    parameters["theta_log_hill_K_hyper_scale"] = 0.1
 
     parameters["theta_log_hill_n_hyper_loc_loc"] = 0.7
-    parameters["theta_log_hill_n_hyper_loc_scale"] = 0.3
+    parameters["theta_log_hill_n_hyper_loc_scale"] = 0.1
     parameters["theta_log_hill_n_hyper_scale"] = 1.0
 
     return parameters
