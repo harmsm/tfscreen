@@ -24,31 +24,29 @@ MockGrowthData = namedtuple("MockGrowthData", [
     "batch_size",
     "batch_idx",
     "scale_vector",
+    "ln_cfu0_spiked_mask",
     "map_ln_cfu0" # Kept for API compatibility if needed, though updated model relies on expansion
 ])
 
 @pytest.fixture
 def mock_data():
     """
-    Provides a mock data object for testing.
+    Provides a mock data object for testing (no spiked genotypes).
     - 2 replicates
     - 2 pre-selection conditions
-    - 4 genotypes
-    - Batch size 4 (1-to-1 mapping to genotypes for simplicity in this test)
+    - 4 genotypes, all library (not spiked)
+    - Batch size 4 (1-to-1 mapping to genotypes)
     """
     num_replicate = 2
     num_condition_pre = 2
     num_genotype = 4
     batch_size = 4
-    
-    # 1-to-1 batch mapping for simplicity
+
     batch_idx = jnp.arange(batch_size, dtype=jnp.int32)
-    
     scale_vector = jnp.ones(batch_size, dtype=float)
-    
-    # Legacy field
-    map_ln_cfu0 = jnp.arange(batch_size, dtype=jnp.int32) 
-    
+    ln_cfu0_spiked_mask = jnp.zeros(num_genotype, dtype=bool)  # no spiked genotypes
+    map_ln_cfu0 = jnp.arange(batch_size, dtype=jnp.int32)
+
     return MockGrowthData(
         num_replicate=num_replicate,
         num_condition_pre=num_condition_pre,
@@ -56,6 +54,37 @@ def mock_data():
         batch_size=batch_size,
         batch_idx=batch_idx,
         scale_vector=scale_vector,
+        ln_cfu0_spiked_mask=ln_cfu0_spiked_mask,
+        map_ln_cfu0=map_ln_cfu0
+    )
+
+@pytest.fixture
+def mock_data_with_spiked():
+    """
+    Provides a mock data object with spiked genotypes.
+    - 2 replicates, 2 pre-selection conditions
+    - 6 genotypes: first 2 are spiked, last 4 are library
+    - Full batch (batch_size == num_genotype)
+    """
+    num_replicate = 2
+    num_condition_pre = 2
+    num_genotype = 6
+    batch_size = 6
+
+    batch_idx = jnp.arange(batch_size, dtype=jnp.int32)
+    scale_vector = jnp.ones(batch_size, dtype=float)
+    # Genotypes 0 and 1 are spiked
+    ln_cfu0_spiked_mask = jnp.array([True, True, False, False, False, False], dtype=bool)
+    map_ln_cfu0 = jnp.arange(batch_size, dtype=jnp.int32)
+
+    return MockGrowthData(
+        num_replicate=num_replicate,
+        num_condition_pre=num_condition_pre,
+        num_genotype=num_genotype,
+        batch_size=batch_size,
+        batch_idx=batch_idx,
+        scale_vector=scale_vector,
+        ln_cfu0_spiked_mask=ln_cfu0_spiked_mask,
         map_ln_cfu0=map_ln_cfu0
     )
 
@@ -67,83 +96,86 @@ def test_get_hyperparameters():
     assert isinstance(params, dict)
     assert "ln_cfu0_hyper_loc_loc" in params
     assert params["ln_cfu0_hyper_loc_loc"] == -2.5
+    assert "ln_cfu0_spiked_loc_loc" in params
+    assert params["ln_cfu0_spiked_loc_loc"] == 10.0
 
 def test_get_priors():
     """Tests that get_priors returns a correctly populated ModelPriors object."""
     priors = get_priors()
     assert isinstance(priors, ModelPriors)
     assert priors.ln_cfu0_hyper_loc_loc == -2.5
+    assert priors.ln_cfu0_spiked_loc_loc == 10.0
 
 def test_get_guesses(mock_data):
     """Tests that get_guesses returns correctly named and shaped guesses."""
     name = "test_ln_cfu0"
     guesses = get_guesses(name, mock_data)
-    
+
     assert isinstance(guesses, dict)
-    
+
     # Check hyperprior guesses
     assert f"{name}_hyper_loc" in guesses
     assert guesses[f"{name}_hyper_loc"] == -2.5
-    
+    assert f"{name}_spiked_loc" in guesses
+    assert guesses[f"{name}_spiked_loc"] == 10.0
+
     # Check offset guess
     # Expect shape: (num_replicate, num_condition_pre, num_genotype)
     assert f"{name}_offset" in guesses
-    expected_shape = (mock_data.num_replicate, 
-                      mock_data.num_condition_pre, 
+    expected_shape = (mock_data.num_replicate,
+                      mock_data.num_condition_pre,
                       mock_data.num_genotype)
-    
+
     assert guesses[f"{name}_offset"].shape == expected_shape
     assert jnp.all(guesses[f"{name}_offset"] == 0.0)
 
 def test_define_model_logic_and_shapes(mock_data):
     """
     Tests the core logic of define_model for the hierarchical ln_cfu0.
+    With no spiked genotypes and zero offsets, all values should equal hyper_loc.
     """
     name = "test_ln_cfu0"
     priors = get_priors()
-    
+
     # 1. Get base guesses (Full genotype shape)
     base_guesses = get_guesses(name, mock_data)
-    
+
     # 2. Prepare batch guesses for substitute
-    # define_model samples offsets with shape (R, C, Batch)
-    # get_guesses provided shape (R, C, Genotype)
-    # We must slice the last dimension using batch_idx
     batch_guesses = base_guesses.copy()
     full_offsets = base_guesses[f"{name}_offset"]
     batch_offsets = full_offsets[..., mock_data.batch_idx]
     batch_guesses[f"{name}_offset"] = batch_offsets
-    
+
     # Substitute
     substituted_model = substitute(define_model, data=batch_guesses)
-    
+
     # --- 3. Execute Model ---
-    final_ln_cfu0 = substituted_model(name=name, 
-                                      data=mock_data, 
+    final_ln_cfu0 = substituted_model(name=name,
+                                      data=mock_data,
                                       priors=priors)
 
     # --- 4. Trace Execution ---
     model_trace = trace(substituted_model).get_trace(
-        name=name, 
-        data=mock_data, 
+        name=name,
+        data=mock_data,
         priors=priors
     )
-    
+
     # --- 5. Check Deterministic Site ---
     assert name in model_trace
     ln_cfu0_site = model_trace[name]["value"]
-    
+
     # Expected site shape: (R, C_pre, Batch)
-    expected_site_shape = (mock_data.num_replicate, 
-                           mock_data.num_condition_pre, 
+    expected_site_shape = (mock_data.num_replicate,
+                           mock_data.num_condition_pre,
                            mock_data.batch_size)
     assert ln_cfu0_site.shape == expected_site_shape
-    
+
     # --- 6. Check Values ---
-    # With 0 offsets, value should be hyper_loc
+    # With zero offsets and no spiked genotypes, value should equal hyper_loc
     hyper_loc = base_guesses[f"{name}_hyper_loc"]
     assert jnp.allclose(ln_cfu0_site, hyper_loc)
-    
+
     # --- 7. Check Final Expanded Shape ---
     # Code expands: ln_cfu0_per_rep_cond_geno[:,None,:,None,None,None,:]
     # Input: (R, C, Batch)
@@ -155,9 +187,46 @@ def test_define_model_logic_and_shapes(mock_data):
                                1,
                                1,
                                mock_data.batch_size)
-    
+
     assert final_ln_cfu0.shape == expected_expanded_shape
     assert jnp.allclose(final_ln_cfu0, hyper_loc)
+
+def test_define_model_spiked_genotypes(mock_data_with_spiked):
+    """
+    Tests that spiked genotypes receive the spiked_loc prior mean and
+    library genotypes receive the hyper_loc prior mean (with zero offsets).
+    """
+    name = "test_ln_cfu0_spiked"
+    priors = get_priors()
+    data = mock_data_with_spiked
+
+    base_guesses = get_guesses(name, data)
+
+    # Batch offsets are already zero
+    batch_guesses = base_guesses.copy()
+    batch_guesses[f"{name}_offset"] = base_guesses[f"{name}_offset"][..., data.batch_idx]
+
+    substituted_model = substitute(define_model, data=batch_guesses)
+
+    model_trace = trace(substituted_model).get_trace(
+        name=name,
+        data=data,
+        priors=priors
+    )
+
+    ln_cfu0_site = model_trace[name]["value"]
+    # shape: (num_replicate, num_condition_pre, batch_size)
+
+    hyper_loc = float(base_guesses[f"{name}_hyper_loc"])   # -2.5
+    spiked_loc = float(base_guesses[f"{name}_spiked_loc"])  # 10.0
+
+    # Genotypes 0 and 1 are spiked → should equal spiked_loc
+    assert jnp.allclose(ln_cfu0_site[..., 0], spiked_loc)
+    assert jnp.allclose(ln_cfu0_site[..., 1], spiked_loc)
+
+    # Genotypes 2–5 are library → should equal hyper_loc
+    assert jnp.allclose(ln_cfu0_site[..., 2], hyper_loc)
+    assert jnp.allclose(ln_cfu0_site[..., 5], hyper_loc)
 
 def test_guide_logic_and_shapes(mock_data):
     """
@@ -174,7 +243,7 @@ def test_guide_logic_and_shapes(mock_data):
             data=mock_data,
             priors=priors
         )
-        
+
         # Run guide
         final_ln_cfu0 = guide(name=name,
                               data=mock_data,
@@ -185,20 +254,25 @@ def test_guide_logic_and_shapes(mock_data):
     # Shape: (R, C, Genotype)
     assert f"{name}_offset_locs" in guide_trace
     offset_locs = guide_trace[f"{name}_offset_locs"]["value"]
-    
-    expected_param_shape = (mock_data.num_replicate, 
-                            mock_data.num_condition_pre, 
+
+    expected_param_shape = (mock_data.num_replicate,
+                            mock_data.num_condition_pre,
                             mock_data.num_genotype)
     assert offset_locs.shape == expected_param_shape
-    
+
+    # Spiked loc variational parameters should exist
+    assert f"{name}_spiked_loc_loc" in guide_trace
+    assert f"{name}_spiked_loc_scale" in guide_trace
+    assert f"{name}_spiked_loc" in guide_trace
+
     # --- 2. Check Sample Sites ---
     # Sampled offsets should match the BATCH size
     # Shape: (R, C, Batch)
     assert f"{name}_offset" in guide_trace
     sampled_offsets = guide_trace[f"{name}_offset"]["value"]
-    
-    expected_sample_shape = (mock_data.num_replicate, 
-                             mock_data.num_condition_pre, 
+
+    expected_sample_shape = (mock_data.num_replicate,
+                             mock_data.num_condition_pre,
                              mock_data.batch_size)
     assert sampled_offsets.shape == expected_sample_shape
 

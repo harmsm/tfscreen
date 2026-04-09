@@ -548,7 +548,8 @@ class ModelClass:
             mask[spiked_idx] = False
 
         other_data = {"scatter_theta":1,
-                      "congression_mask":jnp.array(mask,dtype=bool)}
+                      "congression_mask":jnp.array(mask,dtype=bool),
+                      "ln_cfu0_spiked_mask":jnp.array(~mask,dtype=bool)}
 
         # Grab the titrant concentration and log_titrant_conc (1D array from 
         # the tensor labels along dimension 6)

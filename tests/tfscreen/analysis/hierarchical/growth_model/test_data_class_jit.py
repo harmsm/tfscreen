@@ -40,7 +40,8 @@ def test_data_class_jit_stability():
             titrant_conc=jnp.zeros(2),
             log_titrant_conc=jnp.zeros(2),
             wt_indexes=jnp.array([0]),
-            scatter_theta=1
+            scatter_theta=1,
+            ln_cfu0_spiked_mask=jnp.zeros(10, dtype=bool)
         )
 
         binding = BindingData(

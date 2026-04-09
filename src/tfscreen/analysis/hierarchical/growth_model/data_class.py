@@ -48,6 +48,11 @@ class GrowthData:
     # meta data
     wt_indexes: jnp.ndarray
     scatter_theta: int = field(pytree_node=False)
+
+    # Boolean mask, shape (num_genotype,), True = spiked genotype.
+    # Used by ln_cfu0 component to apply a separate prior location.
+    ln_cfu0_spiked_mask: jnp.ndarray
+
     growth_shares_replicates: bool = field(pytree_node=False, default=False)
 
     # Optional mutation-decomposition matrices (set when using *_mut_decomp components).

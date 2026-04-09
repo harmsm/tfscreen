@@ -53,9 +53,10 @@ def test_batch_scaling_unbiased():
         titrant_conc=jnp.array([1.0]),
         log_titrant_conc=jnp.array([0.0]),
         wt_indexes=jnp.array([0]),
-        scatter_theta=1
+        scatter_theta=1,
+        ln_cfu0_spiked_mask=jnp.zeros(total_genotypes, dtype=bool)
     )
-    
+
     full_data = DataClass(
         num_genotype=total_genotypes,
         batch_idx=jnp.arange(total_genotypes),
@@ -109,9 +110,10 @@ def test_component_shape_guards():
         titrant_conc=jnp.array([1.0]),
         log_titrant_conc=jnp.array([0.0]),
         wt_indexes=jnp.array([0]),
-        scatter_theta=1
+        scatter_theta=1,
+        ln_cfu0_spiked_mask=jnp.zeros(total_genotypes, dtype=bool)
     )
-    
+
     priors = dk_geno_hierarchical.get_priors()
     
     # Create full-sized substitution values (100 genotypes)
@@ -167,9 +169,10 @@ def test_num_genotype_preserved():
         titrant_conc=jnp.array([1.0]),
         log_titrant_conc=jnp.array([0.0]),
         wt_indexes=jnp.array([0]),
-        scatter_theta=1
+        scatter_theta=1,
+        ln_cfu0_spiked_mask=jnp.zeros(total_genotypes, dtype=bool)
     )
-    
+
     full_data = DataClass(
         num_genotype=total_genotypes,
         batch_idx=jnp.arange(total_genotypes),
