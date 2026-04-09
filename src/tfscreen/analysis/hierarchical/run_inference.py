@@ -793,6 +793,178 @@ class RunInference:
         
         return site_names
 
+    def get_laplace_posteriors(self,
+                               map_params,
+                               out_root,
+                               num_posterior_samples=10000,
+                               sampling_batch_size=100,
+                               forward_batch_size=512):
+        """
+        Generate posterior samples from a MAP solution using the Laplace approximation.
+
+        Computes the Hessian of the negative log-joint at the MAP point, inverts
+        it to obtain a covariance matrix, and draws samples from the resulting
+        multivariate Gaussian. Samples are pushed through the generative model
+        and written to an HDF5 file in the same format produced by
+        ``get_posteriors``.
+
+        Parameters
+        ----------
+        map_params : dict
+            Parameter dict from a MAP (AutoDelta) optimizer state, as returned
+            by ``svi.get_params(svi_state)``. Keys follow the
+            ``{site}_auto_loc`` convention used by AutoDelta; values are in
+            the unconstrained parameter space.
+        out_root : str
+            Root name for the output file (written as
+            ``{out_root}_posterior.h5``).
+        num_posterior_samples : int, optional
+            Number of posterior samples to draw (default 10000).
+        sampling_batch_size : int, optional
+            Number of latent samples to draw per batch (default 100).
+        forward_batch_size : int, optional
+            Number of genotypes to process per forward-model batch (default 512).
+
+        Notes
+        -----
+        Hessian computation and inversion are both O(D²) in memory and
+        O(D³) in compute, where D is the total number of unconstrained
+        parameters.  For models with many per-genotype parameters this can be
+        slow or exceed available memory; in that case prefer running a short
+        SVI pass via ``get_posteriors``.
+        """
+        from numpyro.infer.util import potential_energy
+        from numpyro.distributions.transforms import biject_to
+        import jax.flatten_util
+
+        data_on_gpu = jax.device_put(self.model.data)
+        total_num_genotypes = self.model.data.num_genotype
+        dim_map = self._get_genotype_dim_map()
+
+        all_indices = jnp.arange(total_num_genotypes)
+        full_data = self.model.get_batch(data_on_gpu, all_indices)
+        model_kwargs = {"priors": self.model.priors, "data": full_data}
+
+        # Strip _auto_loc suffix → unconstrained site-level param dict
+        unconstrained = {
+            k[: -len("_auto_loc")]: jnp.array(v)
+            for k, v in map_params.items()
+            if k.endswith("_auto_loc")
+        }
+
+        # Flatten to a single vector for Hessian computation
+        flat_map, unravel = jax.flatten_util.ravel_pytree(unconstrained)
+        D = flat_map.shape[0]
+        print(f"Computing Hessian for {D} parameters ...", flush=True)
+
+        def pe_fn(flat_p):
+            return potential_energy(
+                self.model.jax_model, [], model_kwargs, unravel(flat_p)
+            )
+
+        hessian = jax.hessian(pe_fn)(flat_map)
+
+        # Add small diagonal jitter for numerical stability before inversion
+        hessian = hessian + 1e-6 * jnp.eye(D)
+
+        print("Inverting Hessian ...", flush=True)
+        cov = jnp.linalg.inv(hessian)
+
+        # Get unconstrained → constrained transform for each latent site
+        seeded_model = seed(self.model.jax_model, rng_seed=0)
+        traced_model = trace(seeded_model)
+        model_trace = traced_model.get_trace(**model_kwargs)
+
+        site_transforms = {
+            name: biject_to(site["fn"].support)
+            for name, site in model_trace.items()
+            if site["type"] == "sample" and not site.get("is_observed", False)
+        }
+
+        sampling_batch_size = min(sampling_batch_size, num_posterior_samples)
+        num_latent_batches = -(-num_posterior_samples // sampling_batch_size)
+
+        h5_file = f"{out_root}_posterior.h5"
+        samples_written = 0
+
+        with h5py.File(h5_file, "w") as hf:
+
+            for _ in tqdm(range(num_latent_batches), desc="sampling posterior"):
+
+                # Last batch may be smaller when num_posterior_samples is not
+                # evenly divisible by sampling_batch_size.
+                this_batch_size = min(sampling_batch_size,
+                                      num_posterior_samples - samples_written)
+
+                # Draw flat unconstrained samples: (this_batch_size, D)
+                sample_key = self.get_key()
+                flat_samples = jax.random.multivariate_normal(
+                    sample_key, flat_map, cov, shape=(this_batch_size,)
+                )
+
+                # Unravel each sample and transform to constrained space.
+                # jax.vmap(unravel) maps (N, D) → pytree of (N, *shape) arrays.
+                batch_unconstrained = jax.vmap(unravel)(flat_samples)
+                latent_samples = {
+                    k: jax.vmap(site_transforms[k])(v) if k in site_transforms else v
+                    for k, v in batch_unconstrained.items()
+                }
+
+                # Forward pass in genotype batches, mirroring get_posteriors
+                batch_collector = {}
+                for start_idx in range(0, total_num_genotypes, forward_batch_size):
+
+                    end_idx = min(start_idx + forward_batch_size, total_num_genotypes)
+                    batch_indices = jnp.arange(start_idx, end_idx)
+
+                    batch_latents = {
+                        k: jnp.take(v, batch_indices, axis=dim_map[k])
+                        if k in dim_map else v
+                        for k, v in latent_samples.items()
+                    }
+
+                    batch_data = self.model.get_batch(data_on_gpu, batch_indices)
+                    forward_sampler = Predictive(self.model.jax_model,
+                                                 posterior_samples=batch_latents)
+                    pred_key = self.get_key()
+                    batch_pred = forward_sampler(pred_key,
+                                                 priors=self.model.priors,
+                                                 data=batch_data)
+
+                    for k, v in batch_pred.items():
+                        batch_collector.setdefault(k, []).append(jax.device_get(v))
+
+                    for k, v in batch_latents.items():
+                        if k in batch_pred:
+                            continue
+                        if k not in dim_map:
+                            if start_idx == 0:
+                                batch_collector.setdefault(k, []).append(jax.device_get(v))
+                        else:
+                            batch_collector.setdefault(k, []).append(jax.device_get(v))
+
+                # Concatenate genotype batches
+                this_batch = {}
+                for k, v_list in batch_collector.items():
+                    if k in dim_map:
+                        this_batch[k] = np.concatenate(v_list, axis=dim_map[k])
+                    else:
+                        this_batch[k] = v_list[0]
+
+                # Write to HDF5
+                batch_size_actual = next(iter(this_batch.values())).shape[0]
+                for k, v in this_batch.items():
+                    if k not in hf:
+                        maxshape = (num_posterior_samples,) + v.shape[1:]
+                        chunks = (min(sampling_batch_size, 100),) + v.shape[1:]
+                        hf.create_dataset(k, shape=maxshape, dtype=v.dtype, chunks=chunks)
+                    hf[k][samples_written: samples_written + batch_size_actual] = v
+
+                samples_written += batch_size_actual
+
+            hf.attrs["num_samples"] = samples_written
+            hf.flush()
+
     def run_nuts(self,
                  num_warmup=500,
                  num_samples=500,

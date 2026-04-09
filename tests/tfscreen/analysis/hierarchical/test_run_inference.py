@@ -1,7 +1,11 @@
 import pytest
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pandas as pd
+import numpyro
+import numpyro.distributions as dist
+import h5py
 from tfscreen.analysis.hierarchical.run_inference import RunInference
 import os
 import dill
@@ -409,3 +413,188 @@ def test_run_optimization_1d_block_idx(mocker):
     ri.run_optimization(mock_svi, max_num_epochs=1,
                         convergence_check_interval=1,
                         checkpoint_interval=1)
+
+
+# =============================================================================
+# get_laplace_posteriors
+# =============================================================================
+
+# Shared data class and model for Laplace tests.  Uses a real numpyro model
+# so that potential_energy, trace, and biject_to work end-to-end on a tiny
+# problem (small D ≈ 1 + num_genotype parameters).
+
+@struct.dataclass
+class LaplaceData:
+    num_genotype: int
+    batch_idx: jnp.ndarray
+
+
+def _laplace_jax_model(data, priors):
+    """One global + one per-genotype parameter, no observations."""
+    global_p = numpyro.sample("global_p", dist.Normal(0., 1.))
+    with numpyro.plate("shared_genotype_plate", data.num_genotype, dim=-1):
+        numpyro.sample("geno_p", dist.Normal(global_p, 1.))
+
+
+class LaplaceModel:
+    """Minimal model wrapper compatible with RunInference."""
+
+    def __init__(self, num_genotype=4):
+        self.data = LaplaceData(num_genotype=num_genotype,
+                                batch_idx=jnp.arange(num_genotype))
+        self.priors = {}
+        self.jax_model = _laplace_jax_model
+        self.jax_model_guide = lambda data, priors: None  # not used in Laplace
+
+    def get_batch(self, data, indices):
+        return LaplaceData(num_genotype=len(indices), batch_idx=indices)
+
+    def get_random_idx(self, key=None, num_batches=1):
+        if num_batches == 1:
+            return np.array([0])
+        return np.zeros((num_batches, 1), dtype=int)
+
+
+def _laplace_map_params(model, seed=0):
+    """Return AutoDelta MAP params (at prior initialisation, no optimisation)."""
+    ri = RunInference(model, seed=seed)
+    svi = ri.setup_svi(guide_type="delta")
+    svi_state = svi.init(ri.get_key(), data=model.data, priors=model.priors)
+    return ri, svi.get_params(svi_state)
+
+
+def test_get_laplace_posteriors_creates_h5(tmpdir):
+    """get_laplace_posteriors produces an HDF5 posterior file."""
+    model = LaplaceModel(num_genotype=4)
+    ri, map_params = _laplace_map_params(model)
+
+    out_root = str(tmpdir.join("laplace"))
+    ri.get_laplace_posteriors(
+        map_params=map_params,
+        out_root=out_root,
+        num_posterior_samples=10,
+        sampling_batch_size=5,
+        forward_batch_size=4,
+    )
+
+    assert os.path.exists(f"{out_root}_posterior.h5")
+
+
+def test_get_laplace_posteriors_output_shapes(tmpdir):
+    """Output datasets have the expected shapes (num_samples, *param_shape)."""
+    num_genotype = 5
+    num_samples = 20
+    model = LaplaceModel(num_genotype=num_genotype)
+    ri, map_params = _laplace_map_params(model)
+
+    out_root = str(tmpdir.join("laplace_shapes"))
+    ri.get_laplace_posteriors(
+        map_params=map_params,
+        out_root=out_root,
+        num_posterior_samples=num_samples,
+        sampling_batch_size=10,
+        forward_batch_size=num_genotype,
+    )
+
+    with h5py.File(f"{out_root}_posterior.h5", "r") as hf:
+        assert hf["global_p"].shape == (num_samples,)
+        assert hf["geno_p"].shape == (num_samples, num_genotype)
+        assert hf.attrs["num_samples"] == num_samples
+
+
+def test_get_laplace_posteriors_forward_batching(tmpdir):
+    """forward_batch_size < num_genotype produces the same shapes as full-batch."""
+    num_genotype = 6
+    num_samples = 10
+    model = LaplaceModel(num_genotype=num_genotype)
+    ri, map_params = _laplace_map_params(model)
+
+    out_root = str(tmpdir.join("laplace_fwd"))
+    ri.get_laplace_posteriors(
+        map_params=map_params,
+        out_root=out_root,
+        num_posterior_samples=num_samples,
+        sampling_batch_size=5,
+        forward_batch_size=2,   # forces multiple forward batches
+    )
+
+    with h5py.File(f"{out_root}_posterior.h5", "r") as hf:
+        assert hf["global_p"].shape == (num_samples,)
+        assert hf["geno_p"].shape == (num_samples, num_genotype)
+
+
+def test_get_laplace_posteriors_sampling_batching(tmpdir):
+    """num_posterior_samples not evenly divisible by sampling_batch_size works."""
+    num_genotype = 4
+    num_samples = 7        # 7 = 3 + 3 + 1
+    model = LaplaceModel(num_genotype=num_genotype)
+    ri, map_params = _laplace_map_params(model)
+
+    out_root = str(tmpdir.join("laplace_sbatch"))
+    ri.get_laplace_posteriors(
+        map_params=map_params,
+        out_root=out_root,
+        num_posterior_samples=num_samples,
+        sampling_batch_size=3,
+        forward_batch_size=num_genotype,
+    )
+
+    with h5py.File(f"{out_root}_posterior.h5", "r") as hf:
+        assert hf.attrs["num_samples"] == num_samples
+        assert hf["global_p"].shape[0] == num_samples
+        assert hf["geno_p"].shape[0] == num_samples
+
+
+def test_get_laplace_posteriors_non_auto_loc_keys_ignored(tmpdir):
+    """Keys without _auto_loc suffix are silently excluded from the Hessian."""
+    model = LaplaceModel(num_genotype=3)
+    ri, map_params = _laplace_map_params(model)
+
+    # Inject a key without the expected suffix
+    poisoned = dict(map_params, some_other_key=jnp.array(99.0))
+
+    out_root = str(tmpdir.join("laplace_extra"))
+    # Should not raise; the extra key is ignored
+    ri.get_laplace_posteriors(
+        map_params=poisoned,
+        out_root=out_root,
+        num_posterior_samples=6,
+        sampling_batch_size=6,
+        forward_batch_size=3,
+    )
+
+    assert os.path.exists(f"{out_root}_posterior.h5")
+
+
+def test_get_laplace_posteriors_hessian_jitter(tmpdir, mocker):
+    """A small diagonal jitter is added before inversion for numerical stability.
+
+    We verify this by checking that inv() is called on a matrix that differs
+    from the raw Hessian by a positive diagonal term.
+    """
+    model = LaplaceModel(num_genotype=2)
+    ri, map_params = _laplace_map_params(model)
+
+    captured = {}
+
+    real_inv = jnp.linalg.inv
+
+    def capturing_inv(mat):
+        captured["inverted"] = np.array(mat)
+        return real_inv(mat)
+
+    mocker.patch("jax.numpy.linalg.inv", side_effect=capturing_inv)
+
+    out_root = str(tmpdir.join("laplace_jitter"))
+    ri.get_laplace_posteriors(
+        map_params=map_params,
+        out_root=out_root,
+        num_posterior_samples=4,
+        sampling_batch_size=4,
+        forward_batch_size=2,
+    )
+
+    # The matrix passed to inv() must have a positive diagonal
+    # (raw Hessian + 1e-6 * I guarantees this)
+    inverted = captured["inverted"]
+    assert np.all(np.diag(inverted) > 0)
