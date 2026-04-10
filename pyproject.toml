@@ -71,3 +71,4 @@ tfs-growth-analysis = "tfscreen.analysis.hierarchical.growth_model.scripts.run_g
 tfs-configure-growth-analysis = "tfscreen.analysis.hierarchical.growth_model.scripts.configure_growth_analysis:main"
 tfs-summarize-posteriors = "tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors:main"
 tfs-predict = "tfscreen.analysis.hierarchical.growth_model.scripts.predict_cli:main"
+tfs-diagnose-nan = "tfscreen.analysis.hierarchical.growth_model.scripts.diagnose_nan:main"
