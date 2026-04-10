@@ -384,9 +384,13 @@ def run_growth_analysis(config_file,
                 )
 
     gm, init_params = read_configuration(config_file)
-     
+
+    # For posterior mode the seed is optional: the checkpoint restores the PRNG
+    # key for SVI checkpoints, and any valid key works for MAP/Laplace sampling.
+    effective_seed = seed if seed is not None else 0
+
     # Run SVI / MAP
-    ri = RunInference(gm, seed)
+    ri = RunInference(gm, effective_seed)
 
     if analysis_method == "svi":
         if pre_map_num_epoch > 0 and checkpoint_file is None:

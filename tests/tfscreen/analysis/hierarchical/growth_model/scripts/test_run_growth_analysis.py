@@ -80,6 +80,22 @@ class TestRunGrowthAnalysisPosteriorErrors:
                 analysis_method="posterior",
             )
 
+    def test_raises_if_seed_and_checkpoint_both_none_non_posterior(self, tmp_path, mocker):
+        """Non-posterior modes must still require a seed when no checkpoint given."""
+        _common_patches(mocker)
+        mocker.patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_growth_analysis.RunInference",
+            return_value=MagicMock(_iterations_per_epoch=1),
+        )
+        with pytest.raises(ValueError, match="seed must be provided"):
+            run_growth_analysis(
+                config_file="dummy.yaml",
+                seed=None,
+                checkpoint_file=None,
+                analysis_method="svi",
+            )
+
 
 # ---------------------------------------------------------------------------
 # run_growth_analysis — posterior branch — MAP checkpoint
@@ -208,6 +224,58 @@ class TestRunGrowthAnalysisPosteriorMAP:
 
         ri.setup_svi.assert_called_once_with(guide_type="delta")
 
+    def test_no_seed_required_for_map_posterior(self, tmp_path, mocker):
+        """seed=None is allowed for posterior mode when a checkpoint is provided."""
+        map_params = {"p_auto_loc": jnp.array(0.0)}
+        chk_path, ri, _ = self._setup(mocker, tmp_path, map_params)
+
+        # Should not raise even though seed is None.
+        run_growth_analysis(
+            config_file="dummy.yaml",
+            seed=None,
+            checkpoint_file=chk_path,
+            analysis_method="posterior",
+        )
+
+        ri.get_laplace_posteriors.assert_called_once()
+
+    def test_seed_none_uses_zero_for_run_inference(self, tmp_path, mocker):
+        """When seed=None, RunInference is constructed with seed=0."""
+        map_params = {"p_auto_loc": jnp.array(0.0)}
+        chk_path = str(tmp_path / "map.pkl")
+        _write_checkpoint(chk_path)
+
+        svi_obj = MagicMock()
+        svi_obj.optim.get_params.return_value = map_params
+
+        ri = MagicMock(_iterations_per_epoch=1)
+        ri.setup_svi.return_value = svi_obj
+
+        mocker.patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_growth_analysis.read_configuration",
+            return_value=(MagicMock(), {}),
+        )
+        ri_cls = mocker.patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_growth_analysis.RunInference",
+            return_value=ri,
+        )
+        mocker.patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_growth_analysis.summarize_posteriors",
+        )
+
+        run_growth_analysis(
+            config_file="dummy.yaml",
+            seed=None,
+            checkpoint_file=chk_path,
+            analysis_method="posterior",
+        )
+
+        _, call_seed = ri_cls.call_args.args
+        assert call_seed == 0
+
 
 # ---------------------------------------------------------------------------
 # run_growth_analysis — posterior branch — SVI checkpoint
@@ -307,3 +375,18 @@ class TestRunGrowthAnalysisPosteriorSVI:
 
         kwargs = run_svi_mock.call_args.kwargs
         assert kwargs["always_get_posterior"] is True
+
+    def test_no_seed_required_for_svi_posterior(self, tmp_path, mocker):
+        """seed=None is allowed for SVI posterior mode when a checkpoint is provided."""
+        svi_params = {"p_loc": jnp.array(0.0)}
+        chk_path, ri, run_svi_mock = self._setup(mocker, tmp_path, svi_params)
+
+        # Should not raise even though seed is None.
+        run_growth_analysis(
+            config_file="dummy.yaml",
+            seed=None,
+            checkpoint_file=chk_path,
+            analysis_method="posterior",
+        )
+
+        run_svi_mock.assert_called_once()

@@ -1642,6 +1642,9 @@
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/configure_growth_analysis.py:117:55: E231 missing whitespace after ':'
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/configure_growth_analysis.py:118:55: E231 missing whitespace after ':'
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/configure_growth_analysis.py:120:1: E305 expected 2 blank lines after class or function definition, found 1
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/diagnose_nan.py:39:1: F401 'sys' imported but unused
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/diagnose_nan.py:42:1: F401 'jax.numpy as jnp' imported but unused
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/diagnose_nan.py:43:1: F401 'numpy as np' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/predict_cli.py:2:1: F401 'numpy as np' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/predict_cli.py:3:1: F401 'os' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/predict_cli.py:8:1: E302 expected 2 blank lines, found 1
@@ -1678,16 +1681,15 @@
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_growth_analysis.py:312:76: W291 trailing whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_growth_analysis.py:350:37: W291 trailing whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_growth_analysis.py:377:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_growth_analysis.py:387:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_growth_analysis.py:426:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_growth_analysis.py:448:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_growth_analysis.py:512:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_growth_analysis.py:514:60: E231 missing whitespace after ':'
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_growth_analysis.py:515:53: E231 missing whitespace after ':'
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_growth_analysis.py:516:64: E231 missing whitespace after ':'
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_growth_analysis.py:517:66: E231 missing whitespace after ':'
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_growth_analysis.py:518:66: E231 missing whitespace after ':'
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_growth_analysis.py:520:1: E305 expected 2 blank lines after class or function definition, found 1
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_growth_analysis.py:430:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_growth_analysis.py:452:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_growth_analysis.py:516:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_growth_analysis.py:518:60: E231 missing whitespace after ':'
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_growth_analysis.py:519:53: E231 missing whitespace after ':'
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_growth_analysis.py:520:64: E231 missing whitespace after ':'
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_growth_analysis.py:521:66: E231 missing whitespace after ':'
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_growth_analysis.py:522:66: E231 missing whitespace after ':'
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_growth_analysis.py:524:1: E305 expected 2 blank lines after class or function definition, found 1
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/summarize_posteriors.py:1:1: F401 'pandas as pd' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/summarize_posteriors.py:5:1: F401 'yaml' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/summarize_posteriors.py:6:1: F401 'tfscreen.analysis.hierarchical.growth_model.GrowthModel' imported but unused
@@ -9002,13 +9004,13 @@
 1     E722 do not use bare 'except'
 1     E731 do not assign a lambda expression, use a def
 4     E741 ambiguous variable name 'l'
-328   F401 '.calibration' imported but unused
+331   F401 '.calibration' imported but unused
 11    F541 f-string is missing placeholders
 10    F811 redefinition of unused 'dataclasses' from line 6
 48    F841 local variable 'nu' is assigned to but never used
 47    W191 indentation contains tabs
 1185  W291 trailing whitespace
 125   W292 no newline at end of file
-2983  W293 blank line contains whitespace
+2982  W293 blank line contains whitespace
 45    W391 blank line at end of file
-8961
+8963
