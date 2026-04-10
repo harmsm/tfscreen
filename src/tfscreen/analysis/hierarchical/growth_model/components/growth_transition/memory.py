@@ -145,34 +145,34 @@ def guide(name: str,
     # tau0 hyper
     tau0_loc_loc = pyro.param(f"{name}_tau0_hyper_loc_loc", jnp.array(priors.tau0_hyper_loc_loc))
     tau0_loc_scale = pyro.param(f"{name}_tau0_hyper_loc_scale", jnp.array(priors.tau0_hyper_loc_scale),
-                                constraint=dist.constraints.positive)
+                                constraint=dist.constraints.greater_than(1e-4))
     tau0_hyper_loc = pyro.sample(f"{name}_tau0_hyper_loc", dist.Normal(tau0_loc_loc, tau0_loc_scale))
 
     tau0_scale_loc = pyro.param(f"{name}_tau0_hyper_scale_loc", jnp.array(-1.0))
     tau0_scale_scale = pyro.param(f"{name}_tau0_hyper_scale_scale", jnp.array(0.1),
-                                  constraint=dist.constraints.positive)
+                                  constraint=dist.constraints.greater_than(1e-4))
     tau0_hyper_scale = pyro.sample(f"{name}_tau0_hyper_scale", dist.LogNormal(tau0_scale_loc, tau0_scale_scale))
 
     # k1 hyper
     k1_loc_loc = pyro.param(f"{name}_k1_hyper_loc_loc", jnp.array(priors.k1_hyper_loc_loc))
     k1_loc_scale = pyro.param(f"{name}_k1_hyper_loc_scale", jnp.array(priors.k1_hyper_loc_scale),
-                               constraint=dist.constraints.positive)
+                               constraint=dist.constraints.greater_than(1e-4))
     k1_hyper_loc = pyro.sample(f"{name}_k1_hyper_loc", dist.Normal(k1_loc_loc, k1_loc_scale))
 
     k1_scale_loc = pyro.param(f"{name}_k1_hyper_scale_loc", jnp.array(-1.0))
     k1_scale_scale = pyro.param(f"{name}_k1_hyper_scale_scale", jnp.array(0.1),
-                                 constraint=dist.constraints.positive)
+                                 constraint=dist.constraints.greater_than(1e-4))
     k1_hyper_scale = pyro.sample(f"{name}_k1_hyper_scale", dist.LogNormal(k1_scale_loc, k1_scale_scale))
 
     # k2 hyper
     k2_loc_loc = pyro.param(f"{name}_k2_hyper_loc_loc", jnp.array(priors.k2_hyper_loc_loc))
     k2_loc_scale = pyro.param(f"{name}_k2_hyper_loc_scale", jnp.array(priors.k2_hyper_loc_scale),
-                               constraint=dist.constraints.positive)
+                               constraint=dist.constraints.greater_than(1e-4))
     k2_hyper_loc = pyro.sample(f"{name}_k2_hyper_loc", dist.Normal(k2_loc_loc, k2_loc_scale))
 
     k2_scale_loc = pyro.param(f"{name}_k2_hyper_scale_loc", jnp.array(-1.0))
     k2_scale_scale = pyro.param(f"{name}_k2_hyper_scale_scale", jnp.array(0.1),
-                                 constraint=dist.constraints.positive)
+                                 constraint=dist.constraints.greater_than(1e-4))
     k2_hyper_scale = pyro.sample(f"{name}_k2_hyper_scale", dist.LogNormal(k2_scale_loc, k2_scale_scale))
 
     # Offsets

@@ -124,7 +124,7 @@ def guide(name: str,
 
     k_loc_loc = pyro.param(f"{name}_k_hyper_loc_loc", jnp.array(priors.growth_k_hyper_loc_loc))
     k_loc_scale = pyro.param(f"{name}_k_hyper_loc_scale", jnp.array(priors.growth_k_hyper_loc_scale),
-                             constraint=dist.constraints.positive)
+                             constraint=dist.constraints.greater_than(1e-4))
     growth_k_hyper_loc = pyro.sample(
         f"{name}_k_hyper_loc",
         dist.Normal(k_loc_loc,k_loc_scale)
@@ -132,7 +132,7 @@ def guide(name: str,
 
     k_scale_loc = pyro.param(f"{name}_k_hyper_scale_loc", jnp.array(-1.0))
     k_scale_scale = pyro.param(f"{name}_k_hyper_scale_scale",jnp.array(0.1),
-                               constraint=dist.constraints.positive)
+                               constraint=dist.constraints.greater_than(1e-4))
     growth_k_hyper_scale = pyro.sample(
         f"{name}_k_hyper_scale",
         dist.LogNormal(k_scale_loc, k_scale_scale)
@@ -140,7 +140,7 @@ def guide(name: str,
 
     m_loc_loc = pyro.param(f"{name}_m_hyper_loc_loc", jnp.array(priors.growth_m_hyper_loc_loc))
     m_loc_scale = pyro.param(f"{name}_m_hyper_loc_scale", jnp.array(priors.growth_m_hyper_loc_scale),
-                             constraint=dist.constraints.positive)
+                             constraint=dist.constraints.greater_than(1e-4))
     growth_m_hyper_loc = pyro.sample(
         f"{name}_m_hyper_loc",
         dist.Normal(m_loc_loc,m_loc_scale)
@@ -148,7 +148,7 @@ def guide(name: str,
 
     m_scale_loc = pyro.param(f"{name}_m_hyper_scale_loc", jnp.array(-1.0))
     m_scale_scale = pyro.param(f"{name}_m_hyper_scale_scale",jnp.array(0.1),
-                               constraint=dist.constraints.positive)
+                               constraint=dist.constraints.greater_than(1e-4))
     growth_m_hyper_scale = pyro.sample(
         f"{name}_m_hyper_scale",
         dist.LogNormal(m_scale_loc, m_scale_scale)

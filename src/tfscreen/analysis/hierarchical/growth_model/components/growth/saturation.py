@@ -97,12 +97,12 @@ def guide(name: str,
     def sample_guide_param(param_name, loc_loc, loc_scale):
         p_loc_loc = pyro.param(f"{name}_{param_name}_hyper_loc_loc", jnp.array(loc_loc))
         p_loc_scale = pyro.param(f"{name}_{param_name}_hyper_loc_scale", jnp.array(loc_scale),
-                                 constraint=dist.constraints.positive)
+                                 constraint=dist.constraints.greater_than(1e-4))
         hyper_loc = pyro.sample(f"{name}_{param_name}_hyper_loc", dist.Normal(p_loc_loc, p_loc_scale))
 
         p_scale_loc = pyro.param(f"{name}_{param_name}_hyper_scale_loc", jnp.array(-1.0))
         p_scale_scale = pyro.param(f"{name}_{param_name}_hyper_scale_scale", jnp.array(0.1),
-                                   constraint=dist.constraints.positive)
+                                   constraint=dist.constraints.greater_than(1e-4))
         hyper_scale = pyro.sample(f"{name}_{param_name}_hyper_scale", dist.LogNormal(p_scale_loc, p_scale_scale))
         
         offset_locs = pyro.param(f"{name}_{param_name}_offset_locs", jnp.zeros(data.num_condition_rep, dtype=float))

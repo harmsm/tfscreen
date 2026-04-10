@@ -125,17 +125,17 @@ def guide(name: str,
 
     # Hyper Loc — library genotypes (Normal posterior)
     h_loc_loc = pyro.param(f"{name}_hyper_loc_loc", jnp.array(priors.ln_cfu0_hyper_loc_loc))
-    h_loc_scale = pyro.param(f"{name}_hyper_loc_scale", jnp.array(priors.ln_cfu0_hyper_loc_scale), constraint=dist.constraints.positive)
+    h_loc_scale = pyro.param(f"{name}_hyper_loc_scale", jnp.array(priors.ln_cfu0_hyper_loc_scale), constraint=dist.constraints.greater_than(1e-4))
     ln_cfu0_hyper_loc = pyro.sample(f"{name}_hyper_loc", dist.Normal(h_loc_loc, h_loc_scale))
 
     # Hyper Scale (LogNormal posterior approximation for positive variable)
     h_scale_loc = pyro.param(f"{name}_hyper_scale_loc", jnp.array(-1.0)) # Init small
-    h_scale_scale = pyro.param(f"{name}_hyper_scale_scale", jnp.array(0.1), constraint=dist.constraints.positive)
+    h_scale_scale = pyro.param(f"{name}_hyper_scale_scale", jnp.array(0.1), constraint=dist.constraints.greater_than(1e-4))
     ln_cfu0_hyper_scale = pyro.sample(f"{name}_hyper_scale", dist.LogNormal(h_scale_loc, h_scale_scale))
 
     # Spiked Loc — spiked genotypes (Normal posterior)
     s_loc_loc = pyro.param(f"{name}_spiked_loc_loc", jnp.array(priors.ln_cfu0_spiked_loc_loc))
-    s_loc_scale = pyro.param(f"{name}_spiked_loc_scale", jnp.array(priors.ln_cfu0_spiked_loc_scale), constraint=dist.constraints.positive)
+    s_loc_scale = pyro.param(f"{name}_spiked_loc_scale", jnp.array(priors.ln_cfu0_spiked_loc_scale), constraint=dist.constraints.greater_than(1e-4))
     ln_cfu0_spiked_loc = pyro.sample(f"{name}_spiked_loc", dist.Normal(s_loc_loc, s_loc_scale))
 
     # -------------------------------------------------------------------------

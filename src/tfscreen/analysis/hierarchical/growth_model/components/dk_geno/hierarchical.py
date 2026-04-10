@@ -112,21 +112,21 @@ def guide(name: str,
 
     # Hyper Loc (Normal guide for Normal prior)
     h_loc_loc = pyro.param(f"{name}_hyper_loc_loc", jnp.array(priors.dk_geno_hyper_loc_loc))
-    h_loc_scale = pyro.param(f"{name}_hyper_loc_scale", jnp.array(priors.dk_geno_hyper_loc_scale), 
-                             constraint=dist.constraints.positive)
+    h_loc_scale = pyro.param(f"{name}_hyper_loc_scale", jnp.array(priors.dk_geno_hyper_loc_scale),
+                             constraint=dist.constraints.greater_than(1e-4))
     dk_geno_hyper_loc = pyro.sample(f"{name}_hyper_loc", dist.Normal(h_loc_loc, h_loc_scale))
 
     # Hyper Scale (LogNormal guide for HalfNormal prior)
     # Initialized to -1.0 (approx 0.37) to start with reasonable spread
     h_scale_loc = pyro.param(f"{name}_hyper_scale_loc", jnp.array(-1.0))
-    h_scale_scale = pyro.param(f"{name}_hyper_scale_scale", jnp.array(0.1), 
-                               constraint=dist.constraints.positive)
+    h_scale_scale = pyro.param(f"{name}_hyper_scale_scale", jnp.array(0.1),
+                               constraint=dist.constraints.greater_than(1e-4))
     dk_geno_hyper_scale = pyro.sample(f"{name}_hyper_scale", dist.LogNormal(h_scale_loc, h_scale_scale))
 
     # Shift (Normal guide for Normal prior)
     shift_loc = pyro.param(f"{name}_shift_loc", jnp.array(priors.dk_geno_hyper_shift_loc))
-    shift_scale = pyro.param(f"{name}_shift_scale", jnp.array(priors.dk_geno_hyper_shift_scale), 
-                             constraint=dist.constraints.positive)
+    shift_scale = pyro.param(f"{name}_shift_scale", jnp.array(priors.dk_geno_hyper_shift_scale),
+                             constraint=dist.constraints.greater_than(1e-4))
     dk_geno_hyper_shift = pyro.sample(f"{name}_shift", dist.Normal(shift_loc, shift_scale))
 
     # --- Local Parameters (Per Genotype) ---

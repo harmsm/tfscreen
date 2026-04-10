@@ -198,26 +198,26 @@ def guide(name: str,
     # K Hyper Loc (Normal)
     k_hl_loc = pyro.param(f"{name}_k_hyper_loc_loc", jnp.array(priors.growth_k_hyper_loc_loc))
     k_hl_scale = pyro.param(f"{name}_k_hyper_loc_scale", jnp.array(priors.growth_k_hyper_loc_scale),
-                            constraint=dist.constraints.positive)
-    
+                            constraint=dist.constraints.greater_than(1e-4))
+
     # K Hyper Scale (LogNormal guide for HalfNormal prior)
-    k_hs_loc = pyro.param(f"{name}_k_hyper_scale_loc", 
+    k_hs_loc = pyro.param(f"{name}_k_hyper_scale_loc",
                           jnp.full(data.num_condition_rep, -1.0))
-    k_hs_scale = pyro.param(f"{name}_k_hyper_scale_scale", 
+    k_hs_scale = pyro.param(f"{name}_k_hyper_scale_scale",
                             jnp.full(data.num_condition_rep, 0.1),
-                            constraint=dist.constraints.positive)
+                            constraint=dist.constraints.greater_than(1e-4))
 
     # M Hyper Loc (Normal)
     m_hl_loc = pyro.param(f"{name}_m_hyper_loc_loc", jnp.array(priors.growth_m_hyper_loc_loc))
     m_hl_scale = pyro.param(f"{name}_m_hyper_loc_scale", jnp.array(priors.growth_m_hyper_loc_scale),
-                            constraint=dist.constraints.positive)
-    
+                            constraint=dist.constraints.greater_than(1e-4))
+
     # M Hyper Scale (LogNormal guide for HalfNormal prior)
-    m_hs_loc = pyro.param(f"{name}_m_hyper_scale_loc", 
+    m_hs_loc = pyro.param(f"{name}_m_hyper_scale_loc",
                           jnp.full(data.num_condition_rep, -1.0))
-    m_hs_scale = pyro.param(f"{name}_m_hyper_scale_scale", 
+    m_hs_scale = pyro.param(f"{name}_m_hyper_scale_scale",
                             jnp.full(data.num_condition_rep, 0.1),
-                            constraint=dist.constraints.positive)
+                            constraint=dist.constraints.greater_than(1e-4))
 
     # --- 2. Local Parameters (Per Replicate AND Condition) ---
     # Shape: (num_replicate, num_condition_rep)

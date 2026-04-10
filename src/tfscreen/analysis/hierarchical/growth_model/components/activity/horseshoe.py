@@ -115,7 +115,7 @@ def guide(name: str,
 
     t_scale_loc = pyro.param(f"{name}_t_hyper_scale_loc", jnp.array(-5.0))
     t_scale_scale = pyro.param(f"{name}_t_hyper_scale_scale",jnp.array(0.1),
-                               constraint=dist.constraints.positive)
+                               constraint=dist.constraints.greater_than(1e-4))
     global_scale_tau = pyro.sample(f"{name}_global_scale",
                                    dist.LogNormal(t_scale_loc, t_scale_scale)) 
     

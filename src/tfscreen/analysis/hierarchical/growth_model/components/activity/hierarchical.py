@@ -114,7 +114,7 @@ def guide(name: str,
 
     a_loc_loc = pyro.param(f"{name}_a_hyper_loc_loc", jnp.array(priors.activity_hyper_loc_loc))
     a_loc_scale = pyro.param(f"{name}_a_hyper_loc_scale", jnp.array(priors.activity_hyper_loc_scale),
-                             constraint=dist.constraints.positive)
+                             constraint=dist.constraints.greater_than(1e-4))
     log_activity_hyper_loc = pyro.sample(
         f"{name}_log_hyper_loc",
         dist.Normal(a_loc_loc,a_loc_scale)
@@ -122,7 +122,7 @@ def guide(name: str,
 
     a_scale_loc = pyro.param(f"{name}_a_hyper_scale_loc", jnp.array(-1.0))
     a_scale_scale = pyro.param(f"{name}_a_hyper_scale_scale",jnp.array(0.1),
-                               constraint=dist.constraints.positive)
+                               constraint=dist.constraints.greater_than(1e-4))
     log_activity_hyper_scale = pyro.sample(
         f"{name}_log_hyper_scale",
         dist.LogNormal(a_scale_loc, a_scale_scale)

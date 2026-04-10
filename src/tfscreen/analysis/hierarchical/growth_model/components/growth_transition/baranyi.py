@@ -124,23 +124,23 @@ def guide(name: str,
     # tau_lag hyper
     tau_lag_loc_loc = pyro.param(f"{name}_tau_lag_hyper_loc_loc", jnp.array(priors.tau_lag_hyper_loc_loc))
     tau_lag_loc_scale = pyro.param(f"{name}_tau_lag_hyper_loc_scale", jnp.array(priors.tau_lag_hyper_loc_scale),
-                                constraint=dist.constraints.positive)
+                                constraint=dist.constraints.greater_than(1e-4))
     tau_lag_hyper_loc = pyro.sample(f"{name}_tau_lag_hyper_loc", dist.Normal(tau_lag_loc_loc, tau_lag_loc_scale))
 
     tau_lag_scale_loc = pyro.param(f"{name}_tau_lag_hyper_scale_loc", jnp.array(-1.0))
     tau_lag_scale_scale = pyro.param(f"{name}_tau_lag_hyper_scale_scale", jnp.array(0.1),
-                                  constraint=dist.constraints.positive)
+                                  constraint=dist.constraints.greater_than(1e-4))
     tau_lag_hyper_scale = pyro.sample(f"{name}_tau_lag_hyper_scale", dist.LogNormal(tau_lag_scale_loc, tau_lag_scale_scale))
 
     # k_sharp hyper
     k_sharp_loc_loc = pyro.param(f"{name}_k_sharp_hyper_loc_loc", jnp.array(priors.k_sharp_hyper_loc_loc))
     k_sharp_loc_scale = pyro.param(f"{name}_k_sharp_hyper_loc_scale", jnp.array(priors.k_sharp_hyper_loc_scale),
-                                constraint=dist.constraints.positive)
+                                constraint=dist.constraints.greater_than(1e-4))
     k_sharp_hyper_loc = pyro.sample(f"{name}_k_sharp_hyper_loc", dist.Normal(k_sharp_loc_loc, k_sharp_loc_scale))
 
     k_sharp_scale_loc = pyro.param(f"{name}_k_sharp_hyper_scale_loc", jnp.array(-1.0))
     k_sharp_scale_scale = pyro.param(f"{name}_k_sharp_hyper_scale_scale", jnp.array(0.1),
-                                 constraint=dist.constraints.positive)
+                                 constraint=dist.constraints.greater_than(1e-4))
     k_sharp_hyper_scale = pyro.sample(f"{name}_k_sharp_hyper_scale", dist.LogNormal(k_sharp_scale_loc, k_sharp_scale_scale))
 
     # Offsets

@@ -268,59 +268,59 @@ def guide(name: str,
     # Loc
     h_low_loc_loc = pyro.param(f"{name}_logit_low_hyper_loc_loc", jnp.array(priors.theta_logit_low_hyper_loc_loc))
     h_low_loc_scale = pyro.param(f"{name}_logit_low_hyper_loc_scale", jnp.array(priors.theta_logit_low_hyper_loc_scale),
-                                 constraint=dist.constraints.positive)
-    logit_theta_low_hyper_loc = pyro.sample(f"{name}_logit_low_hyper_loc", 
+                                 constraint=dist.constraints.greater_than(1e-4))
+    logit_theta_low_hyper_loc = pyro.sample(f"{name}_logit_low_hyper_loc",
                                             dist.Normal(h_low_loc_loc, h_low_loc_scale))
 
     # Scale (LogNormal guide)
     h_low_scale_loc = pyro.param(f"{name}_logit_low_hyper_scale_loc", jnp.array(-1.0))
     h_low_scale_scale = pyro.param(f"{name}_logit_low_hyper_scale_scale", jnp.array(0.1),
-                                   constraint=dist.constraints.positive)
-    logit_theta_low_hyper_scale = pyro.sample(f"{name}_logit_low_hyper_scale", 
+                                   constraint=dist.constraints.greater_than(1e-4))
+    logit_theta_low_hyper_scale = pyro.sample(f"{name}_logit_low_hyper_scale",
                                               dist.LogNormal(h_low_scale_loc, h_low_scale_scale))
 
     # --- Theta Delta (Logit Scale) ---
     # Loc
     h_delta_loc_loc = pyro.param(f"{name}_logit_delta_hyper_loc_loc", jnp.array(priors.theta_logit_delta_hyper_loc_loc))
     h_delta_loc_scale = pyro.param(f"{name}_logit_delta_hyper_loc_scale", jnp.array(priors.theta_logit_delta_hyper_loc_scale),
-                                   constraint=dist.constraints.positive)
-    logit_theta_delta_hyper_loc = pyro.sample(f"{name}_logit_delta_hyper_loc", 
+                                   constraint=dist.constraints.greater_than(1e-4))
+    logit_theta_delta_hyper_loc = pyro.sample(f"{name}_logit_delta_hyper_loc",
                                               dist.Normal(h_delta_loc_loc, h_delta_loc_scale))
 
     # Scale (LogNormal guide)
     h_delta_scale_loc = pyro.param(f"{name}_logit_delta_hyper_scale_loc", jnp.array(-1.0))
     h_delta_scale_scale = pyro.param(f"{name}_logit_delta_hyper_scale_scale", jnp.array(0.1),
-                                     constraint=dist.constraints.positive)
-    logit_theta_delta_hyper_scale = pyro.sample(f"{name}_logit_delta_hyper_scale", 
+                                     constraint=dist.constraints.greater_than(1e-4))
+    logit_theta_delta_hyper_scale = pyro.sample(f"{name}_logit_delta_hyper_scale",
                                                 dist.LogNormal(h_delta_scale_loc, h_delta_scale_scale))
 
     # --- Hill K (Log Scale) ---
     # Loc
     h_K_loc_loc = pyro.param(f"{name}_log_hill_K_hyper_loc_loc", jnp.array(priors.theta_log_hill_K_hyper_loc_loc))
     h_K_loc_scale = pyro.param(f"{name}_log_hill_K_hyper_loc_scale", jnp.array(priors.theta_log_hill_K_hyper_loc_scale),
-                               constraint=dist.constraints.positive)
-    log_hill_K_hyper_loc = pyro.sample(f"{name}_log_hill_K_hyper_loc", 
+                               constraint=dist.constraints.greater_than(1e-4))
+    log_hill_K_hyper_loc = pyro.sample(f"{name}_log_hill_K_hyper_loc",
                                        dist.Normal(h_K_loc_loc, h_K_loc_scale))
 
     # Scale (LogNormal guide)
     h_K_scale_loc = pyro.param(f"{name}_log_hill_K_hyper_scale_loc", jnp.array(-1.0))
     h_K_scale_scale = pyro.param(f"{name}_log_hill_K_hyper_scale_scale", jnp.array(0.1),
-                                 constraint=dist.constraints.positive)
-    log_hill_K_hyper_scale = pyro.sample(f"{name}_log_hill_K_hyper_scale", 
+                                 constraint=dist.constraints.greater_than(1e-4))
+    log_hill_K_hyper_scale = pyro.sample(f"{name}_log_hill_K_hyper_scale",
                                          dist.LogNormal(h_K_scale_loc, h_K_scale_scale))
 
     # --- Hill n (Log Scale) ---
     # Loc
     h_n_loc_loc = pyro.param(f"{name}_log_hill_n_hyper_loc_loc", jnp.array(priors.theta_log_hill_n_hyper_loc_loc))
     h_n_loc_scale = pyro.param(f"{name}_log_hill_n_hyper_loc_scale", jnp.array(priors.theta_log_hill_n_hyper_loc_scale),
-                               constraint=dist.constraints.positive)
-    log_hill_n_hyper_loc = pyro.sample(f"{name}_log_hill_n_hyper_loc", 
+                               constraint=dist.constraints.greater_than(1e-4))
+    log_hill_n_hyper_loc = pyro.sample(f"{name}_log_hill_n_hyper_loc",
                                        dist.Normal(h_n_loc_loc, h_n_loc_scale))
 
     # Scale (LogNormal guide)
     h_n_scale_loc = pyro.param(f"{name}_log_hill_n_hyper_scale_loc", jnp.array(-1.0))
     h_n_scale_scale = pyro.param(f"{name}_log_hill_n_hyper_scale_scale", jnp.array(0.1),
-                                 constraint=dist.constraints.positive)
+                                 constraint=dist.constraints.greater_than(1e-4))
     log_hill_n_hyper_scale = pyro.sample(f"{name}_log_hill_n_hyper_scale", 
                                          dist.LogNormal(h_n_scale_loc, h_n_scale_scale))
 

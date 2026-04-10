@@ -133,13 +133,13 @@ def guide(name: str,
                            jnp.array(priors.dk_geno_hyper_loc_loc))
     h_loc_scale = pyro.param(f"{name}_hyper_loc_scale",
                              jnp.array(priors.dk_geno_hyper_loc_scale),
-                             constraint=dist.constraints.positive)
+                             constraint=dist.constraints.greater_than(1e-4))
     dk_geno_hyper_loc = pyro.sample(f"{name}_hyper_loc",
                                     dist.Normal(h_loc_loc, h_loc_scale))
 
     h_scale_loc = pyro.param(f"{name}_hyper_scale_loc", jnp.array(-1.0))
     h_scale_scale = pyro.param(f"{name}_hyper_scale_scale", jnp.array(0.1),
-                               constraint=dist.constraints.positive)
+                               constraint=dist.constraints.greater_than(1e-4))
     dk_geno_hyper_scale = pyro.sample(f"{name}_hyper_scale",
                                       dist.LogNormal(h_scale_loc, h_scale_scale))
 
@@ -147,7 +147,7 @@ def guide(name: str,
                            jnp.array(priors.dk_geno_hyper_shift_loc))
     shift_scale = pyro.param(f"{name}_shift_scale",
                              jnp.array(priors.dk_geno_hyper_shift_scale),
-                             constraint=dist.constraints.positive)
+                             constraint=dist.constraints.greater_than(1e-4))
     dk_geno_hyper_shift = pyro.sample(f"{name}_shift",
                                       dist.Normal(shift_loc, shift_scale))
 
@@ -172,7 +172,7 @@ def guide(name: str,
 
         sigma_epi_loc = pyro.param(f"{name}_sigma_epi_loc", jnp.array(-1.0))
         sigma_epi_scale = pyro.param(f"{name}_sigma_epi_scale", jnp.array(0.1),
-                                     constraint=dist.constraints.positive)
+                                     constraint=dist.constraints.greater_than(1e-4))
         sigma_epi = pyro.sample(f"{name}_sigma_epi",
                                 dist.LogNormal(sigma_epi_loc, sigma_epi_scale))
 

@@ -166,12 +166,12 @@ def guide(name: str,
                            jnp.full(local_shape_global, priors.logit_theta_hyper_loc_loc))
     h_loc_scale = pyro.param(f"{name}_logit_theta_hyper_loc_scale",
                              jnp.full(local_shape_global, priors.logit_theta_hyper_loc_scale),
-                             constraint=dist.constraints.positive)
+                             constraint=dist.constraints.greater_than(1e-4))
 
     # Logit Theta Hyper Scale (LogNormal guide)
     h_scale_loc = pyro.param(f"{name}_logit_theta_hyper_scale_loc", jnp.full(local_shape_global, -1.0))
     h_scale_scale = pyro.param(f"{name}_logit_theta_hyper_scale_scale", jnp.full(local_shape_global, 0.1),
-                               constraint=dist.constraints.positive)
+                               constraint=dist.constraints.greater_than(1e-4))
 
     with pyro.plate(f"{name}_titrant_name_plate", data.num_titrant_name, dim=-3):
         with pyro.plate(f"{name}_titrant_conc_plate", data.num_titrant_conc, dim=-2):
