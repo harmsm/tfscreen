@@ -291,8 +291,11 @@ class RunInference:
             params = svi.get_params(svi_state)
             for k in params:
                 if np.any(np.isnan(params[k])):
+                    
+                    nan_params = [k for k in params if np.isnan(params[k])]
                     raise RuntimeError(
-                        f"model exploded (observed at step {self._current_step})."
+                        f"model exploded (observed at step {self._current_step}). "
+                        f"NaN params: {nan_params}."
                     )
                 
             # Write outputs (checkpoints and losses)

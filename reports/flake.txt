@@ -1770,83 +1770,84 @@
 ./src/tfscreen/analysis/hierarchical/run_inference.py:274:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/hierarchical/run_inference.py:278:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/hierarchical/run_inference.py:288:128: E501 line too long (177 > 127 characters)
-./src/tfscreen/analysis/hierarchical/run_inference.py:297:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:299:58: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:306:36: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:307:50: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:308:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:322:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:325:5: C901 'RunInference._get_genotype_dim_map' is too complex (13)
-./src/tfscreen/analysis/hierarchical/run_inference.py:345:26: E261 at least two spaces before inline comment
-./src/tfscreen/analysis/hierarchical/run_inference.py:346:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:355:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:368:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:294:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:300:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:302:58: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:309:36: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:310:50: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:311:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:325:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:328:5: C901 'RunInference._get_genotype_dim_map' is too complex (13)
+./src/tfscreen/analysis/hierarchical/run_inference.py:348:26: E261 at least two spaces before inline comment
+./src/tfscreen/analysis/hierarchical/run_inference.py:349:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:358:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/hierarchical/run_inference.py:371:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:372:69: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:384:5: C901 'RunInference.get_posteriors' is too complex (16)
-./src/tfscreen/analysis/hierarchical/run_inference.py:422:59: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:438:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:453:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:467:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:469:71: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:482:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:487:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:374:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:375:69: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:387:5: C901 'RunInference.get_posteriors' is too complex (16)
+./src/tfscreen/analysis/hierarchical/run_inference.py:425:59: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:441:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:456:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:470:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:472:71: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:485:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/hierarchical/run_inference.py:490:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:509:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:518:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:520:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:522:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:493:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:512:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:521:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:523:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/hierarchical/run_inference.py:525:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:541:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:543:5: E303 too many blank lines (2)
-./src/tfscreen/analysis/hierarchical/run_inference.py:543:37: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/run_inference.py:543:49: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/run_inference.py:576:31: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:588:49: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/run_inference.py:589:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:596:5: E303 too many blank lines (2)
-./src/tfscreen/analysis/hierarchical/run_inference.py:596:31: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/run_inference.py:596:41: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/run_inference.py:610:31: E231 missing whitespace after ':'
-./src/tfscreen/analysis/hierarchical/run_inference.py:611:32: E231 missing whitespace after ':'
-./src/tfscreen/analysis/hierarchical/run_inference.py:612:35: E231 missing whitespace after ':'
-./src/tfscreen/analysis/hierarchical/run_inference.py:619:38: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/run_inference.py:620:31: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/run_inference.py:624:33: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/run_inference.py:638:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:528:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:544:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:546:5: E303 too many blank lines (2)
+./src/tfscreen/analysis/hierarchical/run_inference.py:546:37: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/run_inference.py:546:49: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/run_inference.py:579:31: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:591:49: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/run_inference.py:592:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:599:5: E303 too many blank lines (2)
+./src/tfscreen/analysis/hierarchical/run_inference.py:599:31: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/run_inference.py:599:41: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/run_inference.py:613:31: E231 missing whitespace after ':'
+./src/tfscreen/analysis/hierarchical/run_inference.py:614:32: E231 missing whitespace after ':'
+./src/tfscreen/analysis/hierarchical/run_inference.py:615:35: E231 missing whitespace after ':'
+./src/tfscreen/analysis/hierarchical/run_inference.py:622:38: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/run_inference.py:623:31: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/run_inference.py:627:33: E231 missing whitespace after ','
 ./src/tfscreen/analysis/hierarchical/run_inference.py:641:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:642:49: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:647:36: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/run_inference.py:654:27: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/run_inference.py:654:34: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/run_inference.py:656:61: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:671:19: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:676:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:682:19: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:691:39: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/run_inference.py:694:33: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:699:5: E303 too many blank lines (4)
-./src/tfscreen/analysis/hierarchical/run_inference.py:702:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:718:19: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:723:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:737:19: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:738:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:741:26: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/run_inference.py:741:33: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/run_inference.py:744:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:756:41: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/run_inference.py:758:32: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/run_inference.py:758:42: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:760:29: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/run_inference.py:763:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:768:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:776:35: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/run_inference.py:780:30: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:783:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:787:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:793:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:796:5: C901 'RunInference.get_laplace_posteriors' is too complex (13)
-./src/tfscreen/analysis/hierarchical/run_inference.py:993:9: F811 redefinition of unused 'init_to_value' from line 9
+./src/tfscreen/analysis/hierarchical/run_inference.py:644:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:645:49: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:650:36: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/run_inference.py:657:27: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/run_inference.py:657:34: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/run_inference.py:659:61: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:674:19: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:679:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:685:19: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:694:39: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/run_inference.py:697:33: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:702:5: E303 too many blank lines (4)
+./src/tfscreen/analysis/hierarchical/run_inference.py:705:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:721:19: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:726:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:740:19: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:741:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:744:26: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/run_inference.py:744:33: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/run_inference.py:747:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:759:41: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/run_inference.py:761:32: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/run_inference.py:761:42: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:763:29: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/run_inference.py:766:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:771:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:779:35: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/run_inference.py:783:30: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:786:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:790:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:796:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:799:5: C901 'RunInference.get_laplace_posteriors' is too complex (13)
+./src/tfscreen/analysis/hierarchical/run_inference.py:996:9: F811 redefinition of unused 'init_to_value' from line 9
 ./src/tfscreen/analysis/hierarchical/tensor_manager.py:13:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/hierarchical/tensor_manager.py:52:22: E231 missing whitespace after ','
 ./src/tfscreen/analysis/hierarchical/tensor_manager.py:52:27: W291 trailing whitespace
@@ -9023,6 +9024,6 @@
 47    W191 indentation contains tabs
 1199  W291 trailing whitespace
 125   W292 no newline at end of file
-2984  W293 blank line contains whitespace
+2985  W293 blank line contains whitespace
 45    W391 blank line at end of file
-8975
+8976
