@@ -56,7 +56,7 @@ class TestRunGrowthAnalysisPosteriorErrors:
             ".run_growth_analysis.RunInference",
             return_value=MagicMock(_iterations_per_epoch=1),
         )
-        with pytest.raises(ValueError, match="requires an existing MAP or SVI checkpoint"):
+        with pytest.raises(ValueError, match="requires an existing MAP, SVI, or NUTS checkpoint"):
             run_growth_analysis(
                 config_file="dummy.yaml",
                 seed=1,
@@ -72,7 +72,7 @@ class TestRunGrowthAnalysisPosteriorErrors:
             return_value=MagicMock(_iterations_per_epoch=1),
         )
         missing = str(tmp_path / "nonexistent.pkl")
-        with pytest.raises(ValueError, match="requires an existing MAP or SVI checkpoint"):
+        with pytest.raises(ValueError, match="requires an existing MAP, SVI, or NUTS checkpoint"):
             run_growth_analysis(
                 config_file="dummy.yaml",
                 seed=1,
@@ -390,3 +390,208 @@ class TestRunGrowthAnalysisPosteriorSVI:
         )
 
         run_svi_mock.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# run_growth_analysis — nuts branch
+# ---------------------------------------------------------------------------
+
+class TestRunGrowthAnalysisNuts:
+    """analysis_method='nuts' dispatches to _run_nuts with correct arguments."""
+
+    def _setup(self, mocker, tmp_path):
+        mocker.patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_growth_analysis.read_configuration",
+            return_value=(MagicMock(), {}),
+        )
+        mocker.patch("os.path.exists", return_value=False)
+        mocker.patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_growth_analysis.RunInference",
+            return_value=MagicMock(_iterations_per_epoch=1),
+        )
+        fake_samples = {"param": [1.0]}
+        run_nuts_mock = mocker.patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_growth_analysis._run_nuts",
+            return_value=fake_samples,
+        )
+        return run_nuts_mock, fake_samples
+
+    def test_nuts_dispatches_to_run_nuts(self, tmp_path, mocker):
+        """analysis_method='nuts' calls _run_nuts."""
+        run_nuts_mock, _ = self._setup(mocker, tmp_path)
+
+        run_growth_analysis(
+            config_file="dummy.yaml",
+            seed=42,
+            analysis_method="nuts",
+        )
+
+        run_nuts_mock.assert_called_once()
+
+    def test_nuts_passes_params_to_run_nuts(self, tmp_path, mocker):
+        """NUTS-specific params are forwarded to _run_nuts."""
+        run_nuts_mock, _ = self._setup(mocker, tmp_path)
+
+        run_growth_analysis(
+            config_file="dummy.yaml",
+            seed=42,
+            analysis_method="nuts",
+            out_root="myroot",
+            nuts_num_warmup=25,
+            nuts_num_samples=50,
+            nuts_num_chains=2,
+            nuts_target_accept_prob=0.85,
+            forward_batch_size=128,
+        )
+
+        kwargs = run_nuts_mock.call_args.kwargs
+        assert kwargs["nuts_num_warmup"] == 25
+        assert kwargs["nuts_num_samples"] == 50
+        assert kwargs["nuts_num_chains"] == 2
+        assert kwargs["nuts_target_accept_prob"] == 0.85
+        assert kwargs["forward_batch_size"] == 128
+        assert kwargs["out_root"] == "myroot"
+        assert kwargs["config_file"] == "dummy.yaml"
+
+    def test_nuts_returns_none_samples_true(self, tmp_path, mocker):
+        """analysis_method='nuts' returns (None, mcmc_samples, True)."""
+        run_nuts_mock, fake_samples = self._setup(mocker, tmp_path)
+
+        svi_state, params, converged = run_growth_analysis(
+            config_file="dummy.yaml",
+            seed=42,
+            analysis_method="nuts",
+        )
+
+        assert svi_state is None
+        assert params is fake_samples
+        assert converged is True
+
+
+# ---------------------------------------------------------------------------
+# run_growth_analysis — posterior branch — NUTS checkpoint
+# ---------------------------------------------------------------------------
+
+class TestRunGrowthAnalysisPosteriorNUTS:
+    """NUTS checkpoint → get_nuts_posteriors path."""
+
+    def _write_nuts_checkpoint(self, path, samples=None):
+        if samples is None:
+            samples = {"param": [1.0, 2.0]}
+        with open(path, "wb") as f:
+            dill.dump({"mcmc_samples": samples}, f)
+        return samples
+
+    def _setup(self, mocker, tmp_path, samples=None):
+        chk_path = str(tmp_path / "nuts.pkl")
+        stored_samples = self._write_nuts_checkpoint(chk_path, samples)
+
+        ri = MagicMock(_iterations_per_epoch=1)
+        mocker.patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_growth_analysis.read_configuration",
+            return_value=(MagicMock(), {}),
+        )
+        mocker.patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_growth_analysis.RunInference",
+            return_value=ri,
+        )
+        summarize_mock = mocker.patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_growth_analysis.summarize_posteriors",
+        )
+        return chk_path, ri, summarize_mock, stored_samples
+
+    def test_nuts_checkpoint_detected_by_mcmc_samples_key(self, tmp_path, mocker):
+        """A checkpoint with 'mcmc_samples' is recognised as a NUTS checkpoint."""
+        chk_path, ri, _, _ = self._setup(mocker, tmp_path)
+
+        run_growth_analysis(
+            config_file="dummy.yaml",
+            seed=1,
+            checkpoint_file=chk_path,
+            analysis_method="posterior",
+        )
+
+        ri.get_nuts_posteriors.assert_called_once()
+        ri.get_laplace_posteriors.assert_not_called()
+
+    def test_nuts_posterior_calls_get_nuts_posteriors_with_samples(self, tmp_path, mocker):
+        """get_nuts_posteriors receives the exact samples from the checkpoint."""
+        samples = {"my_param": [9.0]}
+        chk_path, ri, _, stored = self._setup(mocker, tmp_path, samples=samples)
+
+        run_growth_analysis(
+            config_file="dummy.yaml",
+            seed=1,
+            checkpoint_file=chk_path,
+            analysis_method="posterior",
+            out_root="out",
+            forward_batch_size=64,
+        )
+
+        ri.get_nuts_posteriors.assert_called_once_with(
+            stored,
+            out_root="out",
+            forward_batch_size=64,
+        )
+
+    def test_nuts_posterior_calls_summarize_posteriors(self, tmp_path, mocker):
+        """summarize_posteriors is called after get_nuts_posteriors."""
+        chk_path, ri, summarize_mock, _ = self._setup(mocker, tmp_path)
+
+        run_growth_analysis(
+            config_file="cfg.yaml",
+            seed=1,
+            checkpoint_file=chk_path,
+            analysis_method="posterior",
+            out_root="out",
+        )
+
+        summarize_mock.assert_called_once_with(
+            posterior_file="out_posterior.h5",
+            config_file="cfg.yaml",
+            out_root="out",
+        )
+
+    def test_nuts_posterior_returns_none_samples_true(self, tmp_path, mocker):
+        """NUTS posterior mode returns (None, mcmc_samples, True)."""
+        samples = {"param": [5.0]}
+        chk_path, ri, _, stored = self._setup(mocker, tmp_path, samples=samples)
+
+        svi_state, params, converged = run_growth_analysis(
+            config_file="dummy.yaml",
+            seed=1,
+            checkpoint_file=chk_path,
+            analysis_method="posterior",
+        )
+
+        assert svi_state is None
+        assert params == stored
+        assert converged is True
+
+    def test_nuts_posterior_error_message_mentions_nuts(self, tmp_path, mocker):
+        """The error message for missing checkpoint mentions NUTS."""
+        mocker.patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_growth_analysis.read_configuration",
+            return_value=(MagicMock(), {}),
+        )
+        mocker.patch("os.path.exists", return_value=False)
+        mocker.patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_growth_analysis.RunInference",
+            return_value=MagicMock(_iterations_per_epoch=1),
+        )
+
+        with pytest.raises(ValueError, match="NUTS"):
+            run_growth_analysis(
+                config_file="dummy.yaml",
+                seed=1,
+                checkpoint_file=None,
+                analysis_method="posterior",
+            )

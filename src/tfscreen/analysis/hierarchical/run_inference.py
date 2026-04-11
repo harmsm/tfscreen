@@ -968,6 +968,88 @@ class RunInference:
             hf.attrs["num_samples"] = samples_written
             hf.flush()
 
+    def get_nuts_posteriors(self,
+                            mcmc_samples,
+                            out_root,
+                            forward_batch_size=512):
+        """
+        Generate and save posterior predictions from NUTS MCMC samples.
+
+        Takes posterior samples already drawn by ``run_nuts()``, runs the
+        forward model on them, and writes results to an HDF5 file in the
+        same format as ``get_posteriors()``.
+
+        Parameters
+        ----------
+        mcmc_samples : dict
+            Posterior samples as returned by ``mcmc.get_samples()``.
+            Each value has shape ``(num_samples, *site_shape)``.
+        out_root : str
+            Root name for the output file (written as
+            ``{out_root}_posterior.h5``).
+        forward_batch_size : int, optional
+            Number of genotypes to process per forward-model batch
+            (default 512).
+        """
+
+        data_on_gpu = jax.device_put(self.model.data)
+        total_num_genotypes = self.model.data.num_genotype
+        dim_map = self._get_genotype_dim_map()
+
+        first_val = next(iter(mcmc_samples.values()))
+        num_samples = first_val.shape[0]
+
+        h5_file = f"{out_root}_posterior.h5"
+
+        # Forward pass in genotype batches (all MCMC samples at once)
+        batch_collector = {}
+        for start_idx in tqdm(range(0, total_num_genotypes, forward_batch_size),
+                              desc="computing posteriors"):
+
+            end_idx = min(start_idx + forward_batch_size, total_num_genotypes)
+            batch_indices = jnp.arange(start_idx, end_idx)
+
+            batch_latents = {
+                k: jnp.take(v, batch_indices, axis=dim_map[k])
+                if k in dim_map else v
+                for k, v in mcmc_samples.items()
+            }
+
+            batch_data = self.model.get_batch(data_on_gpu, batch_indices)
+            forward_sampler = Predictive(self.model.jax_model,
+                                         posterior_samples=batch_latents)
+            pred_key = self.get_key()
+            batch_pred = forward_sampler(pred_key,
+                                         priors=self.model.priors,
+                                         data=batch_data)
+
+            for k, v in batch_pred.items():
+                batch_collector.setdefault(k, []).append(jax.device_get(v))
+
+            for k, v in batch_latents.items():
+                if k in batch_pred:
+                    continue
+                if k not in dim_map:
+                    if start_idx == 0:
+                        batch_collector.setdefault(k, []).append(jax.device_get(v))
+                else:
+                    batch_collector.setdefault(k, []).append(jax.device_get(v))
+
+        # Concatenate genotype batches
+        results = {}
+        for k, v_list in batch_collector.items():
+            if k in dim_map:
+                results[k] = np.concatenate(v_list, axis=dim_map[k])
+            else:
+                results[k] = v_list[0]
+
+        with h5py.File(h5_file, "w") as hf:
+            for k, v in results.items():
+                chunks = (min(100, v.shape[0]),) + v.shape[1:]
+                hf.create_dataset(k, data=v, chunks=chunks)
+            hf.attrs["num_samples"] = num_samples
+            hf.flush()
+
     def run_nuts(self,
                  num_warmup=500,
                  num_samples=500,

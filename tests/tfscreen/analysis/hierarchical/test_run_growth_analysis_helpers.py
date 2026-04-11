@@ -1,10 +1,12 @@
 import pytest
 from unittest.mock import MagicMock, ANY
 import os
+import dill
 
 from tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis import (
     _run_svi,
-    _run_map
+    _run_map,
+    _run_nuts,
 )
 
 # =============================================================================
@@ -170,3 +172,105 @@ def test_run_map_not_converged(mock_run_inference, capsys):
     captured = capsys.readouterr()
     assert "MAP run converged" not in captured.out
     assert "MAP run has not yet converged" in captured.out
+
+
+# =============================================================================
+# Tests for _run_nuts
+# =============================================================================
+
+@pytest.fixture
+def mock_ri_for_nuts(mocker):
+    """Minimal ri mock for _run_nuts tests."""
+    ri = MagicMock()
+    mock_mcmc = MagicMock()
+    mock_mcmc.get_samples.return_value = {"param": [1.0, 2.0]}
+    ri.run_nuts.return_value = mock_mcmc
+    mocker.patch(
+        "tfscreen.analysis.hierarchical.growth_model.scripts"
+        ".run_growth_analysis.summarize_posteriors"
+    )
+    return ri
+
+
+def test_run_nuts_calls_run_nuts(mock_ri_for_nuts):
+    """_run_nuts delegates to ri.run_nuts with the correct NUTS params."""
+    ri = mock_ri_for_nuts
+    _run_nuts(ri, config_file="cfg.yaml",
+              nuts_num_warmup=10,
+              nuts_num_samples=20,
+              nuts_num_chains=2,
+              nuts_target_accept_prob=0.8)
+
+    ri.run_nuts.assert_called_once_with(
+        num_warmup=10,
+        num_samples=20,
+        num_chains=2,
+        target_accept_prob=0.8,
+    )
+
+
+def test_run_nuts_calls_get_nuts_posteriors(mock_ri_for_nuts):
+    """_run_nuts calls ri.get_nuts_posteriors with the samples and forward_batch_size."""
+    ri = mock_ri_for_nuts
+    expected_samples = {"param": [1.0, 2.0]}
+    ri.run_nuts.return_value.get_samples.return_value = expected_samples
+
+    _run_nuts(ri, config_file="cfg.yaml", out_root="myroot", forward_batch_size=64)
+
+    ri.get_nuts_posteriors.assert_called_once_with(
+        expected_samples,
+        out_root="myroot",
+        forward_batch_size=64,
+    )
+
+
+def test_run_nuts_calls_summarize_posteriors(mock_ri_for_nuts, mocker):
+    """_run_nuts calls summarize_posteriors with the posterior file and config."""
+    ri = mock_ri_for_nuts
+    summarize_mock = mocker.patch(
+        "tfscreen.analysis.hierarchical.growth_model.scripts"
+        ".run_growth_analysis.summarize_posteriors"
+    )
+
+    _run_nuts(ri, config_file="my_config.yaml", out_root="myroot")
+
+    summarize_mock.assert_called_once_with(
+        posterior_file="myroot_posterior.h5",
+        config_file="my_config.yaml",
+        out_root="myroot",
+    )
+
+
+def test_run_nuts_writes_checkpoint(tmp_path, mock_ri_for_nuts):
+    """_run_nuts writes a checkpoint pkl with 'mcmc_samples' key."""
+    ri = mock_ri_for_nuts
+    samples = {"param": [1.0, 2.0]}
+    ri.run_nuts.return_value.get_samples.return_value = samples
+    out_root = str(tmp_path / "nuts_chk")
+
+    _run_nuts(ri, config_file="cfg.yaml", out_root=out_root)
+
+    chk_path = f"{out_root}_checkpoint.pkl"
+    assert os.path.exists(chk_path)
+    with open(chk_path, "rb") as f:
+        chk = dill.load(f)
+    assert "mcmc_samples" in chk
+    assert chk["mcmc_samples"] == samples
+
+
+def test_run_nuts_returns_samples(mock_ri_for_nuts):
+    """_run_nuts returns the mcmc_samples dict."""
+    ri = mock_ri_for_nuts
+    samples = {"param": [3.0]}
+    ri.run_nuts.return_value.get_samples.return_value = samples
+
+    result = _run_nuts(ri, config_file="cfg.yaml")
+
+    assert result is samples
+
+
+def test_run_nuts_stdout(mock_ri_for_nuts, capsys):
+    """_run_nuts prints a completion message."""
+    _run_nuts(mock_ri_for_nuts, config_file="cfg.yaml")
+    captured = capsys.readouterr()
+    assert "NUTS run complete." in captured.out

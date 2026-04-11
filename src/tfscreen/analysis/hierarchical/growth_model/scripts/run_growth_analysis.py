@@ -13,7 +13,6 @@ from tfscreen.util.cli.generalized_main import generalized_main
 from tfscreen.analysis.hierarchical.growth_model.configuration_io import read_configuration
 
 
-
 def _run_map(ri,
              init_params,
              config_file,
@@ -272,6 +271,71 @@ def _run_svi(ri,
     
     return svi_state, params, converged
 
+def _run_nuts(ri,
+              config_file,
+              out_root="tfs",
+              nuts_num_warmup=500,
+              nuts_num_samples=500,
+              nuts_num_chains=1,
+              nuts_target_accept_prob=0.9,
+              forward_batch_size=512):
+    """
+    Run NUTS (No-U-Turn Sampler) MCMC inference.
+
+    Parameters
+    ----------
+    ri : RunInference
+        RunInference object that manages model setup and MCMC routines.
+    config_file : str
+        Path to the YAML configuration file (used for summarize_posteriors).
+    out_root : str, optional
+        Output file root for checkpoints and results (default "tfs").
+    nuts_num_warmup : int, optional
+        Number of NUTS warmup steps (default 500).
+    nuts_num_samples : int, optional
+        Number of NUTS posterior samples (default 500).
+    nuts_num_chains : int, optional
+        Number of MCMC chains (default 1).
+    nuts_target_accept_prob : float, optional
+        Target acceptance probability for NUTS step-size adaptation (default 0.9).
+    forward_batch_size : int, optional
+        Number of genotypes to process per forward-model batch when computing
+        posteriors (default 512).
+
+    Returns
+    -------
+    mcmc_samples : dict
+        Posterior samples as returned by ``mcmc.get_samples()``.
+    """
+
+    mcmc = ri.run_nuts(num_warmup=nuts_num_warmup,
+                       num_samples=nuts_num_samples,
+                       num_chains=nuts_num_chains,
+                       target_accept_prob=nuts_target_accept_prob)
+
+    mcmc_samples = mcmc.get_samples()
+
+    # Save checkpoint
+    tmp_checkpoint_file = f"{out_root}_checkpoint.tmp.pkl"
+    checkpoint_file = f"{out_root}_checkpoint.pkl"
+    with open(tmp_checkpoint_file, "wb") as f:
+        dill.dump({"mcmc_samples": mcmc_samples}, f)
+    os.replace(tmp_checkpoint_file, checkpoint_file)
+
+    # Write posteriors and summary
+    ri.get_nuts_posteriors(mcmc_samples,
+                           out_root=out_root,
+                           forward_batch_size=forward_batch_size)
+
+    summarize_posteriors(posterior_file=f"{out_root}_posterior.h5",
+                         config_file=config_file,
+                         out_root=out_root)
+
+    print("NUTS run complete.", flush=True)
+
+    return mcmc_samples
+
+
 def run_growth_analysis(config_file,
                         seed=None,
                         checkpoint_file=None,
@@ -292,7 +356,11 @@ def run_growth_analysis(config_file,
                         forward_batch_size=512,
                         always_get_posterior=False,
                         pre_map_num_epoch=1000,
-                        init_param_jitter=0.1):
+                        init_param_jitter=0.1,
+                        nuts_num_warmup=500,
+                        nuts_num_samples=500,
+                        nuts_num_chains=1,
+                        nuts_target_accept_prob=0.9):
     """
     Run the joint hierarchical growth model using a previously generated configuration file.
 
@@ -309,8 +377,8 @@ def run_growth_analysis(config_file,
     checkpoint_file : str or None, optional
         Path to a checkpoint file to resume SVI from, or None to start fresh.
     analysis_method : str, optional
-        Method for inference. Allowed values are 'svi' (default), 'map', or 
-        'posterior'.
+        Method for inference. Allowed values are 'svi' (default), 'map', 'nuts', 
+        or 'posterior'.
     out_root : str, optional
         Output file root for checkpoints and results (default 'tfs').
     adam_step_size : float, optional
@@ -347,19 +415,31 @@ def run_growth_analysis(config_file,
         optimization did not formally converge (default False).
     pre_map_num_epoch : int, optional
         Number of MAP iterations to run prior to SVI (default 1000). Only used
-        if analysis_method is 'svi'. 
+        if analysis_method is 'svi'.
     init_param_jitter : float, optional
         Amount of jitter to add after the (optional) MAP run to break symmetry
         (default 0.1).
+    nuts_num_warmup : int, optional
+        Number of NUTS warmup steps (default 500). Only used if
+        analysis_method is 'nuts'.
+    nuts_num_samples : int, optional
+        Number of NUTS posterior samples to draw (default 500). Only used if
+        analysis_method is 'nuts'.
+    nuts_num_chains : int, optional
+        Number of MCMC chains (default 1). Only used if analysis_method is
+        'nuts'.
+    nuts_target_accept_prob : float, optional
+        Target acceptance probability for NUTS step-size adaptation
+        (default 0.9). Only used if analysis_method is 'nuts'.
 
     Returns
     -------
-    svi_state : Any
-        Final SVI state object from the optimizer.
-    svi_params : dict
-        Final optimized parameters from SVI.
+    state : Any
+        Final state object (SVI state, MAP params, or NUTS samples dict).
+    params : dict
+        Final optimized or sampled parameters.
     converged : bool
-        True if SVI converged according to the specified tolerance.
+        True if the run converged (always True for NUTS).
     """
 
     if seed is None and checkpoint_file is None:
@@ -375,7 +455,7 @@ def run_growth_analysis(config_file,
                 "the file or change out_root."
             )
         
-        if pre_map_num_epoch > 0:
+        if analysis_method == "svi" and pre_map_num_epoch > 0:
             premap_path = f"{out_root}_premap_checkpoint.pkl"
             if os.path.exists(premap_path):
                 raise FileExistsError(
@@ -450,24 +530,49 @@ def run_growth_analysis(config_file,
                         always_get_posterior=always_get_posterior,
                         init_param_jitter=init_param_jitter)
                           
+    elif analysis_method == "nuts":
+        mcmc_samples = _run_nuts(ri,
+                                 config_file=config_file,
+                                 out_root=out_root,
+                                 nuts_num_warmup=nuts_num_warmup,
+                                 nuts_num_samples=nuts_num_samples,
+                                 nuts_num_chains=nuts_num_chains,
+                                 nuts_target_accept_prob=nuts_target_accept_prob,
+                                 forward_batch_size=forward_batch_size)
+        return None, mcmc_samples, True
+
     elif analysis_method == "posterior":
-        # Two cases depending on the checkpoint type:
+        # Three cases depending on the checkpoint type:
         #
-        # 1. MAP checkpoint (AutoDelta guide): use the Hessian of the
+        # 1. NUTS checkpoint: saved mcmc_samples dict — run forward model and
+        #    write posteriors directly.
+        #
+        # 2. MAP checkpoint (AutoDelta guide): use the Hessian of the
         #    log-joint at the MAP solution to form a Laplace (Gaussian)
         #    approximation to the posterior, then sample from it.
         #
-        # 2. SVI checkpoint (component guide): already converged — load it,
+        # 3. SVI checkpoint (component guide): already converged — load it,
         #    run 0 extra epochs, and sample posteriors directly.
         if checkpoint_file is None or not os.path.isfile(checkpoint_file):
             raise ValueError(
-                "analysis_method='posterior' requires an existing MAP or SVI "
-                "checkpoint. Pass checkpoint_file pointing to a previously "
+                "analysis_method='posterior' requires an existing MAP, SVI, or "
+                "NUTS checkpoint. Pass checkpoint_file pointing to a previously "
                 "saved checkpoint."
             )
 
         with open(checkpoint_file, "rb") as f:
             chk_data = dill.load(f)
+
+        if "mcmc_samples" in chk_data:
+            # NUTS checkpoint: regenerate posteriors from saved samples.
+            ri.get_nuts_posteriors(chk_data["mcmc_samples"],
+                                   out_root=out_root,
+                                   forward_batch_size=forward_batch_size)
+            summarize_posteriors(posterior_file=f"{out_root}_posterior.h5",
+                                 config_file=config_file,
+                                 out_root=out_root)
+            return None, chk_data["mcmc_samples"], True
+
         temp_svi = ri.setup_svi(guide_type="delta")
         chk_params = temp_svi.optim.get_params(chk_data["svi_state"].optim_state)
 
@@ -510,7 +615,7 @@ def run_growth_analysis(config_file,
     else:
         raise ValueError(
             f"analysis method '{analysis_method}' not recognized. This should "
-            "be 'svi', 'map', or 'posterior'"
+            "be 'svi', 'map', 'nuts', or 'posterior'"
         )
 
 def main():
@@ -519,7 +624,11 @@ def main():
                                               "seed":int,
                                               "checkpoint_file":str,
                                               "pre_map_num_epoch":int,
-                                              "init_param_jitter":float})
+                                              "init_param_jitter":float,
+                                              "nuts_num_warmup":int,
+                                              "nuts_num_samples":int,
+                                              "nuts_num_chains":int,
+                                              "nuts_target_accept_prob":float})
 
 if __name__ == "__main__":
     main()

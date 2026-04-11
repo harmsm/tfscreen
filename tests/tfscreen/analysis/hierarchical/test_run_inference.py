@@ -598,3 +598,79 @@ def test_get_laplace_posteriors_hessian_jitter(tmpdir, mocker):
     # (raw Hessian + 1e-6 * I guarantees this)
     inverted = captured["inverted"]
     assert np.all(np.diag(inverted) > 0)
+
+
+# =============================================================================
+# get_nuts_posteriors
+# =============================================================================
+
+def _fake_mcmc_samples(num_samples, num_genotype):
+    """Return a samples dict in the shape expected by LaplaceModel."""
+    return {
+        "global_p": jnp.zeros((num_samples,)),
+        "geno_p": jnp.zeros((num_samples, num_genotype)),
+    }
+
+
+def test_get_nuts_posteriors_creates_h5(tmpdir):
+    """get_nuts_posteriors writes an HDF5 posterior file."""
+    num_genotype = 4
+    num_samples = 8
+    model = LaplaceModel(num_genotype=num_genotype)
+    ri = RunInference(model, seed=0)
+    samples = _fake_mcmc_samples(num_samples, num_genotype)
+
+    out_root = str(tmpdir.join("nuts"))
+    ri.get_nuts_posteriors(samples, out_root=out_root)
+
+    assert os.path.exists(f"{out_root}_posterior.h5")
+
+
+def test_get_nuts_posteriors_output_shapes(tmpdir):
+    """Output datasets have the expected shapes (num_samples, *site_shape)."""
+    num_genotype = 5
+    num_samples = 12
+    model = LaplaceModel(num_genotype=num_genotype)
+    ri = RunInference(model, seed=0)
+    samples = _fake_mcmc_samples(num_samples, num_genotype)
+
+    out_root = str(tmpdir.join("nuts_shapes"))
+    ri.get_nuts_posteriors(samples, out_root=out_root,
+                           forward_batch_size=num_genotype)
+
+    with h5py.File(f"{out_root}_posterior.h5", "r") as hf:
+        assert hf["global_p"].shape == (num_samples,)
+        assert hf["geno_p"].shape == (num_samples, num_genotype)
+        assert hf.attrs["num_samples"] == num_samples
+
+
+def test_get_nuts_posteriors_forward_batching(tmpdir):
+    """forward_batch_size < num_genotype produces correct shapes."""
+    num_genotype = 6
+    num_samples = 8
+    model = LaplaceModel(num_genotype=num_genotype)
+    ri = RunInference(model, seed=0)
+    samples = _fake_mcmc_samples(num_samples, num_genotype)
+
+    out_root = str(tmpdir.join("nuts_fwd"))
+    ri.get_nuts_posteriors(samples, out_root=out_root,
+                           forward_batch_size=2)  # forces 3 forward batches
+
+    with h5py.File(f"{out_root}_posterior.h5", "r") as hf:
+        assert hf["global_p"].shape == (num_samples,)
+        assert hf["geno_p"].shape == (num_samples, num_genotype)
+
+
+def test_get_nuts_posteriors_num_samples_in_attrs(tmpdir):
+    """num_samples attribute in HDF5 reflects the actual sample count."""
+    num_genotype = 3
+    num_samples = 7
+    model = LaplaceModel(num_genotype=num_genotype)
+    ri = RunInference(model, seed=0)
+    samples = _fake_mcmc_samples(num_samples, num_genotype)
+
+    out_root = str(tmpdir.join("nuts_attr"))
+    ri.get_nuts_posteriors(samples, out_root=out_root)
+
+    with h5py.File(f"{out_root}_posterior.h5", "r") as hf:
+        assert hf.attrs["num_samples"] == num_samples
