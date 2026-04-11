@@ -609,7 +609,8 @@ def _build_manual_calc_df_hill_mut(model, manual_titrant_df):
     return calc_df
 
 
-def _extract_theta_curves_hill(model, posteriors, q_to_get, manual_titrant_df):
+def _extract_theta_curves_hill(model, posteriors, q_to_get, manual_titrant_df,
+                               num_samples=None):
     """
     Compute theta curves for the ``hill`` model.
 
@@ -654,10 +655,21 @@ def _extract_theta_curves_hill(model, posteriors, q_to_get, manual_titrant_df):
     for q_name, q_val in q_to_get.items():
         calc_df[q_name] = np.quantile(theta_samples, q_val, axis=0)
 
+    if num_samples is not None:
+        S = theta_samples.shape[0]
+        chosen = np.random.choice(S, size=num_samples, replace=num_samples > S)
+        samples_df = pd.DataFrame(
+            theta_samples[chosen].T,
+            columns=[f"sample_{i}" for i in range(num_samples)],
+            index=calc_df.index,
+        )
+        calc_df = pd.concat([calc_df, samples_df], axis=1)
+
     return calc_df.drop(columns=["map_theta_group"])
 
 
-def _extract_theta_curves_hill_mut(model, posteriors, q_to_get, manual_titrant_df):
+def _extract_theta_curves_hill_mut(model, posteriors, q_to_get, manual_titrant_df,
+                                   num_samples=None):
     """
     Compute theta curves for the ``hill_mut`` model.
 
@@ -704,10 +716,21 @@ def _extract_theta_curves_hill_mut(model, posteriors, q_to_get, manual_titrant_d
     for q_name, q_val in q_to_get.items():
         calc_df[q_name] = np.quantile(theta_samples, q_val, axis=0)
 
+    if num_samples is not None:
+        S = theta_samples.shape[0]
+        chosen = np.random.choice(S, size=num_samples, replace=num_samples > S)
+        samples_df = pd.DataFrame(
+            theta_samples[chosen].T,
+            columns=[f"sample_{i}" for i in range(num_samples)],
+            index=calc_df.index,
+        )
+        calc_df = pd.concat([calc_df, samples_df], axis=1)
+
     return calc_df.drop(columns=["genotype_idx", "titrant_name_idx"])
 
 
-def _extract_theta_curves_lac_dimer_mut(model, posteriors, q_to_get, manual_titrant_df):
+def _extract_theta_curves_lac_dimer_mut(model, posteriors, q_to_get, manual_titrant_df,
+                                        num_samples=None):
     """
     Compute theta curves for the ``lac_dimer_mut`` model.
 
@@ -774,10 +797,21 @@ def _extract_theta_curves_lac_dimer_mut(model, posteriors, q_to_get, manual_titr
     for q_name, q_val in q_to_get.items():
         calc_df[q_name] = np.quantile(theta_samples, q_val, axis=0)
 
+    if num_samples is not None:
+        S = theta_samples.shape[0]
+        chosen = np.random.choice(S, size=num_samples, replace=num_samples > S)
+        samples_df = pd.DataFrame(
+            theta_samples[chosen].T,
+            columns=[f"sample_{i}" for i in range(num_samples)],
+            index=calc_df.index,
+        )
+        calc_df = pd.concat([calc_df, samples_df], axis=1)
+
     return calc_df.drop(columns=["genotype_idx", "titrant_name_idx"])
 
 
-def extract_theta_curves(model, posteriors, q_to_get=None, manual_titrant_df=None):
+def extract_theta_curves(model, posteriors, q_to_get=None, manual_titrant_df=None,
+                         num_samples=100):
     """
     Extract theta curves by sampling from the joint posterior distribution.
 
@@ -806,12 +840,19 @@ def extract_theta_curves(model, posteriors, q_to_get=None, manual_titrant_df=Non
         calculation at the concentrations present in the input data.
         If 'genotype' is present, it will be used; otherwise, the method
         will calculate theta for all genotypes in the model.
+    num_samples : int or None, optional
+        Randomly select this many joint posterior samples and return them as
+        columns ``sample_0``, ``sample_1``, ... alongside the quantile
+        columns. Sampling is with replacement when ``num_samples`` exceeds the
+        total number of posterior samples. Set to ``None`` to suppress sample
+        columns and return only quantiles. Default 100.
 
     Returns
     -------
     pd.DataFrame
         A DataFrame with columns: 'genotype', 'titrant_name', 'titrant_conc',
-        and requested quantiles of theta.
+        requested quantiles of theta, and (unless ``num_samples`` is ``None``)
+        ``sample_0`` … ``sample_{num_samples-1}``.
 
     Raises
     ------
@@ -821,11 +862,14 @@ def extract_theta_curves(model, posteriors, q_to_get=None, manual_titrant_df=Non
         If `manual_titrant_df` is missing required columns.
     """
     if model._theta == "hill":
-        return _extract_theta_curves_hill(model, posteriors, q_to_get, manual_titrant_df)
+        return _extract_theta_curves_hill(model, posteriors, q_to_get, manual_titrant_df,
+                                          num_samples=num_samples)
     elif model._theta == "hill_mut":
-        return _extract_theta_curves_hill_mut(model, posteriors, q_to_get, manual_titrant_df)
+        return _extract_theta_curves_hill_mut(model, posteriors, q_to_get, manual_titrant_df,
+                                              num_samples=num_samples)
     elif model._theta == "lac_dimer_mut":
-        return _extract_theta_curves_lac_dimer_mut(model, posteriors, q_to_get, manual_titrant_df)
+        return _extract_theta_curves_lac_dimer_mut(model, posteriors, q_to_get, manual_titrant_df,
+                                                   num_samples=num_samples)
     else:
         raise ValueError(
             "extract_theta_curves is only available for models where "
@@ -835,6 +879,7 @@ def extract_theta_curves(model, posteriors, q_to_get=None, manual_titrant_df=Non
 def extract_growth_predictions(model,
                                posteriors,
                                q_to_get=None,
+                               num_samples=100,
                                row_chunk_size=100,
                                max_block_elements=1_000_000_000):
     """
@@ -856,6 +901,14 @@ def extract_growth_predictions(model,
         to extract from the posterior samples. If None, a default set of quantiles
         is used (min, lower_95, lower_std, lower_quartile, median, upper_std,
         upper_quartile, upper_95, max).
+    num_samples : int or None, optional
+        Randomly select this many joint posterior samples and return them as
+        columns ``sample_0``, ``sample_1``, ... alongside the quantile
+        columns. The same sample indices are used for every row so that
+        trajectories are jointly consistent. Sampling is with replacement when
+        ``num_samples`` exceeds the total number of posterior samples. Set to
+        ``None`` to suppress sample columns and return only quantiles.
+        Default 100.
     row_chunk_size : int, optional
         Number of rows to process at a time. Defaults to 100.
     max_block_elements : int, optional
@@ -865,7 +918,8 @@ def extract_growth_predictions(model,
     -------
     pd.DataFrame
         A copy of `model.growth_df` with new columns for the requested
-        quantiles of 'ln_cfu_pred'.
+        quantiles of 'ln_cfu_pred' and (unless ``num_samples`` is ``None``)
+        ``sample_0`` … ``sample_{num_samples-1}``.
 
     Raises
     ------
@@ -925,7 +979,14 @@ def extract_growth_predictions(model,
     q_values = np.array([q_to_get[name] for name in q_names])
     
     is_h5 = isinstance(growth_pred, h5py.Dataset)
-    num_samples = growth_pred.shape[0]
+    num_posterior_samples = growth_pred.shape[0]
+
+    # Pre-select joint sample indices so all rows share the same trajectories
+    if num_samples is not None:
+        chosen_sample_idxs = np.random.choice(num_posterior_samples,
+                                              size=num_samples,
+                                              replace=num_samples > num_posterior_samples)
+        sample_arr = np.empty((total_rows, num_samples))
 
     # Grab chunks of rows to avoid OOM
     for start_r in tqdm(range(0, total_rows, row_chunk_size)):
@@ -960,7 +1021,7 @@ def extract_growth_predictions(model,
                 int(gmax - gmin + 1)
             )
             
-            if (spatial_volume * int(num_samples)) <= max_block_elements:
+            if (spatial_volume * int(num_posterior_samples)) <= max_block_elements:
                 # Read the entire block at once
                 block = growth_pred[:, 
                                     rmin:rmax+1, tmin:tmax+1, 
@@ -992,5 +1053,18 @@ def extract_growth_predictions(model,
         # Assign to out_df
         for i, q_name in enumerate(q_names):
             out_df.loc[out_df.index[start_r:end_r], q_name] = all_quantiles[i]
+
+        if num_samples is not None:
+            # preds_chunk shape: (num_posterior_samples, chunk_size)
+            # store as (chunk_size, num_samples) in the pre-allocated array
+            sample_arr[start_r:end_r] = preds_chunk[chosen_sample_idxs].T
+
+    if num_samples is not None:
+        samples_df = pd.DataFrame(
+            sample_arr,
+            columns=[f"sample_{i}" for i in range(num_samples)],
+            index=out_df.index,
+        )
+        out_df = pd.concat([out_df, samples_df], axis=1)
 
     return out_df

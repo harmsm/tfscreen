@@ -10,6 +10,7 @@ def predict_cli(config_file,
                 out_prefix="tfs",
                 predict_sites=None,
                 num_samples=None,
+                num_marginal_samples=None,
                 t_pre=None,
                 t_sel=None,
                 titrant_conc=None,
@@ -29,9 +30,14 @@ def predict_cli(config_file,
     predict_sites : list, optional
         List of strings specifying the sites to predict. If None,
         defaults to ["growth_pred"].
-    num_samples : int, optional
-        Number of posterior samples to use for prediction. If None, uses all
-        available samples.
+    num_samples : int or None, optional
+        Randomly select this many joint draws from the predicted samples and
+        write them as ``sample_0`` … ``sample_{N-1}`` columns alongside the
+        quantile columns in the output CSVs. Set to ``None`` to suppress
+        sample columns and return only quantiles. Default 100.
+    num_marginal_samples : int or None, optional
+        Number of posterior samples to run through the model for computing
+        quantile predictions. If None, uses all available samples.
     t_pre : list, optional
         List of timepoints for pre-growth.
     t_sel : list, optional
@@ -55,6 +61,7 @@ def predict_cli(config_file,
                       param_posteriors=posterior_file,
                       predict_sites=predict_sites,
                       num_samples=num_samples,
+                      num_marginal_samples=num_marginal_samples,
                       t_pre=t_pre,
                       t_sel=t_sel,
                       titrant_conc=titrant_conc,
@@ -78,6 +85,8 @@ def main():
     # Define manual overrides for generalized_main
     manual_arg_types = {
         "predict_sites": str,
+        "num_samples": int,
+        "num_marginal_samples": int,
         "t_pre": float,
         "t_sel": float,
         "titrant_conc": float,

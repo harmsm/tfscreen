@@ -15,7 +15,8 @@ from tfscreen.util.cli.generalized_main import generalized_main
 def summarize_posteriors(config_file,
                         posterior_file,
                         out_root="tfs",
-                        q_to_get=None):
+                        q_to_get=None,
+                        num_samples=None):
     """
     Summarize posterior samples and write to CSV files.
 
@@ -29,6 +30,13 @@ def summarize_posteriors(config_file,
         Root filename for output files.
     q_to_get : dict, optional
         Dictionary mapping column names to quantiles.
+    num_samples : int, optional
+        If provided, randomly select this many joint posterior samples and
+        write them as ``sample_0``, ``sample_1``, ... columns alongside the
+        quantile columns in the growth predictions and theta curves CSVs.
+        Useful for visualizing individual trajectories without marginalization.
+        Sampling is with replacement when ``num_samples`` exceeds the total
+        number of posterior samples.
 
     Returns
     -------
@@ -77,20 +85,20 @@ def summarize_posteriors(config_file,
 
         # Extract and save growth predictions
         print(f"Extracting growth predictions to {out_root}_growth_pred.csv...", flush=True)
-        growth_pred_df = extract_growth_predictions(gm, posteriors)
+        growth_pred_df = extract_growth_predictions(gm, posteriors, num_samples=num_samples)
         growth_pred_df.to_csv(f"{out_root}_growth_pred.csv", index=False)
 
         # Extract and save theta curves (if applicable)
         if gm.settings["theta"] == "hill":
             print(f"Extracting theta curves to {out_root}_theta_curves.csv...", flush=True)
-            theta_curves_df = extract_theta_curves(gm, posteriors)
+            theta_curves_df = extract_theta_curves(gm, posteriors, num_samples=num_samples)
             theta_curves_df.to_csv(f"{out_root}_theta_curves.csv", index=False)
 
     print("Summarization complete.", flush=True)
 
 def main():
     """CLI entry point for summarizing posteriors."""
-    generalized_main(summarize_posteriors)
+    generalized_main(summarize_posteriors, manual_arg_types={"num_samples": int})
 
 if __name__ == "__main__":
     main()

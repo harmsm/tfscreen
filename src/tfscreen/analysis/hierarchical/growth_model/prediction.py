@@ -106,7 +106,8 @@ def predict(model_class,
             param_posteriors,
             predict_sites=None,
             q_to_get=None,
-            num_samples=None,
+            num_samples=100,
+            num_marginal_samples=None,
             t_pre=None,
             t_sel=None,
             titrant_conc=None,
@@ -118,34 +119,43 @@ def predict(model_class,
     Parameters
     ----------
     model_class : ModelClass
-        The original ModelClass used for training. 
+        The original ModelClass used for training.
     param_posteriors : dict or str
         Posterior samples. Can be a dictionary, or path to .h5 file.
     predict_sites : list of str, optional
         List of model sites to predict. If None, defaults to ["growth_pred"].
     q_to_get : dict, optional
         Quantiles to calculate. If None, uses default.
-    num_samples : int, optional
-        Number of posterior samples to use for prediction. 
+    num_samples : int or None, optional
+        Randomly select this many joint draws from the predicted samples and
+        return them as ``sample_0`` … ``sample_{N-1}`` columns alongside the
+        quantile columns, preserving joint parameter uncertainty across rows.
+        Sampling is with replacement when ``num_samples`` exceeds the number
+        of draws available. Set to ``None`` to suppress sample columns and
+        return only quantiles. Default 100.
+    num_marginal_samples : int or None, optional
+        Number of posterior samples to run through the model for computing
+        quantile predictions. If None, uses all available samples.
     t_pre : list, optional
-        List of timepoints for pre-growth. Must be >= 0. If None, uses the 
-        value(s) from `model_class.growth_df`. 
+        List of timepoints for pre-growth. Must be >= 0. If None, uses the
+        value(s) from `model_class.growth_df`.
     t_sel : list, optional
-        List of timepoints for selection. Must be >= 0. If None, uses 
+        List of timepoints for selection. Must be >= 0. If None, uses
         values from `model_class.growth_df`.
     titrant_conc : list, optional
-        List of titrant concentrations. Must be >= 0. If None, uses 
+        List of titrant concentrations. Must be >= 0. If None, uses
         values from `model_class.growth_df`.
     genotypes : list, optional
-        List of genotypes to include in the prediction. Must be a subset 
+        List of genotypes to include in the prediction. Must be a subset
         of those in `model_class.growth_df`. If None, uses all genotypes.
 
     Returns
     -------
     pd.DataFrame or dict
-        If a single site is requested, returns a pd.DataFrame with quantile 
-        columns. If multiple sites are requested, returns a dictionary mapping 
-        site names to pd.DataFrames.
+        If a single site is requested, returns a pd.DataFrame with quantile
+        columns and, unless ``num_samples`` is ``None``, ``sample_0`` …
+        ``sample_{N-1}`` columns. If multiple sites are requested, returns a
+        dictionary mapping site names to such DataFrames.
     """
 
     # Load and validate quantiles
@@ -195,12 +205,10 @@ def predict(model_class,
     first_key = next(iter(param_posteriors.keys()))
     total_available = param_posteriors[first_key].shape[0]
     
-    # Sample indices
-    if num_samples is None:
-        num_samples = total_available
-    num_samples = min(num_samples, total_available)
+    # Sample indices for running through the model (quantile computation)
+    n_for_quantiles = total_available if num_marginal_samples is None else min(num_marginal_samples, total_available)
     rng = np.random.default_rng()
-    sample_indices = rng.choice(total_available, size=num_samples, replace=False)
+    sample_indices = rng.choice(total_available, size=n_for_quantiles, replace=False)
     sample_indices = np.sort(sample_indices)
 
     # -------------------------------------------------------------------------
@@ -300,24 +308,39 @@ def predict(model_class,
 
     all_dfs = {}
     for site in predict_sites:
-        site_samples = predictions[site] # shape: (num_samples, ...)
+        site_samples = predictions[site]  # shape: (num_samples, ...)
         df = base_df.copy()
 
-        for q_name, q_val in q_to_get.items():
-            # Calculate quantiles along the sample dimension (axis 0)
-            q_arr = np.quantile(site_samples, q_val, axis=0)
-            
-            # Pull values for each row using the relative indices.
-            # q_arr shape will reflect the subsetted genotypes (and potentially expanded others).
-            # It may have fewer dimensions than `indices`, or length-1 dimensions due to broadcasting.
-            # We align right-to-left and use modulo logic to correctly broadcast size-1 axes.
-            aligned_indices = tuple(
-                indices[len(indices) - len(q_arr.shape) + i] % q_arr.shape[i]
-                for i in range(len(q_arr.shape))
-            )
+        # Compute the per-row index tuple once — shape is the same for every
+        # quantile and for individual sample draws.
+        # q_arr drops the leading sample axis, so spatial_shape == site_samples.shape[1:].
+        # We align right-to-left and use modulo to handle size-1 broadcast axes.
+        spatial_shape = site_samples.shape[1:]
+        aligned_indices = tuple(
+            indices[len(indices) - len(spatial_shape) + i] % spatial_shape[i]
+            for i in range(len(spatial_shape))
+        )
 
+        for q_name, q_val in q_to_get.items():
+            q_arr = np.quantile(site_samples, q_val, axis=0)
             df[q_name] = q_arr[aligned_indices]
-        
+
+        if num_samples is not None:
+            site_samples_np = np.array(site_samples)  # (S, ...)
+            S = site_samples_np.shape[0]
+            chosen = np.random.choice(S, size=num_samples,
+                                      replace=num_samples > S)
+            sample_arr = np.stack(
+                [site_samples_np[s][aligned_indices] for s in chosen],
+                axis=1,
+            )  # (n_rows, num_samples)
+            samples_df = pd.DataFrame(
+                sample_arr,
+                columns=[f"sample_{i}" for i in range(num_samples)],
+                index=df.index,
+            )
+            df = pd.concat([df, samples_df], axis=1)
+
         all_dfs[site] = df
 
     if len(predict_sites) == 1:

@@ -103,7 +103,8 @@ def test_summarize_posteriors_errors():
 def test_main():
     with patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.generalized_main") as mock_gen:
         main()
-        mock_gen.assert_called_once_with(summarize_posteriors)
+        mock_gen.assert_called_once_with(summarize_posteriors,
+                                          manual_arg_types={"num_samples": int})
 
 def test_summarize_posteriors_no_hill(tmpdir, mock_config):
     mock_config["settings"]["theta"] = "categorical"
