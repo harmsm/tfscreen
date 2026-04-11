@@ -31,6 +31,8 @@ class ModelPriors:
     ln_cfu0_hyper_scale_loc: float
     ln_cfu0_spiked_loc_loc: float
     ln_cfu0_spiked_loc_scale: float
+    ln_cfu0_wt_loc_loc: float
+    ln_cfu0_wt_loc_scale: float
 
 def define_model(name: str,
                  data: GrowthData,
@@ -55,6 +57,7 @@ def define_model(name: str,
         - ``data.batch_idx`` : index array for the current mini-batch
         - ``data.scale_vector`` : importance-weight vector for subsampling
         - ``data.ln_cfu0_spiked_mask`` : bool array (num_genotype,), True = spiked
+        - ``data.ln_cfu0_wt_mask`` : bool array (num_genotype,), True = wildtype
     priors : ModelPriors
         Pytree containing the hyperparameters.
 
@@ -83,6 +86,13 @@ def define_model(name: str,
                     priors.ln_cfu0_spiked_loc_scale)
     )
 
+    # Separate scalar location for wildtype genotype
+    ln_cfu0_wt_loc = pyro.sample(
+        f"{name}_wt_loc",
+        dist.Normal(priors.ln_cfu0_wt_loc_loc,
+                    priors.ln_cfu0_wt_loc_scale)
+    )
+
     # Sample non-centered offsets for each ln_cfu0 group
     with pyro.plate(f"{name}_replicate",data.num_replicate,dim=-3):
         with pyro.plate(f"{name}_condition_pre",data.num_condition_pre,dim=-2):
@@ -95,9 +105,11 @@ def define_model(name: str,
     if ln_cfu0_offsets.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
         ln_cfu0_offsets = ln_cfu0_offsets[..., data.batch_idx]
 
-    # Per-genotype location: spiked genotypes use spiked_loc, library uses hyper_loc
+    # Per-genotype location: wt uses wt_loc, spiked uses spiked_loc, library uses hyper_loc
     batch_spiked_mask = data.ln_cfu0_spiked_mask[data.batch_idx]
-    per_geno_loc = jnp.where(batch_spiked_mask, ln_cfu0_spiked_loc, ln_cfu0_hyper_loc)
+    batch_wt_mask = data.ln_cfu0_wt_mask[data.batch_idx]
+    per_geno_loc = jnp.where(batch_wt_mask, ln_cfu0_wt_loc,
+                   jnp.where(batch_spiked_mask, ln_cfu0_spiked_loc, ln_cfu0_hyper_loc))
 
     # Calculate the per-group ln_cfu0 values
     ln_cfu0_per_rep_cond_geno = per_geno_loc + ln_cfu0_offsets * ln_cfu0_hyper_scale
@@ -138,6 +150,11 @@ def guide(name: str,
     s_loc_scale = pyro.param(f"{name}_spiked_loc_scale", jnp.array(priors.ln_cfu0_spiked_loc_scale), constraint=dist.constraints.greater_than(1e-4))
     ln_cfu0_spiked_loc = pyro.sample(f"{name}_spiked_loc", dist.Normal(s_loc_loc, s_loc_scale))
 
+    # WT Loc — wildtype genotype (Normal posterior)
+    w_loc_loc = pyro.param(f"{name}_wt_loc_loc", jnp.array(priors.ln_cfu0_wt_loc_loc))
+    w_loc_scale = pyro.param(f"{name}_wt_loc_scale", jnp.array(priors.ln_cfu0_wt_loc_scale), constraint=dist.constraints.greater_than(1e-4))
+    ln_cfu0_wt_loc = pyro.sample(f"{name}_wt_loc", dist.Normal(w_loc_loc, w_loc_scale))
+
     # -------------------------------------------------------------------------
     # Genotype-specific parameter
 
@@ -163,9 +180,11 @@ def guide(name: str,
     if ln_cfu0_offsets.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
         ln_cfu0_offsets = ln_cfu0_offsets[..., data.batch_idx]
 
-    # Per-genotype location: spiked genotypes use spiked_loc, library uses hyper_loc
+    # Per-genotype location: wt uses wt_loc, spiked uses spiked_loc, library uses hyper_loc
     batch_spiked_mask = data.ln_cfu0_spiked_mask[data.batch_idx]
-    per_geno_loc = jnp.where(batch_spiked_mask, ln_cfu0_spiked_loc, ln_cfu0_hyper_loc)
+    batch_wt_mask = data.ln_cfu0_wt_mask[data.batch_idx]
+    per_geno_loc = jnp.where(batch_wt_mask, ln_cfu0_wt_loc,
+                   jnp.where(batch_spiked_mask, ln_cfu0_spiked_loc, ln_cfu0_hyper_loc))
 
     # Calculate the per-group ln_cfu0 values
     ln_cfu0_per_rep_cond_geno = per_geno_loc + ln_cfu0_offsets * ln_cfu0_hyper_scale
@@ -192,6 +211,8 @@ def get_hyperparameters() -> Dict[str, Any]:
     parameters["ln_cfu0_hyper_scale_loc"] = 2.0
     parameters["ln_cfu0_spiked_loc_loc"] = 10.0
     parameters["ln_cfu0_spiked_loc_scale"] = 3.0
+    parameters["ln_cfu0_wt_loc_loc"] = 10.0
+    parameters["ln_cfu0_wt_loc_scale"] = 3.0
 
     return parameters
 
@@ -222,6 +243,7 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
     guesses[f"{name}_hyper_loc"] = -2.5
     guesses[f"{name}_hyper_scale"] = 3.0
     guesses[f"{name}_spiked_loc"] = 10.0
+    guesses[f"{name}_wt_loc"] = 13.0
     guesses[f"{name}_offset"] = jnp.zeros((data.num_replicate,
                                            data.num_condition_pre,
                                            data.num_genotype),dtype=float)

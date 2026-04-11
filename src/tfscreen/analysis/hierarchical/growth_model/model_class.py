@@ -547,9 +547,13 @@ class ModelClass:
             spiked_idx = np.where(np.isin(genotype_names,self._spiked_genotypes))[0]
             mask[spiked_idx] = False
 
+        wt_mask = np.zeros(sizes["num_genotype"], dtype=bool)
+        wt_mask[wt_loc[0]] = True
+
         other_data = {"scatter_theta":1,
                       "congression_mask":jnp.array(mask,dtype=bool),
-                      "ln_cfu0_spiked_mask":jnp.array(~mask,dtype=bool)}
+                      "ln_cfu0_spiked_mask":jnp.array(~mask,dtype=bool),
+                      "ln_cfu0_wt_mask":jnp.array(wt_mask,dtype=bool)}
 
         # Grab the titrant concentration and log_titrant_conc (1D array from 
         # the tensor labels along dimension 6)

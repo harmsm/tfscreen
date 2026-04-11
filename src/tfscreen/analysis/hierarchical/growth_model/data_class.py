@@ -53,6 +53,10 @@ class GrowthData:
     # Used by ln_cfu0 component to apply a separate prior location.
     ln_cfu0_spiked_mask: jnp.ndarray
 
+    # Boolean mask, shape (num_genotype,), True = wildtype genotype.
+    # Used by ln_cfu0 component to apply a separate prior location for WT.
+    ln_cfu0_wt_mask: jnp.ndarray
+
     growth_shares_replicates: bool = field(pytree_node=False, default=False)
 
     # Optional mutation-decomposition matrices (set when using *_mut_decomp components).

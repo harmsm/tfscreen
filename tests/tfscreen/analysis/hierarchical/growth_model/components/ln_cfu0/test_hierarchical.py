@@ -25,6 +25,7 @@ MockGrowthData = namedtuple("MockGrowthData", [
     "batch_idx",
     "scale_vector",
     "ln_cfu0_spiked_mask",
+    "ln_cfu0_wt_mask",
     "map_ln_cfu0" # Kept for API compatibility if needed, though updated model relies on expansion
 ])
 
@@ -45,6 +46,7 @@ def mock_data():
     batch_idx = jnp.arange(batch_size, dtype=jnp.int32)
     scale_vector = jnp.ones(batch_size, dtype=float)
     ln_cfu0_spiked_mask = jnp.zeros(num_genotype, dtype=bool)  # no spiked genotypes
+    ln_cfu0_wt_mask = jnp.zeros(num_genotype, dtype=bool)  # no wt genotypes
     map_ln_cfu0 = jnp.arange(batch_size, dtype=jnp.int32)
 
     return MockGrowthData(
@@ -55,6 +57,7 @@ def mock_data():
         batch_idx=batch_idx,
         scale_vector=scale_vector,
         ln_cfu0_spiked_mask=ln_cfu0_spiked_mask,
+        ln_cfu0_wt_mask=ln_cfu0_wt_mask,
         map_ln_cfu0=map_ln_cfu0
     )
 
@@ -75,6 +78,7 @@ def mock_data_with_spiked():
     scale_vector = jnp.ones(batch_size, dtype=float)
     # Genotypes 0 and 1 are spiked
     ln_cfu0_spiked_mask = jnp.array([True, True, False, False, False, False], dtype=bool)
+    ln_cfu0_wt_mask = jnp.zeros(num_genotype, dtype=bool)  # no wt genotypes
     map_ln_cfu0 = jnp.arange(batch_size, dtype=jnp.int32)
 
     return MockGrowthData(
@@ -85,6 +89,38 @@ def mock_data_with_spiked():
         batch_idx=batch_idx,
         scale_vector=scale_vector,
         ln_cfu0_spiked_mask=ln_cfu0_spiked_mask,
+        ln_cfu0_wt_mask=ln_cfu0_wt_mask,
+        map_ln_cfu0=map_ln_cfu0
+    )
+
+@pytest.fixture
+def mock_data_with_wt():
+    """
+    Provides a mock data object with a wildtype genotype.
+    - 2 replicates, 2 pre-selection conditions
+    - 6 genotypes: index 5 is wt, rest are library
+    - Full batch (batch_size == num_genotype)
+    """
+    num_replicate = 2
+    num_condition_pre = 2
+    num_genotype = 6
+    batch_size = 6
+
+    batch_idx = jnp.arange(batch_size, dtype=jnp.int32)
+    scale_vector = jnp.ones(batch_size, dtype=float)
+    ln_cfu0_spiked_mask = jnp.zeros(num_genotype, dtype=bool)
+    ln_cfu0_wt_mask = jnp.array([False, False, False, False, False, True], dtype=bool)
+    map_ln_cfu0 = jnp.arange(batch_size, dtype=jnp.int32)
+
+    return MockGrowthData(
+        num_replicate=num_replicate,
+        num_condition_pre=num_condition_pre,
+        num_genotype=num_genotype,
+        batch_size=batch_size,
+        batch_idx=batch_idx,
+        scale_vector=scale_vector,
+        ln_cfu0_spiked_mask=ln_cfu0_spiked_mask,
+        ln_cfu0_wt_mask=ln_cfu0_wt_mask,
         map_ln_cfu0=map_ln_cfu0
     )
 
@@ -228,6 +264,40 @@ def test_define_model_spiked_genotypes(mock_data_with_spiked):
     assert jnp.allclose(ln_cfu0_site[..., 2], hyper_loc)
     assert jnp.allclose(ln_cfu0_site[..., 5], hyper_loc)
 
+def test_define_model_wt_genotype(mock_data_with_wt):
+    """
+    Tests that the wildtype genotype receives wt_loc and library genotypes
+    receive hyper_loc (with zero offsets).
+    """
+    name = "test_ln_cfu0_wt"
+    priors = get_priors()
+    data = mock_data_with_wt
+
+    base_guesses = get_guesses(name, data)
+    batch_guesses = base_guesses.copy()
+    batch_guesses[f"{name}_offset"] = base_guesses[f"{name}_offset"][..., data.batch_idx]
+
+    substituted_model = substitute(define_model, data=batch_guesses)
+
+    model_trace = trace(substituted_model).get_trace(
+        name=name,
+        data=data,
+        priors=priors
+    )
+
+    ln_cfu0_site = model_trace[name]["value"]
+    # shape: (num_replicate, num_condition_pre, batch_size)
+
+    hyper_loc = float(base_guesses[f"{name}_hyper_loc"])  # -2.5
+    wt_loc = float(base_guesses[f"{name}_wt_loc"])         # 10.0
+
+    # Genotypes 0–4 are library → should equal hyper_loc
+    assert jnp.allclose(ln_cfu0_site[..., 0], hyper_loc)
+    assert jnp.allclose(ln_cfu0_site[..., 4], hyper_loc)
+
+    # Genotype 5 is wt → should equal wt_loc
+    assert jnp.allclose(ln_cfu0_site[..., 5], wt_loc)
+
 def test_guide_logic_and_shapes(mock_data):
     """
     Tests the guide function shapes, parameter creation, and execution.
@@ -264,6 +334,11 @@ def test_guide_logic_and_shapes(mock_data):
     assert f"{name}_spiked_loc_loc" in guide_trace
     assert f"{name}_spiked_loc_scale" in guide_trace
     assert f"{name}_spiked_loc" in guide_trace
+
+    # WT loc variational parameters should exist
+    assert f"{name}_wt_loc_loc" in guide_trace
+    assert f"{name}_wt_loc_scale" in guide_trace
+    assert f"{name}_wt_loc" in guide_trace
 
     # --- 2. Check Sample Sites ---
     # Sampled offsets should match the BATCH size

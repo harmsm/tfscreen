@@ -16,7 +16,7 @@ def summarize_posteriors(config_file,
                         posterior_file,
                         out_root="tfs",
                         q_to_get=None,
-                        num_samples=None):
+                        num_samples=100):
     """
     Summarize posterior samples and write to CSV files.
 
@@ -36,7 +36,7 @@ def summarize_posteriors(config_file,
         quantile columns in the growth predictions and theta curves CSVs.
         Useful for visualizing individual trajectories without marginalization.
         Sampling is with replacement when ``num_samples`` exceeds the total
-        number of posterior samples.
+        number of posterior samples. Default: 100
 
     Returns
     -------

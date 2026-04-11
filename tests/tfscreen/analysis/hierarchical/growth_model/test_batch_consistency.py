@@ -54,7 +54,8 @@ def test_batch_scaling_unbiased():
         log_titrant_conc=jnp.array([0.0]),
         wt_indexes=jnp.array([0]),
         scatter_theta=1,
-        ln_cfu0_spiked_mask=jnp.zeros(total_genotypes, dtype=bool)
+        ln_cfu0_spiked_mask=jnp.zeros(total_genotypes, dtype=bool),
+        ln_cfu0_wt_mask=jnp.zeros(total_genotypes, dtype=bool)
     )
 
     full_data = DataClass(
@@ -111,7 +112,8 @@ def test_component_shape_guards():
         log_titrant_conc=jnp.array([0.0]),
         wt_indexes=jnp.array([0]),
         scatter_theta=1,
-        ln_cfu0_spiked_mask=jnp.zeros(total_genotypes, dtype=bool)
+        ln_cfu0_spiked_mask=jnp.zeros(total_genotypes, dtype=bool),
+        ln_cfu0_wt_mask=jnp.zeros(total_genotypes, dtype=bool)
     )
 
     priors = dk_geno_hierarchical.get_priors()
@@ -170,7 +172,8 @@ def test_num_genotype_preserved():
         log_titrant_conc=jnp.array([0.0]),
         wt_indexes=jnp.array([0]),
         scatter_theta=1,
-        ln_cfu0_spiked_mask=jnp.zeros(total_genotypes, dtype=bool)
+        ln_cfu0_spiked_mask=jnp.zeros(total_genotypes, dtype=bool),
+        ln_cfu0_wt_mask=jnp.zeros(total_genotypes, dtype=bool)
     )
 
     full_data = DataClass(
