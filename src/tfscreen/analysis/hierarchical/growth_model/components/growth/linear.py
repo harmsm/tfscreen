@@ -234,7 +234,7 @@ def get_hyperparameters():
     parameters["growth_k_hyper_scale"] = 0.1
 
     parameters["growth_m_hyper_loc_loc"] = 0.0
-    parameters["growth_m_hyper_loc_scale"] = 0.01
+    parameters["growth_m_hyper_loc_scale"] = 0.05
     parameters["growth_m_hyper_scale"] = 0.1
 
     return parameters

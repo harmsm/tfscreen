@@ -207,7 +207,7 @@ def get_hyperparameters() -> Dict[str, Any]:
 
     parameters = {}
 
-    parameters["ln_cfu0_hyper_loc_loc"] = -2.5
+    parameters["ln_cfu0_hyper_loc_loc"] = 6.0   # typical library ln_cfu0 ≈ exp(6) ≈ 400 cells
     parameters["ln_cfu0_hyper_loc_scale"] = 3.0
     parameters["ln_cfu0_hyper_scale_loc"] = 2.0
     parameters["ln_cfu0_spiked_loc_loc"] = 12.0
@@ -260,7 +260,7 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
     """
 
     _DEFAULT_HYPER_SCALE = 3.0
-    _FALLBACK_HYPER_LOC  = -2.5
+    _FALLBACK_HYPER_LOC  = 6.0
     _FALLBACK_SPIKED_LOC = 12.0
     _FALLBACK_WT_LOC     = 13.0
 

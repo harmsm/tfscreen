@@ -1,3 +1,4 @@
+import numpy as np
 import jax
 import jax.numpy as jnp
 import numpyro as pyro
@@ -519,11 +520,11 @@ def get_hyperparameters() -> Dict[str, Any]:
     parameters["theta_logit_delta_hyper_scale"] = 1.0
 
     parameters["theta_log_hill_K_hyper_loc_loc"] = -4.1
-    parameters["theta_log_hill_K_hyper_loc_scale"] = 0.2
+    parameters["theta_log_hill_K_hyper_loc_scale"] = 1.0
     parameters["theta_log_hill_K_hyper_scale"] = 0.1
 
     parameters["theta_log_hill_n_hyper_loc_loc"] = 0.7
-    parameters["theta_log_hill_n_hyper_loc_scale"] = 0.1
+    parameters["theta_log_hill_n_hyper_loc_scale"] = 0.5
     parameters["theta_log_hill_n_hyper_scale"] = 1.0
 
     return parameters
@@ -536,6 +537,16 @@ def get_guesses(name: str, data: DataClass) -> Dict[str, Any]:
     These are used to initialize the MCMC sampler (e.g., via
     ``numpyro.infer.init_to_value``).
 
+    ``log_hill_K_hyper_loc`` is estimated from ``data.log_titrant_conc`` as the
+    median of all finite values, which places K in the centre of the tested
+    concentration range.  Zero concentrations (stored as -inf in log-space) are
+    excluded automatically by the finiteness filter.  All other parameters are
+    held at their hard-coded defaults because they cannot be reliably extracted
+    from growth data without already knowing A and m.
+
+    Falls back to the lac/IPTG default (-4.1) when no finite concentration
+    values are present.
+
     Parameters
     ----------
     name : str
@@ -543,7 +554,9 @@ def get_guesses(name: str, data: DataClass) -> Dict[str, Any]:
     data : DataClass
         A data object containing metadata, primarily:
         - ``data.num_titrant_name`` : (int) Number of titrants.
-        - ``data.num_genotype`` : (int) Number of genotypes.
+        - ``data.num_genotype``     : (int) Number of genotypes.
+        - ``data.log_titrant_conc`` : (jnp.ndarray, shape (num_titrant_conc,))
+          Log of the titrant concentrations used in the experiment.
 
     Returns
     -------
@@ -551,23 +564,28 @@ def get_guesses(name: str, data: DataClass) -> Dict[str, Any]:
         A dictionary mapping parameter names to their initial
         guess values.
     """
-    
-    guesses = {}
 
-    guesses[f"{name}_logit_low_hyper_loc"] = 2.0
-    guesses[f"{name}_logit_low_hyper_scale"] = 2.0
-    guesses[f"{name}_logit_delta_hyper_loc"] = -4.0
+    _DEFAULT_LOG_K = -4.1  # ln(0.017 mM) — lac/IPTG system default
+
+    log_conc = np.array(data.log_titrant_conc)
+    finite_conc = log_conc[np.isfinite(log_conc)]
+    log_K_guess = float(np.median(finite_conc)) if len(finite_conc) > 0 else _DEFAULT_LOG_K
+
+    guesses = {}
+    guesses[f"{name}_logit_low_hyper_loc"]   = 2.0
+    guesses[f"{name}_logit_low_hyper_scale"]  = 2.0
+    guesses[f"{name}_logit_delta_hyper_loc"]  = -4.0
     guesses[f"{name}_logit_delta_hyper_scale"] = 2.0
-    
-    guesses[f"{name}_log_hill_K_hyper_loc"] = -4.1 # ln(0.017 mM)
+
+    guesses[f"{name}_log_hill_K_hyper_loc"]  = log_K_guess
     guesses[f"{name}_log_hill_K_hyper_scale"] = 1.0
-    guesses[f"{name}_log_hill_n_hyper_loc"] = 0.7
+    guesses[f"{name}_log_hill_n_hyper_loc"]  = 0.7
     guesses[f"{name}_log_hill_n_hyper_scale"] = 0.3
 
-    guesses[f"{name}_logit_low_offset"] = jnp.zeros((data.num_titrant_name,data.num_genotype),dtype=float)
-    guesses[f"{name}_logit_delta_offset"] = jnp.zeros((data.num_titrant_name,data.num_genotype),dtype=float)
-    guesses[f"{name}_log_hill_K_offset"] = jnp.zeros((data.num_titrant_name,data.num_genotype),dtype=float)
-    guesses[f"{name}_log_hill_n_offset"] = jnp.zeros((data.num_titrant_name,data.num_genotype),dtype=float)
+    guesses[f"{name}_logit_low_offset"]   = jnp.zeros((data.num_titrant_name, data.num_genotype), dtype=float)
+    guesses[f"{name}_logit_delta_offset"] = jnp.zeros((data.num_titrant_name, data.num_genotype), dtype=float)
+    guesses[f"{name}_log_hill_K_offset"]  = jnp.zeros((data.num_titrant_name, data.num_genotype), dtype=float)
+    guesses[f"{name}_log_hill_n_offset"]  = jnp.zeros((data.num_titrant_name, data.num_genotype), dtype=float)
 
     return guesses
 

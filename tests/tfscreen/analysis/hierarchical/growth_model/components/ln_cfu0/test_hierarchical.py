@@ -193,7 +193,7 @@ def test_get_hyperparameters():
     params = get_hyperparameters()
     assert isinstance(params, dict)
     assert "ln_cfu0_hyper_loc_loc" in params
-    assert params["ln_cfu0_hyper_loc_loc"] == -2.5
+    assert params["ln_cfu0_hyper_loc_loc"] == 6.0
     assert "ln_cfu0_spiked_loc_loc" in params
     assert params["ln_cfu0_spiked_loc_loc"] == 12.0
 
@@ -202,7 +202,7 @@ def test_get_priors():
     """get_priors returns a correctly populated ModelPriors object."""
     priors = get_priors()
     assert isinstance(priors, ModelPriors)
-    assert priors.ln_cfu0_hyper_loc_loc == -2.5
+    assert priors.ln_cfu0_hyper_loc_loc == 6.0
     assert priors.ln_cfu0_spiked_loc_loc == 12.0
 
 

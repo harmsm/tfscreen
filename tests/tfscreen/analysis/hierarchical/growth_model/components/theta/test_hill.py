@@ -1,4 +1,5 @@
 import pytest
+import numpy as np
 import jax.numpy as jnp
 import numpyro.distributions as dist
 from numpyro.handlers import trace, substitute, seed
@@ -99,6 +100,54 @@ def test_get_guesses(mock_data):
     assert isinstance(guesses, dict)
     expected_shape = (mock_data.num_titrant_name, mock_data.num_genotype)
     assert guesses[f"{name}_logit_low_offset"].shape == expected_shape
+
+
+def test_get_guesses_log_hill_K_from_median(mock_data):
+    """log_hill_K_hyper_loc is the median of finite log_titrant_conc values."""
+    name = "th"
+    # mock_data has log_titrant_conc = linspace(-5, 5, 3) = [-5, 0, 5]
+    # median of all-finite values = 0.0
+    guesses = get_guesses(name, mock_data)
+    assert abs(float(guesses[f"{name}_log_hill_K_hyper_loc"]) - 0.0) < 1e-5
+
+
+def test_get_guesses_excludes_neg_inf():
+    """Zero concentrations (stored as -inf in log) are excluded from median."""
+    MockSimple = namedtuple("MockSimple", [
+        "num_titrant_name", "num_genotype", "log_titrant_conc"
+    ])
+    # concentrations [0, exp(-3), exp(-1)] → log = [-inf, -3, -1]
+    data = MockSimple(
+        num_titrant_name=1,
+        num_genotype=2,
+        log_titrant_conc=jnp.array([-np.inf, -3.0, -1.0]),
+    )
+    guesses = get_guesses("th", data)
+    # finite values: [-3, -1], median = -2.0
+    assert abs(float(guesses["th_log_hill_K_hyper_loc"]) - (-2.0)) < 1e-5
+
+
+def test_get_guesses_fallback_all_neg_inf():
+    """All-inf log concentrations trigger the hard-coded -4.1 fallback."""
+    MockSimple = namedtuple("MockSimple", [
+        "num_titrant_name", "num_genotype", "log_titrant_conc"
+    ])
+    data = MockSimple(
+        num_titrant_name=1,
+        num_genotype=2,
+        log_titrant_conc=jnp.array([-np.inf, -np.inf]),
+    )
+    guesses = get_guesses("th", data)
+    assert abs(float(guesses["th_log_hill_K_hyper_loc"]) - (-4.1)) < 1e-5
+
+
+def test_get_guesses_offsets_are_zero(mock_data):
+    """All per-genotype offsets start at zero."""
+    name = "th"
+    guesses = get_guesses(name, mock_data)
+    for key in [f"{name}_logit_low_offset", f"{name}_logit_delta_offset",
+                f"{name}_log_hill_K_offset", f"{name}_log_hill_n_offset"]:
+        assert jnp.all(guesses[key] == 0.0), f"{key} should be all zeros"
 
 def test_define_model_shapes_and_values(mock_data):
     """

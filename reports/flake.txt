@@ -5674,113 +5674,110 @@
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:283:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:286:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:377:48: W292 no newline at end of file
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:5:1: F401 'flax.struct.field' imported but unused
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:13:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:17:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:54:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:82:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:85:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:86:77: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:123:63: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:124:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:146:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:147:6: E114 indentation is not a multiple of 4 (comment)
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:147:6: E116 unexpected indentation (comment)
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:170:70: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:172:49: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:172:71: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:173:70: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:180:83: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:196:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:197:74: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:200:128: E501 line too long (137 > 127 characters)
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:201:128: E501 line too long (143 > 127 characters)
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:205:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:208:52: E261 at least two spaces before inline comment
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:209:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:216:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:219:128: E501 line too long (180 > 127 characters)
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:221:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:226:24: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:235:43: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:236:44: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:6:1: F401 'flax.struct.field' imported but unused
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:14:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:18:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:55:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:83:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:86:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:87:77: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:124:63: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:125:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:147:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:148:6: E114 indentation is not a multiple of 4 (comment)
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:148:6: E116 unexpected indentation (comment)
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:171:70: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:173:49: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:173:71: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:174:70: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:181:83: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:197:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:198:74: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:201:128: E501 line too long (137 > 127 characters)
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:202:128: E501 line too long (143 > 127 characters)
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:206:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:209:52: E261 at least two spaces before inline comment
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:210:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:217:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:220:128: E501 line too long (180 > 127 characters)
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:222:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:227:24: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:236:43: E231 missing whitespace after ','
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:237:44: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:238:40: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:246:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:249:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:324:75: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:328:5: E303 too many blank lines (2)
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:331:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:336:88: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:337:91: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:337:105: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:341:92: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:342:95: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:342:109: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:346:87: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:347:90: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:347:104: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:351:87: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:352:90: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:352:104: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:356:5: E303 too many blank lines (2)
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:363:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:366:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:368:81: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:369:21: E128 continuation line under-indented for visual indent
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:370:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:372:85: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:373:21: E128 continuation line under-indented for visual indent
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:374:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:376:77: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:377:21: E128 continuation line under-indented for visual indent
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:378:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:380:77: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:381:21: E128 continuation line under-indented for visual indent
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:383:83: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:408:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:410:128: E501 line too long (137 > 127 characters)
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:411:128: E501 line too long (143 > 127 characters)
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:415:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:416:52: E261 at least two spaces before inline comment
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:417:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:422:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:425:128: E501 line too long (180 > 127 characters)
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:427:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:437:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:440:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:473:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:474:71: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:476:40: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:476:45: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:477:42: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:477:47: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:238:44: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:239:40: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:247:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:250:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:325:75: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:329:5: E303 too many blank lines (2)
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:332:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:337:88: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:338:91: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:338:105: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:342:92: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:343:95: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:343:109: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:347:87: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:348:90: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:348:104: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:352:87: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:353:90: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:353:104: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:357:5: E303 too many blank lines (2)
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:364:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:367:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:369:81: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:370:21: E128 continuation line under-indented for visual indent
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:371:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:373:85: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:374:21: E128 continuation line under-indented for visual indent
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:375:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:377:77: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:378:21: E128 continuation line under-indented for visual indent
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:379:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:381:77: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:382:21: E128 continuation line under-indented for visual indent
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:384:83: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:409:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:411:128: E501 line too long (137 > 127 characters)
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:412:128: E501 line too long (143 > 127 characters)
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:416:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:417:52: E261 at least two spaces before inline comment
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:418:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:423:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:426:128: E501 line too long (180 > 127 characters)
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:428:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:438:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:441:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:474:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:475:71: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:477:40: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:477:45: E231 missing whitespace after ','
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:478:42: E231 missing whitespace after ','
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:478:47: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:479:34: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:479:39: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:481:45: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:481:47: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:488:37: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:488:42: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:488:47: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:488:52: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:488:54: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:488:56: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:489:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:554:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:561:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:562:51: E261 at least two spaces before inline comment
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:567:75: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:567:94: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:568:77: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:568:96: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:569:76: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:569:95: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:570:76: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:570:95: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:574:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:583:48: W292 no newline at end of file
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:479:42: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:479:47: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:480:34: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:480:39: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:482:45: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:482:47: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:489:37: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:489:42: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:489:47: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:489:52: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:489:54: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:489:56: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:490:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:575:43: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:576:45: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:577:45: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:580:44: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:582:44: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:585:40: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:587:41: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:588:41: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:592:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:601:48: W292 no newline at end of file
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:32:1: F401 'flax.struct.field' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:107:47: E261 at least two spaces before inline comment
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:125:76: E261 at least two spaces before inline comment
@@ -10694,39 +10691,39 @@
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:225:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:228:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:232:30: W292 no newline at end of file
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:3:1: F401 'numpyro.distributions as dist' imported but unused
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:33:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:41:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:45:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:48:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:61:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:68:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:71:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:84:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:90:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:95:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:103:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:109:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:117:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:121:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:125:128: E501 line too long (156 > 127 characters)
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:127:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:132:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:139:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:144:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:146:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:151:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:4:1: F401 'numpyro.distributions as dist' imported but unused
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:34:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:42:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:46:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:49:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:62:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:69:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:72:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:85:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:91:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:96:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:152:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:158:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:159:34: W291 trailing whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:160:50: W291 trailing whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:161:50: W291 trailing whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:165:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:173:9: F841 local variable 'guide_trace' is assigned to but never used
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:186:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:192:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:166:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:170:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:174:128: E501 line too long (156 > 127 characters)
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:176:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:181:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:188:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:193:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:195:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:198:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:202:30: W292 no newline at end of file
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:200:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:207:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:208:34: W291 trailing whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:209:50: W291 trailing whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:210:50: W291 trailing whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:214:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:222:9: F841 local variable 'guide_trace' is assigned to but never used
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:235:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:241:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:244:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:247:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:251:30: W292 no newline at end of file
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill_mut.py:8:1: F401 'tfscreen.analysis.hierarchical.growth_model.components.theta.hill_mut._population_moments' imported but unused
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill_mut.py:43:24: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill_mut.py:88:15: F841 local variable 'G' is assigned to but never used
@@ -13959,13 +13956,13 @@
 14    E202 whitespace before ']'
 10    E203 whitespace before ':'
 10    E211 whitespace before '('
-359   E221 multiple spaces before operator
+367   E221 multiple spaces before operator
 23    E222 multiple spaces after operator
 25    E225 missing whitespace around operator
-3166  E231 missing whitespace after ','
+3158  E231 missing whitespace after ','
 453   E251 unexpected spaces around keyword / parameter equals
 40    E252 missing whitespace around parameter equals
-401   E261 at least two spaces before inline comment
+400   E261 at least two spaces before inline comment
 2     E262 inline comment should start with '# '
 11    E265 block comment should start with '# '
 3     E266 too many leading '#' for block comment
@@ -13994,6 +13991,6 @@
 94    W191 indentation contains tabs
 2025  W291 trailing whitespace
 199   W292 no newline at end of file
-4192  W293 blank line contains whitespace
+4190  W293 blank line contains whitespace
 78    W391 blank line at end of file
-13945
+13942
