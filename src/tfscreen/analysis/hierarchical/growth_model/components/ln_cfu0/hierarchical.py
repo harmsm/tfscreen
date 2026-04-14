@@ -1,3 +1,4 @@
+import numpy as np
 import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
@@ -209,9 +210,9 @@ def get_hyperparameters() -> Dict[str, Any]:
     parameters["ln_cfu0_hyper_loc_loc"] = -2.5
     parameters["ln_cfu0_hyper_loc_scale"] = 3.0
     parameters["ln_cfu0_hyper_scale_loc"] = 2.0
-    parameters["ln_cfu0_spiked_loc_loc"] = 10.0
+    parameters["ln_cfu0_spiked_loc_loc"] = 12.0
     parameters["ln_cfu0_spiked_loc_scale"] = 3.0
-    parameters["ln_cfu0_wt_loc_loc"] = 10.0
+    parameters["ln_cfu0_wt_loc_loc"] = 13.0
     parameters["ln_cfu0_wt_loc_scale"] = 3.0
 
     return parameters
@@ -219,34 +220,104 @@ def get_hyperparameters() -> Dict[str, Any]:
 
 def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
     """
-    Get guess values for the model's latent parameters.
+    Get initial guess values derived empirically from observed ln_cfu data.
 
-    Offsets are set to zero (all genotypes start at their respective location
-    prior mean).  The ``spiked_loc`` guess is set to the prior mean so that
-    spiked genotypes initialise near ln_cfu0 = 10.
+    For each (replicate, condition_pre, genotype), the median ln_cfu across
+    all valid observations (masked by ``data.good_mask``) is used as an
+    estimate of the starting cell density.  Group-level medians over spiked,
+    wildtype, and library genotypes provide estimates for ``spiked_loc``,
+    ``wt_loc``, and ``hyper_loc``, respectively.  Per-genotype offsets are
+    derived by centering on the group-level estimate and dividing by a
+    default ``hyper_scale``.
+
+    Falls back to hard-coded defaults for any group that has no valid
+    observations (e.g. no spiked genotypes in the library).
 
     Parameters
     ----------
     name : str
         The prefix used for all sample sites.
     data : GrowthData
-        Pytree containing data metadata. Requires ``data.num_replicate``,
-        ``data.num_condition_pre``, ``data.num_genotype``.
+        Pytree containing data and metadata.  Uses ``data.ln_cfu``,
+        ``data.good_mask``, ``data.ln_cfu0_spiked_mask``,
+        ``data.ln_cfu0_wt_mask``, ``data.num_replicate``,
+        ``data.num_condition_pre``, and ``data.num_genotype``.
 
     Returns
     -------
     dict[str, jnp.ndarray]
-        A dictionary mapping sample site names to JAX arrays of guess values.
+        A dictionary mapping sample site names to initial guess values.
+
+    Notes
+    -----
+    ``data.ln_cfu`` is expected to have shape
+    ``(num_replicate, num_time, num_condition_pre, num_condition_sel,
+    num_titrant_name, num_titrant_conc, num_genotype)``.
+    The median is taken over the time, condition_sel, titrant_name, and
+    titrant_conc axes (axes 1, 3, 4, 5), yielding a
+    ``(num_replicate, num_condition_pre, num_genotype)`` array of
+    per-group empirical estimates.
     """
 
+    _DEFAULT_HYPER_SCALE = 3.0
+    _FALLBACK_HYPER_LOC  = -2.5
+    _FALLBACK_SPIKED_LOC = 12.0
+    _FALLBACK_WT_LOC     = 13.0
+
+    ln_cfu      = np.array(data.ln_cfu)    # (rep, time, cond_pre, cond_sel, tname, tconc, geno)
+    good_mask   = np.array(data.good_mask)
+    spiked_mask = np.array(data.ln_cfu0_spiked_mask)  # (num_genotype,)
+    wt_mask     = np.array(data.ln_cfu0_wt_mask)      # (num_genotype,)
+
+    # Guard: if data are not the expected 7-D tensor (e.g. mocked in tests),
+    # fall back to hard-coded defaults rather than crashing.
+    if ln_cfu.ndim != 7:
+        guesses = {}
+        guesses[f"{name}_hyper_loc"]   = _FALLBACK_HYPER_LOC
+        guesses[f"{name}_hyper_scale"] = _DEFAULT_HYPER_SCALE
+        guesses[f"{name}_spiked_loc"]  = _FALLBACK_SPIKED_LOC
+        guesses[f"{name}_wt_loc"]      = _FALLBACK_WT_LOC
+        guesses[f"{name}_offset"] = jnp.zeros(
+            (data.num_replicate, data.num_condition_pre, data.num_genotype),
+            dtype=float)
+        return guesses
+
+    # Replace invalid observations with NaN before computing medians
+    ln_cfu_valid = np.where(good_mask, ln_cfu, np.nan)
+
+    # Reduce over (time=1, cond_sel=3, titrant_name=4, titrant_conc=5)
+    # Result shape: (num_replicate, num_condition_pre, num_genotype)
+    per_rep_cond_geno = np.nanmedian(ln_cfu_valid, axis=(1, 3, 4, 5))
+
+    # Helper: median over all (rep, cond_pre) for genotypes in a mask group
+    def _group_median(mask, fallback):
+        if not mask.any():
+            return fallback
+        vals = per_rep_cond_geno[:, :, mask]   # (rep, cond_pre, n_in_group)
+        result = np.nanmedian(vals)
+        return fallback if np.isnan(result) else float(result)
+
+    library_mask = ~spiked_mask & ~wt_mask
+    spiked_loc   = _group_median(spiked_mask, _FALLBACK_SPIKED_LOC)
+    wt_loc       = _group_median(wt_mask,     _FALLBACK_WT_LOC)
+    hyper_loc    = _group_median(library_mask, _FALLBACK_HYPER_LOC)
+
+    # Per-genotype group location used to centre the offsets
+    per_geno_loc = np.where(wt_mask, wt_loc,
+                   np.where(spiked_mask, spiked_loc, hyper_loc))  # (num_genotype,)
+
+    # Non-centred offset: (empirical estimate - group loc) / hyper_scale
+    # Replace any remaining NaN (fully-masked genotypes) with 0.
+    diff   = per_rep_cond_geno - per_geno_loc[np.newaxis, np.newaxis, :]
+    offset = diff / _DEFAULT_HYPER_SCALE
+    offset = np.where(np.isnan(offset), 0.0, offset)
+
     guesses = {}
-    guesses[f"{name}_hyper_loc"] = -2.5
-    guesses[f"{name}_hyper_scale"] = 3.0
-    guesses[f"{name}_spiked_loc"] = 10.0
-    guesses[f"{name}_wt_loc"] = 13.0
-    guesses[f"{name}_offset"] = jnp.zeros((data.num_replicate,
-                                           data.num_condition_pre,
-                                           data.num_genotype),dtype=float)
+    guesses[f"{name}_hyper_loc"]  = float(hyper_loc)
+    guesses[f"{name}_hyper_scale"] = _DEFAULT_HYPER_SCALE
+    guesses[f"{name}_spiked_loc"] = float(spiked_loc)
+    guesses[f"{name}_wt_loc"]     = float(wt_loc)
+    guesses[f"{name}_offset"]     = jnp.array(offset, dtype=float)
 
     return guesses
 

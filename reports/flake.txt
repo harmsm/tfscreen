@@ -5540,44 +5540,59 @@
 ./src/tfscreen/analysis/hierarchical/growth_model/components/growth_transition/memory.py:189:36: E127 continuation line over-indented for visual indent
 ./src/tfscreen/analysis/hierarchical/growth_model/components/growth_transition/memory.py:234:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/hierarchical/growth_model/components/growth_transition/memory.py:251:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:37:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:97:40: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:97:59: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:98:48: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:98:71: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:99:74: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:112:20: E128 continuation line under-indented for visual indent
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:121:42: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:121:47: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:121:49: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:121:54: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:121:59: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:121:64: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:125:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:140:128: E501 line too long (146 > 127 characters)
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:144:73: E261 at least two spaces before inline comment
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:150:128: E501 line too long (148 > 127 characters)
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:155:128: E501 line too long (140 > 127 characters)
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:163:51: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:165:52: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:169:40: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:169:59: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:170:48: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:170:71: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:171:74: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:174:49: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:175:53: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:176:91: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:187:20: E128 continuation line under-indented for visual indent
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:193:42: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:193:47: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:193:49: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:193:54: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:193:59: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:193:64: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:197:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:249:62: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:253:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:38:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:98:40: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:98:59: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:99:48: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:99:71: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:100:74: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:113:20: E128 continuation line under-indented for visual indent
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:122:42: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:122:47: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:122:49: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:122:54: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:122:59: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:122:64: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:126:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:141:128: E501 line too long (146 > 127 characters)
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:145:73: E261 at least two spaces before inline comment
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:151:128: E501 line too long (148 > 127 characters)
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:156:128: E501 line too long (140 > 127 characters)
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:164:51: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:166:52: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:170:40: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:170:59: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:171:48: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:171:71: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:172:74: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:175:49: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:176:53: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:177:91: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:188:20: E128 continuation line under-indented for visual indent
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:194:42: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:194:47: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:194:49: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:194:54: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:194:59: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:194:64: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:198:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:263:24: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:265:21: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:267:11: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:268:14: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:270:12: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:276:37: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:278:38: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:279:34: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:301:15: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:302:11: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:303:14: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:307:20: E128 continuation line under-indented for visual indent
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:311:9: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:316:33: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:319:30: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:320:30: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:324:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/hierarchical/growth_model/components/noise/beta.py:10:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/hierarchical/growth_model/components/noise/beta.py:27:28: W291 trailing whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/components/noise/beta.py:28:39: W291 trailing whitespace
@@ -10556,19 +10571,46 @@
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/growth_transition/test_memory.py:123:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/growth_transition/test_memory.py:126:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/growth_transition/test_memory.py:133:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:3:1: F401 'numpyro' imported but unused
-./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:4:1: F401 'numpyro.distributions as dist' imported but unused
-./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:29:18: E261 at least two spaces before inline comment
-./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:32:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:64:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:96:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:129:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:138:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:145:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:168:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:230:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:267:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:301:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:4:1: F401 'numpyro' imported but unused
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:5:1: F401 'numpyro.distributions as dist' imported but unused
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:62:18: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:64:17: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:65:15: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:68:11: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:93:18: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:95:17: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:96:15: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:99:11: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:123:18: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:125:17: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:126:15: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:129:11: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:163:18: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:165:17: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:166:15: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:169:11: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:215:9: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:259:31: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:261:34: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:289:12: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:290:12: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:331:18: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:333:17: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:334:15: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:337:11: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:375:9: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:378:17: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:383:18: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:408:9: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:410:9: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:412:17: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:420:14: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:433:9: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:435:9: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:437:17: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:446:11: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:461:9: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/test_hierarchical.py:465:20: E221 multiple spaces before operator
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/noise/test_beta.py:20:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/noise/test_beta.py:24:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/noise/test_beta.py:30:1: W293 blank line contains whitespace
@@ -13929,26 +13971,26 @@
 5     E124 closing bracket does not match visual indentation
 12    E125 continuation line with same indent as next logical line
 93    E127 continuation line over-indented for visual indent
-129   E128 continuation line under-indented for visual indent
+130   E128 continuation line under-indented for visual indent
 1     E131 continuation line unaligned for hanging indent
 32    E201 whitespace after '['
 14    E202 whitespace before ']'
 10    E203 whitespace before ':'
 10    E211 whitespace before '('
-232   E221 multiple spaces before operator
+285   E221 multiple spaces before operator
 23    E222 multiple spaces after operator
 25    E225 missing whitespace around operator
-3172  E231 missing whitespace after ','
+3171  E231 missing whitespace after ','
 453   E251 unexpected spaces around keyword / parameter equals
 40    E252 missing whitespace around parameter equals
-404   E261 at least two spaces before inline comment
+403   E261 at least two spaces before inline comment
 2     E262 inline comment should start with '# '
 11    E265 block comment should start with '# '
 3     E266 too many leading '#' for block comment
 2     E271 multiple spaces after keyword
 2     E275 missing whitespace after keyword
 2     E301 expected 1 blank line, found 0
-1349  E302 expected 2 blank lines, found 1
+1339  E302 expected 2 blank lines, found 1
 152   E303 too many blank lines (2)
 28    E305 expected 2 blank lines after class or function definition, found 0
 14    E306 expected 1 blank line before a nested definition, found 0
@@ -13971,4 +14013,4 @@
 201   W292 no newline at end of file
 4242  W293 blank line contains whitespace
 78    W391 blank line at end of file
-13921
+13963
