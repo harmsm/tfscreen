@@ -1,3 +1,4 @@
+import numpy as np
 import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
@@ -184,41 +185,142 @@ def get_hyperparameters():
     return parameters
     
 
-def get_guesses(name,data):
+def get_guesses(name, data):
     """
-    Gets initial guess values for model parameters.
+    Get initial guess values derived empirically from observed ln_cfu data.
 
-    These are used to initialize the MCMC sampler (e.g., via
-    ``numpyro.infer.init_to_value``).
+    For each genotype, the pleiotropic growth effect (dk_geno) is estimated
+    as the difference between that genotype's growth rate and the wildtype
+    growth rate, averaged across replicates and pre-selection conditions.
+    Growth rates are computed via ordinary-least-squares regression of
+    ``data.ln_cfu`` against ``data.t_sel`` (selection-phase time) over all
+    valid observations for each (replicate, condition_pre, genotype) group.
+
+    The per-genotype dk_geno estimate is then inverted through the model's
+    parameterisation ``dk_geno = shift - exp(hyper_loc + offset * hyper_scale)``
+    to obtain the non-centred offset guess.
+
+    Falls back to the hard-coded neutral offset (corresponding to dk_geno = 0)
+    for any genotype that lacks sufficient valid data (fewer than 2 distinct
+    time points), and for the whole function when ``data.ln_cfu`` is not a
+    7-D tensor (e.g. when called with a mock object during unrelated tests).
 
     Parameters
     ----------
     name : str
-        The prefix for the parameter names (e.g., "theta").
-    data : DataClass
-        A data object containing metadata, primarily:
-        - ``data.num_genotype`` : (int) number of non-wt genotypes
+        The prefix for the parameter names.
+    data : GrowthData
+        Pytree containing data and metadata.  Uses ``data.ln_cfu``,
+        ``data.t_sel``, ``data.good_mask``, ``data.wt_indexes``, and
+        ``data.num_genotype``.
 
     Returns
     -------
     dict
-        A dictionary mapping parameter names to their initial
-        guess values.
+        A dictionary mapping parameter names to their initial guess values.
+
+    Notes
+    -----
+    ``data.ln_cfu`` and ``data.t_sel`` are expected to share the shape
+    ``(num_replicate, num_time, num_condition_pre, num_condition_sel,
+    num_titrant_name, num_titrant_conc, num_genotype)``.
+    The OLS slope is computed by reducing over axes 1, 3, 4, 5 (time,
+    condition_sel, titrant_name, titrant_conc), yielding one slope per
+    (replicate, condition_pre, genotype).
     """
 
-    # these values give a distribution that looks right by eye, clustering 
-    # slightly below zero with a few above zero and a tail reaching down to 
-    # to -0.02. 
-    # dk_geno_hyper_loc = -3.5
-    # dk_geno_hyper_scale = 0.5
-    # dk_geno_hyper_shift = 0.02
-    # The offset of -0.-0.8240460108562919 is dk_geno = 0 on this distribution
+    _DEFAULT_HYPER_LOC   = -3.5
+    _DEFAULT_HYPER_SCALE = 0.5
+    _DEFAULT_SHIFT       = 0.02
+
+    # Offset that maps to dk_geno = 0 under the default parameterisation
+    _NEUTRAL_OFFSET = (np.log(_DEFAULT_SHIFT) - _DEFAULT_HYPER_LOC) / _DEFAULT_HYPER_SCALE
+
+    num_geno = data.num_genotype
+
+    ln_cfu    = np.array(data.ln_cfu)
+    t_sel     = np.array(data.t_sel)
+    good_mask = np.array(data.good_mask)
+    wt_indexes = np.array(data.wt_indexes)
+
+    # Guard: fall back when tensors are not the expected 7-D shape (e.g. mocked data)
+    if ln_cfu.ndim != 7 or t_sel.ndim != 7:
+        guesses = {}
+        guesses[f"{name}_hyper_loc"]   = _DEFAULT_HYPER_LOC
+        guesses[f"{name}_hyper_scale"] = _DEFAULT_HYPER_SCALE
+        guesses[f"{name}_shift"]       = _DEFAULT_SHIFT
+        guesses[f"{name}_offset"]      = _NEUTRAL_OFFSET * jnp.ones(num_geno, dtype=float)
+        return guesses
+
+    # Mask invalid observations
+    ln_cfu_valid = np.where(good_mask, ln_cfu, np.nan)
+    t_sel_valid  = np.where(good_mask, t_sel,  np.nan)
+
+    # Rearrange axes so the dimensions to reduce are last:
+    # (rep=0, time=1, cond_pre=2, cond_sel=3, tname=4, tconc=5, geno=6)
+    # → (rep, cond_pre, geno, time, cond_sel, tname, tconc)
+    t_moved = np.moveaxis(t_sel_valid,  [1, 3, 4, 5], [-4, -3, -2, -1])
+    y_moved = np.moveaxis(ln_cfu_valid, [1, 3, 4, 5], [-4, -3, -2, -1])
+
+    num_rep, num_cond_pre, num_geno_tensor = t_moved.shape[:3]
+    n_obs = int(np.prod(t_moved.shape[3:]))
+
+    t_flat = t_moved.reshape(num_rep, num_cond_pre, num_geno_tensor, n_obs)
+    y_flat = y_moved.reshape(num_rep, num_cond_pre, num_geno_tensor, n_obs)
+
+    # Vectorised OLS: slope = Σ(tᵢ-t̄)(yᵢ-ȳ) / Σ(tᵢ-t̄)²
+    valid   = ~np.isnan(t_flat)                            # NaN pattern is same for t and y
+    n_valid = np.sum(valid, axis=-1)                       # (rep, cond_pre, geno)
+    denom   = np.maximum(n_valid, 1)
+
+    t_sum   = np.sum(np.where(valid, t_flat, 0.0), axis=-1)
+    y_sum   = np.sum(np.where(valid, y_flat, 0.0), axis=-1)
+    t_mean  = (t_sum / denom)[..., np.newaxis]
+    y_mean  = (y_sum / denom)[..., np.newaxis]
+
+    t_diff  = np.where(valid, t_flat - t_mean, 0.0)
+    y_diff  = np.where(valid, y_flat - y_mean, 0.0)
+
+    cov_ty  = np.sum(t_diff * y_diff, axis=-1)            # (rep, cond_pre, geno)
+    var_t   = np.sum(t_diff * t_diff, axis=-1)
+
+    with np.errstate(invalid="ignore", divide="ignore"):
+        slopes  = np.where((n_valid >= 2) & (var_t > 1e-20),
+                           cov_ty / var_t, np.nan)        # (rep, cond_pre, geno)
+
+    # WT reference slope per (rep, cond_pre)
+    wt_geno_mask = np.zeros(num_geno_tensor, dtype=bool)
+    if len(wt_indexes) > 0:
+        wt_geno_mask[wt_indexes] = True
+
+    # WT reference slope per (rep, cond_pre): NaN-safe mean avoids RuntimeWarnings
+    # from nanmean on all-NaN slices by using nansum / valid-count instead.
+    if wt_geno_mask.any():
+        wt_slopes   = slopes[:, :, wt_geno_mask]                    # (rep, cond_pre, n_wt)
+        wt_count    = np.sum(~np.isnan(wt_slopes), axis=2)
+        g_wt        = np.where(wt_count > 0,
+                               np.nansum(wt_slopes, axis=2) / np.maximum(wt_count, 1),
+                               np.nan)                               # (rep, cond_pre)
+    else:
+        g_wt = np.zeros((num_rep, num_cond_pre))
+
+    # dk_geno = genotype slope − WT slope, averaged over (rep, cond_pre)
+    dk_empirical  = slopes - g_wt[:, :, np.newaxis]                 # (rep, cond_pre, geno)
+    dk_count      = np.sum(~np.isnan(dk_empirical), axis=(0, 1))    # (num_geno,)
+    dk_per_geno   = np.where(dk_count > 0,
+                             np.nansum(dk_empirical, axis=(0, 1)) / np.maximum(dk_count, 1),
+                             np.nan)                                 # (num_geno,)
+    dk_per_geno      = np.where(np.isnan(dk_per_geno), 0.0, dk_per_geno)
+
+    # Invert: offset = (log(shift − dk_geno) − hyper_loc) / hyper_scale
+    lognormal_arg    = np.clip(_DEFAULT_SHIFT - dk_per_geno, 1e-6, None)
+    offset_per_geno  = (np.log(lognormal_arg) - _DEFAULT_HYPER_LOC) / _DEFAULT_HYPER_SCALE
 
     guesses = {}
-    guesses[f"{name}_hyper_loc"] = -3.5
-    guesses[f"{name}_hyper_scale"] = 0.5
-    guesses[f"{name}_shift"] = 0.02
-    guesses[f"{name}_offset"] = -0.8240460108562919*jnp.ones(data.num_genotype,dtype=float)
+    guesses[f"{name}_hyper_loc"]   = _DEFAULT_HYPER_LOC
+    guesses[f"{name}_hyper_scale"] = _DEFAULT_HYPER_SCALE
+    guesses[f"{name}_shift"]       = _DEFAULT_SHIFT
+    guesses[f"{name}_offset"]      = jnp.array(offset_per_geno, dtype=float)
 
     return guesses
 
