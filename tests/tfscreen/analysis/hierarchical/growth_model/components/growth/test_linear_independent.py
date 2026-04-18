@@ -1,4 +1,5 @@
 import pytest
+import numpy as np
 import jax.numpy as jnp
 import numpyro
 import numpyro.distributions as dist
@@ -16,38 +17,93 @@ from tfscreen.analysis.hierarchical.growth_model.components.growth.linear_indepe
     LinearParams
 )
 
-# --- Mock Data Fixture ---
+# --- Mock Data Fixtures ---
 
 MockGrowthData = namedtuple("MockGrowthData", [
-    "num_condition_rep", 
+    "num_condition_rep",
     "num_replicate",
     "map_condition_pre",
     "map_condition_sel",
-    "growth_shares_replicates"
+    "growth_shares_replicates",
+    "ln_cfu",
+    "t_sel",
+    "good_mask",
 ])
 
 @pytest.fixture
 def mock_data():
     """
     Provides a mock data object for testing.
-    - 2 conditions
-    - 3 replicates
-    - Total per-parameter items = 2 * 3 = 6
-    - 4 'pre' observations
-    - 4 'sel' observations
+    - 2 conditions, 3 replicates (N=2, M=3, total flat indices 0-5)
+    - 4 'pre' and 4 'sel' observations
+    - 1-D dummy ln_cfu/t_sel triggers the fallback path in get_guesses.
     """
     num_condition_rep = 2
     num_replicate = 3
-    
+
     map_condition_pre = jnp.array([0, 2, 4, 1], dtype=jnp.int32)
     map_condition_sel = jnp.array([5, 3, 1, 0], dtype=jnp.int32)
-    
+
     return MockGrowthData(
         num_condition_rep=num_condition_rep,
         num_replicate=num_replicate,
         map_condition_pre=map_condition_pre,
         map_condition_sel=map_condition_sel,
-        growth_shares_replicates=False
+        growth_shares_replicates=False,
+        ln_cfu=jnp.zeros((1,)),    # wrong ndim → fallback path
+        t_sel=jnp.zeros((1,)),
+        good_mask=jnp.ones((1,), dtype=bool),
+    )
+
+
+def _make_7d(slopes, num_array_rep=1, num_cond_pre=2,
+             num_tname=1, num_tconc=1, num_geno=1):
+    """Build (num_array_rep, 2, num_cond_pre, num_cond_sel, ...) ln_cfu and t_sel
+    arrays where cond_sel index i gets slope slopes[i].  t=0 at time 0, t=1 at time 1.
+    """
+    num_cond_sel = len(slopes)
+    num_time = 2
+    shape = (num_array_rep, num_time, num_cond_pre, num_cond_sel,
+             num_tname, num_tconc, num_geno)
+    ln_cfu = np.full(shape, 7.0)
+    for cs, slope in enumerate(slopes):
+        ln_cfu[:, 1, :, cs, :, :, :] = 7.0 + slope
+    t_sel = np.zeros(shape)
+    t_sel[:, 1, ...] = 1.0
+    return jnp.array(ln_cfu), jnp.array(t_sel), jnp.ones(shape, dtype=bool)
+
+
+@pytest.fixture
+def mock_data_empirical():
+    """
+    2 conditions × 2 replicates (N=2, M=2).  Flat index = c*M + r:
+      flat 0 = (c=0, r=0): slope 0.030
+      flat 1 = (c=0, r=1): slope 0.020
+      flat 2 = (c=1, r=0): slope 0.010
+      flat 3 = (c=1, r=1): slope 0.010
+
+    Expected empirical guesses:
+      k_hyper_loc  = [[0.025], [0.010]]   (median across reps per condition)
+      k_offset     = [[ 0.5, -0.5],       (deviation / DEFAULT_HYPER_SCALE=0.1)
+                      [ 0.0,  0.0]]
+    """
+    num_condition_rep = 2
+    num_replicate = 2
+    slopes = [0.030, 0.020, 0.010, 0.010]   # one per flat index
+    ln_cfu, t_sel, good_mask = _make_7d(slopes)
+
+    map_condition_pre = jnp.array([0, 1], dtype=jnp.int32)
+    map_condition_sel = jnp.array([0, 1, 2, 3], dtype=jnp.int32)
+
+    return MockGrowthData(
+        num_condition_rep=num_condition_rep,
+        num_replicate=num_replicate,
+        map_condition_pre=map_condition_pre,
+        map_condition_sel=map_condition_sel,
+        growth_shares_replicates=False,
+        ln_cfu=ln_cfu,
+        t_sel=t_sel,
+        good_mask=good_mask,
     )
 
 
@@ -69,22 +125,97 @@ def test_get_priors(mock_data):
     assert priors.growth_k_hyper_loc_loc.shape == (mock_data.num_condition_rep,)
     assert priors.growth_m_hyper_loc_loc.shape == (mock_data.num_condition_rep,)
 
-def test_get_guesses(mock_data):
-    """Tests our corrected get_guesses function."""
+def test_get_guesses_shapes(mock_data):
+    """get_guesses returns correctly shaped arrays."""
     name = "test_growth"
     guesses = get_guesses(name, mock_data)
-    
+
     assert isinstance(guesses, dict)
-    
-    # Check hyper-parameter guess shapes
+
     hyper_shape = (mock_data.num_condition_rep, 1)
     assert guesses[f"{name}_k_hyper_loc"].shape == hyper_shape
+    assert guesses[f"{name}_k_hyper_scale"].shape == hyper_shape
     assert guesses[f"{name}_m_hyper_loc"].shape == hyper_shape
-    
-    # Check offset guess shapes
+    assert guesses[f"{name}_m_hyper_scale"].shape == hyper_shape
+
     offset_shape = (mock_data.num_condition_rep, mock_data.num_replicate)
     assert guesses[f"{name}_k_offset"].shape == offset_shape
     assert guesses[f"{name}_m_offset"].shape == offset_shape
+
+
+def test_get_guesses_fallback_default_values(mock_data):
+    """Fallback path returns sensible defaults: k≈0.025, m=0."""
+    name = "test_growth"
+    guesses = get_guesses(name, mock_data)
+    assert jnp.allclose(guesses[f"{name}_k_hyper_loc"], 0.025)
+    assert jnp.allclose(guesses[f"{name}_m_hyper_loc"], 0.0)
+
+
+def test_get_guesses_m_offsets_always_zero(mock_data):
+    """m offsets are always zero (cannot estimate m without knowing theta)."""
+    name = "test_growth"
+    guesses = get_guesses(name, mock_data)
+    assert jnp.all(guesses[f"{name}_m_offset"] == 0.0)
+
+
+def test_get_guesses_empirical_k_hyper_loc(mock_data_empirical):
+    """k_hyper_loc is the per-condition median OLS slope across replicates."""
+    name = "eg"
+    guesses = get_guesses(name, mock_data_empirical)
+    k_hl = np.array(guesses[f"{name}_k_hyper_loc"]).ravel()
+    # cond 0: median(0.030, 0.020) = 0.025
+    # cond 1: median(0.010, 0.010) = 0.010
+    assert abs(k_hl[0] - 0.025) < 1e-5
+    assert abs(k_hl[1] - 0.010) < 1e-5
+
+
+def test_get_guesses_empirical_k_offsets(mock_data_empirical):
+    """k_offset captures per-(condition, replicate) deviation from k_hyper_loc."""
+    name = "eg"
+    guesses = get_guesses(name, mock_data_empirical)
+    k_off = np.array(guesses[f"{name}_k_offset"])
+    # cond 0: (0.030-0.025)/0.1=0.05 and (0.020-0.025)/0.1=-0.05
+    # cond 1: both 0.0
+    assert abs(k_off[0, 0] -  0.05) < 1e-4
+    assert abs(k_off[0, 1] - -0.05) < 1e-4
+    assert abs(k_off[1, 0]) < 1e-4
+    assert abs(k_off[1, 1]) < 1e-4
+
+
+def test_get_guesses_masked_observations(mock_data_empirical):
+    """Fully masked condition-rep falls back to global median, not NaN."""
+    name = "eg"
+    mask_arr = np.array(mock_data_empirical.good_mask)
+    # Mask all observations for cond_sel=0 (flat index 0 = cond 0, rep 0)
+    mask_arr[:, :, :, 0, :, :, :] = False
+    masked = mock_data_empirical._replace(good_mask=jnp.array(mask_arr))
+
+    guesses = get_guesses(name, masked)
+    k_off = np.array(guesses[f"{name}_k_offset"])
+    assert np.all(np.isfinite(k_off)), "offsets must not be NaN"
+
+
+def test_get_guesses_non7d_fallback():
+    """Non-7D tensors trigger the hard-coded fallback without error."""
+    name = "fg"
+    MockSimple = namedtuple("MockSimple", [
+        "num_condition_rep", "num_replicate",
+        "map_condition_pre", "map_condition_sel", "growth_shares_replicates",
+        "ln_cfu", "t_sel", "good_mask",
+    ])
+    data = MockSimple(
+        num_condition_rep=2, num_replicate=3,
+        map_condition_pre=jnp.array([0, 1]),
+        map_condition_sel=jnp.array([0, 1, 2, 3, 4, 5]),
+        growth_shares_replicates=False,
+        ln_cfu=jnp.zeros((3,)),    # wrong ndim
+        t_sel=jnp.zeros((3,)),
+        good_mask=jnp.ones((3,), dtype=bool),
+    )
+    guesses = get_guesses(name, data)
+    assert jnp.allclose(guesses[f"{name}_k_hyper_loc"], 0.025)
+    assert guesses[f"{name}_k_offset"].shape == (2, 3)
+    assert jnp.all(guesses[f"{name}_k_offset"] == 0.0)
 
 def test_define_model_logic_and_shapes(mock_data):
     """

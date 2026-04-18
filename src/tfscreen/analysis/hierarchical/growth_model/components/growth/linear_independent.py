@@ -1,3 +1,4 @@
+import numpy as np
 import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
@@ -349,51 +350,120 @@ def get_hyperparameters(num_condition_rep: int=1) -> Dict[str, Any]:
 
 def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
     """
-    Get guess values for the model's latent parameters.
+    Get empirical guess values for the model's latent parameters.
 
-    These values are used in `numpyro.handlers.substitute` for testing
-    or initializing inference.
+    For each condition, ``k_hyper_loc`` is estimated as the median OLS slope
+    of ln_cfu versus t_sel across replicates.  Per-replicate ``k_offset``
+    values capture the within-condition deviation.  Falls back to hard-coded
+    defaults when ``data.ln_cfu`` or ``data.t_sel`` are not 7-D tensors (e.g.
+    mock data in tests).
 
     Parameters
     ----------
     name : str
-        The prefix used for all sample sites (e.g., "my_model").
+        Prefix for all sample sites (e.g., ``"condition_growth"``).
     data : GrowthData
-        A Pytree containing data metadata, used to determine the
-        shape of the guess arrays. Requires:
-        - ``data.num_condition_rep``
-        - ``data.num_replicate``
+        Pytree with experimental data.  Requires:
+        ``num_condition_rep``, ``num_replicate``, ``map_condition_sel``,
+        ``ln_cfu``, ``t_sel``, ``good_mask``.
 
     Returns
     -------
     dict[str, jnp.ndarray]
-        A dictionary mapping sample site names (e.g., "my_model_k_offset")
-        to JAX arrays of guess values.
-    
-    Notes
-    -----
-    The shapes of the guesses are critical:
-    - ``_hyper_loc``/``_hyper_scale`` sites are sampled within the
-      ``condition_parameters`` plate, so their shape must be
-      ``(data.num_condition_rep, 1)``.
-    - ``_offset`` sites are sampled within both plates, so their shape
-      must be ``(data.num_condition_rep, data.num_replicate)``.
+        Keys and shapes:
+
+        - ``{name}_k_hyper_loc``   : ``(num_condition_rep, 1)``
+        - ``{name}_k_hyper_scale`` : ``(num_condition_rep, 1)``
+        - ``{name}_m_hyper_loc``   : ``(num_condition_rep, 1)``
+        - ``{name}_m_hyper_scale`` : ``(num_condition_rep, 1)``
+        - ``{name}_k_offset``      : ``(num_condition_rep, num_replicate)``
+        - ``{name}_m_offset``      : ``(num_condition_rep, num_replicate)``
     """
 
-    shape = (data.num_condition_rep, data.num_replicate)
+    _DEFAULT_HYPER_SCALE = 0.1
+    _DEFAULT_K = 0.025
 
-    # Shape for hyper-parameters sampled inside the condition plate
-    hyper_shape = (data.num_condition_rep, 1) 
+    num_cond = data.num_condition_rep   # N: unique conditions
+    num_rep  = data.num_replicate       # M: replicates per condition
+
+    hyper_shape = (num_cond, 1)
+    local_shape = (num_cond, num_rep)
+
+    ln_cfu           = np.array(data.ln_cfu)
+    t_sel            = np.array(data.t_sel)
+    good_mask        = np.array(data.good_mask)
+    map_condition_sel = np.array(data.map_condition_sel)
+
+    if ln_cfu.ndim != 7 or t_sel.ndim != 7:
+        guesses = {}
+        guesses[f"{name}_k_hyper_loc"]   = jnp.full(hyper_shape, _DEFAULT_K,           dtype=float)
+        guesses[f"{name}_k_hyper_scale"] = jnp.full(hyper_shape, _DEFAULT_HYPER_SCALE,  dtype=float)
+        guesses[f"{name}_m_hyper_loc"]   = jnp.zeros(hyper_shape,                       dtype=float)
+        guesses[f"{name}_m_hyper_scale"] = jnp.full(hyper_shape, 0.01,                  dtype=float)
+        guesses[f"{name}_k_offset"]      = jnp.zeros(local_shape,                       dtype=float)
+        guesses[f"{name}_m_offset"]      = jnp.zeros(local_shape,                       dtype=float)
+        return guesses
+
+    # OLS slope of ln_cfu vs t_sel (vectorised over all axes except time).
+    # Matches the approach used in linear.get_guesses.
+    ln_cfu_valid = np.where(good_mask, ln_cfu, np.nan)
+    t_sel_valid  = np.where(good_mask, t_sel,  np.nan)
+
+    t_moved = np.moveaxis(t_sel_valid,  1, -1)
+    y_moved = np.moveaxis(ln_cfu_valid, 1, -1)
+
+    valid   = ~np.isnan(t_moved)
+    n_valid = np.sum(valid, axis=-1)
+    denom   = np.maximum(n_valid, 1)
+    t_sum   = np.sum(np.where(valid, t_moved, 0.0), axis=-1)
+    y_sum   = np.sum(np.where(valid, y_moved, 0.0), axis=-1)
+    t_mean  = (t_sum / denom)[..., np.newaxis]
+    y_mean  = (y_sum / denom)[..., np.newaxis]
+    t_diff  = np.where(valid, t_moved - t_mean, 0.0)
+    y_diff  = np.where(valid, y_moved - y_mean, 0.0)
+    cov_ty  = np.sum(t_diff * y_diff, axis=-1)
+    var_t   = np.sum(t_diff * t_diff, axis=-1)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        slopes = np.where((n_valid >= 2) & (var_t > 1e-20), cov_ty / var_t, np.nan)
+
+    if map_condition_sel.ndim == 7:
+        map_cr = map_condition_sel[:, 0, ...]
+    else:
+        map_cr = map_condition_sel
+
+    # Collect one k estimate per flat (condition × replicate) index.
+    # Flat indices run [0, N*M) in C-order of shape (N, M): index = c*M + r.
+    total   = num_cond * num_rep
+    k_flat  = np.full(total, np.nan)
+    for flat_idx in range(total):
+        if map_cr.ndim == slopes.ndim:
+            cr_slopes = slopes[map_cr == flat_idx]
+        else:
+            cr_slopes = slopes[:, :, map_cr == flat_idx, ...]
+        n_valid_cr = np.sum(~np.isnan(cr_slopes))
+        if n_valid_cr > 0:
+            k_flat[flat_idx] = np.nansum(cr_slopes) / n_valid_cr
+
+    # Reshape to (num_cond, num_rep) so rows = conditions, cols = replicates.
+    k_per_cond_rep = k_flat.reshape(num_cond, num_rep)
+
+    # Per-condition k_hyper_loc: median across replicates.
+    k_hyper_loc = np.nanmedian(k_per_cond_rep, axis=1)       # (N,)
+    valid_k  = k_hyper_loc[~np.isnan(k_hyper_loc)]
+    global_k = float(np.nanmedian(valid_k)) if len(valid_k) > 0 else _DEFAULT_K
+    k_hyper_loc = np.where(np.isnan(k_hyper_loc), global_k, k_hyper_loc)
+
+    # Per-(condition, replicate) offsets.
+    k_offsets = (k_per_cond_rep - k_hyper_loc[:, np.newaxis]) / _DEFAULT_HYPER_SCALE
+    k_offsets = np.where(np.isnan(k_offsets), 0.0, k_offsets)
 
     guesses = {}
-    guesses[f"{name}_k_hyper_loc"] = jnp.ones(hyper_shape,dtype=float)
-    guesses[f"{name}_k_hyper_scale"] = jnp.ones(hyper_shape,dtype=float) * 0.1
-    guesses[f"{name}_m_hyper_loc"] = jnp.ones(hyper_shape,dtype=float) 
-    guesses[f"{name}_m_hyper_scale"] = jnp.ones(hyper_shape,dtype=float) * 0.1
-    
-    guesses[f"{name}_k_offset"] = jnp.zeros(shape,dtype=float)
-    guesses[f"{name}_m_offset"] = jnp.zeros(shape,dtype=float)
-
+    guesses[f"{name}_k_hyper_loc"]   = jnp.array(k_hyper_loc.reshape(num_cond, 1), dtype=float)
+    guesses[f"{name}_k_hyper_scale"] = jnp.full(hyper_shape, _DEFAULT_HYPER_SCALE, dtype=float)
+    guesses[f"{name}_m_hyper_loc"]   = jnp.zeros(hyper_shape,                      dtype=float)
+    guesses[f"{name}_m_hyper_scale"] = jnp.full(hyper_shape, 0.01,                 dtype=float)
+    guesses[f"{name}_k_offset"]      = jnp.array(k_offsets,                        dtype=float)
+    guesses[f"{name}_m_offset"]      = jnp.zeros(local_shape,                      dtype=float)
     return guesses
 
 def get_priors(num_condition_rep: int=1) -> ModelPriors:

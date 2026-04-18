@@ -867,11 +867,34 @@ class RunInference:
 
         hessian = jax.hessian(pe_fn)(flat_map)
 
-        # Add small diagonal jitter for numerical stability before inversion
-        hessian = hessian + 1e-6 * jnp.eye(D)
-
-        print("Inverting Hessian ...", flush=True)
-        cov = jnp.linalg.inv(hessian)
+        # Project Hessian to the PD cone and compute the Cholesky factor of the
+        # covariance in float64 (via numpy) so that sampling is numerically
+        # stable even when JAX_ENABLE_X64 is not set.
+        #
+        # Three sources of instability in the naive float32 approach:
+        #  1. Saddle-point MAP → negative Hessian eigenvalues → non-PD covariance
+        #  2. Very large eigenvalues (e.g. 2.6e8) → covariance condition number
+        #     ~1e11, which exceeds float32 precision (~1e7) and reintroduces
+        #     negative eigenvalues after the V @ diag(1/λ) @ V^T reconstruction.
+        #  3. jax.random.multivariate_normal uses Cholesky internally; if the
+        #     covariance is not PD the Cholesky fails → NaN samples.
+        #
+        # Fix: do the eigendecomposition and Cholesky in numpy float64, clamp
+        # negative eigenvalues to 1e-3 (caps max variance per direction at 1000),
+        # then sample as mean + L @ z where z ~ N(0,I) in float32.
+        print("Projecting Hessian to PD cone and computing Cholesky ...", flush=True)
+        H_np = np.array(hessian, dtype=np.float64)
+        eigenvalues_np, eigenvectors_np = np.linalg.eigh(H_np)
+        n_negative = int(np.sum(eigenvalues_np < 0))
+        if n_negative > 0:
+            print(f"  Warning: {n_negative} negative Hessian eigenvalues "
+                  f"(min={eigenvalues_np.min():.3e}); clamping to 1e-3.",
+                  flush=True)
+        eigenvalues_pd = np.maximum(eigenvalues_np, 1e-3)
+        cov_np = eigenvectors_np @ np.diag(1.0 / eigenvalues_pd) @ eigenvectors_np.T
+        # Cholesky in float64; cast factor to float32 for the forward pass
+        L_np = np.linalg.cholesky(cov_np)
+        L = jnp.array(L_np, dtype=jnp.float32)
 
         # Get unconstrained → constrained transform for each latent site
         seeded_model = seed(self.model.jax_model, rng_seed=0)
@@ -900,10 +923,11 @@ class RunInference:
                                       num_posterior_samples - samples_written)
 
                 # Draw flat unconstrained samples: (this_batch_size, D)
+                # Use mean + z @ L^T (z ~ N(0,I)) to avoid a second Cholesky
+                # inside jax.random.multivariate_normal.
                 sample_key = self.get_key()
-                flat_samples = jax.random.multivariate_normal(
-                    sample_key, flat_map, cov, shape=(this_batch_size,)
-                )
+                z = jax.random.normal(sample_key, shape=(this_batch_size, D))
+                flat_samples = flat_map + z @ L.T
 
                 # Unravel each sample and transform to constrained space.
                 # jax.vmap(unravel) maps (N, D) → pytree of (N, *shape) arrays.

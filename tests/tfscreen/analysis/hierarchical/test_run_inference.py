@@ -566,38 +566,42 @@ def test_get_laplace_posteriors_non_auto_loc_keys_ignored(tmpdir):
     assert os.path.exists(f"{out_root}_posterior.h5")
 
 
-def test_get_laplace_posteriors_hessian_jitter(tmpdir, mocker):
-    """A small diagonal jitter is added before inversion for numerical stability.
+def test_get_laplace_posteriors_negative_eigenvalues_no_nan(tmpdir, mocker):
+    """An indefinite Hessian (negative eigenvalues) must not produce NaN posteriors.
 
-    We verify this by checking that inv() is called on a matrix that differs
-    from the raw Hessian by a positive diagonal term.
+    Regression test: a MAP solution at a saddle point has negative Hessian
+    eigenvalues.  The old code (jitter + jnp.linalg.inv) left the covariance
+    non-PD in float32, causing jax.random.multivariate_normal to return all-NaN.
+    The fix uses numpy float64 eigendecomposition, clamps negative eigenvalues
+    to 1e-3, and samples via z @ L^T instead of multivariate_normal.
+
+    LaplaceModel(num_genotype=2) has D=3 unconstrained parameters
+    (1 global_p + 2 geno_p), so a 3x3 Hessian is injected.
     """
     model = LaplaceModel(num_genotype=2)
     ri, map_params = _laplace_map_params(model)
 
-    captured = {}
+    # 3x3 symmetric matrix with one clearly negative eigenvalue (-5).
+    bad_H = jnp.array([[10., 0., 0.],
+                        [ 0., -5., 0.],
+                        [ 0.,  0.,  8.]])
 
-    real_inv = jnp.linalg.inv
+    # jax.hessian(fn)(x): patch so that jax.hessian(pe_fn) returns a callable
+    # that ignores x and returns bad_H regardless of fn/x.
+    mocker.patch("jax.hessian", return_value=lambda x: bad_H)
 
-    def capturing_inv(mat):
-        captured["inverted"] = np.array(mat)
-        return real_inv(mat)
-
-    mocker.patch("jax.numpy.linalg.inv", side_effect=capturing_inv)
-
-    out_root = str(tmpdir.join("laplace_jitter"))
+    out_root = str(tmpdir.join("laplace_negeig"))
     ri.get_laplace_posteriors(
         map_params=map_params,
         out_root=out_root,
-        num_posterior_samples=4,
-        sampling_batch_size=4,
+        num_posterior_samples=20,
+        sampling_batch_size=10,
         forward_batch_size=2,
     )
 
-    # The matrix passed to inv() must have a positive diagonal
-    # (raw Hessian + 1e-6 * I guarantees this)
-    inverted = captured["inverted"]
-    assert np.all(np.diag(inverted) > 0)
+    with h5py.File(f"{out_root}_posterior.h5", "r") as hf:
+        for k in hf.keys():
+            assert not np.any(np.isnan(hf[k][:])), f"NaN found in posterior key '{k}'"
 
 
 # =============================================================================
