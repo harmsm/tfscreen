@@ -135,3 +135,114 @@ def test_guide():
             tau_val = 1.0 + (0.5 / 0.6)
             expected = 1.0 * 10 + 1.0 * tau_val + 0.5 * (20 - tau_val)
             assert jnp.allclose(total_growth, jnp.array([expected]))
+
+# ---------------------------------------------------------------------------
+# Pinning tests
+# ---------------------------------------------------------------------------
+
+from numpyro.handlers import trace, seed
+from tfscreen.analysis.hierarchical.growth_model.components.growth_transition.memory import (
+    _PINNABLE_SUFFIXES,
+    ModelPriors,
+)
+
+
+def _trace_args():
+    """Build the args needed to trace memory.define_model / guide."""
+    data = MagicMock()
+    data.num_condition_rep = 3
+    data.map_condition_pre = jnp.array([0, 1, 2], dtype=int)
+    g_pre = jnp.array([1.0, 1.0, 1.0])
+    g_sel = jnp.array([0.5, 0.5, 0.5])
+    t_pre = jnp.array([10.0, 10.0, 10.0])
+    t_sel = jnp.array([20.0, 20.0, 20.0])
+    theta = jnp.array([0.5, 0.5, 0.5])
+    return data, g_pre, g_sel, t_pre, t_sel, theta
+
+
+def test_pinnable_suffixes_includes_all_six_hypers():
+    assert set(_PINNABLE_SUFFIXES) == {
+        "tau0_hyper_loc", "tau0_hyper_scale",
+        "k1_hyper_loc", "k1_hyper_scale",
+        "k2_hyper_loc", "k2_hyper_scale",
+    }
+
+
+def test_model_priors_default_pinned_is_empty_dict():
+    assert get_priors().pinned == {}
+
+
+def test_model_priors_accepts_pinned_dict():
+    pinned = {"tau0_hyper_loc": 1.0}
+    priors = ModelPriors(pinned=pinned, **get_hyperparameters())
+    assert priors.pinned == pinned
+
+
+def test_define_model_unpinned_uses_sample_sites():
+    name = "g"
+    priors = get_priors()
+    data, g_pre, g_sel, t_pre, t_sel, theta = _trace_args()
+    with seed(rng_seed=0):
+        tr = trace(define_model).get_trace(
+            name=name, data=data, priors=priors,
+            g_pre=g_pre, g_sel=g_sel, t_pre=t_pre, t_sel=t_sel, theta=theta,
+        )
+    for suffix in _PINNABLE_SUFFIXES:
+        assert tr[f"{name}_{suffix}"]["type"] == "sample"
+
+
+def test_define_model_pinned_replaces_with_deterministic():
+    name = "g"
+    pinned = {"tau0_hyper_loc": 1.0, "k2_hyper_scale": 0.05}
+    priors = ModelPriors(pinned=pinned, **get_hyperparameters())
+    data, g_pre, g_sel, t_pre, t_sel, theta = _trace_args()
+    with seed(rng_seed=0):
+        tr = trace(define_model).get_trace(
+            name=name, data=data, priors=priors,
+            g_pre=g_pre, g_sel=g_sel, t_pre=t_pre, t_sel=t_sel, theta=theta,
+        )
+    assert tr[f"{name}_tau0_hyper_loc"]["type"] == "deterministic"
+    assert float(tr[f"{name}_tau0_hyper_loc"]["value"]) == pytest.approx(1.0)
+    assert tr[f"{name}_k2_hyper_scale"]["type"] == "deterministic"
+    assert tr[f"{name}_tau0_hyper_scale"]["type"] == "sample"
+    assert tr[f"{name}_k1_hyper_loc"]["type"] == "sample"
+
+
+def test_guide_pinned_drops_variational_params():
+    name = "g"
+    pinned = {"tau0_hyper_loc": 1.0, "k2_hyper_scale": 0.05}
+    priors = ModelPriors(pinned=pinned, **get_hyperparameters())
+    data, g_pre, g_sel, t_pre, t_sel, theta = _trace_args()
+    with seed(rng_seed=0):
+        tr = trace(guide).get_trace(
+            name=name, data=data, priors=priors,
+            g_pre=g_pre, g_sel=g_sel, t_pre=t_pre, t_sel=t_sel, theta=theta,
+        )
+    assert f"{name}_tau0_hyper_loc_loc" not in tr
+    assert f"{name}_tau0_hyper_loc_scale" not in tr
+    assert f"{name}_tau0_hyper_loc" not in tr
+    assert f"{name}_k2_hyper_scale_loc" not in tr
+    assert f"{name}_k2_hyper_scale_scale" not in tr
+    assert f"{name}_k2_hyper_scale" not in tr
+    # Unpinned still present
+    assert f"{name}_k1_hyper_loc" in tr
+
+
+def test_model_and_guide_pinned_have_compatible_sample_sites():
+    name = "g"
+    pinned = {"tau0_hyper_loc": 1.0, "k2_hyper_scale": 0.05}
+    priors = ModelPriors(pinned=pinned, **get_hyperparameters())
+    data, g_pre, g_sel, t_pre, t_sel, theta = _trace_args()
+    with seed(rng_seed=0):
+        m_tr = trace(define_model).get_trace(
+            name=name, data=data, priors=priors,
+            g_pre=g_pre, g_sel=g_sel, t_pre=t_pre, t_sel=t_sel, theta=theta,
+        )
+    with seed(rng_seed=0):
+        g_tr = trace(guide).get_trace(
+            name=name, data=data, priors=priors,
+            g_pre=g_pre, g_sel=g_sel, t_pre=t_pre, t_sel=t_sel, theta=theta,
+        )
+    m_samples = {k for k, v in m_tr.items() if v["type"] == "sample"}
+    g_samples = {k for k, v in g_tr.items() if v["type"] == "sample"}
+    assert m_samples == g_samples

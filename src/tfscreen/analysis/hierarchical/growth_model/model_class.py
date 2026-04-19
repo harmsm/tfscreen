@@ -28,6 +28,7 @@ import pandas as pd
 import numpy as np
 
 from functools import partial
+import inspect
 import os
 import warnings
 import h5py
@@ -749,19 +750,29 @@ class ModelClass:
                     f"It should be one of: {list(model_registry[key].keys())}"
                 )
     
-            # get the component module 
+            # get the component module
             component_module = model_registry[key][value]
-    
-            # Record priors
-            priors_class_kwargs[prior_group][key] = component_module.get_priors()
-    
-            # Record guesses
+
+            # Pick the right data pytree for this component
             if prior_group == "binding":
-                guesses = component_module.get_guesses(name=key,
-                                                       data=self._data.binding)
+                component_data = self._data.binding
             else:
-                guesses = component_module.get_guesses(name=key,
-                                                       data=self._data.growth)
+                component_data = self._data.growth
+
+            # Record priors.  Components may optionally accept a `data`
+            # parameter to derive empirical prior values (e.g. fixed
+            # subgroup scales) from the observed data.
+            priors_sig = inspect.signature(component_module.get_priors)
+            if "data" in priors_sig.parameters:
+                priors_class_kwargs[prior_group][key] = \
+                    component_module.get_priors(data=component_data)
+            else:
+                priors_class_kwargs[prior_group][key] = \
+                    component_module.get_priors()
+
+            # Record guesses
+            guesses = component_module.get_guesses(name=key,
+                                                   data=component_data)
             init_params.update(guesses)
 
             # Record control parameters for the main and guide functions

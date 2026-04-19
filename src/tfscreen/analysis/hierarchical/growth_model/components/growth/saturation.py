@@ -1,12 +1,24 @@
 import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
-from flax.struct import dataclass
-from typing import Tuple
+from flax.struct import dataclass, field
+from typing import Tuple, Mapping
 
 from tfscreen.analysis.hierarchical.growth_model.data_class import (
     GrowthData
 )
+from tfscreen.analysis.hierarchical.growth_model.components._pinning import (
+    _hyper,
+    _pinned_value,
+)
+
+
+# Hyperparameter suffixes that may be pinned via ModelPriors.pinned.
+_PINNABLE_SUFFIXES = (
+    "min_hyper_loc", "min_hyper_scale",
+    "max_hyper_loc", "max_hyper_scale",
+)
+
 
 @dataclass(frozen=True)
 class SaturationParams:
@@ -28,10 +40,14 @@ class ModelPriors:
     growth_min_hyper_loc_loc: float
     growth_min_hyper_loc_scale: float
     growth_min_hyper_scale: float
-    
+
     growth_max_hyper_loc_loc: float
     growth_max_hyper_loc_scale: float
     growth_max_hyper_scale: float
+
+    pinned: Mapping[str, float] = field(
+        pytree_node=False, default_factory=dict
+    )
 
 
 def define_model(name: str, 
@@ -57,14 +73,16 @@ def define_model(name: str,
         A dataclass containing min and max for pre and sel.
     """
 
+    pinned = priors.pinned
+
     def sample_param(param_name, loc_loc, loc_scale, hyper_scale):
-        hyper_loc = pyro.sample(
-            f"{name}_{param_name}_hyper_loc",
-            dist.Normal(loc_loc, loc_scale)
+        hyper_loc = _hyper(
+            name, f"{param_name}_hyper_loc",
+            dist.Normal(loc_loc, loc_scale), pinned,
         )
-        hyper_scale_val = pyro.sample(
-            f"{name}_{param_name}_hyper_scale",
-            dist.HalfNormal(hyper_scale)
+        hyper_scale_val = _hyper(
+            name, f"{param_name}_hyper_scale",
+            dist.HalfNormal(hyper_scale), pinned,
         )
         
         with pyro.plate(f"{name}_{param_name}_condition_parameters", data.num_condition_rep):
@@ -94,17 +112,39 @@ def guide(name: str,
     Guide corresponding to the pooled saturation growth model.
     """
 
-    def sample_guide_param(param_name, loc_loc, loc_scale):
-        p_loc_loc = pyro.param(f"{name}_{param_name}_hyper_loc_loc", jnp.array(loc_loc))
-        p_loc_scale = pyro.param(f"{name}_{param_name}_hyper_loc_scale", jnp.array(loc_scale),
-                                 constraint=dist.constraints.greater_than(1e-4))
-        hyper_loc = pyro.sample(f"{name}_{param_name}_hyper_loc", dist.Normal(p_loc_loc, p_loc_scale))
+    pinned = priors.pinned
 
-        p_scale_loc = pyro.param(f"{name}_{param_name}_hyper_scale_loc", jnp.array(-1.0))
-        p_scale_scale = pyro.param(f"{name}_{param_name}_hyper_scale_scale", jnp.array(0.1),
-                                   constraint=dist.constraints.greater_than(1e-4))
-        hyper_scale = pyro.sample(f"{name}_{param_name}_hyper_scale", dist.LogNormal(p_scale_loc, p_scale_scale))
-        
+    def sample_guide_param(param_name, loc_loc, loc_scale):
+        loc_suffix = f"{param_name}_hyper_loc"
+        scale_suffix = f"{param_name}_hyper_scale"
+
+        pinned_loc = _pinned_value(loc_suffix, pinned)
+        if pinned_loc is not None:
+            hyper_loc = pinned_loc
+        else:
+            p_loc_loc = pyro.param(f"{name}_{loc_suffix}_loc", jnp.array(loc_loc))
+            p_loc_scale = pyro.param(
+                f"{name}_{loc_suffix}_scale", jnp.array(loc_scale),
+                constraint=dist.constraints.greater_than(1e-4),
+            )
+            hyper_loc = pyro.sample(
+                f"{name}_{loc_suffix}", dist.Normal(p_loc_loc, p_loc_scale)
+            )
+
+        pinned_scale = _pinned_value(scale_suffix, pinned)
+        if pinned_scale is not None:
+            hyper_scale = pinned_scale
+        else:
+            p_scale_loc = pyro.param(f"{name}_{scale_suffix}_loc", jnp.array(-1.0))
+            p_scale_scale = pyro.param(
+                f"{name}_{scale_suffix}_scale", jnp.array(0.1),
+                constraint=dist.constraints.greater_than(1e-4),
+            )
+            hyper_scale = pyro.sample(
+                f"{name}_{scale_suffix}",
+                dist.LogNormal(p_scale_loc, p_scale_scale),
+            )
+
         offset_locs = pyro.param(f"{name}_{param_name}_offset_locs", jnp.zeros(data.num_condition_rep, dtype=float))
         offset_scales = pyro.param(f"{name}_{param_name}_offset_scales", jnp.ones(data.num_condition_rep, dtype=float),
                                    constraint=dist.constraints.positive)

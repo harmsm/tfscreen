@@ -185,16 +185,129 @@ def test_update_dataclass_recursion():
     class Main:
         sub: Sub = None
         y: float = 0.0
-        
+
     m = Main(sub=Sub())
     # Test recursion and update
     m2 = _update_dataclass(m, "", {"sub.x": 10.0, "y": 20.0})
     assert m2.sub.x == 10.0
     assert m2.y == 20.0
-    
+
     # Test no update
     m3 = _update_dataclass(m, "", {"z": 30.0})
     assert m3 == m
+
+
+def test_update_dataclass_dict_field_basic():
+    """A dict-typed field is populated from `prefix.<sub>` keys in flat_dict."""
+    from dataclasses import dataclass, field
+    from typing import Dict
+
+    @dataclass
+    class Comp:
+        scalar: float = 0.0
+        pinned: Dict[str, float] = field(default_factory=dict)
+
+    c = Comp()
+    updated = _update_dataclass(
+        c, "", {"pinned.hyper_loc": 1.5, "pinned.hyper_scale": 0.25, "scalar": 9.0}
+    )
+    assert updated.scalar == 9.0
+    assert updated.pinned == {"hyper_loc": 1.5, "hyper_scale": 0.25}
+
+
+def test_update_dataclass_dict_field_nested_via_parent():
+    """
+    Dict fields work through nested dataclass walks: a key like
+    `growth.dk_geno.pinned.hyper_loc` should land in the right component
+    dict.
+    """
+    from dataclasses import dataclass, field
+    from typing import Dict
+
+    @dataclass
+    class Comp:
+        pinned: Dict[str, float] = field(default_factory=dict)
+
+    @dataclass
+    class Group:
+        dk_geno: Comp = None
+
+    @dataclass
+    class Root:
+        growth: Group = None
+
+    r = Root(growth=Group(dk_geno=Comp()))
+    updated = _update_dataclass(r, "", {"growth.dk_geno.pinned.hyper_loc": 0.7})
+    assert updated.growth.dk_geno.pinned == {"hyper_loc": 0.7}
+
+
+def test_update_dataclass_dict_field_preserves_existing_entries():
+    """
+    Pre-existing dict entries that are not overridden by flat_dict must
+    survive the merge.
+    """
+    from dataclasses import dataclass, field
+    from typing import Dict
+
+    @dataclass
+    class Comp:
+        pinned: Dict[str, float] = field(default_factory=dict)
+
+    c = Comp(pinned={"keep_me": 11.0, "override_me": 1.0})
+    updated = _update_dataclass(c, "", {"pinned.override_me": 2.0})
+    assert updated.pinned == {"keep_me": 11.0, "override_me": 2.0}
+
+
+def test_update_dataclass_dict_field_empty_when_no_keys_match():
+    """Dict field stays untouched if no `prefix.<sub>` keys are supplied."""
+    from dataclasses import dataclass, field
+    from typing import Dict
+
+    @dataclass
+    class Comp:
+        pinned: Dict[str, float] = field(default_factory=dict)
+
+    c = Comp(pinned={"existing": 5.0})
+    updated = _update_dataclass(c, "", {"unrelated": 7.0})
+    # No update was queued for `pinned` → object is the original
+    assert updated is c
+    assert updated.pinned == {"existing": 5.0}
+
+
+def test_update_dataclass_dict_field_ignores_deeper_nesting():
+    """
+    Keys with more than one '.' beyond the dict-field name are NOT
+    consumed (they are reserved for nested dataclasses).
+    """
+    from dataclasses import dataclass, field
+    from typing import Dict
+
+    @dataclass
+    class Comp:
+        pinned: Dict[str, float] = field(default_factory=dict)
+
+    c = Comp()
+    updated = _update_dataclass(c, "", {"pinned.too.deep": 99.0})
+    # Deep key is ignored → no update applied → original returned
+    assert updated is c
+    assert updated.pinned == {}
+
+
+def test_update_dataclass_dict_field_coerces_floats():
+    """String-valued flat_dict entries are coerced to float when possible."""
+    from dataclasses import dataclass, field
+    from typing import Dict
+
+    @dataclass
+    class Comp:
+        pinned: Dict[str, float] = field(default_factory=dict)
+
+    c = Comp()
+    updated = _update_dataclass(
+        c, "", {"pinned.alpha": "1.25", "pinned.beta": "not_a_number"}
+    )
+    assert updated.pinned["alpha"] == 1.25
+    assert updated.pinned["beta"] == "not_a_number"
 
 def test_mains(mocker):
     # Test main functions via mocker to cover boilerplate

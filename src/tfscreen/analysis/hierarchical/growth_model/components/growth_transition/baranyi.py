@@ -1,9 +1,21 @@
 import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
-from flax.struct import dataclass
+from flax.struct import dataclass, field
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
-from typing import Dict, Any
+from tfscreen.analysis.hierarchical.growth_model.components._pinning import (
+    _hyper,
+    _pinned_value,
+)
+from typing import Dict, Any, Mapping
+
+
+# Hyperparameter suffixes that may be pinned via ModelPriors.pinned.
+_PINNABLE_SUFFIXES = (
+    "tau_lag_hyper_loc", "tau_lag_hyper_scale",
+    "k_sharp_hyper_loc", "k_sharp_hyper_scale",
+)
+
 
 @dataclass(frozen=True)
 class ModelPriors:
@@ -17,6 +29,10 @@ class ModelPriors:
     k_sharp_hyper_loc_loc: float
     k_sharp_hyper_loc_scale: float
     k_sharp_hyper_scale: float
+
+    pinned: Mapping[str, float] = field(
+        pytree_node=False, default_factory=dict
+    )
 
 
 def define_model(name: str, 
@@ -61,24 +77,30 @@ def define_model(name: str,
         The total growth over both phases.
     """
 
+    pinned = priors.pinned
+
     # Hierarchical tau_lag
-    tau_lag_hyper_loc = pyro.sample(
-        f"{name}_tau_lag_hyper_loc",
-        dist.Normal(priors.tau_lag_hyper_loc_loc, priors.tau_lag_hyper_loc_scale)
+    tau_lag_hyper_loc = _hyper(
+        name, "tau_lag_hyper_loc",
+        dist.Normal(priors.tau_lag_hyper_loc_loc, priors.tau_lag_hyper_loc_scale),
+        pinned,
     )
-    tau_lag_hyper_scale = pyro.sample(
-        f"{name}_tau_lag_hyper_scale",
-        dist.HalfNormal(priors.tau_lag_hyper_scale)
+    tau_lag_hyper_scale = _hyper(
+        name, "tau_lag_hyper_scale",
+        dist.HalfNormal(priors.tau_lag_hyper_scale),
+        pinned,
     )
 
     # Hierarchical k_sharp
-    k_sharp_hyper_loc = pyro.sample(
-        f"{name}_k_sharp_hyper_loc",
-        dist.Normal(priors.k_sharp_hyper_loc_loc, priors.k_sharp_hyper_loc_scale)
+    k_sharp_hyper_loc = _hyper(
+        name, "k_sharp_hyper_loc",
+        dist.Normal(priors.k_sharp_hyper_loc_loc, priors.k_sharp_hyper_loc_scale),
+        pinned,
     )
-    k_sharp_hyper_scale = pyro.sample(
-        f"{name}_k_sharp_hyper_scale",
-        dist.HalfNormal(priors.k_sharp_hyper_scale)
+    k_sharp_hyper_scale = _hyper(
+        name, "k_sharp_hyper_scale",
+        dist.HalfNormal(priors.k_sharp_hyper_scale),
+        pinned,
     )
 
     # Plate over conditions
@@ -121,27 +143,42 @@ def guide(name: str,
     Guide corresponding to the Baranyi growth transition model.
     """
 
-    # tau_lag hyper
-    tau_lag_loc_loc = pyro.param(f"{name}_tau_lag_hyper_loc_loc", jnp.array(priors.tau_lag_hyper_loc_loc))
-    tau_lag_loc_scale = pyro.param(f"{name}_tau_lag_hyper_loc_scale", jnp.array(priors.tau_lag_hyper_loc_scale),
-                                constraint=dist.constraints.greater_than(1e-4))
-    tau_lag_hyper_loc = pyro.sample(f"{name}_tau_lag_hyper_loc", dist.Normal(tau_lag_loc_loc, tau_lag_loc_scale))
+    pinned = priors.pinned
 
-    tau_lag_scale_loc = pyro.param(f"{name}_tau_lag_hyper_scale_loc", jnp.array(-1.0))
-    tau_lag_scale_scale = pyro.param(f"{name}_tau_lag_hyper_scale_scale", jnp.array(0.1),
-                                  constraint=dist.constraints.greater_than(1e-4))
-    tau_lag_hyper_scale = pyro.sample(f"{name}_tau_lag_hyper_scale", dist.LogNormal(tau_lag_scale_loc, tau_lag_scale_scale))
+    def _guide_hyper_loc(prefix, default_loc, default_scale):
+        suffix = f"{prefix}_hyper_loc"
+        pinned_v = _pinned_value(suffix, pinned)
+        if pinned_v is not None:
+            return pinned_v
+        loc_loc = pyro.param(f"{name}_{suffix}_loc", jnp.array(default_loc))
+        loc_scale = pyro.param(
+            f"{name}_{suffix}_scale", jnp.array(default_scale),
+            constraint=dist.constraints.greater_than(1e-4),
+        )
+        return pyro.sample(f"{name}_{suffix}", dist.Normal(loc_loc, loc_scale))
 
-    # k_sharp hyper
-    k_sharp_loc_loc = pyro.param(f"{name}_k_sharp_hyper_loc_loc", jnp.array(priors.k_sharp_hyper_loc_loc))
-    k_sharp_loc_scale = pyro.param(f"{name}_k_sharp_hyper_loc_scale", jnp.array(priors.k_sharp_hyper_loc_scale),
-                                constraint=dist.constraints.greater_than(1e-4))
-    k_sharp_hyper_loc = pyro.sample(f"{name}_k_sharp_hyper_loc", dist.Normal(k_sharp_loc_loc, k_sharp_loc_scale))
+    def _guide_hyper_scale(prefix):
+        suffix = f"{prefix}_hyper_scale"
+        pinned_v = _pinned_value(suffix, pinned)
+        if pinned_v is not None:
+            return pinned_v
+        scale_loc = pyro.param(f"{name}_{suffix}_loc", jnp.array(-1.0))
+        scale_scale = pyro.param(
+            f"{name}_{suffix}_scale", jnp.array(0.1),
+            constraint=dist.constraints.greater_than(1e-4),
+        )
+        return pyro.sample(
+            f"{name}_{suffix}", dist.LogNormal(scale_loc, scale_scale)
+        )
 
-    k_sharp_scale_loc = pyro.param(f"{name}_k_sharp_hyper_scale_loc", jnp.array(-1.0))
-    k_sharp_scale_scale = pyro.param(f"{name}_k_sharp_hyper_scale_scale", jnp.array(0.1),
-                                 constraint=dist.constraints.greater_than(1e-4))
-    k_sharp_hyper_scale = pyro.sample(f"{name}_k_sharp_hyper_scale", dist.LogNormal(k_sharp_scale_loc, k_sharp_scale_scale))
+    tau_lag_hyper_loc = _guide_hyper_loc(
+        "tau_lag", priors.tau_lag_hyper_loc_loc, priors.tau_lag_hyper_loc_scale
+    )
+    tau_lag_hyper_scale = _guide_hyper_scale("tau_lag")
+    k_sharp_hyper_loc = _guide_hyper_loc(
+        "k_sharp", priors.k_sharp_hyper_loc_loc, priors.k_sharp_hyper_loc_scale
+    )
+    k_sharp_hyper_scale = _guide_hyper_scale("k_sharp")
 
     # Offsets
     tau_lag_offset_locs = pyro.param(f"{name}_tau_lag_offset_locs", jnp.zeros(data.num_condition_rep))

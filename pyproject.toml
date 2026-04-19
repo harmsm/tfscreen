@@ -68,6 +68,7 @@ docs = ["pydata-sphinx-theme"]
 tfs-process-fastq = "tfscreen.process_raw.process_fastq:main"
 tfs-process-counts = "tfscreen.process_raw.process_counts:main"
 tfs-growth-analysis = "tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis:main"
+tfs-prefit-calibration = "tfscreen.analysis.hierarchical.growth_model.scripts.run_prefit_calibration:main"
 tfs-configure-growth-analysis = "tfscreen.analysis.hierarchical.growth_model.scripts.configure_growth_analysis:main"
 tfs-summarize-posteriors = "tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors:main"
 tfs-predict = "tfscreen.analysis.hierarchical.growth_model.scripts.predict_cli:main"

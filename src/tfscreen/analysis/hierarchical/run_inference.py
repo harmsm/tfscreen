@@ -760,6 +760,139 @@ class RunInference:
 
         os.replace(tmp_out_file,out_file)        
 
+    def compute_hessian_sigmas(self, map_params):
+        """
+        Compute per-site Hessian-based MAP values and sigmas in *constrained*
+        parameter space.
+
+        Used by the calibration pre-fit to extract uncertainty estimates on
+        the linking-function hyperparameters at the MAP point, without
+        needing to draw a full Laplace posterior.
+
+        The Hessian is computed in unconstrained space (where all variables
+        are real-valued).  For each sample site, the constrained MAP value
+        and an elementwise constrained-space sigma are returned.  For
+        constrained supports (e.g. ``HalfNormal`` → ``positive`` →
+        ``ExpTransform``) the unconstrained sigma is propagated through the
+        bijection's elementwise Jacobian via the delta method:
+
+            sigma_constrained = |dT/dx| * sigma_unconstrained
+
+        For unconstrained supports (``Normal`` → identity) this reduces to
+        ``sigma_constrained = sigma_unconstrained``.
+
+        Negative Hessian eigenvalues (indicating saddle points) are clamped
+        to ``1e-3`` before inversion, matching the behaviour of
+        :meth:`get_laplace_posteriors`.
+
+        Parameters
+        ----------
+        map_params : dict
+            Parameter dict from a MAP (AutoDelta) optimizer state, as
+            returned by ``svi.get_params(svi_state)``.  Keys follow the
+            ``{site}_auto_loc`` convention; values are in unconstrained
+            space.
+
+        Returns
+        -------
+        dict[str, dict]
+            Maps each sample-site name to a dict with two arrays:
+
+            * ``"map"``    : constrained MAP value (same shape as the site)
+            * ``"sigma"``  : elementwise constrained-space 1-sigma uncertainty
+
+            Both are returned as plain ``numpy`` arrays.
+        """
+        from numpyro.infer.util import potential_energy
+        from numpyro.distributions.transforms import biject_to
+        import jax.flatten_util
+
+        data_on_gpu = jax.device_put(self.model.data)
+        total_num_genotypes = self.model.data.num_genotype
+        all_indices = jnp.arange(total_num_genotypes)
+        full_data = self.model.get_batch(data_on_gpu, all_indices)
+        model_kwargs = {"priors": self.model.priors, "data": full_data}
+
+        # Strip _auto_loc suffix → unconstrained site-level param dict
+        unconstrained = {
+            k[: -len("_auto_loc")]: jnp.array(v)
+            for k, v in map_params.items()
+            if k.endswith("_auto_loc")
+        }
+
+        if len(unconstrained) == 0:
+            return {}
+
+        # Flatten to a single vector for Hessian computation.  We need to
+        # remember the per-site shapes / offsets so we can pull the
+        # diagonal back into per-site sigma arrays.
+        flat_map, unravel = jax.flatten_util.ravel_pytree(unconstrained)
+        D = flat_map.shape[0]
+
+        def pe_fn(flat_p):
+            return potential_energy(
+                self.model.jax_model, [], model_kwargs, unravel(flat_p)
+            )
+
+        hessian = jax.hessian(pe_fn)(flat_map)
+
+        # Project Hessian to the PD cone in float64 (mirrors the safety
+        # logic in get_laplace_posteriors); we only need the diagonal of
+        # the inverse, which is sigma^2 per element.
+        H_np = np.array(hessian, dtype=np.float64)
+        eigenvalues_np, eigenvectors_np = np.linalg.eigh(H_np)
+        eigenvalues_pd = np.maximum(eigenvalues_np, 1e-3)
+        cov_diag_np = np.einsum(
+            "ij,j,ij->i",
+            eigenvectors_np,
+            1.0 / eigenvalues_pd,
+            eigenvectors_np,
+        )
+        sigma_unconstrained_flat = np.sqrt(np.maximum(cov_diag_np, 0.0))
+
+        # Unravel the unconstrained sigmas back to per-site shape.
+        sigma_unconstrained = unravel(jnp.array(sigma_unconstrained_flat,
+                                                 dtype=flat_map.dtype))
+
+        # Get the per-site bijection from a model trace.  For unconstrained
+        # supports (Normal) this is the identity transform.
+        seeded_model = seed(self.model.jax_model, rng_seed=0)
+        traced_model = trace(seeded_model)
+        model_trace = traced_model.get_trace(**model_kwargs)
+        site_transforms = {
+            name: biject_to(site["fn"].support)
+            for name, site in model_trace.items()
+            if site["type"] == "sample" and not site.get("is_observed", False)
+        }
+
+        out = {}
+        for name, x_unc in unconstrained.items():
+            transform = site_transforms.get(name)
+            sigma_unc = sigma_unconstrained[name]
+            if transform is None:
+                # No bijection available — assume identity.
+                map_constrained = x_unc
+                sigma_constrained = sigma_unc
+            else:
+                map_constrained = transform(x_unc)
+                # Elementwise Jacobian magnitude.  log_abs_det_jacobian
+                # gives sum across event dims; we want per-element |dT/dx|
+                # which (for diagonal transforms) = exp(log|dy/dx|).  Use
+                # jax.grad of a scalar projection so we don't depend on the
+                # transform's internal API.
+                sigma_constrained = jnp.abs(
+                    jax.vmap(lambda v: jax.grad(transform)(v))(
+                        x_unc.reshape(-1)
+                    )
+                ).reshape(x_unc.shape) * sigma_unc
+
+            out[name] = {
+                "map": np.asarray(map_constrained),
+                "sigma": np.asarray(sigma_constrained),
+            }
+
+        return out
+
     def _get_site_names(self,target_sites="deterministic"):
         """
         Dry-runs a NumPyro model to extract site names programmatically.

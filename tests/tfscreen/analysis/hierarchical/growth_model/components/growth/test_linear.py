@@ -13,7 +13,12 @@ from tfscreen.analysis.hierarchical.growth_model.components.growth.linear import
     get_hyperparameters,
     get_guesses,
     get_priors,
-    LinearParams
+    LinearParams,
+    _PINNABLE_SUFFIXES,
+)
+from tfscreen.analysis.hierarchical.growth_model.components._pinning import (
+    _hyper,
+    _pinned_value,
 )
 
 # --- Mock Data Fixtures ---
@@ -348,3 +353,257 @@ def test_guide_logic_and_shapes(mock_data):
     assert m_pre.shape == mock_data.map_condition_pre.shape
     assert k_sel.shape == mock_data.map_condition_sel.shape
     assert m_sel.shape == mock_data.map_condition_sel.shape
+
+
+# ---------------------------------------------------------------------------
+# Pinning helpers
+# ---------------------------------------------------------------------------
+
+def test_pinnable_suffixes_includes_all_four_hypers():
+    """The set of pinnable suffixes is complete and stable."""
+    assert set(_PINNABLE_SUFFIXES) == {
+        "k_hyper_loc", "k_hyper_scale",
+        "m_hyper_loc", "m_hyper_scale",
+    }
+
+
+# ---------------------------------------------------------------------------
+# ModelPriors with pinned field
+# ---------------------------------------------------------------------------
+
+def test_model_priors_default_pinned_is_empty_dict():
+    """ModelPriors() with no `pinned` argument exposes an empty dict."""
+    priors = get_priors()
+    assert hasattr(priors, "pinned")
+    assert priors.pinned == {}
+
+
+def test_model_priors_accepts_pinned_dict():
+    """ModelPriors accepts a `pinned` dict and exposes it on the instance."""
+    pinned = {"k_hyper_loc": 0.030, "m_hyper_scale": 0.05}
+    priors = ModelPriors(pinned=pinned, **get_hyperparameters())
+    assert priors.pinned == pinned
+
+
+def test_model_priors_replace_preserves_pinned():
+    """flax.struct.dataclass.replace preserves the pinned dict."""
+    pinned = {"k_hyper_loc": 0.03}
+    priors = ModelPriors(pinned=pinned, **get_hyperparameters())
+    replaced = priors.replace(growth_k_hyper_loc_loc=0.05)
+    assert replaced.pinned == pinned
+
+
+# ---------------------------------------------------------------------------
+# define_model with pinning
+# ---------------------------------------------------------------------------
+
+def test_define_model_unpinned_uses_sample_sites(mock_data):
+    """Without pinning, all four hyper sites appear as `sample` in the trace."""
+    name = "g"
+    priors = get_priors()
+    guesses = get_guesses(name, mock_data)
+    substituted = substitute(define_model, data=guesses)
+
+    with seed(rng_seed=0):
+        tr = trace(substituted).get_trace(name=name, data=mock_data, priors=priors)
+
+    for suffix in _PINNABLE_SUFFIXES:
+        site = tr[f"{name}_{suffix}"]
+        assert site["type"] == "sample", (
+            f"{suffix} should be a sample site when not pinned"
+        )
+
+
+def test_define_model_pinned_replaces_sample_with_deterministic(mock_data):
+    """Pinning a hyper replaces its sample site with a deterministic site."""
+    name = "g"
+    pinned = {"k_hyper_loc": 0.040, "m_hyper_scale": 0.15}
+    priors = ModelPriors(pinned=pinned, **get_hyperparameters())
+    guesses = get_guesses(name, mock_data)
+    # Strip pinned sites from guesses so substitute() does not override the
+    # deterministic value set by the pinning machinery.
+    guesses_no_pinned = {
+        k: v for k, v in guesses.items()
+        if not any(k == f"{name}_{s}" for s in pinned)
+    }
+    substituted = substitute(define_model, data=guesses_no_pinned)
+
+    with seed(rng_seed=0):
+        tr = trace(substituted).get_trace(name=name, data=mock_data, priors=priors)
+
+    # Pinned sites are deterministic at the pinned value
+    assert tr[f"{name}_k_hyper_loc"]["type"] == "deterministic"
+    assert float(tr[f"{name}_k_hyper_loc"]["value"]) == pytest.approx(0.040)
+    assert tr[f"{name}_m_hyper_scale"]["type"] == "deterministic"
+    assert float(tr[f"{name}_m_hyper_scale"]["value"]) == pytest.approx(0.15)
+
+    # Unpinned sites are still sample sites
+    assert tr[f"{name}_k_hyper_scale"]["type"] == "sample"
+    assert tr[f"{name}_m_hyper_loc"]["type"] == "sample"
+
+
+def test_define_model_pinned_constant_propagates_to_per_condition(mock_data):
+    """
+    With every hyper pinned and all offsets = 0, the per-condition outputs
+    must equal the pinned hyper-locs (since loc + 0*scale = loc).
+    """
+    name = "g"
+    pinned = {
+        "k_hyper_loc":   0.040,
+        "k_hyper_scale": 0.10,
+        "m_hyper_loc":   0.005,
+        "m_hyper_scale": 0.05,
+    }
+    priors = ModelPriors(pinned=pinned, **get_hyperparameters())
+
+    # Force offsets to zero so loc is the only contribution
+    subs = {
+        f"{name}_k_offset": jnp.zeros(mock_data.num_condition_rep),
+        f"{name}_m_offset": jnp.zeros(mock_data.num_condition_rep),
+    }
+
+    substituted = substitute(define_model, data=subs)
+    with seed(rng_seed=0):
+        tr = trace(substituted).get_trace(name=name, data=mock_data, priors=priors)
+
+    assert jnp.allclose(tr[f"{name}_k"]["value"], 0.040)
+    assert jnp.allclose(tr[f"{name}_m"]["value"], 0.005)
+
+
+def test_define_model_all_pinned_has_only_offset_sample_sites(mock_data):
+    """When every hyper is pinned, only the per-condition offsets remain as samples."""
+    name = "g"
+    pinned = {s: 0.0 for s in _PINNABLE_SUFFIXES}
+    priors = ModelPriors(pinned=pinned, **get_hyperparameters())
+    substituted = substitute(define_model,
+                             data={f"{name}_k_offset": jnp.zeros(mock_data.num_condition_rep),
+                                   f"{name}_m_offset": jnp.zeros(mock_data.num_condition_rep)})
+
+    with seed(rng_seed=0):
+        tr = trace(substituted).get_trace(name=name, data=mock_data, priors=priors)
+
+    sample_sites = {n for n, s in tr.items() if s["type"] == "sample"}
+    assert sample_sites == {f"{name}_k_offset", f"{name}_m_offset"}
+
+
+# ---------------------------------------------------------------------------
+# guide with pinning
+# ---------------------------------------------------------------------------
+
+def test_guide_pinned_drops_variational_params(mock_data):
+    """
+    A pinned hyper must not register any variational params or sample sites
+    in the guide.  Unpinned hypers retain their full param + sample machinery.
+    """
+    name = "gg"
+    pinned = {"k_hyper_loc": 0.030}
+    priors = ModelPriors(pinned=pinned, **get_hyperparameters())
+
+    with seed(rng_seed=0):
+        tr = trace(guide).get_trace(name=name, data=mock_data, priors=priors)
+
+    # Pinned hyper has neither sample nor variational params
+    assert f"{name}_k_hyper_loc" not in tr
+    assert f"{name}_k_hyper_loc_loc" not in tr
+    assert f"{name}_k_hyper_loc_scale" not in tr
+
+    # Unpinned hypers still expose their variational params
+    assert f"{name}_m_hyper_loc" in tr
+    assert f"{name}_m_hyper_loc_loc" in tr
+    assert f"{name}_m_hyper_loc_scale" in tr
+
+    # Per-condition offset sample sites are unaffected
+    assert f"{name}_k_offset" in tr
+    assert f"{name}_m_offset" in tr
+
+
+def test_guide_all_pinned_keeps_only_offset_machinery(mock_data):
+    """When all hypers are pinned, only offset params/samples remain in the guide."""
+    name = "gg"
+    pinned = {s: 0.0 for s in _PINNABLE_SUFFIXES}
+    priors = ModelPriors(pinned=pinned, **get_hyperparameters())
+
+    with seed(rng_seed=0):
+        tr = trace(guide).get_trace(name=name, data=mock_data, priors=priors)
+
+    for suffix in _PINNABLE_SUFFIXES:
+        assert f"{name}_{suffix}" not in tr
+        assert f"{name}_{suffix}_loc" not in tr
+        assert f"{name}_{suffix}_scale" not in tr
+
+    # Offset params and sample sites still present
+    assert f"{name}_k_offset_locs" in tr
+    assert f"{name}_k_offset_scales" in tr
+    assert f"{name}_m_offset_locs" in tr
+    assert f"{name}_m_offset_scales" in tr
+    assert f"{name}_k_offset" in tr
+    assert f"{name}_m_offset" in tr
+
+
+def test_guide_pinned_returns_pinned_value_in_per_condition(mock_data):
+    """
+    When all hypers are pinned and the variational offsets sample at zero,
+    the guide's per-condition values equal the pinned hyper-locs.
+    """
+    name = "gg"
+    pinned = {
+        "k_hyper_loc":   0.040,
+        "k_hyper_scale": 0.10,
+        "m_hyper_loc":   0.005,
+        "m_hyper_scale": 0.05,
+    }
+    priors = ModelPriors(pinned=pinned, **get_hyperparameters())
+
+    # Substitute the offset samples to zero so loc dominates
+    subs = {
+        f"{name}_k_offset": jnp.zeros(mock_data.num_condition_rep),
+        f"{name}_m_offset": jnp.zeros(mock_data.num_condition_rep),
+    }
+    substituted = substitute(guide, data=subs)
+
+    with seed(rng_seed=0):
+        params = substituted(name=name, data=mock_data, priors=priors)
+
+    # k_pre is k_per_condition[map_condition_pre]; with offset=0 every
+    # entry equals the pinned k_hyper_loc.
+    assert jnp.allclose(params.k_pre, 0.040)
+    assert jnp.allclose(params.k_sel, 0.040)
+    assert jnp.allclose(params.m_pre, 0.005)
+    assert jnp.allclose(params.m_sel, 0.005)
+
+
+# ---------------------------------------------------------------------------
+# Model+guide compatibility under pinning (SVI sanity)
+# ---------------------------------------------------------------------------
+
+def test_model_and_guide_pinned_have_compatible_sample_sites(mock_data):
+    """
+    Numpyro requires the guide to have a `sample` site for every model
+    `sample` site (excluding `obs`) — and no extras.  After pinning, both
+    sides drop the same sites; this test confirms the symmetry.
+    """
+    name = "compat"
+    pinned = {"k_hyper_loc": 0.03, "m_hyper_scale": 0.04}
+    priors = ModelPriors(pinned=pinned, **get_hyperparameters())
+
+    with seed(rng_seed=0):
+        model_trace = trace(define_model).get_trace(
+            name=name, data=mock_data, priors=priors
+        )
+        guide_trace = trace(guide).get_trace(
+            name=name, data=mock_data, priors=priors
+        )
+
+    model_samples = {
+        n for n, s in model_trace.items()
+        if s["type"] == "sample" and not s.get("is_observed", False)
+    }
+    guide_samples = {
+        n for n, s in guide_trace.items() if s["type"] == "sample"
+    }
+
+    assert model_samples == guide_samples, (
+        f"model and guide sample sites differ:\n"
+        f"  model only: {model_samples - guide_samples}\n"
+        f"  guide only: {guide_samples - model_samples}"
+    )

@@ -26,25 +26,75 @@ def _extract_scalars(obj, prefix=""):
                 out[f"{prefix}{k}"] = float(v) if isinstance(v, (int, float, np.number)) else str(v)
     return out
 
+def _gather_dict_field(full_key, flat_dict):
+    """
+    Collect a one-level-deep sub-dictionary for a dict-typed dataclass field.
+
+    Looks for keys of the form ``"{full_key}.{sub_key}"`` in ``flat_dict``
+    (with no further dots) and returns ``{sub_key: value}``.  Values are
+    coerced to ``float`` when possible, falling back to the raw value.
+
+    Returns
+    -------
+    dict
+        The collected sub-dictionary; empty if no matching keys were found.
+    """
+    sub_dict = {}
+    sub_prefix = f"{full_key}."
+    for k, v in flat_dict.items():
+        if not k.startswith(sub_prefix):
+            continue
+        suffix = k[len(sub_prefix):]
+        # Only pick up keys that name a single suffix; deeper nesting
+        # (suffix containing another '.') indicates a nested dataclass and
+        # is handled by the recursive walk in _update_dataclass.
+        if "." in suffix:
+            continue
+        try:
+            sub_dict[suffix] = float(v)
+        except (ValueError, TypeError):
+            sub_dict[suffix] = v
+    return sub_dict
+
+
 def _update_dataclass(dc, prefix, flat_dict):
-    """Recursively update a dataclass from a flat dictionary of values."""
+    """
+    Recursively update a dataclass from a flat dictionary of values.
+
+    Supports three field types:
+    - Nested dataclasses (recurse with extended prefix).
+    - Scalar leaves (consume ``flat_dict[full_key]``).
+    - Dict-typed fields (consume any ``flat_dict[full_key.<sub>]`` keys
+      via :func:`_gather_dict_field`).  Used by the ``pinned`` field on
+      component ``ModelPriors`` to inject empirical-Bayes hyperprior
+      values from the calibration pre-fit.
+    """
     import dataclasses
     updates = {}
-    
+
     # Check if this is a standard dataclass or a flax struct dataclass
     if hasattr(dc, '__dataclass_fields__'):
         fields = dataclasses.fields(dc) if dataclasses.is_dataclass(dc) else dc.__dataclass_fields__.values()
-        
+
         for field in fields:
             field_name = field.name
             full_key = f"{prefix}{field_name}" if prefix else field_name
             attr_val = getattr(dc, field_name)
-            
+
             if hasattr(attr_val, '__dataclass_fields__'):
                 updates[field_name] = _update_dataclass(attr_val, full_key + ".", flat_dict)
+            elif isinstance(attr_val, dict):
+                # Dict-typed field — gather any "{full_key}.<suffix>" rows.
+                # Merge with the existing dict so previously-set entries
+                # are preserved when the CSV doesn't override them.
+                sub = _gather_dict_field(full_key, flat_dict)
+                if sub:
+                    merged = dict(attr_val)
+                    merged.update(sub)
+                    updates[field_name] = merged
             elif full_key in flat_dict:
                 updates[field_name] = flat_dict[full_key]
-                
+
         if len(updates) > 0:
             if hasattr(dc, "replace"):
                 return dc.replace(**updates)

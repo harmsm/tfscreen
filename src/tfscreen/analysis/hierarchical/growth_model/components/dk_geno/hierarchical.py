@@ -2,9 +2,21 @@ import numpy as np
 import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
-from flax.struct import dataclass
+from flax.struct import dataclass, field
+from typing import Mapping
 
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
+from tfscreen.analysis.hierarchical.growth_model.components._pinning import (
+    _hyper,
+    _pinned_value,
+)
+
+
+# Hyperparameter suffixes that may be pinned via ModelPriors.pinned.
+_PINNABLE_SUFFIXES = (
+    "hyper_loc", "hyper_scale", "shift",
+)
+
 
 @dataclass(frozen=True)
 class ModelPriors:
@@ -17,6 +29,10 @@ class ModelPriors:
     dk_geno_hyper_scale_loc: float
     dk_geno_hyper_shift_loc: float
     dk_geno_hyper_shift_scale: float
+
+    pinned: Mapping[str, float] = field(
+        pytree_node=False, default_factory=dict
+    )
     
 
 def define_model(name: str, 
@@ -56,20 +72,25 @@ def define_model(name: str,
         with dk_geno values for each position in the tensor.
     """
 
-    dk_geno_hyper_loc = pyro.sample(
-        f"{name}_hyper_loc",
+    pinned = priors.pinned
+
+    dk_geno_hyper_loc = _hyper(
+        name, "hyper_loc",
         dist.Normal(priors.dk_geno_hyper_loc_loc,
-                    priors.dk_geno_hyper_loc_scale)
+                    priors.dk_geno_hyper_loc_scale),
+        pinned,
     )
-    dk_geno_hyper_scale = pyro.sample(
-        f"{name}_hyper_scale",
-        dist.HalfNormal(priors.dk_geno_hyper_scale_loc)
+    dk_geno_hyper_scale = _hyper(
+        name, "hyper_scale",
+        dist.HalfNormal(priors.dk_geno_hyper_scale_loc),
+        pinned,
     )
 
-    dk_geno_hyper_shift = pyro.sample(
-        f"{name}_shift",
+    dk_geno_hyper_shift = _hyper(
+        name, "shift",
         dist.Normal(priors.dk_geno_hyper_shift_loc,
-                    priors.dk_geno_hyper_shift_scale)
+                    priors.dk_geno_hyper_shift_scale),
+        pinned,
     )
 
     with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
@@ -109,26 +130,40 @@ def guide(name: str,
     - Normal distributions for the per-genotype offsets.
     """
 
+    pinned = priors.pinned
+
     # --- Global Parameters ---
 
     # Hyper Loc (Normal guide for Normal prior)
-    h_loc_loc = pyro.param(f"{name}_hyper_loc_loc", jnp.array(priors.dk_geno_hyper_loc_loc))
-    h_loc_scale = pyro.param(f"{name}_hyper_loc_scale", jnp.array(priors.dk_geno_hyper_loc_scale),
-                             constraint=dist.constraints.greater_than(1e-4))
-    dk_geno_hyper_loc = pyro.sample(f"{name}_hyper_loc", dist.Normal(h_loc_loc, h_loc_scale))
+    pinned_hl = _pinned_value("hyper_loc", pinned)
+    if pinned_hl is not None:
+        dk_geno_hyper_loc = pinned_hl
+    else:
+        h_loc_loc = pyro.param(f"{name}_hyper_loc_loc", jnp.array(priors.dk_geno_hyper_loc_loc))
+        h_loc_scale = pyro.param(f"{name}_hyper_loc_scale", jnp.array(priors.dk_geno_hyper_loc_scale),
+                                 constraint=dist.constraints.greater_than(1e-4))
+        dk_geno_hyper_loc = pyro.sample(f"{name}_hyper_loc", dist.Normal(h_loc_loc, h_loc_scale))
 
     # Hyper Scale (LogNormal guide for HalfNormal prior)
     # Initialized to -1.0 (approx 0.37) to start with reasonable spread
-    h_scale_loc = pyro.param(f"{name}_hyper_scale_loc", jnp.array(-1.0))
-    h_scale_scale = pyro.param(f"{name}_hyper_scale_scale", jnp.array(0.1),
-                               constraint=dist.constraints.greater_than(1e-4))
-    dk_geno_hyper_scale = pyro.sample(f"{name}_hyper_scale", dist.LogNormal(h_scale_loc, h_scale_scale))
+    pinned_hs = _pinned_value("hyper_scale", pinned)
+    if pinned_hs is not None:
+        dk_geno_hyper_scale = pinned_hs
+    else:
+        h_scale_loc = pyro.param(f"{name}_hyper_scale_loc", jnp.array(-1.0))
+        h_scale_scale = pyro.param(f"{name}_hyper_scale_scale", jnp.array(0.1),
+                                   constraint=dist.constraints.greater_than(1e-4))
+        dk_geno_hyper_scale = pyro.sample(f"{name}_hyper_scale", dist.LogNormal(h_scale_loc, h_scale_scale))
 
     # Shift (Normal guide for Normal prior)
-    shift_loc = pyro.param(f"{name}_shift_loc", jnp.array(priors.dk_geno_hyper_shift_loc))
-    shift_scale = pyro.param(f"{name}_shift_scale", jnp.array(priors.dk_geno_hyper_shift_scale),
-                             constraint=dist.constraints.greater_than(1e-4))
-    dk_geno_hyper_shift = pyro.sample(f"{name}_shift", dist.Normal(shift_loc, shift_scale))
+    pinned_sh = _pinned_value("shift", pinned)
+    if pinned_sh is not None:
+        dk_geno_hyper_shift = pinned_sh
+    else:
+        shift_loc = pyro.param(f"{name}_shift_loc", jnp.array(priors.dk_geno_hyper_shift_loc))
+        shift_scale = pyro.param(f"{name}_shift_scale", jnp.array(priors.dk_geno_hyper_shift_scale),
+                                 constraint=dist.constraints.greater_than(1e-4))
+        dk_geno_hyper_shift = pyro.sample(f"{name}_shift", dist.Normal(shift_loc, shift_scale))
 
     # --- Local Parameters (Per Genotype) ---
     

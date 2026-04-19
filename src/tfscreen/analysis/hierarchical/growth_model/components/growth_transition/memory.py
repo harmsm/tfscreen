@@ -1,9 +1,22 @@
 import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
-from flax.struct import dataclass
+from flax.struct import dataclass, field
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
-from typing import Dict, Any
+from tfscreen.analysis.hierarchical.growth_model.components._pinning import (
+    _hyper,
+    _pinned_value,
+)
+from typing import Dict, Any, Mapping
+
+
+# Hyperparameter suffixes that may be pinned via ModelPriors.pinned.
+_PINNABLE_SUFFIXES = (
+    "tau0_hyper_loc", "tau0_hyper_scale",
+    "k1_hyper_loc", "k1_hyper_scale",
+    "k2_hyper_loc", "k2_hyper_scale",
+)
+
 
 @dataclass(frozen=True)
 class ModelPriors:
@@ -21,6 +34,10 @@ class ModelPriors:
     k2_hyper_loc_loc: float
     k2_hyper_loc_scale: float
     k2_hyper_scale: float
+
+    pinned: Mapping[str, float] = field(
+        pytree_node=False, default_factory=dict
+    )
 
 
 def define_model(name: str, 
@@ -62,34 +79,42 @@ def define_model(name: str,
         The total growth over both phases.
     """
 
+    pinned = priors.pinned
+
     # Hierarchical tau0
-    tau0_hyper_loc = pyro.sample(
-        f"{name}_tau0_hyper_loc",
-        dist.Normal(priors.tau0_hyper_loc_loc, priors.tau0_hyper_loc_scale)
+    tau0_hyper_loc = _hyper(
+        name, "tau0_hyper_loc",
+        dist.Normal(priors.tau0_hyper_loc_loc, priors.tau0_hyper_loc_scale),
+        pinned,
     )
-    tau0_hyper_scale = pyro.sample(
-        f"{name}_tau0_hyper_scale",
-        dist.HalfNormal(priors.tau0_hyper_scale)
+    tau0_hyper_scale = _hyper(
+        name, "tau0_hyper_scale",
+        dist.HalfNormal(priors.tau0_hyper_scale),
+        pinned,
     )
 
     # Hierarchical k1
-    k1_hyper_loc = pyro.sample(
-        f"{name}_k1_hyper_loc",
-        dist.Normal(priors.k1_hyper_loc_loc, priors.k1_hyper_loc_scale)
+    k1_hyper_loc = _hyper(
+        name, "k1_hyper_loc",
+        dist.Normal(priors.k1_hyper_loc_loc, priors.k1_hyper_loc_scale),
+        pinned,
     )
-    k1_hyper_scale = pyro.sample(
-        f"{name}_k1_hyper_scale",
-        dist.HalfNormal(priors.k1_hyper_scale)
+    k1_hyper_scale = _hyper(
+        name, "k1_hyper_scale",
+        dist.HalfNormal(priors.k1_hyper_scale),
+        pinned,
     )
 
     # Hierarchical k2
-    k2_hyper_loc = pyro.sample(
-        f"{name}_k2_hyper_loc",
-        dist.Normal(priors.k2_hyper_loc_loc, priors.k2_hyper_loc_scale)
+    k2_hyper_loc = _hyper(
+        name, "k2_hyper_loc",
+        dist.Normal(priors.k2_hyper_loc_loc, priors.k2_hyper_loc_scale),
+        pinned,
     )
-    k2_hyper_scale = pyro.sample(
-        f"{name}_k2_hyper_scale",
-        dist.HalfNormal(priors.k2_hyper_scale)
+    k2_hyper_scale = _hyper(
+        name, "k2_hyper_scale",
+        dist.HalfNormal(priors.k2_hyper_scale),
+        pinned,
     )
 
     # Plate over conditions
@@ -142,38 +167,46 @@ def guide(name: str,
     Guide corresponding to the memory-dependent growth transition model.
     """
 
-    # tau0 hyper
-    tau0_loc_loc = pyro.param(f"{name}_tau0_hyper_loc_loc", jnp.array(priors.tau0_hyper_loc_loc))
-    tau0_loc_scale = pyro.param(f"{name}_tau0_hyper_loc_scale", jnp.array(priors.tau0_hyper_loc_scale),
-                                constraint=dist.constraints.greater_than(1e-4))
-    tau0_hyper_loc = pyro.sample(f"{name}_tau0_hyper_loc", dist.Normal(tau0_loc_loc, tau0_loc_scale))
+    pinned = priors.pinned
 
-    tau0_scale_loc = pyro.param(f"{name}_tau0_hyper_scale_loc", jnp.array(-1.0))
-    tau0_scale_scale = pyro.param(f"{name}_tau0_hyper_scale_scale", jnp.array(0.1),
-                                  constraint=dist.constraints.greater_than(1e-4))
-    tau0_hyper_scale = pyro.sample(f"{name}_tau0_hyper_scale", dist.LogNormal(tau0_scale_loc, tau0_scale_scale))
+    def _guide_hyper_loc(prefix, default_loc, default_scale):
+        suffix = f"{prefix}_hyper_loc"
+        pinned_v = _pinned_value(suffix, pinned)
+        if pinned_v is not None:
+            return pinned_v
+        loc_loc = pyro.param(f"{name}_{suffix}_loc", jnp.array(default_loc))
+        loc_scale = pyro.param(
+            f"{name}_{suffix}_scale", jnp.array(default_scale),
+            constraint=dist.constraints.greater_than(1e-4),
+        )
+        return pyro.sample(f"{name}_{suffix}", dist.Normal(loc_loc, loc_scale))
 
-    # k1 hyper
-    k1_loc_loc = pyro.param(f"{name}_k1_hyper_loc_loc", jnp.array(priors.k1_hyper_loc_loc))
-    k1_loc_scale = pyro.param(f"{name}_k1_hyper_loc_scale", jnp.array(priors.k1_hyper_loc_scale),
-                               constraint=dist.constraints.greater_than(1e-4))
-    k1_hyper_loc = pyro.sample(f"{name}_k1_hyper_loc", dist.Normal(k1_loc_loc, k1_loc_scale))
+    def _guide_hyper_scale(prefix):
+        suffix = f"{prefix}_hyper_scale"
+        pinned_v = _pinned_value(suffix, pinned)
+        if pinned_v is not None:
+            return pinned_v
+        scale_loc = pyro.param(f"{name}_{suffix}_loc", jnp.array(-1.0))
+        scale_scale = pyro.param(
+            f"{name}_{suffix}_scale", jnp.array(0.1),
+            constraint=dist.constraints.greater_than(1e-4),
+        )
+        return pyro.sample(
+            f"{name}_{suffix}", dist.LogNormal(scale_loc, scale_scale)
+        )
 
-    k1_scale_loc = pyro.param(f"{name}_k1_hyper_scale_loc", jnp.array(-1.0))
-    k1_scale_scale = pyro.param(f"{name}_k1_hyper_scale_scale", jnp.array(0.1),
-                                 constraint=dist.constraints.greater_than(1e-4))
-    k1_hyper_scale = pyro.sample(f"{name}_k1_hyper_scale", dist.LogNormal(k1_scale_loc, k1_scale_scale))
-
-    # k2 hyper
-    k2_loc_loc = pyro.param(f"{name}_k2_hyper_loc_loc", jnp.array(priors.k2_hyper_loc_loc))
-    k2_loc_scale = pyro.param(f"{name}_k2_hyper_loc_scale", jnp.array(priors.k2_hyper_loc_scale),
-                               constraint=dist.constraints.greater_than(1e-4))
-    k2_hyper_loc = pyro.sample(f"{name}_k2_hyper_loc", dist.Normal(k2_loc_loc, k2_loc_scale))
-
-    k2_scale_loc = pyro.param(f"{name}_k2_hyper_scale_loc", jnp.array(-1.0))
-    k2_scale_scale = pyro.param(f"{name}_k2_hyper_scale_scale", jnp.array(0.1),
-                                 constraint=dist.constraints.greater_than(1e-4))
-    k2_hyper_scale = pyro.sample(f"{name}_k2_hyper_scale", dist.LogNormal(k2_scale_loc, k2_scale_scale))
+    tau0_hyper_loc = _guide_hyper_loc(
+        "tau0", priors.tau0_hyper_loc_loc, priors.tau0_hyper_loc_scale
+    )
+    tau0_hyper_scale = _guide_hyper_scale("tau0")
+    k1_hyper_loc = _guide_hyper_loc(
+        "k1", priors.k1_hyper_loc_loc, priors.k1_hyper_loc_scale
+    )
+    k1_hyper_scale = _guide_hyper_scale("k1")
+    k2_hyper_loc = _guide_hyper_loc(
+        "k2", priors.k2_hyper_loc_loc, priors.k2_hyper_loc_scale
+    )
+    k2_hyper_scale = _guide_hyper_scale("k2")
 
     # Offsets
     tau0_offset_locs = pyro.param(f"{name}_tau0_offset_locs", jnp.zeros(data.num_condition_rep))

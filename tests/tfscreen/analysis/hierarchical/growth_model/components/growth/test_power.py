@@ -188,3 +188,108 @@ def test_guide_logic_and_shapes(mock_data):
     assert n_pre.shape == mock_data.map_condition_pre.shape
     assert k_sel.shape == mock_data.map_condition_sel.shape
     assert n_sel.shape == mock_data.map_condition_sel.shape
+
+# ---------------------------------------------------------------------------
+# Pinning tests
+# ---------------------------------------------------------------------------
+
+from tfscreen.analysis.hierarchical.growth_model.components.growth.power import (
+    _PINNABLE_SUFFIXES,
+)
+
+
+def test_pinnable_suffixes_includes_all_six_hypers():
+    assert set(_PINNABLE_SUFFIXES) == {
+        "k_hyper_loc", "k_hyper_scale",
+        "m_hyper_loc", "m_hyper_scale",
+        "n_hyper_loc", "n_hyper_scale",
+    }
+
+
+def test_model_priors_default_pinned_is_empty_dict():
+    priors = get_priors()
+    assert priors.pinned == {}
+
+
+def test_model_priors_accepts_pinned_dict():
+    pinned = {"k_hyper_loc": 0.04, "n_hyper_scale": 0.05}
+    priors = ModelPriors(pinned=pinned, **get_hyperparameters())
+    assert priors.pinned == pinned
+
+
+def test_define_model_unpinned_uses_sample_sites(mock_data):
+    name = "g"
+    priors = get_priors()
+    with seed(rng_seed=0):
+        tr = trace(define_model).get_trace(name=name, data=mock_data, priors=priors)
+
+    for suffix in _PINNABLE_SUFFIXES:
+        assert tr[f"{name}_{suffix}"]["type"] == "sample"
+
+
+def test_define_model_pinned_replaces_sample_with_deterministic(mock_data):
+    name = "g"
+    pinned = {"k_hyper_loc": 0.040, "n_hyper_scale": 0.05}
+    priors = ModelPriors(pinned=pinned, **get_hyperparameters())
+
+    with seed(rng_seed=0):
+        tr = trace(define_model).get_trace(name=name, data=mock_data, priors=priors)
+
+    assert tr[f"{name}_k_hyper_loc"]["type"] == "deterministic"
+    assert float(tr[f"{name}_k_hyper_loc"]["value"]) == pytest.approx(0.040)
+    assert tr[f"{name}_n_hyper_scale"]["type"] == "deterministic"
+    assert float(tr[f"{name}_n_hyper_scale"]["value"]) == pytest.approx(0.05)
+    # Untouched suffixes still sample
+    assert tr[f"{name}_m_hyper_loc"]["type"] == "sample"
+    assert tr[f"{name}_k_hyper_scale"]["type"] == "sample"
+
+
+def test_define_model_all_pinned_has_only_offset_sample_sites(mock_data):
+    name = "g"
+    pinned = {s: 0.0 for s in _PINNABLE_SUFFIXES}
+    pinned["n_hyper_loc"] = 0.0  # n must be 1.0 after exp(0)
+    priors = ModelPriors(pinned=pinned, **get_hyperparameters())
+
+    with seed(rng_seed=0):
+        tr = trace(define_model).get_trace(name=name, data=mock_data, priors=priors)
+
+    sample_sites = [k for k, v in tr.items() if v["type"] == "sample"]
+    expected = {f"{name}_k_offset", f"{name}_m_offset", f"{name}_n_offset"}
+    assert set(sample_sites) == expected
+
+
+def test_guide_pinned_drops_variational_params(mock_data):
+    name = "g"
+    pinned = {"k_hyper_loc": 0.04, "n_hyper_scale": 0.05}
+    priors = ModelPriors(pinned=pinned, **get_hyperparameters())
+
+    with seed(rng_seed=0):
+        tr = trace(guide).get_trace(name=name, data=mock_data, priors=priors)
+
+    # Pinned: no variational params and no sample
+    assert f"{name}_k_hyper_loc_loc" not in tr
+    assert f"{name}_k_hyper_loc_scale" not in tr
+    assert f"{name}_k_hyper_loc" not in tr
+    assert f"{name}_n_hyper_scale_loc" not in tr
+    assert f"{name}_n_hyper_scale_scale" not in tr
+    assert f"{name}_n_hyper_scale" not in tr
+
+    # Unpinned: still present
+    assert f"{name}_m_hyper_loc_loc" in tr
+    assert f"{name}_m_hyper_loc" in tr
+
+
+def test_model_and_guide_pinned_have_compatible_sample_sites(mock_data):
+    """Critical: guide and model must agree on which sample sites exist."""
+    name = "g"
+    pinned = {"k_hyper_loc": 0.04, "n_hyper_scale": 0.05}
+    priors = ModelPriors(pinned=pinned, **get_hyperparameters())
+
+    with seed(rng_seed=0):
+        m_tr = trace(define_model).get_trace(name=name, data=mock_data, priors=priors)
+    with seed(rng_seed=0):
+        g_tr = trace(guide).get_trace(name=name, data=mock_data, priors=priors)
+
+    m_samples = {k for k, v in m_tr.items() if v["type"] == "sample"}
+    g_samples = {k for k, v in g_tr.items() if v["type"] == "sample"}
+    assert m_samples == g_samples

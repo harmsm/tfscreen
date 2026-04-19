@@ -2,11 +2,105 @@ import numpy as np
 import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
-from flax.struct import dataclass
+from flax.struct import dataclass, field
 
-from typing import Dict, Any
+from typing import Dict, Any, Mapping, Optional
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
+from tfscreen.analysis.hierarchical.growth_model.components._pinning import (
+    _hyper,
+    _pinned_value,
+)
 
+
+# Hyperparameter suffixes that may be pinned via ModelPriors.pinned.
+# Only the *library* subgroup hyperpriors are eligible — the wt and spiked
+# subgroups are non-hierarchical (single-member or near-single-member with
+# fixed per-genotype scales), so pinning them would not address any
+# bilinear pathology.
+_PINNABLE_SUFFIXES = (
+    "hyper_loc", "hyper_scale",
+)
+
+
+# ---------------------------------------------------------------------------
+# Defaults & helpers
+# ---------------------------------------------------------------------------
+
+# Floor on data-derived scale estimates.  Stops a degenerate group (single
+# observation, identical replicates) from collapsing the prior to zero, which
+# would lock the corresponding ln_cfu0 parameter at its loc.
+_SCALE_FLOOR = 0.5
+
+# Fall-back values used when no data is available (default get_priors call,
+# or a group has no members in the supplied data).
+_FALLBACK_HYPER_LOC   = 6.0
+_FALLBACK_SPIKED_LOC  = 12.0
+_FALLBACK_WT_LOC      = 13.0
+_FALLBACK_GROUP_SCALE = 3.0
+
+
+def _mad_scale(values: np.ndarray, fallback: float) -> float:
+    """
+    Median-absolute-deviation based scale estimate, with a floor.
+
+    Parameters
+    ----------
+    values : np.ndarray
+        Array of observations (NaNs are ignored).
+    fallback : float
+        Value to return when ``values`` is empty or all-NaN.
+
+    Returns
+    -------
+    float
+        Robust scale estimate (``1.4826 * MAD``), clipped from below by
+        ``_SCALE_FLOOR``.  Returns ``fallback`` if no usable values exist.
+    """
+    if values.size == 0:
+        return fallback
+    finite = values[~np.isnan(values)]
+    if finite.size == 0:
+        return fallback
+    median = np.median(finite)
+    mad = np.median(np.abs(finite - median))
+    scale = 1.4826 * float(mad)
+    return max(scale, _SCALE_FLOOR)
+
+
+def _per_geno_loc_scale(data: GrowthData,
+                        priors: "ModelPriors",
+                        ln_cfu0_hyper_loc,
+                        ln_cfu0_hyper_scale,
+                        ln_cfu0_spiked_loc,
+                        ln_cfu0_wt_loc):
+    """
+    Build per-genotype location and scale arrays for the current batch.
+
+    Library genotypes use the (sampled) hyper-loc and hyper-scale; spiked
+    and wildtype genotypes use their own (sampled) locations and (fixed,
+    prior-supplied) scales.  Returning per-genotype scale alongside loc
+    eliminates the structural bug in which the library hyper-scale was
+    shared across all subgroups.
+    """
+    batch_spiked_mask = data.ln_cfu0_spiked_mask[data.batch_idx]
+    batch_wt_mask = data.ln_cfu0_wt_mask[data.batch_idx]
+
+    per_geno_loc = jnp.where(
+        batch_wt_mask, ln_cfu0_wt_loc,
+        jnp.where(batch_spiked_mask, ln_cfu0_spiked_loc, ln_cfu0_hyper_loc)
+    )
+    per_geno_scale = jnp.where(
+        batch_wt_mask, priors.ln_cfu0_wt_scale,
+        jnp.where(batch_spiked_mask,
+                  priors.ln_cfu0_spiked_scale,
+                  ln_cfu0_hyper_scale)
+    )
+    return per_geno_loc, per_geno_scale
+
+
+# ---------------------------------------------------------------------------
+# Priors dataclass
+# ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class ModelPriors:
@@ -20,11 +114,23 @@ class ModelPriors:
     ln_cfu0_hyper_loc_scale : float
         Standard deviation of the prior for the hyper-location of ln_cfu0.
     ln_cfu0_hyper_scale_loc : float
-        Scale of the HalfNormal prior for the hyper-scale of ln_cfu0.
+        Scale of the HalfNormal prior for the hyper-scale of ln_cfu0
+        (library genotypes only).
     ln_cfu0_spiked_loc_loc : float
         Mean of the Normal prior for the ln_cfu0 location of spiked genotypes.
     ln_cfu0_spiked_loc_scale : float
         Standard deviation of the Normal prior for the spiked genotype location.
+    ln_cfu0_spiked_scale : float
+        Fixed scale used as the per-genotype noise for spiked genotypes.
+        This eliminates the bilinear pathology that arises when a learned
+        hyper-scale is shared with a single-member subgroup.
+    ln_cfu0_wt_loc_loc : float
+        Mean of the Normal prior for the ln_cfu0 location of the wildtype
+        genotype.
+    ln_cfu0_wt_loc_scale : float
+        Standard deviation of the Normal prior for the wildtype location.
+    ln_cfu0_wt_scale : float
+        Fixed scale used as the per-genotype noise for the wildtype genotype.
     """
 
     ln_cfu0_hyper_loc_loc: float
@@ -32,8 +138,19 @@ class ModelPriors:
     ln_cfu0_hyper_scale_loc: float
     ln_cfu0_spiked_loc_loc: float
     ln_cfu0_spiked_loc_scale: float
+    ln_cfu0_spiked_scale: float
     ln_cfu0_wt_loc_loc: float
     ln_cfu0_wt_loc_scale: float
+    ln_cfu0_wt_scale: float
+
+    pinned: Mapping[str, float] = field(
+        pytree_node=False, default_factory=dict
+    )
+
+
+# ---------------------------------------------------------------------------
+# Model and guide
+# ---------------------------------------------------------------------------
 
 def define_model(name: str,
                  data: GrowthData,
@@ -43,10 +160,11 @@ def define_model(name: str,
 
     Library genotypes share a pooled Normal distribution whose location and
     scale are learned hyper-parameters.  Spiked genotypes (flagged via
-    ``data.ln_cfu0_spiked_mask``) share a separate scalar location parameter,
-    allowing them to have a very different prior mean (e.g. ln_cfu0 ~ 10)
-    without distorting the library hierarchy.  All genotypes share the same
-    hyper-scale and per-genotype non-centered offsets.
+    ``data.ln_cfu0_spiked_mask``) and the wildtype genotype (flagged via
+    ``data.ln_cfu0_wt_mask``) have their own scalar location parameters and
+    use *fixed* per-genotype scales drawn from ``priors``.  Each genotype's
+    realised value is ``loc_g + offset_g * scale_g`` with a per-group
+    ``loc_g`` and ``scale_g``.
 
     Parameters
     ----------
@@ -69,15 +187,19 @@ def define_model(name: str,
         ``(num_replicate, 1, num_condition_pre, 1, 1, 1, batch_size)``.
     """
 
+    pinned = priors.pinned
+
     # Hyper-priors for the library-genotype pooled distribution
-    ln_cfu0_hyper_loc = pyro.sample(
-        f"{name}_hyper_loc",
+    ln_cfu0_hyper_loc = _hyper(
+        name, "hyper_loc",
         dist.Normal(priors.ln_cfu0_hyper_loc_loc,
-                    priors.ln_cfu0_hyper_loc_scale)
+                    priors.ln_cfu0_hyper_loc_scale),
+        pinned,
     )
-    ln_cfu0_hyper_scale = pyro.sample(
-        f"{name}_hyper_scale",
-        dist.HalfNormal(priors.ln_cfu0_hyper_scale_loc)
+    ln_cfu0_hyper_scale = _hyper(
+        name, "hyper_scale",
+        dist.HalfNormal(priors.ln_cfu0_hyper_scale_loc),
+        pinned,
     )
 
     # Separate scalar location for spiked genotypes
@@ -106,14 +228,15 @@ def define_model(name: str,
     if ln_cfu0_offsets.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
         ln_cfu0_offsets = ln_cfu0_offsets[..., data.batch_idx]
 
-    # Per-genotype location: wt uses wt_loc, spiked uses spiked_loc, library uses hyper_loc
-    batch_spiked_mask = data.ln_cfu0_spiked_mask[data.batch_idx]
-    batch_wt_mask = data.ln_cfu0_wt_mask[data.batch_idx]
-    per_geno_loc = jnp.where(batch_wt_mask, ln_cfu0_wt_loc,
-                   jnp.where(batch_spiked_mask, ln_cfu0_spiked_loc, ln_cfu0_hyper_loc))
+    per_geno_loc, per_geno_scale = _per_geno_loc_scale(
+        data, priors,
+        ln_cfu0_hyper_loc, ln_cfu0_hyper_scale,
+        ln_cfu0_spiked_loc, ln_cfu0_wt_loc,
+    )
 
-    # Calculate the per-group ln_cfu0 values
-    ln_cfu0_per_rep_cond_geno = per_geno_loc + ln_cfu0_offsets * ln_cfu0_hyper_scale
+    # Calculate the per-group ln_cfu0 values (per-genotype scale eliminates
+    # the bilinear pathology for single-member subgroups).
+    ln_cfu0_per_rep_cond_geno = per_geno_loc + ln_cfu0_offsets * per_geno_scale
 
     # Register deterministic values for inspection
     pyro.deterministic(name, ln_cfu0_per_rep_cond_geno)
@@ -133,18 +256,28 @@ def guide(name: str,
     location, LogNormal for the hyper-scale, and Normal for per-genotype offsets.
     """
 
+    pinned = priors.pinned
+
     # -------------------------------------------------------------------------
     # Global parameters
 
     # Hyper Loc — library genotypes (Normal posterior)
-    h_loc_loc = pyro.param(f"{name}_hyper_loc_loc", jnp.array(priors.ln_cfu0_hyper_loc_loc))
-    h_loc_scale = pyro.param(f"{name}_hyper_loc_scale", jnp.array(priors.ln_cfu0_hyper_loc_scale), constraint=dist.constraints.greater_than(1e-4))
-    ln_cfu0_hyper_loc = pyro.sample(f"{name}_hyper_loc", dist.Normal(h_loc_loc, h_loc_scale))
+    pinned_hl = _pinned_value("hyper_loc", pinned)
+    if pinned_hl is not None:
+        ln_cfu0_hyper_loc = pinned_hl
+    else:
+        h_loc_loc = pyro.param(f"{name}_hyper_loc_loc", jnp.array(priors.ln_cfu0_hyper_loc_loc))
+        h_loc_scale = pyro.param(f"{name}_hyper_loc_scale", jnp.array(priors.ln_cfu0_hyper_loc_scale), constraint=dist.constraints.greater_than(1e-4))
+        ln_cfu0_hyper_loc = pyro.sample(f"{name}_hyper_loc", dist.Normal(h_loc_loc, h_loc_scale))
 
     # Hyper Scale (LogNormal posterior approximation for positive variable)
-    h_scale_loc = pyro.param(f"{name}_hyper_scale_loc", jnp.array(-1.0)) # Init small
-    h_scale_scale = pyro.param(f"{name}_hyper_scale_scale", jnp.array(0.1), constraint=dist.constraints.greater_than(1e-4))
-    ln_cfu0_hyper_scale = pyro.sample(f"{name}_hyper_scale", dist.LogNormal(h_scale_loc, h_scale_scale))
+    pinned_hs = _pinned_value("hyper_scale", pinned)
+    if pinned_hs is not None:
+        ln_cfu0_hyper_scale = pinned_hs
+    else:
+        h_scale_loc = pyro.param(f"{name}_hyper_scale_loc", jnp.array(-1.0)) # Init small
+        h_scale_scale = pyro.param(f"{name}_hyper_scale_scale", jnp.array(0.1), constraint=dist.constraints.greater_than(1e-4))
+        ln_cfu0_hyper_scale = pyro.sample(f"{name}_hyper_scale", dist.LogNormal(h_scale_loc, h_scale_scale))
 
     # Spiked Loc — spiked genotypes (Normal posterior)
     s_loc_loc = pyro.param(f"{name}_spiked_loc_loc", jnp.array(priors.ln_cfu0_spiked_loc_loc))
@@ -181,19 +314,24 @@ def guide(name: str,
     if ln_cfu0_offsets.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
         ln_cfu0_offsets = ln_cfu0_offsets[..., data.batch_idx]
 
-    # Per-genotype location: wt uses wt_loc, spiked uses spiked_loc, library uses hyper_loc
-    batch_spiked_mask = data.ln_cfu0_spiked_mask[data.batch_idx]
-    batch_wt_mask = data.ln_cfu0_wt_mask[data.batch_idx]
-    per_geno_loc = jnp.where(batch_wt_mask, ln_cfu0_wt_loc,
-                   jnp.where(batch_spiked_mask, ln_cfu0_spiked_loc, ln_cfu0_hyper_loc))
+    per_geno_loc, per_geno_scale = _per_geno_loc_scale(
+        data, priors,
+        ln_cfu0_hyper_loc, ln_cfu0_hyper_scale,
+        ln_cfu0_spiked_loc, ln_cfu0_wt_loc,
+    )
 
     # Calculate the per-group ln_cfu0 values
-    ln_cfu0_per_rep_cond_geno = per_geno_loc + ln_cfu0_offsets * ln_cfu0_hyper_scale
+    ln_cfu0_per_rep_cond_geno = per_geno_loc + ln_cfu0_offsets * per_geno_scale
 
     # Expand tensor to match all observations
     ln_cfu0 = ln_cfu0_per_rep_cond_geno[:,None,:,None,None,None,:]
 
     return ln_cfu0
+
+
+# ---------------------------------------------------------------------------
+# Hyperparameters / priors / guesses
+# ---------------------------------------------------------------------------
 
 def get_hyperparameters() -> Dict[str, Any]:
     """
@@ -207,15 +345,89 @@ def get_hyperparameters() -> Dict[str, Any]:
 
     parameters = {}
 
-    parameters["ln_cfu0_hyper_loc_loc"] = 6.0   # typical library ln_cfu0 ≈ exp(6) ≈ 400 cells
+    parameters["ln_cfu0_hyper_loc_loc"] = _FALLBACK_HYPER_LOC
     parameters["ln_cfu0_hyper_loc_scale"] = 3.0
     parameters["ln_cfu0_hyper_scale_loc"] = 2.0
-    parameters["ln_cfu0_spiked_loc_loc"] = 12.0
+    parameters["ln_cfu0_spiked_loc_loc"] = _FALLBACK_SPIKED_LOC
     parameters["ln_cfu0_spiked_loc_scale"] = 3.0
-    parameters["ln_cfu0_wt_loc_loc"] = 13.0
+    parameters["ln_cfu0_spiked_scale"] = _FALLBACK_GROUP_SCALE
+    parameters["ln_cfu0_wt_loc_loc"] = _FALLBACK_WT_LOC
     parameters["ln_cfu0_wt_loc_scale"] = 3.0
+    parameters["ln_cfu0_wt_scale"] = _FALLBACK_GROUP_SCALE
 
     return parameters
+
+
+def _empirical_group_estimates(data: GrowthData):
+    """
+    Compute per-group empirical (loc, scale) estimates and the per-(rep,
+    cond_pre, geno) median tensor.
+
+    Returns ``None`` if ``data.ln_cfu`` is not the expected 7-D tensor (e.g.
+    in mocked tests or when called with a stub data object).  Otherwise
+    returns a dict with keys:
+      - ``per_rep_cond_geno`` : (rep, cond_pre, geno) ndarray of medians
+      - ``hyper_loc``, ``hyper_scale``
+      - ``spiked_loc``, ``spiked_scale``
+      - ``wt_loc``, ``wt_scale``
+      - ``library_mask``, ``spiked_mask``, ``wt_mask`` : (geno,) bool ndarrays
+    """
+
+    ln_cfu = np.asarray(data.ln_cfu)
+    good_mask = np.asarray(data.good_mask)
+    spiked_mask = np.asarray(data.ln_cfu0_spiked_mask)
+    wt_mask = np.asarray(data.ln_cfu0_wt_mask)
+
+    if ln_cfu.ndim != 7:
+        return None
+
+    # Replace invalid observations with NaN before computing medians
+    ln_cfu_valid = np.where(good_mask, ln_cfu, np.nan)
+
+    # Reduce over (time=1, cond_sel=3, titrant_name=4, titrant_conc=5)
+    # Result shape: (num_replicate, num_condition_pre, num_genotype)
+    per_rep_cond_geno = np.nanmedian(ln_cfu_valid, axis=(1, 3, 4, 5))
+
+    library_mask = ~spiked_mask & ~wt_mask
+
+    def _group_loc(mask, fallback):
+        if not mask.any():
+            return fallback
+        vals = per_rep_cond_geno[:, :, mask]
+        finite = vals[~np.isnan(vals)]
+        if finite.size == 0:
+            return fallback
+        return float(np.median(finite))
+
+    def _group_scale(mask, group_loc, fallback_scale):
+        if not mask.any():
+            return fallback_scale
+        vals = per_rep_cond_geno[:, :, mask]
+        # Centre each genotype on the group loc — captures within-group
+        # spread rather than the spread of any single member's replicates.
+        deviations = (vals - group_loc).flatten()
+        return _mad_scale(deviations, fallback_scale)
+
+    hyper_loc = _group_loc(library_mask, _FALLBACK_HYPER_LOC)
+    spiked_loc = _group_loc(spiked_mask, _FALLBACK_SPIKED_LOC)
+    wt_loc = _group_loc(wt_mask, _FALLBACK_WT_LOC)
+
+    hyper_scale = _group_scale(library_mask, hyper_loc, _FALLBACK_GROUP_SCALE)
+    spiked_scale = _group_scale(spiked_mask, spiked_loc, _FALLBACK_GROUP_SCALE)
+    wt_scale = _group_scale(wt_mask, wt_loc, _FALLBACK_GROUP_SCALE)
+
+    return {
+        "per_rep_cond_geno": per_rep_cond_geno,
+        "hyper_loc": hyper_loc,
+        "hyper_scale": hyper_scale,
+        "spiked_loc": spiked_loc,
+        "spiked_scale": spiked_scale,
+        "wt_loc": wt_loc,
+        "wt_scale": wt_scale,
+        "library_mask": library_mask,
+        "spiked_mask": spiked_mask,
+        "wt_mask": wt_mask,
+    }
 
 
 def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
@@ -226,9 +438,11 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
     all valid observations (masked by ``data.good_mask``) is used as an
     estimate of the starting cell density.  Group-level medians over spiked,
     wildtype, and library genotypes provide estimates for ``spiked_loc``,
-    ``wt_loc``, and ``hyper_loc``, respectively.  Per-genotype offsets are
-    derived by centering on the group-level estimate and dividing by a
-    default ``hyper_scale``.
+    ``wt_loc``, and ``hyper_loc``, respectively.  Group-level scales are
+    estimated as ``1.4826 * MAD`` of the group's per-genotype deviations
+    from the group loc, with a small floor.  Per-genotype offsets are
+    derived by centring on the group-level estimate and dividing by the
+    matching per-group scale.
 
     Falls back to hard-coded defaults for any group that has no valid
     observations (e.g. no spiked genotypes in the library).
@@ -259,75 +473,77 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
     per-group empirical estimates.
     """
 
-    _DEFAULT_HYPER_SCALE = 3.0
-    _FALLBACK_HYPER_LOC  = 6.0
-    _FALLBACK_SPIKED_LOC = 12.0
-    _FALLBACK_WT_LOC     = 13.0
+    estimates = _empirical_group_estimates(data)
 
-    ln_cfu      = np.array(data.ln_cfu)    # (rep, time, cond_pre, cond_sel, tname, tconc, geno)
-    good_mask   = np.array(data.good_mask)
-    spiked_mask = np.array(data.ln_cfu0_spiked_mask)  # (num_genotype,)
-    wt_mask     = np.array(data.ln_cfu0_wt_mask)      # (num_genotype,)
-
-    # Guard: if data are not the expected 7-D tensor (e.g. mocked in tests),
-    # fall back to hard-coded defaults rather than crashing.
-    if ln_cfu.ndim != 7:
-        guesses = {}
-        guesses[f"{name}_hyper_loc"]   = _FALLBACK_HYPER_LOC
-        guesses[f"{name}_hyper_scale"] = _DEFAULT_HYPER_SCALE
-        guesses[f"{name}_spiked_loc"]  = _FALLBACK_SPIKED_LOC
-        guesses[f"{name}_wt_loc"]      = _FALLBACK_WT_LOC
-        guesses[f"{name}_offset"] = jnp.zeros(
-            (data.num_replicate, data.num_condition_pre, data.num_genotype),
-            dtype=float)
+    # Fallback path: data is not the expected 7-D tensor
+    if estimates is None:
+        guesses = {
+            f"{name}_hyper_loc":   _FALLBACK_HYPER_LOC,
+            f"{name}_hyper_scale": _FALLBACK_GROUP_SCALE,
+            f"{name}_spiked_loc":  _FALLBACK_SPIKED_LOC,
+            f"{name}_wt_loc":      _FALLBACK_WT_LOC,
+            f"{name}_offset": jnp.zeros(
+                (data.num_replicate, data.num_condition_pre, data.num_genotype),
+                dtype=float),
+        }
         return guesses
 
-    # Replace invalid observations with NaN before computing medians
-    ln_cfu_valid = np.where(good_mask, ln_cfu, np.nan)
+    per_rep_cond_geno = estimates["per_rep_cond_geno"]
+    spiked_mask = estimates["spiked_mask"]
+    wt_mask = estimates["wt_mask"]
 
-    # Reduce over (time=1, cond_sel=3, titrant_name=4, titrant_conc=5)
-    # Result shape: (num_replicate, num_condition_pre, num_genotype)
-    per_rep_cond_geno = np.nanmedian(ln_cfu_valid, axis=(1, 3, 4, 5))
+    # Per-genotype group location and per-group scale used to centre offsets
+    per_geno_loc = np.where(
+        wt_mask, estimates["wt_loc"],
+        np.where(spiked_mask, estimates["spiked_loc"], estimates["hyper_loc"])
+    )
+    per_geno_scale = np.where(
+        wt_mask, estimates["wt_scale"],
+        np.where(spiked_mask, estimates["spiked_scale"], estimates["hyper_scale"])
+    )
 
-    # Helper: median over all (rep, cond_pre) for genotypes in a mask group
-    def _group_median(mask, fallback):
-        if not mask.any():
-            return fallback
-        vals = per_rep_cond_geno[:, :, mask]   # (rep, cond_pre, n_in_group)
-        result = np.nanmedian(vals)
-        return fallback if np.isnan(result) else float(result)
-
-    library_mask = ~spiked_mask & ~wt_mask
-    spiked_loc   = _group_median(spiked_mask, _FALLBACK_SPIKED_LOC)
-    wt_loc       = _group_median(wt_mask,     _FALLBACK_WT_LOC)
-    hyper_loc    = _group_median(library_mask, _FALLBACK_HYPER_LOC)
-
-    # Per-genotype group location used to centre the offsets
-    per_geno_loc = np.where(wt_mask, wt_loc,
-                   np.where(spiked_mask, spiked_loc, hyper_loc))  # (num_genotype,)
-
-    # Non-centred offset: (empirical estimate - group loc) / hyper_scale
+    # Non-centred offset: (empirical estimate - group loc) / group scale.
     # Replace any remaining NaN (fully-masked genotypes) with 0.
-    diff   = per_rep_cond_geno - per_geno_loc[np.newaxis, np.newaxis, :]
-    offset = diff / _DEFAULT_HYPER_SCALE
+    diff = per_rep_cond_geno - per_geno_loc[np.newaxis, np.newaxis, :]
+    offset = diff / per_geno_scale[np.newaxis, np.newaxis, :]
     offset = np.where(np.isnan(offset), 0.0, offset)
 
-    guesses = {}
-    guesses[f"{name}_hyper_loc"]  = float(hyper_loc)
-    guesses[f"{name}_hyper_scale"] = _DEFAULT_HYPER_SCALE
-    guesses[f"{name}_spiked_loc"] = float(spiked_loc)
-    guesses[f"{name}_wt_loc"]     = float(wt_loc)
-    guesses[f"{name}_offset"]     = jnp.array(offset, dtype=float)
+    return {
+        f"{name}_hyper_loc":   float(estimates["hyper_loc"]),
+        f"{name}_hyper_scale": float(estimates["hyper_scale"]),
+        f"{name}_spiked_loc":  float(estimates["spiked_loc"]),
+        f"{name}_wt_loc":      float(estimates["wt_loc"]),
+        f"{name}_offset":      jnp.array(offset, dtype=float),
+    }
 
-    return guesses
 
-def get_priors() -> ModelPriors:
+def get_priors(data: Optional[GrowthData] = None) -> ModelPriors:
     """
     Utility function to create a populated ModelPriors object.
+
+    When ``data`` is provided, the *fixed* per-genotype scales for the wt
+    and spiked subgroups (``ln_cfu0_wt_scale`` and ``ln_cfu0_spiked_scale``)
+    are derived empirically from the data via the same MAD-based estimator
+    used in ``get_guesses``.  All other prior values come from the defaults
+    in ``get_hyperparameters``.  Without data, every value is the default.
+
+    Parameters
+    ----------
+    data : GrowthData, optional
+        Experimental data pytree.  When supplied, used to derive empirical
+        scales for the wt and spiked subgroups.
 
     Returns
     -------
     ModelPriors
         A populated Pytree (Flax dataclass) of hyperparameters.
     """
-    return ModelPriors(**get_hyperparameters())
+    params = get_hyperparameters()
+
+    if data is not None:
+        estimates = _empirical_group_estimates(data)
+        if estimates is not None:
+            params["ln_cfu0_wt_scale"] = float(estimates["wt_scale"])
+            params["ln_cfu0_spiked_scale"] = float(estimates["spiked_scale"])
+
+    return ModelPriors(**params)
