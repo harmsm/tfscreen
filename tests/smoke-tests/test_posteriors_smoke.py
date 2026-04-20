@@ -2,7 +2,10 @@ import pytest
 import os
 import jax.numpy as jnp
 import numpy as np
-from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass
+from tfscreen.analysis.hierarchical.growth_model import (
+    GrowthModel as ModelClass,
+    extract_parameters
+)
 from tfscreen.analysis.hierarchical.run_inference import RunInference
 import h5py
 
@@ -19,8 +22,8 @@ def test_checkpoint_and_posterior_smoke(growth_smoke_csv,
     model = ModelClass(
         growth_df=growth_smoke_csv,
         binding_df=binding_smoke_csv,
-        condition_growth="hierarchical",
-        transformation="congression",
+        condition_growth="linear",
+        transformation="logit_norm",
         theta="hill",
         batch_size=None
     )
@@ -81,7 +84,7 @@ def test_extract_parameters_smoke(growth_smoke_csv,
         growth_df=growth_smoke_csv,
         binding_df=binding_smoke_csv,
         theta="hill",
-        transformation="congression"
+        transformation="logit_norm"
     )
     
     inference = RunInference(model=model, seed=42)
@@ -102,10 +105,10 @@ def test_extract_parameters_smoke(growth_smoke_csv,
     posterior_file = f"{out_root}_posterior.h5"
     
     # Test extraction
-    param_dfs = model.extract_parameters(posterior_file)
+    param_dfs = extract_parameters(model, posterior_file)
     assert "hill_n" in param_dfs
     assert "activity" in param_dfs
-    assert "lam" in param_dfs # for congression
+    assert "lam" in param_dfs # for logit_norm/empirical
     
     # Verify they are DataFrames
     import pandas as pd

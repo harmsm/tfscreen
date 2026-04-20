@@ -104,7 +104,7 @@ def _do_glm(times,cfu,delta):
     
             # Store the results
             A0_est[i] = glm_results.params[0]
-            A0_std[i] = glm_results.params[1]
+            A0_std[i] = glm_results.bse[0]
             k_est[i] = glm_results.params[1]
             k_std[i] = glm_results.bse[1]
 

@@ -59,8 +59,8 @@ class FitManager:
         self._setup_param_df()
 
         # --- Setup Transformations ---
-        self._is_logistic = self._param_df["transform"] == "logistic"
-        self._is_scale = self._param_df["transform"] == "scale"
+        self._is_logistic = (self._param_df["transform"] == "logistic").to_numpy()
+        self._is_scale = (self._param_df["transform"] == "scale").to_numpy()
 
         self._scale_mu = self._param_df["scale_mu"].to_numpy()
         self._scale_sigma = self._param_df["scale_sigma"].to_numpy()
@@ -68,6 +68,20 @@ class FitManager:
         # For numerical stability, ensure sigma is positive.
         if np.any(self._scale_sigma[self._is_scale] <= 0):
             raise ValueError("Values in 'scale_sigma' must be positive.")
+            
+        self._model_func = None
+        
+    def set_model_func(self, func):
+        """
+        Set a custom model function for prediction.
+        
+        Parameters
+        ----------
+        func : callable
+            A function with signature `func(params, X)` that returns predicted y.
+            If set, this overrides the default linear prediction `y = X @ params`.
+        """
+        self._model_func = func
     
     def __repr__(self) -> str:
         """
@@ -122,6 +136,10 @@ class FitManager:
             "scale_mu": {"default": 0},
             "scale_sigma": {"default": 1},
         }
+
+        if "fixed" in self._param_df.columns:
+            if not self._param_df["fixed"].dtype == bool:
+                self._param_df["fixed"] = self._param_df["fixed"].fillna(0).astype(bool)
 
         for col, settings in column_defaults.items():
             if col not in self._param_df.columns:
@@ -226,6 +244,10 @@ class FitManager:
         """
         real_v = v.copy()
         real_v[self.is_fixed] = self.guesses[self.is_fixed]
+        
+        if self._model_func is not None:
+            return self._model_func(real_v, self._X)
+            
         return self._X @ real_v
 
     def predict_from_transformed(self, v_transformed: np.ndarray) -> np.ndarray:
@@ -244,6 +266,10 @@ class FitManager:
         """
         real_v = self.back_transform(v_transformed)
         real_v[self.is_fixed] = self.guesses[self.is_fixed]
+        
+        if self._model_func is not None:
+            return self._model_func(real_v, self._X)
+            
         return self._X @ real_v
 
     def _from_logistic(self, v: np.ndarray, mask=None) -> np.ndarray:

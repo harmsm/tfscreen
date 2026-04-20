@@ -75,7 +75,8 @@ def _impute_missing_genotypes(df: pd.DataFrame,
     return complete_df[final_col_order]
 
 def _calculate_frequencies(df: pd.DataFrame,
-                           pseudocount: int) -> pd.DataFrame:
+                           pseudocount: int,
+                           total_counts_per_sample: pd.Series) -> pd.DataFrame:
     """
     Add a pseudocount and calculate genotype frequencies for each sample.
 
@@ -86,6 +87,9 @@ def _calculate_frequencies(df: pd.DataFrame,
         columns.
     pseudocount : int
         An integer value to add to each count to avoid zero frequencies.
+    total_counts_per_sample : pd.Series
+        Pre-calculated total adjusted counts for each sample, indexed by sample
+        name.
 
     Returns
     -------
@@ -95,11 +99,11 @@ def _calculate_frequencies(df: pd.DataFrame,
     # Add pseudocount to create adjusted counts
     df['adjusted_counts'] = df['counts'] + pseudocount
 
-    # Calculate the total adjusted counts for each sample
-    total_counts_per_sample = df.groupby('sample')['adjusted_counts'].transform('sum')
+    # Map the pre-calculated total adjusted counts to each row
+    total_adjusted = df['sample'].map(total_counts_per_sample)
 
     # Calculate frequency of each genotype in its sample
-    df['frequency'] = df['adjusted_counts'] / total_counts_per_sample
+    df['frequency'] = df['adjusted_counts'] / total_adjusted
 
     return df
 
@@ -204,6 +208,13 @@ def counts_to_lncfu(
                            right_index=True,
                            how='left')
 
+    # Calculate the total adjusted counts for each sample before filtering
+    # any genotypes. This ensures a consistent denominator across all 
+    # samples and that discarding low-count or unknown genotypes does not 
+    # bias the frequency estimates for the remaining genotypes. 
+    group = combined_df.groupby('sample')
+    total_counts_per_sample = group['counts'].sum() + group['genotype'].nunique() * pseudocount
+
     # Remove genotypes with too few observations per library
     filtered_df = _filter_low_observation_genotypes(combined_df, min_genotype_obs)
 
@@ -215,7 +226,9 @@ def counts_to_lncfu(
         return imputed_df
 
     # Add pseudocount and calculate frequency
-    freq_df = _calculate_frequencies(imputed_df, pseudocount)
+    freq_df = _calculate_frequencies(imputed_df, 
+                                     pseudocount,
+                                     total_counts_per_sample)
 
     # Calculate genotype cfu/mL and propagate variance
     final_df = _calculate_concentrations_and_variance(freq_df)

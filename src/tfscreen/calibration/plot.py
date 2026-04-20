@@ -2,10 +2,14 @@
 from tfscreen.calibration import (
     read_calibration,
     get_background,
-    get_wt_k
+    get_wt_k,
+    get_wt_theta
 )
+from tfscreen.models.growth_linkage import get_model
+from tfscreen.models.transition_linkage import get_transition_model
 from tfscreen.plot.helper import get_ax_limits
 from tfscreen.analysis.independent.get_indiv_growth import get_indiv_growth
+from tfscreen.models.occupancy_growth_model import OccupancyGrowthModel
 
 import pandas as pd
 import numpy as np
@@ -115,9 +119,22 @@ def k_vs_titrant(df,
     if ax is None:
         _, ax = plt.subplots(1,figsize=(6,6))
 
- 
-    min_titr = np.log(np.min(df.loc[df["titrant_conc"] > 0,"titrant_conc"])/10)
-    max_titr = np.log(np.max(df["titrant_conc"])*10)
+    positive_titrants = df.loc[df["titrant_conc"] > 1e-12, "titrant_conc"]
+    if len(positive_titrants) > 0:
+        min_titr_raw = np.min(positive_titrants)
+        max_titr_raw = np.max(positive_titrants)
+        
+        min_titr = np.log(min_titr_raw / 10)
+        max_titr = np.log(max_titr_raw * 10)
+        
+        # Use a small positive value for 0 titrant in log scale
+        floor_titr = min_titr_raw / 100 
+    else:
+        # If only 0 titrant is present, define a reasonable range
+        min_titr = np.log(0.01) # arbitrary small log value
+        max_titr = np.log(1.0)  # arbitrary larger log value
+        floor_titr = 0.01 # arbitrary small value
+    
     titr_span = np.exp(np.linspace(min_titr,max_titr,100))
 
     if plot_color_dict is None:
@@ -134,7 +151,7 @@ def k_vs_titrant(df,
             k_total = get_wt_k(key[0],key[1],titrant_conc=titr_span,calibration_data=calibration_dict)
 
         x = sub_df["titrant_conc"].to_numpy()
-        x[x == 0] = min_titr
+        x[x == 0] = floor_titr # Replace 0 with a small positive value for log scale
         y = sub_df["k_est"].to_numpy()
         y_err = sub_df["k_std"].to_numpy()
         
@@ -146,8 +163,13 @@ def k_vs_titrant(df,
         ax.plot(titr_span,k_total,'-',lw=2,color=plot_color_dict[condition])
 
     ax.set_xscale('log')
-    ax.set_ylim(0,0.03)
-    ax.set_xlabel("titrant ln(mM)")
+    ax.set_xlim(np.exp(min_titr), np.exp(max_titr))
+    
+    # Set dynamic y-axis limits based on data
+    ax_min, ax_max = get_ax_limits(manual_df["k_est"], center_on_zero=True, pad_by=0.1)
+    ax.set_ylim(ax_min, ax_max)
+
+    ax.set_xlabel("titrant conc (mM)")
     ax.set_ylabel("growth rate (cfu/mL/min)")
 
     return ax
@@ -199,6 +221,66 @@ def k_pred_corr(manual_df,
 
     return ax
 
+def _plot_calibrated_param_vs_titrant(calibration_dict,
+                                      param_name="tau",
+                                      plot_color_dict=None,
+                                      ax=None):
+    """
+    Plot calibrated parameters vs titrant concentration.
+    """
+    if ax is None:
+        _, ax = plt.subplots(1, figsize=(6, 6))
+
+    if plot_color_dict is None:
+        plot_color_dict = {}
+
+    data = calibration_dict.get("dk_cond", {}).get(param_name, {})
+    
+    # Extract granular items: "cond:titrant:conc" -> value
+    items = []
+    for k, v in data.items():
+        if ":" in k:
+            parts = k.split(":")
+            if len(parts) == 3:
+                try:
+                    items.append({"condition": parts[0], 
+                                  "titrant": parts[1], 
+                                  "conc": float(parts[2]), 
+                                  "value": v})
+                except ValueError:
+                    continue
+    
+    if not items:
+        ax.text(0.5, 0.5, f"No granular {param_name} data", 
+                ha='center', va='center', transform=ax.transAxes)
+        return ax
+
+    df = pd.DataFrame(items).sort_values("conc")
+    
+    # Replace 0 conc with small floor for log scale
+    concs = df["conc"].unique()
+    positive = concs[concs > 0]
+    floor = 0.1 * np.min(positive) if len(positive) > 0 else 1.0
+    
+    # Color map handling
+    for key, sub_df in df.groupby(["condition", "titrant"]):
+        condition = key[0]
+        color = plot_color_dict.get(condition, "gray")
+        
+        sub_df = sub_df.sort_values("conc")
+        x = sub_df["conc"].to_numpy()
+        x[x == 0] = floor
+        
+        # Plot points and lines
+        ax.scatter(x, sub_df["value"], facecolor="none", edgecolor=color)
+        ax.plot(x, sub_df["value"], '--', lw=1, color=color, label=f"{condition}")
+
+    ax.set_xscale('log')
+    ax.set_xlabel("titrant conc (mM)")
+    ax.set_ylabel(f"calibrated {param_name}")
+    
+    return ax
+
 def fit_summary(pred_df,
                 param_df,
                 calibration_data,
@@ -210,25 +292,41 @@ def fit_summary(pred_df,
 
     calibration_dict = read_calibration(calibration_data)
 
-    fig, ax = plt.subplots(2,2,figsize=(12,12))
-    growth_rate_fit(pred_df["y_obs"],
-                    pred_df["y_std"],
-                    pred_df["calc_est"],
-                    pred_df["calc_std"],
-                    ax=ax[0,0])
-    
-    A0_est = param_df.loc[param_df["param_class"] == "ln_cfu_0","est"]
-
-    A0_hist(A0_est,ax=ax[0,1])
-
     pred_df = pred_df.copy()
     if "genotype" not in pred_df:
         pred_df["genotype"] = "wt"
     
     pred_df["dk_geno_mask"] = pred_df["condition_sel"].isin(no_selection_conditions)
 
+    trans_model_name = calibration_dict.get("transition_model_name", "constant")
+    trans_model = get_transition_model(trans_model_name)
+    trans_param_defs = trans_model.get_param_defs()
+    num_trans_params = len(trans_param_defs)
+
+    per_titrant_tau = calibration_dict.get("per_titrant_tau", False)
+    if per_titrant_tau and num_trans_params > 0:
+        # Determine grid size
+        num_rows = 2 + int(np.ceil(num_trans_params / 2))
+        fig, ax = plt.subplots(num_rows, 2, figsize=(12, 6 * num_rows))
+    else:
+        fig, ax = plt.subplots(2, 2, figsize=(12, 12))
+
+    # Filter rows that have observations (drop -t_pre rows)
+    mask = ~np.isnan(pred_df["y_obs"])
+    clean_pred_df = pred_df.loc[mask,:].copy()
+
+    growth_rate_fit(clean_pred_df["y_obs"],
+                    clean_pred_df["y_std"],
+                    clean_pred_df["calc_est"],
+                    clean_pred_df["calc_std"],
+                    ax=ax[0,0])
+    
+    A0_est = param_df.loc[param_df["class"] == "ln_cfu_0","est"]
+
+    A0_hist(A0_est,ax=ax[0,1])
+
     manual_param_df, manual_pre_df = get_indiv_growth(
-        pred_df,
+        clean_pred_df,
         series_selector=["replicate","condition_sel","titrant_name","titrant_conc"],
         calibration_data=calibration_dict,
         dk_geno_selector=["genotype"],
@@ -246,13 +344,26 @@ def fit_summary(pred_df,
     k_pred_corr(manual_param_df,
                 calibration_dict,
                 ax[1,1])
+    
+    if per_titrant_tau and num_trans_params > 0:
+        for i, (suffix, _, _, _) in enumerate(trans_param_defs):
+            row = 2 + i // 2
+            col = i % 2
+            _plot_calibrated_param_vs_titrant(calibration_dict,
+                                              param_name=suffix,
+                                              plot_color_dict=plot_color_dict,
+                                              ax=ax[row, col])
+        
+        # Turn off last axis if odd number of parameters
+        if num_trans_params % 2 != 0:
+            ax[-1, -1].axis("off")
 
     fig.tight_layout()
 
     return fig, ax
 
 
-def indiv_replicates(pred_df,rgb_map=None):
+def indiv_replicates(pred_df,calibration_dict=None,rgb_map=None):
     """
     Plot observed and predicted ln(A0) vs. time for all replicates used in the
     calibration.
@@ -263,6 +374,8 @@ def indiv_replicates(pred_df,rgb_map=None):
         prediction dataframe returned by calibrate. The function expects the 
         dataframe has columns: "time", "replicate", "titrant_conc", "y_obs",
         "y_std", and "calc_est". 
+    calibration_dict : dict, optional
+        calibration dictionary used to calculate pre-growth rates.
     rgb_map : list or None, optional
         rgb_map defines how the series colors should change as a function of 
         log(titrant). Should be a list of three values indicating how the 
@@ -332,15 +445,22 @@ def indiv_replicates(pred_df,rgb_map=None):
     titrants.sort()
     
     # Get value to assign to zero titrant value. 0.1 times minimum non-zero value
-    floor = 0.1*np.min(titrants[titrants > 0])
-
+    positive_titrants = titrants[titrants > 0]
+    if len(positive_titrants) > 0:
+        floor = 0.1*np.min(positive_titrants)
+    else:
+        floor = 1.0 # arbitrary if no positive titrants
+    
     # Normalize log(titrant) between 0 and 1. 
     norm_values = titrants.copy()
     norm_values[norm_values == 0] = floor 
     norm_values = np.log(norm_values)
     mx = np.max(norm_values)
     mn = np.min(norm_values)
-    norm_values = (norm_values - mn)/(mx - mn)
+    if mx == mn:
+        norm_values = np.ones(len(norm_values), dtype=float) * 0.5
+    else:
+        norm_values = (norm_values - mn)/(mx - mn)
     
     # Get RGBA values for these norm values.
     rgba = [(rgb_fcns[0](v),
@@ -357,47 +477,228 @@ def indiv_replicates(pred_df,rgb_map=None):
     # We're going to plot each replicate on its own subplot. Figure out global 
     # plot information.
     
-    # Figure out number of plots to create
-    size = int(np.ceil(np.sqrt(len(pred_df.groupby(["replicate"])))))
+    # Figure out number of plots to create. Subplots are defined by 
+    # (genotype, replicate, condition_pre). 
+    subplot_cols = ["genotype","replicate","condition_pre"]
+    size = int(np.ceil(np.sqrt(len(pred_df.groupby(subplot_cols)))))
     
-    # Get axis limits
-    min_x, max_x = get_ax_limits(pred_df["t_sel"],
-                                 pred_df["t_sel"],
-                                 pad_by=0.05,percentile=0)
+    # Get axis limits. Use quantile-based limits for robustness to outliers.
+    min_x, max_x = get_ax_limits(pred_df["t_sel"], pad_by=0.05, percentile=0.005)
+    
     min_y, max_y = get_ax_limits(pred_df["y_obs"],
                                  pred_df["calc_est"],
-                                 pad_by=0.05,percentile=0)
+                                 pad_by=0.05,percentile=0.005)
         
-    fig, axes = plt.subplots(size,size,figsize=(12,12),sharex=True,sharey=True)
+    fig, axes = plt.subplots(size,
+                             size,
+                             figsize=(12,12),
+                             sharex=True,
+                             sharey=True,
+                             squeeze=False)
 
     # -------------------------------------------------------------------------
     # Go through all replicates and generate plots
     
     row_counter = 0
     col_counter = 0
-    for key, sub_df in pred_df.groupby(["replicate"]):
+    for key, sub_df in pred_df.groupby(subplot_cols):
+        
+        # Unpack key for identification
+        genotype = key[0]
+        replicate = key[1]
+        condition_pre = key[2]
 
         # Axis for plot
         ax = axes[row_counter,col_counter]
 
-        # Go through all conditions...
-        condition = sub_df[["condition_sel"]].drop_duplicates()["condition_sel"].iloc[0]
-        for _, cond_df in sub_df.groupby(["titrant_conc"]):
+        # Go through all conditions in this series. Series are defined by
+        # (titrant_name, titrant_conc, condition_sel).
+        series_cols = ["titrant_name","titrant_conc","condition_sel"]
+        for _, cond_df in sub_df.groupby(series_cols):
     
-            # Get values to plot
-            x = cond_df["t_sel"].to_numpy()
-            y = cond_df["y_obs"].to_numpy()
-            y_std = cond_df["y_std"].to_numpy()
+            # Get values to plot. We use .to_numpy() and then ensure they are 1D
+            # in case columns were somehow duplicated or multidimensional.
+            def to_1d(data):
+                v = np.asarray(data)
+                if v.ndim > 1:
+                    return v[:, 0]
+                return v.ravel()
+
+            # Helper to get a scalar value from potentially redundant columns
+            def to_scalar(data):
+                return to_1d(data)[0]
+
+            x = to_1d(cond_df["t_sel"])
+            y = to_1d(cond_df["y_obs"])
+            y_std = to_1d(cond_df["y_std"])
             
             # Get color and titrant label
-            t = cond_df["titrant_conc"].iloc[0]
+            t = to_scalar(cond_df["titrant_conc"])
             color = tuple(rgba_df.loc[t,"color"])
             label = f"titrant: {t:.3f}"
+
+            # Plot data 
+            mask = ~np.isnan(y)
+            ax.scatter(x[mask],y[mask],s=30,facecolor="none",edgecolor=color,label=label)
+            ax.errorbar(x[mask],y[mask],y_std[mask],lw=0,color=color,capsize=5,elinewidth=1)
             
-            # Plot data and fit values
-            ax.scatter(x,y,s=30,facecolor="none",edgecolor=color,label=label)
-            ax.errorbar(x,y,y_std,lw=0,color=color,capsize=5,elinewidth=1)
-            ax.plot(cond_df["t_sel"],cond_df["calc_est"],'-',color=color,lw=2)
+            # --- FULL SHIFT GROWTH MODEL CALCULATION ---
+            
+            # Helper to draw a dashed connecting line if complex fails
+            def draw_fallback():
+                order = np.argsort(x)
+                sort_x = x[order]
+                sort_y = to_1d(cond_df["calc_est"])[order]
+                valid = np.isfinite(sort_x) & np.isfinite(sort_y)
+                ax.plot(sort_x[valid], sort_y[valid], color=color, lw=2)
+
+            # If we have a calibration dict and a -t_pre point, we can draw a 
+            # continuous curve based on the shift model.
+            if calibration_dict is not None and np.any(to_1d(cond_df["t_sel"]) < 0):
+                
+                try:
+                    # Sort for extracting points
+                    order = np.argsort(x)
+                    sort_x = x[order]
+                    # sort_y = to_1d(cond_df["calc_est"])[order]
+                    
+                    # Identify lnA0 (t = -t_pre)
+                    neg_mask = sort_x < 0
+                    if not np.any(neg_mask):
+                        raise ValueError("No negative time points found")
+                        
+                    lnA0 = to_scalar(to_1d(cond_df["calc_est"])[order][neg_mask])
+                    t_pre = abs(to_scalar(sort_x[neg_mask]))
+                    
+                    # Get parameters
+                    dilution = calibration_dict.get("dilution", 1.0)
+                    cond_pre = to_scalar(cond_df["condition_pre"])
+                    cond_sel = to_scalar(cond_df["condition_sel"])
+                    titr_name = to_scalar(cond_df["titrant_name"])
+                    titr_conc = to_scalar(cond_df["titrant_conc"])
+                    
+                    def as_float(val):
+                        return float(np.asarray(val).ravel()[0])
+
+                    # Growth rates
+                    mu1 = as_float(get_wt_k(condition=cond_pre,
+                                            titrant_name=titr_name,
+                                            titrant_conc=0.0,
+                                            calibration_data=calibration_dict))
+                    
+                    # Get background components for mu2
+                    k_bg_val = as_float(get_background(titr_name, titr_conc, calibration_dict))
+                    
+                    # Get growth perturbation
+                    mu_wt_val = as_float(get_wt_k(condition=cond_sel,
+                                                  titrant_name=titr_name,
+                                                  titrant_conc=titr_conc,
+                                                  calibration_data=calibration_dict))
+                    
+                    dk_val = mu_wt_val - k_bg_val
+                    
+                    # Add genotype effect if available
+                    dk_geno_val = 0.0
+                    if "dk_geno" in calibration_dict:
+                        dk_geno_val = calibration_dict["dk_geno"].get(genotype, 0.0)
+                    
+                    mu1 = mu1 + dk_geno_val
+                    mu2 = mu_wt_val + dk_geno_val
+                    
+                    # Model selection
+                    growth_model_name = calibration_dict.get("model_name", "linear")
+                    trans_model_name = calibration_dict.get("transition_model_name", "constant")
+                    
+                    growth_model = get_model(growth_model_name)
+                    trans_model = get_transition_model(trans_model_name)
+
+                    # Extract theta for transition model prediction (if needed)
+                    # For indiv_replicates, we don't have individual theta fit yet usually,
+                    # but we can use wt_theta or 1.0/0.0 as appropriate.
+                    # Calibration usually assumes wt response.
+                    theta_wt = as_float(get_wt_theta(titr_name, titr_conc, calibration_dict))
+                    
+                    # Shift parameters from transition model
+                    dk_cond_df = calibration_dict.get("dk_cond_df")
+                    per_titrant_tau = calibration_dict.get("per_titrant_tau", False)
+                    
+                    # DEBUG: Print dk_cond_df to see what we're working with
+                    # print("DEBUG: dk_cond_df contents:")
+                    # print(dk_cond_df)
+                    
+                    trans_param_list = []
+                    for suffix, _, _, _ in trans_model.get_param_defs():
+                        if per_titrant_tau:
+                            granular_key = f"{cond_sel}:{titr_name}:{titr_conc}"
+                            val = dk_cond_df.loc[granular_key, suffix] if granular_key in dk_cond_df.index else dk_cond_df.loc[cond_sel, suffix]
+                        else:
+                            val = dk_cond_df.loc[cond_sel, suffix]
+                        trans_param_list.append(val)
+                    
+                    trans_params = np.array(trans_param_list)
+                    tau = trans_model.predict_tau(theta_wt, trans_params)
+                    k_sharp = trans_model.predict_k_sharp(theta_wt, trans_params)
+                    
+                    # Generate dense time points
+                    # Pre-growth: [min_x, 0]
+                    # Post-growth: [0, max_x]
+                    
+                    if max_x > 0:
+                        # Post-growth: [0, max_x]
+                        t_model_post = np.linspace(0, max_x, 100)
+                        
+                        gm = OccupancyGrowthModel()
+                        
+                        # Calculate growth component (without C offset)
+                        growth_sel_comp = gm.predict_trajectory(
+                            t_pre=0, t_sel=t_model_post, 
+                            ln_cfu0=0, mu1=mu1, mu2=mu2, 
+                            dilution=1.0, tau=tau, k_sharp=k_sharp
+                        )
+                        
+                        # Find anchor: average(calc_est - growth_sel_comp) for observed points
+                        obs_mask = x >= 0
+                        if np.any(obs_mask):
+                            obs_x = x[obs_mask]
+                            obs_y = to_1d(cond_df["calc_est"])[obs_mask]
+                            
+                            obs_growth_comp = gm.predict_trajectory(
+                                t_pre=0, t_sel=obs_x, 
+                                ln_cfu0=0, mu1=mu1, mu2=mu2, 
+                                dilution=1.0, tau=tau, k_sharp=k_sharp
+                            )
+                            C_post = np.mean(obs_y - obs_growth_comp)
+                            ax.plot(t_model_post, growth_sel_comp + C_post, color=color, lw=2)
+                        else:
+                            # Fallback if no selection points, though unlikely in this loop
+                            draw_fallback()
+
+                    if min_x < 0:
+                        # Pre-growth segment: [min_x, 0]
+                        t_model_pre = np.linspace(min_x, -1e-6, 50)
+                        
+                        # Linear growth: y = mu1 * t + C
+                        # Find anchor from pre-growth points
+                        obs_mask = x < 0
+                        if np.any(obs_mask):
+                            obs_x = x[obs_mask]
+                            obs_y = to_1d(cond_df["calc_est"])[obs_mask]
+                            C_pre = np.mean(obs_y - mu1 * obs_x)
+                            
+                            ax.plot(t_model_pre, mu1 * t_model_pre + C_pre, color=color, lw=2)
+                        else:
+                            # If no pre-growth points observed but we're in this block, 
+                            # we could anchor to the selection start? 
+                            # But better to just skip or fallback.
+                            pass
+
+                except Exception:
+                    import traceback
+                    traceback.print_exc()
+                    draw_fallback()
+                
+            else:
+                draw_fallback()
 
             # Put legend on top-left plot
             if row_counter == 0 and col_counter == 0:
@@ -418,7 +719,7 @@ def indiv_replicates(pred_df,rgb_map=None):
             ax.set_xlabel("time (min)")
         
         # Set title
-        ax.set_title(f"{condition}, replicate {key[0]}")
+        ax.set_title(f"{genotype}, {condition_pre}, rep {replicate}")
         
         # update row/column counters
         col_counter += 1
@@ -443,4 +744,4 @@ def indiv_replicates(pred_df,rgb_map=None):
     
     fig.tight_layout()
 
-    return fig, ax
+    return fig, axes

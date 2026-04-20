@@ -4,7 +4,7 @@ import yaml
 import numpy as np
 import pandas as pd
 from unittest.mock import MagicMock, patch, mock_open
-from tfscreen.analysis.hierarchical.summarize_posteriors import summarize_posteriors, main
+from tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors import summarize_posteriors, main
 
 @pytest.fixture
 def mock_config():
@@ -32,14 +32,21 @@ def test_summarize_posteriors_full(tmpdir, mock_config):
     posterior_file = os.path.join(tmpdir, "post.npz")
     np.savez(posterior_file, a=np.array([1]))
     
-    with patch("tfscreen.analysis.hierarchical.summarize_posteriors.GrowthModel") as MockGM:
-        mock_gm = MockGM.return_value
-        mock_gm.extract_parameters.return_value = {"param1": pd.DataFrame({"x": [1]})}
-        mock_gm.extract_growth_predictions.return_value = pd.DataFrame({"y": [2]})
-        mock_gm.extract_theta_curves.return_value = pd.DataFrame({"z": [3]})
+    with patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.GrowthModel") as MockGM, \
+         patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.extract_parameters") as mock_extract_params, \
+         patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.extract_growth_predictions") as mock_extract_pred, \
+         patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.extract_theta_curves") as mock_extract_theta:
+        
+        mock_extract_params.return_value = {"param1": pd.DataFrame({"x": [1]})}
+        mock_extract_pred.return_value = pd.DataFrame({"y": [2]})
+        mock_extract_theta.return_value = pd.DataFrame({"z": [3]})
         
         out_root = os.path.join(tmpdir, "tfs")
-        summarize_posteriors(posterior_file, config_file, out_root=out_root)
+        with patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.read_configuration") as mock_read:
+            gm = MockGM.return_value
+            gm.settings = {"theta": "hill"}
+            mock_read.return_value = (gm, {})
+            summarize_posteriors(config_file, posterior_file, out_root=out_root)
         
         assert os.path.exists(f"{out_root}_param1.csv")
         assert os.path.exists(f"{out_root}_growth_pred.csv")
@@ -55,14 +62,21 @@ def test_summarize_posteriors_h5(tmpdir, mock_config):
     with h5py.File(posterior_file, 'w') as f:
         f.create_dataset("a", data=np.array([1]))
     
-    with patch("tfscreen.analysis.hierarchical.summarize_posteriors.GrowthModel") as MockGM:
-        mock_gm = MockGM.return_value
-        mock_gm.extract_parameters.return_value = {"param1": pd.DataFrame({"x": [1]})}
-        mock_gm.extract_growth_predictions.return_value = pd.DataFrame({"y": [2]})
-        mock_gm.extract_theta_curves.return_value = pd.DataFrame({"z": [3]})
+    with patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.GrowthModel") as MockGM, \
+         patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.extract_parameters") as mock_extract_params, \
+         patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.extract_growth_predictions") as mock_extract_pred, \
+         patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.extract_theta_curves") as mock_extract_theta:
+
+        mock_extract_params.return_value = {"param1": pd.DataFrame({"x": [1]})}
+        mock_extract_pred.return_value = pd.DataFrame({"y": [2]})
+        mock_extract_theta.return_value = pd.DataFrame({"z": [3]})
         
         out_root = os.path.join(tmpdir, "tfs_h5")
-        summarize_posteriors(posterior_file, config_file, out_root=out_root)
+        with patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.read_configuration") as mock_read:
+            gm = MockGM.return_value
+            gm.settings = {"theta": "hill"}
+            mock_read.return_value = (gm, {})
+            summarize_posteriors(config_file, posterior_file, out_root=out_root)
         
         assert os.path.exists(f"{out_root}_param1.csv")
         assert os.path.exists(f"{out_root}_growth_pred.csv")
@@ -70,7 +84,7 @@ def test_summarize_posteriors_h5(tmpdir, mock_config):
 
 def test_summarize_posteriors_errors():
     with pytest.raises(FileNotFoundError, match="Configuration file not found"):
-        summarize_posteriors("p.npz", "nonexistent.yaml")
+        summarize_posteriors("nonexistent.yaml", "p.npz")
     
     # Create a dummy config with all required keys
     full_config = {
@@ -80,16 +94,17 @@ def test_summarize_posteriors_errors():
         ]},
         "growth_df": "g", "binding_df": "b"
     }
-    with patch("builtins.open", mock_open(read_data=yaml.dump(full_config))):
-        with patch("os.path.exists", side_effect=lambda x: x == "config.yaml"):
-            with patch("tfscreen.analysis.hierarchical.summarize_posteriors.GrowthModel"):
-                with pytest.raises(FileNotFoundError, match="Posterior file not found"):
-                    summarize_posteriors("missing.npz", "config.yaml")
+    with patch("os.path.exists", side_effect=lambda x: x == "config.yaml"):
+        with patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.read_configuration") as mock_read:
+            mock_read.return_value = (MagicMock(), {})
+            with pytest.raises(FileNotFoundError, match="Posterior file not found"):
+                summarize_posteriors("config.yaml", "missing.npz")
 
 def test_main():
-    with patch("tfscreen.analysis.hierarchical.summarize_posteriors.generalized_main") as mock_gen:
+    with patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.generalized_main") as mock_gen:
         main()
-        mock_gen.assert_called_once_with(summarize_posteriors)
+        mock_gen.assert_called_once_with(summarize_posteriors,
+                                          manual_arg_types={"num_samples": int})
 
 def test_summarize_posteriors_no_hill(tmpdir, mock_config):
     mock_config["settings"]["theta"] = "categorical"
@@ -100,13 +115,19 @@ def test_summarize_posteriors_no_hill(tmpdir, mock_config):
     posterior_file = os.path.join(tmpdir, "post.npz")
     np.savez(posterior_file, a=np.array([1]))
     
-    with patch("tfscreen.analysis.hierarchical.summarize_posteriors.GrowthModel") as MockGM:
-        mock_gm = MockGM.return_value
-        mock_gm.extract_parameters.return_value = {}
-        mock_gm.extract_growth_predictions.return_value = pd.DataFrame()
+    with patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.GrowthModel") as MockGM, \
+         patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.extract_parameters") as mock_extract_params, \
+         patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.extract_growth_predictions") as mock_extract_pred:
+
+        mock_extract_params.return_value = {}
+        mock_extract_pred.return_value = pd.DataFrame()
         
         out_root = os.path.join(tmpdir, "tfs_cat")
-        summarize_posteriors(posterior_file, config_file, out_root=out_root)
+        with patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.read_configuration") as mock_read:
+            gm = MockGM.return_value
+            gm.settings = {"theta": "categorical"}
+            mock_read.return_value = (gm, {})
+            summarize_posteriors(config_file, posterior_file, out_root=out_root)
         
         # Should NOT have theta_curves
         assert not os.path.exists(f"{out_root}_theta_curves.csv")
@@ -117,7 +138,7 @@ def test_entry_point():
     # Mock sys.argv to avoid parser error/exit
     with patch.object(sys, 'argv', ['summarize_posteriors', '--help']):
         # Patch the function where it is used in the module
-        with patch("tfscreen.analysis.hierarchical.summarize_posteriors.generalized_main") as mock_gen:
+        with patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.generalized_main") as mock_gen:
             try:
                 main()
             except SystemExit:

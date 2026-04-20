@@ -27,48 +27,23 @@ def read_calibration(json_file):
         The fully parsed calibration dictionary, ready for use in Python.
     """
 
-    # If this is already a dictionary, return it
+    # If this is already a dictionary, use it directly but ensure copy
     if issubclass(type(json_file),dict):
-        return json_file
+        calibration_dict = copy.deepcopy(json_file)
+    else:
+        with open(json_file,'r') as f:
+            calibration_dict = json.load(f)
 
-    with open(json_file,'r') as f:
-        calibration_input = json.load(f)
+    # Ensure DataFrames are present
+    if "k_bg_df" not in calibration_dict:
+        k_bg_data = calibration_dict.get("k_bg", {})
+        if k_bg_data:
+            calibration_dict["k_bg_df"] = pd.DataFrame(k_bg_data)
 
-    calibration_dict = copy.deepcopy(calibration_input)
-
-    k_bg_keys = []
-    ms = []
-    bs = []
-    for k in calibration_dict["k_bg"]["m"]:
-        if k not in calibration_dict["k_bg"]["b"]:
-            err = f"titrant {k} only seen in k_bg slope not intercept\n"
-            raise ValueError(err)
-        k_bg_keys.append(k)
-        bs.append(calibration_dict["k_bg"]["b"][k])
-        ms.append(calibration_dict["k_bg"]["m"][k])
-
-    k_bg_df = pd.DataFrame({
-        "m":ms,
-        "b":bs,
-    },index=k_bg_keys)
-    calibration_dict["k_bg_df"] = k_bg_df
-
-    dk_cond_keys = []
-    ms = []
-    bs = []
-    for k in calibration_dict["dk_cond"]["m"]:
-        if k not in calibration_dict["dk_cond"]["b"]:
-            err = f"condition {k} only seen in dk_cond slope not intercept\n"
-            raise ValueError(err)
-        dk_cond_keys.append(k)
-        bs.append(calibration_dict["dk_cond"]["b"][k])
-        ms.append(calibration_dict["dk_cond"]["m"][k])
-
-    dk_cond_df = pd.DataFrame({
-        "m":ms,
-        "b":bs,
-    },index=dk_cond_keys)
-    calibration_dict["dk_cond_df"] = dk_cond_df
+    if "dk_cond_df" not in calibration_dict:
+        dk_cond_data = calibration_dict.get("dk_cond", {})
+        if dk_cond_data:
+            calibration_dict["dk_cond_df"] = pd.DataFrame(dk_cond_data)
 
     return calibration_dict
 

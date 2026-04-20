@@ -1,5 +1,6 @@
 
 import jax.numpy as jnp
+import numpy as np
 from flax.struct import (
     dataclass,
     field
@@ -35,7 +36,7 @@ class GrowthData:
     num_genotype: int = field(pytree_node=False)
 
     # mappers
-    num_condition: int = field(pytree_node=False)
+    num_condition_rep: int = field(pytree_node=False)
     map_condition_pre: jnp.ndarray
     map_condition_sel: jnp.ndarray
 
@@ -45,8 +46,27 @@ class GrowthData:
     log_titrant_conc: jnp.ndarray
 
     # meta data
-    wt_indexes: jnp.ndarray    
-    scatter_theta: int = field(pytree_node=False) 
+    wt_indexes: jnp.ndarray
+    scatter_theta: int = field(pytree_node=False)
+
+    # Boolean mask, shape (num_genotype,), True = spiked genotype.
+    # Used by ln_cfu0 component to apply a separate prior location.
+    ln_cfu0_spiked_mask: jnp.ndarray
+
+    # Boolean mask, shape (num_genotype,), True = wildtype genotype.
+    # Used by ln_cfu0 component to apply a separate prior location for WT.
+    ln_cfu0_wt_mask: jnp.ndarray
+
+    growth_shares_replicates: bool = field(pytree_node=False, default=False)
+
+    # Optional mutation-decomposition matrices (set when using *_mut_decomp components).
+    # Stored as pytree_node=False so they are treated as static by JAX tracing.
+    # Shape: mut_geno_matrix (num_mutation, num_genotype),
+    #        pair_geno_matrix (num_pair, num_genotype).
+    num_mutation: int = field(pytree_node=False, default=0)
+    num_pair: int = field(pytree_node=False, default=0)
+    mut_geno_matrix: Any = field(pytree_node=False, default=None)
+    pair_geno_matrix: Any = field(pytree_node=False, default=None)
 
 @dataclass(frozen=True)
 class BindingData:
@@ -99,6 +119,7 @@ class DataClass:
 @dataclass(frozen=True)
 class GrowthPriors:
     condition_growth: Any
+    growth_transition: Any
     ln_cfu0: Any
     dk_geno: Any
     activity: Any

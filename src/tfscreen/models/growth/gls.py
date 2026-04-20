@@ -226,7 +226,7 @@ def _do_gls(times,
             
             # 4. Extract results
             A0_est[i] = gls_model.params[0]
-            A0_std[i] = gls_model.params[1]
+            A0_std[i] = gls_model.bse[0]
             k_est[i] = gls_model.params[1]
             k_std[i] = gls_model.bse[1]
 

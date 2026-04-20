@@ -2,8 +2,7 @@
 from tfscreen.calibration import (
     read_calibration,
     get_background,
-    get_wt_theta,
-    get_k_vs_theta
+    get_wt_theta
 )
 
 from tfscreen.util.numerical import (
@@ -11,6 +10,9 @@ from tfscreen.util.numerical import (
 )
 
 import numpy as np
+import pandas as pd
+
+from tfscreen.models.growth_linkage import get_model
 
 def get_wt_k(
     condition: np.ndarray,
@@ -50,6 +52,11 @@ def get_wt_k(
 
     # Read calibration data
     calibration_dict = read_calibration(calibration_data)
+    
+    # Get model
+    model_name = calibration_dict.get("model_name", "linear")
+    model = get_model(model_name)
+    param_defs = model.get_param_defs()
 
     condition, titrant_name, titrant_conc = broadcast_args(condition,
                                                            titrant_name,
@@ -60,16 +67,50 @@ def get_wt_k(
                                 titrant_conc,
                                 calibration_dict)
     
-    # Get slope/intercept vs. theta 
-    slopes, intercepts = get_k_vs_theta(condition,
-                                        calibration_dict)
-    
     # Get theta if not passed in
     if theta is None:
         theta = get_wt_theta(titrant_name,
                              titrant_conc,
                              calibration_dict)
+
+    # Get condition-specific parameters
+    dk_cond_df = calibration_dict["dk_cond_df"]
+    per_titrant_tau = calibration_dict.get("per_titrant_tau", False)
+    
+    params_list = []
+    
+    # Build lookup keys
+    if per_titrant_tau:
+        # Vectorized key construction
+        # We need to be careful with float formatting to match calibrate.py
+        # Using the same default string conversion as df.apply(lambda r: f"{r[...]}")
+        lookup_keys = pd.Series(zip(condition, titrant_name, titrant_conc)).apply(lambda x: f"{x[0]}:{x[1]}:{x[2]}")
+    else:
+        lookup_keys = pd.Series(condition)
+
+    for suffix, _, _, _ in param_defs:
+        # Try granular lookup
+        vals = lookup_keys.map(dk_cond_df[suffix])
+        
+        # Identify missing (NaN)
+        mask = vals.isna()
+        if mask.any():
+            # Fallback to condition name only
+            fallback_vals = pd.Series(condition[mask]).map(dk_cond_df[suffix])
+            vals.loc[mask] = fallback_vals
+            
+            # Still missing? Final fallback to 0.0
+            mask = vals.isna()
+            if mask.any():
+                vals.loc[mask] = 0.0
                 
-    v = background + intercepts + slopes*theta
+        params_list.append(vals.to_numpy())
+        
+    params = np.array(params_list)
+    
+    # Predict perturbation
+    dk = model.predict(theta, params)
+                
+    v = background + dk
 
     return v

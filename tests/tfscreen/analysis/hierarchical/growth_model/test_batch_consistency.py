@@ -5,7 +5,8 @@ import numpyro.handlers
 import numpyro.distributions as dist
 from tfscreen.analysis.hierarchical.growth_model.data_class import DataClass, GrowthData, BindingData
 from tfscreen.analysis.hierarchical.growth_model.batch import get_batch
-from tfscreen.analysis.hierarchical.growth_model.components import dk_geno_hierarchical, activity_horseshoe
+from tfscreen.analysis.hierarchical.growth_model.components.dk_geno import hierarchical as dk_geno_hierarchical
+from tfscreen.analysis.hierarchical.growth_model.components.activity import horseshoe as activity_horseshoe
 from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass
 
 def test_batch_scaling_unbiased():
@@ -46,15 +47,17 @@ def test_batch_scaling_unbiased():
         num_titrant_name=1,
         num_titrant_conc=1,
         num_genotype=total_genotypes,
-        num_condition=1,
+        num_condition_rep=1,
         map_condition_pre=jnp.array([0]),
         map_condition_sel=jnp.array([0]),
         titrant_conc=jnp.array([1.0]),
         log_titrant_conc=jnp.array([0.0]),
         wt_indexes=jnp.array([0]),
-        scatter_theta=1
+        scatter_theta=1,
+        ln_cfu0_spiked_mask=jnp.zeros(total_genotypes, dtype=bool),
+        ln_cfu0_wt_mask=jnp.zeros(total_genotypes, dtype=bool)
     )
-    
+
     full_data = DataClass(
         num_genotype=total_genotypes,
         batch_idx=jnp.arange(total_genotypes),
@@ -102,15 +105,17 @@ def test_component_shape_guards():
         num_titrant_name=1,
         num_titrant_conc=1,
         num_genotype=total_genotypes,
-        num_condition=1,
+        num_condition_rep=1,
         map_condition_pre=jnp.array([0]),
         map_condition_sel=jnp.array([0]),
         titrant_conc=jnp.array([1.0]),
         log_titrant_conc=jnp.array([0.0]),
         wt_indexes=jnp.array([0]),
-        scatter_theta=1
+        scatter_theta=1,
+        ln_cfu0_spiked_mask=jnp.zeros(total_genotypes, dtype=bool),
+        ln_cfu0_wt_mask=jnp.zeros(total_genotypes, dtype=bool)
     )
-    
+
     priors = dk_geno_hierarchical.get_priors()
     
     # Create full-sized substitution values (100 genotypes)
@@ -160,15 +165,17 @@ def test_num_genotype_preserved():
         num_titrant_name=1,
         num_titrant_conc=1,
         num_genotype=total_genotypes,
-        num_condition=1,
+        num_condition_rep=1,
         map_condition_pre=jnp.array([0]),
         map_condition_sel=jnp.array([0]),
         titrant_conc=jnp.array([1.0]),
         log_titrant_conc=jnp.array([0.0]),
         wt_indexes=jnp.array([0]),
-        scatter_theta=1
+        scatter_theta=1,
+        ln_cfu0_spiked_mask=jnp.zeros(total_genotypes, dtype=bool),
+        ln_cfu0_wt_mask=jnp.zeros(total_genotypes, dtype=bool)
     )
-    
+
     full_data = DataClass(
         num_genotype=total_genotypes,
         batch_idx=jnp.arange(total_genotypes),

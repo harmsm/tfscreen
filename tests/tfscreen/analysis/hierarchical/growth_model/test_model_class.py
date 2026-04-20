@@ -15,8 +15,13 @@ from tfscreen.analysis.hierarchical.growth_model.model_class import (
     _build_growth_tm,
     _build_binding_tm,
     _setup_batching,
-    _extract_param_est,
     get_batch
+)
+from tfscreen.analysis.hierarchical.growth_model.extraction import (
+    _extract_param_est,
+    extract_parameters,
+    extract_theta_curves,
+    extract_growth_predictions
 )
 
 # ----------------------------------------------------------------------------
@@ -171,13 +176,15 @@ def initialized_model_class():
     model = MagicMock(spec=ModelClass)
     model._theta = "hill"
     model._condition_growth = "hierarchical"
+    model._growth_transition = "instant"
     model._ln_cfu0 = "hierarchical"
     model._dk_geno = "hierarchical"
     model._activity = "hierarchical"
-    model._transformation = "none"
-    model._theta_growth_noise = "none"
-    model._theta_binding_noise = "none"
+    model._transformation = "single"
+    model._theta_growth_noise = "zero"
+    model._theta_binding_noise = "zero"
     model._spiked_genotypes = None
+    model._growth_shares_replicates = False
     model._batch_size = 1
     model.growth_tm = MagicMock()
     model.binding_tm = MagicMock()
@@ -188,7 +195,7 @@ def create_mock_tm(is_growth=True):
     tm = MagicMock()
     tm.map_sizes = {}
     if is_growth:
-        tm.map_sizes = {"condition": 1}
+        tm.map_sizes = {"condition_rep": 1}
         tm.tensor_shape = [1, 1, 1, 1, 1, 1, 7]
         tm.tensor_dim_names = ["replicate", "time", "condition_pre", "condition_sel", "titrant_name", "titrant_conc", "genotype"]
         tm.tensor_dim_labels = [
@@ -272,29 +279,25 @@ def test_initialize_classes_logic(mocker):
 
     with patch.dict("tfscreen.analysis.hierarchical.growth_model.model_class.model_registry", {
         "condition_growth": {"hierarchical": MagicMock(), "independent": MagicMock()},
+        "growth_transition": {"instant": MagicMock(), "linear": MagicMock()},
         "ln_cfu0": {"hierarchical": MagicMock()},
         "dk_geno": {"hierarchical": MagicMock()},
         "activity": {"hierarchical": MagicMock(), "horseshoe": MagicMock()},
         "theta": {"categorical": MagicMock(), "hill": MagicMock(), "fixed": MagicMock()},
-        "transformation": {"congression": MagicMock(), "none": MagicMock()},
-        "theta_growth_noise": {"none": MagicMock()},
-        "theta_binding_noise": {"none": MagicMock()},
+        "transformation": {"logit_norm": MagicMock(), "single": MagicMock()},
+        "theta_growth_noise": {"zero": MagicMock()},
+        "theta_binding_noise": {"zero": MagicMock()},
         "observe_binding": MagicMock(),
         "observe_growth": MagicMock()
     }, clear=True):
-        for k in ["condition_growth", "ln_cfu0", "dk_geno", "activity", "theta", "transformation", "theta_growth_noise", "theta_binding_noise"]:
+        for k in ["condition_growth", "growth_transition", "ln_cfu0", "dk_geno", "activity", "theta", "transformation", "theta_growth_noise", "theta_binding_noise"]:
             for sub_k in tfscreen.analysis.hierarchical.growth_model.model_class.model_registry[k]:
                 tfscreen.analysis.hierarchical.growth_model.model_class.model_registry[k][sub_k].get_priors.return_value = {}
                 tfscreen.analysis.hierarchical.growth_model.model_class.model_registry[k][sub_k].get_guesses.return_value = {}
 
-        model = ModelClass("g.csv", "b.csv", theta="categorical", transformation="congression", condition_growth="independent")
+        model = ModelClass("g.csv", "b.csv", theta="categorical", transformation="logit_norm", condition_growth="independent", growth_transition="instant")
         assert model._theta == "categorical"
 
-def test_model_class_write_config(initialized_model_class, tmpdir):
-    model = initialized_model_class
-    model.settings = {"a":1}
-    ModelClass.write_config(model, "g.csv", "b.csv", os.path.join(tmpdir, "out"))
-    assert os.path.exists(os.path.join(tmpdir, "out_config.yaml"))
 
 def test_model_class_properties(initialized_model_class):
     model = initialized_model_class
@@ -308,11 +311,13 @@ def test_model_class_properties(initialized_model_class):
     model._theta = "t"
     model._transformation = "tr"
     model._condition_growth = "cg"
+    model._growth_transition = "gt"
     model._ln_cfu0 = "ln"
     model._dk_geno = "dk"
     model._theta_growth_noise = "gn"
     model._theta_binding_noise = "bn"
     model._spiked_genotypes = ["s"]
+    model._growth_shares_replicates = False
     
     assert ModelClass.jax_model.fget(model) == "jm"
     assert ModelClass.jax_model_guide.fget(model) == "jmg"
@@ -323,11 +328,13 @@ def test_model_class_properties(initialized_model_class):
     assert ModelClass.settings.fget(model)["theta"] == "t"
     assert ModelClass.settings.fget(model)["transformation"] == "tr"
     assert ModelClass.settings.fget(model)["condition_growth"] == "cg"
+    assert ModelClass.settings.fget(model)["growth_transition"] == "gt"
     assert ModelClass.settings.fget(model)["ln_cfu0"] == "ln"
     assert ModelClass.settings.fget(model)["dk_geno"] == "dk"
     assert ModelClass.settings.fget(model)["theta_growth_noise"] == "gn"
     assert ModelClass.settings.fget(model)["theta_binding_noise"] == "bn"
     assert ModelClass.settings.fget(model)["spiked_genotypes"] == ["s"]
+    assert ModelClass.settings.fget(model)["growth_shares_replicates"] == False
     assert ModelClass.get_batch.fget(model) == get_batch
 
 def test_extract_parameters_full(initialized_model_class):
@@ -336,7 +343,7 @@ def test_extract_parameters_full(initialized_model_class):
     model._condition_growth = "hierarchical"
     model._dk_geno = "hierarchical"
     model._activity = "hierarchical"
-    model._transformation = "congression"
+    model._transformation = "logit_norm"
     model.growth_tm.df = pd.DataFrame({
         "genotype": ["wt"], "titrant_name": ["T"], 
         "replicate": [1], "condition_pre": ["A"],
@@ -344,7 +351,7 @@ def test_extract_parameters_full(initialized_model_class):
         "map_genotype": [0], "titrant_name_idx": [0], "titrant_conc_idx": [0],
         "titrant_conc": [1.0]
     })
-    model.growth_tm.map_groups = {"condition": pd.DataFrame({"replicate":[1], "condition":["A"], "map_condition":[0]})}
+    model.growth_tm.map_groups = {"condition_rep": pd.DataFrame({"replicate":[1], "condition_rep":["A"], "map_condition_rep":[0]})}
     model.growth_tm.tensor_dim_names = ["replicate", "time", "condition_pre", "condition_sel", "titrant_name", "titrant_conc", "genotype"]
     model.growth_tm.tensor_dim_labels = [[], [], [], [], [], [1.0], []]
     
@@ -356,7 +363,7 @@ def test_extract_parameters_full(initialized_model_class):
         "activity": np.zeros((1, 1, 1)),
         "transformation_lam": np.zeros((1,)), "transformation_mu": np.zeros((1, 1)), "transformation_sigma": np.zeros((1, 1))
     }
-    res = ModelClass.extract_parameters(model, post)
+    res = extract_parameters(model, post)
     assert "hill_n" in res
     assert "activity" in res
     assert "lam" in res
@@ -364,13 +371,15 @@ def test_extract_parameters_full(initialized_model_class):
 def test_extract_parameters_errors(initialized_model_class):
     model = initialized_model_class
     with pytest.raises(ValueError, match="should be a dictionary"):
-        ModelClass.extract_parameters(model, {}, q_to_get="not_a_dict")
+        extract_parameters(model, {}, q_to_get="not_a_dict")
 
 def test_extract_parameters_npz(initialized_model_class, tmpdir):
     model = initialized_model_class
-    model._theta = "hill"
-    model._condition_growth = "none"
-    model._dk_geno = "none"
+    model._transformation = "single"
+    model._theta_growth_noise = "zero"
+    model._theta_binding_noise = "zero"
+    model._condition_growth = "zero"
+    model._dk_geno = "zero"
     model._activity = "fixed"
     model.growth_tm.df = pd.DataFrame({"genotype": ["wt"], "titrant_name": ["T"], "map_theta_group": [0], "map_ln_cfu0": [0]})
     post = {"theta_hill_n": np.zeros((1, 1)), "theta_log_hill_K": np.zeros((1, 1)), 
@@ -378,7 +387,7 @@ def test_extract_parameters_npz(initialized_model_class, tmpdir):
             "ln_cfu0": np.zeros((1, 1))}
     path = os.path.join(tmpdir, "post.npz")
     np.savez(path, **post)
-    res = ModelClass.extract_parameters(model, path)
+    res = extract_parameters(model, path)
     assert "hill_n" in res
 
 def test_extract_parameters_categorical(initialized_model_class):
@@ -389,7 +398,7 @@ def test_extract_parameters_categorical(initialized_model_class):
     model._activity = "fixed"
     model.growth_tm.df = pd.DataFrame({"genotype": ["wt"], "titrant_name": ["T"], "titrant_conc": [1.0], "map_theta": [0]})
     post = {"theta_theta": np.zeros((1, 1))}
-    res = ModelClass.extract_parameters(model, post)
+    res = extract_parameters(model, post)
     assert "theta" in res
 
 def test_extract_theta_curves_full(initialized_model_class, tmpdir):
@@ -400,13 +409,13 @@ def test_extract_theta_curves_full(initialized_model_class, tmpdir):
         "theta_hill_n": np.zeros((1, 1, 1)), "theta_log_hill_K": np.zeros((1, 1, 1)),
         "theta_theta_high": np.zeros((1, 1, 1)), "theta_theta_low": np.zeros((1, 1, 1))
     }
-    res = ModelClass.extract_theta_curves(model, post)
+    res = extract_theta_curves(model, post)
     assert len(res) > 0
     
     # Test path for extract_theta_curves (1047)
     path = os.path.join(tmpdir, "theta.npz")
     np.savez(path, **post)
-    res = ModelClass.extract_theta_curves(model, path)
+    res = extract_theta_curves(model, path)
     assert len(res) > 0
 
 def test_extract_theta_curves_manual(initialized_model_class):
@@ -420,33 +429,33 @@ def test_extract_theta_curves_manual(initialized_model_class):
     
     # Test manual_titrant_df (1074-1085)
     manual = pd.DataFrame({"titrant_name": ["T"], "titrant_conc": [0.5]})
-    res = ModelClass.extract_theta_curves(model, post, manual_titrant_df=manual)
+    res = extract_theta_curves(model, post, manual_titrant_df=manual)
     assert len(res) == 1
     
-    # Test manual_titrant_df with genotype (1087)
+    # Test manual_titrant_df with genotype
     manual["genotype"] = "wt"
-    res = ModelClass.extract_theta_curves(model, post, manual_titrant_df=manual)
+    res = extract_theta_curves(model, post, manual_titrant_df=manual)
     assert len(res) == 1
     
     # Test mapping error (1103-1109)
     # Trigger 1106 by mocking Index.map to raise
     with patch("pandas.Index.map", side_effect=Exception("forced failure")):
         with pytest.raises(ValueError, match=r"Some \(genotype, titrant_name\) pairs"):
-            ModelClass.extract_theta_curves(model, post, manual_titrant_df=manual)
+            extract_theta_curves(model, post, manual_titrant_df=manual)
 
     # Trigger 1113 by passing a genotype that doesn't exist
     manual["genotype"] = "missing"
     with pytest.raises(ValueError, match="were not found in the model data"):
-        ModelClass.extract_theta_curves(model, post, manual_titrant_df=manual)
+        extract_theta_curves(model, post, manual_titrant_df=manual)
 
 def test_extract_theta_curves_errors(initialized_model_class):
     model = initialized_model_class
     model._theta = "categorical"
     with pytest.raises(ValueError, match="only available for models where theta='hill'"):
-        ModelClass.extract_theta_curves(model, {})
+        extract_theta_curves(model, {})
     model._theta = "hill"
     with pytest.raises(ValueError, match="should be a dictionary"):
-        ModelClass.extract_theta_curves(model, {}, q_to_get="not_a_dict")
+        extract_theta_curves(model, {}, q_to_get="not_a_dict")
 
 def test_extract_growth_predictions_full(initialized_model_class, tmpdir):
     model = initialized_model_class
@@ -471,17 +480,17 @@ def test_extract_growth_predictions_full(initialized_model_class, tmpdir):
         "genotype_idx": [0],
     })
     post = {"growth_pred": np.zeros((1, 1, 1, 1, 1, 1, 1, 1))}
-    res = ModelClass.extract_growth_predictions(model, post)
+    res = extract_growth_predictions(model, post)
     assert "median" in res.columns
     
     with pytest.raises(ValueError, match="'growth_pred' not found"):
-        ModelClass.extract_growth_predictions(model, {})
+        extract_growth_predictions(model, {})
     with pytest.raises(ValueError, match="should be a dictionary"):
-        ModelClass.extract_growth_predictions(model, {"growth_pred": None}, q_to_get="bad")
+        extract_growth_predictions(model, {"growth_pred": None}, q_to_get="bad")
         
     path = os.path.join(tmpdir, "gp.npz")
     np.savez(path, growth_pred=np.zeros((1,1,1,1,1,1,1,1)))
-    res = ModelClass.extract_growth_predictions(model, path)
+    res = extract_growth_predictions(model, path)
     assert len(res) > 0
 
 def test_get_random_idx_logic(initialized_model_class):
@@ -504,19 +513,3 @@ def test_get_random_idx_logic(initialized_model_class):
     # num_batches > 1 (1351-1360)
     res = ModelClass.get_random_idx(model, num_batches=2)
     assert res.shape == (2, 2)
-
-def test_load_config_errors(tmpdir):
-    # 1409: FileNotFoundError
-    with pytest.raises(FileNotFoundError):
-        ModelClass.load_config("missing.yaml")
-        
-    path = os.path.join(tmpdir, "bad.yaml")
-    with open(path, "w") as f:
-        yaml.dump({"growth_df": "g.csv"}, f)
-    with pytest.raises(ValueError, match="Missing required field: binding_df"):
-        ModelClass.load_config(path)
-
-    with open(path, "w") as f:
-        yaml.dump({"growth_df": "g.csv", "binding_df": "b.csv", "settings": {}}, f)
-    with pytest.raises(ValueError, match="Missing required field: tfscreen_version"):
-        ModelClass.load_config(path)

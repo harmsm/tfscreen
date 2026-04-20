@@ -199,3 +199,57 @@ def test_apply_correction_no_groups(mocker):
     assert call_kwargs["dk_geno_groups"] is None
     assert call_kwargs["dk_geno_mask"] is None
     assert call_kwargs["lnA0_groups"] is None
+
+def test__run_batch_fits_alignment():
+    """
+    Specifically verify that _run_batch_fits correctly aligns predictions 
+    merged back into sub_df, even when series have different lengths.
+    """
+    # Create two series with different lengths
+    # Series A: 3 points
+    # Series B: 2 points
+    
+    data = {
+        "series": ["A", "A", "A", "B", "B"],
+        "t_sel": [0, 1, 2, 0, 1],
+        "ln_cfu": [10, 11, 12, 10, 11],
+        "ln_cfu_var": [0.1]*5
+    }
+    df = pd.DataFrame(data)
+    series_selector = ["series"]
+    
+    # Mock fitter that returns distinct identifiable predictions
+    def mock_fitter(t_sel, ln_cfu, **kwargs):
+        num_series = t_sel.shape[0]
+        num_timepoints = t_sel.shape[1]
+        
+        param_df = pd.DataFrame({
+            "k_est": [0.1]*num_series,
+            "A0_est": [100.0]*num_series,
+            "A0_std": [1.0]*num_series,
+        })
+        
+        flat_size = num_series * num_timepoints
+        pred_df = pd.DataFrame({
+            "pred_val": np.arange(flat_size) # Flattened sequence
+        })
+        return param_df, pred_df
+
+    from tfscreen.analysis.independent._get_indiv_growth import _run_batch_fits
+    
+    param_df, pred_df = _run_batch_fits(
+        df=df,
+        series_selector=series_selector,
+        fit_fcn=mock_fitter,
+        needs_columns=["t_sel", "ln_cfu", "ln_cfu_var"],
+        fitter_kwargs={}
+    )
+    
+    # Check Series A (3 points)
+    # Flattened indices for A (num_series=1, max_obs=3) should be [0, 1, 2]
+    # Check Series B (2 points)
+    # Flattened indices for B (num_series=1, max_obs=2) should be [0, 1]
+    
+    pred_df = pred_df.sort_values(["series", "t_sel"])
+    assert pred_df.loc[pred_df["series"]=="A", "pred_val"].tolist() == [0, 1, 2]
+    assert pred_df.loc[pred_df["series"]=="B", "pred_val"].tolist() == [0, 1]

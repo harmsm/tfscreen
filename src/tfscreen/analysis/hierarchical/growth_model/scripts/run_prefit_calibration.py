@@ -1,0 +1,863 @@
+"""
+Pre-fit calibration runner for the two-stage hierarchical workflow.
+
+The pre-fit's job is to produce empirical-Bayes pinned priors for the
+*linking-function* components of the production model — currently
+``condition_growth`` and ``growth_transition``.  All other components
+(activity, dk_geno, ln_cfu0, theta, transformation, noise) are
+deliberately replaced by their simplest forms during the pre-fit so the
+linking-function MAP doesn't have to fight the full hierarchy:
+
+- ``theta``                → ``simple`` (theta values pinned from binding data)
+- ``activity``             → ``hierarchical`` with hyperparams *pinned* to their
+                             prior locs (degenerate, no learning)
+- ``dk_geno``              → ``hierarchical`` with hyperparams *pinned*
+- ``ln_cfu0``              → ``hierarchical`` with hyperparams *pinned*
+- ``transformation``       → ``single`` (no learning)
+- ``theta_*_noise``        → ``zero`` (no learning)
+
+The data is filtered to the (genotype, titrant_name, titrant_conc)
+intersection of the production growth and binding inputs so the
+calibration runs only against fully-observed cells.
+
+After MAP convergence, the script:
+
+1. Estimates a per-site 1-sigma uncertainty from the Hessian of the
+   negative log-joint at the MAP point (delta-method propagated through
+   any constrained-support bijections).
+2. Identifies which fields of the production ``ModelPriors`` provide
+   ``dist.loc`` / ``dist.scale`` for each calibrated sample site, using
+   a sentinel-trace introspection so we don't have to hard-code the
+   field-naming conventions of every component.
+3. Updates the production ``{out_root}_priors.csv`` and
+   ``{out_root}_guesses.csv`` *in place*, writing ``.bak`` backups
+   before overwriting.  Only ``condition_growth`` and
+   ``growth_transition`` rows are touched; everything else is preserved
+   byte-for-byte.
+
+Per-condition_rep array sites (``{name}_k_offset`` etc.) are
+deliberately *not* updated — the calibration model's
+``num_condition_rep`` may differ from the production model's because of
+the data filtering step.
+"""
+
+import dataclasses
+import math
+import os
+import shutil
+import sys
+
+import numpy as np
+import pandas as pd
+import jax
+import jax.numpy as jnp
+import optax
+
+import yaml
+
+from numpyro.handlers import seed, trace
+
+import tfscreen
+from tfscreen.util.cli.generalized_main import generalized_main
+from tfscreen.analysis.hierarchical.run_inference import RunInference
+from tfscreen.analysis.hierarchical.growth_model import GrowthModel
+from tfscreen.analysis.hierarchical.growth_model.configuration_io import (
+    read_configuration,
+)
+
+
+# ---------------------------------------------------------------------------
+# Hardcoded calibration component overrides
+#
+# These are the components that get *replaced* relative to the production
+# YAML.  ``condition_growth`` and ``growth_transition`` are intentionally
+# absent from this dict — their production choices flow through unchanged
+# so the calibration MAP can refine the production priors.
+# ---------------------------------------------------------------------------
+_CALIBRATION_OVERRIDES = {
+    "theta": "simple",
+    "activity": "hierarchical",
+    "dk_geno": "hierarchical",
+    "ln_cfu0": "hierarchical",
+    "transformation": "single",
+    "theta_growth_noise": "zero",
+    "theta_binding_noise": "zero",
+}
+
+# Components that contribute pinnable hyperparameters during the pre-fit.
+# Each entry maps the component-name → ((sample-site suffix, prior field
+# providing the pinned value), ...).  These match the
+# ``_PINNABLE_SUFFIXES`` declared in each component module.
+_PINNED_COMPONENTS = {
+    "activity": (
+        ("log_hyper_loc",   "activity_hyper_loc_loc"),
+        ("log_hyper_scale", "activity_hyper_scale_loc"),
+    ),
+    "dk_geno": (
+        ("hyper_loc",   "dk_geno_hyper_loc_loc"),
+        ("hyper_scale", "dk_geno_hyper_scale_loc"),
+        ("shift",       "dk_geno_hyper_shift_loc"),
+    ),
+    "ln_cfu0": (
+        ("hyper_loc",   "ln_cfu0_hyper_loc_loc"),
+        ("hyper_scale", "ln_cfu0_hyper_scale_loc"),
+    ),
+}
+
+# Tag bases for sentinel introspection (see ``_identify_field_mapping``).
+# Two distinct ranges so condition_growth and growth_transition fields are
+# trivially distinguishable by integer value.
+_SENTINEL_BASE_CG = 100000
+_SENTINEL_BASE_GT = 200000
+
+# Theta values are clipped to ``[_THETA_EPS, 1 - _THETA_EPS]`` so the
+# downstream logit transform (in the simple-theta component) is finite.
+_THETA_EPS = 1e-6
+
+
+# ---------------------------------------------------------------------------
+# Data filtering
+# ---------------------------------------------------------------------------
+
+def _intersect_data(growth_df, binding_df):
+    """
+    Filter the production growth and binding DataFrames to their shared
+    (genotype, titrant_name, titrant_conc) cells.
+
+    Both inputs are read with :func:`tfscreen.util.io.read_dataframe` so a
+    file path or DataFrame is acceptable.  Genotypes are *not* coerced to
+    a categorical here — that happens inside ``GrowthModel`` — so any
+    string/category mismatch surfaces as a missing intersection rather
+    than a silent miscompare.
+
+    Returns
+    -------
+    (growth_df_cal, binding_df_cal) : tuple[pd.DataFrame, pd.DataFrame]
+        Filtered copies, with the original index preserved.
+
+    Raises
+    ------
+    ValueError
+        If the intersection is empty.
+    """
+    growth_df = tfscreen.util.io.read_dataframe(growth_df)
+    binding_df = tfscreen.util.io.read_dataframe(binding_df)
+
+    cols = ["genotype", "titrant_name", "titrant_conc"]
+    for c in cols:
+        if c not in growth_df.columns:
+            raise ValueError(
+                f"growth_df is missing required column '{c}' for calibration intersection."
+            )
+        if c not in binding_df.columns:
+            raise ValueError(
+                f"binding_df is missing required column '{c}' for calibration intersection."
+            )
+
+    growth_keys = (growth_df[cols]
+                   .astype({"genotype": str, "titrant_name": str})
+                   .drop_duplicates()
+                   .set_index(cols).index)
+    binding_keys = (binding_df[cols]
+                    .astype({"genotype": str, "titrant_name": str})
+                    .drop_duplicates()
+                    .set_index(cols).index)
+    shared = growth_keys.intersection(binding_keys)
+
+    if len(shared) == 0:
+        raise ValueError(
+            "Calibration intersection is empty: no (genotype, titrant_name, "
+            "titrant_conc) cell is present in both growth_df and binding_df."
+        )
+
+    growth_idx = growth_df.set_index(cols).index.isin(shared)
+    binding_idx = binding_df.set_index(cols).index.isin(shared)
+
+    return growth_df.loc[growth_idx].copy(), binding_df.loc[binding_idx].copy()
+
+
+# ---------------------------------------------------------------------------
+# theta_values for the simple component
+# ---------------------------------------------------------------------------
+
+def _compute_theta_values(gm_cal, binding_df_cal):
+    """
+    Build a (num_titrant_name, num_titrant_conc) theta tensor for the
+    simple-theta component of the calibration model.
+
+    Each cell is the inverse-variance weighted mean of ``theta_obs``
+    across the genotypes that contributed observations at that
+    (titrant_name, titrant_conc) cell.  Cells with no usable observations
+    fall back to a plain mean of ``theta_obs``; if that is also empty the
+    cell is set to 0.5 (uninformative midpoint).
+
+    The dimension ordering is taken from
+    ``gm_cal.binding_tm.tensor_dim_labels`` so the resulting array
+    matches the layout the simple-theta component expects.
+    """
+    tn_idx = gm_cal.binding_tm.tensor_dim_names.index("titrant_name")
+    tc_idx = gm_cal.binding_tm.tensor_dim_names.index("titrant_conc")
+    titrant_name_labels = list(gm_cal.binding_tm.tensor_dim_labels[tn_idx])
+    titrant_conc_labels = list(gm_cal.binding_tm.tensor_dim_labels[tc_idx])
+
+    n_name = len(titrant_name_labels)
+    n_conc = len(titrant_conc_labels)
+    theta_values = np.full((n_name, n_conc), 0.5, dtype=float)
+
+    name_to_i = {str(n): i for i, n in enumerate(titrant_name_labels)}
+    conc_to_j = {float(c): j for j, c in enumerate(titrant_conc_labels)}
+
+    grouped = binding_df_cal.groupby(["titrant_name", "titrant_conc"],
+                                     observed=True)
+    for (tn, tc), grp in grouped:
+        i = name_to_i.get(str(tn))
+        j = conc_to_j.get(float(tc))
+        if i is None or j is None:
+            continue
+
+        theta_obs = grp["theta_obs"].to_numpy(dtype=float)
+        theta_std = grp["theta_std"].to_numpy(dtype=float)
+        valid = (np.isfinite(theta_obs) & np.isfinite(theta_std)
+                 & (theta_std > 0))
+        if valid.any():
+            w = 1.0 / np.square(theta_std[valid])
+            theta_values[i, j] = float(np.sum(theta_obs[valid] * w) / np.sum(w))
+        else:
+            usable = np.isfinite(theta_obs)
+            if usable.any():
+                theta_values[i, j] = float(np.mean(theta_obs[usable]))
+
+    np.clip(theta_values, _THETA_EPS, 1.0 - _THETA_EPS, out=theta_values)
+    return jnp.asarray(theta_values, dtype=jnp.float32)
+
+
+# ---------------------------------------------------------------------------
+# Calibration model construction
+# ---------------------------------------------------------------------------
+
+def _build_calibration_model(gm_prod, growth_df_cal, binding_df_cal):
+    """
+    Construct the calibration ``GrowthModel`` with hardcoded calibration
+    overrides applied on top of the production component selections.
+
+    ``condition_growth`` and ``growth_transition`` carry through from the
+    production config (the whole point of the pre-fit is to refine
+    *those* priors).  Spiked genotypes are dropped: the calibration only
+    sees the (calibration-genotype × calibration-condition) intersection,
+    which by construction does not include the production's spiked rows.
+    """
+    settings = dict(gm_prod.settings)
+    for k, v in _CALIBRATION_OVERRIDES.items():
+        settings[k] = v
+    settings["spiked_genotypes"] = None
+    batch_size = settings.pop("batch_size", None)
+
+    return GrowthModel(growth_df_cal,
+                       binding_df_cal,
+                       batch_size=batch_size,
+                       **settings)
+
+
+def _inject_calibration_priors(gm_cal, gm_prod, theta_values):
+    """
+    Wire the calibration model's priors into shape:
+
+    - ``condition_growth`` and ``growth_transition`` get the production
+      priors (so the MAP starts from production hyperparam settings),
+      with ``pinned`` cleared so MAP can refine them.
+    - ``theta`` gets the supplied empirical ``theta_values`` (simple
+      component is always-pinned).
+    - ``activity``, ``dk_geno`` and ``ln_cfu0`` get every entry in
+      ``_PINNED_COMPONENTS`` written into their ``pinned`` dict, fixing
+      those hyperparameters to their prior loc / scale defaults so the
+      MAP doesn't try to learn them from calibration-only data.
+
+    Mutates ``gm_cal._priors`` in place.
+    """
+    prod_growth = gm_prod.priors.growth
+    cal_growth = gm_cal.priors.growth
+
+    cg_prod = prod_growth.condition_growth
+    cg_cal = cal_growth.condition_growth
+    if hasattr(cg_prod, "replace") and hasattr(cg_cal, "replace"):
+        # Carry the production scalar fields onto the calibration object
+        # without disturbing whatever pytree-static fields cal added
+        # (e.g. its empty `pinned` dict).
+        cg_updates = {}
+        for f in dataclasses.fields(cg_prod):
+            if f.name == "pinned":
+                continue
+            if hasattr(cg_cal, f.name):
+                cg_updates[f.name] = getattr(cg_prod, f.name)
+        cg_cal_new = cg_cal.replace(**cg_updates, pinned={})
+    else:
+        cg_cal_new = cg_cal
+
+    gt_prod = prod_growth.growth_transition
+    gt_cal = cal_growth.growth_transition
+    if hasattr(gt_prod, "replace") and hasattr(gt_cal, "replace"):
+        gt_updates = {}
+        for f in dataclasses.fields(gt_prod):
+            if f.name == "pinned":
+                continue
+            if hasattr(gt_cal, f.name):
+                gt_updates[f.name] = getattr(gt_prod, f.name)
+        # Some growth_transition variants (e.g. instant) have no `pinned`
+        # field at all; only set it when the dataclass exposes it.
+        if any(f.name == "pinned" for f in dataclasses.fields(gt_cal)):
+            gt_cal_new = gt_cal.replace(**gt_updates, pinned={})
+        elif gt_updates:
+            gt_cal_new = gt_cal.replace(**gt_updates)
+        else:
+            gt_cal_new = gt_cal
+    else:
+        gt_cal_new = gt_cal
+
+    # Pin activity / dk_geno / ln_cfu0 hyperparams to their prior locs.
+    # This produces a degenerate (delta) hierarchy that contributes
+    # nothing to the calibration MAP gradient.
+    pinned_components = {}
+    for comp_name, suffix_field_pairs in _PINNED_COMPONENTS.items():
+        comp = getattr(cal_growth, comp_name, None)
+        if comp is None:
+            continue
+        pinned_dict = {}
+        for suffix, field_name in suffix_field_pairs:
+            if hasattr(comp, field_name):
+                pinned_dict[suffix] = float(getattr(comp, field_name))
+        if pinned_dict and hasattr(comp, "replace"):
+            pinned_components[comp_name] = comp.replace(pinned=pinned_dict)
+
+    growth_updates = {"condition_growth": cg_cal_new,
+                      "growth_transition": gt_cal_new}
+    growth_updates.update(pinned_components)
+    new_growth = cal_growth.replace(**growth_updates)
+
+    # theta priors live on PriorsClass.theta
+    theta_priors = gm_cal.priors.theta
+    if hasattr(theta_priors, "replace"):
+        new_theta = theta_priors.replace(theta_values=theta_values)
+    else:
+        new_theta = theta_priors
+
+    new_priors = gm_cal.priors.replace(growth=new_growth, theta=new_theta)
+    gm_cal._priors = new_priors
+
+
+# ---------------------------------------------------------------------------
+# Sentinel-trace introspection
+#
+# We need to know which CSV row in the production priors file
+# corresponds to the dist.loc / dist.scale of each calibrated sample
+# site.  Pattern-matching field names breaks across components (e.g.
+# activity uses ``activity_hyper_scale_loc`` for the scale of a
+# HalfNormal — note the trailing ``_loc``).  Replace each scalar prior
+# field with a unique sentinel value, run a numpyro trace, and read
+# back the sentinel from each ``site["fn"]``.
+# ---------------------------------------------------------------------------
+
+def _scalar_field_names(component_priors):
+    """
+    Return field names of ``component_priors`` whose value is a scalar
+    (not a dict, not an array).  Used to enumerate sentinels and to
+    decide which fields are eligible for in-place CSV updates.
+    """
+    out = []
+    for f in dataclasses.fields(component_priors):
+        v = getattr(component_priors, f.name)
+        if isinstance(v, dict):
+            continue
+        # array-like check: anything with a non-empty shape
+        try:
+            shape = np.shape(v)
+        except Exception:
+            shape = ()
+        if shape != ():
+            continue
+        try:
+            float(v)
+        except (TypeError, ValueError):
+            continue
+        out.append(f.name)
+    return out
+
+
+def _build_sentinel_priors(component_priors, base):
+    """
+    Replace each scalar field in ``component_priors`` with ``base + i``.
+
+    Returns
+    -------
+    sentinel_priors : same flax dataclass type as ``component_priors``
+    sentinel_to_field : dict[int, str]
+        Maps each sentinel value to the field name it stands in for.
+    """
+    sentinel_to_field = {}
+    updates = {}
+    for i, name in enumerate(_scalar_field_names(component_priors)):
+        sentinel = base + i
+        sentinel_to_field[sentinel] = name
+        updates[name] = float(sentinel)
+    if hasattr(component_priors, "replace"):
+        sentinel_priors = component_priors.replace(**updates)
+    else:
+        sentinel_priors = dataclasses.replace(component_priors, **updates)
+    return sentinel_priors, sentinel_to_field
+
+
+def _identify_field_mapping(gm_cal):
+    """
+    Trace ``gm_cal.jax_model`` with sentinel-valued condition_growth and
+    growth_transition priors so we can read back which prior field
+    provides the loc/scale of each scalar sample site.
+
+    Returns
+    -------
+    dict[str, dict]
+        Site name → ``{"component", "dist_class", "loc_field",
+        "scale_field"}``.  ``loc_field`` may be absent (HalfNormal); both
+        may be absent if introspection fails.  Per-array sample sites
+        (e.g. ``condition_growth_k_offset``) are skipped.
+    """
+    cg_priors = gm_cal.priors.growth.condition_growth
+    gt_priors = gm_cal.priors.growth.growth_transition
+
+    cg_sentinel, cg_map = _build_sentinel_priors(cg_priors, _SENTINEL_BASE_CG)
+    gt_sentinel, gt_map = _build_sentinel_priors(gt_priors, _SENTINEL_BASE_GT)
+
+    sentinel_to_info = {}
+    for v, name in cg_map.items():
+        sentinel_to_info[v] = ("condition_growth", name)
+    for v, name in gt_map.items():
+        sentinel_to_info[v] = ("growth_transition", name)
+
+    new_growth = gm_cal.priors.growth.replace(
+        condition_growth=cg_sentinel,
+        growth_transition=gt_sentinel,
+    )
+    sentinel_priors = gm_cal.priors.replace(growth=new_growth)
+
+    seeded = seed(gm_cal.jax_model, rng_seed=0)
+    traced = trace(seeded)
+    model_trace = traced.get_trace(data=gm_cal.data, priors=sentinel_priors)
+
+    out = {}
+    for site_name, site in model_trace.items():
+        if site["type"] != "sample" or site.get("is_observed", False):
+            continue
+        if site_name.startswith("condition_growth_"):
+            component = "condition_growth"
+        elif site_name.startswith("growth_transition_"):
+            component = "growth_transition"
+        else:
+            continue
+
+        # Skip array sites (offsets etc.); only scalar hyper sites get
+        # written back into the CSV.
+        val = site["value"]
+        try:
+            val_shape = np.shape(val)
+        except Exception:
+            val_shape = ()
+        if val_shape != ():
+            continue
+
+        fn = site["fn"]
+        info = {"component": component, "dist_class": type(fn).__name__}
+        for attr in ("loc", "scale"):
+            if not hasattr(fn, attr):
+                continue
+            attr_val = getattr(fn, attr)
+            try:
+                rounded = int(round(float(np.asarray(attr_val))))
+            except (TypeError, ValueError):
+                continue
+            if rounded in sentinel_to_info:
+                cmp, field_name = sentinel_to_info[rounded]
+                if cmp == component:
+                    info[f"{attr}_field"] = field_name
+        out[site_name] = info
+
+    return out
+
+
+# ---------------------------------------------------------------------------
+# CSV update logic
+# ---------------------------------------------------------------------------
+
+def _csv_row_name(component, field_name):
+    """Produce the dotted row name used in the production priors CSV."""
+    return f"growth.{component}.{field_name}"
+
+
+def _build_csv_updates(field_mapping, hessian_results):
+    """
+    Translate the sentinel-trace mapping plus per-site MAP / sigma
+    estimates into two flat dicts of in-place updates:
+
+    Returns
+    -------
+    prior_updates : dict[str, float]
+        ``{csv_row_name → new_value}`` for the priors CSV.
+        Normal sites contribute two rows (loc field ← MAP, scale field ←
+        Hessian sigma); HalfNormal contributes one (scale field ← MAP,
+        recentering the prior on the MAP point).
+    guess_updates : dict[str, float]
+        ``{site_name → MAP value}`` for the guesses CSV.  Only scalar
+        sites are included.
+    """
+    prior_updates = {}
+    guess_updates = {}
+
+    for site_name, info in field_mapping.items():
+        if site_name not in hessian_results:
+            continue
+        result = hessian_results[site_name]
+        map_val_arr = np.asarray(result["map"])
+        sigma_arr = np.asarray(result["sigma"])
+        if map_val_arr.shape != ():
+            # Sanity skip — _identify_field_mapping already filters arrays.
+            continue
+        map_val = float(map_val_arr)
+        sigma_val = float(sigma_arr) if sigma_arr.shape == () else None
+
+        component = info["component"]
+        dist_class = info["dist_class"]
+        loc_field = info.get("loc_field")
+        scale_field = info.get("scale_field")
+
+        if dist_class == "Normal":
+            if loc_field is not None:
+                prior_updates[_csv_row_name(component, loc_field)] = map_val
+            if scale_field is not None and sigma_val is not None:
+                prior_updates[_csv_row_name(component, scale_field)] = sigma_val
+        elif dist_class == "HalfNormal":
+            if scale_field is not None:
+                # Recenter the HalfNormal on the MAP point.  We cannot
+                # propagate Hessian sigma onto the second parameter
+                # because there is no second parameter.
+                prior_updates[_csv_row_name(component, scale_field)] = map_val
+        else:
+            # Other distributions (Cauchy, etc.) would land here.  For
+            # now we just drop the loc onto loc_field if present; this
+            # is conservative.
+            if loc_field is not None:
+                prior_updates[_csv_row_name(component, loc_field)] = map_val
+            if scale_field is not None and sigma_val is not None:
+                prior_updates[_csv_row_name(component, scale_field)] = sigma_val
+
+        guess_updates[site_name] = map_val
+
+    return prior_updates, guess_updates
+
+
+def _apply_priors_updates(priors_path, prior_updates):
+    """
+    Overwrite ``parameter == row_name`` rows of the production priors
+    CSV with the new values.  Writes a ``.bak`` copy first.  Rows whose
+    ``parameter`` is not present in ``prior_updates`` are preserved
+    unchanged.  Logs a warning for any update key that has no matching
+    row.
+    """
+    if not prior_updates:
+        return
+    df = pd.read_csv(priors_path)
+    if "parameter" not in df.columns or "value" not in df.columns:
+        raise ValueError(
+            f"Priors CSV {priors_path} is missing required 'parameter' / "
+            "'value' columns."
+        )
+
+    matched = set()
+    for row_name, new_val in prior_updates.items():
+        mask = df["parameter"] == row_name
+        if mask.any():
+            df.loc[mask, "value"] = new_val
+            matched.add(row_name)
+
+    missing = sorted(set(prior_updates) - matched)
+    if missing:
+        print(
+            f"  warning: {len(missing)} prior update(s) had no matching row "
+            f"in {priors_path}: {missing}",
+            file=sys.stderr,
+        )
+
+    shutil.copy2(priors_path, priors_path + ".bak")
+    df.to_csv(priors_path, index=False)
+    print(f"Updated {len(matched)} priors row(s) in {priors_path}")
+
+
+def _apply_guesses_updates(guesses_path, guess_updates):
+    """
+    Overwrite scalar ``parameter == site_name`` rows of the production
+    guesses CSV with their new MAP values.  A row is considered scalar
+    if it has no ``flat_index`` (or ``flat_index`` is NaN).  Writes a
+    ``.bak`` copy first.
+    """
+    if not guess_updates:
+        return
+    df = pd.read_csv(guesses_path)
+    if "parameter" not in df.columns or "value" not in df.columns:
+        raise ValueError(
+            f"Guesses CSV {guesses_path} is missing required 'parameter' / "
+            "'value' columns."
+        )
+
+    if "flat_index" in df.columns:
+        scalar_mask = df["flat_index"].isna()
+    else:
+        scalar_mask = pd.Series(True, index=df.index)
+
+    matched = set()
+    for site_name, new_val in guess_updates.items():
+        row_mask = scalar_mask & (df["parameter"] == site_name)
+        if row_mask.any():
+            df.loc[row_mask, "value"] = new_val
+            matched.add(site_name)
+
+    missing = sorted(set(guess_updates) - matched)
+    if missing:
+        print(
+            f"  warning: {len(missing)} guess update(s) had no matching "
+            f"scalar row in {guesses_path}: {missing}",
+            file=sys.stderr,
+        )
+
+    shutil.copy2(guesses_path, guesses_path + ".bak")
+    df.to_csv(guesses_path, index=False)
+    print(f"Updated {len(matched)} guesses row(s) in {guesses_path}")
+
+
+# ---------------------------------------------------------------------------
+# CSV-path resolution from the production config
+# ---------------------------------------------------------------------------
+
+def _resolve_csv_paths(config_file):
+    """
+    Read the production YAML config and return the absolute paths of its
+    priors and guesses CSV files.  Raises if either is missing.
+    """
+    with open(config_file, "r") as fh:
+        cfg = yaml.safe_load(fh)
+    cfg_dir = os.path.dirname(os.path.abspath(config_file))
+    priors_file = cfg.get("priors_file")
+    guesses_file = cfg.get("guesses_file")
+    if priors_file is None:
+        raise ValueError(f"priors_file not specified in {config_file}")
+    if guesses_file is None:
+        raise ValueError(f"guesses_file not specified in {config_file}")
+
+    priors_path = priors_file if os.path.isabs(priors_file) \
+        else os.path.join(cfg_dir, priors_file)
+    guesses_path = guesses_file if os.path.isabs(guesses_file) \
+        else os.path.join(cfg_dir, guesses_file)
+
+    if not os.path.exists(priors_path):
+        raise FileNotFoundError(f"Priors file not found: {priors_path}")
+    if not os.path.exists(guesses_path):
+        raise FileNotFoundError(f"Guesses file not found: {guesses_path}")
+
+    return priors_path, guesses_path
+
+
+# ---------------------------------------------------------------------------
+# MAP execution (mirrors run_growth_analysis._run_map but trimmed)
+# ---------------------------------------------------------------------------
+
+def _run_calibration_map(ri,
+                         init_params,
+                         out_root,
+                         checkpoint_file,
+                         adam_step_size,
+                         adam_final_step_size,
+                         adam_clip_norm,
+                         elbo_num_particles,
+                         convergence_tolerance,
+                         convergence_window,
+                         patience,
+                         convergence_check_interval,
+                         checkpoint_interval,
+                         max_num_epochs,
+                         init_param_jitter):
+    """Set up a MAP SVI optimizer and run it; return ``(svi_state, params,
+    converged)``.  Behaviour mirrors ``run_growth_analysis._run_map`` but
+    the ``always_get_posterior`` plumbing is dropped (the pre-fit only
+    consumes MAP point estimates and Hessian-derived sigmas)."""
+    schedule = optax.exponential_decay(
+        init_value=adam_step_size,
+        transition_steps=float(max_num_epochs * ri._iterations_per_epoch),
+        decay_rate=adam_final_step_size / adam_step_size,
+    )
+    map_obj = ri.setup_svi(adam_step_size=schedule,
+                           adam_clip_norm=adam_clip_norm,
+                           elbo_num_particles=elbo_num_particles,
+                           guide_type="delta")
+
+    svi_state, params, converged = ri.run_optimization(
+        map_obj,
+        init_params=init_params,
+        out_root=out_root,
+        svi_state=checkpoint_file,
+        convergence_tolerance=convergence_tolerance,
+        convergence_window=convergence_window,
+        patience=patience,
+        convergence_check_interval=convergence_check_interval,
+        checkpoint_interval=checkpoint_interval,
+        max_num_epochs=max_num_epochs,
+        init_param_jitter=init_param_jitter,
+    )
+
+    ri.write_params(params, out_root=out_root)
+
+    if converged:
+        print("Calibration MAP run converged.", flush=True)
+    else:
+        print("Calibration MAP run has not yet converged.", flush=True)
+
+    return svi_state, params, converged
+
+
+# ---------------------------------------------------------------------------
+# Public entry point
+# ---------------------------------------------------------------------------
+
+def run_prefit_calibration(config_file,
+                           seed=None,
+                           checkpoint_file=None,
+                           out_root="prefit",
+                           adam_step_size=1e-3,
+                           adam_final_step_size=1e-6,
+                           adam_clip_norm=1.0,
+                           elbo_num_particles=2,
+                           convergence_tolerance=0.01,
+                           convergence_window=10,
+                           patience=10,
+                           convergence_check_interval=2,
+                           checkpoint_interval=10,
+                           max_num_epochs=100000,
+                           init_param_jitter=0.0):
+    """
+    Run the calibration pre-fit and update the production priors / guesses
+    CSVs in place.
+
+    The script:
+
+    1. Reads the production ``config_file`` to obtain the production
+       ``GrowthModel`` (so we know which priors / guesses files to
+       update later) and the production data paths.
+    2. Filters the growth and binding inputs to their shared
+       (genotype, titrant_name, titrant_conc) cells.
+    3. Builds an in-process calibration ``GrowthModel`` whose
+       ``condition_growth`` and ``growth_transition`` components match
+       the production choices but whose other components are pinned /
+       collapsed (see module docstring).
+    4. Runs MAP, then computes per-site Hessian sigmas at the MAP
+       point.
+    5. Writes ``.bak`` copies of the production priors and guesses CSVs
+       and overwrites only the rows that belong to ``condition_growth``
+       or ``growth_transition``.
+
+    Parameters
+    ----------
+    config_file : str
+        Path to the *production* YAML configuration file.  The pre-fit
+        does not write a calibration YAML — it only updates the
+        existing production CSVs.
+    seed : int, optional
+        Random seed for reproducibility.  Required unless resuming from
+        a checkpoint.
+    checkpoint_file : str or None, optional
+        Path to a previously written pre-fit checkpoint to resume from.
+    out_root : str, optional
+        Prefix for calibration MAP artefacts (``{out_root}_params.npz``,
+        ``{out_root}_checkpoint.pkl``, etc.).  Defaults to ``"prefit"``.
+        These are diagnostic outputs; the user-facing artefact is the
+        in-place update of the production CSVs.
+    adam_step_size, adam_final_step_size, adam_clip_norm,
+    elbo_num_particles, convergence_tolerance, convergence_window,
+    patience, convergence_check_interval, checkpoint_interval,
+    max_num_epochs, init_param_jitter : optional
+        Standard MAP optimizer / convergence kwargs; see
+        :func:`run_growth_analysis.run_growth_analysis` for details.
+        ``init_param_jitter`` defaults to ``0.0`` because the pre-fit
+        benefits from being deterministic given a seed.
+
+    Returns
+    -------
+    svi_state : Any
+        Final MAP SVI optimizer state.
+    params : dict
+        MAP point estimates (raw ``{site}_auto_loc`` keys).
+    converged : bool
+        Whether the MAP run converged.
+    """
+    if seed is None and checkpoint_file is None:
+        raise ValueError("seed must be provided unless loading from a checkpoint.")
+
+    # 1. Resolve production config and CSV targets.
+    priors_path, guesses_path = _resolve_csv_paths(config_file)
+    gm_prod, _ = read_configuration(config_file)
+
+    # 2. Filter to the calibration (genotype, titrant_name, titrant_conc)
+    # intersection.  read_configuration already loaded the production
+    # data paths into gm_prod; pull them straight off the config so we
+    # don't depend on an internal attribute.
+    with open(config_file, "r") as fh:
+        cfg = yaml.safe_load(fh)
+    growth_path = cfg["data"]["growth"]
+    binding_path = cfg["data"]["binding"]
+    growth_df_cal, binding_df_cal = _intersect_data(growth_path, binding_path)
+
+    # 3. Build the calibration model with overrides applied.
+    gm_cal = _build_calibration_model(gm_prod, growth_df_cal, binding_df_cal)
+    theta_values = _compute_theta_values(gm_cal, binding_df_cal)
+    _inject_calibration_priors(gm_cal, gm_prod, theta_values)
+
+    # 4. MAP fit + Hessian sigmas.
+    effective_seed = seed if seed is not None else 0
+    ri = RunInference(gm_cal, effective_seed)
+
+    svi_state, params, converged = _run_calibration_map(
+        ri,
+        init_params=gm_cal.init_params,
+        out_root=out_root,
+        checkpoint_file=checkpoint_file,
+        adam_step_size=adam_step_size,
+        adam_final_step_size=adam_final_step_size,
+        adam_clip_norm=adam_clip_norm,
+        elbo_num_particles=elbo_num_particles,
+        convergence_tolerance=convergence_tolerance,
+        convergence_window=convergence_window,
+        patience=patience,
+        convergence_check_interval=convergence_check_interval,
+        checkpoint_interval=checkpoint_interval,
+        max_num_epochs=max_num_epochs,
+        init_param_jitter=init_param_jitter,
+    )
+
+    print("Computing Hessian-based per-site uncertainties ...", flush=True)
+    hessian_results = ri.compute_hessian_sigmas(params)
+
+    # 5. Map sample sites → CSV fields and apply in-place updates.
+    field_mapping = _identify_field_mapping(gm_cal)
+    prior_updates, guess_updates = _build_csv_updates(field_mapping,
+                                                      hessian_results)
+    _apply_priors_updates(priors_path, prior_updates)
+    _apply_guesses_updates(guesses_path, guess_updates)
+
+    return svi_state, params, converged
+
+
+def main():
+    return generalized_main(
+        run_prefit_calibration,
+        manual_arg_types={"config_file": str,
+                          "seed": int,
+                          "checkpoint_file": str,
+                          "init_param_jitter": float},
+    )
+
+
+if __name__ == "__main__":
+    main()

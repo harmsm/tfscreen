@@ -77,6 +77,10 @@ def test_gls(synthetic_data):
         assert len(param_df) == 5
         assert mock_gls.called
         assert "k_est" in param_df.columns
+        assert np.allclose(param_df["lnA0_est"], 2.0)
+        assert np.allclose(param_df["lnA0_std"], 0.1)
+        assert np.allclose(param_df["k_est"], 0.5)
+        assert np.allclose(param_df["k_std"], 0.01)
 
 def test_nls(synthetic_data):
     times, cfu, cfu_var = synthetic_data
@@ -88,11 +92,18 @@ def test_nls(synthetic_data):
 
 def test_glm(synthetic_data):
     times, cfu, _ = synthetic_data
-    try:
+    # Mock Tweedie GLM
+    with patch("tfscreen.models.growth.glm.sm.GLM") as mock_glm:
+        mock_glm_res = MagicMock()
+        mock_glm_res.params = np.array([1.0, 0.5])
+        mock_glm_res.bse = np.array([0.1, 0.05])
+        mock_glm_res.fittedvalues = cfu[0, :]
+        mock_glm.return_value.fit.return_value = mock_glm_res
+        
         param_df, pred_df = glm(times, cfu)
         assert len(param_df) == 5
-    except Exception:
-        pass
+        assert np.allclose(param_df["lnA0_std"], 0.1)
+        assert np.allclose(param_df["k_std"], 0.05)
 
 def test_gee(synthetic_data):
     times, cfu, _ = synthetic_data

@@ -56,7 +56,7 @@ def get_wt_theta(
     # Create arrays of identical length from inputs
     titrant_name, titrant_conc = broadcast_args(titrant_name,
                                                 titrant_conc)
-
+    
     # Create series to map between theta and parameter arrays
     theta_param_dict = calibration_dict["theta_param"]
     theta_map = pd.Series(theta_param_dict)

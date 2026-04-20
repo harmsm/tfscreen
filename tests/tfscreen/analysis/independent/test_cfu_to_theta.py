@@ -121,6 +121,8 @@ def test_prep_param_guesses_happy_path(mocker, prepped_df, calibration_data):
         "genotype": ["wt", "V30A", "V30C"],
         "library": ["L1", "L1", "L1"],
         "replicate": pd.Series([1, 1, 2], dtype="Int64"),
+        "titrant_name": ["iptg", "iptg", "iptg"],
+        "titrant_conc": [0.1, 0.1, 0.1],
         "lnA0_est": [10.5, 11.0, 11.5],
         "dk_geno": [0.0, -0.5, -0.8],
     })
@@ -324,7 +326,9 @@ def setup_df():
         "ln_cfu": [15.0, 14.0, 16.0],
         "ln_cfu_std": [0.1, 0.1, 0.1],
     }
-    return pd.DataFrame(data)
+    df = pd.DataFrame(data)
+    df["k_bg"] = df["k_bg_b"] + df["k_bg_m"] * df["titrant_conc"]
+    return df
 
 
 # --- Test Cases ---
@@ -343,7 +347,7 @@ def test_setup_inference_happy_path(mocker, setup_df):
 
     # 2. Mock return for dk_geno
     dk_geno_idx = np.array([3, 4, 3]) # Two unique genotype groups
-    dk_geno_df = pd.DataFrame({"idx": [3, 4], "class": "dk_geno"})
+    dk_geno_df = pd.DataFrame({"idx": [3, 4], "class": "dk_geno", "name": ["dk_geno_wt", "dk_geno_mut"]})
 
     # 3. Mock return for theta
     theta_idx = np.array([5, 5, 6]) # Two unique titrant groups
@@ -359,7 +363,11 @@ def test_setup_inference_happy_path(mocker, setup_df):
     )
 
     # --- Run the function ---
-    y_obs, y_std, X, param_df = _setup_inference(setup_df)
+    fm = _setup_inference(setup_df)
+    y_obs = fm.y_obs
+    y_std = fm.y_std
+    X = fm._X
+    param_df = fm.param_df
 
     # --- Assertions ---
 
@@ -369,35 +377,88 @@ def test_setup_inference_happy_path(mocker, setup_df):
     last_call_args, last_call_kwargs = mock_builder.call_args_list[2]
     # offset = max lnA0 idx (2) + max dk_geno idx (4) = 5
     assert last_call_kwargs["offset"] == 5
+    assert last_call_kwargs["transform"] == "none"
 
     # 2. Verify the final param_df
-    # Total params = 3 (lnA0) + 2 (dk_geno) + 2 (theta) = 7
-    assert len(param_df) == 7
-    assert param_df["class"].tolist() == ["lnA0"]*3 + ["dk_geno"]*2 + ["theta"]*2
+    # Total params >= 7 (lnA0 x3, dk_geno x2, theta x2 + dk_cond_params)
+    assert len(param_df) >= 7
+    assert param_df["class"].tolist()[:7] == ["lnA0"]*3 + ["dk_geno"]*2 + ["theta"]*2
 
     # 3. Verify the design matrix X
-    assert X.shape == (3, 7) # 3 observations, 7 total parameters
+    # Cols: lnA0(0), dk_geno(1), theta(2), t_total(3), t_pre(4), t_sel(5)
+    #       [b_pre, m_pre, tau_pre, k_sharp_pre](6..9), 
+    #       [b_sel, m_sel, tau_sel, k_sharp_sel](10..13)
+    assert X.shape == (3, 8) # 3 observations, 8 total columns
 
-    # Check row 1 (index 0) of the design matrix
-    # This row corresponds to lnA0_idx=0, dk_geno_idx=3, theta_idx=5
-    assert X[0, 0] == 1.0 # lnA0 value
-    assert X[0, 3] == (setup_df.loc[0, "t_pre"] + setup_df.loc[0, "t_sel"]) # dk_geno value
-    assert X[0, 5] == (setup_df.loc[0, "dk_m_pre"] * setup_df.loc[0, "t_pre"] +
-                       setup_df.loc[0, "dk_m_sel"] * setup_df.loc[0, "t_sel"]) # theta value
-    # Sum should be these three values, as all others should be zero
-    assert np.isclose(np.sum(X[0, :]), X[0, 0] + X[0, 3] + X[0, 5])
+    # Check row 0
+    # lnA0_idx=0 -> X[0,0] = 0
+    assert X[0, 0] == 0.0 # lnA0 index
+    
+    # Check time columns
+    t_pre = setup_df.loc[0, "t_pre"]
+    t_sel = setup_df.loc[0, "t_sel"]
+    assert X[0, 3] == t_pre + t_sel # t_total
+    assert X[0, 4] == t_pre
+    assert X[0, 5] == t_sel
+    
+    # Check model indices
+    assert X[0, 6] >= 0 # dk_cond_pre_idx
+    assert X[0, 7] >= 0 # dk_cond_sel_idx
 
     # 4. Verify y_obs and y_std
     assert y_obs.shape == (3,)
     assert y_std.shape == (3,)
     
     # Manually calculate y_obs for the first row and check
+    # New logic: y_obs = ln_cfu - k_bg * t_total
     row0 = setup_df.iloc[0]
     k_bg = row0["k_bg_b"] + row0["k_bg_m"] * row0["titrant_conc"]
-    constant_terms = ((k_bg + row0["dk_b_pre"]) * row0["t_pre"] + 
-                      (k_bg + row0["dk_b_sel"]) * row0["t_sel"])
-    expected_y_obs_0 = row0["ln_cfu"] - constant_terms
+    
+    expected_y_obs_0 = row0["ln_cfu"] - k_bg * (t_pre + t_sel)
     assert np.isclose(y_obs[0], expected_y_obs_0)
+
+
+def test_setup_inference_logistic_theta(mocker, setup_df):
+    """
+    Tests that _setup_inference correctly passes logistic_theta to 
+    _build_param_df.
+    """
+    # --- Mock the _build_param_df helper function ---
+    # We expect it to be called 3 times. We'll define the return value
+    # for each call.
+
+    # 1. Mock return for lnA0
+    lnA0_idx = np.array([0, 1, 2]) # Three unique lnA0 groups
+    lnA0_df = pd.DataFrame({"idx": [0, 1, 2], "class": "lnA0"})
+
+    # 2. Mock return for dk_geno
+    dk_geno_idx = np.array([3, 4, 3]) # Two unique genotype groups
+    dk_geno_df = pd.DataFrame({"idx": [3, 4], "class": "dk_geno", "name": ["dk_geno_wt", "dk_geno_mut"]})
+
+    # 3. Mock return for theta
+    theta_idx = np.array([5, 5, 6]) # Two unique titrant groups
+    theta_df = pd.DataFrame({"idx": [5, 6], "class": "theta"})
+
+    mock_builder = mocker.patch(
+        "tfscreen.analysis.independent.cfu_to_theta._build_param_df",
+        side_effect=[
+            (lnA0_idx, lnA0_df),
+            (dk_geno_idx, dk_geno_df),
+            (theta_idx, theta_df),
+        ]
+    )
+
+    # --- Run the function with logistic_theta=True ---
+    _setup_inference(setup_df, logistic_theta=True)
+
+    # --- Assertions ---
+
+    # Verify calls to the mock
+    assert mock_builder.call_count == 3
+    
+    # Check that the transform was correct for the last call
+    last_call_args, last_call_kwargs = mock_builder.call_args_list[2]
+    assert last_call_kwargs["transform"] == "logistic"
 
 
 
@@ -441,6 +502,10 @@ def test_run_inference(mocker):
             np.array([0.11, 0.11, 0.12])  # y_pred_std
         )
     )
+
+    # Configure mock_fm to support linear path (default)
+    mock_fm._model_func = None
+    mock_fm._X = np.eye(3)
 
     # --- 2. Run the function ---
     param_df, pred_df = _run_inference(fm=mock_fm)
@@ -502,6 +567,7 @@ def test_cfu_to_theta_integration(mocker, base_df, calibration_data):
     # UPDATED: Mock data now uses genotypes from the new base_df
     mock_indiv_params = pd.DataFrame({
         "genotype": ["wt", "V30A"], "library": ["L1", "L1"], "replicate": [1, 1],
+        "titrant_name": ["iptg", "iptg"], "titrant_conc": [0.1, 0.1],
         "lnA0_est": [10.5, 11.0], "dk_geno": [0.0, -0.5],
     })
     mocker.patch("tfscreen.analysis.independent.cfu_to_theta.get_indiv_growth", return_value=(mock_indiv_params, None))
@@ -520,6 +586,11 @@ def test_cfu_to_theta_integration(mocker, base_df, calibration_data):
     mock_fm_instance = MagicMock()
     mock_fm_instance.back_transform.side_effect = lambda p: p * 10
     mock_fm_instance.back_transform_std_err.side_effect = lambda p, s: s / 2
+    
+    # Configure _model_func to return array matching y_obs length (2)
+    # This prevents ValueError in pred_df construction
+    mock_fm_instance._model_func = MagicMock(return_value=np.zeros(2))
+    
     mock_fm_class = mocker.patch("tfscreen.analysis.independent.cfu_to_theta.FitManager")
     mock_fm_class.return_value = mock_fm_instance
 

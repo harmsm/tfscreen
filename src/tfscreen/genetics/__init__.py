@@ -21,3 +21,5 @@ from .get_single_with_wt import (
 )
 
 from .library_manager import LibraryManager
+
+from .build_mut_geno_matrix import build_mut_geno_matrix

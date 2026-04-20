@@ -285,6 +285,31 @@ def test_create_counts_df_empty_expected(mock_set_categorical):
     result_df = _create_counts_df(sequences, expected_genotypes)
     pd_testing.assert_frame_equal(result_df, expected_df)
 
+@patch('tfscreen.process_raw.process_fastq.set_categorical_genotype')
+def test_create_counts_df_with_unknown(mock_set_categorical):
+    """Test that unknown genotypes are aggregated from messages."""
+    mock_set_categorical.side_effect = lambda df, standardize, sort: df
+
+    sequences = Counter({"wt": 500, "A1C": 100})
+    expected_genotypes = ["wt", "A1C"]
+    messages = Counter({
+        "fail, F/R agree but their sequence is not in the expected library": 10,
+        "fail, F/R agree but match more than one expected sequence": 5,
+        "fail, some other error": 100 # should be ignored
+    })
+    
+    expected_df = pd.DataFrame({
+        "genotype": ["wt", "A1C", "__unknown__"],
+        "counts": [500, 100, 15]
+    })
+
+    result_df = _create_counts_df(sequences, expected_genotypes, messages=messages)
+
+    expected_df = expected_df.sort_values(by="genotype").reset_index(drop=True)
+    result_df = result_df.sort_values(by="genotype").reset_index(drop=True)
+    
+    pd_testing.assert_frame_equal(result_df, expected_df)
+
 # -----------------------------------------------------------------------------
 # process_fastq
 # -----------------------------------------------------------------------------
@@ -330,7 +355,7 @@ def test_process_fastq_happy_path_with_instance(mock_ftc_cls, mock_process_paire
         print_raw_seq=False
     )
     
-    mock_create_counts.assert_called_once_with(Counter({"seq": 1}), ["wt"])
+    mock_create_counts.assert_called_once_with(Counter({"seq": 1}), ["wt"], messages=Counter({"msg": 1}))
 
 def test_process_fastq_raises_error_for_file_as_dir(tmp_path):
     """

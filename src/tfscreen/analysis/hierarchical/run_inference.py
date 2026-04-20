@@ -21,8 +21,10 @@ import dill
 from tqdm.auto import tqdm
 
 from collections import deque
+from functools import partial
 import os
 import h5py
+from .posteriors import load_posteriors
 
 class RunInference:
     """
@@ -194,7 +196,7 @@ class RunInference:
         data_on_gpu = jax.device_put(self.model.data)
 
         # JAX-optimized update function for use with lax.scan
-        def scan_fn(carry, indices):
+        def scan_fn(data_on_gpu, carry, indices):
             svi_state = carry
             batch = self.model.get_batch(data_on_gpu, indices)
             new_svi_state, loss = update_function(svi_state,
@@ -202,8 +204,10 @@ class RunInference:
                                                   data=batch)
             return new_svi_state, loss
 
-        # JIT the scan function
-        fast_scan = jax.jit(lambda state, indices: jax.lax.scan(scan_fn, state, indices))
+        # JIT the scan function. We pass data_on_gpu as a formal argument to 
+        # the jitted function to avoid capturing it as a constant in the 
+        # closure (which triggers expensive constant folding for large datasets)
+        fast_scan = jax.jit(lambda data, state, indices: jax.lax.scan(partial(scan_fn, data), state, indices))
 
         # Create an initial batch to initialize SVI
         gpu_batch_idx = jax.device_put(self.model.get_random_idx())
@@ -266,7 +270,7 @@ class RunInference:
             gpu_block_idx = jax.device_put(block_idx)
 
             # Run the block of updates using lax.scan (entirely on GPU)
-            svi_state, block_losses = fast_scan(svi_state, gpu_block_idx)
+            svi_state, block_losses = fast_scan(data_on_gpu, svi_state, gpu_block_idx)
             
             # Convert JAX array to NumPy for host-side metadata management
             # Ensure it is at least 1D for deque/IO
@@ -287,8 +291,11 @@ class RunInference:
             params = svi.get_params(svi_state)
             for k in params:
                 if np.any(np.isnan(params[k])):
+                    
+                    nan_params = [(k,params[k]) for k in params]
                     raise RuntimeError(
-                        f"model exploded (observed at step {self._current_step})."
+                        f"model exploded (observed at step {self._current_step}). "
+                        f"NaN params: {nan_params}."
                     )
                 
             # Write outputs (checkpoints and losses)
@@ -383,14 +390,13 @@ class RunInference:
                        out_root,
                        num_posterior_samples=10000,
                        sampling_batch_size=100,
-                       forward_batch_size=512,
-                       use_h5=True):
+                       forward_batch_size=512):
         """
         Generate and save posterior samples using the trained guide.
 
         Uses `numpyro.infer.Predictive` to sample from the posterior
         distribution defined by the guide and parameters. Handles large
-        datasets by batching predictions and writing to disk (HDF5 or NPZ).
+        datasets by batching predictions and writing to disk (HDF5).
 
         Parameters
         ----------
@@ -407,9 +413,6 @@ class RunInference:
             (default 100).
         forward_batch_size : int, optional
             Batch size for calculating forward predictions (default 512).
-        use_h5 : bool, optional
-            If True (default), write to an HDF5 file. If False, write to 
-            a compressed .npz file (warning: may cause OOM for large runs).
         """
 
         guide = svi.guide
@@ -433,86 +436,82 @@ class RunInference:
                                     params=params,
                                     num_samples=sampling_batch_size)
 
-        # Initialize HDF5 file if requested
-        hf = None
-        if use_h5:
-            h5_file = f"{out_root}_posterior.h5"
-            hf = h5py.File(h5_file, 'w')
+        # Prepare HDF5 file
+        h5_file = f"{out_root}_posterior.h5"
         
-        combined_results = {}
         samples_written = 0
+        with h5py.File(h5_file, 'w') as hf:
 
-        for batch_i in tqdm(range(num_latent_batches), desc="sampling posterior"):
+            for batch_i in tqdm(range(num_latent_batches), desc="sampling posterior"):
 
-            # Sample the guide posterior
-            post_key = self.get_key()
-            latent_samples = latent_sampler(post_key,
-                                            priors=self.model.priors,
-                                            data=full_data)
+                # Sample the guide posterior
+                post_key = self.get_key()
+                latent_samples = latent_sampler(post_key,
+                                                priors=self.model.priors,
+                                                data=full_data)
 
-            # Sample batches of genotypes
-            batch_collector = {}
-            for start_idx in range(0, total_num_genotypes, forward_batch_size):
-                
-                end_idx = min(start_idx + forward_batch_size, total_num_genotypes)
-                batch_indices = jnp.arange(start_idx, end_idx)
-
-                # Slice latent samples using the dim_map
-                batch_latents = {}
-                for k, v in latent_samples.items():
-                    if k in dim_map:
-                        batch_latents[k] = jnp.take(v, jnp.arange(start_idx, end_idx), axis=dim_map[k])
-                    else:
-                        batch_latents[k] = v
-
-                # Get a batch of data
-                batch_data = self.model.get_batch(data_on_gpu, batch_indices)
-                
-                # Forward pass for this batch
-                forward_sampler = Predictive(self.model.jax_model, 
-                                             posterior_samples=batch_latents)
-                sample_key = self.get_key()
-                batch_pred = forward_sampler(sample_key,
-                                             priors=self.model.priors,
-                                             data=batch_data)
-
-                # Collect all samples (latents + predictions) for this batch
-                # Predictions from forward pass
-                for k, v in batch_pred.items():
-                    if k not in batch_collector:
-                        batch_collector[k] = []
-                    batch_collector[k].append(jax.device_get(v))
-            
-                # Latents that weren't in predictions (e.g. guide-only parameters)
-                for k, v in batch_latents.items():
-                    if k in batch_pred:
-                        continue
-                        
-                    if k not in batch_collector:
-                        batch_collector[k] = []
+                # Sample batches of genotypes
+                batch_collector = {}
+                for start_idx in range(0, total_num_genotypes, forward_batch_size):
                     
-                    # If global (not in dim_map), only add on first genotype batch
-                    if k not in dim_map:
-                        if start_idx == 0:
-                            batch_collector[k].append(jax.device_get(v))
-                    else:
-                        # Geno-specific, always add
-                        batch_collector[k].append(jax.device_get(v))
+                    end_idx = min(start_idx + forward_batch_size, total_num_genotypes)
+                    batch_indices = jnp.arange(start_idx, end_idx)
 
-            # Concatenate genotype batches for this latent batch
-            this_batch_results = {}
-            for k, v_list in batch_collector.items():
-                if k in dim_map:
-                    # Concatenate along the genotype dimension (same as originally traced)
-                    axis = dim_map[k]
-                    this_batch_results[k] = np.concatenate(v_list, axis=axis)
-                else:
-                    # Global parameter, just take the first (and only) entry
-                    this_batch_results[k] = v_list[0]
-            
-            # Write to file
-            batch_size_actual = next(iter(this_batch_results.values())).shape[0]
-            if use_h5:
+                    # Slice latent samples using the dim_map
+                    batch_latents = {}
+                    for k, v in latent_samples.items():
+                        if k in dim_map:
+                            batch_latents[k] = jnp.take(v, jnp.arange(start_idx, end_idx), axis=dim_map[k])
+                        else:
+                            batch_latents[k] = v
+
+                    # Get a batch of data
+                    batch_data = self.model.get_batch(data_on_gpu, batch_indices)
+                    
+                    # Forward pass for this batch
+                    forward_sampler = Predictive(self.model.jax_model, 
+                                                 posterior_samples=batch_latents)
+                    sample_key = self.get_key()
+                    batch_pred = forward_sampler(sample_key,
+                                                 priors=self.model.priors,
+                                                 data=batch_data)
+
+                    # Collect all samples (latents + predictions) for this batch
+                    # Predictions from forward pass
+                    for k, v in batch_pred.items():
+                        if k not in batch_collector:
+                            batch_collector[k] = []
+                        batch_collector[k].append(jax.device_get(v))
+                
+                    # Latents that weren't in predictions (e.g. guide-only parameters)
+                    for k, v in batch_latents.items():
+                        if k in batch_pred:
+                            continue
+                            
+                        if k not in batch_collector:
+                            batch_collector[k] = []
+                        
+                        # If global (not in dim_map), only add on first genotype batch
+                        if k not in dim_map:
+                            if start_idx == 0:
+                                batch_collector[k].append(jax.device_get(v))
+                        else:
+                            # Geno-specific, always add
+                            batch_collector[k].append(jax.device_get(v))
+
+                # Concatenate genotype batches for this latent batch
+                this_batch_results = {}
+                for k, v_list in batch_collector.items():
+                    if k in dim_map:
+                        # Concatenate along the genotype dimension (same as originally traced)
+                        axis = dim_map[k]
+                        this_batch_results[k] = np.concatenate(v_list, axis=axis)
+                    else:
+                        # Global parameter, just take the first (and only) entry
+                        this_batch_results[k] = v_list[0]
+                
+                # Write to file
+                batch_size_actual = next(iter(this_batch_results.values())).shape[0]
                 for k, v in this_batch_results.items():
                     if k not in hf:
                         # Create dataset on first write
@@ -521,94 +520,14 @@ class RunInference:
                         hf.create_dataset(k, shape=maxshape, dtype=v.dtype, chunks=chunks)
                     
                     hf[k][samples_written:samples_written + batch_size_actual] = v
-            else:
-                # Accumulate for NPZ
-                for k, v in this_batch_results.items():
-                    if k not in combined_results:
-                        combined_results[k] = []
-                    combined_results[k].append(v)
-            
-            samples_written += batch_size_actual
-    
-        if use_h5:
+                
+                samples_written += batch_size_actual
+        
             # Add metadata to HDF5 file
             hf.attrs["num_samples"] = samples_written
-            hf.close()
-        else:
-            # Final concatenation across latent batches for NPZ
-            final_results = {}
-            for k, v_list in combined_results.items():
-                final_results[k] = np.concatenate(v_list, axis=0)
-
-            self._write_posteriors(final_results, out_root=out_root)
-
-
-    def predict(self,
-                posterior_samples,
-                predict_sites=None,
-                data_for_predict=None):
-        """
-        Use the model to predict values of deterministic sites.
-
-        This method uses `numpyro.infer.Predictive` to generate predictions
-        for specified sites, given posterior samples and potentially new
-        input data.
-
-        Parameters
-        ----------
-        posterior_samples : dict or str
-            A dictionary of posterior samples or a path to a .npz file
-            containing them (typically from `get_posteriors`).
-        predict_sites : list of str or str, optional
-            List of model sites to predict. If None, defaults to all
-            'deterministic' sites found in the model trace.
-        data_for_predict : object, optional
-            A dataclass matching the structure of `self.model.data` but
-            potentially containing different independent variables (e.g.,
-            new time points or concentrations). If None, uses the original
-            training data.
-
-        Returns
-        -------
-        dict
-            A dictionary mapping site names to predicted value arrays.
-        """
-
-        # Get all deterministic sites
-        if predict_sites is None:
-            predict_sites = self._get_site_names()
-
-        # Make sure predict_sites is a list
-        if isinstance(predict_sites,str):
-            predict_sites = [predict_sites]
-
-        # Load posterior samples from a file if necessary
-        if isinstance(posterior_samples,str):
-            posterior_samples = np.load(posterior_samples)
- 
-        # Convert to a dict if not a dict (for example, numpy.npz)
-        if not isinstance(posterior_samples,dict):
-            posterior_samples = dict(posterior_samples)
-
-        # No data specified. Predict using the inputs
-        if data_for_predict is None:
-            data_for_predict = self.model.data
             
-        data_for_predict = jax.device_put(data_for_predict)
-        posterior_samples = jax.device_put(posterior_samples)
-
-        # Set of predictor class
-        predictor = Predictive(self.model.jax_model, 
-                               posterior_samples=posterior_samples, 
-                               return_sites=predict_sites)
-
-        # Make predictions
-        predict_key = self.get_key()
-        predictions = predictor(predict_key, 
-                                data=data_for_predict, 
-                                priors=self.model.priors)
-        
-        return predictions
+            # Force flush to disk to avoid read issues on cluster file systems
+            hf.flush()
 
     def get_key(self):
         """
@@ -778,32 +697,14 @@ class RunInference:
             os.fsync(f.fileno())    
 
 
-    def _write_posteriors(self,posterior_samples,out_root):
-        """
-        Atomically save posterior samples to a compressed .npz file.
-
-        Parameters
-        ----------
-        posterior_samples : dict
-            A dictionary of samples (pytree) from `numpyro.infer.Predictive`.
-        out_root : str
-            Root name for the output .npz file.
-        """
-
-        tmp_out_file = f"{out_root}_posterior.tmp.npz"
-        out_file = f"{out_root}_posterior.npz"
-
-        np.savez_compressed(tmp_out_file,**posterior_samples)
-
-        os.replace(tmp_out_file,out_file)
 
 
     def _update_loss_deque(self, losses):
         """
         Update the loss deque and calculate the convergence metric.
         
-        The metric is defined as:
-        abs(mean(old_half) - mean(new_half)) / std(total_history)
+        The metric is defined as the absolute fractional change:
+        abs(mean(old_half) - mean(new_half)) / abs(mean(old_half))
 
         Parameters
         ----------
@@ -826,25 +727,19 @@ class RunInference:
         old_half = history[:half]
         new_half = history[half:]
 
-        # Calculate means and standard deviation
+        # Calculate means
         mean_old = np.mean(old_half)
         mean_new = np.mean(new_half)
 
-        # Estimate noise in the data
-        diffs = np.diff(history) 
-        std_history = np.std(diffs) / np.sqrt(2)
-        # Numerical stability here
-        if std_history < 1e-9:
+        # Prevent division by zero if mean_old is effectively zero
+        if np.abs(mean_old) < 1e-9:
             if np.isclose(mean_new, mean_old):
                 self._relative_change = 0.0
             else:
                 self._relative_change = np.inf
             return 
         
-        se = 2 * std_history / np.sqrt(self._loss_deque.maxlen)
-        z_score = (mean_new - mean_old) / se
-
-        self._relative_change = np.abs(z_score)
+        self._relative_change = np.abs((mean_old - mean_new) / mean_old)
 
     def write_params(self,params,out_root):
         """
@@ -864,6 +759,139 @@ class RunInference:
         np.savez_compressed(tmp_out_file,**params)
 
         os.replace(tmp_out_file,out_file)        
+
+    def compute_hessian_sigmas(self, map_params):
+        """
+        Compute per-site Hessian-based MAP values and sigmas in *constrained*
+        parameter space.
+
+        Used by the calibration pre-fit to extract uncertainty estimates on
+        the linking-function hyperparameters at the MAP point, without
+        needing to draw a full Laplace posterior.
+
+        The Hessian is computed in unconstrained space (where all variables
+        are real-valued).  For each sample site, the constrained MAP value
+        and an elementwise constrained-space sigma are returned.  For
+        constrained supports (e.g. ``HalfNormal`` → ``positive`` →
+        ``ExpTransform``) the unconstrained sigma is propagated through the
+        bijection's elementwise Jacobian via the delta method:
+
+            sigma_constrained = |dT/dx| * sigma_unconstrained
+
+        For unconstrained supports (``Normal`` → identity) this reduces to
+        ``sigma_constrained = sigma_unconstrained``.
+
+        Negative Hessian eigenvalues (indicating saddle points) are clamped
+        to ``1e-3`` before inversion, matching the behaviour of
+        :meth:`get_laplace_posteriors`.
+
+        Parameters
+        ----------
+        map_params : dict
+            Parameter dict from a MAP (AutoDelta) optimizer state, as
+            returned by ``svi.get_params(svi_state)``.  Keys follow the
+            ``{site}_auto_loc`` convention; values are in unconstrained
+            space.
+
+        Returns
+        -------
+        dict[str, dict]
+            Maps each sample-site name to a dict with two arrays:
+
+            * ``"map"``    : constrained MAP value (same shape as the site)
+            * ``"sigma"``  : elementwise constrained-space 1-sigma uncertainty
+
+            Both are returned as plain ``numpy`` arrays.
+        """
+        from numpyro.infer.util import potential_energy
+        from numpyro.distributions.transforms import biject_to
+        import jax.flatten_util
+
+        data_on_gpu = jax.device_put(self.model.data)
+        total_num_genotypes = self.model.data.num_genotype
+        all_indices = jnp.arange(total_num_genotypes)
+        full_data = self.model.get_batch(data_on_gpu, all_indices)
+        model_kwargs = {"priors": self.model.priors, "data": full_data}
+
+        # Strip _auto_loc suffix → unconstrained site-level param dict
+        unconstrained = {
+            k[: -len("_auto_loc")]: jnp.array(v)
+            for k, v in map_params.items()
+            if k.endswith("_auto_loc")
+        }
+
+        if len(unconstrained) == 0:
+            return {}
+
+        # Flatten to a single vector for Hessian computation.  We need to
+        # remember the per-site shapes / offsets so we can pull the
+        # diagonal back into per-site sigma arrays.
+        flat_map, unravel = jax.flatten_util.ravel_pytree(unconstrained)
+        D = flat_map.shape[0]
+
+        def pe_fn(flat_p):
+            return potential_energy(
+                self.model.jax_model, [], model_kwargs, unravel(flat_p)
+            )
+
+        hessian = jax.hessian(pe_fn)(flat_map)
+
+        # Project Hessian to the PD cone in float64 (mirrors the safety
+        # logic in get_laplace_posteriors); we only need the diagonal of
+        # the inverse, which is sigma^2 per element.
+        H_np = np.array(hessian, dtype=np.float64)
+        eigenvalues_np, eigenvectors_np = np.linalg.eigh(H_np)
+        eigenvalues_pd = np.maximum(eigenvalues_np, 1e-3)
+        cov_diag_np = np.einsum(
+            "ij,j,ij->i",
+            eigenvectors_np,
+            1.0 / eigenvalues_pd,
+            eigenvectors_np,
+        )
+        sigma_unconstrained_flat = np.sqrt(np.maximum(cov_diag_np, 0.0))
+
+        # Unravel the unconstrained sigmas back to per-site shape.
+        sigma_unconstrained = unravel(jnp.array(sigma_unconstrained_flat,
+                                                 dtype=flat_map.dtype))
+
+        # Get the per-site bijection from a model trace.  For unconstrained
+        # supports (Normal) this is the identity transform.
+        seeded_model = seed(self.model.jax_model, rng_seed=0)
+        traced_model = trace(seeded_model)
+        model_trace = traced_model.get_trace(**model_kwargs)
+        site_transforms = {
+            name: biject_to(site["fn"].support)
+            for name, site in model_trace.items()
+            if site["type"] == "sample" and not site.get("is_observed", False)
+        }
+
+        out = {}
+        for name, x_unc in unconstrained.items():
+            transform = site_transforms.get(name)
+            sigma_unc = sigma_unconstrained[name]
+            if transform is None:
+                # No bijection available — assume identity.
+                map_constrained = x_unc
+                sigma_constrained = sigma_unc
+            else:
+                map_constrained = transform(x_unc)
+                # Elementwise Jacobian magnitude.  log_abs_det_jacobian
+                # gives sum across event dims; we want per-element |dT/dx|
+                # which (for diagonal transforms) = exp(log|dy/dx|).  Use
+                # jax.grad of a scalar projection so we don't depend on the
+                # transform's internal API.
+                sigma_constrained = jnp.abs(
+                    jax.vmap(lambda v: jax.grad(transform)(v))(
+                        x_unc.reshape(-1)
+                    )
+                ).reshape(x_unc.shape) * sigma_unc
+
+            out[name] = {
+                "map": np.asarray(map_constrained),
+                "sigma": np.asarray(sigma_constrained),
+            }
+
+        return out
 
     def _get_site_names(self,target_sites="deterministic"):
         """
@@ -900,3 +928,348 @@ class RunInference:
         ]
         
         return site_names
+
+    def get_laplace_posteriors(self,
+                               map_params,
+                               out_root,
+                               num_posterior_samples=10000,
+                               sampling_batch_size=100,
+                               forward_batch_size=512):
+        """
+        Generate posterior samples from a MAP solution using the Laplace approximation.
+
+        Computes the Hessian of the negative log-joint at the MAP point, inverts
+        it to obtain a covariance matrix, and draws samples from the resulting
+        multivariate Gaussian. Samples are pushed through the generative model
+        and written to an HDF5 file in the same format produced by
+        ``get_posteriors``.
+
+        Parameters
+        ----------
+        map_params : dict
+            Parameter dict from a MAP (AutoDelta) optimizer state, as returned
+            by ``svi.get_params(svi_state)``. Keys follow the
+            ``{site}_auto_loc`` convention used by AutoDelta; values are in
+            the unconstrained parameter space.
+        out_root : str
+            Root name for the output file (written as
+            ``{out_root}_posterior.h5``).
+        num_posterior_samples : int, optional
+            Number of posterior samples to draw (default 10000).
+        sampling_batch_size : int, optional
+            Number of latent samples to draw per batch (default 100).
+        forward_batch_size : int, optional
+            Number of genotypes to process per forward-model batch (default 512).
+
+        Notes
+        -----
+        Hessian computation and inversion are both O(D²) in memory and
+        O(D³) in compute, where D is the total number of unconstrained
+        parameters.  For models with many per-genotype parameters this can be
+        slow or exceed available memory; in that case prefer running a short
+        SVI pass via ``get_posteriors``.
+        """
+        from numpyro.infer.util import potential_energy
+        from numpyro.distributions.transforms import biject_to
+        import jax.flatten_util
+
+        data_on_gpu = jax.device_put(self.model.data)
+        total_num_genotypes = self.model.data.num_genotype
+        dim_map = self._get_genotype_dim_map()
+
+        all_indices = jnp.arange(total_num_genotypes)
+        full_data = self.model.get_batch(data_on_gpu, all_indices)
+        model_kwargs = {"priors": self.model.priors, "data": full_data}
+
+        # Strip _auto_loc suffix → unconstrained site-level param dict
+        unconstrained = {
+            k[: -len("_auto_loc")]: jnp.array(v)
+            for k, v in map_params.items()
+            if k.endswith("_auto_loc")
+        }
+
+        # Flatten to a single vector for Hessian computation
+        flat_map, unravel = jax.flatten_util.ravel_pytree(unconstrained)
+        D = flat_map.shape[0]
+        print(f"Computing Hessian for {D} parameters ...", flush=True)
+
+        def pe_fn(flat_p):
+            return potential_energy(
+                self.model.jax_model, [], model_kwargs, unravel(flat_p)
+            )
+
+        hessian = jax.hessian(pe_fn)(flat_map)
+
+        # Project Hessian to the PD cone and compute the Cholesky factor of the
+        # covariance in float64 (via numpy) so that sampling is numerically
+        # stable even when JAX_ENABLE_X64 is not set.
+        #
+        # Three sources of instability in the naive float32 approach:
+        #  1. Saddle-point MAP → negative Hessian eigenvalues → non-PD covariance
+        #  2. Very large eigenvalues (e.g. 2.6e8) → covariance condition number
+        #     ~1e11, which exceeds float32 precision (~1e7) and reintroduces
+        #     negative eigenvalues after the V @ diag(1/λ) @ V^T reconstruction.
+        #  3. jax.random.multivariate_normal uses Cholesky internally; if the
+        #     covariance is not PD the Cholesky fails → NaN samples.
+        #
+        # Fix: do the eigendecomposition and Cholesky in numpy float64, clamp
+        # negative eigenvalues to 1e-3 (caps max variance per direction at 1000),
+        # then sample as mean + L @ z where z ~ N(0,I) in float32.
+        print("Projecting Hessian to PD cone and computing Cholesky ...", flush=True)
+        H_np = np.array(hessian, dtype=np.float64)
+        eigenvalues_np, eigenvectors_np = np.linalg.eigh(H_np)
+        n_negative = int(np.sum(eigenvalues_np < 0))
+        if n_negative > 0:
+            print(f"  Warning: {n_negative} negative Hessian eigenvalues "
+                  f"(min={eigenvalues_np.min():.3e}); clamping to 1e-3.",
+                  flush=True)
+        eigenvalues_pd = np.maximum(eigenvalues_np, 1e-3)
+        cov_np = eigenvectors_np @ np.diag(1.0 / eigenvalues_pd) @ eigenvectors_np.T
+        # Cholesky in float64; cast factor to float32 for the forward pass
+        L_np = np.linalg.cholesky(cov_np)
+        L = jnp.array(L_np, dtype=jnp.float32)
+
+        # Get unconstrained → constrained transform for each latent site
+        seeded_model = seed(self.model.jax_model, rng_seed=0)
+        traced_model = trace(seeded_model)
+        model_trace = traced_model.get_trace(**model_kwargs)
+
+        site_transforms = {
+            name: biject_to(site["fn"].support)
+            for name, site in model_trace.items()
+            if site["type"] == "sample" and not site.get("is_observed", False)
+        }
+
+        sampling_batch_size = min(sampling_batch_size, num_posterior_samples)
+        num_latent_batches = -(-num_posterior_samples // sampling_batch_size)
+
+        h5_file = f"{out_root}_posterior.h5"
+        samples_written = 0
+
+        with h5py.File(h5_file, "w") as hf:
+
+            for _ in tqdm(range(num_latent_batches), desc="sampling posterior"):
+
+                # Last batch may be smaller when num_posterior_samples is not
+                # evenly divisible by sampling_batch_size.
+                this_batch_size = min(sampling_batch_size,
+                                      num_posterior_samples - samples_written)
+
+                # Draw flat unconstrained samples: (this_batch_size, D)
+                # Use mean + z @ L^T (z ~ N(0,I)) to avoid a second Cholesky
+                # inside jax.random.multivariate_normal.
+                sample_key = self.get_key()
+                z = jax.random.normal(sample_key, shape=(this_batch_size, D))
+                flat_samples = flat_map + z @ L.T
+
+                # Unravel each sample and transform to constrained space.
+                # jax.vmap(unravel) maps (N, D) → pytree of (N, *shape) arrays.
+                batch_unconstrained = jax.vmap(unravel)(flat_samples)
+                latent_samples = {
+                    k: jax.vmap(site_transforms[k])(v) if k in site_transforms else v
+                    for k, v in batch_unconstrained.items()
+                }
+
+                # Forward pass in genotype batches, mirroring get_posteriors
+                batch_collector = {}
+                for start_idx in range(0, total_num_genotypes, forward_batch_size):
+
+                    end_idx = min(start_idx + forward_batch_size, total_num_genotypes)
+                    batch_indices = jnp.arange(start_idx, end_idx)
+
+                    batch_latents = {
+                        k: jnp.take(v, batch_indices, axis=dim_map[k])
+                        if k in dim_map else v
+                        for k, v in latent_samples.items()
+                    }
+
+                    batch_data = self.model.get_batch(data_on_gpu, batch_indices)
+                    forward_sampler = Predictive(self.model.jax_model,
+                                                 posterior_samples=batch_latents)
+                    pred_key = self.get_key()
+                    batch_pred = forward_sampler(pred_key,
+                                                 priors=self.model.priors,
+                                                 data=batch_data)
+
+                    for k, v in batch_pred.items():
+                        batch_collector.setdefault(k, []).append(jax.device_get(v))
+
+                    for k, v in batch_latents.items():
+                        if k in batch_pred:
+                            continue
+                        if k not in dim_map:
+                            if start_idx == 0:
+                                batch_collector.setdefault(k, []).append(jax.device_get(v))
+                        else:
+                            batch_collector.setdefault(k, []).append(jax.device_get(v))
+
+                # Concatenate genotype batches
+                this_batch = {}
+                for k, v_list in batch_collector.items():
+                    if k in dim_map:
+                        this_batch[k] = np.concatenate(v_list, axis=dim_map[k])
+                    else:
+                        this_batch[k] = v_list[0]
+
+                # Write to HDF5
+                batch_size_actual = next(iter(this_batch.values())).shape[0]
+                for k, v in this_batch.items():
+                    if k not in hf:
+                        maxshape = (num_posterior_samples,) + v.shape[1:]
+                        chunks = (min(sampling_batch_size, 100),) + v.shape[1:]
+                        hf.create_dataset(k, shape=maxshape, dtype=v.dtype, chunks=chunks)
+                    hf[k][samples_written: samples_written + batch_size_actual] = v
+
+                samples_written += batch_size_actual
+
+            hf.attrs["num_samples"] = samples_written
+            hf.flush()
+
+    def get_nuts_posteriors(self,
+                            mcmc_samples,
+                            out_root,
+                            forward_batch_size=512):
+        """
+        Generate and save posterior predictions from NUTS MCMC samples.
+
+        Takes posterior samples already drawn by ``run_nuts()``, runs the
+        forward model on them, and writes results to an HDF5 file in the
+        same format as ``get_posteriors()``.
+
+        Parameters
+        ----------
+        mcmc_samples : dict
+            Posterior samples as returned by ``mcmc.get_samples()``.
+            Each value has shape ``(num_samples, *site_shape)``.
+        out_root : str
+            Root name for the output file (written as
+            ``{out_root}_posterior.h5``).
+        forward_batch_size : int, optional
+            Number of genotypes to process per forward-model batch
+            (default 512).
+        """
+
+        data_on_gpu = jax.device_put(self.model.data)
+        total_num_genotypes = self.model.data.num_genotype
+        dim_map = self._get_genotype_dim_map()
+
+        first_val = next(iter(mcmc_samples.values()))
+        num_samples = first_val.shape[0]
+
+        h5_file = f"{out_root}_posterior.h5"
+
+        # Forward pass in genotype batches (all MCMC samples at once)
+        batch_collector = {}
+        for start_idx in tqdm(range(0, total_num_genotypes, forward_batch_size),
+                              desc="computing posteriors"):
+
+            end_idx = min(start_idx + forward_batch_size, total_num_genotypes)
+            batch_indices = jnp.arange(start_idx, end_idx)
+
+            batch_latents = {
+                k: jnp.take(v, batch_indices, axis=dim_map[k])
+                if k in dim_map else v
+                for k, v in mcmc_samples.items()
+            }
+
+            batch_data = self.model.get_batch(data_on_gpu, batch_indices)
+            forward_sampler = Predictive(self.model.jax_model,
+                                         posterior_samples=batch_latents)
+            pred_key = self.get_key()
+            batch_pred = forward_sampler(pred_key,
+                                         priors=self.model.priors,
+                                         data=batch_data)
+
+            for k, v in batch_pred.items():
+                batch_collector.setdefault(k, []).append(jax.device_get(v))
+
+            for k, v in batch_latents.items():
+                if k in batch_pred:
+                    continue
+                if k not in dim_map:
+                    if start_idx == 0:
+                        batch_collector.setdefault(k, []).append(jax.device_get(v))
+                else:
+                    batch_collector.setdefault(k, []).append(jax.device_get(v))
+
+        # Concatenate genotype batches
+        results = {}
+        for k, v_list in batch_collector.items():
+            if k in dim_map:
+                results[k] = np.concatenate(v_list, axis=dim_map[k])
+            else:
+                results[k] = v_list[0]
+
+        with h5py.File(h5_file, "w") as hf:
+            for k, v in results.items():
+                chunks = (min(100, v.shape[0]),) + v.shape[1:]
+                hf.create_dataset(k, data=v, chunks=chunks)
+            hf.attrs["num_samples"] = num_samples
+            hf.flush()
+
+    def run_nuts(self,
+                 num_warmup=500,
+                 num_samples=500,
+                 num_chains=1,
+                 target_accept_prob=0.9):
+        """
+        Run NUTS (No-U-Turn Sampler) MCMC on the full dataset.
+
+        Parameters
+        ----------
+        num_warmup : int
+            Number of warmup/adaptation steps.
+        num_samples : int
+            Number of posterior samples to draw.
+        num_chains : int
+            Number of MCMC chains.
+        target_accept_prob : float
+            Target acceptance probability for step-size adaptation.
+
+        Returns
+        -------
+        numpyro.infer.MCMC
+            The MCMC object after sampling. Call `.get_samples()` to get
+            posterior samples as a dict of {site_name: jnp.array}.
+        """
+        from numpyro.infer import MCMC, NUTS, init_to_value, init_to_median
+        import numpyro.infer.util
+
+        main_key = random.PRNGKey(self._seed)
+
+        jax_model_kwargs = {
+            "priors": self.model.priors,
+            "data": self.model.data,
+        }
+
+        # Initialise from prior median — more robust than random for
+        # hierarchical models with constrained parameters.
+        init_params, _, _, _ = numpyro.infer.util.initialize_model(
+            main_key,
+            self.model.jax_model,
+            model_args=[],
+            model_kwargs=jax_model_kwargs,
+            init_strategy=init_to_median,
+        )
+        init_strategy = init_to_value(values=init_params)
+
+        kernel = NUTS(self.model.jax_model,
+                      init_strategy=init_strategy,
+                      target_accept_prob=target_accept_prob)
+
+        mcmc = MCMC(kernel,
+                    num_warmup=num_warmup,
+                    num_samples=num_samples,
+                    num_chains=num_chains,
+                    progress_bar=True)
+
+        run_key, _ = random.split(main_key)
+        mcmc.run(run_key, **jax_model_kwargs)
+
+        divergences = mcmc.get_extra_fields().get("diverging", None)
+        if divergences is not None:
+            num_div = int(jnp.sum(divergences))
+            total = num_samples * num_chains
+            print(f"NUTS: {num_div} divergences out of {total} samples")
+
+        return mcmc

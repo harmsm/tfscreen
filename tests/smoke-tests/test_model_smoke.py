@@ -8,19 +8,68 @@ from tfscreen.analysis.hierarchical.growth_model.registry import model_registry
 
 # Define configurations to test
 # We want to test a representative subset of the registry
-CONDITION_GROWTH_OPTS = ["independent", "hierarchical"]
-TRANSFORMATION_OPTS = ["congression", "single"]
-THETA_OPTS = ["hill"] # categorical is also possible but hill is the most complex
+# Define configurations to test. Each configuration is a dictionary of 
+# ModelClass arguments. We want to make sure every entry in the 
+# model_registry is tested at least once. 
+SMOKE_CONFIGS = [
+    # Default-ish config
+    {
+        "condition_growth":"linear",
+        "transformation":"empirical",
+        "theta":"hill",
+        "growth_transition":"instant",
+        "dk_geno":"hierarchical",
+        "activity":"horseshoe",
+        "ln_cfu0":"hierarchical",
+        "theta_growth_noise":"zero",
+        "theta_binding_noise":"zero"
+    },
+    # test other condition growth and transformation
+    {
+        "condition_growth":"linear_independent",
+        "transformation":"logit_norm",
+        "theta":"categorical",
+        "growth_transition":"memory",
+        "dk_geno":"fixed",
+        "activity":"hierarchical",
+        "theta_growth_noise":"beta",
+        "theta_binding_noise":"beta"
+    },
+    # test other transition and transformation
+    {
+        "condition_growth":"linear_fixed",
+        "transformation":"logit_norm",
+        "theta":"hill",
+        "growth_transition":"baranyi",
+        "activity":"fixed",
+    },
+    # test power and saturation
+    {
+        "condition_growth":"power",
+        "transformation":"single",
+    },
+    {
+        "condition_growth":"saturation",
+    },
+    # test mutation-decomposed Hill theta
+    {
+        "theta":"hill_mut",
+        "dk_geno":"hierarchical_mut",
+        "activity":"hierarchical_mut",
+        "epistasis":False,
+    },
+    # test lac_dimer_mut theta (partition-function model)
+    {
+        "theta":"lac_dimer_mut",
+        "epistasis":False,
+    },
+]
 
 @pytest.mark.slow
-@pytest.mark.parametrize("condition_growth", CONDITION_GROWTH_OPTS)
-@pytest.mark.parametrize("transformation", TRANSFORMATION_OPTS)
-@pytest.mark.parametrize("theta", THETA_OPTS)
+@pytest.mark.parametrize("config", SMOKE_CONFIGS)
 def test_model_svi_smoke(growth_smoke_csv, 
                          binding_smoke_csv, 
-                         condition_growth, 
-                         transformation, 
-                         theta, 
+                         config,
                          tmpdir):
     """
     Perform a very short SVI run for different model configurations.
@@ -28,16 +77,14 @@ def test_model_svi_smoke(growth_smoke_csv,
     This is a smoke test to ensure that the model components can be 
     initialized and a few steps of optimization can be performed without error.
     """
-    out_root = os.path.join(tmpdir, f"smoke_{condition_growth}_{transformation}_{theta}")
+    out_root = os.path.join(tmpdir, "smoke_test")
     
     # Initialize ModelClass
     model = ModelClass(
         growth_df=growth_smoke_csv,
         binding_df=binding_smoke_csv,
-        condition_growth=condition_growth,
-        transformation=transformation,
-        theta=theta,
-        batch_size=None # Use all data for smoke test
+        batch_size=None, # Use all data for smoke test
+        **config
     )
     
     # Initialize RunInference

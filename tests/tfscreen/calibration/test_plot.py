@@ -53,6 +53,9 @@ def test_indiv_replicates():
     df = pd.DataFrame({
         "time": np.tile(np.arange(5), 2),
         "replicate": 1,
+        "genotype": "wt",
+        "condition_pre": "bg",
+        "titrant_name": "t1",
         "titrant_conc": np.concatenate([np.ones(5), np.ones(5)*10.0]),
         "y_obs": np.tile(np.arange(5) + 10, 2),
         "y_std": 0.1,
@@ -80,3 +83,166 @@ def test_indiv_replicates_bad_rgb_map():
     with pytest.raises(ValueError, match="rgb_map should be a list"):
         indiv_replicates(df, rgb_map="bad")
 
+
+def test_indiv_replicates_with_dilution():
+    df = pd.DataFrame({
+        "time": [-5.0, 0.0, 5.0],
+        "replicate": 1,
+        "genotype": "wt",
+        "titrant_name": "t1",
+        "titrant_conc": 1.0,
+        "y_obs": [10.0, 11.0, 12.0],
+        "y_std": 0.1,
+        "calc_est": [10.0, 11.0, 12.0],
+        "t_pre": 5.0,
+        "t_sel": [-5.0, 0.0, 5.0],  # Includes -t_pre point
+        "condition_pre": "bg",
+        "condition_sel": "cond1"
+    })
+    
+    cal_dict = {
+        "dilution": 0.1,
+        "dk_cond": {"tau": {"cond1": 0.0}, "k_sharp": {"cond1": 1.0}},
+        "k_bg_df": pd.DataFrame({"m": [0.0], "b": [0.0]}, index=["t1"]),
+        "dk_cond_df": pd.DataFrame({"m": [0.0, 0.0], "b": [0.0, 0.0], "tau": [0.0, 0.0], "k_sharp": [1.0, 1.0]}, index=["cond1", "bg"]),
+        "theta_param": {"t1": [0.0, 1.0, 1.0, 1.0]}
+    }
+    
+    with patch("matplotlib.pyplot.subplots") as mock_subplots, \
+         patch("tfscreen.calibration.plot.get_wt_k") as mock_get_wt_k, \
+         patch("tfscreen.calibration.plot.get_wt_theta") as mock_get_wt_theta:
+        
+        mock_get_wt_k.return_value = 0.2 # k_pre and k_sel
+        mock_get_wt_theta.return_value = 0.5
+        
+        fig = MagicMock()
+        ax = MagicMock()
+        val = np.empty((1,1), dtype=object)
+        val[0,0] = ax
+        mock_subplots.return_value = (fig, val)
+        
+        indiv_replicates(df, calibration_dict=cal_dict)
+        
+        # Verify separate plot calls for pre and post (50 and 100 points)
+        found_post_curve = False
+        found_pre_curve = False
+        for call in ax.plot.call_args_list:
+            args, _ = call
+            if len(args[0]) == 100:
+                found_post_curve = True
+            if len(args[0]) == 50:
+                found_pre_curve = True
+                
+        assert found_post_curve and found_pre_curve
+
+def test_indiv_replicates_broadcast_repro():
+    """Reproduce the ValueError: could not broadcast input array from shape (2,1) into (2,)"""
+    df = pd.DataFrame({
+        "time": [-5.0, 0.0, 5.0],
+        "replicate": 1,
+        "genotype": "wt",
+        "titrant_name": "t1",
+        "titrant_conc": 1.0,
+        "y_obs": [10.0, 11.0, 12.0],
+        "y_std": 0.1,
+        "calc_est": [10.0, 11.0, 12.0],
+        "t_pre": 5.0,
+        "t_sel": [-5.0, 0.0, 5.0],
+        "condition_pre": "bg",
+        "condition_sel": "cond1"
+    })
+    
+    # Create duplicate calc_est columns. 
+    bad_df = pd.concat([df, pd.Series([10, 11, 12], name="calc_est")], axis=1)
+    
+    cal_dict = {
+        "dilution": 0.1,
+        "dk_cond": {"tau": {"cond1": 0.0}, "k_sharp": {"cond1": 1.0}},
+        "k_bg_df": pd.DataFrame({"m": [0.0], "b": [0.0]}, index=["t1"]),
+        "dk_cond_df": pd.DataFrame({"m": [0.0, 0.0], "b": [0.0, 0.0], "tau": [0.0, 0.0], "k_sharp": [1.0, 1.0]}, index=["cond1", "bg"])
+    }
+    
+    with patch("matplotlib.pyplot.subplots") as mock_subplots, \
+         patch("tfscreen.calibration.plot.get_wt_k") as mock_get_wt_k, \
+         patch("tfscreen.calibration.plot.get_wt_theta") as mock_get_wt_theta:
+        
+        mock_get_wt_k.return_value = 0.2 # k_pre and k_sel
+        mock_get_wt_theta.return_value = 0.5
+        
+        fig = MagicMock(); ax = MagicMock()
+        val = np.empty((1,1), dtype=object); val[0,0] = ax
+        mock_subplots.return_value = (fig, val)
+        
+        # This should NO LONGER trigger the bug because of .ravel()
+        indiv_replicates(bad_df, calibration_dict=cal_dict)
+        
+        # Check that the plot calls happened
+        found_post = False
+        for call in ax.plot.call_args_list:
+            args, _ = call
+            if len(args[0]) in (100, 50, 151):
+                found_post = True
+        assert found_post
+
+def test_indiv_replicates_with_dk_geno():
+    """Verify that dk_geno from calibration_dict is used in growth rate calculation."""
+    df = pd.DataFrame({
+        "time": [-5.0, 0.0, 5.0],
+        "replicate": 1,
+        "genotype": "mutant",
+        "titrant_name": "t1",
+        "titrant_conc": 1.0,
+        "y_obs": [10.0, 11.0, 12.0],
+        "y_std": 0.1,
+        "calc_est": [10.0, 11.0, 12.0],
+        "t_pre": 5.0,
+        "t_sel": [-5.0, 0.0, 5.0],
+        "condition_pre": "bg",
+        "condition_sel": "cond1"
+    })
+    
+    # Define calibration with a significant dk_geno for 'mutant'
+    # Base growth (k_bg) = 0.2 (from mock_get_wt_k)
+    # dk_geno = 0.1
+    # Expected mu = 0.3
+    
+    cal_dict = {
+        "dilution": 1.0, # No dilution for simplicity
+        "dk_cond": {"tau": {"cond1": 0.0}, "k_sharp": {"cond1": 1.0}},
+        "dk_geno": {"mutant": 0.1},
+        "k_bg_df": pd.DataFrame({"m": [0.0], "b": [0.0]}, index=["t1"]),
+        "dk_cond_df": pd.DataFrame({"m": [0.0, 0.0], "b": [0.0, 0.0], "tau": [0.0, 0.0], "k_sharp": [1.0, 1.0]}, index=["cond1", "bg"])
+    }
+    
+    with patch("matplotlib.pyplot.subplots") as mock_subplots, \
+         patch("tfscreen.calibration.plot.get_wt_k") as mock_get_wt_k, \
+         patch("tfscreen.calibration.plot.get_wt_theta") as mock_get_wt_theta:
+        
+        mock_get_wt_k.return_value = 0.2 
+        mock_get_wt_theta.return_value = 0.5
+        
+        fig = MagicMock(); ax = MagicMock()
+        val = np.empty((1,1), dtype=object); val[0,0] = ax
+        mock_subplots.return_value = (fig, val)
+        
+        # We need to spy on OccupancyGrowthModel or calculate expectation.
+        # Let's mock OccupancyGrowthModel to check inputs?
+        
+        with patch("tfscreen.calibration.plot.OccupancyGrowthModel") as MockOGM:
+            instance = MockOGM.return_value
+            # return some dummy value for predict to avoid errors
+            instance.predict_trajectory.return_value = np.zeros(100) # dummy
+
+            indiv_replicates(df, calibration_dict=cal_dict)
+            
+            # Check what mu1/mu2 were passed to predict_trajectory
+            assert instance.predict_trajectory.called
+            args, kwargs = instance.predict_trajectory.call_args
+            
+            # kwargs should contain mu1, mu2
+            assert "mu1" in kwargs
+            assert "mu2" in kwargs
+            
+            # Expected: 0.2 + 0.1 = 0.3
+            assert np.isclose(kwargs["mu1"], 0.3)
+            assert np.isclose(kwargs["mu2"], 0.3)

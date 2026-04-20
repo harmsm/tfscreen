@@ -2,7 +2,7 @@ from ._get_indiv_growth import _get_indiv_growth
 from tfscreen.util.dataframe import get_scaled_cfu
 
 import pandas as pd
-
+import numpy as np
 import copy
 
 def get_indiv_growth(df,
@@ -140,6 +140,10 @@ def get_indiv_growth(df,
         pred_df = pred_df.drop(columns=["cfu","cfu_std","cfu_var","ln_cfu_var"],
                                errors='ignore')
 
+        # Prepare param_df for alignment by setting the series identifiers as 
+        # index. 
+        param_df_aligned = param_df.set_index(series_selector)
+
         # If this is the first loop, add a fake set of rows--one for each 
         # series--that has t = 0. These points will have our estimate of lnA0 as
         # the observed ln_cfu. 
@@ -148,32 +152,44 @@ def get_indiv_growth(df,
             # First loop, add a fake point marker
             pred_df["_is_fake_point"] = False
 
-            # Grab the index corresponding to the minimum time for each 
-            # series. 
-            min_t_idx = pred_df.groupby(series_selector,observed=True)["t_sel"].idxmin() 
+            # Identifty which series need a fake t = 0 point (those that don't 
+            # already have one)
+            has_t0 = pred_df.groupby(series_selector,observed=True)["t_sel"].transform(lambda x: np.any(x == 0))
+            
+            # Series without t0
+            no_t0_mask = ~has_t0
+            
+            # If we need to add fake points
+            if np.any(no_t0_mask):
+                
+                # Grab unique series that need a t0
+                metadata_cols = series_selector + ["t_pre"] # and other relevant cols?
+                # For safety, just grab the first row for each series that needs a t0
+                to_add_df = pred_df.loc[no_t0_mask].groupby(series_selector,observed=True).first().reset_index()
+                
+                to_add_df["t_sel"] = 0
+                to_add_df["_is_fake_point"] = True
+                
+                # Align lnA0_est
+                idx = pd.MultiIndex.from_frame(to_add_df[series_selector])
+                to_add_df["ln_cfu"] = param_df_aligned.loc[idx,"lnA0_est"].values
+                to_add_df["ln_cfu_std"] = param_df_aligned.loc[idx,"lnA0_std"].values
+                
+                # Build new prediction data with the fake rows. 
+                pred_df = pd.concat([pred_df,to_add_df],ignore_index=True)
 
-            # Create a new dataframe from this minimum time point, copying all 
-            # information over. Set time to 0, copy in the fit data, and declare
-            # it fake. 
-            new_df = pred_df.loc[min_t_idx,:].reset_index(drop=True)
-            new_df["t_sel"] = 0
-            new_df["ln_cfu"] = param_df["lnA0_est"].values
-            new_df["ln_cfu_std"] = param_df["lnA0_std"].values
-            new_df["_is_fake_point"] = True
-
-            # Build new prediction data with the fake rows. 
-            pred_df = pd.concat([pred_df,new_df],ignore_index=True)
-
-            # Sort by series then t_sel. 
-            sort_on = series_selector[:]
-            sort_on.append("t_sel")
-            pred_df = pred_df.sort_values(sort_on)
+                # Sort by series then t_sel. 
+                sort_on = series_selector[:]
+                sort_on.append("t_sel")
+                pred_df = pred_df.sort_values(sort_on)
         
-        else:
-
-            # Later loops. Just jam in fake data from the last estimate. 
-            pred_df.loc[pred_df["t_sel"] == 0,"ln_cfu"] = param_df["lnA0_est"].values
-            pred_df.loc[pred_df["t_sel"] == 0,"ln_cfu_std"] = param_df["lnA0_std"].values
+        # Update ALL t = 0 points (fake or real) with the latest lnA0 estimate.
+        # This is the core of the iterative fitting. 
+        t0_mask = (pred_df["t_sel"] == 0)
+        if np.any(t0_mask):
+            t0_idx = pd.MultiIndex.from_frame(pred_df.loc[t0_mask,series_selector])
+            pred_df.loc[t0_mask,"ln_cfu"] = param_df_aligned.loc[t0_idx,"lnA0_est"].values
+            pred_df.loc[t0_mask,"ln_cfu_std"] = param_df_aligned.loc[t0_idx,"lnA0_std"].values
 
     # Drop the fake points from the prediction dataframe if they were made. 
     if "_is_fake_point" in pred_df.columns:

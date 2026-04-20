@@ -59,13 +59,18 @@ def run_wls_2D(x_arrays,
                         y_err,
                         out=np.zeros_like(y_err, dtype=float),
                         where=y_err!=0)
+    
+    # Ensure weights are 0 if x or y are NaN. This ensures nansum correctly
+    # ignores these points in all sums. 
+    weights[np.isnan(x)] = 0
+    weights[np.isnan(y)] = 0
 
     # Calculate the necessary weighted sums for all datasets at once.
-    sw = np.sum(weights, axis=1)
-    swx = np.sum(weights * x, axis=1)
-    swy = np.sum(weights * y, axis=1)
-    swxx = np.sum(weights * x**2, axis=1)
-    swxy = np.sum(weights * x * y, axis=1)
+    sw = np.nansum(weights, axis=1)
+    swx = np.nansum(weights * x, axis=1)
+    swy = np.nansum(weights * y, axis=1)
+    swxx = np.nansum(weights * x**2, axis=1)
+    swxy = np.nansum(weights * x * y, axis=1)
 
     # --- Step 2: Calculate Slope and Intercept ---
     # This term is the determinant of the design matrix

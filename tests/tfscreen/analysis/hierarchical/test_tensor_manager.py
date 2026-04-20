@@ -141,3 +141,20 @@ def test_create_tensors_dtype_default(sample_df):
     tm.add_data_tensor("value", dtype=None) # Forces line 483
     tm.create_tensors()
     assert tm.tensors["value"].dtype == jnp.float32
+
+def test_create_tensors_3d():
+    """Three pivot indexes produce a 3D tensor."""
+    df = pd.DataFrame({
+        "genotype": ["A", "A", "B", "B"] * 2,
+        "condition": ["C1", "C2", "C1", "C2"] * 2,
+        "replicate": [1, 1, 1, 1, 2, 2, 2, 2],
+        "value": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
+    })
+    tm = TensorManager(df)
+    tm.add_pivot_index("geno", "genotype")
+    tm.add_pivot_index("cond", "condition")
+    tm.add_pivot_index("rep", "replicate")
+    tm.add_data_tensor("value")
+    tm.create_tensors()
+    assert tm.tensor_shape == (2, 2, 2)
+    assert tm.tensors["value"].shape == (2, 2, 2)

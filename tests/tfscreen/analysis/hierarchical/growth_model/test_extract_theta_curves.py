@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from unittest.mock import MagicMock, patch
 from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass
+from tfscreen.analysis.hierarchical.growth_model.extraction import extract_theta_curves
 
 @pytest.fixture
 def mock_model():
@@ -19,9 +20,6 @@ def mock_model():
         "map_theta_group": [0, 0, 1, 1]
     })
     model.growth_tm = mock_tm
-    
-    # Bind the method under test
-    model.extract_theta_curves = ModelClass.extract_theta_curves.__get__(model, ModelClass)
     
     return model
 
@@ -40,7 +38,7 @@ def mock_posteriors():
 
 def test_extract_theta_curves_basic(mock_model, mock_posteriors):
     """Test default behavior using data from growth_tm.df."""
-    results = mock_model.extract_theta_curves(mock_posteriors)
+    results = extract_theta_curves(mock_model, mock_posteriors)
     
     # Check output structure
     assert isinstance(results, pd.DataFrame)
@@ -67,7 +65,7 @@ def test_extract_theta_curves_manual_df(mock_model, mock_posteriors):
         "titrant_conc": [0.5, 2.0]
     })
     
-    results = mock_model.extract_theta_curves(mock_posteriors, manual_titrant_df=manual_df)
+    results = extract_theta_curves(mock_model, mock_posteriors, manual_titrant_df=manual_df)
     
     # Should broadcast across 'wt' and 'mut' -> 4 rows
     assert len(results) == 4
@@ -82,7 +80,7 @@ def test_extract_theta_curves_manual_df_with_genotypes(mock_model, mock_posterio
         "titrant_conc": [0.5, 2.0]
     })
     
-    results = mock_model.extract_theta_curves(mock_posteriors, manual_titrant_df=manual_df)
+    results = extract_theta_curves(mock_model, mock_posteriors, manual_titrant_df=manual_df)
     
     assert len(results) == 2
     assert results.iloc[0]["genotype"] == "wt"
@@ -92,13 +90,13 @@ def test_extract_theta_curves_wrong_theta_model(mock_model, mock_posteriors):
     """Test that it raises ValueError if theta model is not 'hill'."""
     mock_model._theta = "categorical"
     with pytest.raises(ValueError, match="only available for models where"):
-        mock_model.extract_theta_curves(mock_posteriors)
+        extract_theta_curves(mock_model, mock_posteriors)
 
 def test_extract_theta_curves_missing_columns(mock_model, mock_posteriors):
     """Test error handling for missing columns in manual_df."""
     manual_df = pd.DataFrame({"titrant_name": ["iptg"]}) # Missing conc
     with pytest.raises(Exception): # check_columns raises an error
-         mock_model.extract_theta_curves(mock_posteriors, manual_titrant_df=manual_df)
+         extract_theta_curves(mock_model, mock_posteriors, manual_titrant_df=manual_df)
 
 def test_extract_theta_curves_invalid_genotype(mock_model, mock_posteriors):
     """Test error handling for genotype not in model."""
@@ -108,7 +106,7 @@ def test_extract_theta_curves_invalid_genotype(mock_model, mock_posteriors):
         "titrant_conc": [1.0]
     })
     with pytest.raises(ValueError, match="were not found in the model data"):
-        mock_model.extract_theta_curves(mock_posteriors, manual_titrant_df=manual_df)
+        extract_theta_curves(mock_model, mock_posteriors, manual_titrant_df=manual_df)
 
 def test_extract_theta_curves_file_loading(mock_model):
     """Test loading posteriors from file."""
@@ -121,5 +119,5 @@ def test_extract_theta_curves_file_loading(mock_model):
     }
     
     with patch("numpy.load", return_value=mock_npz) as mock_load:
-        mock_model.extract_theta_curves("mock.npz")
+        extract_theta_curves(mock_model, "mock.npz")
         mock_load.assert_called_once_with("mock.npz")

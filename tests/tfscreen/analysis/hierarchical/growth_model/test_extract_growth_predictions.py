@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from unittest.mock import MagicMock, patch
 from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass
+from tfscreen.analysis.hierarchical.growth_model.extraction import extract_growth_predictions
 
 @pytest.fixture
 def mock_model():
@@ -35,9 +36,6 @@ def mock_model():
     })
     model.growth_df = df
     
-    # Bind the method under test
-    model.extract_growth_predictions = ModelClass.extract_growth_predictions.__get__(model, ModelClass)
-    
     return model
 
 @pytest.fixture
@@ -57,7 +55,7 @@ def mock_posteriors():
 
 def test_extract_growth_predictions_basic(mock_model, mock_posteriors):
     """Test default behavior for extracting growth predictions."""
-    results = mock_model.extract_growth_predictions(mock_posteriors)
+    results = extract_growth_predictions(mock_model, mock_posteriors)
     
     # Check output structure
     assert isinstance(results, pd.DataFrame)
@@ -76,7 +74,7 @@ def test_extract_growth_predictions_custom_quantiles(mock_model, mock_posteriors
     # Add columns to mock_model.growth_df for this test
     for q in q_to_get:
         mock_model.growth_df[q] = np.nan
-    results = mock_model.extract_growth_predictions(mock_posteriors, q_to_get=q_to_get)
+    results = extract_growth_predictions(mock_model, mock_posteriors, q_to_get=q_to_get)
     
     assert "mean" in results.columns
     assert "low" in results.columns
@@ -86,12 +84,12 @@ def test_extract_growth_predictions_custom_quantiles(mock_model, mock_posteriors
 def test_extract_growth_predictions_missing_field(mock_model):
     """Test error handling when growth_pred is missing from posteriors."""
     with pytest.raises(ValueError, match="'growth_pred' not found"):
-        mock_model.extract_growth_predictions({"something_else": np.array([1])})
+        extract_growth_predictions(mock_model, {"something_else": np.array([1])})
 
 def test_extract_growth_predictions_invalid_quantiles(mock_model, mock_posteriors):
     """Test error handling for bad quantile input."""
     with pytest.raises(ValueError, match="q_to_get should be a dictionary"):
-        mock_model.extract_growth_predictions(mock_posteriors, q_to_get=[0.5])
+        extract_growth_predictions(mock_model, mock_posteriors, q_to_get=[0.5])
 
 def test_extract_growth_predictions_file_loading(mock_model):
     """Test loading posteriors from file."""
@@ -121,5 +119,5 @@ def test_extract_growth_predictions_file_loading(mock_model):
     })
     
     with patch("numpy.load", return_value=mock_posteriors_data) as mock_load:
-        mock_model.extract_growth_predictions("mock_growth.npz")
+        extract_growth_predictions(mock_model, "mock_growth.npz")
         mock_load.assert_called_once_with("mock_growth.npz")

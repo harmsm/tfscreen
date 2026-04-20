@@ -583,11 +583,18 @@ def _sim_transform_and_mix(
         else:
             lib_key = origin_group[0]
 
+        # For "spiked" libraries, we force monoclonal behavior (1 plasmid per 
+        # cell) regardless of the global transformation_poisson_lambda
+        # selected by the user.
+        this_lambda = transformation_poisson_lambda
+        if lib_key == "spiked":
+            this_lambda = None
+
         # Together trans and trans_mask define a ragged array of cells with
         # (possibly) multiple plasmids
         trans, tr_mask = _sim_transform(origin_sub_df["probs"].to_numpy(),
                                         transform_sizes[lib_key],
-                                        transformation_poisson_lambda,
+                                        this_lambda,
                                         rng)
         all_trans.append(trans)
         all_trans_mask.append(tr_mask)

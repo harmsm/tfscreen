@@ -28,6 +28,7 @@ import pandas as pd
 import numpy as np
 
 from functools import partial
+import inspect
 import os
 import warnings
 import h5py
@@ -110,7 +111,7 @@ def _read_growth_df(growth_df,
                                   group_name="map_theta_group")
     
     mapper = {}
-    for _, sub_df in growth_df.groupby(["condition_pre"]):
+    for _, sub_df in growth_df.groupby(["condition_pre"], observed=True):
         cond_sel = list(pd.unique(sub_df["condition_sel"]))
         mapper.update({c:i for i, c in enumerate(cond_sel)})
 
@@ -119,7 +120,7 @@ def _read_growth_df(growth_df,
         
     return growth_df
 
-def _build_growth_tm(growth_df):
+def _build_growth_tm(growth_df, growth_shares_replicates=False):
     """
     Builds a TensorManager for the main growth data.
 
@@ -136,6 +137,8 @@ def _build_growth_tm(growth_df):
     growth_df : pd.DataFrame
         The processed growth DataFrame, typically from `_read_growth_df`.
         Must contain all columns required for pivots and maps.
+    growth_shares_replicates : bool, optional
+        Whether to exclude replicate when mapping identical parameters.
 
     Returns
     -------
@@ -174,9 +177,13 @@ def _build_growth_tm(growth_df):
     # condition_pre and condition_sel. Basically this does the operation 
     # unique(replicate + condition_pre OR replicate + condition_sel). This
     # will create map_condition_pre and map_condition_sel. 
-    growth_tm.add_map_tensor(select_cols=["replicate"],
+    # If growth_shares_replicates is True, we drop replicate from the 
+    # map tensor creation columns so that condition mapping is entirely 
+    # coordinate-agnostic across replicates.
+    select_cols = [] if growth_shares_replicates else ["replicate"]
+    growth_tm.add_map_tensor(select_cols=select_cols,
                              select_pool_cols=["condition_pre","condition_sel"],
-                             name="condition")
+                             name="condition_rep")
 
     # These maps will allow us to extract parameter values from posterior 
     # samples. 
@@ -362,84 +369,6 @@ def _setup_batching(growth_genotypes,
     return out
 
 
-def _extract_param_est(input_df,
-                       params_to_get,
-                       map_column,
-                       get_columns,
-                       in_run_prefix,
-                       param_posteriors,
-                       q_to_get):
-    """
-    Extract parameter estimates and quantiles from posterior samples.
-
-    This function creates a DataFrame for each parameter in `params_to_get`, mapping
-    parameter indices to metadata columns, and fills in quantile columns for each
-    requested quantile in `q_to_get` using the posterior samples in `param_posteriors`.
-
-    Parameters
-    ----------
-    input_df : pandas.DataFrame
-        DataFrame containing metadata and mapping columns for the parameters.
-    params_to_get : list of str
-        List of parameter names to extract from the posterior samples.
-    map_column : str
-        Name of the column in `input_df` that maps rows to parameter indices.
-    get_columns : list of str
-        List of metadata columns to include in the output DataFrame.
-    in_run_prefix : str
-        Prefix to prepend to parameter names when looking them up in `param_posteriors`.
-    param_posteriors : dict
-        Dictionary mapping parameter names (with prefix) to posterior samples,
-        where each value is a NumPy array of shape (num_samples, num_params).
-    q_to_get : dict
-        Dictionary mapping output column names to quantile values (between 0 and 1)
-        to extract from the posterior samples.
-
-    Returns
-    -------
-    out_dfs : dict
-        Dictionary mapping each parameter name to a DataFrame containing the
-        requested quantiles for each parameter, with metadata columns.
-
-    Raises
-    ------
-    KeyError
-        If a requested parameter or quantile is not found in `param_posteriors`.
-    """
-    # Create dataframe with unique rows for map_column that has columns 
-    # get_columns + map_column. Rows will be sorted by map_column. 
-    get_columns.append(map_column)
-    df = (input_df
-          .drop_duplicates(map_column)[get_columns]
-          .sort_values(map_column)
-          .reset_index(drop=True)
-          .copy())
-
-    # Go through all parameters requested
-    out_dfs = {}
-    for param in params_to_get:
-
-        # Grab the posterior distribution of this parameters and flatten. 
-        model_param = f"{in_run_prefix}{param}"
-        val = param_posteriors[model_param]
-        if hasattr(val, "shape") and not hasattr(val, "reshape"):
-            val = val[:]
-        flat_param = val.reshape(val.shape[0],-1)
-
-        # Create dataframe for loading the data
-        to_write = df.copy()
-
-        # Go through quantiles
-        for q_name in q_to_get:
-
-            # Calculate quantile and load into the output dataframe
-            q = np.quantile(flat_param,q_to_get[q_name],axis=0)
-            to_write[q_name] = q[to_write[map_column].values]
-
-        # Record the final dataframe
-        out_dfs[param] = to_write.drop(columns=[map_column])
-    
-    return out_dfs
     
 class ModelClass:
     """
@@ -458,23 +387,30 @@ class ModelClass:
     binding_df : pd.DataFrame or str
         DataFrame or path to file with binding data.
     condition_growth : str, optional
-        Model name for condition-specific growth.
+        Model name for condition-specific growth. Allowed values are 'linear' 
+        (default), 'linear_independent', 'linear_fixed', 'power', or 'saturation'.
+    growth_transition : str, optional
+        Model name for growth transition. Allowed values are 'instant' (default), 
+        'memory', or 'baranyi'.
     ln_cfu0 : str, optional
-        Model name for initial cell counts.
+        Model name for initial cell counts. Allowed value is 'hierarchical'.
     dk_geno : str, optional
-        Model name for genotype-specific death rate.
+        Model name for genotype-specific death rate. Allowed values are 'hierarchical' 
+        (default) or 'fixed'.
     activity : str, optional
-        Model name for genotype activity.
+        Model name for genotype activity. Allowed values are "horseshoe" (default), 
+        "hierarchical", or "fixed".
     theta : str, optional
         Model name for theta calculation (e.g., "hill").
     transformation : str, optional
-        Model name for transformation correction (e.g., "congression" or "single").
+        Model name for transformation correction. Allowed values are 'single', 
+        'empirical', or 'logit_norm'. Default 'empirical'
     theta_growth_noise : str, optional
-        Model name for noise on theta in the growth model.
+        Model name for noise on theta in the growth model ('zero' or 'beta').
     theta_binding_noise : str, optional
-        Model name for noise on theta in the binding model.
+        Model name for noise on theta in the binding model ('zero' or 'beta').
     spiked_genotypes : list or str, optional
-        Names of genotypes that should be excluded from congression
+        Names of genotypes that should be excluded from transformation
         correction.
     batch_size : int, optional
         The batch size for SVI. If None (default), use full batch.
@@ -499,15 +435,18 @@ class ModelClass:
                  growth_df,
                  binding_df,
                  batch_size=None,
-                 condition_growth="hierarchical",
+                 condition_growth="linear",
+                 growth_transition="instant",
                  ln_cfu0="hierarchical",
                  dk_geno="hierarchical",
                  activity="horseshoe",
                  theta="hill",
-                 transformation="congression",
-                 theta_growth_noise="none",
-                 theta_binding_noise="none",
-                 spiked_genotypes=None):
+                 transformation="empirical",
+                 theta_growth_noise="zero",
+                 theta_binding_noise="zero",
+                 spiked_genotypes=None,
+                 growth_shares_replicates=False,
+                 epistasis=False):
 
         self._ln_cfu_df = growth_df
         self._binding_df = binding_df
@@ -515,6 +454,7 @@ class ModelClass:
         self._batch_size = batch_size
 
         self._condition_growth = condition_growth
+        self._growth_transition = growth_transition
         self._ln_cfu0 = ln_cfu0
         self._dk_geno = dk_geno
         self._activity = activity
@@ -523,6 +463,8 @@ class ModelClass:
         self._theta_growth_noise = theta_growth_noise
         self._theta_binding_noise = theta_binding_noise
         self._spiked_genotypes = spiked_genotypes
+        self._growth_shares_replicates = growth_shares_replicates
+        self._epistasis = epistasis
 
         self._initialize_data()
         self._initialize_classes()
@@ -548,7 +490,7 @@ class ModelClass:
         # growth (replicate,time,condition,genotype) data. The other holds 
         # the theta (titrant_conc,theta_group) tensor. 
         self.growth_df = _read_growth_df(self._ln_cfu_df)
-        self.growth_tm = _build_growth_tm(self.growth_df)
+        self.growth_tm = _build_growth_tm(self.growth_df, self._growth_shares_replicates)
                    
         # Assemble tensors. 
         tensors = {}
@@ -606,8 +548,13 @@ class ModelClass:
             spiked_idx = np.where(np.isin(genotype_names,self._spiked_genotypes))[0]
             mask[spiked_idx] = False
 
+        wt_mask = np.zeros(sizes["num_genotype"], dtype=bool)
+        wt_mask[wt_loc[0]] = True
+
         other_data = {"scatter_theta":1,
-                      "congression_mask":jnp.array(mask,dtype=bool)}
+                      "congression_mask":jnp.array(mask,dtype=bool),
+                      "ln_cfu0_spiked_mask":jnp.array(~mask,dtype=bool),
+                      "ln_cfu0_wt_mask":jnp.array(wt_mask,dtype=bool)}
 
         # Grab the titrant concentration and log_titrant_conc (1D array from 
         # the tensor labels along dimension 6)
@@ -619,8 +566,34 @@ class ModelClass:
         
         other_data["titrant_conc"] = titrant_conc
         other_data["log_titrant_conc"] = log_titrant_conc
+        other_data["growth_shares_replicates"] = bool(self._growth_shares_replicates)
 
         growth_data_sources = [tensors,sizes,wt_info,other_data]
+
+        # Build mutation-to-genotype indicator matrices when any hierarchical_mut
+        # component is selected.  Stored as static (pytree_node=False) fields
+        # on GrowthData; downstream components convert to jnp arrays as needed.
+        _needs_mut = (self._theta in ("hill_mut", "lac_dimer_mut") or
+                      self._activity == "hierarchical_mut" or
+                      self._dk_geno == "hierarchical_mut")
+        if _needs_mut:
+            _geno_idx = self.growth_tm.tensor_dim_names.index("genotype")
+            _genotypes = list(self.growth_tm.tensor_dim_labels[_geno_idx])
+            from tfscreen.genetics import build_mut_geno_matrix
+            (mut_labels, pair_labels,
+             mut_geno_matrix, pair_geno_matrix) = build_mut_geno_matrix(_genotypes)
+            if not self._epistasis:
+                pair_labels = []
+                pair_geno_matrix = np.zeros((0, len(_genotypes)), dtype=np.float32)
+            # Expose labels as model attributes for downstream interpretation
+            self.mut_labels = mut_labels
+            self.pair_labels = pair_labels
+            growth_data_sources.append({
+                "num_mutation":    len(mut_labels),
+                "num_pair":        len(pair_labels),
+                "mut_geno_matrix":  mut_geno_matrix,
+                "pair_geno_matrix": pair_geno_matrix,
+            })
         
         # ---------------------------------------------------------------------
         # binding dataclass
@@ -748,6 +721,7 @@ class ModelClass:
         # The last value determines whether this is used to initialize the 
         # data.growth and data.binding. 
         load_map = [("condition_growth",self._condition_growth,"growth"),
+                    ("growth_transition",self._growth_transition,"growth"),
                     ("ln_cfu0",self._ln_cfu0,"growth"),
                     ("dk_geno",self._dk_geno,"growth"),
                     ("activity",self._activity,"growth"),
@@ -776,19 +750,29 @@ class ModelClass:
                     f"It should be one of: {list(model_registry[key].keys())}"
                 )
     
-            # get the component module 
+            # get the component module
             component_module = model_registry[key][value]
-    
-            # Record priors
-            priors_class_kwargs[prior_group][key] = component_module.get_priors()
-    
-            # Record guesses
+
+            # Pick the right data pytree for this component
             if prior_group == "binding":
-                guesses = component_module.get_guesses(name=key,
-                                                       data=self._data.binding)
+                component_data = self._data.binding
             else:
-                guesses = component_module.get_guesses(name=key,
-                                                       data=self._data.growth)
+                component_data = self._data.growth
+
+            # Record priors.  Components may optionally accept a `data`
+            # parameter to derive empirical prior values (e.g. fixed
+            # subgroup scales) from the observed data.
+            priors_sig = inspect.signature(component_module.get_priors)
+            if "data" in priors_sig.parameters:
+                priors_class_kwargs[prior_group][key] = \
+                    component_module.get_priors(data=component_data)
+            else:
+                priors_class_kwargs[prior_group][key] = \
+                    component_module.get_priors()
+
+            # Record guesses
+            guesses = component_module.get_guesses(name=key,
+                                                   data=component_data)
             init_params.update(guesses)
 
             # Record control parameters for the main and guide functions
@@ -804,6 +788,11 @@ class ModelClass:
                                             component_module.update_thetas)
                 guide_control_kwargs[key] = (component_module.guide, 
                                              component_module.update_thetas)
+            elif key == "condition_growth":
+                main_control_kwargs[key] = component_module.define_model
+                guide_control_kwargs[key] = component_module.guide
+                main_control_kwargs["calculate_growth"] = component_module.calculate_growth
+                guide_control_kwargs["calculate_growth"] = component_module.calculate_growth
             else:
                 main_control_kwargs[key] = component_module.define_model
                 guide_control_kwargs[key] = component_module.guide
@@ -839,555 +828,6 @@ class ModelClass:
         self._priors = priors
         self._init_params = init_params
 
-    def extract_parameters(self,
-                           posteriors,
-                           q_to_get=None):
-        """
-        Extract parameter quantiles from posterior samples.
-
-        This method extracts specified quantiles for each model parameter of
-        interest, returning a dictionary of DataFrames with parameter estimates
-        and associated metadata.
-
-        Parameters
-        ----------
-        posteriors : dict or str
-        Assumes this is a dictionary of posteriors keying parameters to 
-        numpy arrays, a numpy.lib.npyio.NpzFile object, or a path to a 
-        .npz or .h5/.hdf5 file containing posterior samples for model 
-        parameters.
-    q_to_get : dict, optional
-        Dictionary mapping output column names to quantile values (between 0 and 1)
-        to extract from the posterior samples. If None, a default set of quantiles
-        is used (min, lower_95, lower_std, lower_quartile, median, upper_std,
-        upper_quartile, upper_95, max).
-
-        Returns
-        -------
-        params : dict
-            Dictionary mapping parameter names to DataFrames containing the requested
-            quantiles and metadata columns for each parameter.
-
-        Raises
-        ------
-        ValueError
-            If `q_to_get` is not a dictionary.
-        """
-
-        # Load the posterior file
-        if isinstance(posteriors,(dict,np.lib.npyio.NpzFile,h5py.File,h5py.Group)):
-            param_posteriors = posteriors
-        else:
-            if posteriors.endswith(".h5") or posteriors.endswith(".hdf5"):
-                param_posteriors = h5py.File(posteriors, 'r')
-            else:
-                param_posteriors = np.load(posteriors)
-        
-
-        # Named quantiles to pull from the posterior distribution
-        if q_to_get is None:
-            q_to_get = {"min":0.0,
-                        "lower_95":0.025,
-                        "lower_std":0.159,
-                        "lower_quartile":0.25,
-                        "median":0.5,
-                        "upper_quartile":0.75,
-                        "upper_std":0.841,
-                        "upper_95":0.975,
-                        "max":1.0}
-            
-        # make sure q_to_get is a dictionary
-        if not isinstance(q_to_get,dict):
-            raise ValueError(
-                "q_to_get should be a dictionary keying column names to quantiles"
-            )
-
-        # Define how to go about constructing dataframes to store the parameter
-        # estimates. 
-        extract = []
-
-        # theta
-        if self._theta == "hill":
-            extract.append(
-                dict(
-                    input_df = self.growth_tm.df,
-                    params_to_get = ["hill_n","log_hill_K","theta_high","theta_low"],
-                    map_column = "map_theta_group",
-                    get_columns = ["genotype","titrant_name"],
-                    in_run_prefix = "theta_"
-                )
-            )
-        elif self._theta == "categorical":
-            extract.append(
-                dict(
-                    input_df = self.growth_tm.df,
-                    params_to_get = ["theta"],
-                    map_column = "map_theta",
-                    get_columns = ["genotype","titrant_name","titrant_conc"],
-                    in_run_prefix = "theta_"
-                )
-            )
-        
-        # condition
-        if self._condition_growth in ["independent","hierarchical"]:
-            extract.append(
-                dict(
-                    input_df = self.growth_tm.map_groups['condition'],
-                    params_to_get = ["growth_m","growth_k"],
-                    map_column = "map_condition",
-                    get_columns = ["replicate","condition"],
-                    in_run_prefix = "condition_"
-                )
-            )
-
-        # ln_cfu0
-        if self._dk_geno == "hierarchical":
-            extract.append(
-                dict(
-                    input_df = self.growth_tm.df,
-                    params_to_get = ["ln_cfu0"],
-                    map_column = "map_ln_cfu0",
-                    get_columns = ["replicate","condition_pre","genotype"],
-                    in_run_prefix = ""
-                )
-            )
-
-        # dk_geno
-        if self._dk_geno == "none":
-            pass
-        elif self._dk_geno == "hierarchical":
-            extract.append(
-                dict(
-                    input_df = self.growth_tm.df,
-                    params_to_get = ["dk_geno"],
-                    map_column = "map_genotype",
-                    get_columns = ["genotype"],
-                    in_run_prefix = ""
-                )
-            )
-
-        # activity
-        if self._activity == "fixed":
-            pass
-        elif self._activity in ["hierarchical","horseshoe"]:
-            extract.append(
-                dict(
-                    input_df = self.growth_tm.df,
-                    params_to_get = ["activity"],
-                    map_column = "map_genotype",
-                    get_columns = ["genotype"],
-                    in_run_prefix = ""
-                )
-            )
-
-        # transformation
-        if self._transformation == "congression":
-            # lam is global
-            lam_df = pd.DataFrame({"parameter":["lam"], "map_all":[0]})
-            extract.append(
-                dict(
-                    input_df = lam_df,
-                    params_to_get = ["lam"],
-                    map_column = "map_all",
-                    get_columns = ["parameter"],
-                    in_run_prefix = "transformation_"
-                )
-            )
-
-            # mu and sigma are (titrant_name, titrant_conc)
-            # We can use the growth_tm.df to find the unique (titrant_name, titrant_conc) pairs 
-            # and their indices.
-            trans_df = (self.growth_tm.df[["titrant_name", "titrant_conc", 
-                                          "titrant_name_idx", "titrant_conc_idx"]]
-                        .drop_duplicates()
-                        .copy())
-            
-            # num_titrant_conc
-            idx = np.where(np.array(self.growth_tm.tensor_dim_names) == "titrant_conc")[0][0]
-            num_titrant_conc = len(self.growth_tm.tensor_dim_labels[idx])
-            
-            # Map column
-            trans_df["map_trans"] = (trans_df["titrant_name_idx"] * num_titrant_conc + 
-                                     trans_df["titrant_conc_idx"])
-            
-            extract.append(
-                dict(
-                    input_df = trans_df,
-                    params_to_get = ["mu","sigma"],
-                    map_column = "map_trans",
-                    get_columns = ["titrant_name","titrant_conc"],
-                    in_run_prefix = "transformation_"
-                )
-            )
-
-        params = {}
-        for kwargs in extract:
-            params.update(_extract_param_est(param_posteriors=param_posteriors,
-                                             q_to_get=q_to_get,
-                                             **kwargs))
-
-        return params
-
-    def extract_theta_curves(self,
-                             posteriors,
-                             q_to_get=None,
-                             manual_titrant_df=None):
-        """
-        Extract theta curves by sampling from the joint posterior distribution.
-
-        This method calculates fractional occupancy (theta) across a range of
-        titrant concentrations by sampling from the joint posterior of Hill
-        parameters (hill_n, log_hill_K, theta_high, theta_low).
-
-        Parameters
-        ----------
-        posteriors : dict or str
-            Assumes this is a dictionary of posteriors keying parameters to
-            numpy arrays or a path to a .npz file containing posterior samples
-            for model parameters.
-        q_to_get : dict, optional
-            Dictionary mapping output column names to quantile values (between 0 and 1)
-            to extract from the posterior samples. If None, a default set of quantiles
-            is used (min, lower_95, lower_std, lower_quartile, median, upper_std,
-            upper_quartile, upper_95, max).
-        manual_titrant_df : pd.DataFrame, optional
-            A DataFrame specifying 'titrant_name' and 'titrant_conc' values
-            at which to calculate theta. If provided, it overrides the default
-            calculation at the concentrations present in the input data.
-            If 'genotype' is present, it will be used; otherwise, the method
-            will calculate theta for all genotypes in the model.
-
-        Returns
-        -------
-        pd.DataFrame
-            A DataFrame with columns: 'genotype', 'titrant_name', 'titrant_conc',
-            and requested quantiles of theta.
-
-        Raises
-        ------
-        ValueError
-            If the model was not initialized with theta='hill'.
-            If `q_to_get` is not a dictionary.
-            If `manual_titrant_df` is missing required columns.
-        """
-
-        if self._theta != "hill":
-            raise ValueError(
-                "extract_theta_curves is only available for models where "
-                "theta='hill'."
-            )
-
-        # Load the posterior file
-        if isinstance(posteriors,(dict,np.lib.npyio.NpzFile,h5py.File,h5py.Group)):
-            param_posteriors = posteriors
-        else:
-            if posteriors.endswith(".h5") or posteriors.endswith(".hdf5"):
-                param_posteriors = h5py.File(posteriors, 'r')
-            else:
-                param_posteriors = np.load(posteriors)
-        
-
-        # Named quantiles to pull from the posterior distribution
-        if q_to_get is None:
-            q_to_get = {"min":0.0,
-                        "lower_95":0.025,
-                        "lower_std":0.159,
-                        "lower_quartile":0.25,
-                        "median":0.5,
-                        "upper_quartile":0.75,
-                        "upper_std":0.841,
-                        "upper_95":0.975,
-                        "max":1.0}
-
-        # make sure q_to_get is a dictionary
-        if not isinstance(q_to_get,dict):
-            raise ValueError(
-                "q_to_get should be a dictionary keying column names to quantiles"
-            )
-
-        # Construct calculation DataFrame
-        if manual_titrant_df is None:
-            # Use unique (genotype, titrant_name, titrant_conc) from input data
-            calc_df = (self.growth_tm.df[["genotype", "titrant_name", "titrant_conc", "map_theta_group"]]
-                       .drop_duplicates()
-                       .reset_index(drop=True))
-        else:
-            tfscreen.util.dataframe.check_columns(manual_titrant_df,
-                                                  required_columns=["titrant_name", "titrant_conc"])
-            
-            # If genotype is not provided, broadcast across all genotypes
-            if "genotype" not in manual_titrant_df.columns:
-                genotypes = self.growth_tm.df["genotype"].unique()
-                dfs = []
-                for g in genotypes:
-                    tmp = manual_titrant_df.copy()
-                    tmp["genotype"] = g
-                    dfs.append(tmp)
-                calc_df = pd.concat(dfs).reset_index(drop=True)
-            else:
-                calc_df = manual_titrant_df.copy()
-
-            # Map to theta groups
-            # We need to reach into the GROWTH_TM to find the mapping
-            # This is a bit tricky because the manual_titrant_df might have new concentrations.
-            # BUT the parameters (hill_n, etc) are mapped to (genotype, titrant_name).
-            # The mapper used in _extract_param_est for Hill model is "map_theta_group"
-            # which maps (genotype, titrant_name) to an index.
-            
-            # Find the (genotype, titrant_name) -> map_theta_group mapping
-            mapping = (self.growth_tm.df[["genotype", "titrant_name", "map_theta_group"]]
-                       .drop_duplicates()
-                       .set_index(["genotype", "titrant_name"])["map_theta_group"]
-                       .to_dict())
-            
-            # Apply mapping. If a (genotype, titrant_name) pair is not in the model, it's an error.
-            try:
-                calc_df["map_theta_group"] = calc_df.set_index(["genotype", "titrant_name"]).index.map(mapping)
-            except Exception as e:
-                raise ValueError(
-                    "Some (genotype, titrant_name) pairs in manual_titrant_df "
-                    "were not found in the model data."
-                ) from e
-            
-            if calc_df["map_theta_group"].isna().any():
-                missing = calc_df[calc_df["map_theta_group"].isna()]
-                raise ValueError(
-                    f"The following (genotype, titrant_name) pairs were not found in the model data: "
-                    f"{missing[['genotype', 'titrant_name']].drop_duplicates().values}"
-                )
-
-        # indices shape: (N_points,)
-        indices = calc_df["map_theta_group"].values.astype(int)
-
-        # log_titrant shape: (1, N_points)
-        log_titrant = calc_df["titrant_conc"].values.copy()
-        log_titrant[log_titrant == 0] = ZERO_CONC_VALUE
-        log_titrant = np.log(log_titrant)[None, :]
-
-        # Handle HDF5 by loading samples in manageable blocks if necessary,
-        # but for theta parameters (Hill N etc), they are usually small (1 per genotype).
-        # We'll load the full parameters into memory here for simplicity unless they are huge.
-        def get_p(key):
-            val = param_posteriors[key]
-            if hasattr(val, "shape"): # h5py dataset
-                return val[:]
-            return val
-
-        # Extract posterior parameters and flatten (num_samples, num_groups)
-        hill_n = get_p("theta_hill_n")
-        hill_n = hill_n.reshape(hill_n.shape[0], -1)
-        
-        log_hill_K = get_p("theta_log_hill_K")
-        log_hill_K = log_hill_K.reshape(log_hill_K.shape[0], -1)
-        
-        theta_high = get_p("theta_theta_high")
-        theta_high = theta_high.reshape(theta_high.shape[0], -1)
-        
-        theta_low = get_p("theta_theta_low")
-        theta_low = theta_low.reshape(theta_low.shape[0], -1)
-        
-        # Indexed params shape: (N_samples, N_points)
-        h_n = hill_n[:, indices]
-        l_K = log_hill_K[:, indices]
-        t_h = theta_high[:, indices]
-        t_l = theta_low[:, indices]
-        
-        # Calculate theta using Hill equation: (N_samples, N_points)
-        # occupancy = 1 / (1 + exp(-hill_n * (log(conc) - log_K)))
-        occupancy = 1.0 / (1.0 + np.exp(-h_n * (log_titrant - l_K)))
-        theta_samples = t_l + (t_h - t_l) * occupancy
-        
-        # Calculate quantiles across samples (axis 0)
-        for q_name, q_val in q_to_get.items():
-            calc_df[q_name] = np.quantile(theta_samples, q_val, axis=0)
-
-        return calc_df.drop(columns=["map_theta_group"])
-
-    def extract_growth_predictions(self,
-                                   posteriors,
-                                   q_to_get=None,
-                                   row_chunk_size=100,
-                                   max_block_elements=1_000_000_000):
-        """
-        Extract predicted ln_cfu values matching the input growth data.
-
-        This method pulls the 'growth_pred' values from the posterior samples
-        and maps them back to the original rows in `self.growth_df`.
-
-        Parameters
-        ----------
-        posteriors : dict or str
-            Assumes this is a dictionary of posteriors keying parameters to
-            numpy arrays or a path to a .npz file containing posterior samples
-            for model parameters.
-        q_to_get : dict, optional
-            Dictionary mapping output column names to quantile values (between 0 and 1)
-            to extract from the posterior samples. If None, a default set of quantiles
-            is used (min, lower_95, lower_std, lower_quartile, median, upper_std,
-            upper_quartile, upper_95, max).
-        row_chunk_size : int, optional
-            Number of rows to process at a time. Defaults to 100.
-        max_block_elements : int, optional
-            Maximum number of elements to read in a single HDF5 block. Defaults to 1,000,000,000.
-
-        Returns
-        -------
-        pd.DataFrame
-            A copy of `self.growth_df` with new columns for the requested
-            quantiles of 'ln_cfu_pred'.
-
-        Raises
-        ------
-        ValueError
-            If 'growth_pred' is not in the posterior samples.
-            If `q_to_get` is not a dictionary.
-        """
-
-        # Load the posterior file
-        if isinstance(posteriors,(dict,np.lib.npyio.NpzFile,h5py.File,h5py.Group)):
-            param_posteriors = posteriors
-        else:
-            if posteriors.endswith(".h5") or posteriors.endswith(".hdf5"):
-                param_posteriors = h5py.File(posteriors, 'r')
-            else:
-                param_posteriors = np.load(posteriors)
-
-        if "growth_pred" not in param_posteriors:
-            raise ValueError(
-                "'growth_pred' not found in posterior samples. Make sure the "
-                "model was run in a way that generates growth predictions."
-            )
-
-        # Named quantiles to pull from the posterior distribution
-        if q_to_get is None:
-            q_to_get = {"min":0.0,
-                        "lower_95":0.025,
-                        "lower_std":0.159,
-                        "lower_quartile":0.25,
-                        "median":0.5,
-                        "upper_quartile":0.75,
-                        "upper_std":0.841,
-                        "upper_95":0.975,
-                        "max":1.0}
-
-        # make sure q_to_get is a dictionary
-        if not isinstance(q_to_get,dict):
-            raise ValueError(
-                "q_to_get should be a dictionary keying column names to quantiles"
-            )
-
-        # Grab the growth_pred tensor
-        growth_pred = param_posteriors["growth_pred"]
-
-        # The tensor shape is (num_samples, replicate, time, condition_pre, 
-        # condition_sel, titrant_name, titrant_conc, genotype)
-        
-        # Sort the dataframe by index columns to improve HDF5 access locality
-        index_cols = ["replicate_idx", "time_idx", "condition_pre_idx", 
-                      "condition_sel_idx", "titrant_name_idx", 
-                      "titrant_conc_idx", "genotype_idx"]
-        
-        out_df = self.growth_df.copy()
-        out_df = out_df.sort_values(by=index_cols)
-        
-        # Get the sorted index columns
-        rep_idx = out_df["replicate_idx"].values
-        time_idx = out_df["time_idx"].values
-        pre_idx = out_df["condition_pre_idx"].values
-        sel_idx = out_df["condition_sel_idx"].values
-        name_idx = out_df["titrant_name_idx"].values
-        conc_idx = out_df["titrant_conc_idx"].values
-        geno_idx = out_df["genotype_idx"].values
-
-        # Create a clean dataframe for output
-        keep_columns = ["replicate", "genotype",
-                        "condition_pre", "condition_sel", 
-                        "titrant_name", "titrant_conc",
-                        "t_pre", "t_sel",
-                        "ln_cfu","ln_cfu_std"]
-    
-        out_df = out_df[keep_columns].reset_index(drop=True)
-
-        total_rows = len(out_df)
-
-        # Initialize quantile columns
-        for q_name in q_to_get:
-            out_df[q_name] = np.nan
-
-        # Sort quantiles to ensure predictable behavior
-        q_names = list(q_to_get.keys())
-        q_values = np.array([q_to_get[name] for name in q_names])
-        
-        is_h5 = isinstance(growth_pred, h5py.Dataset)
-        num_samples = growth_pred.shape[0]
-
-        # Grab chunks of rows to avoid OOM
-        for start_r in tqdm(range(0, total_rows, row_chunk_size)):
-
-            end_r = min(start_r + row_chunk_size, total_rows)
-            
-            # Slices for this chunk
-            r_slice = rep_idx[start_r:end_r]
-            t_slice = time_idx[start_r:end_r]
-            p_slice = pre_idx[start_r:end_r]
-            s_slice = sel_idx[start_r:end_r]
-            n_slice = name_idx[start_r:end_r]
-            c_slice = conc_idx[start_r:end_r]
-            g_slice = geno_idx[start_r:end_r]
-
-            if is_h5:
-                # Calculate bounding box for this chunk
-                rmin, rmax = r_slice.min(), r_slice.max()
-                tmin, tmax = t_slice.min(), t_slice.max()
-                pmin, pmax = p_slice.min(), p_slice.max()
-                smin, smax = s_slice.min(), s_slice.max()
-                nmin, nmax = n_slice.min(), n_slice.max()
-                cmin, cmax = c_slice.min(), c_slice.max()
-                gmin, gmax = g_slice.min(), g_slice.max()
-
-                # Calculate volume of bounding box (excluding num_samples)
-                # Cast to Python int to avoid numpy fixed-width overflow warnings
-                spatial_volume = (
-                    int(rmax - rmin + 1) * int(tmax - tmin + 1) * 
-                    int(pmax - pmin + 1) * int(smax - smin + 1) * 
-                    int(nmax - nmin + 1) * int(cmax - cmin + 1) * 
-                    int(gmax - gmin + 1)
-                )
-                
-                if (spatial_volume * int(num_samples)) <= max_block_elements:
-                    # Read the entire block at once
-                    block = growth_pred[:, 
-                                        rmin:rmax+1, tmin:tmax+1, 
-                                        pmin:pmax+1, smin:smax+1, 
-                                        nmin:nmax+1, cmin:cmax+1, 
-                                        gmin:gmax+1]
-                    
-                    # Index into the block using relative indices
-                    preds_chunk = block[:, 
-                                        r_slice - rmin, t_slice - tmin, 
-                                        p_slice - pmin, s_slice - smin, 
-                                        n_slice - nmin, c_slice - cmin, 
-                                        g_slice - gmin]
-                else:
-                    # Fallback to row-by-row if the block is too sparse/large
-                    preds_chunk_list = []
-                    for idx in range(len(r_slice)):
-                        row_data = growth_pred[:, r_slice[idx], t_slice[idx], p_slice[idx], 
-                                               s_slice[idx], n_slice[idx], c_slice[idx], g_slice[idx]]
-                        preds_chunk_list.append(row_data)
-                    preds_chunk = np.stack(preds_chunk_list, axis=1)
-            else:
-                # Standard numpy indexing for non-HDF5
-                preds_chunk = growth_pred[:, r_slice, t_slice, p_slice, s_slice, n_slice, c_slice, g_slice]
-
-            # Calculate all quantiles in one go: (len(q_values), chunk_size)
-            all_quantiles = np.quantile(preds_chunk, q_values, axis=0)
-
-            # Assign to out_df
-            for i, q_name in enumerate(q_names):
-                out_df.loc[out_df.index[start_r:end_r], q_name] = all_quantiles[i]
-
-        return out_df
 
     @property
     def init_params(self):
@@ -1496,6 +936,7 @@ class ModelClass:
         return {
             "batch_size":self._batch_size,
             "condition_growth":self._condition_growth,
+            "growth_transition":self._growth_transition,
             "ln_cfu0":self._ln_cfu0,
             "dk_geno":self._dk_geno,
             "activity":self._activity,
@@ -1504,67 +945,5 @@ class ModelClass:
             "theta_growth_noise":self._theta_growth_noise,
             "theta_binding_noise":self._theta_binding_noise,
             "spiked_genotypes":self._spiked_genotypes,
+            "growth_shares_replicates": self._growth_shares_replicates
         }
-
-    @staticmethod
-    def load_config(config_file):
-        """
-        Load model configuration from a YAML file.
-
-        Parameters
-        ----------
-        config_file : str
-            Path to the YAML configuration file.
-
-        Returns
-        -------
-        growth_df : str
-            Path to the growth data CSV file.
-        binding_df : str
-            Path to the binding data CSV file.
-        settings : dict
-            Dictionary of model settings.
-        """
-        if not os.path.exists(config_file):
-            raise FileNotFoundError(f"Configuration file not found: {config_file}")
-
-        with open(config_file, "r") as f:
-            config = yaml.safe_load(f)
-
-        # Check for required fields
-        required_fields = ["growth_df", "binding_df", "settings","tfscreen_version"]
-        for field in required_fields:
-            if field not in config:
-                raise ValueError(f"Missing required field: {field}")
-
-        if config["tfscreen_version"] != __version__:
-            warnings.warn(f"Configuration file version {config['tfscreen_version']} does not match current tfscreen version {__version__}")
-
-        return config["growth_df"], config["binding_df"], config["settings"]
-
-    def write_config(self, 
-                     growth_df_path, 
-                     binding_df_path, 
-                     out_root):
-        """
-        Write model configuration to a YAML file.
-
-        Parameters
-        ----------
-        growth_df_path : str
-            Path to the growth data CSV file.
-        binding_df_path : str
-            Path to the binding data CSV file.
-        out_root : str
-            Root filename for the configuration file ({out_root}_config.yaml).
-        """
-        config = {
-            "tfscreen_version": __version__,
-            "growth_df": growth_df_path,
-            "binding_df": binding_df_path,
-            "settings": self.settings
-        }
-
-        with open(f"{out_root}_config.yaml", "w") as f:
-            yaml.dump(config, f, default_flow_style=False)
-
