@@ -20,13 +20,13 @@ class ModelPriors:
         Mean of the prior for the hyper-location of logit(theta).
     logit_theta_hyper_loc_scale : float
         Std dev of the prior for the hyper-location of logit(theta).
-    logit_theta_hyper_scale : float
+    logit_theta_hyper_scale_loc : float
         Scale of the HalfNormal prior for the hyper-scale of logit(theta).
     """
 
     logit_theta_hyper_loc_loc: float
     logit_theta_hyper_loc_scale: float
-    logit_theta_hyper_scale: float
+    logit_theta_hyper_scale_loc: float
 
 
 @dataclass(frozen=True)
@@ -97,7 +97,7 @@ def define_model(name: str,
             )
             logit_theta_hyper_scale = pyro.sample(
                 f"{name}_logit_theta_hyper_scale",
-                dist.HalfNormal(priors.logit_theta_hyper_scale)
+                dist.HalfNormal(priors.logit_theta_hyper_scale_loc)
             )
 
     # --------------------------------------------------------------------------
@@ -326,7 +326,7 @@ def get_hyperparameters() -> Dict[str, Any]:
     # Center logit(theta) prior on 0.0 (i.e., theta = 0.5)
     parameters["logit_theta_hyper_loc_loc"] = 0.0
     parameters["logit_theta_hyper_loc_scale"] = 1.5
-    parameters["logit_theta_hyper_scale"] = 1.0
+    parameters["logit_theta_hyper_scale_loc"] = 1.0
 
     return parameters
 

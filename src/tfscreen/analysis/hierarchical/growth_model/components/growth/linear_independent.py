@@ -27,32 +27,32 @@ class ModelPriors:
 
     Attributes
     ----------
-    growth_k_hyper_loc_loc : jnp.ndarray
+    k_hyper_loc_loc : jnp.ndarray
         Mean of the prior for the hyper-location of k (per-condition).
-    growth_k_hyper_loc_scale : jnp.ndarray
-        Standard deviation of the prior for the hyper-location of k 
+    k_hyper_loc_scale : jnp.ndarray
+        Standard deviation of the prior for the hyper-location of k
         (per-condition).
-    growth_k_hyper_scale : jnp.ndarray
-        Scale of the HalfNormal prior for the hyper-scale of k 
+    k_hyper_scale_loc : jnp.ndarray
+        Scale of the HalfNormal prior for the hyper-scale of k
         (per-condition).
-    growth_m_hyper_loc_loc : jnp.ndarray
+    m_hyper_loc_loc : jnp.ndarray
         Mean of the prior for the hyper-location of m (per-condition).
-    growth_m_hyper_loc_scale : jnp.ndarray
-        Standard deviation of the prior for the hyper-location of m 
+    m_hyper_loc_scale : jnp.ndarray
+        Standard deviation of the prior for the hyper-location of m
         (per-condition).
-    growth_m_hyper_scale : jnp.ndarray
-        Scale of the HalfNormal prior for the hyper-scale of m 
+    m_hyper_scale_loc : jnp.ndarray
+        Scale of the HalfNormal prior for the hyper-scale of m
         (per-condition).
     """
 
     # dims are num_conditions long
-    growth_k_hyper_loc_loc: jnp.ndarray
-    growth_k_hyper_loc_scale: jnp.ndarray
-    growth_k_hyper_scale: jnp.ndarray
+    k_hyper_loc_loc: jnp.ndarray
+    k_hyper_loc_scale: jnp.ndarray
+    k_hyper_scale_loc: jnp.ndarray
 
-    growth_m_hyper_loc_loc: jnp.ndarray
-    growth_m_hyper_loc_scale: jnp.ndarray
-    growth_m_hyper_scale: jnp.ndarray
+    m_hyper_loc_loc: jnp.ndarray
+    m_hyper_loc_scale: jnp.ndarray
+    m_hyper_scale_loc: jnp.ndarray
 
 def define_model(name: str, 
                  data: GrowthData, 
@@ -85,12 +85,12 @@ def define_model(name: str,
         A Pytree (Flax dataclass) containing the hyperparameters for the
         priors. All attributes are ``jnp.ndarray``s of shape
         ``(data.num_condition_rep,)``.
-        - priors.growth_k_hyper_loc_loc
-        - priors.growth_k_hyper_loc_scale
-        - priors.growth_k_hyper_scale
-        - priors.growth_m_hyper_loc_loc
-        - priors.growth_m_hyper_loc_scale
-        - priors.growth_m_hyper_scale
+        - priors.k_hyper_loc_loc
+        - priors.k_hyper_loc_scale
+        - priors.k_hyper_scale_loc
+        - priors.m_hyper_loc_loc
+        - priors.m_hyper_loc_scale
+        - priors.m_hyper_scale_loc
 
     Returns
     -------
@@ -110,22 +110,22 @@ def define_model(name: str,
 
         growth_k_hyper_loc = pyro.sample(
             f"{name}_k_hyper_loc",
-            dist.Normal(priors.growth_k_hyper_loc_loc,
-                        priors.growth_k_hyper_loc_scale)
+            dist.Normal(priors.k_hyper_loc_loc,
+                        priors.k_hyper_loc_scale)
         )
         growth_k_hyper_scale = pyro.sample(
             f"{name}_k_hyper_scale",
-            dist.HalfNormal(priors.growth_k_hyper_scale)
+            dist.HalfNormal(priors.k_hyper_scale_loc)
         )
 
         growth_m_hyper_loc = pyro.sample(
             f"{name}_m_hyper_loc",
-            dist.Normal(priors.growth_m_hyper_loc_loc,
-                        priors.growth_m_hyper_loc_scale)
+            dist.Normal(priors.m_hyper_loc_loc,
+                        priors.m_hyper_loc_scale)
         )
         growth_m_hyper_scale = pyro.sample(
             f"{name}_m_hyper_scale",
-            dist.HalfNormal(priors.growth_m_hyper_scale)
+            dist.HalfNormal(priors.m_hyper_scale_loc)
         )
 
         # Loop over replicates
@@ -197,8 +197,8 @@ def guide(name: str,
         raise ValueError("linear_independent cannot be used with growth_shares_replicates=True. Use 'linear' instead.")
     
     # K Hyper Loc (Normal)
-    k_hl_loc = pyro.param(f"{name}_k_hyper_loc_loc", jnp.array(priors.growth_k_hyper_loc_loc))
-    k_hl_scale = pyro.param(f"{name}_k_hyper_loc_scale", jnp.array(priors.growth_k_hyper_loc_scale),
+    k_hl_loc = pyro.param(f"{name}_k_hyper_loc_loc", jnp.array(priors.k_hyper_loc_loc))
+    k_hl_scale = pyro.param(f"{name}_k_hyper_loc_scale", jnp.array(priors.k_hyper_loc_scale),
                             constraint=dist.constraints.greater_than(1e-4))
 
     # K Hyper Scale (LogNormal guide for HalfNormal prior)
@@ -209,8 +209,8 @@ def guide(name: str,
                             constraint=dist.constraints.greater_than(1e-4))
 
     # M Hyper Loc (Normal)
-    m_hl_loc = pyro.param(f"{name}_m_hyper_loc_loc", jnp.array(priors.growth_m_hyper_loc_loc))
-    m_hl_scale = pyro.param(f"{name}_m_hyper_loc_scale", jnp.array(priors.growth_m_hyper_loc_scale),
+    m_hl_loc = pyro.param(f"{name}_m_hyper_loc_loc", jnp.array(priors.m_hyper_loc_loc))
+    m_hl_scale = pyro.param(f"{name}_m_hyper_loc_scale", jnp.array(priors.m_hyper_loc_scale),
                             constraint=dist.constraints.greater_than(1e-4))
 
     # M Hyper Scale (LogNormal guide for HalfNormal prior)
@@ -338,12 +338,12 @@ def get_hyperparameters(num_condition_rep: int=1) -> Dict[str, Any]:
     """
 
     parameters = {}
-    parameters["growth_k_hyper_loc_loc"] = jnp.ones(num_condition_rep,dtype=float)*0.025
-    parameters["growth_k_hyper_loc_scale"] = jnp.ones(num_condition_rep,dtype=float)*0.1
-    parameters["growth_k_hyper_scale"] = jnp.ones(num_condition_rep,dtype=float)
-    parameters["growth_m_hyper_loc_loc"] = jnp.zeros(num_condition_rep,dtype=float)
-    parameters["growth_m_hyper_loc_scale"] = jnp.ones(num_condition_rep,dtype=float)*0.01
-    parameters["growth_m_hyper_scale"] = jnp.ones(num_condition_rep,dtype=float)
+    parameters["k_hyper_loc_loc"] = jnp.ones(num_condition_rep,dtype=float)*0.025
+    parameters["k_hyper_loc_scale"] = jnp.ones(num_condition_rep,dtype=float)*0.1
+    parameters["k_hyper_scale_loc"] = jnp.ones(num_condition_rep,dtype=float)
+    parameters["m_hyper_loc_loc"] = jnp.zeros(num_condition_rep,dtype=float)
+    parameters["m_hyper_loc_scale"] = jnp.ones(num_condition_rep,dtype=float)*0.01
+    parameters["m_hyper_scale_loc"] = jnp.ones(num_condition_rep,dtype=float)
 
     return parameters
 

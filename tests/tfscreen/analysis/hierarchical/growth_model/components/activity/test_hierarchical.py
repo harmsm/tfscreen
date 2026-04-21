@@ -70,22 +70,22 @@ def test_get_hyperparameters():
     """Tests that get_hyperparameters returns the correct structure."""
     params = get_hyperparameters()
     assert isinstance(params, dict)
-    assert "activity_hyper_loc_loc" in params
-    assert params["activity_hyper_loc_loc"] == 0.0
+    assert "hyper_loc_loc" in params
+    assert params["hyper_loc_loc"] == 0.0
 
 def test_get_priors():
     """Tests that get_priors returns a correctly populated ModelPriors object."""
     priors = get_priors()
     assert isinstance(priors, ModelPriors)
-    assert priors.activity_hyper_loc_loc == 0.0
+    assert priors.hyper_loc_loc == 0.0
 
 def test_get_guesses(mock_data):
     """Tests that get_guesses returns correctly named and shaped guesses."""
     name = "test_activity"
     guesses = get_guesses(name, mock_data)
-    
+
     assert isinstance(guesses, dict)
-    assert f"{name}_log_hyper_loc" in guesses
+    assert f"{name}_hyper_loc" in guesses
     
     # Check offset guess
     # The code initializes zeros for ALL genotypes (num_genotype)
@@ -177,7 +177,7 @@ def test_guide_logic_and_shapes(mock_data):
 
 def test_pinnable_suffixes():
     """The module exposes the expected pinnable suffix tuple."""
-    assert set(_PINNABLE_SUFFIXES) == {"log_hyper_loc", "log_hyper_scale"}
+    assert set(_PINNABLE_SUFFIXES) == {"hyper_loc", "hyper_scale"}
 
 
 def test_model_priors_default_pinned_is_empty_dict():
@@ -189,7 +189,7 @@ def test_model_priors_default_pinned_is_empty_dict():
 
 def test_model_priors_accepts_pinned_dict():
     """ModelPriors accepts a `pinned` dict and exposes it on the instance."""
-    pinned = {"log_hyper_loc": 0.0, "log_hyper_scale": 0.5}
+    pinned = {"hyper_loc": 0.0, "hyper_scale": 0.5}
     priors = ModelPriors(pinned=pinned, **get_hyperparameters())
     assert priors.pinned == pinned
 
@@ -217,7 +217,7 @@ def test_define_model_unpinned_uses_sample_sites(mock_data):
 def test_define_model_pinned_replaces_with_deterministic(mock_data):
     """Pinned suffixes become deterministic sites with the pinned value."""
     name = "act"
-    pinned = {"log_hyper_loc": 0.123}
+    pinned = {"hyper_loc": 0.123}
     priors = ModelPriors(pinned=pinned, **get_hyperparameters())
 
     base_guesses = get_guesses(name, mock_data)
@@ -235,18 +235,18 @@ def test_define_model_pinned_replaces_with_deterministic(mock_data):
             name=name, data=mock_data, priors=priors
         )
 
-    site_name = f"{name}_log_hyper_loc"
+    site_name = f"{name}_hyper_loc"
     assert tr[site_name]["type"] == "deterministic"
     assert jnp.allclose(tr[site_name]["value"], 0.123)
 
     # Unpinned suffix still a sample
-    assert tr[f"{name}_log_hyper_scale"]["type"] == "sample"
+    assert tr[f"{name}_hyper_scale"]["type"] == "sample"
 
 
 def test_define_model_all_pinned_has_only_offset_sample_site(mock_data):
     """When all hypers are pinned, only the per-genotype offset remains as a sample."""
     name = "act"
-    pinned = {"log_hyper_loc": 0.0, "log_hyper_scale": 0.1}
+    pinned = {"hyper_loc": 0.0, "hyper_scale": 0.1}
     priors = ModelPriors(pinned=pinned, **get_hyperparameters())
 
     base_guesses = get_guesses(name, mock_data)
@@ -273,21 +273,21 @@ def test_guide_pinned_drops_variational_params(mock_data):
     in the guide.  Unpinned hypers retain their full param + sample machinery.
     """
     name = "act"
-    pinned = {"log_hyper_loc": 0.0}
+    pinned = {"hyper_loc": 0.0}
     priors = ModelPriors(pinned=pinned, **get_hyperparameters())
 
     with seed(rng_seed=0):
         tr = trace(guide).get_trace(name=name, data=mock_data, priors=priors)
 
     # Pinned hyper: no sample, no params
-    assert f"{name}_log_hyper_loc" not in tr
-    assert f"{name}_a_hyper_loc_loc" not in tr
-    assert f"{name}_a_hyper_loc_scale" not in tr
+    assert f"{name}_hyper_loc" not in tr
+    assert f"{name}_hyper_loc_loc" not in tr
+    assert f"{name}_hyper_loc_scale" not in tr
 
     # Unpinned hyper still present
-    assert f"{name}_log_hyper_scale" in tr
-    assert f"{name}_a_hyper_scale_loc" in tr
-    assert f"{name}_a_hyper_scale_scale" in tr
+    assert f"{name}_hyper_scale" in tr
+    assert f"{name}_hyper_scale_loc" in tr
+    assert f"{name}_hyper_scale_scale" in tr
 
     # Per-genotype offset machinery untouched
     assert f"{name}_offset" in tr
@@ -298,7 +298,7 @@ def test_guide_pinned_drops_variational_params(mock_data):
 def test_guide_all_pinned_keeps_only_offset_machinery(mock_data):
     """When all hypers are pinned, only offset params/samples remain in the guide."""
     name = "act"
-    pinned = {"log_hyper_loc": 0.0, "log_hyper_scale": 0.1}
+    pinned = {"hyper_loc": 0.0, "hyper_scale": 0.1}
     priors = ModelPriors(pinned=pinned, **get_hyperparameters())
 
     with seed(rng_seed=0):
@@ -309,8 +309,8 @@ def test_guide_all_pinned_keeps_only_offset_machinery(mock_data):
 
     # Variational params for the hypers should be gone
     for guide_param in (
-        "a_hyper_loc_loc", "a_hyper_loc_scale",
-        "a_hyper_scale_loc", "a_hyper_scale_scale",
+        "hyper_loc_loc", "hyper_loc_scale",
+        "hyper_scale_loc", "hyper_scale_scale",
     ):
         assert f"{name}_{guide_param}" not in tr
 
@@ -330,7 +330,7 @@ def test_model_and_guide_pinned_have_compatible_sample_sites(mock_data):
     sides drop the same sites; this test confirms the symmetry.
     """
     name = "compat"
-    pinned = {"log_hyper_loc": 0.0}
+    pinned = {"hyper_loc": 0.0}
     priors = ModelPriors(pinned=pinned, **get_hyperparameters())
 
     with seed(rng_seed=0):

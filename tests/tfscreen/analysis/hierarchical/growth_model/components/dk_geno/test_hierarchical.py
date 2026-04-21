@@ -162,16 +162,16 @@ def test_get_hyperparameters():
     """get_hyperparameters returns the correct keys and default values."""
     params = get_hyperparameters()
     assert isinstance(params, dict)
-    assert "dk_geno_hyper_loc_loc" in params
-    assert params["dk_geno_hyper_loc_loc"] == -3.5
+    assert "hyper_loc_loc" in params
+    assert params["hyper_loc_loc"] == -3.5
 
 
 def test_get_priors():
     """get_priors returns a correctly populated ModelPriors object."""
     priors = get_priors()
     assert isinstance(priors, ModelPriors)
-    assert priors.dk_geno_hyper_loc_loc == -3.5
-    assert priors.dk_geno_hyper_shift_loc == 0.02
+    assert priors.hyper_loc_loc == -3.5
+    assert priors.hyper_shift_loc == 0.02
 
 
 # ---------------------------------------------------------------------------
@@ -185,7 +185,7 @@ def test_get_guesses_keys_and_offset_shape(mock_data):
 
     assert isinstance(guesses, dict)
     for key in [f"{name}_hyper_loc", f"{name}_hyper_scale",
-                f"{name}_shift", f"{name}_offset"]:
+                f"{name}_hyper_shift", f"{name}_offset"]:
         assert key in guesses
 
     assert guesses[f"{name}_offset"].shape == (mock_data.num_genotype,)
@@ -196,7 +196,7 @@ def test_get_guesses_hyperparams_unchanged(mock_data):
     guesses = get_guesses("x", mock_data)
     assert guesses["x_hyper_loc"]   == pytest.approx(-3.5)
     assert guesses["x_hyper_scale"] == pytest.approx(0.5)
-    assert guesses["x_shift"]       == pytest.approx(0.02)
+    assert guesses["x_hyper_shift"] == pytest.approx(0.02)
 
 
 # ---------------------------------------------------------------------------
@@ -408,7 +408,7 @@ def test_define_model_logic_and_shapes(mock_data):
     mut_in_batch = jnp.where(~jnp.isin(mock_data.batch_idx, mock_data.wt_indexes))[0]
     hyper_loc    = base_guesses[f"{name}_hyper_loc"]
     hyper_scale  = base_guesses[f"{name}_hyper_scale"]
-    hyper_shift  = base_guesses[f"{name}_shift"]
+    hyper_shift  = base_guesses[f"{name}_hyper_shift"]
     offset_val   = genotype_offsets[1]   # any non-WT genotype; all offsets equal here
 
     expected_lognormal = jnp.clip(jnp.exp(hyper_loc + offset_val * hyper_scale), max=1e30)
@@ -438,7 +438,7 @@ def test_guide_logic_and_shapes(mock_data):
 
 def test_pinnable_suffixes():
     """The module exposes the expected pinnable suffix tuple."""
-    assert set(_PINNABLE_SUFFIXES) == {"hyper_loc", "hyper_scale", "shift"}
+    assert set(_PINNABLE_SUFFIXES) == {"hyper_loc", "hyper_scale", "hyper_shift"}
 
 
 def test_model_priors_default_pinned_is_empty_dict():
@@ -450,7 +450,7 @@ def test_model_priors_default_pinned_is_empty_dict():
 
 def test_model_priors_accepts_pinned_dict():
     """ModelPriors accepts a `pinned` dict and exposes it on the instance."""
-    pinned = {"hyper_loc": -3.0, "shift": 0.05}
+    pinned = {"hyper_loc": -3.0, "hyper_shift": 0.05}
     priors = ModelPriors(pinned=pinned, **get_hyperparameters())
     assert priors.pinned == pinned
 
@@ -478,7 +478,7 @@ def test_define_model_unpinned_uses_sample_sites(mock_data):
 def test_define_model_pinned_replaces_with_deterministic(mock_data):
     """Pinned suffixes become deterministic sites with the pinned value."""
     name = "dk"
-    pinned = {"hyper_loc": -3.0, "shift": 0.05}
+    pinned = {"hyper_loc": -3.0, "hyper_shift": 0.05}
     priors = ModelPriors(pinned=pinned, **get_hyperparameters())
 
     base_guesses = get_guesses(name, mock_data)
@@ -509,7 +509,7 @@ def test_define_model_pinned_replaces_with_deterministic(mock_data):
 def test_define_model_all_pinned_has_only_offset_sample_site(mock_data):
     """When all hypers are pinned, only the per-genotype offset remains as a sample."""
     name = "dk"
-    pinned = {"hyper_loc": -3.0, "hyper_scale": 0.5, "shift": 0.02}
+    pinned = {"hyper_loc": -3.0, "hyper_scale": 0.5, "hyper_shift": 0.02}
     priors = ModelPriors(pinned=pinned, **get_hyperparameters())
 
     base_guesses = get_guesses(name, mock_data)
@@ -551,9 +551,9 @@ def test_guide_pinned_drops_variational_params(mock_data):
     assert f"{name}_hyper_scale" in tr
     assert f"{name}_hyper_scale_loc" in tr
     assert f"{name}_hyper_scale_scale" in tr
-    assert f"{name}_shift" in tr
-    assert f"{name}_shift_loc" in tr
-    assert f"{name}_shift_scale" in tr
+    assert f"{name}_hyper_shift" in tr
+    assert f"{name}_hyper_shift_loc" in tr
+    assert f"{name}_hyper_shift_scale" in tr
 
     # Per-genotype offset machinery untouched
     assert f"{name}_offset" in tr
@@ -564,7 +564,7 @@ def test_guide_pinned_drops_variational_params(mock_data):
 def test_guide_all_pinned_keeps_only_offset_machinery(mock_data):
     """When all hypers are pinned, only offset params/samples remain in the guide."""
     name = "dk"
-    pinned = {"hyper_loc": -3.0, "hyper_scale": 0.5, "shift": 0.02}
+    pinned = {"hyper_loc": -3.0, "hyper_scale": 0.5, "hyper_shift": 0.02}
     priors = ModelPriors(pinned=pinned, **get_hyperparameters())
 
     with seed(rng_seed=0):
@@ -591,7 +591,7 @@ def test_model_and_guide_pinned_have_compatible_sample_sites(mock_data):
     sides drop the same sites; this test confirms the symmetry.
     """
     name = "compat"
-    pinned = {"hyper_loc": -3.0, "shift": 0.05}
+    pinned = {"hyper_loc": -3.0, "hyper_shift": 0.05}
     priors = ModelPriors(pinned=pinned, **get_hyperparameters())
 
     with seed(rng_seed=0):

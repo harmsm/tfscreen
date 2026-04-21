@@ -221,9 +221,9 @@ def test_guide_pinned_drops_variational_params():
     assert f"{name}_tau0_hyper_loc_loc" not in tr
     assert f"{name}_tau0_hyper_loc_scale" not in tr
     assert f"{name}_tau0_hyper_loc" not in tr
+    assert f"{name}_k2_hyper_scale_loc_loc" not in tr
+    assert f"{name}_k2_hyper_scale_loc_scale" not in tr
     assert f"{name}_k2_hyper_scale_loc" not in tr
-    assert f"{name}_k2_hyper_scale_scale" not in tr
-    assert f"{name}_k2_hyper_scale" not in tr
     # Unpinned still present
     assert f"{name}_k1_hyper_loc" in tr
 

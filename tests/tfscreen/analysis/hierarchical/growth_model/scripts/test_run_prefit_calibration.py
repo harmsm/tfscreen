@@ -21,20 +21,17 @@ import yaml
 
 import flax.struct as fstruct
 
-import tfscreen.analysis.hierarchical.growth_model.scripts.run_prefit_calibration as rpc
 from tfscreen.analysis.hierarchical.growth_model.scripts.run_prefit_calibration import (
     _apply_guesses_updates,
     _apply_priors_updates,
     _build_calibration_model,
     _build_csv_updates,
-    _build_sentinel_priors,
     _compute_theta_values,
     _csv_row_name,
     _identify_field_mapping,
     _inject_calibration_priors,
     _intersect_data,
     _resolve_csv_paths,
-    _scalar_field_names,
     main,
     run_prefit_calibration,
     _CALIBRATION_OVERRIDES,
@@ -53,10 +50,10 @@ from tfscreen.analysis.hierarchical.growth_model.scripts.run_prefit_calibration 
 @fstruct.dataclass
 class _FakeCondGrowth:
     growth_k_hyper_loc: float = 0.0
-    growth_k_hyper_loc_scale: float = 1.0
+    k_hyper_loc_scale: float = 1.0
     growth_k_hyper_scale_loc: float = 0.5
     growth_m_hyper_loc: float = 0.0
-    growth_m_hyper_loc_scale: float = 1.0
+    m_hyper_loc_scale: float = 1.0
     growth_m_hyper_scale_loc: float = 0.5
     pinned: dict = fstruct.field(default_factory=dict, pytree_node=False)
 
@@ -77,16 +74,16 @@ class _FakeGTNoPinned:
 
 @fstruct.dataclass
 class _FakeActivity:
-    activity_hyper_loc_loc: float = 0.0
-    activity_hyper_scale_loc: float = 1.0
+    hyper_loc_loc: float = 0.0
+    hyper_scale_loc: float = 1.0
     pinned: dict = fstruct.field(default_factory=dict, pytree_node=False)
 
 
 @fstruct.dataclass
 class _FakeDkGeno:
-    dk_geno_hyper_loc_loc: float = 0.0
-    dk_geno_hyper_scale_loc: float = 1.0
-    dk_geno_hyper_shift_loc: float = 0.5
+    hyper_loc_loc: float = 0.0
+    hyper_scale_loc: float = 1.0
+    hyper_shift_loc: float = 0.5
     pinned: dict = fstruct.field(default_factory=dict, pytree_node=False)
 
 
@@ -287,50 +284,6 @@ class TestComputeThetaValues:
         assert theta[0, 1] < 1.0
 
 
-# ---------------------------------------------------------------------------
-# _scalar_field_names / _build_sentinel_priors
-# ---------------------------------------------------------------------------
-
-class TestScalarFieldDiscovery:
-
-    def test_scalar_field_names_skips_dicts(self):
-        cg = _FakeCondGrowth()
-        names = _scalar_field_names(cg)
-        assert "pinned" not in names
-        # All scalar fields included
-        for f in ("growth_k_hyper_loc", "growth_k_hyper_loc_scale",
-                  "growth_k_hyper_scale_loc"):
-            assert f in names
-
-    def test_scalar_field_names_skips_arrays(self):
-        @fstruct.dataclass
-        class HasArray:
-            scalar: float = 1.0
-            arr: object = None  # we'll attach an array
-
-        obj = HasArray(scalar=1.0, arr=np.array([1.0, 2.0]))
-        names = _scalar_field_names(obj)
-        assert "scalar" in names
-        assert "arr" not in names
-
-    def test_build_sentinel_priors_assigns_unique_values(self):
-        cg = _FakeCondGrowth()
-        sentinel_priors, sentinel_to_field = _build_sentinel_priors(cg, 100000)
-        # Every field name in the mapping has a distinct sentinel value
-        # in the right base range, and that value lives on the sentinel
-        # object's matching attribute.
-        for sentinel_val, field_name in sentinel_to_field.items():
-            assert 100000 <= sentinel_val < 100100
-            assert getattr(sentinel_priors, field_name) == float(sentinel_val)
-
-        # Sentinel values are unique
-        assert len(set(sentinel_to_field)) == len(sentinel_to_field)
-
-    def test_build_sentinel_priors_preserves_pinned(self):
-        cg = _FakeCondGrowth()
-        sentinel_priors, _ = _build_sentinel_priors(cg, 100000)
-        # pinned wasn't touched (it's not a scalar)
-        assert sentinel_priors.pinned == {}
 
 
 # ---------------------------------------------------------------------------
@@ -352,7 +305,7 @@ class TestBuildCsvUpdates:
                 "component": "condition_growth",
                 "dist_class": "Normal",
                 "loc_field": "growth_k_hyper_loc",
-                "scale_field": "growth_k_hyper_loc_scale",
+                "scale_field": "k_hyper_loc_scale",
             },
         }
         hessian_results = {
@@ -365,20 +318,20 @@ class TestBuildCsvUpdates:
         assert prior_updates[
             "growth.condition_growth.growth_k_hyper_loc"] == pytest.approx(2.5)
         assert prior_updates[
-            "growth.condition_growth.growth_k_hyper_loc_scale"] == pytest.approx(0.7)
+            "growth.condition_growth.k_hyper_loc_scale"] == pytest.approx(0.7)
         assert guess_updates["growth_k_hyper"] == pytest.approx(2.5)
 
     def test_halfnormal_site_recenters_on_map(self):
         field_mapping = {
-            "growth_k_hyper_scale": {
+            "k_hyper_scale_loc": {
                 "component": "condition_growth",
                 "dist_class": "HalfNormal",
                 "scale_field": "growth_k_hyper_scale_loc",
             },
         }
         hessian_results = {
-            "growth_k_hyper_scale": {"map": np.float32(0.42),
-                                     "sigma": np.float32(0.09)},
+            "k_hyper_scale_loc": {"map": np.float32(0.42),
+                                  "sigma": np.float32(0.09)},
         }
         prior_updates, guess_updates = _build_csv_updates(field_mapping,
                                                           hessian_results)
@@ -388,7 +341,7 @@ class TestBuildCsvUpdates:
         assert prior_updates == {
             "growth.condition_growth.growth_k_hyper_scale_loc": pytest.approx(0.42),
         }
-        assert guess_updates["growth_k_hyper_scale"] == pytest.approx(0.42)
+        assert guess_updates["k_hyper_scale_loc"] == pytest.approx(0.42)
 
     def test_skips_sites_without_hessian_result(self):
         field_mapping = {
@@ -396,7 +349,7 @@ class TestBuildCsvUpdates:
                 "component": "condition_growth",
                 "dist_class": "Normal",
                 "loc_field": "growth_k_hyper_loc",
-                "scale_field": "growth_k_hyper_loc_scale",
+                "scale_field": "k_hyper_loc_scale",
             },
         }
         prior_updates, guess_updates = _build_csv_updates(field_mapping, {})
@@ -411,7 +364,7 @@ class TestBuildCsvUpdates:
                 "component": "condition_growth",
                 "dist_class": "Normal",
                 "loc_field": "growth_k_hyper_loc",
-                "scale_field": "growth_k_hyper_loc_scale",
+                "scale_field": "k_hyper_loc_scale",
             },
         }
         hessian_results = {
@@ -439,7 +392,7 @@ class TestApplyPriorsUpdates:
         path = self._write_csv(tmp_path, [
             {"parameter": "growth.condition_growth.growth_k_hyper_loc",
              "value": 1.0},
-            {"parameter": "growth.activity.activity_hyper_loc_loc",
+            {"parameter": "growth.activity.hyper_loc_loc",
              "value": 0.0},
         ])
         updates = {"growth.condition_growth.growth_k_hyper_loc": 9.0}
@@ -455,7 +408,7 @@ class TestApplyPriorsUpdates:
             "growth.condition_growth.growth_k_hyper_loc"] == 9.0
         # Untouched rows are preserved verbatim
         assert new.set_index("parameter")["value"][
-            "growth.activity.activity_hyper_loc_loc"] == 0.0
+            "growth.activity.hyper_loc_loc"] == 0.0
 
     def test_no_updates_is_noop(self, tmp_path):
         path = self._write_csv(tmp_path, [
@@ -686,7 +639,7 @@ class TestInjectCalibrationPriors:
             growth=prod_priors.growth.replace(
                 condition_growth=prod_priors.growth.condition_growth.replace(
                     growth_k_hyper_loc=2.5,
-                    growth_k_hyper_loc_scale=0.4,
+                    k_hyper_loc_scale=0.4,
                 ),
                 growth_transition=prod_priors.growth.growth_transition.replace(
                     pre_t_hyper_loc=3.5,
@@ -712,7 +665,7 @@ class TestInjectCalibrationPriors:
 
         new_priors = gm_cal._priors
         assert new_priors.growth.condition_growth.growth_k_hyper_loc == 2.5
-        assert new_priors.growth.condition_growth.growth_k_hyper_loc_scale == 0.4
+        assert new_priors.growth.condition_growth.k_hyper_loc_scale == 0.4
         # pinned cleared regardless of production's contents
         assert new_priors.growth.condition_growth.pinned == {}
 
@@ -757,30 +710,6 @@ class TestInjectCalibrationPriors:
         _inject_calibration_priors(gm_cal, gm_prod, theta_values)
         result = gm_cal._priors.theta.theta_values
         assert np.allclose(np.asarray(result), theta_values)
-
-
-# ---------------------------------------------------------------------------
-# _identify_field_mapping — sentinel-trace introspection (lightweight)
-#
-# We don't drive a real GrowthModel; instead we call _build_sentinel_priors
-# directly and verify the helper's sentinel-encoding contract.  The
-# end-to-end trace is exercised by the smoke test of run_prefit_calibration
-# rather than here.
-# ---------------------------------------------------------------------------
-
-class TestIdentifyFieldMappingContract:
-
-    def test_distinct_sentinel_bases_for_two_components(self):
-        cg = _FakeCondGrowth()
-        gt = _FakeGrowthTransition()
-        cg_sentinel, cg_map = _build_sentinel_priors(cg, rpc._SENTINEL_BASE_CG)
-        gt_sentinel, gt_map = _build_sentinel_priors(gt, rpc._SENTINEL_BASE_GT)
-
-        # No overlapping sentinel values between the two components.
-        assert set(cg_map).isdisjoint(set(gt_map))
-        # And the bases differ enough that nothing collides.
-        assert max(cg_map) < rpc._SENTINEL_BASE_GT
-        assert min(gt_map) >= rpc._SENTINEL_BASE_GT
 
 
 # ---------------------------------------------------------------------------
@@ -871,8 +800,8 @@ class TestRunPrefitCalibrationOrchestration:
         pd.DataFrame({
             "parameter": [
                 "growth.condition_growth.growth_k_hyper_loc",
-                "growth.condition_growth.growth_k_hyper_loc_scale",
-                "growth.activity.activity_hyper_loc_loc",
+                "growth.condition_growth.k_hyper_loc_scale",
+                "growth.activity.hyper_loc_loc",
             ],
             "value": [1.0, 1.0, 0.0],
         }).to_csv(priors, index=False)
@@ -894,7 +823,7 @@ class TestRunPrefitCalibrationOrchestration:
                     "component": "condition_growth",
                     "dist_class": "Normal",
                     "loc_field": "growth_k_hyper_loc",
-                    "scale_field": "growth_k_hyper_loc_scale",
+                    "scale_field": "k_hyper_loc_scale",
                 },
             },
         )
@@ -908,8 +837,8 @@ class TestRunPrefitCalibrationOrchestration:
         # unrelated row preserved.
         assert new_priors["growth.condition_growth.growth_k_hyper_loc"] == 9.0
         assert new_priors[
-            "growth.condition_growth.growth_k_hyper_loc_scale"] == pytest.approx(0.5)
-        assert new_priors["growth.activity.activity_hyper_loc_loc"] == 0.0
+            "growth.condition_growth.k_hyper_loc_scale"] == pytest.approx(0.5)
+        assert new_priors["growth.activity.hyper_loc_loc"] == 0.0
         new_guesses = pd.read_csv(guesses)
         assert new_guesses.iloc[0]["value"] == 9.0
 

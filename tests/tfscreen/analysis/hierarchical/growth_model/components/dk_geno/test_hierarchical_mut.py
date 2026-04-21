@@ -64,17 +64,17 @@ _NEUTRAL_OFFSET = -0.8240460108562919
 def test_get_hyperparameters():
     params = get_hyperparameters()
     assert isinstance(params, dict)
-    assert "dk_geno_hyper_loc_loc" in params
-    assert "dk_geno_hyper_shift_loc" in params
-    assert "dk_geno_sigma_epi_scale" in params
+    assert "hyper_loc_loc" in params
+    assert "hyper_shift_loc" in params
+    assert "sigma_epi_scale" in params
 
 
 def test_get_priors():
     priors = get_priors()
     assert isinstance(priors, ModelPriors)
     hp = get_hyperparameters()
-    assert priors.dk_geno_hyper_loc_loc == hp["dk_geno_hyper_loc_loc"]
-    assert priors.dk_geno_hyper_shift_loc == hp["dk_geno_hyper_shift_loc"]
+    assert priors.hyper_loc_loc == hp["hyper_loc_loc"]
+    assert priors.hyper_shift_loc == hp["hyper_shift_loc"]
 
 
 def test_get_guesses_no_epi(mock_data_no_epi):
@@ -82,7 +82,7 @@ def test_get_guesses_no_epi(mock_data_no_epi):
     guesses = get_guesses(name, mock_data_no_epi)
     assert isinstance(guesses, dict)
     assert f"{name}_hyper_loc" in guesses
-    assert f"{name}_shift" in guesses
+    assert f"{name}_hyper_shift" in guesses
     assert f"{name}_offset" in guesses
     assert guesses[f"{name}_offset"].shape == (mock_data_no_epi.num_mutation,)
     # Every offset initialised to the neutral value
@@ -146,7 +146,7 @@ class TestDefineModelNoEpi:
         # Fix to simple values so we can compute by hand
         guesses["dk_geno_hyper_loc"] = -3.5
         guesses["dk_geno_hyper_scale"] = 0.5
-        guesses["dk_geno_shift"] = 0.02
+        guesses["dk_geno_hyper_shift"] = 0.02
         # Use different offsets per mutation to make them distinguishable
         guesses["dk_geno_offset"] = jnp.array([0.0, 1.0])
 
@@ -287,5 +287,5 @@ class TestGuide:
         sample_names = {k for k, v in tr.items() if v["type"] == "sample"}
         assert "dk_geno_hyper_loc" in sample_names
         assert "dk_geno_hyper_scale" in sample_names
-        assert "dk_geno_shift" in sample_names
+        assert "dk_geno_hyper_shift" in sample_names
         assert "dk_geno_offset" in sample_names

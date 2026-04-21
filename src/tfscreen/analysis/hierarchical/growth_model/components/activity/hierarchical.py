@@ -13,7 +13,7 @@ from tfscreen.analysis.hierarchical.growth_model.components._pinning import (
 
 # Hyperparameter suffixes that may be pinned via ModelPriors.pinned.
 _PINNABLE_SUFFIXES = (
-    "log_hyper_loc", "log_hyper_scale",
+    "hyper_loc", "hyper_scale",
 )
 
 
@@ -24,20 +24,20 @@ class ModelPriors:
 
     Attributes
     ----------
-    activity_hyper_loc_loc : float
+    hyper_loc_loc : float
         Mean of the prior for the hyper-location of log(activity).
-    activity_hyper_loc_scale : float
+    hyper_loc_scale : float
         Std dev of the prior for the hyper-location of log(activity).
-    activity_hyper_scale_loc : float
+    hyper_scale_loc : float
         Scale of the HalfNormal prior for the hyper-scale of log(activity).
     pinned : Mapping[str, float]
         Optional mapping from suffix (in ``_PINNABLE_SUFFIXES``) to a
         constant value used in place of sampling that hyperparameter.
     """
 
-    activity_hyper_loc_loc: float
-    activity_hyper_loc_scale: float
-    activity_hyper_scale_loc: float
+    hyper_loc_loc: float
+    hyper_loc_scale: float
+    hyper_scale_loc: float
 
     pinned: Mapping[str, float] = field(
         pytree_node=False, default_factory=dict
@@ -85,14 +85,14 @@ def define_model(name: str,
 
     # Priors are on log(activity), so their mean is log(1.0) = 0.0
     log_activity_hyper_loc = _hyper(
-        name, "log_hyper_loc",
-        dist.Normal(priors.activity_hyper_loc_loc, # This prior should be ~Normal(0.0, ...)
-                    priors.activity_hyper_loc_scale),
+        name, "hyper_loc",
+        dist.Normal(priors.hyper_loc_loc,
+                    priors.hyper_loc_scale),
         pinned,
     )
     log_activity_hyper_scale = _hyper(
-        name, "log_hyper_scale",
-        dist.HalfNormal(priors.activity_hyper_scale_loc), # Using HalfNormal
+        name, "hyper_scale",
+        dist.HalfNormal(priors.hyper_scale_loc),
         pinned,
     )
 
@@ -136,27 +136,27 @@ def guide(name: str,
 
     pinned = priors.pinned
 
-    pinned_hl = _pinned_value("log_hyper_loc", pinned)
+    pinned_hl = _pinned_value("hyper_loc", pinned)
     if pinned_hl is not None:
         log_activity_hyper_loc = pinned_hl
     else:
-        a_loc_loc = pyro.param(f"{name}_a_hyper_loc_loc", jnp.array(priors.activity_hyper_loc_loc))
-        a_loc_scale = pyro.param(f"{name}_a_hyper_loc_scale", jnp.array(priors.activity_hyper_loc_scale),
+        a_loc_loc = pyro.param(f"{name}_hyper_loc_loc", jnp.array(priors.hyper_loc_loc))
+        a_loc_scale = pyro.param(f"{name}_hyper_loc_scale", jnp.array(priors.hyper_loc_scale),
                                  constraint=dist.constraints.greater_than(1e-4))
         log_activity_hyper_loc = pyro.sample(
-            f"{name}_log_hyper_loc",
-            dist.Normal(a_loc_loc,a_loc_scale)
+            f"{name}_hyper_loc",
+            dist.Normal(a_loc_loc, a_loc_scale)
         )
 
-    pinned_hs = _pinned_value("log_hyper_scale", pinned)
+    pinned_hs = _pinned_value("hyper_scale", pinned)
     if pinned_hs is not None:
         log_activity_hyper_scale = pinned_hs
     else:
-        a_scale_loc = pyro.param(f"{name}_a_hyper_scale_loc", jnp.array(-1.0))
-        a_scale_scale = pyro.param(f"{name}_a_hyper_scale_scale",jnp.array(0.1),
+        a_scale_loc = pyro.param(f"{name}_hyper_scale_loc", jnp.array(-1.0))
+        a_scale_scale = pyro.param(f"{name}_hyper_scale_scale", jnp.array(0.1),
                                    constraint=dist.constraints.greater_than(1e-4))
         log_activity_hyper_scale = pyro.sample(
-            f"{name}_log_hyper_scale",
+            f"{name}_hyper_scale",
             dist.LogNormal(a_scale_loc, a_scale_scale)
         )
 
@@ -209,9 +209,9 @@ def get_hyperparameters() -> Dict[str, Any]:
     """
     
     parameters = {}
-    parameters["activity_hyper_loc_loc"] = 0.0
-    parameters["activity_hyper_loc_scale"] = 0.01
-    parameters["activity_hyper_scale_loc"] = 0.1
+    parameters["hyper_loc_loc"] = 0.0
+    parameters["hyper_loc_scale"] = 0.01
+    parameters["hyper_scale_loc"] = 0.1
 
     return parameters
 
@@ -241,8 +241,8 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
     """
 
     guesses = {}
-    guesses[f"{name}_log_hyper_loc"] = 0.0
-    guesses[f"{name}_log_hyper_scale"] = 0.1
+    guesses[f"{name}_hyper_loc"] = 0.0
+    guesses[f"{name}_hyper_scale"] = 0.1
     guesses[f"{name}_offset"] = jnp.zeros(data.num_genotype,dtype=float)
 
     return guesses

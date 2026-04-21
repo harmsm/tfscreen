@@ -37,13 +37,13 @@ class ModelPriors:
     JAX Pytree holding data needed to specify model priors.
     """
 
-    growth_min_hyper_loc_loc: float
-    growth_min_hyper_loc_scale: float
-    growth_min_hyper_scale: float
+    min_hyper_loc_loc: float
+    min_hyper_loc_scale: float
+    min_hyper_scale_loc: float
 
-    growth_max_hyper_loc_loc: float
-    growth_max_hyper_loc_scale: float
-    growth_max_hyper_scale: float
+    max_hyper_loc_loc: float
+    max_hyper_loc_scale: float
+    max_hyper_scale_loc: float
 
     pinned: Mapping[str, float] = field(
         pytree_node=False, default_factory=dict
@@ -92,8 +92,8 @@ def define_model(name: str,
         pyro.deterministic(f"{name}_{param_name}", param_per_condition)
         return param_per_condition
 
-    min_per_condition = sample_param("min", priors.growth_min_hyper_loc_loc, priors.growth_min_hyper_loc_scale, priors.growth_min_hyper_scale)
-    max_per_condition = sample_param("max", priors.growth_max_hyper_loc_loc, priors.growth_max_hyper_loc_scale, priors.growth_max_hyper_scale)
+    min_per_condition = sample_param("min", priors.min_hyper_loc_loc, priors.min_hyper_loc_scale, priors.min_hyper_scale_loc)
+    max_per_condition = sample_param("max", priors.max_hyper_loc_loc, priors.max_hyper_loc_scale, priors.max_hyper_scale_loc)
 
     # Expand to full-sized tensors
     min_pre = min_per_condition[data.map_condition_pre]
@@ -155,8 +155,8 @@ def guide(name: str,
         param_per_condition = hyper_loc + offset * hyper_scale
         return param_per_condition
 
-    min_per_condition = sample_guide_param("min", priors.growth_min_hyper_loc_loc, priors.growth_min_hyper_loc_scale)
-    max_per_condition = sample_guide_param("max", priors.growth_max_hyper_loc_loc, priors.growth_max_hyper_loc_scale)
+    min_per_condition = sample_guide_param("min", priors.min_hyper_loc_loc, priors.min_hyper_loc_scale)
+    max_per_condition = sample_guide_param("max", priors.max_hyper_loc_loc, priors.max_hyper_loc_scale)
 
     # Expand to full-sized tensors
     min_pre = min_per_condition[data.map_condition_pre]
@@ -189,13 +189,13 @@ def get_hyperparameters():
     """
 
     parameters = {}
-    parameters["growth_min_hyper_loc_loc"] = 0.025
-    parameters["growth_min_hyper_loc_scale"] = 0.1
-    parameters["growth_min_hyper_scale"] = 0.1
+    parameters["min_hyper_loc_loc"] = 0.025
+    parameters["min_hyper_loc_scale"] = 0.1
+    parameters["min_hyper_scale_loc"] = 0.1
 
-    parameters["growth_max_hyper_loc_loc"] = 0.025
-    parameters["growth_max_hyper_loc_scale"] = 0.1
-    parameters["growth_max_hyper_scale"] = 0.1
+    parameters["max_hyper_loc_loc"] = 0.025
+    parameters["max_hyper_loc_scale"] = 0.1
+    parameters["max_hyper_scale_loc"] = 0.1
 
     return parameters
 

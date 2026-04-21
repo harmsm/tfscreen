@@ -51,15 +51,15 @@ def test_get_hyperparameters():
     """Tests that get_hyperparameters returns the correct structure and defaults."""
     params = get_hyperparameters()
     assert isinstance(params, dict)
-    assert "growth_min_hyper_loc_loc" in params
-    assert params["growth_min_hyper_loc_loc"] == 0.025
+    assert "min_hyper_loc_loc" in params
+    assert params["min_hyper_loc_loc"] == 0.025
 
 def test_get_priors():
     """Tests that get_priors returns a correctly populated ModelPriors object."""
     priors = get_priors()
     assert isinstance(priors, ModelPriors)
-    assert priors.growth_min_hyper_loc_loc == 0.025
-    assert priors.growth_max_hyper_loc_loc == 0.025
+    assert priors.min_hyper_loc_loc == 0.025
+    assert priors.max_hyper_loc_loc == 0.025
 
 def test_get_guesses(mock_data):
     """

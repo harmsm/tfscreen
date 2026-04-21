@@ -25,15 +25,15 @@ class ModelPriors:
     """
     tau0_hyper_loc_loc: float
     tau0_hyper_loc_scale: float
-    tau0_hyper_scale: float
+    tau0_hyper_scale_loc: float
 
     k1_hyper_loc_loc: float
     k1_hyper_loc_scale: float
-    k1_hyper_scale: float
+    k1_hyper_scale_loc: float
 
     k2_hyper_loc_loc: float
     k2_hyper_loc_scale: float
-    k2_hyper_scale: float
+    k2_hyper_scale_loc: float
 
     pinned: Mapping[str, float] = field(
         pytree_node=False, default_factory=dict
@@ -89,7 +89,7 @@ def define_model(name: str,
     )
     tau0_hyper_scale = _hyper(
         name, "tau0_hyper_scale",
-        dist.HalfNormal(priors.tau0_hyper_scale),
+        dist.HalfNormal(priors.tau0_hyper_scale_loc),
         pinned,
     )
 
@@ -101,7 +101,7 @@ def define_model(name: str,
     )
     k1_hyper_scale = _hyper(
         name, "k1_hyper_scale",
-        dist.HalfNormal(priors.k1_hyper_scale),
+        dist.HalfNormal(priors.k1_hyper_scale_loc),
         pinned,
     )
 
@@ -113,7 +113,7 @@ def define_model(name: str,
     )
     k2_hyper_scale = _hyper(
         name, "k2_hyper_scale",
-        dist.HalfNormal(priors.k2_hyper_scale),
+        dist.HalfNormal(priors.k2_hyper_scale_loc),
         pinned,
     )
 
@@ -253,15 +253,15 @@ def get_hyperparameters() -> Dict[str, Any]:
     return {
         "tau0_hyper_loc_loc": 1.0,
         "tau0_hyper_loc_scale": 0.5,
-        "tau0_hyper_scale": 0.5,
+        "tau0_hyper_scale_loc": 0.5,
 
         "k1_hyper_loc_loc": 0.0,
         "k1_hyper_loc_scale": 0.1,
-        "k1_hyper_scale": 0.1,
+        "k1_hyper_scale_loc": 0.1,
 
         "k2_hyper_loc_loc": 0.1,
         "k2_hyper_loc_scale": 0.05,
-        "k2_hyper_scale": 0.05,
+        "k2_hyper_scale_loc": 0.05,
     }
 
 def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:

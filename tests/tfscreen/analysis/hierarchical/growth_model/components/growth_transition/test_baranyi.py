@@ -183,9 +183,9 @@ def test_guide_pinned_drops_variational_params():
         )
     assert f"{name}_tau_lag_hyper_loc_loc" not in tr
     assert f"{name}_tau_lag_hyper_loc" not in tr
+    assert f"{name}_k_sharp_hyper_scale_loc_loc" not in tr
     assert f"{name}_k_sharp_hyper_scale_loc" not in tr
-    assert f"{name}_k_sharp_hyper_scale" not in tr
-    assert f"{name}_tau_lag_hyper_scale" in tr
+    assert f"{name}_tau_lag_hyper_scale_loc" in tr
     assert f"{name}_k_sharp_hyper_loc" in tr
 
 

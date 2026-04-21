@@ -33,12 +33,12 @@ from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
 @dataclass(frozen=True)
 class ModelPriors:
     """Hyperparameters for the mutation-decomposed dk_geno model."""
-    dk_geno_hyper_loc_loc: float
-    dk_geno_hyper_loc_scale: float
-    dk_geno_hyper_scale_loc: float
-    dk_geno_hyper_shift_loc: float
-    dk_geno_hyper_shift_scale: float
-    dk_geno_sigma_epi_scale: float   # HalfNormal scale for epistasis spread
+    hyper_loc_loc: float
+    hyper_loc_scale: float
+    hyper_scale_loc: float
+    hyper_shift_loc: float
+    hyper_shift_scale: float
+    sigma_epi_scale: float   # HalfNormal scale for epistasis spread
 
 
 def define_model(name: str,
@@ -70,15 +70,15 @@ def define_model(name: str,
     # ------------------------------------------------------------------
     dk_geno_hyper_loc = pyro.sample(
         f"{name}_hyper_loc",
-        dist.Normal(priors.dk_geno_hyper_loc_loc,
-                    priors.dk_geno_hyper_loc_scale))
+        dist.Normal(priors.hyper_loc_loc,
+                    priors.hyper_loc_scale))
     dk_geno_hyper_scale = pyro.sample(
         f"{name}_hyper_scale",
-        dist.HalfNormal(priors.dk_geno_hyper_scale_loc))
+        dist.HalfNormal(priors.hyper_scale_loc))
     dk_geno_hyper_shift = pyro.sample(
-        f"{name}_shift",
-        dist.Normal(priors.dk_geno_hyper_shift_loc,
-                    priors.dk_geno_hyper_shift_scale))
+        f"{name}_hyper_shift",
+        dist.Normal(priors.hyper_shift_loc,
+                    priors.hyper_shift_scale))
 
     # ------------------------------------------------------------------
     # Per-mutation offsets: shape (num_mutation,)
@@ -105,7 +105,7 @@ def define_model(name: str,
 
         sigma_epi = pyro.sample(
             f"{name}_sigma_epi",
-            dist.HalfNormal(priors.dk_geno_sigma_epi_scale))
+            dist.HalfNormal(priors.sigma_epi_scale))
 
         with pyro.plate(f"{name}_pair_plate", num_pair, dim=-1):
             epi_offset = pyro.sample(f"{name}_epi_offset", dist.Normal(0.0, 1.0))
@@ -130,9 +130,9 @@ def guide(name: str,
 
     # --- Global hyperpriors ---
     h_loc_loc = pyro.param(f"{name}_hyper_loc_loc",
-                           jnp.array(priors.dk_geno_hyper_loc_loc))
+                           jnp.array(priors.hyper_loc_loc))
     h_loc_scale = pyro.param(f"{name}_hyper_loc_scale",
-                             jnp.array(priors.dk_geno_hyper_loc_scale),
+                             jnp.array(priors.hyper_loc_scale),
                              constraint=dist.constraints.greater_than(1e-4))
     dk_geno_hyper_loc = pyro.sample(f"{name}_hyper_loc",
                                     dist.Normal(h_loc_loc, h_loc_scale))
@@ -143,12 +143,12 @@ def guide(name: str,
     dk_geno_hyper_scale = pyro.sample(f"{name}_hyper_scale",
                                       dist.LogNormal(h_scale_loc, h_scale_scale))
 
-    shift_loc = pyro.param(f"{name}_shift_loc",
-                           jnp.array(priors.dk_geno_hyper_shift_loc))
-    shift_scale = pyro.param(f"{name}_shift_scale",
-                             jnp.array(priors.dk_geno_hyper_shift_scale),
+    shift_loc = pyro.param(f"{name}_hyper_shift_loc",
+                           jnp.array(priors.hyper_shift_loc))
+    shift_scale = pyro.param(f"{name}_hyper_shift_scale",
+                             jnp.array(priors.hyper_shift_scale),
                              constraint=dist.constraints.greater_than(1e-4))
-    dk_geno_hyper_shift = pyro.sample(f"{name}_shift",
+    dk_geno_hyper_shift = pyro.sample(f"{name}_hyper_shift",
                                       dist.Normal(shift_loc, shift_scale))
 
     # --- Per-mutation offsets ---
@@ -193,12 +193,12 @@ def guide(name: str,
 
 def get_hyperparameters() -> Dict[str, Any]:
     return {
-        "dk_geno_hyper_loc_loc": -3.5,
-        "dk_geno_hyper_loc_scale": 1.0,
-        "dk_geno_hyper_scale_loc": 1.0,
-        "dk_geno_hyper_shift_loc": 0.02,
-        "dk_geno_hyper_shift_scale": 0.2,
-        "dk_geno_sigma_epi_scale": 0.1,
+        "hyper_loc_loc": -3.5,
+        "hyper_loc_scale": 1.0,
+        "hyper_scale_loc": 1.0,
+        "hyper_shift_loc": 0.02,
+        "hyper_shift_scale": 0.2,
+        "sigma_epi_scale": 0.1,
     }
 
 
@@ -209,7 +209,7 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, Any]:
     guesses = {}
     guesses[f"{name}_hyper_loc"] = -3.5
     guesses[f"{name}_hyper_scale"] = 0.5
-    guesses[f"{name}_shift"] = 0.02
+    guesses[f"{name}_hyper_shift"] = 0.02
     guesses[f"{name}_offset"] = jnp.full(data.num_mutation, neutral_offset)
     if data.num_pair > 0:
         guesses[f"{name}_sigma_epi"] = 0.05

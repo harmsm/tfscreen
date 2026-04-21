@@ -14,7 +14,7 @@ from tfscreen.analysis.hierarchical.growth_model.components._pinning import (
 
 # Hyperparameter suffixes that may be pinned via ModelPriors.pinned.
 _PINNABLE_SUFFIXES = (
-    "hyper_loc", "hyper_scale", "shift",
+    "hyper_loc", "hyper_scale", "hyper_shift",
 )
 
 
@@ -24,11 +24,11 @@ class ModelPriors:
     JAX Pytree holding data needed to specify model priors.
     """
 
-    dk_geno_hyper_loc_loc: float
-    dk_geno_hyper_loc_scale: float
-    dk_geno_hyper_scale_loc: float
-    dk_geno_hyper_shift_loc: float
-    dk_geno_hyper_shift_scale: float
+    hyper_loc_loc: float
+    hyper_loc_scale: float
+    hyper_scale_loc: float
+    hyper_shift_loc: float
+    hyper_shift_scale: float
 
     pinned: Mapping[str, float] = field(
         pytree_node=False, default_factory=dict
@@ -59,11 +59,11 @@ def define_model(name: str,
         - ``data.map_genotype``
     priors : ModelPriors
         A Pytree containing all hyperparameters for the model, including:
-        - ``priors.dk_geno_hyper_shift_loc``
-        - ``priors.dk_geno_hyper_shift_scale``
-        - ``priors.dk_geno_hyper_loc_loc``
-        - ``priors.dk_geno_hyper_loc_scale``
-        - ``priors.dk_geno_hyper_scale_loc``
+        - ``priors.hyper_shift_loc``
+        - ``priors.hyper_shift_scale``
+        - ``priors.hyper_loc_loc``
+        - ``priors.hyper_loc_scale``
+        - ``priors.hyper_scale_loc``
 
     Returns
     -------
@@ -76,20 +76,20 @@ def define_model(name: str,
 
     dk_geno_hyper_loc = _hyper(
         name, "hyper_loc",
-        dist.Normal(priors.dk_geno_hyper_loc_loc,
-                    priors.dk_geno_hyper_loc_scale),
+        dist.Normal(priors.hyper_loc_loc,
+                    priors.hyper_loc_scale),
         pinned,
     )
     dk_geno_hyper_scale = _hyper(
         name, "hyper_scale",
-        dist.HalfNormal(priors.dk_geno_hyper_scale_loc),
+        dist.HalfNormal(priors.hyper_scale_loc),
         pinned,
     )
 
     dk_geno_hyper_shift = _hyper(
-        name, "shift",
-        dist.Normal(priors.dk_geno_hyper_shift_loc,
-                    priors.dk_geno_hyper_shift_scale),
+        name, "hyper_shift",
+        dist.Normal(priors.hyper_shift_loc,
+                    priors.hyper_shift_scale),
         pinned,
     )
 
@@ -139,8 +139,8 @@ def guide(name: str,
     if pinned_hl is not None:
         dk_geno_hyper_loc = pinned_hl
     else:
-        h_loc_loc = pyro.param(f"{name}_hyper_loc_loc", jnp.array(priors.dk_geno_hyper_loc_loc))
-        h_loc_scale = pyro.param(f"{name}_hyper_loc_scale", jnp.array(priors.dk_geno_hyper_loc_scale),
+        h_loc_loc = pyro.param(f"{name}_hyper_loc_loc", jnp.array(priors.hyper_loc_loc))
+        h_loc_scale = pyro.param(f"{name}_hyper_loc_scale", jnp.array(priors.hyper_loc_scale),
                                  constraint=dist.constraints.greater_than(1e-4))
         dk_geno_hyper_loc = pyro.sample(f"{name}_hyper_loc", dist.Normal(h_loc_loc, h_loc_scale))
 
@@ -155,15 +155,15 @@ def guide(name: str,
                                    constraint=dist.constraints.greater_than(1e-4))
         dk_geno_hyper_scale = pyro.sample(f"{name}_hyper_scale", dist.LogNormal(h_scale_loc, h_scale_scale))
 
-    # Shift (Normal guide for Normal prior)
-    pinned_sh = _pinned_value("shift", pinned)
+    # Hyper Shift (Normal guide for Normal prior)
+    pinned_sh = _pinned_value("hyper_shift", pinned)
     if pinned_sh is not None:
         dk_geno_hyper_shift = pinned_sh
     else:
-        shift_loc = pyro.param(f"{name}_shift_loc", jnp.array(priors.dk_geno_hyper_shift_loc))
-        shift_scale = pyro.param(f"{name}_shift_scale", jnp.array(priors.dk_geno_hyper_shift_scale),
+        shift_loc = pyro.param(f"{name}_hyper_shift_loc", jnp.array(priors.hyper_shift_loc))
+        shift_scale = pyro.param(f"{name}_hyper_shift_scale", jnp.array(priors.hyper_shift_scale),
                                  constraint=dist.constraints.greater_than(1e-4))
-        dk_geno_hyper_shift = pyro.sample(f"{name}_shift", dist.Normal(shift_loc, shift_scale))
+        dk_geno_hyper_shift = pyro.sample(f"{name}_hyper_shift", dist.Normal(shift_loc, shift_scale))
 
     # --- Local Parameters (Per Genotype) ---
     
@@ -211,11 +211,11 @@ def get_hyperparameters():
     """
 
     parameters = {}
-    parameters["dk_geno_hyper_loc_loc"] = -3.5
-    parameters["dk_geno_hyper_loc_scale"] = 1.0
-    parameters["dk_geno_hyper_scale_loc"] = 1.0
-    parameters["dk_geno_hyper_shift_loc"] = 0.02
-    parameters["dk_geno_hyper_shift_scale"] = 0.2
+    parameters["hyper_loc_loc"] = -3.5
+    parameters["hyper_loc_scale"] = 1.0
+    parameters["hyper_scale_loc"] = 1.0
+    parameters["hyper_shift_loc"] = 0.02
+    parameters["hyper_shift_scale"] = 0.2
                
     return parameters
     
@@ -283,7 +283,7 @@ def get_guesses(name, data):
         guesses = {}
         guesses[f"{name}_hyper_loc"]   = _DEFAULT_HYPER_LOC
         guesses[f"{name}_hyper_scale"] = _DEFAULT_HYPER_SCALE
-        guesses[f"{name}_shift"]       = _DEFAULT_SHIFT
+        guesses[f"{name}_hyper_shift"] = _DEFAULT_SHIFT
         guesses[f"{name}_offset"]      = _NEUTRAL_OFFSET * jnp.ones(num_geno, dtype=float)
         return guesses
 
@@ -354,7 +354,7 @@ def get_guesses(name, data):
     guesses = {}
     guesses[f"{name}_hyper_loc"]   = _DEFAULT_HYPER_LOC
     guesses[f"{name}_hyper_scale"] = _DEFAULT_HYPER_SCALE
-    guesses[f"{name}_shift"]       = _DEFAULT_SHIFT
+    guesses[f"{name}_hyper_shift"] = _DEFAULT_SHIFT
     guesses[f"{name}_offset"]      = jnp.array(offset_per_geno, dtype=float)
 
     return guesses

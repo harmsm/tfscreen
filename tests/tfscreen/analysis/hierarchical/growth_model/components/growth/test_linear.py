@@ -140,16 +140,16 @@ def test_get_hyperparameters():
     """Tests that get_hyperparameters returns the correct structure and defaults."""
     params = get_hyperparameters()
     assert isinstance(params, dict)
-    assert "growth_k_hyper_loc_loc" in params
-    assert params["growth_k_hyper_loc_loc"] == 0.025
+    assert "k_hyper_loc_loc" in params
+    assert params["k_hyper_loc_loc"] == 0.025
 
 
 def test_get_priors():
     """Tests that get_priors returns a correctly populated ModelPriors object."""
     priors = get_priors()
     assert isinstance(priors, ModelPriors)
-    assert priors.growth_k_hyper_loc_loc == 0.025
-    assert priors.growth_m_hyper_loc_loc == 0.0
+    assert priors.k_hyper_loc_loc == 0.025
+    assert priors.m_hyper_loc_loc == 0.0
 
 
 def test_get_guesses_keys_and_shapes(mock_data):
@@ -346,7 +346,7 @@ def test_guide_logic_and_shapes(mock_data):
     assert m_scales.shape == (mock_data.num_condition_rep,)
 
     assert f"{name}_k_hyper_loc" in guide_trace
-    assert f"{name}_m_hyper_scale" in guide_trace
+    assert f"{name}_m_hyper_scale_loc" in guide_trace
     assert f"{name}_k_offset" in guide_trace
 
     assert k_pre.shape == mock_data.map_condition_pre.shape
@@ -389,7 +389,7 @@ def test_model_priors_replace_preserves_pinned():
     """flax.struct.dataclass.replace preserves the pinned dict."""
     pinned = {"k_hyper_loc": 0.03}
     priors = ModelPriors(pinned=pinned, **get_hyperparameters())
-    replaced = priors.replace(growth_k_hyper_loc_loc=0.05)
+    replaced = priors.replace(k_hyper_loc_loc=0.05)
     assert replaced.pinned == pinned
 
 

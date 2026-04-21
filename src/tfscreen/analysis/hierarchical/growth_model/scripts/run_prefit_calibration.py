@@ -42,14 +42,12 @@ the data filtering step.
 """
 
 import dataclasses
-import math
 import os
 import shutil
 import sys
 
 import numpy as np
 import pandas as pd
-import jax
 import jax.numpy as jnp
 import optax
 
@@ -90,25 +88,19 @@ _CALIBRATION_OVERRIDES = {
 # ``_PINNABLE_SUFFIXES`` declared in each component module.
 _PINNED_COMPONENTS = {
     "activity": (
-        ("log_hyper_loc",   "activity_hyper_loc_loc"),
-        ("log_hyper_scale", "activity_hyper_scale_loc"),
+        ("hyper_loc",   "hyper_loc_loc"),
+        ("hyper_scale", "hyper_scale_loc"),
     ),
     "dk_geno": (
-        ("hyper_loc",   "dk_geno_hyper_loc_loc"),
-        ("hyper_scale", "dk_geno_hyper_scale_loc"),
-        ("shift",       "dk_geno_hyper_shift_loc"),
+        ("hyper_loc",   "hyper_loc_loc"),
+        ("hyper_scale", "hyper_scale_loc"),
+        ("hyper_shift", "hyper_shift_loc"),
     ),
     "ln_cfu0": (
         ("hyper_loc",   "ln_cfu0_hyper_loc_loc"),
         ("hyper_scale", "ln_cfu0_hyper_scale_loc"),
     ),
 }
-
-# Tag bases for sentinel introspection (see ``_identify_field_mapping``).
-# Two distinct ranges so condition_growth and growth_transition fields are
-# trivially distinguishable by integer value.
-_SENTINEL_BASE_CG = 100000
-_SENTINEL_BASE_GT = 200000
 
 # Theta values are clipped to ``[_THETA_EPS, 1 - _THETA_EPS]`` so the
 # downstream logit transform (in the simple-theta component) is finite.
@@ -345,138 +337,64 @@ def _inject_calibration_priors(gm_cal, gm_prod, theta_values):
 
 
 # ---------------------------------------------------------------------------
-# Sentinel-trace introspection
-#
-# We need to know which CSV row in the production priors file
-# corresponds to the dist.loc / dist.scale of each calibrated sample
-# site.  Pattern-matching field names breaks across components (e.g.
-# activity uses ``activity_hyper_scale_loc`` for the scale of a
-# HalfNormal — note the trailing ``_loc``).  Replace each scalar prior
-# field with a unique sentinel value, run a numpyro trace, and read
-# back the sentinel from each ``site["fn"]``.
+# Field mapping introspection
 # ---------------------------------------------------------------------------
-
-def _scalar_field_names(component_priors):
-    """
-    Return field names of ``component_priors`` whose value is a scalar
-    (not a dict, not an array).  Used to enumerate sentinels and to
-    decide which fields are eligible for in-place CSV updates.
-    """
-    out = []
-    for f in dataclasses.fields(component_priors):
-        v = getattr(component_priors, f.name)
-        if isinstance(v, dict):
-            continue
-        # array-like check: anything with a non-empty shape
-        try:
-            shape = np.shape(v)
-        except Exception:
-            shape = ()
-        if shape != ():
-            continue
-        try:
-            float(v)
-        except (TypeError, ValueError):
-            continue
-        out.append(f.name)
-    return out
-
-
-def _build_sentinel_priors(component_priors, base):
-    """
-    Replace each scalar field in ``component_priors`` with ``base + i``.
-
-    Returns
-    -------
-    sentinel_priors : same flax dataclass type as ``component_priors``
-    sentinel_to_field : dict[int, str]
-        Maps each sentinel value to the field name it stands in for.
-    """
-    sentinel_to_field = {}
-    updates = {}
-    for i, name in enumerate(_scalar_field_names(component_priors)):
-        sentinel = base + i
-        sentinel_to_field[sentinel] = name
-        updates[name] = float(sentinel)
-    if hasattr(component_priors, "replace"):
-        sentinel_priors = component_priors.replace(**updates)
-    else:
-        sentinel_priors = dataclasses.replace(component_priors, **updates)
-    return sentinel_priors, sentinel_to_field
-
 
 def _identify_field_mapping(gm_cal):
     """
-    Trace ``gm_cal.jax_model`` with sentinel-valued condition_growth and
-    growth_transition priors so we can read back which prior field
-    provides the loc/scale of each scalar sample site.
+    Enumerate the scalar ``condition_growth`` and ``growth_transition``
+    sample sites and derive their ``ModelPriors`` field names from the
+    consistent naming convention used by all growth components:
+
+    - Site ``{component}_{x}_hyper_loc`` → Normal distribution;
+      ``loc_field = {x}_hyper_loc_loc``, ``scale_field = {x}_hyper_loc_scale``.
+    - Site ``{component}_{x}_hyper_scale`` → HalfNormal distribution;
+      ``scale_field = {x}_hyper_scale_loc``.
 
     Returns
     -------
     dict[str, dict]
-        Site name → ``{"component", "dist_class", "loc_field",
-        "scale_field"}``.  ``loc_field`` may be absent (HalfNormal); both
-        may be absent if introspection fails.  Per-array sample sites
-        (e.g. ``condition_growth_k_offset``) are skipped.
+        Site name → ``{"component", "dist_class", ...field names...}``.
+        Per-array sites (offsets) are omitted.
     """
-    cg_priors = gm_cal.priors.growth.condition_growth
-    gt_priors = gm_cal.priors.growth.growth_transition
-
-    cg_sentinel, cg_map = _build_sentinel_priors(cg_priors, _SENTINEL_BASE_CG)
-    gt_sentinel, gt_map = _build_sentinel_priors(gt_priors, _SENTINEL_BASE_GT)
-
-    sentinel_to_info = {}
-    for v, name in cg_map.items():
-        sentinel_to_info[v] = ("condition_growth", name)
-    for v, name in gt_map.items():
-        sentinel_to_info[v] = ("growth_transition", name)
-
-    new_growth = gm_cal.priors.growth.replace(
-        condition_growth=cg_sentinel,
-        growth_transition=gt_sentinel,
+    model_trace = trace(seed(gm_cal.jax_model, rng_seed=0)).get_trace(
+        data=gm_cal.data, priors=gm_cal.priors
     )
-    sentinel_priors = gm_cal.priors.replace(growth=new_growth)
-
-    seeded = seed(gm_cal.jax_model, rng_seed=0)
-    traced = trace(seeded)
-    model_trace = traced.get_trace(data=gm_cal.data, priors=sentinel_priors)
 
     out = {}
     for site_name, site in model_trace.items():
         if site["type"] != "sample" or site.get("is_observed", False):
             continue
+
         if site_name.startswith("condition_growth_"):
             component = "condition_growth"
+            suffix = site_name[len("condition_growth_"):]
         elif site_name.startswith("growth_transition_"):
             component = "growth_transition"
+            suffix = site_name[len("growth_transition_"):]
         else:
             continue
 
-        # Skip array sites (offsets etc.); only scalar hyper sites get
-        # written back into the CSV.
-        val = site["value"]
+        # Skip array sites (offsets etc.)
         try:
-            val_shape = np.shape(val)
+            if np.shape(np.asarray(site["value"])) != ():
+                continue
         except Exception:
-            val_shape = ()
-        if val_shape != ():
             continue
 
-        fn = site["fn"]
-        info = {"component": component, "dist_class": type(fn).__name__}
-        for attr in ("loc", "scale"):
-            if not hasattr(fn, attr):
-                continue
-            attr_val = getattr(fn, attr)
-            try:
-                rounded = int(round(float(np.asarray(attr_val))))
-            except (TypeError, ValueError):
-                continue
-            if rounded in sentinel_to_info:
-                cmp, field_name = sentinel_to_info[rounded]
-                if cmp == component:
-                    info[f"{attr}_field"] = field_name
-        out[site_name] = info
+        if suffix.endswith("_hyper_loc"):
+            out[site_name] = {
+                "component": component,
+                "dist_class": "Normal",
+                "loc_field": f"{suffix}_loc",
+                "scale_field": f"{suffix}_scale",
+            }
+        elif suffix.endswith("_hyper_scale"):
+            out[site_name] = {
+                "component": component,
+                "dist_class": "HalfNormal",
+                "scale_field": f"{suffix}_loc",
+            }
 
     return out
 

@@ -51,16 +51,16 @@ def test_get_hyperparameters():
     """Tests that get_hyperparameters returns the correct structure and defaults."""
     params = get_hyperparameters()
     assert isinstance(params, dict)
-    assert "growth_k_hyper_loc_loc" in params
-    assert params["growth_k_hyper_loc_loc"] == 0.025
-    assert "growth_n_hyper_loc_loc" in params
+    assert "k_hyper_loc_loc" in params
+    assert params["k_hyper_loc_loc"] == 0.025
+    assert "n_hyper_loc_loc" in params
 
 def test_get_priors():
     """Tests that get_priors returns a correctly populated ModelPriors object."""
     priors = get_priors()
     assert isinstance(priors, ModelPriors)
-    assert priors.growth_k_hyper_loc_loc == 0.025
-    assert priors.growth_n_hyper_loc_loc == 0.0
+    assert priors.k_hyper_loc_loc == 0.025
+    assert priors.n_hyper_loc_loc == 0.0
 
 def test_get_guesses(mock_data):
     """
@@ -272,7 +272,7 @@ def test_guide_pinned_drops_variational_params(mock_data):
     assert f"{name}_k_hyper_loc" not in tr
     assert f"{name}_n_hyper_scale_loc" not in tr
     assert f"{name}_n_hyper_scale_scale" not in tr
-    assert f"{name}_n_hyper_scale" not in tr
+    assert f"{name}_n_hyper_scale_loc" not in tr
 
     # Unpinned: still present
     assert f"{name}_m_hyper_loc_loc" in tr

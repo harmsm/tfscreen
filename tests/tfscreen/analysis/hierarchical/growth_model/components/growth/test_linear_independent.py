@@ -113,8 +113,8 @@ def test_get_hyperparameters(mock_data):
     """Tests that get_hyperparameters returns correctly shaped arrays."""
     params = get_hyperparameters(mock_data.num_condition_rep)
     assert isinstance(params, dict)
-    
-    k_loc = params["growth_k_hyper_loc_loc"]
+
+    k_loc = params["k_hyper_loc_loc"]
     assert k_loc.shape == (mock_data.num_condition_rep,)
     assert jnp.allclose(k_loc, 0.025)
 
@@ -122,8 +122,8 @@ def test_get_priors(mock_data):
     """Tests our corrected get_priors function."""
     priors = get_priors(mock_data.num_condition_rep)
     assert isinstance(priors, ModelPriors)
-    assert priors.growth_k_hyper_loc_loc.shape == (mock_data.num_condition_rep,)
-    assert priors.growth_m_hyper_loc_loc.shape == (mock_data.num_condition_rep,)
+    assert priors.k_hyper_loc_loc.shape == (mock_data.num_condition_rep,)
+    assert priors.m_hyper_loc_loc.shape == (mock_data.num_condition_rep,)
 
 def test_get_guesses_shapes(mock_data):
     """get_guesses returns correctly shaped arrays."""

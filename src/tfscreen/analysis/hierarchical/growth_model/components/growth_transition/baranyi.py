@@ -24,11 +24,11 @@ class ModelPriors:
     """
     tau_lag_hyper_loc_loc: float
     tau_lag_hyper_loc_scale: float
-    tau_lag_hyper_scale: float
+    tau_lag_hyper_scale_loc: float
 
     k_sharp_hyper_loc_loc: float
     k_sharp_hyper_loc_scale: float
-    k_sharp_hyper_scale: float
+    k_sharp_hyper_scale_loc: float
 
     pinned: Mapping[str, float] = field(
         pytree_node=False, default_factory=dict
@@ -87,7 +87,7 @@ def define_model(name: str,
     )
     tau_lag_hyper_scale = _hyper(
         name, "tau_lag_hyper_scale",
-        dist.HalfNormal(priors.tau_lag_hyper_scale),
+        dist.HalfNormal(priors.tau_lag_hyper_scale_loc),
         pinned,
     )
 
@@ -99,7 +99,7 @@ def define_model(name: str,
     )
     k_sharp_hyper_scale = _hyper(
         name, "k_sharp_hyper_scale",
-        dist.HalfNormal(priors.k_sharp_hyper_scale),
+        dist.HalfNormal(priors.k_sharp_hyper_scale_loc),
         pinned,
     )
 
@@ -216,12 +216,12 @@ def get_hyperparameters() -> Dict[str, Any]:
     return {
         "tau_lag_hyper_loc_loc": 1.0,
         "tau_lag_hyper_loc_scale": 0.5,
-        "tau_lag_hyper_scale": 0.5,
+        "tau_lag_hyper_scale_loc": 0.5,
 
         # k_sharp is modeled in log-space: exp(1.0) approx 2.7
         "k_sharp_hyper_loc_loc": 1.0,
         "k_sharp_hyper_loc_scale": 1.0,
-        "k_sharp_hyper_scale": 1.0,
+        "k_sharp_hyper_scale_loc": 1.0,
     }
 
 def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:

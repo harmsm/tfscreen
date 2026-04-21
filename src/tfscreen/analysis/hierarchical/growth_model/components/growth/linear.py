@@ -36,33 +36,34 @@ class ModelPriors:
 
     Attributes
     ----------
-    growth_k_hyper_loc_loc, growth_k_hyper_loc_scale : float
+    k_hyper_loc_loc, k_hyper_loc_scale : float
         Mean and standard deviation of the Normal prior on the hyper-location
         of the per-condition baseline growth rate ``k``.
-    growth_k_hyper_scale : float
+    k_hyper_scale_loc : float
         Scale of the HalfNormal prior on the hyper-scale of ``k``.
-    growth_m_hyper_loc_loc, growth_m_hyper_loc_scale : float
+    m_hyper_loc_loc, m_hyper_loc_scale : float
         Mean and standard deviation of the Normal prior on the hyper-location
         of the per-condition occupancy slope ``m``.
-    growth_m_hyper_scale : float
+    m_hyper_scale_loc : float
         Scale of the HalfNormal prior on the hyper-scale of ``m``.
     pinned : dict[str, float], optional
         Map from hyper-site *suffix* to the constant value at which that
         site should be pinned.  Recognised suffixes are ``"k_hyper_loc"``,
-        ``"k_hyper_scale"``, ``"m_hyper_loc"``, ``"m_hyper_scale"``.  Any
+        ``"k_hyper_scale"``, ``"m_hyper_loc"``, ``"m_hyper_scale"`` (site
+        suffixes, not field names).  Any
         suffix listed here bypasses both the model's ``pyro.sample`` and
         the guide's variational parameters; the model registers a
         ``pyro.deterministic`` at the pinned value.  Stored as a static
         (non-pytree) field so branching happens at trace time.
     """
 
-    growth_k_hyper_loc_loc: float
-    growth_k_hyper_loc_scale: float
-    growth_k_hyper_scale: float
+    k_hyper_loc_loc: float
+    k_hyper_loc_scale: float
+    k_hyper_scale_loc: float
 
-    growth_m_hyper_loc_loc: float
-    growth_m_hyper_loc_scale: float
-    growth_m_hyper_scale: float
+    m_hyper_loc_loc: float
+    m_hyper_loc_scale: float
+    m_hyper_scale_loc: float
 
     pinned: Mapping[str, float] = field(pytree_node=False, default_factory=dict)
 
@@ -95,12 +96,12 @@ def define_model(name: str,
         - ``data.map_condition_sel``
     priors : ModelPriors
         A Pytree containing all hyperparameters for the model, including:
-        - ``priors.growth_k_hyper_loc_loc``
-        - ``priors.growth_k_hyper_loc_scale``
-        - ``priors.growth_k_hyper_scale``
-        - ``priors.growth_m_hyper_loc_loc``
-        - ``priors.growth_m_hyper_loc_scale``
-        - ``priors.growth_m_hyper_scale``
+        - ``priors.k_hyper_loc_loc``
+        - ``priors.k_hyper_loc_scale``
+        - ``priors.k_hyper_scale_loc``
+        - ``priors.m_hyper_loc_loc``
+        - ``priors.m_hyper_loc_scale``
+        - ``priors.m_hyper_scale_loc``
         - ``priors.pinned`` (optional pinning dict; see ``ModelPriors``)
 
     Returns
@@ -113,25 +114,25 @@ def define_model(name: str,
 
     growth_k_hyper_loc = _hyper(
         name, "k_hyper_loc",
-        dist.Normal(priors.growth_k_hyper_loc_loc,
-                    priors.growth_k_hyper_loc_scale),
+        dist.Normal(priors.k_hyper_loc_loc,
+                    priors.k_hyper_loc_scale),
         pinned,
     )
     growth_k_hyper_scale = _hyper(
         name, "k_hyper_scale",
-        dist.HalfNormal(priors.growth_k_hyper_scale),
+        dist.HalfNormal(priors.k_hyper_scale_loc),
         pinned,
     )
 
     growth_m_hyper_loc = _hyper(
         name, "m_hyper_loc",
-        dist.Normal(priors.growth_m_hyper_loc_loc,
-                    priors.growth_m_hyper_loc_scale),
+        dist.Normal(priors.m_hyper_loc_loc,
+                    priors.m_hyper_loc_scale),
         pinned,
     )
     growth_m_hyper_scale = _hyper(
         name, "m_hyper_scale",
-        dist.HalfNormal(priors.growth_m_hyper_scale),
+        dist.HalfNormal(priors.m_hyper_scale_loc),
         pinned,
     )
 
@@ -179,8 +180,8 @@ def guide(name: str,
     if pinned_k_hyper_loc is not None:
         growth_k_hyper_loc = pinned_k_hyper_loc
     else:
-        k_loc_loc = pyro.param(f"{name}_k_hyper_loc_loc", jnp.array(priors.growth_k_hyper_loc_loc))
-        k_loc_scale = pyro.param(f"{name}_k_hyper_loc_scale", jnp.array(priors.growth_k_hyper_loc_scale),
+        k_loc_loc = pyro.param(f"{name}_k_hyper_loc_loc", jnp.array(priors.k_hyper_loc_loc))
+        k_loc_scale = pyro.param(f"{name}_k_hyper_loc_scale", jnp.array(priors.k_hyper_loc_scale),
                                  constraint=dist.constraints.greater_than(1e-4))
         growth_k_hyper_loc = pyro.sample(
             f"{name}_k_hyper_loc",
@@ -205,8 +206,8 @@ def guide(name: str,
     if pinned_m_hyper_loc is not None:
         growth_m_hyper_loc = pinned_m_hyper_loc
     else:
-        m_loc_loc = pyro.param(f"{name}_m_hyper_loc_loc", jnp.array(priors.growth_m_hyper_loc_loc))
-        m_loc_scale = pyro.param(f"{name}_m_hyper_loc_scale", jnp.array(priors.growth_m_hyper_loc_scale),
+        m_loc_loc = pyro.param(f"{name}_m_hyper_loc_loc", jnp.array(priors.m_hyper_loc_loc))
+        m_loc_scale = pyro.param(f"{name}_m_hyper_loc_scale", jnp.array(priors.m_hyper_loc_scale),
                                  constraint=dist.constraints.greater_than(1e-4))
         growth_m_hyper_loc = pyro.sample(
             f"{name}_m_hyper_loc",
@@ -300,13 +301,13 @@ def get_hyperparameters():
     """
 
     parameters = {}
-    parameters["growth_k_hyper_loc_loc"] = 0.025
-    parameters["growth_k_hyper_loc_scale"] = 0.1
-    parameters["growth_k_hyper_scale"] = 0.1
+    parameters["k_hyper_loc_loc"] = 0.025
+    parameters["k_hyper_loc_scale"] = 0.1
+    parameters["k_hyper_scale_loc"] = 0.1
 
-    parameters["growth_m_hyper_loc_loc"] = 0.0
-    parameters["growth_m_hyper_loc_scale"] = 0.05
-    parameters["growth_m_hyper_scale"] = 0.1
+    parameters["m_hyper_loc_loc"] = 0.0
+    parameters["m_hyper_loc_scale"] = 0.05
+    parameters["m_hyper_scale_loc"] = 0.1
 
     return parameters
 

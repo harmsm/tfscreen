@@ -40,17 +40,17 @@ class ModelPriors:
     JAX Pytree holding data needed to specify model priors.
     """
 
-    growth_k_hyper_loc_loc: float
-    growth_k_hyper_loc_scale: float
-    growth_k_hyper_scale: float
+    k_hyper_loc_loc: float
+    k_hyper_loc_scale: float
+    k_hyper_scale_loc: float
 
-    growth_m_hyper_loc_loc: float
-    growth_m_hyper_loc_scale: float
-    growth_m_hyper_scale: float
+    m_hyper_loc_loc: float
+    m_hyper_loc_scale: float
+    m_hyper_scale_loc: float
 
-    growth_n_hyper_loc_loc: float
-    growth_n_hyper_loc_scale: float
-    growth_n_hyper_scale: float
+    n_hyper_loc_loc: float
+    n_hyper_loc_scale: float
+    n_hyper_scale_loc: float
 
     pinned: Mapping[str, float] = field(
         pytree_node=False, default_factory=dict
@@ -108,9 +108,9 @@ def define_model(name: str,
         pyro.deterministic(f"{name}_{param_name}", param_per_condition)
         return param_per_condition
 
-    k_per_condition = sample_param("k", priors.growth_k_hyper_loc_loc, priors.growth_k_hyper_loc_scale, priors.growth_k_hyper_scale)
-    m_per_condition = sample_param("m", priors.growth_m_hyper_loc_loc, priors.growth_m_hyper_loc_scale, priors.growth_m_hyper_scale)
-    n_per_condition = sample_param("n", priors.growth_n_hyper_loc_loc, priors.growth_n_hyper_loc_scale, priors.growth_n_hyper_scale, is_positive=True)
+    k_per_condition = sample_param("k", priors.k_hyper_loc_loc, priors.k_hyper_loc_scale, priors.k_hyper_scale_loc)
+    m_per_condition = sample_param("m", priors.m_hyper_loc_loc, priors.m_hyper_loc_scale, priors.m_hyper_scale_loc)
+    n_per_condition = sample_param("n", priors.n_hyper_loc_loc, priors.n_hyper_loc_scale, priors.n_hyper_scale_loc, is_positive=True)
 
     # Expand to full-sized tensors
     k_pre = k_per_condition[data.map_condition_pre]
@@ -176,9 +176,9 @@ def guide(name: str,
             param_per_condition = jnp.exp(param_per_condition)
         return param_per_condition
 
-    k_per_condition = sample_guide_param("k", priors.growth_k_hyper_loc_loc, priors.growth_k_hyper_loc_scale)
-    m_per_condition = sample_guide_param("m", priors.growth_m_hyper_loc_loc, priors.growth_m_hyper_loc_scale)
-    n_per_condition = sample_guide_param("n", priors.growth_n_hyper_loc_loc, priors.growth_n_hyper_loc_scale, is_positive=True)
+    k_per_condition = sample_guide_param("k", priors.k_hyper_loc_loc, priors.k_hyper_loc_scale)
+    m_per_condition = sample_guide_param("m", priors.m_hyper_loc_loc, priors.m_hyper_loc_scale)
+    n_per_condition = sample_guide_param("n", priors.n_hyper_loc_loc, priors.n_hyper_loc_scale, is_positive=True)
 
     # Expand to full-sized tensors
     k_pre = k_per_condition[data.map_condition_pre]
@@ -213,17 +213,17 @@ def get_hyperparameters():
     """
 
     parameters = {}
-    parameters["growth_k_hyper_loc_loc"] = 0.025
-    parameters["growth_k_hyper_loc_scale"] = 0.1
-    parameters["growth_k_hyper_scale"] = 0.1
+    parameters["k_hyper_loc_loc"] = 0.025
+    parameters["k_hyper_loc_scale"] = 0.1
+    parameters["k_hyper_scale_loc"] = 0.1
 
-    parameters["growth_m_hyper_loc_loc"] = 0.0
-    parameters["growth_m_hyper_loc_scale"] = 0.01
-    parameters["growth_m_hyper_scale"] = 0.1
+    parameters["m_hyper_loc_loc"] = 0.0
+    parameters["m_hyper_loc_scale"] = 0.01
+    parameters["m_hyper_scale_loc"] = 0.1
 
-    parameters["growth_n_hyper_loc_loc"] = 0.0 # ln(1.0)
-    parameters["growth_n_hyper_loc_scale"] = 0.5
-    parameters["growth_n_hyper_scale"] = 0.1
+    parameters["n_hyper_loc_loc"] = 0.0 # ln(1.0)
+    parameters["n_hyper_loc_scale"] = 0.5
+    parameters["n_hyper_scale_loc"] = 0.1
 
     return parameters
 
