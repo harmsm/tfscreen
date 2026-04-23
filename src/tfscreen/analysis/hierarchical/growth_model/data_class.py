@@ -57,6 +57,15 @@ class GrowthData:
     # Used by ln_cfu0 component to apply a separate prior location for WT.
     ln_cfu0_wt_mask: jnp.ndarray
 
+    # Boolean masks, shape (num_classes, num_genotype), partitioning the
+    # library genotypes (non-spiked, non-wt) into hierarchical subgroups.
+    # Row i is True for genotypes belonging to library class i.  Genotypes
+    # not covered by any class row default to class-0 hyper-parameters.
+    # With num_classes == 1 the single row covers all library genotypes.
+    # None means fall back to treating all library genotypes as one class.
+    ln_cfu0_library_masks: Any = field(default=None)
+    num_ln_cfu0_library_classes: int = field(pytree_node=False, default=1)
+
     growth_shares_replicates: bool = field(pytree_node=False, default=False)
 
     # Optional mutation-decomposition matrices (set when using *_mut_decomp components).

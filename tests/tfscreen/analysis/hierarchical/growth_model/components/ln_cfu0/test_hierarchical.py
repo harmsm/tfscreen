@@ -34,6 +34,8 @@ MockGrowthData = namedtuple("MockGrowthData", [
     "scale_vector",
     "ln_cfu0_spiked_mask",
     "ln_cfu0_wt_mask",
+    "ln_cfu0_library_masks",      # (num_classes, num_genotype) bool
+    "num_ln_cfu0_library_classes", # int
     "ln_cfu",       # (rep, time, cond_pre, cond_sel, tname, tconc, geno)
     "good_mask",    # same shape as ln_cfu, bool
     "map_ln_cfu0",  # kept for API compatibility
@@ -51,6 +53,11 @@ def _make_ln_cfu(num_replicate, num_condition_pre, num_genotype, per_geno_values
     for g, v in enumerate(per_geno_values):
         arr[..., g] = v
     return arr
+
+
+def _all_library_masks(num_genotype):
+    """Single-class library mask: all genotypes in class 0."""
+    return jnp.ones((1, num_genotype), dtype=bool)
 
 
 # ---------------------------------------------------------------------------
@@ -82,6 +89,8 @@ def mock_data():
         scale_vector=jnp.ones(batch_size, dtype=float),
         ln_cfu0_spiked_mask=jnp.zeros(num_genotype, dtype=bool),
         ln_cfu0_wt_mask=jnp.zeros(num_genotype, dtype=bool),
+        ln_cfu0_library_masks=_all_library_masks(num_genotype),
+        num_ln_cfu0_library_classes=1,
         ln_cfu=ln_cfu,
         good_mask=good_mask,
         map_ln_cfu0=jnp.arange(batch_size, dtype=jnp.int32),
@@ -113,6 +122,8 @@ def mock_data_with_spiked():
         scale_vector=jnp.ones(batch_size, dtype=float),
         ln_cfu0_spiked_mask=jnp.array([True, True, False, False, False, False]),
         ln_cfu0_wt_mask=jnp.zeros(num_genotype, dtype=bool),
+        ln_cfu0_library_masks=_all_library_masks(num_genotype),
+        num_ln_cfu0_library_classes=1,
         ln_cfu=ln_cfu,
         good_mask=good_mask,
         map_ln_cfu0=jnp.arange(batch_size, dtype=jnp.int32),
@@ -143,6 +154,8 @@ def mock_data_with_wt():
         scale_vector=jnp.ones(batch_size, dtype=float),
         ln_cfu0_spiked_mask=jnp.zeros(num_genotype, dtype=bool),
         ln_cfu0_wt_mask=jnp.array([False, False, False, False, False, True]),
+        ln_cfu0_library_masks=_all_library_masks(num_genotype),
+        num_ln_cfu0_library_classes=1,
         ln_cfu=ln_cfu,
         good_mask=good_mask,
         map_ln_cfu0=jnp.arange(batch_size, dtype=jnp.int32),
@@ -183,6 +196,53 @@ def mock_data_empirical():
         scale_vector=jnp.ones(batch_size, dtype=float),
         ln_cfu0_spiked_mask=jnp.array([False, True, True, False, False, False]),
         ln_cfu0_wt_mask=jnp.array([True, False, False, False, False, False]),
+        ln_cfu0_library_masks=_all_library_masks(num_genotype),
+        num_ln_cfu0_library_classes=1,
+        ln_cfu=ln_cfu,
+        good_mask=good_mask,
+        map_ln_cfu0=jnp.arange(batch_size, dtype=jnp.int32),
+    )
+
+
+@pytest.fixture
+def mock_data_two_classes():
+    """
+    7 genotypes across two library classes plus wt and spiked:
+      index 0: wt,              ln_cfu = 12.0
+      index 1: spiked,          ln_cfu = 10.0
+      index 2: class-0 single,  ln_cfu =  8.0
+      index 3: class-0 single,  ln_cfu =  7.0
+      index 4: class-0 single,  ln_cfu =  9.0
+      index 5: class-1 double,  ln_cfu = 11.0
+      index 6: class-1 double,  ln_cfu = 13.0
+
+    Class 0 (singles) median = 8.0; class 1 (doubles) median = 12.0.
+    """
+    num_replicate    = 2
+    num_condition_pre = 2
+    num_genotype     = 7
+    batch_size       = 7
+
+    ln_cfu_vals = [12.0, 10.0, 8.0, 7.0, 9.0, 11.0, 13.0]
+    ln_cfu    = _make_ln_cfu(num_replicate, num_condition_pre, num_genotype, ln_cfu_vals)
+    good_mask = np.ones_like(ln_cfu, dtype=bool)
+
+    # Class 0 = indices 2,3,4 (singles); class 1 = indices 5,6 (doubles)
+    singles_mask = jnp.array([False, False, True,  True,  True,  False, False])
+    doubles_mask = jnp.array([False, False, False, False, False, True,  True ])
+    library_masks = jnp.stack([singles_mask, doubles_mask])  # (2, 7)
+
+    return MockGrowthData(
+        num_replicate=num_replicate,
+        num_condition_pre=num_condition_pre,
+        num_genotype=num_genotype,
+        batch_size=batch_size,
+        batch_idx=jnp.arange(batch_size, dtype=jnp.int32),
+        scale_vector=jnp.ones(batch_size, dtype=float),
+        ln_cfu0_spiked_mask=jnp.array([False, True, False, False, False, False, False]),
+        ln_cfu0_wt_mask=jnp.array([True, False, False, False, False, False, False]),
+        ln_cfu0_library_masks=library_masks,
+        num_ln_cfu0_library_classes=2,
         ln_cfu=ln_cfu,
         good_mask=good_mask,
         map_ln_cfu0=jnp.arange(batch_size, dtype=jnp.int32),
@@ -226,13 +286,21 @@ def test_mad_scale_ignores_nans():
 # ---------------------------------------------------------------------------
 
 def test_get_hyperparameters():
-    """get_hyperparameters returns the correct keys and default values."""
+    """get_hyperparameters returns the correct keys and default array values."""
     params = get_hyperparameters()
     assert isinstance(params, dict)
-    assert "ln_cfu0_hyper_loc_loc" in params
-    assert params["ln_cfu0_hyper_loc_loc"] == 6.0
+    assert "ln_cfu0_hyper_loc_locs" in params
+    assert float(params["ln_cfu0_hyper_loc_locs"][0]) == pytest.approx(6.0)
     assert "ln_cfu0_spiked_loc_loc" in params
-    assert params["ln_cfu0_spiked_loc_loc"] == 12.0
+    assert params["ln_cfu0_spiked_loc_loc"] == pytest.approx(12.0)
+
+
+def test_get_hyperparameters_multi_class():
+    """get_hyperparameters with num_classes > 1 returns arrays of the right length."""
+    params = get_hyperparameters(num_classes=3)
+    assert params["ln_cfu0_hyper_loc_locs"].shape == (3,)
+    assert params["ln_cfu0_hyper_loc_scales"].shape == (3,)
+    assert params["ln_cfu0_hyper_scale_locs"].shape == (3,)
 
 
 def test_get_hyperparameters_includes_new_fixed_scales():
@@ -240,7 +308,6 @@ def test_get_hyperparameters_includes_new_fixed_scales():
     params = get_hyperparameters()
     assert "ln_cfu0_wt_scale" in params
     assert "ln_cfu0_spiked_scale" in params
-    # Defaults are positive floats
     assert isinstance(params["ln_cfu0_wt_scale"], float)
     assert isinstance(params["ln_cfu0_spiked_scale"], float)
     assert params["ln_cfu0_wt_scale"] > 0
@@ -251,9 +318,8 @@ def test_get_priors_no_data_returns_defaults():
     """get_priors() with no data returns the hyperparameter defaults."""
     priors = get_priors()
     assert isinstance(priors, ModelPriors)
-    assert priors.ln_cfu0_hyper_loc_loc == 6.0
-    assert priors.ln_cfu0_spiked_loc_loc == 12.0
-    # New scale fields populated from defaults
+    assert float(priors.ln_cfu0_hyper_loc_locs[0]) == pytest.approx(6.0)
+    assert priors.ln_cfu0_spiked_loc_loc == pytest.approx(12.0)
     assert priors.ln_cfu0_wt_scale == get_hyperparameters()["ln_cfu0_wt_scale"]
     assert priors.ln_cfu0_spiked_scale == get_hyperparameters()["ln_cfu0_spiked_scale"]
 
@@ -283,8 +349,29 @@ def test_get_priors_with_data_overrides_subgroup_scales(mock_data_empirical):
 
     # Non-scale priors unchanged from defaults
     defaults = get_hyperparameters()
-    assert priors.ln_cfu0_hyper_loc_loc == defaults["ln_cfu0_hyper_loc_loc"]
     assert priors.ln_cfu0_wt_loc_loc == defaults["ln_cfu0_wt_loc_loc"]
+
+
+def test_get_priors_with_data_sets_class_loc(mock_data_empirical):
+    """
+    When data is supplied the hyper_loc prior is centred on the empirical
+    class median (8.0 for the single-class case).
+    """
+    priors = get_priors(data=mock_data_empirical)
+    assert float(priors.ln_cfu0_hyper_loc_locs[0]) == pytest.approx(8.0)
+
+
+def test_get_priors_two_classes_separate_locs(mock_data_two_classes):
+    """
+    With two library classes the prior locs for each class are derived
+    independently from the class members (not a single shared pooled median).
+    """
+    priors = get_priors(data=mock_data_two_classes)
+    assert priors.ln_cfu0_hyper_loc_locs.shape == (2,)
+    # Class 0 (singles 8,7,9) → median 8.0
+    assert float(priors.ln_cfu0_hyper_loc_locs[0]) == pytest.approx(8.0)
+    # Class 1 (doubles 11,13) → median 12.0
+    assert float(priors.ln_cfu0_hyper_loc_locs[1]) == pytest.approx(12.0)
 
 
 def test_get_priors_with_unparseable_data_falls_back_to_defaults():
@@ -337,15 +424,26 @@ def test_empirical_group_estimates_locs_and_scales(mock_data_empirical):
     assert est is not None
     assert est["wt_loc"] == pytest.approx(12.0)
     assert est["spiked_loc"] == pytest.approx(10.5)
-    assert est["hyper_loc"] == pytest.approx(8.0)
+    assert est["hyper_loc"] == pytest.approx(8.0)   # class-0 alias
 
-    # Library: vals 8, 7, 9; MAD of deviations [0, -1, +1] over 4 (rep,cond)
-    # repeats = 1.0; scale = 1.4826
+    # Library: vals 8, 7, 9; MAD of deviations = 1.0; scale = 1.4826
     assert est["hyper_scale"] == pytest.approx(1.4826, rel=1e-4)
     # Spiked: vals 10, 11; MAD = 0.5; scale = 0.7413
     assert est["spiked_scale"] == pytest.approx(1.4826 * 0.5, rel=1e-4)
     # Wt: single value -> floor
     assert est["wt_scale"] == pytest.approx(_SCALE_FLOOR)
+
+
+def test_empirical_group_estimates_two_classes(mock_data_two_classes):
+    """
+    With two library classes each class's loc and scale are estimated
+    independently from its members.
+    """
+    est = _empirical_group_estimates(mock_data_two_classes)
+    assert est is not None
+    assert len(est["hyper_locs"]) == 2
+    assert est["hyper_locs"][0] == pytest.approx(8.0)   # singles median
+    assert est["hyper_locs"][1] == pytest.approx(12.0)  # doubles median
 
 
 # ---------------------------------------------------------------------------
@@ -354,11 +452,11 @@ def test_empirical_group_estimates_locs_and_scales(mock_data_empirical):
 
 def test_get_guesses_keys_and_offset_shape(mock_data):
     """get_guesses returns all required keys with the correct offset shape."""
-    name   = "test_ln_cfu0"
+    name    = "test_ln_cfu0"
     guesses = get_guesses(name, mock_data)
 
     assert isinstance(guesses, dict)
-    for key in [f"{name}_hyper_loc", f"{name}_hyper_scale",
+    for key in [f"{name}_hyper_loc_0", f"{name}_hyper_scale_0",
                 f"{name}_spiked_loc", f"{name}_wt_loc", f"{name}_offset"]:
         assert key in guesses
 
@@ -368,14 +466,23 @@ def test_get_guesses_keys_and_offset_shape(mock_data):
     assert guesses[f"{name}_offset"].shape == expected_shape
 
 
+def test_get_guesses_two_classes_keys(mock_data_two_classes):
+    """Two-class data produces per-class hyper_loc and hyper_scale keys."""
+    name    = "x"
+    guesses = get_guesses(name, mock_data_two_classes)
+    for i in range(2):
+        assert f"{name}_hyper_loc_{i}" in guesses
+        assert f"{name}_hyper_scale_{i}" in guesses
+
+
 # ---------------------------------------------------------------------------
 # Tests: get_guesses – empirical group-level estimates
 # ---------------------------------------------------------------------------
 
 def test_get_guesses_hyper_loc_from_library(mock_data):
-    """hyper_loc is the median of library genotype ln_cfu values (all 8.0)."""
+    """hyper_loc_0 is the median of library genotype ln_cfu values (all 8.0)."""
     guesses = get_guesses("x", mock_data)
-    assert guesses["x_hyper_loc"] == pytest.approx(8.0)
+    assert guesses["x_hyper_loc_0"] == pytest.approx(8.0)
 
 
 def test_get_guesses_spiked_loc_from_data(mock_data_with_spiked):
@@ -395,22 +502,28 @@ def test_get_guesses_group_medians_with_variation(mock_data_empirical):
     With different ln_cfu per genotype, group medians are computed correctly:
       wt_loc     = 12.0
       spiked_loc = 10.5  (median of 10.0 and 11.0)
-      hyper_loc  =  8.0  (median of 7.0, 8.0, 9.0)
+      hyper_loc_0 =  8.0  (median of 7.0, 8.0, 9.0)
     """
     guesses = get_guesses("x", mock_data_empirical)
-    assert guesses["x_wt_loc"]     == pytest.approx(12.0)
-    assert guesses["x_spiked_loc"] == pytest.approx(10.5)
-    assert guesses["x_hyper_loc"]  == pytest.approx(8.0)
+    assert guesses["x_wt_loc"]      == pytest.approx(12.0)
+    assert guesses["x_spiked_loc"]  == pytest.approx(10.5)
+    assert guesses["x_hyper_loc_0"] == pytest.approx(8.0)
 
 
 def test_get_guesses_hyper_scale_is_data_derived(mock_data_empirical):
     """
-    The hyper_scale guess now comes from a MAD-based estimator, not a
-    hard-coded constant.  For mock_data_empirical the library deviations
-    have MAD=1, so hyper_scale = 1.4826.
+    The hyper_scale_0 guess comes from a MAD-based estimator.  For
+    mock_data_empirical the library deviations have MAD=1, so hyper_scale=1.4826.
     """
     guesses = get_guesses("x", mock_data_empirical)
-    assert guesses["x_hyper_scale"] == pytest.approx(1.4826, rel=1e-4)
+    assert guesses["x_hyper_scale_0"] == pytest.approx(1.4826, rel=1e-4)
+
+
+def test_get_guesses_two_classes_separate_locs(mock_data_two_classes):
+    """Each library class gets its own median-based loc guess."""
+    guesses = get_guesses("x", mock_data_two_classes)
+    assert guesses["x_hyper_loc_0"] == pytest.approx(8.0)   # singles
+    assert guesses["x_hyper_loc_1"] == pytest.approx(12.0)  # doubles
 
 
 # ---------------------------------------------------------------------------
@@ -475,6 +588,8 @@ def test_get_guesses_offsets_invariant_to_group_scaling():
         scale_vector=jnp.ones(batch_size, dtype=float),
         ln_cfu0_spiked_mask=jnp.array([False, True, True, False, False, False]),
         ln_cfu0_wt_mask=jnp.array([True, False, False, False, False, False]),
+        ln_cfu0_library_masks=_all_library_masks(num_genotype),
+        num_ln_cfu0_library_classes=1,
         ln_cfu=_make_ln_cfu(num_replicate, num_condition_pre, num_genotype,
                             [12.0, 10.0, 11.0, 8.0, 7.0, 9.0]),
         good_mask=np.ones((num_replicate, 2, num_condition_pre, 2, 1, 3, num_genotype), dtype=bool),
@@ -492,6 +607,8 @@ def test_get_guesses_offsets_invariant_to_group_scaling():
         scale_vector=jnp.ones(batch_size, dtype=float),
         ln_cfu0_spiked_mask=jnp.array([False, True, True, False, False, False]),
         ln_cfu0_wt_mask=jnp.array([True, False, False, False, False, False]),
+        ln_cfu0_library_masks=_all_library_masks(num_genotype),
+        num_ln_cfu0_library_classes=1,
         ln_cfu=_make_ln_cfu(num_replicate, num_condition_pre, num_genotype,
                             [12.0, 9.5, 11.5, 8.0, 7.0, 9.0]),  # spiked spread doubled
         good_mask=np.ones((num_replicate, 2, num_condition_pre, 2, 1, 3, num_genotype), dtype=bool),
@@ -573,25 +690,27 @@ def test_get_guesses_ignores_masked_observations():
         scale_vector=jnp.ones(batch_size, dtype=float),
         ln_cfu0_spiked_mask=jnp.zeros(num_genotype, dtype=bool),
         ln_cfu0_wt_mask=jnp.zeros(num_genotype, dtype=bool),
+        ln_cfu0_library_masks=_all_library_masks(num_genotype),
+        num_ln_cfu0_library_classes=1,
         ln_cfu=ln_cfu_corrupted,
         good_mask=good_mask,
         map_ln_cfu0=jnp.arange(batch_size, dtype=jnp.int32),
     )
 
     guesses = get_guesses("x", data)
-    # hyper_loc should reflect the valid value (9.0), not the corrupted slice
-    assert guesses["x_hyper_loc"] == pytest.approx(9.0)
+    # hyper_loc_0 should reflect the valid value (9.0), not the corrupted slice
+    assert guesses["x_hyper_loc_0"] == pytest.approx(9.0)
     assert jnp.allclose(guesses["x_offset"], 0.0)
 
 
 # ---------------------------------------------------------------------------
-# Tests: define_model – logic and shapes
+# Tests: define_model – logic and shapes (single class)
 # ---------------------------------------------------------------------------
 
 def test_define_model_logic_and_shapes(mock_data):
     """
-    With all-library genotypes and zero offsets (each genotype at hyper_loc),
-    every ln_cfu0 value should equal hyper_loc.
+    With all-library genotypes and zero offsets (each genotype at hyper_loc_0),
+    every ln_cfu0 value should equal hyper_loc_0.
     """
     name   = "test_ln_cfu0"
     priors = get_priors()
@@ -611,8 +730,8 @@ def test_define_model_logic_and_shapes(mock_data):
                                   mock_data.num_condition_pre,
                                   mock_data.batch_size)
 
-    # All genotypes at hyper_loc (offsets == 0 and all library)
-    hyper_loc = base_guesses[f"{name}_hyper_loc"]
+    # All genotypes at hyper_loc_0 (offsets == 0 and all library)
+    hyper_loc = base_guesses[f"{name}_hyper_loc_0"]
     assert jnp.allclose(ln_cfu0_site, hyper_loc)
 
     # Expanded return shape: (rep, 1, cond_pre, 1, 1, 1, batch)
@@ -624,7 +743,7 @@ def test_define_model_logic_and_shapes(mock_data):
 
 def test_define_model_spiked_genotypes(mock_data_with_spiked):
     """
-    Spiked genotypes receive spiked_loc; library genotypes receive hyper_loc.
+    Spiked genotypes receive spiked_loc; library genotypes receive hyper_loc_0.
     """
     name   = "test_ln_cfu0_spiked"
     priors = get_priors()
@@ -638,7 +757,7 @@ def test_define_model_spiked_genotypes(mock_data_with_spiked):
     model_trace = trace(substituted_model).get_trace(name=name, data=data, priors=priors)
     ln_cfu0_site = model_trace[name]["value"]
 
-    hyper_loc  = float(base_guesses[f"{name}_hyper_loc"])
+    hyper_loc  = float(base_guesses[f"{name}_hyper_loc_0"])
     spiked_loc = float(base_guesses[f"{name}_spiked_loc"])
 
     assert jnp.allclose(ln_cfu0_site[..., 0], spiked_loc)
@@ -649,7 +768,7 @@ def test_define_model_spiked_genotypes(mock_data_with_spiked):
 
 def test_define_model_wt_genotype(mock_data_with_wt):
     """
-    Wildtype genotype receives wt_loc; library genotypes receive hyper_loc.
+    Wildtype genotype receives wt_loc; library genotypes receive hyper_loc_0.
     """
     name   = "test_ln_cfu0_wt"
     priors = get_priors()
@@ -663,12 +782,47 @@ def test_define_model_wt_genotype(mock_data_with_wt):
     model_trace = trace(substituted_model).get_trace(name=name, data=data, priors=priors)
     ln_cfu0_site = model_trace[name]["value"]
 
-    hyper_loc = float(base_guesses[f"{name}_hyper_loc"])
+    hyper_loc = float(base_guesses[f"{name}_hyper_loc_0"])
     wt_loc    = float(base_guesses[f"{name}_wt_loc"])
 
     assert jnp.allclose(ln_cfu0_site[..., 0], hyper_loc)
     assert jnp.allclose(ln_cfu0_site[..., 4], hyper_loc)
     assert jnp.allclose(ln_cfu0_site[..., 5], wt_loc)
+
+
+def test_define_model_two_classes_assigns_separate_locs(mock_data_two_classes):
+    """
+    Doubles (class 1) receive hyper_loc_1; singles (class 0) receive hyper_loc_0.
+    Offsets are zeroed so the reconstructed ln_cfu0 equals the group loc exactly.
+    """
+    name   = "test_ln_cfu0_2cls"
+    data   = mock_data_two_classes
+    priors = get_priors(data=data)
+
+    base_guesses  = get_guesses(name, data)
+
+    # Zero offsets so ln_cfu0 = per_geno_loc, letting us verify class assignment
+    zero_offsets = jnp.zeros(
+        (data.num_replicate, data.num_condition_pre, data.batch_size)
+    )
+    subs = {**base_guesses, f"{name}_offset": zero_offsets}
+
+    substituted_model = substitute(define_model, data=subs)
+    model_trace = trace(substituted_model).get_trace(name=name, data=data, priors=priors)
+    ln_cfu0_site = model_trace[name]["value"]  # (rep, cond_pre, geno)
+
+    hyper_loc_0 = float(base_guesses[f"{name}_hyper_loc_0"])
+    hyper_loc_1 = float(base_guesses[f"{name}_hyper_loc_1"])
+    spiked_loc  = float(base_guesses[f"{name}_spiked_loc"])
+    wt_loc      = float(base_guesses[f"{name}_wt_loc"])
+
+    assert jnp.allclose(ln_cfu0_site[..., 0], wt_loc)       # wt
+    assert jnp.allclose(ln_cfu0_site[..., 1], spiked_loc)   # spiked
+    assert jnp.allclose(ln_cfu0_site[..., 2], hyper_loc_0)  # single
+    assert jnp.allclose(ln_cfu0_site[..., 3], hyper_loc_0)  # single
+    assert jnp.allclose(ln_cfu0_site[..., 4], hyper_loc_0)  # single
+    assert jnp.allclose(ln_cfu0_site[..., 5], hyper_loc_1)  # double
+    assert jnp.allclose(ln_cfu0_site[..., 6], hyper_loc_1)  # double
 
 
 def test_define_model_uses_per_genotype_scale_for_subgroups():
@@ -692,6 +846,8 @@ def test_define_model_uses_per_genotype_scale_for_subgroups():
         scale_vector=jnp.ones(batch_size, dtype=float),
         ln_cfu0_spiked_mask=jnp.array([False, True, False]),
         ln_cfu0_wt_mask=jnp.array([True, False, False]),
+        ln_cfu0_library_masks=_all_library_masks(num_genotype),
+        num_ln_cfu0_library_classes=1,
         ln_cfu=_make_ln_cfu(num_replicate, num_condition_pre, num_genotype,
                             [12.0, 10.0, 8.0]),
         good_mask=np.ones((num_replicate, 2, num_condition_pre, 2, 1, 3, num_genotype), dtype=bool),
@@ -700,9 +856,9 @@ def test_define_model_uses_per_genotype_scale_for_subgroups():
 
     # Pick distinctive prior scales so each per-genotype scale is identifiable
     priors = ModelPriors(
-        ln_cfu0_hyper_loc_loc=8.0,
-        ln_cfu0_hyper_loc_scale=1.0,
-        ln_cfu0_hyper_scale_loc=1.0,
+        ln_cfu0_hyper_loc_locs=jnp.array([8.0]),
+        ln_cfu0_hyper_loc_scales=jnp.array([1.0]),
+        ln_cfu0_hyper_scale_locs=jnp.array([1.0]),
         ln_cfu0_spiked_loc_loc=10.0,
         ln_cfu0_spiked_loc_scale=1.0,
         ln_cfu0_spiked_scale=2.0,    # ← fixed
@@ -716,11 +872,11 @@ def test_define_model_uses_per_genotype_scale_for_subgroups():
     # Substitute deterministic values: hyper_loc=8, spiked_loc=10, wt_loc=12,
     # hyper_scale=7 (large to isolate library), and offset=1 everywhere.
     subs = {
-        f"{name}_hyper_loc":   jnp.array(8.0),
-        f"{name}_hyper_scale": jnp.array(7.0),     # library hyper_scale
-        f"{name}_spiked_loc":  jnp.array(10.0),
-        f"{name}_wt_loc":      jnp.array(12.0),
-        f"{name}_offset":      jnp.ones((num_replicate, num_condition_pre, batch_size)),
+        f"{name}_hyper_loc_0":   jnp.array(8.0),
+        f"{name}_hyper_scale_0": jnp.array(7.0),     # library hyper_scale
+        f"{name}_spiked_loc":    jnp.array(10.0),
+        f"{name}_wt_loc":        jnp.array(12.0),
+        f"{name}_offset":        jnp.ones((num_replicate, num_condition_pre, batch_size)),
     }
 
     substituted_model = substitute(define_model, data=subs)
@@ -729,7 +885,7 @@ def test_define_model_uses_per_genotype_scale_for_subgroups():
 
     # geno 0 (wt):     12 + 1 * 5  = 17  (uses priors.ln_cfu0_wt_scale)
     # geno 1 (spiked): 10 + 1 * 2  = 12  (uses priors.ln_cfu0_spiked_scale)
-    # geno 2 (lib):     8 + 1 * 7  = 15  (uses sampled hyper_scale)
+    # geno 2 (lib):     8 + 1 * 7  = 15  (uses sampled hyper_scale_0)
     assert jnp.allclose(ln_cfu0_site[..., 0], 17.0)
     assert jnp.allclose(ln_cfu0_site[..., 1], 12.0)
     assert jnp.allclose(ln_cfu0_site[..., 2], 15.0)
@@ -738,8 +894,7 @@ def test_define_model_uses_per_genotype_scale_for_subgroups():
 def test_define_model_eliminates_shared_hyper_scale_for_subgroups():
     """
     Regression guard: changing the *library* hyper_scale must NOT change the
-    reconstructed ln_cfu0 of wt or spiked genotypes.  The two groups now use
-    fixed prior-supplied scales rather than sharing the library hyper_scale.
+    reconstructed ln_cfu0 of wt or spiked genotypes.
     """
     num_replicate    = 1
     num_condition_pre = 1
@@ -755,6 +910,8 @@ def test_define_model_eliminates_shared_hyper_scale_for_subgroups():
         scale_vector=jnp.ones(batch_size, dtype=float),
         ln_cfu0_spiked_mask=jnp.array([False, True, False]),
         ln_cfu0_wt_mask=jnp.array([True, False, False]),
+        ln_cfu0_library_masks=_all_library_masks(num_genotype),
+        num_ln_cfu0_library_classes=1,
         ln_cfu=_make_ln_cfu(num_replicate, num_condition_pre, num_genotype,
                             [12.0, 10.0, 8.0]),
         good_mask=np.ones((num_replicate, 2, num_condition_pre, 2, 1, 3, num_genotype), dtype=bool),
@@ -769,11 +926,11 @@ def test_define_model_eliminates_shared_hyper_scale_for_subgroups():
 
     def _trace_with_hyper_scale(hyper_scale_value):
         subs = {
-            f"{name}_hyper_loc":   jnp.array(8.0),
-            f"{name}_hyper_scale": jnp.array(hyper_scale_value),
-            f"{name}_spiked_loc":  jnp.array(10.0),
-            f"{name}_wt_loc":      jnp.array(12.0),
-            f"{name}_offset":      jnp.ones((num_replicate, num_condition_pre, batch_size)),
+            f"{name}_hyper_loc_0":   jnp.array(8.0),
+            f"{name}_hyper_scale_0": jnp.array(hyper_scale_value),
+            f"{name}_spiked_loc":    jnp.array(10.0),
+            f"{name}_wt_loc":        jnp.array(12.0),
+            f"{name}_offset":        jnp.ones((num_replicate, num_condition_pre, batch_size)),
         }
         m = substitute(define_model, data=subs)
         tr = trace(m).get_trace(name=name, data=data, priors=priors)
@@ -815,6 +972,10 @@ def test_guide_logic_and_shapes(mock_data):
                    "wt_loc_loc",     "wt_loc_scale",     "wt_loc"]:
         assert f"{name}_{suffix}" in guide_trace
 
+    # Per-class hyper params exist (class 0 only for single-class)
+    assert f"{name}_hyper_loc_0" in guide_trace
+    assert f"{name}_hyper_scale_0" in guide_trace
+
     # Sampled offsets match BATCH size
     assert guide_trace[f"{name}_offset"]["value"].shape == (
         mock_data.num_replicate, mock_data.num_condition_pre, mock_data.batch_size)
@@ -823,6 +984,26 @@ def test_guide_logic_and_shapes(mock_data):
     assert final_ln_cfu0.shape == (mock_data.num_replicate, 1,
                                    mock_data.num_condition_pre,
                                    1, 1, 1, mock_data.batch_size)
+
+
+def test_guide_two_classes_has_per_class_params(mock_data_two_classes):
+    """
+    With two library classes the guide registers variational params for each
+    class independently: hyper_loc_0/1 and hyper_scale_0/1.
+    """
+    name   = "test_ln_cfu0_2cls_guide"
+    priors = get_priors(data=mock_data_two_classes)
+
+    with seed(rng_seed=0):
+        guide_trace = trace(guide).get_trace(
+            name=name, data=mock_data_two_classes, priors=priors
+        )
+
+    for i in range(2):
+        assert f"{name}_hyper_loc_{i}" in guide_trace
+        assert f"{name}_hyper_scale_{i}" in guide_trace
+        assert f"{name}_hyper_loc_{i}_loc" in guide_trace
+        assert f"{name}_hyper_scale_{i}_loc" in guide_trace
 
 
 def test_guide_does_not_introduce_subgroup_scale_params(mock_data_empirical):
@@ -849,10 +1030,10 @@ def test_guide_does_not_introduce_subgroup_scale_params(mock_data_empirical):
 # ---------------------------------------------------------------------------
 
 def test_pinnable_suffixes():
-    """The module exposes the expected pinnable suffix tuple.
+    """The module exposes the expected pinnable suffix base-names.
 
-    Only the *library* subgroup hyperpriors are pinnable; the spiked and
-    wt subgroups are non-hierarchical after the Step 2 restructure.
+    Actual per-class site suffixes are ``{base}_{class_index}``, e.g.
+    ``"hyper_loc_0"``.  Only the *library* subgroup hyperpriors are pinnable.
     """
     assert set(_PINNABLE_SUFFIXES) == {"hyper_loc", "hyper_scale"}
 
@@ -866,7 +1047,7 @@ def test_model_priors_default_pinned_is_empty_dict():
 
 def test_model_priors_accepts_pinned_dict():
     """ModelPriors accepts a `pinned` dict and exposes it on the instance."""
-    pinned = {"hyper_loc": 8.0, "hyper_scale": 1.5}
+    pinned = {"hyper_loc_0": 8.0, "hyper_scale_0": 1.5}
     priors = ModelPriors(pinned=pinned, **get_hyperparameters())
     assert priors.pinned == pinned
 
@@ -876,7 +1057,7 @@ def test_model_priors_accepts_pinned_dict():
 # ---------------------------------------------------------------------------
 
 def test_define_model_unpinned_uses_sample_sites(mock_data):
-    """Without any pinning, every pinnable suffix is a sample site."""
+    """Without any pinning, every per-class hyper site is a sample site."""
     name = "lc"
     priors = get_priors()  # pinned = {}
 
@@ -885,10 +1066,11 @@ def test_define_model_unpinned_uses_sample_sites(mock_data):
             name=name, data=mock_data, priors=priors
         )
 
-    for suffix in _PINNABLE_SUFFIXES:
-        site_name = f"{name}_{suffix}"
-        assert site_name in tr
-        assert tr[site_name]["type"] == "sample"
+    # Single-class: only class-0 sites exist
+    assert f"{name}_hyper_loc_0" in tr
+    assert tr[f"{name}_hyper_loc_0"]["type"] == "sample"
+    assert f"{name}_hyper_scale_0" in tr
+    assert tr[f"{name}_hyper_scale_0"]["type"] == "sample"
 
     # Spiked/wt loc remain sampled (NOT pinnable)
     assert tr[f"{name}_spiked_loc"]["type"] == "sample"
@@ -896,16 +1078,16 @@ def test_define_model_unpinned_uses_sample_sites(mock_data):
 
 
 def test_define_model_pinned_replaces_with_deterministic(mock_data):
-    """Pinned suffixes become deterministic sites with the pinned value."""
+    """Pinned class-0 suffixes become deterministic sites with the pinned value."""
     name = "lc"
-    pinned = {"hyper_loc": 8.0, "hyper_scale": 1.5}
+    pinned = {"hyper_loc_0": 8.0, "hyper_scale_0": 1.5}
     priors = ModelPriors(pinned=pinned, **get_hyperparameters())
 
     base_guesses = get_guesses(name, mock_data)
     # Drop pinned keys so substitute doesn't override deterministic values
     sub_data = {
         k: v for k, v in base_guesses.items()
-        if not any(k == f"{name}_{s}" for s in pinned)
+        if k not in {f"{name}_hyper_loc_0", f"{name}_hyper_scale_0"}
     }
 
     substituted = substitute(define_model, data=sub_data)
@@ -914,11 +1096,10 @@ def test_define_model_pinned_replaces_with_deterministic(mock_data):
             name=name, data=mock_data, priors=priors
         )
 
-    for suffix, val in pinned.items():
-        site_name = f"{name}_{suffix}"
-        assert site_name in tr
-        assert tr[site_name]["type"] == "deterministic"
-        assert jnp.allclose(tr[site_name]["value"], val)
+    assert tr[f"{name}_hyper_loc_0"]["type"] == "deterministic"
+    assert jnp.allclose(tr[f"{name}_hyper_loc_0"]["value"], 8.0)
+    assert tr[f"{name}_hyper_scale_0"]["type"] == "deterministic"
+    assert jnp.allclose(tr[f"{name}_hyper_scale_0"]["value"], 1.5)
 
     # Non-pinnable subgroup locs remain sample sites
     assert tr[f"{name}_spiked_loc"]["type"] == "sample"
@@ -929,13 +1110,13 @@ def test_define_model_all_library_pinned(mock_data):
     """When both library hypers are pinned, only spiked/wt locs and the
     per-(rep,cond,geno) offset remain as sample sites."""
     name = "lc"
-    pinned = {"hyper_loc": 8.0, "hyper_scale": 1.5}
+    pinned = {"hyper_loc_0": 8.0, "hyper_scale_0": 1.5}
     priors = ModelPriors(pinned=pinned, **get_hyperparameters())
 
     base_guesses = get_guesses(name, mock_data)
     sub_data = {
         k: v for k, v in base_guesses.items()
-        if not any(k == f"{name}_{s}" for s in pinned)
+        if k not in {f"{name}_hyper_loc_0", f"{name}_hyper_scale_0"}
     }
     substituted = substitute(define_model, data=sub_data)
     with seed(rng_seed=0):
@@ -949,6 +1130,24 @@ def test_define_model_all_library_pinned(mock_data):
     }
 
 
+def test_define_model_partial_pin_two_classes(mock_data_two_classes):
+    """Pinning class 0 only: class-0 sites become deterministic, class-1 stay
+    as sample sites."""
+    name   = "lc2"
+    pinned = {"hyper_loc_0": 8.0, "hyper_scale_0": 1.5}
+    priors = ModelPriors(pinned=pinned, **get_hyperparameters(num_classes=2))
+
+    with seed(rng_seed=0):
+        tr = trace(define_model).get_trace(
+            name=name, data=mock_data_two_classes, priors=priors
+        )
+
+    assert tr[f"{name}_hyper_loc_0"]["type"] == "deterministic"
+    assert tr[f"{name}_hyper_scale_0"]["type"] == "deterministic"
+    assert tr[f"{name}_hyper_loc_1"]["type"] == "sample"
+    assert tr[f"{name}_hyper_scale_1"]["type"] == "sample"
+
+
 # ---------------------------------------------------------------------------
 # Tests: guide under pinning
 # ---------------------------------------------------------------------------
@@ -959,21 +1158,21 @@ def test_guide_pinned_drops_variational_params(mock_data):
     in the guide.  Unpinned hypers retain their full param + sample machinery.
     """
     name = "lc"
-    pinned = {"hyper_loc": 8.0}
+    pinned = {"hyper_loc_0": 8.0}
     priors = ModelPriors(pinned=pinned, **get_hyperparameters())
 
     with seed(rng_seed=0):
         tr = trace(guide).get_trace(name=name, data=mock_data, priors=priors)
 
     # Pinned hyper has neither sample nor variational params
-    assert f"{name}_hyper_loc" not in tr
-    assert f"{name}_hyper_loc_loc" not in tr
-    assert f"{name}_hyper_loc_scale" not in tr
+    assert f"{name}_hyper_loc_0" not in tr
+    assert f"{name}_hyper_loc_0_loc" not in tr
+    assert f"{name}_hyper_loc_0_scale" not in tr
 
     # Unpinned library hyper still exposes its variational params
-    assert f"{name}_hyper_scale" in tr
-    assert f"{name}_hyper_scale_loc" in tr
-    assert f"{name}_hyper_scale_scale" in tr
+    assert f"{name}_hyper_scale_0" in tr
+    assert f"{name}_hyper_scale_0_loc" in tr
+    assert f"{name}_hyper_scale_0_scale" in tr
 
     # Spiked/wt loc machinery untouched (never pinnable)
     for suffix in ("spiked_loc", "spiked_loc_loc", "spiked_loc_scale",
@@ -990,16 +1189,16 @@ def test_guide_all_library_pinned(mock_data):
     """When both library hypers are pinned, library hyper machinery is gone
     but spiked/wt and offset machinery is intact."""
     name = "lc"
-    pinned = {"hyper_loc": 8.0, "hyper_scale": 1.5}
+    pinned = {"hyper_loc_0": 8.0, "hyper_scale_0": 1.5}
     priors = ModelPriors(pinned=pinned, **get_hyperparameters())
 
     with seed(rng_seed=0):
         tr = trace(guide).get_trace(name=name, data=mock_data, priors=priors)
 
-    for suffix in _PINNABLE_SUFFIXES:
-        assert f"{name}_{suffix}" not in tr
-        assert f"{name}_{suffix}_loc" not in tr
-        assert f"{name}_{suffix}_scale" not in tr
+    assert f"{name}_hyper_loc_0" not in tr
+    assert f"{name}_hyper_loc_0_loc" not in tr
+    assert f"{name}_hyper_loc_0_scale" not in tr
+    assert f"{name}_hyper_scale_0" not in tr
 
     # Spiked/wt locs remain
     for suffix in ("spiked_loc", "wt_loc"):
@@ -1021,7 +1220,7 @@ def test_model_and_guide_pinned_have_compatible_sample_sites(mock_data):
     sides drop the same sites; this test confirms the symmetry.
     """
     name = "compat"
-    pinned = {"hyper_loc": 8.0, "hyper_scale": 1.5}
+    pinned = {"hyper_loc_0": 8.0, "hyper_scale_0": 1.5}
     priors = ModelPriors(pinned=pinned, **get_hyperparameters())
 
     with seed(rng_seed=0):
@@ -1030,6 +1229,38 @@ def test_model_and_guide_pinned_have_compatible_sample_sites(mock_data):
         )
         guide_trace = trace(guide).get_trace(
             name=name, data=mock_data, priors=priors
+        )
+
+    model_samples = {
+        n for n, s in model_trace.items()
+        if s["type"] == "sample" and not s.get("is_observed", False)
+    }
+    guide_samples = {
+        n for n, s in guide_trace.items() if s["type"] == "sample"
+    }
+
+    assert model_samples == guide_samples, (
+        f"model and guide sample sites differ:\n"
+        f"  model only: {model_samples - guide_samples}\n"
+        f"  guide only: {guide_samples - model_samples}"
+    )
+
+
+def test_model_and_guide_two_classes_compatible_sample_sites(mock_data_two_classes):
+    """
+    Model/guide sample-site symmetry holds for two library classes, with
+    one class pinned and one free.
+    """
+    name   = "compat2"
+    pinned = {"hyper_loc_0": 8.0, "hyper_scale_0": 1.5}
+    priors = ModelPriors(pinned=pinned, **get_hyperparameters(num_classes=2))
+
+    with seed(rng_seed=0):
+        model_trace = trace(define_model).get_trace(
+            name=name, data=mock_data_two_classes, priors=priors
+        )
+        guide_trace = trace(guide).get_trace(
+            name=name, data=mock_data_two_classes, priors=priors
         )
 
     model_samples = {
