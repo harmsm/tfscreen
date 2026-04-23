@@ -32,7 +32,8 @@ import numpyro.distributions as dist
 from flax.struct import dataclass, field
 from typing import Dict, Any
 
-from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
+from typing import Union
+from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData, BindingData
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +139,7 @@ def _population_moments(logit_theta_low, logit_theta_high,
 # ---------------------------------------------------------------------------
 
 def define_model(name: str,
-                 data: GrowthData,
+                 data: Union[GrowthData, BindingData],
                  priors: ModelPriors) -> ThetaParam:
     """
     Define the mutation-decomposed hierarchical Hill model.
@@ -313,7 +314,7 @@ def define_model(name: str,
 # ---------------------------------------------------------------------------
 
 def guide(name: str,
-          data: GrowthData,
+          data: Union[GrowthData, BindingData],
           priors: ModelPriors) -> ThetaParam:
     """Variational guide for the mutation-decomposed Hill model."""
 

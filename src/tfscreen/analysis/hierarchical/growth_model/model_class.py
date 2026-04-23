@@ -554,7 +554,7 @@ class ModelClass:
         # Build ln_cfu0 library class masks (singles = class 0, doubles = class 1).
         # Each row of the (2, num_genotype) mask is True for genotypes in that class.
         # WT and spiked genotypes are excluded from both rows; they are handled by
-        # their own separate masks.  Genotypes with >2 mutations default to class 0.
+        # their own separate masks.  Genotypes with >2 mutations end up in the doubles
         from tfscreen.genetics import build_mut_geno_matrix
         _genotype_idx = self.growth_tm.tensor_dim_names.index("genotype")
         _genotype_names = list(self.growth_tm.tensor_dim_labels[_genotype_idx])
@@ -562,7 +562,7 @@ class ModelClass:
         _mut_counts = _mut_geno_matrix.sum(axis=0).astype(int)
         _is_library = mask & ~wt_mask   # True = non-spiked, non-wt
         _singles_mask = (_mut_counts == 1) & _is_library
-        _doubles_mask = (_mut_counts == 2) & _is_library
+        _doubles_mask = (_mut_counts > 1) & _is_library
         _library_masks = np.stack([_singles_mask, _doubles_mask], axis=0)  # (2, num_genotype)
 
         sizes["num_ln_cfu0_library_classes"] = 2
@@ -590,7 +590,7 @@ class ModelClass:
         # Build mutation-to-genotype indicator matrices when any hierarchical_mut
         # component is selected.  Stored as static (pytree_node=False) fields
         # on GrowthData; downstream components convert to jnp arrays as needed.
-        _needs_mut = (self._theta in ("hill_mut", "lac_dimer_mut") or
+        _needs_mut = (self._theta in ("hill_mut", "lac_dimer_mut", "lac_dimer_lnK_mut") or
                       self._activity == "hierarchical_mut" or
                       self._dk_geno == "hierarchical_mut")
         if _needs_mut:

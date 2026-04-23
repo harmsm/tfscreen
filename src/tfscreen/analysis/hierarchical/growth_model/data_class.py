@@ -101,7 +101,14 @@ class BindingData:
     titrant_conc: jnp.ndarray
     log_titrant_conc: jnp.ndarray
 
-    scatter_theta: int = field(pytree_node=False) 
+    scatter_theta: int = field(pytree_node=False)
+
+    # Optional mutation-decomposition matrices.  Stored as pytree_node=False
+    # so they are treated as static by JAX tracing.  Defaults match GrowthData.
+    num_mutation: int = field(pytree_node=False, default=0)
+    num_pair: int = field(pytree_node=False, default=0)
+    mut_geno_matrix: Any = field(pytree_node=False, default=None)
+    pair_geno_matrix: Any = field(pytree_node=False, default=None)
 
 
 @dataclass(frozen=True)
