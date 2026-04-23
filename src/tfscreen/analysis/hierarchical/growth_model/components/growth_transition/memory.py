@@ -1,47 +1,36 @@
 import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
-from flax.struct import dataclass, field
+from flax.struct import dataclass
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
-from tfscreen.analysis.hierarchical.growth_model.components._pinning import (
-    _hyper,
-    _pinned_value,
-)
-from typing import Dict, Any, Mapping
-
-
-# Hyperparameter suffixes that may be pinned via ModelPriors.pinned.
-_PINNABLE_SUFFIXES = (
-    "tau0_hyper_loc", "tau0_hyper_scale",
-    "k1_hyper_loc", "k1_hyper_scale",
-    "k2_hyper_loc", "k2_hyper_scale",
-)
+from typing import Dict, Any
 
 
 @dataclass(frozen=True)
 class ModelPriors:
     """
-    JAX Pytree holding hyperparameters for the memory-dependent growth transition model.
+    JAX Pytree holding prior parameters for the memory-dependent growth
+    transition model.
+
+    Attributes
+    ----------
+    tau0_loc, tau0_scale : float
+        Normal prior parameters for per-condition baseline lag time tau0.
+    k1_loc, k1_scale : float
+        Normal prior parameters for per-condition memory coefficient k1.
+    k2_loc, k2_scale : float
+        Normal prior parameters for per-condition memory offset k2.
     """
-    tau0_hyper_loc_loc: float
-    tau0_hyper_loc_scale: float
-    tau0_hyper_scale_loc: float
-
-    k1_hyper_loc_loc: float
-    k1_hyper_loc_scale: float
-    k1_hyper_scale_loc: float
-
-    k2_hyper_loc_loc: float
-    k2_hyper_loc_scale: float
-    k2_hyper_scale_loc: float
-
-    pinned: Mapping[str, float] = field(
-        pytree_node=False, default_factory=dict
-    )
+    tau0_loc: float
+    tau0_scale: float
+    k1_loc: float
+    k1_scale: float
+    k2_loc: float
+    k2_scale: float
 
 
-def define_model(name: str, 
-                 data: GrowthData, 
+def define_model(name: str,
+                 data: GrowthData,
                  priors: ModelPriors,
                  g_pre: jnp.ndarray,
                  g_sel: jnp.ndarray,
@@ -49,7 +38,7 @@ def define_model(name: str,
                  t_sel: jnp.ndarray,
                  theta: jnp.ndarray) -> jnp.ndarray:
     """
-    Combines the pre-selection and selection growth phases with a transition 
+    Combines the pre-selection and selection growth phases with a transition
     that depends on theta (memory effect).
 
     tau = tau0 + (k1 / (theta + k2))
@@ -61,7 +50,7 @@ def define_model(name: str,
     data : GrowthData
         A Pytree (Flax dataclass) containing experimental data and metadata.
     priors : ModelPriors
-        A Pytree (Flax dataclass) containing the hyperparameters for the priors.
+        A Pytree (Flax dataclass) containing the prior parameters.
     g_pre : jnp.ndarray
         Pre-selection growth rate tensor.
     g_sel : jnp.ndarray
@@ -78,74 +67,24 @@ def define_model(name: str,
     total_growth : jnp.ndarray
         The total growth over both phases.
     """
-
-    pinned = priors.pinned
-
-    # Hierarchical tau0
-    tau0_hyper_loc = _hyper(
-        name, "tau0_hyper_loc",
-        dist.Normal(priors.tau0_hyper_loc_loc, priors.tau0_hyper_loc_scale),
-        pinned,
-    )
-    tau0_hyper_scale = _hyper(
-        name, "tau0_hyper_scale",
-        dist.HalfNormal(priors.tau0_hyper_scale_loc),
-        pinned,
-    )
-
-    # Hierarchical k1
-    k1_hyper_loc = _hyper(
-        name, "k1_hyper_loc",
-        dist.Normal(priors.k1_hyper_loc_loc, priors.k1_hyper_loc_scale),
-        pinned,
-    )
-    k1_hyper_scale = _hyper(
-        name, "k1_hyper_scale",
-        dist.HalfNormal(priors.k1_hyper_scale_loc),
-        pinned,
-    )
-
-    # Hierarchical k2
-    k2_hyper_loc = _hyper(
-        name, "k2_hyper_loc",
-        dist.Normal(priors.k2_hyper_loc_loc, priors.k2_hyper_loc_scale),
-        pinned,
-    )
-    k2_hyper_scale = _hyper(
-        name, "k2_hyper_scale",
-        dist.HalfNormal(priors.k2_hyper_scale_loc),
-        pinned,
-    )
-
-    # Plate over conditions
     with pyro.plate(f"{name}_condition_parameters", data.num_condition_rep):
-        tau0_offset = pyro.sample(f"{name}_tau0_offset", dist.Normal(0.0, 1.0))
-        k1_offset = pyro.sample(f"{name}_k1_offset", dist.Normal(0.0, 1.0))
-        k2_offset = pyro.sample(f"{name}_k2_offset", dist.Normal(0.0, 1.0))
+        tau0_per_condition = pyro.sample(
+            f"{name}_tau0", dist.Normal(priors.tau0_loc, priors.tau0_scale)
+        )
+        k1_per_condition = pyro.sample(
+            f"{name}_k1", dist.Normal(priors.k1_loc, priors.k1_scale)
+        )
+        k2_per_condition = pyro.sample(
+            f"{name}_k2", dist.Normal(priors.k2_loc, priors.k2_scale)
+        )
 
-    tau0_per_condition = tau0_hyper_loc + tau0_offset * tau0_hyper_scale
-    k1_per_condition = k1_hyper_loc + k1_offset * k1_hyper_scale
-    k2_per_condition = k2_hyper_loc + k2_offset * k2_hyper_scale
-
-    # Register deterministic sites
-    pyro.deterministic(f"{name}_tau0", tau0_per_condition)
-    pyro.deterministic(f"{name}_k1", k1_per_condition)
-    pyro.deterministic(f"{name}_k2", k2_per_condition)
-
-    # Expand to match g_pre/theta shape using map_condition_pre
     tau0_expanded = tau0_per_condition[data.map_condition_pre]
     k1_expanded = k1_per_condition[data.map_condition_pre]
     k2_expanded = k2_per_condition[data.map_condition_pre]
 
-    # Calculate transition lag tau
     tau = tau0_expanded + (k1_expanded / (theta + k2_expanded))
 
-    # Calculate growth in each phase
     dln_cfu_pre = g_pre * t_pre
-    
-    # Selection phase growth with transition at t_sel = tau
-    # dln_cfu_sel = g_pre * t_sel if t_sel < tau
-    # dln_cfu_sel = g_pre * tau + g_sel * (t_sel - tau) if t_sel >= tau
     dln_cfu_sel = jnp.where(
         t_sel < tau,
         g_pre * t_sel,
@@ -155,8 +94,8 @@ def define_model(name: str,
     return dln_cfu_pre + dln_cfu_sel
 
 
-def guide(name: str, 
-          data: GrowthData, 
+def guide(name: str,
+          data: GrowthData,
           priors: ModelPriors,
           g_pre: jnp.ndarray,
           g_sel: jnp.ndarray,
@@ -164,71 +103,37 @@ def guide(name: str,
           t_sel: jnp.ndarray,
           theta: jnp.ndarray) -> jnp.ndarray:
     """
-    Guide corresponding to the memory-dependent growth transition model.
+    Guide for the memory-dependent growth transition model with simple Normal priors.
     """
-
-    pinned = priors.pinned
-
-    def _guide_hyper_loc(prefix, default_loc, default_scale):
-        suffix = f"{prefix}_hyper_loc"
-        pinned_v = _pinned_value(suffix, pinned)
-        if pinned_v is not None:
-            return pinned_v
-        loc_loc = pyro.param(f"{name}_{suffix}_loc", jnp.array(default_loc))
-        loc_scale = pyro.param(
-            f"{name}_{suffix}_scale", jnp.array(default_scale),
-            constraint=dist.constraints.greater_than(1e-4),
-        )
-        return pyro.sample(f"{name}_{suffix}", dist.Normal(loc_loc, loc_scale))
-
-    def _guide_hyper_scale(prefix):
-        suffix = f"{prefix}_hyper_scale"
-        pinned_v = _pinned_value(suffix, pinned)
-        if pinned_v is not None:
-            return pinned_v
-        scale_loc = pyro.param(f"{name}_{suffix}_loc", jnp.array(-1.0))
-        scale_scale = pyro.param(
-            f"{name}_{suffix}_scale", jnp.array(0.1),
-            constraint=dist.constraints.greater_than(1e-4),
-        )
-        return pyro.sample(
-            f"{name}_{suffix}", dist.LogNormal(scale_loc, scale_scale)
-        )
-
-    tau0_hyper_loc = _guide_hyper_loc(
-        "tau0", priors.tau0_hyper_loc_loc, priors.tau0_hyper_loc_scale
-    )
-    tau0_hyper_scale = _guide_hyper_scale("tau0")
-    k1_hyper_loc = _guide_hyper_loc(
-        "k1", priors.k1_hyper_loc_loc, priors.k1_hyper_loc_scale
-    )
-    k1_hyper_scale = _guide_hyper_scale("k1")
-    k2_hyper_loc = _guide_hyper_loc(
-        "k2", priors.k2_hyper_loc_loc, priors.k2_hyper_loc_scale
-    )
-    k2_hyper_scale = _guide_hyper_scale("k2")
-
-    # Offsets
-    tau0_offset_locs = pyro.param(f"{name}_tau0_offset_locs", jnp.zeros(data.num_condition_rep))
-    tau0_offset_scales = pyro.param(f"{name}_tau0_offset_scales", jnp.ones(data.num_condition_rep),
-                                    constraint=dist.constraints.positive)
-    
-    k1_offset_locs = pyro.param(f"{name}_k1_offset_locs", jnp.zeros(data.num_condition_rep))
-    k1_offset_scales = pyro.param(f"{name}_k1_offset_scales", jnp.ones(data.num_condition_rep),
-                                   constraint=dist.constraints.positive)
-
-    k2_offset_locs = pyro.param(f"{name}_k2_offset_locs", jnp.zeros(data.num_condition_rep))
-    k2_offset_scales = pyro.param(f"{name}_k2_offset_scales", jnp.ones(data.num_condition_rep),
-                                   constraint=dist.constraints.positive)
+    tau0_locs = pyro.param(f"{name}_tau0_locs",
+                           jnp.full(data.num_condition_rep, priors.tau0_loc))
+    tau0_scales = pyro.param(f"{name}_tau0_scales",
+                             jnp.full(data.num_condition_rep, priors.tau0_scale),
+                             constraint=dist.constraints.positive)
+    k1_locs = pyro.param(f"{name}_k1_locs",
+                         jnp.full(data.num_condition_rep, priors.k1_loc))
+    k1_scales = pyro.param(f"{name}_k1_scales",
+                           jnp.full(data.num_condition_rep, priors.k1_scale),
+                           constraint=dist.constraints.positive)
+    k2_locs = pyro.param(f"{name}_k2_locs",
+                         jnp.full(data.num_condition_rep, priors.k2_loc))
+    k2_scales = pyro.param(f"{name}_k2_scales",
+                           jnp.full(data.num_condition_rep, priors.k2_scale),
+                           constraint=dist.constraints.positive)
 
     with pyro.plate(f"{name}_condition_parameters", data.num_condition_rep) as idx:
-        tau0_offset = pyro.sample(f"{name}_tau0_offset", dist.Normal(tau0_offset_locs[idx], tau0_offset_scales[idx]))
-        k1_offset = pyro.sample(f"{name}_k1_offset", dist.Normal(k1_offset_locs[idx], k1_offset_scales[idx]))
-        k2_offset = pyro.sample(f"{name}_k2_offset", dist.Normal(k2_offset_locs[idx], k2_offset_scales[idx]))
-
-    tau0_per_condition = tau0_hyper_loc + tau0_offset * tau0_hyper_scale
-    k1_per_condition = k1_hyper_loc + k1_offset * k1_hyper_scale
-    k2_per_condition = k2_hyper_loc + k2_offset * k2_hyper_scale
+        tau0_per_condition = pyro.sample(
+            f"{name}_tau0",
+            dist.Normal(tau0_locs[..., idx], tau0_scales[..., idx])
+        )
+        k1_per_condition = pyro.sample(
+            f"{name}_k1",
+            dist.Normal(k1_locs[..., idx], k1_scales[..., idx])
+        )
+        k2_per_condition = pyro.sample(
+            f"{name}_k2",
+            dist.Normal(k2_locs[..., idx], k2_scales[..., idx])
+        )
 
     tau0_expanded = tau0_per_condition[data.map_condition_pre]
     k1_expanded = k1_per_condition[data.map_condition_pre]
@@ -251,35 +156,31 @@ def get_hyperparameters() -> Dict[str, Any]:
     Get default values for the model hyperparameters.
     """
     return {
-        "tau0_hyper_loc_loc": 1.0,
-        "tau0_hyper_loc_scale": 0.5,
-        "tau0_hyper_scale_loc": 0.5,
-
-        "k1_hyper_loc_loc": 0.0,
-        "k1_hyper_loc_scale": 0.1,
-        "k1_hyper_scale_loc": 0.1,
-
-        "k2_hyper_loc_loc": 0.1,
-        "k2_hyper_loc_scale": 0.05,
-        "k2_hyper_scale_loc": 0.05,
+        "tau0_loc": 100.0, # takes about 100 minutes to turn over
+        "tau0_scale": 50,
+        "k1_loc": 1.0,
+        "k1_scale": 10, # no strong constraints on k_2
+        "k2_loc": 1,
+        "k2_scale": 10, # no strong constraints on k2
     }
+
 
 def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
     """
     Get guess values for the model's latent parameters.
     """
-    guesses = {
-        f"{name}_tau0_hyper_loc": 1.0,
-        f"{name}_tau0_hyper_scale": 0.1,
-        f"{name}_k1_hyper_loc": 0.0,
-        f"{name}_k1_hyper_scale": 0.01,
-        f"{name}_k2_hyper_loc": 0.1,
-        f"{name}_k2_hyper_scale": 0.01,
-        f"{name}_tau0_offset": jnp.zeros(data.num_condition_rep),
-        f"{name}_k1_offset": jnp.zeros(data.num_condition_rep),
-        f"{name}_k2_offset": jnp.zeros(data.num_condition_rep),
+    num_cond_rep = data.num_condition_rep
+    _DEFAULT_SCALE = 1.0
+
+    return {
+        f"{name}_tau0_locs": jnp.full(num_cond_rep, 100),
+        f"{name}_tau0_scales": jnp.full(num_cond_rep, 100),
+        f"{name}_k1_locs": jnp.full(num_cond_rep,1.0),
+        f"{name}_k1_scales": jnp.full(num_cond_rep, _DEFAULT_SCALE),
+        f"{name}_k2_locs": jnp.full(num_cond_rep, 1.0),
+        f"{name}_k2_scales": jnp.full(num_cond_rep, _DEFAULT_SCALE),
     }
-    return guesses
+
 
 def get_priors() -> ModelPriors:
     """

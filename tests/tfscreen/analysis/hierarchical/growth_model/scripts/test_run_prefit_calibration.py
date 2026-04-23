@@ -31,6 +31,7 @@ from tfscreen.analysis.hierarchical.growth_model.scripts.run_prefit_calibration 
     _identify_field_mapping,
     _inject_calibration_priors,
     _intersect_data,
+    _make_calibration_plots,
     _resolve_csv_paths,
     main,
     run_prefit_calibration,
@@ -306,6 +307,7 @@ class TestBuildCsvUpdates:
                 "dist_class": "Normal",
                 "loc_field": "growth_k_hyper_loc",
                 "scale_field": "k_hyper_loc_scale",
+                "is_array": False,
             },
         }
         hessian_results = {
@@ -327,6 +329,7 @@ class TestBuildCsvUpdates:
                 "component": "condition_growth",
                 "dist_class": "HalfNormal",
                 "scale_field": "growth_k_hyper_scale_loc",
+                "is_array": False,
             },
         }
         hessian_results = {
@@ -350,31 +353,38 @@ class TestBuildCsvUpdates:
                 "dist_class": "Normal",
                 "loc_field": "growth_k_hyper_loc",
                 "scale_field": "k_hyper_loc_scale",
+                "is_array": False,
             },
         }
         prior_updates, guess_updates = _build_csv_updates(field_mapping, {})
         assert prior_updates == {}
         assert guess_updates == {}
 
-    def test_skips_array_map_values(self):
-        # Per-array sites would be a programming error here (the field
-        # mapping is supposed to filter them) but defend anyway.
+    def test_array_site_writes_locs_to_guesses(self):
+        """Simple-prior array sites write per-condition MAP values to guesses."""
         field_mapping = {
-            "k_offset": {
+            "condition_growth_k": {
                 "component": "condition_growth",
                 "dist_class": "Normal",
-                "loc_field": "growth_k_hyper_loc",
-                "scale_field": "k_hyper_loc_scale",
+                "loc_field": "k_loc",
+                "scale_field": "k_scale",
+                "is_array": True,
             },
         }
         hessian_results = {
-            "k_offset": {"map": np.array([1.0, 2.0, 3.0]),
-                         "sigma": np.array([0.1, 0.1, 0.1])},
+            "condition_growth_k": {
+                "map": np.array([1.0, 2.0, 3.0]),
+                "sigma": np.array([0.1, 0.2, 0.3]),
+            },
         }
         prior_updates, guess_updates = _build_csv_updates(field_mapping,
                                                           hessian_results)
+        # Array sites do NOT update priors
         assert prior_updates == {}
-        assert guess_updates == {}
+        # Guess locs get the per-condition MAP array
+        assert "condition_growth_k_locs" in guess_updates
+        assert np.allclose(guess_updates["condition_growth_k_locs"],
+                           [1.0, 2.0, 3.0])
 
 
 # ---------------------------------------------------------------------------
@@ -473,6 +483,21 @@ class TestApplyGuessesUpdates:
         ])
         _apply_guesses_updates(path, {})
         assert not os.path.exists(path + ".bak")
+
+    def test_updates_array_rows_by_flat_index(self, tmp_path):
+        path = self._write_csv(tmp_path, [
+            {"parameter": "condition_growth_k_locs", "value": 0.0, "flat_index": 0.0},
+            {"parameter": "condition_growth_k_locs", "value": 0.0, "flat_index": 1.0},
+            {"parameter": "condition_growth_k_locs", "value": 0.0, "flat_index": 2.0},
+            {"parameter": "other_param", "value": 9.9, "flat_index": float("nan")},
+        ])
+        _apply_guesses_updates(path, {"condition_growth_k_locs": np.array([1.1, 2.2, 3.3])})
+        new = pd.read_csv(path)
+        k_rows = new[new["parameter"] == "condition_growth_k_locs"].sort_values("flat_index")
+        assert k_rows["value"].tolist() == pytest.approx([1.1, 2.2, 3.3])
+        # Unrelated row preserved
+        assert new[new["parameter"] == "other_param"]["value"].iloc[0] == pytest.approx(9.9)
+        assert os.path.exists(path + ".bak")
 
     def test_treats_all_rows_scalar_when_no_flat_index_column(self, tmp_path):
         path = self._write_csv(tmp_path, [
@@ -779,6 +804,10 @@ class TestRunPrefitCalibrationOrchestration:
             ".run_prefit_calibration._identify_field_mapping",
             return_value=field_mapping or {},
         )
+        mocker.patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_prefit_calibration._make_calibration_plots",
+        )
         return mock_ri, mock_run_map
 
     def test_raises_when_seed_and_checkpoint_both_none(self, tmp_path, mocker):
@@ -824,6 +853,7 @@ class TestRunPrefitCalibrationOrchestration:
                     "dist_class": "Normal",
                     "loc_field": "growth_k_hyper_loc",
                     "scale_field": "k_hyper_loc_scale",
+                    "is_array": False,
                 },
             },
         )
@@ -956,3 +986,272 @@ class TestPrefitMainCLI:
              patch("sys.argv", ["tfs-prefit-calibration"] + argv):
             main()
         assert mock_run.call_args.kwargs["checkpoint_file"] == "/tmp/ck.pkl"
+
+
+# ---------------------------------------------------------------------------
+# _make_calibration_plots
+# ---------------------------------------------------------------------------
+
+def _build_fake_gm_cal(n_rep=1, n_t=3, n_cp=1, n_cs=1, n_tn=1, n_tc=1,
+                       n_geno=2, include_ln_cfu0=True):
+    """
+    Build a minimal MagicMock stand-in for GrowthModel that satisfies
+    every attribute access in _make_calibration_plots.
+
+    Tensor shape convention: (R, T, CP, CS, TN, TC, G).
+    """
+    shape = (n_rep, n_t, n_cp, n_cs, n_tn, n_tc, n_geno)
+
+    # growth data tensors
+    good_mask    = np.ones(shape, dtype=bool)
+    good_mask[0, 0, 0, 0, 0, 0, 0] = False   # one padded cell to exercise masking
+    t_pre_tensor = np.full(shape, 5.0)
+    t_sel_tensor = np.zeros(shape)
+    for t_i in range(n_t):
+        t_sel_tensor[:, t_i, ...] = float(t_i + 1)
+    ln_cfu_obs  = np.ones(shape) * 10.0
+    ln_cfu_std  = np.ones(shape) * 0.5
+
+    gd = MagicMock()
+    gd.good_mask  = good_mask
+    gd.t_pre      = t_pre_tensor
+    gd.t_sel      = t_sel_tensor
+    gd.ln_cfu     = ln_cfu_obs
+    gd.ln_cfu_std = ln_cfu_std
+
+    data = MagicMock()
+    data.growth     = gd
+    data.num_genotype = n_geno
+
+    # TensorManager mock
+    dim_names  = ["replicate", "condition_pre", "condition_sel",
+                  "titrant_name", "titrant_conc", "genotype"]
+    dim_labels = [
+        [f"rep{i}" for i in range(n_rep)],
+        [f"cp{i}"  for i in range(n_cp)],
+        [f"cs{i}"  for i in range(n_cs)],
+        [f"tn{i}"  for i in range(n_tn)],
+        [float(i)  for i in range(n_tc)],
+        [f"geno{i}" for i in range(n_geno)],
+    ]
+
+    # Build a realistic tm.df with all index columns needed for the merge in
+    # _write_predictions_csv, and condition_sel for cs_name_map building.
+    rows = []
+    for r_i in range(n_rep):
+        for t_i in range(n_t):
+            for cp_i in range(n_cp):
+                for cs_i in range(n_cs):
+                    for tn_i in range(n_tn):
+                        for tc_i in range(n_tc):
+                            for g_i in range(n_geno):
+                                rows.append({
+                                    "replicate_idx":     r_i,
+                                    "condition_pre_idx": cp_i,
+                                    "condition_sel_idx": cs_i,
+                                    "titrant_name_idx":  tn_i,
+                                    "titrant_conc_idx":  tc_i,
+                                    "genotype_idx":      g_i,
+                                    "t_sel":             float(t_i + 1),
+                                    "condition_sel":     f"cs{cs_i}",
+                                })
+    df = pd.DataFrame(rows)
+
+    tm = MagicMock()
+    tm.tensor_dim_names  = dim_names
+    tm.tensor_dim_labels = dim_labels
+    tm.df                = df
+
+    # MAP samples returned by Predictive
+    growth_pred_val = np.ones((1,) + shape) * 10.0  # (samples, R,T,CP,CS,TN,TC,G)
+    map_samples = {"growth_pred": growth_pred_val}
+    if include_ln_cfu0:
+        ln_cfu0_shape = (1, n_rep, n_cp, n_geno)   # (samples, R, CP, G)
+        map_samples["ln_cfu0"] = np.ones(ln_cfu0_shape) * 9.0
+
+    # Configure the full_data mock returned by get_batch.  The production code
+    # accesses full_data.growth.{map_condition_pre, map_condition_sel, t_pre}
+    # to build the fine-grid data; they must be proper numpy arrays so that
+    # np.asarray() and slicing work correctly inside _bc_t.
+    map_cond = np.zeros(shape, dtype=int)   # constant-zero indices are fine
+    full_data_gd = MagicMock()
+    full_data_gd.map_condition_pre = map_cond
+    full_data_gd.map_condition_sel = map_cond
+    full_data_gd.t_pre             = t_pre_tensor
+    full_data_gd.good_mask         = good_mask
+    # .replace() is called but its return value is only passed to pred_fn,
+    # which is fully mocked; so returning a plain MagicMock is fine.
+    full_data_mock = MagicMock()
+    full_data_mock.growth = full_data_gd
+
+    gm_cal = MagicMock()
+    gm_cal.data     = data
+    gm_cal.priors   = MagicMock()
+    gm_cal.growth_tm = tm
+    gm_cal.jax_model = MagicMock()
+    gm_cal.get_batch = MagicMock(return_value=full_data_mock)
+
+    return gm_cal, map_samples
+
+
+class TestMakeCalibrationPlots:
+    """Tests for _make_calibration_plots."""
+
+    def _patch_predictive(self, mocker, map_samples):
+        """Patch numpyro.infer.Predictive and AutoDelta inside the function.
+
+        _make_calibration_plots calls pred_fn twice:
+          1st call — checked for 'growth_pred' presence and provides ln_cfu0.
+          2nd call — fine-grid predictions; growth_pred must have T_FINE=50
+                     time points so that np.concatenate([..., t_fine_1d],
+                     [..., y_smooth_sel]) does not mis-match.
+        """
+        T_FINE = 50
+        if "growth_pred" in map_samples:
+            orig_gp = map_samples["growth_pred"]   # (1, R, n_t, CP, CS, TN, TC, G)
+            shape_fine = list(orig_gp.shape)
+            shape_fine[2] = T_FINE
+            map_samples_fine = {**map_samples,
+                                "growth_pred": np.ones(shape_fine) * 10.0}
+        else:
+            map_samples_fine = map_samples
+
+        mock_pred_instance = MagicMock(
+            side_effect=[map_samples, map_samples_fine]
+        )
+        mock_pred_cls = mocker.patch(
+            "numpyro.infer.Predictive",
+            return_value=mock_pred_instance,
+        )
+        mocker.patch("numpyro.infer.autoguide.AutoDelta")
+        mocker.patch("jax.random.PRNGKey", return_value=0)
+        mocker.patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_prefit_calibration.jnp.arange",
+            return_value=np.arange(2),
+        )
+        return mock_pred_cls
+
+    def test_creates_one_pdf_per_genotype(self, tmp_path, mocker):
+        gm_cal, map_samples = _build_fake_gm_cal(n_geno=3)
+        self._patch_predictive(mocker, map_samples)
+
+        _make_calibration_plots(gm_cal, params={}, out_root=str(tmp_path / "run"))
+
+        pdfs = sorted(tmp_path.glob("*.pdf"))
+        assert len(pdfs) == 3
+
+    def test_pdf_names_use_out_root_and_genotype(self, tmp_path, mocker):
+        gm_cal, map_samples = _build_fake_gm_cal(n_geno=2)
+        self._patch_predictive(mocker, map_samples)
+
+        _make_calibration_plots(gm_cal, params={},
+                                out_root=str(tmp_path / "myrun"))
+
+        pdf_names = {p.name for p in tmp_path.glob("*.pdf")}
+        assert "myrun_calib_geno0.pdf" in pdf_names
+        assert "myrun_calib_geno1.pdf" in pdf_names
+
+    def test_skips_genotype_with_no_valid_observations(self, tmp_path, mocker):
+        gm_cal, map_samples = _build_fake_gm_cal(n_geno=2)
+
+        # Make all observations invalid for genotype 0 only.
+        good_mask = np.asarray(gm_cal.data.growth.good_mask)
+        good_mask[..., 0] = False
+        gm_cal.data.growth.good_mask = good_mask
+
+        self._patch_predictive(mocker, map_samples)
+
+        _make_calibration_plots(gm_cal, params={},
+                                out_root=str(tmp_path / "run"))
+
+        pdfs = {p.name for p in tmp_path.glob("*.pdf")}
+        assert "run_calib_geno0.pdf" not in pdfs
+        assert "run_calib_geno1.pdf" in pdfs
+
+    def test_warns_and_returns_when_growth_pred_missing(self, tmp_path, mocker,
+                                                        capsys):
+        gm_cal, _ = _build_fake_gm_cal()
+        # Exclude growth_pred so the function should bail out early.
+        map_samples_no_pred = {"ln_cfu0": np.ones((1, 1, 1, 2)) * 9.0}
+        self._patch_predictive(mocker, map_samples_no_pred)
+
+        _make_calibration_plots(gm_cal, params={},
+                                out_root=str(tmp_path / "run"))
+
+        assert not list(tmp_path.glob("*.pdf"))
+        captured = capsys.readouterr()
+        assert "growth_pred" in captured.err
+
+    def test_handles_missing_ln_cfu0_gracefully(self, tmp_path, mocker):
+        """When ln_cfu0 is absent from map_samples, falls back to val_at_t0."""
+        gm_cal, map_samples = _build_fake_gm_cal(include_ln_cfu0=False)
+        self._patch_predictive(mocker, map_samples)
+
+        # Should not raise even without ln_cfu0.
+        _make_calibration_plots(gm_cal, params={},
+                                out_root=str(tmp_path / "run"))
+
+        assert len(list(tmp_path.glob("*.pdf"))) == 2
+
+    def test_single_time_point_does_not_crash(self, tmp_path, mocker):
+        """polyfit requires ≥2 pts; single-point case uses fallback branch."""
+        gm_cal, map_samples = _build_fake_gm_cal(n_t=1)
+        # Remove the masked cell so both genotypes have a valid observation.
+        good_mask = np.asarray(gm_cal.data.growth.good_mask)
+        good_mask[:] = True
+        gm_cal.data.growth.good_mask = good_mask
+        self._patch_predictive(mocker, map_samples)
+
+        _make_calibration_plots(gm_cal, params={},
+                                out_root=str(tmp_path / "run"))
+
+        # A PDF must still be produced for each genotype.
+        assert len(list(tmp_path.glob("*.pdf"))) == 2
+
+    def test_matplotlib_unavailable_warns_and_returns(self, tmp_path, mocker,
+                                                      capsys):
+        """If matplotlib cannot be imported, a warning is emitted and no PDF
+        is written."""
+        gm_cal, map_samples = _build_fake_gm_cal()
+        self._patch_predictive(mocker, map_samples)
+
+        # Simulate ImportError for matplotlib by making the import raise.
+        real_import = __builtins__["__import__"] if isinstance(__builtins__, dict) \
+            else __import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "matplotlib":
+                raise ImportError("no matplotlib")
+            return real_import(name, *args, **kwargs)
+
+        mocker.patch("builtins.__import__", side_effect=fake_import)
+
+        _make_calibration_plots(gm_cal, params={},
+                                out_root=str(tmp_path / "run"))
+
+        assert not list(tmp_path.glob("*.pdf"))
+        captured = capsys.readouterr()
+        assert "matplotlib" in captured.err
+
+    def test_writes_predictions_csv(self, tmp_path, mocker):
+        """A CSV named {out_root}_calib_growth_df.csv is written with a
+        ln_cfu_pred column populated for every valid observation."""
+        gm_cal, map_samples = _build_fake_gm_cal(n_geno=2, n_t=3)
+        self._patch_predictive(mocker, map_samples)
+
+        _make_calibration_plots(gm_cal, params={},
+                                out_root=str(tmp_path / "run"))
+
+        csv_path = tmp_path / "run_calib_growth_df.csv"
+        assert csv_path.exists(), "predictions CSV was not created"
+
+        result = pd.read_csv(csv_path)
+        assert "ln_cfu_pred" in result.columns
+
+        # The default fixture sets growth_pred to 10.0 everywhere; the masked
+        # cell (r=0, t=0, cp=0, cs=0, tn=0, tc=0, g=0) stays NaN because it
+        # is excluded from good_mask and therefore from pred_lookup.
+        assert result["ln_cfu_pred"].notna().any()
+        valid_preds = result["ln_cfu_pred"].dropna()
+        assert np.allclose(valid_preds.values, 10.0)

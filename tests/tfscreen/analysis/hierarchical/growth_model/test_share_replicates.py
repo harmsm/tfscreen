@@ -64,21 +64,3 @@ def test_growth_shares_replicates():
     rep2_map = df_mapped[(df_mapped["replicate"] == 2) & (df_mapped["condition_pre"] == 'pre1')]["map_condition_pre"].iloc[0]
     
     assert rep1_map == rep2_map, "Replicates did not receive the same parameter mapping index!"
-
-def test_linear_independent_fails_with_share_replicates():
-    growth_df, binding_df = get_mock_df()
-    
-    # It shouldn't crash until jax_model is evaluated in linear_independent logic
-    # Actually wait - we put the Data assertions directly inside `define_model` of linear_independent
-    model_shared = ModelClass(growth_df=growth_df, binding_df=binding_df, 
-                              condition_growth="linear_independent",
-                              growth_shares_replicates=True)
-    
-    # We need to trigger define_model to run it
-    import numpyro.handlers as handlers
-    
-    with pytest.raises(ValueError, match="linear_independent cannot be used"):
-        with handlers.seed(rng_seed=0):
-            model_shared.jax_model(data=model_shared.data, 
-                                   priors=model_shared._priors, 
-                                   control=model_shared.main_control_kwargs)

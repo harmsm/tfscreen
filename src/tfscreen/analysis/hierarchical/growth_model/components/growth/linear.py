@@ -2,15 +2,11 @@ import numpy as np
 import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
-from flax.struct import dataclass, field
-from typing import Tuple, Mapping
+from flax.struct import dataclass
+from typing import Tuple
 
 from tfscreen.analysis.hierarchical.growth_model.data_class import (
     GrowthData
-)
-from tfscreen.analysis.hierarchical.growth_model.components._pinning import (
-    _hyper,
-    _pinned_value,
 )
 
 
@@ -36,232 +32,88 @@ class ModelPriors:
 
     Attributes
     ----------
-    k_hyper_loc_loc, k_hyper_loc_scale : float
-        Mean and standard deviation of the Normal prior on the hyper-location
-        of the per-condition baseline growth rate ``k``.
-    k_hyper_scale_loc : float
-        Scale of the HalfNormal prior on the hyper-scale of ``k``.
-    m_hyper_loc_loc, m_hyper_loc_scale : float
-        Mean and standard deviation of the Normal prior on the hyper-location
-        of the per-condition occupancy slope ``m``.
-    m_hyper_scale_loc : float
-        Scale of the HalfNormal prior on the hyper-scale of ``m``.
-    pinned : dict[str, float], optional
-        Map from hyper-site *suffix* to the constant value at which that
-        site should be pinned.  Recognised suffixes are ``"k_hyper_loc"``,
-        ``"k_hyper_scale"``, ``"m_hyper_loc"``, ``"m_hyper_scale"`` (site
-        suffixes, not field names).  Any
-        suffix listed here bypasses both the model's ``pyro.sample`` and
-        the guide's variational parameters; the model registers a
-        ``pyro.deterministic`` at the pinned value.  Stored as a static
-        (non-pytree) field so branching happens at trace time.
+    k_loc : float
+        Mean of the Normal prior on the per-condition baseline growth rate k.
+    k_scale : float
+        Standard deviation of the Normal prior on k.
+    m_loc : float
+        Mean of the Normal prior on the per-condition occupancy slope m.
+    m_scale : float
+        Standard deviation of the Normal prior on m.
     """
-
-    k_hyper_loc_loc: float
-    k_hyper_loc_scale: float
-    k_hyper_scale_loc: float
-
-    m_hyper_loc_loc: float
-    m_hyper_loc_scale: float
-    m_hyper_scale_loc: float
-
-    pinned: Mapping[str, float] = field(pytree_node=False, default_factory=dict)
-
-
-# Suffixes recognised by the pinning machinery.  Anything in ``priors.pinned``
-# whose key is not in this set is silently ignored at trace time.
-_PINNABLE_SUFFIXES = ("k_hyper_loc", "k_hyper_scale",
-                      "m_hyper_loc", "m_hyper_scale")
+    k_loc: float
+    k_scale: float
+    m_loc: float
+    m_scale: float
 
 
 def define_model(name: str,
                  data: GrowthData,
                  priors: ModelPriors) -> LinearParams:
     """
-    Growth parameters k_xx and m_xx versus condition, where xx are things like
-    pheS+4CP, kanR-kan, etc. These go into the model as k + m*theta. Assigns
-    each condition/replicate a normal prior. Returns full k_pre, m_pre, k_sel
-    and m_sel tensors.
+    Growth parameters k and m per condition with simple Normal priors.
+
+    Each condition_rep gets its own k and m drawn independently from
+    Normal(k_loc, k_scale) and Normal(m_loc, m_scale).
 
     Parameters
     ----------
     name : str
-        The prefix for all Numpyro sample sites (e.g., "theta").
+        The prefix for all Numpyro sample sites.
     data : GrowthData
         A Pytree (Flax dataclass) containing experimental data and metadata.
-        This function primarily uses:
-        - ``data.num_condition_rep``
-        - ``data.num_replicate``
-        - ``data.map_condition_pre``
-        - ``data.map_condition_sel``
     priors : ModelPriors
-        A Pytree containing all hyperparameters for the model, including:
-        - ``priors.k_hyper_loc_loc``
-        - ``priors.k_hyper_loc_scale``
-        - ``priors.k_hyper_scale_loc``
-        - ``priors.m_hyper_loc_loc``
-        - ``priors.m_hyper_loc_scale``
-        - ``priors.m_hyper_scale_loc``
-        - ``priors.pinned`` (optional pinning dict; see ``ModelPriors``)
+        A Pytree containing the prior parameters.
 
     Returns
     -------
     params : LinearParams
         A dataclass containing k_pre, m_pre, k_sel, and m_sel.
     """
+    with pyro.plate(f"{name}_condition_parameters", data.num_condition_rep):
+        growth_k = pyro.sample(f"{name}_k", dist.Normal(priors.k_loc, priors.k_scale))
+        growth_m = pyro.sample(f"{name}_m", dist.Normal(priors.m_loc, priors.m_scale))
 
-    pinned = priors.pinned
-
-    growth_k_hyper_loc = _hyper(
-        name, "k_hyper_loc",
-        dist.Normal(priors.k_hyper_loc_loc,
-                    priors.k_hyper_loc_scale),
-        pinned,
-    )
-    growth_k_hyper_scale = _hyper(
-        name, "k_hyper_scale",
-        dist.HalfNormal(priors.k_hyper_scale_loc),
-        pinned,
-    )
-
-    growth_m_hyper_loc = _hyper(
-        name, "m_hyper_loc",
-        dist.Normal(priors.m_hyper_loc_loc,
-                    priors.m_hyper_loc_scale),
-        pinned,
-    )
-    growth_m_hyper_scale = _hyper(
-        name, "m_hyper_scale",
-        dist.HalfNormal(priors.m_hyper_scale_loc),
-        pinned,
-    )
-
-    # Loop over conditions and replicates
-    with pyro.plate(f"{name}_condition_parameters",data.num_condition_rep):
-        growth_k_offset = pyro.sample(f"{name}_k_offset", dist.Normal(0.0, 1.0))
-        growth_m_offset = pyro.sample(f"{name}_m_offset", dist.Normal(0.0, 1.0))
-
-    growth_k_per_condition = growth_k_hyper_loc + growth_k_offset * growth_k_hyper_scale
-    growth_m_per_condition = growth_m_hyper_loc + growth_m_offset * growth_m_hyper_scale
-
-    # Register dists
-    pyro.deterministic(f"{name}_k", growth_k_per_condition)
-    pyro.deterministic(f"{name}_m", growth_m_per_condition)
-
-    # Expand to full-sized tensors
-    k_pre = growth_k_per_condition[data.map_condition_pre]
-    m_pre = growth_m_per_condition[data.map_condition_pre]
-    k_sel = growth_k_per_condition[data.map_condition_sel]
-    m_sel = growth_m_per_condition[data.map_condition_sel]
+    k_pre = growth_k[data.map_condition_pre]
+    m_pre = growth_m[data.map_condition_pre]
+    k_sel = growth_k[data.map_condition_sel]
+    m_sel = growth_m[data.map_condition_sel]
 
     return LinearParams(k_pre=k_pre, m_pre=m_pre, k_sel=k_sel, m_sel=m_sel)
+
 
 def guide(name: str,
           data: GrowthData,
           priors: ModelPriors) -> LinearParams:
     """
-    Guide corresponding to the pooled growth model.
+    Guide for the linear growth model with simple Normal priors.
 
-    This guide defines the variational family for the growth parameters `k`
-    and `m`, assuming a single, shared pool across all conditions. It uses:
-    - Normal distributions for hyper-location means.
-    - LogNormal distributions for hyper-scales.
-    - Normal distributions for per-condition offsets.
-
-    When ``priors.pinned`` contains any of the recognised hyper-site
-    suffixes, the corresponding variational parameters and sample sites are
-    omitted entirely; the value is taken straight from the pinned constant.
+    Maintains per-condition variational parameters for k and m.
     """
+    k_locs = pyro.param(f"{name}_k_locs",
+                        jnp.full(data.num_condition_rep, priors.k_loc, dtype=float))
+    k_scales = pyro.param(f"{name}_k_scales",
+                          jnp.full(data.num_condition_rep, priors.k_scale, dtype=float),
+                          constraint=dist.constraints.positive)
+    m_locs = pyro.param(f"{name}_m_locs",
+                        jnp.full(data.num_condition_rep, priors.m_loc, dtype=float))
+    m_scales = pyro.param(f"{name}_m_scales",
+                          jnp.full(data.num_condition_rep, priors.m_scale, dtype=float),
+                          constraint=dist.constraints.positive)
 
-    pinned = priors.pinned
+    with pyro.plate(f"{name}_condition_parameters", data.num_condition_rep) as idx:
+        growth_k = pyro.sample(f"{name}_k",
+                               dist.Normal(k_locs[..., idx], k_scales[..., idx]))
+        growth_m = pyro.sample(f"{name}_m",
+                               dist.Normal(m_locs[..., idx], m_scales[..., idx]))
 
-    # k_hyper_loc -----------------------------------------------------------
-    pinned_k_hyper_loc = _pinned_value("k_hyper_loc", pinned)
-    if pinned_k_hyper_loc is not None:
-        growth_k_hyper_loc = pinned_k_hyper_loc
-    else:
-        k_loc_loc = pyro.param(f"{name}_k_hyper_loc_loc", jnp.array(priors.k_hyper_loc_loc))
-        k_loc_scale = pyro.param(f"{name}_k_hyper_loc_scale", jnp.array(priors.k_hyper_loc_scale),
-                                 constraint=dist.constraints.greater_than(1e-4))
-        growth_k_hyper_loc = pyro.sample(
-            f"{name}_k_hyper_loc",
-            dist.Normal(k_loc_loc, k_loc_scale)
-        )
-
-    # k_hyper_scale ---------------------------------------------------------
-    pinned_k_hyper_scale = _pinned_value("k_hyper_scale", pinned)
-    if pinned_k_hyper_scale is not None:
-        growth_k_hyper_scale = pinned_k_hyper_scale
-    else:
-        k_scale_loc = pyro.param(f"{name}_k_hyper_scale_loc", jnp.array(-1.0))
-        k_scale_scale = pyro.param(f"{name}_k_hyper_scale_scale",jnp.array(0.1),
-                                   constraint=dist.constraints.greater_than(1e-4))
-        growth_k_hyper_scale = pyro.sample(
-            f"{name}_k_hyper_scale",
-            dist.LogNormal(k_scale_loc, k_scale_scale)
-        )
-
-    # m_hyper_loc -----------------------------------------------------------
-    pinned_m_hyper_loc = _pinned_value("m_hyper_loc", pinned)
-    if pinned_m_hyper_loc is not None:
-        growth_m_hyper_loc = pinned_m_hyper_loc
-    else:
-        m_loc_loc = pyro.param(f"{name}_m_hyper_loc_loc", jnp.array(priors.m_hyper_loc_loc))
-        m_loc_scale = pyro.param(f"{name}_m_hyper_loc_scale", jnp.array(priors.m_hyper_loc_scale),
-                                 constraint=dist.constraints.greater_than(1e-4))
-        growth_m_hyper_loc = pyro.sample(
-            f"{name}_m_hyper_loc",
-            dist.Normal(m_loc_loc, m_loc_scale)
-        )
-
-    # m_hyper_scale ---------------------------------------------------------
-    pinned_m_hyper_scale = _pinned_value("m_hyper_scale", pinned)
-    if pinned_m_hyper_scale is not None:
-        growth_m_hyper_scale = pinned_m_hyper_scale
-    else:
-        m_scale_loc = pyro.param(f"{name}_m_hyper_scale_loc", jnp.array(-1.0))
-        m_scale_scale = pyro.param(f"{name}_m_hyper_scale_scale",jnp.array(0.1),
-                                   constraint=dist.constraints.greater_than(1e-4))
-        growth_m_hyper_scale = pyro.sample(
-            f"{name}_m_hyper_scale",
-            dist.LogNormal(m_scale_loc, m_scale_scale)
-        )
-
-    k_offset_locs = pyro.param(f"{name}_k_offset_locs",
-                               jnp.zeros(data.num_condition_rep,dtype=float))
-    k_offset_scales = pyro.param(f"{name}_k_offset_scales",
-                                 jnp.ones(data.num_condition_rep,dtype=float),
-                                 constraint=dist.constraints.positive)
-
-
-    m_offset_locs = pyro.param(f"{name}_m_offset_locs",
-                               jnp.zeros(data.num_condition_rep,dtype=float))
-    m_offset_scales = pyro.param(f"{name}_m_offset_scales",
-                                 jnp.ones(data.num_condition_rep,dtype=float),
-                                 constraint=dist.constraints.positive)
-
-
-    # Loop over conditions and replicates
-    with pyro.plate(f"{name}_condition_parameters",data.num_condition_rep) as idx:
-
-        k_batch_locs = k_offset_locs[...,idx]
-        k_batch_scales = k_offset_scales[...,idx]
-        m_batch_locs = m_offset_locs[...,idx]
-        m_batch_scales = m_offset_scales[...,idx]
-
-        growth_k_offset = pyro.sample(f"{name}_k_offset", dist.Normal(k_batch_locs,k_batch_scales))
-        growth_m_offset = pyro.sample(f"{name}_m_offset", dist.Normal(m_batch_locs,m_batch_scales))
-
-    growth_k_per_condition = growth_k_hyper_loc + growth_k_offset * growth_k_hyper_scale
-    growth_m_per_condition = growth_m_hyper_loc + growth_m_offset * growth_m_hyper_scale
-
-    # Expand to full-sized tensors
-    k_pre = growth_k_per_condition[data.map_condition_pre]
-    m_pre = growth_m_per_condition[data.map_condition_pre]
-    k_sel = growth_k_per_condition[data.map_condition_sel]
-    m_sel = growth_m_per_condition[data.map_condition_sel]
+    k_pre = growth_k[data.map_condition_pre]
+    m_pre = growth_m[data.map_condition_pre]
+    k_sel = growth_k[data.map_condition_sel]
+    m_sel = growth_m[data.map_condition_sel]
 
     return LinearParams(k_pre=k_pre, m_pre=m_pre, k_sel=k_sel, m_sel=m_sel)
+
 
 def calculate_growth(params: LinearParams,
                      dk_geno: jnp.ndarray,
@@ -288,7 +140,6 @@ def calculate_growth(params: LinearParams,
     g_sel : jnp.ndarray
         Selection growth rate tensor.
     """
-
     g_pre = params.k_pre + dk_geno + activity * params.m_pre * theta
     g_sel = params.k_sel + dk_geno + activity * params.m_sel * theta
 
@@ -299,37 +150,30 @@ def get_hyperparameters():
     """
     Get default values for the model hyperparameters.
     """
-
     parameters = {}
-    parameters["k_hyper_loc_loc"] = 0.025
-    parameters["k_hyper_loc_scale"] = 0.1
-    parameters["k_hyper_scale_loc"] = 0.1
-
-    parameters["m_hyper_loc_loc"] = 0.0
-    parameters["m_hyper_loc_scale"] = 0.05
-    parameters["m_hyper_scale_loc"] = 0.1
+    parameters["k_loc"] = 0.025
+    parameters["k_scale"] = 0.1
+    parameters["m_loc"] = 0.0
+    parameters["m_scale"] = 0.05
 
     return parameters
+
 
 def get_guesses(name, data):
     """
     Get guesses for the model parameters.
 
-    Estimates the baseline growth rate k per condition_rep from the OLS slope
-    of ln_cfu versus t_sel, averaged over replicates, titrants, and genotypes,
-    then grouped by condition_rep via map_condition_sel.  m offsets are left at
-    zero because m cannot be estimated without knowing theta.
+    Estimates the per-condition k from OLS slopes of ln_cfu versus t_sel,
+    averaged over replicates, titrants, and genotypes.  m_locs are set to
+    zero (cannot be estimated without knowing theta).
 
-    Falls back to the hard-coded defaults when ``data.ln_cfu`` or ``data.t_sel``
-    are not 7-D tensors (e.g. when called with a mock object during unrelated
-    tests).
+    Falls back to hard-coded defaults when ``data.ln_cfu`` or ``data.t_sel``
+    are not 7-D tensors.
     """
-
-    _DEFAULT_HYPER_SCALE = 0.1
     _DEFAULT_K = 0.025
+    _DEFAULT_SCALE = 0.01
 
     num_cond_rep = data.num_condition_rep
-    shape = num_cond_rep
 
     ln_cfu = np.array(data.ln_cfu)
     t_sel  = np.array(data.t_sel)
@@ -338,12 +182,10 @@ def get_guesses(name, data):
 
     if ln_cfu.ndim != 7 or t_sel.ndim != 7:
         guesses = {}
-        guesses[f"{name}_k_hyper_loc"]   = _DEFAULT_K
-        guesses[f"{name}_k_hyper_scale"] = _DEFAULT_HYPER_SCALE
-        guesses[f"{name}_m_hyper_loc"]   = 0.0
-        guesses[f"{name}_m_hyper_scale"] = 0.01
-        guesses[f"{name}_k_offset"] = jnp.zeros(shape, dtype=float)
-        guesses[f"{name}_m_offset"] = jnp.zeros(shape, dtype=float)
+        guesses[f"{name}_k_locs"] = jnp.full(num_cond_rep, _DEFAULT_K, dtype=float)
+        guesses[f"{name}_k_scales"] = jnp.full(num_cond_rep, _DEFAULT_SCALE, dtype=float)
+        guesses[f"{name}_m_locs"] = jnp.zeros(num_cond_rep, dtype=float)
+        guesses[f"{name}_m_scales"] = jnp.full(num_cond_rep, _DEFAULT_SCALE, dtype=float)
         return guesses
 
     # Mask invalid observations
@@ -351,8 +193,6 @@ def get_guesses(name, data):
     t_sel_valid  = np.where(good_mask, t_sel,  np.nan)
 
     # Move time axis (1) to last position for vectorised OLS
-    # (rep, time, cond_pre, cond_sel, tname, tconc, geno)
-    # → (rep, cond_pre, cond_sel, tname, tconc, geno, time)
     t_moved = np.moveaxis(t_sel_valid,  1, -1)
     y_moved = np.moveaxis(ln_cfu_valid, 1, -1)
 
@@ -370,15 +210,11 @@ def get_guesses(name, data):
     with np.errstate(invalid="ignore", divide="ignore"):
         slopes = np.where((n_valid >= 2) & (var_t > 1e-20),
                           cov_ty / var_t, np.nan)
-    # slopes shape: (num_rep, num_cond_pre, num_cond_sel, num_tname, num_tconc, num_geno)
 
-    # map_condition_sel may be 7D (real GrowthData) or 1D (unit-test mock).
-    # Drop the time axis from the 7D tensor to match the slopes shape.
+    # map_condition_sel may be 7D or 1D
     if map_condition_sel.ndim == 7:
-        # (rep, time, cond_pre, cond_sel, tname, tconc, geno) → drop time (axis 1)
         map_cr = map_condition_sel[:, 0, ...]
     else:
-        # 1D (num_cond_sel,): cond_sel is axis 2 of slopes; other axes will be broadcast
         map_cr = map_condition_sel
 
     # Group slopes by condition_rep and average
@@ -387,28 +223,23 @@ def get_guesses(name, data):
         if map_cr.ndim == slopes.ndim:
             cr_slopes = slopes[map_cr == cr]
         else:
-            # 1D map_cr: boolean index along cond_sel axis (axis 2)
             cr_slopes = slopes[:, :, map_cr == cr, ...]
         n_valid_cr = np.sum(~np.isnan(cr_slopes))
         if n_valid_cr > 0:
             k_per_cond_rep[cr] = np.nansum(cr_slopes) / n_valid_cr
 
-    # Fill any NaN cond_reps with the global median (or hard-coded fallback)
+    # Fill any NaN cond_reps with the global median
     valid_k  = k_per_cond_rep[~np.isnan(k_per_cond_rep)]
     global_k = float(np.nanmedian(valid_k)) if len(valid_k) > 0 else _DEFAULT_K
     k_per_cond_rep = np.where(np.isnan(k_per_cond_rep), global_k, k_per_cond_rep)
 
-    k_hyper_loc = float(np.nanmedian(k_per_cond_rep))
-    k_offsets   = (k_per_cond_rep - k_hyper_loc) / _DEFAULT_HYPER_SCALE
-
     guesses = {}
-    guesses[f"{name}_k_hyper_loc"]   = k_hyper_loc
-    guesses[f"{name}_k_hyper_scale"] = _DEFAULT_HYPER_SCALE
-    guesses[f"{name}_m_hyper_loc"]   = 0.0
-    guesses[f"{name}_m_hyper_scale"] = 0.01
-    guesses[f"{name}_k_offset"] = jnp.array(k_offsets, dtype=float)
-    guesses[f"{name}_m_offset"] = jnp.zeros(num_cond_rep, dtype=float)
+    guesses[f"{name}_k_locs"] = jnp.array(k_per_cond_rep, dtype=float)
+    guesses[f"{name}_k_scales"] = jnp.full(num_cond_rep, _DEFAULT_SCALE, dtype=float)
+    guesses[f"{name}_m_locs"] = jnp.zeros(num_cond_rep, dtype=float)
+    guesses[f"{name}_m_scales"] = jnp.full(num_cond_rep, _DEFAULT_SCALE, dtype=float)
     return guesses
+
 
 def get_priors():
     return ModelPriors(**get_hyperparameters())

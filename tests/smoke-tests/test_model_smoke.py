@@ -26,7 +26,7 @@ SMOKE_CONFIGS = [
     },
     # test other condition growth and transformation
     {
-        "condition_growth":"linear_independent",
+        "condition_growth":"linear",
         "transformation":"logit_norm",
         "theta":"categorical",
         "growth_transition":"memory",

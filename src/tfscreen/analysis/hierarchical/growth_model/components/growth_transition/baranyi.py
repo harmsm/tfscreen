@@ -1,42 +1,33 @@
 import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
-from flax.struct import dataclass, field
+from flax.struct import dataclass
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
-from tfscreen.analysis.hierarchical.growth_model.components._pinning import (
-    _hyper,
-    _pinned_value,
-)
-from typing import Dict, Any, Mapping
-
-
-# Hyperparameter suffixes that may be pinned via ModelPriors.pinned.
-_PINNABLE_SUFFIXES = (
-    "tau_lag_hyper_loc", "tau_lag_hyper_scale",
-    "k_sharp_hyper_loc", "k_sharp_hyper_scale",
-)
+from tfscreen.analysis.hierarchical.growth_model.components.growth_transition._baranyi import compute_growth
+from typing import Dict, Any
 
 
 @dataclass(frozen=True)
 class ModelPriors:
     """
-    JAX Pytree holding hyperparameters for the Baranyi growth transition model.
+    JAX Pytree holding prior parameters for the Baranyi growth transition model.
+
+    Attributes
+    ----------
+    tau_lag_loc, tau_lag_scale : float
+        Normal prior parameters for per-condition lag time tau_lag.
+    k_sharp_loc, k_sharp_scale : float
+        Normal prior parameters for log(k_sharp). The sharpness parameter
+        k_sharp = exp(Normal(k_sharp_loc, k_sharp_scale)), enforcing k_sharp > 0.
     """
-    tau_lag_hyper_loc_loc: float
-    tau_lag_hyper_loc_scale: float
-    tau_lag_hyper_scale_loc: float
-
-    k_sharp_hyper_loc_loc: float
-    k_sharp_hyper_loc_scale: float
-    k_sharp_hyper_scale_loc: float
-
-    pinned: Mapping[str, float] = field(
-        pytree_node=False, default_factory=dict
-    )
+    tau_lag_loc: float
+    tau_lag_scale: float
+    k_sharp_loc: float
+    k_sharp_scale: float
 
 
-def define_model(name: str, 
-                 data: GrowthData, 
+def define_model(name: str,
+                 data: GrowthData,
                  priors: ModelPriors,
                  g_pre: jnp.ndarray,
                  g_sel: jnp.ndarray,
@@ -47,10 +38,14 @@ def define_model(name: str,
     Combines the pre-selection and selection growth phases with a Baranyi-style
     transition using an integrated sigmoid.
 
-    integrated_sigmoid = (logaddexp(0, k_sharp*(t_sel - tau_lag)) - 
-                          logaddexp(0, -k_sharp*tau_lag)) / k_sharp
-    
-    dln_cfu_sel = g_pre*t_sel + (g_sel - g_pre)*integrated_sigmoid
+    The instantaneous rate during selection is:
+        r(t) = g_pre + (g_sel - g_pre) · expit(k_sharp · (t - tau_lag))
+
+    Integrated from 0 to t_sel:
+        integrated_sigmoid = (logaddexp(0, k_sharp·(t_sel - tau_lag))
+                              - logaddexp(0, -k_sharp·tau_lag)) / k_sharp
+
+        dln_cfu_sel = g_pre·t_sel + (g_sel - g_pre) · integrated_sigmoid
 
     Parameters
     ----------
@@ -59,7 +54,7 @@ def define_model(name: str,
     data : GrowthData
         A Pytree (Flax dataclass) containing experimental data and metadata.
     priors : ModelPriors
-        A Pytree (Flax dataclass) containing the hyperparameters for the priors.
+        A Pytree (Flax dataclass) containing the prior parameters.
     g_pre : jnp.ndarray
         Pre-selection growth rate tensor.
     g_sel : jnp.ndarray
@@ -76,63 +71,23 @@ def define_model(name: str,
     total_growth : jnp.ndarray
         The total growth over both phases.
     """
-
-    pinned = priors.pinned
-
-    # Hierarchical tau_lag
-    tau_lag_hyper_loc = _hyper(
-        name, "tau_lag_hyper_loc",
-        dist.Normal(priors.tau_lag_hyper_loc_loc, priors.tau_lag_hyper_loc_scale),
-        pinned,
-    )
-    tau_lag_hyper_scale = _hyper(
-        name, "tau_lag_hyper_scale",
-        dist.HalfNormal(priors.tau_lag_hyper_scale_loc),
-        pinned,
-    )
-
-    # Hierarchical k_sharp
-    k_sharp_hyper_loc = _hyper(
-        name, "k_sharp_hyper_loc",
-        dist.Normal(priors.k_sharp_hyper_loc_loc, priors.k_sharp_hyper_loc_scale),
-        pinned,
-    )
-    k_sharp_hyper_scale = _hyper(
-        name, "k_sharp_hyper_scale",
-        dist.HalfNormal(priors.k_sharp_hyper_scale_loc),
-        pinned,
-    )
-
-    # Plate over conditions
     with pyro.plate(f"{name}_condition_parameters", data.num_condition_rep):
-        tau_lag_offset = pyro.sample(f"{name}_tau_lag_offset", dist.Normal(0.0, 1.0))
-        k_sharp_offset = pyro.sample(f"{name}_k_sharp_offset", dist.Normal(0.0, 1.0))
+        tau_lag_per_condition = pyro.sample(
+            f"{name}_tau_lag", dist.Normal(priors.tau_lag_loc, priors.tau_lag_scale)
+        )
+        ln_k_sharp = pyro.sample(
+            f"{name}_k_sharp", dist.Normal(priors.k_sharp_loc, priors.k_sharp_scale)
+        )
+    k_sharp_per_condition = jnp.exp(ln_k_sharp)
 
-    tau_lag_per_condition = tau_lag_hyper_loc + tau_lag_offset * tau_lag_hyper_scale
-    k_sharp_per_condition = jnp.exp(k_sharp_hyper_loc + k_sharp_offset * k_sharp_hyper_scale)
-
-    # Register deterministic sites
-    pyro.deterministic(f"{name}_tau_lag", tau_lag_per_condition)
-    pyro.deterministic(f"{name}_k_sharp", k_sharp_per_condition)
-
-    # Expand to match g_pre shape
     tau_lag = tau_lag_per_condition[data.map_condition_pre]
     k_sharp = k_sharp_per_condition[data.map_condition_pre]
 
-    # Calculate transition components
-    term1 = jnp.logaddexp(0.0, k_sharp * (t_sel - tau_lag))
-    term0 = jnp.logaddexp(0.0, -k_sharp * tau_lag)
-    integrated_sigmoid = (term1 - term0) / k_sharp
-
-    # dln_cfu_sel = g_pre*t_sel + (g_sel - g_pre)*integrated_sigmoid
-    dln_cfu_pre = g_pre * t_pre
-    dln_cfu_sel = g_pre * t_sel + (g_sel - g_pre) * integrated_sigmoid
-
-    return dln_cfu_pre + dln_cfu_sel
+    return compute_growth(g_pre, g_sel, t_pre, t_sel, tau_lag, k_sharp)
 
 
-def guide(name: str, 
-          data: GrowthData, 
+def guide(name: str,
+          data: GrowthData,
           priors: ModelPriors,
           g_pre: jnp.ndarray,
           g_sel: jnp.ndarray,
@@ -140,73 +95,34 @@ def guide(name: str,
           t_sel: jnp.ndarray,
           theta: jnp.ndarray = None) -> jnp.ndarray:
     """
-    Guide corresponding to the Baranyi growth transition model.
+    Guide for the Baranyi growth transition model with simple Normal priors.
     """
-
-    pinned = priors.pinned
-
-    def _guide_hyper_loc(prefix, default_loc, default_scale):
-        suffix = f"{prefix}_hyper_loc"
-        pinned_v = _pinned_value(suffix, pinned)
-        if pinned_v is not None:
-            return pinned_v
-        loc_loc = pyro.param(f"{name}_{suffix}_loc", jnp.array(default_loc))
-        loc_scale = pyro.param(
-            f"{name}_{suffix}_scale", jnp.array(default_scale),
-            constraint=dist.constraints.greater_than(1e-4),
-        )
-        return pyro.sample(f"{name}_{suffix}", dist.Normal(loc_loc, loc_scale))
-
-    def _guide_hyper_scale(prefix):
-        suffix = f"{prefix}_hyper_scale"
-        pinned_v = _pinned_value(suffix, pinned)
-        if pinned_v is not None:
-            return pinned_v
-        scale_loc = pyro.param(f"{name}_{suffix}_loc", jnp.array(-1.0))
-        scale_scale = pyro.param(
-            f"{name}_{suffix}_scale", jnp.array(0.1),
-            constraint=dist.constraints.greater_than(1e-4),
-        )
-        return pyro.sample(
-            f"{name}_{suffix}", dist.LogNormal(scale_loc, scale_scale)
-        )
-
-    tau_lag_hyper_loc = _guide_hyper_loc(
-        "tau_lag", priors.tau_lag_hyper_loc_loc, priors.tau_lag_hyper_loc_scale
-    )
-    tau_lag_hyper_scale = _guide_hyper_scale("tau_lag")
-    k_sharp_hyper_loc = _guide_hyper_loc(
-        "k_sharp", priors.k_sharp_hyper_loc_loc, priors.k_sharp_hyper_loc_scale
-    )
-    k_sharp_hyper_scale = _guide_hyper_scale("k_sharp")
-
-    # Offsets
-    tau_lag_offset_locs = pyro.param(f"{name}_tau_lag_offset_locs", jnp.zeros(data.num_condition_rep))
-    tau_lag_offset_scales = pyro.param(f"{name}_tau_lag_offset_scales", jnp.ones(data.num_condition_rep),
-                                    constraint=dist.constraints.positive)
-    
-    k_sharp_offset_locs = pyro.param(f"{name}_k_sharp_offset_locs", jnp.zeros(data.num_condition_rep))
-    k_sharp_offset_scales = pyro.param(f"{name}_k_sharp_offset_scales", jnp.ones(data.num_condition_rep),
-                                   constraint=dist.constraints.positive)
+    tau_lag_locs = pyro.param(f"{name}_tau_lag_locs",
+                              jnp.full(data.num_condition_rep, priors.tau_lag_loc))
+    tau_lag_scales = pyro.param(f"{name}_tau_lag_scales",
+                                jnp.full(data.num_condition_rep, priors.tau_lag_scale),
+                                constraint=dist.constraints.positive)
+    k_sharp_locs = pyro.param(f"{name}_k_sharp_locs",
+                              jnp.full(data.num_condition_rep, priors.k_sharp_loc))
+    k_sharp_scales = pyro.param(f"{name}_k_sharp_scales",
+                                jnp.full(data.num_condition_rep, priors.k_sharp_scale),
+                                constraint=dist.constraints.positive)
 
     with pyro.plate(f"{name}_condition_parameters", data.num_condition_rep) as idx:
-        tau_lag_offset = pyro.sample(f"{name}_tau_lag_offset", dist.Normal(tau_lag_offset_locs[idx], tau_lag_offset_scales[idx]))
-        k_sharp_offset = pyro.sample(f"{name}_k_sharp_offset", dist.Normal(k_sharp_offset_locs[idx], k_sharp_offset_scales[idx]))
-
-    tau_lag_per_condition = tau_lag_hyper_loc + tau_lag_offset * tau_lag_hyper_scale
-    k_sharp_per_condition = jnp.exp(k_sharp_hyper_loc + k_sharp_offset * k_sharp_hyper_scale)
+        tau_lag_per_condition = pyro.sample(
+            f"{name}_tau_lag",
+            dist.Normal(tau_lag_locs[..., idx], tau_lag_scales[..., idx])
+        )
+        ln_k_sharp = pyro.sample(
+            f"{name}_k_sharp",
+            dist.Normal(k_sharp_locs[..., idx], k_sharp_scales[..., idx])
+        )
+    k_sharp_per_condition = jnp.exp(ln_k_sharp)
 
     tau_lag = tau_lag_per_condition[data.map_condition_pre]
     k_sharp = k_sharp_per_condition[data.map_condition_pre]
 
-    term1 = jnp.logaddexp(0.0, k_sharp * (t_sel - tau_lag))
-    term0 = jnp.logaddexp(0.0, -k_sharp * tau_lag)
-    integrated_sigmoid = (term1 - term0) / k_sharp
-
-    dln_cfu_pre = g_pre * t_pre
-    dln_cfu_sel = g_pre * t_sel + (g_sel - g_pre) * integrated_sigmoid
-
-    return dln_cfu_pre + dln_cfu_sel
+    return compute_growth(g_pre, g_sel, t_pre, t_sel, tau_lag, k_sharp)
 
 
 def get_hyperparameters() -> Dict[str, Any]:
@@ -214,29 +130,27 @@ def get_hyperparameters() -> Dict[str, Any]:
     Get default values for the model hyperparameters.
     """
     return {
-        "tau_lag_hyper_loc_loc": 1.0,
-        "tau_lag_hyper_loc_scale": 0.5,
-        "tau_lag_hyper_scale_loc": 0.5,
-
-        # k_sharp is modeled in log-space: exp(1.0) approx 2.7
-        "k_sharp_hyper_loc_loc": 1.0,
-        "k_sharp_hyper_loc_scale": 1.0,
-        "k_sharp_hyper_scale_loc": 1.0,
+        "tau_lag_loc": 100.0, # 100 minutes
+        "tau_lag_scale": 100,
+        "k_sharp_loc": 1.0,    
+        "k_sharp_scale": 1.0,
     }
+
 
 def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
     """
     Get guess values for the model's latent parameters.
     """
-    guesses = {
-        f"{name}_tau_lag_hyper_loc": 1.0,
-        f"{name}_tau_lag_hyper_scale": 0.1,
-        f"{name}_k_sharp_hyper_loc": 1.0,
-        f"{name}_k_sharp_hyper_scale": 0.1,
-        f"{name}_tau_lag_offset": jnp.zeros(data.num_condition_rep),
-        f"{name}_k_sharp_offset": jnp.zeros(data.num_condition_rep),
+    num_cond_rep = data.num_condition_rep
+    _DEFAULT_SCALE = 1.0
+
+    return {
+        f"{name}_tau_lag_locs": jnp.full(num_cond_rep, 100.0),
+        f"{name}_tau_lag_scales": jnp.full(num_cond_rep, 100),
+        f"{name}_k_sharp_locs": jnp.full(num_cond_rep, 1.0),
+        f"{name}_k_sharp_scales": jnp.full(num_cond_rep, _DEFAULT_SCALE),
     }
-    return guesses
+
 
 def get_priors() -> ModelPriors:
     """
