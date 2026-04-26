@@ -21,7 +21,8 @@ def configure_growth_analysis(growth_df=None,
                               theta_binding_noise_model="zero",
                               spiked=None,
                               growth_shares_replicates=False,
-                              epistasis=False):
+                              epistasis=False,
+                              ligandmpnn_features_path=None):
     """
     Construct the analysis configuration step. This creates a tfs_config.yaml file
     along with tfs_priors.csv and tfs_guesses.csv (if any array parameters exist).
@@ -79,6 +80,11 @@ def configure_growth_analysis(growth_df=None,
         True, each pair of mutations present in the same genotype gets an
         independent epistasis term. When False (default), effects are purely
         additive at the mutation level.
+    ligandmpnn_features_path : str, optional
+        Path to an NPZ file containing a ``logP`` array of shape (4, L, 20)
+        produced by running LigandMPNN in score mode on the four thermodynamic-
+        state structures (H, HD, L, LE2). Required when
+        ``theta_model='lac_dimer_nn_mut'``; ignored otherwise.
 
     Returns
     -------
@@ -101,7 +107,8 @@ def configure_growth_analysis(growth_df=None,
                      theta_binding_noise=theta_binding_noise_model,
                      spiked_genotypes=spiked,
                      growth_shares_replicates=growth_shares_replicates,
-                     epistasis=epistasis)
+                     epistasis=epistasis,
+                     ligandmpnn_features_path=ligandmpnn_features_path)
 
     # Write the model configuration to a file. This includes the model component
     # names, the data file paths, and the parameter guesses/priors.
@@ -114,7 +121,8 @@ def main():
     return generalized_main(configure_growth_analysis,
                             manual_arg_types={"growth_df":str,
                                               "binding_df":str,
-                                              "spiked":list},
+                                              "spiked":list,
+                                              "ligandmpnn_features_path":str},
                             manual_arg_nargs={"spiked":"+"})
 
 if __name__ == "__main__":

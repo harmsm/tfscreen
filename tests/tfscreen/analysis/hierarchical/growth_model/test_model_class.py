@@ -318,7 +318,8 @@ def test_model_class_properties(initialized_model_class):
     model._theta_binding_noise = "bn"
     model._spiked_genotypes = ["s"]
     model._growth_shares_replicates = False
-    
+    model._ligandmpnn_features_path = None
+
     assert ModelClass.jax_model.fget(model) == "jm"
     assert ModelClass.jax_model_guide.fget(model) == "jmg"
     assert ModelClass.data.fget(model) == "d"

@@ -26,6 +26,7 @@ from .components.theta import hill as theta_hill
 from .components.theta import hill_mut as theta_hill_mut
 from .components.theta import lac_dimer_mut as theta_lac_dimer_mut
 from .components.theta.lac_dimer import lnK_mut as theta_lac_dimer_lnK_mut
+from .components.theta.lac_dimer import nn_mut as theta_lac_dimer_nn_mut
 from .components.theta import simple as theta_simple
 from .components.transformation import empirical as transformation_empirical
 from .components.transformation import logit_norm as transformation_logit_norm
@@ -69,6 +70,7 @@ model_registry = {
         "hill_mut":theta_hill_mut,
         "lac_dimer_mut":theta_lac_dimer_mut,
         "lac_dimer_lnK_mut":theta_lac_dimer_lnK_mut,
+        "lac_dimer_nn_mut":theta_lac_dimer_nn_mut,
         "simple":theta_simple,
     },
     "theta_growth_noise":{

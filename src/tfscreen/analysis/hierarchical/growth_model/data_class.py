@@ -77,6 +77,12 @@ class GrowthData:
     mut_geno_matrix: Any = field(pytree_node=False, default=None)
     pair_geno_matrix: Any = field(pytree_node=False, default=None)
 
+    # Optional per-mutation ΔlogP features from LigandMPNN (set when using
+    # lac_dimer_nn_mut theta component).  Shape: (num_mutation, 4), where the
+    # 4 columns correspond to the four thermodynamic-state structures
+    # (H, HD, L, LE2).  Stored as pytree_node=False (static).
+    ligandmpnn_features: Any = field(pytree_node=False, default=None)
+
 @dataclass(frozen=True)
 class BindingData:
 

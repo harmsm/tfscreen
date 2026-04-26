@@ -41,6 +41,7 @@ FLOAT_DTYPE = jnp.float64 if jax.config.read("jax_enable_x64") else jnp.float32
 ZERO_CONC_VALUE = 1e-20
 
 
+
 def _read_growth_df(growth_df,
                     theta_group_cols=None,
                     treatment_cols=None):
@@ -446,7 +447,8 @@ class ModelClass:
                  theta_binding_noise="zero",
                  spiked_genotypes=None,
                  growth_shares_replicates=False,
-                 epistasis=False):
+                 epistasis=False,
+                 ligandmpnn_features_path=None):
 
         self._ln_cfu_df = growth_df
         self._binding_df = binding_df
@@ -465,6 +467,7 @@ class ModelClass:
         self._spiked_genotypes = spiked_genotypes
         self._growth_shares_replicates = growth_shares_replicates
         self._epistasis = epistasis
+        self._ligandmpnn_features_path = ligandmpnn_features_path
 
         self._initialize_data()
         self._initialize_classes()
@@ -590,7 +593,8 @@ class ModelClass:
         # Build mutation-to-genotype indicator matrices when any hierarchical_mut
         # component is selected.  Stored as static (pytree_node=False) fields
         # on GrowthData; downstream components convert to jnp arrays as needed.
-        _needs_mut = (self._theta in ("hill_mut", "lac_dimer_mut", "lac_dimer_lnK_mut") or
+        _needs_mut = (self._theta in ("hill_mut", "lac_dimer_mut",
+                                       "lac_dimer_lnK_mut", "lac_dimer_nn_mut") or
                       self._activity == "hierarchical_mut" or
                       self._dk_geno == "hierarchical_mut")
         if _needs_mut:
@@ -611,6 +615,20 @@ class ModelClass:
                 "mut_geno_matrix":  mut_geno_matrix,
                 "pair_geno_matrix": pair_geno_matrix,
             })
+
+        # Build LigandMPNN per-mutation features for any theta component that
+        # defines build_ligandmpnn_features (e.g. lac_dimer_nn_mut).
+        # The component owns its NPZ layout and STRUCTURE_KEYS ordering.
+        _theta_mod = model_registry.get("theta", {}).get(self._theta)
+        _builder = getattr(_theta_mod, 'build_ligandmpnn_features', None)
+        if inspect.isfunction(_builder):
+            if self._ligandmpnn_features_path is None:
+                raise ValueError(
+                    f"theta='{self._theta}' requires ligandmpnn_features_path "
+                    f"(path to NPZ from generate_ligandmpnn_features.py)")
+            ligandmpnn_features = _builder(
+                self._ligandmpnn_features_path, mut_labels)
+            growth_data_sources.append({"ligandmpnn_features": ligandmpnn_features})
         
         # ---------------------------------------------------------------------
         # binding dataclass
@@ -962,5 +980,6 @@ class ModelClass:
             "theta_growth_noise":self._theta_growth_noise,
             "theta_binding_noise":self._theta_binding_noise,
             "spiked_genotypes":self._spiked_genotypes,
-            "growth_shares_replicates": self._growth_shares_replicates
+            "growth_shares_replicates": self._growth_shares_replicates,
+            "ligandmpnn_features_path": self._ligandmpnn_features_path,
         }
