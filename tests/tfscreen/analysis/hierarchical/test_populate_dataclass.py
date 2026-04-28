@@ -4,7 +4,7 @@ import numpy as np
 from flax.struct import dataclass
 
 # Assuming the function is in this module
-from tfscreen.analysis.hierarchical import populate_dataclass
+from tfscreen.analysis.hierarchical.populate_dataclass import populate_dataclass
 
 # --- Setup: Define a target dataclass for testing ---
 

@@ -4,10 +4,8 @@ from tfscreen.__version__ import __version__
 import yaml
 
 from tfscreen.util.dataframe import add_group_columns
-from tfscreen.analysis.hierarchical import (
-    TensorManager,
-    populate_dataclass
-)
+from tfscreen.analysis.hierarchical.tensor_manager import TensorManager
+from tfscreen.analysis.hierarchical.populate_dataclass import populate_dataclass
 
 from tfscreen.analysis.hierarchical.growth_model.model import jax_model
 from tfscreen.analysis.hierarchical.growth_model.registry import model_registry

@@ -11,6 +11,7 @@ tfscreen
    simulation
    process-raw
    analysis
+   ligandmpnn-features
 
 Simulation
 ----------

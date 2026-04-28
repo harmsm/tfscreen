@@ -300,7 +300,7 @@ class LibraryManager:
         if isinstance(run_config["library_combos"],str) or not hasattr(run_config["library_combos"],"__iter__"):
             raise ValueError(
                 f"library_combos should be a list of strings of library combinations. "
-                f"library_combos '{run_config["library_combos"]}' is not valid."
+                f"library_combos '{run_config['library_combos']}' is not valid."
             )
         self.library_combos = []
         for lib_key in run_config["library_combos"]:

@@ -28,7 +28,7 @@ dependencies = [
   "pybktree",
   "pyfastx",
   "optax",
-  "numpyro",
+  "numpyro>=0.19.0",
   "dill",
   "flax",
   "jax",

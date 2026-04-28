@@ -17,6 +17,7 @@ from tfscreen.analysis.hierarchical.growth_model.model_class import (
     _setup_batching,
     get_batch
 )
+from tfscreen.analysis.hierarchical.tensor_manager import TensorManager
 from tfscreen.analysis.hierarchical.growth_model.extraction import (
     _extract_param_est,
     extract_parameters,
@@ -48,7 +49,7 @@ def dummy_growth_df():
 
 def test_build_growth_tm(dummy_growth_df):
     res = _build_growth_tm(dummy_growth_df.copy())
-    assert isinstance(res, tfscreen.analysis.hierarchical.TensorManager)
+    assert isinstance(res, TensorManager)
     assert "ln_cfu" in res.tensors
 
 # ----------------------------------------------------------------------------
@@ -64,7 +65,7 @@ def test_build_binding_tm():
         "theta_std": [0.1]
     })
     res = _build_binding_tm(df)
-    assert isinstance(res, tfscreen.analysis.hierarchical.TensorManager)
+    assert isinstance(res, TensorManager)
     assert "theta_obs" in res.tensors
 
 # ----------------------------------------------------------------------------
