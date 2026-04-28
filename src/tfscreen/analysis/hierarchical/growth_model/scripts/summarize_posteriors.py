@@ -3,11 +3,11 @@ import numpy as np
 import h5py
 import os
 import yaml
-from tfscreen.analysis.hierarchical.growth_model import (
-    GrowthModel,
+from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass as GrowthModel
+from tfscreen.analysis.hierarchical.growth_model.extraction import (
     extract_parameters,
     extract_growth_predictions,
-    extract_theta_curves
+    extract_theta_curves,
 )
 from tfscreen.analysis.hierarchical.growth_model.configuration_io import read_configuration
 from tfscreen.util.cli.generalized_main import generalized_main

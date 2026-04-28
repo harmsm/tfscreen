@@ -1,7 +1,7 @@
 import pytest
 import os
 import h5py
-from tfscreen.analysis.hierarchical.growth_model import GrowthModel as ModelClass
+from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass
 from tfscreen.analysis.hierarchical.growth_model.configuration_io import write_configuration
 from tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis import run_growth_analysis
 

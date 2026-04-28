@@ -3,7 +3,7 @@ import yaml
 import pandas as pd
 import numpy as np
 import tfscreen
-from tfscreen.analysis.hierarchical.growth_model import GrowthModel
+from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass as GrowthModel
 from tfscreen.analysis.hierarchical.growth_model.configuration_io import write_configuration
 from tfscreen.util.cli.generalized_main import generalized_main
 

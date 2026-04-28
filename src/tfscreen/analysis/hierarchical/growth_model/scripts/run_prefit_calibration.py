@@ -58,7 +58,7 @@ from numpyro.handlers import seed, trace
 import tfscreen
 from tfscreen.util.cli.generalized_main import generalized_main
 from tfscreen.analysis.hierarchical.run_inference import RunInference
-from tfscreen.analysis.hierarchical.growth_model import GrowthModel
+from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass as GrowthModel
 from tfscreen.analysis.hierarchical.growth_model.configuration_io import (
     read_configuration,
 )

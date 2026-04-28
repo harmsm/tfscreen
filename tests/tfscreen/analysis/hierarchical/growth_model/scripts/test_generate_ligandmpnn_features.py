@@ -5,10 +5,39 @@ _parse_resnum, _score_structure, and main() are tested with subprocess and
 torch mocked throughout — no GPU or LigandMPNN installation is required.
 """
 import os
+import subprocess
 import sys
 import numpy as np
 import pytest
 from unittest.mock import MagicMock, patch, call
+
+
+# ---------------------------------------------------------------------------
+# Import-isolation regression test
+# ---------------------------------------------------------------------------
+
+def test_no_jax_or_numpyro_imported():
+    """
+    Importing generate_ligandmpnn_features must not pull in jax or numpyro. This
+    is because (as of right now) LigandMPNN uses a python 3.11 environment that
+    is incompatible with the jax version we rely on; version hell. 
+
+    This guards against regressions where an eager import in a parent
+    __init__.py re-introduces the dependency chain that broke the LigandMPNN
+    environment (which has no JAX).  The check runs in a subprocess so that
+    jax/numpyro already loaded in the test process do not mask the problem.
+    """
+    code = (
+        "import sys; "
+        "import tfscreen.analysis.hierarchical.growth_model.scripts.generate_ligandmpnn_features; "
+        "bad = [m for m in sys.modules if m == 'jax' or m == 'numpyro']; "
+        "sys.exit(1) if bad else sys.exit(0)"
+    )
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert result.returncode == 0, (
+        "Importing generate_ligandmpnn_features pulled in jax or numpyro.\n"
+        f"stderr: {result.stderr}"
+    )
 
 from tfscreen.analysis.hierarchical.growth_model.scripts.generate_ligandmpnn_features import (
     _parse_resnum,

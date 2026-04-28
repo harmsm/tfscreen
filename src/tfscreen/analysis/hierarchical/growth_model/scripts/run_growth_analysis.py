@@ -5,7 +5,7 @@ import dill
 
 import optax
 
-from tfscreen.analysis.hierarchical.growth_model import GrowthModel
+from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass as GrowthModel
 from tfscreen.analysis.hierarchical.run_inference import RunInference
 from .summarize_posteriors import summarize_posteriors
 from tfscreen.util.cli.generalized_main import generalized_main
