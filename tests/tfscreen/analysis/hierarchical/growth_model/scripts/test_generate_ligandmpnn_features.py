@@ -1,16 +1,27 @@
 """
-Unit tests for generate_ligandmpnn_features.py
+Unit tests for generate_ligandmpnn_features.py  (scripts/generate_ligandmpnn_features.py)
 
 _parse_resnum, _score_structure, and main() are tested with subprocess and
 torch mocked throughout — no GPU or LigandMPNN installation is required.
 """
 import os
+import pathlib
 import subprocess
 import sys
 import numpy as np
 import pytest
 from unittest.mock import MagicMock, patch, call
 
+# The script lives at the repo root scripts/ directory, not inside the package.
+_SCRIPTS_DIR = pathlib.Path(__file__).parents[6] / "scripts"
+sys.path.insert(0, str(_SCRIPTS_DIR))
+
+from generate_ligandmpnn_features import (  # noqa: E402
+    _parse_resnum,
+    _score_structure,
+    _ALPHABET_20,
+    main,
+)
 
 # ---------------------------------------------------------------------------
 # Import-isolation regression test
@@ -18,18 +29,16 @@ from unittest.mock import MagicMock, patch, call
 
 def test_no_jax_or_numpyro_imported():
     """
-    Importing generate_ligandmpnn_features must not pull in jax or numpyro. This
-    is because (as of right now) LigandMPNN uses a python 3.11 environment that
-    is incompatible with the jax version we rely on; version hell. 
+    Importing generate_ligandmpnn_features must not pull in jax or numpyro.
 
-    This guards against regressions where an eager import in a parent
-    __init__.py re-introduces the dependency chain that broke the LigandMPNN
-    environment (which has no JAX).  The check runs in a subprocess so that
-    jax/numpyro already loaded in the test process do not mask the problem.
+    The script is intentionally standalone so it can run inside the LigandMPNN
+    conda environment, which is incompatible with tfscreen's JAX/NumPyro stack.
+    The check runs in a subprocess so that jax/numpyro already loaded in the
+    test process do not mask the problem.
     """
     code = (
-        "import sys; "
-        "import tfscreen.analysis.hierarchical.growth_model.scripts.generate_ligandmpnn_features; "
+        f"import sys; sys.path.insert(0, r'{_SCRIPTS_DIR}'); "
+        "import generate_ligandmpnn_features; "
         "bad = [m for m in sys.modules if m == 'jax' or m == 'numpyro']; "
         "sys.exit(1) if bad else sys.exit(0)"
     )
@@ -39,18 +48,11 @@ def test_no_jax_or_numpyro_imported():
         f"stderr: {result.stderr}"
     )
 
-from tfscreen.analysis.hierarchical.growth_model.scripts.generate_ligandmpnn_features import (
-    _parse_resnum,
-    _score_structure,
-    _ALPHABET_20,
-    main,
-)
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-_MOD = "tfscreen.analysis.hierarchical.growth_model.scripts.generate_ligandmpnn_features"
+_MOD = "generate_ligandmpnn_features"
 
 def _make_fake_torch_output(res_names, probs_by_res):
     """

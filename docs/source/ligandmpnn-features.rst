@@ -10,12 +10,13 @@ stored in an NPZ file that is read at analysis time.
 
 .. warning::
 
-   The ``tfs-generate-ligandmpnn-features`` command is the **only** part of
-   tfscreen that is guaranteed to work inside the LigandMPNN conda environment.
-   LigandMPNN pins specific versions of PyTorch and NumPy that are incompatible
-   with the JAX/NumPyro stack that the rest of tfscreen requires.  Do not
-   attempt to run the hierarchical model or any other tfscreen analysis
-   commands from the LigandMPNN environment.
+   The LigandMPNN conda environment is **incompatible** with the main tfscreen
+   environment.  LigandMPNN pins NumPy 1.23.5 and PyTorch, which conflict with
+   the JAX/NumPyro stack that the rest of tfscreen requires.  The feature
+   generator script is intentionally standalone (no tfscreen installation
+   needed) so it can run in the LigandMPNN environment without conflict.  Do
+   not attempt to run any other tfscreen commands from the LigandMPNN
+   environment.
 
 Overview
 --------
@@ -36,14 +37,16 @@ Installation
 Follow the `LigandMPNN installation instructions
 <https://github.com/dauparas/LigandMPNN>`_ to create a dedicated conda
 environment (LigandMPNN requires Python 3.11 and specific PyTorch pinning).
-Then install tfscreen **inside that same environment**::
+**Do not install tfscreen** in that environment — the two packages have
+incompatible NumPy and JAX dependencies.
+
+The feature generator is a standalone script that requires only ``numpy`` and
+``PyYAML``, both of which are already available in any environment that can
+run LigandMPNN.  Copy or clone the tfscreen repository and run the script
+directly::
 
     conda activate ligandmpnn_env
-    pip install tfscreen
-
-This makes ``tfs-generate-ligandmpnn-features`` available on your PATH inside
-the LigandMPNN environment.  Only that command is supported there; the rest of
-the tfscreen CLI requires the normal tfscreen environment.
+    python /path/to/tfscreen/scripts/generate_ligandmpnn_features.py ...
 
 Preparing Inputs
 ----------------
@@ -82,7 +85,7 @@ Running the Feature Generator
 
 Activate the LigandMPNN environment, then run::
 
-    tfs-generate-ligandmpnn-features structures.yaml \
+    python /path/to/tfscreen/scripts/generate_ligandmpnn_features.py structures.yaml \
         --out features.npz \
         --ligandmpnn_dir /path/to/LigandMPNN \
         [--model_type ligand_mpnn] \
