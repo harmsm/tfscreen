@@ -60,9 +60,9 @@ def _extract_param_est(input_df,
     """
     # Create dataframe with unique rows for map_column that has columns
     # get_columns + map_column. Rows will be sorted by map_column.
-    get_columns.append(map_column)
+    all_columns = list(get_columns) + [map_column]
     df = (input_df
-          .drop_duplicates(map_column)[get_columns]
+          .drop_duplicates(map_column)[all_columns]
           .sort_values(map_column)
           .reset_index(drop=True)
           .copy())
@@ -206,7 +206,7 @@ def extract_parameters(model, posteriors, q_to_get=None):
                     in_run_prefix = "theta_"
                 )
             )
-    elif model._theta == "lac_dimer_mut":
+    elif model._theta in ("lac_dimer_mut", "lac_dimer_nn_mut"):
         _geno_dim = model.growth_tm.tensor_dim_names.index("genotype")
         _num_genotype = len(model.growth_tm.tensor_dim_labels[_geno_dim])
         _titrant_dim = model.growth_tm.tensor_dim_names.index("titrant_name")
@@ -260,24 +260,36 @@ def extract_parameters(model, posteriors, q_to_get=None):
             )
         )
 
-        # d_ln_K_E: assembled (T, M); flat index = titrant_name_idx * M + mutation_idx
-        _theta_d_KE_rows = [
-            {"titrant_name": t, "mutation": m,
-             "map_theta_d_KE": ti * _num_mut + mi}
-            for ti, t in enumerate(_titrant_names)
-            for mi, m in enumerate(model.mut_labels)
-        ]
-        extract.append(
-            dict(
-                input_df=pd.DataFrame(_theta_d_KE_rows),
-                params_to_get=["d_ln_K_E"],
-                map_column="map_theta_d_KE",
-                get_columns=["titrant_name", "mutation"],
-                in_run_prefix="theta_"
+        if model._theta == "lac_dimer_nn_mut":
+            # d_ln_K_E: (M,) — uniform across effectors (MLP output is per-mutation scalar)
+            extract.append(
+                dict(
+                    input_df=_mut_df,
+                    params_to_get=["d_ln_K_E"],
+                    map_column="map_mut",
+                    get_columns=["mutation"],
+                    in_run_prefix="theta_"
+                )
             )
-        )
+        else:
+            # d_ln_K_E: assembled (T, M); flat index = titrant_name_idx * M + mutation_idx
+            _theta_d_KE_rows = [
+                {"titrant_name": t, "mutation": m,
+                 "map_theta_d_KE": ti * _num_mut + mi}
+                for ti, t in enumerate(_titrant_names)
+                for mi, m in enumerate(model.mut_labels)
+            ]
+            extract.append(
+                dict(
+                    input_df=pd.DataFrame(_theta_d_KE_rows),
+                    params_to_get=["d_ln_K_E"],
+                    map_column="map_theta_d_KE",
+                    get_columns=["titrant_name", "mutation"],
+                    in_run_prefix="theta_"
+                )
+            )
 
-        if model.pair_labels:
+        if model._theta == "lac_dimer_mut" and model.pair_labels:
             _num_pair = len(model.pair_labels)
             # epi_ln_K_op, epi_ln_K_HL: assembled (P,)
             _pair_df = pd.DataFrame({
@@ -321,6 +333,11 @@ def extract_parameters(model, posteriors, q_to_get=None):
             )
         )
     
+    # When growth_shares_replicates=True the condition_rep map group has no
+    # replicate column; include it only when replicates are kept separate.
+    _cond_rep_cols = (["condition_rep"] if model._growth_shares_replicates
+                      else ["replicate", "condition_rep"])
+
     # condition
     if model._condition_growth in ["linear", "linear_independent", "hierarchical", "independent"]:
         extract.append(
@@ -328,7 +345,7 @@ def extract_parameters(model, posteriors, q_to_get=None):
                 input_df = model.growth_tm.map_groups['condition_rep'],
                 params_to_get = ["growth_m","growth_k"],
                 map_column = "map_condition_rep",
-                get_columns = ["replicate","condition_rep"],
+                get_columns = _cond_rep_cols,
                 in_run_prefix = "condition_"
             )
         )
@@ -338,7 +355,7 @@ def extract_parameters(model, posteriors, q_to_get=None):
                 input_df = model.growth_tm.map_groups['condition_rep'],
                 params_to_get = ["growth_k","growth_m","growth_n"],
                 map_column = "map_condition_rep",
-                get_columns = ["replicate","condition_rep"],
+                get_columns = _cond_rep_cols,
                 in_run_prefix = "condition_"
             )
         )
@@ -348,7 +365,7 @@ def extract_parameters(model, posteriors, q_to_get=None):
                 input_df = model.growth_tm.map_groups['condition_rep'],
                 params_to_get = ["growth_min","growth_max"],
                 map_column = "map_condition_rep",
-                get_columns = ["replicate","condition_rep"],
+                get_columns = _cond_rep_cols,
                 in_run_prefix = "condition_"
             )
         )
@@ -358,11 +375,11 @@ def extract_parameters(model, posteriors, q_to_get=None):
         extract.append(
             dict(
                 input_df = model.growth_tm.map_groups['condition_rep'],
-                params_to_get = ["growth_transition_tau0", 
-                                 "growth_transition_k1", 
+                params_to_get = ["growth_transition_tau0",
+                                 "growth_transition_k1",
                                  "growth_transition_k2"],
                 map_column = "map_condition_rep",
-                get_columns = ["replicate","condition_rep"],
+                get_columns = _cond_rep_cols,
                 in_run_prefix = ""
             )
         )
@@ -370,10 +387,10 @@ def extract_parameters(model, posteriors, q_to_get=None):
          extract.append(
             dict(
                 input_df = model.growth_tm.map_groups['condition_rep'],
-                params_to_get = ["growth_transition_tau_lag", 
+                params_to_get = ["growth_transition_tau_lag",
                                  "growth_transition_k_sharp"],
                 map_column = "map_condition_rep",
-                get_columns = ["replicate","condition_rep"],
+                get_columns = _cond_rep_cols,
                 in_run_prefix = ""
             )
         )
@@ -867,13 +884,13 @@ def extract_theta_curves(model, posteriors, q_to_get=None, manual_titrant_df=Non
     elif model._theta == "hill_mut":
         return _extract_theta_curves_hill_mut(model, posteriors, q_to_get, manual_titrant_df,
                                               num_samples=num_samples)
-    elif model._theta == "lac_dimer_mut":
+    elif model._theta in ("lac_dimer_mut", "lac_dimer_nn_mut"):
         return _extract_theta_curves_lac_dimer_mut(model, posteriors, q_to_get, manual_titrant_df,
                                                    num_samples=num_samples)
     else:
         raise ValueError(
             "extract_theta_curves is only available for models where "
-            "theta='hill', 'hill_mut', or 'lac_dimer_mut'."
+            "theta='hill', 'hill_mut', 'lac_dimer_mut', or 'lac_dimer_nn_mut'."
         )
 
 def extract_growth_predictions(model,

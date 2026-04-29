@@ -30,7 +30,7 @@ import jax.numpy as jnp
 import numpy as np
 import numpyro as pyro
 import numpyro.distributions as dist
-from flax.struct import dataclass
+from flax.struct import dataclass, field
 from typing import Dict, Any, Union
 
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData, BindingData
@@ -149,7 +149,9 @@ class ModelPriors:
     theta_op_total_nM: float
 
     # MLP architecture and weight prior scale
-    theta_nn_hidden_size: int
+    # pytree_node=False keeps this as a concrete Python int during JIT tracing
+    # (it determines tensor shapes and cannot be an abstract tracer).
+    theta_nn_hidden_size: int = field(pytree_node=False)
     theta_nn_w_scale: float
 
 
@@ -189,7 +191,7 @@ def define_model(name: str,
     T = data.num_titrant_name
     M_mat    = jnp.array(data.mut_geno_matrix)        # (M, G)
     features = jnp.array(data.ligandmpnn_features)    # (M, 4)
-    H        = priors.theta_nn_hidden_size
+    H        = int(priors.theta_nn_hidden_size)
     w_scale  = priors.theta_nn_w_scale
     tf_total = priors.theta_tf_total_nM
     op_total = priors.theta_op_total_nM
@@ -271,7 +273,7 @@ def guide(name: str,
     T        = data.num_titrant_name
     M_mat    = jnp.array(data.mut_geno_matrix)
     features = jnp.array(data.ligandmpnn_features)
-    H        = priors.theta_nn_hidden_size
+    H        = int(priors.theta_nn_hidden_size)
     tf_total = priors.theta_tf_total_nM
     op_total = priors.theta_op_total_nM
 

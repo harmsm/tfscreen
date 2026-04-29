@@ -89,7 +89,7 @@ def summarize_posteriors(config_file,
         growth_pred_df.to_csv(f"{out_root}_growth_pred.csv", index=False)
 
         # Extract and save theta curves (if applicable)
-        if gm.settings["theta"] == "hill":
+        if gm.settings["theta"] in ("hill", "hill_mut", "lac_dimer_mut", "lac_dimer_nn_mut"):
             print(f"Extracting theta curves to {out_root}_theta_curves.csv...", flush=True)
             theta_curves_df = extract_theta_curves(gm, posteriors, num_samples=num_samples)
             theta_curves_df.to_csv(f"{out_root}_theta_curves.csv", index=False)

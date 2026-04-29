@@ -40,6 +40,7 @@ def _make_model(theta="none", dk_geno="none", activity="fixed",
     model._condition_growth = condition_growth
     model._growth_transition = growth_transition
     model._transformation = transformation
+    model._growth_shares_replicates = False
 
     # T=2 titrant names (iptg=0, atc=1), G=3 genotypes (wt=0, A=1, B=2)
     model_df = pd.DataFrame({
@@ -514,12 +515,12 @@ class TestExtractThetaCurvesDispatcher:
 
     def test_raises_for_categorical(self):
         model = _make_model(theta="categorical")
-        with pytest.raises(ValueError, match=r"theta='hill', 'hill_mut', or 'lac_dimer_mut'"):
+        with pytest.raises(ValueError, match=r"theta='hill'"):
             extract_theta_curves(model, {})
 
     def test_raises_for_unknown_theta(self):
         model = _make_model(theta="something_new")
-        with pytest.raises(ValueError, match=r"theta='hill', 'hill_mut', or 'lac_dimer_mut'"):
+        with pytest.raises(ValueError, match=r"theta='hill'"):
             extract_theta_curves(model, {})
 
     def test_hill_and_hill_mut_agree_on_math(self):

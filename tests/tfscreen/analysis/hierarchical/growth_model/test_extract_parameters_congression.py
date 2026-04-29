@@ -15,6 +15,7 @@ def mock_model_congression():
     model._dk_geno = "none"
     model._activity = "fixed"
     model._growth_transition = "instant"
+    model._growth_shares_replicates = False
     
     # Mock TensorManager and its DataFrame
     mock_tm = MagicMock()

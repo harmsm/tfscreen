@@ -22,6 +22,7 @@ def mock_model():
     model._dk_geno = "none"
     model._activity = "fixed"
     model._growth_transition = "instant"
+    model._growth_shares_replicates = False
     
     # Mock TensorManager
     mock_tm = MagicMock()
@@ -230,6 +231,61 @@ def test_extract_parameters_file_loading(mock_model, tmp_path):
             f.create_dataset(k, data=v)
     params = extract_parameters(mock_model, h5_path)
     assert isinstance(params, dict)
+
+@pytest.fixture
+def mock_model_shares_replicates(mock_model):
+    """Model with growth_shares_replicates=True: condition_rep group has no replicate column."""
+    mock_model._growth_shares_replicates = True
+    mock_model.growth_tm.map_groups = {
+        'condition_rep': pd.DataFrame({
+            "condition_rep": ["cond1"],
+            "map_condition_rep": [0]
+        })
+    }
+    return mock_model
+
+
+@pytest.mark.parametrize("condition_growth,posteriors_keys", [
+    ("linear",           ["condition_growth_m", "condition_growth_k"]),
+    ("linear_independent", ["condition_growth_m", "condition_growth_k"]),
+    ("hierarchical",     ["condition_growth_m", "condition_growth_k"]),
+    ("independent",      ["condition_growth_m", "condition_growth_k"]),
+    ("power",            ["condition_growth_k", "condition_growth_m", "condition_growth_n"]),
+    ("saturation",       ["condition_growth_min", "condition_growth_max"]),
+])
+def test_extract_parameters_condition_growth_shares_replicates(
+    mock_model_shares_replicates, condition_growth, posteriors_keys
+):
+    """extract_parameters must not raise KeyError for condition growth when
+    growth_shares_replicates=True (condition_rep map group has no replicate col)."""
+    mock_model_shares_replicates._condition_growth = condition_growth
+    posteriors = {k: np.random.rand(10, 1) for k in posteriors_keys}
+    params = extract_parameters(mock_model_shares_replicates, posteriors)
+    # At least one condition growth param extracted; replicate column must be absent
+    assert len(params) >= 1
+    first_df = next(iter(params.values()))
+    assert "replicate" not in first_df.columns
+
+
+@pytest.mark.parametrize("growth_transition,posteriors_keys", [
+    ("memory",  ["growth_transition_tau0", "growth_transition_k1", "growth_transition_k2"]),
+    ("baranyi", ["growth_transition_tau_lag", "growth_transition_k_sharp"]),
+])
+def test_extract_parameters_growth_transition_shares_replicates(
+    mock_model_shares_replicates, growth_transition, posteriors_keys
+):
+    """extract_parameters must not raise KeyError for growth transitions when
+    growth_shares_replicates=True."""
+    mock_model_shares_replicates._growth_transition = growth_transition
+    posteriors = {k: np.random.rand(10, 1) for k in posteriors_keys}
+    params = extract_parameters(mock_model_shares_replicates, posteriors)
+    first_param = posteriors_keys[0].removeprefix("growth_transition_tau0").lstrip("_")
+    first_key = posteriors_keys[0]  # e.g. "growth_transition_tau0"
+    param_name = first_key  # extraction stores under the bare name
+    assert len(params) >= 1
+    first_df = next(iter(params.values()))
+    assert "replicate" not in first_df.columns
+
 
 def test_extract_parameters_errors(mock_model):
     """Test error handling in extract_parameters."""
