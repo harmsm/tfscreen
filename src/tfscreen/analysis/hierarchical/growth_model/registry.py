@@ -20,6 +20,7 @@ from .components.activity import fixed as activity_fixed
 from .components.activity import hierarchical as activity_hierarchical
 from .components.activity import horseshoe as activity_horseshoe
 from .components.activity import hierarchical_mut as activity_mut_decomp
+from .components.activity import horseshoe_mut as activity_horseshoe_mut
 
 from .components.theta import categorical as theta_cat
 from .components.theta import hill as theta_hill
@@ -58,6 +59,7 @@ model_registry = {
         "hierarchical":activity_hierarchical,
         "horseshoe":activity_horseshoe,
         "hierarchical_mut":activity_mut_decomp,
+        "horseshoe_mut":activity_horseshoe_mut,
     },
     "transformation":{
         "empirical": transformation_empirical,
