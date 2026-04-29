@@ -211,6 +211,10 @@ def main():
         if not os.path.isfile(pdb_path):
             parser.error(f"PDB file for structure '{name}' not found: {pdb_path}")
 
+    # add fully resolved paths to structures
+    for s in structures:
+        structures[s] = os.path.abspath(structures[s])
+
     # -------------------------------------------------------------------------
     # Score each structure
     arrays = {}

@@ -2,7 +2,7 @@
 import numpy as np
 
 
-def build_mut_geno_matrix(genotypes):
+def build_mut_geno_matrix(genotypes, skip_pairs=False):
     """
     Build binary indicator matrices mapping mutations and mutation pairs to
     genotypes, from an ordered list of genotype strings.
@@ -16,6 +16,10 @@ def build_mut_geno_matrix(genotypes):
     genotypes : array-like of str
         Ordered list of genotype strings. The column order of the output
         matrices follows this order.
+    skip_pairs : bool, optional
+        If True, skip building the pair_geno_matrix entirely and return an
+        empty ``(0, num_genotype)`` array. Use this when epistasis is disabled
+        to avoid allocating a potentially enormous matrix. Default is False.
 
     Returns
     -------
@@ -30,7 +34,8 @@ def build_mut_geno_matrix(genotypes):
     pair_geno_matrix : np.ndarray, shape (num_pair, num_genotype)
         Binary float32 matrix. ``pair_geno_matrix[p, g] == 1`` iff both
         mutations of pair ``p`` are present in genotype ``g``. Empty
-        (shape ``(0, num_genotype)``) when no multi-mutation genotypes exist.
+        (shape ``(0, num_genotype)``) when no multi-mutation genotypes exist
+        or when ``skip_pairs=True``.
     """
 
     genotypes = list(genotypes)
@@ -63,6 +68,11 @@ def build_mut_geno_matrix(genotypes):
     # Collect unique observed mutation pairs (from genotypes with >= 2 mutations).
     # Pairs are stored in canonical form: the two mutation strings sorted
     # alphabetically and joined with "/".
+    if skip_pairs:
+        pair_labels = []
+        pair_geno_matrix = np.zeros((0, num_genotype), dtype=np.float32)
+        return mut_labels, pair_labels, mut_geno_matrix, pair_geno_matrix
+
     pair_seen = {}
     for muts in geno_muts:
         if len(muts) < 2:
