@@ -22,13 +22,16 @@ MockGrowthData = namedtuple("MockGrowthData", [
     "num_mutation",
     "num_pair",
     "mut_geno_matrix",
-    "pair_geno_matrix",
+    "pair_nnz_pair_idx",
+    "pair_nnz_geno_idx",
 ])
 
 # Genotypes: wt(0), M42I(1), K84L(2), M42I/K84L(3)
 _MUT_GENO = np.array([[0, 1, 0, 1],   # M42I
                        [0, 0, 1, 1]], dtype=np.float32)   # K84L
-_PAIR_GENO = np.array([[0, 0, 0, 1]], dtype=np.float32)   # K84L/M42I
+# COO representation of [[0, 0, 0, 1]]: one nonzero at (pair=0, geno=3)
+_PAIR_NNZ_PAIR = np.array([0], dtype=np.int32)
+_PAIR_NNZ_GENO = np.array([3], dtype=np.int32)
 
 
 @pytest.fixture
@@ -38,7 +41,8 @@ def mock_data_epi():
         num_mutation=2,
         num_pair=1,
         mut_geno_matrix=_MUT_GENO,
-        pair_geno_matrix=_PAIR_GENO,
+        pair_nnz_pair_idx=_PAIR_NNZ_PAIR,
+        pair_nnz_geno_idx=_PAIR_NNZ_GENO,
     )
 
 
@@ -49,7 +53,8 @@ def mock_data_no_epi():
         num_mutation=2,
         num_pair=0,
         mut_geno_matrix=_MUT_GENO,
-        pair_geno_matrix=np.zeros((0, 4), dtype=np.float32),
+        pair_nnz_pair_idx=np.zeros(0, dtype=np.int32),
+        pair_nnz_geno_idx=np.zeros(0, dtype=np.int32),
     )
 
 

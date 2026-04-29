@@ -32,8 +32,10 @@ import numpyro.distributions as dist
 from flax.struct import dataclass, field
 from typing import Dict, Any
 
+from functools import partial
 from typing import Union
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData, BindingData
+from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix
 
 
 # ---------------------------------------------------------------------------
@@ -84,7 +86,7 @@ class ThetaParam:
 # ---------------------------------------------------------------------------
 
 def _assemble(wt, d_offsets, sigma_d, M,
-              epi_offsets=None, sigma_epi=None, P=None):
+              epi_offsets=None, sigma_epi=None, pair_scatter=None):
     """
     Assemble per-genotype parameter array from WT + mutation deltas + epistasis.
 
@@ -96,7 +98,10 @@ def _assemble(wt, d_offsets, sigma_d, M,
     M : array, shape (num_mutation, G)
     epi_offsets : array, shape (T, num_pair) or None
     sigma_epi : array, shape (T,) or None
-    P : array, shape (num_pair, G) or None
+    pair_scatter : callable or None
+        Callable with signature ``pair_scatter(epi) -> (T, G)`` that scatters
+        epistasis values from pair-space to genotype-space.  Typically a
+        ``partial`` of ``apply_pair_matrix`` with the COO indices pre-bound.
 
     Returns
     -------
@@ -106,7 +111,7 @@ def _assemble(wt, d_offsets, sigma_d, M,
     result = wt[:, None] + d @ M               # [T, G]
     if epi_offsets is not None:
         epi = epi_offsets * sigma_epi[:, None] # [T, P]
-        result = result + epi @ P              # [T, G]
+        result = result + pair_scatter(epi)    # [T, G]
     return result
 
 
@@ -219,7 +224,10 @@ def define_model(name: str,
     # Optional epistasis: shape (T, num_pair)
     # ------------------------------------------------------------------
     if has_epi:
-        P_mat = jnp.array(data.pair_geno_matrix)  # [num_pair, G]
+        pair_scatter = partial(apply_pair_matrix,
+                              pair_nnz_pair_idx=jnp.array(data.pair_nnz_pair_idx),
+                              pair_nnz_geno_idx=jnp.array(data.pair_nnz_geno_idx),
+                              num_genotype=data.num_genotype)
         num_pair = data.num_pair
 
         with pyro.plate(f"{name}_wt_epi_plate", T, dim=-1):
@@ -247,7 +255,7 @@ def define_model(name: str,
                 epi_n_off = pyro.sample(
                     f"{name}_epi_log_hill_n_offset", dist.Normal(0.0, 1.0))
     else:
-        P_mat = None
+        pair_scatter = None
         sigma_epi_low = sigma_epi_delta = sigma_epi_K = sigma_epi_n = None
         epi_low_off = epi_delta_off = epi_K_off = epi_n_off = None
 
@@ -279,14 +287,14 @@ def define_model(name: str,
     # Assemble per-genotype parameters: shape (T, G)
     # ------------------------------------------------------------------
     logit_theta_low = _assemble(logit_low_wt, d_low_off, sigma_d_low, M_mat,
-                                epi_low_off, sigma_epi_low, P_mat)
+                                epi_low_off, sigma_epi_low, pair_scatter)
     logit_theta_delta = _assemble(logit_delta_wt, d_delta_off, sigma_d_delta, M_mat,
-                                  epi_delta_off, sigma_epi_delta, P_mat)
+                                  epi_delta_off, sigma_epi_delta, pair_scatter)
     logit_theta_high = logit_theta_low + logit_theta_delta
     log_hill_K = _assemble(log_K_wt, d_K_off, sigma_d_K, M_mat,
-                           epi_K_off, sigma_epi_K, P_mat)
+                           epi_K_off, sigma_epi_K, pair_scatter)
     log_hill_n = _assemble(log_n_wt, d_n_off, sigma_d_n, M_mat,
-                           epi_n_off, sigma_epi_n, P_mat)
+                           epi_n_off, sigma_epi_n, pair_scatter)
 
     # Transform to natural scale and register
     theta_low = dist.transforms.SigmoidTransform()(logit_theta_low)
@@ -372,7 +380,10 @@ def guide(name: str,
     # Optional epistasis variational parameters
     # ------------------------------------------------------------------
     if has_epi:
-        P_mat = jnp.array(data.pair_geno_matrix)
+        pair_scatter = partial(apply_pair_matrix,
+                               pair_nnz_pair_idx=jnp.array(data.pair_nnz_pair_idx),
+                               pair_nnz_geno_idx=jnp.array(data.pair_nnz_geno_idx),
+                               num_genotype=data.num_genotype)
         num_pair = data.num_pair
         epi_sigma_names = ["sigma_epi_logit_low", "sigma_epi_logit_delta",
                            "sigma_epi_log_hill_K", "sigma_epi_log_hill_n"]
@@ -396,7 +407,7 @@ def guide(name: str,
                 f"{name}_{k}_scales", jnp.ones((T, num_pair)),
                 constraint=dist.constraints.positive)
     else:
-        P_mat = None
+        pair_scatter = None
 
     # ------------------------------------------------------------------
     # Sampling within plates
@@ -500,14 +511,14 @@ def guide(name: str,
     # Assemble
     # ------------------------------------------------------------------
     logit_theta_low = _assemble(logit_low_wt, d_low_off, sigma_d_low, M_mat,
-                                epi_low_off, sigma_epi_low, P_mat)
+                                epi_low_off, sigma_epi_low, pair_scatter)
     logit_theta_delta = _assemble(logit_delta_wt, d_delta_off, sigma_d_delta, M_mat,
-                                  epi_delta_off, sigma_epi_delta, P_mat)
+                                  epi_delta_off, sigma_epi_delta, pair_scatter)
     logit_theta_high = logit_theta_low + logit_theta_delta
     log_hill_K = _assemble(log_K_wt, d_K_off, sigma_d_K, M_mat,
-                           epi_K_off, sigma_epi_K, P_mat)
+                           epi_K_off, sigma_epi_K, pair_scatter)
     log_hill_n = _assemble(log_n_wt, d_n_off, sigma_d_n, M_mat,
-                           epi_n_off, sigma_epi_n, P_mat)
+                           epi_n_off, sigma_epi_n, pair_scatter)
 
     theta_low = dist.transforms.SigmoidTransform()(logit_theta_low)
     theta_high = dist.transforms.SigmoidTransform()(logit_theta_high)

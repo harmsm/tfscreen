@@ -17,9 +17,9 @@ def build_mut_geno_matrix(genotypes, skip_pairs=False):
         Ordered list of genotype strings. The column order of the output
         matrices follows this order.
     skip_pairs : bool, optional
-        If True, skip building the pair_geno_matrix entirely and return an
-        empty ``(0, num_genotype)`` array. Use this when epistasis is disabled
-        to avoid allocating a potentially enormous matrix. Default is False.
+        If True, skip building the pair index arrays entirely and return empty
+        arrays of shape ``(0,)``. Use this when epistasis is disabled to avoid
+        iterating over all multi-mutation genotypes. Default is False.
 
     Returns
     -------
@@ -31,11 +31,14 @@ def build_mut_geno_matrix(genotypes, skip_pairs=False):
     mut_geno_matrix : np.ndarray, shape (num_mutation, num_genotype)
         Binary float32 matrix. ``mut_geno_matrix[m, g] == 1`` iff mutation
         ``m`` is present in genotype ``g``.
-    pair_geno_matrix : np.ndarray, shape (num_pair, num_genotype)
-        Binary float32 matrix. ``pair_geno_matrix[p, g] == 1`` iff both
-        mutations of pair ``p`` are present in genotype ``g``. Empty
-        (shape ``(0, num_genotype)``) when no multi-mutation genotypes exist
-        or when ``skip_pairs=True``.
+    pair_nnz_pair_idx : np.ndarray, shape (nnz,), dtype int32
+        Row (pair) index of each nonzero entry in the logical
+        ``(num_pair, num_genotype)`` binary pair-genotype matrix, stored in
+        COO format.  Empty (shape ``(0,)``) when there are no multi-mutation
+        genotypes or when ``skip_pairs=True``.
+    pair_nnz_geno_idx : np.ndarray, shape (nnz,), dtype int32
+        Column (genotype) index of each nonzero entry, matching
+        ``pair_nnz_pair_idx`` element-for-element.
     """
 
     genotypes = list(genotypes)
@@ -70,8 +73,9 @@ def build_mut_geno_matrix(genotypes, skip_pairs=False):
     # alphabetically and joined with "/".
     if skip_pairs:
         pair_labels = []
-        pair_geno_matrix = np.zeros((0, num_genotype), dtype=np.float32)
-        return mut_labels, pair_labels, mut_geno_matrix, pair_geno_matrix
+        pair_nnz_pair_idx = np.zeros(0, dtype=np.int32)
+        pair_nnz_geno_idx = np.zeros(0, dtype=np.int32)
+        return mut_labels, pair_labels, mut_geno_matrix, pair_nnz_pair_idx, pair_nnz_geno_idx
 
     pair_seen = {}
     for muts in geno_muts:
@@ -85,10 +89,13 @@ def build_mut_geno_matrix(genotypes, skip_pairs=False):
                     pair_seen[label] = len(pair_seen)
 
     pair_labels = list(pair_seen.keys())
-    num_pair = len(pair_labels)
 
-    # Build pair_geno_matrix [num_pair, num_genotype].
-    pair_geno_matrix = np.zeros((num_pair, num_genotype), dtype=np.float32)
+    # Build COO representation of the (num_pair, num_genotype) binary matrix.
+    # For a library of double mutants each genotype contributes exactly one
+    # nonzero; triples contribute C(k,2) nonzeros.  This avoids the O(P*G)
+    # dense allocation (which can exceed 100 GiB for large libraries).
+    rows = []
+    cols = []
     for g_idx, muts in enumerate(geno_muts):
         if len(muts) < 2:
             continue
@@ -96,6 +103,40 @@ def build_mut_geno_matrix(genotypes, skip_pairs=False):
             for j in range(i + 1, len(muts)):
                 a, b = sorted([muts[i], muts[j]])
                 label = f"{a}/{b}"
-                pair_geno_matrix[pair_seen[label], g_idx] = 1.0
+                rows.append(pair_seen[label])
+                cols.append(g_idx)
 
-    return mut_labels, pair_labels, mut_geno_matrix, pair_geno_matrix
+    pair_nnz_pair_idx = np.array(rows, dtype=np.int32)
+    pair_nnz_geno_idx = np.array(cols, dtype=np.int32)
+
+    return mut_labels, pair_labels, mut_geno_matrix, pair_nnz_pair_idx, pair_nnz_geno_idx
+
+
+def apply_pair_matrix(epi, pair_nnz_pair_idx, pair_nnz_geno_idx, num_genotype):
+    """Scatter epistasis values to genotypes via COO pair-genotype indices.
+
+    This is the memory-efficient equivalent of ``epi @ pair_geno_matrix`` where
+    ``pair_geno_matrix`` is the dense ``(num_pair, num_genotype)`` binary matrix
+    stored instead in COO format as ``(pair_nnz_pair_idx, pair_nnz_geno_idx)``.
+
+    Parameters
+    ----------
+    epi : jnp.ndarray, shape (..., num_pair)
+        Epistasis values, one per pair. Leading dimensions are broadcast.
+    pair_nnz_pair_idx : array-like, shape (nnz,)
+        Row (pair) index of each nonzero.
+    pair_nnz_geno_idx : array-like, shape (nnz,)
+        Column (genotype) index of each nonzero.
+    num_genotype : int
+        Size of the genotype dimension in the output.
+
+    Returns
+    -------
+    jnp.ndarray, shape (..., num_genotype)
+        ``result[..., g] = sum_k epi[..., pair_nnz_pair_idx[k]]``
+        for all ``k`` where ``pair_nnz_geno_idx[k] == g``.
+    """
+    import jax.numpy as jnp
+    leading = epi.shape[:-1]
+    result = jnp.zeros((*leading, num_genotype))
+    return result.at[..., pair_nnz_geno_idx].add(epi[..., pair_nnz_pair_idx])

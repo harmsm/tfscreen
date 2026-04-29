@@ -56,9 +56,11 @@ import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
 from flax.struct import dataclass
+from functools import partial
 from typing import Dict, Any
 
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
+from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix
 
 # Number of Newton iterations for the free-effector cubic solve.
 NEWTON_ITERATIONS = 8
@@ -114,7 +116,7 @@ class ThetaParam:
 # ---------------------------------------------------------------------------
 
 def _assemble_scalar(wt, d_offsets, sigma_d, M,
-                     epi_offsets=None, sigma_epi=None, P=None):
+                     epi_offsets=None, sigma_epi=None, pair_scatter=None):
     """
     Assemble per-genotype parameter from scalar WT + mutation deltas.
 
@@ -126,7 +128,9 @@ def _assemble_scalar(wt, d_offsets, sigma_d, M,
     M : (num_mutation, G)
     epi_offsets : (num_pair,) or None
     sigma_epi : scalar or None
-    P : (num_pair, G) or None
+    pair_scatter : callable or None
+        ``pair_scatter(epi) -> (G,)``.  Scatters pair epistasis values to
+        genotype-space via COO scatter-add.
 
     Returns
     -------
@@ -135,13 +139,13 @@ def _assemble_scalar(wt, d_offsets, sigma_d, M,
     d = d_offsets * sigma_d         # (M,)
     result = wt + d @ M             # (G,)
     if epi_offsets is not None:
-        epi = epi_offsets * sigma_epi   # (P,)
-        result = result + epi @ P       # (G,)
+        epi = epi_offsets * sigma_epi      # (P,)
+        result = result + pair_scatter(epi)  # (G,)
     return result
 
 
 def _assemble_titrant(wt, d_offsets, sigma_d, M,
-                      epi_offsets=None, sigma_epi=None, P=None):
+                      epi_offsets=None, sigma_epi=None, pair_scatter=None):
     """
     Assemble per-genotype parameter from T-shaped WT + mutation deltas.
 
@@ -153,7 +157,9 @@ def _assemble_titrant(wt, d_offsets, sigma_d, M,
     M : (num_mutation, G)
     epi_offsets : (T, num_pair) or None
     sigma_epi : (T,) or None
-    P : (num_pair, G) or None
+    pair_scatter : callable or None
+        ``pair_scatter(epi) -> (T, G)``.  Scatters pair epistasis values to
+        genotype-space via COO scatter-add.
 
     Returns
     -------
@@ -162,8 +168,8 @@ def _assemble_titrant(wt, d_offsets, sigma_d, M,
     d = d_offsets * sigma_d[:, None]        # (T, M)
     result = wt[:, None] + d @ M            # (T, G)
     if epi_offsets is not None:
-        epi = epi_offsets * sigma_epi[:, None]  # (T, P)
-        result = result + epi @ P               # (T, G)
+        epi = epi_offsets * sigma_epi[:, None]   # (T, P)
+        result = result + pair_scatter(epi)       # (T, G)
     return result
 
 
@@ -348,7 +354,10 @@ def define_model(name: str,
     # Optional epistasis
     # ------------------------------------------------------------------
     if has_epi:
-        P_mat = jnp.array(data.pair_geno_matrix)  # (P, G)
+        pair_scatter = partial(apply_pair_matrix,
+                              pair_nnz_pair_idx=jnp.array(data.pair_nnz_pair_idx),
+                              pair_nnz_geno_idx=jnp.array(data.pair_nnz_geno_idx),
+                              num_genotype=data.num_genotype)
         num_pair = data.num_pair
 
         sigma_epi_K_op = pyro.sample(
@@ -374,7 +383,7 @@ def define_model(name: str,
                 epi_K_E_off = pyro.sample(
                     f"{name}_epi_ln_K_E_offset", dist.Normal(0.0, 1.0))
     else:
-        P_mat = None
+        pair_scatter = None
         sigma_epi_K_op = sigma_epi_K_HL = sigma_epi_K_E = None
         epi_K_op_off = epi_K_HL_off = epi_K_E_off = None
 
@@ -402,11 +411,11 @@ def define_model(name: str,
     # Assemble per-genotype equilibrium constants
     # ------------------------------------------------------------------
     ln_K_op = _assemble_scalar(ln_K_op_wt, d_K_op_off, sigma_d_K_op, M_mat,
-                               epi_K_op_off, sigma_epi_K_op, P_mat)    # (G,)
+                               epi_K_op_off, sigma_epi_K_op, pair_scatter)    # (G,)
     ln_K_HL = _assemble_scalar(ln_K_HL_wt, d_K_HL_off, sigma_d_K_HL, M_mat,
-                               epi_K_HL_off, sigma_epi_K_HL, P_mat)    # (G,)
+                               epi_K_HL_off, sigma_epi_K_HL, pair_scatter)    # (G,)
     ln_K_E  = _assemble_titrant(ln_K_E_wt, d_K_E_off, sigma_d_K_E, M_mat,
-                                epi_K_E_off, sigma_epi_K_E, P_mat)     # (T, G)
+                                epi_K_E_off, sigma_epi_K_E, pair_scatter)     # (T, G)
 
     pyro.deterministic(f"{name}_ln_K_op", ln_K_op)
     pyro.deterministic(f"{name}_ln_K_HL", ln_K_HL)
@@ -514,7 +523,10 @@ def guide(name: str,
     # Optional epistasis variational parameters
     # ------------------------------------------------------------------
     if has_epi:
-        P_mat = jnp.array(data.pair_geno_matrix)
+        pair_scatter = partial(apply_pair_matrix,
+                               pair_nnz_pair_idx=jnp.array(data.pair_nnz_pair_idx),
+                               pair_nnz_geno_idx=jnp.array(data.pair_nnz_geno_idx),
+                               num_genotype=data.num_genotype)
         num_pair = data.num_pair
 
         sigma_epi_K_op_loc = pyro.param(
@@ -553,7 +565,7 @@ def guide(name: str,
             f"{name}_epi_ln_K_E_offset_scales", jnp.ones((T, num_pair)),
             constraint=dist.constraints.positive)
     else:
-        P_mat = None
+        pair_scatter = None
 
     # ------------------------------------------------------------------
     # Sample within plates
@@ -620,6 +632,7 @@ def guide(name: str,
                     f"{name}_epi_ln_K_E_offset",
                     dist.Normal(epi_K_E_locs, epi_K_E_scales))
     else:
+        pair_scatter = None
         sigma_epi_K_op = sigma_epi_K_HL = sigma_epi_K_E = None
         epi_K_op_off = epi_K_HL_off = epi_K_E_off = None
 
@@ -627,11 +640,11 @@ def guide(name: str,
     # Assemble
     # ------------------------------------------------------------------
     ln_K_op = _assemble_scalar(ln_K_op_wt, d_K_op_off, sigma_d_K_op, M_mat,
-                               epi_K_op_off, sigma_epi_K_op, P_mat)
+                               epi_K_op_off, sigma_epi_K_op, pair_scatter)
     ln_K_HL = _assemble_scalar(ln_K_HL_wt, d_K_HL_off, sigma_d_K_HL, M_mat,
-                               epi_K_HL_off, sigma_epi_K_HL, P_mat)
+                               epi_K_HL_off, sigma_epi_K_HL, pair_scatter)
     ln_K_E  = _assemble_titrant(ln_K_E_wt, d_K_E_off, sigma_d_K_E, M_mat,
-                                epi_K_E_off, sigma_epi_K_E, P_mat)
+                                epi_K_E_off, sigma_epi_K_E, pair_scatter)
 
     theta_for_moments = _compute_theta(ln_K_op, ln_K_HL, ln_K_E,
                                        data.titrant_conc, tf_total, op_total)

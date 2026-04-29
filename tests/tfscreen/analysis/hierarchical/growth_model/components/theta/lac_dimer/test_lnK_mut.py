@@ -4,6 +4,7 @@ import jax.numpy as jnp
 from numpyro.handlers import trace, substitute, seed
 from collections import namedtuple
 
+from functools import partial
 from tfscreen.analysis.hierarchical.growth_model.components.theta.lac_dimer.lnK_mut import (
     ModelPriors,
     _assemble_scalar,
@@ -19,6 +20,7 @@ from tfscreen.analysis.hierarchical.growth_model.components.theta.lac_dimer.ther
     run_model,
     get_population_moments,
 )
+from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix
 
 # ---------------------------------------------------------------------------
 # Mock data
@@ -35,13 +37,23 @@ MockData = namedtuple("MockData", [
     "num_mutation",
     "num_pair",
     "mut_geno_matrix",
-    "pair_geno_matrix",
+    "pair_nnz_pair_idx",
+    "pair_nnz_geno_idx",
 ])
 
 # Genotypes: wt(0), M42I(1), K84L(2), M42I/K84L(3)
 _MUT_GENO  = np.array([[0, 1, 0, 1],
                         [0, 0, 1, 1]], dtype=np.float32)
-_PAIR_GENO = np.array([[0, 0, 0, 1]], dtype=np.float32)
+# COO representation of [[0, 0, 0, 1]]: one nonzero at (pair=0, geno=3)
+_PAIR_NNZ_PAIR = np.array([0], dtype=np.int32)
+_PAIR_NNZ_GENO = np.array([3], dtype=np.int32)
+
+def _make_pair_scatter(num_genotype=4):
+    """Build a pair_scatter callable matching the test library (1 pair, geno 3)."""
+    return partial(apply_pair_matrix,
+                   pair_nnz_pair_idx=jnp.array(_PAIR_NNZ_PAIR),
+                   pair_nnz_geno_idx=jnp.array(_PAIR_NNZ_GENO),
+                   num_genotype=num_genotype)
 
 _CONC     = np.array([0.0, 100.0, 1000.0])
 _LOG_CONC = np.log(np.where(_CONC == 0, 1e-20, _CONC))
@@ -60,7 +72,8 @@ def mock_data_epi():
         num_mutation=2,
         num_pair=1,
         mut_geno_matrix=_MUT_GENO,
-        pair_geno_matrix=_PAIR_GENO,
+        pair_nnz_pair_idx=_PAIR_NNZ_PAIR,
+        pair_nnz_geno_idx=_PAIR_NNZ_GENO,
     )
 
 
@@ -77,7 +90,8 @@ def mock_data_no_epi():
         num_mutation=2,
         num_pair=0,
         mut_geno_matrix=_MUT_GENO,
-        pair_geno_matrix=np.zeros((0, 4), dtype=np.float32),
+        pair_nnz_pair_idx=np.zeros(0, dtype=np.int32),
+        pair_nnz_geno_idx=np.zeros(0, dtype=np.int32),
     )
 
 
@@ -112,7 +126,7 @@ class TestAssembleScalar:
                                   jnp.zeros(2), jnp.array(1.0),
                                   jnp.array(_MUT_GENO),
                                   jnp.array([2.0]), jnp.array(1.0),
-                                  jnp.array(_PAIR_GENO))
+                                  _make_pair_scatter())
         assert jnp.allclose(result[:3], 0.0, atol=1e-6)
         assert jnp.allclose(result[3], 2.0, atol=1e-6)
 
@@ -121,7 +135,7 @@ class TestAssembleScalar:
                                   jnp.array([1.0, 0.5]), jnp.array(1.0),
                                   jnp.array(_MUT_GENO),
                                   jnp.array([3.0]), jnp.array(1.0),
-                                  jnp.array(_PAIR_GENO))
+                                  _make_pair_scatter())
         # col 3: 1.0 (M42I) + 0.5 (K84L) + 3.0 (epi) = 4.5
         assert jnp.allclose(result[3], 4.5, atol=1e-5)
 
@@ -160,7 +174,7 @@ class TestAssembleTitrant:
         result = _assemble_titrant(jnp.zeros(T), jnp.zeros((T, 2)), jnp.ones(T),
                                    jnp.array(_MUT_GENO),
                                    jnp.array([[3.0]]), jnp.ones(T),
-                                   jnp.array(_PAIR_GENO))
+                                   _make_pair_scatter())
         assert jnp.allclose(result[0, :3], 0.0, atol=1e-6)
         assert jnp.allclose(result[0, 3], 3.0, atol=1e-6)
 

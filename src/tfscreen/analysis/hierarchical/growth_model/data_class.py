@@ -70,12 +70,15 @@ class GrowthData:
 
     # Optional mutation-decomposition matrices (set when using *_mut_decomp components).
     # Stored as pytree_node=False so they are treated as static by JAX tracing.
-    # Shape: mut_geno_matrix (num_mutation, num_genotype),
-    #        pair_geno_matrix (num_pair, num_genotype).
+    # Shape: mut_geno_matrix (num_mutation, num_genotype).
+    # The pair-genotype indicator matrix is stored in COO format as two int32
+    # index arrays of shape (nnz,) rather than a dense (num_pair, num_genotype)
+    # matrix, which would be O(100 GiB) for large libraries.
     num_mutation: int = field(pytree_node=False, default=0)
     num_pair: int = field(pytree_node=False, default=0)
     mut_geno_matrix: Any = field(pytree_node=False, default=None)
-    pair_geno_matrix: Any = field(pytree_node=False, default=None)
+    pair_nnz_pair_idx: Any = field(pytree_node=False, default=None)
+    pair_nnz_geno_idx: Any = field(pytree_node=False, default=None)
 
     # Optional per-mutation ΔlogP features from LigandMPNN (set when using
     # lac_dimer_nn_mut theta component).  Shape: (num_mutation, 4), where the
@@ -111,10 +114,12 @@ class BindingData:
 
     # Optional mutation-decomposition matrices.  Stored as pytree_node=False
     # so they are treated as static by JAX tracing.  Defaults match GrowthData.
+    # pair_geno_matrix is stored in COO format (see GrowthData for details).
     num_mutation: int = field(pytree_node=False, default=0)
     num_pair: int = field(pytree_node=False, default=0)
     mut_geno_matrix: Any = field(pytree_node=False, default=None)
-    pair_geno_matrix: Any = field(pytree_node=False, default=None)
+    pair_nnz_pair_idx: Any = field(pytree_node=False, default=None)
+    pair_nnz_geno_idx: Any = field(pytree_node=False, default=None)
 
 
 @dataclass(frozen=True)

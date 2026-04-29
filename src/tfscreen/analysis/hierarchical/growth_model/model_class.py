@@ -559,7 +559,7 @@ class ModelClass:
         from tfscreen.genetics import build_mut_geno_matrix
         _genotype_idx = self.growth_tm.tensor_dim_names.index("genotype")
         _genotype_names = list(self.growth_tm.tensor_dim_labels[_genotype_idx])
-        _, _, _mut_geno_matrix, _ = build_mut_geno_matrix(_genotype_names, skip_pairs=True)
+        _, _, _mut_geno_matrix, _, _ = build_mut_geno_matrix(_genotype_names, skip_pairs=True)
         _mut_counts = _mut_geno_matrix.sum(axis=0).astype(int)
         _is_library = mask & ~wt_mask   # True = non-spiked, non-wt
         _singles_mask = (_mut_counts == 1) & _is_library
@@ -600,17 +600,20 @@ class ModelClass:
             _genotypes = list(self.growth_tm.tensor_dim_labels[_geno_idx])
             from tfscreen.genetics import build_mut_geno_matrix
             (mut_labels, pair_labels,
-             mut_geno_matrix, pair_geno_matrix) = build_mut_geno_matrix(
+             mut_geno_matrix,
+             pair_nnz_pair_idx,
+             pair_nnz_geno_idx) = build_mut_geno_matrix(
                 _genotypes, skip_pairs=not self._epistasis
             )
             # Expose labels as model attributes for downstream interpretation
             self.mut_labels = mut_labels
             self.pair_labels = pair_labels
             growth_data_sources.append({
-                "num_mutation":    len(mut_labels),
-                "num_pair":        len(pair_labels),
-                "mut_geno_matrix":  mut_geno_matrix,
-                "pair_geno_matrix": pair_geno_matrix,
+                "num_mutation":      len(mut_labels),
+                "num_pair":          len(pair_labels),
+                "mut_geno_matrix":   mut_geno_matrix,
+                "pair_nnz_pair_idx": pair_nnz_pair_idx,
+                "pair_nnz_geno_idx": pair_nnz_geno_idx,
             })
 
         # Build LigandMPNN per-mutation features for any theta component that

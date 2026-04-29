@@ -21,6 +21,7 @@ from flax.struct import dataclass
 from typing import Dict, Any
 
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
+from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix
 
 
 @dataclass(frozen=True)
@@ -74,7 +75,8 @@ def define_model(name: str,
     # Optional epistasis
     # ------------------------------------------------------------------
     if has_epi:
-        P_mat = jnp.array(data.pair_geno_matrix)
+        pair_nnz_pair_idx = jnp.array(data.pair_nnz_pair_idx)
+        pair_nnz_geno_idx = jnp.array(data.pair_nnz_geno_idx)
         num_pair = data.num_pair
 
         sigma_epi = pyro.sample(
@@ -86,7 +88,8 @@ def define_model(name: str,
 
         epi_log_activity = epi_offset * sigma_epi   # [num_pair]
         pyro.deterministic(f"{name}_epi_log_activity", epi_log_activity)
-        log_activity = log_activity + epi_log_activity @ P_mat  # [G]
+        log_activity = log_activity + apply_pair_matrix(
+            epi_log_activity, pair_nnz_pair_idx, pair_nnz_geno_idx, data.num_genotype)  # [G]
 
     activity = jnp.clip(jnp.exp(log_activity), max=1e30)
 
@@ -125,7 +128,8 @@ def guide(name: str,
     log_activity = d_log_activity @ M_mat
 
     if has_epi:
-        P_mat = jnp.array(data.pair_geno_matrix)
+        pair_nnz_pair_idx = jnp.array(data.pair_nnz_pair_idx)
+        pair_nnz_geno_idx = jnp.array(data.pair_nnz_geno_idx)
         num_pair = data.num_pair
 
         sigma_epi_loc = pyro.param(f"{name}_sigma_epi_loc", jnp.array(-1.0))
@@ -144,7 +148,8 @@ def guide(name: str,
                                      dist.Normal(epi_offset_locs, epi_offset_scales))
 
         epi_log_activity = epi_offset * sigma_epi
-        log_activity = log_activity + epi_log_activity @ P_mat
+        log_activity = log_activity + apply_pair_matrix(
+            epi_log_activity, pair_nnz_pair_idx, pair_nnz_geno_idx, data.num_genotype)
 
     activity = jnp.clip(jnp.exp(log_activity), max=1e30)
 
