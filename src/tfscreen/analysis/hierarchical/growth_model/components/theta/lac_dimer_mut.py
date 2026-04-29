@@ -92,10 +92,10 @@ class ModelPriors:
     theta_sigma_d_ln_K_HL_scale: float
     theta_sigma_d_ln_K_E_scale: float
 
-    # HalfNormal scales for pairwise epistasis distributions
-    theta_sigma_epi_ln_K_op_scale: float
-    theta_sigma_epi_ln_K_HL_scale: float
-    theta_sigma_epi_ln_K_E_scale: float
+    # Shared regularised horseshoe hyperparameters for pairwise epistasis
+    theta_epi_tau_scale: float     # HalfCauchy scale for global τ (shared across K_op, K_HL, K_E)
+    theta_epi_slab_scale: float    # typical size of a large epistasis effect
+    theta_epi_slab_df: float       # InvGamma shape ν (usually 4)
 
 
 @dataclass(frozen=True)
@@ -360,31 +360,35 @@ def define_model(name: str,
                               num_genotype=data.num_genotype)
         num_pair = data.num_pair
 
-        sigma_epi_K_op = pyro.sample(
-            f"{name}_sigma_epi_ln_K_op",
-            dist.HalfNormal(priors.theta_sigma_epi_ln_K_op_scale))
-        sigma_epi_K_HL = pyro.sample(
-            f"{name}_sigma_epi_ln_K_HL",
-            dist.HalfNormal(priors.theta_sigma_epi_ln_K_HL_scale))
+        # Shared global scale and slab variance across all equilibrium constants
+        tau_epi = pyro.sample(
+            f"{name}_epi_tau",
+            dist.HalfCauchy(priors.theta_epi_tau_scale))
+        c2_epi = pyro.sample(
+            f"{name}_epi_c2",
+            dist.InverseGamma(priors.theta_epi_slab_df / 2.0,
+                              priors.theta_epi_slab_df * priors.theta_epi_slab_scale ** 2 / 2.0))
 
-        with pyro.plate(f"{name}_wt_epi_plate", T, dim=-1):
-            sigma_epi_K_E = pyro.sample(
-                f"{name}_sigma_epi_ln_K_E",
-                dist.HalfNormal(priors.theta_sigma_epi_ln_K_E_scale))
-
+        # Scalar K_op and K_HL: local scales and offsets shape (num_pair,)
         with pyro.plate(f"{name}_pair_scalar_plate", num_pair, dim=-1):
+            epi_K_op_lam = pyro.sample(
+                f"{name}_epi_ln_K_op_lambda", dist.HalfCauchy(1.0))
             epi_K_op_off = pyro.sample(
                 f"{name}_epi_ln_K_op_offset", dist.Normal(0.0, 1.0))
+            epi_K_HL_lam = pyro.sample(
+                f"{name}_epi_ln_K_HL_lambda", dist.HalfCauchy(1.0))
             epi_K_HL_off = pyro.sample(
                 f"{name}_epi_ln_K_HL_offset", dist.Normal(0.0, 1.0))
 
+        # T-dim K_E: local scales and offsets shape (T, num_pair)
         with pyro.plate(f"{name}_titrant_epi_outer_plate", T, dim=-2):
             with pyro.plate(f"{name}_pair_plate", num_pair, dim=-1):
+                epi_K_E_lam = pyro.sample(
+                    f"{name}_epi_ln_K_E_lambda", dist.HalfCauchy(1.0))
                 epi_K_E_off = pyro.sample(
                     f"{name}_epi_ln_K_E_offset", dist.Normal(0.0, 1.0))
     else:
         pair_scatter = None
-        sigma_epi_K_op = sigma_epi_K_HL = sigma_epi_K_E = None
         epi_K_op_off = epi_K_HL_off = epi_K_E_off = None
 
     # ------------------------------------------------------------------
@@ -399,9 +403,12 @@ def define_model(name: str,
     pyro.deterministic(f"{name}_d_ln_K_E",  d_ln_K_E)
 
     if has_epi:
-        epi_ln_K_op = epi_K_op_off * sigma_epi_K_op            # (P,)
-        epi_ln_K_HL = epi_K_HL_off * sigma_epi_K_HL            # (P,)
-        epi_ln_K_E  = epi_K_E_off * sigma_epi_K_E[:, None]     # (T, P)
+        def _lam_tilde(lam):
+            return jnp.sqrt(c2_epi * lam ** 2 / (c2_epi + tau_epi ** 2 * lam ** 2))
+
+        epi_ln_K_op = epi_K_op_off * tau_epi * _lam_tilde(epi_K_op_lam)          # (P,)
+        epi_ln_K_HL = epi_K_HL_off * tau_epi * _lam_tilde(epi_K_HL_lam)          # (P,)
+        epi_ln_K_E  = epi_K_E_off  * tau_epi * _lam_tilde(epi_K_E_lam)           # (T, P)
 
         pyro.deterministic(f"{name}_epi_ln_K_op", epi_ln_K_op)
         pyro.deterministic(f"{name}_epi_ln_K_HL", epi_ln_K_HL)
@@ -410,12 +417,14 @@ def define_model(name: str,
     # ------------------------------------------------------------------
     # Assemble per-genotype equilibrium constants
     # ------------------------------------------------------------------
-    ln_K_op = _assemble_scalar(ln_K_op_wt, d_K_op_off, sigma_d_K_op, M_mat,
-                               epi_K_op_off, sigma_epi_K_op, pair_scatter)    # (G,)
-    ln_K_HL = _assemble_scalar(ln_K_HL_wt, d_K_HL_off, sigma_d_K_HL, M_mat,
-                               epi_K_HL_off, sigma_epi_K_HL, pair_scatter)    # (G,)
-    ln_K_E  = _assemble_titrant(ln_K_E_wt, d_K_E_off, sigma_d_K_E, M_mat,
-                                epi_K_E_off, sigma_epi_K_E, pair_scatter)     # (T, G)
+    ln_K_op = _assemble_scalar(ln_K_op_wt, d_K_op_off, sigma_d_K_op, M_mat)    # (G,)
+    ln_K_HL = _assemble_scalar(ln_K_HL_wt, d_K_HL_off, sigma_d_K_HL, M_mat)    # (G,)
+    ln_K_E  = _assemble_titrant(ln_K_E_wt, d_K_E_off, sigma_d_K_E, M_mat)      # (T, G)
+
+    if has_epi:
+        ln_K_op = ln_K_op + pair_scatter(epi_ln_K_op)
+        ln_K_HL = ln_K_HL + pair_scatter(epi_ln_K_HL)
+        ln_K_E  = ln_K_E  + pair_scatter(epi_ln_K_E)
 
     pyro.deterministic(f"{name}_ln_K_op", ln_K_op)
     pyro.deterministic(f"{name}_ln_K_HL", ln_K_HL)
@@ -529,36 +538,42 @@ def guide(name: str,
                                num_genotype=data.num_genotype)
         num_pair = data.num_pair
 
-        sigma_epi_K_op_loc = pyro.param(
-            f"{name}_sigma_epi_ln_K_op_loc", jnp.array(-1.0))
-        sigma_epi_K_op_scale = pyro.param(
-            f"{name}_sigma_epi_ln_K_op_scale", jnp.array(0.1),
-            constraint=dist.constraints.positive)
+        # Shared τ and c²
+        tau_epi_loc = pyro.param(f"{name}_epi_tau_loc", jnp.array(-1.0))
+        tau_epi_scale_p = pyro.param(f"{name}_epi_tau_scale", jnp.array(0.1),
+                                     constraint=dist.constraints.positive)
+        c2_epi_loc = pyro.param(f"{name}_epi_c2_loc", jnp.array(1.4))
+        c2_epi_scale_p = pyro.param(f"{name}_epi_c2_scale", jnp.array(0.5),
+                                    constraint=dist.constraints.positive)
 
-        sigma_epi_K_HL_loc = pyro.param(
-            f"{name}_sigma_epi_ln_K_HL_loc", jnp.array(-1.0))
-        sigma_epi_K_HL_scale = pyro.param(
-            f"{name}_sigma_epi_ln_K_HL_scale", jnp.array(0.1),
+        # Per-type local scales and offsets
+        epi_K_op_lam_locs = pyro.param(
+            f"{name}_epi_ln_K_op_lambda_locs", jnp.zeros(num_pair))
+        epi_K_op_lam_scales = pyro.param(
+            f"{name}_epi_ln_K_op_lambda_scales", jnp.ones(num_pair),
             constraint=dist.constraints.positive)
-
-        sigma_epi_K_E_locs = pyro.param(
-            f"{name}_sigma_epi_ln_K_E_locs", jnp.full(T, -1.0))
-        sigma_epi_K_E_scales = pyro.param(
-            f"{name}_sigma_epi_ln_K_E_scales", jnp.full(T, 0.1),
-            constraint=dist.constraints.positive)
-
         epi_K_op_locs = pyro.param(
             f"{name}_epi_ln_K_op_offset_locs", jnp.zeros(num_pair))
         epi_K_op_scales = pyro.param(
             f"{name}_epi_ln_K_op_offset_scales", jnp.ones(num_pair),
             constraint=dist.constraints.positive)
 
+        epi_K_HL_lam_locs = pyro.param(
+            f"{name}_epi_ln_K_HL_lambda_locs", jnp.zeros(num_pair))
+        epi_K_HL_lam_scales = pyro.param(
+            f"{name}_epi_ln_K_HL_lambda_scales", jnp.ones(num_pair),
+            constraint=dist.constraints.positive)
         epi_K_HL_locs = pyro.param(
             f"{name}_epi_ln_K_HL_offset_locs", jnp.zeros(num_pair))
         epi_K_HL_scales = pyro.param(
             f"{name}_epi_ln_K_HL_offset_scales", jnp.ones(num_pair),
             constraint=dist.constraints.positive)
 
+        epi_K_E_lam_locs = pyro.param(
+            f"{name}_epi_ln_K_E_lambda_locs", jnp.zeros((T, num_pair)))
+        epi_K_E_lam_scales = pyro.param(
+            f"{name}_epi_ln_K_E_lambda_scales", jnp.ones((T, num_pair)),
+            constraint=dist.constraints.positive)
         epi_K_E_locs = pyro.param(
             f"{name}_epi_ln_K_E_offset_locs", jnp.zeros((T, num_pair)))
         epi_K_E_scales = pyro.param(
@@ -606,45 +621,51 @@ def guide(name: str,
                 dist.Normal(d_K_E_locs, d_K_E_scales))
 
     if has_epi:
-        sigma_epi_K_op = pyro.sample(
-            f"{name}_sigma_epi_ln_K_op",
-            dist.LogNormal(sigma_epi_K_op_loc, sigma_epi_K_op_scale))
-        sigma_epi_K_HL = pyro.sample(
-            f"{name}_sigma_epi_ln_K_HL",
-            dist.LogNormal(sigma_epi_K_HL_loc, sigma_epi_K_HL_scale))
-
-        with pyro.plate(f"{name}_wt_epi_plate", T, dim=-1):
-            sigma_epi_K_E = pyro.sample(
-                f"{name}_sigma_epi_ln_K_E",
-                dist.LogNormal(sigma_epi_K_E_locs, sigma_epi_K_E_scales))
+        tau_epi = pyro.sample(f"{name}_epi_tau",
+                              dist.LogNormal(tau_epi_loc, tau_epi_scale_p))
+        c2_epi = pyro.sample(f"{name}_epi_c2",
+                             dist.LogNormal(c2_epi_loc, c2_epi_scale_p))
 
         with pyro.plate(f"{name}_pair_scalar_plate", num_pair, dim=-1):
+            epi_K_op_lam = pyro.sample(
+                f"{name}_epi_ln_K_op_lambda",
+                dist.LogNormal(epi_K_op_lam_locs, epi_K_op_lam_scales))
             epi_K_op_off = pyro.sample(
                 f"{name}_epi_ln_K_op_offset",
                 dist.Normal(epi_K_op_locs, epi_K_op_scales))
+            epi_K_HL_lam = pyro.sample(
+                f"{name}_epi_ln_K_HL_lambda",
+                dist.LogNormal(epi_K_HL_lam_locs, epi_K_HL_lam_scales))
             epi_K_HL_off = pyro.sample(
                 f"{name}_epi_ln_K_HL_offset",
                 dist.Normal(epi_K_HL_locs, epi_K_HL_scales))
 
         with pyro.plate(f"{name}_titrant_epi_outer_plate", T, dim=-2):
             with pyro.plate(f"{name}_pair_plate", num_pair, dim=-1):
+                epi_K_E_lam = pyro.sample(
+                    f"{name}_epi_ln_K_E_lambda",
+                    dist.LogNormal(epi_K_E_lam_locs, epi_K_E_lam_scales))
                 epi_K_E_off = pyro.sample(
                     f"{name}_epi_ln_K_E_offset",
                     dist.Normal(epi_K_E_locs, epi_K_E_scales))
     else:
         pair_scatter = None
-        sigma_epi_K_op = sigma_epi_K_HL = sigma_epi_K_E = None
         epi_K_op_off = epi_K_HL_off = epi_K_E_off = None
 
     # ------------------------------------------------------------------
     # Assemble
     # ------------------------------------------------------------------
-    ln_K_op = _assemble_scalar(ln_K_op_wt, d_K_op_off, sigma_d_K_op, M_mat,
-                               epi_K_op_off, sigma_epi_K_op, pair_scatter)
-    ln_K_HL = _assemble_scalar(ln_K_HL_wt, d_K_HL_off, sigma_d_K_HL, M_mat,
-                               epi_K_HL_off, sigma_epi_K_HL, pair_scatter)
-    ln_K_E  = _assemble_titrant(ln_K_E_wt, d_K_E_off, sigma_d_K_E, M_mat,
-                                epi_K_E_off, sigma_epi_K_E, pair_scatter)
+    ln_K_op = _assemble_scalar(ln_K_op_wt, d_K_op_off, sigma_d_K_op, M_mat)
+    ln_K_HL = _assemble_scalar(ln_K_HL_wt, d_K_HL_off, sigma_d_K_HL, M_mat)
+    ln_K_E  = _assemble_titrant(ln_K_E_wt, d_K_E_off, sigma_d_K_E, M_mat)
+
+    if has_epi:
+        def _lam_tilde(lam):
+            return jnp.sqrt(c2_epi * lam ** 2 / (c2_epi + tau_epi ** 2 * lam ** 2))
+
+        ln_K_op = ln_K_op + pair_scatter(epi_K_op_off * tau_epi * _lam_tilde(epi_K_op_lam))
+        ln_K_HL = ln_K_HL + pair_scatter(epi_K_HL_off * tau_epi * _lam_tilde(epi_K_HL_lam))
+        ln_K_E  = ln_K_E  + pair_scatter(epi_K_E_off  * tau_epi * _lam_tilde(epi_K_E_lam))
 
     theta_for_moments = _compute_theta(ln_K_op, ln_K_HL, ln_K_E,
                                        data.titrant_conc, tf_total, op_total)
@@ -719,10 +740,10 @@ def get_hyperparameters() -> Dict[str, Any]:
     p["theta_sigma_d_ln_K_op_scale"]  = 1.0
     p["theta_sigma_d_ln_K_HL_scale"]  = 1.0
     p["theta_sigma_d_ln_K_E_scale"]   = 1.0
-    # Epistasis effect scales
-    p["theta_sigma_epi_ln_K_op_scale"] = 0.5
-    p["theta_sigma_epi_ln_K_HL_scale"] = 0.5
-    p["theta_sigma_epi_ln_K_E_scale"]  = 0.5
+    # Shared regularised horseshoe hyperparameters for pairwise epistasis
+    p["theta_epi_tau_scale"]   = 0.1
+    p["theta_epi_slab_scale"]  = 2.0
+    p["theta_epi_slab_df"]     = 4.0
     return p
 
 
@@ -741,11 +762,13 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, Any]:
     g[f"{name}_d_ln_K_E_offset"]    = jnp.zeros((T, M))
     if data.num_pair > 0:
         P = data.num_pair
-        g[f"{name}_sigma_epi_ln_K_op"]   = jnp.array(0.3)
-        g[f"{name}_sigma_epi_ln_K_HL"]   = jnp.array(0.3)
-        g[f"{name}_sigma_epi_ln_K_E"]    = jnp.full(T, 0.3)
+        g[f"{name}_epi_tau"]              = jnp.array(0.05)
+        g[f"{name}_epi_c2"]              = jnp.array(4.0)
+        g[f"{name}_epi_ln_K_op_lambda"]  = jnp.ones(P) * 0.5
         g[f"{name}_epi_ln_K_op_offset"]  = jnp.zeros(P)
+        g[f"{name}_epi_ln_K_HL_lambda"]  = jnp.ones(P) * 0.5
         g[f"{name}_epi_ln_K_HL_offset"]  = jnp.zeros(P)
+        g[f"{name}_epi_ln_K_E_lambda"]   = jnp.ones((T, P)) * 0.5
         g[f"{name}_epi_ln_K_E_offset"]   = jnp.zeros((T, P))
     return g
 

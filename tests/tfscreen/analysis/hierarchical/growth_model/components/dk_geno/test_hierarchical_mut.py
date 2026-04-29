@@ -71,7 +71,7 @@ def test_get_hyperparameters():
     assert isinstance(params, dict)
     assert "hyper_loc_loc" in params
     assert "hyper_shift_loc" in params
-    assert "sigma_epi_scale" in params
+    assert "sigma_epi_tau_scale" in params
 
 
 def test_get_priors():
@@ -102,6 +102,10 @@ def test_get_guesses_with_epi(mock_data_epi):
     assert f"{name}_epi_offset" in guesses
     assert guesses[f"{name}_epi_offset"].shape == (mock_data_epi.num_pair,)
     assert jnp.all(guesses[f"{name}_epi_offset"] == 0.0)
+    assert f"{name}_epi_tau" in guesses
+    assert f"{name}_epi_c2" in guesses
+    assert f"{name}_epi_lambda" in guesses
+    assert guesses[f"{name}_epi_lambda"].shape == (mock_data_epi.num_pair,)
 
 
 # ---------------------------------------------------------------------------
@@ -211,10 +215,13 @@ class TestDefineModelWithEpi:
         """
         With neutral mutation offsets (dk ≈ 0) but non-zero epistasis offset,
         only the double-mutant column should be non-zero.
+        c2→∞ makes lambda_tilde ≈ lambda = 1, so epi = offset * tau * 1 = 0.5.
         """
         priors = get_priors()
         guesses = get_guesses("dk_geno", mock_data_epi)
-        guesses["dk_geno_sigma_epi"] = 1.0
+        guesses["dk_geno_epi_tau"] = 1.0
+        guesses["dk_geno_epi_c2"] = 1e12   # effectively no slab regularisation
+        guesses["dk_geno_epi_lambda"] = jnp.ones(1)
         guesses["dk_geno_epi_offset"] = jnp.array([0.5])
 
         result = substitute(define_model, data=guesses)(
@@ -223,7 +230,7 @@ class TestDefineModelWithEpi:
 
         # wt, M42I, K84L should all be ~0 (neutral offset)
         assert jnp.allclose(flat[:3], 0.0, atol=1e-5)
-        # M42I/K84L = 0 (mut contribution) + 0.5*1.0 (epistasis)
+        # M42I/K84L = 0 (mut contribution) + 0.5 * 1 * 1 (epistasis)
         assert flat[3] == pytest.approx(0.5, rel=1e-5)
 
     def test_epistasis_sample_sites_present(self, mock_data_epi):
@@ -234,12 +241,16 @@ class TestDefineModelWithEpi:
             name="dk_geno", data=mock_data_epi, priors=priors)
         sample_names = {k for k, v in tr.items() if v["type"] == "sample"}
         assert "dk_geno_epi_offset" in sample_names
-        assert "dk_geno_sigma_epi" in sample_names
+        assert "dk_geno_epi_tau" in sample_names
+        assert "dk_geno_epi_c2" in sample_names
+        assert "dk_geno_epi_lambda" in sample_names
 
     def test_wt_still_zero_with_epistasis(self, mock_data_epi):
         priors = get_priors()
         guesses = get_guesses("dk_geno", mock_data_epi)
-        guesses["dk_geno_sigma_epi"] = 1.0
+        guesses["dk_geno_epi_tau"] = 1.0
+        guesses["dk_geno_epi_c2"] = 1e12
+        guesses["dk_geno_epi_lambda"] = jnp.ones(1)
         guesses["dk_geno_epi_offset"] = jnp.array([1.0])
         result = substitute(define_model, data=guesses)(
             name="dk_geno", data=mock_data_epi, priors=priors)
@@ -282,7 +293,9 @@ class TestGuide:
                 name="dk_geno", data=mock_data_epi, priors=priors)
         sample_names = {k for k, v in tr.items() if v["type"] == "sample"}
         assert "dk_geno_epi_offset" in sample_names
-        assert "dk_geno_sigma_epi" in sample_names
+        assert "dk_geno_epi_tau" in sample_names
+        assert "dk_geno_epi_c2" in sample_names
+        assert "dk_geno_epi_lambda" in sample_names
 
     def test_guide_all_hyperprior_sites_sampled(self, mock_data_no_epi):
         priors = get_priors()

@@ -14514,23 +14514,44 @@
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:592:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:601:48: W292 no newline at end of file
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:32:1: F401 'flax.struct.field' imported but unused
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:113:47: E261 at least two spaces before inline comment
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:131:76: E261 at least two spaces before inline comment
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:112:47: E261 at least two spaces before inline comment
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:130:76: E261 at least two spaces before inline comment
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:227:31: E128 continuation line under-indented for visual indent
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:228:31: E128 continuation line under-indented for visual indent
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:229:31: E128 continuation line under-indented for visual indent
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:230:31: E128 continuation line under-indented for visual indent
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:265:16: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:265:30: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:267:17: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:267:28: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:268:17: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:268:28: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:276:22: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:276:38: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:278:23: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:278:36: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:279:23: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:279:36: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:267:16: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:267:30: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:269:17: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:269:28: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:270:17: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:270:28: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:281:22: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:281:38: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:283:23: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:283:36: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:284:23: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:284:36: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:294:20: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:296:15: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:297:15: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:300:24: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:300:44: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:302:19: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:302:39: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:303:19: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:303:39: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:532:20: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:534:15: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:535:15: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:541:24: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:541:44: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:541:73: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:543:19: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:543:39: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:543:71: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:544:19: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:544:39: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill_mut.py:544:71: E221 multiple spaces before operator
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer/lnK_mut.py:32:1: F401 'tfscreen.analysis.hierarchical.growth_model.components.theta.lac_dimer.thermo.run_model' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer/lnK_mut.py:32:1: F401 'tfscreen.analysis.hierarchical.growth_model.components.theta.lac_dimer.thermo.get_population_moments' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer/lnK_mut.py:219:31: E128 continuation line under-indented for visual indent
@@ -14617,35 +14638,45 @@
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:358:31: E128 continuation line under-indented for visual indent
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:359:31: E128 continuation line under-indented for visual indent
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:360:31: E128 continuation line under-indented for visual indent
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:395:13: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:404:19: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:417:11: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:646:11: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:707:30: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:710:30: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:713:29: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:714:31: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:716:27: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:717:27: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:719:37: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:720:37: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:721:36: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:725:38: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:733:28: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:734:28: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:735:27: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:736:33: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:737:33: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:738:32: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:739:34: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:740:34: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:741:33: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:744:39: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:745:39: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:746:38: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:747:40: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:748:40: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:749:39: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:399:13: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:411:19: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:411:34: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:422:11: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:427:15: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:427:25: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:660:11: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:668:15: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:668:25: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:668:53: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:728:30: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:731:30: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:734:29: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:735:31: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:737:27: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:738:27: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:740:37: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:741:37: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:742:36: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:744:29: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:745:30: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:746:27: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:754:28: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:755:28: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:756:27: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:757:33: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:758:33: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:759:32: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:760:34: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:761:34: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:762:33: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:765:29: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:766:28: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:767:40: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:768:40: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:769:40: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:770:40: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:771:39: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/lac_dimer_mut.py:772:39: E221 multiple spaces before operator
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/simple.py:31:1: F401 'jax' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:10:1: F401 'typing.Optional' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:10:1: F401 'typing.Tuple' imported but unused
@@ -19457,9 +19488,9 @@
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill_mut.py:114:32: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill_mut.py:118:15: F841 local variable 'G' is assigned to but never used
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill_mut.py:118:18: F841 local variable 'P' is assigned to but never used
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill_mut.py:223:9: F841 local variable 'M' is assigned to but never used
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill_mut.py:231:62: E127 continuation line over-indented for visual indent
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill_mut.py:424:56: E127 continuation line over-indented for visual indent
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill_mut.py:225:9: F841 local variable 'M' is assigned to but never used
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill_mut.py:233:62: E127 continuation line over-indented for visual indent
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill_mut.py:432:56: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_lac_dimer_mut.py:4:1: F401 'numpyro.distributions as dist' imported but unused
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_lac_dimer_mut.py:50:24: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_lac_dimer_mut.py:55:1: E302 expected 2 blank lines, found 1
@@ -22730,7 +22761,7 @@
 25    E202 whitespace before ']'
 16    E203 whitespace before ':'
 15    E211 whitespace before '('
-951   E221 multiple spaces before operator
+982   E221 multiple spaces before operator
 46    E222 multiple spaces after operator
 39    E225 missing whitespace around operator
 4753  E231 missing whitespace after ','
@@ -22767,4 +22798,4 @@
 316   W292 no newline at end of file
 6886  W293 blank line contains whitespace
 124   W391 blank line at end of file
-22716
+22747

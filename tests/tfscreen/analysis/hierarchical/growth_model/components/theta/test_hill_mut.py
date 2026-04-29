@@ -143,7 +143,7 @@ def test_get_hyperparameters():
     # Check a few expected keys
     assert "theta_logit_low_wt_loc" in params
     assert "theta_sigma_d_log_hill_K_scale" in params
-    assert "theta_sigma_epi_logit_low_scale" in params
+    assert "theta_epi_tau_scale" in params
 
 
 def test_get_priors():
@@ -168,7 +168,9 @@ def test_get_guesses_with_epi(mock_data_epi):
     guesses = get_guesses(name, mock_data_epi)
     T, P = mock_data_epi.num_titrant_name, mock_data_epi.num_pair
     assert guesses[f"{name}_epi_logit_low_offset"].shape == (T, P)
-    assert guesses[f"{name}_sigma_epi_logit_low"].shape == (T,)
+    assert guesses[f"{name}_epi_logit_low_lambda"].shape == (T, P)
+    assert f"{name}_epi_tau" in guesses
+    assert f"{name}_epi_c2" in guesses
 
 
 # ---------------------------------------------------------------------------
@@ -279,8 +281,10 @@ class TestDefineModelWithEpi:
         assert tp.theta_low.shape == (T, G)
 
     def test_epistasis_shifts_only_double_column(self, mock_data_epi):
-        """With zero mut deltas but non-zero epistasis, only column 3 differs."""
+        """With zero mut deltas but non-zero epistasis, only column 3 differs.
+        c2→∞ makes lambda_tilde ≈ lambda = 1, so epi = offset * tau * 1 = 1.0."""
         T = mock_data_epi.num_titrant_name
+        P = mock_data_epi.num_pair
         name = "theta"
         priors = get_priors()
         guesses = get_guesses(name, mock_data_epi)
@@ -288,8 +292,10 @@ class TestDefineModelWithEpi:
         guesses[f"{name}_logit_low_wt"] = jnp.zeros(T)
         guesses[f"{name}_sigma_d_logit_low"] = jnp.ones(T)
         guesses[f"{name}_d_logit_low_offset"] = jnp.zeros((T, 2))
-        guesses[f"{name}_sigma_epi_logit_low"] = jnp.ones(T)
-        guesses[f"{name}_epi_logit_low_offset"] = jnp.ones((T, 1))
+        guesses[f"{name}_epi_tau"] = 1.0
+        guesses[f"{name}_epi_c2"] = 1e12
+        guesses[f"{name}_epi_logit_low_lambda"] = jnp.ones((T, P))
+        guesses[f"{name}_epi_logit_low_offset"] = jnp.ones((T, P))
 
         tp = substitute(define_model, data=guesses)(
             name=name, data=mock_data_epi, priors=priors)
@@ -297,7 +303,7 @@ class TestDefineModelWithEpi:
         logit_low = dist.transforms.SigmoidTransform().inv(tp.theta_low)
         # wt(0), M42I(1), K84L(2) → logit_low should be 0
         assert jnp.allclose(logit_low[:, :3], 0.0, atol=1e-5)
-        # M42I/K84L(3) → logit_low should be epi * sigma_epi = 1.0
+        # M42I/K84L(3) → logit_low should be offset * tau * lambda_tilde = 1.0
         assert jnp.allclose(logit_low[:, 3], 1.0, atol=1e-5)
 
     def test_epistasis_sample_sites_present(self, mock_data_epi):
@@ -308,7 +314,9 @@ class TestDefineModelWithEpi:
             name="theta", data=mock_data_epi, priors=priors)
         sample_names = {k for k, v in tr.items() if v["type"] == "sample"}
         assert "theta_epi_logit_low_offset" in sample_names
-        assert "theta_sigma_epi_logit_low" in sample_names
+        assert "theta_epi_logit_low_lambda" in sample_names
+        assert "theta_epi_tau" in sample_names
+        assert "theta_epi_c2" in sample_names
 
 
 # ---------------------------------------------------------------------------

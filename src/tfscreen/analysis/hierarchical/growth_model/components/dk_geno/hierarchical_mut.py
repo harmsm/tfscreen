@@ -18,7 +18,18 @@ as dk_geno/hierarchical.py:
 This creates a distribution that is mostly negative (deleterious mutations)
 with a few slightly positive values, which is the expected biological prior.
 
-Pairwise epistasis terms use a Normal(0, sigma_epi) prior.
+Pairwise epistasis terms use a regularised horseshoe prior
+(Piironen & Vehtari 2017):
+
+    τ  ~ HalfCauchy(τ₀)
+    c² ~ InvGamma(ν/2, ν·s²/2)
+    λₚ ~ HalfCauchy(1)
+    λ̃ₚ = λₚ · √(c² / (c² + τ²λₚ²))
+    epi_dk_geno[p] = offsetₚ · τ · λ̃ₚ,   offsetₚ ~ Normal(0, 1)
+
+This concentrates most epistasis terms near 0 while allowing a sparse
+subset to escape shrinkage.  Effects are symmetric around 0: positive
+and negative epistasis are equally probable a priori.
 """
 
 import jax.numpy as jnp
@@ -39,7 +50,9 @@ class ModelPriors:
     hyper_scale_loc: float
     hyper_shift_loc: float
     hyper_shift_scale: float
-    sigma_epi_scale: float   # HalfNormal scale for epistasis spread
+    sigma_epi_tau_scale: float    # HalfCauchy scale for epistasis global τ
+    sigma_epi_slab_scale: float   # typical size of a large epistasis effect (s)
+    sigma_epi_slab_df: float      # InvGamma shape ν (usually 4)
 
 
 def define_model(name: str,
@@ -105,14 +118,20 @@ def define_model(name: str,
         pair_nnz_geno_idx = jnp.array(data.pair_nnz_geno_idx)
         num_pair = data.num_pair
 
-        sigma_epi = pyro.sample(
-            f"{name}_sigma_epi",
-            dist.HalfNormal(priors.sigma_epi_scale))
+        tau_epi = pyro.sample(
+            f"{name}_epi_tau",
+            dist.HalfCauchy(priors.sigma_epi_tau_scale))
+        c2_epi = pyro.sample(
+            f"{name}_epi_c2",
+            dist.InverseGamma(priors.sigma_epi_slab_df / 2.0,
+                              priors.sigma_epi_slab_df * priors.sigma_epi_slab_scale ** 2 / 2.0))
 
         with pyro.plate(f"{name}_pair_plate", num_pair, dim=-1):
+            lambda_epi = pyro.sample(f"{name}_epi_lambda", dist.HalfCauchy(1.0))
             epi_offset = pyro.sample(f"{name}_epi_offset", dist.Normal(0.0, 1.0))
 
-        epi_dk_geno = epi_offset * sigma_epi
+        lambda_epi_tilde = jnp.sqrt(c2_epi * lambda_epi ** 2 / (c2_epi + tau_epi ** 2 * lambda_epi ** 2))
+        epi_dk_geno = epi_offset * tau_epi * lambda_epi_tilde
         pyro.deterministic(f"{name}_epi_dk_geno", epi_dk_geno)
         dk_geno_per_genotype = dk_geno_per_genotype + apply_pair_matrix(
             epi_dk_geno, pair_nnz_pair_idx, pair_nnz_geno_idx, data.num_genotype)  # [G]
@@ -174,22 +193,33 @@ def guide(name: str,
         pair_nnz_geno_idx = jnp.array(data.pair_nnz_geno_idx)
         num_pair = data.num_pair
 
-        sigma_epi_loc = pyro.param(f"{name}_sigma_epi_loc", jnp.array(-1.0))
-        sigma_epi_scale = pyro.param(f"{name}_sigma_epi_scale", jnp.array(0.1),
-                                     constraint=dist.constraints.greater_than(1e-4))
-        sigma_epi = pyro.sample(f"{name}_sigma_epi",
-                                dist.LogNormal(sigma_epi_loc, sigma_epi_scale))
+        tau_epi_loc = pyro.param(f"{name}_epi_tau_loc", jnp.array(-1.0))
+        tau_epi_scale_p = pyro.param(f"{name}_epi_tau_scale", jnp.array(0.1),
+                                     constraint=dist.constraints.positive)
+        tau_epi = pyro.sample(f"{name}_epi_tau",
+                              dist.LogNormal(tau_epi_loc, tau_epi_scale_p))
 
-        epi_offset_locs = pyro.param(f"{name}_epi_offset_locs",
-                                     jnp.zeros(num_pair))
-        epi_offset_scales = pyro.param(f"{name}_epi_offset_scales",
-                                       jnp.ones(num_pair),
+        c2_epi_loc = pyro.param(f"{name}_epi_c2_loc", jnp.array(1.4))
+        c2_epi_scale_p = pyro.param(f"{name}_epi_c2_scale", jnp.array(0.5),
+                                    constraint=dist.constraints.positive)
+        c2_epi = pyro.sample(f"{name}_epi_c2",
+                             dist.LogNormal(c2_epi_loc, c2_epi_scale_p))
+
+        lambda_epi_locs = pyro.param(f"{name}_epi_lambda_locs", jnp.zeros(num_pair))
+        lambda_epi_scales = pyro.param(f"{name}_epi_lambda_scales", jnp.ones(num_pair),
                                        constraint=dist.constraints.positive)
+        epi_offset_locs = pyro.param(f"{name}_epi_offset_locs", jnp.zeros(num_pair))
+        epi_offset_scales = pyro.param(f"{name}_epi_offset_scales", jnp.ones(num_pair),
+                                       constraint=dist.constraints.positive)
+
         with pyro.plate(f"{name}_pair_plate", num_pair, dim=-1):
+            lambda_epi = pyro.sample(f"{name}_epi_lambda",
+                                     dist.LogNormal(lambda_epi_locs, lambda_epi_scales))
             epi_offset = pyro.sample(f"{name}_epi_offset",
                                      dist.Normal(epi_offset_locs, epi_offset_scales))
 
-        epi_dk_geno = epi_offset * sigma_epi
+        lambda_epi_tilde = jnp.sqrt(c2_epi * lambda_epi ** 2 / (c2_epi + tau_epi ** 2 * lambda_epi ** 2))
+        epi_dk_geno = epi_offset * tau_epi * lambda_epi_tilde
         dk_geno_per_genotype = dk_geno_per_genotype + apply_pair_matrix(
             epi_dk_geno, pair_nnz_pair_idx, pair_nnz_geno_idx, data.num_genotype)
 
@@ -203,7 +233,9 @@ def get_hyperparameters() -> Dict[str, Any]:
         "hyper_scale_loc": 1.0,
         "hyper_shift_loc": 0.02,
         "hyper_shift_scale": 0.2,
-        "sigma_epi_scale": 0.1,
+        "sigma_epi_tau_scale": 0.1,
+        "sigma_epi_slab_scale": 0.5,
+        "sigma_epi_slab_df": 4.0,
     }
 
 
@@ -217,7 +249,9 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, Any]:
     guesses[f"{name}_hyper_shift"] = 0.02
     guesses[f"{name}_offset"] = jnp.full(data.num_mutation, neutral_offset)
     if data.num_pair > 0:
-        guesses[f"{name}_sigma_epi"] = 0.05
+        guesses[f"{name}_epi_tau"] = 0.05
+        guesses[f"{name}_epi_c2"] = 4.0
+        guesses[f"{name}_epi_lambda"] = jnp.ones(data.num_pair) * 0.5
         guesses[f"{name}_epi_offset"] = jnp.zeros(data.num_pair)
     return guesses
 
