@@ -15470,18 +15470,19 @@
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/configure_growth_analysis.py:4:1: F401 'numpy as np' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/configure_growth_analysis.py:5:1: F401 'tfscreen' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/configure_growth_analysis.py:10:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/configure_growth_analysis.py:39:74: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/configure_growth_analysis.py:48:73: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/configure_growth_analysis.py:63:74: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/configure_growth_analysis.py:66:76: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/configure_growth_analysis.py:69:76: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/configure_growth_analysis.py:120:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/configure_growth_analysis.py:122:58: E231 missing whitespace after ':'
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/configure_growth_analysis.py:123:59: E231 missing whitespace after ':'
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/configure_growth_analysis.py:124:55: E231 missing whitespace after ':'
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/configure_growth_analysis.py:125:73: E231 missing whitespace after ':'
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/configure_growth_analysis.py:126:55: E231 missing whitespace after ':'
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/configure_growth_analysis.py:128:1: E305 expected 2 blank lines after class or function definition, found 1
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/configure_growth_analysis.py:40:74: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/configure_growth_analysis.py:49:73: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/configure_growth_analysis.py:64:74: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/configure_growth_analysis.py:67:76: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/configure_growth_analysis.py:70:76: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/configure_growth_analysis.py:125:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/configure_growth_analysis.py:127:58: E231 missing whitespace after ':'
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/configure_growth_analysis.py:128:59: E231 missing whitespace after ':'
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/configure_growth_analysis.py:129:55: E231 missing whitespace after ':'
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/configure_growth_analysis.py:130:73: E231 missing whitespace after ':'
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/configure_growth_analysis.py:131:59: E231 missing whitespace after ':'
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/configure_growth_analysis.py:132:55: E231 missing whitespace after ':'
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/configure_growth_analysis.py:134:1: E305 expected 2 blank lines after class or function definition, found 1
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/diagnose_nan.py:39:1: F401 'sys' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/diagnose_nan.py:42:1: F401 'jax.numpy as jnp' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/diagnose_nan.py:43:1: F401 'numpy as np' imported but unused
@@ -22764,7 +22765,7 @@
 982   E221 multiple spaces before operator
 46    E222 multiple spaces after operator
 39    E225 missing whitespace around operator
-4753  E231 missing whitespace after ','
+4754  E231 missing whitespace after ','
 716   E251 unexpected spaces around keyword / parameter equals
 56    E252 missing whitespace around parameter equals
 735   E261 at least two spaces before inline comment
@@ -22798,4 +22799,4 @@
 316   W292 no newline at end of file
 6886  W293 blank line contains whitespace
 124   W391 blank line at end of file
-22747
+22748

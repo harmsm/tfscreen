@@ -22,7 +22,8 @@ def configure_growth_analysis(growth_df=None,
                               spiked=None,
                               growth_shares_replicates=False,
                               epistasis=False,
-                              ligandmpnn_features_path=None):
+                              ligandmpnn_features_path=None,
+                              batch_size=1024):
     """
     Construct the analysis configuration step. This creates a tfs_config.yaml file
     along with tfs_priors.csv and tfs_guesses.csv (if any array parameters exist).
@@ -85,6 +86,9 @@ def configure_growth_analysis(growth_df=None,
         produced by running LigandMPNN in score mode on the four thermodynamic-
         state structures (H, HD, L, LE2). Required when
         ``theta_model='lac_dimer_nn_mut'``; ignored otherwise.
+    batch_size : int, optional
+        Mini-batch size for SVI. Defaults to 1024. Set to None to use the full
+        dataset as a single batch.
 
     Returns
     -------
@@ -108,7 +112,8 @@ def configure_growth_analysis(growth_df=None,
                      spiked_genotypes=spiked,
                      growth_shares_replicates=growth_shares_replicates,
                      epistasis=epistasis,
-                     ligandmpnn_features_path=ligandmpnn_features_path)
+                     ligandmpnn_features_path=ligandmpnn_features_path,
+                     batch_size=batch_size)
 
     # Write the model configuration to a file. This includes the model component
     # names, the data file paths, and the parameter guesses/priors.
@@ -122,7 +127,8 @@ def main():
                             manual_arg_types={"growth_df":str,
                                               "binding_df":str,
                                               "spiked":list,
-                                              "ligandmpnn_features_path":str},
+                                              "ligandmpnn_features_path":str,
+                                              "batch_size":int},
                             manual_arg_nargs={"spiked":"+"})
 
 if __name__ == "__main__":
