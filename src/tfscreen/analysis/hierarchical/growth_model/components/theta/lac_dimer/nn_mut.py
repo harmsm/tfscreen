@@ -144,9 +144,9 @@ class ModelPriors:
     theta_ln_K_E_wt_loc: float
     theta_ln_K_E_wt_scale: float
 
-    # Physical concentrations (nM); Sochor, PeerJ 2014
-    theta_tf_total_nM: float
-    theta_op_total_nM: float
+    # Physical concentrations (M); Sochor, PeerJ 2014
+    theta_tf_total_M: float
+    theta_op_total_M: float
 
     # MLP architecture and weight prior scale
     # pytree_node=False keeps this as a concrete Python int during JIT tracing
@@ -193,8 +193,9 @@ def define_model(name: str,
     features = jnp.array(data.ligandmpnn_features)    # (M, 4)
     H        = int(priors.theta_nn_hidden_size)
     w_scale  = priors.theta_nn_w_scale
-    tf_total = priors.theta_tf_total_nM
-    op_total = priors.theta_op_total_nM
+    tf_total = priors.theta_tf_total_M
+    op_total = priors.theta_op_total_M
+    titrant_conc_M = data.titrant_conc / 1000.0       # mM → M
 
     # ------------------------------------------------------------------
     # WT equilibrium constants
@@ -254,7 +255,7 @@ def define_model(name: str,
     # Population moments for transformation model
     # ------------------------------------------------------------------
     theta_for_moments = _compute_theta(ln_K_op, ln_K_HL, ln_K_E,
-                                       data.titrant_conc, tf_total, op_total)
+                                       titrant_conc_M, tf_total, op_total)
     mu, sigma = _population_moments(theta_for_moments, data)
 
     return ThetaParam(ln_K_op=ln_K_op, ln_K_HL=ln_K_HL, ln_K_E=ln_K_E,
@@ -274,8 +275,9 @@ def guide(name: str,
     M_mat    = jnp.array(data.mut_geno_matrix)
     features = jnp.array(data.ligandmpnn_features)
     H        = int(priors.theta_nn_hidden_size)
-    tf_total = priors.theta_tf_total_nM
-    op_total = priors.theta_op_total_nM
+    tf_total = priors.theta_tf_total_M
+    op_total = priors.theta_op_total_M
+    titrant_conc_M = data.titrant_conc / 1000.0       # mM → M
 
     # ------------------------------------------------------------------
     # Variational parameters for WT K values
@@ -345,7 +347,7 @@ def guide(name: str,
     ln_K_E  = ln_K_E_wt[:, None] + (d_ln_K_E @ M_mat)[None, :]
 
     theta_for_moments = _compute_theta(ln_K_op, ln_K_HL, ln_K_E,
-                                       data.titrant_conc, tf_total, op_total)
+                                       titrant_conc_M, tf_total, op_total)
     mu, sigma = _population_moments(theta_for_moments, data)
 
     return ThetaParam(ln_K_op=ln_K_op, ln_K_HL=ln_K_HL, ln_K_E=ln_K_E,
@@ -358,14 +360,14 @@ def guide(name: str,
 
 def get_hyperparameters() -> Dict[str, Any]:
     p = {}
-    p["theta_ln_K_op_wt_loc"]   = 2.3
+    p["theta_ln_K_op_wt_loc"]   = 23.0   # 2.3 (nM⁻¹) + ln(1e9) ≈ 23.0 (M⁻¹)
     p["theta_ln_K_op_wt_scale"] = 2.0
-    p["theta_ln_K_HL_wt_loc"]   = -9.0
+    p["theta_ln_K_HL_wt_loc"]   = -9.0   # dimensionless, unchanged
     p["theta_ln_K_HL_wt_scale"] = 3.0
-    p["theta_ln_K_E_wt_loc"]    = -8.0
+    p["theta_ln_K_E_wt_loc"]    = 33.4   # -8.0 (nM⁻²) + ln(1e18) ≈ 33.4 (M⁻²)
     p["theta_ln_K_E_wt_scale"]  = 3.0
-    p["theta_tf_total_nM"]      = 650.0
-    p["theta_op_total_nM"]      = 25.0
+    p["theta_tf_total_M"]       = 6.5e-7  # 650 nM
+    p["theta_op_total_M"]       = 2.5e-8  # 25 nM
     p["theta_nn_hidden_size"]   = _DEFAULT_HIDDEN_SIZE
     p["theta_nn_w_scale"]       = 1.0
     return p
@@ -375,9 +377,9 @@ def get_guesses(name: str, data: Union[GrowthData, BindingData]) -> Dict[str, An
     T = data.num_titrant_name
     H = _DEFAULT_HIDDEN_SIZE
     g = {}
-    g[f"{name}_ln_K_op_wt"] = jnp.array(2.3)
+    g[f"{name}_ln_K_op_wt"] = jnp.array(23.0)
     g[f"{name}_ln_K_HL_wt"] = jnp.array(-9.0)
-    g[f"{name}_ln_K_E_wt"]  = jnp.full(T, -8.0)
+    g[f"{name}_ln_K_E_wt"]  = jnp.full(T, 33.4)
     g[f"{name}_nn_W1"]      = jnp.zeros((4, H))
     g[f"{name}_nn_b1"]      = jnp.zeros(H)
     g[f"{name}_nn_W2"]      = jnp.zeros((H, 4))

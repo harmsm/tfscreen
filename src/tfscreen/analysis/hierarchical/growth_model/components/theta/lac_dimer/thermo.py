@@ -12,11 +12,11 @@ Four-state partition function for the TF homodimer:
     Z     = 1 + K_op·[op_free] + K_HL + K_HL·K_E·[E_free]²
     θ     = K_op·[op_free] / Z
 
-Units: all concentrations in nM; K_op in nM⁻¹; K_E in nM⁻²; K_HL dimensionless.
+Units: all concentrations in M; K_op in M⁻¹; K_E in M⁻²; K_HL dimensionless.
 
 Operator depletion approximation
 ---------------------------------
-[TF_total] ≈ 650 nM, [op_total] ≈ 25 nM
+[TF_total] ≈ 6.5e-7 M, [op_total] ≈ 2.5e-8 M
 (Sochor, PeerJ 2014, https://doi.org/10.7717/peerj.498),
 giving [TF]/[op] ≈ 26.  Because the TF is in large excess we treat
 [op_free] ≈ [op_total] = const.
@@ -54,8 +54,8 @@ class ThetaParam:
     ln_K_op:  jnp.ndarray   # (G,)    — per-genotype log protein-DNA affinity
     ln_K_HL:  jnp.ndarray   # (G,)    — per-genotype log conformational equilibrium
     ln_K_E:   jnp.ndarray   # (T, G)  — per-genotype log effector binding constant
-    tf_total: float          # nM
-    op_total: float          # nM
+    tf_total: float          # M
+    op_total: float          # M
     mu:       jnp.ndarray   # (T, C, 1) — population mean logit-theta
     sigma:    jnp.ndarray   # (T, C, 1) — population std  logit-theta
 
@@ -75,7 +75,7 @@ def _solve_free_effector(e_total, tf_total, a, Z0):
     Parameters
     ----------
     e_total : (1, C, 1)  — total effector concentration grid
-    tf_total : scalar    — total TF concentration (nM)
+    tf_total : scalar    — total TF concentration (M)
     a : (T, 1, G)        — K_HL · K_E
     Z0 : (1, 1, G)       — 1 + K_op·[op_total] + K_HL
 
@@ -112,7 +112,7 @@ def _compute_theta(ln_K_op, ln_K_HL, ln_K_E, titrant_conc, tf_total, op_total):
     ln_K_op : (G,)
     ln_K_HL : (G,)
     ln_K_E  : (T, G)
-    titrant_conc : (C,)  — effector concentrations in nM
+    titrant_conc : (C,)  — effector concentrations in M
     tf_total : scalar
     op_total : scalar
 

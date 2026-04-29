@@ -791,8 +791,8 @@ def _extract_theta_curves_lac_dimer_mut(model, posteriors, q_to_get, manual_titr
     K_HL = np.exp(ln_K_HL_pts)   # (S, N)
     K_E  = np.exp(ln_K_E_pts)    # (S, N)
 
-    tf_total = float(model.priors.theta.theta_tf_total_nM)
-    op_total = float(model.priors.theta.theta_op_total_nM)
+    tf_total = float(model.priors.theta.theta_tf_total_M)
+    op_total = float(model.priors.theta.theta_op_total_M)
 
     e_total  = conc[None, :]              # (1, N) → broadcasts to (S, N)
     Z0       = 1.0 + K_op * op_total + K_HL
