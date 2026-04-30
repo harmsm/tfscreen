@@ -144,13 +144,13 @@ def guide(name: str,
     # τ_d: LogNormal guide for HalfCauchy prior
     tau_d_loc = pyro.param(f"{name}_d_tau_loc", jnp.array(-1.0))
     tau_d_scale = pyro.param(f"{name}_d_tau_scale", jnp.array(0.1),
-                             constraint=dist.constraints.positive)
+                             constraint=dist.constraints.greater_than(1e-4))
     tau_d = pyro.sample(f"{name}_d_tau", dist.LogNormal(tau_d_loc, tau_d_scale))
 
     # c²_d: LogNormal guide for InvGamma prior
     c2_d_loc = pyro.param(f"{name}_d_c2_loc", jnp.array(1.4))   # ≈ log(slab_scale²=4)
     c2_d_scale = pyro.param(f"{name}_d_c2_scale", jnp.array(0.5),
-                            constraint=dist.constraints.positive)
+                            constraint=dist.constraints.greater_than(1e-4))
     c2_d = pyro.sample(f"{name}_d_c2", dist.LogNormal(c2_d_loc, c2_d_scale))
 
     # Per-mutation local scales (LogNormal) and offsets (Normal)
@@ -181,12 +181,12 @@ def guide(name: str,
 
         tau_epi_loc = pyro.param(f"{name}_epi_tau_loc", jnp.array(-1.0))
         tau_epi_scale = pyro.param(f"{name}_epi_tau_scale", jnp.array(0.1),
-                                   constraint=dist.constraints.positive)
+                                   constraint=dist.constraints.greater_than(1e-4))
         tau_epi = pyro.sample(f"{name}_epi_tau", dist.LogNormal(tau_epi_loc, tau_epi_scale))
 
         c2_epi_loc = pyro.param(f"{name}_epi_c2_loc", jnp.array(1.4))
         c2_epi_scale = pyro.param(f"{name}_epi_c2_scale", jnp.array(0.5),
-                                  constraint=dist.constraints.positive)
+                                  constraint=dist.constraints.greater_than(1e-4))
         c2_epi = pyro.sample(f"{name}_epi_c2", dist.LogNormal(c2_epi_loc, c2_epi_scale))
 
         lambda_epi_locs = pyro.param(f"{name}_epi_lambda_locs", jnp.zeros(num_pair))
