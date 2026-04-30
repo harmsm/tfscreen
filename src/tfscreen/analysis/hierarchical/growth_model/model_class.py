@@ -981,5 +981,6 @@ class ModelClass:
             "theta_binding_noise":self._theta_binding_noise,
             "spiked_genotypes":self._spiked_genotypes,
             "growth_shares_replicates": self._growth_shares_replicates,
+            "epistasis": self._epistasis,
             "ligandmpnn_features_path": self._ligandmpnn_features_path,
         }

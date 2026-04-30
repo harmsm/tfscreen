@@ -319,6 +319,7 @@ def test_model_class_properties(initialized_model_class):
     model._theta_binding_noise = "bn"
     model._spiked_genotypes = ["s"]
     model._growth_shares_replicates = False
+    model._epistasis = True
     model._ligandmpnn_features_path = None
 
     assert ModelClass.jax_model.fget(model) == "jm"
@@ -337,6 +338,7 @@ def test_model_class_properties(initialized_model_class):
     assert ModelClass.settings.fget(model)["theta_binding_noise"] == "bn"
     assert ModelClass.settings.fget(model)["spiked_genotypes"] == ["s"]
     assert ModelClass.settings.fget(model)["growth_shares_replicates"] == False
+    assert ModelClass.settings.fget(model)["epistasis"] == True
     assert ModelClass.get_batch.fget(model) == get_batch
 
 def test_extract_parameters_full(initialized_model_class):
