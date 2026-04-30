@@ -135,8 +135,18 @@ def jax_model(data: DataClass,
     # finalize
 
     # If this is a guide, just make the final observations but do not calculate
-    # final tensors
+    # final tensors. We still need to call growth_transition_model so its latent
+    # variables (e.g. memory k1/tau0/k2) get guide sample sites registered.
     if is_guide:
+
+        growth_transition_model("growth_transition",
+                                data.growth,
+                                priors.growth.growth_transition,
+                                g_pre=jnp.zeros_like(noisy_theta_growth),
+                                g_sel=jnp.zeros_like(noisy_theta_growth),
+                                t_pre=data.growth.t_pre,
+                                t_sel=data.growth.t_sel,
+                                theta=noisy_theta_growth)
 
         growth_observer("final_binding_obs",data.growth,None)
         binding_observer("final_growth_obs",data.binding,None)
