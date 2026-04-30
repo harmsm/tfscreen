@@ -705,7 +705,8 @@ def run_model(theta_param: ThetaParam, data) -> jnp.ndarray:
         theta_param.op_total,
     )                                              # (T, C, G)
 
-    theta_calc = theta_all[:, :, data.geno_theta_idx]   # (T, C, num_obs)
+    geno_idx = data.batch_idx[data.geno_theta_idx]
+    theta_calc = theta_all[:, :, geno_idx]               # (T, C, num_obs)
 
     if data.scatter_theta == 1:
         theta_calc = theta_calc[None, None, None, None, :, :, :]

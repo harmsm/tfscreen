@@ -95,6 +95,8 @@ def define_model(name: str,
 
     pyro.deterministic(name, activity)
 
+    if data.batch_size < data.num_genotype:
+        activity = activity[data.batch_idx]
     return activity[None, None, None, None, None, None, :]
 
 
@@ -153,6 +155,8 @@ def guide(name: str,
 
     activity = jnp.clip(jnp.exp(log_activity), max=1e30)
 
+    if data.batch_size < data.num_genotype:
+        activity = activity[data.batch_idx]
     return activity[None, None, None, None, None, None, :]
 
 

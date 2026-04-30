@@ -571,10 +571,11 @@ def run_model(theta_param: ThetaParam, data) -> jnp.ndarray:
     Identical to ``hill.run_model``; the assembled ``ThetaParam`` already
     has the correct per-genotype shape so no additional transformation is needed.
     """
-    theta_low = theta_param.theta_low[:, None, data.geno_theta_idx]
-    theta_high = theta_param.theta_high[:, None, data.geno_theta_idx]
-    log_hill_K = theta_param.log_hill_K[:, None, data.geno_theta_idx]
-    hill_n = theta_param.hill_n[:, None, data.geno_theta_idx]
+    geno_idx = data.batch_idx[data.geno_theta_idx]
+    theta_low = theta_param.theta_low[:, None, geno_idx]
+    theta_high = theta_param.theta_high[:, None, geno_idx]
+    log_hill_K = theta_param.log_hill_K[:, None, geno_idx]
+    hill_n = theta_param.hill_n[:, None, geno_idx]
 
     log_titrant = data.log_titrant_conc[None, :, None]
     occupancy = jax.nn.sigmoid(hill_n * (log_titrant - log_hill_K))

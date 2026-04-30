@@ -41,6 +41,7 @@ MockData = namedtuple("MockData", [
     "mut_geno_matrix",
     "pair_nnz_pair_idx",
     "pair_nnz_geno_idx",
+    "batch_idx",
 ])
 
 # Genotypes: wt(0), M42I(1), K84L(2), M42I/K84L(3)
@@ -79,6 +80,7 @@ def mock_data_epi():
         mut_geno_matrix=_MUT_GENO,
         pair_nnz_pair_idx=_PAIR_NNZ_PAIR,
         pair_nnz_geno_idx=_PAIR_NNZ_GENO,
+        batch_idx=jnp.arange(4, dtype=jnp.int32),
     )
 
 
@@ -98,6 +100,7 @@ def mock_data_no_epi():
         mut_geno_matrix=_MUT_GENO,
         pair_nnz_pair_idx=np.zeros(0, dtype=np.int32),
         pair_nnz_geno_idx=np.zeros(0, dtype=np.int32),
+        batch_idx=jnp.arange(4, dtype=jnp.int32),
     )
 
 
@@ -602,16 +605,18 @@ class TestRunModel:
         """run_model uses data.titrant_conc, so binding data with different
         concentrations produces different (valid) results."""
         MockDataSmall = namedtuple("MockDataSmall", [
-            "titrant_conc", "geno_theta_idx", "scatter_theta"])
+            "titrant_conc", "geno_theta_idx", "scatter_theta", "batch_idx"])
         G = 4
         data_a = MockDataSmall(
             titrant_conc=jnp.array([0.0, 100.0]),
             geno_theta_idx=jnp.arange(G, dtype=jnp.int32),
-            scatter_theta=0)
+            scatter_theta=0,
+            batch_idx=jnp.arange(G, dtype=jnp.int32))
         data_b = MockDataSmall(
             titrant_conc=jnp.array([500.0, 1000.0]),
             geno_theta_idx=jnp.arange(G, dtype=jnp.int32),
-            scatter_theta=0)
+            scatter_theta=0,
+            batch_idx=jnp.arange(G, dtype=jnp.int32))
         res_a = run_model(theta_param, data_a)
         res_b = run_model(theta_param, data_b)
         # Higher concentrations → lower theta

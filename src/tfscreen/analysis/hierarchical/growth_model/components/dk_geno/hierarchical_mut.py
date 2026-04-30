@@ -138,6 +138,8 @@ def define_model(name: str,
 
     pyro.deterministic(name, dk_geno_per_genotype)
 
+    if data.batch_size < data.num_genotype:
+        dk_geno_per_genotype = dk_geno_per_genotype[data.batch_idx]
     return dk_geno_per_genotype[None, None, None, None, None, None, :]
 
 
@@ -223,6 +225,8 @@ def guide(name: str,
         dk_geno_per_genotype = dk_geno_per_genotype + apply_pair_matrix(
             epi_dk_geno, pair_nnz_pair_idx, pair_nnz_geno_idx, data.num_genotype)
 
+    if data.batch_size < data.num_genotype:
+        dk_geno_per_genotype = dk_geno_per_genotype[data.batch_idx]
     return dk_geno_per_genotype[None, None, None, None, None, None, :]
 
 

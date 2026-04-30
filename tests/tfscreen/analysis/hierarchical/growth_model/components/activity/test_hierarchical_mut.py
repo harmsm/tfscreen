@@ -24,6 +24,8 @@ MockGrowthData = namedtuple("MockGrowthData", [
     "mut_geno_matrix",
     "pair_nnz_pair_idx",
     "pair_nnz_geno_idx",
+    "batch_size",
+    "batch_idx",
 ])
 
 # Genotypes: wt(0), M42I(1), K84L(2), M42I/K84L(3)
@@ -43,6 +45,8 @@ def mock_data_epi():
         mut_geno_matrix=_MUT_GENO,
         pair_nnz_pair_idx=_PAIR_NNZ_PAIR,
         pair_nnz_geno_idx=_PAIR_NNZ_GENO,
+        batch_size=4,
+        batch_idx=np.arange(4, dtype=np.int32),
     )
 
 
@@ -55,6 +59,8 @@ def mock_data_no_epi():
         mut_geno_matrix=_MUT_GENO,
         pair_nnz_pair_idx=np.zeros(0, dtype=np.int32),
         pair_nnz_geno_idx=np.zeros(0, dtype=np.int32),
+        batch_size=4,
+        batch_idx=np.arange(4, dtype=np.int32),
     )
 
 
