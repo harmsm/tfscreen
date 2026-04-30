@@ -82,7 +82,13 @@ def define_model(name: str,
     k1_expanded = k1_per_condition[data.map_condition_pre]
     k2_expanded = k2_per_condition[data.map_condition_pre]
 
-    tau = tau0_expanded + (k1_expanded / (theta + k2_expanded))
+    # Clamp denominator away from zero so neither the forward pass nor the
+    # backward pass produces inf/NaN.  jnp.where evaluates both branches in
+    # the backward pass, so a bare division by near-zero produces inf
+    # gradients even when the condition masks it out.
+    denom = theta + k2_expanded
+    safe_denom = jnp.where(jnp.abs(denom) > 1e-6, denom, jnp.sign(denom + 1e-30) * 1e-6)
+    tau = tau0_expanded + (k1_expanded / safe_denom)
 
     dln_cfu_pre = g_pre * t_pre
     dln_cfu_sel = jnp.where(
@@ -139,7 +145,9 @@ def guide(name: str,
     k1_expanded = k1_per_condition[data.map_condition_pre]
     k2_expanded = k2_per_condition[data.map_condition_pre]
 
-    tau = tau0_expanded + (k1_expanded / (theta + k2_expanded))
+    denom = theta + k2_expanded
+    safe_denom = jnp.where(jnp.abs(denom) > 1e-6, denom, jnp.sign(denom + 1e-30) * 1e-6)
+    tau = tau0_expanded + (k1_expanded / safe_denom)
 
     dln_cfu_pre = g_pre * t_pre
     dln_cfu_sel = jnp.where(
