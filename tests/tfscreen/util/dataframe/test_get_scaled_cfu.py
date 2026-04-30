@@ -109,6 +109,30 @@ def test_no_needed_columns_returns_original_df():
     assert result_df_none is df
 
 
+def test_non_contiguous_index():
+    """
+    Regression: get_scaled_cfu must work when the DataFrame has a non-contiguous
+    index (e.g., after filtering a larger DataFrame with _intersect_data).
+    Previously, reset_index() created a RangeIndex on the temp copy, so
+    df.join(tmp_df) silently produced NaN for any row whose original index
+    was out of range.
+    """
+    big = pd.DataFrame({
+        'ln_cfu':     [float(i) for i in range(1000)],
+        'ln_cfu_var': [0.01] * 1000,
+    })
+    # Slice out rows 900-909 — index is [900, …, 909], non-contiguous relative
+    # to the 10-row RangeIndex that reset_index() would create.
+    df = big.iloc[900:910].copy()
+    assert list(df.index) == list(range(900, 910))
+
+    result = get_scaled_cfu(df, need_columns=['ln_cfu_std'])
+
+    assert 'ln_cfu_std' in result.columns
+    assert result['ln_cfu_std'].isna().sum() == 0
+    assert np.allclose(result['ln_cfu_std'], np.sqrt(0.01))
+
+
 def test_already_present_columns_returns_original_df():
     """
     Tests that if all needed columns are already present, the original

@@ -80,7 +80,7 @@ def get_scaled_cfu(
     df = df.copy()
 
     current_valid = list(df.columns.isin(VALID_COLS))
-    tmp_df = df[df.columns[current_valid]].reset_index()
+    tmp_df = df[df.columns[current_valid]].copy()
 
     # --- Pre-computation: Generate all possible columns ---
 
