@@ -14731,20 +14731,19 @@
 ./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:395:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:402:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:422:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:424:32: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:426:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:430:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:433:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:435:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:437:21: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:460:5: E303 too many blank lines (2)
-./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:462:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:463:54: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:464:79: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:465:65: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:466:74: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:470:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:473:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:427:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:431:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:434:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:436:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:438:21: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:461:5: E303 too many blank lines (2)
+./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:463:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:464:54: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:465:79: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:466:65: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:467:74: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:471:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/_congression.py:474:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/empirical.py:5:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/empirical.py:13:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/hierarchical/growth_model/components/transformation/empirical.py:20:1: E305 expected 2 blank lines after class or function definition, found 1
@@ -22560,8 +22559,8 @@
 30    F811 redefinition of unused 'dataclasses' from line 6
 120   F841 local variable 'nu' is assigned to but never used
 141   W191 indentation contains tabs
-3033  W291 trailing whitespace
+3032  W291 trailing whitespace
 316   W292 no newline at end of file
 6879  W293 blank line contains whitespace
 124   W391 blank line at end of file
-22513
+22512

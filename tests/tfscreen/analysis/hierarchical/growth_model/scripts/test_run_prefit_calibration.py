@@ -918,7 +918,7 @@ class TestRunPrefitCalibrationOrchestration:
         cfg, _, _ = self._write_yaml_and_csvs(tmp_path)
         _, mock_run_map = self._patch_pipeline(mocker)
         run_prefit_calibration(config_file=cfg, seed=1)
-        assert mock_run_map.call_args.kwargs["out_root"] == "prefit"
+        assert mock_run_map.call_args.kwargs["out_root"] == "tfs_prefit"
 
     def test_custom_out_root_is_honored(self, tmp_path, mocker):
         cfg, _, _ = self._write_yaml_and_csvs(tmp_path)

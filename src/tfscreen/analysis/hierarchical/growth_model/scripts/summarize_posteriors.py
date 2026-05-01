@@ -14,7 +14,7 @@ from tfscreen.util.cli.generalized_main import generalized_main
 
 def summarize_posteriors(config_file,
                         posterior_file,
-                        out_root="tfs",
+                        out_root="tfs_param",
                         q_to_get=None,
                         num_samples=100):
     """
@@ -27,7 +27,7 @@ def summarize_posteriors(config_file,
     posterior_file : str
         Path to the .npz or .h5 file containing posterior samples.
     out_root : str, optional
-        Root filename for output files.
+        Root filename for output files. Default "tfs_param".
     q_to_get : dict, optional
         Dictionary mapping column names to quantiles.
     num_samples : int, optional

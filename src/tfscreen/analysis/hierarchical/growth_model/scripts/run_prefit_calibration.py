@@ -1011,7 +1011,7 @@ def _make_calibration_plots(gm_cal, params, out_root):
 def run_prefit_calibration(config_file,
                            seed=None,
                            checkpoint_file=None,
-                           out_root="prefit",
+                           out_root="tfs_prefit",
                            adam_step_size=1e-3,
                            adam_final_step_size=1e-6,
                            adam_clip_norm=1.0,
@@ -1057,7 +1057,7 @@ def run_prefit_calibration(config_file,
         Path to a previously written pre-fit checkpoint to resume from.
     out_root : str, optional
         Prefix for calibration MAP artefacts (``{out_root}_params.npz``,
-        ``{out_root}_checkpoint.pkl``, etc.).  Defaults to ``"prefit"``.
+        ``{out_root}_checkpoint.pkl``, etc.).  Defaults to ``"tfs_prefit"``.
         These are diagnostic outputs; the user-facing artefact is the
         in-place update of the production CSVs.
     adam_step_size, adam_final_step_size, adam_clip_norm,

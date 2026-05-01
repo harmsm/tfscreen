@@ -420,9 +420,10 @@ def get_hyperparameters():
 
     parameters = {}
     
-    # Lambda prior: centered on 1.0
-    parameters["lam_loc"] = 0.0 
-    parameters["lam_scale"] = 0.01
+    # Lambda prior: experimentally measured lambda = 0.3572, 95% CI [0.1559, 0.6743]
+    # lam_loc = log(0.3572); lam_scale from CI width in log-space: (log(0.6743)-log(0.1559))/(2*1.96)
+    parameters["lam_loc"] = -1.029
+    parameters["lam_scale"] = 0.37
     
     # Anchoring scales (tightening this makes the background track the prior more closely)
     parameters["mu_anchoring_scale"] = 0.5
@@ -458,7 +459,7 @@ def get_guesses(name,data):
 
 
     guesses = {}
-    guesses[f"{name}_lam"] = 1.0
+    guesses[f"{name}_lam"] = 0.3572  # experimentally measured value
     
     # Only add these if we are not in empirical mode. 
     # NOTE: get_guesses currently doesn't know the mode from the config easily 

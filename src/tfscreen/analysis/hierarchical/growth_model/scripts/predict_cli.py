@@ -7,7 +7,7 @@ from tfscreen.util.cli.generalized_main import generalized_main
 
 def predict_cli(config_file,
                 posterior_file,
-                out_prefix="tfs",
+                out_prefix="tfs_pred",
                 predict_sites=None,
                 num_samples=100,
                 num_marginal_samples=None,
@@ -26,7 +26,7 @@ def predict_cli(config_file,
         Path to the .h5 file containing posterior samples.
     out_prefix : str, optional
         Prefix for the output CSV files. Each site will be saved to
-        {out_prefix}_{site_name}.csv. Default "tfs".
+        {out_prefix}_{site_name}.csv. Default "tfs_pred".
     predict_sites : list, optional
         List of strings specifying the sites to predict. If None,
         defaults to ["growth_pred"].
