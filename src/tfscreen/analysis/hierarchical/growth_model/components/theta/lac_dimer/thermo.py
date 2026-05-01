@@ -37,6 +37,8 @@ This module is imported by all K-assembly variants
 
 import jax
 import jax.numpy as jnp
+import numpy as np
+import pandas as pd
 from flax.struct import dataclass
 
 # Number of Newton iterations for the free-effector cubic solve.
@@ -194,3 +196,141 @@ def run_model(theta_param: ThetaParam, data) -> jnp.ndarray:
 
 def get_population_moments(theta_param: ThetaParam, data) -> tuple:
     return theta_param.mu, theta_param.sigma
+
+
+# ---------------------------------------------------------------------------
+# Numpy extraction helpers (shared by lac_dimer_mut and lac_dimer_nn_mut)
+# ---------------------------------------------------------------------------
+
+_ZERO_CONC_VALUE = 1e-20
+
+
+def build_calc_df(model, manual_titrant_df):
+    """
+    Build the concentration grid DataFrame for theta curve extraction.
+
+    Shared by ``lac_dimer_mut`` and ``lac_dimer_nn_mut``.
+
+    Returns
+    -------
+    calc_df : pd.DataFrame
+        Rows for each (genotype, titrant_name, titrant_conc) combination,
+        including internal ``genotype_idx`` and ``titrant_name_idx`` columns.
+    internal_cols : list of str
+        Columns to strip before returning results to the caller.
+    extra_kwargs : dict
+        ``tf_total`` and ``op_total`` scalars (in M) required by
+        ``compute_theta_samples``.
+    """
+    import tfscreen.util.dataframe
+
+    if manual_titrant_df is None:
+        calc_df = (model.growth_tm.df[["genotype", "titrant_name", "titrant_conc",
+                                       "genotype_idx", "titrant_name_idx"]]
+                   .drop_duplicates()
+                   .reset_index(drop=True))
+    else:
+        tfscreen.util.dataframe.check_columns(manual_titrant_df,
+                                              required_columns=["titrant_name", "titrant_conc"])
+        if "genotype" not in manual_titrant_df.columns:
+            genotypes = model.growth_tm.df["genotype"].unique()
+            dfs = [manual_titrant_df.assign(genotype=g) for g in genotypes]
+            calc_df = pd.concat(dfs).reset_index(drop=True)
+        else:
+            calc_df = manual_titrant_df.copy()
+
+        geno_map = (model.growth_tm.df[["genotype", "genotype_idx"]]
+                    .drop_duplicates()
+                    .set_index("genotype")["genotype_idx"]
+                    .to_dict())
+        titrant_map = (model.growth_tm.df[["titrant_name", "titrant_name_idx"]]
+                       .drop_duplicates()
+                       .set_index("titrant_name")["titrant_name_idx"]
+                       .to_dict())
+        calc_df["genotype_idx"] = calc_df["genotype"].map(geno_map)
+        calc_df["titrant_name_idx"] = calc_df["titrant_name"].map(titrant_map)
+
+        missing = calc_df["genotype_idx"].isna() | calc_df["titrant_name_idx"].isna()
+        if missing.any():
+            bad = calc_df[missing][["genotype", "titrant_name"]].drop_duplicates()
+            raise ValueError(
+                "Some (genotype, titrant_name) pairs in manual_titrant_df "
+                "were not found in the model data: "
+                f"{bad.values}"
+            )
+
+    extra = {
+        "tf_total": float(model.priors.theta.theta_tf_total_M),
+        "op_total": float(model.priors.theta.theta_op_total_M),
+    }
+    return calc_df, ["genotype_idx", "titrant_name_idx"], extra
+
+
+def compute_theta_samples(calc_df, param_posteriors, *, tf_total, op_total):
+    """
+    Compute posterior theta samples for the lac_dimer partition-function model.
+
+    Uses a pure-numpy Newton solve identical in structure to the JAX version
+    in ``_compute_theta``, operating on flattened per-row posterior slices
+    rather than the full (T, C, G) grid.
+
+    Parameters
+    ----------
+    calc_df : pd.DataFrame
+        Output of ``build_calc_df``; must contain ``titrant_conc``,
+        ``genotype_idx``, and ``titrant_name_idx`` columns.
+    param_posteriors : dict-like
+        Posterior samples keyed by parameter name (with ``theta_`` prefix).
+    tf_total : float
+        Total TF concentration in M.
+    op_total : float
+        Total operator concentration in M.
+
+    Returns
+    -------
+    theta_samples : np.ndarray, shape (S, N)
+        Posterior theta at each row of ``calc_df``.
+    """
+    from tfscreen.analysis.hierarchical.posteriors import get_posterior_samples
+
+    geno_indices    = calc_df["genotype_idx"].values.astype(int)
+    titrant_indices = calc_df["titrant_name_idx"].values.astype(int)
+
+    conc = calc_df["titrant_conc"].values.copy().astype(float)   # (N,)
+    conc[conc == 0] = _ZERO_CONC_VALUE
+
+    def _load(key):
+        v = get_posterior_samples(param_posteriors, key)
+        if hasattr(v, "shape") and not hasattr(v, "reshape"):
+            v = v[:]
+        return v
+
+    ln_K_op_all = _load("theta_ln_K_op")   # (S, G)
+    ln_K_HL_all = _load("theta_ln_K_HL")   # (S, G)
+    ln_K_E_all  = _load("theta_ln_K_E")    # (S, T, G)
+
+    # Index to per-row parameters: (S, N)
+    ln_K_op_pts = ln_K_op_all[:, geno_indices]
+    ln_K_HL_pts = ln_K_HL_all[:, geno_indices]
+    ln_K_E_pts  = ln_K_E_all[:, titrant_indices, geno_indices]
+
+    K_op = np.exp(ln_K_op_pts)   # (S, N)
+    K_HL = np.exp(ln_K_HL_pts)   # (S, N)
+    K_E  = np.exp(ln_K_E_pts)    # (S, N)
+
+    e_total  = conc[np.newaxis, :]              # (1, N)
+    Z0       = 1.0 + K_op * op_total + K_HL    # (S, N)
+    a        = K_HL * K_E                       # (S, N)
+    coeff_b  = a * (2.0 * tf_total - e_total)   # (S, N)
+
+    e_free = e_total * np.ones_like(a)   # (S, N)
+    for _ in range(NEWTON_ITERATIONS):
+        f  = a * e_free**3 + coeff_b * e_free**2 + Z0 * e_free - Z0 * e_total
+        df = 3.0 * a * e_free**2 + 2.0 * coeff_b * e_free + Z0
+        e_free = e_free - f / np.where(np.abs(df) < 1e-30, 1e-30, df)
+    e_free = np.clip(e_free, 0.0, e_total)
+
+    w_Hop = K_op * op_total          # (S, N)
+    w_LE  = a * e_free**2            # (S, N)
+    Z     = 1.0 + w_Hop + K_HL + w_LE
+    return w_Hop / Z                 # (S, N)

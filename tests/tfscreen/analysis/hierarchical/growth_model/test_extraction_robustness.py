@@ -277,16 +277,6 @@ def test_extract_parameters_errors(mock_model):
     with pytest.raises(ValueError, match="q_to_get should be a dictionary"):
         extract_parameters(mock_model, {}, q_to_get=[0.5])
 
-def test_extract_theta_curves_mapping_error(mock_model):
-    """Test extract_theta_curves with a mapping error to hit the except branch."""
-    mock_model._theta = "hill"
-    manual_df = pd.DataFrame({"titrant_name": ["iptg"], "titrant_conc": [1.0]})
-    # Patch the map method of the index to raise an exception
-    with patch("pandas.Index.map") as mock_map:
-        mock_map.side_effect = Exception("Mapping error")
-        with pytest.raises(ValueError, match=r"Some \(genotype, titrant_name\) pairs"):
-            extract_theta_curves(mock_model, {}, manual_titrant_df=manual_df)
-
 def test_extract_parameters_h5_file(mock_model, tmp_path):
     """Test extract_parameters loading from an HDF5 file path."""
     h5_path = os.path.join(tmp_path, "params.h5")

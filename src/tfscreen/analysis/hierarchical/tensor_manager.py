@@ -294,7 +294,7 @@ class TensorManager:
         """
         
         # Record the new index column
-        self._df[new_index_column] = self._df[cat_column].cat.codes
+        self._df[new_index_column] = self._df[cat_column].cat.codes.astype(int)
 
         # Record that we are going to pivot on this to make the tensor
         self._pivot_index.append(new_index_column)

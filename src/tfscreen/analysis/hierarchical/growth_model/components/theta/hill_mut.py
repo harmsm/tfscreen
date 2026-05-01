@@ -25,6 +25,7 @@ The four Hill parameters and their spaces:
 Epistasis is only sampled when data.num_pair > 0.
 """
 
+import numpy as np
 import jax
 import jax.numpy as jnp
 import numpyro as pyro
@@ -704,3 +705,106 @@ def get_extract_specs(ctx):
         ))
 
     return specs
+
+
+_ZERO_CONC_VALUE = 1e-20
+
+
+def build_calc_df(model, manual_titrant_df):
+    """
+    Build the concentration grid DataFrame for theta curve extraction.
+
+    Returns
+    -------
+    calc_df : pd.DataFrame
+        Rows for each (genotype, titrant_name, titrant_conc) combination,
+        including internal ``genotype_idx`` and ``titrant_name_idx`` columns.
+    internal_cols : list of str
+        Columns to strip before returning results to the caller.
+    extra_kwargs : dict
+        Passed as ``**kwargs`` to ``compute_theta_samples``; empty for this model.
+    """
+    import tfscreen.util.dataframe
+
+    if manual_titrant_df is None:
+        calc_df = (model.growth_tm.df[["genotype", "titrant_name", "titrant_conc",
+                                       "genotype_idx", "titrant_name_idx"]]
+                   .drop_duplicates()
+                   .reset_index(drop=True))
+    else:
+        tfscreen.util.dataframe.check_columns(manual_titrant_df,
+                                              required_columns=["titrant_name", "titrant_conc"])
+        if "genotype" not in manual_titrant_df.columns:
+            genotypes = model.growth_tm.df["genotype"].unique()
+            dfs = [manual_titrant_df.assign(genotype=g) for g in genotypes]
+            calc_df = pd.concat(dfs).reset_index(drop=True)
+        else:
+            calc_df = manual_titrant_df.copy()
+
+        geno_map = (model.growth_tm.df[["genotype", "genotype_idx"]]
+                    .drop_duplicates()
+                    .set_index("genotype")["genotype_idx"]
+                    .to_dict())
+        titrant_map = (model.growth_tm.df[["titrant_name", "titrant_name_idx"]]
+                       .drop_duplicates()
+                       .set_index("titrant_name")["titrant_name_idx"]
+                       .to_dict())
+        calc_df["genotype_idx"] = calc_df["genotype"].map(geno_map)
+        calc_df["titrant_name_idx"] = calc_df["titrant_name"].map(titrant_map)
+
+        missing = calc_df["genotype_idx"].isna() | calc_df["titrant_name_idx"].isna()
+        if missing.any():
+            bad = calc_df[missing][["genotype", "titrant_name"]].drop_duplicates()
+            raise ValueError(
+                "Some (genotype, titrant_name) pairs in manual_titrant_df "
+                "were not found in the model data: "
+                f"{bad.values}"
+            )
+
+    return calc_df, ["genotype_idx", "titrant_name_idx"], {}
+
+
+def compute_theta_samples(calc_df, param_posteriors):
+    """
+    Compute posterior theta samples for the hill_mut model.
+
+    Parameters
+    ----------
+    calc_df : pd.DataFrame
+        Output of ``build_calc_df``; must contain ``titrant_conc``,
+        ``genotype_idx``, and ``titrant_name_idx`` columns.
+    param_posteriors : dict-like
+        Posterior samples keyed by parameter name (with ``theta_`` prefix).
+
+    Returns
+    -------
+    theta_samples : np.ndarray, shape (S, N)
+        Posterior theta at each row of ``calc_df``.
+    """
+    from tfscreen.analysis.hierarchical.posteriors import get_posterior_samples
+
+    geno_indices    = calc_df["genotype_idx"].values.astype(int)
+    titrant_indices = calc_df["titrant_name_idx"].values.astype(int)
+
+    log_titrant = calc_df["titrant_conc"].values.copy().astype(float)
+    log_titrant[log_titrant == 0] = _ZERO_CONC_VALUE
+    log_titrant = np.log(log_titrant)   # (N,)
+
+    def _load(key):
+        v = get_posterior_samples(param_posteriors, key)
+        if hasattr(v, "shape") and not hasattr(v, "reshape"):
+            v = v[:]
+        return v   # (S, T, G)
+
+    hill_n     = _load("theta_hill_n")
+    log_hill_K = _load("theta_log_hill_K")
+    theta_high = _load("theta_theta_high")
+    theta_low  = _load("theta_theta_low")
+
+    h_n = hill_n[:, titrant_indices, geno_indices]
+    l_K = log_hill_K[:, titrant_indices, geno_indices]
+    t_h = theta_high[:, titrant_indices, geno_indices]
+    t_l = theta_low[:, titrant_indices, geno_indices]
+
+    occupancy = 1.0 / (1.0 + np.exp(-h_n * (log_titrant[np.newaxis, :] - l_K)))
+    return t_l + (t_h - t_l) * occupancy   # (S, N)

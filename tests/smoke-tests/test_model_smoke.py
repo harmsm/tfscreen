@@ -58,9 +58,9 @@ SMOKE_CONFIGS = [
         "activity":"hierarchical_mut",
         "epistasis":False,
     },
-    # test lac_dimer_mut theta (partition-function model)
+    # test lac_dimer_lnK_mut theta (partition-function model)
     {
-        "theta":"lac_dimer_mut",
+        "theta":"lac_dimer_lnK_mut",
         "epistasis":False,
     },
 ]

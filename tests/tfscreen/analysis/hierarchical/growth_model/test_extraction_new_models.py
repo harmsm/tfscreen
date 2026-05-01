@@ -1,28 +1,25 @@
 """
-Tests for the new-model branches added to extraction.py:
+Tests for extraction helpers:
   - extract_parameters with theta='hill_mut'
   - extract_parameters with dk_geno='hierarchical_mut'
   - extract_parameters with activity='hierarchical_mut'
-  - _build_manual_calc_df_hill  (refactored private helper)
-  - _build_manual_calc_df_hill_mut
-  - _extract_theta_curves_hill_mut
+  - hill.build_calc_df
+  - hill_mut.build_calc_df
+  - extract_theta_curves (hill_mut math tests)
   - extract_theta_curves dispatcher (hill / hill_mut / other)
 """
 
 import pytest
 import numpy as np
 import pandas as pd
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass
 from tfscreen.analysis.hierarchical.growth_model.extraction import (
     extract_parameters,
     extract_theta_curves,
-    _build_manual_calc_df_hill,
-    _build_manual_calc_df_hill_mut,
-    _extract_theta_curves_hill,
-    _extract_theta_curves_hill_mut,
 )
+from tfscreen.analysis.hierarchical.growth_model.components.theta import hill, hill_mut
 
 
 # ---------------------------------------------------------------------------
@@ -260,10 +257,10 @@ class TestExtractParametersHierarchicalMut:
 
 
 # ---------------------------------------------------------------------------
-# _build_manual_calc_df_hill
+# hill.build_calc_df
 # ---------------------------------------------------------------------------
 
-class TestBuildManualCalcDfHill:
+class TestBuildCalcDfHill:
 
     @pytest.fixture
     def model(self):
@@ -275,49 +272,40 @@ class TestBuildManualCalcDfHill:
             "titrant_conc": [1.0],
             "genotype": ["A"],
         })
-        result = _build_manual_calc_df_hill(model, manual_df)
-        assert "map_theta_group" in result.columns
-        assert result["map_theta_group"].iloc[0] == 1   # iptg(0)*3 + A(1) = 1
+        calc_df, internal_cols, _ = hill.build_calc_df(model, manual_df)
+        assert "map_theta_group" in calc_df.columns
+        assert calc_df["map_theta_group"].iloc[0] == 1   # iptg(0)*3 + A(1) = 1
+        assert "map_theta_group" in internal_cols
 
     def test_without_genotype_broadcasts_to_all_genotypes(self, model):
         manual_df = pd.DataFrame({
             "titrant_name": ["iptg"],
             "titrant_conc": [1.0],
         })
-        result = _build_manual_calc_df_hill(model, manual_df)
-        assert len(result) == 3   # wt, A, B
-        assert set(result["genotype"]) == {"wt", "A", "B"}
+        calc_df, _, _ = hill.build_calc_df(model, manual_df)
+        assert len(calc_df) == 3   # wt, A, B
+        assert set(calc_df["genotype"]) == {"wt", "A", "B"}
 
     def test_missing_titrant_name_column_raises(self, model):
         bad_df = pd.DataFrame({"titrant_conc": [1.0]})
         with pytest.raises(Exception):
-            _build_manual_calc_df_hill(model, bad_df)
+            hill.build_calc_df(model, bad_df)
 
     def test_unknown_genotype_titrant_pair_raises_value_error(self, model):
-        # "iptg" exists but "unknown" genotype does not
         manual_df = pd.DataFrame({
             "titrant_name": ["iptg"],
             "titrant_conc": [1.0],
             "genotype": ["unknown"],
         })
         with pytest.raises(ValueError, match=r"not found in the model data"):
-            _build_manual_calc_df_hill(model, manual_df)
-
-    def test_map_raises_exception_re_raised_as_value_error(self, model):
-        manual_df = pd.DataFrame({
-            "titrant_name": ["iptg"],
-            "titrant_conc": [1.0],
-        })
-        with patch("pandas.Index.map", side_effect=Exception("boom")):
-            with pytest.raises(ValueError, match=r"Some \(genotype, titrant_name\) pairs"):
-                _build_manual_calc_df_hill(model, manual_df)
+            hill.build_calc_df(model, manual_df)
 
 
 # ---------------------------------------------------------------------------
-# _build_manual_calc_df_hill_mut
+# hill_mut.build_calc_df
 # ---------------------------------------------------------------------------
 
-class TestBuildManualCalcDfHillMut:
+class TestBuildCalcDfHillMut:
 
     @pytest.fixture
     def model(self):
@@ -329,18 +317,20 @@ class TestBuildManualCalcDfHillMut:
             "titrant_conc": [2.0],
             "genotype": ["B"],
         })
-        result = _build_manual_calc_df_hill_mut(model, manual_df)
-        assert result["genotype_idx"].iloc[0] == 2
-        assert result["titrant_name_idx"].iloc[0] == 1
+        calc_df, internal_cols, _ = hill_mut.build_calc_df(model, manual_df)
+        assert calc_df["genotype_idx"].iloc[0] == 2
+        assert calc_df["titrant_name_idx"].iloc[0] == 1
+        assert "genotype_idx" in internal_cols
+        assert "titrant_name_idx" in internal_cols
 
     def test_without_genotype_broadcasts_to_all_genotypes(self, model):
         manual_df = pd.DataFrame({
             "titrant_name": ["iptg"],
             "titrant_conc": [1.0],
         })
-        result = _build_manual_calc_df_hill_mut(model, manual_df)
-        assert len(result) == 3
-        assert set(result["genotype"]) == {"wt", "A", "B"}
+        calc_df, _, _ = hill_mut.build_calc_df(model, manual_df)
+        assert len(calc_df) == 3
+        assert set(calc_df["genotype"]) == {"wt", "A", "B"}
 
     def test_unknown_genotype_raises_value_error(self, model):
         manual_df = pd.DataFrame({
@@ -349,7 +339,7 @@ class TestBuildManualCalcDfHillMut:
             "genotype": ["NOTAGENOTYPE"],
         })
         with pytest.raises(ValueError, match=r"not found in the model data"):
-            _build_manual_calc_df_hill_mut(model, manual_df)
+            hill_mut.build_calc_df(model, manual_df)
 
     def test_unknown_titrant_name_raises_value_error(self, model):
         manual_df = pd.DataFrame({
@@ -358,16 +348,16 @@ class TestBuildManualCalcDfHillMut:
             "genotype": ["wt"],
         })
         with pytest.raises(ValueError, match=r"not found in the model data"):
-            _build_manual_calc_df_hill_mut(model, manual_df)
+            hill_mut.build_calc_df(model, manual_df)
 
     def test_missing_required_column_raises(self, model):
         bad_df = pd.DataFrame({"titrant_name": ["iptg"]})
         with pytest.raises(Exception):
-            _build_manual_calc_df_hill_mut(model, bad_df)
+            hill_mut.build_calc_df(model, bad_df)
 
 
 # ---------------------------------------------------------------------------
-# _extract_theta_curves_hill_mut
+# extract_theta_curves – hill_mut math tests
 # ---------------------------------------------------------------------------
 
 class TestExtractThetaCurvesHillMut:
@@ -386,8 +376,8 @@ class TestExtractThetaCurvesHillMut:
         }
 
     def test_default_no_manual_df_output_shape(self, model):
-        df = _extract_theta_curves_hill_mut(model, self._flat_posteriors(),
-                                            q_to_get=_Q, manual_titrant_df=None)
+        df = extract_theta_curves(model, self._flat_posteriors(),
+                                  q_to_get=_Q, manual_titrant_df=None, num_samples=None)
         # 6 unique (genotype, titrant_name, titrant_conc) rows in model_df
         assert len(df) == 6
         assert "genotype" in df.columns
@@ -396,8 +386,8 @@ class TestExtractThetaCurvesHillMut:
         assert "median" in df.columns
 
     def test_index_columns_dropped_from_output(self, model):
-        df = _extract_theta_curves_hill_mut(model, self._flat_posteriors(),
-                                            q_to_get=_Q, manual_titrant_df=None)
+        df = extract_theta_curves(model, self._flat_posteriors(),
+                                  q_to_get=_Q, manual_titrant_df=None, num_samples=None)
         assert "genotype_idx" not in df.columns
         assert "titrant_name_idx" not in df.columns
 
@@ -420,8 +410,8 @@ class TestExtractThetaCurvesHillMut:
             "titrant_conc": [1.0],
             "genotype": ["wt"],
         })
-        df = _extract_theta_curves_hill_mut(model, posteriors,
-                                            q_to_get=_Q, manual_titrant_df=manual_df)
+        df = extract_theta_curves(model, posteriors,
+                                  q_to_get=_Q, manual_titrant_df=manual_df, num_samples=None)
         expected_occ = 1.0 / (1.0 + np.exp(-2.0 * (0.0 - (-1.0))))
         expected_theta = 0.1 + 0.8 * expected_occ
         assert df["median"].iloc[0] == pytest.approx(expected_theta, rel=1e-5)
@@ -436,42 +426,36 @@ class TestExtractThetaCurvesHillMut:
         posteriors = {
             "theta_hill_n":     np.ones((S, 2, 3)),
             "theta_log_hill_K": np.zeros((S, 2, 3)),
-            "theta_theta_high": base + 1.0,   # theta range > 1 is fine here
+            "theta_theta_high": base + 1.0,
             "theta_theta_low":  base,          # theta_low[t,g] = t*3+g
         }
-        # Request two specific cells
         manual_df = pd.DataFrame({
             "titrant_name": ["iptg", "atc"],
             "titrant_conc": [1.0,    2.0],
             "genotype":     ["A",    "B"],
         })
-        df = _extract_theta_curves_hill_mut(model, posteriors,
-                                            q_to_get=_Q, manual_titrant_df=manual_df)
-        # iptg(0)/A(1) → theta_low = 0*3+1 = 1.0
+        df = extract_theta_curves(model, posteriors,
+                                  q_to_get=_Q, manual_titrant_df=manual_df, num_samples=None)
         row_iptg_A = df[(df["genotype"] == "A") & (df["titrant_name"] == "iptg")]
-        # atc(1)/B(2) → theta_low = 1*3+2 = 5.0
         row_atc_B  = df[(df["genotype"] == "B") & (df["titrant_name"] == "atc")]
 
-        # iptg row: conc=1.0 → log_conc=0, log_K=0, hill_n=1
-        #   occupancy = sigmoid(0) = 0.5  →  theta = 1.0 + 1.0*0.5 = 1.5
+        # iptg(0)/A(1): theta_low=1.0, conc=1.0→log=0, log_K=0, n=1
         occ_iptg = 1.0 / (1.0 + np.exp(-1.0 * (np.log(1.0) - 0.0)))
         assert row_iptg_A["median"].iloc[0] == pytest.approx(1.0 + 1.0 * occ_iptg, rel=1e-5)
 
-        # atc row: conc=2.0 → log_conc=log(2), log_K=0, hill_n=1
-        #   occupancy = sigmoid(log(2)) = 2/3  →  theta = 5.0 + 1.0*(2/3)
+        # atc(1)/B(2): theta_low=5.0, conc=2.0→log=log(2), log_K=0, n=1
         occ_atc = 1.0 / (1.0 + np.exp(-1.0 * (np.log(2.0) - 0.0)))
         assert row_atc_B["median"].iloc[0]  == pytest.approx(5.0 + 1.0 * occ_atc, rel=1e-5)
 
     def test_zero_concentration_handled(self, model):
         """Zero concentrations should not produce NaN (uses ZERO_CONC_VALUE)."""
-        posteriors = self._flat_posteriors()
         manual_df = pd.DataFrame({
             "titrant_name": ["iptg"],
             "titrant_conc": [0.0],
             "genotype": ["wt"],
         })
-        df = _extract_theta_curves_hill_mut(model, posteriors,
-                                            q_to_get=_Q, manual_titrant_df=manual_df)
+        df = extract_theta_curves(model, self._flat_posteriors(),
+                                  q_to_get=_Q, manual_titrant_df=manual_df, num_samples=None)
         assert not df["median"].isna().any()
 
     def test_broadcast_without_genotype(self, model):
@@ -479,8 +463,8 @@ class TestExtractThetaCurvesHillMut:
             "titrant_name": ["iptg"],
             "titrant_conc": [1.0],
         })
-        df = _extract_theta_curves_hill_mut(model, self._flat_posteriors(),
-                                            q_to_get=_Q, manual_titrant_df=manual_df)
+        df = extract_theta_curves(model, self._flat_posteriors(),
+                                  q_to_get=_Q, manual_titrant_df=manual_df, num_samples=None)
         assert len(df) == 3
         assert set(df["genotype"]) == {"wt", "A", "B"}
 
@@ -517,12 +501,12 @@ class TestExtractThetaCurvesDispatcher:
 
     def test_raises_for_categorical(self):
         model = _make_model(theta="categorical")
-        with pytest.raises(ValueError, match=r"theta='hill'"):
+        with pytest.raises(ValueError, match=r"does not support this interface"):
             extract_theta_curves(model, {})
 
     def test_raises_for_unknown_theta(self):
         model = _make_model(theta="something_new")
-        with pytest.raises(ValueError, match=r"theta='hill'"):
+        with pytest.raises(ValueError, match=r"does not support this interface"):
             extract_theta_curves(model, {})
 
     def test_hill_and_hill_mut_agree_on_math(self):

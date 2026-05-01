@@ -436,3 +436,9 @@ def get_extract_specs(ctx):
     ))
 
     return specs
+
+
+from tfscreen.analysis.hierarchical.growth_model.components.theta.lac_dimer.thermo import (
+    build_calc_df,
+    compute_theta_samples,
+)

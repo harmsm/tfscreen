@@ -187,16 +187,17 @@ def test_get_hyperparameters_keys():
     hp = get_hyperparameters()
     assert isinstance(hp, dict)
     for key in ["theta_ln_K_op_wt_loc", "theta_ln_K_HL_wt_loc", "theta_ln_K_E_wt_loc",
-                "theta_tf_total_nM", "theta_op_total_nM",
-                "theta_sigma_d_ln_K_op_scale", "theta_sigma_epi_ln_K_E_scale"]:
+                "theta_tf_total_M", "theta_op_total_M",
+                "theta_sigma_d_ln_K_op_scale",
+                "theta_epi_tau_scale", "theta_epi_slab_scale", "theta_epi_slab_df"]:
         assert key in hp
 
 
 def test_get_priors_values():
     priors = get_priors()
     assert isinstance(priors, ModelPriors)
-    assert priors.theta_tf_total_nM == pytest.approx(650.0)
-    assert priors.theta_op_total_nM == pytest.approx(25.0)
+    assert priors.theta_tf_total_M == pytest.approx(6.5e-7)
+    assert priors.theta_op_total_M == pytest.approx(2.5e-8)
     assert priors.theta_ln_K_op_wt_loc == get_hyperparameters()["theta_ln_K_op_wt_loc"]
 
 
@@ -219,7 +220,11 @@ def test_get_guesses_shapes_with_epi(mock_data_epi):
     assert guesses[f"{name}_epi_ln_K_op_offset"].shape == (P,)
     assert guesses[f"{name}_epi_ln_K_HL_offset"].shape == (P,)
     assert guesses[f"{name}_epi_ln_K_E_offset"].shape == (T, P)
-    assert guesses[f"{name}_sigma_epi_ln_K_op"].shape == ()
+    assert guesses[f"{name}_epi_ln_K_op_lambda"].shape == (P,)
+    assert guesses[f"{name}_epi_ln_K_HL_lambda"].shape == (P,)
+    assert guesses[f"{name}_epi_ln_K_E_lambda"].shape == (T, P)
+    assert guesses[f"{name}_epi_tau"].shape == ()
+    assert guesses[f"{name}_epi_c2"].shape == ()
 
 
 # ---------------------------------------------------------------------------
@@ -316,14 +321,18 @@ class TestDefineModelWithEpi:
         assert tp.ln_K_E.shape == (T, G)
 
     def test_epistasis_shifts_only_double_mutant(self, mock_data_epi):
+        """With zero mut deltas but non-zero epistasis, only column 3 differs.
+        c2→∞ makes lambda_tilde ≈ lambda = 1, so epi = offset * tau * 1 = 2.0."""
         name = "theta"
         priors = get_priors()
         guesses = get_guesses(name, mock_data_epi)
-        guesses[f"{name}_ln_K_op_wt"]           = jnp.array(0.0)
-        guesses[f"{name}_sigma_d_ln_K_op"]      = jnp.array(1.0)
-        guesses[f"{name}_d_ln_K_op_offset"]     = jnp.zeros(2)
-        guesses[f"{name}_sigma_epi_ln_K_op"]    = jnp.array(1.0)
-        guesses[f"{name}_epi_ln_K_op_offset"]   = jnp.array([2.0])
+        guesses[f"{name}_ln_K_op_wt"]          = jnp.array(0.0)
+        guesses[f"{name}_sigma_d_ln_K_op"]     = jnp.array(1.0)
+        guesses[f"{name}_d_ln_K_op_offset"]    = jnp.zeros(2)
+        guesses[f"{name}_epi_tau"]             = jnp.array(1.0)
+        guesses[f"{name}_epi_c2"]             = jnp.array(1e12)   # effectively no slab
+        guesses[f"{name}_epi_ln_K_op_lambda"]  = jnp.ones(1)
+        guesses[f"{name}_epi_ln_K_op_offset"]  = jnp.array([2.0])
         tp = substitute(define_model, data=guesses)(
             name=name, data=mock_data_epi, priors=priors)
         assert jnp.allclose(tp.ln_K_op[:3], 0.0, atol=1e-5)
@@ -335,10 +344,12 @@ class TestDefineModelWithEpi:
         tr = trace(substitute(define_model, data=guesses)).get_trace(
             name="theta", data=mock_data_epi, priors=priors)
         sample_names = {k for k, v in tr.items() if v["type"] == "sample"}
-        assert "theta_epi_ln_K_op_offset" in sample_names
-        assert "theta_epi_ln_K_HL_offset" in sample_names
-        assert "theta_epi_ln_K_E_offset"  in sample_names
-        assert "theta_sigma_epi_ln_K_op"  in sample_names
+        assert "theta_epi_tau"              in sample_names
+        assert "theta_epi_c2"              in sample_names
+        assert "theta_epi_ln_K_op_lambda"  in sample_names
+        assert "theta_epi_ln_K_op_offset"  in sample_names
+        assert "theta_epi_ln_K_HL_offset"  in sample_names
+        assert "theta_epi_ln_K_E_offset"   in sample_names
 
     def test_epistasis_deterministic_sites_registered(self, mock_data_epi):
         priors = get_priors()
@@ -392,8 +403,8 @@ class TestGuide:
         priors = get_priors()
         with seed(rng_seed=0):
             tp = guide(name="theta", data=mock_data_no_epi, priors=priors)
-        assert tp.tf_total == pytest.approx(650.0)
-        assert tp.op_total == pytest.approx(25.0)
+        assert tp.tf_total == pytest.approx(6.5e-7)
+        assert tp.op_total == pytest.approx(2.5e-8)
 
 
 # ---------------------------------------------------------------------------

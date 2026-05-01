@@ -609,3 +609,101 @@ def get_extract_specs(ctx):
         get_columns=["genotype", "titrant_name"],
         in_run_prefix="theta_",
     )]
+
+
+_ZERO_CONC_VALUE = 1e-20
+
+
+def build_calc_df(model, manual_titrant_df):
+    """
+    Build the concentration grid DataFrame for theta curve extraction.
+
+    Returns
+    -------
+    calc_df : pd.DataFrame
+        Rows for each (genotype, titrant_name, titrant_conc) combination,
+        including the internal ``map_theta_group`` index column.
+    internal_cols : list of str
+        Columns to strip before returning results to the caller.
+    extra_kwargs : dict
+        Passed as ``**kwargs`` to ``compute_theta_samples``; empty for this model.
+    """
+    import pandas as pd
+    import tfscreen.util.dataframe
+
+    if manual_titrant_df is None:
+        calc_df = (model.growth_tm.df[["genotype", "titrant_name", "titrant_conc",
+                                       "map_theta_group"]]
+                   .drop_duplicates()
+                   .reset_index(drop=True))
+    else:
+        tfscreen.util.dataframe.check_columns(manual_titrant_df,
+                                              required_columns=["titrant_name", "titrant_conc"])
+        if "genotype" not in manual_titrant_df.columns:
+            genotypes = model.growth_tm.df["genotype"].unique()
+            dfs = [manual_titrant_df.assign(genotype=g) for g in genotypes]
+            calc_df = pd.concat(dfs).reset_index(drop=True)
+        else:
+            calc_df = manual_titrant_df.copy()
+
+        mapping = (model.growth_tm.df[["genotype", "titrant_name", "map_theta_group"]]
+                   .drop_duplicates()
+                   .set_index(["genotype", "titrant_name"])["map_theta_group"]
+                   .to_dict())
+        calc_df["map_theta_group"] = (calc_df
+                                      .set_index(["genotype", "titrant_name"])
+                                      .index.map(mapping))
+        if calc_df["map_theta_group"].isna().any():
+            missing = calc_df[calc_df["map_theta_group"].isna()]
+            raise ValueError(
+                "Some (genotype, titrant_name) pairs in manual_titrant_df "
+                "were not found in the model data: "
+                f"{missing[['genotype', 'titrant_name']].drop_duplicates().values}"
+            )
+
+    return calc_df, ["map_theta_group"], {}
+
+
+def compute_theta_samples(calc_df, param_posteriors):
+    """
+    Compute posterior theta samples for the Hill model.
+
+    Parameters
+    ----------
+    calc_df : pd.DataFrame
+        Output of ``build_calc_df``; must contain ``titrant_conc`` and
+        ``map_theta_group`` columns.
+    param_posteriors : dict-like
+        Posterior samples keyed by parameter name (with ``theta_`` prefix).
+
+    Returns
+    -------
+    theta_samples : np.ndarray, shape (S, N)
+        Posterior theta at each row of ``calc_df``.
+    """
+    from tfscreen.analysis.hierarchical.posteriors import get_posterior_samples
+
+    indices = calc_df["map_theta_group"].values.astype(int)
+
+    log_titrant = calc_df["titrant_conc"].values.copy().astype(float)
+    log_titrant[log_titrant == 0] = _ZERO_CONC_VALUE
+    log_titrant = np.log(log_titrant)[np.newaxis, :]   # (1, N)
+
+    def _load_flat(key):
+        v = get_posterior_samples(param_posteriors, key)
+        if hasattr(v, "shape") and not hasattr(v, "reshape"):
+            v = v[:]
+        return v.reshape(v.shape[0], -1)   # (S, num_groups)
+
+    hill_n     = _load_flat("theta_hill_n")
+    log_hill_K = _load_flat("theta_log_hill_K")
+    theta_high = _load_flat("theta_theta_high")
+    theta_low  = _load_flat("theta_theta_low")
+
+    h_n = hill_n[:, indices]
+    l_K = log_hill_K[:, indices]
+    t_h = theta_high[:, indices]
+    t_l = theta_low[:, indices]
+
+    occupancy = 1.0 / (1.0 + np.exp(-h_n * (log_titrant - l_K)))
+    return t_l + (t_h - t_l) * occupancy   # (S, N)

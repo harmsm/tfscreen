@@ -16,9 +16,6 @@ from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass
 from tfscreen.analysis.hierarchical.growth_model.extraction import (
     extract_theta_curves,
     extract_growth_predictions,
-    _extract_theta_curves_hill,
-    _extract_theta_curves_hill_mut,
-    _extract_theta_curves_lac_dimer_mut,
 )
 
 
@@ -80,20 +77,20 @@ def _hill_mut_posteriors(S=10):
 
 
 def _lac_dimer_mut_model():
-    """Minimal mock for theta='lac_dimer_mut', T=1 titrant, G=2 genotypes."""
+    """Minimal mock for theta='lac_dimer_lnK_mut', T=1 titrant, G=2 genotypes."""
     model = MagicMock(spec=ModelClass)
-    model._theta = "lac_dimer_mut"
+    model._theta = "lac_dimer_lnK_mut"
     mock_tm = MagicMock()
     mock_tm.df = pd.DataFrame({
         "genotype":         ["wt",  "mut"],
         "titrant_name":     ["iptg","iptg"],
-        "titrant_conc":     [100.0, 100.0],
+        "titrant_conc":     [1e-4,  1e-4],
         "genotype_idx":     [0,     1],
         "titrant_name_idx": [0,     0],
     })
     model.growth_tm = mock_tm
-    model.priors.theta.theta_tf_total_nM = 100.0
-    model.priors.theta.theta_op_total_nM = 10.0
+    model.priors.theta.theta_tf_total_M = 6.5e-7
+    model.priors.theta.theta_op_total_M = 2.5e-8
     return model
 
 
@@ -210,10 +207,10 @@ class TestExtractThetaCurvesNumSamplesHill:
 
 
 # ---------------------------------------------------------------------------
-# _extract_theta_curves_hill – private helper directly
+# extract_theta_curves – verify samples are genuine posterior draws (hill)
 # ---------------------------------------------------------------------------
 
-class TestExtractThetaCurvesHillPrivate:
+class TestExtractThetaCurvesHillSampleVariance:
 
     def test_sample_columns_are_distinct_rows_of_theta_samples(self):
         """
@@ -229,8 +226,7 @@ class TestExtractThetaCurvesHillPrivate:
             "theta_theta_low":  rng.uniform(0.0, 0.2, (S, G)),
         }
         model = _hill_model()
-        df = _extract_theta_curves_hill(model, posteriors, _Q,
-                                        manual_titrant_df=None, num_samples=5)
+        df = extract_theta_curves(model, posteriors, q_to_get=_Q, num_samples=5)
         sample_cols = [c for c in df.columns if c.startswith("sample_")]
         assert len(sample_cols) == 5
         # At least one sample column should differ from the median somewhere
