@@ -93,3 +93,7 @@ def get_guesses(name,data):
 
 def get_priors():
     return ModelPriors(**get_hyperparameters())
+
+
+def get_extract_specs(ctx):
+    return []

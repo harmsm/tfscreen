@@ -232,3 +232,15 @@ def get_priors() -> ModelPriors:
     Utility function to create a populated ModelPriors object.
     """
     return ModelPriors(**get_hyperparameters())
+
+
+def get_extract_specs(ctx):
+    cond_rep_cols = (["condition_rep"] if ctx.growth_shares_replicates
+                     else ["replicate", "condition_rep"])
+    return [dict(
+        input_df=ctx.growth_tm.map_groups["condition_rep"],
+        params_to_get=["growth_transition_ln_k_trans"],
+        map_column="map_condition_rep",
+        get_columns=cond_rep_cols,
+        in_run_prefix="",
+    )]

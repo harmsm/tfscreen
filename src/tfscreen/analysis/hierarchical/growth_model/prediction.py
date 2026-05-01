@@ -288,6 +288,17 @@ def predict(model_class,
     # We want a dataframe that only has the subsetted genotypes.
     base_df = new_mc.growth_df.copy()
     base_df = base_df[base_df["genotype"].isin(genotypes)].copy()
+
+    # Replace the dummy ln_cfu/ln_cfu_std zeros with observed values from the
+    # original model_class.growth_df (NaN where there is no matching observation,
+    # e.g. for expanded prediction grids).
+    merge_keys = ["replicate", "condition_pre", "condition_sel",
+                  "titrant_name", "genotype", "t_pre", "t_sel", "titrant_conc"]
+    obs_cols = merge_keys + ["ln_cfu", "ln_cfu_std"]
+    orig_obs = model_class.growth_df[obs_cols].drop_duplicates(subset=merge_keys)
+    base_df = base_df.drop(columns=["ln_cfu", "ln_cfu_std"]).merge(
+        orig_obs, on=merge_keys, how="left"
+    )
     
     # Re-calculate indices for the subsetted dataframe relative to the 
     # using the new_mc TM but subset the df.

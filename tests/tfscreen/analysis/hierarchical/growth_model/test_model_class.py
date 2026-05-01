@@ -190,6 +190,8 @@ def initialized_model_class():
     model.growth_tm = MagicMock()
     model.binding_tm = MagicMock()
     model.growth_df = pd.DataFrame()
+    model.mut_labels = []
+    model.pair_labels = []
     return model
 
 def create_mock_tm(is_growth=True):
@@ -385,10 +387,9 @@ def test_extract_parameters_npz(initialized_model_class, tmpdir):
     model._condition_growth = "zero"
     model._dk_geno = "zero"
     model._activity = "fixed"
-    model.growth_tm.df = pd.DataFrame({"genotype": ["wt"], "titrant_name": ["T"], "map_theta_group": [0], "map_ln_cfu0": [0]})
-    post = {"theta_hill_n": np.zeros((1, 1)), "theta_log_hill_K": np.zeros((1, 1)), 
-            "theta_theta_high": np.zeros((1, 1)), "theta_theta_low": np.zeros((1, 1)),
-            "ln_cfu0": np.zeros((1, 1))}
+    model.growth_tm.df = pd.DataFrame({"genotype": ["wt"], "titrant_name": ["T"], "titrant_conc": [1.0], "map_theta_group": [0]})
+    post = {"theta_hill_n": np.zeros((1, 1)), "theta_log_hill_K": np.zeros((1, 1)),
+            "theta_theta_high": np.zeros((1, 1)), "theta_theta_low": np.zeros((1, 1))}
     path = os.path.join(tmpdir, "post.npz")
     np.savez(path, **post)
     res = extract_parameters(model, path)

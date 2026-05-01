@@ -361,4 +361,14 @@ def get_guesses(name, data):
 
 def get_priors():
     return ModelPriors(**get_hyperparameters())
+
+
+def get_extract_specs(ctx):
+    return [dict(
+        input_df=ctx.growth_tm.df,
+        params_to_get=["dk_geno"],
+        map_column="map_genotype",
+        get_columns=["genotype"],
+        in_run_prefix="",
+    )]
     

@@ -4,8 +4,20 @@ from jax import numpy as jnp
 import pandas as pd
 import numpy as np
 import h5py
+from dataclasses import dataclass
+from typing import List, Any
 from tqdm import tqdm
 from tfscreen.analysis.hierarchical.posteriors import load_posteriors, get_posterior_samples
+from tfscreen.analysis.hierarchical.growth_model.registry import model_registry
+
+
+@dataclass
+class ExtractionContext:
+    """Narrow interface passed to each component's get_extract_specs."""
+    growth_tm: Any
+    mut_labels: List[str]
+    pair_labels: List[str]
+    growth_shares_replicates: bool
 
 # Declare float datatype
 FLOAT_DTYPE = jnp.float64 if jax.config.read("jax_enable_x64") else jnp.float32
@@ -133,407 +145,28 @@ def extract_parameters(model, posteriors, q_to_get=None):
 
     q_to_get, param_posteriors = load_posteriors(posteriors, q_to_get)
 
-    # Define how to go about constructing dataframes to store the parameter
-    # estimates. 
+    ctx = ExtractionContext(
+        growth_tm=model.growth_tm,
+        mut_labels=model.mut_labels,
+        pair_labels=model.pair_labels,
+        growth_shares_replicates=model._growth_shares_replicates,
+    )
+
+    component_selections = [
+        ("condition_growth", model._condition_growth),
+        ("growth_transition", model._growth_transition),
+        ("ln_cfu0", "hierarchical"),
+        ("dk_geno", model._dk_geno),
+        ("activity", model._activity),
+        ("theta", model._theta),
+        ("transformation", model._transformation),
+    ]
+
     extract = []
-
-    # theta
-    if model._theta == "hill":
-        extract.append(
-            dict(
-                input_df = model.growth_tm.df,
-                params_to_get = ["hill_n","log_hill_K","theta_high","theta_low"],
-                map_column = "map_theta_group",
-                get_columns = ["genotype","titrant_name"],
-                in_run_prefix = "theta_"
-            )
-        )
-    elif model._theta == "hill_mut":
-        # Assembled per-genotype parameters shaped (T, G);
-        # flat index = titrant_name_idx * num_genotype + genotype_idx
-        _geno_dim = model.growth_tm.tensor_dim_names.index("genotype")
-        _num_genotype = len(model.growth_tm.tensor_dim_labels[_geno_dim])
-        theta_mut_df = (model.growth_tm.df[["genotype", "titrant_name",
-                                            "genotype_idx", "titrant_name_idx"]]
-                        .drop_duplicates()
-                        .copy())
-        theta_mut_df["map_theta_mut"] = (theta_mut_df["titrant_name_idx"] * _num_genotype
-                                         + theta_mut_df["genotype_idx"])
-        extract.append(
-            dict(
-                input_df = theta_mut_df,
-                params_to_get = ["theta_low","theta_high","log_hill_K","hill_n"],
-                map_column = "map_theta_mut",
-                get_columns = ["genotype","titrant_name"],
-                in_run_prefix = "theta_"
-            )
-        )
-        # Per-mutation deltas shaped (T, M);
-        # flat index = titrant_name_idx * num_mutation + mutation_idx
-        _titrant_dim = model.growth_tm.tensor_dim_names.index("titrant_name")
-        _titrant_names = list(model.growth_tm.tensor_dim_labels[_titrant_dim])
-        _num_mut = len(model.mut_labels)
-        _theta_d_rows = [
-            {"titrant_name": t, "mutation": m,
-             "map_theta_d_mut": ti * _num_mut + mi}
-            for ti, t in enumerate(_titrant_names)
-            for mi, m in enumerate(model.mut_labels)
-        ]
-        extract.append(
-            dict(
-                input_df = pd.DataFrame(_theta_d_rows),
-                params_to_get = ["d_logit_low","d_logit_delta","d_log_hill_K","d_log_hill_n"],
-                map_column = "map_theta_d_mut",
-                get_columns = ["titrant_name","mutation"],
-                in_run_prefix = "theta_"
-            )
-        )
-        if model.pair_labels:
-            _num_pair = len(model.pair_labels)
-            _theta_epi_rows = [
-                {"titrant_name": t, "pair": p,
-                 "map_theta_epi": ti * _num_pair + pi}
-                for ti, t in enumerate(_titrant_names)
-                for pi, p in enumerate(model.pair_labels)
-            ]
-            extract.append(
-                dict(
-                    input_df = pd.DataFrame(_theta_epi_rows),
-                    params_to_get = ["epi_logit_low","epi_logit_delta",
-                                     "epi_log_hill_K","epi_log_hill_n"],
-                    map_column = "map_theta_epi",
-                    get_columns = ["titrant_name","pair"],
-                    in_run_prefix = "theta_"
-                )
-            )
-    elif model._theta in ("lac_dimer_mut", "lac_dimer_nn_mut"):
-        _geno_dim = model.growth_tm.tensor_dim_names.index("genotype")
-        _num_genotype = len(model.growth_tm.tensor_dim_labels[_geno_dim])
-        _titrant_dim = model.growth_tm.tensor_dim_names.index("titrant_name")
-        _titrant_names = list(model.growth_tm.tensor_dim_labels[_titrant_dim])
-
-        # ln_K_op, ln_K_HL: assembled (G,); index by genotype_idx
-        geno_df = (model.growth_tm.df[["genotype", "genotype_idx"]]
-                   .drop_duplicates()
-                   .copy())
-        geno_df["map_geno"] = geno_df["genotype_idx"]
-        extract.append(
-            dict(
-                input_df=geno_df,
-                params_to_get=["ln_K_op", "ln_K_HL"],
-                map_column="map_geno",
-                get_columns=["genotype"],
-                in_run_prefix="theta_"
-            )
-        )
-
-        # ln_K_E: assembled (T, G); flat index = titrant_name_idx * G + genotype_idx
-        theta_KE_df = (model.growth_tm.df[["genotype", "titrant_name",
-                                           "genotype_idx", "titrant_name_idx"]]
-                       .drop_duplicates()
-                       .copy())
-        theta_KE_df["map_theta_KE"] = (theta_KE_df["titrant_name_idx"] * _num_genotype
-                                       + theta_KE_df["genotype_idx"])
-        extract.append(
-            dict(
-                input_df=theta_KE_df,
-                params_to_get=["ln_K_E"],
-                map_column="map_theta_KE",
-                get_columns=["genotype", "titrant_name"],
-                in_run_prefix="theta_"
-            )
-        )
-
-        # Per-mutation assembled deltas: d_ln_K_op, d_ln_K_HL (M,)
-        _num_mut = len(model.mut_labels)
-        _mut_df = pd.DataFrame({
-            "mutation": model.mut_labels,
-            "map_mut": range(_num_mut),
-        })
-        extract.append(
-            dict(
-                input_df=_mut_df,
-                params_to_get=["d_ln_K_op", "d_ln_K_HL"],
-                map_column="map_mut",
-                get_columns=["mutation"],
-                in_run_prefix="theta_"
-            )
-        )
-
-        if model._theta == "lac_dimer_nn_mut":
-            # d_ln_K_E: (M,) — uniform across effectors (MLP output is per-mutation scalar)
-            extract.append(
-                dict(
-                    input_df=_mut_df,
-                    params_to_get=["d_ln_K_E"],
-                    map_column="map_mut",
-                    get_columns=["mutation"],
-                    in_run_prefix="theta_"
-                )
-            )
-        else:
-            # d_ln_K_E: assembled (T, M); flat index = titrant_name_idx * M + mutation_idx
-            _theta_d_KE_rows = [
-                {"titrant_name": t, "mutation": m,
-                 "map_theta_d_KE": ti * _num_mut + mi}
-                for ti, t in enumerate(_titrant_names)
-                for mi, m in enumerate(model.mut_labels)
-            ]
-            extract.append(
-                dict(
-                    input_df=pd.DataFrame(_theta_d_KE_rows),
-                    params_to_get=["d_ln_K_E"],
-                    map_column="map_theta_d_KE",
-                    get_columns=["titrant_name", "mutation"],
-                    in_run_prefix="theta_"
-                )
-            )
-
-        if model._theta == "lac_dimer_mut" and model.pair_labels:
-            _num_pair = len(model.pair_labels)
-            # epi_ln_K_op, epi_ln_K_HL: assembled (P,)
-            _pair_df = pd.DataFrame({
-                "pair": model.pair_labels,
-                "map_pair": range(_num_pair),
-            })
-            extract.append(
-                dict(
-                    input_df=_pair_df,
-                    params_to_get=["epi_ln_K_op", "epi_ln_K_HL"],
-                    map_column="map_pair",
-                    get_columns=["pair"],
-                    in_run_prefix="theta_"
-                )
-            )
-            # epi_ln_K_E: assembled (T, P); flat index = titrant_name_idx * P + pair_idx
-            _theta_epi_KE_rows = [
-                {"titrant_name": t, "pair": p,
-                 "map_theta_epi_KE": ti * _num_pair + pi}
-                for ti, t in enumerate(_titrant_names)
-                for pi, p in enumerate(model.pair_labels)
-            ]
-            extract.append(
-                dict(
-                    input_df=pd.DataFrame(_theta_epi_KE_rows),
-                    params_to_get=["epi_ln_K_E"],
-                    map_column="map_theta_epi_KE",
-                    get_columns=["titrant_name", "pair"],
-                    in_run_prefix="theta_"
-                )
-            )
-
-    elif model._theta == "categorical":
-        extract.append(
-            dict(
-                input_df = model.growth_tm.df,
-                params_to_get = ["theta"],
-                map_column = "map_theta",
-                get_columns = ["genotype","titrant_name","titrant_conc"],
-                in_run_prefix = "theta_"
-            )
-        )
-    
-    # When growth_shares_replicates=True the condition_rep map group has no
-    # replicate column; include it only when replicates are kept separate.
-    _cond_rep_cols = (["condition_rep"] if model._growth_shares_replicates
-                      else ["replicate", "condition_rep"])
-
-    # condition
-    if model._condition_growth in ["linear", "linear_independent", "hierarchical", "independent"]:
-        extract.append(
-            dict(
-                input_df = model.growth_tm.map_groups['condition_rep'],
-                params_to_get = ["growth_m","growth_k"],
-                map_column = "map_condition_rep",
-                get_columns = _cond_rep_cols,
-                in_run_prefix = "condition_"
-            )
-        )
-    elif model._condition_growth == "power":
-         extract.append(
-            dict(
-                input_df = model.growth_tm.map_groups['condition_rep'],
-                params_to_get = ["growth_k","growth_m","growth_n"],
-                map_column = "map_condition_rep",
-                get_columns = _cond_rep_cols,
-                in_run_prefix = "condition_"
-            )
-        )
-    elif model._condition_growth == "saturation":
-         extract.append(
-            dict(
-                input_df = model.growth_tm.map_groups['condition_rep'],
-                params_to_get = ["growth_min","growth_max"],
-                map_column = "map_condition_rep",
-                get_columns = _cond_rep_cols,
-                in_run_prefix = "condition_"
-            )
-        )
-
-    # growth_transition
-    if model._growth_transition == "memory":
-        extract.append(
-            dict(
-                input_df = model.growth_tm.map_groups['condition_rep'],
-                params_to_get = ["growth_transition_tau0",
-                                 "growth_transition_k1",
-                                 "growth_transition_k2"],
-                map_column = "map_condition_rep",
-                get_columns = _cond_rep_cols,
-                in_run_prefix = ""
-            )
-        )
-    elif model._growth_transition == "baranyi":
-         extract.append(
-            dict(
-                input_df = model.growth_tm.map_groups['condition_rep'],
-                params_to_get = ["growth_transition_tau_lag",
-                                 "growth_transition_k_sharp"],
-                map_column = "map_condition_rep",
-                get_columns = _cond_rep_cols,
-                in_run_prefix = ""
-            )
-        )
-
-    # ln_cfu0
-    if model._dk_geno in ["hierarchical", "hierarchical_mut"]:
-        extract.append(
-            dict(
-                input_df = model.growth_tm.df,
-                params_to_get = ["ln_cfu0"],
-                map_column = "map_ln_cfu0",
-                get_columns = ["replicate","condition_pre","genotype"],
-                in_run_prefix = ""
-            )
-        )
-
-    # dk_geno
-    if model._dk_geno == "none":
-        pass
-    elif model._dk_geno in ["hierarchical", "hierarchical_mut"]:
-        extract.append(
-            dict(
-                input_df = model.growth_tm.df,
-                params_to_get = ["dk_geno"],
-                map_column = "map_genotype",
-                get_columns = ["genotype"],
-                in_run_prefix = ""
-            )
-        )
-        if model._dk_geno == "hierarchical_mut":
-            _mut_df = pd.DataFrame({
-                "mutation": model.mut_labels,
-                "map_mutation": range(len(model.mut_labels)),
-            })
-            extract.append(
-                dict(
-                    input_df = _mut_df,
-                    params_to_get = ["d_dk_geno"],
-                    map_column = "map_mutation",
-                    get_columns = ["mutation"],
-                    in_run_prefix = "dk_geno_"
-                )
-            )
-            if model.pair_labels:
-                _pair_df = pd.DataFrame({
-                    "pair": model.pair_labels,
-                    "map_pair": range(len(model.pair_labels)),
-                })
-                extract.append(
-                    dict(
-                        input_df = _pair_df,
-                        params_to_get = ["epi_dk_geno"],
-                        map_column = "map_pair",
-                        get_columns = ["pair"],
-                        in_run_prefix = "dk_geno_"
-                    )
-                )
-
-    # activity
-    if model._activity == "fixed":
-        pass
-    elif model._activity in ["hierarchical", "horseshoe", "hierarchical_mut"]:
-        extract.append(
-            dict(
-                input_df = model.growth_tm.df,
-                params_to_get = ["activity"],
-                map_column = "map_genotype",
-                get_columns = ["genotype"],
-                in_run_prefix = ""
-            )
-        )
-        if model._activity == "hierarchical_mut":
-            _mut_df = pd.DataFrame({
-                "mutation": model.mut_labels,
-                "map_mutation": range(len(model.mut_labels)),
-            })
-            extract.append(
-                dict(
-                    input_df = _mut_df,
-                    params_to_get = ["d_log_activity"],
-                    map_column = "map_mutation",
-                    get_columns = ["mutation"],
-                    in_run_prefix = "activity_"
-                )
-            )
-            if model.pair_labels:
-                _pair_df = pd.DataFrame({
-                    "pair": model.pair_labels,
-                    "map_pair": range(len(model.pair_labels)),
-                })
-                extract.append(
-                    dict(
-                        input_df = _pair_df,
-                        params_to_get = ["epi_log_activity"],
-                        map_column = "map_pair",
-                        get_columns = ["pair"],
-                        in_run_prefix = "activity_"
-                    )
-                )
-
-    # transformation
-    if model._transformation in ["logit_norm", "empirical"]:
-        
-        # lam is global for both models
-        lam_df = pd.DataFrame({"parameter":["lam"], "map_all":[0]})
-        extract.append(
-            dict(
-                input_df = lam_df,
-                params_to_get = ["lam"],
-                map_column = "map_all",
-                get_columns = ["parameter"],
-                in_run_prefix = "transformation_"
-            )
-        )
-
-        # mu and sigma are only for logit_norm
-        if model._transformation == "logit_norm":
-
-            # mu and sigma are (titrant_name, titrant_conc)
-            # We can use the growth_tm.df to find the unique (titrant_name, titrant_conc) pairs 
-            # and their indices.
-            trans_df = (model.growth_tm.df[["titrant_name", "titrant_conc", 
-                                           "titrant_name_idx", "titrant_conc_idx"]]
-                        .drop_duplicates()
-                        .copy())
-            
-            # num_titrant_conc
-            idx = np.where(np.array(model.growth_tm.tensor_dim_names) == "titrant_conc")[0][0]
-            num_titrant_conc = len(model.growth_tm.tensor_dim_labels[idx])
-            
-            # Map column
-            trans_df["map_trans"] = (trans_df["titrant_name_idx"] * num_titrant_conc + 
-                                     trans_df["titrant_conc_idx"])
-            
-            extract.append(
-                dict(
-                    input_df = trans_df,
-                    params_to_get = ["mu","sigma"],
-                    map_column = "map_trans",
-                    get_columns = ["titrant_name","titrant_conc"],
-                    in_run_prefix = "transformation_"
-                )
-            )
+    for category, selection in component_selections:
+        module = model_registry.get(category, {}).get(selection)
+        if module is not None and hasattr(module, "get_extract_specs"):
+            extract.extend(module.get_extract_specs(ctx))
 
     params = {}
     for kwargs in extract:

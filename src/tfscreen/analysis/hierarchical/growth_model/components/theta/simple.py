@@ -268,3 +268,7 @@ def get_priors() -> ModelPriors:
     Pass an explicit ``theta_values`` keyword to construct a real one.
     """
     return ModelPriors(**get_hyperparameters())
+
+
+def get_extract_specs(ctx):
+    return []

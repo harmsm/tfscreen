@@ -116,3 +116,7 @@ def get_priors() -> ModelPriors:
         An empty, populated Pytree (Flax dataclass).
     """
     return ModelPriors(**get_hyperparameters())
+
+
+def get_extract_specs(ctx):
+    return []

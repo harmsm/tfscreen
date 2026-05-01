@@ -54,7 +54,6 @@ def _make_model(theta="none", dk_geno="none", activity="fixed",
         "map_theta_group":  [0,    1,    2,    3,    4,    5],
         "map_theta":        [0,    1,    2,    3,    4,    5],
         "map_genotype":     [0,    1,    2,    0,    1,    2],
-        "map_ln_cfu0":      [0,    1,    2,    3,    4,    5],
         "map_condition_rep":[0,    0,    0,    1,    1,    1],
         "replicate":        ["1",  "1",  "1",  "1",  "1",  "1"],
         "condition_rep":    ["c1", "c1", "c1", "c2", "c2", "c2"],
@@ -65,6 +64,9 @@ def _make_model(theta="none", dk_geno="none", activity="fixed",
         "condition_pre_idx":[0,    0,    0,    1,    1,    1],
         "condition_sel_idx":[0,    0,    0,    1,    1,    1],
     })
+
+    if dk_geno in ("hierarchical", "hierarchical_mut"):
+        model_df["map_ln_cfu0"] = [0, 1, 2, 3, 4, 5]
 
     mock_tm = MagicMock()
     mock_tm.df = model_df

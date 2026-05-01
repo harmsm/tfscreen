@@ -595,6 +595,8 @@ class ModelClass:
                                        "lac_dimer_lnK_mut", "lac_dimer_nn_mut") or
                       self._activity == "hierarchical_mut" or
                       self._dk_geno == "hierarchical_mut")
+        self.mut_labels = []
+        self.pair_labels = []
         if _needs_mut:
             _geno_idx = self.growth_tm.tensor_dim_names.index("genotype")
             _genotypes = list(self.growth_tm.tensor_dim_labels[_geno_idx])

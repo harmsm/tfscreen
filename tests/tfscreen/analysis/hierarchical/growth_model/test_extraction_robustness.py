@@ -37,7 +37,6 @@ def mock_model():
         "map_theta": [0],
         "map_theta_group": [0],
         "map_condition_rep": [0],
-        "map_ln_cfu0": [0],
         "map_genotype": [0],
         "time_idx": [0],
         "replicate_idx": [0],
@@ -53,7 +52,9 @@ def mock_model():
     mock_tm.tensor_dim_names = ["replicate", "time", "condition_pre", "condition_sel", "titrant_name", "titrant_conc", "genotype"]
     mock_tm.tensor_dim_labels = [["1"], ["1"], ["pre1"], ["sel1"], ["iptg"], [1.0], ["wt"]]
     model.growth_tm = mock_tm
-    
+    model.mut_labels = []
+    model.pair_labels = []
+
     # Mock growth_df
     model.growth_df = mock_tm.df.copy()
     model.growth_df["t_pre"] = 0.0
@@ -72,9 +73,9 @@ def test_extract_parameters_all_models(mock_model):
     params = extract_parameters(mock_model, posteriors)
     assert "theta" in params
     
-    # Test 'linear_independent' condition growth (same as linear)
+    # Test 'linear' condition growth
     mock_model._theta = "none"
-    mock_model._condition_growth = "linear_independent"
+    mock_model._condition_growth = "linear"
     posteriors = {
         "condition_growth_m": np.random.rand(10, 1),
         "condition_growth_k": np.random.rand(10, 1)
@@ -82,21 +83,6 @@ def test_extract_parameters_all_models(mock_model):
     params = extract_parameters(mock_model, posteriors)
     assert "growth_m" in params
     assert "growth_k" in params
-
-    # Test 'independent' condition growth (same as linear)
-    mock_model._condition_growth = "independent"
-    params = extract_parameters(mock_model, posteriors)
-    assert "growth_m" in params
-
-    # Test 'hierarchical' condition growth (same as linear)
-    mock_model._condition_growth = "hierarchical"
-    params = extract_parameters(mock_model, posteriors)
-    assert "growth_m" in params
-
-    # Test 'linear' condition growth
-    mock_model._condition_growth = "linear"
-    params = extract_parameters(mock_model, posteriors)
-    assert "growth_m" in params
 
     # Test 'power' condition growth
     mock_model._condition_growth = "power"
@@ -141,6 +127,7 @@ def test_extract_parameters_all_models(mock_model):
     mock_model._growth_transition = "instant"
     mock_model._dk_geno = "hierarchical"
     mock_model._activity = "hierarchical"
+    mock_model.growth_tm.df["map_ln_cfu0"] = 0
     posteriors = {
         "ln_cfu0": np.random.rand(10, 1),
         "dk_geno": np.random.rand(10, 1),
@@ -163,6 +150,7 @@ def test_extract_parameters_all_models(mock_model):
     mock_model._dk_geno = "none"
     mock_model._activity = "fixed"
     mock_model._growth_transition = "instant"
+    mock_model.growth_tm.df = mock_model.growth_tm.df.drop(columns=["map_ln_cfu0"])
     posteriors = {
         "theta_hill_n": np.random.rand(10, 1),
         "theta_log_hill_K": np.random.rand(10, 1),
@@ -246,12 +234,9 @@ def mock_model_shares_replicates(mock_model):
 
 
 @pytest.mark.parametrize("condition_growth,posteriors_keys", [
-    ("linear",           ["condition_growth_m", "condition_growth_k"]),
-    ("linear_independent", ["condition_growth_m", "condition_growth_k"]),
-    ("hierarchical",     ["condition_growth_m", "condition_growth_k"]),
-    ("independent",      ["condition_growth_m", "condition_growth_k"]),
-    ("power",            ["condition_growth_k", "condition_growth_m", "condition_growth_n"]),
-    ("saturation",       ["condition_growth_min", "condition_growth_max"]),
+    ("linear",     ["condition_growth_m", "condition_growth_k"]),
+    ("power",      ["condition_growth_k", "condition_growth_m", "condition_growth_n"]),
+    ("saturation", ["condition_growth_min", "condition_growth_max"]),
 ])
 def test_extract_parameters_condition_growth_shares_replicates(
     mock_model_shares_replicates, condition_growth, posteriors_keys

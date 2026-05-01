@@ -35,6 +35,7 @@ and negative epistasis are equally probable a priori.
 import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
+import pandas as pd
 from flax.struct import dataclass
 from typing import Dict, Any
 
@@ -262,3 +263,37 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, Any]:
 
 def get_priors() -> ModelPriors:
     return ModelPriors(**get_hyperparameters())
+
+
+def get_extract_specs(ctx):
+    specs = [dict(
+        input_df=ctx.growth_tm.df,
+        params_to_get=["dk_geno"],
+        map_column="map_genotype",
+        get_columns=["genotype"],
+        in_run_prefix="",
+    )]
+    mut_df = pd.DataFrame({
+        "mutation": ctx.mut_labels,
+        "map_mutation": range(len(ctx.mut_labels)),
+    })
+    specs.append(dict(
+        input_df=mut_df,
+        params_to_get=["d_dk_geno"],
+        map_column="map_mutation",
+        get_columns=["mutation"],
+        in_run_prefix="dk_geno_",
+    ))
+    if ctx.pair_labels:
+        pair_df = pd.DataFrame({
+            "pair": ctx.pair_labels,
+            "map_pair": range(len(ctx.pair_labels)),
+        })
+        specs.append(dict(
+            input_df=pair_df,
+            params_to_get=["epi_dk_geno"],
+            map_column="map_pair",
+            get_columns=["pair"],
+            in_run_prefix="dk_geno_",
+        ))
+    return specs

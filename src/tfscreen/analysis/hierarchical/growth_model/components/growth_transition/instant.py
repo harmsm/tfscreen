@@ -82,3 +82,7 @@ def get_priors() -> ModelPriors:
     Utility function to create a populated ModelPriors object.
     """
     return ModelPriors()
+
+
+def get_extract_specs(ctx):
+    return []

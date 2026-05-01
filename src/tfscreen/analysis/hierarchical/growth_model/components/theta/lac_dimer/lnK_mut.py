@@ -23,6 +23,7 @@ population moments) are imported from thermo.py.
 import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
+import pandas as pd
 from flax.struct import dataclass
 from functools import partial
 from typing import Dict, Any, Union
@@ -572,3 +573,90 @@ def get_guesses(name: str, data: Union[GrowthData, BindingData]) -> Dict[str, An
 
 def get_priors() -> ModelPriors:
     return ModelPriors(**get_hyperparameters())
+
+
+def get_extract_specs(ctx):
+    geno_dim = ctx.growth_tm.tensor_dim_names.index("genotype")
+    num_genotype = len(ctx.growth_tm.tensor_dim_labels[geno_dim])
+    titrant_dim = ctx.growth_tm.tensor_dim_names.index("titrant_name")
+    titrant_names = list(ctx.growth_tm.tensor_dim_labels[titrant_dim])
+    num_mut = len(ctx.mut_labels)
+
+    geno_df = (ctx.growth_tm.df[["genotype", "genotype_idx"]]
+               .drop_duplicates().copy())
+    geno_df["map_geno"] = geno_df["genotype_idx"]
+    specs = [dict(
+        input_df=geno_df,
+        params_to_get=["ln_K_op", "ln_K_HL"],
+        map_column="map_geno",
+        get_columns=["genotype"],
+        in_run_prefix="theta_",
+    )]
+
+    theta_KE_df = (ctx.growth_tm.df[["genotype", "titrant_name",
+                                     "genotype_idx", "titrant_name_idx"]]
+                   .drop_duplicates().copy())
+    theta_KE_df["map_theta_KE"] = (theta_KE_df["titrant_name_idx"] * num_genotype
+                                   + theta_KE_df["genotype_idx"])
+    specs.append(dict(
+        input_df=theta_KE_df,
+        params_to_get=["ln_K_E"],
+        map_column="map_theta_KE",
+        get_columns=["genotype", "titrant_name"],
+        in_run_prefix="theta_",
+    ))
+
+    mut_df = pd.DataFrame({
+        "mutation": ctx.mut_labels,
+        "map_mut": range(num_mut),
+    })
+    specs.append(dict(
+        input_df=mut_df,
+        params_to_get=["d_ln_K_op", "d_ln_K_HL"],
+        map_column="map_mut",
+        get_columns=["mutation"],
+        in_run_prefix="theta_",
+    ))
+
+    theta_d_KE_rows = [
+        {"titrant_name": t, "mutation": m,
+         "map_theta_d_KE": ti * num_mut + mi}
+        for ti, t in enumerate(titrant_names)
+        for mi, m in enumerate(ctx.mut_labels)
+    ]
+    specs.append(dict(
+        input_df=pd.DataFrame(theta_d_KE_rows),
+        params_to_get=["d_ln_K_E"],
+        map_column="map_theta_d_KE",
+        get_columns=["titrant_name", "mutation"],
+        in_run_prefix="theta_",
+    ))
+
+    if ctx.pair_labels:
+        num_pair = len(ctx.pair_labels)
+        pair_df = pd.DataFrame({
+            "pair": ctx.pair_labels,
+            "map_pair": range(num_pair),
+        })
+        specs.append(dict(
+            input_df=pair_df,
+            params_to_get=["epi_ln_K_op", "epi_ln_K_HL"],
+            map_column="map_pair",
+            get_columns=["pair"],
+            in_run_prefix="theta_",
+        ))
+        theta_epi_KE_rows = [
+            {"titrant_name": t, "pair": p,
+             "map_theta_epi_KE": ti * num_pair + pi}
+            for ti, t in enumerate(titrant_names)
+            for pi, p in enumerate(ctx.pair_labels)
+        ]
+        specs.append(dict(
+            input_df=pd.DataFrame(theta_epi_KE_rows),
+            params_to_get=["epi_ln_K_E"],
+            map_column="map_theta_epi_KE",
+            get_columns=["titrant_name", "pair"],
+            in_run_prefix="theta_",
+        ))
+
+    return specs

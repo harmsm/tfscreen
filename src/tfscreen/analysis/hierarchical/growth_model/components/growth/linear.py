@@ -243,3 +243,15 @@ def get_guesses(name, data):
 
 def get_priors():
     return ModelPriors(**get_hyperparameters())
+
+
+def get_extract_specs(ctx):
+    cond_rep_cols = (["condition_rep"] if ctx.growth_shares_replicates
+                     else ["replicate", "condition_rep"])
+    return [dict(
+        input_df=ctx.growth_tm.map_groups["condition_rep"],
+        params_to_get=["growth_m", "growth_k"],
+        map_column="map_condition_rep",
+        get_columns=cond_rep_cols,
+        in_run_prefix="condition_",
+    )]

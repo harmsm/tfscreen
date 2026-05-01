@@ -16,7 +16,9 @@ def mock_model_congression():
     model._activity = "fixed"
     model._growth_transition = "instant"
     model._growth_shares_replicates = False
-    
+    model.mut_labels = []
+    model.pair_labels = []
+
     # Mock TensorManager and its DataFrame
     mock_tm = MagicMock()
     mock_tm.df = pd.DataFrame({

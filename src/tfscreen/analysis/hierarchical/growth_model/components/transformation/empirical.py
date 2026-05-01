@@ -1,4 +1,5 @@
 from functools import partial
+import pandas as pd
 from . import _congression as congression
 
 def get_hyperparameters():
@@ -22,3 +23,14 @@ guide = congression.guide
 
 # Bake the theta_dist for the update function
 update_thetas = partial(congression.update_thetas, theta_dist="empirical")
+
+
+def get_extract_specs(ctx):
+    lam_df = pd.DataFrame({"parameter": ["lam"], "map_all": [0]})
+    return [dict(
+        input_df=lam_df,
+        params_to_get=["lam"],
+        map_column="map_all",
+        get_columns=["parameter"],
+        in_run_prefix="transformation_",
+    )]

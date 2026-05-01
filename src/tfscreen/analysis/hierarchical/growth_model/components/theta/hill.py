@@ -599,3 +599,13 @@ def get_priors() -> ModelPriors:
         A populated Pytree (Flax dataclass) of hyperparameters.
     """
     return ModelPriors(**get_hyperparameters())
+
+
+def get_extract_specs(ctx):
+    return [dict(
+        input_df=ctx.growth_tm.df,
+        params_to_get=["hill_n", "log_hill_K", "theta_high", "theta_low"],
+        map_column="map_theta_group",
+        get_columns=["genotype", "titrant_name"],
+        in_run_prefix="theta_",
+    )]

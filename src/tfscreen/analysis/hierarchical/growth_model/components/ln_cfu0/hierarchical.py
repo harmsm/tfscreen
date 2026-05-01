@@ -642,3 +642,15 @@ def get_priors(data: Optional[GrowthData] = None) -> ModelPriors:
             params["ln_cfu0_hyper_loc_locs"] = jnp.array(estimates["hyper_locs"])
 
     return ModelPriors(**params)
+
+
+def get_extract_specs(ctx):
+    if "map_ln_cfu0" not in ctx.growth_tm.df.columns:
+        return []
+    return [dict(
+        input_df=ctx.growth_tm.df,
+        params_to_get=["ln_cfu0"],
+        map_column="map_ln_cfu0",
+        get_columns=["replicate", "condition_pre", "genotype"],
+        in_run_prefix="",
+    )]

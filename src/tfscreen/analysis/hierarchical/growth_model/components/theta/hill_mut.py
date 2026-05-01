@@ -29,6 +29,7 @@ import jax
 import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
+import pandas as pd
 from flax.struct import dataclass, field
 from typing import Dict, Any
 
@@ -648,3 +649,58 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, Any]:
 
 def get_priors() -> ModelPriors:
     return ModelPriors(**get_hyperparameters())
+
+
+def get_extract_specs(ctx):
+    geno_dim = ctx.growth_tm.tensor_dim_names.index("genotype")
+    num_genotype = len(ctx.growth_tm.tensor_dim_labels[geno_dim])
+    titrant_dim = ctx.growth_tm.tensor_dim_names.index("titrant_name")
+    titrant_names = list(ctx.growth_tm.tensor_dim_labels[titrant_dim])
+    num_mut = len(ctx.mut_labels)
+
+    theta_mut_df = (ctx.growth_tm.df[["genotype", "titrant_name",
+                                      "genotype_idx", "titrant_name_idx"]]
+                    .drop_duplicates()
+                    .copy())
+    theta_mut_df["map_theta_mut"] = (theta_mut_df["titrant_name_idx"] * num_genotype
+                                     + theta_mut_df["genotype_idx"])
+    specs = [dict(
+        input_df=theta_mut_df,
+        params_to_get=["theta_low", "theta_high", "log_hill_K", "hill_n"],
+        map_column="map_theta_mut",
+        get_columns=["genotype", "titrant_name"],
+        in_run_prefix="theta_",
+    )]
+
+    theta_d_rows = [
+        {"titrant_name": t, "mutation": m,
+         "map_theta_d_mut": ti * num_mut + mi}
+        for ti, t in enumerate(titrant_names)
+        for mi, m in enumerate(ctx.mut_labels)
+    ]
+    specs.append(dict(
+        input_df=pd.DataFrame(theta_d_rows),
+        params_to_get=["d_logit_low", "d_logit_delta", "d_log_hill_K", "d_log_hill_n"],
+        map_column="map_theta_d_mut",
+        get_columns=["titrant_name", "mutation"],
+        in_run_prefix="theta_",
+    ))
+
+    if ctx.pair_labels:
+        num_pair = len(ctx.pair_labels)
+        theta_epi_rows = [
+            {"titrant_name": t, "pair": p,
+             "map_theta_epi": ti * num_pair + pi}
+            for ti, t in enumerate(titrant_names)
+            for pi, p in enumerate(ctx.pair_labels)
+        ]
+        specs.append(dict(
+            input_df=pd.DataFrame(theta_epi_rows),
+            params_to_get=["epi_logit_low", "epi_logit_delta",
+                           "epi_log_hill_K", "epi_log_hill_n"],
+            map_column="map_theta_epi",
+            get_columns=["titrant_name", "pair"],
+            in_run_prefix="theta_",
+        ))
+
+    return specs

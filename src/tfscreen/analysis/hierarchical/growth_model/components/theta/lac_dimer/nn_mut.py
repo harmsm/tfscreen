@@ -30,6 +30,7 @@ import jax.numpy as jnp
 import numpy as np
 import numpyro as pyro
 import numpyro.distributions as dist
+import pandas as pd
 from flax.struct import dataclass, field
 from typing import Dict, Any, Union
 
@@ -389,3 +390,49 @@ def get_guesses(name: str, data: Union[GrowthData, BindingData]) -> Dict[str, An
 
 def get_priors() -> ModelPriors:
     return ModelPriors(**get_hyperparameters())
+
+
+def get_extract_specs(ctx):
+    geno_dim = ctx.growth_tm.tensor_dim_names.index("genotype")
+    num_genotype = len(ctx.growth_tm.tensor_dim_labels[geno_dim])
+    num_mut = len(ctx.mut_labels)
+
+    geno_df = (ctx.growth_tm.df[["genotype", "genotype_idx"]]
+               .drop_duplicates().copy())
+    geno_df["map_geno"] = geno_df["genotype_idx"]
+    specs = [dict(
+        input_df=geno_df,
+        params_to_get=["ln_K_op", "ln_K_HL"],
+        map_column="map_geno",
+        get_columns=["genotype"],
+        in_run_prefix="theta_",
+    )]
+
+    theta_KE_df = (ctx.growth_tm.df[["genotype", "titrant_name",
+                                     "genotype_idx", "titrant_name_idx"]]
+                   .drop_duplicates().copy())
+    titrant_dim = ctx.growth_tm.tensor_dim_names.index("titrant_name")
+    num_titrant = len(ctx.growth_tm.tensor_dim_labels[titrant_dim])
+    theta_KE_df["map_theta_KE"] = (theta_KE_df["titrant_name_idx"] * num_genotype
+                                   + theta_KE_df["genotype_idx"])
+    specs.append(dict(
+        input_df=theta_KE_df,
+        params_to_get=["ln_K_E"],
+        map_column="map_theta_KE",
+        get_columns=["genotype", "titrant_name"],
+        in_run_prefix="theta_",
+    ))
+
+    mut_df = pd.DataFrame({
+        "mutation": ctx.mut_labels,
+        "map_mut": range(num_mut),
+    })
+    specs.append(dict(
+        input_df=mut_df,
+        params_to_get=["d_ln_K_op", "d_ln_K_HL", "d_ln_K_E"],
+        map_column="map_mut",
+        get_columns=["mutation"],
+        in_run_prefix="theta_",
+    ))
+
+    return specs
