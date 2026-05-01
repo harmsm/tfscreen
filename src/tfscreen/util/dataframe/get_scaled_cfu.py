@@ -105,13 +105,13 @@ def get_scaled_cfu(
         if 'cfu_var' in tmp_df.columns and 'ln_cfu_var' not in tmp_df.columns:
             _, tmp_df['ln_cfu_var'] = to_log(v=tmp_df['cfu'], v_var=tmp_df['cfu_var'])
 
-    # 4. Generate linear-space columns from log-space
+    # 4. Generate linear-space columns from log-space (only when needed)
     if 'ln_cfu' in tmp_df.columns:
-        if 'cfu' not in tmp_df.columns:
+        if 'cfu' not in tmp_df.columns and 'cfu' in need_columns:
             tmp_df['cfu'] = from_log(tmp_df['ln_cfu'])
-        if 'ln_cfu_std' in tmp_df.columns and 'cfu_std' not in tmp_df.columns:
+        if 'ln_cfu_std' in tmp_df.columns and 'cfu_std' not in tmp_df.columns and 'cfu_std' in need_columns:
             _, tmp_df['cfu_std'] = from_log(v=tmp_df['ln_cfu'], v_std=tmp_df['ln_cfu_std'])
-        if 'ln_cfu_var' in tmp_df.columns and 'cfu_var' not in tmp_df.columns:
+        if 'ln_cfu_var' in tmp_df.columns and 'cfu_var' not in tmp_df.columns and 'cfu_var' in need_columns:
             _, tmp_df['cfu_var'] = from_log(v=tmp_df['ln_cfu'], v_var=tmp_df['ln_cfu_var'])
 
     # --- Final Check ---

@@ -457,7 +457,10 @@ def _empirical_group_estimates(data: GrowthData):
 
     # Reduce over (time=1, cond_sel=3, titrant_name=4, titrant_conc=5)
     # Result shape: (num_replicate, num_condition_pre, num_genotype)
-    per_rep_cond_geno = np.nanmedian(ln_cfu_valid, axis=(1, 3, 4, 5))
+    # Suppress all-NaN slice warning: downstream code already handles NaN via
+    # finite-value filtering and fallbacks, so this is expected for sparse data.
+    with np.errstate(all="ignore"):
+        per_rep_cond_geno = np.nanmedian(ln_cfu_valid, axis=(1, 3, 4, 5))
 
     library_mask = ~spiked_mask & ~wt_mask
 
