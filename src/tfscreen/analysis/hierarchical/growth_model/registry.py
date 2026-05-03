@@ -25,8 +25,9 @@ from .components.activity import horseshoe_mut as activity_horseshoe_mut
 from .components.theta import categorical as theta_cat
 from .components.theta import hill as theta_hill
 from .components.theta import hill_mut as theta_hill_mut
-from .components.theta.lac_dimer import lnK_mut as theta_lac_dimer_lnK_mut
-from .components.theta.lac_dimer import nn_mut as theta_lac_dimer_nn_mut
+from .components.theta.struct.lac_dimer import lnK_mut as theta_lac_dimer_lnK_mut
+from .components.theta.struct.lac_dimer import lnK_nn_prior as theta_lac_dimer_lnK_nn_prior
+from .components.theta.struct.lac_dimer import nn_mut as theta_lac_dimer_nn_mut
 from .components.theta import simple as theta_simple
 from .components.transformation import empirical as transformation_empirical
 from .components.transformation import logit_norm as transformation_logit_norm
@@ -70,6 +71,7 @@ model_registry = {
         "hill":theta_hill,
         "hill_mut":theta_hill_mut,
         "lac_dimer_lnK_mut":theta_lac_dimer_lnK_mut,
+        "lac_dimer_lnK_nn_prior":theta_lac_dimer_lnK_nn_prior,
         "lac_dimer_nn_mut":theta_lac_dimer_nn_mut,
         "simple":theta_simple,
     },

@@ -1,4 +1,12 @@
 """
+LEGACY — will be deleted once lnK_nn_prior is validated.
+
+This model is superseded by lnK_nn_prior, which uses the same partition
+function but treats per-mutation ΔΔG as inferred latent variables with
+NN-predicted prior means rather than deterministic NN outputs.  It fits
+worse than lnK_mut because the NN must explain all mutation-effect
+variance from LigandMPNN features alone, with no per-mutation residual.
+
 K-assembly via MLP on LigandMPNN structural features.
 
 The four input structures represent distinct thermodynamic states:
@@ -35,7 +43,7 @@ from flax.struct import dataclass, field
 from typing import Dict, Any, Union
 
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData, BindingData
-from tfscreen.analysis.hierarchical.growth_model.components.theta.lac_dimer.thermo import (
+from tfscreen.analysis.hierarchical.growth_model.components.theta.struct.lac_dimer.thermo import (
     ThetaParam,
     _compute_theta,
     _population_moments,
@@ -438,7 +446,7 @@ def get_extract_specs(ctx):
     return specs
 
 
-from tfscreen.analysis.hierarchical.growth_model.components.theta.lac_dimer.thermo import (
+from tfscreen.analysis.hierarchical.growth_model.components.theta.struct.lac_dimer.thermo import (
     build_calc_df,
     compute_theta_samples,
 )

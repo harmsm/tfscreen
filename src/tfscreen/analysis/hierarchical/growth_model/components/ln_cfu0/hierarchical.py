@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import jax.numpy as jnp
 import numpyro as pyro
@@ -459,7 +461,9 @@ def _empirical_group_estimates(data: GrowthData):
     # Result shape: (num_replicate, num_condition_pre, num_genotype)
     # Suppress all-NaN slice warning: downstream code already handles NaN via
     # finite-value filtering and fallbacks, so this is expected for sparse data.
-    with np.errstate(all="ignore"):
+    # np.errstate does not cover this — nanmedian emits via warnings.warn.
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", "All-NaN slice encountered", RuntimeWarning)
         per_rep_cond_geno = np.nanmedian(ln_cfu_valid, axis=(1, 3, 4, 5))
 
     library_mask = ~spiked_mask & ~wt_mask

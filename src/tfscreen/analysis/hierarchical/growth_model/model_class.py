@@ -446,7 +446,8 @@ class ModelClass:
                  spiked_genotypes=None,
                  growth_shares_replicates=False,
                  epistasis=False,
-                 ligandmpnn_features_path=None):
+                 ligandmpnn_features_path=None,
+                 struct_ensemble_paths=None):
 
         self._ln_cfu_df = growth_df
         self._binding_df = binding_df
@@ -466,6 +467,7 @@ class ModelClass:
         self._growth_shares_replicates = growth_shares_replicates
         self._epistasis = epistasis
         self._ligandmpnn_features_path = ligandmpnn_features_path
+        self._struct_ensemble_paths = struct_ensemble_paths
 
         self._initialize_data()
         self._initialize_classes()
@@ -592,7 +594,8 @@ class ModelClass:
         # component is selected.  Stored as static (pytree_node=False) fields
         # on GrowthData; downstream components convert to jnp arrays as needed.
         _needs_mut = (self._theta in ("hill_mut", "lac_dimer_mut",
-                                       "lac_dimer_lnK_mut", "lac_dimer_nn_mut") or
+                                       "lac_dimer_lnK_mut", "lac_dimer_lnK_nn_prior",
+                                       "lac_dimer_nn_mut") or
                       self._activity == "hierarchical_mut" or
                       self._dk_geno == "hierarchical_mut")
         self.mut_labels = []
@@ -631,7 +634,40 @@ class ModelClass:
             ligandmpnn_features = _builder(
                 self._ligandmpnn_features_path, mut_labels)
             growth_data_sources.append({"ligandmpnn_features": ligandmpnn_features})
-        
+
+        # Build structural ensemble data for theta components that use per-structure
+        # ΔΔG inference (e.g. lac_dimer_lnK_nn_prior).  struct_ensemble_paths must
+        # be a dict mapping structure name → NPZ path.  struct_names is a tuple and
+        # cannot go through populate_dataclass (which rejects tuples); it is injected
+        # via .replace() after the GrowthData dataclass is built.
+        _needs_struct = self._theta in ("lac_dimer_lnK_nn_prior",)
+        _struct_names_tuple = None
+        if _needs_struct:
+            if self._struct_ensemble_paths is None:
+                raise ValueError(
+                    f"theta='{self._theta}' requires struct_ensemble_paths "
+                    f"(dict mapping structure name → NPZ path from "
+                    f"generate_struct_ensemble.py). "
+                    f"Pass it as struct_ensemble_paths={{'H': '/path/H.npz', ...}}."
+                )
+            from tfscreen.analysis.hierarchical.growth_model.components.theta.struct.io import (
+                load_struct_ensemble,
+            )
+            _struct_names = list(self._struct_ensemble_paths.keys())
+            _npz_paths    = [self._struct_ensemble_paths[k] for k in _struct_names]
+            _pair_labels_for_struct = self.pair_labels if self._epistasis else None
+            _struct_data  = load_struct_ensemble(
+                _npz_paths, _struct_names, mut_labels, _pair_labels_for_struct
+            )
+            _struct_names_tuple = _struct_data["struct_names"]   # tuple; set via .replace()
+            growth_data_sources.append({
+                "num_struct":               len(_struct_names),
+                "struct_features":          _struct_data["struct_features"],
+                "struct_n_chains":          _struct_data["struct_n_chains"],
+                "struct_contact_pair_idx":  _struct_data["struct_contact_pair_idx"],
+                "struct_contact_distances": _struct_data["struct_contact_distances"],
+            })
+
         # ---------------------------------------------------------------------
         # binding dataclass
   
@@ -709,9 +745,14 @@ class ModelClass:
         # ---------------------------------------------------------------------
         # Populate dataclasses
 
-        # Populate a GrowthData flax dataclass with all keys in `sources`. 
+        # Populate a GrowthData flax dataclass with all keys in `sources`.
         growth_dataclass = populate_dataclass(GrowthData,
                                               sources=growth_data_sources)
+
+        # struct_names is a tuple of str (pytree_node=False), which populate_dataclass
+        # rejects.  Inject it directly via flax's immutable replace().
+        if _struct_names_tuple is not None:
+            growth_dataclass = growth_dataclass.replace(struct_names=_struct_names_tuple)
 
         # Populate a BindingData flax dataclass with all keys in `sources`
         binding_dataclass = populate_dataclass(BindingData,
@@ -985,4 +1026,5 @@ class ModelClass:
             "growth_shares_replicates": self._growth_shares_replicates,
             "epistasis": self._epistasis,
             "ligandmpnn_features_path": self._ligandmpnn_features_path,
+            "struct_ensemble_paths": self._struct_ensemble_paths,
         }

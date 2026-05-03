@@ -5,7 +5,7 @@ from numpyro.handlers import trace, substitute, seed
 from collections import namedtuple
 
 from functools import partial
-from tfscreen.analysis.hierarchical.growth_model.components.theta.lac_dimer.lnK_mut import (
+from tfscreen.analysis.hierarchical.growth_model.components.theta.struct.lac_dimer.lnK_mut import (
     ModelPriors,
     _assemble_scalar,
     _assemble_titrant,
@@ -15,7 +15,7 @@ from tfscreen.analysis.hierarchical.growth_model.components.theta.lac_dimer.lnK_
     get_guesses,
     get_priors,
 )
-from tfscreen.analysis.hierarchical.growth_model.components.theta.lac_dimer.thermo import (
+from tfscreen.analysis.hierarchical.growth_model.components.theta.struct.lac_dimer.thermo import (
     ThetaParam,
     run_model,
     get_population_moments,

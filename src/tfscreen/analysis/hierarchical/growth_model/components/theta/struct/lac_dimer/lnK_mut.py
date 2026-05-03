@@ -31,7 +31,7 @@ from typing import Dict, Any
 
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
 from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix
-from tfscreen.analysis.hierarchical.growth_model.components.theta.lac_dimer.thermo import (
+from tfscreen.analysis.hierarchical.growth_model.components.theta.struct.lac_dimer.thermo import (
     ThetaParam,
     _compute_theta,
     _population_moments,
@@ -684,7 +684,7 @@ def get_extract_specs(ctx):
     return specs
 
 
-from tfscreen.analysis.hierarchical.growth_model.components.theta.lac_dimer.thermo import (
+from tfscreen.analysis.hierarchical.growth_model.components.theta.struct.lac_dimer.thermo import (
     build_calc_df,
     compute_theta_samples,
 )

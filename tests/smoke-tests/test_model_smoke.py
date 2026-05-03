@@ -105,6 +105,36 @@ def test_model_svi_smoke(growth_smoke_csv,
     assert svi_state is not None
     assert isinstance(params, dict)
 
+@pytest.mark.slow
+def test_model_svi_smoke_lnK_nn_prior(growth_smoke_csv,
+                                       binding_smoke_csv,
+                                       struct_smoke_npz_paths,
+                                       tmpdir):
+    """SVI smoke test for lac_dimer_lnK_nn_prior (requires struct_ensemble_paths)."""
+    out_root = os.path.join(tmpdir, "smoke_nn_prior")
+
+    model = ModelClass(
+        growth_df=growth_smoke_csv,
+        binding_df=binding_smoke_csv,
+        batch_size=None,
+        theta="lac_dimer_lnK_nn_prior",
+        struct_ensemble_paths=struct_smoke_npz_paths,
+        epistasis=False,
+    )
+
+    inference = RunInference(model=model, seed=42)
+    svi = inference.setup_svi(adam_step_size=1e-3)
+    svi_state, params, converged = inference.run_optimization(
+        svi=svi,
+        max_num_epochs=5,
+        out_root=out_root,
+        checkpoint_interval=10,
+    )
+
+    assert svi_state is not None
+    assert isinstance(params, dict)
+
+
 def test_registry_coverage():
     """
     Ensure that we are testing the keys that exist in the registry.

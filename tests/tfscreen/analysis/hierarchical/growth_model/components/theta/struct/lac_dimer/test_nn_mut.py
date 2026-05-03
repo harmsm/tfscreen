@@ -4,7 +4,7 @@ import jax.numpy as jnp
 from numpyro.handlers import trace, substitute, seed
 from collections import namedtuple
 
-from tfscreen.analysis.hierarchical.growth_model.components.theta.lac_dimer.nn_mut import (
+from tfscreen.analysis.hierarchical.growth_model.components.theta.struct.lac_dimer.nn_mut import (
     ModelPriors,
     _PROJ,
     _DEFAULT_HIDDEN_SIZE,
@@ -338,7 +338,7 @@ def _run_model(fn, mock_data, priors, seed_val=0):
 class TestDefineModel:
 
     def test_returns_theta_param(self, mock_data, priors):
-        from tfscreen.analysis.hierarchical.growth_model.components.theta.lac_dimer.thermo import ThetaParam
+        from tfscreen.analysis.hierarchical.growth_model.components.theta.struct.lac_dimer.thermo import ThetaParam
         result = _run_model(define_model, mock_data, priors)
         assert isinstance(result, ThetaParam)
 
@@ -421,7 +421,7 @@ class TestDefineModel:
 class TestGuide:
 
     def test_returns_theta_param(self, mock_data, priors):
-        from tfscreen.analysis.hierarchical.growth_model.components.theta.lac_dimer.thermo import ThetaParam
+        from tfscreen.analysis.hierarchical.growth_model.components.theta.struct.lac_dimer.thermo import ThetaParam
         result = _run_model(guide, mock_data, priors)
         assert isinstance(result, ThetaParam)
 
@@ -441,7 +441,7 @@ class TestGuide:
 # ---------------------------------------------------------------------------
 
 def test_run_model_passthrough(mock_data, priors):
-    from tfscreen.analysis.hierarchical.growth_model.components.theta.lac_dimer.thermo import ThetaParam
+    from tfscreen.analysis.hierarchical.growth_model.components.theta.struct.lac_dimer.thermo import ThetaParam
     tp = _run_model(define_model, mock_data, priors)
     result = run_model(tp, mock_data)
     assert result.shape == (_T, _C, _G)

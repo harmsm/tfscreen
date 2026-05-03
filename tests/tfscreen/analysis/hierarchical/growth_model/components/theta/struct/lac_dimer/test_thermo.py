@@ -3,7 +3,7 @@ import numpy as np
 import jax.numpy as jnp
 from collections import namedtuple
 
-from tfscreen.analysis.hierarchical.growth_model.components.theta.lac_dimer.thermo import (
+from tfscreen.analysis.hierarchical.growth_model.components.theta.struct.lac_dimer.thermo import (
     ThetaParam,
     _solve_free_effector,
     _compute_theta,

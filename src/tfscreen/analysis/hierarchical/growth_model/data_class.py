@@ -86,6 +86,25 @@ class GrowthData:
     # (H, HD, L, LE2).  Stored as pytree_node=False (static).
     ligandmpnn_features: Any = field(pytree_node=False, default=None)
 
+    # Optional structural ensemble data (set when using struct theta components,
+    # e.g. struct.lac_dimer.lnK_nn_prior).  All fields stored as
+    # pytree_node=False (static); downstream components convert to jnp arrays.
+    #
+    #   struct_names           : tuple of str, length S — structure names in
+    #                            column order matching struct_features axis 1
+    #   struct_features        : (M, S, 60) float32 — per-mutation per-structure
+    #                            feature vector [logP row | one_hot_wt | one_hot_mut]
+    #   struct_n_chains        : (S,) int32 — chains bearing the mutation per struct
+    #   struct_contact_pair_idx: (P, 2) int32 — mutation-index pairs (i, j)
+    #   struct_contact_distances: (P, S) float32 — min Cα-Cα distance in Å;
+    #                            999.0 where the pair is not a contact in that struct
+    num_struct: int = field(pytree_node=False, default=0)
+    struct_names: Any = field(pytree_node=False, default=None)
+    struct_features: Any = field(pytree_node=False, default=None)
+    struct_n_chains: Any = field(pytree_node=False, default=None)
+    struct_contact_pair_idx: Any = field(pytree_node=False, default=None)
+    struct_contact_distances: Any = field(pytree_node=False, default=None)
+
 @dataclass(frozen=True)
 class BindingData:
 
@@ -120,6 +139,20 @@ class BindingData:
     mut_geno_matrix: Any = field(pytree_node=False, default=None)
     pair_nnz_pair_idx: Any = field(pytree_node=False, default=None)
     pair_nnz_geno_idx: Any = field(pytree_node=False, default=None)
+
+    # Optional per-mutation ΔlogP features from LigandMPNN.  Matches
+    # GrowthData.ligandmpnn_features; kept here for theta components that
+    # operate on binding data.
+    ligandmpnn_features: Any = field(pytree_node=False, default=None)
+
+    # Optional structural ensemble data.  Matches GrowthData struct fields;
+    # see GrowthData for full field descriptions.
+    num_struct: int = field(pytree_node=False, default=0)
+    struct_names: Any = field(pytree_node=False, default=None)
+    struct_features: Any = field(pytree_node=False, default=None)
+    struct_n_chains: Any = field(pytree_node=False, default=None)
+    struct_contact_pair_idx: Any = field(pytree_node=False, default=None)
+    struct_contact_distances: Any = field(pytree_node=False, default=None)
 
 
 @dataclass(frozen=True)
