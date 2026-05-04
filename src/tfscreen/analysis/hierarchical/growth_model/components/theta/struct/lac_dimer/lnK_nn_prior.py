@@ -1,16 +1,14 @@
 """
 K-assembly via per-mutation per-structure ΔΔG with NN-predicted prior means.
 
-This model combines the strengths of ``lnK_mut`` (per-mutation latent ΔΔG
-with a hierarchical prior) and ``nn_mut`` (LigandMPNN structural features
-as informative priors) via an empirical-Bayes prior:
+Per-mutation per-structure ΔΔG latents with MLP-predicted prior means
+(empirical-Bayes via LigandMPNN structural features):
 
     ΔΔG[m, s]  ~ Normal( MLP_s(features[m, s, :]) · n_chains[s],  σ_s )
     σ_s        — per-structure trust scale (``pyro.param``, init=1.0)
 
-When σ_s → 0 the posterior collapses to the deterministic NN output (like
-``nn_mut``).  When σ_s → ∞ the prior is flat and ΔΔG is unconstrained (like
-``lnK_mut``).  The data learn the balance per structure.
+When σ_s → 0 the posterior collapses to the deterministic MLP output.
+When σ_s → ∞ the prior is flat and ΔΔG is unconstrained (like ``lnK_mut``).  The data learn the balance per structure.
 
 The four per-structure ΔΔG values are projected onto Δln_K via the fixed
 thermodynamic matrix:

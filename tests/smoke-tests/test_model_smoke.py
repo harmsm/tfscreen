@@ -108,9 +108,9 @@ def test_model_svi_smoke(growth_smoke_csv,
 @pytest.mark.slow
 def test_model_svi_smoke_lnK_nn_prior(growth_smoke_csv,
                                        binding_smoke_csv,
-                                       struct_smoke_npz_paths,
+                                       struct_smoke_h5_path,
                                        tmpdir):
-    """SVI smoke test for lac_dimer_lnK_nn_prior (requires struct_ensemble_paths)."""
+    """SVI smoke test for lac_dimer_lnK_nn_prior (requires struct_ensemble_path)."""
     out_root = os.path.join(tmpdir, "smoke_nn_prior")
 
     model = ModelClass(
@@ -118,7 +118,7 @@ def test_model_svi_smoke_lnK_nn_prior(growth_smoke_csv,
         binding_df=binding_smoke_csv,
         batch_size=None,
         theta="lac_dimer_lnK_nn_prior",
-        struct_ensemble_paths=struct_smoke_npz_paths,
+        struct_ensemble_path=struct_smoke_h5_path,
         epistasis=False,
     )
 

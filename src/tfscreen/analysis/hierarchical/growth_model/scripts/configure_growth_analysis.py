@@ -22,7 +22,7 @@ def configure_growth_analysis(growth_df=None,
                               spiked=None,
                               growth_shares_replicates=False,
                               epistasis=False,
-                              ligandmpnn_features_path=None,
+                              struct_ensemble_path=None,
                               batch_size=1024):
     """
     Construct the analysis configuration step. This creates a tfs_config.yaml file
@@ -59,7 +59,8 @@ def configure_growth_analysis(growth_df=None,
     theta_model : str, optional
         Model to use to describe theta, the fractional occupancy of a genotype
         on the transcription factor binding site. Allowed values are 'hill'
-        (default), 'categorical', 'hill_mut', or 'lac_dimer_mut'.
+        (default), 'categorical', 'hill_mut', 'lac_dimer_lnK_mut', or
+        'lac_dimer_lnK_nn_prior'.
     transformation_model : str, optional
         Model for transformation correction. Allowed values are 'single', 
         'empirical', or 'logit_norm'. Default 'empirical'.
@@ -81,11 +82,10 @@ def configure_growth_analysis(growth_df=None,
         True, each pair of mutations present in the same genotype gets an
         independent epistasis term. When False (default), effects are purely
         additive at the mutation level.
-    ligandmpnn_features_path : str, optional
-        Path to an NPZ file containing a ``logP`` array of shape (4, L, 20)
-        produced by running LigandMPNN in score mode on the four thermodynamic-
-        state structures (H, HD, L, LE2). Required when
-        ``theta_model='lac_dimer_nn_mut'``; ignored otherwise.
+    struct_ensemble_path : str, optional
+        Path to the HDF5 structural ensemble file produced by
+        ``scripts/generate_struct_ensemble.py``.  Required when
+        ``theta_model='lac_dimer_lnK_nn_prior'``; ignored otherwise.
     batch_size : int, optional
         Mini-batch size for SVI. Defaults to 1024. Set to None to use the full
         dataset as a single batch.
@@ -112,7 +112,7 @@ def configure_growth_analysis(growth_df=None,
                      spiked_genotypes=spiked,
                      growth_shares_replicates=growth_shares_replicates,
                      epistasis=epistasis,
-                     ligandmpnn_features_path=ligandmpnn_features_path,
+                     struct_ensemble_path=struct_ensemble_path,
                      batch_size=batch_size)
 
     # Write the model configuration to a file. This includes the model component
@@ -127,7 +127,7 @@ def main():
                             manual_arg_types={"growth_df":str,
                                               "binding_df":str,
                                               "spiked":list,
-                                              "ligandmpnn_features_path":str,
+                                              "struct_ensemble_path":str,
                                               "batch_size":int},
                             manual_arg_nargs={"spiked":"+"})
 

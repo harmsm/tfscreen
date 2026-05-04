@@ -199,7 +199,7 @@ def get_population_moments(theta_param: ThetaParam, data) -> tuple:
 
 
 # ---------------------------------------------------------------------------
-# Numpy extraction helpers (shared by lac_dimer_mut and lac_dimer_nn_mut)
+# Numpy extraction helpers (shared across lac_dimer theta components)
 # ---------------------------------------------------------------------------
 
 _ZERO_CONC_VALUE = 1e-20
@@ -209,7 +209,7 @@ def build_calc_df(model, manual_titrant_df):
     """
     Build the concentration grid DataFrame for theta curve extraction.
 
-    Shared by ``lac_dimer_mut`` and ``lac_dimer_nn_mut``.
+    Shared by ``lac_dimer_mut`` and ``lac_dimer_lnK_nn_prior``.
 
     Returns
     -------

@@ -80,12 +80,6 @@ class GrowthData:
     pair_nnz_pair_idx: Any = field(pytree_node=False, default=None)
     pair_nnz_geno_idx: Any = field(pytree_node=False, default=None)
 
-    # Optional per-mutation ΔlogP features from LigandMPNN (set when using
-    # lac_dimer_nn_mut theta component).  Shape: (num_mutation, 4), where the
-    # 4 columns correspond to the four thermodynamic-state structures
-    # (H, HD, L, LE2).  Stored as pytree_node=False (static).
-    ligandmpnn_features: Any = field(pytree_node=False, default=None)
-
     # Optional structural ensemble data (set when using struct theta components,
     # e.g. struct.lac_dimer.lnK_nn_prior).  All fields stored as
     # pytree_node=False (static); downstream components convert to jnp arrays.
@@ -139,11 +133,6 @@ class BindingData:
     mut_geno_matrix: Any = field(pytree_node=False, default=None)
     pair_nnz_pair_idx: Any = field(pytree_node=False, default=None)
     pair_nnz_geno_idx: Any = field(pytree_node=False, default=None)
-
-    # Optional per-mutation ΔlogP features from LigandMPNN.  Matches
-    # GrowthData.ligandmpnn_features; kept here for theta components that
-    # operate on binding data.
-    ligandmpnn_features: Any = field(pytree_node=False, default=None)
 
     # Optional structural ensemble data.  Matches GrowthData struct fields;
     # see GrowthData for full field descriptions.

@@ -12,7 +12,7 @@ where σ_s is a per-structure trust scale learned via ``pyro.param``.
 Interpretation of σ_s
 ----------------------
 σ_s controls how tightly the prior is centred on the NN prediction:
-  σ_s → 0  :  ΔΔG collapses to the deterministic NN output (like nn_mut)
+  σ_s → 0  :  ΔΔG collapses to the deterministic NN output
   σ_s → ∞  :  prior becomes flat; posterior is driven by the likelihood
               alone (like lnK_mut with flat sigma prior)
 

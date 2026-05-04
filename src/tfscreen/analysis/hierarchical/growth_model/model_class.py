@@ -446,8 +446,7 @@ class ModelClass:
                  spiked_genotypes=None,
                  growth_shares_replicates=False,
                  epistasis=False,
-                 ligandmpnn_features_path=None,
-                 struct_ensemble_paths=None):
+                 struct_ensemble_path=None):
 
         self._ln_cfu_df = growth_df
         self._binding_df = binding_df
@@ -466,8 +465,7 @@ class ModelClass:
         self._spiked_genotypes = spiked_genotypes
         self._growth_shares_replicates = growth_shares_replicates
         self._epistasis = epistasis
-        self._ligandmpnn_features_path = ligandmpnn_features_path
-        self._struct_ensemble_paths = struct_ensemble_paths
+        self._struct_ensemble_path = struct_ensemble_path
 
         self._initialize_data()
         self._initialize_classes()
@@ -594,8 +592,7 @@ class ModelClass:
         # component is selected.  Stored as static (pytree_node=False) fields
         # on GrowthData; downstream components convert to jnp arrays as needed.
         _needs_mut = (self._theta in ("hill_mut", "lac_dimer_mut",
-                                       "lac_dimer_lnK_mut", "lac_dimer_lnK_nn_prior",
-                                       "lac_dimer_nn_mut") or
+                                       "lac_dimer_lnK_mut", "lac_dimer_lnK_nn_prior") or
                       self._activity == "hierarchical_mut" or
                       self._dk_geno == "hierarchical_mut")
         self.mut_labels = []
@@ -621,47 +618,30 @@ class ModelClass:
                 "pair_nnz_geno_idx": pair_nnz_geno_idx,
             })
 
-        # Build LigandMPNN per-mutation features for any theta component that
-        # defines build_ligandmpnn_features (e.g. lac_dimer_nn_mut).
-        # The component owns its NPZ layout and STRUCTURE_KEYS ordering.
-        _theta_mod = model_registry.get("theta", {}).get(self._theta)
-        _builder = getattr(_theta_mod, 'build_ligandmpnn_features', None)
-        if inspect.isfunction(_builder):
-            if self._ligandmpnn_features_path is None:
-                raise ValueError(
-                    f"theta='{self._theta}' requires ligandmpnn_features_path "
-                    f"(path to NPZ from generate_ligandmpnn_features.py)")
-            ligandmpnn_features = _builder(
-                self._ligandmpnn_features_path, mut_labels)
-            growth_data_sources.append({"ligandmpnn_features": ligandmpnn_features})
-
         # Build structural ensemble data for theta components that use per-structure
-        # ΔΔG inference (e.g. lac_dimer_lnK_nn_prior).  struct_ensemble_paths must
-        # be a dict mapping structure name → NPZ path.  struct_names is a tuple and
-        # cannot go through populate_dataclass (which rejects tuples); it is injected
-        # via .replace() after the GrowthData dataclass is built.
+        # ΔΔG inference (e.g. lac_dimer_lnK_nn_prior).  struct_ensemble_path must
+        # be a path to the HDF5 file produced by generate_struct_ensemble.py.
+        # struct_names is a tuple and cannot go through populate_dataclass (which
+        # rejects tuples); it is injected via .replace() after GrowthData is built.
         _needs_struct = self._theta in ("lac_dimer_lnK_nn_prior",)
         _struct_names_tuple = None
         if _needs_struct:
-            if self._struct_ensemble_paths is None:
+            if self._struct_ensemble_path is None:
                 raise ValueError(
-                    f"theta='{self._theta}' requires struct_ensemble_paths "
-                    f"(dict mapping structure name → NPZ path from "
-                    f"generate_struct_ensemble.py). "
-                    f"Pass it as struct_ensemble_paths={{'H': '/path/H.npz', ...}}."
+                    f"theta='{self._theta}' requires struct_ensemble_path "
+                    f"(path to the HDF5 file produced by "
+                    f"generate_struct_ensemble.py)."
                 )
             from tfscreen.analysis.hierarchical.growth_model.components.theta.struct.io import (
                 load_struct_ensemble,
             )
-            _struct_names = list(self._struct_ensemble_paths.keys())
-            _npz_paths    = [self._struct_ensemble_paths[k] for k in _struct_names]
             _pair_labels_for_struct = self.pair_labels if self._epistasis else None
             _struct_data  = load_struct_ensemble(
-                _npz_paths, _struct_names, mut_labels, _pair_labels_for_struct
+                self._struct_ensemble_path, mut_labels, _pair_labels_for_struct
             )
             _struct_names_tuple = _struct_data["struct_names"]   # tuple; set via .replace()
             growth_data_sources.append({
-                "num_struct":               len(_struct_names),
+                "num_struct":               len(_struct_names_tuple),
                 "struct_features":          _struct_data["struct_features"],
                 "struct_n_chains":          _struct_data["struct_n_chains"],
                 "struct_contact_pair_idx":  _struct_data["struct_contact_pair_idx"],
@@ -1025,6 +1005,5 @@ class ModelClass:
             "spiked_genotypes":self._spiked_genotypes,
             "growth_shares_replicates": self._growth_shares_replicates,
             "epistasis": self._epistasis,
-            "ligandmpnn_features_path": self._ligandmpnn_features_path,
-            "struct_ensemble_paths": self._struct_ensemble_paths,
+            "struct_ensemble_path": self._struct_ensemble_path,
         }

@@ -322,8 +322,7 @@ def test_model_class_properties(initialized_model_class):
     model._spiked_genotypes = ["s"]
     model._growth_shares_replicates = False
     model._epistasis = True
-    model._ligandmpnn_features_path = None
-    model._struct_ensemble_paths = None
+    model._struct_ensemble_path = None
 
     assert ModelClass.jax_model.fget(model) == "jm"
     assert ModelClass.jax_model_guide.fget(model) == "jmg"

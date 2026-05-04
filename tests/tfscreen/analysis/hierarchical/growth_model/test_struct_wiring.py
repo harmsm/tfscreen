@@ -1,18 +1,18 @@
 """
-Tests for Phase 5 — struct ensemble wiring in ModelClass.
+Tests for struct ensemble wiring in ModelClass.
 
 Covers:
   1. Constructor parameter and settings property
-  2. Error handling when struct_ensemble_paths is missing
+  2. Error handling when struct_ensemble_path is missing
   3. Full integration: GrowthData.struct_* fields populated correctly
   4. _needs_mut activated for lac_dimer_lnK_nn_prior
   5. Registry entry is present
 """
 
-import io
 import numpy as np
 import pandas as pd
 import pytest
+import h5py
 
 STRUCTURE_NAMES = ('H', 'HD', 'L', 'LE2')
 
@@ -27,30 +27,24 @@ _RESNUMS = [42, 84]
 _GENOTYPES = ["wt", "M42I", "K84L", "M42I/K84L"]
 
 
-def _write_struct_npz(path, resnums, seed=0):
-    """Write a minimal valid structure NPZ file for the given residue numbers."""
-    rng = np.random.RandomState(seed)
+def _make_struct_ensemble_h5(tmp_path, resnums=_RESNUMS):
+    """Write a minimal valid HDF5 ensemble file covering all four structures."""
+    path = str(tmp_path / "ensemble.h5")
     L = len(resnums)
-    logP      = rng.randn(L, 20).astype(np.float32)
-    dist_mat  = np.abs(rng.randn(L, L)).astype(np.float32)
-    np.fill_diagonal(dist_mat, 0.0)
-    np.savez(
-        path,
-        logP=logP,
-        residue_nums=np.asarray(resnums, dtype=np.int32),
-        dist_matrix=dist_mat,
-        n_chains_bearing_mut=np.int32(2),
-    )
-
-
-def _make_struct_ensemble_paths(tmp_path, resnums=_RESNUMS):
-    """Create one NPZ per structure and return a {name: path} dict."""
-    paths = {}
-    for i, name in enumerate(STRUCTURE_NAMES):
-        p = str(tmp_path / f"{name}.npz")
-        _write_struct_npz(p, resnums, seed=i)
-        paths[name] = p
-    return paths
+    with h5py.File(path, 'w') as hf:
+        hf.create_dataset('structure_names',
+                          data=np.array(list(STRUCTURE_NAMES), dtype=h5py.string_dtype()))
+        for seed_i, name in enumerate(STRUCTURE_NAMES):
+            rng = np.random.RandomState(seed_i)
+            grp = hf.create_group(name)
+            logP     = rng.randn(L, 20).astype(np.float32)
+            dist_mat = np.abs(rng.randn(L, L)).astype(np.float32)
+            np.fill_diagonal(dist_mat, 0.0)
+            grp.create_dataset('logP',                 data=logP)
+            grp.create_dataset('residue_nums',         data=np.asarray(resnums, dtype=np.int32))
+            grp.create_dataset('dist_matrix',          data=dist_mat)
+            grp.create_dataset('n_chains_bearing_mut', data=np.int32(2))
+    return path
 
 
 def _make_growth_csv(tmp_path, genotypes=_GENOTYPES):
@@ -147,43 +141,43 @@ def test_registry_entry():
 # Constructor / settings (no data loading needed)
 # ──────────────────────────────────────────────────────────────────────────────
 
-def test_settings_includes_struct_ensemble_paths(tmp_path):
-    """settings property must expose struct_ensemble_paths."""
+def test_settings_includes_struct_ensemble_path(tmp_path):
+    """settings property must expose struct_ensemble_path."""
     growth_path  = _make_growth_csv(tmp_path)
     binding_path = _make_binding_csv(tmp_path)
-    paths = _make_struct_ensemble_paths(tmp_path)
+    h5_path      = _make_struct_ensemble_h5(tmp_path)
 
     from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass
     mc = ModelClass(
         growth_path, binding_path,
         theta="lac_dimer_lnK_nn_prior",
-        struct_ensemble_paths=paths,
+        struct_ensemble_path=h5_path,
     )
-    assert "struct_ensemble_paths" in mc.settings
-    assert mc.settings["struct_ensemble_paths"] == paths
+    assert "struct_ensemble_path" in mc.settings
+    assert mc.settings["struct_ensemble_path"] == h5_path
 
 
-def test_default_struct_ensemble_paths_is_none(tmp_path):
-    """struct_ensemble_paths defaults to None and appears as None in settings."""
+def test_default_struct_ensemble_path_is_none(tmp_path):
+    """struct_ensemble_path defaults to None and appears as None in settings."""
     growth_path  = _make_growth_csv(tmp_path)
     binding_path = _make_binding_csv(tmp_path)
 
     from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass
     mc = ModelClass(growth_path, binding_path, theta="hill")
-    assert mc.settings["struct_ensemble_paths"] is None
+    assert mc.settings["struct_ensemble_path"] is None
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Error handling
 # ──────────────────────────────────────────────────────────────────────────────
 
-def test_missing_struct_paths_raises(tmp_path):
-    """lac_dimer_lnK_nn_prior without struct_ensemble_paths must raise ValueError."""
+def test_missing_struct_path_raises(tmp_path):
+    """lac_dimer_lnK_nn_prior without struct_ensemble_path must raise ValueError."""
     growth_path  = _make_growth_csv(tmp_path)
     binding_path = _make_binding_csv(tmp_path)
 
     from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass
-    with pytest.raises(ValueError, match="struct_ensemble_paths"):
+    with pytest.raises(ValueError, match="struct_ensemble_path"):
         ModelClass(growth_path, binding_path, theta="lac_dimer_lnK_nn_prior")
 
 
@@ -194,19 +188,19 @@ def test_missing_struct_paths_raises(tmp_path):
 @pytest.fixture(scope="module")
 def fitted_mc(tmp_path_factory):
     """
-    Build a ModelClass with lac_dimer_lnK_nn_prior and synthetic NPZ files.
+    Build a ModelClass with lac_dimer_lnK_nn_prior and a synthetic HDF5 file.
     Expensive to construct, so scoped to the module.
     """
     tmp_path = tmp_path_factory.mktemp("struct_wiring")
     growth_path  = _make_growth_csv(tmp_path)
     binding_path = _make_binding_csv(tmp_path)
-    paths        = _make_struct_ensemble_paths(tmp_path)
+    h5_path      = _make_struct_ensemble_h5(tmp_path)
 
     from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass
     return ModelClass(
         growth_path, binding_path,
         theta="lac_dimer_lnK_nn_prior",
-        struct_ensemble_paths=paths,
+        struct_ensemble_path=h5_path,
     )
 
 
@@ -252,13 +246,13 @@ class TestStructFieldsWithEpistasis:
         tmp_path = tmp_path_factory.mktemp("struct_epi")
         growth_path  = _make_growth_csv(tmp_path)
         binding_path = _make_binding_csv(tmp_path)
-        paths        = _make_struct_ensemble_paths(tmp_path)
+        h5_path      = _make_struct_ensemble_h5(tmp_path)
 
         from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass
         return ModelClass(
             growth_path, binding_path,
             theta="lac_dimer_lnK_nn_prior",
-            struct_ensemble_paths=paths,
+            struct_ensemble_path=h5_path,
             epistasis=True,
         )
 
@@ -292,12 +286,12 @@ def test_svi_runs_without_error(tmp_path):
 
     growth_path  = _make_growth_csv(tmp_path)
     binding_path = _make_binding_csv(tmp_path)
-    paths        = _make_struct_ensemble_paths(tmp_path)
+    h5_path      = _make_struct_ensemble_h5(tmp_path)
 
     mc = ModelClass(
         growth_path, binding_path,
         theta="lac_dimer_lnK_nn_prior",
-        struct_ensemble_paths=paths,
+        struct_ensemble_path=h5_path,
     )
 
     out_root = str(tmp_path / "svi_out")
@@ -323,12 +317,12 @@ def test_svi_with_epistasis_runs_without_error(tmp_path):
 
     growth_path  = _make_growth_csv(tmp_path)
     binding_path = _make_binding_csv(tmp_path)
-    paths        = _make_struct_ensemble_paths(tmp_path)
+    h5_path      = _make_struct_ensemble_h5(tmp_path)
 
     mc = ModelClass(
         growth_path, binding_path,
         theta="lac_dimer_lnK_nn_prior",
-        struct_ensemble_paths=paths,
+        struct_ensemble_path=h5_path,
         epistasis=True,
     )
 
