@@ -14324,8 +14324,8 @@
 ./src/tfscreen/analysis/hierarchical/growth_model/components/growth_transition/instant.py:74:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/hierarchical/growth_model/components/growth_transition/instant.py:80:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/hierarchical/growth_model/components/growth_transition/memory.py:167:27: E261 at least two spaces before inline comment
-./src/tfscreen/analysis/hierarchical/growth_model/components/growth_transition/memory.py:170:24: E261 at least two spaces before inline comment
-./src/tfscreen/analysis/hierarchical/growth_model/components/growth_transition/memory.py:172:24: E261 at least two spaces before inline comment
+./src/tfscreen/analysis/hierarchical/growth_model/components/growth_transition/memory.py:170:26: E261 at least two spaces before inline comment
+./src/tfscreen/analysis/hierarchical/growth_model/components/growth_transition/memory.py:172:26: E261 at least two spaces before inline comment
 ./src/tfscreen/analysis/hierarchical/growth_model/components/growth_transition/memory.py:186:49: E231 missing whitespace after ','
 ./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:40:20: E221 multiple spaces before operator
 ./src/tfscreen/analysis/hierarchical/growth_model/components/ln_cfu0/hierarchical.py:41:21: E221 multiple spaces before operator
@@ -14791,30 +14791,30 @@
 ./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:11:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:29:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:72:5: F811 redefinition of unused 'dataclasses' from line 6
-./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:105:1: C901 'write_configuration' is too complex (27)
-./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:105:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:105:28: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:106:34: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:107:40: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:167:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:108:1: C901 'write_configuration' is too complex (27)
+./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:108:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:108:28: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:109:34: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:110:40: W291 trailing whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:170:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:172:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:173:40: E713 test for membership should be 'not in'
-./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:179:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:180:31: E713 test for membership should be 'not in'
-./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:186:18: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:202:33: E261 at least two spaces before inline comment
-./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:214:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:228:1: E305 expected 2 blank lines after class or function definition, found 1
-./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:228:1: E402 module level import not at top of file
-./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:230:1: C901 'read_configuration' is too complex (19)
-./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:230:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:263:128: E501 line too long (139 > 127 characters)
-./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:276:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:288:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:303:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:308:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:323:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:173:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:175:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:176:40: E713 test for membership should be 'not in'
+./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:182:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:183:31: E713 test for membership should be 'not in'
+./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:189:18: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:205:33: E261 at least two spaces before inline comment
+./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:217:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:231:1: E305 expected 2 blank lines after class or function definition, found 1
+./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:231:1: E402 module level import not at top of file
+./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:233:1: C901 'read_configuration' is too complex (19)
+./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:233:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:266:128: E501 line too long (139 > 127 characters)
+./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:279:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:291:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:306:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:311:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/configuration_io.py:326:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/data_class.py:3:1: F401 'numpy as np' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/data_class.py:13:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/data_class.py:28:1: W293 blank line contains whitespace

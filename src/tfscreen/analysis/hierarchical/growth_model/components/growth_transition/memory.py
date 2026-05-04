@@ -165,11 +165,11 @@ def get_hyperparameters() -> Dict[str, Any]:
     """
     return {
         "tau0_loc": 100.0, # takes about 100 minutes to turn over
-        "tau0_scale": 50,
+        "tau0_scale": 50.0,
         "k1_loc": 1.0,
-        "k1_scale": 10, # no strong constraints on k_2
-        "k2_loc": 1,
-        "k2_scale": 10, # no strong constraints on k2
+        "k1_scale": 10.0, # no strong constraints on k_2
+        "k2_loc": 1.0,
+        "k2_scale": 10.0, # no strong constraints on k2
     }
 
 
@@ -181,8 +181,8 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
     _DEFAULT_SCALE = 1.0
 
     return {
-        f"{name}_tau0_locs": jnp.full(num_cond_rep, 100),
-        f"{name}_tau0_scales": jnp.full(num_cond_rep, 100),
+        f"{name}_tau0_locs": jnp.full(num_cond_rep, 100.0),
+        f"{name}_tau0_scales": jnp.full(num_cond_rep, 100.0),
         f"{name}_k1_locs": jnp.full(num_cond_rep,1.0),
         f"{name}_k1_scales": jnp.full(num_cond_rep, _DEFAULT_SCALE),
         f"{name}_k2_locs": jnp.full(num_cond_rep, 1.0),

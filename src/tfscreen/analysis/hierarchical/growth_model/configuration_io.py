@@ -93,7 +93,10 @@ def _update_dataclass(dc, prefix, flat_dict):
                     merged.update(sub)
                     updates[field_name] = merged
             elif full_key in flat_dict:
-                updates[field_name] = flat_dict[full_key]
+                new_val = flat_dict[full_key]
+                if isinstance(attr_val, int) and not isinstance(attr_val, bool):
+                    new_val = int(new_val)
+                updates[field_name] = new_val
 
         if len(updates) > 0:
             if hasattr(dc, "replace"):

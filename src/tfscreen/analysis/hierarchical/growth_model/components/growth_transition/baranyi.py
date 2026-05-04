@@ -131,7 +131,7 @@ def get_hyperparameters() -> Dict[str, Any]:
     """
     return {
         "tau_lag_loc": 100.0, # 100 minutes
-        "tau_lag_scale": 100,
+        "tau_lag_scale": 100.0,
         "k_sharp_loc": 1.0,    
         "k_sharp_scale": 1.0,
     }
@@ -146,7 +146,7 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
 
     return {
         f"{name}_tau_lag_locs": jnp.full(num_cond_rep, 100.0),
-        f"{name}_tau_lag_scales": jnp.full(num_cond_rep, 100),
+        f"{name}_tau_lag_scales": jnp.full(num_cond_rep, 100.0),
         f"{name}_k_sharp_locs": jnp.full(num_cond_rep, 1.0),
         f"{name}_k_sharp_scales": jnp.full(num_cond_rep, _DEFAULT_SCALE),
     }

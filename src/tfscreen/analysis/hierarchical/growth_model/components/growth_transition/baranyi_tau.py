@@ -182,7 +182,7 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
 
     return {
         f"{name}_tau_0_locs": jnp.full(num_cond_rep, 100.0),
-        f"{name}_tau_0_scales": jnp.full(num_cond_rep, 100),
+        f"{name}_tau_0_scales": jnp.full(num_cond_rep, 100.0),
         f"{name}_ln_k0_locs": jnp.full(num_cond_rep, 0.0),
         f"{name}_ln_k0_scales": jnp.full(num_cond_rep, _DEFAULT_SCALE),
         f"{name}_ln_k_locs": jnp.full(num_cond_rep, 0.0),

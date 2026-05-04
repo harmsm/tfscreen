@@ -165,7 +165,7 @@ def get_hyperparameters() -> Dict[str, Any]:
     """
     return {
         "tau_loc": 100.0,
-        "tau_scale": 100,
+        "tau_scale": 100.0,
         "ln_k0_loc": 0.0,    # k0 = exp(0) = 1.0
         "ln_k0_scale": 1.0,
         "ln_gamma_loc": 0.0,  # gamma = exp(0) = 1.0
@@ -182,7 +182,7 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
 
     return {
         f"{name}_tau_locs": jnp.full(num_cond_rep, 100.0),
-        f"{name}_tau_scales": jnp.full(num_cond_rep, 100),
+        f"{name}_tau_scales": jnp.full(num_cond_rep, 100.0),
         f"{name}_ln_k0_locs": jnp.full(num_cond_rep, 0.0),
         f"{name}_ln_k0_scales": jnp.full(num_cond_rep, _DEFAULT_SCALE),
         f"{name}_ln_gamma_locs": jnp.full(num_cond_rep, 0.0),
