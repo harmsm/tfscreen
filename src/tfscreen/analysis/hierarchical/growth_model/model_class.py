@@ -619,11 +619,11 @@ class ModelClass:
             })
 
         # Build structural ensemble data for theta components that use per-structure
-        # ΔΔG inference (e.g. lac_dimer_lnK_nn_prior).  struct_ensemble_path must
+        # ΔΔG inference (e.g. lac_dimer_lnK_nn_prior, mwc_dimer_lnK_nn_prior).  struct_ensemble_path must
         # be a path to the HDF5 file produced by generate_struct_ensemble.py.
         # struct_names is a tuple and cannot go through populate_dataclass (which
         # rejects tuples); it is injected via .replace() after GrowthData is built.
-        _needs_struct = self._theta in ("lac_dimer_lnK_nn_prior",)
+        _needs_struct = self._theta in ("lac_dimer_lnK_nn_prior", "mwc_dimer_lnK_nn_prior")
         _struct_names_tuple = None
         if _needs_struct:
             if self._struct_ensemble_path is None:

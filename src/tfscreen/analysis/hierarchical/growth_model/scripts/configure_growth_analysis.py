@@ -85,7 +85,8 @@ def configure_growth_analysis(growth_df=None,
     struct_ensemble_path : str, optional
         Path to the HDF5 structural ensemble file produced by
         ``scripts/generate_struct_ensemble.py``.  Required when
-        ``theta_model='lac_dimer_lnK_nn_prior'``; ignored otherwise.
+        ``theta_model`` is a struct-based model (e.g. ``lac_dimer_lnK_nn_prior``,
+        ``mwc_dimer_lnK_nn_prior``); ignored otherwise.
     batch_size : int, optional
         Mini-batch size for SVI. Defaults to 1024. Set to None to use the full
         dataset as a single batch.
