@@ -595,3 +595,153 @@ class TestRunGrowthAnalysisPosteriorNUTS:
                 checkpoint_file=None,
                 analysis_method="posterior",
             )
+
+
+# ---------------------------------------------------------------------------
+# epoch_checkpoint_interval passthrough
+# ---------------------------------------------------------------------------
+
+def _patch_common(mocker):
+    """Patch read_configuration, os.path.exists, and RunInference."""
+    mocker.patch(
+        "tfscreen.analysis.hierarchical.growth_model.scripts"
+        ".run_growth_analysis.read_configuration",
+        return_value=(MagicMock(), {}),
+    )
+    mocker.patch("os.path.exists", return_value=False)
+    mocker.patch(
+        "tfscreen.analysis.hierarchical.growth_model.scripts"
+        ".run_growth_analysis.RunInference",
+        return_value=MagicMock(_iterations_per_epoch=1),
+    )
+
+
+class TestEpochCheckpointIntervalPassthrough:
+    """epoch_checkpoint_interval is forwarded correctly to internal helpers."""
+
+    def test_svi_epoch_checkpoint_interval_forwarded(self, tmp_path, mocker):
+        """analysis_method='svi' passes epoch_checkpoint_interval to _run_svi."""
+        _patch_common(mocker)
+        run_svi_mock = mocker.patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_growth_analysis._run_svi",
+            return_value=(MagicMock(), {}, True),
+        )
+
+        run_growth_analysis(
+            config_file="dummy.yaml",
+            seed=1,
+            analysis_method="svi",
+            pre_map_num_epoch=0,
+            epoch_checkpoint_interval=500,
+        )
+
+        kwargs = run_svi_mock.call_args.kwargs
+        assert kwargs["epoch_checkpoint_interval"] == 500
+
+    def test_map_epoch_checkpoint_interval_forwarded(self, tmp_path, mocker):
+        """analysis_method='map' passes epoch_checkpoint_interval to _run_map."""
+        _patch_common(mocker)
+        run_map_mock = mocker.patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_growth_analysis._run_map",
+            return_value=(MagicMock(), {}, True),
+        )
+
+        run_growth_analysis(
+            config_file="dummy.yaml",
+            seed=1,
+            analysis_method="map",
+            epoch_checkpoint_interval=250,
+        )
+
+        kwargs = run_map_mock.call_args.kwargs
+        assert kwargs["epoch_checkpoint_interval"] == 250
+
+    def test_premap_always_disables_epoch_checkpoints(self, tmp_path, mocker):
+        """The internal pre-map _run_map call always receives epoch_checkpoint_interval=None."""
+        _patch_common(mocker)
+        # Both premap (_run_map) and main (_run_svi) calls are patched.
+        run_map_mock = mocker.patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_growth_analysis._run_map",
+            return_value=(MagicMock(), {}, True),
+        )
+        mocker.patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_growth_analysis._run_svi",
+            return_value=(MagicMock(), {}, True),
+        )
+
+        run_growth_analysis(
+            config_file="dummy.yaml",
+            seed=1,
+            analysis_method="svi",
+            pre_map_num_epoch=10,
+            epoch_checkpoint_interval=999,
+        )
+
+        # _run_map is called for the premap step; its epoch_checkpoint_interval must be None.
+        premap_kwargs = run_map_mock.call_args.kwargs
+        assert premap_kwargs["epoch_checkpoint_interval"] is None
+
+    def test_svi_epoch_checkpoint_interval_default_is_1000(self, tmp_path, mocker):
+        """Default epoch_checkpoint_interval is 1000."""
+        _patch_common(mocker)
+        run_svi_mock = mocker.patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_growth_analysis._run_svi",
+            return_value=(MagicMock(), {}, True),
+        )
+
+        run_growth_analysis(
+            config_file="dummy.yaml",
+            seed=1,
+            analysis_method="svi",
+            pre_map_num_epoch=0,
+        )
+
+        kwargs = run_svi_mock.call_args.kwargs
+        assert kwargs["epoch_checkpoint_interval"] == 1000
+
+    def test_posterior_svi_disables_epoch_checkpoints(self, tmp_path, mocker):
+        """Posterior mode with an SVI checkpoint passes epoch_checkpoint_interval=None."""
+        chk_path = str(tmp_path / "svi.pkl")
+        svi_params = {"p_loc": jnp.array(0.0)}
+
+        svi_obj = MagicMock()
+        svi_obj.optim.get_params.return_value = svi_params
+
+        ri = MagicMock(_iterations_per_epoch=1)
+        ri.setup_svi.return_value = svi_obj
+
+        import dill as _dill
+        with open(chk_path, "wb") as f:
+            _dill.dump({"svi_state": _FakeSVIState()}, f)
+
+        mocker.patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_growth_analysis.read_configuration",
+            return_value=(MagicMock(), {}),
+        )
+        mocker.patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_growth_analysis.RunInference",
+            return_value=ri,
+        )
+        run_svi_mock = mocker.patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_growth_analysis._run_svi",
+            return_value=(MagicMock(), {}, True),
+        )
+
+        run_growth_analysis(
+            config_file="dummy.yaml",
+            seed=1,
+            checkpoint_file=chk_path,
+            analysis_method="posterior",
+            epoch_checkpoint_interval=999,
+        )
+
+        kwargs = run_svi_mock.call_args.kwargs
+        assert kwargs["epoch_checkpoint_interval"] is None

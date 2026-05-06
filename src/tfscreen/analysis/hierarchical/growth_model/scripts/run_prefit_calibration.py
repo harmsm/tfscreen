@@ -644,7 +644,8 @@ def _run_calibration_map(ri,
                          convergence_check_interval,
                          checkpoint_interval,
                          max_num_epochs,
-                         init_param_jitter):
+                         init_param_jitter,
+                         epoch_checkpoint_interval):
     """Set up a MAP SVI optimizer and run it; return ``(svi_state, params,
     converged)``.  Behaviour mirrors ``run_growth_analysis._run_map`` but
     the ``always_get_posterior`` plumbing is dropped (the pre-fit only
@@ -671,6 +672,7 @@ def _run_calibration_map(ri,
         checkpoint_interval=checkpoint_interval,
         max_num_epochs=max_num_epochs,
         init_param_jitter=init_param_jitter,
+        epoch_checkpoint_interval=epoch_checkpoint_interval
     )
 
     ri.write_params(params, out_root=out_root)
@@ -1022,7 +1024,8 @@ def run_prefit_calibration(config_file,
                            convergence_check_interval=2,
                            checkpoint_interval=10,
                            max_num_epochs=100000,
-                           init_param_jitter=0.0):
+                           init_param_jitter=0.0,
+                           epoch_checkpoint_interval=0):
     """
     Run the calibration pre-fit and update the production priors / guesses
     CSVs in place.
@@ -1068,6 +1071,10 @@ def run_prefit_calibration(config_file,
         :func:`run_growth_analysis.run_growth_analysis` for details.
         ``init_param_jitter`` defaults to ``0.0`` because the pre-fit
         benefits from being deterministic given a seed.
+    epoch_checkpoint_interval : int or None, optional
+        Frequency (in epochs) to write numbered epoch checkpoints to a
+        ``checkpoints/`` subdirectory (default 0). Set to 0 or None to
+        disable.
 
     Returns
     -------
@@ -1120,6 +1127,7 @@ def run_prefit_calibration(config_file,
         checkpoint_interval=checkpoint_interval,
         max_num_epochs=max_num_epochs,
         init_param_jitter=init_param_jitter,
+        epoch_checkpoint_interval=epoch_checkpoint_interval
     )
 
     print("Computing Hessian-based per-site uncertainties ...", flush=True)

@@ -71,7 +71,8 @@ def test_run_svi_flow_converged(mock_run_inference):
         convergence_check_interval=ANY,
         checkpoint_interval=ANY,
         max_num_epochs=500,
-        init_param_jitter=ANY
+        init_param_jitter=ANY,
+        epoch_checkpoint_interval=ANY
     )
     
     # 3. Get Posteriors (because converged=True)
@@ -154,7 +155,8 @@ def test_run_map_flow(mock_run_inference):
         convergence_check_interval=ANY,
         checkpoint_interval=ANY,
         max_num_epochs=1000,
-        init_param_jitter=ANY
+        init_param_jitter=ANY,
+        epoch_checkpoint_interval=ANY
     )
     
     # 3. Write Params

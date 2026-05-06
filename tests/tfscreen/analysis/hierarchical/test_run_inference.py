@@ -678,3 +678,265 @@ def test_get_nuts_posteriors_num_samples_in_attrs(tmpdir):
 
     with h5py.File(f"{out_root}_posterior.h5", "r") as hf:
         assert hf.attrs["num_samples"] == num_samples
+
+
+# =============================================================================
+# _write_epoch_checkpoint
+# =============================================================================
+
+def _make_ri_with_epoch_dir(tmpdir):
+    """Return a RunInference with _epoch_checkpoints_dir already set."""
+    model = MockModel()
+    ri = RunInference(model, seed=0)
+    epoch_dir = str(tmpdir.join("checkpoints"))
+    os.makedirs(epoch_dir, exist_ok=True)
+    ri._epoch_checkpoints_dir = epoch_dir
+    return ri
+
+
+def test_write_epoch_checkpoint_creates_file(tmpdir):
+    """_write_epoch_checkpoint writes a pkl file with the correct zero-padded name."""
+    ri = _make_ri_with_epoch_dir(tmpdir)
+    try:
+        state = SVIState(None, None, None)
+    except Exception:
+        state = SVIState(None, None)
+
+    ri._write_epoch_checkpoint(state, epoch=42)
+
+    expected = os.path.join(ri._epoch_checkpoints_dir, "0000042_checkpoint.pkl")
+    assert os.path.exists(expected)
+
+
+def test_write_epoch_checkpoint_file_format(tmpdir):
+    """Epoch number is zero-padded to 7 digits."""
+    ri = _make_ri_with_epoch_dir(tmpdir)
+    try:
+        state = SVIState(None, None, None)
+    except Exception:
+        state = SVIState(None, None)
+
+    ri._write_epoch_checkpoint(state, epoch=1)
+    ri._write_epoch_checkpoint(state, epoch=999999)
+
+    assert os.path.exists(os.path.join(ri._epoch_checkpoints_dir, "0000001_checkpoint.pkl"))
+    assert os.path.exists(os.path.join(ri._epoch_checkpoints_dir, "0999999_checkpoint.pkl"))
+
+
+def test_write_epoch_checkpoint_raises_if_exists(tmpdir):
+    """_write_epoch_checkpoint raises FileExistsError if the target file already exists."""
+    ri = _make_ri_with_epoch_dir(tmpdir)
+    try:
+        state = SVIState(None, None, None)
+    except Exception:
+        state = SVIState(None, None)
+
+    ri._write_epoch_checkpoint(state, epoch=7)
+
+    with pytest.raises(FileExistsError, match="0000007_checkpoint.pkl"):
+        ri._write_epoch_checkpoint(state, epoch=7)
+
+
+def test_write_epoch_checkpoint_saves_correct_fields(tmpdir):
+    """Checkpoint file contains main_key, svi_state, and current_step."""
+    ri = _make_ri_with_epoch_dir(tmpdir)
+    try:
+        state = SVIState(None, None, None)
+    except Exception:
+        state = SVIState(None, None)
+
+    ri._current_step = 1234
+    ri._write_epoch_checkpoint(state, epoch=5)
+
+    path = os.path.join(ri._epoch_checkpoints_dir, "0000005_checkpoint.pkl")
+    with open(path, "rb") as f:
+        data = dill.load(f)
+
+    assert "main_key" in data
+    assert "svi_state" in data
+    assert "current_step" in data
+    assert data["current_step"] == 1234
+
+
+def test_write_epoch_checkpoint_atomic_no_tmp_left(tmpdir):
+    """No .tmp file is left behind after a successful write."""
+    ri = _make_ri_with_epoch_dir(tmpdir)
+    try:
+        state = SVIState(None, None, None)
+    except Exception:
+        state = SVIState(None, None)
+
+    ri._write_epoch_checkpoint(state, epoch=3)
+
+    tmp_path = os.path.join(ri._epoch_checkpoints_dir, "0000003_checkpoint.pkl.tmp")
+    assert not os.path.exists(tmp_path)
+
+
+# =============================================================================
+# run_optimization — epoch checkpoint integration
+# =============================================================================
+
+def _optimization_mocks(mocker):
+    """Shared mock setup for run_optimization epoch checkpoint tests."""
+    mocker.patch("jax.jit", side_effect=lambda x: x)
+    mocker.patch("jax.lax.scan", return_value=("state", jnp.array([1.0])))
+    mock_svi = mocker.Mock()
+    mock_svi.init.return_value = "state"
+    mock_svi.update.return_value = ("state", 1.0)
+    mock_svi.get_params.return_value = {"p": jnp.array(1.0)}
+    return mock_svi
+
+
+def test_run_optimization_epoch_checkpoint_creates_dir(tmpdir, mocker):
+    """A checkpoints/ directory is created next to out_root when interval is set."""
+    model = MockModel()
+    ri = RunInference(model, seed=42)
+    mock_svi = _optimization_mocks(mocker)
+    out_root = os.path.join(str(tmpdir), "myrun")
+
+    ri.run_optimization(
+        mock_svi,
+        out_root=out_root,
+        max_num_epochs=1,
+        convergence_check_interval=1,
+        checkpoint_interval=1,
+        epoch_checkpoint_interval=1,
+    )
+
+    assert os.path.isdir(os.path.join(str(tmpdir), "checkpoints"))
+
+
+def test_run_optimization_epoch_checkpoint_file_written(tmpdir, mocker):
+    """An epoch checkpoint file is written after the first epoch."""
+    model = MockModel()
+    ri = RunInference(model, seed=42)
+    mock_svi = _optimization_mocks(mocker)
+    out_root = os.path.join(str(tmpdir), "myrun")
+
+    ri.run_optimization(
+        mock_svi,
+        out_root=out_root,
+        max_num_epochs=1,
+        convergence_check_interval=1,
+        checkpoint_interval=1,
+        epoch_checkpoint_interval=1,
+    )
+
+    checkpoints_dir = os.path.join(str(tmpdir), "checkpoints")
+    pkl_files = [f for f in os.listdir(checkpoints_dir) if f.endswith(".pkl")]
+    assert len(pkl_files) >= 1
+
+
+def test_run_optimization_epoch_checkpoint_correct_epoch_number(tmpdir, mocker):
+    """The epoch number in the filename matches step // iterations_per_epoch."""
+    model = MockModel()
+    ri = RunInference(model, seed=42)
+    mock_svi = _optimization_mocks(mocker)
+    out_root = os.path.join(str(tmpdir), "myrun")
+
+    ri.run_optimization(
+        mock_svi,
+        out_root=out_root,
+        max_num_epochs=2,
+        convergence_check_interval=1,
+        checkpoint_interval=1,
+        epoch_checkpoint_interval=1,
+    )
+
+    checkpoints_dir = os.path.join(str(tmpdir), "checkpoints")
+    # MockModel: num_genotype=10, batch=1 → _iterations_per_epoch=10.
+    # After epoch 1: step=10, epoch=1 → 0000001_checkpoint.pkl
+    assert os.path.exists(os.path.join(checkpoints_dir, "0000001_checkpoint.pkl"))
+
+
+def test_run_optimization_epoch_checkpoint_disabled_when_none(tmpdir, mocker):
+    """No epoch checkpoints dir is created when epoch_checkpoint_interval=None."""
+    model = MockModel()
+    ri = RunInference(model, seed=42)
+    mock_svi = _optimization_mocks(mocker)
+    out_root = os.path.join(str(tmpdir), "myrun")
+
+    ri.run_optimization(
+        mock_svi,
+        out_root=out_root,
+        max_num_epochs=2,
+        convergence_check_interval=1,
+        checkpoint_interval=1,
+        epoch_checkpoint_interval=None,
+    )
+
+    assert not os.path.isdir(os.path.join(str(tmpdir), "checkpoints"))
+
+
+def test_run_optimization_epoch_checkpoint_disabled_when_zero(tmpdir, mocker):
+    """No epoch checkpoints are written when epoch_checkpoint_interval=0."""
+    model = MockModel()
+    ri = RunInference(model, seed=42)
+    mock_svi = _optimization_mocks(mocker)
+    out_root = os.path.join(str(tmpdir), "myrun")
+
+    ri.run_optimization(
+        mock_svi,
+        out_root=out_root,
+        max_num_epochs=2,
+        convergence_check_interval=1,
+        checkpoint_interval=1,
+        epoch_checkpoint_interval=0,
+    )
+
+    assert not os.path.isdir(os.path.join(str(tmpdir), "checkpoints"))
+
+
+def test_run_optimization_epoch_checkpoint_file_exists_error(tmpdir, mocker):
+    """FileExistsError propagates when an epoch checkpoint already exists."""
+    model = MockModel()
+    ri = RunInference(model, seed=42)
+    mock_svi = _optimization_mocks(mocker)
+    out_root = os.path.join(str(tmpdir), "myrun")
+
+    ri.run_optimization(
+        mock_svi,
+        out_root=out_root,
+        max_num_epochs=1,
+        convergence_check_interval=1,
+        checkpoint_interval=1,
+        epoch_checkpoint_interval=1,
+    )
+
+    # A second run pointing at the same checkpoints/ directory must raise.
+    ri2 = RunInference(MockModel(), seed=7)
+    mock_svi2 = mocker.Mock()
+    mock_svi2.init.return_value = "state"
+    mock_svi2.update.return_value = ("state", 1.0)
+    mock_svi2.get_params.return_value = {"p": jnp.array(1.0)}
+
+    with pytest.raises(FileExistsError, match="checkpoint.pkl"):
+        ri2.run_optimization(
+            mock_svi2,
+            out_root=out_root,
+            max_num_epochs=1,
+            convergence_check_interval=1,
+            checkpoint_interval=1,
+            epoch_checkpoint_interval=1,
+        )
+
+
+def test_run_optimization_epoch_checkpoint_dir_alongside_out_root(tmpdir, mocker):
+    """checkpoints/ is placed in the same directory as out_root, not the cwd."""
+    subdir = tmpdir.mkdir("subdir")
+    model = MockModel()
+    ri = RunInference(model, seed=42)
+    mock_svi = _optimization_mocks(mocker)
+    out_root = os.path.join(str(subdir), "run")
+
+    ri.run_optimization(
+        mock_svi,
+        out_root=out_root,
+        max_num_epochs=1,
+        convergence_check_interval=1,
+        checkpoint_interval=1,
+        epoch_checkpoint_interval=1,
+    )
+
+    assert os.path.isdir(os.path.join(str(subdir), "checkpoints"))
+    assert not os.path.isdir(os.path.join(str(tmpdir), "checkpoints"))

@@ -32,7 +32,8 @@ def _run_map(ri,
              sampling_batch_size=100,
              forward_batch_size=512,
              always_get_posterior=False,
-             init_param_jitter=0.0):
+             init_param_jitter=0.0,
+             epoch_checkpoint_interval=1000):
     """
     Run maximum a posteriori (MAP) optimization for hierarchical model inference.
 
@@ -74,6 +75,10 @@ def _run_map(ri,
         Steps between checkpoints and convergence checks (default 10).
     init_param_jitter : float, optional
         Amount of jitter to add to init_params (default 0.0).
+    epoch_checkpoint_interval : int or None, optional
+        Frequency (in epochs) to write numbered epoch checkpoints to a
+        ``checkpoints/`` subdirectory (default 1000). Set to 0 or None to
+        disable.
 
     Returns
     -------
@@ -101,7 +106,7 @@ def _run_map(ri,
     # Run MAP
     svi_state, params, converged = ri.run_optimization(
         map_obj,
-        init_params=init_params, 
+        init_params=init_params,
         out_root=out_root,
         svi_state=checkpoint_file,
         convergence_tolerance=convergence_tolerance,
@@ -110,7 +115,8 @@ def _run_map(ri,
         convergence_check_interval=convergence_check_interval,
         checkpoint_interval=checkpoint_interval,
         max_num_epochs=max_num_epochs,
-        init_param_jitter=init_param_jitter
+        init_param_jitter=init_param_jitter,
+        epoch_checkpoint_interval=epoch_checkpoint_interval
     )
 
     # Write the current parameter values
@@ -157,7 +163,8 @@ def _run_svi(ri,
              sampling_batch_size=100,
              forward_batch_size=512,
              always_get_posterior=False,
-             init_param_jitter=0.1):
+             init_param_jitter=0.1,
+             epoch_checkpoint_interval=1000):
     """
     Run stochastic variational inference (SVI) for hierarchical model inference.
 
@@ -209,6 +216,10 @@ def _run_svi(ri,
         If True, always sample posteriors even if not converged (default False).
     init_param_jitter : float, optional
         Amount of jitter to add to init_params (default 0.1).
+    epoch_checkpoint_interval : int or None, optional
+        Frequency (in epochs) to write numbered epoch checkpoints to a
+        ``checkpoints/`` subdirectory (default 1000). Set to 0 or None to
+        disable.
 
     Returns
     -------
@@ -219,7 +230,7 @@ def _run_svi(ri,
     converged : bool
         True if SVI converged according to the specified tolerance.
     """
-    
+
     # Create a learning rate schedule
     schedule = optax.exponential_decay(
         init_value=adam_step_size,
@@ -232,12 +243,12 @@ def _run_svi(ri,
                            adam_clip_norm=adam_clip_norm,
                            elbo_num_particles=elbo_num_particles,
                            guide_type="component")
- 
+
     # Run svi. Note that `init_params` is not used here, but is required by the
     # run_optimization method.
     svi_state, params, converged = ri.run_optimization(
         svi_obj,
-        init_params=init_params, 
+        init_params=init_params,
         out_root=f"{out_root}",
         svi_state=checkpoint_file,
         convergence_tolerance=convergence_tolerance,
@@ -246,7 +257,8 @@ def _run_svi(ri,
         convergence_check_interval=convergence_check_interval,
         checkpoint_interval=checkpoint_interval,
         max_num_epochs=max_num_epochs,
-        init_param_jitter=init_param_jitter
+        init_param_jitter=init_param_jitter,
+        epoch_checkpoint_interval=epoch_checkpoint_interval
     )
 
     if converged or always_get_posterior:
@@ -360,7 +372,8 @@ def run_growth_analysis(config_file,
                         nuts_num_warmup=500,
                         nuts_num_samples=500,
                         nuts_num_chains=1,
-                        nuts_target_accept_prob=0.9):
+                        nuts_target_accept_prob=0.9,
+                        epoch_checkpoint_interval=1000):
     """
     Run the joint hierarchical growth model using a previously generated configuration file.
 
@@ -431,6 +444,11 @@ def run_growth_analysis(config_file,
     nuts_target_accept_prob : float, optional
         Target acceptance probability for NUTS step-size adaptation
         (default 0.9). Only used if analysis_method is 'nuts'.
+    epoch_checkpoint_interval : int or None, optional
+        Frequency (in epochs) to write numbered epoch checkpoints to a
+        ``checkpoints/`` subdirectory alongside ``out_root`` (default 1000).
+        Files are named ``{epoch:07d}_checkpoint.pkl``. Set to 0 or None to
+        disable. Raises ``FileExistsError`` if a target file already exists.
 
     Returns
     -------
@@ -485,7 +503,8 @@ def run_growth_analysis(config_file,
                                          elbo_num_particles=elbo_num_particles,
                                          checkpoint_interval=pre_map_num_epoch,
                                          max_num_epochs=pre_map_num_epoch,
-                                         init_param_jitter=0.0)
+                                         init_param_jitter=0.0,
+                                         epoch_checkpoint_interval=None)
 
         return _run_svi(ri,
                         init_params=init_params,
@@ -506,8 +525,9 @@ def run_growth_analysis(config_file,
                         sampling_batch_size=sampling_batch_size,
                         forward_batch_size=forward_batch_size,
                         always_get_posterior=always_get_posterior,
-                        init_param_jitter=init_param_jitter)
-    
+                        init_param_jitter=init_param_jitter,
+                        epoch_checkpoint_interval=epoch_checkpoint_interval)
+
     elif analysis_method == "map":
         return _run_map(ri,
                         init_params=init_params,
@@ -528,7 +548,8 @@ def run_growth_analysis(config_file,
                         sampling_batch_size=sampling_batch_size,
                         forward_batch_size=forward_batch_size,
                         always_get_posterior=always_get_posterior,
-                        init_param_jitter=init_param_jitter)
+                        init_param_jitter=init_param_jitter,
+                        epoch_checkpoint_interval=epoch_checkpoint_interval)
                           
     elif analysis_method == "nuts":
         mcmc_samples = _run_nuts(ri,
@@ -610,7 +631,8 @@ def run_growth_analysis(config_file,
                             sampling_batch_size=sampling_batch_size,
                             forward_batch_size=forward_batch_size,
                             always_get_posterior=True,
-                            init_param_jitter=init_param_jitter)
+                            init_param_jitter=init_param_jitter,
+                            epoch_checkpoint_interval=None)
 
     else:
         raise ValueError(
@@ -628,7 +650,8 @@ def main():
                                               "nuts_num_warmup":int,
                                               "nuts_num_samples":int,
                                               "nuts_num_chains":int,
-                                              "nuts_target_accept_prob":float})
+                                              "nuts_target_accept_prob":float,
+                                              "epoch_checkpoint_interval":int})
 
 if __name__ == "__main__":
     main()

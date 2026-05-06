@@ -135,7 +135,8 @@ class RunInference:
                          convergence_check_interval=2,
                          checkpoint_interval=10,
                          max_num_epochs=10000000,
-                         init_param_jitter=0.1):
+                         init_param_jitter=0.1,
+                         epoch_checkpoint_interval=1000):
         """
         Run the SVI optimization loop.
 
@@ -148,9 +149,9 @@ class RunInference:
             The SVI object from `setup_svi`.
         svi_state : Any, optional
             An existing SVI state to resume from. If None, a new state is
-            initialized. If a checkpoint file, restore from the checkpoint. 
+            initialized. If a checkpoint file, restore from the checkpoint.
         init_params : dict, optional
-            Initial parameters. 
+            Initial parameters.
         out_root : str, optional
             Root name for output files (checkpoints, losses).
         convergence_tolerance : float, optional
@@ -168,6 +169,11 @@ class RunInference:
             Maximum number of optimization epochs to run.
         init_param_jitter : float, optional
             amount of jitter to add to init_params. To turn off, set to 0.
+        epoch_checkpoint_interval : int or None, optional
+            Frequency (in epochs) to write numbered epoch checkpoints to a
+            ``checkpoints/`` subdirectory alongside ``out_root``. Files are
+            named ``{epoch:07d}_checkpoint.pkl``. Set to None or 0 to
+            disable (default 1000).
 
         Returns
         -------
@@ -177,11 +183,13 @@ class RunInference:
             The final optimized parameters.
         converged : bool
             True if the optimization converged based on the tolerance.
-        
+
         Raises
         ------
         RuntimeError
             If parameters explode to NaN during optimization.
+        FileExistsError
+            If a numbered epoch checkpoint file already exists.
         """
 
         # Set up update function (triggers jit)
@@ -247,12 +255,24 @@ class RunInference:
         check_interval_steps = convergence_check_interval * self._iterations_per_epoch
         checkpoint_interval_steps = checkpoint_interval * self._iterations_per_epoch
         total_steps = max_num_epochs * self._iterations_per_epoch
-        
+
         # Track next checkpoint in steps
-        # If resuming, we want to write checkpoint at the next multiple of 
+        # If resuming, we want to write checkpoint at the next multiple of
         # checkpoint_interval_steps.
         self._next_checkpoint_step = ((self._current_step // checkpoint_interval_steps) + 1) * checkpoint_interval_steps
-        
+
+        # Set up epoch checkpoint tracking
+        if epoch_checkpoint_interval:
+            epoch_checkpoint_interval_steps = epoch_checkpoint_interval * self._iterations_per_epoch
+            self._next_epoch_checkpoint_step = (
+                (self._current_step // epoch_checkpoint_interval_steps) + 1
+            ) * epoch_checkpoint_interval_steps
+            out_dir = os.path.dirname(out_root)
+            self._epoch_checkpoints_dir = os.path.join(out_dir, "checkpoints") if out_dir else "checkpoints"
+            os.makedirs(self._epoch_checkpoints_dir, exist_ok=True)
+        else:
+            epoch_checkpoint_interval_steps = None
+
         # Reset patience counter
         self._patience_counter = 0
         
@@ -305,6 +325,13 @@ class RunInference:
             if self._current_step >= self._next_checkpoint_step:
                 self._write_checkpoint(svi_state, out_root)
                 self._next_checkpoint_step += checkpoint_interval_steps
+
+            # Check if we should write a numbered epoch checkpoint
+            if epoch_checkpoint_interval_steps is not None:
+                if self._current_step >= self._next_epoch_checkpoint_step:
+                    current_epoch = self._current_step // self._iterations_per_epoch
+                    self._write_epoch_checkpoint(svi_state, current_epoch)
+                    self._next_epoch_checkpoint_step += epoch_checkpoint_interval_steps
 
             # Check for convergence               
             if convergence_tolerance is not None: 
@@ -623,6 +650,42 @@ class RunInference:
             dill.dump(out_dict,f)
         os.replace(tmp_checkpoint_file,
                    checkpoint_file)
+
+    def _write_epoch_checkpoint(self, svi_state, epoch):
+        """
+        Save a numbered epoch checkpoint to the ``checkpoints/`` directory.
+
+        Parameters
+        ----------
+        svi_state : Any
+            The SVI state to save.
+        epoch : int
+            Current epoch number, used to name the file.
+
+        Raises
+        ------
+        FileExistsError
+            If the target checkpoint file already exists.
+        """
+
+        epoch_file = os.path.join(self._epoch_checkpoints_dir,
+                                  f"{epoch:07d}_checkpoint.pkl")
+
+        if os.path.exists(epoch_file):
+            raise FileExistsError(
+                f"Epoch checkpoint '{epoch_file}' already exists. Delete the "
+                "file or change out_root to avoid overwriting a previous run."
+            )
+
+        host_svi_state = jax.device_get(svi_state)
+        out_dict = {"main_key": self._main_key,
+                    "svi_state": host_svi_state,
+                    "current_step": self._current_step}
+
+        tmp_file = f"{epoch_file}.tmp"
+        with open(tmp_file, "wb") as f:
+            dill.dump(out_dict, f)
+        os.replace(tmp_file, epoch_file)
 
     def _restore_checkpoint(self,checkpoint_file):
         """
