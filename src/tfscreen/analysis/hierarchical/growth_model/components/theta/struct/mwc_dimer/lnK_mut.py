@@ -64,8 +64,11 @@ class ModelPriors:
     theta_ln_K_l_e_wt_loc:   float
     theta_ln_K_l_e_wt_scale: float
 
-    # Physical concentrations (M); Sochor, PeerJ 2014
-    theta_tf_total_M: float   # ≈ 6.5e-7 M (650 nM)
+    # Physical concentrations (M).
+    # theta_tf_total_M is the total TF in MONOMER units (same convention as
+    # MWCDimerModel.r_total in src/tfscreen/models/lac_model/mwc_dimer.py).
+    # The dimer concentration used in the mass-balance is tf_total_M / 2.
+    theta_tf_total_M: float   # ≈ 6.5e-7 M monomer (= 325 nM dimer)
     theta_op_total_M: float   # ≈ 2.5e-8 M (25 nM)
 
     # Unit-conversion factor applied to data.titrant_conc before it enters
@@ -593,9 +596,12 @@ def get_hyperparameters() -> Dict[str, Any]:
     # L-state binds IPTG ~14× more tightly than H-state (K_l_e/K_h_e ≈ 13.6).
     p["theta_ln_K_l_e_wt_loc"]   = 13.5
     p["theta_ln_K_l_e_wt_scale"] = 2.0
-    # Physical concentrations (M); Sochor in vivo: [TF]≈664 nM dimer, [O]≈33 nM
-    p["theta_tf_total_M"] = 6.5e-7
-    p["theta_op_total_M"] = 2.5e-8
+    # Physical concentrations — theta_tf_total_M is in MONOMER units.
+    # Sochor in vitro: [TF]≈664 nM dimer = ~1328 nM monomer.
+    # 6.5e-7 M monomer = 650 nM monomer = 325 nM dimer is a round-number
+    # approximation suitable as the prior centre.
+    p["theta_tf_total_M"] = 6.5e-7   # monomer
+    p["theta_op_total_M"] = 2.5e-8   # operator (M)
     # Unit-conversion factor: multiply data.titrant_conc by this before
     # entering thermodynamic equations.  Default 1e-3 assumes concentrations
     # are in mM and K values are in M⁻¹.

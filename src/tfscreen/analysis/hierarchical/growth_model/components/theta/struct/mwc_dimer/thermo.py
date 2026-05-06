@@ -28,9 +28,15 @@ decreases → operator occupancy (θ) decreases.
 
 Operator-depletion approximation
 ---------------------------------
-[TF_total] ≈ 6.5×10⁻⁷ M >> [op_total] ≈ 2.5×10⁻⁸ M.  Because operator-bound
-TF is < 4 % of total TF, operator-bound forms are omitted from the TF mass
-balance.  Operator occupancy is then computed via the Langmuir formula:
+[TF_monomer_total] ≈ 6.5×10⁻⁷ M (650 nM monomer = 325 nM dimer) >>
+[op_total] ≈ 2.5×10⁻⁸ M (25 nM).  Because operator-bound TF is < 4 % of
+total TF, operator-bound forms are omitted from the TF mass balance.
+Operator occupancy is then computed via the Langmuir formula:
+
+NOTE: tf_total is the **monomer** concentration, consistent with the
+scipy-based MWCDimerModel in src/tfscreen/models/lac_model/mwc_dimer.py
+(which also takes r_total in monomer units).  The dimer concentration
+entering the mass-balance is r = tf_total / 2.
 
     h_free  = r / F(e_free)
     F(e)    = P_H(e) + K_h_l · P_L(e)   (= B0 + B1·e + B2·e²)
@@ -73,7 +79,7 @@ class ThetaParam:
     ln_K_h_e: jnp.ndarray   # (T, G)  — log H-state effector-binding constant
     ln_K_l_o: jnp.ndarray   # (G,)    — log L-state DNA-binding constant
     ln_K_l_e: jnp.ndarray   # (T, G)  — log L-state effector-binding constant
-    tf_total: float           # M
+    tf_total: float           # M — monomer units; r = tf_total/2 is the dimer concentration
     op_total: float           # M
     mu:       jnp.ndarray    # (T, C, 1) — population mean logit-theta
     sigma:    jnp.ndarray    # (T, C, 1) — population std  logit-theta
@@ -100,7 +106,7 @@ def _compute_theta(ln_K_h_l, ln_K_h_o, ln_K_h_e, ln_K_l_o, ln_K_l_e,
     ln_K_l_o : (G,)
     ln_K_l_e : (T, G)
     titrant_conc : (C,)
-    tf_total : scalar
+    tf_total : scalar — total TF in **monomer** units (M); dimer units = tf_total/2
     op_total : scalar
 
     Returns
