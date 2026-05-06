@@ -1,29 +1,43 @@
 """
 Shared thermodynamic functions for the MWC lac-dimer theta model.
 
-Full MWC two-state model (Sochor 2014) with five equilibrium constants:
+Full MWC two-state model (Sochor 2014, PeerJ 2:e498) with five equilibrium
+constants. **All concentrations and K values must be in Molar units.**
 
-    K_h_l  — H → L conformational equilibrium (dimensionless)
+    K_h_l  — H → L conformational equilibrium (dimensionless); K_h_l = [L]/[H]
     K_h_o  — H + O → HO  (M⁻¹)
-    K_h_e  — H + E → HE per site; HE + E → HE2 also uses K_h_e (M⁻¹)
-    K_l_o  — L + O → LO  (M⁻¹)
-    K_l_e  — L + E → LE per site; LE + E → LE2 also uses K_l_e (M⁻¹)
+    K_h_e  — H + E → HE per step; HE + E → HE2 uses the same K_h_e (M⁻¹)
+    K_l_o  — L + O → LO  (M⁻¹); ≈ 0 for wild-type lac repressor (Sochor 2014)
+    K_l_e  — L + E → LE per step; LE + E → LE2 uses the same K_l_e (M⁻¹)
 
-Approximations
---------------
-[TF_total] ≈ 6.5e-7 M >> [op_total] ≈ 2.5e-8 M.  Because operator-bound TF
-constitutes < 4 % of total TF, operator-bound forms are omitted from the TF
-mass balance.  Operator occupancy is then computed via the Langmuir formula:
+Physical intuition (Sochor 2014, Table 1)
+-----------------------------------------
+Wild-type lac repressor in vivo:
+  K_h_l ≈ 6.3  →  L-state (low operator affinity) is DOMINANT (~86% of TF).
+  K_h_o ≈ 4.2×10⁸ M⁻¹  →  H-state binds operator tightly.
+  K_l_o ≈ 0.1  M⁻¹    →  L-state essentially does not bind operator.
+  K_h_e ≈ 5.6×10⁴ M⁻¹  →  H-state binds effector (IPTG) weakly.
+  K_l_e ≈ 7.6×10⁵ M⁻¹  →  L-state binds IPTG ~14× more tightly.
+
+IPTG mechanism: effector preferentially stabilises the L-state → free H-state
+decreases → operator occupancy (θ) decreases.
+
+⚠️  K_h_l > 1 is required for effector-induced derepression.  If K_h_l << 1,
+    F(e) ≈ P_H(e) and h_free × P_H is approximately constant — theta is flat
+    regardless of effector concentration.
+
+Operator-depletion approximation
+---------------------------------
+[TF_total] ≈ 6.5×10⁻⁷ M >> [op_total] ≈ 2.5×10⁻⁸ M.  Because operator-bound
+TF is < 4 % of total TF, operator-bound forms are omitted from the TF mass
+balance.  Operator occupancy is then computed via the Langmuir formula:
 
     h_free  = r / F(e_free)
-    F(e)    = P_H(e) + K_h_l · P_L(e)
+    F(e)    = P_H(e) + K_h_l · P_L(e)   (= B0 + B1·e + B2·e²)
     P_H(e)  = 1 + K_h_e · e + K_h_e² · e²
     P_L(e)  = 1 + K_l_e · e + K_l_e² · e²
     W       = h_free · (K_h_o · P_H + K_h_l · K_l_o · P_L)
     θ       = W / (1 + W)
-
-This recovers the operator occupancy from the full scipy solution of
-MWCDimerModel to better than 1 % relative error.
 
 Free-effector cubic
 -------------------
@@ -41,7 +55,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pandas as pd
-from flax.struct import dataclass
+from flax.struct import dataclass, field
 
 NEWTON_ITERATIONS = 8
 
@@ -63,6 +77,10 @@ class ThetaParam:
     op_total: float           # M
     mu:       jnp.ndarray    # (T, C, 1) — population mean logit-theta
     sigma:    jnp.ndarray    # (T, C, 1) — population std  logit-theta
+    # Scale factor applied to data.titrant_conc before entering thermodynamic
+    # equations.  Use 1e-3 when titrant concentrations are in mM and K values
+    # are in M⁻¹ (the recommended convention for this model).
+    conc_unit_scale: float = field(pytree_node=False)
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +187,7 @@ def run_model(theta_param: ThetaParam, data) -> jnp.ndarray:
         theta_param.ln_K_h_e,
         theta_param.ln_K_l_o,
         theta_param.ln_K_l_e,
-        data.titrant_conc,
+        data.titrant_conc * theta_param.conc_unit_scale,
         theta_param.tf_total,
         theta_param.op_total,
     )                                               # (T, C, G)
@@ -244,11 +262,13 @@ def build_calc_df(model, manual_titrant_df):
     extra = {
         "tf_total": float(model.priors.theta.theta_tf_total_M),
         "op_total": float(model.priors.theta.theta_op_total_M),
+        "conc_unit_scale": float(model.priors.theta.theta_conc_unit_scale),
     }
     return calc_df, ["genotype_idx", "titrant_name_idx"], extra
 
 
-def compute_theta_samples(calc_df, param_posteriors, *, tf_total, op_total):
+def compute_theta_samples(calc_df, param_posteriors, *, tf_total, op_total,
+                          conc_unit_scale=1.0):
     """
     Compute posterior theta samples for the MWC dimer model.
 
@@ -263,6 +283,10 @@ def compute_theta_samples(calc_df, param_posteriors, *, tf_total, op_total):
         Posterior samples keyed by parameter name (with ``theta_`` prefix).
     tf_total : float
     op_total : float
+    conc_unit_scale : float, optional
+        Multiply ``titrant_conc`` by this factor before passing to the
+        thermodynamic equations.  Use ``1e-3`` when concentrations are in
+        mM and K values are in M⁻¹ (the default convention).
 
     Returns
     -------
@@ -273,7 +297,7 @@ def compute_theta_samples(calc_df, param_posteriors, *, tf_total, op_total):
     geno_indices    = calc_df["genotype_idx"].values.astype(int)
     titrant_indices = calc_df["titrant_name_idx"].values.astype(int)
 
-    conc = calc_df["titrant_conc"].values.copy().astype(float)   # (N,)
+    conc = calc_df["titrant_conc"].values.copy().astype(float) * conc_unit_scale  # (N,)
     conc[conc == 0] = _ZERO_CONC_VALUE
 
     def _load(key):

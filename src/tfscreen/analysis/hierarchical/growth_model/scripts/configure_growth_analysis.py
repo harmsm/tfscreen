@@ -59,8 +59,9 @@ def configure_growth_analysis(growth_df=None,
     theta_model : str, optional
         Model to use to describe theta, the fractional occupancy of a genotype
         on the transcription factor binding site. Allowed values are 'hill'
-        (default), 'categorical', 'hill_mut', 'lac_dimer_lnK_mut', or
-        'lac_dimer_lnK_nn_prior'.
+        (default), 'categorical', 'hill_mut', 'lac_dimer_lnK_mut',
+        'lac_dimer_lnK_nn_prior', 'mwc_dimer_lnK_mut', or
+        'mwc_dimer_lnK_nn_prior'.
     transformation_model : str, optional
         Model for transformation correction. Allowed values are 'single', 
         'empirical', or 'logit_norm'. Default 'empirical'.

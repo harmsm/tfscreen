@@ -121,6 +121,10 @@ class ModelPriors:
     theta_tf_total_M: float    # ≈ 6.5e-7 M (650 nM)
     theta_op_total_M: float    # ≈ 2.5e-8 M (25 nM)
 
+    # Unit-conversion factor applied to data.titrant_conc before thermodynamics.
+    # Default 1e-3 assumes concentrations are in mM and K values are in M⁻¹.
+    theta_conc_unit_scale: float
+
     # Per-structure MLP hidden width (static shape — not a float parameter)
     theta_nn_hidden_size: int = field(pytree_node=False)
 
@@ -246,8 +250,9 @@ def define_model(name: str,
     has_epi  = (data.num_pair > 0
                 and data.struct_contact_distances is not None)
 
-    tf_total = priors.theta_tf_total_M
-    op_total = priors.theta_op_total_M
+    tf_total        = priors.theta_tf_total_M
+    op_total        = priors.theta_op_total_M
+    conc_unit_scale = priors.theta_conc_unit_scale
 
     # ── WT equilibrium constants ─────────────────────────────────────────────
     ln_K_h_l_wt = pyro.sample(
@@ -336,12 +341,14 @@ def define_model(name: str,
     # ── Population moments for transformation model ───────────────────────────
     theta_vals = _compute_theta(ln_K_h_l, ln_K_h_o, ln_K_h_e,
                                 ln_K_l_o, ln_K_l_e,
-                                data.titrant_conc, tf_total, op_total)
+                                data.titrant_conc * conc_unit_scale,
+                                tf_total, op_total)
     mu, sigma  = _population_moments(theta_vals, data)
 
     return ThetaParam(ln_K_h_l=ln_K_h_l, ln_K_h_o=ln_K_h_o, ln_K_h_e=ln_K_h_e,
                       ln_K_l_o=ln_K_l_o, ln_K_l_e=ln_K_l_e,
-                      tf_total=tf_total, op_total=op_total, mu=mu, sigma=sigma)
+                      tf_total=tf_total, op_total=op_total, mu=mu, sigma=sigma,
+                      conc_unit_scale=conc_unit_scale)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -365,8 +372,9 @@ def guide(name: str,
     has_epi  = (data.num_pair > 0
                 and data.struct_contact_distances is not None)
 
-    tf_total = priors.theta_tf_total_M
-    op_total = priors.theta_op_total_M
+    tf_total        = priors.theta_tf_total_M
+    op_total        = priors.theta_op_total_M
+    conc_unit_scale = priors.theta_conc_unit_scale
 
     # ── Variational params for WT K values ────────────────────────────────────
     ln_K_h_l_wt_loc   = pyro.param(f"{name}_ln_K_h_l_wt_loc",   jnp.array(priors.theta_ln_K_h_l_wt_loc))
@@ -482,12 +490,14 @@ def guide(name: str,
 
     theta_vals = _compute_theta(ln_K_h_l, ln_K_h_o, ln_K_h_e,
                                 ln_K_l_o, ln_K_l_e,
-                                data.titrant_conc, tf_total, op_total)
+                                data.titrant_conc * conc_unit_scale,
+                                tf_total, op_total)
     mu, sigma  = _population_moments(theta_vals, data)
 
     return ThetaParam(ln_K_h_l=ln_K_h_l, ln_K_h_o=ln_K_h_o, ln_K_h_e=ln_K_h_e,
                       ln_K_l_o=ln_K_l_o, ln_K_l_e=ln_K_l_e,
-                      tf_total=tf_total, op_total=op_total, mu=mu, sigma=sigma)
+                      tf_total=tf_total, op_total=op_total, mu=mu, sigma=sigma,
+                      conc_unit_scale=conc_unit_scale)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -496,24 +506,36 @@ def guide(name: str,
 
 def get_hyperparameters() -> Dict[str, Any]:
     p = {}
-    # K_h_l ≈ 6e-4 (L very unfavorable) → ln ≈ -7.4; Sochor 2014
-    p["theta_ln_K_h_l_wt_loc"]   = -7.4
-    p["theta_ln_K_h_l_wt_scale"] = 3.0
-    # K_h_o ≈ 10¹⁰ M⁻¹ → ln ≈ 23.0 (H-state DNA binding)
-    p["theta_ln_K_h_o_wt_loc"]   = 23.0
+    # All values calibrated to Sochor et al. 2014 (PeerJ 2:e498), Table 1.
+    # Concentrations must be in Molar; equilibrium constants in M⁻¹.
+    #
+    # K_h_l = K_RR* = [L]/[H] ≈ 6.3 → ln ≈ 1.84
+    # The L (low-affinity) state is DOMINANT without IPTG (~86% of TF).
+    # K_h_l > 1 is required for the effector to produce derepression:
+    # when K_h_l << 1, adding effector has no effect on theta (flat curves).
+    p["theta_ln_K_h_l_wt_loc"]   = 1.84
+    p["theta_ln_K_h_l_wt_scale"] = 2.0
+    # K_h_o = K_RO ≈ 0.42 nM⁻¹ = 4.2×10⁸ M⁻¹ → ln ≈ 19.9
+    p["theta_ln_K_h_o_wt_loc"]   = 19.9
     p["theta_ln_K_h_o_wt_scale"] = 2.0
-    # K_h_e ≈ 10⁵ M⁻¹ → ln ≈ 11.5 (H-state effector; weaker than L-state)
-    p["theta_ln_K_h_e_wt_loc"]   = 11.5
-    p["theta_ln_K_h_e_wt_scale"] = 3.0
-    # K_l_o ≈ 10⁶ M⁻¹ → ln ≈ 13.8 (L-state DNA; ~10⁴× weaker than H-state)
-    p["theta_ln_K_l_o_wt_loc"]   = 13.8
+    # K_h_e = K_RE ≈ 5.6×10⁻⁵ nM⁻¹ = 5.6×10⁴ M⁻¹ → ln ≈ 10.9
+    p["theta_ln_K_h_e_wt_loc"]   = 10.9
+    p["theta_ln_K_h_e_wt_scale"] = 2.0
+    # K_l_o = K_R*O ≈ 0 (L-state does not bind operator DNA).
+    # Sochor fixes this at 10⁻¹⁰ nM⁻¹ = 0.1 M⁻¹ → ln ≈ -2.3.
+    p["theta_ln_K_l_o_wt_loc"]   = -2.3
     p["theta_ln_K_l_o_wt_scale"] = 3.0
-    # K_l_e ≈ 10⁶·⁵ M⁻¹ → ln ≈ 15.0 (L-state effector)
-    p["theta_ln_K_l_e_wt_loc"]   = 15.0
-    p["theta_ln_K_l_e_wt_scale"] = 3.0
-    # Physical concentrations (M); Sochor, PeerJ 2014
+    # K_l_e = K_R*E ≈ 7.6×10⁻⁴ nM⁻¹ = 7.6×10⁵ M⁻¹ → ln ≈ 13.5
+    # L-state binds IPTG ~14× more tightly than H-state (K_l_e/K_h_e ≈ 13.6).
+    p["theta_ln_K_l_e_wt_loc"]   = 13.5
+    p["theta_ln_K_l_e_wt_scale"] = 2.0
+    # Physical concentrations (M); Sochor in vivo: [TF]≈664 nM dimer, [O]≈33 nM
     p["theta_tf_total_M"] = 6.5e-7
     p["theta_op_total_M"] = 2.5e-8
+    # Unit-conversion factor: multiply data.titrant_conc by this before
+    # entering thermodynamic equations.  Default 1e-3 assumes concentrations
+    # are in mM and K values are in M⁻¹.
+    p["theta_conc_unit_scale"] = 1e-3
     # NN architecture
     p["theta_nn_hidden_size"]   = _DEFAULT_HIDDEN_SIZE
     # Horseshoe hyperparameters for pairwise epistasis
@@ -529,11 +551,11 @@ def get_guesses(name: str, data: Union[GrowthData, BindingData]) -> Dict[str, An
     M = data.num_mutation
     S = data.num_struct
     g = {}
-    g[f"{name}_ln_K_h_l_wt"]  = jnp.array(-7.4)
-    g[f"{name}_ln_K_h_o_wt"]  = jnp.array(23.0)
-    g[f"{name}_ln_K_h_e_wt"]  = jnp.full(T, 11.5)
-    g[f"{name}_ln_K_l_o_wt"]  = jnp.array(13.8)
-    g[f"{name}_ln_K_l_e_wt"]  = jnp.full(T, 15.0)
+    g[f"{name}_ln_K_h_l_wt"]  = jnp.array(1.84)
+    g[f"{name}_ln_K_h_o_wt"]  = jnp.array(19.9)
+    g[f"{name}_ln_K_h_e_wt"]  = jnp.full(T, 10.9)
+    g[f"{name}_ln_K_l_o_wt"]  = jnp.array(-2.3)
+    g[f"{name}_ln_K_l_e_wt"]  = jnp.full(T, 13.5)
     g[f"{name}_ddG_offset"]    = jnp.zeros((S, M))
     if data.num_pair > 0 and data.struct_contact_distances is not None:
         P = data.num_pair
