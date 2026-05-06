@@ -1,10 +1,18 @@
 """
-Load structural ensemble data for struct theta models.
+Load structural data for struct theta models.
 
-``load_struct_ensemble()`` reads the HDF5 file produced by
-``scripts/generate_struct_ensemble.py``, builds the feature matrix and
-contact-distance arrays, and returns a dict whose keys map directly to the
-``struct_*`` fields of ``GrowthData`` / ``BindingData``.
+Two loaders are provided:
+
+``load_struct_ensemble()`` — reads the HDF5 file produced by
+``scripts/generate_struct_ensemble.py``, builds the LigandMPNN feature
+matrix and contact-distance arrays, and returns a dict whose keys map
+directly to the ``struct_*`` fields of ``GrowthData`` / ``BindingData``.
+
+``load_ddG_prior_csv()`` — reads a CSV file with columns ``mut`` and one
+column per structure (e.g. ``H``, ``HO``, ``L``, ``LO``, ``HE2``, ``LE2``).
+Returns the same dict shape but with the (M, S) ddG values stored in
+``struct_features``; ``struct_n_chains`` and the contact arrays are None.
+Used by ``mwc_dimer_lnK_ddG_prior``.
 
 HDF5 schema (written by generate_struct_ensemble.py):
     structure_names          str dataset: names of all structures in the file
@@ -16,6 +24,7 @@ HDF5 schema (written by generate_struct_ensemble.py):
 
 import numpy as np
 import h5py
+import pandas as pd
 from .features import build_feature_matrix, parse_mutation
 
 
@@ -177,4 +186,64 @@ def load_struct_ensemble(h5_path, mut_labels, pair_labels=None):
         'struct_n_chains':          n_chains,
         'struct_contact_pair_idx':  pair_mut_idx,
         'struct_contact_distances': distances,
+    }
+
+
+def load_ddG_prior_csv(csv_path, mut_labels):
+    """
+    Load per-mutation per-structure ΔΔG prior means from a CSV file.
+
+    Expected CSV format: a ``mut`` column plus one column per structure.
+    The structure columns must contain exactly the names required by the
+    target theta model (e.g. ``H``, ``HO``, ``L``, ``LO``, ``HE2``,
+    ``LE2`` for ``mwc_dimer_lnK_ddG_prior``).  Column order in the CSV
+    does not matter; rows need not be sorted.
+
+    Mutations present in ``mut_labels`` but absent from the CSV receive a
+    prior mean of 0.0 (equivalent to no structural prediction for that
+    mutation).
+
+    Parameters
+    ----------
+    csv_path : str
+        Path to the CSV file.
+    mut_labels : list of str
+        Mutation labels in the order expected by the model (e.g. "A42G").
+
+    Returns
+    -------
+    dict with keys:
+        struct_names            : tuple of str — structure column names in CSV order
+        struct_features         : np.ndarray (M, S) float32 — ddG prior means
+        struct_n_chains         : None
+        struct_contact_pair_idx : None
+        struct_contact_distances: None
+    """
+    df = pd.read_csv(csv_path)
+    if 'mut' not in df.columns:
+        raise ValueError(
+            f"CSV {csv_path!r} must have a 'mut' column; "
+            f"found columns: {list(df.columns)}."
+        )
+    struct_cols = [c for c in df.columns if c != 'mut']
+    if not struct_cols:
+        raise ValueError(
+            f"CSV {csv_path!r} has no structure columns (only 'mut')."
+        )
+
+    df = df.set_index('mut')
+    M = len(mut_labels)
+    S = len(struct_cols)
+
+    features = np.zeros((M, S), dtype=np.float32)
+    for m_idx, mut in enumerate(mut_labels):
+        if mut in df.index:
+            features[m_idx] = df.loc[mut, struct_cols].values.astype(np.float32)
+
+    return {
+        'struct_names':             tuple(struct_cols),
+        'struct_features':          features,
+        'struct_n_chains':          None,
+        'struct_contact_pair_idx':  None,
+        'struct_contact_distances': None,
     }

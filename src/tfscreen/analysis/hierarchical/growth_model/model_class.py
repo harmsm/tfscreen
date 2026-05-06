@@ -618,27 +618,42 @@ class ModelClass:
                 "pair_nnz_geno_idx": pair_nnz_geno_idx,
             })
 
-        # Build structural ensemble data for theta components that use per-structure
-        # ΔΔG inference (e.g. lac_dimer_lnK_nn_prior, mwc_dimer_lnK_nn_prior).  struct_ensemble_path must
-        # be a path to the HDF5 file produced by generate_struct_ensemble.py.
+        # Build structural data for theta components that use per-structure
+        # ΔΔG inference.  struct_ensemble_path is either an HDF5 file
+        # (lac_dimer_lnK_nn_prior, mwc_dimer_lnK_nn_prior) or a CSV file
+        # (mwc_dimer_lnK_ddG_prior).
         # struct_names is a tuple and cannot go through populate_dataclass (which
         # rejects tuples); it is injected via .replace() after GrowthData is built.
-        _needs_struct = self._theta in ("lac_dimer_lnK_nn_prior", "mwc_dimer_lnK_nn_prior")
+        _nn_prior_models   = ("lac_dimer_lnK_nn_prior", "mwc_dimer_lnK_nn_prior")
+        _ddG_prior_models  = ("mwc_dimer_lnK_ddG_prior",)
+        _needs_struct = self._theta in _nn_prior_models + _ddG_prior_models
         _struct_names_tuple = None
         if _needs_struct:
             if self._struct_ensemble_path is None:
-                raise ValueError(
-                    f"theta='{self._theta}' requires struct_ensemble_path "
-                    f"(path to the HDF5 file produced by "
-                    f"generate_struct_ensemble.py)."
-                )
+                if self._theta in _nn_prior_models:
+                    raise ValueError(
+                        f"theta='{self._theta}' requires struct_ensemble_path "
+                        f"(path to the HDF5 file produced by "
+                        f"generate_struct_ensemble.py)."
+                    )
+                else:
+                    raise ValueError(
+                        f"theta='{self._theta}' requires struct_ensemble_path "
+                        f"(path to a CSV with columns 'mut' and one per structure)."
+                    )
             from tfscreen.analysis.hierarchical.growth_model.components.theta.struct.io import (
                 load_struct_ensemble,
+                load_ddG_prior_csv,
             )
-            _pair_labels_for_struct = self.pair_labels if self._epistasis else None
-            _struct_data  = load_struct_ensemble(
-                self._struct_ensemble_path, mut_labels, _pair_labels_for_struct
-            )
+            if self._theta in _ddG_prior_models:
+                _struct_data = load_ddG_prior_csv(
+                    self._struct_ensemble_path, mut_labels
+                )
+            else:
+                _pair_labels_for_struct = self.pair_labels if self._epistasis else None
+                _struct_data = load_struct_ensemble(
+                    self._struct_ensemble_path, mut_labels, _pair_labels_for_struct
+                )
             _struct_names_tuple = _struct_data["struct_names"]   # tuple; set via .replace()
             growth_data_sources.append({
                 "num_struct":               len(_struct_names_tuple),

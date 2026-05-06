@@ -1,6 +1,7 @@
-"""Tests for struct/io.py — structural ensemble loading (HDF5)."""
+"""Tests for struct/io.py — structural ensemble loading (HDF5 and CSV)."""
 
 import numpy as np
+import pandas as pd
 import pytest
 import h5py
 
@@ -8,6 +9,7 @@ from tfscreen.analysis.hierarchical.growth_model.components.theta.struct.io impo
     _build_contact_arrays,
     _read_h5_structure,
     load_struct_ensemble,
+    load_ddG_prior_csv,
 )
 
 
@@ -250,3 +252,145 @@ class TestLoadStructEnsemble:
             grp.create_dataset('logP', data=np.zeros((1, 20), dtype=np.float32))
         with pytest.raises(KeyError, match="structure_names"):
             load_struct_ensemble(p, ["A1G"])
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# TestLoadDdGPriorCsv
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _write_ddG_csv(path, rows, columns=None):
+    """Write a minimal CSV in the expected format."""
+    if columns is None:
+        columns = ["mut", "H", "HO", "L", "LO", "HE2", "LE2"]
+    df = pd.DataFrame(rows, columns=columns)
+    df.to_csv(path, index=False)
+
+
+class TestLoadDdGPriorCsv:
+
+    _MUT_LABELS = ["A10G", "C20R", "D30E"]
+    _STRUCTS    = ["H", "HO", "L", "LO", "HE2", "LE2"]
+
+    def _full_csv_rows(self):
+        return [
+            ["A10G", 1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            ["C20R", 0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
+            ["D30E", -1.0, -2.0, -3.0, -4.0, -5.0, -6.0],
+        ]
+
+    def test_output_keys(self, tmp_path):
+        p = str(tmp_path / "ddG.csv")
+        _write_ddG_csv(p, self._full_csv_rows())
+        result = load_ddG_prior_csv(p, self._MUT_LABELS)
+        assert set(result.keys()) == {
+            'struct_names', 'struct_features', 'struct_n_chains',
+            'struct_contact_pair_idx', 'struct_contact_distances',
+        }
+
+    def test_struct_names_from_csv_columns(self, tmp_path):
+        p = str(tmp_path / "ddG.csv")
+        _write_ddG_csv(p, self._full_csv_rows())
+        result = load_ddG_prior_csv(p, self._MUT_LABELS)
+        assert isinstance(result['struct_names'], tuple)
+        assert result['struct_names'] == tuple(self._STRUCTS)
+
+    def test_features_shape(self, tmp_path):
+        p = str(tmp_path / "ddG.csv")
+        _write_ddG_csv(p, self._full_csv_rows())
+        result = load_ddG_prior_csv(p, self._MUT_LABELS)
+        M, S = len(self._MUT_LABELS), len(self._STRUCTS)
+        assert result['struct_features'].shape == (M, S)
+
+    def test_features_dtype_float32(self, tmp_path):
+        p = str(tmp_path / "ddG.csv")
+        _write_ddG_csv(p, self._full_csv_rows())
+        result = load_ddG_prior_csv(p, self._MUT_LABELS)
+        assert result['struct_features'].dtype == np.float32
+
+    def test_feature_values_match_csv(self, tmp_path):
+        p = str(tmp_path / "ddG.csv")
+        _write_ddG_csv(p, self._full_csv_rows())
+        result = load_ddG_prior_csv(p, self._MUT_LABELS)
+        # First mutation row (A10G): 1.0, 2.0, 3.0, 4.0, 5.0, 6.0
+        np.testing.assert_allclose(
+            result['struct_features'][0], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], rtol=1e-6
+        )
+
+    def test_mut_order_matches_mut_labels(self, tmp_path):
+        """Rows in the CSV are in reversed order; result must follow mut_labels order."""
+        p = str(tmp_path / "ddG.csv")
+        _write_ddG_csv(p, list(reversed(self._full_csv_rows())))
+        result = load_ddG_prior_csv(p, self._MUT_LABELS)
+        # A10G should still be at index 0
+        np.testing.assert_allclose(
+            result['struct_features'][0], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], rtol=1e-6
+        )
+        # D30E should still be at index 2
+        np.testing.assert_allclose(
+            result['struct_features'][2], [-1.0, -2.0, -3.0, -4.0, -5.0, -6.0], rtol=1e-6
+        )
+
+    def test_missing_mutation_defaults_to_zero(self, tmp_path):
+        """Mutations in mut_labels but absent from CSV should get 0.0."""
+        p = str(tmp_path / "ddG.csv")
+        # Only include two of the three mutations
+        rows = [
+            ["A10G", 1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            ["D30E", -1.0, -2.0, -3.0, -4.0, -5.0, -6.0],
+        ]
+        _write_ddG_csv(p, rows)
+        result = load_ddG_prior_csv(p, self._MUT_LABELS)
+        # C20R (index 1) is absent → should be all zeros
+        np.testing.assert_allclose(result['struct_features'][1], 0.0)
+        # Others should still have their values
+        np.testing.assert_allclose(
+            result['struct_features'][0], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], rtol=1e-6
+        )
+
+    def test_extra_mutations_in_csv_are_ignored(self, tmp_path):
+        """Rows in the CSV that are not in mut_labels should be silently ignored."""
+        p = str(tmp_path / "ddG.csv")
+        rows = self._full_csv_rows() + [["EXTRA", 9.0, 9.0, 9.0, 9.0, 9.0, 9.0]]
+        _write_ddG_csv(p, rows)
+        result = load_ddG_prior_csv(p, self._MUT_LABELS)
+        assert result['struct_features'].shape == (len(self._MUT_LABELS), len(self._STRUCTS))
+
+    def test_struct_column_order_preserved(self, tmp_path):
+        """struct_names should reflect the column order in the CSV."""
+        cols = ["mut", "LE2", "HE2", "LO", "L", "HO", "H"]   # reversed
+        rows = [["A10G"] + list(range(6, 0, -1))]
+        p = str(tmp_path / "ddG.csv")
+        _write_ddG_csv(p, rows, columns=cols)
+        result = load_ddG_prior_csv(p, ["A10G"])
+        assert result['struct_names'] == ("LE2", "HE2", "LO", "L", "HO", "H")
+
+    def test_n_chains_is_none(self, tmp_path):
+        p = str(tmp_path / "ddG.csv")
+        _write_ddG_csv(p, self._full_csv_rows())
+        result = load_ddG_prior_csv(p, self._MUT_LABELS)
+        assert result['struct_n_chains'] is None
+
+    def test_contact_arrays_are_none(self, tmp_path):
+        p = str(tmp_path / "ddG.csv")
+        _write_ddG_csv(p, self._full_csv_rows())
+        result = load_ddG_prior_csv(p, self._MUT_LABELS)
+        assert result['struct_contact_pair_idx']  is None
+        assert result['struct_contact_distances'] is None
+
+    def test_missing_mut_column_raises(self, tmp_path):
+        p = str(tmp_path / "bad.csv")
+        pd.DataFrame({"H": [1.0], "L": [2.0]}).to_csv(p, index=False)
+        with pytest.raises(ValueError, match="'mut' column"):
+            load_ddG_prior_csv(p, ["A1G"])
+
+    def test_no_structure_columns_raises(self, tmp_path):
+        p = str(tmp_path / "bad.csv")
+        pd.DataFrame({"mut": ["A1G"]}).to_csv(p, index=False)
+        with pytest.raises(ValueError, match="no structure columns"):
+            load_ddG_prior_csv(p, ["A1G"])
+
+    def test_empty_mut_labels_gives_zero_rows(self, tmp_path):
+        p = str(tmp_path / "ddG.csv")
+        _write_ddG_csv(p, self._full_csv_rows())
+        result = load_ddG_prior_csv(p, [])
+        assert result['struct_features'].shape == (0, len(self._STRUCTS))

@@ -29,6 +29,7 @@ from .components.theta.struct.lac_dimer import lnK_mut as theta_lac_dimer_lnK_mu
 from .components.theta.struct.lac_dimer import lnK_nn_prior as theta_lac_dimer_lnK_nn_prior
 from .components.theta.struct.mwc_dimer import lnK_mut as theta_mwc_dimer_lnK_mut
 from .components.theta.struct.mwc_dimer import lnK_nn_prior as theta_mwc_dimer_lnK_nn_prior
+from .components.theta.struct.mwc_dimer import lnK_ddG_prior as theta_mwc_dimer_lnK_ddG_prior
 from .components.theta import simple as theta_simple
 from .components.transformation import empirical as transformation_empirical
 from .components.transformation import logit_norm as transformation_logit_norm
@@ -75,6 +76,7 @@ model_registry = {
         "lac_dimer_lnK_nn_prior":theta_lac_dimer_lnK_nn_prior,
         "mwc_dimer_lnK_mut":theta_mwc_dimer_lnK_mut,
         "mwc_dimer_lnK_nn_prior":theta_mwc_dimer_lnK_nn_prior,
+        "mwc_dimer_lnK_ddG_prior":theta_mwc_dimer_lnK_ddG_prior,
 
         "simple":theta_simple,
     },

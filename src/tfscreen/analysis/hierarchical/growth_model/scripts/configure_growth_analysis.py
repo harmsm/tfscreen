@@ -60,8 +60,8 @@ def configure_growth_analysis(growth_df=None,
         Model to use to describe theta, the fractional occupancy of a genotype
         on the transcription factor binding site. Allowed values are 'hill'
         (default), 'categorical', 'hill_mut', 'lac_dimer_lnK_mut',
-        'lac_dimer_lnK_nn_prior', 'mwc_dimer_lnK_mut', or
-        'mwc_dimer_lnK_nn_prior'.
+        'lac_dimer_lnK_nn_prior', 'mwc_dimer_lnK_mut', 'mwc_dimer_lnK_nn_prior',
+        or 'mwc_dimer_lnK_ddG_prior'.
     transformation_model : str, optional
         Model for transformation correction. Allowed values are 'single', 
         'empirical', or 'logit_norm'. Default 'empirical'.
@@ -84,10 +84,13 @@ def configure_growth_analysis(growth_df=None,
         independent epistasis term. When False (default), effects are purely
         additive at the mutation level.
     struct_ensemble_path : str, optional
-        Path to the HDF5 structural ensemble file produced by
-        ``scripts/generate_struct_ensemble.py``.  Required when
-        ``theta_model`` is a struct-based model (e.g. ``lac_dimer_lnK_nn_prior``,
-        ``mwc_dimer_lnK_nn_prior``); ignored otherwise.
+        Path to the structural data file.  Required when ``theta_model`` is a
+        struct-based model; ignored otherwise.  For ``lac_dimer_lnK_nn_prior``
+        and ``mwc_dimer_lnK_nn_prior`` this must be the HDF5 file produced by
+        ``scripts/generate_struct_ensemble.py``.  For
+        ``mwc_dimer_lnK_ddG_prior`` this must be a CSV file with a ``mut``
+        column and one column per structure (``H``, ``HO``, ``L``, ``LO``,
+        ``HE2``, ``LE2``) containing pre-computed ΔΔG prior means.
     batch_size : int, optional
         Mini-batch size for SVI. Defaults to 1024. Set to None to use the full
         dataset as a single batch.
