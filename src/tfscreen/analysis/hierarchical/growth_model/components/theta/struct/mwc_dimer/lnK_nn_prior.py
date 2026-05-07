@@ -56,7 +56,7 @@ from functools import partial
 from typing import Dict, Any, Union
 
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData, BindingData
-from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix
+from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix, apply_mut_matrix
 from tfscreen.analysis.hierarchical.growth_model.components.theta.struct.nn import (
     compute_nn_predictions,
     _DEFAULT_HIDDEN_SIZE,
@@ -180,7 +180,7 @@ def _project_ddG(ddG):
 
 def _assemble_K(ln_K_h_l_wt, ln_K_h_o_wt, ln_K_h_e_wt,
                 ln_K_l_o_wt, ln_K_l_e_wt,
-                delta_lnK, M_mat,
+                delta_lnK, mut_scatter,
                 epi_delta_lnK=None, pair_scatter=None):
     """
     Assemble per-genotype K values from WT scalars + per-mutation deltas.
@@ -188,7 +188,9 @@ def _assemble_K(ln_K_h_l_wt, ln_K_h_o_wt, ln_K_h_e_wt,
     Parameters
     ----------
     delta_lnK : (M, 5)  — Δln_K per mutation for (K_h_l, K_h_o, K_h_e, K_l_o, K_l_e)
-    M_mat : (M, G)
+    mut_scatter : callable (M,) -> (G,)
+        Scatters per-mutation values to genotype space via COO index arrays.
+        Typically a ``partial`` of ``apply_mut_matrix`` with indices pre-bound.
     epi_delta_lnK : (P, 5) or None
     pair_scatter : callable (P,) -> (G,)  or None
 
@@ -203,11 +205,11 @@ def _assemble_K(ln_K_h_l_wt, ln_K_h_o_wt, ln_K_h_e_wt,
     d_l_o = delta_lnK[:, 3]   # (M,)
     d_l_e = delta_lnK[:, 4]   # (M,)
 
-    ln_K_h_l = ln_K_h_l_wt + d_h_l @ M_mat                           # (G,)
-    ln_K_h_o = ln_K_h_o_wt + d_h_o @ M_mat                           # (G,)
-    ln_K_h_e = ln_K_h_e_wt[:, None] + (d_h_e @ M_mat)[None, :]       # (T, G)
-    ln_K_l_o = ln_K_l_o_wt + d_l_o @ M_mat                           # (G,)
-    ln_K_l_e = ln_K_l_e_wt[:, None] + (d_l_e @ M_mat)[None, :]       # (T, G)
+    ln_K_h_l = ln_K_h_l_wt + mut_scatter(d_h_l)                          # (G,)
+    ln_K_h_o = ln_K_h_o_wt + mut_scatter(d_h_o)                          # (G,)
+    ln_K_h_e = ln_K_h_e_wt[:, None] + mut_scatter(d_h_e)[None, :]        # (T, G)
+    ln_K_l_o = ln_K_l_o_wt + mut_scatter(d_l_o)                          # (G,)
+    ln_K_l_e = ln_K_l_e_wt[:, None] + mut_scatter(d_l_e)[None, :]        # (T, G)
 
     if epi_delta_lnK is not None and pair_scatter is not None:
         ln_K_h_l = ln_K_h_l + pair_scatter(epi_delta_lnK[:, 0])
@@ -246,7 +248,10 @@ def define_model(name: str,
     perm_idx = jnp.array(perm)
 
     T        = data.num_titrant_name
-    M_mat    = jnp.array(data.mut_geno_matrix)
+    mut_scatter = partial(apply_mut_matrix,
+                          mut_nnz_mut_idx=jnp.array(data.mut_nnz_mut_idx),
+                          mut_nnz_geno_idx=jnp.array(data.mut_nnz_geno_idx),
+                          num_genotype=data.num_genotype)
     num_mut  = data.num_mutation
     features = jnp.array(data.struct_features)[:, perm_idx, :]   # (M, S, 60) reordered
     n_chains = tuple(data.struct_n_chains[i] for i in perm)       # (S,) reordered
@@ -331,7 +336,7 @@ def define_model(name: str,
     ln_K_h_l, ln_K_h_o, ln_K_h_e, ln_K_l_o, ln_K_l_e = _assemble_K(
         ln_K_h_l_wt, ln_K_h_o_wt, ln_K_h_e_wt,
         ln_K_l_o_wt, ln_K_l_e_wt,
-        delta_lnK, M_mat,
+        delta_lnK, mut_scatter,
         epi_delta_lnK=epi_delta_lnK, pair_scatter=pair_scatter,
     )
 
@@ -367,7 +372,10 @@ def guide(name: str,
     perm_idx = jnp.array(perm)
 
     T        = data.num_titrant_name
-    M_mat    = jnp.array(data.mut_geno_matrix)
+    mut_scatter = partial(apply_mut_matrix,
+                          mut_nnz_mut_idx=jnp.array(data.mut_nnz_mut_idx),
+                          mut_nnz_geno_idx=jnp.array(data.mut_nnz_geno_idx),
+                          num_genotype=data.num_genotype)
     num_mut  = data.num_mutation
     S        = data.num_struct
     features = jnp.array(data.struct_features)[:, perm_idx, :]   # (M, S, 60) reordered
@@ -487,7 +495,7 @@ def guide(name: str,
     ln_K_h_l, ln_K_h_o, ln_K_h_e, ln_K_l_o, ln_K_l_e = _assemble_K(
         ln_K_h_l_wt, ln_K_h_o_wt, ln_K_h_e_wt,
         ln_K_l_o_wt, ln_K_l_e_wt,
-        delta_lnK, M_mat,
+        delta_lnK, mut_scatter,
         epi_delta_lnK=epi_delta_lnK, pair_scatter=pair_scatter,
     )
 

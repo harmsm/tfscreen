@@ -140,3 +140,64 @@ def apply_pair_matrix(epi, pair_nnz_pair_idx, pair_nnz_geno_idx, num_genotype):
     leading = epi.shape[:-1]
     result = jnp.zeros((*leading, num_genotype))
     return result.at[..., pair_nnz_geno_idx].add(epi[..., pair_nnz_pair_idx])
+
+
+def apply_mut_matrix(d, mut_nnz_mut_idx, mut_nnz_geno_idx, num_genotype):
+    """Scatter per-mutation values to genotypes via COO mutation-genotype indices.
+
+    Memory-efficient equivalent of ``d @ mut_geno_matrix`` where
+    ``mut_geno_matrix`` is the dense ``(num_mutation, num_genotype)`` binary
+    matrix stored instead in COO format as
+    ``(mut_nnz_mut_idx, mut_nnz_geno_idx)``.
+
+    This avoids embedding the full dense matrix as an XLA constant literal
+    during JAX JIT compilation, which would consume O(num_mutation × num_genotype)
+    device memory even for sparse libraries.
+
+    Parameters
+    ----------
+    d : jnp.ndarray, shape (..., num_mutation)
+        Per-mutation values.  Leading dimensions are broadcast.
+    mut_nnz_mut_idx : array-like, shape (nnz,)
+        Row (mutation) index of each nonzero in the COO representation.
+    mut_nnz_geno_idx : array-like, shape (nnz,)
+        Column (genotype) index of each nonzero, matching ``mut_nnz_mut_idx``.
+    num_genotype : int
+        Size of the genotype dimension in the output.
+
+    Returns
+    -------
+    jnp.ndarray, shape (..., num_genotype)
+        ``result[..., g] = sum_k d[..., mut_nnz_mut_idx[k]]``
+        for all ``k`` where ``mut_nnz_geno_idx[k] == g``.
+    """
+    import jax.numpy as jnp
+    leading = d.shape[:-1]
+    result = jnp.zeros((*leading, num_genotype))
+    return result.at[..., mut_nnz_geno_idx].add(d[..., mut_nnz_mut_idx])
+
+
+def build_mut_sparse_indices(mut_geno_matrix):
+    """
+    Build COO sparse index arrays from a dense mutation-genotype indicator matrix.
+
+    Converts the dense ``(num_mutation, num_genotype)`` binary float32 matrix
+    returned by ``build_mut_geno_matrix`` into two parallel int32 index arrays
+    that can be used with ``apply_mut_matrix`` for memory-efficient scatter
+    operations inside JAX JIT.
+
+    Parameters
+    ----------
+    mut_geno_matrix : np.ndarray, shape (num_mutation, num_genotype)
+        Dense binary indicator matrix where ``mut_geno_matrix[m, g] == 1``
+        iff mutation ``m`` is present in genotype ``g``.
+
+    Returns
+    -------
+    mut_nnz_mut_idx : np.ndarray, shape (nnz,), dtype int32
+        Row (mutation) index of each nonzero entry.
+    mut_nnz_geno_idx : np.ndarray, shape (nnz,), dtype int32
+        Column (genotype) index of each nonzero entry.
+    """
+    rows, cols = np.nonzero(mut_geno_matrix)
+    return rows.astype(np.int32), cols.astype(np.int32)

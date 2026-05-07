@@ -4,6 +4,7 @@ import jax.numpy as jnp
 from numpyro.handlers import trace, substitute, seed
 from collections import namedtuple
 
+from tfscreen.genetics.build_mut_geno_matrix import build_mut_sparse_indices
 from tfscreen.analysis.hierarchical.growth_model.components.activity.horseshoe_mut import (
     ModelPriors,
     define_model,
@@ -22,6 +23,8 @@ MockGrowthData = namedtuple("MockGrowthData", [
     "num_mutation",
     "num_pair",
     "mut_geno_matrix",
+    "mut_nnz_mut_idx",
+    "mut_nnz_geno_idx",
     "pair_nnz_pair_idx",
     "pair_nnz_geno_idx",
     "batch_size",
@@ -31,6 +34,7 @@ MockGrowthData = namedtuple("MockGrowthData", [
 # Genotypes: wt(0), M42I(1), K84L(2), M42I/K84L(3)
 _MUT_GENO = np.array([[0, 1, 0, 1],   # M42I
                        [0, 0, 1, 1]], dtype=np.float32)   # K84L
+_MUT_NNZ_MUT_IDX, _MUT_NNZ_GENO_IDX = build_mut_sparse_indices(_MUT_GENO)
 # COO: one nonzero at (pair=0, geno=3)
 _PAIR_NNZ_PAIR = np.array([0], dtype=np.int32)
 _PAIR_NNZ_GENO = np.array([3], dtype=np.int32)
@@ -43,6 +47,8 @@ def mock_data_epi():
         num_mutation=2,
         num_pair=1,
         mut_geno_matrix=_MUT_GENO,
+        mut_nnz_mut_idx=_MUT_NNZ_MUT_IDX,
+        mut_nnz_geno_idx=_MUT_NNZ_GENO_IDX,
         pair_nnz_pair_idx=_PAIR_NNZ_PAIR,
         pair_nnz_geno_idx=_PAIR_NNZ_GENO,
         batch_size=4,
@@ -57,6 +63,8 @@ def mock_data_no_epi():
         num_mutation=2,
         num_pair=0,
         mut_geno_matrix=_MUT_GENO,
+        mut_nnz_mut_idx=_MUT_NNZ_MUT_IDX,
+        mut_nnz_geno_idx=_MUT_NNZ_GENO_IDX,
         pair_nnz_pair_idx=np.zeros(0, dtype=np.int32),
         pair_nnz_geno_idx=np.zeros(0, dtype=np.int32),
         batch_size=4,

@@ -47,7 +47,7 @@ from functools import partial
 from typing import Dict, Any, Union
 
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData, BindingData
-from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix
+from tfscreen.genetics.build_mut_geno_matrix import apply_mut_matrix
 from tfscreen.analysis.hierarchical.growth_model.components.theta.struct.prior import (
     sample_ddG,
 )
@@ -138,14 +138,15 @@ def _project_ddG(ddG):
 
 def _assemble_K(ln_K_h_l_wt, ln_K_h_o_wt, ln_K_h_e_wt,
                 ln_K_l_o_wt, ln_K_l_e_wt,
-                delta_lnK, M_mat):
+                delta_lnK, mut_scatter):
     """
     Assemble per-genotype K values from WT scalars + per-mutation deltas.
 
     Parameters
     ----------
     delta_lnK : (M, 5)
-    M_mat     : (M, G)
+    mut_scatter : callable (M,) -> (G,)
+        Scatters per-mutation values to genotype space via COO index arrays.
 
     Returns
     -------
@@ -158,11 +159,11 @@ def _assemble_K(ln_K_h_l_wt, ln_K_h_o_wt, ln_K_h_e_wt,
     d_l_o = delta_lnK[:, 3]
     d_l_e = delta_lnK[:, 4]
 
-    ln_K_h_l = ln_K_h_l_wt + d_h_l @ M_mat
-    ln_K_h_o = ln_K_h_o_wt + d_h_o @ M_mat
-    ln_K_h_e = ln_K_h_e_wt[:, None] + (d_h_e @ M_mat)[None, :]
-    ln_K_l_o = ln_K_l_o_wt + d_l_o @ M_mat
-    ln_K_l_e = ln_K_l_e_wt[:, None] + (d_l_e @ M_mat)[None, :]
+    ln_K_h_l = ln_K_h_l_wt + mut_scatter(d_h_l)
+    ln_K_h_o = ln_K_h_o_wt + mut_scatter(d_h_o)
+    ln_K_h_e = ln_K_h_e_wt[:, None] + mut_scatter(d_h_e)[None, :]
+    ln_K_l_o = ln_K_l_o_wt + mut_scatter(d_l_o)
+    ln_K_l_e = ln_K_l_e_wt[:, None] + mut_scatter(d_l_e)[None, :]
 
     return ln_K_h_l, ln_K_h_o, ln_K_h_e, ln_K_l_o, ln_K_l_e
 
@@ -190,7 +191,10 @@ def define_model(name: str,
     perm_idx = jnp.array(perm)
 
     T       = data.num_titrant_name
-    M_mat   = jnp.array(data.mut_geno_matrix)
+    mut_scatter = partial(apply_mut_matrix,
+                          mut_nnz_mut_idx=jnp.array(data.mut_nnz_mut_idx),
+                          mut_nnz_geno_idx=jnp.array(data.mut_nnz_geno_idx),
+                          num_genotype=data.num_genotype)
     num_mut = data.num_mutation
     # Reorder columns to canonical STRUCTURE_NAMES order
     ddG_prior_means = jnp.array(data.struct_features)[:, perm_idx]   # (M, S)
@@ -234,7 +238,7 @@ def define_model(name: str,
     ln_K_h_l, ln_K_h_o, ln_K_h_e, ln_K_l_o, ln_K_l_e = _assemble_K(
         ln_K_h_l_wt, ln_K_h_o_wt, ln_K_h_e_wt,
         ln_K_l_o_wt, ln_K_l_e_wt,
-        delta_lnK, M_mat,
+        delta_lnK, mut_scatter,
     )
 
     pyro.deterministic(f"{name}_ln_K_h_l", ln_K_h_l)
@@ -269,7 +273,10 @@ def guide(name: str,
     perm_idx = jnp.array(perm)
 
     T       = data.num_titrant_name
-    M_mat   = jnp.array(data.mut_geno_matrix)
+    mut_scatter = partial(apply_mut_matrix,
+                          mut_nnz_mut_idx=jnp.array(data.mut_nnz_mut_idx),
+                          mut_nnz_geno_idx=jnp.array(data.mut_nnz_geno_idx),
+                          num_genotype=data.num_genotype)
     num_mut = data.num_mutation
     S       = data.num_struct
     ddG_prior_means = jnp.array(data.struct_features)[:, perm_idx]   # (M, S)
@@ -329,7 +336,7 @@ def guide(name: str,
     ln_K_h_l, ln_K_h_o, ln_K_h_e, ln_K_l_o, ln_K_l_e = _assemble_K(
         ln_K_h_l_wt, ln_K_h_o_wt, ln_K_h_e_wt,
         ln_K_l_o_wt, ln_K_l_e_wt,
-        delta_lnK, M_mat,
+        delta_lnK, mut_scatter,
     )
 
     theta_vals = _compute_theta(ln_K_h_l, ln_K_h_o, ln_K_h_e,

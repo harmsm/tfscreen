@@ -30,7 +30,7 @@ from tfscreen.analysis.hierarchical.growth_model.components.theta.struct.mwc_dim
     run_model,
     get_population_moments,
 )
-from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix
+from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix, apply_mut_matrix, build_mut_sparse_indices
 
 # ---------------------------------------------------------------------------
 # Shared test data
@@ -39,6 +39,7 @@ from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix
 # Library: wt(0), M1(1), M2(2), M1+M2 double(3)
 _MUT_GENO = np.array([[0, 1, 0, 1],
                        [0, 0, 1, 1]], dtype=np.float32)   # (M=2, G=4)
+_MUT_NNZ_MUT_IDX, _MUT_NNZ_GENO_IDX = build_mut_sparse_indices(_MUT_GENO)
 
 # COO for one pair (M1+M2) present only in genotype 3
 _PAIR_NNZ_PAIR = np.array([0], dtype=np.int32)
@@ -47,6 +48,12 @@ _PAIR_NNZ_GENO = np.array([3], dtype=np.int32)
 _CONC = np.array([0.0, 1e-5, 1e-4])
 _LOG_CONC = np.log(np.where(_CONC == 0, 1e-20, _CONC))
 
+
+def _make_mut_scatter(num_genotype=4):
+    return partial(apply_mut_matrix,
+                   mut_nnz_mut_idx=jnp.array(_MUT_NNZ_MUT_IDX),
+                   mut_nnz_geno_idx=jnp.array(_MUT_NNZ_GENO_IDX),
+                   num_genotype=num_genotype)
 
 def _make_pair_scatter(num_genotype=4):
     return partial(apply_pair_matrix,
@@ -66,6 +73,8 @@ MockData = namedtuple("MockData", [
     "num_mutation",
     "num_pair",
     "mut_geno_matrix",
+    "mut_nnz_mut_idx",
+    "mut_nnz_geno_idx",
     "pair_nnz_pair_idx",
     "pair_nnz_geno_idx",
 ])
@@ -81,6 +90,8 @@ def mock_data_no_epi():
         scatter_theta=1,
         num_mutation=2, num_pair=0,
         mut_geno_matrix=_MUT_GENO,
+        mut_nnz_mut_idx=_MUT_NNZ_MUT_IDX,
+        mut_nnz_geno_idx=_MUT_NNZ_GENO_IDX,
         pair_nnz_pair_idx=np.zeros(0, dtype=np.int32),
         pair_nnz_geno_idx=np.zeros(0, dtype=np.int32),
     )
@@ -96,6 +107,8 @@ def mock_data_epi():
         scatter_theta=1,
         num_mutation=2, num_pair=1,
         mut_geno_matrix=_MUT_GENO,
+        mut_nnz_mut_idx=_MUT_NNZ_MUT_IDX,
+        mut_nnz_geno_idx=_MUT_NNZ_GENO_IDX,
         pair_nnz_pair_idx=_PAIR_NNZ_PAIR,
         pair_nnz_geno_idx=_PAIR_NNZ_GENO,
     )
@@ -110,7 +123,7 @@ class TestAssembleScalar:
     def test_zero_offsets_gives_wt_everywhere(self):
         G = 4
         result = _assemble_scalar(jnp.array(5.0), jnp.zeros(2), jnp.array(1.0),
-                                  jnp.array(_MUT_GENO))
+                                  _make_mut_scatter())
         assert result.shape == (G,)
         assert jnp.allclose(result, 5.0)
 
@@ -118,20 +131,20 @@ class TestAssembleScalar:
         """Offset [1, 0] with sigma=1 → genotypes 1 and 3 shift by +1."""
         result = _assemble_scalar(jnp.array(0.0),
                                   jnp.array([1.0, 0.0]), jnp.array(1.0),
-                                  jnp.array(_MUT_GENO))
+                                  _make_mut_scatter())
         assert jnp.allclose(result, jnp.array([0.0, 1.0, 0.0, 1.0]))
 
     def test_sigma_scales_effect(self):
         result = _assemble_scalar(jnp.array(0.0),
                                   jnp.array([1.0, 0.0]), jnp.array(3.0),
-                                  jnp.array(_MUT_GENO))
+                                  _make_mut_scatter())
         assert jnp.allclose(result, jnp.array([0.0, 3.0, 0.0, 3.0]))
 
     def test_both_mutations_additive(self):
         """Both mutations present → effect = d0 + d1 at double mutant."""
         result = _assemble_scalar(jnp.array(0.0),
                                   jnp.array([1.0, 0.5]), jnp.array(1.0),
-                                  jnp.array(_MUT_GENO))
+                                  _make_mut_scatter())
         assert jnp.allclose(result[0], 0.0)
         assert jnp.allclose(result[1], 1.0)
         assert jnp.allclose(result[2], 0.5)
@@ -141,7 +154,7 @@ class TestAssembleScalar:
         """Non-zero epistasis on pair 0 → only genotype 3 (double) changes."""
         result = _assemble_scalar(jnp.array(0.0),
                                   jnp.zeros(2), jnp.array(1.0),
-                                  jnp.array(_MUT_GENO),
+                                  _make_mut_scatter(),
                                   jnp.array([2.0]), jnp.array(1.0),
                                   _make_pair_scatter())
         assert jnp.allclose(result[:3], 0.0, atol=1e-6)
@@ -151,7 +164,7 @@ class TestAssembleScalar:
         """Double-mutant gets both additive effects and epistasis."""
         result = _assemble_scalar(jnp.array(0.0),
                                   jnp.array([1.0, 0.5]), jnp.array(1.0),
-                                  jnp.array(_MUT_GENO),
+                                  _make_mut_scatter(),
                                   jnp.array([3.0]), jnp.array(1.0),
                                   _make_pair_scatter())
         assert jnp.allclose(result[3], 4.5, atol=1e-5)
@@ -166,14 +179,14 @@ class TestAssembleTitrant:
     def test_output_shape(self):
         T, G, M = 2, 4, 2
         result = _assemble_titrant(jnp.zeros(T), jnp.zeros((T, M)), jnp.ones(T),
-                                   jnp.array(_MUT_GENO))
+                                   _make_mut_scatter())
         assert result.shape == (T, G)
 
     def test_zero_offsets_all_equal_wt(self):
         T = 2
         wt = jnp.array([1.0, 2.0])
         result = _assemble_titrant(wt, jnp.zeros((T, 2)), jnp.ones(T),
-                                   jnp.array(_MUT_GENO))
+                                   _make_mut_scatter())
         assert jnp.allclose(result, wt[:, None])
 
     def test_sigma_scales_per_titrant(self):
@@ -181,7 +194,7 @@ class TestAssembleTitrant:
         wt = jnp.zeros(T)
         d  = jnp.ones((T, M))                       # both offsets = 1
         sigma = jnp.array([1.0, 2.0])
-        result = _assemble_titrant(wt, d, sigma, jnp.array(_MUT_GENO))
+        result = _assemble_titrant(wt, d, sigma, _make_mut_scatter())
         # double mutant (col 3): T=0 → 1+1=2; T=1 → 2+2=4
         assert jnp.allclose(result[0, 3], 2.0, atol=1e-5)
         assert jnp.allclose(result[1, 3], 4.0, atol=1e-5)
@@ -190,7 +203,7 @@ class TestAssembleTitrant:
         T = 1
         result = _assemble_titrant(
             jnp.zeros(T), jnp.zeros((T, 2)), jnp.ones(T),
-            jnp.array(_MUT_GENO),
+            _make_mut_scatter(),
             jnp.array([[3.0]]), jnp.ones(T),
             _make_pair_scatter(),
         )

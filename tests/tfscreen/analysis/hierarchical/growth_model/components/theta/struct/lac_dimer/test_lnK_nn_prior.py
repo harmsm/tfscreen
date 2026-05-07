@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from functools import partial
 from numpyro.handlers import trace, seed
 
+from tfscreen.genetics.build_mut_geno_matrix import build_mut_sparse_indices
 from tfscreen.analysis.hierarchical.growth_model.components.theta.struct.lac_dimer.lnK_nn_prior import (
     STRUCTURE_NAMES,
     ModelPriors,
@@ -37,6 +38,7 @@ _G = 4   # number of genotypes: wt, mut0, mut1, double
 # Mutation→genotype indicator matrix: row m, col g = 1 if mut m in genotype g
 _MUT_GENO = np.array([[0, 1, 0, 1],
                        [0, 0, 1, 1]], dtype=np.float32)  # (M, G)
+_MUT_NNZ_MUT_IDX, _MUT_NNZ_GENO_IDX = build_mut_sparse_indices(_MUT_GENO)
 
 # Single pair: mut0+mut1 present only in genotype 3
 _PAIR_NNZ_PAIR = np.array([0], dtype=np.int32)
@@ -62,6 +64,8 @@ MockData = namedtuple("MockData", [
     "num_mutation",
     "num_pair",
     "mut_geno_matrix",
+    "mut_nnz_mut_idx",
+    "mut_nnz_geno_idx",
     "pair_nnz_pair_idx",
     "pair_nnz_geno_idx",
     # struct fields
@@ -106,6 +110,8 @@ def _make_mock(num_pair=0, features=None, n_chains=None,
         num_mutation=_M,
         num_pair=num_pair,
         mut_geno_matrix=_MUT_GENO,
+        mut_nnz_mut_idx=_MUT_NNZ_MUT_IDX,
+        mut_nnz_geno_idx=_MUT_NNZ_GENO_IDX,
         pair_nnz_pair_idx=pair_nnz_pair,
         pair_nnz_geno_idx=pair_nnz_geno,
         num_struct=_S,

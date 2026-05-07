@@ -30,7 +30,7 @@ from functools import partial
 from typing import Dict, Any
 
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
-from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix
+from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix, apply_mut_matrix
 from tfscreen.analysis.hierarchical.growth_model.components.theta.struct.lac_dimer.thermo import (
     ThetaParam,
     _compute_theta,
@@ -76,7 +76,7 @@ class ModelPriors:
 # Assembly helpers
 # ---------------------------------------------------------------------------
 
-def _assemble_scalar(wt, d_offsets, sigma_d, M,
+def _assemble_scalar(wt, d_offsets, sigma_d, mut_scatter,
                      epi_offsets=None, sigma_epi=None, pair_scatter=None):
     """
     Assemble per-genotype scalar parameter from WT + mutation deltas.
@@ -86,7 +86,8 @@ def _assemble_scalar(wt, d_offsets, sigma_d, M,
     wt : scalar
     d_offsets : (num_mutation,)
     sigma_d : scalar
-    M : (num_mutation, G)
+    mut_scatter : callable (M,) -> (G,)
+        Scatters per-mutation values to genotype space via COO index arrays.
     epi_offsets : (num_pair,) or None
     sigma_epi : scalar or None
     pair_scatter : callable or None
@@ -98,14 +99,14 @@ def _assemble_scalar(wt, d_offsets, sigma_d, M,
     (G,)
     """
     d = d_offsets * sigma_d         # (M,)
-    result = wt + d @ M             # (G,)
+    result = wt + mut_scatter(d)    # (G,)
     if epi_offsets is not None:
         epi = epi_offsets * sigma_epi      # (P,)
         result = result + pair_scatter(epi)  # (G,)
     return result
 
 
-def _assemble_titrant(wt, d_offsets, sigma_d, M,
+def _assemble_titrant(wt, d_offsets, sigma_d, mut_scatter,
                       epi_offsets=None, sigma_epi=None, pair_scatter=None):
     """
     Assemble per-genotype parameter from T-shaped WT + mutation deltas.
@@ -115,7 +116,8 @@ def _assemble_titrant(wt, d_offsets, sigma_d, M,
     wt : (T,)
     d_offsets : (T, num_mutation)
     sigma_d : (T,)
-    M : (num_mutation, G)
+    mut_scatter : callable (..., M) -> (..., G)
+        Scatters per-mutation values to genotype space; handles leading dims.
     epi_offsets : (T, num_pair) or None
     sigma_epi : (T,) or None
     pair_scatter : callable or None
@@ -126,8 +128,8 @@ def _assemble_titrant(wt, d_offsets, sigma_d, M,
     -------
     (T, G)
     """
-    d = d_offsets * sigma_d[:, None]        # (T, M)
-    result = wt[:, None] + d @ M            # (T, G)
+    d = d_offsets * sigma_d[:, None]              # (T, M)
+    result = wt[:, None] + mut_scatter(d)         # (T, G)
     if epi_offsets is not None:
         epi = epi_offsets * sigma_epi[:, None]   # (T, P)
         result = result + pair_scatter(epi)       # (T, G)
@@ -162,7 +164,10 @@ def define_model(name: str,
     ThetaParam
     """
     T = data.num_titrant_name
-    M_mat = jnp.array(data.mut_geno_matrix)    # (M, G)
+    mut_scatter = partial(apply_mut_matrix,
+                          mut_nnz_mut_idx=jnp.array(data.mut_nnz_mut_idx),
+                          mut_nnz_geno_idx=jnp.array(data.mut_nnz_geno_idx),
+                          num_genotype=data.num_genotype)
     num_mut = data.num_mutation
     has_epi = data.num_pair > 0
 
@@ -280,9 +285,9 @@ def define_model(name: str,
     # ------------------------------------------------------------------
     # Assemble per-genotype equilibrium constants
     # ------------------------------------------------------------------
-    ln_K_op = _assemble_scalar(ln_K_op_wt, d_K_op_off, sigma_d_K_op, M_mat)    # (G,)
-    ln_K_HL = _assemble_scalar(ln_K_HL_wt, d_K_HL_off, sigma_d_K_HL, M_mat)    # (G,)
-    ln_K_E  = _assemble_titrant(ln_K_E_wt, d_K_E_off, sigma_d_K_E, M_mat)      # (T, G)
+    ln_K_op = _assemble_scalar(ln_K_op_wt, d_K_op_off, sigma_d_K_op, mut_scatter)    # (G,)
+    ln_K_HL = _assemble_scalar(ln_K_HL_wt, d_K_HL_off, sigma_d_K_HL, mut_scatter)    # (G,)
+    ln_K_E  = _assemble_titrant(ln_K_E_wt, d_K_E_off, sigma_d_K_E, mut_scatter)      # (T, G)
 
     if has_epi:
         ln_K_op = ln_K_op + pair_scatter(epi_ln_K_op)
@@ -320,7 +325,10 @@ def guide(name: str,
 
     T = data.num_titrant_name
     num_mut = data.num_mutation
-    M_mat = jnp.array(data.mut_geno_matrix)
+    mut_scatter = partial(apply_mut_matrix,
+                          mut_nnz_mut_idx=jnp.array(data.mut_nnz_mut_idx),
+                          mut_nnz_geno_idx=jnp.array(data.mut_nnz_geno_idx),
+                          num_genotype=data.num_genotype)
     has_epi = data.num_pair > 0
 
     tf_total = priors.theta_tf_total_M
@@ -513,9 +521,9 @@ def guide(name: str,
     # ------------------------------------------------------------------
     # Assemble
     # ------------------------------------------------------------------
-    ln_K_op = _assemble_scalar(ln_K_op_wt, d_K_op_off, sigma_d_K_op, M_mat)
-    ln_K_HL = _assemble_scalar(ln_K_HL_wt, d_K_HL_off, sigma_d_K_HL, M_mat)
-    ln_K_E  = _assemble_titrant(ln_K_E_wt, d_K_E_off, sigma_d_K_E, M_mat)
+    ln_K_op = _assemble_scalar(ln_K_op_wt, d_K_op_off, sigma_d_K_op, mut_scatter)
+    ln_K_HL = _assemble_scalar(ln_K_HL_wt, d_K_HL_off, sigma_d_K_HL, mut_scatter)
+    ln_K_E  = _assemble_titrant(ln_K_E_wt, d_K_E_off, sigma_d_K_E, mut_scatter)
 
     if has_epi:
         def _lam_tilde(lam):

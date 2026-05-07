@@ -588,12 +588,15 @@ class ModelClass:
 
         growth_data_sources = [tensors,sizes,wt_info,other_data]
 
-        # Build mutation-to-genotype indicator matrices when any hierarchical_mut
+        # Build mutation-to-genotype indicator matrices when any mutation-decomposed
         # component is selected.  Stored as static (pytree_node=False) fields
-        # on GrowthData; downstream components convert to jnp arrays as needed.
+        # on GrowthData; downstream components use apply_mut_matrix for efficient
+        # scatter without embedding the dense matrix as an XLA constant literal.
         _needs_mut = (self._theta in ("hill_mut", "lac_dimer_mut",
-                                       "lac_dimer_lnK_mut", "lac_dimer_lnK_nn_prior") or
-                      self._activity == "hierarchical_mut" or
+                                       "lac_dimer_lnK_mut", "lac_dimer_lnK_nn_prior",
+                                       "mwc_dimer_lnK_mut", "mwc_dimer_lnK_nn_prior",
+                                       "mwc_dimer_lnK_ddG_prior") or
+                      self._activity in ("hierarchical_mut", "horseshoe_mut") or
                       self._dk_geno == "hierarchical_mut")
         self.mut_labels = []
         self.pair_labels = []
@@ -601,12 +604,14 @@ class ModelClass:
             _geno_idx = self.growth_tm.tensor_dim_names.index("genotype")
             _genotypes = list(self.growth_tm.tensor_dim_labels[_geno_idx])
             from tfscreen.genetics import build_mut_geno_matrix
+            from tfscreen.genetics.build_mut_geno_matrix import build_mut_sparse_indices
             (mut_labels, pair_labels,
              mut_geno_matrix,
              pair_nnz_pair_idx,
              pair_nnz_geno_idx) = build_mut_geno_matrix(
                 _genotypes, skip_pairs=not self._epistasis
             )
+            mut_nnz_mut_idx, mut_nnz_geno_idx = build_mut_sparse_indices(mut_geno_matrix)
             # Expose labels as model attributes for downstream interpretation
             self.mut_labels = mut_labels
             self.pair_labels = pair_labels
@@ -614,6 +619,8 @@ class ModelClass:
                 "num_mutation":      len(mut_labels),
                 "num_pair":          len(pair_labels),
                 "mut_geno_matrix":   mut_geno_matrix,
+                "mut_nnz_mut_idx":   mut_nnz_mut_idx,
+                "mut_nnz_geno_idx":  mut_nnz_geno_idx,
                 "pair_nnz_pair_idx": pair_nnz_pair_idx,
                 "pair_nnz_geno_idx": pair_nnz_geno_idx,
             })

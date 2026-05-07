@@ -37,7 +37,7 @@ from typing import Dict, Any
 from functools import partial
 from typing import Union
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData, BindingData
-from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix
+from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix, apply_mut_matrix
 
 
 # ---------------------------------------------------------------------------
@@ -86,7 +86,7 @@ class ThetaParam:
 # Internal helpers shared by model and guide
 # ---------------------------------------------------------------------------
 
-def _assemble(wt, d_offsets, sigma_d, M,
+def _assemble(wt, d_offsets, sigma_d, mut_scatter,
               epi_offsets=None, sigma_epi=None, pair_scatter=None):
     """
     Assemble per-genotype parameter array from WT + mutation deltas + epistasis.
@@ -96,7 +96,10 @@ def _assemble(wt, d_offsets, sigma_d, M,
     wt : array, shape (T,)
     d_offsets : array, shape (T, num_mutation)
     sigma_d : array, shape (T,)
-    M : array, shape (num_mutation, G)
+    mut_scatter : callable
+        Callable with signature ``mut_scatter(d) -> (T, G)`` that scatters
+        per-mutation values to genotype-space via COO index arrays.  Typically
+        a ``partial`` of ``apply_mut_matrix`` with the indices pre-bound.
     epi_offsets : array, shape (T, num_pair) or None
     sigma_epi : array, shape (T,) or None
     pair_scatter : callable or None
@@ -108,11 +111,11 @@ def _assemble(wt, d_offsets, sigma_d, M,
     -------
     array, shape (T, G)
     """
-    d = d_offsets * sigma_d[:, None]           # [T, M]
-    result = wt[:, None] + d @ M               # [T, G]
+    d = d_offsets * sigma_d[:, None]            # [T, M]
+    result = wt[:, None] + mut_scatter(d)       # [T, G]
     if epi_offsets is not None:
-        epi = epi_offsets * sigma_epi[:, None] # [T, P]
-        result = result + pair_scatter(epi)    # [T, G]
+        epi = epi_offsets * sigma_epi[:, None]  # [T, P]
+        result = result + pair_scatter(epi)     # [T, G]
     return result
 
 
@@ -168,7 +171,10 @@ def define_model(name: str,
         Assembled parameters with shape ``(num_titrant_name, num_genotype)``.
     """
     T = data.num_titrant_name
-    M_mat = jnp.array(data.mut_geno_matrix)   # [num_mutation, G]
+    mut_scatter = partial(apply_mut_matrix,
+                          mut_nnz_mut_idx=jnp.array(data.mut_nnz_mut_idx),
+                          mut_nnz_geno_idx=jnp.array(data.mut_nnz_geno_idx),
+                          num_genotype=data.num_genotype)
     num_mut = data.num_mutation
     has_epi = data.num_pair > 0
 
@@ -293,10 +299,10 @@ def define_model(name: str,
     # ------------------------------------------------------------------
     # Assemble per-genotype parameters: shape (T, G)
     # ------------------------------------------------------------------
-    logit_theta_low   = _assemble(logit_low_wt,   d_low_off,   sigma_d_low,   M_mat)
-    logit_theta_delta = _assemble(logit_delta_wt, d_delta_off, sigma_d_delta, M_mat)
-    log_hill_K        = _assemble(log_K_wt,       d_K_off,     sigma_d_K,     M_mat)
-    log_hill_n        = _assemble(log_n_wt,       d_n_off,     sigma_d_n,     M_mat)
+    logit_theta_low   = _assemble(logit_low_wt,   d_low_off,   sigma_d_low,   mut_scatter)
+    logit_theta_delta = _assemble(logit_delta_wt, d_delta_off, sigma_d_delta, mut_scatter)
+    log_hill_K        = _assemble(log_K_wt,       d_K_off,     sigma_d_K,     mut_scatter)
+    log_hill_n        = _assemble(log_n_wt,       d_n_off,     sigma_d_n,     mut_scatter)
 
     if has_epi:
         logit_theta_low   = logit_theta_low   + pair_scatter(epi_logit_low)
@@ -338,7 +344,10 @@ def guide(name: str,
 
     T = data.num_titrant_name
     num_mut = data.num_mutation
-    M_mat = jnp.array(data.mut_geno_matrix)
+    mut_scatter = partial(apply_mut_matrix,
+                          mut_nnz_mut_idx=jnp.array(data.mut_nnz_mut_idx),
+                          mut_nnz_geno_idx=jnp.array(data.mut_nnz_geno_idx),
+                          num_genotype=data.num_genotype)
     has_epi = data.num_pair > 0
 
     # ------------------------------------------------------------------
@@ -531,10 +540,10 @@ def guide(name: str,
     # ------------------------------------------------------------------
     # Assemble
     # ------------------------------------------------------------------
-    logit_theta_low   = _assemble(logit_low_wt,   d_low_off,   sigma_d_low,   M_mat)
-    logit_theta_delta = _assemble(logit_delta_wt, d_delta_off, sigma_d_delta, M_mat)
-    log_hill_K        = _assemble(log_K_wt,       d_K_off,     sigma_d_K,     M_mat)
-    log_hill_n        = _assemble(log_n_wt,       d_n_off,     sigma_d_n,     M_mat)
+    logit_theta_low   = _assemble(logit_low_wt,   d_low_off,   sigma_d_low,   mut_scatter)
+    logit_theta_delta = _assemble(logit_delta_wt, d_delta_off, sigma_d_delta, mut_scatter)
+    log_hill_K        = _assemble(log_K_wt,       d_K_off,     sigma_d_K,     mut_scatter)
+    log_hill_n        = _assemble(log_n_wt,       d_n_off,     sigma_d_n,     mut_scatter)
 
     if has_epi:
         def _lam_tilde(lam):

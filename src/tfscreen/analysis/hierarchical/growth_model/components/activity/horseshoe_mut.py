@@ -32,7 +32,7 @@ from flax.struct import dataclass
 from typing import Dict, Any
 
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
-from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix
+from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix, apply_mut_matrix
 
 
 @dataclass(frozen=True)
@@ -69,7 +69,8 @@ def define_model(name: str,
     jnp.ndarray
         Activity values broadcast to shape ``(1, 1, 1, 1, 1, 1, num_genotype)``.
     """
-    M_mat = jnp.array(data.mut_geno_matrix)   # [num_mutation, G]
+    mut_nnz_mut_idx  = jnp.array(data.mut_nnz_mut_idx)    # COO row (mutation)
+    mut_nnz_geno_idx = jnp.array(data.mut_nnz_geno_idx)   # COO col (genotype)
     num_mut = data.num_mutation
     has_epi = data.num_pair > 0
 
@@ -93,7 +94,8 @@ def define_model(name: str,
     d_log_activity = d_offset * tau_d * lambda_d_tilde   # [num_mutation]
     pyro.deterministic(f"{name}_d_log_activity", d_log_activity)
 
-    log_activity = d_log_activity @ M_mat   # [G]
+    log_activity = apply_mut_matrix(
+        d_log_activity, mut_nnz_mut_idx, mut_nnz_geno_idx, data.num_genotype)  # [G]
 
     # ------------------------------------------------------------------
     # Optional pairwise epistasis — regularised horseshoe
@@ -136,7 +138,8 @@ def guide(name: str,
     """Variational guide for the regularised-horseshoe mutation-decomposed activity model."""
 
     num_mut = data.num_mutation
-    M_mat = jnp.array(data.mut_geno_matrix)
+    mut_nnz_mut_idx  = jnp.array(data.mut_nnz_mut_idx)
+    mut_nnz_geno_idx = jnp.array(data.mut_nnz_geno_idx)
     has_epi = data.num_pair > 0
 
     # ------------------------------------------------------------------
@@ -170,7 +173,8 @@ def guide(name: str,
 
     lambda_d_tilde = jnp.sqrt(c2_d * lambda_d ** 2 / (c2_d + tau_d ** 2 * lambda_d ** 2))
     d_log_activity = d_offset * tau_d * lambda_d_tilde
-    log_activity = d_log_activity @ M_mat
+    log_activity = apply_mut_matrix(
+        d_log_activity, mut_nnz_mut_idx, mut_nnz_geno_idx, data.num_genotype)
 
     # ------------------------------------------------------------------
     # Optional epistasis — variational parameters

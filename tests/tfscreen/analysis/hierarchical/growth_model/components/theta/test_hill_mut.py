@@ -19,7 +19,7 @@ from tfscreen.analysis.hierarchical.growth_model.components.theta.hill_mut impor
     _assemble,
     _population_moments,
 )
-from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix
+from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix, apply_mut_matrix, build_mut_sparse_indices
 
 # ---------------------------------------------------------------------------
 # Mock data namedtuples
@@ -35,6 +35,8 @@ MockData = namedtuple("MockData", [
     "num_mutation",
     "num_pair",
     "mut_geno_matrix",
+    "mut_nnz_mut_idx",
+    "mut_nnz_geno_idx",
     "pair_nnz_pair_idx",
     "pair_nnz_geno_idx",
     "batch_idx",
@@ -45,9 +47,17 @@ MockData = namedtuple("MockData", [
 # Pairs:     K84L/M42I(0) ↔ column 3 only
 _MUT_GENO = np.array([[0, 1, 0, 1],   # M42I
                        [0, 0, 1, 1]], dtype=np.float32)   # K84L
+_MUT_NNZ_MUT_IDX, _MUT_NNZ_GENO_IDX = build_mut_sparse_indices(_MUT_GENO)
 # COO representation of [[0, 0, 0, 1]]: one nonzero at (pair=0, geno=3)
 _PAIR_NNZ_PAIR = np.array([0], dtype=np.int32)
 _PAIR_NNZ_GENO = np.array([3], dtype=np.int32)
+
+def _make_mut_scatter(num_genotype=4):
+    """Build a mut_scatter callable matching the test library."""
+    return partial(apply_mut_matrix,
+                   mut_nnz_mut_idx=jnp.array(_MUT_NNZ_MUT_IDX),
+                   mut_nnz_geno_idx=jnp.array(_MUT_NNZ_GENO_IDX),
+                   num_genotype=num_genotype)
 
 def _make_pair_scatter(num_genotype=4):
     """Build a pair_scatter callable matching the test library (1 pair, geno 3)."""
@@ -70,6 +80,8 @@ def mock_data_epi():
         num_mutation=2,
         num_pair=1,
         mut_geno_matrix=_MUT_GENO,
+        mut_nnz_mut_idx=_MUT_NNZ_MUT_IDX,
+        mut_nnz_geno_idx=_MUT_NNZ_GENO_IDX,
         pair_nnz_pair_idx=_PAIR_NNZ_PAIR,
         pair_nnz_geno_idx=_PAIR_NNZ_GENO,
         batch_idx=jnp.arange(4, dtype=jnp.int32),
@@ -89,6 +101,8 @@ def mock_data_no_epi():
         num_mutation=2,
         num_pair=0,
         mut_geno_matrix=_MUT_GENO,
+        mut_nnz_mut_idx=_MUT_NNZ_MUT_IDX,
+        mut_nnz_geno_idx=_MUT_NNZ_GENO_IDX,
         pair_nnz_pair_idx=np.zeros(0, dtype=np.int32),
         pair_nnz_geno_idx=np.zeros(0, dtype=np.int32),
         batch_idx=jnp.arange(4, dtype=jnp.int32),
@@ -106,9 +120,8 @@ class TestAssemble:
         wt = jnp.array([1.0, 2.0])
         d_offsets = jnp.ones((T, M))
         sigma_d = jnp.array([0.5, 1.0])
-        M_mat = jnp.array(_MUT_GENO)
 
-        result = _assemble(wt, d_offsets, sigma_d, M_mat)
+        result = _assemble(wt, d_offsets, sigma_d, _make_mut_scatter())
         # d = [[0.5, 0.5], [1.0, 1.0]]
         # d @ M = [[0,0.5,0.5,1.0], [0,1.0,1.0,2.0]]
         # wt[:, None] = [[1.0], [2.0]]
@@ -122,12 +135,11 @@ class TestAssemble:
         wt = jnp.array([0.0])
         d_offsets = jnp.zeros((T, M))
         sigma_d = jnp.array([1.0])
-        M_mat = jnp.array(_MUT_GENO)
         epi_offsets = jnp.array([[3.0]])   # shape (T=1, P=1)
         sigma_epi = jnp.array([1.0])
         pair_scatter = _make_pair_scatter()
 
-        result = _assemble(wt, d_offsets, sigma_d, M_mat,
+        result = _assemble(wt, d_offsets, sigma_d, _make_mut_scatter(),
                            epi_offsets, sigma_epi, pair_scatter)
         # Only the double-mutant column (col 3) should be shifted by 3.0
         assert result[0, 0] == pytest.approx(0.0)   # wt

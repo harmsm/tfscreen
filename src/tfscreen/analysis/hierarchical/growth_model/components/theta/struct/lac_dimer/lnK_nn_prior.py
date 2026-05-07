@@ -51,7 +51,7 @@ from functools import partial
 from typing import Dict, Any, Union
 
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData, BindingData
-from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix
+from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix, apply_mut_matrix
 from tfscreen.analysis.hierarchical.growth_model.components.theta.struct.nn import (
     compute_nn_predictions,
     _DEFAULT_HIDDEN_SIZE,
@@ -171,7 +171,10 @@ def define_model(name: str,
     _check_struct_names(data)
 
     T       = data.num_titrant_name
-    M_mat   = jnp.array(data.mut_geno_matrix)              # (M, G)
+    mut_scatter = partial(apply_mut_matrix,
+                          mut_nnz_mut_idx=jnp.array(data.mut_nnz_mut_idx),
+                          mut_nnz_geno_idx=jnp.array(data.mut_nnz_geno_idx),
+                          num_genotype=data.num_genotype)
     num_mut = data.num_mutation
     features = jnp.array(data.struct_features)             # (M, S, 60)
     n_chains = data.struct_n_chains                         # (S,) int
@@ -214,9 +217,9 @@ def define_model(name: str,
     pyro.deterministic(f"{name}_d_ln_K_E",    d_ln_K_E)
 
     # ── Assemble per-genotype K values ────────────────────────────────────────
-    ln_K_op = ln_K_op_wt + d_ln_K_op @ M_mat                           # (G,)
-    ln_K_HL = ln_K_HL_wt + d_ln_K_HL @ M_mat                           # (G,)
-    ln_K_E  = ln_K_E_wt[:, None] + (d_ln_K_E @ M_mat)[None, :]         # (T, G)
+    ln_K_op = ln_K_op_wt + mut_scatter(d_ln_K_op)                          # (G,)
+    ln_K_HL = ln_K_HL_wt + mut_scatter(d_ln_K_HL)                          # (G,)
+    ln_K_E  = ln_K_E_wt[:, None] + mut_scatter(d_ln_K_E)[None, :]          # (T, G)
 
     # ── Optional pairwise epistasis ───────────────────────────────────────────
     if has_epi:
@@ -272,7 +275,10 @@ def guide(name: str,
     _check_struct_names(data)
 
     T       = data.num_titrant_name
-    M_mat   = jnp.array(data.mut_geno_matrix)
+    mut_scatter = partial(apply_mut_matrix,
+                          mut_nnz_mut_idx=jnp.array(data.mut_nnz_mut_idx),
+                          mut_nnz_geno_idx=jnp.array(data.mut_nnz_geno_idx),
+                          num_genotype=data.num_genotype)
     num_mut = data.num_mutation
     S       = data.num_struct
     features = jnp.array(data.struct_features)
@@ -364,9 +370,9 @@ def guide(name: str,
     d_ln_K_HL = delta_lnK[:, 1]
     d_ln_K_E  = delta_lnK[:, 2]
 
-    ln_K_op = ln_K_op_wt + d_ln_K_op @ M_mat
-    ln_K_HL = ln_K_HL_wt + d_ln_K_HL @ M_mat
-    ln_K_E  = ln_K_E_wt[:, None] + (d_ln_K_E @ M_mat)[None, :]
+    ln_K_op = ln_K_op_wt + mut_scatter(d_ln_K_op)
+    ln_K_HL = ln_K_HL_wt + mut_scatter(d_ln_K_HL)
+    ln_K_E  = ln_K_E_wt[:, None] + mut_scatter(d_ln_K_E)[None, :]
 
     if has_epi:
         pair_scatter = partial(apply_pair_matrix,

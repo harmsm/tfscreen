@@ -40,7 +40,7 @@ from flax.struct import dataclass
 from typing import Dict, Any
 
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData
-from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix
+from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix, apply_mut_matrix
 
 
 @dataclass(frozen=True)
@@ -75,7 +75,8 @@ def define_model(name: str,
     jnp.ndarray
         dk_geno values broadcast to shape ``(1, 1, 1, 1, 1, 1, num_genotype)``.
     """
-    M_mat = jnp.array(data.mut_geno_matrix)   # [num_mutation, G]
+    mut_nnz_mut_idx  = jnp.array(data.mut_nnz_mut_idx)    # COO row (mutation)
+    mut_nnz_geno_idx = jnp.array(data.mut_nnz_geno_idx)   # COO col (genotype)
     num_mut = data.num_mutation
     has_epi = data.num_pair > 0
 
@@ -109,7 +110,8 @@ def define_model(name: str,
     pyro.deterministic(f"{name}_d_dk_geno", d_dk_geno)
 
     # Assembly: dk_geno[g] = d_dk_geno @ M[:, g]
-    dk_geno_per_genotype = d_dk_geno @ M_mat               # [G]
+    dk_geno_per_genotype = apply_mut_matrix(
+        d_dk_geno, mut_nnz_mut_idx, mut_nnz_geno_idx, data.num_genotype)  # [G]
 
     # ------------------------------------------------------------------
     # Optional epistasis terms: Normal(0, sigma_epi)
@@ -150,7 +152,8 @@ def guide(name: str,
     """Variational guide for the mutation-decomposed dk_geno model."""
 
     num_mut = data.num_mutation
-    M_mat = jnp.array(data.mut_geno_matrix)
+    mut_nnz_mut_idx  = jnp.array(data.mut_nnz_mut_idx)
+    mut_nnz_geno_idx = jnp.array(data.mut_nnz_geno_idx)
     has_epi = data.num_pair > 0
 
     # --- Global hyperpriors ---
@@ -189,7 +192,8 @@ def guide(name: str,
         jnp.exp(dk_geno_hyper_loc + dk_geno_offset * dk_geno_hyper_scale),
         max=1e30)
     d_dk_geno = dk_geno_hyper_shift - dk_geno_lognormal
-    dk_geno_per_genotype = d_dk_geno @ M_mat
+    dk_geno_per_genotype = apply_mut_matrix(
+        d_dk_geno, mut_nnz_mut_idx, mut_nnz_geno_idx, data.num_genotype)
 
     if has_epi:
         pair_nnz_pair_idx = jnp.array(data.pair_nnz_pair_idx)

@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from numpyro.handlers import trace, seed
 import unittest.mock as mock
 
+from tfscreen.genetics.build_mut_geno_matrix import build_mut_sparse_indices
 from tfscreen.analysis.hierarchical.growth_model.components.theta.struct.mwc_dimer.lnK_ddG_prior import (
     STRUCTURE_NAMES,
     ModelPriors,
@@ -41,6 +42,7 @@ _G = 4    # genotypes: wt, M1, M2, M1+M2 (last mutation unused in matrix)
 _MUT_GENO = np.array([[0, 1, 0, 1],
                        [0, 0, 1, 1],
                        [0, 0, 0, 0]], dtype=np.float32)  # (M, G)
+_MUT_NNZ_MUT_IDX, _MUT_NNZ_GENO_IDX = build_mut_sparse_indices(_MUT_GENO)
 
 _CONC = np.array([0.0, 1e-5, 1e-4], dtype=np.float32)
 
@@ -67,6 +69,8 @@ MockData = namedtuple("MockData", [
     "num_mutation",
     "num_pair",
     "mut_geno_matrix",
+    "mut_nnz_mut_idx",
+    "mut_nnz_geno_idx",
     "pair_nnz_pair_idx",
     "pair_nnz_geno_idx",
     "num_struct",
@@ -96,6 +100,8 @@ def _make_mock(struct_names=None, ddG_prior=None):
         num_mutation=_M,
         num_pair=0,
         mut_geno_matrix=_MUT_GENO,
+        mut_nnz_mut_idx=_MUT_NNZ_MUT_IDX,
+        mut_nnz_geno_idx=_MUT_NNZ_GENO_IDX,
         pair_nnz_pair_idx=np.zeros(0, dtype=np.int32),
         pair_nnz_geno_idx=np.zeros(0, dtype=np.int32),
         num_struct=_S,
