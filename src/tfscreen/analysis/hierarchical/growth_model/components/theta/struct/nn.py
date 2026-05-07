@@ -18,6 +18,14 @@ is present on both chains and contributes twice to the free energy change.
 Architecture (per structure):
     input  → (feat_dim, H) → ReLU → (H, 1) → scalar
     shape:   (M, 60)       → (M, H)         → (M,)
+
+Memory note
+-----------
+``_nn_forward`` is decorated with ``jax.checkpoint`` so that the (M, H)
+hidden activations are **not cached** during the forward pass.  They are
+recomputed on demand during backpropagation.  This trades a small amount
+of extra compute for reduced peak GPU memory, which matters when a large
+dense mutation-genotype matrix is also live at the same time.
 """
 
 import jax
@@ -26,6 +34,45 @@ import numpyro as pyro
 
 _DEFAULT_HIDDEN_SIZE = 16
 
+
+# ---------------------------------------------------------------------------
+# Checkpointed pure forward pass (no side effects — safe to checkpoint)
+# ---------------------------------------------------------------------------
+
+@jax.checkpoint
+def _nn_forward(features, W1_all, b1_all, W2_all, b2_all, n_chains_f):
+    """
+    Vectorised forward pass over all structures.
+
+    Parameters
+    ----------
+    features  : (M, S, feat_dim)
+    W1_all    : (S, feat_dim, H)
+    b1_all    : (S, H)
+    W2_all    : (S, H, 1)
+    b2_all    : (S, 1)
+    n_chains_f: (S,)  float32
+
+    Returns
+    -------
+    (M, S)  NN-predicted ΔΔG for each mutation × structure.
+    """
+    def one_struct(feats_s, W1, b1, W2, b2):
+        """Single-structure two-layer MLP: (M, feat_dim) → (M,)."""
+        h   = jax.nn.relu(feats_s @ W1 + b1)   # (M, H)
+        return (h @ W2 + b2)[:, 0]              # (M,)
+
+    # vmap over the structure axis (axis-1 of features, axis-0 of weights)
+    out_SM = jax.vmap(one_struct, in_axes=(1, 0, 0, 0, 0))(
+        features, W1_all, b1_all, W2_all, b2_all,
+    )   # (S, M)
+
+    return (out_SM * n_chains_f[:, None]).T   # (M, S)
+
+
+# ---------------------------------------------------------------------------
+# Public interface
+# ---------------------------------------------------------------------------
 
 def compute_nn_predictions(name, features, struct_names, n_chains,
                            hidden_size=_DEFAULT_HIDDEN_SIZE):
@@ -52,24 +99,40 @@ def compute_nn_predictions(name, features, struct_names, n_chains,
     -------
     jnp.ndarray, shape (M, S)
         NN-predicted ΔΔG for each mutation and structure.
+
+    Notes
+    -----
+    ``pyro.param`` registration (the side-effectful part) happens first in a
+    plain Python loop, before ``_nn_forward`` is called.  ``_nn_forward`` is
+    a pure JAX function decorated with ``jax.checkpoint``, which prevents its
+    hidden activations from being cached during forward and instead recomputes
+    them during backpropagation.  This reduces peak GPU memory at the cost of
+    one extra forward pass per training step.
     """
     _, S, feat_dim = features.shape
     H = hidden_size
-    n_chains_f = jnp.array(n_chains, dtype=jnp.float32)  # (S,)
+    n_chains_f = jnp.array(n_chains, dtype=jnp.float32)   # (S,)
 
-    outputs = []
-    for s_idx, sname in enumerate(struct_names):
-        feats_s = features[:, s_idx, :]    # (M, feat_dim)
-        prefix  = f"{name}_nn_{sname}"
+    # ------------------------------------------------------------------
+    # Register all parameters first.
+    # pyro.param calls are SIDE EFFECTS and must remain OUTSIDE the
+    # checkpointed function.  We collect them into stacked arrays so
+    # that _nn_forward can vmap over the structure dimension cleanly.
+    # ------------------------------------------------------------------
+    W1_all = jnp.stack(
+        [pyro.param(f"{name}_nn_{sname}_W1", jnp.zeros((feat_dim, H)))
+         for sname in struct_names], axis=0)   # (S, feat_dim, H)
+    b1_all = jnp.stack(
+        [pyro.param(f"{name}_nn_{sname}_b1", jnp.zeros(H))
+         for sname in struct_names], axis=0)   # (S, H)
+    W2_all = jnp.stack(
+        [pyro.param(f"{name}_nn_{sname}_W2", jnp.zeros((H, 1)))
+         for sname in struct_names], axis=0)   # (S, H, 1)
+    b2_all = jnp.stack(
+        [pyro.param(f"{name}_nn_{sname}_b2", jnp.zeros(1))
+         for sname in struct_names], axis=0)   # (S, 1)
 
-        W1 = pyro.param(f"{prefix}_W1", jnp.zeros((feat_dim, H)))  # (feat_dim, H)
-        b1 = pyro.param(f"{prefix}_b1", jnp.zeros(H))              # (H,)
-        W2 = pyro.param(f"{prefix}_W2", jnp.zeros((H, 1)))         # (H, 1)
-        b2 = pyro.param(f"{prefix}_b2", jnp.zeros(1))              # (1,)
-
-        h   = jax.nn.relu(feats_s @ W1 + b1)   # (M, H)
-        out = (h @ W2 + b2)[:, 0]              # (M,)
-
-        outputs.append(out * n_chains_f[s_idx])
-
-    return jnp.stack(outputs, axis=1)   # (M, S)
+    # ------------------------------------------------------------------
+    # Checkpointed forward pass — no activations cached during forward.
+    # ------------------------------------------------------------------
+    return _nn_forward(features, W1_all, b1_all, W2_all, b2_all, n_chains_f)

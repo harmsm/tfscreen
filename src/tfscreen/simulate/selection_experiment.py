@@ -210,6 +210,40 @@ def _check_cf(
     if not isinstance(cf["library_selector"], list):
         raise ValueError("library_selector must be a list of column names.")
 
+    # --- Validate growth_transition block ---
+    if "growth_transition" not in cf or cf["growth_transition"] is None:
+        cf["growth_transition"] = None
+    else:
+        gt = cf["growth_transition"]
+        if not isinstance(gt, list):
+            raise ValueError("'growth_transition' must be a list of condition entries.")
+
+        seen_conditions = set()
+        for i, entry in enumerate(gt):
+            loc = f"growth_transition[{i}]"
+            if not isinstance(entry, dict):
+                raise ValueError(f"{loc} must be a dict.")
+            for required_key in ("condition_pre", "model"):
+                if required_key not in entry:
+                    raise ValueError(f"{loc} is missing required key '{required_key}'.")
+            if not isinstance(entry["condition_pre"], str):
+                raise ValueError(f"{loc} 'condition_pre' must be a string.")
+            if entry["condition_pre"] in seen_conditions:
+                raise ValueError(f"{loc} duplicate condition_pre '{entry['condition_pre']}'.")
+            seen_conditions.add(entry["condition_pre"])
+            if entry["model"] not in ("instant", "memory"):
+                raise ValueError(f"{loc} 'model' must be 'instant' or 'memory'.")
+            if entry["model"] == "memory":
+                for param in ("tau0", "k1", "k2"):
+                    if param not in entry:
+                        raise ValueError(f"{loc} model 'memory' requires '{param}'.")
+                    try:
+                        entry[param] = float(entry[param])
+                    except (TypeError, ValueError):
+                        raise ValueError(f"{loc} '{param}' must be a number.")
+                if entry["k2"] <= 0:
+                    raise ValueError(f"{loc} 'k2' must be > 0.")
+
     return cf
 
 def _check_lib_spec(
@@ -831,6 +865,55 @@ def _calc_genotype_cfu0(
     return genotype_cfu0 
 
 
+def _compute_kt(
+    phenotype_df: pd.DataFrame,
+    growth_transition: list | None,
+) -> np.ndarray:
+    """Compute total log-growth (k*t) for every row in phenotype_df.
+
+    Parameters
+    ----------
+    phenotype_df : pandas.DataFrame
+        Must have columns: k_pre, k_sel, t_pre, t_sel, theta, condition_pre.
+    growth_transition : list of dict or None
+        Validated growth_transition config (from _check_cf). None means instant
+        transition for all conditions. Each entry must have 'condition_pre' and
+        'model'; memory entries also have 'tau0', 'k1', 'k2'.
+
+    Returns
+    -------
+    numpy.ndarray
+        1-D array of kt values aligned with phenotype_df rows.
+    """
+    k_pre = phenotype_df["k_pre"].to_numpy()
+    k_sel = phenotype_df["k_sel"].to_numpy()
+    t_pre = phenotype_df["t_pre"].to_numpy()
+    t_sel = phenotype_df["t_sel"].to_numpy()
+
+    if growth_transition is None:
+        return k_pre * t_pre + k_sel * t_sel
+
+    theta = phenotype_df["theta"].to_numpy()
+    condition_pre = phenotype_df["condition_pre"].to_numpy()
+
+    kt = np.zeros(len(phenotype_df))
+    for entry in growth_transition:
+        mask = condition_pre == entry["condition_pre"]
+        if entry["model"] == "instant":
+            kt[mask] = k_pre[mask] * t_pre[mask] + k_sel[mask] * t_sel[mask]
+        else:
+            tau = entry["tau0"] + entry["k1"] / (theta[mask] + entry["k2"])
+            dln_pre = k_pre[mask] * t_pre[mask]
+            dln_sel = np.where(
+                t_sel[mask] < tau,
+                k_pre[mask] * t_sel[mask],
+                k_pre[mask] * tau + k_sel[mask] * (t_sel[mask] - tau),
+            )
+            kt[mask] = dln_pre + dln_sel
+
+    return kt
+
+
 def _simulate_library_group(
     sub_df: pd.DataFrame,
     index_offset: int,
@@ -1134,11 +1217,22 @@ def selection_experiment(
     # Remove genotypes from phenotype_df that are not in the library
     phenotype_df = phenotype_df[phenotype_df["genotype"].isin(ordered_genotypes)]
 
+    # If growth_transition is configured, verify every condition_pre in the data
+    # has an entry. Error out rather than silently defaulting.
+    if cf["growth_transition"] is not None:
+        configured = {e["condition_pre"] for e in cf["growth_transition"]}
+        present = set(phenotype_df["condition_pre"].unique())
+        missing = present - configured
+        if missing:
+            raise ValueError(
+                f"The following condition_pre values appear in the data but have no "
+                f"entry in 'growth_transition': {sorted(missing)}"
+            )
+
     # Calculate growth given k values and times at each condition. Set growth
     # to zero for nan values. (These can arise if the thermodynamic model
-    # failed. Interpret as "this bug does not grow"). 
-    phenotype_df["kt"] = (phenotype_df["k_pre"] * phenotype_df["t_pre"] +
-                          phenotype_df["k_sel"] * phenotype_df["t_sel"])
+    # failed. Interpret as "this bug does not grow").
+    phenotype_df["kt"] = _compute_kt(phenotype_df, cf["growth_transition"])
     phenotype_df["kt"] = phenotype_df["kt"].fillna(0)
 
     # groupby on phenotype_df that lets us select individual libraries 
