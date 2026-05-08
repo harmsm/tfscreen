@@ -107,10 +107,124 @@ class TestReadYaml:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as tmp:
             tmp.write(content)
             tmp_path = tmp.name
-            
+
         try:
             with pytest.raises(ValueError, match="override_keys has a key"):
                 read_yaml(tmp_path, override_keys={'key2': 'new_value'})
         finally:
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
+
+
+class TestGrowthConditionBlocksValidation:
+    """Tests for the growth / condition_blocks consistency check in read_yaml."""
+
+    def _write_yaml(self, data):
+        """Write a dict to a temp YAML file; caller must delete it."""
+        f = tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False)
+        yaml.dump(data, f)
+        f.close()
+        return f.name
+
+    def _valid_config(self):
+        return {
+            "growth": {
+                "sel": {"m": -0.01, "b": 0.005},
+                "pre": {"m":  0.001, "b": 0.020},
+            },
+            "condition_blocks": [
+                {"condition_pre": "pre", "condition_sel": "sel"},
+            ],
+        }
+
+    def test_valid_config_passes(self):
+        path = self._write_yaml(self._valid_config())
+        try:
+            cfg = read_yaml(path)
+            assert cfg["growth"]["sel"]["m"] == -0.01
+        finally:
+            os.remove(path)
+
+    def test_condition_missing_from_growth_raises(self):
+        cfg = self._valid_config()
+        # Remove "pre" so condition_pre has no entry
+        del cfg["growth"]["pre"]
+        path = self._write_yaml(cfg)
+        try:
+            with pytest.raises(ValueError, match="pre"):
+                read_yaml(path)
+        finally:
+            os.remove(path)
+
+    def test_extra_key_in_growth_raises(self):
+        cfg = self._valid_config()
+        cfg["growth"]["unused_condition"] = {"m": 0.0, "b": 0.0}
+        path = self._write_yaml(cfg)
+        try:
+            with pytest.raises(ValueError, match="unused_condition"):
+                read_yaml(path)
+        finally:
+            os.remove(path)
+
+    def test_both_errors_reported_together(self):
+        cfg = self._valid_config()
+        cfg["growth"]["ghost"] = {"m": 0.0, "b": 0.0}   # extra
+        del cfg["growth"]["pre"]                           # missing
+        path = self._write_yaml(cfg)
+        try:
+            with pytest.raises(ValueError) as exc_info:
+                read_yaml(path)
+            msg = str(exc_info.value)
+            assert "pre" in msg       # missing condition named
+            assert "ghost" in msg     # extra key named
+        finally:
+            os.remove(path)
+
+    def test_multiple_blocks_all_conditions_checked(self):
+        # Two blocks; "sel2" is present in block but absent from growth
+        cfg = self._valid_config()
+        cfg["condition_blocks"].append(
+            {"condition_pre": "pre", "condition_sel": "sel2"}
+        )
+        path = self._write_yaml(cfg)
+        try:
+            with pytest.raises(ValueError, match="sel2"):
+                read_yaml(path)
+        finally:
+            os.remove(path)
+
+    def test_same_condition_pre_and_sel_allowed(self):
+        # A condition used for both pre and sel requires only one entry in growth
+        cfg = {
+            "growth": {"neutral": {"m": 0.0, "b": 0.01}},
+            "condition_blocks": [
+                {"condition_pre": "neutral", "condition_sel": "neutral"},
+            ],
+        }
+        path = self._write_yaml(cfg)
+        try:
+            read_yaml(path)   # must not raise
+        finally:
+            os.remove(path)
+
+    def test_no_growth_key_skips_validation(self):
+        # Config without a growth block is not validated at all
+        cfg = {
+            "condition_blocks": [
+                {"condition_pre": "pre", "condition_sel": "sel"},
+            ]
+        }
+        path = self._write_yaml(cfg)
+        try:
+            read_yaml(path)   # must not raise
+        finally:
+            os.remove(path)
+
+    def test_no_condition_blocks_key_skips_validation(self):
+        # Config with growth but no condition_blocks is not validated
+        cfg = {"growth": {"sel": {"m": 0.0, "b": 0.0}}}
+        path = self._write_yaml(cfg)
+        try:
+            read_yaml(path)   # must not raise
+        finally:
+            os.remove(path)

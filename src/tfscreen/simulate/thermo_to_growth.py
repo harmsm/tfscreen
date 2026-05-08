@@ -2,9 +2,6 @@
 Functions for generating phenotypes from mutant libraries and ensemble data.
 """
 
-from tfscreen.calibration import(
-    get_wt_k
-)
 from tfscreen.genetics import (
     combine_mutation_effects,
     set_categorical_genotype,
@@ -125,13 +122,40 @@ def _assign_dk_geno(unique_genotypes,
 
     
 
+def _apply_growth_params(
+    condition_array: np.ndarray,
+    theta_array: np.ndarray,
+    growth_params: dict,
+) -> np.ndarray:
+    """
+    Compute per-row wildtype growth rate k = m*theta + b.
+
+    Parameters
+    ----------
+    condition_array : numpy.ndarray
+        1D array of condition strings matching keys in growth_params.
+    theta_array : numpy.ndarray
+        1D array of fractional occupancy values (same length).
+    growth_params : dict
+        Mapping from condition string to {'m': float, 'b': float}.
+
+    Returns
+    -------
+    numpy.ndarray
+        Growth rate k for each row.
+    """
+    m = np.array([growth_params[c]["m"] for c in condition_array])
+    b = np.array([growth_params[c]["b"] for c in condition_array])
+    return m * theta_array + b
+
+
 def thermo_to_growth(
     genotypes: Iterable[str],
     sample_df: pd.DataFrame,
     observable_calculator: str,
     observable_calc_kwargs: dict,
     ddG_df: Union[str, pd.DataFrame],
-    calibration_data: dict,
+    growth_params: dict,
     mut_growth_rate_shape: float = 3,
     mut_growth_rate_scale: float = 0.002,
     ddG_combine_fcn: Optional[Union[str, Callable]] = "sum",
@@ -158,8 +182,11 @@ def thermo_to_growth(
     ddG_df : str or pandas.DataFrame
         A DataFrame (or path to one) containing the free energy perturbations
         (ddG) for single mutations on each molecular species in the model.
-    calibration_data : dict
-        Pre-calculated calibration constants required for growth rate prediction.
+    growth_params : dict
+        Per-condition linear growth model parameters. Keys are condition strings
+        matching the condition_pre and condition_sel values in sample_df. Each
+        value must be a dict with 'm' (slope, growth rate change per unit theta)
+        and 'b' (intercept, base growth rate at theta=0).
     mut_growth_rate_shape : float, default 3
         The shape parameter for the gamma distribution used to assign
         pleiotropic fitness costs.
@@ -271,26 +298,30 @@ def thermo_to_growth(
     
     # Load the calcualted dk_geno into the phenotype_df
     phenotype_df["dk_geno"] = phenotype_df["genotype"].map(genotype_dk_geno_series)
-    
-    
-    # Get growth-rate in pre-selection condition given theta
-    k_pre = get_wt_k(phenotype_df["condition_pre"].to_numpy(),
-                     phenotype_df["titrant_name"].to_numpy(),
-                     phenotype_df["titrant_conc"].to_numpy(),
-                     calibration_data,
-                     theta=phenotype_df["theta"].to_numpy())
 
-    # Record k_pre 
+    # Validate that every condition appearing in phenotype_df is covered by
+    # growth_params. Errors here are preferable to silent wrong results.
+    used_conditions = (set(phenotype_df["condition_pre"].unique()) |
+                       set(phenotype_df["condition_sel"].unique()))
+    missing = used_conditions - set(growth_params.keys())
+    if missing:
+        err = "The following conditions are required but missing from growth_params:\n"
+        for c in sorted(missing):
+            err += f"    {c}\n"
+        raise ValueError(err)
+
+    theta = phenotype_df["theta"].to_numpy()
+
+    # Get growth-rate in pre-selection condition given theta: k = m*theta + b
+    k_pre = _apply_growth_params(phenotype_df["condition_pre"].to_numpy(),
+                                 theta,
+                                 growth_params)
     phenotype_df["k_pre"] = k_pre + phenotype_df["dk_geno"].to_numpy()
 
-    # Get growth-rate in selection condition given theta
-    k_sel = get_wt_k(phenotype_df["condition_sel"].to_numpy(),
-                     phenotype_df["titrant_name"].to_numpy(),
-                     phenotype_df["titrant_conc"].to_numpy(),
-                     calibration_data,
-                     theta=phenotype_df["theta"].to_numpy())
-
-    # Record k_pre 
+    # Get growth-rate in selection condition given theta: k = m*theta + b
+    k_sel = _apply_growth_params(phenotype_df["condition_sel"].to_numpy(),
+                                 theta,
+                                 growth_params)
     phenotype_df["k_sel"] = k_sel + phenotype_df["dk_geno"].to_numpy()
 
     # -------------------------------------------------------------------------

@@ -68,7 +68,7 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
         observable_calculator=cf["observable_calculator"],
         observable_calc_kwargs=cf["observable_calc_kwargs"],
         ddG_df=cf["ddG_spreadsheet"],
-        calibration_data=cf['calibration_file'],
+        growth_params=cf['growth'],
         mut_growth_rate_shape=cf['mut_growth_rate_shape'],
         mut_growth_rate_scale=cf['mut_growth_rate_scale']
     )

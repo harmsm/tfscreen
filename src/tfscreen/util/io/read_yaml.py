@@ -70,12 +70,38 @@ def read_yaml(cf: str | dict,
     # clean up floats and ints
     config = _normalize_types(config)
 
-    # Replace keys from the configuration with keyword arguments passed in. 
+    # Replace keys from the configuration with keyword arguments passed in.
     if override_keys is not None:
         for k in override_keys:
             if k not in config:
                 err = f"override_keys has a key '{k}' that was not in configuration."
                 raise ValueError(err)
             config[k] = override_keys[k]
+
+    # Validate growth vs condition_blocks when both are present.
+    if "growth" in config and "condition_blocks" in config:
+        defined = set(config["growth"].keys())
+        used = set()
+        for block in config["condition_blocks"]:
+            used.add(block["condition_pre"])
+            used.add(block["condition_sel"])
+        missing_from_growth = used - defined
+        extra_in_growth = defined - used
+        problems = []
+        if missing_from_growth:
+            problems.append(
+                "conditions in condition_blocks but absent from growth: "
+                + str(sorted(missing_from_growth))
+            )
+        if extra_in_growth:
+            problems.append(
+                "keys in growth not used by any condition_block: "
+                + str(sorted(extra_in_growth))
+            )
+        if problems:
+            raise ValueError(
+                "growth / condition_blocks mismatch in config:\n  "
+                + "\n  ".join(problems)
+            )
 
     return config
