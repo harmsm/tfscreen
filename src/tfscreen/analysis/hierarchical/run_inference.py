@@ -417,7 +417,8 @@ class RunInference:
                        out_root,
                        num_posterior_samples=10000,
                        sampling_batch_size=100,
-                       forward_batch_size=512):
+                       forward_batch_size=512,
+                       sites_to_save=None):
         """
         Generate and save posterior samples using the trained guide.
 
@@ -440,6 +441,10 @@ class RunInference:
             (default 100).
         forward_batch_size : int, optional
             Batch size for calculating forward predictions (default 512).
+        sites_to_save : list of str or None, optional
+            If given, only these site names are written to the HDF5 file.
+            If None (default), all sites are saved. Use this to reduce output
+            file size when only a subset of parameters is needed.
         """
 
         guide = svi.guide
@@ -506,18 +511,22 @@ class RunInference:
                     # Collect all samples (latents + predictions) for this batch
                     # Predictions from forward pass
                     for k, v in batch_pred.items():
+                        if sites_to_save is not None and k not in sites_to_save:
+                            continue
                         if k not in batch_collector:
                             batch_collector[k] = []
                         batch_collector[k].append(jax.device_get(v))
-                
+
                     # Latents that weren't in predictions (e.g. guide-only parameters)
                     for k, v in batch_latents.items():
                         if k in batch_pred:
                             continue
-                            
+                        if sites_to_save is not None and k not in sites_to_save:
+                            continue
+
                         if k not in batch_collector:
                             batch_collector[k] = []
-                        
+
                         # If global (not in dim_map), only add on first genotype batch
                         if k not in dim_map:
                             if start_idx == 0:
@@ -544,8 +553,10 @@ class RunInference:
                         # Create dataset on first write
                         maxshape = (num_posterior_samples,) + v.shape[1:]
                         chunks = (min(sampling_batch_size, 100),) + v.shape[1:]
-                        hf.create_dataset(k, shape=maxshape, dtype=v.dtype, chunks=chunks)
-                    
+                        hf.create_dataset(k, shape=maxshape, dtype=v.dtype,
+                                          chunks=chunks,
+                                          compression="gzip", compression_opts=4)
+
                     hf[k][samples_written:samples_written + batch_size_actual] = v
                 
                 samples_written += batch_size_actual
@@ -997,7 +1008,8 @@ class RunInference:
                                out_root,
                                num_posterior_samples=10000,
                                sampling_batch_size=100,
-                               forward_batch_size=512):
+                               forward_batch_size=512,
+                               sites_to_save=None):
         """
         Generate posterior samples from a MAP solution using the Laplace approximation.
 
@@ -1023,6 +1035,9 @@ class RunInference:
             Number of latent samples to draw per batch (default 100).
         forward_batch_size : int, optional
             Number of genotypes to process per forward-model batch (default 512).
+        sites_to_save : list of str or None, optional
+            If given, only these site names are written to the HDF5 file.
+            If None (default), all sites are saved.
 
         Notes
         -----
@@ -1155,10 +1170,14 @@ class RunInference:
                                                  data=batch_data)
 
                     for k, v in batch_pred.items():
+                        if sites_to_save is not None and k not in sites_to_save:
+                            continue
                         batch_collector.setdefault(k, []).append(jax.device_get(v))
 
                     for k, v in batch_latents.items():
                         if k in batch_pred:
+                            continue
+                        if sites_to_save is not None and k not in sites_to_save:
                             continue
                         if k not in dim_map:
                             if start_idx == 0:
@@ -1180,7 +1199,9 @@ class RunInference:
                     if k not in hf:
                         maxshape = (num_posterior_samples,) + v.shape[1:]
                         chunks = (min(sampling_batch_size, 100),) + v.shape[1:]
-                        hf.create_dataset(k, shape=maxshape, dtype=v.dtype, chunks=chunks)
+                        hf.create_dataset(k, shape=maxshape, dtype=v.dtype,
+                                          chunks=chunks,
+                                          compression="gzip", compression_opts=4)
                     hf[k][samples_written: samples_written + batch_size_actual] = v
 
                 samples_written += batch_size_actual
@@ -1191,7 +1212,8 @@ class RunInference:
     def get_nuts_posteriors(self,
                             mcmc_samples,
                             out_root,
-                            forward_batch_size=512):
+                            forward_batch_size=512,
+                            sites_to_save=None):
         """
         Generate and save posterior predictions from NUTS MCMC samples.
 
@@ -1210,6 +1232,9 @@ class RunInference:
         forward_batch_size : int, optional
             Number of genotypes to process per forward-model batch
             (default 512).
+        sites_to_save : list of str or None, optional
+            If given, only these site names are written to the HDF5 file.
+            If None (default), all sites are saved.
         """
 
         data_on_gpu = jax.device_put(self.model.data)
@@ -1244,10 +1269,14 @@ class RunInference:
                                          data=batch_data)
 
             for k, v in batch_pred.items():
+                if sites_to_save is not None and k not in sites_to_save:
+                    continue
                 batch_collector.setdefault(k, []).append(jax.device_get(v))
 
             for k, v in batch_latents.items():
                 if k in batch_pred:
+                    continue
+                if sites_to_save is not None and k not in sites_to_save:
                     continue
                 if k not in dim_map:
                     if start_idx == 0:
@@ -1266,7 +1295,8 @@ class RunInference:
         with h5py.File(h5_file, "w") as hf:
             for k, v in results.items():
                 chunks = (min(100, v.shape[0]),) + v.shape[1:]
-                hf.create_dataset(k, data=v, chunks=chunks)
+                hf.create_dataset(k, data=v, chunks=chunks,
+                                  compression="gzip", compression_opts=4)
             hf.attrs["num_samples"] = num_samples
             hf.flush()
 

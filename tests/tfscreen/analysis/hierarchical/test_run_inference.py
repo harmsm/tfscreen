@@ -680,6 +680,84 @@ def test_get_nuts_posteriors_num_samples_in_attrs(tmpdir):
         assert hf.attrs["num_samples"] == num_samples
 
 
+def test_get_nuts_posteriors_sites_to_save(tmpdir):
+    """sites_to_save restricts which sites appear in the HDF5 file."""
+    num_genotype = 5
+    num_samples = 8
+    model = LaplaceModel(num_genotype=num_genotype)
+    ri = RunInference(model, seed=0)
+    samples = _fake_mcmc_samples(num_samples, num_genotype)
+
+    out_root = str(tmpdir.join("nuts_filtered"))
+    ri.get_nuts_posteriors(samples, out_root=out_root,
+                           sites_to_save=["geno_p"])
+
+    with h5py.File(f"{out_root}_posterior.h5", "r") as hf:
+        assert "geno_p" in hf
+        assert "global_p" not in hf
+        assert hf["geno_p"].shape == (num_samples, num_genotype)
+
+
+def test_get_nuts_posteriors_compression(tmpdir):
+    """HDF5 datasets written by get_nuts_posteriors are gzip-compressed."""
+    num_genotype = 4
+    num_samples = 6
+    model = LaplaceModel(num_genotype=num_genotype)
+    ri = RunInference(model, seed=0)
+    samples = _fake_mcmc_samples(num_samples, num_genotype)
+
+    out_root = str(tmpdir.join("nuts_compressed"))
+    ri.get_nuts_posteriors(samples, out_root=out_root)
+
+    with h5py.File(f"{out_root}_posterior.h5", "r") as hf:
+        for k in hf.keys():
+            assert hf[k].compression == "gzip", (
+                f"dataset '{k}' should be gzip-compressed"
+            )
+
+
+def test_get_laplace_posteriors_sites_to_save(tmpdir):
+    """sites_to_save restricts which sites appear in the Laplace HDF5 file."""
+    model = LaplaceModel(num_genotype=4)
+    ri, map_params = _laplace_map_params(model)
+
+    out_root = str(tmpdir.join("laplace_filtered"))
+    ri.get_laplace_posteriors(
+        map_params=map_params,
+        out_root=out_root,
+        num_posterior_samples=8,
+        sampling_batch_size=4,
+        forward_batch_size=4,
+        sites_to_save=["geno_p"],
+    )
+
+    with h5py.File(f"{out_root}_posterior.h5", "r") as hf:
+        assert "geno_p" in hf
+        assert "global_p" not in hf
+        assert hf["geno_p"].shape == (8, 4)
+
+
+def test_get_laplace_posteriors_compression(tmpdir):
+    """HDF5 datasets written by get_laplace_posteriors are gzip-compressed."""
+    model = LaplaceModel(num_genotype=4)
+    ri, map_params = _laplace_map_params(model)
+
+    out_root = str(tmpdir.join("laplace_compressed"))
+    ri.get_laplace_posteriors(
+        map_params=map_params,
+        out_root=out_root,
+        num_posterior_samples=8,
+        sampling_batch_size=8,
+        forward_batch_size=4,
+    )
+
+    with h5py.File(f"{out_root}_posterior.h5", "r") as hf:
+        for k in hf.keys():
+            assert hf[k].compression == "gzip", (
+                f"dataset '{k}' should be gzip-compressed"
+            )
+
+
 # =============================================================================
 # _write_epoch_checkpoint
 # =============================================================================

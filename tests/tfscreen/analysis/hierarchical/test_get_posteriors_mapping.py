@@ -197,5 +197,99 @@ def test_get_posteriors_manual_guide_indexing(tmpdir):
         with h5py.File(f"{out_root}_posterior.h5", 'r') as post:
             assert post["geno_p"].shape == (4, 10)
 
+def test_get_posteriors_sites_to_save_filters_output(tmpdir):
+    """sites_to_save writes only the requested sites to the HDF5 file."""
+    num_genotypes = 10
+    model = MockModel(num_genotype=num_genotypes)
+    ri = RunInference(model, seed=42)
+
+    svi = ri.setup_svi(guide_type="delta")
+    svi_state = svi.init(ri.get_key(), data=model.data, priors=model.priors)
+
+    out_root = str(tmpdir.join("filtered"))
+    ri.get_posteriors(svi, svi_state, out_root,
+                      num_posterior_samples=6,
+                      sampling_batch_size=3,
+                      forward_batch_size=10,
+                      sites_to_save=["geno_p", "global_p"])
+
+    with h5py.File(f"{out_root}_posterior.h5", "r") as hf:
+        keys = set(hf.keys())
+        assert "geno_p" in keys
+        assert "global_p" in keys
+        # Sites not in sites_to_save must be absent
+        assert "geno_p_det" not in keys
+        assert "matrix_p" not in keys
+        assert "det_p_in" not in keys
+        assert "det_p_out" not in keys
+        # Shapes are still correct
+        assert hf["geno_p"].shape == (6, num_genotypes)
+        assert hf["global_p"].shape == (6,)
+
+
+def test_get_posteriors_sites_to_save_none_saves_all(tmpdir):
+    """sites_to_save=None (default) saves every site, same as before."""
+    num_genotypes = 8
+    model = MockModel(num_genotype=num_genotypes)
+    ri = RunInference(model, seed=7)
+
+    svi = ri.setup_svi(guide_type="delta")
+    svi_state = svi.init(ri.get_key(), data=model.data, priors=model.priors)
+
+    out_root = str(tmpdir.join("all_sites"))
+    ri.get_posteriors(svi, svi_state, out_root,
+                      num_posterior_samples=4,
+                      sampling_batch_size=4,
+                      forward_batch_size=8,
+                      sites_to_save=None)
+
+    with h5py.File(f"{out_root}_posterior.h5", "r") as hf:
+        keys = set(hf.keys())
+    assert {"geno_p", "global_p", "geno_p_det", "matrix_p", "det_p_in", "det_p_out"}.issubset(keys)
+
+
+def test_get_posteriors_compression_enabled(tmpdir):
+    """HDF5 datasets are gzip-compressed."""
+    num_genotypes = 8
+    model = MockModel(num_genotype=num_genotypes)
+    ri = RunInference(model, seed=3)
+
+    svi = ri.setup_svi(guide_type="delta")
+    svi_state = svi.init(ri.get_key(), data=model.data, priors=model.priors)
+
+    out_root = str(tmpdir.join("compressed"))
+    ri.get_posteriors(svi, svi_state, out_root,
+                      num_posterior_samples=4,
+                      sampling_batch_size=4,
+                      forward_batch_size=8)
+
+    with h5py.File(f"{out_root}_posterior.h5", "r") as hf:
+        for k in hf.keys():
+            assert hf[k].compression == "gzip", (
+                f"dataset '{k}' should be gzip-compressed"
+            )
+
+
+def test_get_posteriors_sites_to_save_with_batched_forward(tmpdir):
+    """sites_to_save works correctly when forward_batch_size < num_genotypes."""
+    num_genotypes = 10
+    model = MockModel(num_genotype=num_genotypes)
+    ri = RunInference(model, seed=99)
+
+    svi = ri.setup_svi(guide_type="delta")
+    svi_state = svi.init(ri.get_key(), data=model.data, priors=model.priors)
+
+    out_root = str(tmpdir.join("filtered_batched"))
+    ri.get_posteriors(svi, svi_state, out_root,
+                      num_posterior_samples=6,
+                      sampling_batch_size=3,
+                      forward_batch_size=3,   # forces multiple forward batches
+                      sites_to_save=["geno_p"])
+
+    with h5py.File(f"{out_root}_posterior.h5", "r") as hf:
+        assert list(hf.keys()) == ["geno_p"]
+        assert hf["geno_p"].shape == (6, num_genotypes)
+
+
 if __name__ == "__main__":
     pytest.main([__file__])

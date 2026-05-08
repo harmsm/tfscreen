@@ -11,7 +11,7 @@ def mock_config():
         "observable_calculator": "mock_calc",
         "observable_calc_kwargs": {"k": "v"},
         "ddG_spreadsheet": "ddG.csv",
-        "calibration_file": "cal.csv",
+        "growth": {"cond_A": {"m": 1.0, "b": 0.0}},
         "mut_growth_rate_shape": 1.0,
         "mut_growth_rate_scale": 0.5
     }
@@ -53,7 +53,7 @@ def test_library_prediction_success(mocker, mock_config):
     assert kwargs["observable_calculator"] == mock_config["observable_calculator"]
     assert kwargs["observable_calc_kwargs"] == mock_config["observable_calc_kwargs"]
     assert kwargs["ddG_df"] == mock_config["ddG_spreadsheet"]
-    assert kwargs["calibration_data"] == mock_config["calibration_file"]
+    assert kwargs["growth_params"] == mock_config["growth"]
     assert kwargs["mut_growth_rate_shape"] == mock_config["mut_growth_rate_shape"]
     assert kwargs["mut_growth_rate_scale"] == mock_config["mut_growth_rate_scale"]
 
