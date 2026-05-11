@@ -21,18 +21,15 @@ def mock_run_inference(mocker):
     # Mock where RunInference is imported in run_growth_analysis
     mock_ri_class = mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis.RunInference")
     mock_ri_instance = mock_ri_class.return_value
-    
+
     # Setup default returns for instance methods
     mock_ri_instance.setup_svi.return_value = "mock_svi_obj"
     mock_ri_instance.setup_map.return_value = "mock_map_obj"
     mock_ri_instance._iterations_per_epoch = 1
-    
+
     # run_optimization returns (svi_state, params, converged)
     mock_ri_instance.run_optimization.return_value = ("final_state", {"p": 1}, True)
 
-    # Patch summarize_posteriors where it is imported in run_growth_analysis
-    mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis.summarize_posteriors")
-    
     # Mock os.path.exists to return False by default
     mocker.patch("os.path.exists", return_value=False)
 
@@ -45,20 +42,19 @@ def mock_run_inference(mocker):
 def test_run_svi_flow_converged(mock_run_inference):
     """Test standard SVI flow where convergence is reached."""
     _, ri = mock_run_inference
-    
+
     # Execute
     state, params, converged = _run_svi(
-        ri, 
+        ri,
         init_params=None,
-        config_file="config.yaml",
         out_root="test_root",
         max_num_epochs=500,
         num_posterior_samples=100
     )
-    
+
     # 1. Setup SVI
     ri.setup_svi.assert_called_once()
-    
+
     # 2. Run Optimization
     ri.run_optimization.assert_called_once_with(
         "mock_svi_obj",
@@ -74,7 +70,7 @@ def test_run_svi_flow_converged(mock_run_inference):
         init_param_jitter=ANY,
         epoch_checkpoint_interval=ANY
     )
-    
+
     # 3. Get Posteriors (because converged=True)
     ri.get_posteriors.assert_called_once_with(
         svi="mock_svi_obj",
@@ -84,7 +80,7 @@ def test_run_svi_flow_converged(mock_run_inference):
         sampling_batch_size=ANY,
         forward_batch_size=ANY
     )
-    
+
     assert state == "final_state"
     assert converged is True
 
@@ -93,14 +89,13 @@ def test_run_svi_flow_not_converged_no_posterior(mock_run_inference):
     _, ri = mock_run_inference
     # Force non-convergence
     ri.run_optimization.return_value = ("state", {}, False)
-    
+
     state, params, converged = _run_svi(
-        ri, 
+        ri,
         init_params=None,
-        config_file="config.yaml",
         always_get_posterior=False
     )
-    
+
     # Should NOT get posteriors
     ri.get_posteriors.assert_not_called()
     assert converged is False
@@ -109,9 +104,9 @@ def test_run_svi_flow_always_posterior(mock_run_inference):
     """Test SVI flow where it fails to converge but posteriors are forced."""
     _, ri = mock_run_inference
     ri.run_optimization.return_value = ("state", {}, False)
-    
-    _run_svi(ri, init_params=None, config_file="config.yaml", always_get_posterior=True)
-    
+
+    _run_svi(ri, init_params=None, always_get_posterior=True)
+
     # Should get posteriors despite no convergence
     ri.get_posteriors.assert_called_once()
 
@@ -119,7 +114,7 @@ def test_run_svi_not_converged_stdout(mock_run_inference, capsys):
     """Test SVI not converged message."""
     _, ri = mock_run_inference
     ri.run_optimization.return_value = ("state", {}, False)
-    _run_svi(ri, init_params=None, config_file="config.yaml")
+    _run_svi(ri, init_params=None)
     captured = capsys.readouterr()
     assert "SVI run has not yet converged." in captured.out
 
@@ -134,15 +129,14 @@ def test_run_map_flow(mock_run_inference):
     state, params, converged = _run_map(
         ri,
         init_params=init_params,
-        config_file="config.yaml",
         out_root="test_map",
         max_num_epochs=1000,
         num_posterior_samples=100
     )
-    
+
     # 1. Setup MAP
     ri.setup_svi.assert_called_once()
-    
+
     # 2. Run Optimization
     ri.run_optimization.assert_called_once_with(
         "mock_svi_obj",
@@ -158,19 +152,18 @@ def test_run_map_flow(mock_run_inference):
         init_param_jitter=ANY,
         epoch_checkpoint_interval=ANY
     )
-    
+
     # 3. Write Params
     ri.write_params.assert_called_once_with({"p": 1}, out_root="test_map")
 
-    # 4. Get Posteriors (REMOVED from _run_map in recent cleanup, wait, let's verify logic)
-    # Actually always_get_posterior=False is default
+    # always_get_posterior=False is default
     ri.get_posteriors.assert_not_called()
 
 def test_run_map_not_converged(mock_run_inference, capsys):
     """Test MAP not converged message."""
     _, ri = mock_run_inference
     ri.run_optimization.return_value = ("state", {"p": 1}, False)
-    _run_map(ri, init_params={"p": 1}, config_file="config.yaml", always_get_posterior=False)
+    _run_map(ri, init_params={"p": 1}, always_get_posterior=False)
     captured = capsys.readouterr()
     assert "MAP run converged" not in captured.out
     assert "MAP run has not yet converged" in captured.out
@@ -187,17 +180,13 @@ def mock_ri_for_nuts(mocker):
     mock_mcmc = MagicMock()
     mock_mcmc.get_samples.return_value = {"param": [1.0, 2.0]}
     ri.run_nuts.return_value = mock_mcmc
-    mocker.patch(
-        "tfscreen.analysis.hierarchical.growth_model.scripts"
-        ".run_growth_analysis.summarize_posteriors"
-    )
     return ri
 
 
 def test_run_nuts_calls_run_nuts(mock_ri_for_nuts):
     """_run_nuts delegates to ri.run_nuts with the correct NUTS params."""
     ri = mock_ri_for_nuts
-    _run_nuts(ri, config_file="cfg.yaml",
+    _run_nuts(ri,
               nuts_num_warmup=10,
               nuts_num_samples=20,
               nuts_num_chains=2,
@@ -217,29 +206,12 @@ def test_run_nuts_calls_get_nuts_posteriors(mock_ri_for_nuts):
     expected_samples = {"param": [1.0, 2.0]}
     ri.run_nuts.return_value.get_samples.return_value = expected_samples
 
-    _run_nuts(ri, config_file="cfg.yaml", out_root="myroot", forward_batch_size=64)
+    _run_nuts(ri, out_root="myroot", forward_batch_size=64)
 
     ri.get_nuts_posteriors.assert_called_once_with(
         expected_samples,
         out_root="myroot",
         forward_batch_size=64,
-    )
-
-
-def test_run_nuts_calls_summarize_posteriors(mock_ri_for_nuts, mocker):
-    """_run_nuts calls summarize_posteriors with the posterior file and config."""
-    ri = mock_ri_for_nuts
-    summarize_mock = mocker.patch(
-        "tfscreen.analysis.hierarchical.growth_model.scripts"
-        ".run_growth_analysis.summarize_posteriors"
-    )
-
-    _run_nuts(ri, config_file="my_config.yaml", out_root="myroot")
-
-    summarize_mock.assert_called_once_with(
-        posterior_file="myroot_posterior.h5",
-        config_file="my_config.yaml",
-        out_root="myroot",
     )
 
 
@@ -250,7 +222,7 @@ def test_run_nuts_writes_checkpoint(tmp_path, mock_ri_for_nuts):
     ri.run_nuts.return_value.get_samples.return_value = samples
     out_root = str(tmp_path / "nuts_chk")
 
-    _run_nuts(ri, config_file="cfg.yaml", out_root=out_root)
+    _run_nuts(ri, out_root=out_root)
 
     chk_path = f"{out_root}_checkpoint.pkl"
     assert os.path.exists(chk_path)
@@ -266,13 +238,13 @@ def test_run_nuts_returns_samples(mock_ri_for_nuts):
     samples = {"param": [3.0]}
     ri.run_nuts.return_value.get_samples.return_value = samples
 
-    result = _run_nuts(ri, config_file="cfg.yaml")
+    result = _run_nuts(ri)
 
     assert result is samples
 
 
 def test_run_nuts_stdout(mock_ri_for_nuts, capsys):
     """_run_nuts prints a completion message."""
-    _run_nuts(mock_ri_for_nuts, config_file="cfg.yaml")
+    _run_nuts(mock_ri_for_nuts)
     captured = capsys.readouterr()
     assert "NUTS run complete." in captured.out

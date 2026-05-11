@@ -249,9 +249,7 @@ def extract_theta_curves(model, posteriors, q_to_get=None, manual_titrant_df=Non
 def extract_growth_predictions(model,
                                posteriors,
                                q_to_get=None,
-                               num_samples=100,
-                               row_chunk_size=100,
-                               max_block_elements=1_000_000_000):
+                               num_samples=100):
     """
     Extract predicted ln_cfu values matching the input growth data.
 
@@ -279,10 +277,6 @@ def extract_growth_predictions(model,
         ``num_samples`` exceeds the total number of posterior samples. Set to
         ``None`` to suppress sample columns and return only quantiles.
         Default 100.
-    row_chunk_size : int, optional
-        Number of rows to process at a time. Defaults to 100.
-    max_block_elements : int, optional
-        Maximum number of elements to read in a single HDF5 block. Defaults to 1,000,000,000.
 
     Returns
     -------
@@ -309,45 +303,31 @@ def extract_growth_predictions(model,
     # Grab the growth_pred tensor
     growth_pred = get_posterior_samples(param_posteriors, "growth_pred")
 
-    # The tensor shape is (num_samples, replicate, time, condition_pre, 
+    # The tensor shape is (num_samples, replicate, time, condition_pre,
     # condition_sel, titrant_name, titrant_conc, genotype)
-    
-    # Sort the dataframe by index columns to improve HDF5 access locality
-    index_cols = ["replicate_idx", "time_idx", "condition_pre_idx", 
-                  "condition_sel_idx", "titrant_name_idx", 
-                  "titrant_conc_idx", "genotype_idx"]
-    
-    out_df = model.growth_df.copy()
-    out_df = out_df.sort_values(by=index_cols)
-    
-    # Get the sorted index columns
-    rep_idx = out_df["replicate_idx"].values
-    time_idx = out_df["time_idx"].values
-    pre_idx = out_df["condition_pre_idx"].values
-    sel_idx = out_df["condition_sel_idx"].values
-    name_idx = out_df["titrant_name_idx"].values
-    conc_idx = out_df["titrant_conc_idx"].values
-    geno_idx = out_df["genotype_idx"].values
 
-    # Create a clean dataframe for output
+    group_cols = ["replicate_idx", "time_idx", "condition_pre_idx",
+                  "condition_sel_idx", "titrant_name_idx", "titrant_conc_idx"]
+
+    out_df = model.growth_df.copy()
+    out_df = out_df.sort_values(by=group_cols + ["genotype_idx"])
+
     keep_columns = ["replicate", "genotype",
-                    "condition_pre", "condition_sel", 
+                    "condition_pre", "condition_sel",
                     "titrant_name", "titrant_conc",
                     "t_pre", "t_sel",
-                    "ln_cfu","ln_cfu_std"]
+                    "ln_cfu", "ln_cfu_std"]
 
-    out_df = out_df[keep_columns].reset_index(drop=True)
+    # Carry index columns through reset so groupby positions match out_df rows
+    out_df = out_df[keep_columns + group_cols + ["genotype_idx"]].reset_index(drop=True)
 
     total_rows = len(out_df)
 
-    # Initialize quantile columns
-    for q_name in q_to_get:
-        out_df[q_name] = np.nan
-
-    # Sort quantiles to ensure predictable behavior
     q_names = list(q_to_get.keys())
     q_values = np.array([q_to_get[name] for name in q_names])
-    
+    for q_name in q_names:
+        out_df[q_name] = np.nan
+
     is_h5 = isinstance(growth_pred, h5py.Dataset)
     num_posterior_samples = growth_pred.shape[0]
 
@@ -358,76 +338,49 @@ def extract_growth_predictions(model,
                                               replace=num_samples > num_posterior_samples)
         sample_arr = np.empty((total_rows, num_samples))
 
-    # Grab chunks of rows to avoid OOM
-    for start_r in tqdm(range(0, total_rows, row_chunk_size)):
+    if is_h5:
+        # For HDF5: iterate by (rep, time, condition) group and read one full
+        # genotype slice per group. This avoids bounding-box explosion when
+        # consecutive chunks straddle group boundaries (which makes gmin=0,
+        # gmax=num_genotypes-1 for every boundary chunk).
+        num_groups = out_df[group_cols].drop_duplicates().shape[0]
+        for keys, grp in tqdm(out_df.groupby(group_cols, sort=False),
+                               total=num_groups):
+            r, t, p, s, n, c = (int(k) for k in keys)
+            g_idx = grp["genotype_idx"].values
+            row_pos = grp.index.values
 
-        end_r = min(start_r + row_chunk_size, total_rows)
-        
-        # Slices for this chunk
-        r_slice = rep_idx[start_r:end_r]
-        t_slice = time_idx[start_r:end_r]
-        p_slice = pre_idx[start_r:end_r]
-        s_slice = sel_idx[start_r:end_r]
-        n_slice = name_idx[start_r:end_r]
-        c_slice = conc_idx[start_r:end_r]
-        g_slice = geno_idx[start_r:end_r]
+            # Single contiguous read: all posterior samples × all genotypes
+            # for this fixed (rep, time, condition) combination.
+            geno_slice = growth_pred[:, r, t, p, s, n, c, :]  # (S, G)
+            preds = geno_slice[:, g_idx]                        # (S, len(grp))
 
-        if is_h5:
-            # Calculate bounding box for this chunk
-            rmin, rmax = r_slice.min(), r_slice.max()
-            tmin, tmax = t_slice.min(), t_slice.max()
-            pmin, pmax = p_slice.min(), p_slice.max()
-            smin, smax = s_slice.min(), s_slice.max()
-            nmin, nmax = n_slice.min(), n_slice.max()
-            cmin, cmax = c_slice.min(), c_slice.max()
-            gmin, gmax = g_slice.min(), g_slice.max()
+            all_quantiles = np.quantile(preds, q_values, axis=0)
+            for i, q_name in enumerate(q_names):
+                out_df.loc[row_pos, q_name] = all_quantiles[i]
 
-            # Calculate volume of bounding box (excluding num_samples)
-            # Cast to Python int to avoid numpy fixed-width overflow warnings
-            spatial_volume = (
-                int(rmax - rmin + 1) * int(tmax - tmin + 1) * 
-                int(pmax - pmin + 1) * int(smax - smin + 1) * 
-                int(nmax - nmin + 1) * int(cmax - cmin + 1) * 
-                int(gmax - gmin + 1)
-            )
-            
-            if (spatial_volume * int(num_posterior_samples)) <= max_block_elements:
-                # Read the entire block at once
-                block = growth_pred[:, 
-                                    rmin:rmax+1, tmin:tmax+1, 
-                                    pmin:pmax+1, smin:smax+1, 
-                                    nmin:nmax+1, cmin:cmax+1, 
-                                    gmin:gmax+1]
-                
-                # Index into the block using relative indices
-                preds_chunk = block[:, 
-                                    r_slice - rmin, t_slice - tmin, 
-                                    p_slice - pmin, s_slice - smin, 
-                                    n_slice - nmin, c_slice - cmin, 
-                                    g_slice - gmin]
-            else:
-                # Fallback to row-by-row if the block is too sparse/large
-                preds_chunk_list = []
-                for idx in range(len(r_slice)):
-                    row_data = growth_pred[:, r_slice[idx], t_slice[idx], p_slice[idx], 
-                                           s_slice[idx], n_slice[idx], c_slice[idx], g_slice[idx]]
-                    preds_chunk_list.append(row_data)
-                preds_chunk = np.stack(preds_chunk_list, axis=1)
-        else:
-            # Standard numpy indexing for non-HDF5
-            preds_chunk = growth_pred[:, r_slice, t_slice, p_slice, s_slice, n_slice, c_slice, g_slice]
+            if num_samples is not None:
+                sample_arr[row_pos] = preds[chosen_sample_idxs].T
+    else:
+        # numpy: the full tensor is in memory; one vectorized fancy-index
+        # across all rows is fastest.
+        rep_idx  = out_df["replicate_idx"].values
+        time_idx = out_df["time_idx"].values
+        pre_idx  = out_df["condition_pre_idx"].values
+        sel_idx  = out_df["condition_sel_idx"].values
+        name_idx = out_df["titrant_name_idx"].values
+        conc_idx = out_df["titrant_conc_idx"].values
+        geno_idx = out_df["genotype_idx"].values
 
-        # Calculate all quantiles in one go: (len(q_values), chunk_size)
-        all_quantiles = np.quantile(preds_chunk, q_values, axis=0)
+        preds_all = growth_pred[:, rep_idx, time_idx, pre_idx,
+                                sel_idx, name_idx, conc_idx, geno_idx]
 
-        # Assign to out_df
+        all_quantiles = np.quantile(preds_all, q_values, axis=0)
         for i, q_name in enumerate(q_names):
-            out_df.loc[out_df.index[start_r:end_r], q_name] = all_quantiles[i]
+            out_df[q_name] = all_quantiles[i]
 
         if num_samples is not None:
-            # preds_chunk shape: (num_posterior_samples, chunk_size)
-            # store as (chunk_size, num_samples) in the pre-allocated array
-            sample_arr[start_r:end_r] = preds_chunk[chosen_sample_idxs].T
+            sample_arr = preds_all[chosen_sample_idxs].T
 
     if num_samples is not None:
         samples_df = pd.DataFrame(
@@ -437,4 +390,4 @@ def extract_growth_predictions(model,
         )
         out_df = pd.concat([out_df, samples_df], axis=1)
 
-    return out_df
+    return out_df.drop(columns=group_cols + ["genotype_idx"])

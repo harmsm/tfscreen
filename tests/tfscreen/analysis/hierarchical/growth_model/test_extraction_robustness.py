@@ -311,38 +311,32 @@ def test_extract_theta_curves_hdf5_path(mock_model, tmp_path):
     df = extract_theta_curves(mock_model, h5_path)
     assert "median" in df.columns
 
-def test_extract_growth_predictions_hdf5_blocking(mock_model, tmp_path):
-    """Test extract_growth_predictions with HDF5 blocking and fallback."""
-    # Ensure growth_df is sorted to improve locality for HDF5 coverage
-    mock_model.growth_df = mock_model.growth_df.sort_values(by=[
-        "replicate_idx", "time_idx", "condition_pre_idx", 
-        "condition_sel_idx", "titrant_name_idx", 
-        "titrant_conc_idx", "genotype_idx"
-    ])
-
+def test_extract_growth_predictions_hdf5_basic(mock_model, tmp_path):
+    """Test extract_growth_predictions reads correctly from HDF5."""
     h5_path = os.path.join(tmp_path, "growth.h5")
-    # Shape: (num_samples, replicate, time, condition_pre, condition_sel, titrant_name, titrant_conc, genotype)
+    # Shape: (num_samples, replicate, time, condition_pre, condition_sel,
+    #         titrant_name, titrant_conc, genotype)
     shape = (2, 1, 1, 1, 1, 1, 1, 1)
     data = np.random.rand(*shape)
     with h5py.File(h5_path, "w") as f:
         f.create_dataset("growth_pred", data=data)
-    
-    # Reload from file to ensure it's an HDF5 dataset
+
+    # Test reading from an open h5py.File
     with h5py.File(h5_path, "r") as f:
-        # Test normal blocking
-        df = extract_growth_predictions(mock_model, f, max_block_elements=1000)
+        df = extract_growth_predictions(mock_model, f)
         assert "median" in df.columns
-        
-        # Test fallback (max_block_elements=0)
-        df_fallback = extract_growth_predictions(mock_model, f, max_block_elements=0)
-        assert "median" in df_fallback.columns
 
     # Test load from file path (.h5) to hit the File loading branch
     df_path = extract_growth_predictions(mock_model, h5_path)
     assert "median" in df_path.columns
 
-def test_extract_growth_predictions_hdf5_fallback_sparse(mock_model, tmp_path):
-    """Test extract_growth_predictions HDF5 fallback for large spatial volume."""
+def test_extract_growth_predictions_hdf5_multiple_groups(mock_model, tmp_path):
+    """Test extract_growth_predictions with multiple (rep, time, condition) groups.
+
+    Verifies that the group-based HDF5 read path handles rows that belong to
+    different groups — the case that previously caused bounding-box explosion
+    when chunks straddled group boundaries.
+    """
     mock_model.growth_df = pd.DataFrame({
         "replicate": ["1", "2"],
         "genotype": ["wt", "wt"],
@@ -362,17 +356,17 @@ def test_extract_growth_predictions_hdf5_fallback_sparse(mock_model, tmp_path):
         "titrant_conc_idx": [0, 1],
         "genotype_idx": [0, 0]
     })
-    
+
     h5_path = os.path.join(tmp_path, "growth_large.h5")
-    # Shape: (num_samples, replicate, time, condition_pre, condition_sel, titrant_name, titrant_conc, genotype)
+    # Shape: (num_samples, replicate, time, condition_pre, condition_sel,
+    #         titrant_name, titrant_conc, genotype)
     shape = (2, 2, 1, 2, 2, 1, 2, 1)
     data = np.random.rand(*shape)
     with h5py.File(h5_path, "w") as f:
         f.create_dataset("growth_pred", data=data)
-    
+
     with h5py.File(h5_path, "r") as f:
-        # Trigger the "else" branch in spatial volume check by setting max_block_elements VERY small
-        df = extract_growth_predictions(mock_model, f, max_block_elements=1)
+        df = extract_growth_predictions(mock_model, f)
         assert "median" in df.columns
         assert len(df) == 2
 

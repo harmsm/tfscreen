@@ -4,6 +4,7 @@ import os
 import yaml
 from tfscreen.analysis.hierarchical.growth_model.scripts.configure_growth_analysis import configure_growth_analysis
 from tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis import run_growth_analysis
+from tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors import summarize_posteriors
 
 @pytest.mark.slow
 def test_configure_run_pipeline_smoke(tmpdir):
@@ -63,16 +64,22 @@ def test_configure_run_pipeline_smoke(tmpdir):
 
     # Run analysis (smoke test)
     # We use max_num_epochs=1 to make it fast
-    # We use always_get_posterior=True to trigger summarize_posteriors
+    # We use always_get_posterior=True to ensure the posterior file is written
+    out_root = os.path.join(tmpdir, "test_tfs_out")
     run_growth_analysis(config_file=config_file,
                         seed=42,
                         max_num_epochs=1,
                         num_posterior_samples=10,
                         sampling_batch_size=10,
                         always_get_posterior=True,
-                        out_root=os.path.join(tmpdir, "test_tfs_out"))
+                        out_root=out_root)
 
-    # Verify outputs from summarize_posteriors
+    assert os.path.exists(os.path.join(tmpdir, "test_tfs_out_posterior.h5"))
+
+    # Summarize posteriors as a separate step
+    summarize_posteriors(config_file=config_file,
+                         posterior_file=f"{out_root}_posterior.h5",
+                         out_root=out_root)
+
     assert os.path.exists(os.path.join(tmpdir, "test_tfs_out_growth_pred.csv"))
     assert os.path.exists(os.path.join(tmpdir, "test_tfs_out_hill_n.csv"))
-    assert os.path.exists(os.path.join(tmpdir, "test_tfs_out_posterior.h5"))

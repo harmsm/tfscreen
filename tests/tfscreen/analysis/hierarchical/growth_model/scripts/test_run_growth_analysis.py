@@ -124,11 +124,7 @@ class TestRunGrowthAnalysisPosteriorMAP:
             ".run_growth_analysis.RunInference",
             return_value=ri,
         )
-        summarize_mock = mocker.patch(
-            "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_growth_analysis.summarize_posteriors",
-        )
-        return chk_path, ri, summarize_mock
+        return chk_path, ri
 
     def test_map_detected_by_auto_loc_keys(self, tmp_path, mocker):
         """Params with _auto_loc suffix are recognised as a MAP checkpoint."""
@@ -136,7 +132,7 @@ class TestRunGrowthAnalysisPosteriorMAP:
             "hyper_loc_auto_loc": jnp.array(1.0),
             "hyper_scale_auto_loc": jnp.array(0.5),
         }
-        chk_path, ri, _ = self._setup(mocker, tmp_path, map_params)
+        chk_path, ri = self._setup(mocker, tmp_path, map_params)
 
         run_growth_analysis(
             config_file="dummy.yaml",
@@ -153,7 +149,7 @@ class TestRunGrowthAnalysisPosteriorMAP:
             "a_auto_loc": jnp.array(0.3),
             "b_auto_loc": jnp.array(-1.2),
         }
-        chk_path, ri, _ = self._setup(mocker, tmp_path, map_params)
+        chk_path, ri = self._setup(mocker, tmp_path, map_params)
 
         run_growth_analysis(
             config_file="dummy.yaml",
@@ -174,29 +170,10 @@ class TestRunGrowthAnalysisPosteriorMAP:
             forward_batch_size=256,
         )
 
-    def test_summarize_posteriors_called_after_laplace(self, tmp_path, mocker):
-        """summarize_posteriors is called with the correct posterior file path."""
-        map_params = {"p_auto_loc": jnp.array(0.0)}
-        chk_path, ri, summarize_mock = self._setup(mocker, tmp_path, map_params)
-
-        run_growth_analysis(
-            config_file="cfg.yaml",
-            seed=1,
-            checkpoint_file=chk_path,
-            analysis_method="posterior",
-            out_root="myrun",
-        )
-
-        summarize_mock.assert_called_once_with(
-            posterior_file="myrun_posterior.h5",
-            config_file="cfg.yaml",
-            out_root="myrun",
-        )
-
     def test_map_posterior_returns_none_params_true(self, tmp_path, mocker):
         """MAP posterior path returns (None, chk_params, True)."""
         map_params = {"p_auto_loc": jnp.array(1.5)}
-        chk_path, ri, _ = self._setup(mocker, tmp_path, map_params)
+        chk_path, ri = self._setup(mocker, tmp_path, map_params)
 
         result = run_growth_analysis(
             config_file="dummy.yaml",
@@ -213,7 +190,7 @@ class TestRunGrowthAnalysisPosteriorMAP:
     def test_setup_svi_called_with_delta_guide(self, tmp_path, mocker):
         """setup_svi is called with guide_type='delta' to extract params."""
         map_params = {"p_auto_loc": jnp.array(0.0)}
-        chk_path, ri, _ = self._setup(mocker, tmp_path, map_params)
+        chk_path, ri = self._setup(mocker, tmp_path, map_params)
 
         run_growth_analysis(
             config_file="dummy.yaml",
@@ -227,7 +204,7 @@ class TestRunGrowthAnalysisPosteriorMAP:
     def test_no_seed_required_for_map_posterior(self, tmp_path, mocker):
         """seed=None is allowed for posterior mode when a checkpoint is provided."""
         map_params = {"p_auto_loc": jnp.array(0.0)}
-        chk_path, ri, _ = self._setup(mocker, tmp_path, map_params)
+        chk_path, ri = self._setup(mocker, tmp_path, map_params)
 
         # Should not raise even though seed is None.
         run_growth_analysis(
@@ -260,10 +237,6 @@ class TestRunGrowthAnalysisPosteriorMAP:
             "tfscreen.analysis.hierarchical.growth_model.scripts"
             ".run_growth_analysis.RunInference",
             return_value=ri,
-        )
-        mocker.patch(
-            "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_growth_analysis.summarize_posteriors",
         )
 
         run_growth_analysis(
@@ -454,7 +427,6 @@ class TestRunGrowthAnalysisNuts:
         assert kwargs["nuts_target_accept_prob"] == 0.85
         assert kwargs["forward_batch_size"] == 128
         assert kwargs["out_root"] == "myroot"
-        assert kwargs["config_file"] == "dummy.yaml"
 
     def test_nuts_returns_none_samples_true(self, tmp_path, mocker):
         """analysis_method='nuts' returns (None, mcmc_samples, True)."""
@@ -500,15 +472,11 @@ class TestRunGrowthAnalysisPosteriorNUTS:
             ".run_growth_analysis.RunInference",
             return_value=ri,
         )
-        summarize_mock = mocker.patch(
-            "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_growth_analysis.summarize_posteriors",
-        )
-        return chk_path, ri, summarize_mock, stored_samples
+        return chk_path, ri, stored_samples
 
     def test_nuts_checkpoint_detected_by_mcmc_samples_key(self, tmp_path, mocker):
         """A checkpoint with 'mcmc_samples' is recognised as a NUTS checkpoint."""
-        chk_path, ri, _, _ = self._setup(mocker, tmp_path)
+        chk_path, ri, _ = self._setup(mocker, tmp_path)
 
         run_growth_analysis(
             config_file="dummy.yaml",
@@ -523,7 +491,7 @@ class TestRunGrowthAnalysisPosteriorNUTS:
     def test_nuts_posterior_calls_get_nuts_posteriors_with_samples(self, tmp_path, mocker):
         """get_nuts_posteriors receives the exact samples from the checkpoint."""
         samples = {"my_param": [9.0]}
-        chk_path, ri, _, stored = self._setup(mocker, tmp_path, samples=samples)
+        chk_path, ri, stored = self._setup(mocker, tmp_path, samples=samples)
 
         run_growth_analysis(
             config_file="dummy.yaml",
@@ -540,28 +508,10 @@ class TestRunGrowthAnalysisPosteriorNUTS:
             forward_batch_size=64,
         )
 
-    def test_nuts_posterior_calls_summarize_posteriors(self, tmp_path, mocker):
-        """summarize_posteriors is called after get_nuts_posteriors."""
-        chk_path, ri, summarize_mock, _ = self._setup(mocker, tmp_path)
-
-        run_growth_analysis(
-            config_file="cfg.yaml",
-            seed=1,
-            checkpoint_file=chk_path,
-            analysis_method="posterior",
-            out_root="out",
-        )
-
-        summarize_mock.assert_called_once_with(
-            posterior_file="out_posterior.h5",
-            config_file="cfg.yaml",
-            out_root="out",
-        )
-
     def test_nuts_posterior_returns_none_samples_true(self, tmp_path, mocker):
         """NUTS posterior mode returns (None, mcmc_samples, True)."""
         samples = {"param": [5.0]}
-        chk_path, ri, _, stored = self._setup(mocker, tmp_path, samples=samples)
+        chk_path, ri, stored = self._setup(mocker, tmp_path, samples=samples)
 
         svi_state, params, converged = run_growth_analysis(
             config_file="dummy.yaml",

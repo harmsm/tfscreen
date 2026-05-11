@@ -7,7 +7,7 @@ import optax
 
 from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass as GrowthModel
 from tfscreen.analysis.hierarchical.run_inference import RunInference
-from .summarize_posteriors import summarize_posteriors
+
 from tfscreen.util.cli.generalized_main import generalized_main
 
 from tfscreen.analysis.hierarchical.growth_model.configuration_io import read_configuration
@@ -15,7 +15,6 @@ from tfscreen.analysis.hierarchical.growth_model.configuration_io import read_co
 
 def _run_map(ri,
              init_params,
-             config_file,
              checkpoint_file=None,
              out_root="tfs",
              adam_step_size=1e-3,
@@ -130,11 +129,6 @@ def _run_map(ri,
                           num_posterior_samples=num_posterior_samples,
                           sampling_batch_size=sampling_batch_size,
                           forward_batch_size=forward_batch_size)
-        
-        # Write summary files
-        summarize_posteriors(posterior_file=f"{out_root}_posterior.h5",
-                             config_file=config_file,
-                             out_root=out_root)
 
     # Write convergence information to stdout
     if converged:
@@ -146,7 +140,6 @@ def _run_map(ri,
 
 def _run_svi(ri,
              init_params,
-             config_file,
              checkpoint_file=None,
              out_root="tfs",
              adam_step_size=1e-3,
@@ -270,11 +263,6 @@ def _run_svi(ri,
                           sampling_batch_size=sampling_batch_size,
                           forward_batch_size=forward_batch_size)
         
-        # Write summary files
-        summarize_posteriors(posterior_file=f"{out_root}_posterior.h5",
-                             config_file=config_file,
-                             out_root=out_root)
-        
     # Write convergence information to stdout
     if converged:
         print("SVI run converged.",flush=True)
@@ -284,7 +272,6 @@ def _run_svi(ri,
     return svi_state, params, converged
 
 def _run_nuts(ri,
-              config_file,
               out_root="tfs",
               nuts_num_warmup=500,
               nuts_num_samples=500,
@@ -298,8 +285,6 @@ def _run_nuts(ri,
     ----------
     ri : RunInference
         RunInference object that manages model setup and MCMC routines.
-    config_file : str
-        Path to the YAML configuration file (used for summarize_posteriors).
     out_root : str, optional
         Output file root for checkpoints and results (default "tfs").
     nuts_num_warmup : int, optional
@@ -334,14 +319,9 @@ def _run_nuts(ri,
         dill.dump({"mcmc_samples": mcmc_samples}, f)
     os.replace(tmp_checkpoint_file, checkpoint_file)
 
-    # Write posteriors and summary
     ri.get_nuts_posteriors(mcmc_samples,
                            out_root=out_root,
                            forward_batch_size=forward_batch_size)
-
-    summarize_posteriors(posterior_file=f"{out_root}_posterior.h5",
-                         config_file=config_file,
-                         out_root=out_root)
 
     print("NUTS run complete.", flush=True)
 
@@ -494,7 +474,6 @@ def run_growth_analysis(config_file,
         if pre_map_num_epoch > 0 and checkpoint_file is None:
             _, init_params, _ = _run_map(ri,
                                          init_params=init_params,
-                                         config_file=config_file,
                                          checkpoint_file=None,
                                          out_root=f"{out_root}_premap",
                                          adam_step_size=adam_step_size,
@@ -508,7 +487,6 @@ def run_growth_analysis(config_file,
 
         return _run_svi(ri,
                         init_params=init_params,
-                        config_file=config_file,
                         checkpoint_file=checkpoint_file,
                         out_root=out_root,
                         adam_step_size=adam_step_size,
@@ -531,7 +509,6 @@ def run_growth_analysis(config_file,
     elif analysis_method == "map":
         return _run_map(ri,
                         init_params=init_params,
-                        config_file=config_file,
                         checkpoint_file=checkpoint_file,
                         out_root=out_root,
                         adam_step_size=adam_step_size,
@@ -553,7 +530,6 @@ def run_growth_analysis(config_file,
                           
     elif analysis_method == "nuts":
         mcmc_samples = _run_nuts(ri,
-                                 config_file=config_file,
                                  out_root=out_root,
                                  nuts_num_warmup=nuts_num_warmup,
                                  nuts_num_samples=nuts_num_samples,
@@ -589,9 +565,6 @@ def run_growth_analysis(config_file,
             ri.get_nuts_posteriors(chk_data["mcmc_samples"],
                                    out_root=out_root,
                                    forward_batch_size=forward_batch_size)
-            summarize_posteriors(posterior_file=f"{out_root}_posterior.h5",
-                                 config_file=config_file,
-                                 out_root=out_root)
             return None, chk_data["mcmc_samples"], True
 
         temp_svi = ri.setup_svi(guide_type="delta")
@@ -606,15 +579,11 @@ def run_growth_analysis(config_file,
                 sampling_batch_size=sampling_batch_size,
                 forward_batch_size=forward_batch_size
             )
-            summarize_posteriors(posterior_file=f"{out_root}_posterior.h5",
-                                 config_file=config_file,
-                                 out_root=out_root)
             return None, chk_params, True
         else:
             # SVI checkpoint: load directly, no further optimization needed.
             return _run_svi(ri,
                             init_params=init_params,
-                            config_file=config_file,
                             checkpoint_file=checkpoint_file,
                             out_root=out_root,
                             adam_step_size=adam_step_size,
