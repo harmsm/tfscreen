@@ -205,6 +205,45 @@ def get_population_moments(theta_param: ThetaParam, data) -> tuple:
 _ZERO_CONC_VALUE = 1e-20
 
 
+def _solve_theta_np(ln_K_op, ln_K_HL, ln_K_E, conc, tf_total, op_total):
+    """
+    Pure-numpy Newton solve for lac_dimer theta at per-row K values.
+
+    Parameters
+    ----------
+    ln_K_op : (S, N)
+    ln_K_HL : (S, N)
+    ln_K_E  : (S, N)
+    conc    : (N,)  — effector concentrations in M (zero already replaced)
+    tf_total : float
+    op_total : float
+
+    Returns
+    -------
+    theta : np.ndarray, shape (S, N)
+    """
+    K_op = np.exp(ln_K_op)
+    K_HL = np.exp(ln_K_HL)
+    K_E  = np.exp(ln_K_E)
+
+    e_total = conc[np.newaxis, :]
+    Z0      = 1.0 + K_op * op_total + K_HL
+    a       = K_HL * K_E
+    coeff_b = a * (2.0 * tf_total - e_total)
+
+    e_free = e_total * np.ones_like(a)
+    for _ in range(NEWTON_ITERATIONS):
+        f  = a * e_free**3 + coeff_b * e_free**2 + Z0 * e_free - Z0 * e_total
+        df = 3.0 * a * e_free**2 + 2.0 * coeff_b * e_free + Z0
+        e_free = e_free - f / np.where(np.abs(df) < 1e-30, 1e-30, df)
+    e_free = np.clip(e_free, 0.0, e_total)
+
+    w_Hop = K_op * op_total
+    w_LE  = a * e_free**2
+    Z     = 1.0 + w_Hop + K_HL + w_LE
+    return w_Hop / Z
+
+
 def build_calc_df(model, manual_titrant_df):
     """
     Build the concentration grid DataFrame for theta curve extraction.
@@ -314,23 +353,5 @@ def compute_theta_samples(calc_df, param_posteriors, *, tf_total, op_total):
     ln_K_HL_pts = ln_K_HL_all[:, geno_indices]
     ln_K_E_pts  = ln_K_E_all[:, titrant_indices, geno_indices]
 
-    K_op = np.exp(ln_K_op_pts)   # (S, N)
-    K_HL = np.exp(ln_K_HL_pts)   # (S, N)
-    K_E  = np.exp(ln_K_E_pts)    # (S, N)
-
-    e_total  = conc[np.newaxis, :]              # (1, N)
-    Z0       = 1.0 + K_op * op_total + K_HL    # (S, N)
-    a        = K_HL * K_E                       # (S, N)
-    coeff_b  = a * (2.0 * tf_total - e_total)   # (S, N)
-
-    e_free = e_total * np.ones_like(a)   # (S, N)
-    for _ in range(NEWTON_ITERATIONS):
-        f  = a * e_free**3 + coeff_b * e_free**2 + Z0 * e_free - Z0 * e_total
-        df = 3.0 * a * e_free**2 + 2.0 * coeff_b * e_free + Z0
-        e_free = e_free - f / np.where(np.abs(df) < 1e-30, 1e-30, df)
-    e_free = np.clip(e_free, 0.0, e_total)
-
-    w_Hop = K_op * op_total          # (S, N)
-    w_LE  = a * e_free**2            # (S, N)
-    Z     = 1.0 + w_Hop + K_HL + w_LE
-    return w_Hop / Z                 # (S, N)
+    return _solve_theta_np(ln_K_op_pts, ln_K_HL_pts, ln_K_E_pts,
+                           conc, tf_total, op_total)

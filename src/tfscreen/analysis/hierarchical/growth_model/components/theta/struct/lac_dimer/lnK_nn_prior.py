@@ -447,6 +447,108 @@ def get_priors() -> ModelPriors:
     return ModelPriors(**get_hyperparameters())
 
 
+def predict_unmeasured(
+    target_genotypes,
+    titrant_names,
+    manual_titrant_df,
+    mut_labels,
+    pair_labels,
+    param_posteriors,
+    q_to_get,
+    *,
+    tf_total,
+    op_total,
+):
+    """
+    Predict theta for unmeasured genotypes using NN-prior ln-K assembly.
+
+    Identical interface to the lnK_mut variant.  The key difference is that
+    ``d_ln_K_E`` has shape ``(S, M)`` (no T dimension) — the NN prior learns a
+    single per-mutation effect broadcast uniformly across effector species.
+
+    Parameters
+    ----------
+    target_genotypes : list[str]
+    titrant_names : list[str]
+    manual_titrant_df : pd.DataFrame
+    mut_labels : list[str]
+    pair_labels : list[str]
+    param_posteriors : dict-like
+    q_to_get : dict
+    tf_total : float
+    op_total : float
+
+    Returns
+    -------
+    pd.DataFrame
+    """
+    import numpy as np
+    from tfscreen.analysis.hierarchical.posteriors import get_posterior_samples
+    from tfscreen.analysis.hierarchical.growth_model.predict_unmeasured import (
+        _build_genotype_indicators,
+        _build_prediction_grid,
+    )
+    from tfscreen.analysis.hierarchical.growth_model.components.theta.struct.lac_dimer.thermo import (
+        _solve_theta_np,
+        _ZERO_CONC_VALUE,
+    )
+
+    target_genotypes = list(target_genotypes)
+    mut_mat, pair_mat, is_valid = _build_genotype_indicators(
+        target_genotypes, mut_labels, pair_labels
+    )
+    calc_df, geno_idx, titrant_idx = _build_prediction_grid(
+        target_genotypes, titrant_names, manual_titrant_df
+    )
+
+    def _load(key):
+        v = get_posterior_samples(param_posteriors, key)
+        if hasattr(v, "shape") and not hasattr(v, "reshape"):
+            v = v[:]
+        return np.array(v)
+
+    ln_K_op_wt = _load("theta_ln_K_op_wt")   # (S,)
+    ln_K_HL_wt = _load("theta_ln_K_HL_wt")   # (S,)
+    ln_K_E_wt  = _load("theta_ln_K_E_wt")    # (S, T)
+
+    d_op = _load("theta_d_ln_K_op")   # (S, M)
+    d_HL = _load("theta_d_ln_K_HL")   # (S, M)
+    d_E  = _load("theta_d_ln_K_E")    # (S, M) — scalar per mutation, no T dim
+
+    # scalar Ks: (S, N)
+    ln_K_op_geno = ln_K_op_wt[:, None] + np.einsum("sm,nm->sn", d_op, mut_mat)
+    ln_K_HL_geno = ln_K_HL_wt[:, None] + np.einsum("sm,nm->sn", d_HL, mut_mat)
+    # T-dim K: broadcast scalar d_E across T → (S, T, N)
+    ln_K_E_geno = (ln_K_E_wt[:, :, None]
+                   + np.einsum("sm,nm->sn", d_E, mut_mat)[:, None, :])
+
+    if len(pair_labels) > 0:
+        epi_op = _load("theta_epi_ln_K_op")   # (S, P)
+        epi_HL = _load("theta_epi_ln_K_HL")   # (S, P)
+        epi_E  = _load("theta_epi_ln_K_E")    # (S, P) — scalar, no T dim
+        ln_K_op_geno += np.einsum("sp,np->sn", epi_op, pair_mat)
+        ln_K_HL_geno += np.einsum("sp,np->sn", epi_HL, pair_mat)
+        ln_K_E_geno  += np.einsum("sp,np->sn", epi_E, pair_mat)[:, None, :]
+
+    ln_K_op_rows = ln_K_op_geno[:, geno_idx]
+    ln_K_HL_rows = ln_K_HL_geno[:, geno_idx]
+    ln_K_E_rows  = ln_K_E_geno[:, titrant_idx, geno_idx]
+
+    conc = calc_df["titrant_conc"].values.copy().astype(float)
+    conc[conc == 0] = _ZERO_CONC_VALUE
+
+    theta_samples = _solve_theta_np(
+        ln_K_op_rows, ln_K_HL_rows, ln_K_E_rows, conc, tf_total, op_total
+    )
+
+    theta_samples[:, ~is_valid[geno_idx]] = np.nan
+
+    result_df = calc_df[["genotype", "titrant_name", "titrant_conc"]].copy()
+    for q_name, q_val in q_to_get.items():
+        result_df[q_name] = np.quantile(theta_samples, q_val, axis=0)
+    return result_df
+
+
 def get_extract_specs(ctx):
     geno_dim   = ctx.growth_tm.tensor_dim_names.index("genotype")
     num_genotype = len(ctx.growth_tm.tensor_dim_labels[geno_dim])

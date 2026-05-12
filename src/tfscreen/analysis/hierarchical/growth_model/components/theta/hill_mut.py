@@ -719,6 +719,123 @@ def get_extract_specs(ctx):
 _ZERO_CONC_VALUE = 1e-20
 
 
+def predict_unmeasured(
+    target_genotypes,
+    titrant_names,
+    manual_titrant_df,
+    mut_labels,
+    pair_labels,
+    param_posteriors,
+    q_to_get,
+):
+    """
+    Predict theta posterior quantiles for genotypes not in the training set.
+
+    Assembles per-genotype Hill parameters from additive per-mutation effects
+    (and pairwise epistasis terms, where observed) stored in the posterior,
+    then evaluates the Hill equation over the supplied concentration grid.
+    Genotypes containing any mutation not present in mut_labels are set to NaN.
+
+    Parameters
+    ----------
+    target_genotypes : list[str]
+        Genotype strings to predict (slash-separated mutations or "wt").
+    titrant_names : list[str]
+        Ordered titrant names matching the T dimension in the posterior.
+    manual_titrant_df : pd.DataFrame
+        Must have 'titrant_name' and 'titrant_conc' columns.
+    mut_labels : list[str]
+        Mutation labels in the same order used during training.
+    pair_labels : list[str]
+        Pair labels in canonical "A/B" form, in the same order used during
+        training.
+    param_posteriors : dict or h5py.File
+        Posterior samples keyed by parameter name (with "theta_" prefix).
+    q_to_get : dict[str, float]
+        Quantile names → values (0–1).
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns: 'genotype', 'titrant_name', 'titrant_conc', <quantile names>.
+        Quantile values are NaN for genotypes with any unrecognised mutation.
+    """
+    from tfscreen.analysis.hierarchical.posteriors import get_posterior_samples
+    from tfscreen.analysis.hierarchical.growth_model.predict_unmeasured import (
+        _build_genotype_indicators,
+        _build_prediction_grid,
+    )
+
+    target_genotypes = list(target_genotypes)
+
+    mut_mat, pair_mat, is_valid = _build_genotype_indicators(
+        target_genotypes, mut_labels, pair_labels
+    )
+    calc_df, geno_idx, titrant_idx = _build_prediction_grid(
+        target_genotypes, titrant_names, manual_titrant_df
+    )
+
+    def _load(key):
+        v = get_posterior_samples(param_posteriors, key)
+        if hasattr(v, "shape") and not hasattr(v, "reshape"):
+            v = v[:]
+        return np.array(v)
+
+    logit_low_wt   = _load("theta_logit_low_wt")    # (S, T)
+    logit_delta_wt = _load("theta_logit_delta_wt")  # (S, T)
+    log_K_wt       = _load("theta_log_hill_K_wt")   # (S, T)
+    log_n_wt       = _load("theta_log_hill_n_wt")   # (S, T)
+    d_low          = _load("theta_d_logit_low")      # (S, T, M)
+    d_delta        = _load("theta_d_logit_delta")    # (S, T, M)
+    d_K            = _load("theta_d_log_hill_K")     # (S, T, M)
+    d_n            = _load("theta_d_log_hill_n")     # (S, T, M)
+
+    # Assemble per-target-genotype parameters: (S, T, N_geno)
+    logit_low   = logit_low_wt[:, :, None]   + np.einsum("stm,nm->stn", d_low,   mut_mat)
+    logit_delta = logit_delta_wt[:, :, None] + np.einsum("stm,nm->stn", d_delta, mut_mat)
+    log_K       = log_K_wt[:, :, None]       + np.einsum("stm,nm->stn", d_K,     mut_mat)
+    log_n       = log_n_wt[:, :, None]       + np.einsum("stm,nm->stn", d_n,     mut_mat)
+
+    if len(pair_labels) > 0:
+        epi_low   = _load("theta_epi_logit_low")    # (S, T, P)
+        epi_delta = _load("theta_epi_logit_delta")  # (S, T, P)
+        epi_K     = _load("theta_epi_log_hill_K")   # (S, T, P)
+        epi_n     = _load("theta_epi_log_hill_n")   # (S, T, P)
+        logit_low   += np.einsum("stp,np->stn", epi_low,   pair_mat)
+        logit_delta += np.einsum("stp,np->stn", epi_delta, pair_mat)
+        log_K       += np.einsum("stp,np->stn", epi_K,     pair_mat)
+        log_n       += np.einsum("stp,np->stn", epi_n,     pair_mat)
+
+    logit_high = logit_low + logit_delta
+
+    theta_low_arr  = 1.0 / (1.0 + np.exp(-logit_low))   # (S, T, N_geno)
+    theta_high_arr = 1.0 / (1.0 + np.exp(-logit_high))
+    hill_K_arr     = log_K                               # kept in log space
+    hill_n_arr     = np.exp(log_n)
+
+    # Evaluate Hill equation per row: shape (S, N_rows)
+    conc_vals = calc_df["titrant_conc"].values.astype(float).copy()
+    conc_vals[conc_vals == 0] = _ZERO_CONC_VALUE
+    log_conc = np.log(conc_vals)  # (N_rows,)
+
+    t_l = theta_low_arr[:, titrant_idx, geno_idx]    # (S, N_rows)
+    t_h = theta_high_arr[:, titrant_idx, geno_idx]
+    l_K = hill_K_arr[:, titrant_idx, geno_idx]
+    h_n = hill_n_arr[:, titrant_idx, geno_idx]
+
+    occupancy = 1.0 / (1.0 + np.exp(-h_n * (log_conc[np.newaxis, :] - l_K)))
+    theta_samples = t_l + (t_h - t_l) * occupancy   # (S, N_rows)
+
+    # NaN out rows belonging to genotypes with unknown mutations
+    theta_samples[:, ~is_valid[geno_idx]] = np.nan
+
+    result_df = calc_df[["genotype", "titrant_name", "titrant_conc"]].copy()
+    for q_name, q_val in q_to_get.items():
+        result_df[q_name] = np.quantile(theta_samples, q_val, axis=0)
+
+    return result_df
+
+
 def build_calc_df(model, manual_titrant_df):
     """
     Build the concentration grid DataFrame for theta curve extraction.

@@ -246,6 +246,78 @@ def extract_theta_curves(model, posteriors, q_to_get=None, manual_titrant_df=Non
 
     return calc_df.drop(columns=internal_cols)
 
+def extract_theta_unmeasured(model, posteriors, target_genotypes,
+                            manual_titrant_df, q_to_get=None):
+    """
+    Predict theta for unmeasured genotypes using per-mutation additive assembly.
+
+    Dispatches to the active theta component's ``predict_unmeasured`` function.
+    Genotypes that contain any mutation not seen during training are returned
+    with NaN quantiles.
+
+    Parameters
+    ----------
+    model : GrowthModel
+        Fitted model instance (must carry ``mut_labels``, ``pair_labels``,
+        ``growth_tm``, and ``priors``).
+    posteriors : dict or str
+        Posterior samples (dict, NpzFile, or path to .npz/.h5 file).
+    target_genotypes : list[str]
+        Genotype strings to predict.  Format: slash-separated mutations
+        (e.g. ``"M42I/K84L"``) or ``"wt"`` for wild-type.
+    manual_titrant_df : pd.DataFrame
+        Must have ``'titrant_name'`` and ``'titrant_conc'`` columns specifying
+        the concentration grid.  All ``titrant_name`` values must be present in
+        the model.
+    q_to_get : dict, optional
+        Quantiles to extract.  Defaults to the standard set used by other
+        extraction functions.
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns: ``'genotype'``, ``'titrant_name'``, ``'titrant_conc'``, plus
+        one column per quantile key.  Rows for genotypes with unrecognised
+        mutations have NaN quantile values.
+
+    Raises
+    ------
+    ValueError
+        If the active theta component does not implement ``predict_unmeasured``.
+    """
+    module = model_registry.get("theta", {}).get(model._theta)
+    if module is None or not hasattr(module, "predict_unmeasured"):
+        raise ValueError(
+            f"extract_theta_unmeasured requires the theta component to implement "
+            f"predict_unmeasured.  '{model._theta}' does not support this interface."
+        )
+
+    q_to_get, param_posteriors = load_posteriors(posteriors, q_to_get)
+
+    titrant_dim   = model.growth_tm.tensor_dim_names.index("titrant_name")
+    titrant_names = list(model.growth_tm.tensor_dim_labels[titrant_dim])
+
+    extra_kwargs = {}
+    theta_priors = model.priors.theta
+    if hasattr(theta_priors, "theta_tf_total_M"):
+        extra_kwargs["tf_total"] = float(theta_priors.theta_tf_total_M)
+    if hasattr(theta_priors, "theta_op_total_M"):
+        extra_kwargs["op_total"] = float(theta_priors.theta_op_total_M)
+    if hasattr(theta_priors, "theta_conc_unit_scale"):
+        extra_kwargs["conc_unit_scale"] = float(theta_priors.theta_conc_unit_scale)
+
+    return module.predict_unmeasured(
+        target_genotypes=list(target_genotypes),
+        titrant_names=titrant_names,
+        manual_titrant_df=manual_titrant_df,
+        mut_labels=model.mut_labels,
+        pair_labels=model.pair_labels,
+        param_posteriors=param_posteriors,
+        q_to_get=q_to_get,
+        **extra_kwargs,
+    )
+
+
 def extract_growth_predictions(model,
                                posteriors,
                                q_to_get=None,

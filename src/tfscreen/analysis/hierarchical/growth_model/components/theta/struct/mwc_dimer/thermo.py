@@ -217,6 +217,61 @@ def get_population_moments(theta_param: ThetaParam, data) -> tuple:
 _ZERO_CONC_VALUE = 1e-20
 
 
+def _solve_theta_np(ln_K_h_l, ln_K_h_o, ln_K_h_e, ln_K_l_o, ln_K_l_e,
+                    conc, tf_total, op_total):
+    """
+    Pure-numpy Newton solve for MWC-dimer theta at per-row K values.
+
+    Parameters
+    ----------
+    ln_K_h_l : (S, N)
+    ln_K_h_o : (S, N)
+    ln_K_h_e : (S, N)
+    ln_K_l_o : (S, N)
+    ln_K_l_e : (S, N)
+    conc     : (N,)  — effector concentrations in M (zero already replaced)
+    tf_total : float  — monomer units; r = tf_total / 2 is the dimer concentration
+    op_total : float  — unused (operator-depletion approx.)
+
+    Returns
+    -------
+    theta : np.ndarray, shape (S, N)
+    """
+    K_h_l = np.exp(ln_K_h_l)
+    K_h_o = np.exp(ln_K_h_o)
+    K_h_e = np.exp(ln_K_h_e)
+    K_l_o = np.exp(ln_K_l_o)
+    K_l_e = np.exp(ln_K_l_e)
+
+    e_total = conc[np.newaxis, :]
+    r = tf_total / 2.0
+
+    B0 = 1.0 + K_h_l
+    B1 = K_h_e + K_h_l * K_l_e
+    B2 = K_h_e ** 2 + K_h_l * K_l_e ** 2
+
+    c3 = B2
+    c2 = B1 + B2 * (2.0 * r - e_total)
+    c1 = B0 + B1 * (r - e_total)
+    c0 = -B0 * e_total
+
+    e_free = np.broadcast_to(e_total, c2.shape).copy()
+    for _ in range(NEWTON_ITERATIONS):
+        f  = c3 * e_free**3 + c2 * e_free**2 + c1 * e_free + c0
+        df = 3.0 * c3 * e_free**2 + 2.0 * c2 * e_free + c1
+        e_free = e_free - f / np.where(np.abs(df) < 1e-30, 1e-30, df)
+    e_free = np.clip(e_free, 0.0, e_total)
+
+    P_H = 1.0 + K_h_e * e_free + K_h_e ** 2 * e_free ** 2
+    P_L = 1.0 + K_l_e * e_free + K_l_e ** 2 * e_free ** 2
+
+    F = B0 + B1 * e_free + B2 * e_free ** 2
+    h_free = r / np.where(F < 1e-30, 1e-30, F)
+
+    W = h_free * (K_h_o * P_H + K_h_l * K_l_o * P_L)
+    return W / (1.0 + W)
+
+
 def build_calc_df(model, manual_titrant_df):
     """
     Build the concentration-grid DataFrame for theta curve extraction.
@@ -318,36 +373,12 @@ def compute_theta_samples(calc_df, param_posteriors, *, tf_total, op_total,
     ln_K_l_o_all = _load("theta_ln_K_l_o")   # (S, G)
     ln_K_l_e_all = _load("theta_ln_K_l_e")   # (S, T, G)
 
-    K_h_l = np.exp(ln_K_h_l_all[:, geno_indices])                   # (S, N)
-    K_h_o = np.exp(ln_K_h_o_all[:, geno_indices])                   # (S, N)
-    K_h_e = np.exp(ln_K_h_e_all[:, titrant_indices, geno_indices])  # (S, N)
-    K_l_o = np.exp(ln_K_l_o_all[:, geno_indices])                   # (S, N)
-    K_l_e = np.exp(ln_K_l_e_all[:, titrant_indices, geno_indices])  # (S, N)
+    ln_K_h_l_pts = ln_K_h_l_all[:, geno_indices]
+    ln_K_h_o_pts = ln_K_h_o_all[:, geno_indices]
+    ln_K_h_e_pts = ln_K_h_e_all[:, titrant_indices, geno_indices]
+    ln_K_l_o_pts = ln_K_l_o_all[:, geno_indices]
+    ln_K_l_e_pts = ln_K_l_e_all[:, titrant_indices, geno_indices]
 
-    e_total = conc[np.newaxis, :]    # (1, N)
-    r = tf_total / 2.0
-
-    B0 = 1.0 + K_h_l
-    B1 = K_h_e + K_h_l * K_l_e
-    B2 = K_h_e ** 2 + K_h_l * K_l_e ** 2
-
-    c3 = B2
-    c2 = B1 + B2 * (2.0 * r - e_total)
-    c1 = B0 + B1 * (r - e_total)
-    c0 = -B0 * e_total
-
-    e_free = np.broadcast_to(e_total, c2.shape).copy()
-    for _ in range(NEWTON_ITERATIONS):
-        f  = c3 * e_free**3 + c2 * e_free**2 + c1 * e_free + c0
-        df = 3.0 * c3 * e_free**2 + 2.0 * c2 * e_free + c1
-        e_free = e_free - f / np.where(np.abs(df) < 1e-30, 1e-30, df)
-    e_free = np.clip(e_free, 0.0, e_total)
-
-    P_H = 1.0 + K_h_e * e_free + K_h_e ** 2 * e_free ** 2
-    P_L = 1.0 + K_l_e * e_free + K_l_e ** 2 * e_free ** 2
-
-    F = B0 + B1 * e_free + B2 * e_free ** 2
-    h_free = r / np.where(F < 1e-30, 1e-30, F)
-
-    W = h_free * (K_h_o * P_H + K_h_l * K_l_o * P_L)
-    return W / (1.0 + W)    # (S, N)
+    return _solve_theta_np(ln_K_h_l_pts, ln_K_h_o_pts, ln_K_h_e_pts,
+                           ln_K_l_o_pts, ln_K_l_e_pts,
+                           conc, tf_total, op_total)

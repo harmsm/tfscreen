@@ -667,6 +667,123 @@ def get_priors() -> ModelPriors:
     return ModelPriors(**get_hyperparameters())
 
 
+def predict_unmeasured(
+    target_genotypes,
+    titrant_names,
+    manual_titrant_df,
+    mut_labels,
+    pair_labels,
+    param_posteriors,
+    q_to_get,
+    *,
+    tf_total,
+    op_total,
+    conc_unit_scale=1.0,
+):
+    """
+    Predict theta for unmeasured genotypes using additive ln-K MWC-dimer assembly.
+
+    Parameters
+    ----------
+    target_genotypes : list[str]
+    titrant_names : list[str]
+    manual_titrant_df : pd.DataFrame
+    mut_labels : list[str]
+    pair_labels : list[str]
+    param_posteriors : dict-like
+    q_to_get : dict
+    tf_total : float — monomer units (M)
+    op_total : float
+    conc_unit_scale : float
+        Multiply titrant_conc by this factor before thermodynamic equations.
+        Use 1e-3 when concentrations are in mM and K values are in M⁻¹.
+
+    Returns
+    -------
+    pd.DataFrame
+    """
+    import numpy as np
+    from tfscreen.analysis.hierarchical.posteriors import get_posterior_samples
+    from tfscreen.analysis.hierarchical.growth_model.predict_unmeasured import (
+        _build_genotype_indicators,
+        _build_prediction_grid,
+    )
+    from tfscreen.analysis.hierarchical.growth_model.components.theta.struct.mwc_dimer.thermo import (
+        _solve_theta_np,
+        _ZERO_CONC_VALUE,
+    )
+
+    target_genotypes = list(target_genotypes)
+    mut_mat, pair_mat, is_valid = _build_genotype_indicators(
+        target_genotypes, mut_labels, pair_labels
+    )
+    calc_df, geno_idx, titrant_idx = _build_prediction_grid(
+        target_genotypes, titrant_names, manual_titrant_df
+    )
+
+    def _load(key):
+        v = get_posterior_samples(param_posteriors, key)
+        if hasattr(v, "shape") and not hasattr(v, "reshape"):
+            v = v[:]
+        return np.array(v)
+
+    # WT values
+    ln_K_h_l_wt = _load("theta_ln_K_h_l_wt")   # (S,)
+    ln_K_h_o_wt = _load("theta_ln_K_h_o_wt")   # (S,)
+    ln_K_l_o_wt = _load("theta_ln_K_l_o_wt")   # (S,)
+    ln_K_h_e_wt = _load("theta_ln_K_h_e_wt")   # (S, T)
+    ln_K_l_e_wt = _load("theta_ln_K_l_e_wt")   # (S, T)
+
+    # Per-mutation deltas
+    d_h_l = _load("theta_d_ln_K_h_l")   # (S, M)
+    d_h_o = _load("theta_d_ln_K_h_o")   # (S, M)
+    d_l_o = _load("theta_d_ln_K_l_o")   # (S, M)
+    d_h_e = _load("theta_d_ln_K_h_e")   # (S, T, M)
+    d_l_e = _load("theta_d_ln_K_l_e")   # (S, T, M)
+
+    # Assembly over N target genotypes
+    ln_K_h_l_geno = ln_K_h_l_wt[:, None] + np.einsum("sm,nm->sn", d_h_l, mut_mat)
+    ln_K_h_o_geno = ln_K_h_o_wt[:, None] + np.einsum("sm,nm->sn", d_h_o, mut_mat)
+    ln_K_l_o_geno = ln_K_l_o_wt[:, None] + np.einsum("sm,nm->sn", d_l_o, mut_mat)
+    ln_K_h_e_geno = ln_K_h_e_wt[:, :, None] + np.einsum("stm,nm->stn", d_h_e, mut_mat)
+    ln_K_l_e_geno = ln_K_l_e_wt[:, :, None] + np.einsum("stm,nm->stn", d_l_e, mut_mat)
+
+    if len(pair_labels) > 0:
+        epi_h_l = _load("theta_epi_ln_K_h_l")   # (S, P)
+        epi_h_o = _load("theta_epi_ln_K_h_o")   # (S, P)
+        epi_l_o = _load("theta_epi_ln_K_l_o")   # (S, P)
+        epi_h_e = _load("theta_epi_ln_K_h_e")   # (S, T, P)
+        epi_l_e = _load("theta_epi_ln_K_l_e")   # (S, T, P)
+        ln_K_h_l_geno += np.einsum("sp,np->sn", epi_h_l, pair_mat)
+        ln_K_h_o_geno += np.einsum("sp,np->sn", epi_h_o, pair_mat)
+        ln_K_l_o_geno += np.einsum("sp,np->sn", epi_l_o, pair_mat)
+        ln_K_h_e_geno += np.einsum("stp,np->stn", epi_h_e, pair_mat)
+        ln_K_l_e_geno += np.einsum("stp,np->stn", epi_l_e, pair_mat)
+
+    # Index rows from genotype grid to (S, N_rows)
+    ln_K_h_l_rows = ln_K_h_l_geno[:, geno_idx]
+    ln_K_h_o_rows = ln_K_h_o_geno[:, geno_idx]
+    ln_K_l_o_rows = ln_K_l_o_geno[:, geno_idx]
+    ln_K_h_e_rows = ln_K_h_e_geno[:, titrant_idx, geno_idx]
+    ln_K_l_e_rows = ln_K_l_e_geno[:, titrant_idx, geno_idx]
+
+    conc = calc_df["titrant_conc"].values.copy().astype(float) * conc_unit_scale
+    conc[conc == 0] = _ZERO_CONC_VALUE
+
+    theta_samples = _solve_theta_np(
+        ln_K_h_l_rows, ln_K_h_o_rows, ln_K_h_e_rows,
+        ln_K_l_o_rows, ln_K_l_e_rows,
+        conc, tf_total, op_total,
+    )
+
+    theta_samples[:, ~is_valid[geno_idx]] = np.nan
+
+    result_df = calc_df[["genotype", "titrant_name", "titrant_conc"]].copy()
+    for q_name, q_val in q_to_get.items():
+        result_df[q_name] = np.quantile(theta_samples, q_val, axis=0)
+    return result_df
+
+
 def get_extract_specs(ctx):
     geno_dim      = ctx.growth_tm.tensor_dim_names.index("genotype")
     num_genotype  = len(ctx.growth_tm.tensor_dim_labels[geno_dim])
