@@ -1,8 +1,6 @@
 import pandas as pd
-import os
 from tfscreen.analysis.hierarchical.growth_model.configuration_io import read_configuration
 from tfscreen.analysis.hierarchical.growth_model.extraction import extract_theta_unmeasured
-from tfscreen.util.cli.generalized_main import generalized_main
 
 
 def predict_unmeasured_cli(config_file,
@@ -82,20 +80,76 @@ def predict_unmeasured_cli(config_file,
     print(f"Wrote theta predictions to {output_file}", flush=True)
 
 
+def _read_lines(path):
+    """Return non-empty, non-comment lines from a plain-text file."""
+    lines = []
+    with open(path) as fh:
+        for line in fh:
+            line = line.strip()
+            if line and not line.startswith("#"):
+                lines.append(line)
+    return lines
+
+
 def main():
     """CLI entry point for predicting theta for unmeasured genotypes."""
-    generalized_main(
-        predict_unmeasured_cli,
-        manual_arg_types={
-            "titrant_name": str,
-            "titrant_conc": float,
-            "genotypes":    str,
-        },
-        manual_arg_nargs={
-            "titrant_name": "+",
-            "titrant_conc": "+",
-            "genotypes":    "+",
-        },
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="tfs-predict-unmeasured",
+        description=predict_unmeasured_cli.__doc__,
+        formatter_class=argparse.RawTextHelpFormatter,
+    )
+
+    parser.add_argument("config_file", type=str,
+                        help="Path to the YAML configuration file.")
+    parser.add_argument("posterior_file", type=str,
+                        help="Path to the posterior .h5 or .npz file.")
+
+    # titrant_name: still a plain list (usually short)
+    parser.add_argument("--titrant_name", type=str, nargs="+", default=None,
+                        help="One or more titrant names.")
+
+    # titrant_conc: inline list OR file
+    tc_group = parser.add_mutually_exclusive_group(required=True)
+    tc_group.add_argument("--titrant_conc", type=float, nargs="+",
+                          help="Effector concentrations (space-separated).")
+    tc_group.add_argument("--titrant_conc_file", type=str,
+                          help="Plain-text file with one concentration per line.")
+
+    # genotypes: inline list OR file
+    geno_group = parser.add_mutually_exclusive_group(required=False)
+    geno_group.add_argument("--genotypes", type=str, nargs="+",
+                            help="Genotype strings to predict (space-separated).")
+    geno_group.add_argument("--genotypes_file", type=str,
+                            help="Plain-text file with one genotype per line.")
+
+    parser.add_argument("--out_prefix", type=str, default="tfs_theta_pred",
+                        help="Output file prefix (default: tfs_theta_pred).")
+
+    args = parser.parse_args()
+
+    # Resolve titrant_conc from file if needed
+    titrant_conc = args.titrant_conc
+    if args.titrant_conc_file is not None:
+        titrant_conc = [float(v) for v in _read_lines(args.titrant_conc_file)]
+
+    # titrant_name must be provided when any conc source is used
+    if args.titrant_name is None:
+        parser.error("--titrant_name is required.")
+
+    # Resolve genotypes from file if needed
+    genotypes = args.genotypes
+    if args.genotypes_file is not None:
+        genotypes = _read_lines(args.genotypes_file)
+
+    predict_unmeasured_cli(
+        config_file=args.config_file,
+        posterior_file=args.posterior_file,
+        titrant_name=args.titrant_name,
+        titrant_conc=titrant_conc,
+        genotypes=genotypes,
+        out_prefix=args.out_prefix,
     )
 
 
