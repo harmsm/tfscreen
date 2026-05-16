@@ -112,114 +112,84 @@ def test_predict_unmeasured_cli_mismatched_titrant_lengths(tmp_path, monkeypatch
 # main() — argparse layer
 # ---------------------------------------------------------------------------
 
+def _make_files(tmp_path, concs=("0", "10", "100"), genos=None):
+    """Write conc and optional geno files; return their paths as strings."""
+    conc_file = tmp_path / "concs.txt"
+    conc_file.write_text("\n".join(concs) + "\n")
+    geno_file = None
+    if genos is not None:
+        geno_file = tmp_path / "genos.txt"
+        geno_file.write_text("\n".join(genos) + "\n")
+    return str(conc_file), str(geno_file) if geno_file else None
+
+
 def _run_main(argv, mock_cli):
-    """Helper: patch predict_unmeasured_cli and run main() with argv."""
     with patch("tfscreen.analysis.hierarchical.growth_model.scripts.predict_unmeasured_cli.predict_unmeasured_cli",
                mock_cli), \
          patch("sys.argv", ["tfs-predict-unmeasured"] + argv):
         main()
 
 
-def test_main_inline_titrant_conc(tmp_path):
+def test_main_reads_titrant_conc_from_file(tmp_path):
+    conc_file, _ = _make_files(tmp_path, concs=("0", "10", "100"))
     mock_cli = MagicMock()
     _run_main([
         "config.yaml", "post.h5",
         "--titrant_name", "IPTG",
-        "--titrant_conc", "0", "10", "100",
-        "--genotypes", "wt", "M42I",
+        "--titrant_conc_file", conc_file,
     ], mock_cli)
 
     _, kwargs = mock_cli.call_args
     assert kwargs["titrant_conc"] == [0.0, 10.0, 100.0]
     assert kwargs["titrant_name"] == ["IPTG"]
-    assert kwargs["genotypes"] == ["wt", "M42I"]
-
-
-def test_main_titrant_conc_from_file(tmp_path):
-    conc_file = tmp_path / "concs.txt"
-    conc_file.write_text("0\n10\n100\n")
-
-    mock_cli = MagicMock()
-    _run_main([
-        "config.yaml", "post.h5",
-        "--titrant_name", "IPTG",
-        "--titrant_conc_file", str(conc_file),
-    ], mock_cli)
-
-    _, kwargs = mock_cli.call_args
-    assert kwargs["titrant_conc"] == [0.0, 10.0, 100.0]
     assert kwargs["genotypes"] is None
 
 
-def test_main_genotypes_from_file(tmp_path):
-    geno_file = tmp_path / "genos.txt"
-    geno_file.write_text("wt\nM42I\nK84L\n")
-
+def test_main_reads_genotypes_from_file(tmp_path):
+    conc_file, geno_file = _make_files(tmp_path, genos=("wt", "M42I", "K84L"))
     mock_cli = MagicMock()
     _run_main([
         "config.yaml", "post.h5",
         "--titrant_name", "IPTG",
-        "--titrant_conc", "0", "10",
-        "--genotypes_file", str(geno_file),
+        "--titrant_conc_file", conc_file,
+        "--genotypes_file", geno_file,
     ], mock_cli)
 
     _, kwargs = mock_cli.call_args
     assert kwargs["genotypes"] == ["wt", "M42I", "K84L"]
 
 
-def test_main_both_file_sources(tmp_path):
-    conc_file = tmp_path / "concs.txt"
-    conc_file.write_text("0.0\n50.0\n")
+def test_main_genotypes_file_skips_comments_and_blanks(tmp_path):
+    conc_file, _ = _make_files(tmp_path)
     geno_file = tmp_path / "genos.txt"
-    geno_file.write_text("# header\nwt\nM42I\n")
+    geno_file.write_text("# header\nwt\n\nM42I\n")
 
     mock_cli = MagicMock()
     _run_main([
         "config.yaml", "post.h5",
         "--titrant_name", "IPTG",
-        "--titrant_conc_file", str(conc_file),
+        "--titrant_conc_file", conc_file,
         "--genotypes_file", str(geno_file),
     ], mock_cli)
 
     _, kwargs = mock_cli.call_args
-    assert kwargs["titrant_conc"] == [0.0, 50.0]
     assert kwargs["genotypes"] == ["wt", "M42I"]
-    assert kwargs["config_file"] == "config.yaml"
-    assert kwargs["posterior_file"] == "post.h5"
 
 
-def test_main_titrant_conc_and_file_are_mutually_exclusive(tmp_path):
-    conc_file = tmp_path / "concs.txt"
-    conc_file.write_text("0\n10\n")
+def test_main_no_genotypes_file_passes_none(tmp_path):
+    conc_file, _ = _make_files(tmp_path)
+    mock_cli = MagicMock()
+    _run_main([
+        "config.yaml", "post.h5",
+        "--titrant_name", "IPTG",
+        "--titrant_conc_file", conc_file,
+    ], mock_cli)
 
-    with pytest.raises(SystemExit):
-        with patch("sys.argv", [
-            "tfs-predict-unmeasured",
-            "config.yaml", "post.h5",
-            "--titrant_name", "IPTG",
-            "--titrant_conc", "0", "10",
-            "--titrant_conc_file", str(conc_file),
-        ]):
-            main()
+    _, kwargs = mock_cli.call_args
+    assert kwargs["genotypes"] is None
 
 
-def test_main_genotypes_and_file_are_mutually_exclusive(tmp_path):
-    geno_file = tmp_path / "genos.txt"
-    geno_file.write_text("wt\n")
-
-    with pytest.raises(SystemExit):
-        with patch("sys.argv", [
-            "tfs-predict-unmeasured",
-            "config.yaml", "post.h5",
-            "--titrant_name", "IPTG",
-            "--titrant_conc", "0",
-            "--genotypes", "wt",
-            "--genotypes_file", str(geno_file),
-        ]):
-            main()
-
-
-def test_main_missing_titrant_conc_exits(tmp_path):
+def test_main_missing_titrant_conc_file_exits():
     with pytest.raises(SystemExit):
         with patch("sys.argv", [
             "tfs-predict-unmeasured",
@@ -230,21 +200,23 @@ def test_main_missing_titrant_conc_exits(tmp_path):
 
 
 def test_main_missing_titrant_name_exits(tmp_path):
+    conc_file, _ = _make_files(tmp_path)
     with pytest.raises(SystemExit):
         with patch("sys.argv", [
             "tfs-predict-unmeasured",
             "config.yaml", "post.h5",
-            "--titrant_conc", "0", "10",
+            "--titrant_conc_file", conc_file,
         ]):
             main()
 
 
 def test_main_out_prefix_forwarded(tmp_path):
+    conc_file, _ = _make_files(tmp_path)
     mock_cli = MagicMock()
     _run_main([
         "config.yaml", "post.h5",
         "--titrant_name", "IPTG",
-        "--titrant_conc", "0",
+        "--titrant_conc_file", conc_file,
         "--out_prefix", "my_output",
     ], mock_cli)
 
@@ -253,12 +225,27 @@ def test_main_out_prefix_forwarded(tmp_path):
 
 
 def test_main_default_out_prefix(tmp_path):
+    conc_file, _ = _make_files(tmp_path)
     mock_cli = MagicMock()
     _run_main([
         "config.yaml", "post.h5",
         "--titrant_name", "IPTG",
-        "--titrant_conc", "0",
+        "--titrant_conc_file", conc_file,
     ], mock_cli)
 
     _, kwargs = mock_cli.call_args
     assert kwargs["out_prefix"] == "tfs_theta_pred"
+
+
+def test_main_positional_args_forwarded(tmp_path):
+    conc_file, _ = _make_files(tmp_path)
+    mock_cli = MagicMock()
+    _run_main([
+        "my_config.yaml", "my_post.h5",
+        "--titrant_name", "IPTG",
+        "--titrant_conc_file", conc_file,
+    ], mock_cli)
+
+    _, kwargs = mock_cli.call_args
+    assert kwargs["config_file"] == "my_config.yaml"
+    assert kwargs["posterior_file"] == "my_post.h5"

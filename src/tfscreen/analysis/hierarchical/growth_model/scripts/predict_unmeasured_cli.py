@@ -106,42 +106,20 @@ def main():
     parser.add_argument("posterior_file", type=str,
                         help="Path to the posterior .h5 or .npz file.")
 
-    # titrant_name: still a plain list (usually short)
-    parser.add_argument("--titrant_name", type=str, nargs="+", default=None,
+    parser.add_argument("--titrant_name", type=str, nargs="+", required=True,
                         help="One or more titrant names.")
-
-    # titrant_conc: inline list OR file
-    tc_group = parser.add_mutually_exclusive_group(required=True)
-    tc_group.add_argument("--titrant_conc", type=float, nargs="+",
-                          help="Effector concentrations (space-separated).")
-    tc_group.add_argument("--titrant_conc_file", type=str,
-                          help="Plain-text file with one concentration per line.")
-
-    # genotypes: inline list OR file
-    geno_group = parser.add_mutually_exclusive_group(required=False)
-    geno_group.add_argument("--genotypes", type=str, nargs="+",
-                            help="Genotype strings to predict (space-separated).")
-    geno_group.add_argument("--genotypes_file", type=str,
-                            help="Plain-text file with one genotype per line.")
-
+    parser.add_argument("--titrant_conc_file", type=str, required=True,
+                        help="Plain-text file with one concentration per line.")
+    parser.add_argument("--genotypes_file", type=str, default=None,
+                        help="Plain-text file with one genotype per line. "
+                             "If omitted, all training genotypes are predicted.")
     parser.add_argument("--out_prefix", type=str, default="tfs_theta_pred",
                         help="Output file prefix (default: tfs_theta_pred).")
 
     args = parser.parse_args()
 
-    # Resolve titrant_conc from file if needed
-    titrant_conc = args.titrant_conc
-    if args.titrant_conc_file is not None:
-        titrant_conc = [float(v) for v in _read_lines(args.titrant_conc_file)]
-
-    # titrant_name must be provided when any conc source is used
-    if args.titrant_name is None:
-        parser.error("--titrant_name is required.")
-
-    # Resolve genotypes from file if needed
-    genotypes = args.genotypes
-    if args.genotypes_file is not None:
-        genotypes = _read_lines(args.genotypes_file)
+    titrant_conc = [float(v) for v in _read_lines(args.titrant_conc_file)]
+    genotypes = _read_lines(args.genotypes_file) if args.genotypes_file is not None else None
 
     predict_unmeasured_cli(
         config_file=args.config_file,
