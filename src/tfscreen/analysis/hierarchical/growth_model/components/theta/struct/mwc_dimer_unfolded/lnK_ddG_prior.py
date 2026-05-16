@@ -63,9 +63,13 @@ from functools import partial
 from typing import Dict, Any, Union
 
 from tfscreen.analysis.hierarchical.growth_model.data_class import GrowthData, BindingData
-from tfscreen.genetics.build_mut_geno_matrix import apply_mut_matrix
+from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix, apply_mut_matrix
 from tfscreen.analysis.hierarchical.growth_model.components.theta.struct.prior import (
     sample_ddG,
+)
+from tfscreen.analysis.hierarchical.growth_model.components.theta.struct.horseshoe import (
+    sample_pair_ddG,
+    _DEFAULT_D0,
 )
 from tfscreen.analysis.hierarchical.growth_model.components.theta.struct.mwc_dimer_unfolded.thermo import (
     ThetaParam,
@@ -121,6 +125,12 @@ class ModelPriors:
     # Default 1e-3 assumes concentrations are in mM and K values are in M⁻¹.
     theta_conc_unit_scale: float
 
+    # Regularised horseshoe for pairwise epistasis
+    theta_epi_tau_scale:  float
+    theta_epi_slab_scale: float
+    theta_epi_slab_df:    float
+    theta_epi_d0:         float
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Internal helpers
@@ -158,7 +168,8 @@ def _project_ddG(ddG):
 
 def _assemble_K(ln_K_h_l_wt, ln_K_h_o_wt, ln_K_h_e_wt,
                 ln_K_l_o_wt, ln_K_l_e_wt,
-                delta_lnK, mut_scatter):
+                delta_lnK, mut_scatter,
+                epi_delta_lnK=None, pair_scatter=None):
     """
     Assemble per-genotype K values from WT scalars + per-mutation deltas.
 
@@ -166,6 +177,8 @@ def _assemble_K(ln_K_h_l_wt, ln_K_h_o_wt, ln_K_h_e_wt,
     ----------
     delta_lnK : (M, 5)
     mut_scatter : callable (M,) -> (G,)
+    epi_delta_lnK : (P, 5) or None
+    pair_scatter : callable (P,) -> (G,) or None
 
     Returns
     -------
@@ -183,6 +196,13 @@ def _assemble_K(ln_K_h_l_wt, ln_K_h_o_wt, ln_K_h_e_wt,
     ln_K_h_e = ln_K_h_e_wt[:, None] + mut_scatter(d_h_e)[None, :]
     ln_K_l_o = ln_K_l_o_wt + mut_scatter(d_l_o)
     ln_K_l_e = ln_K_l_e_wt[:, None] + mut_scatter(d_l_e)[None, :]
+
+    if epi_delta_lnK is not None and pair_scatter is not None:
+        ln_K_h_l = ln_K_h_l + pair_scatter(epi_delta_lnK[:, 0])
+        ln_K_h_o = ln_K_h_o + pair_scatter(epi_delta_lnK[:, 1])
+        ln_K_h_e = ln_K_h_e + pair_scatter(epi_delta_lnK[:, 2])[None, :]
+        ln_K_l_o = ln_K_l_o + pair_scatter(epi_delta_lnK[:, 3])
+        ln_K_l_e = ln_K_l_e + pair_scatter(epi_delta_lnK[:, 4])[None, :]
 
     return ln_K_h_l, ln_K_h_o, ln_K_h_e, ln_K_l_o, ln_K_l_e
 
@@ -210,11 +230,13 @@ def define_model(name: str,
     perm_idx = jnp.array(perm)
 
     T       = data.num_titrant_name
+    S       = len(STRUCTURE_NAMES)
     mut_scatter = partial(apply_mut_matrix,
                           mut_nnz_mut_idx=jnp.array(data.mut_nnz_mut_idx),
                           mut_nnz_geno_idx=jnp.array(data.mut_nnz_geno_idx),
                           num_genotype=data.num_genotype)
-    num_mut = data.num_mutation
+    num_mut  = data.num_mutation
+    has_epi  = data.num_pair > 0
     # Reorder columns to canonical STRUCTURE_NAMES order
     ddG_prior_means = jnp.array(data.struct_features)[:, perm_idx]   # (M, S)
 
@@ -260,11 +282,36 @@ def define_model(name: str,
     pyro.deterministic(f"{name}_d_ln_K_l_o", delta_lnK[:, 3])
     pyro.deterministic(f"{name}_d_ln_K_l_e", delta_lnK[:, 4])
 
+    # ── Optional pairwise epistasis ───────────────────────────────────────────
+    epi_delta_lnK = None
+    pair_scatter  = None
+    if has_epi:
+        P = data.num_pair
+        pair_scatter = partial(apply_pair_matrix,
+                               pair_nnz_pair_idx=jnp.array(data.pair_nnz_pair_idx),
+                               pair_nnz_geno_idx=jnp.array(data.pair_nnz_geno_idx),
+                               num_genotype=data.num_genotype)
+        contact_distances = jnp.zeros((P, S))
+        epi_ddG = sample_pair_ddG(
+            name, list(STRUCTURE_NAMES), contact_distances,
+            tau_scale=priors.theta_epi_tau_scale,
+            slab_scale=priors.theta_epi_slab_scale,
+            slab_df=priors.theta_epi_slab_df,
+            d0=priors.theta_epi_d0,
+        )  # (P, S)
+        epi_delta_lnK = _project_ddG(epi_ddG)   # (P, 5)
+        pyro.deterministic(f"{name}_epi_ln_K_h_l", epi_delta_lnK[:, 0])
+        pyro.deterministic(f"{name}_epi_ln_K_h_o", epi_delta_lnK[:, 1])
+        pyro.deterministic(f"{name}_epi_ln_K_h_e", epi_delta_lnK[:, 2])
+        pyro.deterministic(f"{name}_epi_ln_K_l_o", epi_delta_lnK[:, 3])
+        pyro.deterministic(f"{name}_epi_ln_K_l_e", epi_delta_lnK[:, 4])
+
     # ── Assemble per-genotype K values ────────────────────────────────────────
     ln_K_h_l, ln_K_h_o, ln_K_h_e, ln_K_l_o, ln_K_l_e = _assemble_K(
         ln_K_h_l_wt, ln_K_h_o_wt, ln_K_h_e_wt,
         ln_K_l_o_wt, ln_K_l_e_wt,
         delta_lnK, mut_scatter,
+        epi_delta_lnK=epi_delta_lnK, pair_scatter=pair_scatter,
     )
 
     pyro.deterministic(f"{name}_ln_K_h_l", ln_K_h_l)
@@ -311,6 +358,7 @@ def guide(name: str,
     tf_total        = priors.theta_tf_total_M
     op_total        = priors.theta_op_total_M
     conc_unit_scale = priors.theta_conc_unit_scale
+    has_epi         = data.num_pair > 0
 
     # ── Variational params for WT K values ────────────────────────────────────
     ln_K_h_l_wt_loc   = pyro.param(f"{name}_ln_K_h_l_wt_loc",   jnp.array(priors.theta_ln_K_h_l_wt_loc))
@@ -340,6 +388,18 @@ def guide(name: str,
                                    jnp.ones((S, num_mut)),
                                    constraint=constraints.positive)
 
+    # ── Optional epistasis variational params ─────────────────────────────────
+    if has_epi:
+        num_pair = data.num_pair
+        pyro.param(f"{name}_epi_tau_loc",    jnp.array(-2.0))
+        pyro.param(f"{name}_epi_tau_scale",  jnp.array(0.5),  constraint=constraints.positive)
+        pyro.param(f"{name}_epi_c2_loc",     jnp.array(1.4))
+        pyro.param(f"{name}_epi_c2_scale",   jnp.array(0.5),  constraint=constraints.positive)
+        pyro.param(f"{name}_epi_lambda_locs",   jnp.zeros((S, num_pair)))
+        pyro.param(f"{name}_epi_lambda_scales", jnp.ones((S, num_pair)),  constraint=constraints.positive)
+        pyro.param(f"{name}_epi_offset_locs",   jnp.zeros((S, num_pair)))
+        pyro.param(f"{name}_epi_offset_scales", jnp.ones((S, num_pair)),  constraint=constraints.positive)
+
     # ── Sample WT K values ────────────────────────────────────────────────────
     ln_K_h_l_wt = pyro.sample(f"{name}_ln_K_h_l_wt", dist.Normal(ln_K_h_l_wt_loc, ln_K_h_l_wt_scale))
     ln_K_h_o_wt = pyro.sample(f"{name}_ln_K_h_o_wt", dist.Normal(ln_K_h_o_wt_loc, ln_K_h_o_wt_scale))
@@ -366,12 +426,52 @@ def guide(name: str,
     ddG_SM = ddG_prior_means.T + sigma_s[:, None] * offsets   # (S, M)
     ddG    = ddG_SM.T                                          # (M, S)
 
+    # ── Sample epistasis ──────────────────────────────────────────────────────
+    epi_delta_lnK = None
+    pair_scatter  = None
+    if has_epi:
+        tau_loc    = pyro.param(f"{name}_epi_tau_loc",    jnp.array(-2.0))
+        tau_scale  = pyro.param(f"{name}_epi_tau_scale",  jnp.array(0.5),  constraint=constraints.positive)
+        c2_loc     = pyro.param(f"{name}_epi_c2_loc",     jnp.array(1.4))
+        c2_scale   = pyro.param(f"{name}_epi_c2_scale",   jnp.array(0.5),  constraint=constraints.positive)
+        lam_locs   = pyro.param(f"{name}_epi_lambda_locs",   jnp.zeros((S, num_pair)))
+        lam_scales = pyro.param(f"{name}_epi_lambda_scales", jnp.ones((S, num_pair)),  constraint=constraints.positive)
+        epi_locs   = pyro.param(f"{name}_epi_offset_locs",   jnp.zeros((S, num_pair)))
+        epi_scales = pyro.param(f"{name}_epi_offset_scales", jnp.ones((S, num_pair)),  constraint=constraints.positive)
+
+        tau_epi = pyro.sample(f"{name}_epi_tau", dist.LogNormal(tau_loc, tau_scale))
+        c2_epi  = pyro.sample(f"{name}_epi_c2",  dist.LogNormal(c2_loc,  c2_scale))
+
+        with pyro.plate(f"{name}_struct_epi_plate", S, dim=-2):
+            with pyro.plate(f"{name}_pair_plate", num_pair, dim=-1):
+                lam = pyro.sample(
+                    f"{name}_epi_lambda",
+                    dist.LogNormal(lam_locs, lam_scales),
+                )
+                epi_off = pyro.sample(
+                    f"{name}_epi_offset",
+                    dist.Normal(epi_locs, epi_scales),
+                )
+
+        def _lam_tilde(l):
+            return jnp.sqrt(c2_epi * l ** 2 / (c2_epi + tau_epi ** 2 * l ** 2))
+
+        epi_SP        = epi_off * tau_epi * _lam_tilde(lam)   # (S, P)
+        epi_ddG       = epi_SP.T                               # (P, S)
+        epi_delta_lnK = _project_ddG(epi_ddG)                 # (P, 5)
+
+        pair_scatter = partial(apply_pair_matrix,
+                               pair_nnz_pair_idx=jnp.array(data.pair_nnz_pair_idx),
+                               pair_nnz_geno_idx=jnp.array(data.pair_nnz_geno_idx),
+                               num_genotype=data.num_genotype)
+
     # ── Assemble per-genotype K values ────────────────────────────────────────
     delta_lnK = _project_ddG(ddG)
     ln_K_h_l, ln_K_h_o, ln_K_h_e, ln_K_l_o, ln_K_l_e = _assemble_K(
         ln_K_h_l_wt, ln_K_h_o_wt, ln_K_h_e_wt,
         ln_K_l_o_wt, ln_K_l_e_wt,
         delta_lnK, mut_scatter,
+        epi_delta_lnK=epi_delta_lnK, pair_scatter=pair_scatter,
     )
 
     theta_vals = _compute_theta(ln_K_h_l, ln_K_h_o, ln_K_h_e,
@@ -411,6 +511,10 @@ def get_hyperparameters() -> Dict[str, Any]:
     p["theta_tf_total_M"]        = 6.5e-7
     p["theta_op_total_M"]        = 2.5e-8
     p["theta_conc_unit_scale"]   = 1e-3
+    p["theta_epi_tau_scale"]     = 0.1
+    p["theta_epi_slab_scale"]    = 2.0
+    p["theta_epi_slab_df"]       = 4.0
+    p["theta_epi_d0"]            = float(_DEFAULT_D0)
     return p
 
 
@@ -426,6 +530,12 @@ def get_guesses(name: str, data: Union[GrowthData, BindingData]) -> Dict[str, An
     g[f"{name}_ln_K_l_e_wt"]  = jnp.full(T, 13.5)
     g[f"{name}_ln_K_u_wt"]    = jnp.array(-12.0)
     g[f"{name}_ddG_offset"]    = jnp.zeros((S, M))
+    if data.num_pair > 0:
+        P = data.num_pair
+        g[f"{name}_epi_tau"]    = jnp.array(0.05)
+        g[f"{name}_epi_c2"]     = jnp.array(4.0)
+        g[f"{name}_epi_lambda"] = jnp.ones((S, P)) * 0.5
+        g[f"{name}_epi_offset"] = jnp.zeros((S, P))
     return g
 
 
@@ -479,6 +589,20 @@ def get_extract_specs(ctx):
         get_columns=["mutation"],
         in_run_prefix="theta_",
     ))
+
+    if ctx.pair_labels:
+        pair_df = pd.DataFrame({
+            "pair":     ctx.pair_labels,
+            "map_pair": range(len(ctx.pair_labels)),
+        })
+        specs.append(dict(
+            input_df=pair_df,
+            params_to_get=["epi_ln_K_h_l", "epi_ln_K_h_o", "epi_ln_K_h_e",
+                           "epi_ln_K_l_o", "epi_ln_K_l_e"],
+            map_column="map_pair",
+            get_columns=["pair"],
+            in_run_prefix="theta_",
+        ))
 
     return specs
 

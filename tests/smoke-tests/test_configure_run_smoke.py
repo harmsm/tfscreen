@@ -81,5 +81,4 @@ def test_configure_run_pipeline_smoke(tmpdir):
                          posterior_file=f"{out_root}_posterior.h5",
                          out_root=out_root)
 
-    assert os.path.exists(os.path.join(tmpdir, "test_tfs_out_growth_pred.csv"))
     assert os.path.exists(os.path.join(tmpdir, "test_tfs_out_hill_n.csv"))

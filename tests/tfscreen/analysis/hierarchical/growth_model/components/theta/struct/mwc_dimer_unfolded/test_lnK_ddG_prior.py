@@ -234,12 +234,9 @@ class TestConfig:
         assert hp["theta_ln_K_u_wt_loc"]   == pytest.approx(-12.0)
         assert hp["theta_ln_K_u_wt_scale"] == pytest.approx(3.0)
 
-    def test_hyperparameters_has_no_nn_or_epi_keys(self):
+    def test_hyperparameters_has_no_nn_keys(self):
         hp = get_hyperparameters()
         assert "theta_nn_hidden_size"  not in hp
-        assert "theta_epi_tau_scale"   not in hp
-        assert "theta_epi_slab_scale"  not in hp
-        assert "theta_epi_d0"          not in hp
 
     def test_get_priors_returns_model_priors_instance(self):
         assert isinstance(get_priors(), ModelPriors)
@@ -249,10 +246,9 @@ class TestConfig:
         assert hasattr(p, "theta_ln_K_u_wt_loc")
         assert hasattr(p, "theta_ln_K_u_wt_scale")
 
-    def test_model_priors_has_no_nn_or_epi_fields(self):
+    def test_model_priors_has_no_nn_fields(self):
         p = get_priors()
         assert not hasattr(p, "theta_nn_hidden_size")
-        assert not hasattr(p, "theta_epi_tau_scale")
 
     def test_physical_constants(self):
         p = get_priors()
@@ -607,10 +603,9 @@ class TestGetExtractSpecs:
         # scalar K (incl. ln_K_u), T-dim K, per-mutation d_ln_K
         assert len(get_extract_specs(_make_ctx())) == 3
 
-    def test_no_fourth_spec_even_with_pair_labels(self):
-        """lnK_ddG_prior has no epistasis; always exactly 3 specs."""
+    def test_four_specs_when_pair_labels_present(self):
         ctx = _make_ctx(pair_labels=["M1+M2"])
-        assert len(get_extract_specs(ctx)) == 3
+        assert len(get_extract_specs(ctx)) == 4
 
     def test_first_spec_has_scalar_K_values_including_ln_K_u(self):
         """ln_K_u is broadcast from WT and should appear in the scalar K spec."""

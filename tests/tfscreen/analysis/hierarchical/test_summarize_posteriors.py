@@ -3,7 +3,8 @@ import os
 import yaml
 import numpy as np
 import pandas as pd
-from unittest.mock import MagicMock, patch, mock_open
+import sys
+from unittest.mock import MagicMock, patch
 from tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors import summarize_posteriors, main
 
 @pytest.fixture
@@ -24,76 +25,58 @@ def mock_config():
         "binding_df": "binding.csv"
     }
 
-def test_summarize_posteriors_full(tmpdir, mock_config):
+def test_summarize_posteriors_npz(tmpdir, mock_config):
     config_file = os.path.join(tmpdir, "config.yaml")
     with open(config_file, "w") as f:
         yaml.dump(mock_config, f)
-    
+
     posterior_file = os.path.join(tmpdir, "post.npz")
     np.savez(posterior_file, a=np.array([1]))
-    
+
     with patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.GrowthModel") as MockGM, \
          patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.extract_parameters") as mock_extract_params, \
-         patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.extract_growth_predictions") as mock_extract_pred, \
-         patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.extract_theta_curves") as mock_extract_theta:
-        
+         patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.read_configuration") as mock_read:
+
         mock_extract_params.return_value = {"param1": pd.DataFrame({"x": [1]})}
-        mock_extract_pred.return_value = pd.DataFrame({"y": [2]})
-        mock_extract_theta.return_value = pd.DataFrame({"z": [3]})
-        
+        gm = MockGM.return_value
+        gm.settings = {"theta": "hill"}
+        mock_read.return_value = (gm, {})
+
         out_root = os.path.join(tmpdir, "tfs")
-        with patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.read_configuration") as mock_read:
-            gm = MockGM.return_value
-            gm.settings = {"theta": "hill"}
-            mock_read.return_value = (gm, {})
-            summarize_posteriors(config_file, posterior_file, out_root=out_root)
-        
-        assert os.path.exists(f"{out_root}_param1.csv")
-        assert os.path.exists(f"{out_root}_growth_pred.csv")
-        assert os.path.exists(f"{out_root}_theta_curves.csv")
+        summarize_posteriors(config_file, posterior_file, out_root=out_root)
+
+    assert os.path.exists(f"{out_root}_param1.csv")
+    assert not os.path.exists(f"{out_root}_growth_pred.csv")
+    assert not os.path.exists(f"{out_root}_theta_curves.csv")
 
 def test_summarize_posteriors_h5(tmpdir, mock_config):
     import h5py
     config_file = os.path.join(tmpdir, "config_h5.yaml")
     with open(config_file, "w") as f:
         yaml.dump(mock_config, f)
-    
+
     posterior_file = os.path.join(tmpdir, "post.h5")
     with h5py.File(posterior_file, 'w') as f:
         f.create_dataset("a", data=np.array([1]))
-    
+
     with patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.GrowthModel") as MockGM, \
          patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.extract_parameters") as mock_extract_params, \
-         patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.extract_growth_predictions") as mock_extract_pred, \
-         patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.extract_theta_curves") as mock_extract_theta:
+         patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.read_configuration") as mock_read:
 
         mock_extract_params.return_value = {"param1": pd.DataFrame({"x": [1]})}
-        mock_extract_pred.return_value = pd.DataFrame({"y": [2]})
-        mock_extract_theta.return_value = pd.DataFrame({"z": [3]})
-        
+        gm = MockGM.return_value
+        gm.settings = {"theta": "hill"}
+        mock_read.return_value = (gm, {})
+
         out_root = os.path.join(tmpdir, "tfs_h5")
-        with patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.read_configuration") as mock_read:
-            gm = MockGM.return_value
-            gm.settings = {"theta": "hill"}
-            mock_read.return_value = (gm, {})
-            summarize_posteriors(config_file, posterior_file, out_root=out_root)
-        
-        assert os.path.exists(f"{out_root}_param1.csv")
-        assert os.path.exists(f"{out_root}_growth_pred.csv")
-        assert os.path.exists(f"{out_root}_theta_curves.csv")
+        summarize_posteriors(config_file, posterior_file, out_root=out_root)
+
+    assert os.path.exists(f"{out_root}_param1.csv")
 
 def test_summarize_posteriors_errors():
     with pytest.raises(FileNotFoundError, match="Configuration file not found"):
         summarize_posteriors("nonexistent.yaml", "p.npz")
-    
-    # Create a dummy config with all required keys
-    full_config = {
-        "settings": {k: "dummy" for k in [
-            "condition_growth", "ln_cfu0", "dk_geno", "activity", "theta", 
-            "transformation", "theta_growth_noise", "theta_binding_noise", "spiked_genotypes"
-        ]},
-        "growth_df": "g", "binding_df": "b"
-    }
+
     with patch("os.path.exists", side_effect=lambda x: x == "config.yaml"):
         with patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.read_configuration") as mock_read:
             mock_read.return_value = (MagicMock(), {})
@@ -103,41 +86,10 @@ def test_summarize_posteriors_errors():
 def test_main():
     with patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.generalized_main") as mock_gen:
         main()
-        mock_gen.assert_called_once_with(summarize_posteriors,
-                                          manual_arg_types={"num_samples": int})
+        mock_gen.assert_called_once_with(summarize_posteriors)
 
-def test_summarize_posteriors_no_hill(tmpdir, mock_config):
-    mock_config["settings"]["theta"] = "categorical"
-    config_file = os.path.join(tmpdir, "config_cat.yaml")
-    with open(config_file, "w") as f:
-        yaml.dump(mock_config, f)
-    
-    posterior_file = os.path.join(tmpdir, "post.npz")
-    np.savez(posterior_file, a=np.array([1]))
-    
-    with patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.GrowthModel") as MockGM, \
-         patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.extract_parameters") as mock_extract_params, \
-         patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.extract_growth_predictions") as mock_extract_pred:
-
-        mock_extract_params.return_value = {}
-        mock_extract_pred.return_value = pd.DataFrame()
-        
-        out_root = os.path.join(tmpdir, "tfs_cat")
-        with patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.read_configuration") as mock_read:
-            gm = MockGM.return_value
-            gm.settings = {"theta": "categorical"}
-            mock_read.return_value = (gm, {})
-            summarize_posteriors(config_file, posterior_file, out_root=out_root)
-        
-        # Should NOT have theta_curves
-        assert not os.path.exists(f"{out_root}_theta_curves.csv")
-
-import runpy
-import sys
 def test_entry_point():
-    # Mock sys.argv to avoid parser error/exit
     with patch.object(sys, 'argv', ['summarize_posteriors', '--help']):
-        # Patch the function where it is used in the module
         with patch("tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors.generalized_main") as mock_gen:
             try:
                 main()
