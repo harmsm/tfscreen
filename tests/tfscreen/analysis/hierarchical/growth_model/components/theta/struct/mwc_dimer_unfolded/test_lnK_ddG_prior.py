@@ -639,3 +639,203 @@ class TestGetExtractSpecs:
         ctx = _make_ctx(mut_labels=["M1", "M2", "M3"])
         df = get_extract_specs(ctx)[2]["input_df"]
         assert len(df) == 3
+
+
+# ---------------------------------------------------------------------------
+# predict_unmeasured
+# ---------------------------------------------------------------------------
+
+from tfscreen.analysis.hierarchical.growth_model.components.theta.struct.mwc_dimer_unfolded.lnK_ddG_prior import (
+    predict_unmeasured as ddG_predict,
+)
+from tfscreen.analysis.hierarchical.growth_model.components.theta.struct.mwc_dimer_unfolded.lnK_mut import (
+    predict_unmeasured as lnK_mut_predict,
+)
+
+_MUT_LABELS_P  = ["M42I", "K84L"]
+_PAIR_LABELS_P = ["K84L/M42I"]
+_TITRANT_NAMES_P = ["IPTG"]
+_TF_TOTAL  = 6.5e-7
+_OP_TOTAL  = 2.5e-8
+_CONC_SCALE = 1e-3
+
+_WT_LN_K_H_L =  1.84
+_WT_LN_K_H_O = 19.86
+_WT_LN_K_H_E = 10.93
+_WT_LN_K_L_O = -2.30
+_WT_LN_K_L_E = 13.54
+_WT_LN_K_U   = -5.0    # plausible WT unfolding constant
+
+
+def _make_titrant_df_p(concs=None):
+    if concs is None:
+        concs = [0.0, 0.1, 1.0, 10.0]
+    return pd.DataFrame({
+        "titrant_name": [_TITRANT_NAMES_P[0]] * len(concs),
+        "titrant_conc": concs,
+    })
+
+
+def _make_ddG_posteriors(T, M, P=0, S=5, seed=0):
+    """Fake posteriors for mwc_dimer_unfolded lnK_ddG_prior.
+
+    KEY DIFFERENCES from lnK_mut:
+    - d_ln_K_h_e and d_ln_K_l_e are (S, M) with no T dimension.
+    - epi_h_e and epi_l_e are (S, P) with no T dimension.
+    - ln_K_u_wt is a scalar (S,) — no per-mutation delta.
+    """
+    rng = np.random.default_rng(seed)
+    post = {}
+    post["theta_ln_K_h_l_wt"] = np.full(S, _WT_LN_K_H_L, dtype=np.float32)
+    post["theta_ln_K_h_o_wt"] = np.full(S, _WT_LN_K_H_O, dtype=np.float32)
+    post["theta_ln_K_l_o_wt"] = np.full(S, _WT_LN_K_L_O, dtype=np.float32)
+    post["theta_ln_K_h_e_wt"] = np.full((S, T), _WT_LN_K_H_E, dtype=np.float32)
+    post["theta_ln_K_l_e_wt"] = np.full((S, T), _WT_LN_K_L_E, dtype=np.float32)
+    post["theta_ln_K_u_wt"]   = np.full(S, _WT_LN_K_U, dtype=np.float32)
+    post["theta_d_ln_K_h_l"]  = rng.standard_normal((S, M)).astype(np.float32) * 0.3
+    post["theta_d_ln_K_h_o"]  = rng.standard_normal((S, M)).astype(np.float32) * 0.3
+    post["theta_d_ln_K_l_o"]  = rng.standard_normal((S, M)).astype(np.float32) * 0.3
+    post["theta_d_ln_K_h_e"]  = rng.standard_normal((S, M)).astype(np.float32) * 0.3  # no T
+    post["theta_d_ln_K_l_e"]  = rng.standard_normal((S, M)).astype(np.float32) * 0.3  # no T
+    if P > 0:
+        for key in ["theta_epi_ln_K_h_l", "theta_epi_ln_K_h_o", "theta_epi_ln_K_l_o"]:
+            post[key] = np.zeros((S, P), dtype=np.float32)
+        for key in ["theta_epi_ln_K_h_e", "theta_epi_ln_K_l_e"]:
+            post[key] = np.zeros((S, P), dtype=np.float32)   # no T!
+    return post
+
+
+def _common_kwargs_p(post, pair_labels=None):
+    return dict(
+        target_genotypes=["wt", "M42I", "K84L", "M42I/K84L"],
+        titrant_names=_TITRANT_NAMES_P,
+        manual_titrant_df=_make_titrant_df_p(),
+        mut_labels=_MUT_LABELS_P,
+        pair_labels=pair_labels or [],
+        param_posteriors=post,
+        q_to_get={"median": 0.5, "lower": 0.025, "upper": 0.975},
+        tf_total=_TF_TOTAL,
+        op_total=_OP_TOTAL,
+        conc_unit_scale=_CONC_SCALE,
+    )
+
+
+class TestDdGPriorPredictUnmeasured:
+
+    def test_output_shape_and_columns(self):
+        post = _make_ddG_posteriors(T=1, M=2)
+        result = ddG_predict(**_common_kwargs_p(post))
+        assert len(result) == 4 * 4   # 4 genotypes × 4 concs
+        for col in ["genotype", "titrant_name", "titrant_conc",
+                    "median", "lower", "upper"]:
+            assert col in result.columns
+
+    def test_wt_theta_in_unit_interval(self):
+        post = _make_ddG_posteriors(T=1, M=2)
+        result = ddG_predict(**_common_kwargs_p(post))
+        wt_rows = result[result["genotype"] == "wt"]
+        assert (wt_rows["median"] >= 0).all()
+        assert (wt_rows["median"] <= 1).all()
+        assert not wt_rows["median"].isna().any()
+
+    def test_unknown_mutation_is_nan(self):
+        post = _make_ddG_posteriors(T=1, M=2)
+        kw = _common_kwargs_p(post)
+        kw["target_genotypes"] = ["wt", "NOVEL"]
+        result = ddG_predict(**kw)
+        assert result.loc[result["genotype"] == "NOVEL", "median"].isna().all()
+        assert not result.loc[result["genotype"] == "wt", "median"].isna().any()
+
+    def test_zero_conc_handled(self):
+        post = _make_ddG_posteriors(T=1, M=2)
+        kw = _common_kwargs_p(post)
+        kw["manual_titrant_df"] = _make_titrant_df_p(concs=[0.0])
+        result = ddG_predict(**kw)
+        assert np.isfinite(result["median"].values).all()
+
+    def test_upper_ge_median_ge_lower(self):
+        post = _make_ddG_posteriors(T=1, M=2, S=40, seed=5)
+        result = ddG_predict(**_common_kwargs_p(post))
+        assert (result["upper"] >= result["median"]).all()
+        assert (result["median"] >= result["lower"]).all()
+
+    def test_ln_K_u_is_homogeneous(self):
+        """All target genotypes receive the same ln_K_u (WT only, no per-mutation delta)."""
+        S = 10
+        post = _make_ddG_posteriors(T=1, M=2, S=S)
+        # Zero out all mutation deltas so only WT K values differ
+        post["theta_d_ln_K_h_l"][:] = 0
+        post["theta_d_ln_K_h_o"][:] = 0
+        post["theta_d_ln_K_l_o"][:] = 0
+        post["theta_d_ln_K_h_e"][:] = 0
+        post["theta_d_ln_K_l_e"][:] = 0
+
+        kw = _common_kwargs_p(post)
+        kw["target_genotypes"] = ["wt", "M42I", "K84L", "M42I/K84L"]
+        kw["q_to_get"] = {"median": 0.5}
+        result = ddG_predict(**kw)
+
+        # With zero mutation deltas, all genotypes get identical predictions
+        for conc in [0.0, 0.1, 1.0, 10.0]:
+            rows = result[result["titrant_conc"] == conc]["median"].values
+            np.testing.assert_allclose(rows, rows[0], atol=1e-5,
+                                       err_msg=f"Predictions differ at conc={conc}")
+
+    def test_epistasis_shifts_double_mutant(self):
+        T, M, P, S = 1, 2, 1, 30
+        post = _make_ddG_posteriors(T, M, P=P, S=S, seed=4)
+        post["theta_epi_ln_K_h_l"] = np.full((S, P), 4.0, dtype=np.float32)
+
+        kw_no_epi = _common_kwargs_p(post, pair_labels=[])
+        kw_no_epi["target_genotypes"] = ["M42I/K84L"]
+        res_no_epi = ddG_predict(**kw_no_epi)
+
+        kw_epi = _common_kwargs_p(post, pair_labels=_PAIR_LABELS_P)
+        kw_epi["target_genotypes"] = ["M42I/K84L"]
+        res_epi = ddG_predict(**kw_epi)
+
+        assert not np.allclose(res_no_epi["median"].values,
+                               res_epi["median"].values, atol=1e-3)
+
+    def test_scalar_d_he_le_matches_lnK_mut_when_replicated(self):
+        """ddG_prior with scalar d_h_e should equal lnK_mut when replicated T times."""
+        T, M, S = 2, 2, 5
+        rng = np.random.default_rng(77)
+        d_he_scalar = rng.standard_normal((S, M)).astype(np.float32) * 0.3
+        d_le_scalar = rng.standard_normal((S, M)).astype(np.float32) * 0.3
+
+        post_ddG = _make_ddG_posteriors(T, M, S=S)
+        post_ddG["theta_d_ln_K_h_e"] = d_he_scalar
+        post_ddG["theta_d_ln_K_l_e"] = d_le_scalar
+
+        post_mut = {}
+        for k in ["theta_ln_K_h_l_wt", "theta_ln_K_h_o_wt", "theta_ln_K_l_o_wt",
+                  "theta_ln_K_h_e_wt", "theta_ln_K_l_e_wt", "theta_ln_K_u_wt",
+                  "theta_d_ln_K_h_l", "theta_d_ln_K_h_o", "theta_d_ln_K_l_o"]:
+            post_mut[k] = post_ddG[k].copy()
+        post_mut["theta_d_ln_K_h_e"] = np.broadcast_to(
+            d_he_scalar[:, None, :], (S, T, M)).astype(np.float32)
+        post_mut["theta_d_ln_K_l_e"] = np.broadcast_to(
+            d_le_scalar[:, None, :], (S, T, M)).astype(np.float32)
+        post_mut["theta_d_ln_K_u"]   = np.zeros((S, M), dtype=np.float32)
+
+        kw = dict(
+            target_genotypes=["wt", "M42I", "K84L"],
+            titrant_names=["IPTG", "TMAIPP"],
+            manual_titrant_df=pd.DataFrame({
+                "titrant_name": ["IPTG", "TMAIPP"],
+                "titrant_conc": [0.1, 1.0],
+            }),
+            mut_labels=_MUT_LABELS_P,
+            pair_labels=[],
+            q_to_get={"median": 0.5},
+            tf_total=_TF_TOTAL,
+            op_total=_OP_TOTAL,
+            conc_unit_scale=_CONC_SCALE,
+        )
+        res_ddG = ddG_predict(param_posteriors=post_ddG, **kw)
+        res_mut = lnK_mut_predict(param_posteriors=post_mut, **kw)
+
+        np.testing.assert_allclose(
+            res_ddG["median"].values, res_mut["median"].values, atol=1e-5
+        )

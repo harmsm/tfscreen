@@ -75,3 +75,4 @@ tfs-predict = "tfscreen.analysis.hierarchical.growth_model.scripts.predict_cli:m
 tfs-predict-unmeasured = "tfscreen.analysis.hierarchical.growth_model.scripts.predict_unmeasured_cli:main"
 tfs-diagnose-nan = "tfscreen.analysis.hierarchical.growth_model.scripts.diagnose_nan:main"
 tfs-simulate = "tfscreen.simulate.scripts.run_simulation_cli:main"
+tfs-fit-response = "tfscreen.analysis.cat_response.fit_response_cli:main"

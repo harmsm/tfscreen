@@ -320,7 +320,6 @@ def predict(model_class,
     all_dfs = {}
     for site in predict_sites:
         site_samples = predictions[site]  # shape: (num_samples, ...)
-        df = base_df.copy()
 
         # Compute the per-row index tuple once — shape is the same for every
         # quantile and for individual sample draws.
@@ -332,9 +331,37 @@ def predict(model_class,
             for i in range(len(spatial_shape))
         )
 
+        # Sites whose spatial tensor has size-1 (broadcast) dimensions — e.g.
+        # theta_growth_pred with shape (1,1,1,1,1,n_conc,n_geno) — would require
+        # indexing into a len(base_df)-sized result even though only the
+        # non-trivial dimensions carry unique information.  Deduplicate base_df to
+        # the unique combinations of those non-trivial TM dimensions so that
+        # downstream allocations scale with the compact tensor, not the full
+        # cross-joined dataframe.
+        has_broadcast = any(sz == 1 for sz in spatial_shape)
+        if has_broadcast:
+            nontrivial_tm_idx = [
+                len(indices) - len(spatial_shape) + i
+                for i, sz in enumerate(spatial_shape) if sz > 1
+            ]
+            if nontrivial_tm_idx:
+                dedup_cols = [f"{tm.tensor_dim_names[j % len(tm.tensor_dim_names)]}_idx"
+                              for j in nontrivial_tm_idx]
+                unique_mask = ~base_df.duplicated(subset=dedup_cols)
+            else:
+                # All dims are size-1; the whole tensor is a scalar per sample.
+                unique_mask = pd.Series(False, index=base_df.index)
+                unique_mask.iloc[0] = True
+            unique_mask_values = unique_mask.values
+            df = base_df[unique_mask].copy()
+            eff_aligned = tuple(ai[unique_mask_values] for ai in aligned_indices)
+        else:
+            df = base_df.copy()
+            eff_aligned = aligned_indices
+
         for q_name, q_val in q_to_get.items():
             q_arr = np.quantile(site_samples, q_val, axis=0)
-            df[q_name] = q_arr[aligned_indices]
+            df[q_name] = q_arr[eff_aligned]
 
         if num_samples is not None:
             site_samples_np = np.array(site_samples)  # (S, ...)
@@ -342,7 +369,7 @@ def predict(model_class,
             chosen = np.random.choice(S, size=num_samples,
                                       replace=num_samples > S)
             sample_arr = np.stack(
-                [site_samples_np[s][aligned_indices] for s in chosen],
+                [site_samples_np[s][eff_aligned] for s in chosen],
                 axis=1,
             )  # (n_rows, num_samples)
             samples_df = pd.DataFrame(

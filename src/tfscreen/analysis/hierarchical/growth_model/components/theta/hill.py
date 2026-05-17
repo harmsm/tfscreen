@@ -614,6 +614,88 @@ def get_extract_specs(ctx):
 _ZERO_CONC_VALUE = 1e-20
 
 
+def predict_unmeasured(
+    target_genotypes,
+    titrant_names,
+    manual_titrant_df,
+    mut_labels,
+    pair_labels,
+    param_posteriors,
+    q_to_get,
+):
+    """
+    Predict theta for unmeasured genotypes using the population hyperprior mean.
+
+    ``hill`` has no per-mutation decomposition, so any unmeasured genotype is
+    predicted from the hierarchical hyperprior location parameters (the
+    population average curve).  All target genotypes receive identical
+    predictions; mutations not seen during training are not NaN-masked because
+    the model has no concept of individual mutation effects.
+
+    Parameters
+    ----------
+    target_genotypes : list[str]
+    titrant_names : list[str]
+    manual_titrant_df : pd.DataFrame
+        Must have 'titrant_name' and 'titrant_conc' columns.
+    mut_labels : list[str]  — unused (no per-mutation structure)
+    pair_labels : list[str] — unused
+    param_posteriors : dict-like
+    q_to_get : dict[str, float]
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns: 'genotype', 'titrant_name', 'titrant_conc', <quantile names>.
+        All genotypes receive the population-mean prediction.
+    """
+    import numpy as np
+    from tfscreen.analysis.hierarchical.posteriors import get_posterior_samples
+    from tfscreen.analysis.hierarchical.growth_model.predict_unmeasured import (
+        _build_prediction_grid,
+    )
+
+    target_genotypes = list(target_genotypes)
+    calc_df, geno_idx, titrant_idx = _build_prediction_grid(
+        target_genotypes, titrant_names, manual_titrant_df
+    )
+
+    def _load(key):
+        v = get_posterior_samples(param_posteriors, key)
+        if hasattr(v, "shape") and not hasattr(v, "reshape"):
+            v = v[:]
+        return np.array(v)
+
+    logit_low_hyper_loc   = _load("theta_logit_low_hyper_loc")    # (S,)
+    logit_delta_hyper_loc = _load("theta_logit_delta_hyper_loc")  # (S,)
+    log_K_hyper_loc       = _load("theta_log_hill_K_hyper_loc")   # (S,)
+    log_n_hyper_loc       = _load("theta_log_hill_n_hyper_loc")   # (S,)
+
+    logit_high_hyper_loc = logit_low_hyper_loc + logit_delta_hyper_loc
+    theta_low  = 1.0 / (1.0 + np.exp(-logit_low_hyper_loc))    # (S,)
+    theta_high = 1.0 / (1.0 + np.exp(-logit_high_hyper_loc))   # (S,)
+    hill_K     = log_K_hyper_loc                                 # (S,) log scale
+    hill_n     = np.exp(log_n_hyper_loc)                         # (S,)
+
+    conc_vals = calc_df["titrant_conc"].values.astype(float).copy()
+    conc_vals[conc_vals == 0] = _ZERO_CONC_VALUE
+    log_conc = np.log(conc_vals)  # (N_rows,)
+
+    # Broadcast population-mean parameters across all rows
+    t_l = theta_low[:, None]   # (S, 1) → (S, N_rows)
+    t_h = theta_high[:, None]
+    l_K = hill_K[:, None]
+    h_n = hill_n[:, None]
+
+    occupancy = 1.0 / (1.0 + np.exp(-h_n * (log_conc[np.newaxis, :] - l_K)))
+    theta_samples = t_l + (t_h - t_l) * occupancy   # (S, N_rows)
+
+    result_df = calc_df[["genotype", "titrant_name", "titrant_conc"]].copy()
+    for q_name, q_val in q_to_get.items():
+        result_df[q_name] = np.quantile(theta_samples, q_val, axis=0)
+    return result_df
+
+
 def build_calc_df(model, manual_titrant_df):
     """
     Build the concentration grid DataFrame for theta curve extraction.

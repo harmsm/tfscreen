@@ -593,9 +593,16 @@ class ModelClass:
         # on GrowthData; downstream components use apply_mut_matrix for efficient
         # scatter without embedding the dense matrix as an XLA constant literal.
         _needs_mut = (self._theta in ("hill_mut", "lac_dimer_mut",
-                                       "lac_dimer_lnK_mut", "lac_dimer_lnK_nn_prior",
-                                       "mwc_dimer_lnK_mut", "mwc_dimer_lnK_nn_prior",
-                                       "mwc_dimer_lnK_ddG_prior") or
+                                       "lac_dimer_lnK_mut",
+                                       "lac_dimer_lnK_nn_prior",
+                                       "lac_dimer_lnK_ddG_prior",
+                                       "lac_dimer_unfolded_lnK_nn_prior",
+                                       "lac_dimer_unfolded_lnK_ddG_prior",
+                                       "mwc_dimer_lnK_mut",
+                                       "mwc_dimer_lnK_nn_prior",
+                                       "mwc_dimer_lnK_ddG_prior",
+                                       "mwc_dimer_unfolded_lnK_nn_prior",
+                                       "mwc_dimer_unfolded_lnK_ddG_prior") or
                       self._activity in ("hierarchical_mut", "horseshoe_mut") or
                       self._dk_geno == "hierarchical_mut")
         self.mut_labels = []
@@ -631,8 +638,10 @@ class ModelClass:
         # (mwc_dimer_lnK_ddG_prior).
         # struct_names is a tuple and cannot go through populate_dataclass (which
         # rejects tuples); it is injected via .replace() after GrowthData is built.
-        _nn_prior_models   = ("lac_dimer_lnK_nn_prior", "mwc_dimer_lnK_nn_prior")
-        _ddG_prior_models  = ("mwc_dimer_lnK_ddG_prior",)
+        _nn_prior_models   = ("lac_dimer_lnK_nn_prior", "lac_dimer_unfolded_lnK_nn_prior",
+                               "mwc_dimer_lnK_nn_prior", "mwc_dimer_unfolded_lnK_nn_prior")
+        _ddG_prior_models  = ("lac_dimer_lnK_ddG_prior", "lac_dimer_unfolded_lnK_ddG_prior",
+                               "mwc_dimer_lnK_ddG_prior", "mwc_dimer_unfolded_lnK_ddG_prior")
         _needs_struct = self._theta in _nn_prior_models + _ddG_prior_models
         _struct_names_tuple = None
         if _needs_struct:

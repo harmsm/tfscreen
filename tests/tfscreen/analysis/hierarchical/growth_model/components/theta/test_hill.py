@@ -249,3 +249,142 @@ def test_population_moments_logic(mock_data):
     assert mu.shape == (1, mock_data.num_titrant_conc, 1)
     assert sigma.shape == (1, mock_data.num_titrant_conc, 1)
     assert jnp.all(sigma > 0)
+
+
+# ---------------------------------------------------------------------------
+# predict_unmeasured
+# ---------------------------------------------------------------------------
+
+import pandas as pd
+
+from tfscreen.analysis.hierarchical.growth_model.components.theta.hill import (
+    predict_unmeasured as hill_predict_unmeasured,
+)
+
+_TITRANT_NAMES_H = ["IPTG", "TMAIPP"]
+
+
+def _make_titrant_df_h():
+    return pd.DataFrame({
+        "titrant_name": ["IPTG", "IPTG", "IPTG", "TMAIPP", "TMAIPP", "TMAIPP"],
+        "titrant_conc": [0.0, 1e-4, 1e-3, 0.0, 1e-4, 1e-3],
+    })
+
+
+def _make_hill_posteriors(S=10, seed=0):
+    """Fake posteriors for the hill (non-mut) model.
+
+    Only the four global hyperprior location sites matter for predict_unmeasured;
+    scale sites are not loaded by the function.
+    """
+    rng = np.random.default_rng(seed)
+    post = {}
+    post["theta_logit_low_hyper_loc"]   = rng.standard_normal(S).astype(np.float32) + 2.0
+    post["theta_logit_delta_hyper_loc"] = rng.standard_normal(S).astype(np.float32) - 4.0
+    post["theta_log_hill_K_hyper_loc"]  = rng.standard_normal(S).astype(np.float32) - 4.1
+    post["theta_log_hill_n_hyper_loc"]  = rng.standard_normal(S).astype(np.float32) * 0.3
+    return post
+
+
+class TestHillPredictUnmeasured:
+
+    def _q(self):
+        return {"median": 0.5, "lower": 0.025, "upper": 0.975}
+
+    def test_output_shape_and_columns(self):
+        post = _make_hill_posteriors()
+        result = hill_predict_unmeasured(
+            target_genotypes=["wt", "M42I"],
+            titrant_names=_TITRANT_NAMES_H,
+            manual_titrant_df=_make_titrant_df_h(),
+            mut_labels=["M42I", "K84L"],
+            pair_labels=[],
+            param_posteriors=post,
+            q_to_get=self._q(),
+        )
+        # 2 genotypes × 6 rows in titrant_df
+        assert len(result) == 2 * 6
+        for col in ["genotype", "titrant_name", "titrant_conc",
+                    "median", "lower", "upper"]:
+            assert col in result.columns
+
+    def test_theta_in_unit_interval(self):
+        post = _make_hill_posteriors()
+        result = hill_predict_unmeasured(
+            target_genotypes=["wt", "M42I"],
+            titrant_names=_TITRANT_NAMES_H,
+            manual_titrant_df=_make_titrant_df_h(),
+            mut_labels=["M42I"],
+            pair_labels=[],
+            param_posteriors=post,
+            q_to_get={"median": 0.5},
+        )
+        assert (result["median"] >= 0).all()
+        assert (result["median"] <= 1).all()
+        assert not result["median"].isna().any()
+
+    def test_unknown_mutations_not_nan(self):
+        """hill has no mutation structure; unknown mutations are NOT NaN-masked."""
+        post = _make_hill_posteriors()
+        result = hill_predict_unmeasured(
+            target_genotypes=["wt", "NOVELXYZ"],
+            titrant_names=["IPTG"],
+            manual_titrant_df=pd.DataFrame({
+                "titrant_name": ["IPTG"],
+                "titrant_conc": [1e-4],
+            }),
+            mut_labels=["M42I"],
+            pair_labels=[],
+            param_posteriors=post,
+            q_to_get={"median": 0.5},
+        )
+        assert not result["median"].isna().any()
+
+    def test_all_genotypes_get_same_prediction(self):
+        """Since hill has no per-mutation effects, all genotypes get identical predictions."""
+        post = _make_hill_posteriors(S=20, seed=3)
+        titrant_df = pd.DataFrame({
+            "titrant_name": ["IPTG"],
+            "titrant_conc": [1e-4],
+        })
+        result = hill_predict_unmeasured(
+            target_genotypes=["wt", "M42I", "K84L", "M42I/K84L"],
+            titrant_names=["IPTG"],
+            manual_titrant_df=titrant_df,
+            mut_labels=["M42I", "K84L"],
+            pair_labels=[],
+            param_posteriors=post,
+            q_to_get={"median": 0.5},
+        )
+        medians = result["median"].values
+        np.testing.assert_allclose(medians, medians[0], atol=1e-6)
+
+    def test_zero_conc_handled(self):
+        post = _make_hill_posteriors()
+        result = hill_predict_unmeasured(
+            target_genotypes=["wt"],
+            titrant_names=["IPTG"],
+            manual_titrant_df=pd.DataFrame({
+                "titrant_name": ["IPTG"],
+                "titrant_conc": [0.0],
+            }),
+            mut_labels=[],
+            pair_labels=[],
+            param_posteriors=post,
+            q_to_get={"median": 0.5},
+        )
+        assert np.isfinite(result["median"].values).all()
+
+    def test_upper_ge_median_ge_lower(self):
+        post = _make_hill_posteriors(S=50, seed=7)
+        result = hill_predict_unmeasured(
+            target_genotypes=["wt"],
+            titrant_names=_TITRANT_NAMES_H,
+            manual_titrant_df=_make_titrant_df_h(),
+            mut_labels=[],
+            pair_labels=[],
+            param_posteriors=post,
+            q_to_get=self._q(),
+        )
+        assert (result["upper"] >= result["median"]).all()
+        assert (result["median"] >= result["lower"]).all()
