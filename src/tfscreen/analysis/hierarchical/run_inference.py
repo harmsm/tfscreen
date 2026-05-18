@@ -20,6 +20,15 @@ import numpy as np
 import dill
 from tqdm.auto import tqdm
 
+_HDF5_MAX_CHUNK_BYTES = 1 << 30  # 1 GiB; HDF5 hard-limit is 4 GiB
+
+def _safe_chunks(first_dim, trailing_shape, dtype):
+    """Return a chunk tuple whose total byte size stays under _HDF5_MAX_CHUNK_BYTES."""
+    trailing = int(np.prod(trailing_shape)) if trailing_shape else 1
+    item = np.dtype(dtype).itemsize
+    safe_first = max(1, _HDF5_MAX_CHUNK_BYTES // (trailing * item))
+    return (min(first_dim, safe_first),) + trailing_shape
+
 from collections import deque
 from functools import partial
 import os
@@ -552,15 +561,15 @@ class RunInference:
                     if k not in hf:
                         # Create dataset on first write
                         maxshape = (num_posterior_samples,) + v.shape[1:]
-                        chunks = (min(sampling_batch_size, 100),) + v.shape[1:]
+                        chunks = _safe_chunks(min(sampling_batch_size, 100), v.shape[1:], v.dtype)
                         hf.create_dataset(k, shape=maxshape, dtype=v.dtype,
                                           chunks=chunks,
                                           compression="gzip", compression_opts=4)
 
                     hf[k][samples_written:samples_written + batch_size_actual] = v
-                
+
                 samples_written += batch_size_actual
-        
+
             # Add metadata to HDF5 file
             hf.attrs["num_samples"] = samples_written
             
@@ -1198,7 +1207,7 @@ class RunInference:
                 for k, v in this_batch.items():
                     if k not in hf:
                         maxshape = (num_posterior_samples,) + v.shape[1:]
-                        chunks = (min(sampling_batch_size, 100),) + v.shape[1:]
+                        chunks = _safe_chunks(min(sampling_batch_size, 100), v.shape[1:], v.dtype)
                         hf.create_dataset(k, shape=maxshape, dtype=v.dtype,
                                           chunks=chunks,
                                           compression="gzip", compression_opts=4)
@@ -1294,7 +1303,7 @@ class RunInference:
 
         with h5py.File(h5_file, "w") as hf:
             for k, v in results.items():
-                chunks = (min(100, v.shape[0]),) + v.shape[1:]
+                chunks = _safe_chunks(min(100, v.shape[0]), v.shape[1:], v.dtype)
                 hf.create_dataset(k, data=v, chunks=chunks,
                                   compression="gzip", compression_opts=4)
             hf.attrs["num_samples"] = num_samples
