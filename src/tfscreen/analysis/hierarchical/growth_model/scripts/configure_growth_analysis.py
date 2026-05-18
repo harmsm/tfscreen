@@ -9,7 +9,7 @@ from tfscreen.util.cli.generalized_main import generalized_main
 
 def configure_growth_analysis(growth_df=None,
                               binding_df=None,
-                              out_root="tfs",
+                              out_prefix="tfs",
                               condition_growth_model="linear",
                               growth_transition_model="instant",
                               ln_cfu0_model="hierarchical",
@@ -34,7 +34,7 @@ def configure_growth_analysis(growth_df=None,
         Input data for the growth model (e.g., genotype/cfu measurements).
     binding_df : pandas.DataFrame or str, optional
         Input data for the binding model (e.g., theta vs. titrant measurements).
-    out_root : str, optional
+    out_prefix : str, optional
         Output file root for the generated configuration files (default 'tfs').
     condition_growth_model: str, optional
         Model to use to describe growth under different conditions (e.g., 
@@ -123,7 +123,7 @@ def configure_growth_analysis(growth_df=None,
     # Write the model configuration to a file. This includes the model component
     # names, the data file paths, and the parameter guesses/priors.
     write_configuration(gm=gm,
-                        out_root=out_root,
+                        out_prefix=out_prefix,
                         growth_df_path=growth_df if isinstance(growth_df, str) else "growth.csv",
                         binding_df_path=binding_df if isinstance(binding_df, str) else "binding.csv")
 

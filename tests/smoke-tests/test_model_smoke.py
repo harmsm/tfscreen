@@ -77,7 +77,7 @@ def test_model_svi_smoke(growth_smoke_csv,
     This is a smoke test to ensure that the model components can be 
     initialized and a few steps of optimization can be performed without error.
     """
-    out_root = os.path.join(tmpdir, "smoke_test")
+    out_prefix = os.path.join(tmpdir, "smoke_test")
     
     # Initialize ModelClass
     model = ModelClass(
@@ -98,7 +98,7 @@ def test_model_svi_smoke(growth_smoke_csv,
     svi_state, params, converged = inference.run_optimization(
         svi=svi,
         max_num_epochs=5,
-        out_root=out_root,
+        out_prefix=out_prefix,
         checkpoint_interval=10 # Skip checkpointing for this quick test
     )
     
@@ -111,7 +111,7 @@ def test_model_svi_smoke_lnK_nn_prior(growth_smoke_csv,
                                        struct_smoke_h5_path,
                                        tmpdir):
     """SVI smoke test for lac_dimer_lnK_nn_prior (requires struct_ensemble_path)."""
-    out_root = os.path.join(tmpdir, "smoke_nn_prior")
+    out_prefix = os.path.join(tmpdir, "smoke_nn_prior")
 
     model = ModelClass(
         growth_df=growth_smoke_csv,
@@ -127,7 +127,7 @@ def test_model_svi_smoke_lnK_nn_prior(growth_smoke_csv,
     svi_state, params, converged = inference.run_optimization(
         svi=svi,
         max_num_epochs=5,
-        out_root=out_root,
+        out_prefix=out_prefix,
         checkpoint_interval=10,
     )
 

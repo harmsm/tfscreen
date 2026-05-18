@@ -42,12 +42,12 @@ def test_summarize_posteriors_npz(tmpdir, mock_config):
         gm.settings = {"theta": "hill"}
         mock_read.return_value = (gm, {})
 
-        out_root = os.path.join(tmpdir, "tfs")
-        summarize_posteriors(config_file, posterior_file, out_root=out_root)
+        out_prefix = os.path.join(tmpdir, "tfs")
+        summarize_posteriors(config_file, posterior_file, out_prefix=out_prefix)
 
-    assert os.path.exists(f"{out_root}_param1.csv")
-    assert not os.path.exists(f"{out_root}_growth_pred.csv")
-    assert not os.path.exists(f"{out_root}_theta_curves.csv")
+    assert os.path.exists(f"{out_prefix}_param1.csv")
+    assert not os.path.exists(f"{out_prefix}_growth_pred.csv")
+    assert not os.path.exists(f"{out_prefix}_theta_curves.csv")
 
 def test_summarize_posteriors_h5(tmpdir, mock_config):
     import h5py
@@ -68,10 +68,10 @@ def test_summarize_posteriors_h5(tmpdir, mock_config):
         gm.settings = {"theta": "hill"}
         mock_read.return_value = (gm, {})
 
-        out_root = os.path.join(tmpdir, "tfs_h5")
-        summarize_posteriors(config_file, posterior_file, out_root=out_root)
+        out_prefix = os.path.join(tmpdir, "tfs_h5")
+        summarize_posteriors(config_file, posterior_file, out_prefix=out_prefix)
 
-    assert os.path.exists(f"{out_root}_param1.csv")
+    assert os.path.exists(f"{out_prefix}_param1.csv")
 
 def test_summarize_posteriors_errors():
     with pytest.raises(FileNotFoundError, match="Configuration file not found"):

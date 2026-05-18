@@ -47,7 +47,7 @@ def test_run_svi_flow_converged(mock_run_inference):
     state, params, converged = _run_svi(
         ri,
         init_params=None,
-        out_root="test_root",
+        out_prefix="test_root",
         max_num_epochs=500,
         num_posterior_samples=100
     )
@@ -59,7 +59,7 @@ def test_run_svi_flow_converged(mock_run_inference):
     ri.run_optimization.assert_called_once_with(
         "mock_svi_obj",
         init_params=None,
-        out_root="test_root",
+        out_prefix="test_root",
         svi_state=None,
         convergence_tolerance=ANY,
         convergence_window=ANY,
@@ -75,7 +75,7 @@ def test_run_svi_flow_converged(mock_run_inference):
     ri.get_posteriors.assert_called_once_with(
         svi="mock_svi_obj",
         svi_state="final_state",
-        out_root="test_root",
+        out_prefix="test_root",
         num_posterior_samples=100,
         sampling_batch_size=ANY,
         forward_batch_size=ANY
@@ -129,7 +129,7 @@ def test_run_map_flow(mock_run_inference):
     state, params, converged = _run_map(
         ri,
         init_params=init_params,
-        out_root="test_map",
+        out_prefix="test_map",
         max_num_epochs=1000,
         num_posterior_samples=100
     )
@@ -141,7 +141,7 @@ def test_run_map_flow(mock_run_inference):
     ri.run_optimization.assert_called_once_with(
         "mock_svi_obj",
         init_params=init_params,
-        out_root="test_map",
+        out_prefix="test_map",
         svi_state=None,
         convergence_tolerance=ANY,
         convergence_window=ANY,
@@ -154,7 +154,7 @@ def test_run_map_flow(mock_run_inference):
     )
 
     # 3. Write Params
-    ri.write_params.assert_called_once_with({"p": 1}, out_root="test_map")
+    ri.write_params.assert_called_once_with({"p": 1}, out_prefix="test_map")
 
     # always_get_posterior=False is default
     ri.get_posteriors.assert_not_called()
@@ -206,11 +206,11 @@ def test_run_nuts_calls_get_nuts_posteriors(mock_ri_for_nuts):
     expected_samples = {"param": [1.0, 2.0]}
     ri.run_nuts.return_value.get_samples.return_value = expected_samples
 
-    _run_nuts(ri, out_root="myroot", forward_batch_size=64)
+    _run_nuts(ri, out_prefix="myroot", forward_batch_size=64)
 
     ri.get_nuts_posteriors.assert_called_once_with(
         expected_samples,
-        out_root="myroot",
+        out_prefix="myroot",
         forward_batch_size=64,
     )
 
@@ -220,11 +220,11 @@ def test_run_nuts_writes_checkpoint(tmp_path, mock_ri_for_nuts):
     ri = mock_ri_for_nuts
     samples = {"param": [1.0, 2.0]}
     ri.run_nuts.return_value.get_samples.return_value = samples
-    out_root = str(tmp_path / "nuts_chk")
+    out_prefix = str(tmp_path / "nuts_chk")
 
-    _run_nuts(ri, out_root=out_root)
+    _run_nuts(ri, out_prefix=out_prefix)
 
-    chk_path = f"{out_root}_checkpoint.pkl"
+    chk_path = f"{out_prefix}_checkpoint.pkl"
     assert os.path.exists(chk_path)
     with open(chk_path, "rb") as f:
         chk = dill.load(f)

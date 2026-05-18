@@ -8,7 +8,7 @@ from tfscreen.util.cli.generalized_main import generalized_main
 
 def summarize_posteriors(config_file,
                         posterior_file,
-                        out_root="tfs_param"):
+                        out_prefix="tfs_param"):
     """
     Extract posterior parameters and write to CSV files.
 
@@ -18,7 +18,7 @@ def summarize_posteriors(config_file,
         Path to the YAML configuration file.
     posterior_file : str
         Path to the .npz or .h5 file containing posterior samples.
-    out_root : str, optional
+    out_prefix : str, optional
         Root filename for output files. Default "tfs_param".
 
     Returns
@@ -61,10 +61,10 @@ def summarize_posteriors(config_file,
                   "Extraction of natural parameters may fail.", flush=True)
 
         # Extract and save parameters
-        print(f"Extracting parameters to {out_root}_*.csv...", flush=True)
+        print(f"Extracting parameters to {out_prefix}_*.csv...", flush=True)
         params = extract_parameters(gm, posteriors)
         for p_name, p_df in params.items():
-            p_df.to_csv(f"{out_root}_{p_name}.csv", index=False)
+            p_df.to_csv(f"{out_prefix}_{p_name}.csv", index=False)
 
     print("Summarization complete.", flush=True)
 

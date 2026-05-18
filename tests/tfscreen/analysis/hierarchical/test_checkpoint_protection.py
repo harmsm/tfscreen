@@ -35,7 +35,7 @@ def test_analyze_theta_checkpoint_exists_no_resume(mock_growth_model, mock_run_i
             run_growth_analysis(
                 config_file="config.yaml",
                 seed=1,
-                out_root="test_root",
+                out_prefix="test_root",
                 checkpoint_file=None
             )
 
@@ -54,7 +54,7 @@ def test_analyze_theta_premap_checkpoint_exists_no_resume(mock_growth_model, moc
             run_growth_analysis(
                 config_file="config.yaml",
                 seed=1,
-                out_root="test_root",
+                out_prefix="test_root",
                 checkpoint_file=None,
                 pre_map_num_epoch=1000
             )
@@ -69,7 +69,7 @@ def test_analyze_theta_checkpoint_exists_with_resume(mock_growth_model, mock_run
             run_growth_analysis(
                 config_file="config.yaml",
                 seed=1,
-                out_root="test_root",
+                out_prefix="test_root",
                 checkpoint_file="existing.pkl"
             )
             # Should not raise exception, should call _run_svi
@@ -85,7 +85,7 @@ def test_analyze_theta_no_checkpoint_no_resume(mock_growth_model, mock_run_infer
             run_growth_analysis(
                 config_file="config.yaml",
                 seed=1,
-                out_root="test_root",
+                out_prefix="test_root",
                 checkpoint_file=None
             )
             # Should not raise exception, should call _run_svi

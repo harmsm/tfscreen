@@ -914,18 +914,18 @@ class TestRunPrefitCalibrationOrchestration:
         assert kwargs["max_num_epochs"] == 500
         assert kwargs["init_param_jitter"] == 0.0
 
-    def test_default_out_root_is_prefit(self, tmp_path, mocker):
+    def test_default_out_prefix_is_prefit(self, tmp_path, mocker):
         cfg, _, _ = self._write_yaml_and_csvs(tmp_path)
         _, mock_run_map = self._patch_pipeline(mocker)
         run_prefit_calibration(config_file=cfg, seed=1)
-        assert mock_run_map.call_args.kwargs["out_root"] == "tfs_prefit"
+        assert mock_run_map.call_args.kwargs["out_prefix"] == "tfs_prefit"
 
-    def test_custom_out_root_is_honored(self, tmp_path, mocker):
+    def test_custom_out_prefix_is_honored(self, tmp_path, mocker):
         cfg, _, _ = self._write_yaml_and_csvs(tmp_path)
         _, mock_run_map = self._patch_pipeline(mocker)
         run_prefit_calibration(config_file=cfg, seed=1,
-                               out_root="my_runA")
-        assert mock_run_map.call_args.kwargs["out_root"] == "my_runA"
+                               out_prefix="my_runA")
+        assert mock_run_map.call_args.kwargs["out_prefix"] == "my_runA"
 
     def test_default_init_param_jitter_is_zero(self, tmp_path, mocker):
         """Pre-fit should be deterministic given a seed; default jitter is 0."""
@@ -957,11 +957,11 @@ class TestPrefitMainCLI:
         assert kwargs["config_file"] == "cal.yaml"
         assert kwargs["seed"] == 13
 
-    def test_main_forwards_custom_out_root(self, tmp_path):
+    def test_main_forwards_custom_out_prefix(self, tmp_path):
         argv = [
             "cal.yaml",
             "--seed", "0",
-            "--out_root", "calibration_runA",
+            "--out_prefix", "calibration_runA",
         ]
         with patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
@@ -970,7 +970,7 @@ class TestPrefitMainCLI:
         ) as mock_run, \
              patch("sys.argv", ["tfs-prefit-calibration"] + argv):
             main()
-        assert mock_run.call_args.kwargs["out_root"] == "calibration_runA"
+        assert mock_run.call_args.kwargs["out_prefix"] == "calibration_runA"
 
     def test_main_forwards_checkpoint_file(self, tmp_path):
         argv = [
@@ -1136,17 +1136,17 @@ class TestMakeCalibrationPlots:
         gm_cal, map_samples = _build_fake_gm_cal(n_geno=3)
         self._patch_predictive(mocker, map_samples)
 
-        _make_calibration_plots(gm_cal, params={}, out_root=str(tmp_path / "run"))
+        _make_calibration_plots(gm_cal, params={}, out_prefix=str(tmp_path / "run"))
 
         pdfs = sorted(tmp_path.glob("*.pdf"))
         assert len(pdfs) == 3
 
-    def test_pdf_names_use_out_root_and_genotype(self, tmp_path, mocker):
+    def test_pdf_names_use_out_prefix_and_genotype(self, tmp_path, mocker):
         gm_cal, map_samples = _build_fake_gm_cal(n_geno=2)
         self._patch_predictive(mocker, map_samples)
 
         _make_calibration_plots(gm_cal, params={},
-                                out_root=str(tmp_path / "myrun"))
+                                out_prefix=str(tmp_path / "myrun"))
 
         pdf_names = {p.name for p in tmp_path.glob("*.pdf")}
         assert "myrun_calib_geno0.pdf" in pdf_names
@@ -1163,7 +1163,7 @@ class TestMakeCalibrationPlots:
         self._patch_predictive(mocker, map_samples)
 
         _make_calibration_plots(gm_cal, params={},
-                                out_root=str(tmp_path / "run"))
+                                out_prefix=str(tmp_path / "run"))
 
         pdfs = {p.name for p in tmp_path.glob("*.pdf")}
         assert "run_calib_geno0.pdf" not in pdfs
@@ -1177,7 +1177,7 @@ class TestMakeCalibrationPlots:
         self._patch_predictive(mocker, map_samples_no_pred)
 
         _make_calibration_plots(gm_cal, params={},
-                                out_root=str(tmp_path / "run"))
+                                out_prefix=str(tmp_path / "run"))
 
         assert not list(tmp_path.glob("*.pdf"))
         captured = capsys.readouterr()
@@ -1190,7 +1190,7 @@ class TestMakeCalibrationPlots:
 
         # Should not raise even without ln_cfu0.
         _make_calibration_plots(gm_cal, params={},
-                                out_root=str(tmp_path / "run"))
+                                out_prefix=str(tmp_path / "run"))
 
         assert len(list(tmp_path.glob("*.pdf"))) == 2
 
@@ -1204,7 +1204,7 @@ class TestMakeCalibrationPlots:
         self._patch_predictive(mocker, map_samples)
 
         _make_calibration_plots(gm_cal, params={},
-                                out_root=str(tmp_path / "run"))
+                                out_prefix=str(tmp_path / "run"))
 
         # A PDF must still be produced for each genotype.
         assert len(list(tmp_path.glob("*.pdf"))) == 2
@@ -1228,20 +1228,20 @@ class TestMakeCalibrationPlots:
         mocker.patch("builtins.__import__", side_effect=fake_import)
 
         _make_calibration_plots(gm_cal, params={},
-                                out_root=str(tmp_path / "run"))
+                                out_prefix=str(tmp_path / "run"))
 
         assert not list(tmp_path.glob("*.pdf"))
         captured = capsys.readouterr()
         assert "matplotlib" in captured.err
 
     def test_writes_predictions_csv(self, tmp_path, mocker):
-        """A CSV named {out_root}_calib_growth_df.csv is written with a
+        """A CSV named {out_prefix}_calib_growth_df.csv is written with a
         ln_cfu_pred column populated for every valid observation."""
         gm_cal, map_samples = _build_fake_gm_cal(n_geno=2, n_t=3)
         self._patch_predictive(mocker, map_samples)
 
         _make_calibration_plots(gm_cal, params={},
-                                out_root=str(tmp_path / "run"))
+                                out_prefix=str(tmp_path / "run"))
 
         csv_path = tmp_path / "run_calib_growth_df.csv"
         assert csv_path.exists(), "predictions CSV was not created"

@@ -294,13 +294,13 @@ def test_svi_runs_without_error(tmp_path):
         struct_ensemble_path=h5_path,
     )
 
-    out_root = str(tmp_path / "svi_out")
+    out_prefix = str(tmp_path / "svi_out")
     inference = RunInference(model=mc, seed=0)
     svi = inference.setup_svi(adam_step_size=1e-3)
     svi_state, params, converged = inference.run_optimization(
         svi=svi,
         max_num_epochs=5,
-        out_root=out_root,
+        out_prefix=out_prefix,
         checkpoint_interval=100,
     )
 
@@ -326,13 +326,13 @@ def test_svi_with_epistasis_runs_without_error(tmp_path):
         epistasis=True,
     )
 
-    out_root = str(tmp_path / "svi_epi_out")
+    out_prefix = str(tmp_path / "svi_epi_out")
     inference = RunInference(model=mc, seed=0)
     svi = inference.setup_svi(adam_step_size=1e-3)
     svi_state, params, converged = inference.run_optimization(
         svi=svi,
         max_num_epochs=5,
-        out_root=out_root,
+        out_prefix=out_prefix,
         checkpoint_interval=100,
     )
 

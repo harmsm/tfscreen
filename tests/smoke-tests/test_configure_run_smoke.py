@@ -38,16 +38,16 @@ def test_configure_run_pipeline_smoke(tmpdir):
     binding_path = os.path.join(tmpdir, "test_binding.csv")
     binding_df.to_csv(binding_path, index=False)
 
-    out_root = os.path.join(tmpdir, "test_tfs")
+    out_prefix = os.path.join(tmpdir, "test_tfs")
 
     # Run configuration
     configure_growth_analysis(growth_df=growth_path,
                               binding_df=binding_path,
-                              out_root=out_root)
+                              out_prefix=out_prefix)
 
-    config_file = f"{out_root}_config.yaml"
-    priors_file = f"{out_root}_priors.csv"
-    guesses_file = f"{out_root}_guesses.csv"
+    config_file = f"{out_prefix}_config.yaml"
+    priors_file = f"{out_prefix}_priors.csv"
+    guesses_file = f"{out_prefix}_guesses.csv"
 
     # Verify files exist
     assert os.path.exists(config_file)
@@ -65,20 +65,20 @@ def test_configure_run_pipeline_smoke(tmpdir):
     # Run analysis (smoke test)
     # We use max_num_epochs=1 to make it fast
     # We use always_get_posterior=True to ensure the posterior file is written
-    out_root = os.path.join(tmpdir, "test_tfs_out")
+    out_prefix = os.path.join(tmpdir, "test_tfs_out")
     run_growth_analysis(config_file=config_file,
                         seed=42,
                         max_num_epochs=1,
                         num_posterior_samples=10,
                         sampling_batch_size=10,
                         always_get_posterior=True,
-                        out_root=out_root)
+                        out_prefix=out_prefix)
 
     assert os.path.exists(os.path.join(tmpdir, "test_tfs_out_posterior.h5"))
 
     # Summarize posteriors as a separate step
     summarize_posteriors(config_file=config_file,
-                         posterior_file=f"{out_root}_posterior.h5",
-                         out_root=out_root)
+                         posterior_file=f"{out_prefix}_posterior.h5",
+                         out_prefix=out_prefix)
 
     assert os.path.exists(os.path.join(tmpdir, "test_tfs_out_hill_n.csv"))

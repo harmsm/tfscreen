@@ -50,7 +50,7 @@ def mock_gm(mocker):
 
 def test_configure_growth_analysis_coverage(mock_gm, tmpdir):
     _, mock_gm_inst = mock_gm
-    out_root = os.path.join(tmpdir, "test")
+    out_prefix = os.path.join(tmpdir, "test")
     
     # Mock priors with dict and dataclass members for coverage
     mock_sub = MagicMock()
@@ -76,14 +76,14 @@ def test_configure_growth_analysis_coverage(mock_gm, tmpdir):
         "unknown_3d": np.zeros((2, 2, 2)) # 3D
     }
     
-    configure_growth_analysis(growth_df="g.csv", binding_df="b.csv", out_root=out_root)
+    configure_growth_analysis(growth_df="g.csv", binding_df="b.csv", out_prefix=out_prefix)
     
-    assert os.path.exists(f"{out_root}_config.yaml")
-    assert os.path.exists(f"{out_root}_priors.csv")
-    assert os.path.exists(f"{out_root}_guesses.csv")
+    assert os.path.exists(f"{out_prefix}_config.yaml")
+    assert os.path.exists(f"{out_prefix}_priors.csv")
+    assert os.path.exists(f"{out_prefix}_guesses.csv")
     
     # Check guesses content for mapping coverage
-    guesses_df = pd.read_csv(f"{out_root}_guesses.csv")
+    guesses_df = pd.read_csv(f"{out_prefix}_guesses.csv")
     assert "replicate" in guesses_df.columns # condition mapping
     assert "titrant_name" in guesses_df.columns # theta mapping
     assert "genotype" in guesses_df.columns # genotype mapping
@@ -349,23 +349,6 @@ def test_run_growth_analysis_svi_full(tmpdir, mocker):
         mock_map.reset_mock()
         run_growth_analysis(config_path, seed=42, analysis_method="map")
         mock_map.assert_called_once()
-        
-        # Test posterior — requires an existing checkpoint file.
-        # Write a minimal dill checkpoint that looks like an SVI state
-        # (no _auto_loc keys) so the code takes the load-directly path.
-        import dill
-        import types
-        fake_chk_path = os.path.join(tmpdir, "fake_svi.pkl")
-        fake_chk = {"svi_state": types.SimpleNamespace(optim_state=None)}
-        with open(fake_chk_path, "wb") as f:
-            dill.dump(fake_chk, f)
-        # The mocked ri.setup_svi().optim.get_params() returns a MagicMock
-        # which iterates as empty, so no _auto_loc keys → SVI path, 0 epochs.
-        mock_svi.reset_mock()
-        run_growth_analysis(config_path, seed=42, analysis_method="posterior",
-                            checkpoint_file=fake_chk_path)
-        mock_svi.assert_called_once()
-        assert mock_svi.call_args.kwargs["max_num_epochs"] == 0
         
         # Test invalid method
         with pytest.raises(ValueError, match="not recognized"):

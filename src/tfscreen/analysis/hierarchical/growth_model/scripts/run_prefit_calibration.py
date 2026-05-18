@@ -29,7 +29,7 @@ After MAP convergence, the script:
    ``dist.loc`` / ``dist.scale`` for each calibrated sample site, using
    a sentinel-trace introspection so we don't have to hard-code the
    field-naming conventions of every component.
-3. Updates the production ``{out_root}_guesses.csv`` *in place*, writing
+3. Updates the production ``{out_prefix}_guesses.csv`` *in place*, writing
    a ``.bak`` backup before overwriting.  For simple-prior
    ``condition_growth`` and ``growth_transition`` components, per-condition
    MAP estimates are written directly as per-condition guess values
@@ -632,7 +632,7 @@ def _resolve_csv_paths(config_file):
 
 def _run_calibration_map(ri,
                          init_params,
-                         out_root,
+                         out_prefix,
                          checkpoint_file,
                          adam_step_size,
                          adam_final_step_size,
@@ -663,7 +663,7 @@ def _run_calibration_map(ri,
     svi_state, params, converged = ri.run_optimization(
         map_obj,
         init_params=init_params,
-        out_root=out_root,
+        out_prefix=out_prefix,
         svi_state=checkpoint_file,
         convergence_tolerance=convergence_tolerance,
         convergence_window=convergence_window,
@@ -675,7 +675,7 @@ def _run_calibration_map(ri,
         epoch_checkpoint_interval=epoch_checkpoint_interval
     )
 
-    ri.write_params(params, out_root=out_root)
+    ri.write_params(params, out_prefix=out_prefix)
 
     if converged:
         print("Calibration MAP run converged.", flush=True)
@@ -689,7 +689,7 @@ def _run_calibration_map(ri,
 # Diagnostic plots
 # ---------------------------------------------------------------------------
 
-def _make_calibration_plots(gm_cal, params, out_root):
+def _make_calibration_plots(gm_cal, params, out_prefix):
     """
     Generate per-genotype calibration diagnostic plots as PDFs.
 
@@ -723,9 +723,9 @@ def _make_calibration_plots(gm_cal, params, out_root):
     params : dict
         MAP parameter dict from the SVI optimiser (keys follow the
         ``{site}_auto_loc`` convention).
-    out_root : str
+    out_prefix : str
         File-name prefix; each genotype's PDF is written to
-        ``{out_root}_calib_{genotype}.pdf``.
+        ``{out_prefix}_calib_{genotype}.pdf``.
     """
     try:
         import matplotlib
@@ -967,7 +967,7 @@ def _make_calibration_plots(gm_cal, params, out_root):
             axes[extra_i // n_cols][extra_i % n_cols].set_visible(False)
 
         fig.tight_layout(rect=[0, 0, 1, 0.95])
-        pdf_path = f"{out_root}_calib_{geno_name}.pdf"
+        pdf_path = f"{out_prefix}_calib_{geno_name}.pdf"
         fig.savefig(pdf_path, format="pdf", bbox_inches="tight")
         plt.close(fig)
         print(f"  Saved {pdf_path}", flush=True)
@@ -999,7 +999,7 @@ def _make_calibration_plots(gm_cal, params, out_root):
         "titrant_name_idx", "titrant_conc_idx", "genotype_idx", "t_sel",
     ]
     growth_df_out = df.merge(pred_lookup, on=merge_cols, how="left")
-    csv_path = f"{out_root}_calib_growth_df.csv"
+    csv_path = f"{out_prefix}_calib_growth_df.csv"
     growth_df_out.to_csv(csv_path, index=False)
     print(f"  Saved {csv_path}", flush=True)
 
@@ -1013,7 +1013,7 @@ def _make_calibration_plots(gm_cal, params, out_root):
 def run_prefit_calibration(config_file,
                            seed=None,
                            checkpoint_file=None,
-                           out_root="tfs_prefit",
+                           out_prefix="tfs_prefit",
                            adam_step_size=1e-3,
                            adam_final_step_size=1e-6,
                            adam_clip_norm=1.0,
@@ -1058,9 +1058,9 @@ def run_prefit_calibration(config_file,
         a checkpoint.
     checkpoint_file : str or None, optional
         Path to a previously written pre-fit checkpoint to resume from.
-    out_root : str, optional
-        Prefix for calibration MAP artefacts (``{out_root}_params.npz``,
-        ``{out_root}_checkpoint.pkl``, etc.).  Defaults to ``"tfs_prefit"``.
+    out_prefix : str, optional
+        Prefix for calibration MAP artefacts (``{out_prefix}_params.npz``,
+        ``{out_prefix}_checkpoint.pkl``, etc.).  Defaults to ``"tfs_prefit"``.
         These are diagnostic outputs; the user-facing artefact is the
         in-place update of the production CSVs.
     adam_step_size, adam_final_step_size, adam_clip_norm,
@@ -1114,7 +1114,7 @@ def run_prefit_calibration(config_file,
     svi_state, params, converged = _run_calibration_map(
         ri,
         init_params=gm_cal.init_params,
-        out_root=out_root,
+        out_prefix=out_prefix,
         checkpoint_file=checkpoint_file,
         adam_step_size=adam_step_size,
         adam_final_step_size=adam_final_step_size,
@@ -1141,7 +1141,7 @@ def run_prefit_calibration(config_file,
     _apply_guesses_updates(guesses_path, guess_updates)
 
     # 6. Write per-genotype diagnostic plots.
-    _make_calibration_plots(gm_cal, params, out_root)
+    _make_calibration_plots(gm_cal, params, out_prefix)
 
     return svi_state, params, converged
 

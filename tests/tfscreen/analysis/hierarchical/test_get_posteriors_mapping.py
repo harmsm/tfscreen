@@ -79,15 +79,15 @@ def test_get_posteriors_batching_mapping(tmpdir):
     svi = ri.setup_svi(guide_type="delta")
     svi_state = svi.init(ri.get_key(), data=model.data, priors=model.priors)
     
-    out_root = str(tmpdir.join("test"))
+    out_prefix = str(tmpdir.join("test"))
     
     # Test 1: batch_size == num_genotypes
-    ri.get_posteriors(svi, svi_state, out_root, 
+    ri.get_posteriors(svi, svi_state, out_prefix, 
                        num_posterior_samples=10, 
                        sampling_batch_size=5, 
                        forward_batch_size=10)
     
-    with h5py.File(f"{out_root}_posterior.h5", 'r') as post:
+    with h5py.File(f"{out_prefix}_posterior.h5", 'r') as post:
         assert post["global_p"].shape == (10,)
         assert post["geno_p"].shape == (10, 10) # (samples, genotypes)
         assert post["geno_p_det"].shape == (10, 10)
@@ -103,12 +103,12 @@ def test_get_posteriors_batching_mapping(tmpdir):
         det_p_out = post["det_p_out"][:]
 
     # Test 2: batch_size < num_genotypes (e.g. forward_batch_size=3)
-    ri.get_posteriors(svi, svi_state, out_root + "_batched", 
+    ri.get_posteriors(svi, svi_state, out_prefix + "_batched", 
                        num_posterior_samples=10, 
                        sampling_batch_size=5, 
                        forward_batch_size=3)
     
-    with h5py.File(f"{out_root}_batched_posterior.h5", 'r') as post_batched:
+    with h5py.File(f"{out_prefix}_batched_posterior.h5", 'r') as post_batched:
         assert post_batched["global_p"].shape == (10,)
         assert post_batched["geno_p"].shape == (10, 10)
         assert post_batched["geno_p_det"].shape == (10, 10)
@@ -141,14 +141,14 @@ def test_get_posteriors_shape_ambiguity(tmpdir):
     svi = ri.setup_svi(guide_type="delta")
     svi_state = svi.init(ri.get_key(), data=model.data, priors=model.priors)
     
-    out_root = str(tmpdir.join("test_ambiguous"))
+    out_prefix = str(tmpdir.join("test_ambiguous"))
     
-    ri.get_posteriors(svi, svi_state, out_root, 
+    ri.get_posteriors(svi, svi_state, out_prefix, 
                        num_posterior_samples=4, 
                        sampling_batch_size=2, 
                        forward_batch_size=1)
     
-    with h5py.File(f"{out_root}_posterior.h5", 'r') as post:
+    with h5py.File(f"{out_prefix}_posterior.h5", 'r') as post:
         assert post["ambiguous_p"].shape == (4, 3, 3) # (samples, titrants, genotypes)
 
 def test_get_posteriors_manual_guide_indexing(tmpdir):
@@ -186,15 +186,15 @@ def test_get_posteriors_manual_guide_indexing(tmpdir):
         mock_svi.guide = manual_guide
         mock_svi.get_params.return_value = params
         
-        out_root = str(tmpdir.join("test_manual"))
+        out_prefix = str(tmpdir.join("test_manual"))
         
         # This should NOT fail now because we device_put the params and data
-        ri.get_posteriors(mock_svi, svi_state, out_root, 
+        ri.get_posteriors(mock_svi, svi_state, out_prefix, 
                            num_posterior_samples=4, 
                            sampling_batch_size=2, 
                            forward_batch_size=5)
         
-        with h5py.File(f"{out_root}_posterior.h5", 'r') as post:
+        with h5py.File(f"{out_prefix}_posterior.h5", 'r') as post:
             assert post["geno_p"].shape == (4, 10)
 
 def test_get_posteriors_sites_to_save_filters_output(tmpdir):
@@ -206,14 +206,14 @@ def test_get_posteriors_sites_to_save_filters_output(tmpdir):
     svi = ri.setup_svi(guide_type="delta")
     svi_state = svi.init(ri.get_key(), data=model.data, priors=model.priors)
 
-    out_root = str(tmpdir.join("filtered"))
-    ri.get_posteriors(svi, svi_state, out_root,
+    out_prefix = str(tmpdir.join("filtered"))
+    ri.get_posteriors(svi, svi_state, out_prefix,
                       num_posterior_samples=6,
                       sampling_batch_size=3,
                       forward_batch_size=10,
                       sites_to_save=["geno_p", "global_p"])
 
-    with h5py.File(f"{out_root}_posterior.h5", "r") as hf:
+    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
         keys = set(hf.keys())
         assert "geno_p" in keys
         assert "global_p" in keys
@@ -236,14 +236,14 @@ def test_get_posteriors_sites_to_save_none_saves_all(tmpdir):
     svi = ri.setup_svi(guide_type="delta")
     svi_state = svi.init(ri.get_key(), data=model.data, priors=model.priors)
 
-    out_root = str(tmpdir.join("all_sites"))
-    ri.get_posteriors(svi, svi_state, out_root,
+    out_prefix = str(tmpdir.join("all_sites"))
+    ri.get_posteriors(svi, svi_state, out_prefix,
                       num_posterior_samples=4,
                       sampling_batch_size=4,
                       forward_batch_size=8,
                       sites_to_save=None)
 
-    with h5py.File(f"{out_root}_posterior.h5", "r") as hf:
+    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
         keys = set(hf.keys())
     assert {"geno_p", "global_p", "geno_p_det", "matrix_p", "det_p_in", "det_p_out"}.issubset(keys)
 
@@ -257,13 +257,13 @@ def test_get_posteriors_compression_enabled(tmpdir):
     svi = ri.setup_svi(guide_type="delta")
     svi_state = svi.init(ri.get_key(), data=model.data, priors=model.priors)
 
-    out_root = str(tmpdir.join("compressed"))
-    ri.get_posteriors(svi, svi_state, out_root,
+    out_prefix = str(tmpdir.join("compressed"))
+    ri.get_posteriors(svi, svi_state, out_prefix,
                       num_posterior_samples=4,
                       sampling_batch_size=4,
                       forward_batch_size=8)
 
-    with h5py.File(f"{out_root}_posterior.h5", "r") as hf:
+    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
         for k in hf.keys():
             assert hf[k].compression == "gzip", (
                 f"dataset '{k}' should be gzip-compressed"
@@ -279,14 +279,14 @@ def test_get_posteriors_sites_to_save_with_batched_forward(tmpdir):
     svi = ri.setup_svi(guide_type="delta")
     svi_state = svi.init(ri.get_key(), data=model.data, priors=model.priors)
 
-    out_root = str(tmpdir.join("filtered_batched"))
-    ri.get_posteriors(svi, svi_state, out_root,
+    out_prefix = str(tmpdir.join("filtered_batched"))
+    ri.get_posteriors(svi, svi_state, out_prefix,
                       num_posterior_samples=6,
                       sampling_batch_size=3,
                       forward_batch_size=3,   # forces multiple forward batches
                       sites_to_save=["geno_p"])
 
-    with h5py.File(f"{out_root}_posterior.h5", "r") as hf:
+    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
         assert list(hf.keys()) == ["geno_p"]
         assert hf["geno_p"].shape == (6, num_genotypes)
 

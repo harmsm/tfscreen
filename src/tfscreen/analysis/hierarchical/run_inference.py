@@ -137,7 +137,7 @@ class RunInference:
                          svi,
                          svi_state=None,
                          init_params=None,
-                         out_root="tfs",
+                         out_prefix="tfs",
                          convergence_tolerance=0.01,
                          convergence_window=10,
                          patience=10,
@@ -161,7 +161,7 @@ class RunInference:
             initialized. If a checkpoint file, restore from the checkpoint.
         init_params : dict, optional
             Initial parameters.
-        out_root : str, optional
+        out_prefix : str, optional
             Root name for output files (checkpoints, losses).
         convergence_tolerance : float, optional
             Relative change in smoothed loss to declare convergence.
@@ -180,7 +180,7 @@ class RunInference:
             amount of jitter to add to init_params. To turn off, set to 0.
         epoch_checkpoint_interval : int or None, optional
             Frequency (in epochs) to write numbered epoch checkpoints to a
-            ``checkpoints/`` subdirectory alongside ``out_root``. Files are
+            ``checkpoints/`` subdirectory alongside ``out_prefix``. Files are
             named ``{epoch:07d}_checkpoint.pkl``. Set to None or 0 to
             disable (default 1000).
 
@@ -251,7 +251,7 @@ class RunInference:
             svi_state = svi_state
             
         # Initialize loss file
-        self._write_losses(np.array([]), out_root) 
+        self._write_losses(np.array([]), out_prefix) 
 
         # loss deque holds loss values for smoothing to check for convergence
         # The window represents epochs, so we multiply by iterations_per_epoch.
@@ -276,7 +276,7 @@ class RunInference:
             self._next_epoch_checkpoint_step = (
                 (self._current_step // epoch_checkpoint_interval_steps) + 1
             ) * epoch_checkpoint_interval_steps
-            out_dir = os.path.dirname(out_root)
+            out_dir = os.path.dirname(out_prefix)
             self._epoch_checkpoints_dir = os.path.join(out_dir, "checkpoints") if out_dir else "checkpoints"
             os.makedirs(self._epoch_checkpoints_dir, exist_ok=True)
         else:
@@ -328,11 +328,11 @@ class RunInference:
                     )
                 
             # Write outputs (checkpoints and losses)
-            self._write_losses(interval_losses, out_root) 
+            self._write_losses(interval_losses, out_prefix) 
 
             # Check if we should write a checkpoint
             if self._current_step >= self._next_checkpoint_step:
-                self._write_checkpoint(svi_state, out_root)
+                self._write_checkpoint(svi_state, out_prefix)
                 self._next_checkpoint_step += checkpoint_interval_steps
 
             # Check if we should write a numbered epoch checkpoint
@@ -353,7 +353,7 @@ class RunInference:
                 if self._patience_counter >= patience:
                     converged = True
                     # Final checkpoint before exiting
-                    self._write_checkpoint(svi_state, out_root)
+                    self._write_checkpoint(svi_state, out_prefix)
                     break
 
         # Get final parameters
@@ -423,7 +423,7 @@ class RunInference:
     def get_posteriors(self,
                        svi,
                        svi_state,
-                       out_root,
+                       out_prefix,
                        num_posterior_samples=10000,
                        sampling_batch_size=100,
                        forward_batch_size=512,
@@ -441,7 +441,7 @@ class RunInference:
             The SVI object being used for inference.
         svi_state : Any
             The current state of the SVI object (optimizer state).
-        out_root : str
+        out_prefix : str
             Root name for the output file.
         num_posterior_samples : int, optional
             Number of posterior samples to draw (default 10000).
@@ -478,7 +478,7 @@ class RunInference:
                                     num_samples=sampling_batch_size)
 
         # Prepare HDF5 file
-        h5_file = f"{out_root}_posterior.h5"
+        h5_file = f"{out_prefix}_posterior.h5"
         
         samples_written = 0
         with h5py.File(h5_file, 'w') as hf:
@@ -643,7 +643,7 @@ class RunInference:
         return init_params
 
 
-    def _write_checkpoint(self,svi_state,out_root):
+    def _write_checkpoint(self,svi_state,out_prefix):
         """
         Atomically save the SVI state and PRNG key to a dill pickle file.
 
@@ -651,7 +651,7 @@ class RunInference:
         ----------
         svi_state : Any
             The SVI state (e.g., from `svi.update`).
-        out_root : str
+        out_prefix : str
             Root name for the output checkpoint file.
         """
 
@@ -661,9 +661,9 @@ class RunInference:
                     "svi_state":host_svi_state,
                     "current_step":self._current_step}
 
-        tmp_checkpoint_file = f"{out_root}_checkpoint.tmp.pkl"
+        tmp_checkpoint_file = f"{out_prefix}_checkpoint.tmp.pkl"
 
-        checkpoint_file = f"{out_root}_checkpoint.pkl"
+        checkpoint_file = f"{out_prefix}_checkpoint.pkl"
 
         # Atomic save
         with open(tmp_checkpoint_file,'wb') as f:
@@ -694,7 +694,7 @@ class RunInference:
         if os.path.exists(epoch_file):
             raise FileExistsError(
                 f"Epoch checkpoint '{epoch_file}' already exists. Delete the "
-                "file or change out_root to avoid overwriting a previous run."
+                "file or change out_prefix to avoid overwriting a previous run."
             )
 
         host_svi_state = jax.device_get(svi_state)
@@ -737,7 +737,7 @@ class RunInference:
 
         return svi_state
 
-    def _write_losses(self,losses,out_root):
+    def _write_losses(self,losses,out_prefix):
         """
         Write losses to binary (.bin) and text (.txt) files. 
 
@@ -745,13 +745,13 @@ class RunInference:
         ----------
         losses : list
             A list of loss values from the recent optimization interval.
-        out_root : str
+        out_prefix : str
             Root name for the output files.
         """
 
         # Name of output file
-        losses_file = f"{out_root}_losses.bin"
-        readable_losses_file = f"{out_root}_losses.txt"
+        losses_file = f"{out_prefix}_losses.bin"
+        readable_losses_file = f"{out_prefix}_losses.txt"
 
         # Delete an existing losses_file if it is here and we are just starting
         # the run. 
@@ -824,7 +824,7 @@ class RunInference:
         
         self._relative_change = np.abs((mean_old - mean_new) / mean_old)
 
-    def write_params(self,params,out_root):
+    def write_params(self,params,out_prefix):
         """
         Write parameters to an .npz file.
         
@@ -832,12 +832,12 @@ class RunInference:
         ----------
         params : dict
             dictionary of parameters
-        out_root : str
+        out_prefix : str
             string to append to front of output file
         """
 
-        tmp_out_file = f"{out_root}_params.tmp.npz"
-        out_file = f"{out_root}_params.npz"
+        tmp_out_file = f"{out_prefix}_params.tmp.npz"
+        out_file = f"{out_prefix}_params.npz"
 
         np.savez_compressed(tmp_out_file,**params)
 
@@ -1014,7 +1014,7 @@ class RunInference:
 
     def get_laplace_posteriors(self,
                                map_params,
-                               out_root,
+                               out_prefix,
                                num_posterior_samples=10000,
                                sampling_batch_size=100,
                                forward_batch_size=512,
@@ -1035,9 +1035,9 @@ class RunInference:
             by ``svi.get_params(svi_state)``. Keys follow the
             ``{site}_auto_loc`` convention used by AutoDelta; values are in
             the unconstrained parameter space.
-        out_root : str
+        out_prefix : str
             Root name for the output file (written as
-            ``{out_root}_posterior.h5``).
+            ``{out_prefix}_posterior.h5``).
         num_posterior_samples : int, optional
             Number of posterior samples to draw (default 10000).
         sampling_batch_size : int, optional
@@ -1130,7 +1130,7 @@ class RunInference:
         sampling_batch_size = min(sampling_batch_size, num_posterior_samples)
         num_latent_batches = -(-num_posterior_samples // sampling_batch_size)
 
-        h5_file = f"{out_root}_posterior.h5"
+        h5_file = f"{out_prefix}_posterior.h5"
         samples_written = 0
 
         with h5py.File(h5_file, "w") as hf:
@@ -1220,7 +1220,7 @@ class RunInference:
 
     def get_nuts_posteriors(self,
                             mcmc_samples,
-                            out_root,
+                            out_prefix,
                             forward_batch_size=512,
                             sites_to_save=None):
         """
@@ -1235,9 +1235,9 @@ class RunInference:
         mcmc_samples : dict
             Posterior samples as returned by ``mcmc.get_samples()``.
             Each value has shape ``(num_samples, *site_shape)``.
-        out_root : str
+        out_prefix : str
             Root name for the output file (written as
-            ``{out_root}_posterior.h5``).
+            ``{out_prefix}_posterior.h5``).
         forward_batch_size : int, optional
             Number of genotypes to process per forward-model batch
             (default 512).
@@ -1253,7 +1253,7 @@ class RunInference:
         first_val = next(iter(mcmc_samples.values()))
         num_samples = first_val.shape[0]
 
-        h5_file = f"{out_root}_posterior.h5"
+        h5_file = f"{out_prefix}_posterior.h5"
 
         # Forward pass in genotype batches (all MCMC samples at once)
         batch_collector = {}

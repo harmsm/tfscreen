@@ -16,7 +16,7 @@ from tfscreen.analysis.hierarchical.growth_model.configuration_io import read_co
 def _run_map(ri,
              init_params,
              checkpoint_file=None,
-             out_root="tfs",
+             out_prefix="tfs",
              adam_step_size=1e-3,
              adam_final_step_size=1e-6,
              adam_clip_norm=1.0,
@@ -49,7 +49,7 @@ def _run_map(ri,
         Initial parameter values for MAP optimization.
     checkpoint_file : str or None, optional
         Path to a checkpoint file to resume optimization from, or None to start fresh.
-    out_root : str, optional
+    out_prefix : str, optional
         Output file root for checkpoints and results (default "tfs").
     adam_step_size : float, optional
         Starting step size for the Adam optimizer (default 1e-3).
@@ -106,7 +106,7 @@ def _run_map(ri,
     svi_state, params, converged = ri.run_optimization(
         map_obj,
         init_params=init_params,
-        out_root=out_root,
+        out_prefix=out_prefix,
         svi_state=checkpoint_file,
         convergence_tolerance=convergence_tolerance,
         convergence_window=convergence_window,
@@ -119,13 +119,13 @@ def _run_map(ri,
     )
 
     # Write the current parameter values
-    ri.write_params(params,out_root=out_root)
+    ri.write_params(params,out_prefix=out_prefix)
 
     if always_get_posterior:
 
         ri.get_posteriors(svi=map_obj,
                           svi_state=svi_state,
-                          out_root=out_root,
+                          out_prefix=out_prefix,
                           num_posterior_samples=num_posterior_samples,
                           sampling_batch_size=sampling_batch_size,
                           forward_batch_size=forward_batch_size)
@@ -141,7 +141,7 @@ def _run_map(ri,
 def _run_svi(ri,
              init_params,
              checkpoint_file=None,
-             out_root="tfs",
+             out_prefix="tfs",
              adam_step_size=1e-3,
              adam_final_step_size=1e-6,
              adam_clip_norm=1.0,
@@ -174,7 +174,7 @@ def _run_svi(ri,
         captured during SVI object initialization.
     checkpoint_file : str or None, optional
         Path to a checkpoint file to resume optimization from, or None to start fresh.
-    out_root : str, optional
+    out_prefix : str, optional
         Output file root for checkpoints and results (default "tfs").
     adam_step_size : float, optional
         Starting step size for the Adam optimizer (default 1e-3).
@@ -242,7 +242,7 @@ def _run_svi(ri,
     svi_state, params, converged = ri.run_optimization(
         svi_obj,
         init_params=init_params,
-        out_root=f"{out_root}",
+        out_prefix=f"{out_prefix}",
         svi_state=checkpoint_file,
         convergence_tolerance=convergence_tolerance,
         convergence_window=convergence_window,
@@ -258,7 +258,7 @@ def _run_svi(ri,
 
         ri.get_posteriors(svi=svi_obj,
                           svi_state=svi_state,
-                          out_root=out_root,
+                          out_prefix=out_prefix,
                           num_posterior_samples=num_posterior_samples,
                           sampling_batch_size=sampling_batch_size,
                           forward_batch_size=forward_batch_size)
@@ -272,7 +272,7 @@ def _run_svi(ri,
     return svi_state, params, converged
 
 def _run_nuts(ri,
-              out_root="tfs",
+              out_prefix="tfs",
               nuts_num_warmup=500,
               nuts_num_samples=500,
               nuts_num_chains=1,
@@ -285,7 +285,7 @@ def _run_nuts(ri,
     ----------
     ri : RunInference
         RunInference object that manages model setup and MCMC routines.
-    out_root : str, optional
+    out_prefix : str, optional
         Output file root for checkpoints and results (default "tfs").
     nuts_num_warmup : int, optional
         Number of NUTS warmup steps (default 500).
@@ -313,14 +313,14 @@ def _run_nuts(ri,
     mcmc_samples = mcmc.get_samples()
 
     # Save checkpoint
-    tmp_checkpoint_file = f"{out_root}_checkpoint.tmp.pkl"
-    checkpoint_file = f"{out_root}_checkpoint.pkl"
+    tmp_checkpoint_file = f"{out_prefix}_checkpoint.tmp.pkl"
+    checkpoint_file = f"{out_prefix}_checkpoint.pkl"
     with open(tmp_checkpoint_file, "wb") as f:
         dill.dump({"mcmc_samples": mcmc_samples}, f)
     os.replace(tmp_checkpoint_file, checkpoint_file)
 
     ri.get_nuts_posteriors(mcmc_samples,
-                           out_root=out_root,
+                           out_prefix=out_prefix,
                            forward_batch_size=forward_batch_size)
 
     print("NUTS run complete.", flush=True)
@@ -332,7 +332,7 @@ def run_growth_analysis(config_file,
                         seed=None,
                         checkpoint_file=None,
                         analysis_method="svi",
-                        out_root="tfs",
+                        out_prefix="tfs",
                         adam_step_size=1e-3,
                         adam_final_step_size=1e-6,
                         adam_clip_norm=1.0,
@@ -370,9 +370,9 @@ def run_growth_analysis(config_file,
     checkpoint_file : str or None, optional
         Path to a checkpoint file to resume SVI from, or None to start fresh.
     analysis_method : str, optional
-        Method for inference. Allowed values are 'svi' (default), 'map', 'nuts', 
-        or 'posterior'.
-    out_root : str, optional
+        Method for inference. Allowed values are 'svi' (default), 'map', or 'nuts'.
+        To draw posterior samples from an existing checkpoint, use tfs-sample-posterior.
+    out_prefix : str, optional
         Output file root for checkpoints and results (default 'tfs').
     adam_step_size : float, optional
         Starting step size for the Adam optimizer (default 1e-3).
@@ -426,7 +426,7 @@ def run_growth_analysis(config_file,
         (default 0.9). Only used if analysis_method is 'nuts'.
     epoch_checkpoint_interval : int or None, optional
         Frequency (in epochs) to write numbered epoch checkpoints to a
-        ``checkpoints/`` subdirectory alongside ``out_root`` (default 1000).
+        ``checkpoints/`` subdirectory alongside ``out_prefix`` (default 1000).
         Files are named ``{epoch:07d}_checkpoint.pkl``. Set to 0 or None to
         disable. Raises ``FileExistsError`` if a target file already exists.
 
@@ -445,20 +445,20 @@ def run_growth_analysis(config_file,
 
     # Check for existing results to avoid overwriting unless resuming
     if checkpoint_file is None:
-        checkpoint_path = f"{out_root}_checkpoint.pkl"
+        checkpoint_path = f"{out_prefix}_checkpoint.pkl"
         if os.path.exists(checkpoint_path):
             raise FileExistsError(
                 f"Checkpoint file '{checkpoint_path}' already exists. To resume, "
                 "provide this file as checkpoint_file. To overwrite, delete "
-                "the file or change out_root."
+                "the file or change out_prefix."
             )
         
         if analysis_method == "svi" and pre_map_num_epoch > 0:
-            premap_path = f"{out_root}_premap_checkpoint.pkl"
+            premap_path = f"{out_prefix}_premap_checkpoint.pkl"
             if os.path.exists(premap_path):
                 raise FileExistsError(
                     f"Premap checkpoint file '{premap_path}' already exists. To "
-                    "overwrite, delete the file or change out_root."
+                    "overwrite, delete the file or change out_prefix."
                 )
 
     gm, init_params = read_configuration(config_file)
@@ -475,7 +475,7 @@ def run_growth_analysis(config_file,
             _, init_params, _ = _run_map(ri,
                                          init_params=init_params,
                                          checkpoint_file=None,
-                                         out_root=f"{out_root}_premap",
+                                         out_prefix=f"{out_prefix}_premap",
                                          adam_step_size=adam_step_size,
                                          adam_final_step_size=adam_final_step_size,
                                          adam_clip_norm=adam_clip_norm,
@@ -488,7 +488,7 @@ def run_growth_analysis(config_file,
         return _run_svi(ri,
                         init_params=init_params,
                         checkpoint_file=checkpoint_file,
-                        out_root=out_root,
+                        out_prefix=out_prefix,
                         adam_step_size=adam_step_size,
                         adam_final_step_size=adam_final_step_size,
                         adam_clip_norm=adam_clip_norm,
@@ -510,7 +510,7 @@ def run_growth_analysis(config_file,
         return _run_map(ri,
                         init_params=init_params,
                         checkpoint_file=checkpoint_file,
-                        out_root=out_root,
+                        out_prefix=out_prefix,
                         adam_step_size=adam_step_size,
                         adam_final_step_size=adam_final_step_size,
                         adam_clip_norm=adam_clip_norm,
@@ -530,7 +530,7 @@ def run_growth_analysis(config_file,
                           
     elif analysis_method == "nuts":
         mcmc_samples = _run_nuts(ri,
-                                 out_root=out_root,
+                                 out_prefix=out_prefix,
                                  nuts_num_warmup=nuts_num_warmup,
                                  nuts_num_samples=nuts_num_samples,
                                  nuts_num_chains=nuts_num_chains,
@@ -538,75 +538,11 @@ def run_growth_analysis(config_file,
                                  forward_batch_size=forward_batch_size)
         return None, mcmc_samples, True
 
-    elif analysis_method == "posterior":
-        # Three cases depending on the checkpoint type:
-        #
-        # 1. NUTS checkpoint: saved mcmc_samples dict — run forward model and
-        #    write posteriors directly.
-        #
-        # 2. MAP checkpoint (AutoDelta guide): use the Hessian of the
-        #    log-joint at the MAP solution to form a Laplace (Gaussian)
-        #    approximation to the posterior, then sample from it.
-        #
-        # 3. SVI checkpoint (component guide): already converged — load it,
-        #    run 0 extra epochs, and sample posteriors directly.
-        if checkpoint_file is None or not os.path.isfile(checkpoint_file):
-            raise ValueError(
-                "analysis_method='posterior' requires an existing MAP, SVI, or "
-                "NUTS checkpoint. Pass checkpoint_file pointing to a previously "
-                "saved checkpoint."
-            )
-
-        with open(checkpoint_file, "rb") as f:
-            chk_data = dill.load(f)
-
-        if "mcmc_samples" in chk_data:
-            # NUTS checkpoint: regenerate posteriors from saved samples.
-            ri.get_nuts_posteriors(chk_data["mcmc_samples"],
-                                   out_root=out_root,
-                                   forward_batch_size=forward_batch_size)
-            return None, chk_data["mcmc_samples"], True
-
-        temp_svi = ri.setup_svi(guide_type="delta")
-        chk_params = temp_svi.optim.get_params(chk_data["svi_state"].optim_state)
-
-        if any("_auto_loc" in k for k in chk_params):
-            # MAP checkpoint: Hessian-based Laplace approximation.
-            ri.get_laplace_posteriors(
-                map_params=chk_params,
-                out_root=out_root,
-                num_posterior_samples=num_posterior_samples,
-                sampling_batch_size=sampling_batch_size,
-                forward_batch_size=forward_batch_size
-            )
-            return None, chk_params, True
-        else:
-            # SVI checkpoint: load directly, no further optimization needed.
-            return _run_svi(ri,
-                            init_params=init_params,
-                            checkpoint_file=checkpoint_file,
-                            out_root=out_root,
-                            adam_step_size=adam_step_size,
-                            adam_final_step_size=adam_final_step_size,
-                            adam_clip_norm=adam_clip_norm,
-                            elbo_num_particles=elbo_num_particles,
-                            convergence_tolerance=convergence_tolerance,
-                            convergence_window=convergence_window,
-                            patience=patience,
-                            convergence_check_interval=convergence_check_interval,
-                            checkpoint_interval=checkpoint_interval,
-                            max_num_epochs=0,
-                            num_posterior_samples=num_posterior_samples,
-                            sampling_batch_size=sampling_batch_size,
-                            forward_batch_size=forward_batch_size,
-                            always_get_posterior=True,
-                            init_param_jitter=init_param_jitter,
-                            epoch_checkpoint_interval=None)
-
     else:
         raise ValueError(
             f"analysis method '{analysis_method}' not recognized. This should "
-            "be 'svi', 'map', 'nuts', or 'posterior'"
+            "be 'svi', 'map', or 'nuts'. To draw posteriors from an existing "
+            "checkpoint, use tfs-sample-posterior."
         )
 
 def main():

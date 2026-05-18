@@ -106,7 +106,7 @@ def _update_dataclass(dc, prefix, flat_dict):
     return dc
 
 def write_configuration(gm, 
-                        out_root, 
+                        out_prefix, 
                         growth_df_path, 
                         binding_df_path):
     """
@@ -116,7 +116,7 @@ def write_configuration(gm,
     ----------
     gm : GrowthModel
         Initialized GrowthModel object.
-    out_root : str
+    out_prefix : str
         Root filename for output files.
     growth_df_path : str
         Path to growth data CSV.
@@ -137,9 +137,9 @@ def write_configuration(gm,
         if not hasattr(v, 'shape') or len(v.shape) == 0:
             guesses_list.append(pd.DataFrame({"parameter": [k], "value": [v]}))
 
-    yaml_path = f"{out_root}_config.yaml"
-    priors_path = f"{out_root}_priors.csv"
-    guesses_path = f"{out_root}_guesses.csv"
+    yaml_path = f"{out_prefix}_config.yaml"
+    priors_path = f"{out_prefix}_priors.csv"
+    guesses_path = f"{out_prefix}_guesses.csv"
 
     config = {
         "tfscreen_version": __version__,

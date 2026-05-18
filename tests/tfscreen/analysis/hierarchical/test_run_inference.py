@@ -63,7 +63,7 @@ def test_run_optimization(tmpdir, mocker):
     model = MockModel()
     ri = RunInference(model, seed=42)
     
-    out_root = os.path.join(tmpdir, "test")
+    out_prefix = os.path.join(tmpdir, "test")
     
     # Mock jax and svi methods to avoid actual execution
     mocker.patch("jax.jit", side_effect=lambda x: x)
@@ -83,7 +83,7 @@ def test_run_optimization(tmpdir, mocker):
         max_num_epochs=10, 
         convergence_check_interval=1,
         checkpoint_interval=1,
-        out_root=out_root,
+        out_prefix=out_prefix,
         convergence_tolerance=0.01,
         patience=1
     )
@@ -91,8 +91,8 @@ def test_run_optimization(tmpdir, mocker):
     assert state is not None
     assert "p" in params
     assert isinstance(converged, bool)
-    assert os.path.exists(f"{out_root}_losses.bin")
-    assert os.path.exists(f"{out_root}_losses.txt")
+    assert os.path.exists(f"{out_prefix}_losses.bin")
+    assert os.path.exists(f"{out_prefix}_losses.txt")
 
 def test_run_optimization_no_patch_scan(mocker):
     model = MockModel()
@@ -172,7 +172,7 @@ def test_run_optimization_nan_explosion(mocker):
 def test_get_posteriors(tmpdir, mocker):
     model = MockModel()
     ri = RunInference(model, seed=42)
-    out_root = os.path.join(tmpdir, "test")
+    out_prefix = os.path.join(tmpdir, "test")
     
     mock_svi = mocker.Mock()
     mock_svi.guide = mocker.Mock()
@@ -185,14 +185,14 @@ def test_get_posteriors(tmpdir, mocker):
     
     mocker.patch("jax.device_get", side_effect=lambda x: x)
     
-    ri.get_posteriors(mock_svi, "state", out_root, num_posterior_samples=20, sampling_batch_size=10)
+    ri.get_posteriors(mock_svi, "state", out_prefix, num_posterior_samples=20, sampling_batch_size=10)
     
-    assert os.path.exists(f"{out_root}_posterior.h5")
+    assert os.path.exists(f"{out_prefix}_posterior.h5")
 
 def test_get_posteriors_batching_logic(tmpdir, mocker):
     model = MockModel()
     ri = RunInference(model, seed=42)
-    out_root = os.path.join(tmpdir, "test_batching")
+    out_prefix = os.path.join(tmpdir, "test_batching")
     
     mock_svi = mocker.Mock()
     mock_svi.guide = mocker.Mock()
@@ -215,13 +215,13 @@ def test_get_posteriors_batching_logic(tmpdir, mocker):
     
     mocker.patch("jax.device_get", side_effect=lambda x: x)
     
-    ri.get_posteriors(mock_svi, "state", out_root, num_posterior_samples=25, sampling_batch_size=10)
-    assert os.path.exists(f"{out_root}_posterior.h5")
+    ri.get_posteriors(mock_svi, "state", out_prefix, num_posterior_samples=25, sampling_batch_size=10)
+    assert os.path.exists(f"{out_prefix}_posterior.h5")
 
 def test_get_posteriors_full_logic(tmpdir, mocker):
     model = MockModel()
     ri = RunInference(model, seed=42)
-    out_root = os.path.join(tmpdir, "test_full")
+    out_prefix = os.path.join(tmpdir, "test_full")
     
     mock_svi = mocker.Mock()
     mock_svi.get_params.return_value = {}
@@ -238,14 +238,14 @@ def test_get_posteriors_full_logic(tmpdir, mocker):
     
     mocker.patch("jax.device_get", side_effect=lambda x: x)
     
-    ri.get_posteriors(mock_svi, "state", out_root, num_posterior_samples=1, 
+    ri.get_posteriors(mock_svi, "state", out_prefix, num_posterior_samples=1, 
                      sampling_batch_size=1, forward_batch_size=5)
-    assert os.path.exists(f"{out_root}_posterior.h5")
+    assert os.path.exists(f"{out_prefix}_posterior.h5")
 
 def test_run_optimization_restore(tmpdir, mocker):
     model = MockModel()
     ri = RunInference(model, seed=42)
-    out_root = os.path.join(tmpdir, "test_restore")
+    out_prefix = os.path.join(tmpdir, "test_restore")
     
     # Create a valid checkpoint
     state = SVIState(None, None, None) if ri.get_key().size > 0 else SVIState(None, None)
@@ -254,8 +254,8 @@ def test_run_optimization_restore(tmpdir, mocker):
     except:
         state = SVIState(None, None)
     
-    ri._write_checkpoint(state, out_root)
-    checkpoint_file = f"{out_root}_checkpoint.pkl"
+    ri._write_checkpoint(state, out_prefix)
+    checkpoint_file = f"{out_prefix}_checkpoint.pkl"
     
     mocker.patch("jax.jit", side_effect=lambda x: x)
     mocker.patch("jax.lax.scan", return_value=(state, jnp.array([1.0])))
@@ -271,22 +271,22 @@ def test_run_optimization_restore(tmpdir, mocker):
 def test_write_params(tmpdir):
     model = MockModel()
     ri = RunInference(model, seed=42)
-    out_root = os.path.join(tmpdir, "test_params")
+    out_prefix = os.path.join(tmpdir, "test_params")
     params = {"p": jnp.array([1.0])}
-    ri.write_params(params, out_root)
-    assert os.path.exists(f"{out_root}_params.npz")
+    ri.write_params(params, out_prefix)
+    assert os.path.exists(f"{out_prefix}_params.npz")
 
 def test_write_losses_append(tmpdir):
     model = MockModel()
     ri = RunInference(model, seed=42)
-    out_root = os.path.join(tmpdir, "test_losses")
+    out_prefix = os.path.join(tmpdir, "test_losses")
     # 702-703: file exists
-    path = f"{out_root}_losses.bin"
+    path = f"{out_prefix}_losses.bin"
     with open(path, "wb") as f:
         f.write(b"header")
     
     # 707: binary write
-    ri._write_losses([1.0, 2.0], out_root)
+    ri._write_losses([1.0, 2.0], out_prefix)
     assert os.path.getsize(path) > 6
 
 def test_update_loss_deque():
@@ -324,14 +324,14 @@ def test_get_site_names(mocker):
 def test_restore_checkpoint_error(tmpdir):
     model = MockModel()
     ri = RunInference(model, seed=42)
-    out_root = os.path.join(tmpdir, "test")
+    out_prefix = os.path.join(tmpdir, "test")
     
     # Write a bad checkpoint
-    with open(f"{out_root}_bad.pkl", "wb") as f:
+    with open(f"{out_prefix}_bad.pkl", "wb") as f:
         dill.dump({"main_key": 0, "svi_state": "not_a_state"}, f)
     
     with pytest.raises(ValueError, match="does not appear to have a saved svi_state"):
-        ri._restore_checkpoint(f"{out_root}_bad.pkl")
+        ri._restore_checkpoint(f"{out_prefix}_bad.pkl")
 
 def test_jitter_init_parameters():
     model = MockModel()
@@ -351,11 +351,11 @@ def test_jitter_init_parameters():
 def test_write_losses_empty(tmpdir):
     model = MockModel()
     ri = RunInference(model, seed=42)
-    out_root = os.path.join(tmpdir, "test_losses_empty")
+    out_prefix = os.path.join(tmpdir, "test_losses_empty")
 
     # 707: empty losses returns early
-    ri._write_losses([], out_root)
-    assert not os.path.exists(f"{out_root}_losses.bin")
+    ri._write_losses([], out_prefix)
+    assert not os.path.exists(f"{out_prefix}_losses.bin")
 
 def test_setup_svi_invalid_guide_type():
     """setup_svi raises ValueError for unrecognized guide_type."""
@@ -368,7 +368,7 @@ def test_restore_checkpoint_current_step(tmpdir):
     """_restore_checkpoint restores _current_step when present in checkpoint."""
     model = MockModel()
     ri = RunInference(model, seed=42)
-    out_root = os.path.join(tmpdir, "test_step")
+    out_prefix = os.path.join(tmpdir, "test_step")
 
     try:
         state = SVIState(None, None, None)
@@ -376,7 +376,7 @@ def test_restore_checkpoint_current_step(tmpdir):
         state = SVIState(None, None)
 
     # Write checkpoint that includes 'current_step'
-    checkpoint_file = f"{out_root}_checkpoint.pkl"
+    checkpoint_file = f"{out_prefix}_checkpoint.pkl"
     checkpoint_data = {
         'svi_state': state,
         'main_key': ri._main_key,
@@ -468,16 +468,16 @@ def test_get_laplace_posteriors_creates_h5(tmpdir):
     model = LaplaceModel(num_genotype=4)
     ri, map_params = _laplace_map_params(model)
 
-    out_root = str(tmpdir.join("laplace"))
+    out_prefix = str(tmpdir.join("laplace"))
     ri.get_laplace_posteriors(
         map_params=map_params,
-        out_root=out_root,
+        out_prefix=out_prefix,
         num_posterior_samples=10,
         sampling_batch_size=5,
         forward_batch_size=4,
     )
 
-    assert os.path.exists(f"{out_root}_posterior.h5")
+    assert os.path.exists(f"{out_prefix}_posterior.h5")
 
 
 def test_get_laplace_posteriors_output_shapes(tmpdir):
@@ -487,16 +487,16 @@ def test_get_laplace_posteriors_output_shapes(tmpdir):
     model = LaplaceModel(num_genotype=num_genotype)
     ri, map_params = _laplace_map_params(model)
 
-    out_root = str(tmpdir.join("laplace_shapes"))
+    out_prefix = str(tmpdir.join("laplace_shapes"))
     ri.get_laplace_posteriors(
         map_params=map_params,
-        out_root=out_root,
+        out_prefix=out_prefix,
         num_posterior_samples=num_samples,
         sampling_batch_size=10,
         forward_batch_size=num_genotype,
     )
 
-    with h5py.File(f"{out_root}_posterior.h5", "r") as hf:
+    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
         assert hf["global_p"].shape == (num_samples,)
         assert hf["geno_p"].shape == (num_samples, num_genotype)
         assert hf.attrs["num_samples"] == num_samples
@@ -509,16 +509,16 @@ def test_get_laplace_posteriors_forward_batching(tmpdir):
     model = LaplaceModel(num_genotype=num_genotype)
     ri, map_params = _laplace_map_params(model)
 
-    out_root = str(tmpdir.join("laplace_fwd"))
+    out_prefix = str(tmpdir.join("laplace_fwd"))
     ri.get_laplace_posteriors(
         map_params=map_params,
-        out_root=out_root,
+        out_prefix=out_prefix,
         num_posterior_samples=num_samples,
         sampling_batch_size=5,
         forward_batch_size=2,   # forces multiple forward batches
     )
 
-    with h5py.File(f"{out_root}_posterior.h5", "r") as hf:
+    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
         assert hf["global_p"].shape == (num_samples,)
         assert hf["geno_p"].shape == (num_samples, num_genotype)
 
@@ -530,16 +530,16 @@ def test_get_laplace_posteriors_sampling_batching(tmpdir):
     model = LaplaceModel(num_genotype=num_genotype)
     ri, map_params = _laplace_map_params(model)
 
-    out_root = str(tmpdir.join("laplace_sbatch"))
+    out_prefix = str(tmpdir.join("laplace_sbatch"))
     ri.get_laplace_posteriors(
         map_params=map_params,
-        out_root=out_root,
+        out_prefix=out_prefix,
         num_posterior_samples=num_samples,
         sampling_batch_size=3,
         forward_batch_size=num_genotype,
     )
 
-    with h5py.File(f"{out_root}_posterior.h5", "r") as hf:
+    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
         assert hf.attrs["num_samples"] == num_samples
         assert hf["global_p"].shape[0] == num_samples
         assert hf["geno_p"].shape[0] == num_samples
@@ -553,17 +553,17 @@ def test_get_laplace_posteriors_non_auto_loc_keys_ignored(tmpdir):
     # Inject a key without the expected suffix
     poisoned = dict(map_params, some_other_key=jnp.array(99.0))
 
-    out_root = str(tmpdir.join("laplace_extra"))
+    out_prefix = str(tmpdir.join("laplace_extra"))
     # Should not raise; the extra key is ignored
     ri.get_laplace_posteriors(
         map_params=poisoned,
-        out_root=out_root,
+        out_prefix=out_prefix,
         num_posterior_samples=6,
         sampling_batch_size=6,
         forward_batch_size=3,
     )
 
-    assert os.path.exists(f"{out_root}_posterior.h5")
+    assert os.path.exists(f"{out_prefix}_posterior.h5")
 
 
 def test_get_laplace_posteriors_negative_eigenvalues_no_nan(tmpdir, mocker):
@@ -590,16 +590,16 @@ def test_get_laplace_posteriors_negative_eigenvalues_no_nan(tmpdir, mocker):
     # that ignores x and returns bad_H regardless of fn/x.
     mocker.patch("jax.hessian", return_value=lambda x: bad_H)
 
-    out_root = str(tmpdir.join("laplace_negeig"))
+    out_prefix = str(tmpdir.join("laplace_negeig"))
     ri.get_laplace_posteriors(
         map_params=map_params,
-        out_root=out_root,
+        out_prefix=out_prefix,
         num_posterior_samples=20,
         sampling_batch_size=10,
         forward_batch_size=2,
     )
 
-    with h5py.File(f"{out_root}_posterior.h5", "r") as hf:
+    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
         for k in hf.keys():
             assert not np.any(np.isnan(hf[k][:])), f"NaN found in posterior key '{k}'"
 
@@ -624,10 +624,10 @@ def test_get_nuts_posteriors_creates_h5(tmpdir):
     ri = RunInference(model, seed=0)
     samples = _fake_mcmc_samples(num_samples, num_genotype)
 
-    out_root = str(tmpdir.join("nuts"))
-    ri.get_nuts_posteriors(samples, out_root=out_root)
+    out_prefix = str(tmpdir.join("nuts"))
+    ri.get_nuts_posteriors(samples, out_prefix=out_prefix)
 
-    assert os.path.exists(f"{out_root}_posterior.h5")
+    assert os.path.exists(f"{out_prefix}_posterior.h5")
 
 
 def test_get_nuts_posteriors_output_shapes(tmpdir):
@@ -638,11 +638,11 @@ def test_get_nuts_posteriors_output_shapes(tmpdir):
     ri = RunInference(model, seed=0)
     samples = _fake_mcmc_samples(num_samples, num_genotype)
 
-    out_root = str(tmpdir.join("nuts_shapes"))
-    ri.get_nuts_posteriors(samples, out_root=out_root,
+    out_prefix = str(tmpdir.join("nuts_shapes"))
+    ri.get_nuts_posteriors(samples, out_prefix=out_prefix,
                            forward_batch_size=num_genotype)
 
-    with h5py.File(f"{out_root}_posterior.h5", "r") as hf:
+    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
         assert hf["global_p"].shape == (num_samples,)
         assert hf["geno_p"].shape == (num_samples, num_genotype)
         assert hf.attrs["num_samples"] == num_samples
@@ -656,11 +656,11 @@ def test_get_nuts_posteriors_forward_batching(tmpdir):
     ri = RunInference(model, seed=0)
     samples = _fake_mcmc_samples(num_samples, num_genotype)
 
-    out_root = str(tmpdir.join("nuts_fwd"))
-    ri.get_nuts_posteriors(samples, out_root=out_root,
+    out_prefix = str(tmpdir.join("nuts_fwd"))
+    ri.get_nuts_posteriors(samples, out_prefix=out_prefix,
                            forward_batch_size=2)  # forces 3 forward batches
 
-    with h5py.File(f"{out_root}_posterior.h5", "r") as hf:
+    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
         assert hf["global_p"].shape == (num_samples,)
         assert hf["geno_p"].shape == (num_samples, num_genotype)
 
@@ -673,10 +673,10 @@ def test_get_nuts_posteriors_num_samples_in_attrs(tmpdir):
     ri = RunInference(model, seed=0)
     samples = _fake_mcmc_samples(num_samples, num_genotype)
 
-    out_root = str(tmpdir.join("nuts_attr"))
-    ri.get_nuts_posteriors(samples, out_root=out_root)
+    out_prefix = str(tmpdir.join("nuts_attr"))
+    ri.get_nuts_posteriors(samples, out_prefix=out_prefix)
 
-    with h5py.File(f"{out_root}_posterior.h5", "r") as hf:
+    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
         assert hf.attrs["num_samples"] == num_samples
 
 
@@ -688,11 +688,11 @@ def test_get_nuts_posteriors_sites_to_save(tmpdir):
     ri = RunInference(model, seed=0)
     samples = _fake_mcmc_samples(num_samples, num_genotype)
 
-    out_root = str(tmpdir.join("nuts_filtered"))
-    ri.get_nuts_posteriors(samples, out_root=out_root,
+    out_prefix = str(tmpdir.join("nuts_filtered"))
+    ri.get_nuts_posteriors(samples, out_prefix=out_prefix,
                            sites_to_save=["geno_p"])
 
-    with h5py.File(f"{out_root}_posterior.h5", "r") as hf:
+    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
         assert "geno_p" in hf
         assert "global_p" not in hf
         assert hf["geno_p"].shape == (num_samples, num_genotype)
@@ -706,10 +706,10 @@ def test_get_nuts_posteriors_compression(tmpdir):
     ri = RunInference(model, seed=0)
     samples = _fake_mcmc_samples(num_samples, num_genotype)
 
-    out_root = str(tmpdir.join("nuts_compressed"))
-    ri.get_nuts_posteriors(samples, out_root=out_root)
+    out_prefix = str(tmpdir.join("nuts_compressed"))
+    ri.get_nuts_posteriors(samples, out_prefix=out_prefix)
 
-    with h5py.File(f"{out_root}_posterior.h5", "r") as hf:
+    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
         for k in hf.keys():
             assert hf[k].compression == "gzip", (
                 f"dataset '{k}' should be gzip-compressed"
@@ -721,17 +721,17 @@ def test_get_laplace_posteriors_sites_to_save(tmpdir):
     model = LaplaceModel(num_genotype=4)
     ri, map_params = _laplace_map_params(model)
 
-    out_root = str(tmpdir.join("laplace_filtered"))
+    out_prefix = str(tmpdir.join("laplace_filtered"))
     ri.get_laplace_posteriors(
         map_params=map_params,
-        out_root=out_root,
+        out_prefix=out_prefix,
         num_posterior_samples=8,
         sampling_batch_size=4,
         forward_batch_size=4,
         sites_to_save=["geno_p"],
     )
 
-    with h5py.File(f"{out_root}_posterior.h5", "r") as hf:
+    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
         assert "geno_p" in hf
         assert "global_p" not in hf
         assert hf["geno_p"].shape == (8, 4)
@@ -742,16 +742,16 @@ def test_get_laplace_posteriors_compression(tmpdir):
     model = LaplaceModel(num_genotype=4)
     ri, map_params = _laplace_map_params(model)
 
-    out_root = str(tmpdir.join("laplace_compressed"))
+    out_prefix = str(tmpdir.join("laplace_compressed"))
     ri.get_laplace_posteriors(
         map_params=map_params,
-        out_root=out_root,
+        out_prefix=out_prefix,
         num_posterior_samples=8,
         sampling_batch_size=8,
         forward_batch_size=4,
     )
 
-    with h5py.File(f"{out_root}_posterior.h5", "r") as hf:
+    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
         for k in hf.keys():
             assert hf[k].compression == "gzip", (
                 f"dataset '{k}' should be gzip-compressed"
@@ -866,15 +866,15 @@ def _optimization_mocks(mocker):
 
 
 def test_run_optimization_epoch_checkpoint_creates_dir(tmpdir, mocker):
-    """A checkpoints/ directory is created next to out_root when interval is set."""
+    """A checkpoints/ directory is created next to out_prefix when interval is set."""
     model = MockModel()
     ri = RunInference(model, seed=42)
     mock_svi = _optimization_mocks(mocker)
-    out_root = os.path.join(str(tmpdir), "myrun")
+    out_prefix = os.path.join(str(tmpdir), "myrun")
 
     ri.run_optimization(
         mock_svi,
-        out_root=out_root,
+        out_prefix=out_prefix,
         max_num_epochs=1,
         convergence_check_interval=1,
         checkpoint_interval=1,
@@ -889,11 +889,11 @@ def test_run_optimization_epoch_checkpoint_file_written(tmpdir, mocker):
     model = MockModel()
     ri = RunInference(model, seed=42)
     mock_svi = _optimization_mocks(mocker)
-    out_root = os.path.join(str(tmpdir), "myrun")
+    out_prefix = os.path.join(str(tmpdir), "myrun")
 
     ri.run_optimization(
         mock_svi,
-        out_root=out_root,
+        out_prefix=out_prefix,
         max_num_epochs=1,
         convergence_check_interval=1,
         checkpoint_interval=1,
@@ -910,11 +910,11 @@ def test_run_optimization_epoch_checkpoint_correct_epoch_number(tmpdir, mocker):
     model = MockModel()
     ri = RunInference(model, seed=42)
     mock_svi = _optimization_mocks(mocker)
-    out_root = os.path.join(str(tmpdir), "myrun")
+    out_prefix = os.path.join(str(tmpdir), "myrun")
 
     ri.run_optimization(
         mock_svi,
-        out_root=out_root,
+        out_prefix=out_prefix,
         max_num_epochs=2,
         convergence_check_interval=1,
         checkpoint_interval=1,
@@ -932,11 +932,11 @@ def test_run_optimization_epoch_checkpoint_disabled_when_none(tmpdir, mocker):
     model = MockModel()
     ri = RunInference(model, seed=42)
     mock_svi = _optimization_mocks(mocker)
-    out_root = os.path.join(str(tmpdir), "myrun")
+    out_prefix = os.path.join(str(tmpdir), "myrun")
 
     ri.run_optimization(
         mock_svi,
-        out_root=out_root,
+        out_prefix=out_prefix,
         max_num_epochs=2,
         convergence_check_interval=1,
         checkpoint_interval=1,
@@ -951,11 +951,11 @@ def test_run_optimization_epoch_checkpoint_disabled_when_zero(tmpdir, mocker):
     model = MockModel()
     ri = RunInference(model, seed=42)
     mock_svi = _optimization_mocks(mocker)
-    out_root = os.path.join(str(tmpdir), "myrun")
+    out_prefix = os.path.join(str(tmpdir), "myrun")
 
     ri.run_optimization(
         mock_svi,
-        out_root=out_root,
+        out_prefix=out_prefix,
         max_num_epochs=2,
         convergence_check_interval=1,
         checkpoint_interval=1,
@@ -970,11 +970,11 @@ def test_run_optimization_epoch_checkpoint_file_exists_error(tmpdir, mocker):
     model = MockModel()
     ri = RunInference(model, seed=42)
     mock_svi = _optimization_mocks(mocker)
-    out_root = os.path.join(str(tmpdir), "myrun")
+    out_prefix = os.path.join(str(tmpdir), "myrun")
 
     ri.run_optimization(
         mock_svi,
-        out_root=out_root,
+        out_prefix=out_prefix,
         max_num_epochs=1,
         convergence_check_interval=1,
         checkpoint_interval=1,
@@ -991,7 +991,7 @@ def test_run_optimization_epoch_checkpoint_file_exists_error(tmpdir, mocker):
     with pytest.raises(FileExistsError, match="checkpoint.pkl"):
         ri2.run_optimization(
             mock_svi2,
-            out_root=out_root,
+            out_prefix=out_prefix,
             max_num_epochs=1,
             convergence_check_interval=1,
             checkpoint_interval=1,
@@ -999,17 +999,17 @@ def test_run_optimization_epoch_checkpoint_file_exists_error(tmpdir, mocker):
         )
 
 
-def test_run_optimization_epoch_checkpoint_dir_alongside_out_root(tmpdir, mocker):
-    """checkpoints/ is placed in the same directory as out_root, not the cwd."""
+def test_run_optimization_epoch_checkpoint_dir_alongside_out_prefix(tmpdir, mocker):
+    """checkpoints/ is placed in the same directory as out_prefix, not the cwd."""
     subdir = tmpdir.mkdir("subdir")
     model = MockModel()
     ri = RunInference(model, seed=42)
     mock_svi = _optimization_mocks(mocker)
-    out_root = os.path.join(str(subdir), "run")
+    out_prefix = os.path.join(str(subdir), "run")
 
     ri.run_optimization(
         mock_svi,
-        out_root=out_root,
+        out_prefix=out_prefix,
         max_num_epochs=1,
         convergence_check_interval=1,
         checkpoint_interval=1,
