@@ -143,8 +143,9 @@ class TestHillRunModel:
         import jax.numpy as jnp
         log_conc = jnp.log(jnp.array([0.001, 0.01, 0.1, 1.0]))[:n_titrant_conc]
         MockThetaData = namedtuple("MockThetaData",
-                                   ["geno_theta_idx", "log_titrant_conc", "scatter_theta"])
+                                   ["batch_idx", "geno_theta_idx", "log_titrant_conc", "scatter_theta"])
         return MockThetaData(
+            batch_idx        = jnp.arange(n_geno, dtype=jnp.int32),
             geno_theta_idx   = jnp.arange(n_geno, dtype=jnp.int32),
             log_titrant_conc = log_conc,
             scatter_theta    = 0,
@@ -212,8 +213,9 @@ class TestHillRunModel:
         import jax.numpy as jnp
         # One concentration exactly at K (log_conc = log_K = 0 → conc = 1)
         MockThetaData = namedtuple("MockThetaData",
-                                   ["geno_theta_idx", "log_titrant_conc", "scatter_theta"])
+                                   ["batch_idx", "geno_theta_idx", "log_titrant_conc", "scatter_theta"])
         data = MockThetaData(
+            batch_idx        = jnp.array([0, 1], dtype=jnp.int32),
             geno_theta_idx   = jnp.array([0, 1], dtype=jnp.int32),
             log_titrant_conc = jnp.array([0.0]),   # one concentration at log_K=0
             scatter_theta    = 0,
@@ -241,8 +243,9 @@ class TestHillRunModel:
         run_model, TP = self._import()
         import jax.numpy as jnp
         MockThetaData = namedtuple("MockThetaData",
-                                   ["geno_theta_idx", "log_titrant_conc", "scatter_theta"])
+                                   ["batch_idx", "geno_theta_idx", "log_titrant_conc", "scatter_theta"])
         data = MockThetaData(
+            batch_idx        = jnp.array([0], dtype=jnp.int32),
             geno_theta_idx   = jnp.array([0], dtype=jnp.int32),
             log_titrant_conc = jnp.log(jnp.array([0.1])),
             scatter_theta    = 0,

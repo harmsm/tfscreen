@@ -11,11 +11,12 @@ from typing import Dict, Any
 
 from tfscreen.analysis.hierarchical.growth_model.data_class import DataClass
 
+
 @dataclass(frozen=True)
 class ModelPriors:
     """
     JAX Pytree holding hyperparameters for the Hill model priors.
-    
+
     Attributes
     ----------
     theta_logit_low_hyper_loc_loc : float
@@ -52,200 +53,193 @@ class ModelPriors:
 class ThetaParam:
     """
     JAX Pytree holding the sampled Hill equation parameters.
-    
-    These are the parameters sampled in their natural scale.
+
+    Per-genotype fields have shape ``(num_titrant_name, num_genotype)``.
+    Population moment fields have shape ``(num_titrant_name, num_titrant_conc, 1)``.
 
     Attributes
     ----------
     theta_low : jnp.ndarray
-        The minimum fractional occupancy (baseline).
+        The minimum fractional occupancy (baseline), shape (T, G).
     theta_high : jnp.ndarray
-        The maximum fractional occupancy (saturation).
+        The maximum fractional occupancy (saturation), shape (T, G).
     log_hill_K : jnp.ndarray
-        The Hill constant (K_D) in log-space.
+        The Hill constant (K_D) in log-space, shape (T, G).
     hill_n : jnp.ndarray
-        The Hill coefficient.
+        The Hill coefficient, shape (T, G).
+    mu : jnp.ndarray
+        Population mean of logit(theta) at each concentration, shape (T, C, 1).
+    sigma : jnp.ndarray
+        Population std of logit(theta) at each concentration, shape (T, C, 1).
     """
 
     theta_low: jnp.ndarray
     theta_high: jnp.ndarray
     log_hill_K: jnp.ndarray
     hill_n: jnp.ndarray
-    mu: jnp.ndarray = None
-    sigma: jnp.ndarray = None
+    mu: jnp.ndarray
+    sigma: jnp.ndarray
+
+
+def _population_moments(
+    logit_low_hyper_loc,    # (T,)
+    logit_low_hyper_scale,  # (T,)
+    logit_delta_hyper_loc,    # (T,)
+    logit_delta_hyper_scale,  # (T,)
+    log_K_hyper_loc,    # (T,)
+    log_K_hyper_scale,  # (T,)
+    log_n_hyper_loc,    # (T,)
+    log_n_hyper_scale,  # (T,)
+    log_titrant_conc,   # (C,)
+):
+    """
+    Compute per-concentration population moments of logit(theta) using a ghost
+    population sampled from the per-titrant hyperpriors.
+
+    Returns
+    -------
+    mu : jnp.ndarray, shape (T, C, 1)
+    sigma : jnp.ndarray, shape (T, C, 1)
+    """
+    n_ghost = 100
+    eps = 1e-6
+
+    # Ghost population: shape (T, n_ghost)
+    ghost_low   = (logit_low_hyper_loc[:, None]
+                   + dist.Normal(0.0, 1.0).sample(jax.random.PRNGKey(0), (n_ghost,))
+                   * logit_low_hyper_scale[:, None])
+    ghost_delta = (logit_delta_hyper_loc[:, None]
+                   + dist.Normal(0.0, 1.0).sample(jax.random.PRNGKey(1), (n_ghost,))
+                   * logit_delta_hyper_scale[:, None])
+    ghost_high  = ghost_low + ghost_delta
+    ghost_K     = (log_K_hyper_loc[:, None]
+                   + dist.Normal(0.0, 1.0).sample(jax.random.PRNGKey(2), (n_ghost,))
+                   * log_K_hyper_scale[:, None])
+    ghost_n     = (log_n_hyper_loc[:, None]
+                   + dist.Normal(0.0, 1.0).sample(jax.random.PRNGKey(3), (n_ghost,))
+                   * log_n_hyper_scale[:, None])
+
+    # Broadcast to (T, C, n_ghost)
+    log_conc = log_titrant_conc[None, :, None]  # (1, C, 1)
+    g_low  = ghost_low[:, None, :]   # (T, 1, n_ghost)
+    g_high = ghost_high[:, None, :]
+    g_K    = ghost_K[:, None, :]
+    g_n    = jnp.exp(ghost_n[:, None, :])
+
+    sig = dist.transforms.SigmoidTransform()
+    g_occ   = jax.nn.sigmoid(g_n * (log_conc - g_K))
+    g_theta = jnp.clip(sig(g_low) + (sig(g_high) - sig(g_low)) * g_occ, eps, 1.0 - eps)
+    g_logit = jax.scipy.special.logit(g_theta)  # (T, C, n_ghost)
+
+    mu    = jnp.mean(g_logit, axis=-1, keepdims=True)  # (T, C, 1)
+    sigma = jnp.std(g_logit,  axis=-1, keepdims=True)  # (T, C, 1)
+    return mu, sigma
 
 
 def define_model(name: str,
                  data: DataClass,
                  priors: ModelPriors) -> ThetaParam:
     """
-    Defines the hierarchical Hill model parameters.
-    
-    This function defines the Numpyro ``sample`` sites for a non-centered
-    hierarchical model of Hill parameters (theta_low, theta_high, K, and n).
-    
-    - ``theta_low`` and ``theta_delta`` use pooled logit-scaled hyperpriors. 
-      We convert ``theta_low`` and ``theta_delta`` into ``theta_high`` prior
-      to the sigmoid transform to enforce [0,1] bounds on both.
-    - ``hill_K`` and ``hill_n`` use pooled log-scaled hyperpriors.
+    Defines the hierarchical Hill model parameters with per-titrant hyperpriors.
+
+    Hyperpriors are plated over ``num_titrant_name`` so each titrant gets its
+    own pooled Hill-curve population.  Per-genotype offsets are sampled for the
+    full genotype population (not a mini-batch), producing a ThetaParam whose
+    last dimension is ``num_genotype``.  This matches the shape contract of
+    ``hill_mut``: ``run_model`` selects genotypes via
+    ``data.batch_idx[data.geno_theta_idx]``.
 
     Parameters
     ----------
     name : str
-        The prefix for all Numpyro sample sites (e.g., "theta").
+        Prefix for all Numpyro sample sites.
     data : DataClass
-        A data object containing metadata, primarily:
-        - ``data.num_titrant_name`` : (int) Number of titrants.
-        - ``data.num_genotype`` : (int) Number of genotypes.
+        Must expose ``num_titrant_name``, ``num_genotype``, and
+        ``log_titrant_conc``.
     priors : ModelPriors
-        A Pytree containing all hyperparameters for the model, including:
-        - ``priors.theta_logit_low_hyper_loc_loc``
-        - ``priors.theta_logit_low_hyper_loc_scale``
-        - ``priors.theta_logit_low_hyper_scale``
-        - ``priors.theta_logit_delta_hyper_loc_loc``
-        - ``priors.theta_logit_delta_hyper_loc_scale``
-        - ``priors.theta_logit_delta_hyper_scale``
-        - ``priors.theta_log_hill_K_hyper_loc_loc``
-        - ``priors.theta_log_hill_K_hyper_loc_scale``
-        - ``priors.theta_log_hill_K_hyper_scale``
-        - ``priors.theta_log_hill_n_hyper_loc_loc``
-        - ``priors.theta_log_hill_n_hyper_loc_scale``
-        - ``priors.theta_log_hill_n_hyper_scale``
 
     Returns
     -------
     ThetaParam
-        A Pytree containing the sampled Hill parameters (theta_low,
-        theta_high, log_hill_K, hill_n), each with shape
-        ``[num_titrant_name, num_genotype]``.
+        Per-genotype fields shape ``(num_titrant_name, num_genotype)``;
+        population moment fields shape ``(num_titrant_name, num_titrant_conc, 1)``.
     """
+    T = data.num_titrant_name
 
-    # --------------------------------------------------------------------------
-    # Hyperpriors for the Hill model parameters to be inferred 
-    
-    # hyperpriors for the min theta (logit scale)
-    logit_theta_low_hyper_loc = pyro.sample(
-        f"{name}_logit_low_hyper_loc",
-        dist.Normal(priors.theta_logit_low_hyper_loc_loc,
-                    priors.theta_logit_low_hyper_loc_scale)
+    # ------------------------------------------------------------------
+    # Per-titrant hyperpriors: shape (T,)
+    # ------------------------------------------------------------------
+    with pyro.plate(f"{name}_hyper_plate", T, dim=-1):
+        logit_low_hyper_loc = pyro.sample(
+            f"{name}_logit_low_hyper_loc",
+            dist.Normal(priors.theta_logit_low_hyper_loc_loc,
+                        priors.theta_logit_low_hyper_loc_scale))
+        logit_low_hyper_scale = pyro.sample(
+            f"{name}_logit_low_hyper_scale",
+            dist.HalfNormal(priors.theta_logit_low_hyper_scale))
+        logit_delta_hyper_loc = pyro.sample(
+            f"{name}_logit_delta_hyper_loc",
+            dist.Normal(priors.theta_logit_delta_hyper_loc_loc,
+                        priors.theta_logit_delta_hyper_loc_scale))
+        logit_delta_hyper_scale = pyro.sample(
+            f"{name}_logit_delta_hyper_scale",
+            dist.HalfNormal(priors.theta_logit_delta_hyper_scale))
+        log_K_hyper_loc = pyro.sample(
+            f"{name}_log_hill_K_hyper_loc",
+            dist.Normal(priors.theta_log_hill_K_hyper_loc_loc,
+                        priors.theta_log_hill_K_hyper_loc_scale))
+        log_K_hyper_scale = pyro.sample(
+            f"{name}_log_hill_K_hyper_scale",
+            dist.HalfNormal(priors.theta_log_hill_K_hyper_scale))
+        log_n_hyper_loc = pyro.sample(
+            f"{name}_log_hill_n_hyper_loc",
+            dist.Normal(priors.theta_log_hill_n_hyper_loc_loc,
+                        priors.theta_log_hill_n_hyper_loc_scale))
+        log_n_hyper_scale = pyro.sample(
+            f"{name}_log_hill_n_hyper_scale",
+            dist.HalfNormal(priors.theta_log_hill_n_hyper_scale))
+
+    # ------------------------------------------------------------------
+    # Full-population per-genotype offsets: shape (T, G)
+    # ------------------------------------------------------------------
+    with pyro.plate(f"{name}_titrant_name_plate", T, dim=-2):
+        with pyro.plate(f"{name}_genotype_plate", data.num_genotype, dim=-1):
+            logit_low_offset   = pyro.sample(f"{name}_logit_low_offset",   dist.Normal(0.0, 1.0))
+            logit_delta_offset = pyro.sample(f"{name}_logit_delta_offset", dist.Normal(0.0, 1.0))
+            log_K_offset       = pyro.sample(f"{name}_log_hill_K_offset",  dist.Normal(0.0, 1.0))
+            log_n_offset       = pyro.sample(f"{name}_log_hill_n_offset",  dist.Normal(0.0, 1.0))
+
+    # ------------------------------------------------------------------
+    # Assemble per-genotype parameters: shape (T, G)
+    # ------------------------------------------------------------------
+    logit_theta_low   = logit_low_hyper_loc[:, None]   + logit_low_offset   * logit_low_hyper_scale[:, None]
+    logit_theta_delta = logit_delta_hyper_loc[:, None] + logit_delta_offset * logit_delta_hyper_scale[:, None]
+    logit_theta_high  = logit_theta_low + logit_theta_delta
+    log_hill_K        = log_K_hyper_loc[:, None] + log_K_offset * log_K_hyper_scale[:, None]
+    log_hill_n        = log_n_hyper_loc[:, None] + log_n_offset * log_n_hyper_scale[:, None]
+
+    sig = dist.transforms.SigmoidTransform()
+    theta_low  = sig(logit_theta_low)
+    theta_high = sig(logit_theta_high)
+    hill_n     = jnp.exp(log_hill_n)
+
+    pyro.deterministic(f"{name}_theta_low",  theta_low)
+    pyro.deterministic(f"{name}_theta_high", theta_high)
+    pyro.deterministic(f"{name}_log_hill_K", log_hill_K)
+    pyro.deterministic(f"{name}_hill_n",     hill_n)
+
+    mu, sigma = _population_moments(
+        logit_low_hyper_loc, logit_low_hyper_scale,
+        logit_delta_hyper_loc, logit_delta_hyper_scale,
+        log_K_hyper_loc, log_K_hyper_scale,
+        log_n_hyper_loc, log_n_hyper_scale,
+        data.log_titrant_conc,
     )
-    logit_theta_low_hyper_scale = pyro.sample(
-        f"{name}_logit_low_hyper_scale",
-        dist.HalfNormal(priors.theta_logit_low_hyper_scale)
-    )
 
-    # hyperpriors for delta theta (logit scale)
-    logit_theta_delta_hyper_loc = pyro.sample(
-        f"{name}_logit_delta_hyper_loc",
-        dist.Normal(priors.theta_logit_delta_hyper_loc_loc,
-                    priors.theta_logit_delta_hyper_loc_scale)
-    )
-    logit_theta_delta_hyper_scale = pyro.sample(
-        f"{name}_logit_delta_hyper_scale",
-        dist.HalfNormal(priors.theta_logit_delta_hyper_scale)
-    )
-    
-     # hyperpriors for hill K (log scale)
-    log_hill_K_hyper_loc = pyro.sample(
-        f"{name}_log_hill_K_hyper_loc",
-        dist.Normal(priors.theta_log_hill_K_hyper_loc_loc,
-                    priors.theta_log_hill_K_hyper_loc_scale)
-    )
-    log_hill_K_hyper_scale = pyro.sample(
-        f"{name}_log_hill_K_hyper_scale",
-        dist.HalfNormal(priors.theta_log_hill_K_hyper_scale)
-    )
+    return ThetaParam(theta_low=theta_low, theta_high=theta_high,
+                      log_hill_K=log_hill_K, hill_n=hill_n,
+                      mu=mu, sigma=sigma)
 
-    # hyperpriors for hill n (log scale)
-    log_hill_n_hyper_loc = pyro.sample(
-        f"{name}_log_hill_n_hyper_loc",
-        dist.Normal(priors.theta_log_hill_n_hyper_loc_loc,
-                    priors.theta_log_hill_n_hyper_loc_scale)
-    )
-    log_hill_n_hyper_scale = pyro.sample(
-        f"{name}_log_hill_n_hyper_scale",
-        dist.HalfNormal(priors.theta_log_hill_n_hyper_scale)
-    )
-
-    # --------------------------------------------------------------------------
-    # Sample curve parameters for each (genotype, titrant_name) group 
-
-    with pyro.plate(f"{name}_titrant_name_plate",data.num_titrant_name,dim=-2):
-        with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
-            with pyro.handlers.scale(scale=data.scale_vector):
-                logit_theta_low_offset = pyro.sample(f"{name}_logit_low_offset", dist.Normal(0.0, 1.0))
-                logit_theta_delta_offset = pyro.sample(f"{name}_logit_delta_offset", dist.Normal(0.0, 1.0))
-                log_hill_K_offset = pyro.sample(f"{name}_log_hill_K_offset", dist.Normal(0.0, 1.0))
-                log_hill_n_offset = pyro.sample(f"{name}_log_hill_n_offset", dist.Normal(0.0, 1.0))
-
-    # Guard against full-sized array substitution during initialization or re-runs 
-    # with full-sized initial values
-    if logit_theta_low_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
-        logit_theta_low_offset = logit_theta_low_offset[..., data.batch_idx]
-        logit_theta_delta_offset = logit_theta_delta_offset[..., data.batch_idx]
-        log_hill_K_offset = log_hill_K_offset[..., data.batch_idx]
-        log_hill_n_offset = log_hill_n_offset[..., data.batch_idx]
-
-    logit_theta_low = logit_theta_low_hyper_loc + logit_theta_low_offset * logit_theta_low_hyper_scale
-    logit_theta_delta = logit_theta_delta_hyper_loc + logit_theta_delta_offset * logit_theta_delta_hyper_scale
-    logit_theta_high = logit_theta_low + logit_theta_delta
-    log_hill_K = log_hill_K_hyper_loc + log_hill_K_offset * log_hill_K_hyper_scale
-    log_hill_n = log_hill_n_hyper_loc + log_hill_n_offset * log_hill_n_hyper_scale
-
-    # --------------------------------------------------------------------------
-    # Calculate population moments (mu, sigma) using a "ghost population"
-    
-    # We sample a fixed-size population from the hyper-priors to estimate 
-    # the distribution of logit(theta) at each concentration.
-    n_ghost = 100
-    ghost_low = logit_theta_low_hyper_loc + dist.Normal(0.0, 1.0).sample(jax.random.PRNGKey(0), (n_ghost,)) * logit_theta_low_hyper_scale
-    ghost_delta = logit_theta_delta_hyper_loc + dist.Normal(0.0, 1.0).sample(jax.random.PRNGKey(1), (n_ghost,)) * logit_theta_delta_hyper_scale
-    ghost_high = ghost_low + ghost_delta
-    ghost_K = log_hill_K_hyper_loc + dist.Normal(0.0, 1.0).sample(jax.random.PRNGKey(2), (n_ghost,)) * log_hill_K_hyper_scale
-    ghost_n = log_hill_n_hyper_loc + dist.Normal(0.0, 1.0).sample(jax.random.PRNGKey(3), (n_ghost,)) * log_hill_n_hyper_scale
-    
-    # Calculate logit(theta) for ghost population across all concentrations
-    # Concentrations shape: (NumName, NumConc, 1) or broadcastable
-    log_conc = data.log_titrant_conc[None, :, None] # (1, Conc, 1)
-    
-    # Ghost parameters shape: (Name, 1, Ghost)
-    # Note: hyper-params are (Name,)
-    g_low = ghost_low[None, None, :]
-    g_high = ghost_high[None, None, :]
-    g_K = ghost_K[None, None, :]
-    g_n = jnp.exp(ghost_n[None, None, :])
-    
-    eps = 1e-6
-    g_occ = jax.nn.sigmoid(g_n * (log_conc - g_K))
-    g_theta = jnp.clip(dist.transforms.SigmoidTransform()(g_low) + (dist.transforms.SigmoidTransform()(g_high) - dist.transforms.SigmoidTransform()(g_low)) * g_occ, eps, 1.0 - eps)
-    g_logit_theta = jax.scipy.special.logit(g_theta)
-    
-    mu_pop = jnp.mean(g_logit_theta, axis=-1, keepdims=True)
-    sigma_pop = jnp.std(g_logit_theta, axis=-1, keepdims=True)
-
-    # --------------------------------------------------------------------------
-    # Expand parameters 
-
-    # Transform parameters to their natural scale
-    theta_low = dist.transforms.SigmoidTransform()(logit_theta_low)
-    theta_high = dist.transforms.SigmoidTransform()(logit_theta_high)
-    # log_hill_K is already on its natural scale
-    hill_n = jnp.exp(log_hill_n)
-
-    # Register parameter values
-    pyro.deterministic(f"{name}_theta_low",theta_low)
-    pyro.deterministic(f"{name}_theta_high",theta_high)
-    pyro.deterministic(f"{name}_log_hill_K",log_hill_K)
-    pyro.deterministic(f"{name}_hill_n",hill_n)
-
-    theta_param = ThetaParam(theta_low=theta_low,
-                             theta_high=theta_high,
-                             log_hill_K=log_hill_K,
-                             hill_n=hill_n,
-                             mu=mu_pop,
-                             sigma=sigma_pop)
-    
-    return theta_param
 
 def guide(name: str,
           data: DataClass,
@@ -253,241 +247,161 @@ def guide(name: str,
     """
     Guide corresponding to the hierarchical Hill model.
 
-    This guide defines the variational family for the Hill model parameters,
-    using:
-    - Normal distributions for location hyperparameters (`_loc`).
-    - LogNormal distributions for scale hyperparameters (`_scale`) and positive
-      variables.
-    - An amortized/offset parameterization for the local (per-group) parameters.
+    Mirrors the structure of ``define_model``: per-titrant variational
+    parameters for hyperpriors, full-population variational parameters for
+    per-genotype offsets.
     """
+    T = data.num_titrant_name
+    G = data.num_genotype
 
-    # ==========================================================================
-    # 1. Global Hyperparameters
-    # ==========================================================================
-
-    # --- Theta Low (Logit Scale) ---
-    # Loc
-    h_low_loc_loc = pyro.param(f"{name}_logit_low_hyper_loc_loc", jnp.array(priors.theta_logit_low_hyper_loc_loc))
-    h_low_loc_scale = pyro.param(f"{name}_logit_low_hyper_loc_scale", jnp.array(priors.theta_logit_low_hyper_loc_scale),
+    # ------------------------------------------------------------------
+    # Per-titrant hyperprior variational parameters: shape (T,)
+    # ------------------------------------------------------------------
+    h_low_loc_loc   = pyro.param(f"{name}_logit_low_hyper_loc_loc",
+                                 jnp.full(T, priors.theta_logit_low_hyper_loc_loc))
+    h_low_loc_scale = pyro.param(f"{name}_logit_low_hyper_loc_scale",
+                                 jnp.full(T, priors.theta_logit_low_hyper_loc_scale),
                                  constraint=dist.constraints.greater_than(1e-4))
-    logit_theta_low_hyper_loc = pyro.sample(f"{name}_logit_low_hyper_loc",
-                                            dist.Normal(h_low_loc_loc, h_low_loc_scale))
-
-    # Scale (LogNormal guide)
-    h_low_scale_loc = pyro.param(f"{name}_logit_low_hyper_scale_loc", jnp.array(-1.0))
-    h_low_scale_scale = pyro.param(f"{name}_logit_low_hyper_scale_scale", jnp.array(0.1),
+    h_low_scale_loc   = pyro.param(f"{name}_logit_low_hyper_scale_loc",   jnp.full(T, -1.0))
+    h_low_scale_scale = pyro.param(f"{name}_logit_low_hyper_scale_scale", jnp.full(T, 0.1),
                                    constraint=dist.constraints.greater_than(1e-4))
-    logit_theta_low_hyper_scale = pyro.sample(f"{name}_logit_low_hyper_scale",
-                                              dist.LogNormal(h_low_scale_loc, h_low_scale_scale))
 
-    # --- Theta Delta (Logit Scale) ---
-    # Loc
-    h_delta_loc_loc = pyro.param(f"{name}_logit_delta_hyper_loc_loc", jnp.array(priors.theta_logit_delta_hyper_loc_loc))
-    h_delta_loc_scale = pyro.param(f"{name}_logit_delta_hyper_loc_scale", jnp.array(priors.theta_logit_delta_hyper_loc_scale),
+    h_delta_loc_loc   = pyro.param(f"{name}_logit_delta_hyper_loc_loc",
+                                   jnp.full(T, priors.theta_logit_delta_hyper_loc_loc))
+    h_delta_loc_scale = pyro.param(f"{name}_logit_delta_hyper_loc_scale",
+                                   jnp.full(T, priors.theta_logit_delta_hyper_loc_scale),
                                    constraint=dist.constraints.greater_than(1e-4))
-    logit_theta_delta_hyper_loc = pyro.sample(f"{name}_logit_delta_hyper_loc",
-                                              dist.Normal(h_delta_loc_loc, h_delta_loc_scale))
-
-    # Scale (LogNormal guide)
-    h_delta_scale_loc = pyro.param(f"{name}_logit_delta_hyper_scale_loc", jnp.array(-1.0))
-    h_delta_scale_scale = pyro.param(f"{name}_logit_delta_hyper_scale_scale", jnp.array(0.1),
+    h_delta_scale_loc   = pyro.param(f"{name}_logit_delta_hyper_scale_loc",   jnp.full(T, -1.0))
+    h_delta_scale_scale = pyro.param(f"{name}_logit_delta_hyper_scale_scale", jnp.full(T, 0.1),
                                      constraint=dist.constraints.greater_than(1e-4))
-    logit_theta_delta_hyper_scale = pyro.sample(f"{name}_logit_delta_hyper_scale",
-                                                dist.LogNormal(h_delta_scale_loc, h_delta_scale_scale))
 
-    # --- Hill K (Log Scale) ---
-    # Loc
-    h_K_loc_loc = pyro.param(f"{name}_log_hill_K_hyper_loc_loc", jnp.array(priors.theta_log_hill_K_hyper_loc_loc))
-    h_K_loc_scale = pyro.param(f"{name}_log_hill_K_hyper_loc_scale", jnp.array(priors.theta_log_hill_K_hyper_loc_scale),
+    h_K_loc_loc   = pyro.param(f"{name}_log_hill_K_hyper_loc_loc",
+                               jnp.full(T, priors.theta_log_hill_K_hyper_loc_loc))
+    h_K_loc_scale = pyro.param(f"{name}_log_hill_K_hyper_loc_scale",
+                               jnp.full(T, priors.theta_log_hill_K_hyper_loc_scale),
                                constraint=dist.constraints.greater_than(1e-4))
-    log_hill_K_hyper_loc = pyro.sample(f"{name}_log_hill_K_hyper_loc",
-                                       dist.Normal(h_K_loc_loc, h_K_loc_scale))
-
-    # Scale (LogNormal guide)
-    h_K_scale_loc = pyro.param(f"{name}_log_hill_K_hyper_scale_loc", jnp.array(-1.0))
-    h_K_scale_scale = pyro.param(f"{name}_log_hill_K_hyper_scale_scale", jnp.array(0.1),
+    h_K_scale_loc   = pyro.param(f"{name}_log_hill_K_hyper_scale_loc",   jnp.full(T, -1.0))
+    h_K_scale_scale = pyro.param(f"{name}_log_hill_K_hyper_scale_scale", jnp.full(T, 0.1),
                                  constraint=dist.constraints.greater_than(1e-4))
-    log_hill_K_hyper_scale = pyro.sample(f"{name}_log_hill_K_hyper_scale",
-                                         dist.LogNormal(h_K_scale_loc, h_K_scale_scale))
 
-    # --- Hill n (Log Scale) ---
-    # Loc
-    h_n_loc_loc = pyro.param(f"{name}_log_hill_n_hyper_loc_loc", jnp.array(priors.theta_log_hill_n_hyper_loc_loc))
-    h_n_loc_scale = pyro.param(f"{name}_log_hill_n_hyper_loc_scale", jnp.array(priors.theta_log_hill_n_hyper_loc_scale),
+    h_n_loc_loc   = pyro.param(f"{name}_log_hill_n_hyper_loc_loc",
+                               jnp.full(T, priors.theta_log_hill_n_hyper_loc_loc))
+    h_n_loc_scale = pyro.param(f"{name}_log_hill_n_hyper_loc_scale",
+                               jnp.full(T, priors.theta_log_hill_n_hyper_loc_scale),
                                constraint=dist.constraints.greater_than(1e-4))
-    log_hill_n_hyper_loc = pyro.sample(f"{name}_log_hill_n_hyper_loc",
-                                       dist.Normal(h_n_loc_loc, h_n_loc_scale))
-
-    # Scale (LogNormal guide)
-    h_n_scale_loc = pyro.param(f"{name}_log_hill_n_hyper_scale_loc", jnp.array(-1.0))
-    h_n_scale_scale = pyro.param(f"{name}_log_hill_n_hyper_scale_scale", jnp.array(0.1),
+    h_n_scale_loc   = pyro.param(f"{name}_log_hill_n_hyper_scale_loc",   jnp.full(T, -1.0))
+    h_n_scale_scale = pyro.param(f"{name}_log_hill_n_hyper_scale_scale", jnp.full(T, 0.1),
                                  constraint=dist.constraints.greater_than(1e-4))
-    log_hill_n_hyper_scale = pyro.sample(f"{name}_log_hill_n_hyper_scale", 
-                                         dist.LogNormal(h_n_scale_loc, h_n_scale_scale))
 
+    with pyro.plate(f"{name}_hyper_plate", T, dim=-1):
+        logit_low_hyper_loc   = pyro.sample(f"{name}_logit_low_hyper_loc",
+                                            dist.Normal(h_low_loc_loc, h_low_loc_scale))
+        logit_low_hyper_scale = pyro.sample(f"{name}_logit_low_hyper_scale",
+                                            dist.LogNormal(h_low_scale_loc, h_low_scale_scale))
+        logit_delta_hyper_loc   = pyro.sample(f"{name}_logit_delta_hyper_loc",
+                                              dist.Normal(h_delta_loc_loc, h_delta_loc_scale))
+        logit_delta_hyper_scale = pyro.sample(f"{name}_logit_delta_hyper_scale",
+                                              dist.LogNormal(h_delta_scale_loc, h_delta_scale_scale))
+        log_K_hyper_loc   = pyro.sample(f"{name}_log_hill_K_hyper_loc",
+                                        dist.Normal(h_K_loc_loc, h_K_loc_scale))
+        log_K_hyper_scale = pyro.sample(f"{name}_log_hill_K_hyper_scale",
+                                        dist.LogNormal(h_K_scale_loc, h_K_scale_scale))
+        log_n_hyper_loc   = pyro.sample(f"{name}_log_hill_n_hyper_loc",
+                                        dist.Normal(h_n_loc_loc, h_n_loc_scale))
+        log_n_hyper_scale = pyro.sample(f"{name}_log_hill_n_hyper_scale",
+                                        dist.LogNormal(h_n_scale_loc, h_n_scale_scale))
 
-    # ==========================================================================
-    # 2. Local Parameters (Offset Variational Params)
-    # ==========================================================================
-    
-    # Shape: (NumTitrants, NumGenotypes)
-    local_shape = (data.num_titrant_name, data.num_genotype)
-
-    # Low Offsets
-    low_offset_locs = pyro.param(f"{name}_logit_low_offset_locs", jnp.zeros(local_shape,dtype=float))
-    low_offset_scales = pyro.param(f"{name}_logit_low_offset_scales", jnp.ones(local_shape,dtype=float), 
+    # ------------------------------------------------------------------
+    # Full-population per-genotype offset variational parameters: shape (T, G)
+    # ------------------------------------------------------------------
+    low_offset_locs   = pyro.param(f"{name}_logit_low_offset_locs",   jnp.zeros((T, G), dtype=float))
+    low_offset_scales = pyro.param(f"{name}_logit_low_offset_scales", jnp.ones((T, G),  dtype=float),
                                    constraint=dist.constraints.positive)
-
-    # Delta Offsets
-    delta_offset_locs = pyro.param(f"{name}_logit_delta_offset_locs", jnp.zeros(local_shape,dtype=float))
-    delta_offset_scales = pyro.param(f"{name}_logit_delta_offset_scales", jnp.ones(local_shape,dtype=float), 
+    delta_offset_locs   = pyro.param(f"{name}_logit_delta_offset_locs",   jnp.zeros((T, G), dtype=float))
+    delta_offset_scales = pyro.param(f"{name}_logit_delta_offset_scales", jnp.ones((T, G),  dtype=float),
                                      constraint=dist.constraints.positive)
-
-    # K Offsets
-    K_offset_locs = pyro.param(f"{name}_log_hill_K_offset_locs", jnp.zeros(local_shape,dtype=float))
-    K_offset_scales = pyro.param(f"{name}_log_hill_K_offset_scales", jnp.ones(local_shape,dtype=float), 
+    K_offset_locs   = pyro.param(f"{name}_log_hill_K_offset_locs",   jnp.zeros((T, G), dtype=float))
+    K_offset_scales = pyro.param(f"{name}_log_hill_K_offset_scales", jnp.ones((T, G),  dtype=float),
+                                 constraint=dist.constraints.positive)
+    n_offset_locs   = pyro.param(f"{name}_log_hill_n_offset_locs",   jnp.zeros((T, G), dtype=float))
+    n_offset_scales = pyro.param(f"{name}_log_hill_n_offset_scales", jnp.ones((T, G),  dtype=float),
                                  constraint=dist.constraints.positive)
 
-    # n Offsets
-    n_offset_locs = pyro.param(f"{name}_log_hill_n_offset_locs", jnp.zeros(local_shape,dtype=float))
-    n_offset_scales = pyro.param(f"{name}_log_hill_n_offset_scales", jnp.ones(local_shape,dtype=float), 
-                                 constraint=dist.constraints.positive)
+    with pyro.plate(f"{name}_titrant_name_plate", T, dim=-2):
+        with pyro.plate(f"{name}_genotype_plate", G, dim=-1):
+            logit_low_offset   = pyro.sample(f"{name}_logit_low_offset",
+                                             dist.Normal(low_offset_locs,   low_offset_scales))
+            logit_delta_offset = pyro.sample(f"{name}_logit_delta_offset",
+                                             dist.Normal(delta_offset_locs, delta_offset_scales))
+            log_K_offset       = pyro.sample(f"{name}_log_hill_K_offset",
+                                             dist.Normal(K_offset_locs,     K_offset_scales))
+            log_n_offset       = pyro.sample(f"{name}_log_hill_n_offset",
+                                             dist.Normal(n_offset_locs,     n_offset_scales))
 
+    # ------------------------------------------------------------------
+    # Reconstruct full-population ThetaParam
+    # ------------------------------------------------------------------
+    sig = dist.transforms.SigmoidTransform()
+    logit_theta_low   = logit_low_hyper_loc[:, None]   + logit_low_offset   * logit_low_hyper_scale[:, None]
+    logit_theta_delta = logit_delta_hyper_loc[:, None] + logit_delta_offset * logit_delta_hyper_scale[:, None]
+    logit_theta_high  = logit_theta_low + logit_theta_delta
+    log_hill_K        = log_K_hyper_loc[:, None] + log_K_offset * log_K_hyper_scale[:, None]
+    log_hill_n        = log_n_hyper_loc[:, None] + log_n_offset * log_n_hyper_scale[:, None]
 
-    # ==========================================================================
-    # 3. Sampling (Sliced by Genotype)
-    # ==========================================================================
+    theta_low  = sig(logit_theta_low)
+    theta_high = sig(logit_theta_high)
+    hill_n     = jnp.exp(log_hill_n)
 
-    with pyro.plate(f"{name}_titrant_name_plate", data.num_titrant_name, dim=-2):
-        # Batching on Genotype (dim=-1)
-        with pyro.plate("shared_genotype_plate", size=data.batch_size, dim=-1):
-            
-            # Scale data for sub-sampling
-            with pyro.handlers.scale(scale=data.scale_vector):
-            
-                # Low
-                logit_theta_low_offset = pyro.sample(f"{name}_logit_low_offset", 
-                    dist.Normal(low_offset_locs[..., data.batch_idx], low_offset_scales[..., data.batch_idx]))
-                
-                # Delta
-                logit_theta_delta_offset = pyro.sample(f"{name}_logit_delta_offset", 
-                    dist.Normal(delta_offset_locs[..., data.batch_idx], delta_offset_scales[..., data.batch_idx]))
-                
-                # K
-                log_hill_K_offset = pyro.sample(f"{name}_log_hill_K_offset", 
-                    dist.Normal(K_offset_locs[..., data.batch_idx], K_offset_scales[..., data.batch_idx]))
-                
-                # n
-                log_hill_n_offset = pyro.sample(f"{name}_log_hill_n_offset", 
-                    dist.Normal(n_offset_locs[..., data.batch_idx], n_offset_scales[..., data.batch_idx]))
+    mu, sigma = _population_moments(
+        logit_low_hyper_loc, logit_low_hyper_scale,
+        logit_delta_hyper_loc, logit_delta_hyper_scale,
+        log_K_hyper_loc, log_K_hyper_scale,
+        log_n_hyper_loc, log_n_hyper_scale,
+        data.log_titrant_conc,
+    )
 
-    # Guard against full-sized array substitution during initialization or re-runs 
-    # with full-sized initial values
-    if logit_theta_low_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
-        logit_theta_low_offset = logit_theta_low_offset[..., data.batch_idx]
-        logit_theta_delta_offset = logit_theta_delta_offset[..., data.batch_idx]
-        log_hill_K_offset = log_hill_K_offset[..., data.batch_idx]
-        log_hill_n_offset = log_hill_n_offset[..., data.batch_idx]
+    return ThetaParam(theta_low=theta_low, theta_high=theta_high,
+                      log_hill_K=log_hill_K, hill_n=hill_n,
+                      mu=mu, sigma=sigma)
 
-    # ==========================================================================
-    # 4. Reconstruction
-    # ==========================================================================
-
-    logit_theta_low = logit_theta_low_hyper_loc + logit_theta_low_offset * logit_theta_low_hyper_scale
-    logit_theta_delta = logit_theta_delta_hyper_loc + logit_theta_delta_offset * logit_theta_delta_hyper_scale
-    logit_theta_high = logit_theta_low + logit_theta_delta
-    log_hill_K = log_hill_K_hyper_loc + log_hill_K_offset * log_hill_K_hyper_scale
-    log_hill_n = log_hill_n_hyper_loc + log_hill_n_offset * log_hill_n_hyper_scale
-
-    # Transform
-    theta_low = dist.transforms.SigmoidTransform()(logit_theta_low)
-    theta_high = dist.transforms.SigmoidTransform()(logit_theta_high)
-    hill_n = jnp.exp(log_hill_n)
-
-    # --------------------------------------------------------------------------
-    # Calculate population moments (mu, sigma) using a "ghost population"
-    
-    n_ghost = 100
-    ghost_low = logit_theta_low_hyper_loc + dist.Normal(0.0, 1.0).sample(jax.random.PRNGKey(0), (n_ghost,)) * logit_theta_low_hyper_scale
-    ghost_delta = logit_theta_delta_hyper_loc + dist.Normal(0.0, 1.0).sample(jax.random.PRNGKey(1), (n_ghost,)) * logit_theta_delta_hyper_scale
-    ghost_high = ghost_low + ghost_delta
-    ghost_K = log_hill_K_hyper_loc + dist.Normal(0.0, 1.0).sample(jax.random.PRNGKey(2), (n_ghost,)) * log_hill_K_hyper_scale
-    ghost_n = log_hill_n_hyper_loc + dist.Normal(0.0, 1.0).sample(jax.random.PRNGKey(3), (n_ghost,)) * log_hill_n_hyper_scale
-    
-    log_conc = data.log_titrant_conc[None, :, None] # (1, Conc, 1)
-    
-    g_low = ghost_low[None, None, :]
-    g_high = ghost_high[None, None, :]
-    g_K = ghost_K[None, None, :]
-    g_n = jnp.exp(ghost_n[None, None, :])
-    
-    eps = 1e-6
-    g_occ = jax.nn.sigmoid(g_n * (log_conc - g_K))
-    g_theta = jnp.clip(dist.transforms.SigmoidTransform()(g_low) + (dist.transforms.SigmoidTransform()(g_high) - dist.transforms.SigmoidTransform()(g_low)) * g_occ, eps, 1.0 - eps)
-    g_logit_theta = jax.scipy.special.logit(g_theta)
-    
-    mu_pop = jnp.mean(g_logit_theta, axis=-1, keepdims=True)
-    sigma_pop = jnp.std(g_logit_theta, axis=-1, keepdims=True)
-
-    theta_param = ThetaParam(theta_low=theta_low,
-                             theta_high=theta_high,
-                             log_hill_K=log_hill_K,
-                             hill_n=hill_n,
-                             mu=mu_pop,
-                             sigma=sigma_pop)
-    
-    return theta_param
 
 def run_model(theta_param: ThetaParam, data: DataClass) -> jnp.ndarray:
     """
     Calculates fractional occupancy (theta) using the Hill equation.
 
-    This is a pure JAX function that deterministically calculates theta
-    values using the sampled parameters from ``define_model``.
+    ``theta_param`` has per-genotype fields of shape ``(T, num_genotype)``.
+    ``data.geno_theta_idx`` contains batch-relative indices; translating
+    through ``data.batch_idx`` yields full-population genotype indices,
+    consistent with the ``hill_mut`` convention.
 
     Parameters
     ----------
     theta_param : ThetaParam
-        A Pytree generated by ``define_model`` containing the sampled
-        Hill parameters. Tensors within (e.g., ``theta_param.hill_K``)
-        are expected to have dimensions ``[titrant_name, genotype]``.
+        Output of ``define_model`` / ``guide``.  Per-genotype fields shape
+        ``(num_titrant_name, num_genotype)``.
     data : DataClass
-        A data object (e.g., ``GrowthData`` or ``BindingData``) containing:
-        - ``data.map_theta_group``: (jnp.ndarray) Mapper with dimensions
-          ``[titrant_name, titrant_conc, genotype]``.
-        - ``data.log_titrant_conc``: (jnp.ndarray) Titrant concentrations,
-          with dimensions ``[titrant_name, titrant_conc, genotype]``.
-        - ``data.map_theta``: (jnp.ndarray) Mapper with dimensions
-          ``[replicate, time, treatment, genotype]``.
-        - ``data.scatter_theta``: (int) A flag (0 or 1) indicating
-          whether to scatter the final tensor.
+        Must expose ``batch_idx``, ``geno_theta_idx``, ``log_titrant_conc``,
+        and ``scatter_theta``.
 
     Returns
     -------
     jnp.ndarray
-        A tensor of calculated theta values.
-        - If ``data.scatter_theta == 0``, shape is
-          ``[titrant_name, titrant_conc, genotype]``.
-        - If ``data.scatter_theta == 1``, shape is
-          ``[replicate, time, treatment, genotype]``.
+        - ``scatter_theta == 0`` → shape ``(T, C, G_subset)``
+        - ``scatter_theta == 1`` → shape ``(1, 1, 1, 1, T, C, G_subset)``
     """
-    
-    # Create [titrant_name,titrant_conc,genotype]-sized tensors of all 
-    # parameters.
-    theta_low = theta_param.theta_low[:,None,data.geno_theta_idx]
-    theta_high = theta_param.theta_high[:,None,data.geno_theta_idx]
-    log_hill_K = theta_param.log_hill_K[:,None,data.geno_theta_idx]
-    hill_n = theta_param.hill_n[:,None,data.geno_theta_idx]
+    geno_idx = data.batch_idx[data.geno_theta_idx]
+    theta_low  = theta_param.theta_low[:, None, geno_idx]
+    theta_high = theta_param.theta_high[:, None, geno_idx]
+    log_hill_K = theta_param.log_hill_K[:, None, geno_idx]
+    hill_n     = theta_param.hill_n[:, None, geno_idx]
 
-    log_titrant = data.log_titrant_conc[None,:,None]
+    log_titrant = data.log_titrant_conc[None, :, None]
+    occupancy   = jax.nn.sigmoid(hill_n * (log_titrant - log_hill_K))
+    theta_calc  = theta_low + (theta_high - theta_low) * occupancy
 
-    occupancy = jax.nn.sigmoid(hill_n * (log_titrant - log_hill_K))
-    theta_calc = theta_low + (theta_high - theta_low)*occupancy
-
-    # Broadcast to the full-sized tensor
     if data.scatter_theta == 1:
-        theta_calc = theta_calc[None,None,None,None,:,:,:]
-    
+        theta_calc = theta_calc[None, None, None, None, :, :, :]
+
     return theta_calc
 
 
@@ -505,27 +419,25 @@ def get_hyperparameters() -> Dict[str, Any]:
     Returns
     -------
     dict[str, Any]
-        A dictionary mapping hyperparameter names (as strings) to their
-        default values.
+        A dictionary mapping hyperparameter names to their default values.
     """
-
     parameters = {}
 
-    parameters["theta_logit_low_hyper_loc_loc"] = 2.0
-    parameters["theta_logit_low_hyper_loc_scale"] = 2.0
-    parameters["theta_logit_low_hyper_scale"] = 1.0
+    parameters["theta_logit_low_hyper_loc_loc"]   = 2.0
+    parameters["theta_logit_low_hyper_loc_scale"]  = 2.0
+    parameters["theta_logit_low_hyper_scale"]      = 1.0
 
-    parameters["theta_logit_delta_hyper_loc_loc"] = -4.0
-    parameters["theta_logit_delta_hyper_loc_scale"] = 2.0
-    parameters["theta_logit_delta_hyper_scale"] = 1.0
+    parameters["theta_logit_delta_hyper_loc_loc"]   = -4.0
+    parameters["theta_logit_delta_hyper_loc_scale"]  = 2.0
+    parameters["theta_logit_delta_hyper_scale"]      = 1.0
 
-    parameters["theta_log_hill_K_hyper_loc_loc"] = -4.1
-    parameters["theta_log_hill_K_hyper_loc_scale"] = 1.0
-    parameters["theta_log_hill_K_hyper_scale"] = 0.1
+    parameters["theta_log_hill_K_hyper_loc_loc"]   = -4.1
+    parameters["theta_log_hill_K_hyper_loc_scale"]  = 1.0
+    parameters["theta_log_hill_K_hyper_scale"]      = 0.1
 
-    parameters["theta_log_hill_n_hyper_loc_loc"] = 0.7
-    parameters["theta_log_hill_n_hyper_loc_scale"] = 0.5
-    parameters["theta_log_hill_n_hyper_scale"] = 1.0
+    parameters["theta_log_hill_n_hyper_loc_loc"]   = 0.7
+    parameters["theta_log_hill_n_hyper_loc_scale"]  = 0.5
+    parameters["theta_log_hill_n_hyper_scale"]      = 1.0
 
     return parameters
 
@@ -534,60 +446,48 @@ def get_guesses(name: str, data: DataClass) -> Dict[str, Any]:
     """
     Gets initial guess values for model parameters.
 
-    These are used to initialize the MCMC sampler (e.g., via
-    ``numpyro.infer.init_to_value``).
-
-    ``log_hill_K_hyper_loc`` is estimated from ``data.log_titrant_conc`` as the
-    median of all finite values, which places K in the centre of the tested
-    concentration range.  Zero concentrations (stored as -inf in log-space) are
-    excluded automatically by the finiteness filter.  All other parameters are
-    held at their hard-coded defaults because they cannot be reliably extracted
-    from growth data without already knowing A and m.
-
-    Falls back to the lac/IPTG default (-4.1) when no finite concentration
-    values are present.
+    ``log_hill_K_hyper_loc`` is estimated per-titrant from the median of all
+    finite values in ``data.log_titrant_conc``.  All other hyperprior guesses
+    are broadcast to shape ``(num_titrant_name,)`` so they match the per-titrant
+    plate structure.
 
     Parameters
     ----------
     name : str
-        The prefix for the parameter names (e.g., "theta").
     data : DataClass
-        A data object containing metadata, primarily:
-        - ``data.num_titrant_name`` : (int) Number of titrants.
-        - ``data.num_genotype``     : (int) Number of genotypes.
-        - ``data.log_titrant_conc`` : (jnp.ndarray, shape (num_titrant_conc,))
-          Log of the titrant concentrations used in the experiment.
+        Must expose ``num_titrant_name``, ``num_genotype``, and
+        ``log_titrant_conc``.
 
     Returns
     -------
     dict[str, Any]
-        A dictionary mapping parameter names to their initial
-        guess values.
     """
-
     _DEFAULT_LOG_K = -4.1  # ln(0.017 mM) — lac/IPTG system default
 
-    log_conc = np.array(data.log_titrant_conc)
+    log_conc    = np.array(data.log_titrant_conc)
     finite_conc = log_conc[np.isfinite(log_conc)]
     log_K_guess = float(np.median(finite_conc)) if len(finite_conc) > 0 else _DEFAULT_LOG_K
 
+    T = data.num_titrant_name
+    G = data.num_genotype
+
     guesses = {}
-    guesses[f"{name}_logit_low_hyper_loc"]   = 2.0
-    guesses[f"{name}_logit_low_hyper_scale"]  = 2.0
-    guesses[f"{name}_logit_delta_hyper_loc"]  = -4.0
-    guesses[f"{name}_logit_delta_hyper_scale"] = 2.0
+    guesses[f"{name}_logit_low_hyper_loc"]    = jnp.full(T, 2.0)
+    guesses[f"{name}_logit_low_hyper_scale"]  = jnp.full(T, 2.0)
+    guesses[f"{name}_logit_delta_hyper_loc"]  = jnp.full(T, -4.0)
+    guesses[f"{name}_logit_delta_hyper_scale"] = jnp.full(T, 2.0)
+    guesses[f"{name}_log_hill_K_hyper_loc"]   = jnp.full(T, log_K_guess)
+    guesses[f"{name}_log_hill_K_hyper_scale"] = jnp.full(T, 1.0)
+    guesses[f"{name}_log_hill_n_hyper_loc"]   = jnp.full(T, 0.7)
+    guesses[f"{name}_log_hill_n_hyper_scale"] = jnp.full(T, 0.3)
 
-    guesses[f"{name}_log_hill_K_hyper_loc"]  = log_K_guess
-    guesses[f"{name}_log_hill_K_hyper_scale"] = 1.0
-    guesses[f"{name}_log_hill_n_hyper_loc"]  = 0.7
-    guesses[f"{name}_log_hill_n_hyper_scale"] = 0.3
-
-    guesses[f"{name}_logit_low_offset"]   = jnp.zeros((data.num_titrant_name, data.num_genotype), dtype=float)
-    guesses[f"{name}_logit_delta_offset"] = jnp.zeros((data.num_titrant_name, data.num_genotype), dtype=float)
-    guesses[f"{name}_log_hill_K_offset"]  = jnp.zeros((data.num_titrant_name, data.num_genotype), dtype=float)
-    guesses[f"{name}_log_hill_n_offset"]  = jnp.zeros((data.num_titrant_name, data.num_genotype), dtype=float)
+    guesses[f"{name}_logit_low_offset"]   = jnp.zeros((T, G), dtype=float)
+    guesses[f"{name}_logit_delta_offset"] = jnp.zeros((T, G), dtype=float)
+    guesses[f"{name}_log_hill_K_offset"]  = jnp.zeros((T, G), dtype=float)
+    guesses[f"{name}_log_hill_n_offset"]  = jnp.zeros((T, G), dtype=float)
 
     return guesses
+
 
 def get_priors() -> ModelPriors:
     """
@@ -596,7 +496,6 @@ def get_priors() -> ModelPriors:
     Returns
     -------
     ModelPriors
-        A populated Pytree (Flax dataclass) of hyperparameters.
     """
     return ModelPriors(**get_hyperparameters())
 
@@ -624,30 +523,33 @@ def predict_unmeasured(
     q_to_get,
 ):
     """
-    Predict theta for unmeasured genotypes using the population hyperprior mean.
+    Predict theta for unmeasured genotypes using the per-titrant hyperprior means.
 
-    ``hill`` has no per-mutation decomposition, so any unmeasured genotype is
-    predicted from the hierarchical hyperprior location parameters (the
-    population average curve).  All target genotypes receive identical
-    predictions; mutations not seen during training are not NaN-masked because
-    the model has no concept of individual mutation effects.
+    ``hill`` has no per-mutation decomposition, so any unmeasured genotype
+    receives the population-average prediction for its titrant.  All target
+    genotypes receive identical predictions per titrant; mutations not seen
+    during training are not NaN-masked because the model has no concept of
+    individual mutation effects.
 
     Parameters
     ----------
     target_genotypes : list[str]
     titrant_names : list[str]
+        Ordered titrant names matching the T dimension in the posterior.
     manual_titrant_df : pd.DataFrame
         Must have 'titrant_name' and 'titrant_conc' columns.
     mut_labels : list[str]  — unused (no per-mutation structure)
     pair_labels : list[str] — unused
     param_posteriors : dict-like
+        Posterior samples; hyperprior locs have shape ``(S, T)``.
     q_to_get : dict[str, float]
 
     Returns
     -------
     pd.DataFrame
         Columns: 'genotype', 'titrant_name', 'titrant_conc', <quantile names>.
-        All genotypes receive the population-mean prediction.
+        All genotypes for a given titrant receive the same population-mean
+        prediction.
     """
     import numpy as np
     from tfscreen.analysis.hierarchical.posteriors import get_posterior_samples
@@ -666,28 +568,29 @@ def predict_unmeasured(
             v = v[:]
         return np.array(v)
 
-    logit_low_hyper_loc   = _load("theta_logit_low_hyper_loc")    # (S,)
-    logit_delta_hyper_loc = _load("theta_logit_delta_hyper_loc")  # (S,)
-    log_K_hyper_loc       = _load("theta_log_hill_K_hyper_loc")   # (S,)
-    log_n_hyper_loc       = _load("theta_log_hill_n_hyper_loc")   # (S,)
+    # Shape (S, T) — one set of hyperpriors per titrant
+    logit_low_hyper_loc   = _load("theta_logit_low_hyper_loc")    # (S, T)
+    logit_delta_hyper_loc = _load("theta_logit_delta_hyper_loc")  # (S, T)
+    log_K_hyper_loc       = _load("theta_log_hill_K_hyper_loc")   # (S, T)
+    log_n_hyper_loc       = _load("theta_log_hill_n_hyper_loc")   # (S, T)
 
     logit_high_hyper_loc = logit_low_hyper_loc + logit_delta_hyper_loc
-    theta_low  = 1.0 / (1.0 + np.exp(-logit_low_hyper_loc))    # (S,)
-    theta_high = 1.0 / (1.0 + np.exp(-logit_high_hyper_loc))   # (S,)
-    hill_K     = log_K_hyper_loc                                 # (S,) log scale
-    hill_n     = np.exp(log_n_hyper_loc)                         # (S,)
+    theta_low  = 1.0 / (1.0 + np.exp(-logit_low_hyper_loc))    # (S, T)
+    theta_high = 1.0 / (1.0 + np.exp(-logit_high_hyper_loc))   # (S, T)
+    hill_K     = log_K_hyper_loc                                 # (S, T) log scale
+    hill_n     = np.exp(log_n_hyper_loc)                         # (S, T)
 
     conc_vals = calc_df["titrant_conc"].values.astype(float).copy()
     conc_vals[conc_vals == 0] = _ZERO_CONC_VALUE
     log_conc = np.log(conc_vals)  # (N_rows,)
 
-    # Broadcast population-mean parameters across all rows
-    t_l = theta_low[:, None]   # (S, 1) → (S, N_rows)
-    t_h = theta_high[:, None]
-    l_K = hill_K[:, None]
-    h_n = hill_n[:, None]
+    # Select per-row parameters using the titrant index for each row
+    t_l = theta_low[:, titrant_idx]    # (S, N_rows)
+    t_h = theta_high[:, titrant_idx]
+    l_K = hill_K[:, titrant_idx]
+    h_n = hill_n[:, titrant_idx]
 
-    occupancy = 1.0 / (1.0 + np.exp(-h_n * (log_conc[np.newaxis, :] - l_K)))
+    occupancy     = 1.0 / (1.0 + np.exp(-h_n * (log_conc[np.newaxis, :] - l_K)))
     theta_samples = t_l + (t_h - t_l) * occupancy   # (S, N_rows)
 
     result_df = calc_df[["genotype", "titrant_name", "titrant_conc"]].copy()
