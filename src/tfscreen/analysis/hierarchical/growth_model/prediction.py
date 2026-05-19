@@ -363,7 +363,7 @@ def predict(model_class,
             q_arr = np.quantile(site_samples, q_val, axis=0)
             df[q_name] = q_arr[eff_aligned]
 
-        if num_samples is not None:
+        if num_samples is not None and num_samples > 0:
             site_samples_np = np.array(site_samples)  # (S, ...)
             S = site_samples_np.shape[0]
             chosen = np.random.choice(S, size=num_samples,
