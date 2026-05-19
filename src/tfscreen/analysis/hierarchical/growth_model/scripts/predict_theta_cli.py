@@ -36,7 +36,7 @@ def predict_theta(config_file,
     config_file : str
         Path to the YAML configuration file.
     posterior_file : str
-        Path to the _posterior.h5 file produced by tfs-sample-posterior.
+        Path to the .h5 file produced by tfs-sample-posterior.
     out_prefix : str, optional
         Prefix for the output CSV file. Written to {out_prefix}.csv.
         Default 'tfs_theta_pred'.

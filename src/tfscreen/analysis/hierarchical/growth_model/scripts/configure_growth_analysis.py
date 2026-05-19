@@ -9,7 +9,7 @@ from tfscreen.util.cli.generalized_main import generalized_main
 
 def configure_growth_analysis(growth_df=None,
                               binding_df=None,
-                              out_prefix="tfs",
+                              out_prefix="tfs_configure",
                               condition_growth_model="linear",
                               growth_transition_model="instant",
                               ln_cfu0_model="hierarchical",
@@ -25,17 +25,26 @@ def configure_growth_analysis(growth_df=None,
                               struct_ensemble_path=None,
                               batch_size=1024):
     """
-    Construct the analysis configuration step. This creates a tfs_config.yaml file
-    along with tfs_priors.csv and tfs_guesses.csv (if any array parameters exist).
+    Build and write the YAML configuration files needed by tfs-growth-analysis.
+
+    Constructs a GrowthModel from the supplied data and model-component choices,
+    then writes three files: {out_prefix}_config.yaml (the main configuration),
+    {out_prefix}_priors.csv (prior distributions for all parameters), and
+    {out_prefix}_guesses.csv (initial-value guesses for array parameters).
+    Both growth_df and binding_df are required.
 
     Parameters
     ----------
-    growth_df : pandas.DataFrame or str, optional
-        Input data for the growth model (e.g., genotype/cfu measurements).
-    binding_df : pandas.DataFrame or str, optional
-        Input data for the binding model (e.g., theta vs. titrant measurements).
+    growth_df : str
+        Path to the growth data CSV file (ln_cfu measurements per genotype,
+        replicate, and timepoint). Required.
+    binding_df : str
+        Path to the binding data CSV file (theta vs. titrant measurements per
+        genotype). Required.
     out_prefix : str, optional
-        Output file root for the generated configuration files (default 'tfs').
+        Prefix for the three output files ({out_prefix}_config.yaml,
+        {out_prefix}_priors.csv, {out_prefix}_guesses.csv).
+        Default 'tfs_configure'.
     condition_growth_model: str, optional
         Model to use to describe growth under different conditions (e.g., 
         pheS+4CP). Allowed values are 'linear' (default), 'linear_independent',

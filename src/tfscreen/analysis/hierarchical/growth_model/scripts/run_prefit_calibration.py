@@ -1063,14 +1063,31 @@ def run_prefit_calibration(config_file,
         ``{out_prefix}_checkpoint.pkl``, etc.).  Defaults to ``"tfs_prefit"``.
         These are diagnostic outputs; the user-facing artefact is the
         in-place update of the production CSVs.
-    adam_step_size, adam_final_step_size, adam_clip_norm,
-    elbo_num_particles, convergence_tolerance, convergence_window,
-    patience, convergence_check_interval, checkpoint_interval,
-    max_num_epochs, init_param_jitter : optional
-        Standard MAP optimizer / convergence kwargs; see
-        :func:`run_growth_analysis.run_growth_analysis` for details.
-        ``init_param_jitter`` defaults to ``0.0`` because the pre-fit
-        benefits from being deterministic given a seed.
+    adam_step_size : float, optional
+        Starting step size for the Adam optimizer (default 1e-3).
+    adam_final_step_size : float, optional
+        Final step size for the Adam optimizer (default 1e-6).
+    adam_clip_norm : float, optional
+        Gradient clipping norm for the Adam optimizer (default 1.0).
+    elbo_num_particles : int, optional
+        Number of particles for ELBO estimation (default 2).
+    convergence_tolerance : float, optional
+        Relative change in loss to declare MAP convergence (default 0.01).
+    convergence_window : int, optional
+        Number of epochs to average when checking convergence (default 10).
+    patience : int, optional
+        Number of consecutive convergence checks that must pass before
+        declaring convergence (default 10).
+    convergence_check_interval : int, optional
+        Frequency (in epochs) at which convergence is checked (default 2).
+    checkpoint_interval : int, optional
+        Frequency (in epochs) between checkpoint writes (default 10).
+    max_num_epochs : int, optional
+        Maximum number of MAP optimization epochs (default 100000).
+    init_param_jitter : float, optional
+        Jitter added to initial parameters to break symmetry (default 0.0).
+        The pre-fit benefits from determinism given a seed, so this is 0
+        by default (unlike tfs-growth-analysis which defaults to 0.1).
     epoch_checkpoint_interval : int or None, optional
         Frequency (in epochs) to write numbered epoch checkpoints to a
         ``checkpoints/`` subdirectory (default 0). Set to 0 or None to

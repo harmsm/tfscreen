@@ -332,7 +332,7 @@ def run_growth_analysis(config_file,
                         seed=None,
                         checkpoint_file=None,
                         analysis_method="svi",
-                        out_prefix="tfs",
+                        out_prefix="tfs_growth_analysis",
                         adam_step_size=1e-3,
                         adam_final_step_size=1e-6,
                         adam_clip_norm=1.0,
@@ -373,7 +373,9 @@ def run_growth_analysis(config_file,
         Method for inference. Allowed values are 'svi' (default), 'map', or 'nuts'.
         To draw posterior samples from an existing checkpoint, use tfs-sample-posterior.
     out_prefix : str, optional
-        Output file root for checkpoints and results (default 'tfs').
+        Prefix for all output files: checkpoints, parameter files, and the
+        posterior HDF5 (default 'tfs_growth_analysis'). Files are named
+        {out_prefix}_checkpoint.pkl, {out_prefix}_params.npz, etc.
     adam_step_size : float, optional
         Starting step size for the Adam optimizer (default 1e-3).
     adam_final_step_size : float, optional

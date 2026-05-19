@@ -12,22 +12,31 @@ def param_quantiles(config_file,
     """
     Extract posterior parameter quantiles and write to CSV files.
 
-    Reads the posterior samples produced by tfs-sample-posterior and writes
-    one CSV per parameter group to {out_prefix}_{param_name}.csv.
+    Reads the posterior samples produced by tfs-sample-posterior and computes
+    summary statistics (min, lower_95, lower_std, lower_quartile, median,
+    upper_quartile, upper_std, upper_95, max) for every parameter group in the
+    model. Writes one CSV per parameter group named {out_prefix}_{param_name}.csv
+    (e.g. tfs_param_activity.csv, tfs_param_theta.csv, tfs_param_dk_geno.csv).
 
     Parameters
     ----------
     config_file : str
         Path to the YAML configuration file.
     posterior_file : str
-        Path to the _posterior.h5 file containing posterior samples.
+        Path to the .h5 file produced by tfs-sample-posterior.
     out_prefix : str, optional
-        Prefix for output files. Default 'tfs_param'.
+        Prefix for output CSV files. Each parameter group is written to
+        {out_prefix}_{param_name}.csv. Default 'tfs_param'.
     """
     gm, _ = read_configuration(config_file)
 
     if not os.path.exists(posterior_file):
-        if os.path.exists(f"{posterior_file}_posterior.h5"):
+        # Accept an out_prefix instead of a full path: try the conventions used
+        # by tfs-sample-posterior ({prefix}.h5) and tfs-growth-analysis
+        # ({prefix}_posterior.h5 / {prefix}_posterior.npz).
+        if os.path.exists(f"{posterior_file}.h5"):
+            posterior_file = f"{posterior_file}.h5"
+        elif os.path.exists(f"{posterior_file}_posterior.h5"):
             posterior_file = f"{posterior_file}_posterior.h5"
         elif os.path.exists(f"{posterior_file}_posterior.npz"):
             posterior_file = f"{posterior_file}_posterior.npz"
@@ -45,7 +54,7 @@ def param_quantiles(config_file,
         if is_params_file:
             print("WARNING: The provided file appears to contain guide parameters "
                   "rather than posterior samples. This usually happens if you provide "
-                  "the '_params.npz' file instead of the '_posterior.h5' file. "
+                  "the '_params.npz' file instead of the posterior .h5 file. "
                   "Extraction of natural parameters may fail.", flush=True)
 
         print(f"Extracting parameters to {out_prefix}_*.csv...", flush=True)

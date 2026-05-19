@@ -31,25 +31,29 @@ def cat_response(theta_file,
     Classify each genotype's theta-vs-titrant curve using categorical response models.
 
     Reads the CSV output of tfs-predict-theta and fits one or more response models
-    (flat, repressor, inducer, hill_repressor, hill_inducer) to every
-    (genotype, titrant_name) group. Writes results to {out_prefix}.csv.
+    to every (genotype, titrant_name) group. For each group the best-fitting model
+    is selected by AIC weight. Results include best_model, AIC weights, and
+    parameter estimates for every fitted model. Writes one row per
+    (genotype, titrant_name) pair to {out_prefix}.csv.
 
     Parameters
     ----------
     theta_file : str
         Path to the CSV file produced by tfs-predict-theta. Must contain columns:
-        genotype, titrant_name, titrant_conc, and the theta / sigma columns.
+        genotype, titrant_name, titrant_conc, and the theta and sigma columns.
     out_prefix : str, optional
         Prefix for the output CSV file. Written to {out_prefix}.csv.
         Default 'tfs_cat_response'.
     theta_col : str, optional
-        Column holding theta values passed to the fitter as y. Default 'median'.
+        Name of the column holding theta point estimates passed to the fitter.
+        Default 'median'.
     sigma_col : str or None, optional
-        Column holding per-observation sigma. If None, computed as
-        (upper_std - lower_std) / 2 using those columns when present.
+        Name of the column holding per-row theta uncertainty (standard deviation).
+        If None, sigma is computed as (upper_std - lower_std) / 2, which requires
+        upper_std and lower_std columns to be present.
     models : list of str or None, optional
-        Subset of models to fit. Defaults to all: flat, repressor, inducer,
-        hill_repressor, hill_inducer. Valid choices: """ + " ".join(MODEL_LIBRARY) + """.
+        Response models to fit. Defaults to all five: flat, repressor, inducer,
+        hill_repressor, hill_inducer.
     workers : int, optional
         Number of parallel worker processes (default 1).
     """

@@ -168,7 +168,7 @@ def test_run_growth_analysis_nuts_posterior_smoke(growth_smoke_csv, binding_smok
         forward_batch_size=10,
     )
 
-    posterior_file = f"{post_root}_posterior.h5"
+    posterior_file = f"{post_root}.h5"
     assert os.path.exists(posterior_file)
     with h5py.File(posterior_file, "r") as hf:
         assert "growth_pred" in hf
