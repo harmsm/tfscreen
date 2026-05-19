@@ -18,6 +18,8 @@ import numpy as np
 import pandas as pd
 import pytest
 import yaml
+import jax
+import jax.numpy as jnp
 
 import flax.struct as fstruct
 
@@ -26,13 +28,16 @@ from tfscreen.analysis.hierarchical.growth_model.scripts.run_prefit_calibration 
     _apply_priors_updates,
     _build_calibration_model,
     _build_csv_updates,
+    _compute_growth_pred_std,
     _compute_theta_values,
     _csv_row_name,
     _identify_field_mapping,
     _inject_calibration_priors,
     _intersect_data,
     _make_calibration_plots,
+    _make_correlation_plot,
     _resolve_csv_paths,
+    _write_calibration_stats,
     main,
     run_prefit_calibration,
     _CALIBRATION_OVERRIDES,
@@ -806,6 +811,11 @@ class TestRunPrefitCalibrationOrchestration:
         )
         mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_prefit_calibration._compute_growth_pred_std",
+            return_value=None,
+        )
+        mocker.patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
             ".run_prefit_calibration._make_calibration_plots",
         )
         return mock_ri, mock_run_map
@@ -933,6 +943,49 @@ class TestRunPrefitCalibrationOrchestration:
         _, mock_run_map = self._patch_pipeline(mocker)
         run_prefit_calibration(config_file=cfg, seed=1)
         assert mock_run_map.call_args.kwargs["init_param_jitter"] == 0.0
+
+    def test_compute_growth_pred_std_called_with_ri_and_params(self, tmp_path,
+                                                               mocker):
+        """_compute_growth_pred_std is called with the RunInference instance
+        and the exact params dict returned by _run_calibration_map."""
+        cfg, _, _ = self._write_yaml_and_csvs(tmp_path)
+        mock_params = {"alpha_auto_loc": np.float32(2.0)}
+        mock_ri, _ = self._patch_pipeline(mocker, params=mock_params)
+
+        # Override the stub so we can inspect calls.
+        mock_std_fn = mocker.patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_prefit_calibration._compute_growth_pred_std",
+            return_value=None,
+        )
+        run_prefit_calibration(config_file=cfg, seed=1)
+
+        assert mock_std_fn.call_count == 1
+        call_args = mock_std_fn.call_args
+        assert call_args.args[0] is mock_ri      # first positional: ri
+        assert call_args.args[1] is mock_params  # second positional: params
+
+    def test_growth_pred_std_forwarded_to_make_calibration_plots(self, tmp_path,
+                                                                  mocker):
+        """The growth_pred_std returned by _compute_growth_pred_std is passed
+        as the growth_pred_std keyword argument to _make_calibration_plots."""
+        cfg, _, _ = self._write_yaml_and_csvs(tmp_path)
+        sentinel = np.ones((1, 2, 1, 1, 1, 1, 2))
+        self._patch_pipeline(mocker)
+
+        mocker.patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_prefit_calibration._compute_growth_pred_std",
+            return_value=sentinel,
+        )
+        mock_plots = mocker.patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_prefit_calibration._make_calibration_plots",
+        )
+        run_prefit_calibration(config_file=cfg, seed=1)
+
+        plots_kwargs = mock_plots.call_args.kwargs
+        assert plots_kwargs.get("growth_pred_std") is sentinel
 
 
 # ---------------------------------------------------------------------------
@@ -1255,3 +1308,392 @@ class TestMakeCalibrationPlots:
         assert result["ln_cfu_pred"].notna().any()
         valid_preds = result["ln_cfu_pred"].dropna()
         assert np.allclose(valid_preds.values, 10.0)
+
+    def test_writes_ln_cfu_pred_std_when_provided(self, tmp_path, mocker):
+        """ln_cfu_pred_std column appears in the CSV when growth_pred_std is given."""
+        gm_cal, map_samples = _build_fake_gm_cal(n_geno=2, n_t=3)
+        self._patch_predictive(mocker, map_samples)
+
+        good_mask = np.asarray(gm_cal.data.growth.good_mask)
+        std_array = np.full(good_mask.shape, 0.25)
+
+        _make_calibration_plots(
+            gm_cal, params={},
+            out_prefix=str(tmp_path / "run"),
+            growth_pred_std=std_array,
+        )
+
+        result = pd.read_csv(tmp_path / "run_calib_growth_df.csv")
+        assert "ln_cfu_pred_std" in result.columns
+        valid_std = result.dropna(subset=["ln_cfu_pred_std"])["ln_cfu_pred_std"]
+        assert np.allclose(valid_std.values, 0.25)
+
+    def test_no_ln_cfu_pred_std_column_when_not_provided(self, tmp_path, mocker):
+        """When growth_pred_std is None the CSV must not contain the std column."""
+        gm_cal, map_samples = _build_fake_gm_cal(n_geno=2, n_t=3)
+        self._patch_predictive(mocker, map_samples)
+
+        _make_calibration_plots(gm_cal, params={},
+                                out_prefix=str(tmp_path / "run"))
+
+        result = pd.read_csv(tmp_path / "run_calib_growth_df.csv")
+        assert "ln_cfu_pred_std" not in result.columns
+
+
+# ---------------------------------------------------------------------------
+# _compute_growth_pred_std
+# ---------------------------------------------------------------------------
+
+class TestComputeGrowthPredStd:
+    """Tests for _compute_growth_pred_std.
+
+    The function wraps heavy JAX machinery (Hessian, Cholesky, vmap, Predictive).
+    Tests that require the Hessian/Predictive path stub those out via
+    ``_patch_heavy_machinery``; the empty-params case is exercised directly.
+    """
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _patch_heavy_machinery(self, mocker, n_params, n_samples, pred_output):
+        """Stub JAX/NumPyro operations so the function reaches Predictive.
+
+        * ``jax.device_put``  → identity passthrough
+        * ``jax.hessian``     → returns the n_params × n_params identity
+        * ``jax.random.normal`` → zeros, so all Laplace samples equal MAP
+        * ``trace`` / ``seed`` (in the module) → empty model trace, meaning
+          no constrained transforms and no per-site bijections applied
+        * ``numpyro.infer.Predictive`` → returns ``pred_output``
+        """
+        mocker.patch("jax.device_put", side_effect=lambda x: x)
+        hess = jnp.eye(n_params)
+        # jax.hessian(fn) returns a callable; that callable(flat_map) returns
+        # the matrix.  Use a MagicMock so the two-call chain works correctly.
+        mock_hess_fn = MagicMock(return_value=hess)
+        mocker.patch("jax.hessian", return_value=mock_hess_fn)
+        mocker.patch(
+            "jax.random.normal",
+            return_value=jnp.zeros((n_samples, n_params)),
+        )
+        mock_traced = MagicMock()
+        mock_traced.get_trace.return_value = {}
+        mocker.patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_prefit_calibration.trace",
+            return_value=mock_traced,
+        )
+        mocker.patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_prefit_calibration.seed",
+            return_value=MagicMock(),
+        )
+        mock_pred_inst = MagicMock(return_value=pred_output)
+        mocker.patch("numpyro.infer.Predictive", return_value=mock_pred_inst)
+
+    def _make_inputs(self, n_params=2):
+        """Build (ri, gm_cal, params) mocks for _compute_growth_pred_std."""
+        ri = MagicMock()
+        ri.get_key.return_value = jax.random.PRNGKey(0)
+        gm_cal = MagicMock()
+        gm_cal.data.num_genotype = 3
+        gm_cal.get_batch.return_value = MagicMock()
+        gm_cal.priors = MagicMock()
+        params = {f"site{i}_auto_loc": np.float32(float(i))
+                  for i in range(n_params)}
+        return ri, gm_cal, params
+
+    # ------------------------------------------------------------------
+    # Tests
+    # ------------------------------------------------------------------
+
+    def test_returns_none_when_params_empty(self):
+        """No _auto_loc params → early-exit None without touching JAX."""
+        ri = MagicMock()
+        gm_cal = MagicMock()
+        gm_cal.data.num_genotype = 2
+        gm_cal.get_batch.return_value = MagicMock()
+        assert _compute_growth_pred_std(ri, {}, gm_cal) is None
+
+    def test_returns_none_when_growth_pred_absent(self, mocker):
+        """When Predictive returns no growth_pred site, result must be None."""
+        n_params, n_samples = 2, 4
+        ri, gm_cal, params = self._make_inputs(n_params)
+        self._patch_heavy_machinery(
+            mocker, n_params, n_samples,
+            pred_output={"other_site": np.ones((n_samples, 3))},
+        )
+        assert _compute_growth_pred_std(ri, params, gm_cal,
+                                        n_samples=n_samples) is None
+
+    def test_returns_array_matching_growth_pred_shape(self, mocker):
+        """Output shape must equal the (R,T,CP,CS,TN,TC,G) tensor shape."""
+        n_params, n_samples = 2, 4
+        tensor_shape = (1, 3, 1, 1, 1, 1, 2)
+        ri, gm_cal, params = self._make_inputs(n_params)
+        growth_pred = np.ones((n_samples,) + tensor_shape) * 5.0
+        self._patch_heavy_machinery(
+            mocker, n_params, n_samples,
+            pred_output={"growth_pred": growth_pred},
+        )
+        result = _compute_growth_pred_std(ri, params, gm_cal,
+                                          n_samples=n_samples)
+        assert result is not None
+        assert result.shape == tensor_shape
+
+    def test_std_is_zero_for_identical_samples(self, mocker):
+        """All Laplace samples identical → elementwise std must be 0."""
+        n_params, n_samples = 2, 6
+        tensor_shape = (1, 2, 1, 1, 1, 1, 3)
+        ri, gm_cal, params = self._make_inputs(n_params)
+        growth_pred = np.ones((n_samples,) + tensor_shape) * 7.0
+        self._patch_heavy_machinery(
+            mocker, n_params, n_samples,
+            pred_output={"growth_pred": growth_pred},
+        )
+        result = _compute_growth_pred_std(ri, params, gm_cal,
+                                          n_samples=n_samples)
+        assert np.allclose(result, 0.0)
+
+    def test_std_matches_numpy_std_of_samples(self, mocker):
+        """Output must equal np.std(growth_pred_samples, axis=0) exactly."""
+        n_params, n_samples = 2, 10
+        tensor_shape = (1, 2, 1, 1, 1, 1, 3)
+        ri, gm_cal, params = self._make_inputs(n_params)
+        rng = np.random.default_rng(42)
+        growth_pred = rng.normal(size=(n_samples,) + tensor_shape).astype(np.float32)
+        self._patch_heavy_machinery(
+            mocker, n_params, n_samples,
+            pred_output={"growth_pred": growth_pred},
+        )
+        result = _compute_growth_pred_std(ri, params, gm_cal,
+                                          n_samples=n_samples)
+        # Compare in float64 (the function casts before computing std).
+        expected = growth_pred.astype(np.float64).std(axis=0)
+        assert np.allclose(result, expected, atol=1e-5)
+
+    def test_no_overflow_for_large_growth_pred_values(self, mocker):
+        """float32 growth_pred values large enough to overflow when squared
+        must produce finite std (not inf/nan) after float64 cast + clipping."""
+        n_params, n_samples = 2, 4
+        tensor_shape = (1, 2, 1, 1, 1, 1, 2)
+        ri, gm_cal, params = self._make_inputs(n_params)
+        # Values near the float32 overflow boundary (~1e38); squaring these
+        # in float32 would overflow to inf inside np.std.
+        growth_pred = np.full((n_samples,) + tensor_shape, 1e20, dtype=np.float32)
+        growth_pred[0] = -1e20  # introduce variance so std != 0
+        self._patch_heavy_machinery(
+            mocker, n_params, n_samples,
+            pred_output={"growth_pred": growth_pred},
+        )
+        result = _compute_growth_pred_std(ri, params, gm_cal,
+                                          n_samples=n_samples)
+        assert result is not None
+        assert np.all(np.isfinite(result))
+
+
+# ---------------------------------------------------------------------------
+# _write_calibration_stats
+# ---------------------------------------------------------------------------
+
+def _make_stats_df(n=20, include_std=True, seed=7):
+    """Return a minimal DataFrame suitable for _write_calibration_stats."""
+    rng = np.random.default_rng(seed)
+    df = pd.DataFrame({
+        "genotype":      [f"g{i % 3}" for i in range(n)],
+        "ln_cfu":        rng.normal(10.0, 1.0, n),
+        "ln_cfu_pred":   rng.normal(10.0, 1.0, n),
+    })
+    if include_std:
+        df["ln_cfu_pred_std"] = rng.uniform(0.1, 0.5, n)
+    return df
+
+
+class TestWriteCalibrationStats:
+
+    def test_writes_json_with_expected_keys(self, tmp_path):
+        df = _make_stats_df()
+        _write_calibration_stats(df, str(tmp_path / "run"))
+        json_path = tmp_path / "run_calib_stats.json"
+        assert json_path.exists()
+        import json
+        stats = json.loads(json_path.read_text())
+        expected_keys = {
+            "pct_success", "rmse", "normalized_rmse", "pearson_r",
+            "r_squared", "mean_error", "coverage_prob",
+            "residual_corr", "residual_corr_p_value", "bp_p_value",
+            "n_params", "n_obs",
+        }
+        assert expected_keys == set(stats.keys())
+
+    def test_all_values_are_python_float_int_or_null(self, tmp_path):
+        """Values must be Python float, int, or null (no numpy scalars or NaN)."""
+        df = _make_stats_df()
+        _write_calibration_stats(df, str(tmp_path / "run"))
+        import json
+        stats = json.loads((tmp_path / "run_calib_stats.json").read_text())
+        int_keys = {"n_params", "n_obs"}
+        for k, v in stats.items():
+            if k in int_keys:
+                assert v is None or isinstance(v, int), \
+                    f"Key '{k}' has non-int value {v!r}"
+            else:
+                assert v is None or isinstance(v, float), \
+                    f"Key '{k}' has non-float value {v!r}"
+                if isinstance(v, float):
+                    assert np.isfinite(v), f"Key '{k}' is not finite: {v}"
+
+    def test_n_params_and_n_obs_written_when_provided(self, tmp_path):
+        """n_params and n_obs appear as integers in the JSON when supplied."""
+        import json
+        df = _make_stats_df(n=10)
+        _write_calibration_stats(df, str(tmp_path / "run"), n_params=7, n_obs=10)
+        stats = json.loads((tmp_path / "run_calib_stats.json").read_text())
+        assert stats["n_params"] == 7
+        assert stats["n_obs"] == 10
+        assert isinstance(stats["n_params"], int)
+        assert isinstance(stats["n_obs"], int)
+
+    def test_n_params_and_n_obs_null_when_not_provided(self, tmp_path):
+        """n_params and n_obs are null in the JSON when not supplied."""
+        import json
+        df = _make_stats_df()
+        _write_calibration_stats(df, str(tmp_path / "run"))
+        stats = json.loads((tmp_path / "run_calib_stats.json").read_text())
+        assert stats["n_params"] is None
+        assert stats["n_obs"] is None
+
+    def test_returns_silently_when_std_column_missing(self, tmp_path):
+        """No JSON written when ln_cfu_pred_std is absent."""
+        df = _make_stats_df(include_std=False)
+        _write_calibration_stats(df, str(tmp_path / "run"))
+        assert not (tmp_path / "run_calib_stats.json").exists()
+
+    def test_returns_silently_when_pred_column_missing(self, tmp_path):
+        """No JSON written when ln_cfu_pred is absent."""
+        df = _make_stats_df()
+        df = df.drop(columns=["ln_cfu_pred"])
+        _write_calibration_stats(df, str(tmp_path / "run"))
+        assert not (tmp_path / "run_calib_stats.json").exists()
+
+    def test_returns_silently_when_no_valid_rows(self, tmp_path):
+        """No JSON written when all rows have NaN predictions."""
+        df = _make_stats_df()
+        df["ln_cfu_pred"] = np.nan
+        _write_calibration_stats(df, str(tmp_path / "run"))
+        assert not (tmp_path / "run_calib_stats.json").exists()
+
+    def test_nan_stats_serialised_as_null(self, tmp_path):
+        """Stats entries that are NaN (e.g. constant inputs) must become null."""
+        # Constant ln_cfu makes pearson_r undefined → NaN.
+        df = _make_stats_df()
+        df["ln_cfu"] = 10.0
+        _write_calibration_stats(df, str(tmp_path / "run"))
+        import json
+        stats = json.loads((tmp_path / "run_calib_stats.json").read_text())
+        assert stats["pearson_r"] is None
+
+
+# ---------------------------------------------------------------------------
+# _make_correlation_plot
+# ---------------------------------------------------------------------------
+
+def _make_corr_df(n_genotypes=3, n_per=8, seed=11):
+    """Return a minimal DataFrame for _make_correlation_plot."""
+    rng = np.random.default_rng(seed)
+    rows = []
+    for i in range(n_genotypes):
+        obs  = rng.normal(10.0 + i, 1.0, n_per)
+        pred = obs + rng.normal(0, 0.3, n_per)
+        for o, p in zip(obs, pred):
+            rows.append({"genotype": f"g{i}", "ln_cfu": o, "ln_cfu_pred": p})
+    return pd.DataFrame(rows)
+
+
+class TestMakeCorrelationPlot:
+
+    def test_writes_pdf(self, tmp_path):
+        df = _make_corr_df()
+        _make_correlation_plot(df, str(tmp_path / "run"))
+        assert (tmp_path / "run_calib_correlation.pdf").exists()
+
+    def test_returns_silently_when_genotype_column_missing(self, tmp_path):
+        df = _make_corr_df().drop(columns=["genotype"])
+        _make_correlation_plot(df, str(tmp_path / "run"))
+        assert not (tmp_path / "run_calib_correlation.pdf").exists()
+
+    def test_returns_silently_when_no_valid_rows(self, tmp_path):
+        df = _make_corr_df()
+        df["ln_cfu_pred"] = np.nan
+        _make_correlation_plot(df, str(tmp_path / "run"))
+        assert not (tmp_path / "run_calib_correlation.pdf").exists()
+
+    def test_colors_cycle_for_more_genotypes_than_prop_cycle(self, tmp_path,
+                                                              mocker):
+        """When n_genotypes > len(prop_cycle) the modulo wraps colours; no
+        KeyError or IndexError must be raised."""
+        # Default prop_cycle has 10 colours; use 15 genotypes.
+        df = _make_corr_df(n_genotypes=15)
+        # Should complete without error and produce a PDF.
+        _make_correlation_plot(df, str(tmp_path / "run"))
+        assert (tmp_path / "run_calib_correlation.pdf").exists()
+
+    def test_matplotlib_unavailable_returns_silently(self, tmp_path, mocker):
+        df = _make_corr_df()
+        real_import = __builtins__["__import__"] if isinstance(__builtins__, dict) \
+            else __import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "matplotlib.pyplot":
+                raise ImportError("no matplotlib")
+            return real_import(name, *args, **kwargs)
+
+        mocker.patch("builtins.__import__", side_effect=fake_import)
+        _make_correlation_plot(df, str(tmp_path / "run"))
+        assert not (tmp_path / "run_calib_correlation.pdf").exists()
+
+    def test_make_calibration_plots_calls_both_helpers(self, tmp_path, mocker):
+        """_make_calibration_plots must call _write_calibration_stats and
+        _make_correlation_plot after writing the CSV."""
+        mock_stats = mocker.patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_prefit_calibration._write_calibration_stats",
+        )
+        mock_corr = mocker.patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_prefit_calibration._make_correlation_plot",
+        )
+        gm_cal, map_samples = _build_fake_gm_cal(n_geno=2, n_t=2)
+
+        # Minimal _patch_predictive inline (avoids importing the fixture helper).
+        T_FINE = 50
+        orig = map_samples["growth_pred"]
+        shape_fine = list(orig.shape); shape_fine[2] = T_FINE
+        fine = {**map_samples, "growth_pred": np.ones(shape_fine) * 10.0}
+        mock_pred = MagicMock(side_effect=[map_samples, fine])
+        mocker.patch("numpyro.infer.Predictive", return_value=mock_pred)
+        mocker.patch("numpyro.infer.autoguide.AutoDelta")
+        mocker.patch("jax.random.PRNGKey", return_value=0)
+        mocker.patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_prefit_calibration.jnp.arange",
+            return_value=np.arange(2),
+        )
+
+        _make_calibration_plots(gm_cal, params={},
+                                out_prefix=str(tmp_path / "run"))
+
+        assert mock_stats.call_count == 1
+        assert mock_corr.call_count == 1
+        # Both receive the same merged DataFrame as first argument.
+        df_arg_stats = mock_stats.call_args.args[0]
+        df_arg_corr  = mock_corr.call_args.args[0]
+        assert isinstance(df_arg_stats, pd.DataFrame)
+        assert isinstance(df_arg_corr, pd.DataFrame)
+        assert df_arg_stats is df_arg_corr
+        # n_params and n_obs must be forwarded as keyword arguments.
+        stats_kwargs = mock_stats.call_args.kwargs
+        assert "n_params" in stats_kwargs
+        assert "n_obs" in stats_kwargs
+        assert isinstance(stats_kwargs["n_params"], int)
+        assert isinstance(stats_kwargs["n_obs"], int)

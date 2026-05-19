@@ -56,6 +56,7 @@ def jax_model(data: DataClass,
     
     theta_binding_noise_model = control["theta_binding_noise"]
     theta_growth_noise_model = control["theta_growth_noise"]
+    theta_rescale = control["theta_rescale"]
 
     growth_transition_model = control["growth_transition"]
     calculate_growth = control["calculate_growth"]
@@ -130,6 +131,7 @@ def jax_model(data: DataClass,
                                                   corr_theta_growth,
                                                   priors.growth.theta_growth_noise)
 
+    rescaled_theta = theta_rescale(noisy_theta_growth)
 
     # -------------------------------------------------------------------------
     # finalize
@@ -142,11 +144,11 @@ def jax_model(data: DataClass,
         growth_transition_model("growth_transition",
                                 data.growth,
                                 priors.growth.growth_transition,
-                                g_pre=jnp.zeros_like(noisy_theta_growth),
-                                g_sel=jnp.zeros_like(noisy_theta_growth),
+                                g_pre=jnp.zeros_like(rescaled_theta),
+                                g_sel=jnp.zeros_like(rescaled_theta),
                                 t_pre=data.growth.t_pre,
                                 t_sel=data.growth.t_sel,
-                                theta=noisy_theta_growth)
+                                theta=rescaled_theta)
 
         growth_observer("final_binding_obs",data.growth,None)
         binding_observer("final_growth_obs",data.binding,None)
@@ -158,7 +160,7 @@ def jax_model(data: DataClass,
         g_pre, g_sel = calculate_growth(params=growth_params,
                                         dk_geno=dk_geno,
                                         activity=activity,
-                                        theta=noisy_theta_growth)
+                                        theta=rescaled_theta)
 
         total_growth = growth_transition_model("growth_transition",
                                                data.growth,
@@ -167,7 +169,7 @@ def jax_model(data: DataClass,
                                                g_sel=g_sel,
                                                t_pre=data.growth.t_pre,
                                                t_sel=data.growth.t_sel,
-                                               theta=noisy_theta_growth)
+                                               theta=rescaled_theta)
 
         ln_cfu_pred = ln_cfu0 + total_growth
 

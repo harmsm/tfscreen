@@ -6,7 +6,11 @@ import yaml
 import jax.numpy as jnp
 from unittest.mock import MagicMock, patch
 
-from tfscreen.analysis.hierarchical.growth_model.scripts.configure_growth_analysis import configure_growth_analysis
+from tfscreen.analysis.hierarchical.growth_model.scripts.configure_growth_analysis import (
+    configure_growth_analysis,
+    check_component_compatibility,
+    INCOMPATIBLE_CG_TR,
+)
 from tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis import run_growth_analysis
 from tfscreen.analysis.hierarchical.growth_model.configuration_io import (
     read_configuration,
@@ -357,3 +361,57 @@ def test_run_growth_analysis_svi_full(tmpdir, mocker):
 def test_run_growth_analysis_no_seed():
     with pytest.raises(ValueError, match="seed must be provided"):
         run_growth_analysis("c.yaml")
+
+
+# ---------------------------------------------------------------------------
+# Tests for component compatibility checks
+# ---------------------------------------------------------------------------
+
+class TestCheckComponentCompatibility:
+
+    def test_compatible_pair_does_not_raise(self):
+        check_component_compatibility("linear", "passthrough")
+        check_component_compatibility("power", "passthrough")
+        check_component_compatibility("saturation", "passthrough")
+        check_component_compatibility("linear", "logit")
+
+    def test_power_logit_raises(self):
+        with pytest.raises(ValueError, match="condition_growth='power'"):
+            check_component_compatibility("power", "logit")
+
+    def test_saturation_logit_raises(self):
+        with pytest.raises(ValueError, match="condition_growth='saturation'"):
+            check_component_compatibility("saturation", "logit")
+
+    def test_error_message_names_theta_rescale(self):
+        with pytest.raises(ValueError, match="theta_rescale='logit'"):
+            check_component_compatibility("power", "logit")
+
+    def test_error_message_includes_reason(self):
+        with pytest.raises(ValueError, match="NaN|singularity|non-integer"):
+            check_component_compatibility("power", "logit")
+
+    def test_all_incompatible_pairs_raise(self):
+        for cg, tr in INCOMPATIBLE_CG_TR:
+            with pytest.raises(ValueError):
+                check_component_compatibility(cg, tr)
+
+    def test_incompatible_cg_tr_is_nonempty(self):
+        assert len(INCOMPATIBLE_CG_TR) > 0
+
+    def test_incompatible_cg_tr_values_are_strings(self):
+        for (cg, tr), reason in INCOMPATIBLE_CG_TR.items():
+            assert isinstance(cg, str)
+            assert isinstance(tr, str)
+            assert isinstance(reason, str) and len(reason) > 0
+
+    def test_configure_growth_analysis_raises_on_incompatible(self, mock_gm):
+        """configure_growth_analysis must call check_component_compatibility
+        before building the model."""
+        with pytest.raises(ValueError, match="Incompatible model components"):
+            configure_growth_analysis(
+                growth_df="g.csv",
+                binding_df="b.csv",
+                condition_growth_model="power",
+                theta_rescale_model="logit",
+            )

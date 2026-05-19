@@ -441,6 +441,7 @@ class ModelClass:
                  activity="horseshoe",
                  theta="hill",
                  transformation="empirical",
+                 theta_rescale="passthrough",
                  theta_growth_noise="zero",
                  theta_binding_noise="zero",
                  spiked_genotypes=None,
@@ -460,6 +461,7 @@ class ModelClass:
         self._activity = activity
         self._theta = theta
         self._transformation = transformation
+        self._theta_rescale = theta_rescale
         self._theta_growth_noise = theta_growth_noise
         self._theta_binding_noise = theta_binding_noise
         self._spiked_genotypes = spiked_genotypes
@@ -890,6 +892,16 @@ class ModelClass:
         main_control_kwargs["batch_size"] = self._batch_size
         guide_control_kwargs["batch_size"] = self._batch_size
 
+        # theta_rescale is parameter-free — wire the rescale function directly
+        if self._theta_rescale not in model_registry["theta_rescale"]:
+            raise ValueError(
+                f"theta_rescale '{self._theta_rescale}' not recognized. "
+                f"It should be one of: {list(model_registry['theta_rescale'].keys())}"
+            )
+        rescale_fn = model_registry["theta_rescale"][self._theta_rescale].rescale
+        main_control_kwargs["theta_rescale"] = rescale_fn
+        guide_control_kwargs["theta_rescale"] = rescale_fn
+
         # Set the observables
         main_control_kwargs["observe_binding"] = model_registry["observe_binding"].observe
         main_control_kwargs["observe_growth"] = model_registry["observe_growth"].observe
@@ -1031,6 +1043,7 @@ class ModelClass:
             "activity":self._activity,
             "theta":self._theta,
             "transformation":self._transformation,
+            "theta_rescale":self._theta_rescale,
             "theta_growth_noise":self._theta_growth_noise,
             "theta_binding_noise":self._theta_binding_noise,
             "spiked_genotypes":self._spiked_genotypes,

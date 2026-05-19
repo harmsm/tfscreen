@@ -40,7 +40,10 @@ from .components.theta.struct.mwc_dimer_unfolded import lnK_ddG_prior as theta_m
 from .components.theta import simple as theta_simple
 from .components.transformation import empirical as transformation_empirical
 from .components.transformation import logit_norm as transformation_logit_norm
-from .components.transformation import single as transformation_single 
+from .components.transformation import single as transformation_single
+
+from .components.theta_rescale import passthrough as theta_rescale_passthrough
+from .components.theta_rescale import logit as theta_rescale_logit
 
 from .components.noise import zero as no_noise 
 from .components.noise import beta as beta_noise 
@@ -74,6 +77,10 @@ model_registry = {
         "empirical": transformation_empirical,
         "logit_norm": transformation_logit_norm,
         "single": transformation_single,
+    },
+    "theta_rescale":{
+        "passthrough": theta_rescale_passthrough,
+        "logit": theta_rescale_logit,
     },
     "theta":{
         "categorical":theta_cat,

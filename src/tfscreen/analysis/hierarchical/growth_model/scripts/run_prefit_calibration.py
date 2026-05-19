@@ -48,6 +48,7 @@ import sys
 
 import numpy as np
 import pandas as pd
+import jax
 import jax.numpy as jnp
 import optax
 
@@ -689,7 +690,7 @@ def _run_calibration_map(ri,
 # Diagnostic plots
 # ---------------------------------------------------------------------------
 
-def _make_calibration_plots(gm_cal, params, out_prefix):
+def _make_calibration_plots(gm_cal, params, out_prefix, growth_pred_std=None):
     """
     Generate per-genotype calibration diagnostic plots as PDFs.
 
@@ -982,17 +983,20 @@ def _make_calibration_plots(gm_cal, params, out_prefix):
     # tensor and the DataFrame.
     r_idx, t_idx, cp_idx, cs_idx, tn_idx, tc_idx, g_idx = np.where(good_mask)
 
-    pred_lookup = pd.DataFrame({
+    idx = (r_idx, t_idx, cp_idx, cs_idx, tn_idx, tc_idx, g_idx)
+    pred_lookup_dict = {
         "replicate_idx":     r_idx.astype(int),
         "condition_pre_idx": cp_idx.astype(int),
         "condition_sel_idx": cs_idx.astype(int),
         "titrant_name_idx":  tn_idx.astype(int),
         "titrant_conc_idx":  tc_idx.astype(int),
         "genotype_idx":      g_idx.astype(int),
-        "t_sel": t_sel_tensor[r_idx, t_idx, cp_idx, cs_idx, tn_idx, tc_idx, g_idx],
-        "ln_cfu_pred":
-            growth_pred[r_idx, t_idx, cp_idx, cs_idx, tn_idx, tc_idx, g_idx],
-    })
+        "t_sel":             t_sel_tensor[idx],
+        "ln_cfu_pred":       growth_pred[idx],
+    }
+    if growth_pred_std is not None:
+        pred_lookup_dict["ln_cfu_pred_std"] = growth_pred_std[idx]
+    pred_lookup = pd.DataFrame(pred_lookup_dict)
 
     merge_cols = [
         "replicate_idx", "condition_pre_idx", "condition_sel_idx",
@@ -1003,7 +1007,225 @@ def _make_calibration_plots(gm_cal, params, out_prefix):
     growth_df_out.to_csv(csv_path, index=False)
     print(f"  Saved {csv_path}", flush=True)
 
+    n_params = int(sum(np.asarray(v).size
+                       for k, v in params.items()
+                       if k.endswith("_auto_loc")))
+    n_obs = int(growth_df_out["ln_cfu_pred"].notna().sum())
+    _write_calibration_stats(growth_df_out, out_prefix,
+                             n_params=n_params, n_obs=n_obs)
+    _make_correlation_plot(growth_df_out, out_prefix)
+
     print("Calibration plots complete.", flush=True)
+
+
+# ---------------------------------------------------------------------------
+# Calibration stats JSON and correlation plot
+# ---------------------------------------------------------------------------
+
+def _write_calibration_stats(df, out_prefix, n_params=None, n_obs=None):
+    """
+    Compute goodness-of-fit statistics on the calibration predictions and
+    write ``{out_prefix}_calib_stats.json``.
+
+    Requires ``ln_cfu``, ``ln_cfu_pred``, and ``ln_cfu_pred_std`` columns in
+    ``df``; returns silently if any are absent or if no valid rows remain
+    after dropping NaNs.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Merged predictions DataFrame.
+    out_prefix : str
+        File-name prefix for the JSON output.
+    n_params : int or None
+        Number of free model parameters (from ``_auto_loc`` keys in the MAP
+        params dict).  Written to JSON as an integer or null.
+    n_obs : int or None
+        Number of valid observations used for the calibration fit (rows with
+        a non-NaN ``ln_cfu_pred``).  Written to JSON as an integer or null.
+    """
+    import json
+    from tfscreen.fitting import stats_test_suite
+
+    needed = ["ln_cfu", "ln_cfu_pred", "ln_cfu_pred_std"]
+    if not all(c in df.columns for c in needed):
+        return
+
+    valid = df.dropna(subset=needed)
+    if len(valid) == 0:
+        return
+
+    stats = stats_test_suite(
+        valid["ln_cfu_pred"].to_numpy(dtype=float),
+        valid["ln_cfu_pred_std"].to_numpy(dtype=float),
+        valid["ln_cfu"].to_numpy(dtype=float),
+    )
+
+    # json.dump cannot serialise numpy scalars or NaN; normalise to Python
+    # float / None so the output is always valid JSON.
+    serialisable = {
+        k: (None if (v is None or not np.isfinite(float(v))) else float(v))
+        for k, v in stats.items()
+    }
+    serialisable["n_params"] = int(n_params) if n_params is not None else None
+    serialisable["n_obs"] = int(n_obs) if n_obs is not None else None
+
+    json_path = f"{out_prefix}_calib_stats.json"
+    with open(json_path, "w") as fh:
+        json.dump(serialisable, fh, indent=2)
+    print(f"  Saved {json_path}", flush=True)
+
+
+def _make_correlation_plot(df, out_prefix):
+    """
+    Write ``{out_prefix}_calib_correlation.pdf``: observed vs. predicted
+    ln_cfu, coloured by genotype.
+
+    Series colours are taken from the active matplotlib prop-cycle, cycling
+    for any number of genotypes.  Requires ``ln_cfu``, ``ln_cfu_pred``, and
+    ``genotype`` columns; returns silently if any are absent.
+    """
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        return
+
+    from tfscreen.plot.helper import get_ax_limits
+
+    needed = ["ln_cfu", "ln_cfu_pred", "genotype"]
+    if not all(c in df.columns for c in needed):
+        return
+
+    valid = df.dropna(subset=["ln_cfu", "ln_cfu_pred"])
+    if len(valid) == 0:
+        return
+
+    genotypes = pd.unique(valid["genotype"])
+    prop_colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    colors = {g: prop_colors[i % len(prop_colors)] for i, g in enumerate(genotypes)}
+
+    fig, ax = plt.subplots(1, figsize=(6, 6))
+    ax.set_aspect("equal")
+
+    for g, g_df in valid.groupby("genotype"):
+        ax.scatter(g_df["ln_cfu"], g_df["ln_cfu_pred"],
+                   s=50, edgecolor=colors[g], facecolor="none", label=g)
+
+    lims = get_ax_limits(x_values=valid["ln_cfu"],
+                         y_values=valid["ln_cfu_pred"],
+                         pad_by=0.1)
+    ax.set_xlim(lims)
+    ax.set_ylim(lims)
+    ax.plot(lims, lims, "--", color="gray", zorder=-20)
+    ax.legend(fontsize=8)
+
+    ticks = np.arange(np.ceil(lims[0]), np.floor(lims[1]) + 1, 2)
+    ax.set_xticks(ticks)
+    ax.set_yticks(ticks)
+
+    ax.set_xlabel("ln_cfu obs")
+    ax.set_ylabel("ln_cfu pred")
+
+    fig.tight_layout()
+    pdf_path = f"{out_prefix}_calib_correlation.pdf"
+    fig.savefig(pdf_path, format="pdf", bbox_inches="tight")
+    plt.close(fig)
+    print(f"  Saved {pdf_path}", flush=True)
+
+
+# ---------------------------------------------------------------------------
+# Laplace-based prediction uncertainty
+# ---------------------------------------------------------------------------
+
+def _compute_growth_pred_std(ri, params, gm_cal, n_samples=100):
+    """
+    Estimate per-cell growth_pred standard deviation via Laplace samples.
+
+    Recomputes the Hessian of the negative log-joint at the MAP point,
+    projects it to the PD cone, draws ``n_samples`` samples from the
+    resulting Gaussian, runs the forward model on each, and returns the
+    elementwise standard deviation of ``growth_pred`` across samples.
+
+    The Hessian computation duplicates work already done in
+    ``compute_hessian_sigmas``; this is intentional so that the full
+    covariance (not just the diagonal) is available for sampling.
+
+    Returns ``None`` if ``growth_pred`` is absent from the model trace or
+    if the parameter dict is empty.
+    """
+    from numpyro.infer.util import potential_energy
+    from numpyro.distributions.transforms import biject_to
+    from numpyro.infer import Predictive
+    import jax.flatten_util
+
+    unconstrained = {
+        k[: -len("_auto_loc")]: jnp.array(v)
+        for k, v in params.items()
+        if k.endswith("_auto_loc")
+    }
+    if not unconstrained:
+        return None
+
+    data_on_gpu = jax.device_put(gm_cal.data)
+    all_indices = jnp.arange(gm_cal.data.num_genotype)
+    full_data = gm_cal.get_batch(data_on_gpu, all_indices)
+    model_kwargs = {"priors": gm_cal.priors, "data": full_data}
+
+    flat_map, unravel = jax.flatten_util.ravel_pytree(unconstrained)
+    D = int(flat_map.shape[0])
+
+    def pe_fn(flat_p):
+        return potential_energy(
+            gm_cal.jax_model, [], model_kwargs, unravel(flat_p)
+        )
+
+    hessian = jax.hessian(pe_fn)(flat_map)
+    H_np = np.array(hessian, dtype=np.float64)
+    eigenvalues_np, eigenvectors_np = np.linalg.eigh(H_np)
+    eigenvalues_pd = np.maximum(eigenvalues_np, 1e-3)
+    cov_np = eigenvectors_np @ np.diag(1.0 / eigenvalues_pd) @ eigenvectors_np.T
+    L_np = np.linalg.cholesky(cov_np)
+    L = jnp.array(L_np, dtype=jnp.float32)
+
+    # Per-site unconstrained → constrained bijections.
+    model_trace = trace(seed(gm_cal.jax_model, rng_seed=0)).get_trace(**model_kwargs)
+    site_transforms = {
+        name: biject_to(site["fn"].support)
+        for name, site in model_trace.items()
+        if site["type"] == "sample" and not site.get("is_observed", False)
+    }
+
+    # Draw n_samples at once: (n_samples, D).
+    sample_key = ri.get_key()
+    z = jax.random.normal(sample_key, shape=(n_samples, D))
+    flat_samples = flat_map[None] + z @ L.T
+
+    unc_samples = jax.vmap(unravel)(flat_samples)
+    constrained_samples = {
+        k: jax.vmap(site_transforms[k])(v) if k in site_transforms else v
+        for k, v in unc_samples.items()
+    }
+
+    pred_fn = Predictive(gm_cal.jax_model, posterior_samples=constrained_samples)
+    pred = pred_fn(ri.get_key(), data=full_data, priors=gm_cal.priors)
+
+    if "growth_pred" not in pred:
+        return None
+
+    # pred["growth_pred"]: (n_samples, R, T, CP, CS, TN, TC, G)
+    #
+    # Some Laplace samples land far from the MAP (badly-constrained directions
+    # have large variance after Hessian eigenvalue clamping).  The resulting
+    # forward-model predictions can be enormous in float32, and squaring them
+    # inside np.std overflows to inf.  Two guards:
+    #   1. Cast to float64 — extends the safe range from ~3e38 to ~1e308.
+    #   2. Clip to ±_GROWTH_PRED_CLIP — any prediction outside this window is
+    #      physically nonsensical (ln_cfu values live in ~[0, 30]) and would
+    #      produce a misleadingly large std even in float64.
+    _GROWTH_PRED_CLIP = 1e4
+    gp = np.asarray(pred["growth_pred"], dtype=np.float64)
+    np.clip(gp, -_GROWTH_PRED_CLIP, _GROWTH_PRED_CLIP, out=gp)
+    return gp.std(axis=0)
 
 
 # ---------------------------------------------------------------------------
@@ -1157,8 +1379,10 @@ def run_prefit_calibration(config_file,
     _apply_priors_updates(priors_path, prior_updates)
     _apply_guesses_updates(guesses_path, guess_updates)
 
-    # 6. Write per-genotype diagnostic plots.
-    _make_calibration_plots(gm_cal, params, out_prefix)
+    # 6. Write per-genotype diagnostic plots with Laplace-based prediction uncertainty.
+    print("Computing growth_pred uncertainty via Laplace samples ...", flush=True)
+    growth_pred_std = _compute_growth_pred_std(ri, params, gm_cal)
+    _make_calibration_plots(gm_cal, params, out_prefix, growth_pred_std=growth_pred_std)
 
     return svi_state, params, converged
 

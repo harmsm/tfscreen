@@ -99,6 +99,7 @@ def mock_control():
         "transformation": (transformation_model, transformation_update),
         "theta_binding_noise": theta_binding_noise_model,
         "theta_growth_noise": theta_growth_noise_model,
+        "theta_rescale": lambda t: t,
         "observe_binding": binding_observer,
         "observe_growth": growth_observer,
         "is_guide": False # Default to main model

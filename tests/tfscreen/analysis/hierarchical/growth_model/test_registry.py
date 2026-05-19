@@ -28,6 +28,9 @@ COMPONENT_CATEGORIES = [
 # Categories whose value is a single module (not a dict).
 OBSERVE_CATEGORIES = ["observe_binding", "observe_growth"]
 
+# Categories whose modules only expose a single `rescale` callable.
+RESCALE_CATEGORIES = ["theta_rescale"]
+
 REQUIRED_INTERFACE = ["get_priors", "define_model", "guide"]
 
 
@@ -102,8 +105,17 @@ def test_observe_module_has_observe(cat):
 # No unexpected categories (guard against leftover or mis-keyed entries)
 # ---------------------------------------------------------------------------
 
+@pytest.mark.parametrize("cat,name,module",
+    [(cat, name, mod)
+     for cat in RESCALE_CATEGORIES
+     for name, mod in model_registry[cat].items()])
+def test_rescale_component_has_rescale(cat, name, module):
+    assert hasattr(module, "rescale"), f"{cat}/{name} missing 'rescale' function"
+    assert callable(module.rescale)
+
+
 def test_no_unexpected_top_level_keys():
-    expected = set(COMPONENT_CATEGORIES) | set(OBSERVE_CATEGORIES)
+    expected = set(COMPONENT_CATEGORIES) | set(OBSERVE_CATEGORIES) | set(RESCALE_CATEGORIES)
     actual = set(model_registry.keys())
     extra = actual - expected
     assert not extra, f"Unexpected keys in model_registry: {extra}"

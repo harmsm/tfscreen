@@ -288,6 +288,7 @@ def test_initialize_classes_logic(mocker):
         "activity": {"hierarchical": MagicMock(), "horseshoe": MagicMock()},
         "theta": {"categorical": MagicMock(), "hill": MagicMock(), "fixed": MagicMock()},
         "transformation": {"logit_norm": MagicMock(), "single": MagicMock()},
+        "theta_rescale": {"passthrough": MagicMock()},
         "theta_growth_noise": {"zero": MagicMock()},
         "theta_binding_noise": {"zero": MagicMock()},
         "observe_binding": MagicMock(),
@@ -313,6 +314,7 @@ def test_model_class_properties(initialized_model_class):
     model._activity = "a"
     model._theta = "t"
     model._transformation = "tr"
+    model._theta_rescale = "rs"
     model._condition_growth = "cg"
     model._growth_transition = "gt"
     model._ln_cfu0 = "ln"
@@ -332,6 +334,7 @@ def test_model_class_properties(initialized_model_class):
     assert ModelClass.settings.fget(model)["activity"] == "a"
     assert ModelClass.settings.fget(model)["theta"] == "t"
     assert ModelClass.settings.fget(model)["transformation"] == "tr"
+    assert ModelClass.settings.fget(model)["theta_rescale"] == "rs"
     assert ModelClass.settings.fget(model)["condition_growth"] == "cg"
     assert ModelClass.settings.fget(model)["growth_transition"] == "gt"
     assert ModelClass.settings.fget(model)["ln_cfu0"] == "ln"

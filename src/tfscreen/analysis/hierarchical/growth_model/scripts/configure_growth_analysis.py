@@ -7,6 +7,50 @@ from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass a
 from tfscreen.analysis.hierarchical.growth_model.configuration_io import write_configuration
 from tfscreen.util.cli.generalized_main import generalized_main
 
+# Maps (condition_growth, theta_rescale) pairs that are fundamentally incompatible
+# to a human-readable explanation of why.
+#
+# power uses theta**n (non-integer exponent): negative theta from logit → NaN.
+# saturation uses theta/(1+theta): logit can produce theta near -1 → pole/NaN.
+INCOMPATIBLE_CG_TR = {
+    ("power", "logit"): (
+        "The 'power' growth model raises theta to a non-integer exponent (theta**n). "
+        "The 'logit' rescale maps theta to all of R, producing negative values that "
+        "cause NaN when raised to a non-integer power."
+    ),
+    ("saturation", "logit"): (
+        "The 'saturation' growth model evaluates theta/(1+theta). "
+        "The 'logit' rescale can map theta to values near -1, causing a "
+        "division-by-zero singularity."
+    ),
+}
+
+
+def check_component_compatibility(condition_growth_model, theta_rescale_model):
+    """Raise ValueError if the (condition_growth, theta_rescale) pair is incompatible.
+
+    Parameters
+    ----------
+    condition_growth_model : str
+        Name of the condition_growth component.
+    theta_rescale_model : str
+        Name of the theta_rescale component.
+
+    Raises
+    ------
+    ValueError
+        If the pair is listed in INCOMPATIBLE_CG_TR.
+    """
+    key = (condition_growth_model, theta_rescale_model)
+    if key in INCOMPATIBLE_CG_TR:
+        raise ValueError(
+            f"Incompatible model components: "
+            f"condition_growth='{condition_growth_model}' and "
+            f"theta_rescale='{theta_rescale_model}'. "
+            f"{INCOMPATIBLE_CG_TR[key]}"
+        )
+
+
 def configure_growth_analysis(growth_df=None,
                               binding_df=None,
                               out_prefix="tfs_configure",
@@ -17,6 +61,7 @@ def configure_growth_analysis(growth_df=None,
                               activity_model="horseshoe",
                               theta_model="hill",
                               transformation_model="empirical",
+                              theta_rescale_model="passthrough",
                               theta_growth_noise_model="zero",
                               theta_binding_noise_model="zero",
                               spiked=None,
@@ -72,8 +117,12 @@ def configure_growth_analysis(growth_df=None,
         'lac_dimer_lnK_nn_prior', 'mwc_dimer_lnK_mut', 'mwc_dimer_lnK_nn_prior',
         or 'mwc_dimer_lnK_ddG_prior'.
     transformation_model : str, optional
-        Model for transformation correction. Allowed values are 'single', 
+        Model for transformation correction. Allowed values are 'single',
         'empirical', or 'logit_norm'. Default 'empirical'.
+    theta_rescale_model : str, optional
+        Rescaling applied to theta before it enters the growth model. Allowed
+        values are 'passthrough' (default, identity) or 'logit' (maps theta to
+        log(theta/(1-theta)), expanding the dynamic range at both extremes).
     theta_growth_noise_model : str, optional
         Model to use for stochastic experimental noise in theta measured by 
         bacterial growth. Allowed values are 'beta' (default) or 'zero'.
@@ -111,6 +160,8 @@ def configure_growth_analysis(growth_df=None,
     if growth_df is None or binding_df is None:
         raise ValueError("growth_df and binding_df must be provided")
 
+    check_component_compatibility(condition_growth_model, theta_rescale_model)
+
     # Initialize model to build mappings and get guesses
     gm = GrowthModel(growth_df,
                      binding_df,
@@ -121,6 +172,7 @@ def configure_growth_analysis(growth_df=None,
                      activity=activity_model,
                      theta=theta_model,
                      transformation=transformation_model,
+                     theta_rescale=theta_rescale_model,
                      theta_growth_noise=theta_growth_noise_model,
                      theta_binding_noise=theta_binding_noise_model,
                      spiked_genotypes=spiked,

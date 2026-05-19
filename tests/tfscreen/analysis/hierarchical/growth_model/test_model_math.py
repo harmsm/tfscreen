@@ -123,6 +123,7 @@ def _build_control(mock_data, real_priors, is_guide=False):
         "transformation": (transformation_single.define_model, transformation_single.update_thetas),
         "theta_growth_noise": noise_zero.define_model,
         "theta_binding_noise": noise_zero.define_model,
+        "theta_rescale": lambda t: t,
         "observe_growth": observe_growth,
         "observe_binding": observe_binding,
         "is_guide": is_guide,
