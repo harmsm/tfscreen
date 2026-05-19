@@ -9,15 +9,21 @@ def predict_growth(config_file,
                    genotypes_file=None,
                    titrant_names_file=None,
                    titrant_concs_file=None,
-                   num_samples=100,
+                   only_files=False,
+                   num_samples=0,
                    num_marginal_samples=None):
     """
     Predict growth signal (ln_cfu) from a fitted hierarchical model.
 
     By default predicts at all (genotype, titrant_name, titrant_conc,
-    replicate, t_pre, t_sel) combinations present in the training data.
-    Optional files can restrict genotypes and concentrations; titrant_names_file
-    filters the output rows to the named titrants.
+    replicate, t_pre, t_sel) combinations present in the training data, unioned
+    with any genotypes or concentrations supplied via file arguments.  Pass
+    --only_files to predict exclusively at the file-specified inputs and skip
+    training-data combinations.
+
+    titrant_names_file is a post-prediction row filter (restrict-only): it
+    narrows which titrant names appear in the output but does not affect which
+    concentrations are predicted.  It is not subject to union semantics.
 
     A boolean column 'in_training_data' is added to the output: 1 if the
     (genotype, titrant_name, titrant_conc) triple was in the training data,
@@ -34,27 +40,30 @@ def predict_growth(config_file,
         Default 'tfs_growth_pred'.
     genotypes_file : str or None, optional
         Plain-text file with one genotype per line (slash-separated mutations,
-        e.g. 'M42I/K84L', or 'wt'). Must be a subset of training genotypes.
-        If None, all training genotypes are used.
+        e.g. 'M42I/K84L', or 'wt'). These genotypes are unioned with all
+        training genotypes unless --only_files is set. Default None.
     titrant_names_file : str or None, optional
-        Plain-text file with one titrant name per line. Used to filter output
-        rows; does not change which concentrations are predicted.
-        If None, all titrant names are included.
+        Plain-text file with one titrant name per line. Filters output rows to
+        the named titrants (restrict-only; does not affect which concentrations
+        are predicted). If None, all titrant names are included.
     titrant_concs_file : str or None, optional
-        Plain-text file with one concentration per line. Predictions are made
-        at these concentrations for the selected genotypes. If None, all
-        training concentrations are used.
+        Plain-text file with one concentration per line. These concentrations
+        are unioned with all training concentrations unless --only_files is set.
+        Default None.
+    only_files : bool, optional
+        If True, predict only at the genotypes and concentrations supplied via
+        file arguments, ignoring training-data combinations. Default False.
     num_samples : int or None, optional
         Number of joint posterior samples to include as sample_0 … sample_N-1
         columns alongside the quantile columns. Set to None for quantiles only.
-        Default 100.
+        Default 0.
     num_marginal_samples : int or None, optional
         Number of posterior samples to run through the model when computing
         quantiles. If None, all available samples are used.
     """
-    genotypes = read_lines(genotypes_file) if genotypes_file else None
+    file_genotypes = read_lines(genotypes_file) if genotypes_file else []
     titrant_names = read_lines(titrant_names_file) if titrant_names_file else None
-    titrant_concs = [float(x) for x in read_lines(titrant_concs_file)] if titrant_concs_file else None
+    file_concs = [float(x) for x in read_lines(titrant_concs_file)] if titrant_concs_file else []
 
     print(f"Loading configuration from {config_file}...", flush=True)
     gm, _ = read_configuration(config_file)
@@ -65,6 +74,15 @@ def predict_growth(config_file,
             gm.growth_df["titrant_name"],
             gm.growth_df["titrant_conc"])
     )
+
+    if only_files:
+        genotypes = file_genotypes if file_genotypes else None
+        titrant_concs = file_concs if file_concs else None
+    else:
+        training_genotypes = list(gm.growth_df["genotype"].unique())
+        genotypes = list(dict.fromkeys(training_genotypes + file_genotypes)) if file_genotypes else None
+        training_concs = list(gm.growth_df["titrant_conc"].unique())
+        titrant_concs = sorted(set(training_concs) | set(file_concs)) if file_concs else None
 
     print("Running growth predictions...", flush=True)
     result_df = predict(model_class=gm,
@@ -95,7 +113,8 @@ def main():
                      manual_arg_types={"genotypes_file": str,
                                        "titrant_names_file": str,
                                        "titrant_concs_file": str,
-                                       "num_marginal_samples": int})
+                                       "num_marginal_samples": int,
+                                       "only_files": bool})
 
 
 if __name__ == "__main__":

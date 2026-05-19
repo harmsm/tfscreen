@@ -23,7 +23,7 @@ import jax.numpy as jnp
 
 import flax.struct as fstruct
 
-from tfscreen.analysis.hierarchical.growth_model.scripts.run_prefit_calibration import (
+from tfscreen.analysis.hierarchical.growth_model.scripts.run_prefit_calibration_cli import (
     _apply_guesses_updates,
     _apply_priors_updates,
     _build_calibration_model,
@@ -608,7 +608,7 @@ class TestBuildCalibrationModel:
 
         with patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_prefit_calibration.GrowthModel"
+            ".run_prefit_calibration_cli.GrowthModel"
         ) as MockGM:
             MockGM.return_value = MagicMock()
             growth_df = pd.DataFrame()
@@ -643,7 +643,7 @@ class TestBuildCalibrationModel:
 
         with patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_prefit_calibration.GrowthModel"
+            ".run_prefit_calibration_cli.GrowthModel"
         ) as MockGM:
             MockGM.return_value = MagicMock()
             _build_calibration_model(gm_prod, pd.DataFrame(), pd.DataFrame())
@@ -767,56 +767,56 @@ class TestRunPrefitCalibrationOrchestration:
         """Stub out every heavy callsite of run_prefit_calibration."""
         mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_prefit_calibration.read_configuration",
+            ".run_prefit_calibration_cli.read_configuration",
             return_value=(MagicMock(), {}),
         )
         mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_prefit_calibration._intersect_data",
+            ".run_prefit_calibration_cli._intersect_data",
             return_value=(pd.DataFrame(), pd.DataFrame()),
         )
         gm_cal = gm_cal or MagicMock()
         gm_cal.init_params = {}
         mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_prefit_calibration._build_calibration_model",
+            ".run_prefit_calibration_cli._build_calibration_model",
             return_value=gm_cal,
         )
         mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_prefit_calibration._compute_theta_values",
+            ".run_prefit_calibration_cli._compute_theta_values",
             return_value=np.array([[0.5]]),
         )
         mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_prefit_calibration._inject_calibration_priors",
+            ".run_prefit_calibration_cli._inject_calibration_priors",
         )
         mock_ri = MagicMock()
         mock_ri._iterations_per_epoch = 1
         mock_ri.compute_hessian_sigmas.return_value = hessian_results or {}
         mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_prefit_calibration.RunInference",
+            ".run_prefit_calibration_cli.RunInference",
             return_value=mock_ri,
         )
         mock_run_map = mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_prefit_calibration._run_calibration_map",
+            ".run_prefit_calibration_cli._run_calibration_map",
             return_value=("svi_state", params or {}, True),
         )
         mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_prefit_calibration._identify_field_mapping",
+            ".run_prefit_calibration_cli._identify_field_mapping",
             return_value=field_mapping or {},
         )
         mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_prefit_calibration._compute_growth_pred_std",
+            ".run_prefit_calibration_cli._compute_growth_pred_std",
             return_value=None,
         )
         mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_prefit_calibration._make_calibration_plots",
+            ".run_prefit_calibration_cli._make_calibration_plots",
         )
         return mock_ri, mock_run_map
 
@@ -955,7 +955,7 @@ class TestRunPrefitCalibrationOrchestration:
         # Override the stub so we can inspect calls.
         mock_std_fn = mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_prefit_calibration._compute_growth_pred_std",
+            ".run_prefit_calibration_cli._compute_growth_pred_std",
             return_value=None,
         )
         run_prefit_calibration(config_file=cfg, seed=1)
@@ -975,12 +975,12 @@ class TestRunPrefitCalibrationOrchestration:
 
         mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_prefit_calibration._compute_growth_pred_std",
+            ".run_prefit_calibration_cli._compute_growth_pred_std",
             return_value=sentinel,
         )
         mock_plots = mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_prefit_calibration._make_calibration_plots",
+            ".run_prefit_calibration_cli._make_calibration_plots",
         )
         run_prefit_calibration(config_file=cfg, seed=1)
 
@@ -999,7 +999,7 @@ class TestPrefitMainCLI:
         argv = ["cal.yaml", "--seed", "13"]
         with patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_prefit_calibration.run_prefit_calibration",
+            ".run_prefit_calibration_cli.run_prefit_calibration",
             autospec=True,
         ) as mock_run, \
              patch("sys.argv", ["tfs-prefit-calibration"] + argv):
@@ -1018,7 +1018,7 @@ class TestPrefitMainCLI:
         ]
         with patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_prefit_calibration.run_prefit_calibration",
+            ".run_prefit_calibration_cli.run_prefit_calibration",
             autospec=True,
         ) as mock_run, \
              patch("sys.argv", ["tfs-prefit-calibration"] + argv):
@@ -1033,7 +1033,7 @@ class TestPrefitMainCLI:
         ]
         with patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_prefit_calibration.run_prefit_calibration",
+            ".run_prefit_calibration_cli.run_prefit_calibration",
             autospec=True,
         ) as mock_run, \
              patch("sys.argv", ["tfs-prefit-calibration"] + argv):
@@ -1180,7 +1180,7 @@ class TestMakeCalibrationPlots:
         mocker.patch("jax.random.PRNGKey", return_value=0)
         mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_prefit_calibration.jnp.arange",
+            ".run_prefit_calibration_cli.jnp.arange",
             return_value=np.arange(2),
         )
         return mock_pred_cls
@@ -1380,12 +1380,12 @@ class TestComputeGrowthPredStd:
         mock_traced.get_trace.return_value = {}
         mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_prefit_calibration.trace",
+            ".run_prefit_calibration_cli.trace",
             return_value=mock_traced,
         )
         mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_prefit_calibration.seed",
+            ".run_prefit_calibration_cli.seed",
             return_value=MagicMock(),
         )
         mock_pred_inst = MagicMock(return_value=pred_output)
@@ -1657,11 +1657,11 @@ class TestMakeCorrelationPlot:
         _make_correlation_plot after writing the CSV."""
         mock_stats = mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_prefit_calibration._write_calibration_stats",
+            ".run_prefit_calibration_cli._write_calibration_stats",
         )
         mock_corr = mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_prefit_calibration._make_correlation_plot",
+            ".run_prefit_calibration_cli._make_correlation_plot",
         )
         gm_cal, map_samples = _build_fake_gm_cal(n_geno=2, n_t=2)
 
@@ -1676,7 +1676,7 @@ class TestMakeCorrelationPlot:
         mocker.patch("jax.random.PRNGKey", return_value=0)
         mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_prefit_calibration.jnp.arange",
+            ".run_prefit_calibration_cli.jnp.arange",
             return_value=np.arange(2),
         )
 

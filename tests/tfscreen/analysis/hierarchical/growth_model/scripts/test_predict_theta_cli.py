@@ -1,0 +1,231 @@
+"""
+Tests for predict_theta_cli.py — genotype/titrant union semantics and --only_files.
+"""
+import os
+import pytest
+import pandas as pd
+import numpy as np
+from unittest.mock import MagicMock, patch, call
+
+from tfscreen.analysis.hierarchical.growth_model.scripts.predict_theta_cli import predict_theta
+
+
+# ---------------------------------------------------------------------------
+# Helpers / fixtures
+# ---------------------------------------------------------------------------
+
+def _write_lines(path, lines):
+    with open(path, "w") as fh:
+        fh.write("\n".join(str(x) for x in lines) + "\n")
+
+
+def _make_tm_df(genotypes, titrant_names, titrant_concs):
+    rows = []
+    for g in genotypes:
+        for tn, tc in zip(titrant_names, titrant_concs):
+            rows.append({"genotype": g, "titrant_name": tn, "titrant_conc": tc})
+    return pd.DataFrame(rows)
+
+
+@pytest.fixture
+def mock_gm():
+    gm = MagicMock()
+    gm._theta = "hill"
+    gm.growth_tm.df = _make_tm_df(
+        ["wt", "A1B"],
+        ["IPTG", "IPTG"],
+        [0.0, 1.0],
+    )
+    return gm
+
+
+def _fake_extract(model, posteriors, **kwargs):
+    """Return a minimal result DataFrame covering all requested genotypes."""
+    manual = kwargs.get("manual_titrant_df")
+    if manual is not None:
+        pairs = list(zip(manual["titrant_name"], manual["titrant_conc"]))
+    else:
+        pairs = [("IPTG", 0.0), ("IPTG", 1.0)]
+    target = kwargs.get("target_genotypes") or ["wt", "A1B"]
+    rows = [{"genotype": g, "titrant_name": tn, "titrant_conc": tc, "median": 0.5}
+            for g in target for tn, tc in pairs]
+    return pd.DataFrame(rows)
+
+
+@pytest.fixture
+def mock_extract(mock_gm):
+    with patch(
+        "tfscreen.analysis.hierarchical.growth_model.scripts"
+        ".predict_theta_cli.read_configuration",
+        return_value=(mock_gm, {}),
+    ), patch(
+        "tfscreen.analysis.hierarchical.growth_model.scripts"
+        ".predict_theta_cli.extract_theta_curves",
+        side_effect=lambda **kw: _fake_extract(None, None, **kw),
+    ), patch(
+        "tfscreen.analysis.hierarchical.growth_model.scripts"
+        ".predict_theta_cli.extract_theta_unmeasured",
+        side_effect=lambda **kw: _fake_extract(None, None, **kw),
+    ):
+        yield
+
+
+# ---------------------------------------------------------------------------
+# Validation
+# ---------------------------------------------------------------------------
+
+def test_mismatched_titrant_files_raises(mock_extract, tmp_path):
+    nf = str(tmp_path / "names.txt")
+    _write_lines(nf, ["IPTG"])
+    with pytest.raises(ValueError, match="together"):
+        predict_theta("cfg.yaml", "post.h5",
+                      titrant_names_file=nf,
+                      out_prefix=str(tmp_path / "out"))
+
+
+# ---------------------------------------------------------------------------
+# Default behaviour (no files)
+# ---------------------------------------------------------------------------
+
+class TestPredictThetaDefaults:
+
+    def test_no_files_uses_all_training_genotypes(self, mock_extract, mock_gm, tmp_path):
+        out = str(tmp_path / "out")
+        with patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".predict_theta_cli.extract_theta_curves",
+        ) as mock_curves:
+            mock_curves.return_value = pd.DataFrame(
+                {"genotype": ["wt"], "titrant_name": ["IPTG"],
+                 "titrant_conc": [0.0], "median": [0.5]}
+            )
+            predict_theta("cfg.yaml", "post.h5", out_prefix=out)
+        assert mock_curves.called
+
+
+# ---------------------------------------------------------------------------
+# Union semantics (only_files=False, the default)
+# ---------------------------------------------------------------------------
+
+class TestPredictThetaUnion:
+
+    def test_genotypes_file_unions_with_training(self, mock_extract, mock_gm, tmp_path):
+        gf = str(tmp_path / "genos.txt")
+        _write_lines(gf, ["C2D"])  # out-of-training
+        out = str(tmp_path / "out")
+        with patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".predict_theta_cli.extract_theta_unmeasured",
+        ) as mock_unmeas:
+            mock_unmeas.return_value = pd.DataFrame(
+                {"genotype": ["wt", "A1B", "C2D"],
+                 "titrant_name": ["IPTG"] * 3,
+                 "titrant_conc": [0.0] * 3,
+                 "median": [0.5] * 3}
+            )
+            predict_theta("cfg.yaml", "post.h5",
+                          genotypes_file=gf, out_prefix=out)
+        target = mock_unmeas.call_args.kwargs["target_genotypes"]
+        assert "wt" in target
+        assert "A1B" in target
+        assert "C2D" in target
+
+    def test_titrant_files_union_with_training_grid(self, mock_extract, mock_gm, tmp_path):
+        nf = str(tmp_path / "names.txt")
+        cf = str(tmp_path / "concs.txt")
+        _write_lines(nf, ["IPTG"])
+        _write_lines(cf, [5.0])  # novel concentration
+        out = str(tmp_path / "out")
+        with patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".predict_theta_cli.extract_theta_curves",
+        ) as mock_curves:
+            mock_curves.return_value = pd.DataFrame(
+                {"genotype": ["wt"], "titrant_name": ["IPTG"],
+                 "titrant_conc": [0.0], "median": [0.5]}
+            )
+            predict_theta("cfg.yaml", "post.h5",
+                          titrant_names_file=nf,
+                          titrant_concs_file=cf,
+                          out_prefix=out)
+        titrant_df = mock_curves.call_args.kwargs["manual_titrant_df"]
+        assert 0.0 in titrant_df["titrant_conc"].values
+        assert 1.0 in titrant_df["titrant_conc"].values
+        assert 5.0 in titrant_df["titrant_conc"].values
+
+    def test_duplicate_titrant_pairs_not_repeated(self, mock_extract, mock_gm, tmp_path):
+        nf = str(tmp_path / "names.txt")
+        cf = str(tmp_path / "concs.txt")
+        _write_lines(nf, ["IPTG"])
+        _write_lines(cf, [1.0])  # already in training
+        out = str(tmp_path / "out")
+        with patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".predict_theta_cli.extract_theta_curves",
+        ) as mock_curves:
+            mock_curves.return_value = pd.DataFrame(
+                {"genotype": ["wt"], "titrant_name": ["IPTG"],
+                 "titrant_conc": [0.0], "median": [0.5]}
+            )
+            predict_theta("cfg.yaml", "post.h5",
+                          titrant_names_file=nf,
+                          titrant_concs_file=cf,
+                          out_prefix=out)
+        titrant_df = mock_curves.call_args.kwargs["manual_titrant_df"]
+        dupes = titrant_df[
+            (titrant_df["titrant_name"] == "IPTG") &
+            (titrant_df["titrant_conc"] == 1.0)
+        ]
+        assert len(dupes) == 1
+
+
+# ---------------------------------------------------------------------------
+# --only_files semantics
+# ---------------------------------------------------------------------------
+
+class TestPredictThetaOnlyFiles:
+
+    def test_only_files_restricts_genotypes_to_file(self, mock_extract, mock_gm, tmp_path):
+        gf = str(tmp_path / "genos.txt")
+        _write_lines(gf, ["A1B"])
+        out = str(tmp_path / "out")
+        with patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".predict_theta_cli.extract_theta_curves",
+        ) as mock_curves:
+            mock_curves.return_value = pd.DataFrame(
+                {"genotype": ["A1B"], "titrant_name": ["IPTG"],
+                 "titrant_conc": [0.0], "median": [0.5]}
+            )
+            predict_theta("cfg.yaml", "post.h5",
+                          genotypes_file=gf,
+                          only_files=True,
+                          out_prefix=out)
+        # extract_theta_curves doesn't receive target_genotypes; the result is
+        # filtered post-call — check via output CSV
+        df = pd.read_csv(f"{out}.csv")
+        assert set(df["genotype"].unique()) <= {"A1B"}
+
+    def test_only_files_restricts_titrant_grid_to_file(self, mock_extract, mock_gm, tmp_path):
+        nf = str(tmp_path / "names.txt")
+        cf = str(tmp_path / "concs.txt")
+        _write_lines(nf, ["IPTG"])
+        _write_lines(cf, [5.0])
+        out = str(tmp_path / "out")
+        with patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".predict_theta_cli.extract_theta_curves",
+        ) as mock_curves:
+            mock_curves.return_value = pd.DataFrame(
+                {"genotype": ["wt"], "titrant_name": ["IPTG"],
+                 "titrant_conc": [5.0], "median": [0.5]}
+            )
+            predict_theta("cfg.yaml", "post.h5",
+                          titrant_names_file=nf,
+                          titrant_concs_file=cf,
+                          only_files=True,
+                          out_prefix=out)
+        titrant_df = mock_curves.call_args.kwargs["manual_titrant_df"]
+        assert list(titrant_df["titrant_conc"]) == [5.0]
+        assert 0.0 not in titrant_df["titrant_conc"].values
+        assert 1.0 not in titrant_df["titrant_conc"].values

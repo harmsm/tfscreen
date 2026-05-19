@@ -3,7 +3,7 @@ import os
 import h5py
 from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass
 from tfscreen.analysis.hierarchical.growth_model.configuration_io import write_configuration
-from tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis import run_growth_analysis
+from tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis_cli import run_growth_analysis
 from tfscreen.analysis.hierarchical.growth_model.scripts.sample_posterior_cli import sample_posterior
 
 

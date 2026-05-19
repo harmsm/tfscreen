@@ -11,7 +11,7 @@ import pandas as pd
 import pytest
 import yaml
 
-from tfscreen.analysis.hierarchical.growth_model.scripts.setup_grid_calibration import (
+from tfscreen.analysis.hierarchical.growth_model.scripts.setup_grid_calibration_cli import (
     _get_axis_values,
     _subdir_name,
     setup_grid_calibration,
@@ -21,7 +21,7 @@ from tfscreen.analysis.hierarchical.growth_model.scripts.setup_grid_calibration 
     _INCOMPATIBLE_CG_TR,
     main as setup_main,
 )
-from tfscreen.analysis.hierarchical.growth_model.scripts.summarize_grid_calibration import (
+from tfscreen.analysis.hierarchical.growth_model.scripts.summarize_grid_calibration_cli import (
     _compute_aic,
     _compute_aic_weights,
     _find_stats_json,
@@ -119,7 +119,7 @@ def patched_configure(mocker):
     """
     mock_gm_cls = mocker.patch(
         "tfscreen.analysis.hierarchical.growth_model.scripts"
-        ".setup_grid_calibration.GrowthModel"
+        ".setup_grid_calibration_cli.GrowthModel"
     )
     mock_gm_cls.return_value = mocker.MagicMock(name="gm_instance")
 
@@ -138,7 +138,7 @@ def patched_configure(mocker):
 
     mock_wc = mocker.patch(
         "tfscreen.analysis.hierarchical.growth_model.scripts"
-        ".setup_grid_calibration.write_configuration",
+        ".setup_grid_calibration_cli.write_configuration",
         side_effect=_fake_write,
     )
 
@@ -424,6 +424,59 @@ class TestSetupGridCalibration:
                                theta_rescale_file=tr_f)
         sh_text = open(os.path.join(out, "run_all.sh")).read()
         assert f"{_CONFIG_STEM}_config.yaml" in sh_text
+
+    def test_prefit_args_appear_in_run_all_sh(self, tmp_path, patched_configure):
+        cfg, cg_f, gt_f, tr_f = self._small_grid(tmp_path)
+        out = str(tmp_path / "grid")
+        setup_grid_calibration(cfg, out_prefix=out,
+                               condition_growth_file=cg_f,
+                               growth_transition_file=gt_f,
+                               theta_rescale_file=tr_f,
+                               prefit_args="--convergence_tolerance 0.001")
+        sh_text = open(os.path.join(out, "run_all.sh")).read()
+        assert "--convergence_tolerance 0.001" in sh_text
+
+    def test_prefit_args_appear_on_every_line(self, tmp_path, patched_configure):
+        cfg, cg_f, gt_f, tr_f = self._small_grid(tmp_path)
+        out = str(tmp_path / "grid")
+        combos = setup_grid_calibration(cfg, out_prefix=out,
+                                        condition_growth_file=cg_f,
+                                        growth_transition_file=gt_f,
+                                        theta_rescale_file=tr_f,
+                                        prefit_args="--max_num_epochs 500")
+        sh_text = open(os.path.join(out, "run_all.sh")).read()
+        prefit_lines = [l for l in sh_text.splitlines()
+                        if "tfs-prefit-calibration" in l]
+        assert len(prefit_lines) == len(combos)
+        for line in prefit_lines:
+            assert "--max_num_epochs 500" in line
+
+    def test_no_prefit_args_leaves_command_clean(self, tmp_path, patched_configure):
+        """When prefit_args is None the command must not have a trailing space or
+        stray argument."""
+        cfg, cg_f, gt_f, tr_f = self._small_grid(tmp_path)
+        out = str(tmp_path / "grid")
+        setup_grid_calibration(cfg, out_prefix=out,
+                               condition_growth_file=cg_f,
+                               growth_transition_file=gt_f,
+                               theta_rescale_file=tr_f)
+        sh_text = open(os.path.join(out, "run_all.sh")).read()
+        for line in sh_text.splitlines():
+            if "tfs-prefit-calibration" in line:
+                assert line.rstrip().endswith(f"--out_prefix {_RUN_OUT_PREFIX})")
+
+    def test_prefit_args_multiple_flags(self, tmp_path, patched_configure):
+        """Multiple flags in prefit_args must all appear in run_all.sh."""
+        cfg, cg_f, gt_f, tr_f = self._small_grid(tmp_path)
+        out = str(tmp_path / "grid")
+        setup_grid_calibration(cfg, out_prefix=out,
+                               condition_growth_file=cg_f,
+                               growth_transition_file=gt_f,
+                               theta_rescale_file=tr_f,
+                               prefit_args="--convergence_tolerance 0.001 --max_num_epochs 500")
+        sh_text = open(os.path.join(out, "run_all.sh")).read()
+        assert "--convergence_tolerance 0.001" in sh_text
+        assert "--max_num_epochs 500" in sh_text
 
     def test_defaults_use_all_registered_values(self, tmp_path, patched_configure):
         cfg = _write_base_config(tmp_path)

@@ -2,9 +2,9 @@ import pytest
 import pandas as pd
 import os
 import yaml
-from tfscreen.analysis.hierarchical.growth_model.scripts.configure_growth_analysis import configure_growth_analysis
-from tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis import run_growth_analysis
-from tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors import summarize_posteriors
+from tfscreen.analysis.hierarchical.growth_model.scripts.configure_growth_analysis_cli import configure_growth_analysis
+from tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis_cli import run_growth_analysis
+from tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors_cli import summarize_posteriors
 
 @pytest.mark.slow
 def test_configure_run_pipeline_smoke(tmpdir):

@@ -9,9 +9,6 @@ from tfscreen.analysis.cat_response.cat_fit import cat_fit
 from tfscreen.models.generic import MODEL_LIBRARY
 from tfscreen.util.cli.generalized_main import generalized_main
 
-DEFAULT_MODELS = ["flat", "repressor", "inducer", "hill_repressor", "hill_inducer"]
-
-
 def _fit_one(args):
     """Worker: run cat_fit for one (genotype, titrant_name) pair."""
     genotype, titrant_name, x, y, y_std, models_to_run = args
@@ -52,13 +49,12 @@ def cat_response(theta_file,
         If None, sigma is computed as (upper_std - lower_std) / 2, which requires
         upper_std and lower_std columns to be present.
     models : list of str or None, optional
-        Response models to fit. Defaults to all five: flat, repressor, inducer,
-        hill_repressor, hill_inducer.
+        Response models to fit. Defaults to all models in MODEL_LIBRARY.
     workers : int, optional
         Number of parallel worker processes (default 1).
     """
     if models is None:
-        models = DEFAULT_MODELS
+        models = list(MODEL_LIBRARY.keys())
 
     bad = [m for m in models if m not in MODEL_LIBRARY]
     if bad:

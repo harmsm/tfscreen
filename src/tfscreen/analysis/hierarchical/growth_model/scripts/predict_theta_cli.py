@@ -13,19 +13,25 @@ def predict_theta(config_file,
                   out_prefix="tfs_theta_pred",
                   genotypes_file=None,
                   titrant_names_file=None,
-                  titrant_concs_file=None):
+                  titrant_concs_file=None,
+                  only_files=False):
     """
     Predict operator occupancy (theta) from a fitted hierarchical model.
 
     By default predicts theta at all (genotype, titrant_name, titrant_conc)
-    combinations present in the training data. Optional files can specify
-    different genotypes and/or concentrations.
+    combinations present in the training data, unioned with any genotypes or
+    titrant (name, conc) pairs supplied via file arguments.  Pass --only_files
+    to predict exclusively at the file-specified inputs and skip training-data
+    combinations.
 
-    When the requested genotypes are all present in the training data,
-    extract_theta_curves is used. When any requested genotype was not seen
-    during training, extract_theta_unmeasured is used (requires the theta
-    component to implement predict_unmeasured; raises an error for the
-    'categorical' component).
+    titrant_names_file and titrant_concs_file together define a paired
+    (name, conc) grid that is unioned with the training titrant grid (or
+    replaces it when --only_files is set).  They must always be provided
+    together or both omitted.
+
+    When any requested genotype was not seen during training,
+    extract_theta_unmeasured is used (requires the theta component to implement
+    predict_unmeasured; raises an error for the 'categorical' component).
 
     A boolean column 'in_training_data' is added to the output: 1 if the
     (genotype, titrant_name, titrant_conc) triple was in the training data,
@@ -42,18 +48,23 @@ def predict_theta(config_file,
         Default 'tfs_theta_pred'.
     genotypes_file : str or None, optional
         Plain-text file with one genotype per line (slash-separated mutations,
-        e.g. 'M42I/K84L', or 'wt'). May include genotypes not seen during
-        training when the theta component supports predict_unmeasured.
-        If None, all training genotypes are used.
+        e.g. 'M42I/K84L', or 'wt'). These genotypes are unioned with all
+        training genotypes unless --only_files is set. May include genotypes
+        not seen during training when the theta component supports
+        predict_unmeasured. Default None.
     titrant_names_file : str or None, optional
         Plain-text file with one titrant name per line. Must be provided
-        together with titrant_concs_file (or both omitted).
-        If None, all training (titrant_name, titrant_conc) pairs are used.
+        together with titrant_concs_file (or both omitted). The resulting
+        (name, conc) pairs are unioned with the training titrant grid unless
+        --only_files is set. A single name is broadcast across all
+        concentrations in titrant_concs_file. Default None.
     titrant_concs_file : str or None, optional
         Plain-text file with one concentration per line. Must be provided
-        together with titrant_names_file (or both omitted). When both are
-        given, their rows are paired one-to-one, or a single titrant name is
-        broadcast across all concentrations.
+        together with titrant_names_file (or both omitted). Default None.
+    only_files : bool, optional
+        If True, predict only at the genotypes and titrant (name, conc) pairs
+        supplied via file arguments, ignoring training-data combinations.
+        Default False.
     """
     if (titrant_names_file is None) != (titrant_concs_file is None):
         raise ValueError(
@@ -73,10 +84,13 @@ def predict_theta(config_file,
     )
 
     # Resolve requested genotypes.
-    if genotypes_file is not None:
-        requested_genotypes = read_lines(genotypes_file)
+    file_genotypes = read_lines(genotypes_file) if genotypes_file else []
+    if only_files:
+        requested_genotypes = file_genotypes if file_genotypes else list(training_genotypes)
     else:
-        requested_genotypes = list(training_genotypes)
+        requested_genotypes = list(dict.fromkeys(
+            list(training_genotypes) + file_genotypes
+        ))
 
     # Resolve requested titrant grid.
     if titrant_names_file is not None:
@@ -91,10 +105,23 @@ def predict_theta(config_file,
                 "one name (broadcast to all concentrations) or one per "
                 "concentration."
             )
-        manual_titrant_df = pd.DataFrame({
+        file_titrant_df = pd.DataFrame({
             "titrant_name": titrant_names,
             "titrant_conc": titrant_concs,
         })
+        if only_files:
+            manual_titrant_df = file_titrant_df
+        else:
+            training_titrant_df = (
+                gm.growth_tm.df[["titrant_name", "titrant_conc"]]
+                .drop_duplicates()
+                .reset_index(drop=True)
+            )
+            manual_titrant_df = (
+                pd.concat([training_titrant_df, file_titrant_df])
+                .drop_duplicates()
+                .reset_index(drop=True)
+            )
     else:
         manual_titrant_df = None
 
@@ -153,7 +180,8 @@ def main():
     generalized_main(predict_theta,
                      manual_arg_types={"genotypes_file": str,
                                        "titrant_names_file": str,
-                                       "titrant_concs_file": str})
+                                       "titrant_concs_file": str,
+                                       "only_files": bool})
 
 
 if __name__ == "__main__":

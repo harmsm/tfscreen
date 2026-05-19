@@ -6,7 +6,7 @@ import dill
 import jax.numpy as jnp
 from unittest.mock import MagicMock
 
-from tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis import (
+from tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis_cli import (
     run_growth_analysis,
 )
 
@@ -19,13 +19,13 @@ def _patch_common(mocker):
     """Patch read_configuration, os.path.exists, and RunInference."""
     mocker.patch(
         "tfscreen.analysis.hierarchical.growth_model.scripts"
-        ".run_growth_analysis.read_configuration",
+        ".run_growth_analysis_cli.read_configuration",
         return_value=(MagicMock(), {}),
     )
     mocker.patch("os.path.exists", return_value=False)
     mocker.patch(
         "tfscreen.analysis.hierarchical.growth_model.scripts"
-        ".run_growth_analysis.RunInference",
+        ".run_growth_analysis_cli.RunInference",
         return_value=MagicMock(_iterations_per_epoch=1),
     )
 
@@ -41,7 +41,7 @@ class TestRunGrowthAnalysisValidation:
         _patch_common(mocker)
         mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_growth_analysis.RunInference",
+            ".run_growth_analysis_cli.RunInference",
             return_value=MagicMock(_iterations_per_epoch=1),
         )
         with pytest.raises(ValueError, match="seed must be provided"):
@@ -57,7 +57,7 @@ class TestRunGrowthAnalysisValidation:
         _patch_common(mocker)
         mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_growth_analysis.RunInference",
+            ".run_growth_analysis_cli.RunInference",
             return_value=MagicMock(_iterations_per_epoch=1),
         )
         with pytest.raises(ValueError, match="not recognized"):
@@ -78,19 +78,19 @@ class TestRunGrowthAnalysisNuts:
     def _setup(self, mocker, tmp_path):
         mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_growth_analysis.read_configuration",
+            ".run_growth_analysis_cli.read_configuration",
             return_value=(MagicMock(), {}),
         )
         mocker.patch("os.path.exists", return_value=False)
         mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_growth_analysis.RunInference",
+            ".run_growth_analysis_cli.RunInference",
             return_value=MagicMock(_iterations_per_epoch=1),
         )
         fake_samples = {"param": [1.0]}
         run_nuts_mock = mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_growth_analysis._run_nuts",
+            ".run_growth_analysis_cli._run_nuts",
             return_value=fake_samples,
         )
         return run_nuts_mock, fake_samples
@@ -158,7 +158,7 @@ class TestEpochCheckpointIntervalPassthrough:
         _patch_common(mocker)
         run_svi_mock = mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_growth_analysis._run_svi",
+            ".run_growth_analysis_cli._run_svi",
             return_value=(MagicMock(), {}, True),
         )
 
@@ -178,7 +178,7 @@ class TestEpochCheckpointIntervalPassthrough:
         _patch_common(mocker)
         run_map_mock = mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_growth_analysis._run_map",
+            ".run_growth_analysis_cli._run_map",
             return_value=(MagicMock(), {}, True),
         )
 
@@ -197,12 +197,12 @@ class TestEpochCheckpointIntervalPassthrough:
         _patch_common(mocker)
         run_map_mock = mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_growth_analysis._run_map",
+            ".run_growth_analysis_cli._run_map",
             return_value=(MagicMock(), {}, True),
         )
         mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_growth_analysis._run_svi",
+            ".run_growth_analysis_cli._run_svi",
             return_value=(MagicMock(), {}, True),
         )
 
@@ -222,7 +222,7 @@ class TestEpochCheckpointIntervalPassthrough:
         _patch_common(mocker)
         run_svi_mock = mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_growth_analysis._run_svi",
+            ".run_growth_analysis_cli._run_svi",
             return_value=(MagicMock(), {}, True),
         )
 

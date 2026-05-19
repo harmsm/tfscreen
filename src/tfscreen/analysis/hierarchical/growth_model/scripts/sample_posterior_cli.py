@@ -2,7 +2,7 @@ import os
 import dill
 from tfscreen.analysis.hierarchical.growth_model.configuration_io import read_configuration
 from tfscreen.analysis.hierarchical.run_inference import RunInference
-from tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis import _run_svi
+from tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis_cli import _run_svi
 from tfscreen.util.cli.generalized_main import generalized_main
 
 
