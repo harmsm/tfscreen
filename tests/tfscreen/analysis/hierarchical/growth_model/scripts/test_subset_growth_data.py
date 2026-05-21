@@ -372,14 +372,50 @@ def test_step_deduplication_when_few_doubles(growth_csv, tmp_path):
 # Error handling
 # ---------------------------------------------------------------------------
 
-def test_error_whitelist_genotype_not_in_data(growth_csv, tmp_path):
-    """Raises if a whitelisted genotype is absent from the growth data."""
+def test_error_whitelist_single_not_in_data(growth_csv, tmp_path):
+    """Raises if a whitelisted single is absent from the growth data."""
     wl = tmp_path / "wl.txt"
     wl.write_text("NOTREAL\n")
-    with pytest.raises(ValueError, match="not present as singles"):
+    with pytest.raises(ValueError, match="Whitelist singles not present"):
         subset_growth_data(
             growth_csv, n_singles=3, n_steps=2,
             out_prefix=str(tmp_path / "cv"), whitelist_file=str(wl),
+        )
+
+
+def test_error_whitelist_double_not_in_data(growth_csv, tmp_path):
+    """Raises if a whitelisted double is absent from the growth data."""
+    wl = tmp_path / "wl.txt"
+    wl.write_text("A1B/Z9Z\n")  # Z9Z is not in data
+    with pytest.raises(ValueError, match="Whitelist doubles not present"):
+        subset_growth_data(
+            growth_csv, n_singles=3, n_steps=2,
+            out_prefix=str(tmp_path / "cv"), whitelist_file=str(wl),
+        )
+
+
+def test_error_whitelist_too_many_mutations(growth_csv, tmp_path):
+    """Raises if a whitelisted genotype has more than 2 mutations."""
+    wl = tmp_path / "wl.txt"
+    wl.write_text("A1B/B2C/C3D\n")
+    with pytest.raises(ValueError, match="3 mutations"):
+        subset_growth_data(
+            growth_csv, n_singles=3, n_steps=2,
+            out_prefix=str(tmp_path / "cv"), whitelist_file=str(wl),
+        )
+
+
+def test_error_whitelist_double_constituent_single_blacklisted(growth_csv, tmp_path):
+    """Raises if a constituent single of a whitelisted double is blacklisted."""
+    wl = tmp_path / "wl.txt"
+    wl.write_text("A1B/B2C\n")
+    bl = tmp_path / "bl.txt"
+    bl.write_text("B2C\n")
+    with pytest.raises(ValueError, match="require singles that are blacklisted"):
+        subset_growth_data(
+            growth_csv, n_singles=3, n_steps=2,
+            out_prefix=str(tmp_path / "cv"),
+            whitelist_file=str(wl), blacklist_file=str(bl),
         )
 
 
@@ -485,6 +521,72 @@ def test_whitelist_cycles_seeded_before_expansion(tmp_path):
         genos = set(df_out["genotype"].unique())
         assert "W1B" in genos, "whitelist single missing"
         assert "B2C" in genos, "whitelist single's double partner missing"
+
+
+def test_whitelist_double_always_in_training_never_leftout(growth_csv, tmp_path):
+    """A whitelisted double appears in every training CSV and never in any left-out file."""
+    wl = tmp_path / "wl.txt"
+    wl.write_text("A1B/B2C\n")
+    out = str(tmp_path / "cv")
+    subset_growth_data(
+        growth_csv, n_singles=4, n_steps=4,
+        out_prefix=out, whitelist_file=str(wl), random_seed=0,
+    )
+    for gcsv, lout in _output_pairs(tmp_path):
+        df = pd.read_csv(gcsv)
+        assert "A1B/B2C" in df["genotype"].values, "whitelist double missing from training"
+        assert "A1B/B2C" not in _read_leftout(lout), "whitelist double appeared in left-out"
+
+
+def test_whitelist_double_in_first_step(growth_csv, tmp_path):
+    """Whitelisted doubles appear even in step 0 (zero titrated doubles)."""
+    wl = tmp_path / "wl.txt"
+    wl.write_text("A1B/B2C\n")
+    out = str(tmp_path / "cv")
+    subset_growth_data(
+        growth_csv, n_singles=4, n_steps=4,
+        out_prefix=out, whitelist_file=str(wl), random_seed=0,
+    )
+    first_csv, _ = _output_pairs(tmp_path)[0]
+    df = pd.read_csv(first_csv)
+    assert "A1B/B2C" in df["genotype"].values
+
+
+def test_whitelist_double_constituent_singles_forced(growth_csv, tmp_path):
+    """Constituent singles of a whitelisted double are always selected."""
+    wl = tmp_path / "wl.txt"
+    wl.write_text("A1B/B2C\n")
+    out = str(tmp_path / "cv")
+    subset_growth_data(
+        growth_csv, n_singles=2, n_steps=3,
+        out_prefix=out, whitelist_file=str(wl), random_seed=0,
+    )
+    for gcsv, _ in _output_pairs(tmp_path):
+        df = pd.read_csv(gcsv)
+        genos = set(df["genotype"].unique())
+        assert "A1B" in genos, "constituent single A1B missing"
+        assert "B2C" in genos, "constituent single B2C missing"
+
+
+def test_whitelist_double_excluded_from_titration_universe(growth_csv, tmp_path):
+    """
+    The titrated double universe excludes whitelisted doubles.  So for every
+    step, training_doubles ∪ leftout == ALL_DOUBLES − whitelist_doubles.
+    """
+    wl_double = "A1B/B2C"
+    wl = tmp_path / "wl.txt"
+    wl.write_text(f"{wl_double}\n")
+    out = str(tmp_path / "cv")
+    subset_growth_data(
+        growth_csv, n_singles=6, n_steps=4,
+        out_prefix=out, whitelist_file=str(wl), random_seed=0,
+    )
+    expected_universe = set(ALL_DOUBLES) - {wl_double}
+    for gcsv, lout in _output_pairs(tmp_path):
+        df = pd.read_csv(gcsv)
+        train_doubles = set(g for g in df["genotype"].unique() if "/" in g and g != wl_double)
+        leftout = set(_read_leftout(lout))
+        assert train_doubles | leftout == expected_universe
 
 
 def test_error_missing_genotype_column(tmp_path):

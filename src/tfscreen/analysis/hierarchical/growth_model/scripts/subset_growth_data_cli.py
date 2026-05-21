@@ -102,19 +102,60 @@ def subset_growth_data(
 
     # wt is always included in every training set; drop it from the whitelist
     # silently so users can include it without causing a validation error.
-    whitelist_singles = whitelist - wt_genos
+    whitelist_no_wt = whitelist - wt_genos
 
-    bad_white = whitelist_singles - single_genos
-    if bad_white:
+    # Split whitelist into singles and doubles by mutation count.
+    whitelist_singles = set()
+    whitelist_doubles = set()
+    for g in whitelist_no_wt:
+        n = len(_mutations_in_genotype(g))
+        if n == 1:
+            whitelist_singles.add(g)
+        elif n == 2:
+            whitelist_doubles.add(g)
+        else:
+            raise ValueError(
+                f"Whitelist genotype '{g}' has {n} mutations; "
+                f"only singles and doubles are supported in the whitelist."
+            )
+
+    bad_white_singles = whitelist_singles - single_genos
+    if bad_white_singles:
         raise ValueError(
-            f"Whitelist contains genotypes not present as singles in the growth "
-            f"data: {sorted(bad_white)}"
+            f"Whitelist singles not present in growth data: {sorted(bad_white_singles)}"
         )
-    overlap = whitelist_singles & blacklist
+    bad_white_doubles = whitelist_doubles - double_genos
+    if bad_white_doubles:
+        raise ValueError(
+            f"Whitelist doubles not present in growth data: {sorted(bad_white_doubles)}"
+        )
+
+    overlap = (whitelist_singles | whitelist_doubles) & blacklist
     if overlap:
         raise ValueError(
             f"Genotypes appear in both whitelist and blacklist: {sorted(overlap)}"
         )
+
+    # Constituent singles required by whitelist doubles must exist and not be blacklisted.
+    whitelist_double_singles = set()
+    for d in whitelist_doubles:
+        whitelist_double_singles.update(_mutations_in_genotype(d))
+
+    blacklisted_double_singles = whitelist_double_singles & blacklist
+    if blacklisted_double_singles:
+        raise ValueError(
+            f"Whitelist doubles require singles that are blacklisted: "
+            f"{sorted(blacklisted_double_singles)}"
+        )
+    missing_double_singles = whitelist_double_singles - single_genos
+    if missing_double_singles:
+        raise ValueError(
+            f"Whitelist doubles require singles not present in growth data: "
+            f"{sorted(missing_double_singles)}"
+        )
+
+    # All singles that are forced in (directly whitelisted or required by a whitelisted double).
+    forced_singles = whitelist_singles | whitelist_double_singles
 
     # Reconcile: keep only doubles whose constituent singles both exist in the
     # data and are not blacklisted.
@@ -127,26 +168,28 @@ def subset_growth_data(
         flush=True,
     )
 
-    # Effective target: n_singles, but never below the whitelist size.
-    effective_target = max(n_singles, len(whitelist_singles))
+    # Effective target: n_singles, but never below the number of forced singles.
+    effective_target = max(n_singles, len(forced_singles))
     if effective_target > n_singles:
         print(
-            f"NOTE: whitelist has {len(whitelist_singles)} singles, which exceeds "
+            f"NOTE: whitelist forces {len(forced_singles)} singles "
+            f"({len(whitelist_singles)} direct + {len(whitelist_double_singles)} via "
+            f"{len(whitelist_doubles)} whitelisted doubles), which exceeds "
             f"n_singles={n_singles}. Using {effective_target} as the target.",
             flush=True,
         )
 
-    # Phase 1 — seed: add whitelist singles and all reconciled doubles that
-    # involve any whitelist single (pulling in their partners too).
-    selected_singles = set(whitelist_singles)
+    # Phase 1 — seed: add forced singles and all reconciled doubles that
+    # involve any forced single (pulling in their partners too).
+    selected_singles = set(forced_singles)
     for d in reconciled_doubles:
         muts = _mutations_in_genotype(d)
-        if muts & whitelist_singles:
+        if muts & forced_singles:
             selected_singles.update(muts)
 
-    if whitelist_singles:
+    if forced_singles:
         print(
-            f"Whitelist seeded {len(whitelist_singles)} singles → "
+            f"Whitelist seeded {len(forced_singles)} singles → "
             f"{len(selected_singles)} after expanding their cycles.",
             flush=True,
         )
@@ -160,10 +203,10 @@ def subset_growth_data(
             break
         selected_singles.update(_mutations_in_genotype(d))
 
-    # Phase 3 — trim: if seeding/expansion overshot, remove non-whitelist
+    # Phase 3 — trim: if seeding/expansion overshot, remove non-forced
     # singles one at a time (randomly) until effective_target is reached.
     if len(selected_singles) > effective_target:
-        trimmable = list(selected_singles - whitelist_singles)
+        trimmable = list(selected_singles - forced_singles)
         rng.shuffle(trimmable)
         while len(selected_singles) > effective_target:
             selected_singles.discard(trimmable.pop())
@@ -178,10 +221,10 @@ def subset_growth_data(
     print(f"Selected {len(selected_singles)} single-mutant genotypes.", flush=True)
 
     # Build double universe: reconciled doubles whose constituent singles are
-    # both in the selected set
+    # both in the selected set, excluding whitelist doubles (always in training).
     double_universe = [
         g for g in reconciled_doubles
-        if _mutations_in_genotype(g) <= selected_singles
+        if _mutations_in_genotype(g) <= selected_singles and g not in whitelist_doubles
     ]
 
     rng.shuffle(double_universe)
@@ -205,8 +248,8 @@ def subset_growth_data(
             flush=True,
         )
 
-    # Base training genotype set: wt + selected singles
-    base_training = wt_genos | selected_singles
+    # Base training genotype set: wt + selected singles + whitelisted doubles (always included).
+    base_training = wt_genos | selected_singles | whitelist_doubles
     n_sing = len(selected_singles)
     pad = max(len(str(n_sing)), len(str(n_doubles_total)))
 
