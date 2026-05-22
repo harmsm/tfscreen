@@ -1068,8 +1068,8 @@ def _write_calibration_stats(df, out_prefix, n_params=None, n_obs=None):
 
     stats = stats_test_suite(
         valid["ln_cfu_pred"].to_numpy(dtype=float),
-        valid["ln_cfu_pred_std"].to_numpy(dtype=float),
         valid["ln_cfu"].to_numpy(dtype=float),
+        valid["ln_cfu_pred_std"].to_numpy(dtype=float),
     )
 
     # json.dump cannot serialise numpy scalars or NaN; normalise to Python

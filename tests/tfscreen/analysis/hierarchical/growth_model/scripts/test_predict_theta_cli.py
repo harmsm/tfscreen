@@ -157,6 +157,39 @@ class TestPredictThetaUnion:
         assert 1.0 in titrant_df["titrant_conc"].values
         assert 5.0 in titrant_df["titrant_conc"].values
 
+    def test_single_titrant_name_broadcast_across_concs(self, mock_extract, mock_gm, tmp_path):
+        nf = str(tmp_path / "names.txt")
+        cf = str(tmp_path / "concs.txt")
+        _write_lines(nf, ["IPTG"])
+        _write_lines(cf, [0.0, 10.0, 100.0])
+        out = str(tmp_path / "out")
+        with patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".predict_theta_cli.extract_theta_curves",
+        ) as mock_curves:
+            mock_curves.return_value = pd.DataFrame(
+                {"genotype": ["wt"], "titrant_name": ["IPTG"],
+                 "titrant_conc": [0.0], "median": [0.5]}
+            )
+            predict_theta("cfg.yaml", "post.h5",
+                          titrant_names_file=nf,
+                          titrant_concs_file=cf,
+                          out_prefix=out)
+        titrant_df = mock_curves.call_args.kwargs["manual_titrant_df"]
+        assert list(titrant_df["titrant_name"]) == ["IPTG", "IPTG", "IPTG", "IPTG"]
+        assert set(titrant_df["titrant_conc"]) >= {0.0, 10.0, 100.0}
+
+    def test_mismatched_titrant_file_lengths_raises(self, mock_extract, mock_gm, tmp_path):
+        nf = str(tmp_path / "names.txt")
+        cf = str(tmp_path / "concs.txt")
+        _write_lines(nf, ["IPTG", "ATC"])
+        _write_lines(cf, [0.0, 10.0, 100.0])
+        with pytest.raises(ValueError, match="entries but"):
+            predict_theta("cfg.yaml", "post.h5",
+                          titrant_names_file=nf,
+                          titrant_concs_file=cf,
+                          out_prefix=str(tmp_path / "out"))
+
     def test_duplicate_titrant_pairs_not_repeated(self, mock_extract, mock_gm, tmp_path):
         nf = str(tmp_path / "names.txt")
         cf = str(tmp_path / "concs.txt")

@@ -15,7 +15,8 @@ def predict_theta(config_file,
                   genotypes_file=None,
                   titrant_names_file=None,
                   titrant_concs_file=None,
-                  only_files=False):
+                  only_files=False,
+                  num_samples=0):
     """
     Predict operator occupancy (theta) from a fitted hierarchical model.
 
@@ -71,6 +72,10 @@ def predict_theta(config_file,
         If True, predict only at the genotypes and titrant (name, conc) pairs
         supplied via file arguments, ignoring training-data combinations.
         Default False.
+    num_samples : int or None, optional
+        Number of joint posterior samples to include as sample_0 … sample_N-1
+        columns alongside the quantile columns. Set to None for quantiles only.
+        Default 0.
     """
     if (titrant_names_file is None) != (titrant_concs_file is None):
         raise ValueError(
@@ -166,6 +171,7 @@ def predict_theta(config_file,
             model=gm,
             posteriors=param_file,
             manual_titrant_df=manual_titrant_df,
+            num_samples=num_samples,
         )
         # extract_theta_curves returns all training genotypes when manual_titrant_df
         # has no 'genotype' column; filter to the requested subset.
@@ -188,7 +194,8 @@ def main():
                      manual_arg_types={"genotypes_file": str,
                                        "titrant_names_file": str,
                                        "titrant_concs_file": str,
-                                       "only_files": bool})
+                                       "only_files": bool,
+                                       "num_samples": int})
 
 
 if __name__ == "__main__":

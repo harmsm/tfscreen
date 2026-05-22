@@ -5,7 +5,7 @@ from statsmodels.stats.diagnostic import het_breuschpagan
 
 import warnings
 
-def stats_test_suite(param_est,param_std,param_real):
+def stats_test_suite(param_est,param_real,param_std=None):
     """
     Run a test suite comparing parameter estimates against true values.
 
@@ -19,9 +19,9 @@ def stats_test_suite(param_est,param_std,param_real):
     param_est : np.ndarray
         A 1D array of the parameter estimates from a model. May contain NaNs
         for failed fits.
-    param_std : np.ndarray
+    param_std : np.ndarray, optional
         A 1D array of the standard errors associated with each parameter
-        estimate.
+        estimate. If not provided, ``coverage_prob`` is returned as NaN.
     param_real : np.ndarray
         A 1D array of the true, known parameter values used to generate the
         simulated data.
@@ -81,8 +81,9 @@ def stats_test_suite(param_est,param_std,param_real):
 
     # Filter out bad fits for this analysis
     param_est = param_est[not_nan_mask]
-    param_std = param_std[not_nan_mask]
     param_real = param_real[not_nan_mask]
+    if param_std is not None:
+        param_std = param_std[not_nan_mask]
     
     # Get RMSE and mean error
     diff = param_est - param_real
@@ -108,14 +109,16 @@ def stats_test_suite(param_est,param_std,param_real):
 
     mean_error = np.mean(diff)
 
-    # Get coverage probability (probability real values fall in the 95% CI). 
-    # This will be 95% for perfectly calibrated error estimator. 
-    lower_ci = param_est - param_std*1.96
-    upper_ci = param_est + param_std*1.96
-
-    in_ci = np.logical_and(param_real >= lower_ci,
-                           param_real <= upper_ci)
-    coverage_prob = np.sum(in_ci)/param_est.shape[0]
+    # Get coverage probability (probability real values fall in the 95% CI).
+    # This will be 95% for perfectly calibrated error estimator.
+    if param_std is not None:
+        lower_ci = param_est - param_std*1.96
+        upper_ci = param_est + param_std*1.96
+        in_ci = np.logical_and(param_real >= lower_ci,
+                               param_real <= upper_ci)
+        coverage_prob = np.sum(in_ci)/param_est.shape[0]
+    else:
+        coverage_prob = np.nan
 
     # Look for correlation in residuals
     if np.var(diff) < 1e-12 or np.var(param_real) < 1e-12:
