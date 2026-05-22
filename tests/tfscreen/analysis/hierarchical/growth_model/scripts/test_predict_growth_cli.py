@@ -8,6 +8,7 @@ import numpy as np
 from unittest.mock import MagicMock, patch
 
 from tfscreen.analysis.hierarchical.growth_model.scripts.predict_growth_cli import predict_growth
+from tfscreen.analysis.hierarchical.growth_model.checkpoint_io import resolve_param_file
 
 
 # ---------------------------------------------------------------------------
@@ -37,7 +38,7 @@ def mock_gm():
 
 @pytest.fixture
 def mock_predict(mock_gm):
-    """Patch read_configuration and predict; return captured call kwargs."""
+    """Patch read_configuration, resolve_param_file, and predict; return captured call kwargs."""
     calls = {}
 
     def fake_predict(**kwargs):
@@ -53,6 +54,10 @@ def mock_predict(mock_gm):
         "tfscreen.analysis.hierarchical.growth_model.scripts"
         ".predict_growth_cli.read_configuration",
         return_value=(mock_gm, {}),
+    ), patch(
+        "tfscreen.analysis.hierarchical.growth_model.scripts"
+        ".predict_growth_cli.resolve_param_file",
+        side_effect=lambda pf, gm, op: pf,  # pass-through
     ), patch(
         "tfscreen.analysis.hierarchical.growth_model.scripts"
         ".predict_growth_cli.predict",
@@ -190,3 +195,95 @@ class TestPredictGrowthTitrantNamesFilter:
         # titrant_names_file must not influence genotypes or concs passed to predict
         assert mock_predict["genotypes"] is None
         assert mock_predict["titrant_conc"] is None
+
+
+# ---------------------------------------------------------------------------
+# checkpoint (.pkl) param_file support
+# ---------------------------------------------------------------------------
+
+class TestPredictGrowthCheckpointInput:
+
+    def _make_fixtures(self, mock_gm, resolved_path="resolved.h5"):
+        """Return patch stack that intercepts resolve_param_file."""
+        def fake_predict(**kwargs):
+            genotypes = kwargs.get("genotypes") or mock_gm.growth_df["genotype"].unique().tolist()
+            concs = kwargs.get("titrant_conc") or mock_gm.growth_df["titrant_conc"].unique().tolist()
+            rows = [{"genotype": g, "titrant_name": "IPTG", "titrant_conc": c,
+                     "median": 10.0}
+                    for g in genotypes for c in concs]
+            return pd.DataFrame(rows)
+
+        return [
+            patch(
+                "tfscreen.analysis.hierarchical.growth_model.scripts"
+                ".predict_growth_cli.read_configuration",
+                return_value=(mock_gm, {}),
+            ),
+            patch(
+                "tfscreen.analysis.hierarchical.growth_model.scripts"
+                ".predict_growth_cli.predict",
+                side_effect=fake_predict,
+            ),
+        ]
+
+    def test_pkl_param_file_calls_resolve(self, mock_gm, tmp_path):
+        """resolve_param_file is called when param_file ends with .pkl."""
+        resolve_calls = []
+
+        def fake_resolve(pf, gm, op):
+            resolve_calls.append(pf)
+            return "resolved.h5"
+
+        patches = self._make_fixtures(mock_gm)
+        with patches[0], patches[1], patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".predict_growth_cli.resolve_param_file",
+            side_effect=fake_resolve,
+        ):
+            predict_growth("cfg.yaml", "myrun_checkpoint.pkl",
+                           out_prefix=str(tmp_path / "out"))
+
+        assert resolve_calls == ["myrun_checkpoint.pkl"]
+
+    def test_h5_param_file_calls_resolve(self, mock_gm, tmp_path):
+        """resolve_param_file is called for .h5 files too (pass-through)."""
+        resolve_calls = []
+
+        def fake_resolve(pf, gm, op):
+            resolve_calls.append(pf)
+            return pf
+
+        patches = self._make_fixtures(mock_gm)
+        with patches[0], patches[1], patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".predict_growth_cli.resolve_param_file",
+            side_effect=fake_resolve,
+        ):
+            predict_growth("cfg.yaml", "post.h5",
+                           out_prefix=str(tmp_path / "out"))
+
+        assert resolve_calls == ["post.h5"]
+
+    def test_resolved_path_passed_to_predict(self, mock_gm, tmp_path):
+        """The path returned by resolve_param_file is what predict receives."""
+        predict_calls = {}
+
+        def fake_predict(**kwargs):
+            predict_calls["param_posteriors"] = kwargs.get("param_posteriors")
+            return pd.DataFrame({"genotype": ["wt"], "titrant_name": ["IPTG"],
+                                  "titrant_conc": [0.0], "median": [10.0]})
+
+        patches = self._make_fixtures(mock_gm)
+        with patches[0], patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".predict_growth_cli.predict",
+            side_effect=fake_predict,
+        ), patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".predict_growth_cli.resolve_param_file",
+            return_value="resolved_map.h5",
+        ):
+            predict_growth("cfg.yaml", "myrun_checkpoint.pkl",
+                           out_prefix=str(tmp_path / "out"))
+
+        assert predict_calls["param_posteriors"] == "resolved_map.h5"

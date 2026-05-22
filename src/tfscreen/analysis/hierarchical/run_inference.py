@@ -843,6 +843,151 @@ class RunInference:
 
         os.replace(tmp_out_file,out_file)        
 
+    def _map_params_to_constrained(self, map_params):
+        """
+        Convert MAP guide parameters to constrained natural-parameter space.
+
+        Strips the ``_auto_loc`` suffix added by AutoDelta, then applies the
+        per-site bijection (e.g. softplus for positive-constrained sites) to
+        produce a dict of constrained values, one entry per latent site.
+
+        Parameters
+        ----------
+        map_params : dict
+            Parameter dict from an AutoDelta guide state, keys follow the
+            ``{site}_auto_loc`` convention, values are in unconstrained space.
+
+        Returns
+        -------
+        dict
+            Constrained parameters keyed by site name (no ``_auto_loc`` suffix).
+            Each value has shape ``(*site_shape,)`` — a single-sample point.
+        """
+        from numpyro.distributions.transforms import biject_to
+
+        data_on_gpu = jax.device_put(self.model.data)
+        total_num_genotypes = self.model.data.num_genotype
+        all_indices = jnp.arange(total_num_genotypes)
+        full_data = self.model.get_batch(data_on_gpu, all_indices)
+        model_kwargs = {"priors": self.model.priors, "data": full_data}
+
+        unconstrained = {
+            k[: -len("_auto_loc")]: jnp.array(v)
+            for k, v in map_params.items()
+            if k.endswith("_auto_loc")
+        }
+
+        seeded_model = seed(self.model.jax_model, rng_seed=0)
+        traced_model = trace(seeded_model)
+        model_trace = traced_model.get_trace(**model_kwargs)
+
+        site_transforms = {
+            name: biject_to(site["fn"].support)
+            for name, site in model_trace.items()
+            if site["type"] == "sample" and not site.get("is_observed", False)
+        }
+
+        return {
+            k: site_transforms[k](v) if k in site_transforms else v
+            for k, v in unconstrained.items()
+        }
+
+    def get_map_posteriors(self,
+                           map_params,
+                           out_prefix,
+                           forward_batch_size=512,
+                           sites_to_save=None):
+        """
+        Generate and save a single-sample posterior at the MAP point.
+
+        Converts the MAP guide parameters to constrained space and runs one
+        forward pass of the generative model, writing a 1-sample HDF5 file in
+        the same format produced by :meth:`get_posteriors`,
+        :meth:`get_laplace_posteriors`, and :meth:`get_nuts_posteriors`.
+
+        This is useful for checking whether the MAP solution is consistent
+        with the observed data without introducing Hessian-based uncertainty.
+        Unlike the Laplace approximation, no sampling or Hessian computation
+        is required: the output contains exactly the predictions at the MAP
+        point.
+
+        Parameters
+        ----------
+        map_params : dict
+            Parameter dict from a MAP (AutoDelta) optimizer state, as
+            returned by ``svi.get_params(svi_state)``.  Keys follow the
+            ``{site}_auto_loc`` convention; values are in unconstrained space.
+        out_prefix : str
+            Root name for the output file (written as
+            ``{out_prefix}_posterior.h5``).
+        forward_batch_size : int, optional
+            Number of genotypes to process per forward-model batch
+            (default 512).
+        sites_to_save : list of str or None, optional
+            If given, only these site names are written to the HDF5 file.
+            If None (default), all sites are saved.
+        """
+        data_on_gpu = jax.device_put(self.model.data)
+        total_num_genotypes = self.model.data.num_genotype
+        dim_map = self._get_genotype_dim_map()
+
+        constrained = self._map_params_to_constrained(map_params)
+        # Add a leading sample dimension: (*shape) → (1, *shape)
+        latent_samples = {k: jnp.expand_dims(v, 0) for k, v in constrained.items()}
+
+        h5_file = f"{out_prefix}_posterior.h5"
+
+        batch_collector = {}
+        for start_idx in range(0, total_num_genotypes, forward_batch_size):
+
+            end_idx = min(start_idx + forward_batch_size, total_num_genotypes)
+            batch_indices = jnp.arange(start_idx, end_idx)
+
+            batch_latents = {
+                k: jnp.take(v, batch_indices, axis=dim_map[k])
+                if k in dim_map else v
+                for k, v in latent_samples.items()
+            }
+
+            batch_data = self.model.get_batch(data_on_gpu, batch_indices)
+            forward_sampler = Predictive(self.model.jax_model,
+                                         posterior_samples=batch_latents)
+            pred_key = self.get_key()
+            batch_pred = forward_sampler(pred_key,
+                                         priors=self.model.priors,
+                                         data=batch_data)
+
+            for k, v in batch_pred.items():
+                if sites_to_save is not None and k not in sites_to_save:
+                    continue
+                batch_collector.setdefault(k, []).append(jax.device_get(v))
+
+            for k, v in batch_latents.items():
+                if k in batch_pred:
+                    continue
+                if sites_to_save is not None and k not in sites_to_save:
+                    continue
+                if k not in dim_map:
+                    if start_idx == 0:
+                        batch_collector.setdefault(k, []).append(jax.device_get(v))
+                else:
+                    batch_collector.setdefault(k, []).append(jax.device_get(v))
+
+        results = {}
+        for k, v_list in batch_collector.items():
+            if k in dim_map:
+                results[k] = np.concatenate(v_list, axis=dim_map[k])
+            else:
+                results[k] = v_list[0]
+
+        with h5py.File(h5_file, "w") as hf:
+            for k, v in results.items():
+                chunks = _safe_chunks(min(1, v.shape[0]), v.shape[1:], v.dtype)
+                hf.create_dataset(k, data=v, chunks=chunks,
+                                  compression="gzip", compression_opts=4)
+            hf.attrs["num_samples"] = 1
+            hf.flush()
+
     def compute_hessian_sigmas(self, map_params):
         """
         Compute per-site Hessian-based MAP values and sigmas in *constrained*

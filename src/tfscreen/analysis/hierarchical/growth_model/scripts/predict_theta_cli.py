@@ -1,5 +1,6 @@
 import pandas as pd
 from tfscreen.analysis.hierarchical.growth_model.configuration_io import read_configuration
+from tfscreen.analysis.hierarchical.growth_model.checkpoint_io import resolve_param_file
 from tfscreen.analysis.hierarchical.growth_model.extraction import (
     extract_theta_curves,
     extract_theta_unmeasured,
@@ -9,7 +10,7 @@ from tfscreen.util.cli import generalized_main, read_lines
 
 
 def predict_theta(config_file,
-                  posterior_file,
+                  param_file,
                   out_prefix="tfs_theta_pred",
                   genotypes_file=None,
                   titrant_names_file=None,
@@ -41,8 +42,13 @@ def predict_theta(config_file,
     ----------
     config_file : str
         Path to the YAML configuration file.
-    posterior_file : str
-        Path to the .h5 file produced by tfs-sample-posterior.
+    param_file : str
+        Path to a posterior .h5 file produced by tfs-sample-posterior, or a
+        MAP checkpoint .pkl file produced by tfs-growth-analysis.  When a
+        .pkl file is supplied the MAP point estimate is used: a 1-sample
+        posterior is written to {out_prefix}_map_posterior.h5 and predictions
+        are made at that single parameter set.  NUTS and SVI checkpoints are
+        not supported directly; run tfs-sample-posterior first.
     out_prefix : str, optional
         Prefix for the output CSV file. Written to {out_prefix}.csv.
         Default 'tfs_theta_pred'.
@@ -74,6 +80,7 @@ def predict_theta(config_file,
 
     print(f"Loading configuration from {config_file}...", flush=True)
     gm, _ = read_configuration(config_file)
+    param_file = resolve_param_file(param_file, gm, out_prefix)
 
     # Determine training genotypes and (genotype, titrant_name, titrant_conc) set.
     training_genotypes = set(gm.growth_tm.df["genotype"].unique())
@@ -148,7 +155,7 @@ def predict_theta(config_file,
             )
         result_df = extract_theta_unmeasured(
             model=gm,
-            posteriors=posterior_file,
+            posteriors=param_file,
             target_genotypes=requested_genotypes,
             manual_titrant_df=manual_titrant_df,
         )
@@ -157,7 +164,7 @@ def predict_theta(config_file,
               flush=True)
         result_df = extract_theta_curves(
             model=gm,
-            posteriors=posterior_file,
+            posteriors=param_file,
             manual_titrant_df=manual_titrant_df,
         )
         # extract_theta_curves returns all training genotypes when manual_titrant_df

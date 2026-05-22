@@ -60,6 +60,10 @@ def mock_extract(mock_gm):
         return_value=(mock_gm, {}),
     ), patch(
         "tfscreen.analysis.hierarchical.growth_model.scripts"
+        ".predict_theta_cli.resolve_param_file",
+        side_effect=lambda pf, gm, op: pf,  # pass-through
+    ), patch(
+        "tfscreen.analysis.hierarchical.growth_model.scripts"
         ".predict_theta_cli.extract_theta_curves",
         side_effect=lambda **kw: _fake_extract(None, None, **kw),
     ), patch(
@@ -229,3 +233,80 @@ class TestPredictThetaOnlyFiles:
         assert list(titrant_df["titrant_conc"]) == [5.0]
         assert 0.0 not in titrant_df["titrant_conc"].values
         assert 1.0 not in titrant_df["titrant_conc"].values
+
+
+# ---------------------------------------------------------------------------
+# checkpoint (.pkl) param_file support
+# ---------------------------------------------------------------------------
+
+class TestPredictThetaCheckpointInput:
+
+    def _base_patches(self, mock_gm):
+        return [
+            patch(
+                "tfscreen.analysis.hierarchical.growth_model.scripts"
+                ".predict_theta_cli.read_configuration",
+                return_value=(mock_gm, {}),
+            ),
+            patch(
+                "tfscreen.analysis.hierarchical.growth_model.scripts"
+                ".predict_theta_cli.extract_theta_curves",
+                return_value=pd.DataFrame({
+                    "genotype": ["wt"], "titrant_name": ["IPTG"],
+                    "titrant_conc": [0.0], "median": [0.5],
+                }),
+            ),
+            patch(
+                "tfscreen.analysis.hierarchical.growth_model.scripts"
+                ".predict_theta_cli.extract_theta_unmeasured",
+                return_value=pd.DataFrame({
+                    "genotype": ["wt"], "titrant_name": ["IPTG"],
+                    "titrant_conc": [0.0], "median": [0.5],
+                }),
+            ),
+        ]
+
+    def test_pkl_calls_resolve_param_file(self, mock_gm, tmp_path):
+        """resolve_param_file is invoked when param_file ends with .pkl."""
+        resolve_calls = []
+
+        def fake_resolve(pf, gm, op):
+            resolve_calls.append(pf)
+            return "resolved.h5"
+
+        p = self._base_patches(mock_gm)
+        with p[0], p[1], p[2], patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".predict_theta_cli.resolve_param_file",
+            side_effect=fake_resolve,
+        ):
+            predict_theta("cfg.yaml", "run_checkpoint.pkl",
+                          out_prefix=str(tmp_path / "out"))
+
+        assert resolve_calls == ["run_checkpoint.pkl"]
+
+    def test_resolved_path_passed_to_extract(self, mock_gm, tmp_path):
+        """The path returned by resolve_param_file reaches extract_theta_curves."""
+        extract_calls = {}
+
+        def fake_curves(**kwargs):
+            extract_calls["posteriors"] = kwargs.get("posteriors")
+            return pd.DataFrame({
+                "genotype": ["wt"], "titrant_name": ["IPTG"],
+                "titrant_conc": [0.0], "median": [0.5],
+            })
+
+        p = self._base_patches(mock_gm)
+        with p[0], patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".predict_theta_cli.extract_theta_curves",
+            side_effect=fake_curves,
+        ), p[2], patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".predict_theta_cli.resolve_param_file",
+            return_value="map_posterior.h5",
+        ):
+            predict_theta("cfg.yaml", "run_checkpoint.pkl",
+                          out_prefix=str(tmp_path / "out"))
+
+        assert extract_calls["posteriors"] == "map_posterior.h5"

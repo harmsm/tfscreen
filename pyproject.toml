@@ -72,6 +72,7 @@ tfs-prefit-calibration = "tfscreen.analysis.hierarchical.growth_model.scripts.ru
 tfs-growth-analysis = "tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis_cli:main"
 tfs-sample-posterior = "tfscreen.analysis.hierarchical.growth_model.scripts.sample_posterior_cli:main"
 tfs-param-quantiles = "tfscreen.analysis.hierarchical.growth_model.scripts.param_quantiles_cli:main"
+tfs-extract-params = "tfscreen.analysis.hierarchical.growth_model.scripts.extract_params_cli:main"
 tfs-predict-growth = "tfscreen.analysis.hierarchical.growth_model.scripts.predict_growth_cli:main"
 tfs-predict-theta = "tfscreen.analysis.hierarchical.growth_model.scripts.predict_theta_cli:main"
 tfs-cat-response = "tfscreen.analysis.cat_response.cat_response_cli:main"

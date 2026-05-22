@@ -416,6 +416,161 @@ def test_run_optimization_1d_block_idx(mocker):
 
 
 # =============================================================================
+# _map_params_to_constrained
+# =============================================================================
+
+def test_map_params_to_constrained_strips_auto_loc():
+    """Returned dict has site names without the _auto_loc suffix."""
+    model = LaplaceModel(num_genotype=4)
+    ri, map_params = _laplace_map_params(model)
+
+    constrained = ri._map_params_to_constrained(map_params)
+
+    assert all(not k.endswith("_auto_loc") for k in constrained)
+    assert "global_p" in constrained
+    assert "geno_p" in constrained
+
+
+def test_map_params_to_constrained_ignores_non_auto_loc_keys():
+    """Extra keys without _auto_loc are not included in the output."""
+    model = LaplaceModel(num_genotype=3)
+    ri, map_params = _laplace_map_params(model)
+
+    poisoned = dict(map_params, some_extra_key=jnp.array(99.0))
+    constrained = ri._map_params_to_constrained(poisoned)
+
+    assert "some_extra_key" not in constrained
+
+
+def test_map_params_to_constrained_shapes():
+    """Output shapes match the model site shapes."""
+    num_genotype = 5
+    model = LaplaceModel(num_genotype=num_genotype)
+    ri, map_params = _laplace_map_params(model)
+
+    constrained = ri._map_params_to_constrained(map_params)
+
+    assert constrained["global_p"].shape == ()
+    assert constrained["geno_p"].shape == (num_genotype,)
+
+
+def test_map_params_to_constrained_values_finite():
+    """Constrained values should be finite (no NaN/Inf from bijection)."""
+    model = LaplaceModel(num_genotype=4)
+    ri, map_params = _laplace_map_params(model)
+
+    constrained = ri._map_params_to_constrained(map_params)
+
+    for k, v in constrained.items():
+        assert np.all(np.isfinite(np.asarray(v))), f"Non-finite value in '{k}'"
+
+
+# =============================================================================
+# get_map_posteriors
+# =============================================================================
+
+def test_get_map_posteriors_creates_h5(tmpdir):
+    """get_map_posteriors writes an HDF5 posterior file."""
+    model = LaplaceModel(num_genotype=4)
+    ri, map_params = _laplace_map_params(model)
+
+    out_prefix = str(tmpdir.join("map"))
+    ri.get_map_posteriors(map_params, out_prefix=out_prefix)
+
+    assert os.path.exists(f"{out_prefix}_posterior.h5")
+
+
+def test_get_map_posteriors_num_samples_is_one(tmpdir):
+    """The HDF5 file contains exactly 1 sample."""
+    num_genotype = 5
+    model = LaplaceModel(num_genotype=num_genotype)
+    ri, map_params = _laplace_map_params(model)
+
+    out_prefix = str(tmpdir.join("map_shapes"))
+    ri.get_map_posteriors(map_params, out_prefix=out_prefix)
+
+    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
+        assert hf.attrs["num_samples"] == 1
+        assert hf["global_p"].shape == (1,)
+        assert hf["geno_p"].shape == (1, num_genotype)
+
+
+def test_get_map_posteriors_forward_batching(tmpdir):
+    """forward_batch_size < num_genotype still produces correct output shapes."""
+    num_genotype = 6
+    model = LaplaceModel(num_genotype=num_genotype)
+    ri, map_params = _laplace_map_params(model)
+
+    out_prefix = str(tmpdir.join("map_fwd"))
+    ri.get_map_posteriors(map_params, out_prefix=out_prefix, forward_batch_size=2)
+
+    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
+        assert hf["global_p"].shape == (1,)
+        assert hf["geno_p"].shape == (1, num_genotype)
+
+
+def test_get_map_posteriors_sites_to_save(tmpdir):
+    """sites_to_save restricts which sites appear in the output."""
+    model = LaplaceModel(num_genotype=4)
+    ri, map_params = _laplace_map_params(model)
+
+    out_prefix = str(tmpdir.join("map_filtered"))
+    ri.get_map_posteriors(map_params, out_prefix=out_prefix,
+                          sites_to_save=["geno_p"])
+
+    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
+        assert "geno_p" in hf
+        assert "global_p" not in hf
+        assert hf["geno_p"].shape == (1, 4)
+
+
+def test_get_map_posteriors_compression(tmpdir):
+    """HDF5 datasets are gzip-compressed."""
+    model = LaplaceModel(num_genotype=4)
+    ri, map_params = _laplace_map_params(model)
+
+    out_prefix = str(tmpdir.join("map_compressed"))
+    ri.get_map_posteriors(map_params, out_prefix=out_prefix)
+
+    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
+        for k in hf.keys():
+            assert hf[k].compression == "gzip", f"'{k}' should be gzip-compressed"
+
+
+def test_get_map_posteriors_values_finite(tmpdir):
+    """All values in the MAP posterior should be finite."""
+    model = LaplaceModel(num_genotype=4)
+    ri, map_params = _laplace_map_params(model)
+
+    out_prefix = str(tmpdir.join("map_finite"))
+    ri.get_map_posteriors(map_params, out_prefix=out_prefix)
+
+    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
+        for k in hf.keys():
+            assert not np.any(np.isnan(hf[k][:])), f"NaN found in '{k}'"
+
+
+def test_get_map_posteriors_matches_constrained(tmpdir):
+    """The geno_p values in the h5 file match _map_params_to_constrained output."""
+    num_genotype = 4
+    model = LaplaceModel(num_genotype=num_genotype)
+    ri, map_params = _laplace_map_params(model)
+
+    out_prefix = str(tmpdir.join("map_match"))
+    ri.get_map_posteriors(map_params, out_prefix=out_prefix)
+
+    constrained = ri._map_params_to_constrained(map_params)
+
+    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
+        np.testing.assert_allclose(
+            hf["global_p"][0], np.asarray(constrained["global_p"]), rtol=1e-5
+        )
+        np.testing.assert_allclose(
+            hf["geno_p"][0], np.asarray(constrained["geno_p"]), rtol=1e-5
+        )
+
+
+# =============================================================================
 # get_laplace_posteriors
 # =============================================================================
 

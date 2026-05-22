@@ -135,7 +135,7 @@ def load_binding(run_dir, combo):
 
 
 def merge_theta_obs(theta_df, binding_df):
-    """Inner-join theta predictions with theta_obs from the binding CSV."""
+    """Inner-join theta predictions with theta_obs (and theta_std if present)."""
     if theta_df is None or binding_df is None:
         return None
     merge_keys = ["genotype", "titrant_name", "titrant_conc"]
@@ -147,7 +147,8 @@ def merge_theta_obs(theta_df, binding_df):
     if "theta_obs" not in binding_df.columns:
         print("  WARNING: 'theta_obs' column not in binding CSV", file=sys.stderr)
         return None
-    return theta_df.merge(binding_df[merge_keys + ["theta_obs"]], on=merge_keys, how="inner")
+    obs_cols = [c for c in ["theta_obs", "theta_std"] if c in binding_df.columns]
+    return theta_df.merge(binding_df[merge_keys + obs_cols], on=merge_keys, how="inner")
 
 
 # ---------------------------------------------------------------------------
@@ -191,12 +192,29 @@ def compute_stats(df, pred_col, obs_col, upper_col="upper_std", lower_col="lower
 # Diagnostic plots
 # ---------------------------------------------------------------------------
 
-def _hexbin_panel(ax, obs, pred, title, xlabel, ylabel):
-    """Single hexbin correlation panel with 1:1 dashed line and equal axes."""
+def _hexbin_panel(ax, obs, pred, title, xlabel, ylabel, trim_quantile=0.001):
+    """Single scatter correlation panel with 1:1 dashed line and equal axes.
+
+    Removes the top and bottom trim_quantile fraction of points (applied to
+    the joint distribution) before plotting to suppress extreme outliers.
+    """
     finite = np.isfinite(obs) & np.isfinite(pred)
     obs, pred = obs[finite], pred[finite]
     if len(obs) == 0:
         ax.text(0.5, 0.5, "no data", transform=ax.transAxes, ha="center", va="center")
+        ax.set_title(title)
+        return
+
+    # Outlier removal: keep points within [trim_quantile, 1-trim_quantile]
+    # on both axes independently, then take the intersection.
+    q_lo_obs,  q_hi_obs  = np.quantile(obs,  [trim_quantile, 1 - trim_quantile])
+    q_lo_pred, q_hi_pred = np.quantile(pred, [trim_quantile, 1 - trim_quantile])
+    keep = (obs  >= q_lo_obs)  & (obs  <= q_hi_obs) \
+         & (pred >= q_lo_pred) & (pred <= q_hi_pred)
+    obs, pred = obs[keep], pred[keep]
+    if len(obs) == 0:
+        ax.text(0.5, 0.5, "no data after trimming",
+                transform=ax.transAxes, ha="center", va="center")
         ax.set_title(title)
         return
 
@@ -206,9 +224,9 @@ def _hexbin_panel(ax, obs, pred, title, xlabel, ylabel):
     lo -= margin
     hi += margin
 
-    hb = ax.hexbin(obs, pred, gridsize=50, cmap="Blues", mincnt=1)
-    plt.colorbar(hb, ax=ax, label="count")
-    ax.plot([lo, hi], [lo, hi], "k--", linewidth=1, label="1:1")
+    ax.scatter(obs, pred, facecolor="none", edgecolor="black", linewidths=0.5,
+               s=10, alpha=0.6)
+    ax.plot([lo, hi], [lo, hi], "k--", linewidth=1)
     ax.set_xlim(lo, hi)
     ax.set_ylim(lo, hi)
     ax.set_aspect("equal")
@@ -217,9 +235,103 @@ def _hexbin_panel(ax, obs, pred, title, xlabel, ylabel):
     ax.set_title(title)
 
 
-def make_plots(run_dir, growth_df, theta_merged):
-    """Write diagnostics.pdf (two-panel correlation plot) to run_dir."""
-    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+def _theta_curves_panel(ax, theta_df, binding_df):
+    """Plot predicted theta curves per genotype overlaid with binding observations.
+
+    Predictions are filtered to only concentrations present in the binding data.
+    The x-axis is log-scaled; any titrant_conc == 0 is replaced with
+    min(positive concentrations) / 100 before plotting.
+
+    For each (genotype, titrant_name) group:
+      - fill_between lower_95 / upper_95  (alpha=0.2, outer CI)
+      - fill_between lower_std / upper_std (alpha=0.5, inner CI)
+      - median line
+      - observed scatter points (no connecting lines)
+    """
+    merge_keys = ["genotype", "titrant_name", "titrant_conc"]
+    pred_needed = ["median", "lower_95", "upper_95", "lower_std", "upper_std"]
+
+    has_pred = (theta_df is not None
+                and all(c in theta_df.columns for c in merge_keys + pred_needed))
+    has_obs  = (binding_df is not None
+                and "theta_obs" in binding_df.columns
+                and all(c in binding_df.columns for c in merge_keys))
+
+    if not has_pred and not has_obs:
+        ax.text(0.5, 0.5, "no theta data", transform=ax.transAxes,
+                ha="center", va="center")
+        ax.set_title("Theta")
+        return
+
+    # Filter predictions to concentrations present in binding data only
+    if has_pred and has_obs:
+        binding_concs = binding_df[merge_keys].drop_duplicates()
+        theta_df = theta_df.merge(binding_concs, on=merge_keys, how="inner")
+        if len(theta_df) == 0:
+            has_pred = False
+
+    # Determine zero-replacement value from all positive concentrations
+    all_concs = np.concatenate([
+        df["titrant_conc"].values
+        for df, flag in [(theta_df, has_pred), (binding_df, has_obs)]
+        if flag
+    ])
+    pos = all_concs[all_concs > 0]
+    zero_sub = pos.min() / 100.0 if len(pos) > 0 else 1e-6
+
+    def _fix_zero(s):
+        return s.where(s != 0.0, zero_sub)
+
+    # Collect group keys from the binding data only (it drives what gets plotted)
+    if has_obs:
+        group_keys = sorted(set(zip(binding_df["genotype"], binding_df["titrant_name"])))
+    else:
+        group_keys = sorted(set(zip(theta_df["genotype"], theta_df["titrant_name"])))
+
+    n = len(group_keys)
+    cmap = plt.cm.get_cmap("tab20" if n <= 20 else "turbo", max(n, 1))
+
+    for idx, (genotype, titrant_name) in enumerate(group_keys):
+        color = cmap(idx)
+
+        if has_pred:
+            mask = ((theta_df["genotype"] == genotype) &
+                    (theta_df["titrant_name"] == titrant_name))
+            gdf = theta_df[mask].copy()
+            gdf["titrant_conc"] = _fix_zero(gdf["titrant_conc"])
+            gdf = gdf.sort_values("titrant_conc")
+            if len(gdf):
+                x = gdf["titrant_conc"].values
+                ax.fill_between(x, gdf["lower_95"], gdf["upper_95"],
+                                color=color, alpha=0.2)
+                ax.fill_between(x, gdf["lower_std"], gdf["upper_std"],
+                                color=color, alpha=0.5)
+                ax.plot(x, gdf["median"], color=color, linewidth=1,
+                        label=f"{genotype} / {titrant_name}")
+
+        if has_obs:
+            mask = ((binding_df["genotype"] == genotype) &
+                    (binding_df["titrant_name"] == titrant_name))
+            bdf = binding_df[mask].copy()
+            bdf["titrant_conc"] = _fix_zero(bdf["titrant_conc"])
+            if len(bdf):
+                yerr = bdf["theta_std"].values if "theta_std" in bdf.columns else None
+                ax.errorbar(bdf["titrant_conc"], bdf["theta_obs"],
+                            yerr=yerr, fmt="o", color=color,
+                            markersize=3, lw=0, elinewidth=1,
+                            capsize=2, zorder=5)
+
+    ax.set_xscale("log")
+    ax.set_xlabel("titrant_conc")
+    ax.set_ylabel("θ")
+    ax.set_title("Theta")
+    if n <= 20:
+        ax.legend(fontsize=6, loc="best", framealpha=0.5)
+
+
+def make_plots(run_dir, growth_df, theta_df, binding_df):
+    """Write diagnostics.pdf to run_dir: growth scatter + theta curves."""
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
 
     if (growth_df is not None
             and "median" in growth_df.columns
@@ -235,19 +347,7 @@ def make_plots(run_dir, growth_df, theta_merged):
                      transform=axes[0].transAxes, ha="center", va="center")
         axes[0].set_title("Growth")
 
-    if (theta_merged is not None
-            and "median" in theta_merged.columns
-            and "theta_obs" in theta_merged.columns):
-        _hexbin_panel(axes[1],
-                      theta_merged["theta_obs"].values,
-                      theta_merged["median"].values,
-                      title="Theta",
-                      xlabel="theta_obs (observed)",
-                      ylabel="median (predicted)")
-    else:
-        axes[1].text(0.5, 0.5, "no theta data",
-                     transform=axes[1].transAxes, ha="center", va="center")
-        axes[1].set_title("Theta")
+    _theta_curves_panel(axes[1], theta_df, binding_df)
 
     plt.tight_layout()
     fig.savefig(run_dir / "diagnostics.pdf")
@@ -267,7 +367,7 @@ def process_run(run_dir):
     binding_df = load_binding(run_dir, combo)
     theta_merged = merge_theta_obs(theta_df, binding_df)
 
-    make_plots(run_dir, growth_df, theta_merged)
+    make_plots(run_dir, growth_df, theta_df, binding_df)
 
     growth_stats, growth_n = compute_stats(growth_df, "median", "ln_cfu")
     theta_stats, theta_n = compute_stats(theta_merged, "median", "theta_obs")
