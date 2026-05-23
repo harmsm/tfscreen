@@ -6,8 +6,8 @@ import dill
 import jax.numpy as jnp
 from unittest.mock import MagicMock
 
-from tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis_cli import (
-    run_growth_analysis,
+from tfscreen.analysis.hierarchical.growth_model.scripts.fit_model_cli import (
+    fit_model,
 )
 
 
@@ -19,13 +19,13 @@ def _patch_common(mocker):
     """Patch read_configuration, os.path.exists, and RunInference."""
     mocker.patch(
         "tfscreen.analysis.hierarchical.growth_model.scripts"
-        ".run_growth_analysis_cli.read_configuration",
+        ".fit_model_cli.read_configuration",
         return_value=(MagicMock(), {}),
     )
     mocker.patch("os.path.exists", return_value=False)
     mocker.patch(
         "tfscreen.analysis.hierarchical.growth_model.scripts"
-        ".run_growth_analysis_cli.RunInference",
+        ".fit_model_cli.RunInference",
         return_value=MagicMock(_iterations_per_epoch=1),
     )
 
@@ -41,11 +41,11 @@ class TestRunGrowthAnalysisValidation:
         _patch_common(mocker)
         mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_growth_analysis_cli.RunInference",
+            ".fit_model_cli.RunInference",
             return_value=MagicMock(_iterations_per_epoch=1),
         )
         with pytest.raises(ValueError, match="seed must be provided"):
-            run_growth_analysis(
+            fit_model(
                 config_file="dummy.yaml",
                 seed=None,
                 checkpoint_file=None,
@@ -57,11 +57,11 @@ class TestRunGrowthAnalysisValidation:
         _patch_common(mocker)
         mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_growth_analysis_cli.RunInference",
+            ".fit_model_cli.RunInference",
             return_value=MagicMock(_iterations_per_epoch=1),
         )
         with pytest.raises(ValueError, match="not recognized"):
-            run_growth_analysis(
+            fit_model(
                 config_file="dummy.yaml",
                 seed=1,
                 analysis_method="posterior",
@@ -78,19 +78,19 @@ class TestRunGrowthAnalysisNuts:
     def _setup(self, mocker, tmp_path):
         mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_growth_analysis_cli.read_configuration",
+            ".fit_model_cli.read_configuration",
             return_value=(MagicMock(), {}),
         )
         mocker.patch("os.path.exists", return_value=False)
         mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_growth_analysis_cli.RunInference",
+            ".fit_model_cli.RunInference",
             return_value=MagicMock(_iterations_per_epoch=1),
         )
         fake_samples = {"param": [1.0]}
         run_nuts_mock = mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_growth_analysis_cli._run_nuts",
+            ".fit_model_cli._run_nuts",
             return_value=fake_samples,
         )
         return run_nuts_mock, fake_samples
@@ -99,7 +99,7 @@ class TestRunGrowthAnalysisNuts:
         """analysis_method='nuts' calls _run_nuts."""
         run_nuts_mock, _ = self._setup(mocker, tmp_path)
 
-        run_growth_analysis(
+        fit_model(
             config_file="dummy.yaml",
             seed=42,
             analysis_method="nuts",
@@ -111,7 +111,7 @@ class TestRunGrowthAnalysisNuts:
         """NUTS-specific params are forwarded to _run_nuts."""
         run_nuts_mock, _ = self._setup(mocker, tmp_path)
 
-        run_growth_analysis(
+        fit_model(
             config_file="dummy.yaml",
             seed=42,
             analysis_method="nuts",
@@ -135,7 +135,7 @@ class TestRunGrowthAnalysisNuts:
         """analysis_method='nuts' returns (None, mcmc_samples, True)."""
         run_nuts_mock, fake_samples = self._setup(mocker, tmp_path)
 
-        svi_state, params, converged = run_growth_analysis(
+        svi_state, params, converged = fit_model(
             config_file="dummy.yaml",
             seed=42,
             analysis_method="nuts",
@@ -158,11 +158,11 @@ class TestEpochCheckpointIntervalPassthrough:
         _patch_common(mocker)
         run_svi_mock = mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_growth_analysis_cli._run_svi",
+            ".fit_model_cli._run_svi",
             return_value=(MagicMock(), {}, True),
         )
 
-        run_growth_analysis(
+        fit_model(
             config_file="dummy.yaml",
             seed=1,
             analysis_method="svi",
@@ -178,11 +178,11 @@ class TestEpochCheckpointIntervalPassthrough:
         _patch_common(mocker)
         run_map_mock = mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_growth_analysis_cli._run_map",
+            ".fit_model_cli._run_map",
             return_value=(MagicMock(), {}, True),
         )
 
-        run_growth_analysis(
+        fit_model(
             config_file="dummy.yaml",
             seed=1,
             analysis_method="map",
@@ -197,16 +197,16 @@ class TestEpochCheckpointIntervalPassthrough:
         _patch_common(mocker)
         run_map_mock = mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_growth_analysis_cli._run_map",
+            ".fit_model_cli._run_map",
             return_value=(MagicMock(), {}, True),
         )
         mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_growth_analysis_cli._run_svi",
+            ".fit_model_cli._run_svi",
             return_value=(MagicMock(), {}, True),
         )
 
-        run_growth_analysis(
+        fit_model(
             config_file="dummy.yaml",
             seed=1,
             analysis_method="svi",
@@ -222,11 +222,11 @@ class TestEpochCheckpointIntervalPassthrough:
         _patch_common(mocker)
         run_svi_mock = mocker.patch(
             "tfscreen.analysis.hierarchical.growth_model.scripts"
-            ".run_growth_analysis_cli._run_svi",
+            ".fit_model_cli._run_svi",
             return_value=(MagicMock(), {}, True),
         )
 
-        run_growth_analysis(
+        fit_model(
             config_file="dummy.yaml",
             seed=1,
             analysis_method="svi",

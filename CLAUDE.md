@@ -39,8 +39,8 @@ flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127
 ```
 tfs-process-fastq          # FASTQ → read counts
 tfs-process-counts         # counts → ln_cfu DataFrames
-tfs-growth-analysis        # Main hierarchical Bayesian inference
-tfs-configure-growth-analysis  # Generate YAML config template
+tfs-fit-model              # Main hierarchical Bayesian inference
+tfs-configure-model        # Generate YAML config template
 tfs-summarize-posteriors   # Summarize posterior samples
 tfs-predict                # Make predictions from fitted model
 ```
@@ -52,7 +52,7 @@ tfs-predict                # Make predictions from fitted model
 FASTQ files
     → tfs-process-fastq → counts CSV
     → tfs-process-counts → ln_cfu DataFrame
-    → tfs-growth-analysis (with run_config.yaml) → posteriors (HDF5 + pkl)
+    → tfs-fit-model (with run_config.yaml) → posteriors (HDF5 + pkl)
     → tfs-summarize-posteriors → summary CSV
     → tfs-predict → predictions CSV
 ```
@@ -113,7 +113,7 @@ The hierarchical Bayesian inference engine. Key files:
 
 ### Configuration (YAML)
 
-The `run_config.yaml` drives `tfs-growth-analysis`. Key sections:
+The `run_config.yaml` drives `tfs-fit-model`. Key sections:
 - `library`: defines the genetic library (WT sequence, degenerate sites, sub-libraries)
 - `observable_calculator`: thermodynamic model (`lac`, `eee`, `linkage_dimer`) and parameters
 - `condition_blocks`: growth conditions (marker, titrant concentrations, selection timepoints)

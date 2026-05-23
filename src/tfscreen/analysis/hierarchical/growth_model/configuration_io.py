@@ -105,10 +105,10 @@ def _update_dataclass(dc, prefix, flat_dict):
                 return dataclasses.replace(dc, **updates)
     return dc
 
-def write_configuration(gm, 
-                        out_prefix, 
-                        growth_df_path, 
-                        binding_df_path):
+def write_configuration(gm,
+                        out_prefix,
+                        growth_df_path=None,
+                        binding_df_path=None):
     """
     Write model configuration and extracted priors/guesses to files.
 
@@ -141,12 +141,15 @@ def write_configuration(gm,
     priors_path = f"{out_prefix}_priors.csv"
     guesses_path = f"{out_prefix}_guesses.csv"
 
+    data_paths = {}
+    if growth_df_path is not None:
+        data_paths["growth"] = growth_df_path
+    if binding_df_path is not None:
+        data_paths["binding"] = binding_df_path
+
     config = {
         "tfscreen_version": __version__,
-        "data": {
-            "growth": growth_df_path,
-            "binding": binding_df_path
-        },
+        "data": data_paths,
         "components": gm.settings,
         "priors_file": os.path.basename(priors_path),
         "guesses_file": os.path.basename(guesses_path)
@@ -159,10 +162,16 @@ def write_configuration(gm,
 
     # Process array guesses and any others
     tm = gm.growth_tm
-    cond_rep_map = tm.map_groups.get("condition_rep", pd.DataFrame())
-    geno_map = tm.map_groups.get("genotype", pd.DataFrame())
-    theta_map = tm.map_groups.get("theta", pd.DataFrame())
-    ln_cfu0_map = tm.map_groups.get("ln_cfu0", pd.DataFrame())
+    if tm is not None:
+        cond_rep_map = tm.map_groups.get("condition_rep", pd.DataFrame())
+        geno_map = tm.map_groups.get("genotype", pd.DataFrame())
+        theta_map = tm.map_groups.get("theta", pd.DataFrame())
+        ln_cfu0_map = tm.map_groups.get("ln_cfu0", pd.DataFrame())
+    else:
+        cond_rep_map = pd.DataFrame()
+        geno_map = pd.DataFrame()
+        theta_map = pd.DataFrame()
+        ln_cfu0_map = pd.DataFrame()
 
     for k, v in gm.init_params.items():
         if not hasattr(v, 'shape') or len(v.shape) == 0:
@@ -255,8 +264,8 @@ def read_configuration(config_file):
 
     # Check sanity of format and read in data paths and components
     if "data" in config and "components" in config:
-        growth_df_path = config["data"]["growth"]
-        binding_df_path = config["data"]["binding"]
+        growth_df_path = config["data"].get("growth")
+        binding_df_path = config["data"].get("binding")
         settings = config["components"]
     else:
         raise ValueError(f"Configuration file '{config_file}' has an unrecognized format.")

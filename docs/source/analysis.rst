@@ -41,8 +41,8 @@ Direct binding data (optional) helps constrain the occupancy parameters (theta).
 *   **theta_obs**: Observed fractional occupancy (0.0 to 1.0).
 *   **theta_std**: Standard deviation of the ``theta_obs`` measurement.
 
-Step 1: Configuration (``tfs-configure-growth-analysis``)
----------------------------------------------------------
+Step 1: Configuration (``tfs-configure-model``)
+-----------------------------------------------
 
 The first step is to prepare the model configuration. This script validates your input files, maps categorical labels to numerical indices, and sets up the model components.
 
@@ -55,10 +55,10 @@ The first step is to prepare the model configuration. This script validates your
 
 .. code-block:: bash
 
-    tfs-configure-growth-analysis --growth_df library_growth.csv --binding_df binding_data.csv --out_root my_analysis
+    tfs-configure-model --growth_df library_growth.csv --binding_df binding_data.csv --out_root my_analysis
 
-Step 2: Inference (``tfs-growth-analysis``)
--------------------------------------------
+Step 2: Inference (``tfs-fit-model``)
+--------------------------------------
 
 This script performs the actual parameter estimation using the JAX-based inference engine. It supports both Stochastic Variational Inference (SVI) for full posterior estimation and Maximum A Posteriori (MAP) for faster point estimates.
 
@@ -73,7 +73,7 @@ This script performs the actual parameter estimation using the JAX-based inferen
 
 .. code-block:: bash
 
-    tfs-growth-analysis --config_file my_analysis_config.yaml --seed 42 --analysis_method svi
+    tfs-fit-model --config_file my_analysis_config.yaml --seed 42 --analysis_method svi
 
 Step 3: Summarization (``tfs-summarize-posteriors``)
 ----------------------------------------------------
@@ -101,7 +101,7 @@ Finally, you can extract human-readable summaries from the posterior samples.
 Model Components
 ================
 
-The hierarchical model is modular, allowing you to select different sub-models for various physical processes. These are specified during the configuration step (``tfs-configure-growth-analysis``).
+The hierarchical model is modular, allowing you to select different sub-models for various physical processes. These are specified during the configuration step (``tfs-configure-model``).
 
 Condition Growth (``condition_growth_model``)
 ---------------------------------------------

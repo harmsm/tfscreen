@@ -6,12 +6,12 @@ import yaml
 import jax.numpy as jnp
 from unittest.mock import MagicMock, patch
 
-from tfscreen.analysis.hierarchical.growth_model.scripts.configure_growth_analysis_cli import (
-    configure_growth_analysis,
+from tfscreen.analysis.hierarchical.growth_model.scripts.configure_model_cli import (
+    configure_model,
     check_component_compatibility,
     INCOMPATIBLE_CG_TR,
 )
-from tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis_cli import run_growth_analysis
+from tfscreen.analysis.hierarchical.growth_model.scripts.fit_model_cli import fit_model
 from tfscreen.analysis.hierarchical.growth_model.configuration_io import (
     read_configuration,
     _update_dataclass
@@ -19,7 +19,7 @@ from tfscreen.analysis.hierarchical.growth_model.configuration_io import (
 
 @pytest.fixture
 def mock_gm(mocker):
-    mock_gm_class = mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.configure_growth_analysis_cli.GrowthModel")
+    mock_gm_class = mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.configure_model_cli.GrowthModel")
     mock_gm_inst = mock_gm_class.return_value
     
     # Mock settings
@@ -80,7 +80,7 @@ def test_configure_growth_analysis_coverage(mock_gm, tmpdir):
         "unknown_3d": np.zeros((2, 2, 2)) # 3D
     }
     
-    configure_growth_analysis(growth_df="g.csv", binding_df="b.csv", out_prefix=out_prefix)
+    configure_model(growth_df="g.csv", binding_df="b.csv", out_prefix=out_prefix)
     
     assert os.path.exists(f"{out_prefix}_config.yaml")
     assert os.path.exists(f"{out_prefix}_priors.csv")
@@ -175,10 +175,10 @@ def test_read_configuration_errors(tmpdir):
         with pytest.raises(FileNotFoundError, match="Guesses file not found"):
             read_configuration(config_path)
 
-def test_configure_growth_analysis_errors(tmpdir):
+def test_configure_model_errors(tmpdir):
     # Missing dfs
     with pytest.raises(ValueError, match="growth_df and binding_df must be provided"):
-        configure_growth_analysis(growth_df=None, binding_df=None)
+        configure_model(growth_df=None, binding_df=None)
 
 def test_update_dataclass_recursion():
     from dataclasses import dataclass
@@ -317,18 +317,18 @@ def test_mains(mocker):
     # Test main functions via mocker to cover boilerplate
     mocker.patch("sys.argv", ["tfs-configure", "--growth_df", "g.csv", "--binding_df", "b.csv"])
     # Mock the internal call so we don't actually run it
-    mock_run = mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.configure_growth_analysis_cli.configure_growth_analysis", autospec=True)
-    from tfscreen.analysis.hierarchical.growth_model.scripts.configure_growth_analysis_cli import main
+    mock_run = mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.configure_model_cli.configure_model", autospec=True)
+    from tfscreen.analysis.hierarchical.growth_model.scripts.configure_model_cli import main
     main()
     assert mock_run.called
 
     mocker.patch("sys.argv", ["tfs-run", "c.yaml", "--seed", "42"])
-    mock_run_analysis = mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis_cli.run_growth_analysis", autospec=True)
-    from tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis_cli import main as main_run
+    mock_run_analysis = mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.fit_model_cli.fit_model", autospec=True)
+    from tfscreen.analysis.hierarchical.growth_model.scripts.fit_model_cli import main as main_run
     main_run()
     assert mock_run_analysis.called
 
-def test_run_growth_analysis_svi_full(tmpdir, mocker):
+def test_fit_model_svi_full(tmpdir, mocker):
     with patch("os.path.exists", return_value=False):
         config_path = os.path.join(tmpdir, "config.yaml")
         # Minimal valid setup for read_configuration
@@ -336,31 +336,31 @@ def test_run_growth_analysis_svi_full(tmpdir, mocker):
         mock_gm_run.settings = {"batch_size": 256}
         mock_gm_run._ln_cfu_df = "g.csv"
         mock_gm_run._binding_df = "b.csv"
-        mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis_cli.read_configuration", return_value=(mock_gm_run, {"p":1.0}))
-        
+        mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.fit_model_cli.read_configuration", return_value=(mock_gm_run, {"p":1.0}))
+
         # Mock write_configuration to avoid yaml problems with mocks
-        mock_ri_class = mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis_cli.RunInference")
-        mock_svi = mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis_cli._run_svi")
-        mock_map = mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis_cli._run_map")
+        mock_ri_class = mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.fit_model_cli.RunInference")
+        mock_svi = mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.fit_model_cli._run_svi")
+        mock_map = mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.fit_model_cli._run_map")
         mock_map.return_value = (None, {"p":1.1}, True)
 
-        # Test SVI with pre-map. 
-        run_growth_analysis(config_path, seed=42, analysis_method="svi", pre_map_num_epoch=100)
+        # Test SVI with pre-map.
+        fit_model(config_path, seed=42, analysis_method="svi", pre_map_num_epoch=100)
         mock_map.assert_called_once()
         mock_svi.assert_called_once()
-        
+
         # Test MAP
         mock_map.reset_mock()
-        run_growth_analysis(config_path, seed=42, analysis_method="map")
+        fit_model(config_path, seed=42, analysis_method="map")
         mock_map.assert_called_once()
-        
+
         # Test invalid method
         with pytest.raises(ValueError, match="not recognized"):
-            run_growth_analysis(config_path, seed=42, analysis_method="invalid")
+            fit_model(config_path, seed=42, analysis_method="invalid")
 
-def test_run_growth_analysis_no_seed():
+def test_fit_model_no_seed():
     with pytest.raises(ValueError, match="seed must be provided"):
-        run_growth_analysis("c.yaml")
+        fit_model("c.yaml")
 
 
 # ---------------------------------------------------------------------------
@@ -405,11 +405,11 @@ class TestCheckComponentCompatibility:
             assert isinstance(tr, str)
             assert isinstance(reason, str) and len(reason) > 0
 
-    def test_configure_growth_analysis_raises_on_incompatible(self, mock_gm):
-        """configure_growth_analysis must call check_component_compatibility
+    def test_configure_model_raises_on_incompatible(self, mock_gm):
+        """configure_model must call check_component_compatibility
         before building the model."""
         with pytest.raises(ValueError, match="Incompatible model components"):
-            configure_growth_analysis(
+            configure_model(
                 growth_df="g.csv",
                 binding_df="b.csv",
                 condition_growth_model="power",

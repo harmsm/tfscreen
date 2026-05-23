@@ -262,13 +262,13 @@ def _run_svi(ri,
                           num_posterior_samples=num_posterior_samples,
                           sampling_batch_size=sampling_batch_size,
                           forward_batch_size=forward_batch_size)
-        
+
     # Write convergence information to stdout
     if converged:
         print("SVI run converged.",flush=True)
     else:
         print("SVI run has not yet converged.",flush=True)
-    
+
     return svi_state, params, converged
 
 def _run_nuts(ri,
@@ -328,36 +328,36 @@ def _run_nuts(ri,
     return mcmc_samples
 
 
-def run_growth_analysis(config_file,
-                        seed=None,
-                        checkpoint_file=None,
-                        analysis_method="svi",
-                        out_prefix="tfs_growth_analysis",
-                        adam_step_size=1e-3,
-                        adam_final_step_size=1e-6,
-                        adam_clip_norm=1.0,
-                        elbo_num_particles=2,
-                        convergence_tolerance=0.01,
-                        convergence_window=10,
-                        patience=10,
-                        convergence_check_interval=2,
-                        checkpoint_interval=10,
-                        max_num_epochs=100000,
-                        num_posterior_samples=10000,
-                        sampling_batch_size=100,
-                        forward_batch_size=512,
-                        always_get_posterior=False,
-                        pre_map_num_epoch=1000,
-                        init_param_jitter=0.1,
-                        nuts_num_warmup=500,
-                        nuts_num_samples=500,
-                        nuts_num_chains=1,
-                        nuts_target_accept_prob=0.9,
-                        epoch_checkpoint_interval=1000):
+def fit_model(config_file,
+              seed=None,
+              checkpoint_file=None,
+              analysis_method="svi",
+              out_prefix="tfs_fit_model",
+              adam_step_size=1e-3,
+              adam_final_step_size=1e-6,
+              adam_clip_norm=1.0,
+              elbo_num_particles=2,
+              convergence_tolerance=0.01,
+              convergence_window=10,
+              patience=10,
+              convergence_check_interval=2,
+              checkpoint_interval=10,
+              max_num_epochs=100000,
+              num_posterior_samples=10000,
+              sampling_batch_size=100,
+              forward_batch_size=512,
+              always_get_posterior=False,
+              pre_map_num_epoch=1000,
+              init_param_jitter=0.1,
+              nuts_num_warmup=500,
+              nuts_num_samples=500,
+              nuts_num_chains=1,
+              nuts_target_accept_prob=0.9,
+              epoch_checkpoint_interval=1000):
     """
-    Run the joint hierarchical growth model using a previously generated configuration file.
+    Fit the joint hierarchical model using a previously generated configuration file.
 
-    This function extracts estimates of transcription factor fractional occupancy (theta) 
+    This function extracts estimates of transcription factor fractional occupancy (theta)
     and other latent parameters using Stochastic Variational Inference (SVI) or maximum a
     posteriori (MAP) approaches based on the config.
 
@@ -374,7 +374,7 @@ def run_growth_analysis(config_file,
         To draw posterior samples from an existing checkpoint, use tfs-sample-posterior.
     out_prefix : str, optional
         Prefix for all output files: checkpoints, parameter files, and the
-        posterior HDF5 (default 'tfs_growth_analysis'). Files are named
+        posterior HDF5 (default 'tfs_fit_model'). Files are named
         {out_prefix}_checkpoint.pkl, {out_prefix}_params.npz, etc.
     adam_step_size : float, optional
         Starting step size for the Adam optimizer (default 1e-3).
@@ -454,7 +454,7 @@ def run_growth_analysis(config_file,
                 "provide this file as checkpoint_file. To overwrite, delete "
                 "the file or change out_prefix."
             )
-        
+
         if analysis_method == "svi" and pre_map_num_epoch > 0:
             premap_path = f"{out_prefix}_premap_checkpoint.pkl"
             if os.path.exists(premap_path):
@@ -529,7 +529,7 @@ def run_growth_analysis(config_file,
                         always_get_posterior=always_get_posterior,
                         init_param_jitter=init_param_jitter,
                         epoch_checkpoint_interval=epoch_checkpoint_interval)
-                          
+
     elif analysis_method == "nuts":
         mcmc_samples = _run_nuts(ri,
                                  out_prefix=out_prefix,
@@ -548,7 +548,7 @@ def run_growth_analysis(config_file,
         )
 
 def main():
-    return generalized_main(run_growth_analysis,
+    return generalized_main(fit_model,
                             manual_arg_types={"config_file":str,
                                               "seed":int,
                                               "checkpoint_file":str,

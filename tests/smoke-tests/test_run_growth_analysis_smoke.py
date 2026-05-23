@@ -3,7 +3,7 @@ import os
 import h5py
 from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass
 from tfscreen.analysis.hierarchical.growth_model.configuration_io import write_configuration
-from tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis_cli import run_growth_analysis
+from tfscreen.analysis.hierarchical.growth_model.scripts.fit_model_cli import fit_model
 from tfscreen.analysis.hierarchical.growth_model.scripts.sample_posterior_cli import sample_posterior
 
 
@@ -48,7 +48,7 @@ def test_run_growth_analysis_smoke(growth_smoke_csv, binding_smoke_csv, tmpdir):
     
     # 2. Run the analysis using the script entry point
     # We use very small epochs and samples for speed
-    run_growth_analysis(
+    fit_model(
         config_file=config_file,
         seed=42,
         analysis_method="svi",
@@ -92,7 +92,7 @@ def test_run_growth_analysis_nuts_smoke(growth_smoke_csv, binding_smoke_csv, tmp
 
     out_prefix = os.path.join(tmpdir, "nuts_smoke")
 
-    _, mcmc_samples, converged = run_growth_analysis(
+    _, mcmc_samples, converged = fit_model(
         config_file=config_file,
         seed=42,
         analysis_method="nuts",
@@ -146,7 +146,7 @@ def test_run_growth_analysis_nuts_posterior_smoke(growth_smoke_csv, binding_smok
 
     # Step 1: run NUTS to produce a checkpoint
     nuts_root = os.path.join(tmpdir, "nuts_for_post")
-    run_growth_analysis(
+    fit_model(
         config_file=config_file,
         seed=42,
         analysis_method="nuts",

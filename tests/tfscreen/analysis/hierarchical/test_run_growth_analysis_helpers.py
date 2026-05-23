@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, ANY
 import os
 import dill
 
-from tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis_cli import (
+from tfscreen.analysis.hierarchical.growth_model.scripts.fit_model_cli import (
     _run_svi,
     _run_map,
     _run_nuts,
@@ -19,7 +19,7 @@ def mock_run_inference(mocker):
     Mocks the RunInference class and its instance methods.
     """
     # Mock where RunInference is imported in run_growth_analysis
-    mock_ri_class = mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis_cli.RunInference")
+    mock_ri_class = mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.fit_model_cli.RunInference")
     mock_ri_instance = mock_ri_class.return_value
 
     # Setup default returns for instance methods

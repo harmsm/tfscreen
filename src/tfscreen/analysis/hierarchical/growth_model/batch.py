@@ -27,8 +27,9 @@ def get_batch(full_data: DataClass, idx: jnp.ndarray) -> DataClass:
     """
     
     batch_size = len(idx)
-    batch_data = full_data.replace(
-        growth=full_data.growth.replace(
+
+    if full_data.growth is not None:
+        new_growth = full_data.growth.replace(
             batch_size=batch_size,
             batch_idx=idx,
             scale_vector=full_data.growth.scale_vector[...,idx],
@@ -42,6 +43,7 @@ def get_batch(full_data: DataClass, idx: jnp.ndarray) -> DataClass:
             good_mask=full_data.growth.good_mask[...,idx],
             congression_mask=full_data.growth.congression_mask[...,idx],
         )
-    )
+    else:
+        new_growth = None
 
-    return batch_data
+    return full_data.replace(growth=new_growth)

@@ -166,9 +166,9 @@ class DataClass:
     not_binding_batch_size: int = field(pytree_node=False)
     num_binding: int = field(pytree_node=False) 
 
-    # This will be a GrowthData and BindingData
-    growth: GrowthData
-    binding: BindingData
+    # GrowthData when running the joint growth+binding model; None in binding_only mode.
+    growth: Any = field(default=None)
+    binding: BindingData = field(default=None)
 
 
 @dataclass(frozen=True)

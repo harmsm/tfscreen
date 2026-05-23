@@ -26,7 +26,7 @@ from tfscreen.util.cli import generalized_main, read_lines
 from tfscreen.analysis.hierarchical.growth_model.registry import model_registry
 from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass as GrowthModel
 from tfscreen.analysis.hierarchical.growth_model.configuration_io import write_configuration
-from tfscreen.analysis.hierarchical.growth_model.scripts.configure_growth_analysis_cli import (
+from tfscreen.analysis.hierarchical.growth_model.scripts.configure_model_cli import (
     INCOMPATIBLE_CG_TR,
 )
 
@@ -37,7 +37,7 @@ _SEP = "__"
 _GRID_AXES = ("condition_growth", "growth_transition", "theta_rescale")
 
 # Alias so the test suite can import _INCOMPATIBLE_CG_TR from this module.
-# The canonical definition and rationale live in configure_growth_analysis.py.
+# The canonical definition and rationale live in configure_model_cli.py.
 _INCOMPATIBLE_CG_TR = INCOMPATIBLE_CG_TR
 
 # Fixed out_prefix used inside every per-combination run.

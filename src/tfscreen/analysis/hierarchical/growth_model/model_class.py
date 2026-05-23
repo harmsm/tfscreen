@@ -198,7 +198,7 @@ def _build_growth_tm(growth_df, growth_shares_replicates=False):
 
 
 def _read_binding_df(binding_df,
-                     growth_df,
+                     growth_df=None,
                      theta_group_cols=None):
     """
     Reads and processes a DataFrame containing direct binding data.
@@ -243,15 +243,16 @@ def _read_binding_df(binding_df,
     tfscreen.util.dataframe.check_columns(binding_df,required_columns=required)
 
 
-    cols = ["genotype","titrant_name"]
-    binding_seen = binding_df[cols].drop_duplicates().set_index(cols)
-    growth_seen = growth_df[cols].drop_duplicates().set_index(cols)
-    is_subset = binding_seen.index.isin(growth_seen.index).all()
-    if not is_subset:
-        raise ValueError(
-            "binding_df contains genotype/titrant_name pairs that were not seen "
-            "in the growth_df."
-        )
+    if growth_df is not None:
+        cols = ["genotype","titrant_name"]
+        binding_seen = binding_df[cols].drop_duplicates().set_index(cols)
+        growth_seen = growth_df[cols].drop_duplicates().set_index(cols)
+        is_subset = binding_seen.index.isin(growth_seen.index).all()
+        if not is_subset:
+            raise ValueError(
+                "binding_df contains genotype/titrant_name pairs that were not seen "
+                "in the growth_df."
+            )
 
     return binding_df
 
@@ -434,6 +435,7 @@ class ModelClass:
                  growth_df,
                  binding_df,
                  batch_size=None,
+                 binding_only=False,
                  condition_growth="linear",
                  growth_transition="instant",
                  ln_cfu0="hierarchical",
@@ -453,6 +455,7 @@ class ModelClass:
         self._binding_df = binding_df
 
         self._batch_size = batch_size
+        self._binding_only = binding_only
 
         self._condition_growth = condition_growth
         self._growth_transition = growth_transition
@@ -486,12 +489,16 @@ class ModelClass:
             and final `DataClass` Pytrees.
         5.  Sets the final `self._data` attribute.
         """
+        if self._binding_only:
+            self._initialize_binding_only_data()
+            return
+
         # ---------------------------------------------------------------------
         # growth dataclass
 
         # Load in growth data, creating two blocks of tensors. One holds the
-        # growth (replicate,time,condition,genotype) data. The other holds 
-        # the theta (titrant_conc,theta_group) tensor. 
+        # growth (replicate,time,condition,genotype) data. The other holds
+        # the theta (titrant_conc,theta_group) tensor.
         self.growth_df = _read_growth_df(self._ln_cfu_df)
         self.growth_tm = _build_growth_tm(self.growth_df, self._growth_shares_replicates)
                    
@@ -782,6 +789,111 @@ class ModelClass:
                                         sources=source_data)
         
     
+    def _initialize_binding_only_data(self):
+        """
+        Data pipeline for binding-only inference.
+
+        Reads and tensors only the binding DataFrame; no growth data is needed.
+        The resulting DataClass has ``growth=None`` and all genotypes treated as
+        binding genotypes (no growth-only genotypes).
+        """
+
+        self.growth_df = None
+        self.growth_tm = None
+        self.mut_labels = []
+        self.pair_labels = []
+
+        # Read binding data (no growth_df → subset check is skipped)
+        self.binding_df = _read_binding_df(self._binding_df, growth_df=None)
+        self.binding_tm = _build_binding_tm(self.binding_df)
+
+        num_genotype = self.binding_tm.tensor_shape[-1]
+
+        # Build binding tensor sources
+        sizes = {"num_titrant_name": self.binding_tm.tensor_shape[0],
+                 "num_titrant_conc":  self.binding_tm.tensor_shape[1],
+                 "num_genotype":      num_genotype}
+        other_data = {"scatter_theta": 0}
+
+        conc_dim = np.where(np.array(self.binding_tm.tensor_dim_names) == "titrant_conc")[0][0]
+        titrant_conc = np.array(self.binding_tm.tensor_dim_labels[conc_dim])
+        log_titrant_conc = titrant_conc.copy()
+        log_titrant_conc[log_titrant_conc == 0] = ZERO_CONC_VALUE
+        log_titrant_conc = np.log(log_titrant_conc)
+        other_data["titrant_conc"] = titrant_conc
+        other_data["log_titrant_conc"] = log_titrant_conc
+
+        binding_data_sources = [self.binding_tm.tensors, sizes, other_data]
+
+        # Mutation decomposition matrices for mutation-level theta components
+        _needs_mut = self._theta in ("hill_mut",
+                                     "lac_dimer_mut",
+                                     "lac_dimer_lnK_mut",
+                                     "lac_dimer_lnK_nn_prior",
+                                     "lac_dimer_lnK_ddG_prior",
+                                     "lac_dimer_unfolded_lnK_nn_prior",
+                                     "lac_dimer_unfolded_lnK_ddG_prior",
+                                     "mwc_dimer_lnK_mut",
+                                     "mwc_dimer_lnK_nn_prior",
+                                     "mwc_dimer_lnK_ddG_prior",
+                                     "mwc_dimer_unfolded_lnK_nn_prior",
+                                     "mwc_dimer_unfolded_lnK_ddG_prior")
+
+        _struct_models = ("lac_dimer_lnK_nn_prior", "lac_dimer_unfolded_lnK_nn_prior",
+                          "mwc_dimer_lnK_nn_prior", "mwc_dimer_unfolded_lnK_nn_prior",
+                          "lac_dimer_lnK_ddG_prior", "lac_dimer_unfolded_lnK_ddG_prior",
+                          "mwc_dimer_lnK_ddG_prior", "mwc_dimer_unfolded_lnK_ddG_prior")
+        if self._theta in _struct_models:
+            raise NotImplementedError(
+                f"theta='{self._theta}' is not yet supported in binding_only mode."
+            )
+
+        if _needs_mut:
+            _geno_idx = self.binding_tm.tensor_dim_names.index("genotype")
+            _genotypes = list(self.binding_tm.tensor_dim_labels[_geno_idx])
+            from tfscreen.genetics import build_mut_geno_matrix
+            from tfscreen.genetics.build_mut_geno_matrix import build_mut_sparse_indices
+            (mut_labels, pair_labels,
+             mut_geno_matrix,
+             pair_nnz_pair_idx,
+             pair_nnz_geno_idx) = build_mut_geno_matrix(
+                _genotypes, skip_pairs=not self._epistasis
+            )
+            mut_nnz_mut_idx, mut_nnz_geno_idx = build_mut_sparse_indices(mut_geno_matrix)
+            self.mut_labels = mut_labels
+            self.pair_labels = pair_labels
+            binding_data_sources.append({
+                "num_mutation":      len(mut_labels),
+                "num_pair":          len(pair_labels),
+                "mut_geno_matrix":   mut_geno_matrix,
+                "mut_nnz_mut_idx":   mut_nnz_mut_idx,
+                "mut_nnz_geno_idx":  mut_nnz_geno_idx,
+                "pair_nnz_pair_idx": pair_nnz_pair_idx,
+                "pair_nnz_geno_idx": pair_nnz_geno_idx,
+            })
+
+        # All genotypes are binding genotypes; no growth-only genotypes
+        batch_idx = np.arange(num_genotype, dtype=int)
+        binding_data_sources.append({
+            "batch_idx":      batch_idx,
+            "batch_size":     num_genotype,
+            "scale_vector":   np.ones(num_genotype, dtype=float),
+            "geno_theta_idx": batch_idx,
+        })
+
+        binding_dataclass = populate_dataclass(BindingData, sources=binding_data_sources)
+
+        self._data = populate_dataclass(DataClass, sources=[{
+            "growth":                 None,
+            "binding":                binding_dataclass,
+            "num_genotype":           num_genotype,
+            "batch_idx":              batch_idx,
+            "batch_size":             num_genotype,
+            "not_binding_idx":        np.array([], dtype=int),
+            "not_binding_batch_size": 0,
+            "num_binding":            num_genotype,
+        }])
+
     def _initialize_classes(self):
         """
         Initializes the control, priors, and init_params objects.
@@ -811,24 +923,28 @@ class ModelClass:
         # for "dk_geno", `self._dk_geno` could be 'fixed' or 'hierarchical'. 
         # The last value determines whether this is used to initialize the 
         # data.growth and data.binding. 
-        load_map = [("condition_growth",self._condition_growth,"growth"),
-                    ("growth_transition",self._growth_transition,"growth"),
-                    ("ln_cfu0",self._ln_cfu0,"growth"),
-                    ("dk_geno",self._dk_geno,"growth"),
-                    ("activity",self._activity,"growth"),
-                    ("theta",self._theta,"theta"),
-                    ("transformation",self._transformation,"growth"),
-                    ("theta_growth_noise",self._theta_growth_noise,"growth"),
-                    ("theta_binding_noise",self._theta_binding_noise,"binding")]
-        
+        if self._binding_only:
+            load_map = [("theta", self._theta, "theta"),
+                        ("theta_binding_noise", self._theta_binding_noise, "binding")]
+        else:
+            load_map = [("condition_growth", self._condition_growth, "growth"),
+                        ("growth_transition", self._growth_transition, "growth"),
+                        ("ln_cfu0", self._ln_cfu0, "growth"),
+                        ("dk_geno", self._dk_geno, "growth"),
+                        ("activity", self._activity, "growth"),
+                        ("theta", self._theta, "theta"),
+                        ("transformation", self._transformation, "growth"),
+                        ("theta_growth_noise", self._theta_growth_noise, "growth"),
+                        ("theta_binding_noise", self._theta_binding_noise, "binding")]
+
         main_control_kwargs = {"is_guide":False}
         guide_control_kwargs = {"is_guide":True}
         priors_class_kwargs = {"growth":{},"binding":{},"theta":{}}
         init_params = {}
         for to_load in load_map:
-    
+
             key, value, prior_group = to_load
-    
+
             if key not in model_registry:
                 raise ValueError(
                     f"{key} is not in model_registry. "
@@ -840,12 +956,15 @@ class ModelClass:
                     f"{key} '{value}' not recognized. "
                     f"It should be one of: {list(model_registry[key].keys())}"
                 )
-    
+
             # get the component module
             component_module = model_registry[key][value]
 
-            # Pick the right data pytree for this component
+            # Pick the right data pytree for this component.
+            # In binding_only mode theta uses binding data as its source.
             if prior_group == "binding":
+                component_data = self._data.binding
+            elif prior_group == "theta" and self._binding_only:
                 component_data = self._data.binding
             else:
                 component_data = self._data.growth
@@ -902,12 +1021,16 @@ class ModelClass:
         main_control_kwargs["theta_rescale"] = rescale_fn
         guide_control_kwargs["theta_rescale"] = rescale_fn
 
-        # Set the observables
+        # Set the observables; growth observer is only needed in the full model
         main_control_kwargs["observe_binding"] = model_registry["observe_binding"].observe
-        main_control_kwargs["observe_growth"] = model_registry["observe_growth"].observe
-        
         guide_control_kwargs["observe_binding"] = model_registry["observe_binding"].guide
-        guide_control_kwargs["observe_growth"] = model_registry["observe_growth"].guide
+        if not self._binding_only:
+            main_control_kwargs["observe_growth"] = model_registry["observe_growth"].observe
+            guide_control_kwargs["observe_growth"] = model_registry["observe_growth"].guide
+
+        if self._binding_only:
+            main_control_kwargs["binding_only"] = True
+            guide_control_kwargs["binding_only"] = True
 
         # Store main control kwargs for later
         self.main_control_kwargs = main_control_kwargs
@@ -915,10 +1038,21 @@ class ModelClass:
         # bake the control arguments into the main and guide models
         self._jax_model = partial(jax_model, **main_control_kwargs)
         self._jax_model_guide = partial(jax_model, **guide_control_kwargs)
-                
+
         # Build priors class
-        growth_priors = populate_dataclass(GrowthPriors,
-                                           sources=priors_class_kwargs["growth"])
+        if self._binding_only:
+            growth_priors = GrowthPriors(
+                condition_growth=None,
+                growth_transition=None,
+                ln_cfu0=None,
+                dk_geno=None,
+                activity=None,
+                transformation=None,
+                theta_growth_noise=None
+            )
+        else:
+            growth_priors = populate_dataclass(GrowthPriors,
+                                               sources=priors_class_kwargs["growth"])
         binding_priors = populate_dataclass(BindingPriors,
                                             sources=priors_class_kwargs["binding"])
         priors = populate_dataclass(PriorsClass,
@@ -1036,6 +1170,7 @@ class ModelClass:
 
         return {
             "batch_size":self._batch_size,
+            "binding_only":self._binding_only,
             "condition_growth":self._condition_growth,
             "growth_transition":self._growth_transition,
             "ln_cfu0":self._ln_cfu0,

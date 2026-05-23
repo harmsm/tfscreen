@@ -628,7 +628,7 @@ def _resolve_csv_paths(config_file):
 
 
 # ---------------------------------------------------------------------------
-# MAP execution (mirrors run_growth_analysis._run_map but trimmed)
+# MAP execution (mirrors fit_model._run_map but trimmed)
 # ---------------------------------------------------------------------------
 
 def _run_calibration_map(ri,
@@ -648,7 +648,7 @@ def _run_calibration_map(ri,
                          init_param_jitter,
                          epoch_checkpoint_interval):
     """Set up a MAP SVI optimizer and run it; return ``(svi_state, params,
-    converged)``.  Behaviour mirrors ``run_growth_analysis._run_map`` but
+    converged)``.  Behaviour mirrors ``fit_model._run_map`` but
     the ``always_get_posterior`` plumbing is dropped (the pre-fit only
     consumes MAP point estimates and Hessian-derived sigmas)."""
     schedule = optax.exponential_decay(
@@ -1320,7 +1320,7 @@ def run_prefit_calibration(config_file,
     init_param_jitter : float, optional
         Jitter added to initial parameters to break symmetry (default 0.0).
         The pre-fit benefits from determinism given a seed, so this is 0
-        by default (unlike tfs-growth-analysis which defaults to 0.1).
+        by default (unlike tfs-fit-model which defaults to 0.1).
     epoch_checkpoint_interval : int or None, optional
         Frequency (in epochs) to write numbered epoch checkpoints to a
         ``checkpoints/`` subdirectory (default 0). Set to 0 or None to

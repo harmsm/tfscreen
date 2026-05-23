@@ -25,7 +25,7 @@ def extract_params(config_file, checkpoints_file, out_prefix="tfs_params"):
        checkpoint.
     2. Tracking parameter stability across training — pass multiple
        checkpoints from the ``checkpoints/`` subdirectory written by
-       ``tfs-growth-analysis``.
+       ``tfs-fit-model``.
 
     Only MAP (AutoDelta) checkpoints are supported.  SVI and NUTS checkpoints
     will raise a ``ValueError`` with a helpful message.

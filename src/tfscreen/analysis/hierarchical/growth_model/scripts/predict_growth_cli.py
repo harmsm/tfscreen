@@ -36,7 +36,7 @@ def predict_growth(config_file,
         Path to the YAML configuration file.
     param_file : str
         Path to a posterior .h5 file produced by tfs-sample-posterior, or a
-        MAP checkpoint .pkl file produced by tfs-growth-analysis.  When a
+        MAP checkpoint .pkl file produced by tfs-fit-model.  When a
         .pkl file is supplied the MAP point estimate is used: a 1-sample
         posterior is written to {out_prefix}_map_posterior.h5 and predictions
         are made at that single parameter set.  NUTS and SVI checkpoints are

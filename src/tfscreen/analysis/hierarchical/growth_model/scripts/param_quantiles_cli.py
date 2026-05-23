@@ -32,7 +32,7 @@ def param_quantiles(config_file,
 
     if not os.path.exists(posterior_file):
         # Accept an out_prefix instead of a full path: try the conventions used
-        # by tfs-sample-posterior ({prefix}.h5) and tfs-growth-analysis
+        # by tfs-sample-posterior ({prefix}.h5) and tfs-fit-model
         # ({prefix}_posterior.h5 / {prefix}_posterior.npz).
         if os.path.exists(f"{posterior_file}.h5"):
             posterior_file = f"{posterior_file}.h5"

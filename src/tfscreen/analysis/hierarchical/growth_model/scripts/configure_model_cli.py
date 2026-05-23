@@ -51,26 +51,27 @@ def check_component_compatibility(condition_growth_model, theta_rescale_model):
         )
 
 
-def configure_growth_analysis(growth_df=None,
-                              binding_df=None,
-                              out_prefix="tfs_configure",
-                              condition_growth_model="linear",
-                              growth_transition_model="instant",
-                              ln_cfu0_model="hierarchical",
-                              dk_geno_model="hierarchical",
-                              activity_model="horseshoe",
-                              theta_model="hill",
-                              transformation_model="empirical",
-                              theta_rescale_model="passthrough",
-                              theta_growth_noise_model="zero",
-                              theta_binding_noise_model="zero",
-                              spiked=None,
-                              growth_shares_replicates=False,
-                              epistasis=False,
-                              struct_ensemble_path=None,
-                              batch_size=1024):
+def configure_model(growth_df=None,
+                    binding_df=None,
+                    binding_only=False,
+                    out_prefix="tfs_configure",
+                    condition_growth_model="linear",
+                    growth_transition_model="instant",
+                    ln_cfu0_model="hierarchical",
+                    dk_geno_model="hierarchical",
+                    activity_model="horseshoe",
+                    theta_model="hill",
+                    transformation_model="empirical",
+                    theta_rescale_model="passthrough",
+                    theta_growth_noise_model="zero",
+                    theta_binding_noise_model="zero",
+                    spiked=None,
+                    growth_shares_replicates=False,
+                    epistasis=False,
+                    struct_ensemble_path=None,
+                    batch_size=1024):
     """
-    Build and write the YAML configuration files needed by tfs-growth-analysis.
+    Build and write the YAML configuration files needed by tfs-fit-model.
 
     Constructs a GrowthModel from the supplied data and model-component choices,
     then writes three files: {out_prefix}_config.yaml (the main configuration),
@@ -91,7 +92,7 @@ def configure_growth_analysis(growth_df=None,
         {out_prefix}_priors.csv, {out_prefix}_guesses.csv).
         Default 'tfs_configure'.
     condition_growth_model: str, optional
-        Model to use to describe growth under different conditions (e.g., 
+        Model to use to describe growth under different conditions (e.g.,
         pheS+4CP). Allowed values are 'linear' (default), 'linear_independent',
         'linear_fixed', 'power', or 'saturation'.
     growth_transition_model : str, optional
@@ -100,7 +101,7 @@ def configure_growth_analysis(growth_df=None,
         or 'baranyi'.
     ln_cfu0_model : str, optional
         Model to use to describe ln_cfu0, the initial populations of genotypes
-        in each replicate. Only 'hierarchical' is allowed at this point. 
+        in each replicate. Only 'hierarchical' is allowed at this point.
     dk_geno_model : str, optional
         Model to use to describe dk_geno, the pleiotropic effect of a genotype
         on growth, independent of occupancy. Allowed values are 'hierarchical'
@@ -124,10 +125,10 @@ def configure_growth_analysis(growth_df=None,
         values are 'passthrough' (default, identity) or 'logit' (maps theta to
         log(theta/(1-theta)), expanding the dynamic range at both extremes).
     theta_growth_noise_model : str, optional
-        Model to use for stochastic experimental noise in theta measured by 
+        Model to use for stochastic experimental noise in theta measured by
         bacterial growth. Allowed values are 'beta' (default) or 'zero'.
     theta_binding_noise_model : str, optional
-        Model to use for stochastic experimental noise in theta measured by 
+        Model to use for stochastic experimental noise in theta measured by
         binding. Allowed values are 'beta' (default) or 'zero'.
     spiked : list or str, optional
         Names of genotypes that should be excluded from congression
@@ -157,14 +158,18 @@ def configure_growth_analysis(growth_df=None,
     -------
     None
     """
-    if growth_df is None or binding_df is None:
-        raise ValueError("growth_df and binding_df must be provided")
-
-    check_component_compatibility(condition_growth_model, theta_rescale_model)
+    if binding_only:
+        if binding_df is None:
+            raise ValueError("binding_df is required when binding_only=True")
+    else:
+        if growth_df is None or binding_df is None:
+            raise ValueError("growth_df and binding_df must be provided")
+        check_component_compatibility(condition_growth_model, theta_rescale_model)
 
     # Initialize model to build mappings and get guesses
     gm = GrowthModel(growth_df,
                      binding_df,
+                     binding_only=binding_only,
                      condition_growth=condition_growth_model,
                      growth_transition=growth_transition_model,
                      ln_cfu0=ln_cfu0_model,
@@ -183,15 +188,17 @@ def configure_growth_analysis(growth_df=None,
 
     # Write the model configuration to a file. This includes the model component
     # names, the data file paths, and the parameter guesses/priors.
+    growth_path = None if binding_only else (growth_df if isinstance(growth_df, str) else "growth.csv")
     write_configuration(gm=gm,
                         out_prefix=out_prefix,
-                        growth_df_path=growth_df if isinstance(growth_df, str) else "growth.csv",
+                        growth_df_path=growth_path,
                         binding_df_path=binding_df if isinstance(binding_df, str) else "binding.csv")
 
 def main():
-    return generalized_main(configure_growth_analysis,
+    return generalized_main(configure_model,
                             manual_arg_types={"growth_df":str,
                                               "binding_df":str,
+                                              "binding_only":bool,
                                               "spiked":list,
                                               "struct_ensemble_path":str,
                                               "batch_size":int},

@@ -2,7 +2,7 @@ import os
 import dill
 from tfscreen.analysis.hierarchical.growth_model.configuration_io import read_configuration
 from tfscreen.analysis.hierarchical.run_inference import RunInference
-from tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis_cli import _run_svi
+from tfscreen.analysis.hierarchical.growth_model.scripts.fit_model_cli import _run_svi
 from tfscreen.util.cli.generalized_main import generalized_main
 
 
@@ -30,7 +30,7 @@ def sample_posterior(config_file,
     config_file : str
         Path to the YAML configuration file used when fitting the model.
     checkpoint_file : str
-        Path to the checkpoint .pkl file produced by tfs-growth-analysis or
+        Path to the checkpoint .pkl file produced by tfs-fit-model or
         tfs-prefit-calibration.
     out_prefix : str, optional
         Prefix for the posterior output file (default 'tfs_posterior').
@@ -50,7 +50,7 @@ def sample_posterior(config_file,
     if not os.path.isfile(checkpoint_file):
         raise FileNotFoundError(
             f"Checkpoint file not found: '{checkpoint_file}'. "
-            "Run tfs-growth-analysis first to produce a checkpoint."
+            "Run tfs-fit-model first to produce a checkpoint."
         )
 
     gm, init_params = read_configuration(config_file)
