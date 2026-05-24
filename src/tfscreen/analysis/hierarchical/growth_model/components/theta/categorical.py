@@ -494,6 +494,7 @@ def compute_theta_samples(calc_df, param_posteriors):
     theta_samples : np.ndarray, shape (S, N)
         Posterior theta at each row of calc_df.
     """
+    import warnings
     from tfscreen.analysis.hierarchical.posteriors import get_posterior_samples
 
     def _load_global(key):
@@ -514,6 +515,27 @@ def compute_theta_samples(calc_df, param_posteriors):
     # (S, N_name, N_conc, N_geno).  It may be an h5py Dataset (lazy).
     offset_raw = get_posterior_samples(param_posteriors, "theta_logit_theta_offset")
 
+    # MAP checkpoints trained with batch_size < N_geno store only batch_size
+    # offset parameters.  On GPU, jnp.take with out-of-bounds indices returns
+    # NaN rather than clipping, so the HDF5 contains NaN for genotypes beyond
+    # the first batch_size.  Detect this and fall back to offset=0 (i.e.
+    # theta = sigmoid(hyper_loc), the population mean) for those genotypes.
+    stored_n_geno = offset_raw.shape[-1]
+    required_n_geno = int(calc_df["genotype_idx"].max()) + 1
+    partial_offset = stored_n_geno < required_n_geno
+    if partial_offset:
+        warnings.warn(
+            f"theta_logit_theta_offset has {stored_n_geno} genotype entries "
+            f"but {required_n_geno} are needed.  This happens when MAP "
+            f"training uses batch_size ({stored_n_geno}) < N_geno "
+            f"({required_n_geno}): AutoDelta only stores parameters for the "
+            f"initial batch.  Genotypes beyond the first {stored_n_geno} will "
+            f"be assigned theta = sigmoid(hyper_loc) (the population mean). "
+            f"For per-genotype theta estimates, use SVI and tfs-sample-posterior.",
+            UserWarning,
+            stacklevel=2,
+        )
+
     S = hyper_loc.shape[0]
     N = len(calc_df)
     result = np.empty((S, N))
@@ -526,11 +548,24 @@ def compute_theta_samples(calc_df, param_posteriors):
         gi      = group["genotype_idx"].values.astype(int)
         row_pos = group.index.values
 
-        if isinstance(offset_raw, np.ndarray):
-            off_sel = offset_raw[:, ni, ci, gi]            # (S, n_group)
+        if partial_offset:
+            in_range  = gi < stored_n_geno
+            gi_safe   = np.clip(gi, 0, stored_n_geno - 1)
         else:
-            # HDF5: load the (S, N_geno) slice for this (ni, ci), then select gi
-            off_sel = np.asarray(offset_raw[:, ni, ci, :])[:, gi]  # (S, n_group)
+            in_range  = np.ones(len(gi), dtype=bool)
+            gi_safe   = gi
+
+        if isinstance(offset_raw, np.ndarray):
+            off_sel = offset_raw[:, ni, ci, gi_safe]            # (S, n_group)
+        else:
+            # HDF5: load the (S, stored_n_geno) slice for this (ni, ci), then index
+            off_sel = np.asarray(offset_raw[:, ni, ci, :])[:, gi_safe]  # (S, n_group)
+
+        # Zero out offsets for genotypes beyond the stored range so they get
+        # theta = sigmoid(hyper_loc) rather than a clipped/wrong value.
+        if partial_offset and not in_range.all():
+            off_sel = off_sel.copy()
+            off_sel[:, ~in_range] = 0.0
 
         lh_loc   = hyper_loc[:, ni, ci, np.newaxis]    # (S, 1)
         lh_scale = hyper_scale[:, ni, ci, np.newaxis]  # (S, 1)

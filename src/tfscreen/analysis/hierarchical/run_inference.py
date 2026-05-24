@@ -943,8 +943,17 @@ class RunInference:
             end_idx = min(start_idx + forward_batch_size, total_num_genotypes)
             batch_indices = jnp.arange(start_idx, end_idx)
 
+            # Clip indices to the valid range for each latent before calling
+            # jnp.take.  On GPU, out-of-bounds jnp.take returns NaN; on CPU it
+            # usually clips silently.  MAP checkpoints trained with
+            # batch_size < N_geno have latent parameters sized to batch_size,
+            # so indices beyond that range must be clipped explicitly.
+            def _safe_take(v, idx, axis):
+                n = v.shape[axis if axis >= 0 else len(v.shape) + axis]
+                return jnp.take(v, jnp.clip(idx, 0, n - 1), axis=axis)
+
             batch_latents = {
-                k: jnp.take(v, batch_indices, axis=dim_map[k])
+                k: _safe_take(v, batch_indices, dim_map[k])
                 if k in dim_map else v
                 for k, v in latent_samples.items()
             }

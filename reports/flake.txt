@@ -526,10 +526,14 @@
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:288:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:417:41: E127 continuation line over-indented for visual indent
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:457:27: E127 continuation line over-indented for visual indent
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:509:14: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:526:11: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:535:15: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:541:18: W292 no newline at end of file
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:510:14: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:548:11: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:552:21: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:553:20: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:555:21: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:556:20: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:570:15: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:576:18: W292 no newline at end of file
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:6:1: F401 'flax.struct.field' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:108:14: E221 multiple spaces before operator
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:114:15: E221 multiple spaces before operator
@@ -2367,20 +2371,20 @@
 ./src/tfscreen/analysis/hierarchical/run_inference.py:842:41: E231 missing whitespace after ','
 ./src/tfscreen/analysis/hierarchical/run_inference.py:844:32: E231 missing whitespace after ','
 ./src/tfscreen/analysis/hierarchical/run_inference.py:844:42: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:895:5: C901 'RunInference.get_map_posteriors' is too complex (12)
-./src/tfscreen/analysis/hierarchical/run_inference.py:1058:9: F841 local variable 'D' is assigned to but never used
-./src/tfscreen/analysis/hierarchical/run_inference.py:1083:50: E127 continuation line over-indented for visual indent
-./src/tfscreen/analysis/hierarchical/run_inference.py:1124:29: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/run_inference.py:1127:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:1132:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:1140:35: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/run_inference.py:1144:30: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:1147:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:1151:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:1157:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:1160:5: C901 'RunInference.get_laplace_posteriors' is too complex (16)
-./src/tfscreen/analysis/hierarchical/run_inference.py:1366:5: C901 'RunInference.get_nuts_posteriors' is too complex (12)
-./src/tfscreen/analysis/hierarchical/run_inference.py:1482:9: F811 redefinition of unused 'init_to_value' from line 9
+./src/tfscreen/analysis/hierarchical/run_inference.py:895:5: C901 'RunInference.get_map_posteriors' is too complex (13)
+./src/tfscreen/analysis/hierarchical/run_inference.py:1067:9: F841 local variable 'D' is assigned to but never used
+./src/tfscreen/analysis/hierarchical/run_inference.py:1092:50: E127 continuation line over-indented for visual indent
+./src/tfscreen/analysis/hierarchical/run_inference.py:1133:29: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/run_inference.py:1136:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:1141:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:1149:35: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/run_inference.py:1153:30: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:1156:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:1160:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:1166:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:1169:5: C901 'RunInference.get_laplace_posteriors' is too complex (16)
+./src/tfscreen/analysis/hierarchical/run_inference.py:1375:5: C901 'RunInference.get_nuts_posteriors' is too complex (12)
+./src/tfscreen/analysis/hierarchical/run_inference.py:1491:9: F811 redefinition of unused 'init_to_value' from line 9
 ./src/tfscreen/analysis/hierarchical/tensor_manager.py:13:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/hierarchical/tensor_manager.py:52:22: E231 missing whitespace after ','
 ./src/tfscreen/analysis/hierarchical/tensor_manager.py:52:27: W291 trailing whitespace
@@ -9758,7 +9762,7 @@
 27    E202 whitespace before ']'
 6     E203 whitespace before ':'
 5     E211 whitespace before '('
-1638  E221 multiple spaces before operator
+1642  E221 multiple spaces before operator
 26    E222 multiple spaces after operator
 20    E225 missing whitespace around operator
 1587  E231 missing whitespace after ','
@@ -9793,4 +9797,4 @@
 115   W292 no newline at end of file
 2594  W293 blank line contains whitespace
 47    W391 blank line at end of file
-9745
+9749
