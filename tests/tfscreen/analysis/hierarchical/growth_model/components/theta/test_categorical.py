@@ -1,5 +1,7 @@
 import pytest
 import jax.numpy as jnp
+import numpy as np
+import pandas as pd
 import numpyro.distributions as dist
 from numpyro.handlers import trace, substitute, seed
 from collections import namedtuple
@@ -13,7 +15,9 @@ from tfscreen.analysis.hierarchical.growth_model.components.theta.categorical im
     run_model,
     get_hyperparameters,
     get_guesses,
-    get_priors
+    get_priors,
+    build_calc_df,
+    compute_theta_samples,
 )
 
 # --- Mock Data Fixture ---
@@ -219,14 +223,139 @@ def test_population_moments_logic(mock_data):
     """
     name = "test_moments"
     priors = get_priors()
-    
+
     with seed(rng_seed=0):
         theta_param = define_model(name, mock_data, priors)
-        
+
     from tfscreen.analysis.hierarchical.growth_model.components.theta.categorical import get_population_moments
     mu, sigma = get_population_moments(theta_param, mock_data)
-    
+
     assert mu.shape == (mock_data.num_titrant_name, mock_data.num_titrant_conc, 1)
     assert sigma.shape == (mock_data.num_titrant_name, mock_data.num_titrant_conc, 1)
     # Check sigma is positive
     assert jnp.all(sigma > 0)
+
+
+# ---------------------------------------------------------------------------
+# Fixtures for build_calc_df / compute_theta_samples
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def training_df():
+    """
+    Minimal growth_tm.df with all columns needed by build_calc_df.
+    Layout: 2 titrant_names x 2 titrant_concs x 3 genotypes = 12 unique rows.
+    """
+    rows = []
+    for ni, tname in enumerate(["IPTG", "aTc"]):
+        for ci, tconc in enumerate([0.0, 1.0]):
+            for gi, geno in enumerate(["wt", "M1A", "K2R"]):
+                rows.append({
+                    "genotype": geno,
+                    "titrant_name": tname,
+                    "titrant_conc": tconc,
+                    "titrant_name_idx": ni,
+                    "titrant_conc_idx": ci,
+                    "genotype_idx": gi,
+                })
+    return pd.DataFrame(rows)
+
+
+class MockGrowthTM:
+    def __init__(self, df):
+        self.df = df
+
+
+class MockModel:
+    def __init__(self, df):
+        self.growth_tm = MockGrowthTM(df)
+
+
+@pytest.fixture
+def mock_model(training_df):
+    return MockModel(training_df)
+
+
+@pytest.fixture
+def posterior_theta(training_df):
+    """
+    Fake theta_theta posterior of shape (S=5, N_name=2, N_conc=2, N_geno=3).
+    Values are set so that theta[s, name_idx, conc_idx, geno_idx] = s * 100 + name_idx * 10 + conc_idx * 3 + geno_idx,
+    making correctness of the index lookups easy to verify.
+    """
+    S, N_name, N_conc, N_geno = 5, 2, 2, 3
+    arr = np.zeros((S, N_name, N_conc, N_geno))
+    for s in range(S):
+        for n in range(N_name):
+            for c in range(N_conc):
+                for g in range(N_geno):
+                    arr[s, n, c, g] = s * 100 + n * 10 + c * 3 + g
+    return {"theta_theta": arr}
+
+
+# ---------------------------------------------------------------------------
+# Tests for build_calc_df
+# ---------------------------------------------------------------------------
+
+class TestBuildCalcDf:
+
+    def test_default_returns_all_training_rows(self, mock_model, training_df):
+        calc_df, internal_cols, extra = build_calc_df(mock_model, None)
+        assert set(["genotype", "titrant_name", "titrant_conc"]).issubset(calc_df.columns)
+        assert len(calc_df) == len(training_df)
+        assert extra == {}
+
+    def test_internal_cols_stripped_key(self, mock_model):
+        _, internal_cols, _ = build_calc_df(mock_model, None)
+        assert set(internal_cols) == {"titrant_name_idx", "titrant_conc_idx", "genotype_idx"}
+
+    def test_manual_titrant_df_filters_to_known_concs(self, mock_model):
+        manual = pd.DataFrame({"titrant_name": ["IPTG", "aTc"], "titrant_conc": [0.0, 1.0]})
+        calc_df, _, _ = build_calc_df(mock_model, manual)
+        # 2 titrant pairs × 3 genotypes = 6 rows
+        assert len(calc_df) == 6
+
+    def test_manual_titrant_df_with_genotype_column(self, mock_model):
+        manual = pd.DataFrame({
+            "genotype": ["wt", "M1A"],
+            "titrant_name": ["IPTG", "IPTG"],
+            "titrant_conc": [0.0, 0.0],
+        })
+        calc_df, _, _ = build_calc_df(mock_model, manual)
+        assert set(calc_df["genotype"]) == {"wt", "M1A"}
+        assert len(calc_df) == 2
+
+    def test_manual_titrant_df_unknown_conc_raises(self, mock_model):
+        manual = pd.DataFrame({"titrant_name": ["IPTG"], "titrant_conc": [999.0]})
+        with pytest.raises(ValueError, match="not seen during training"):
+            build_calc_df(mock_model, manual)
+
+    def test_manual_titrant_df_missing_columns_raises(self, mock_model):
+        manual = pd.DataFrame({"titrant_name": ["IPTG"]})
+        with pytest.raises(ValueError, match="missing columns"):
+            build_calc_df(mock_model, manual)
+
+
+# ---------------------------------------------------------------------------
+# Tests for compute_theta_samples
+# ---------------------------------------------------------------------------
+
+class TestComputeThetaSamples:
+
+    def test_output_shape(self, mock_model, posterior_theta):
+        calc_df, _, _ = build_calc_df(mock_model, None)
+        samples = compute_theta_samples(calc_df, posterior_theta)
+        assert samples.shape == (5, len(calc_df))
+
+    def test_correct_values_indexed(self, mock_model, posterior_theta):
+        calc_df, _, _ = build_calc_df(mock_model, None)
+        samples = compute_theta_samples(calc_df, posterior_theta)
+        # Spot-check: for sample s=2 and the first row
+        row = calc_df.iloc[0]
+        expected = 2 * 100 + int(row["titrant_name_idx"]) * 10 + int(row["titrant_conc_idx"]) * 3 + int(row["genotype_idx"])
+        assert samples[2, 0] == pytest.approx(expected)
+
+    def test_all_rows_finite(self, mock_model, posterior_theta):
+        calc_df, _, _ = build_calc_df(mock_model, None)
+        samples = compute_theta_samples(calc_df, posterior_theta)
+        assert np.all(np.isfinite(samples))

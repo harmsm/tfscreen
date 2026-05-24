@@ -519,12 +519,17 @@
 ./src/tfscreen/analysis/hierarchical/growth_model/components/noise/zero.py:90:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/components/noise/zero.py:95:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/hierarchical/growth_model/components/noise/zero.py:104:48: W292 no newline at end of file
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:4:1: F401 'flax.struct.field' imported but unused
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:127:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:226:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:283:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:286:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:387:7: W292 no newline at end of file
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:2:1: F401 'numpy as np' imported but unused
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:6:1: F401 'flax.struct.field' imported but unused
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:129:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:228:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:285:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:288:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:417:41: E127 continuation line over-indented for visual indent
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:457:27: E127 continuation line over-indented for visual indent
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:492:13: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:493:13: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:496:61: W292 no newline at end of file
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:6:1: F401 'flax.struct.field' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:108:14: E221 multiple spaces before operator
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:114:15: E221 multiple spaces before operator
@@ -6503,42 +6508,39 @@
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/struct/test_prior.py:75:21: E221 multiple spaces before operator
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/struct/test_prior.py:84:16: E221 multiple spaces before operator
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/struct/test_prior.py:91:17: E221 multiple spaces before operator
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:3:1: F401 'numpyro.distributions as dist' imported but unused
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:4:1: F401 'numpyro.handlers.trace' imported but unused
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:8:1: F401 'tfscreen.analysis.hierarchical.growth_model.components.theta.categorical.ThetaParam' imported but unused
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:34:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:42:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:47:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:5:1: F401 'numpyro.distributions as dist' imported but unused
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:6:1: F401 'numpyro.handlers.trace' imported but unused
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:10:1: F401 'tfscreen.analysis.hierarchical.growth_model.components.theta.categorical.ThetaParam' imported but unused
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:38:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:46:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:51:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:65:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:73:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:82:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:87:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:92:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:98:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:103:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:115:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:121:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:126:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:142:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:149:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:154:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:163:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:168:21: W291 trailing whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:170:34: W291 trailing whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:171:50: W291 trailing whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:172:50: W291 trailing whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:176:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:182:37: E261 at least two spaces before inline comment
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:184:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:186:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:189:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:196:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:216:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:222:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:225:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:228:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:232:30: W292 no newline at end of file
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:55:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:69:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:77:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:86:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:91:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:96:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:102:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:107:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:119:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:125:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:130:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:146:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:153:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:158:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:167:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:172:21: W291 trailing whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:174:34: W291 trailing whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:175:50: W291 trailing whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:176:50: W291 trailing whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:180:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:186:37: E261 at least two spaces before inline comment
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:188:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:190:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:193:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:200:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:220:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:361:44: W292 no newline at end of file
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:4:1: F401 'numpyro.distributions as dist' imported but unused
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:5:1: F401 'numpyro.handlers.trace' imported but unused
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:36:1: E302 expected 2 blank lines, found 1
@@ -6945,10 +6947,10 @@
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_extraction_new_models.py:252:13: E221 multiple spaces before operator
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_extraction_new_models.py:440:18: E221 multiple spaces before operator
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_extraction_new_models.py:448:43: E221 multiple spaces before operator
-./tests/tfscreen/analysis/hierarchical/growth_model/test_extraction_new_models.py:519:12: E221 multiple spaces before operator
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_extraction_new_models.py:520:12: E221 multiple spaces before operator
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_extraction_new_models.py:521:12: E221 multiple spaces before operator
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_extraction_new_models.py:522:12: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/test_extraction_new_models.py:523:12: E221 multiple spaces before operator
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_extraction_robustness.py:6:1: F401 'unittest.mock.patch' imported but unused
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_extraction_robustness.py:9:24: W291 trailing whitespace
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_extraction_robustness.py:13:1: F401 'tfscreen.analysis.hierarchical.posteriors.get_posterior_samples' imported but unused
@@ -9749,14 +9751,14 @@
 1     E122 continuation line missing indentation or outdented
 3     E124 closing bracket does not match visual indentation
 6     E125 continuation line with same indent as next logical line
-111   E127 continuation line over-indented for visual indent
+113   E127 continuation line over-indented for visual indent
 44    E128 continuation line under-indented for visual indent
 2     E131 continuation line unaligned for hanging indent
 46    E201 whitespace after '['
 27    E202 whitespace before ']'
 6     E203 whitespace before ':'
 5     E211 whitespace before '('
-1635  E221 multiple spaces before operator
+1637  E221 multiple spaces before operator
 26    E222 multiple spaces after operator
 20    E225 missing whitespace around operator
 1587  E231 missing whitespace after ','
@@ -9783,12 +9785,12 @@
 1     E722 do not use bare 'except'
 1     E731 do not assign a lambda expression, use a def
 12    E741 ambiguous variable name 'l'
-391   F401 '.calibration' imported but unused
+392   F401 '.calibration' imported but unused
 11    F541 f-string is missing placeholders
 7     F811 redefinition of unused 'dataclasses' from line 6
 58    F841 local variable 'titrant_names' is assigned to but never used
 978   W291 trailing whitespace
 115   W292 no newline at end of file
-2597  W293 blank line contains whitespace
+2594  W293 blank line contains whitespace
 47    W391 blank line at end of file
-9743
+9745

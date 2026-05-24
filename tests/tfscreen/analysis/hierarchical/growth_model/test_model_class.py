@@ -454,7 +454,7 @@ def test_extract_theta_curves_manual(initialized_model_class):
 
 def test_extract_theta_curves_errors(initialized_model_class):
     model = initialized_model_class
-    model._theta = "categorical"
+    model._theta = "simple"
     with pytest.raises(ValueError, match="does not support this interface"):
         extract_theta_curves(model, {})
     model._theta = "hill"

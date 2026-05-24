@@ -1,4 +1,6 @@
 import jax.numpy as jnp
+import numpy as np
+import pandas as pd
 import numpyro as pyro
 import numpyro.distributions as dist
 from flax.struct import (
@@ -385,3 +387,110 @@ def get_extract_specs(ctx):
         get_columns=["genotype", "titrant_name", "titrant_conc"],
         in_run_prefix="theta_",
     )]
+
+
+def build_calc_df(model, manual_titrant_df):
+    """
+    Build the lookup DataFrame for categorical theta extraction.
+
+    The categorical model stores one theta value per
+    (titrant_name, titrant_conc, genotype) triple seen during training.
+    Interpolation to new concentrations or genotypes is not possible.
+
+    Returns
+    -------
+    calc_df : pd.DataFrame
+        Rows for each (genotype, titrant_name, titrant_conc) combination,
+        including internal index columns used by compute_theta_samples.
+    internal_cols : list of str
+        Columns to strip before returning results to the caller.
+    extra_kwargs : dict
+        Empty; no extra arguments are needed by compute_theta_samples.
+
+    Raises
+    ------
+    ValueError
+        If manual_titrant_df requests (titrant_name, titrant_conc) pairs not
+        present in the training data.
+    """
+    training_df = (model.growth_tm.df[["genotype", "titrant_name", "titrant_conc",
+                                        "titrant_name_idx", "titrant_conc_idx",
+                                        "genotype_idx"]]
+                   .drop_duplicates()
+                   .reset_index(drop=True))
+
+    if manual_titrant_df is None:
+        calc_df = training_df.copy()
+    else:
+        required = {"titrant_name", "titrant_conc"}
+        missing = required - set(manual_titrant_df.columns)
+        if missing:
+            raise ValueError(f"manual_titrant_df is missing columns: {missing}")
+
+        # Restrict to concentrations that exist in the training data.
+        training_titrant_pairs = (training_df[["titrant_name", "titrant_conc"]]
+                                  .drop_duplicates())
+        merged = manual_titrant_df.merge(training_titrant_pairs,
+                                         on=["titrant_name", "titrant_conc"],
+                                         how="left",
+                                         indicator=True)
+        bad = merged[merged["_merge"] == "left_only"][["titrant_name", "titrant_conc"]]
+        if len(bad):
+            raise ValueError(
+                "The categorical theta model cannot predict at concentrations "
+                "not seen during training. The following requested "
+                "(titrant_name, titrant_conc) pairs were not in the training "
+                f"data:\n{bad.drop_duplicates().to_string(index=False)}"
+            )
+        requested_titrant_df = manual_titrant_df[["titrant_name", "titrant_conc"]].drop_duplicates()
+
+        if "genotype" in manual_titrant_df.columns:
+            genotypes = manual_titrant_df["genotype"].unique()
+        else:
+            genotypes = training_df["genotype"].unique()
+
+        # Cross genotypes with the requested titrant pairs, then join indices.
+        geno_df = pd.DataFrame({"genotype": genotypes})
+        cross = geno_df.merge(requested_titrant_df, how="cross")
+        calc_df = cross.merge(
+            training_df[["genotype", "titrant_name", "titrant_conc",
+                          "titrant_name_idx", "titrant_conc_idx", "genotype_idx"]],
+            on=["genotype", "titrant_name", "titrant_conc"],
+            how="left",
+        ).reset_index(drop=True)
+
+    internal_cols = ["titrant_name_idx", "titrant_conc_idx", "genotype_idx"]
+    return calc_df, internal_cols, {}
+
+
+def compute_theta_samples(calc_df, param_posteriors):
+    """
+    Look up posterior theta samples for the categorical model.
+
+    Parameters
+    ----------
+    calc_df : pd.DataFrame
+        Output of build_calc_df; must contain titrant_name_idx,
+        titrant_conc_idx, and genotype_idx columns.
+    param_posteriors : dict-like
+        Posterior samples keyed by parameter name (with ``theta_`` prefix).
+        ``theta_theta`` must have shape (S, num_titrant_name, num_titrant_conc,
+        num_genotype).
+
+    Returns
+    -------
+    theta_samples : np.ndarray, shape (S, N)
+        Posterior theta at each row of calc_df.
+    """
+    from tfscreen.analysis.hierarchical.posteriors import get_posterior_samples
+
+    theta = get_posterior_samples(param_posteriors, "theta_theta")
+    if hasattr(theta, "shape") and not hasattr(theta, "reshape"):
+        theta = theta[:]   # materialise HDF5 dataset
+
+    name_idx = calc_df["titrant_name_idx"].values.astype(int)
+    conc_idx  = calc_df["titrant_conc_idx"].values.astype(int)
+    geno_idx  = calc_df["genotype_idx"].values.astype(int)
+
+    # theta shape: (S, num_titrant_name, num_titrant_conc, num_genotype)
+    return theta[:, name_idx, conc_idx, geno_idx]   # (S, N)

@@ -500,7 +500,8 @@ class TestExtractThetaCurvesDispatcher:
         assert "median" in df.columns
 
     def test_raises_for_categorical(self):
-        model = _make_model(theta="categorical")
+        # categorical now supports the interface; use 'simple' to test the error path
+        model = _make_model(theta="simple")
         with pytest.raises(ValueError, match=r"does not support this interface"):
             extract_theta_curves(model, {})
 

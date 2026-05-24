@@ -87,8 +87,8 @@ def test_extract_theta_curves_manual_df_with_genotypes(mock_model, mock_posterio
     assert results.iloc[1]["genotype"] == "mut"
 
 def test_extract_theta_curves_wrong_theta_model(mock_model, mock_posteriors):
-    """Test that it raises ValueError if theta model is not 'hill'."""
-    mock_model._theta = "categorical"
+    """Test that it raises ValueError for a theta model without the extraction interface."""
+    mock_model._theta = "simple"
     with pytest.raises(ValueError, match="does not support this interface"):
         extract_theta_curves(mock_model, mock_posteriors)
 
