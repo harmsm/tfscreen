@@ -449,7 +449,8 @@ class ModelClass:
                  spiked_genotypes=None,
                  growth_shares_replicates=False,
                  epistasis=False,
-                 struct_ensemble_path=None):
+                 struct_ensemble_path=None,
+                 binding_weight=None):
 
         self._ln_cfu_df = growth_df
         self._binding_df = binding_df
@@ -471,6 +472,7 @@ class ModelClass:
         self._growth_shares_replicates = growth_shares_replicates
         self._epistasis = epistasis
         self._struct_ensemble_path = struct_ensemble_path
+        self._binding_weight = binding_weight
 
         self._initialize_data()
         self._initialize_classes()
@@ -760,6 +762,14 @@ class ModelClass:
         binding_batch_data["batch_size"] = binding_num_binding
         binding_batch_data["scale_vector"] = full_batch_data["scale_vector"][:binding_num_binding]
         binding_batch_data["geno_theta_idx"] = np.arange(binding_num_binding,dtype=int)
+
+        # Apply binding weight: upscale the binding likelihood to compete with
+        # the (typically much larger) growth dataset.  None → auto-compute as
+        # N_growth_rows / N_binding_rows so each binding observation contributes
+        # the same weight as the average growth observation.
+        if self._binding_weight is None:
+            self._binding_weight = len(self.growth_tm.df) / max(len(self.binding_tm.df), 1)
+        binding_batch_data["scale_vector"] = binding_batch_data["scale_vector"] * self._binding_weight
         binding_data_sources.append(binding_batch_data)
 
         # ---------------------------------------------------------------------
@@ -1185,4 +1195,5 @@ class ModelClass:
             "growth_shares_replicates": self._growth_shares_replicates,
             "epistasis": self._epistasis,
             "struct_ensemble_path": self._struct_ensemble_path,
+            "binding_weight": self._binding_weight,
         }

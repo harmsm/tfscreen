@@ -51,9 +51,8 @@ def check_component_compatibility(condition_growth_model, theta_rescale_model):
         )
 
 
-def configure_model(growth_df=None,
-                    binding_df=None,
-                    binding_only=False,
+def configure_model(binding_df,
+                    growth_df=None,
                     out_prefix="tfs_configure",
                     condition_growth_model="linear",
                     growth_transition_model="instant",
@@ -69,7 +68,8 @@ def configure_model(growth_df=None,
                     growth_shares_replicates=False,
                     epistasis=False,
                     struct_ensemble_path=None,
-                    batch_size=1024):
+                    batch_size=1024,
+                    binding_weight=None):
     """
     Build and write the YAML configuration files needed by tfs-fit-model.
 
@@ -77,16 +77,20 @@ def configure_model(growth_df=None,
     then writes three files: {out_prefix}_config.yaml (the main configuration),
     {out_prefix}_priors.csv (prior distributions for all parameters), and
     {out_prefix}_guesses.csv (initial-value guesses for array parameters).
-    Both growth_df and binding_df are required.
+
+    When only binding_df is provided (no growth_df), a binding-only model is
+    configured that infers theta directly from observed binding measurements
+    rather than from bacterial growth data.
 
     Parameters
     ----------
-    growth_df : str
-        Path to the growth data CSV file (ln_cfu measurements per genotype,
-        replicate, and timepoint). Required.
     binding_df : str
         Path to the binding data CSV file (theta vs. titrant measurements per
         genotype). Required.
+    growth_df : str, optional
+        Path to the growth data CSV file (ln_cfu measurements per genotype,
+        replicate, and timepoint). When omitted, a binding-only model is
+        configured.
     out_prefix : str, optional
         Prefix for the three output files ({out_prefix}_config.yaml,
         {out_prefix}_priors.csv, {out_prefix}_guesses.csv).
@@ -153,17 +157,27 @@ def configure_model(growth_df=None,
     batch_size : int, optional
         Mini-batch size for SVI. Defaults to 1024. Set to None to use the full
         dataset as a single batch.
+    binding_weight : float, optional
+        Multiplicative scale applied to the binding log-likelihood at every SVI
+        step.  Because growth data typically outnumber binding observations by
+        several orders of magnitude, the binding likelihood contributes a
+        negligible gradient signal unless it is upweighted.  When None
+        (default), the weight is auto-computed as
+        ``N_growth_rows / N_binding_rows`` so that each binding observation
+        contributes the same total weight as the average growth observation.
+        Pass an explicit positive float to override this heuristic.  The
+        resolved value (never None) is saved in the YAML so that
+        ``tfs-fit-model`` applies the same weight without recomputing it.
 
     Returns
     -------
     None
     """
-    if binding_only:
-        if binding_df is None:
-            raise ValueError("binding_df is required when binding_only=True")
-    else:
-        if growth_df is None or binding_df is None:
-            raise ValueError("growth_df and binding_df must be provided")
+    if binding_df is None:
+        raise ValueError("binding_df must be provided")
+
+    binding_only = growth_df is None
+    if not binding_only:
         check_component_compatibility(condition_growth_model, theta_rescale_model)
 
     # Initialize model to build mappings and get guesses
@@ -184,7 +198,8 @@ def configure_model(growth_df=None,
                      growth_shares_replicates=growth_shares_replicates,
                      epistasis=epistasis,
                      struct_ensemble_path=struct_ensemble_path,
-                     batch_size=batch_size)
+                     batch_size=batch_size,
+                     binding_weight=binding_weight)
 
     # Write the model configuration to a file. This includes the model component
     # names, the data file paths, and the parameter guesses/priors.
@@ -196,12 +211,12 @@ def configure_model(growth_df=None,
 
 def main():
     return generalized_main(configure_model,
-                            manual_arg_types={"growth_df":str,
-                                              "binding_df":str,
-                                              "binding_only":bool,
+                            manual_arg_types={"binding_df":str,
+                                              "growth_df":str,
                                               "spiked":list,
                                               "struct_ensemble_path":str,
-                                              "batch_size":int},
+                                              "batch_size":int,
+                                              "binding_weight":float},
                             manual_arg_nargs={"spiked":"+"})
 
 if __name__ == "__main__":

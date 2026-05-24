@@ -80,7 +80,7 @@ def test_configure_growth_analysis_coverage(mock_gm, tmpdir):
         "unknown_3d": np.zeros((2, 2, 2)) # 3D
     }
     
-    configure_model(growth_df="g.csv", binding_df="b.csv", out_prefix=out_prefix)
+    configure_model("b.csv", growth_df="g.csv", out_prefix=out_prefix)
     
     assert os.path.exists(f"{out_prefix}_config.yaml")
     assert os.path.exists(f"{out_prefix}_priors.csv")
@@ -176,9 +176,9 @@ def test_read_configuration_errors(tmpdir):
             read_configuration(config_path)
 
 def test_configure_model_errors(tmpdir):
-    # Missing dfs
-    with pytest.raises(ValueError, match="growth_df and binding_df must be provided"):
-        configure_model(growth_df=None, binding_df=None)
+    # Missing binding_df
+    with pytest.raises(ValueError, match="binding_df must be provided"):
+        configure_model(None)
 
 def test_update_dataclass_recursion():
     from dataclasses import dataclass
@@ -315,7 +315,7 @@ def test_update_dataclass_dict_field_coerces_floats():
 
 def test_mains(mocker):
     # Test main functions via mocker to cover boilerplate
-    mocker.patch("sys.argv", ["tfs-configure", "--growth_df", "g.csv", "--binding_df", "b.csv"])
+    mocker.patch("sys.argv", ["tfs-configure", "b.csv", "--growth_df", "g.csv"])
     # Mock the internal call so we don't actually run it
     mock_run = mocker.patch("tfscreen.analysis.hierarchical.growth_model.scripts.configure_model_cli.configure_model", autospec=True)
     from tfscreen.analysis.hierarchical.growth_model.scripts.configure_model_cli import main
@@ -410,8 +410,8 @@ class TestCheckComponentCompatibility:
         before building the model."""
         with pytest.raises(ValueError, match="Incompatible model components"):
             configure_model(
+                "b.csv",
                 growth_df="g.csv",
-                binding_df="b.csv",
                 condition_growth_model="power",
                 theta_rescale_model="logit",
             )

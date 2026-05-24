@@ -326,6 +326,7 @@ def test_model_class_properties(initialized_model_class):
     model._growth_shares_replicates = False
     model._epistasis = True
     model._struct_ensemble_path = None
+    model._binding_weight = 1.0
 
     assert ModelClass.jax_model.fget(model) == "jm"
     assert ModelClass.jax_model_guide.fget(model) == "jmg"
@@ -516,3 +517,177 @@ def test_get_random_idx_logic(initialized_model_class):
     # num_batches > 1 (1351-1360)
     res = ModelClass.get_random_idx(model, num_batches=2)
     assert res.shape == (2, 2)
+
+
+# ----------------------------------------------------------------------------
+# Tests for binding_weight
+# ----------------------------------------------------------------------------
+
+_SETUP_BATCHING_RETURN = {
+    "batch_idx": np.array([0, 1]),
+    "batch_size": 2,
+    "scale_vector": np.array([1.0, 1.0]),
+    "num_binding": 1,
+    "not_binding_idx": np.array([1]),
+    "not_binding_batch_size": 1,
+}
+
+_BINDING_WEIGHT_PATCHES = [
+    "tfscreen.analysis.hierarchical.growth_model.model_class._read_growth_df",
+    "tfscreen.analysis.hierarchical.growth_model.model_class._read_binding_df",
+]
+
+
+def _make_model_for_binding_weight(mocker, n_growth, n_binding, binding_weight=None):
+    """
+    Build a ModelClass whose growth_tm.df has n_growth rows and
+    binding_tm.df has n_binding rows.  Everything else is mocked out.
+    """
+    mock_growth_tm = create_mock_tm(is_growth=True)
+    mock_growth_tm.df = pd.DataFrame({"x": range(n_growth)})
+
+    mock_binding_tm = create_mock_tm(is_growth=False)
+    mock_binding_tm.df = pd.DataFrame({"x": range(n_binding)})
+
+    for path in _BINDING_WEIGHT_PATCHES:
+        mocker.patch(path)
+    mocker.patch(
+        "tfscreen.analysis.hierarchical.growth_model.model_class._build_growth_tm",
+        return_value=mock_growth_tm,
+    )
+    mocker.patch(
+        "tfscreen.analysis.hierarchical.growth_model.model_class._build_binding_tm",
+        return_value=mock_binding_tm,
+    )
+    mocker.patch(
+        "tfscreen.analysis.hierarchical.growth_model.model_class._setup_batching",
+        return_value=_SETUP_BATCHING_RETURN.copy(),
+    )
+    mocker.patch(
+        "tfscreen.analysis.hierarchical.growth_model.model_class.populate_dataclass",
+        return_value=MagicMock(),
+    )
+    mocker.patch(
+        "tfscreen.analysis.hierarchical.growth_model.model_class.ModelClass._initialize_classes"
+    )
+
+    return ModelClass("g.csv", "b.csv", binding_weight=binding_weight)
+
+
+def test_binding_weight_auto_computed(mocker):
+    """binding_weight=None should be resolved to N_growth / N_binding after init."""
+    n_growth, n_binding = 1000, 10
+    model = _make_model_for_binding_weight(mocker, n_growth, n_binding)
+    assert model._binding_weight == pytest.approx(n_growth / n_binding)
+
+
+def test_binding_weight_explicit_preserved(mocker):
+    """An explicit binding_weight should be stored unchanged."""
+    model = _make_model_for_binding_weight(mocker, 1000, 10, binding_weight=42.5)
+    assert model._binding_weight == pytest.approx(42.5)
+
+
+def test_binding_weight_explicit_in_settings(mocker):
+    """binding_weight should appear in settings with the resolved value."""
+    model = _make_model_for_binding_weight(mocker, 200, 5, binding_weight=7.0)
+    model._binding_only = False
+    model._condition_growth = "linear"
+    model._growth_transition = "instant"
+    model._ln_cfu0 = "hierarchical"
+    model._dk_geno = "hierarchical"
+    model._activity = "horseshoe"
+    model._theta = "hill"
+    model._transformation = "empirical"
+    model._theta_rescale = "passthrough"
+    model._theta_growth_noise = "zero"
+    model._theta_binding_noise = "zero"
+    model._spiked_genotypes = None
+    model._growth_shares_replicates = False
+    model._epistasis = False
+    model._struct_ensemble_path = None
+    model._batch_size = None
+    s = ModelClass.settings.fget(model)
+    assert "binding_weight" in s
+    assert s["binding_weight"] == pytest.approx(7.0)
+
+
+def test_binding_weight_auto_in_settings(mocker):
+    """Auto-computed weight (not None) should appear in settings after init."""
+    n_growth, n_binding = 500, 25
+    model = _make_model_for_binding_weight(mocker, n_growth, n_binding)
+    model._binding_only = False
+    model._condition_growth = "linear"
+    model._growth_transition = "instant"
+    model._ln_cfu0 = "hierarchical"
+    model._dk_geno = "hierarchical"
+    model._activity = "horseshoe"
+    model._theta = "hill"
+    model._transformation = "empirical"
+    model._theta_rescale = "passthrough"
+    model._theta_growth_noise = "zero"
+    model._theta_binding_noise = "zero"
+    model._spiked_genotypes = None
+    model._growth_shares_replicates = False
+    model._epistasis = False
+    model._struct_ensemble_path = None
+    model._batch_size = None
+    s = ModelClass.settings.fget(model)
+    assert s["binding_weight"] == pytest.approx(n_growth / n_binding)
+
+
+def test_binding_weight_applied_to_scale_vector(mocker):
+    """
+    The scale_vector passed to BindingData should be the original value
+    multiplied by binding_weight.
+    """
+    from tfscreen.analysis.hierarchical.growth_model.data_class import BindingData
+
+    explicit_weight = 50.0
+    base_scale = np.array([1.0])  # scale for 1 binding genotype
+
+    batching_return = _SETUP_BATCHING_RETURN.copy()
+    batching_return["scale_vector"] = np.array([1.0, 1.0])  # index 0 = binding
+    batching_return["num_binding"] = 1
+
+    mock_growth_tm = create_mock_tm(is_growth=True)
+    mock_growth_tm.df = pd.DataFrame({"x": range(500)})
+    mock_binding_tm = create_mock_tm(is_growth=False)
+    mock_binding_tm.df = pd.DataFrame({"x": range(10)})
+
+    for path in _BINDING_WEIGHT_PATCHES:
+        mocker.patch(path)
+    mocker.patch(
+        "tfscreen.analysis.hierarchical.growth_model.model_class._build_growth_tm",
+        return_value=mock_growth_tm,
+    )
+    mocker.patch(
+        "tfscreen.analysis.hierarchical.growth_model.model_class._build_binding_tm",
+        return_value=mock_binding_tm,
+    )
+    mocker.patch(
+        "tfscreen.analysis.hierarchical.growth_model.model_class._setup_batching",
+        return_value=batching_return,
+    )
+    mocker.patch(
+        "tfscreen.analysis.hierarchical.growth_model.model_class.ModelClass._initialize_classes"
+    )
+
+    captured = {}
+
+    def capture_populate(cls, sources):
+        if cls is BindingData:
+            for src in sources:
+                if isinstance(src, dict) and "scale_vector" in src:
+                    captured["scale_vector"] = np.array(src["scale_vector"])
+        return MagicMock()
+
+    mocker.patch(
+        "tfscreen.analysis.hierarchical.growth_model.model_class.populate_dataclass",
+        side_effect=capture_populate,
+    )
+
+    ModelClass("g.csv", "b.csv", binding_weight=explicit_weight)
+
+    assert "scale_vector" in captured, "BindingData populate_dataclass was never called"
+    expected = base_scale * explicit_weight
+    np.testing.assert_allclose(captured["scale_vector"], expected)

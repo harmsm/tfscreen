@@ -28,9 +28,7 @@ def test_configure_run_binding_only_smoke(tmpdir):
 
     out_prefix = os.path.join(tmpdir, "test_tfs_binding_only")
 
-    configure_model(growth_df=None,
-                              binding_df=binding_path,
-                              binding_only=True,
+    configure_model(binding_path,
                               theta_model="categorical",
                               out_prefix=out_prefix)
 
@@ -95,8 +93,8 @@ def test_configure_run_pipeline_smoke(tmpdir):
     out_prefix = os.path.join(tmpdir, "test_tfs")
 
     # Run configuration
-    configure_model(growth_df=growth_path,
-                              binding_df=binding_path,
+    configure_model(binding_path,
+                              growth_df=growth_path,
                               out_prefix=out_prefix)
 
     config_file = f"{out_prefix}_config.yaml"
@@ -136,3 +134,80 @@ def test_configure_run_pipeline_smoke(tmpdir):
                          out_prefix=out_prefix)
 
     assert os.path.exists(os.path.join(tmpdir, "test_tfs_out_hill_n.csv"))
+
+
+@pytest.mark.slow
+def test_configure_run_binding_weight_smoke(tmpdir):
+    """
+    Smoke test for the binding_weight feature end-to-end.
+
+    Verifies that:
+    1. binding_weight=None auto-computes N_growth / N_binding and saves it as
+       a concrete float in the YAML (not None).
+    2. An explicit binding_weight is stored exactly in the YAML.
+    3. A run configured with the auto-weight completes without error.
+    """
+    # Growth data: 20 rows  |  Binding data: 4 rows  →  expected auto-weight = 5.0
+    growth_df = pd.DataFrame({
+        "replicate":     ["R1"] * 20,
+        "condition_pre": ["C1"] * 20,
+        "condition_sel": ["C2"] * 20,
+        "genotype":      ["A123B"] * 10 + ["C456D"] * 10,
+        "t_sel":         [10.0] * 20,
+        "t_pre":         [12.0] * 20,
+        "ln_cfu":        [1.0] * 20,
+        "ln_cfu_std":    [0.1] * 20,
+        "titrant_name":  ["T1"] * 20,
+        "titrant_conc":  [0.1] * 20,
+    })
+    binding_df = pd.DataFrame({
+        "genotype":     ["A123B", "A123B", "C456D", "C456D"],
+        "titrant_name": ["T1",    "T1",    "T1",    "T1"],
+        "titrant_conc": [0.1,     1.0,     0.1,     1.0],
+        "theta_obs":    [0.5,     0.3,     0.6,     0.4],
+        "theta_std":    [0.05,    0.05,    0.05,    0.05],
+    })
+    growth_path  = os.path.join(tmpdir, "growth.csv")
+    binding_path = os.path.join(tmpdir, "binding.csv")
+    growth_df.to_csv(growth_path, index=False)
+    binding_df.to_csv(binding_path, index=False)
+
+    # ── 1. Explicit binding_weight is preserved in the YAML ──────────────────
+    out_explicit = os.path.join(tmpdir, "tfs_explicit")
+    configure_model(binding_path,
+                    growth_df=growth_path,
+                    out_prefix=out_explicit,
+                    binding_weight=99.0)
+
+    with open(f"{out_explicit}_config.yaml") as f:
+        cfg = yaml.safe_load(f)
+    assert cfg["components"]["binding_weight"] == pytest.approx(99.0), (
+        "Explicit binding_weight should be stored in the YAML unchanged"
+    )
+
+    # ── 2. Auto-computed binding_weight is a concrete float, not None ─────────
+    out_auto = os.path.join(tmpdir, "tfs_auto")
+    configure_model(binding_path,
+                    growth_df=growth_path,
+                    out_prefix=out_auto)
+
+    with open(f"{out_auto}_config.yaml") as f:
+        cfg_auto = yaml.safe_load(f)
+
+    auto_weight = cfg_auto["components"]["binding_weight"]
+    assert auto_weight is not None, "Auto binding_weight must not be None in the YAML"
+    assert isinstance(auto_weight, float), "Auto binding_weight should be a float"
+    # 20 growth rows / 4 binding rows = 5.0
+    assert auto_weight == pytest.approx(20.0 / 4.0)
+
+    # ── 3. A fit using the auto-weight config runs to completion ─────────────
+    out_fit = os.path.join(tmpdir, "tfs_fit")
+    fit_model(config_file=f"{out_auto}_config.yaml",
+              seed=42,
+              max_num_epochs=1,
+              num_posterior_samples=10,
+              sampling_batch_size=10,
+              always_get_posterior=True,
+              out_prefix=out_fit)
+
+    assert os.path.exists(f"{out_fit}_posterior.h5")
