@@ -465,7 +465,21 @@ def build_calc_df(model, manual_titrant_df):
 
 def compute_theta_samples(calc_df, param_posteriors):
     """
-    Look up posterior theta samples for the categorical model.
+    Reconstruct posterior theta samples for the categorical model.
+
+    Does NOT use the ``theta_theta`` deterministic site, which is computed
+    inside a forward batch and only covers ``batch_size`` genotypes in the
+    HDF5 file (not the full genotype set).  Instead, reconstructs theta from
+    its three constituent posterior arrays, all of which are correctly stored
+    for every genotype:
+
+    * ``theta_logit_theta_hyper_loc``  – global hyperparameter, shape
+      ``(S, N_name, N_conc[, 1])``.
+    * ``theta_logit_theta_hyper_scale`` – global hyperparameter, same shape.
+    * ``theta_logit_theta_offset``     – per-genotype non-centred offset,
+      shape ``(S, N_name, N_conc, N_geno)``.
+
+    theta = sigmoid(hyper_loc + offset * hyper_scale)
 
     Parameters
     ----------
@@ -474,8 +488,6 @@ def compute_theta_samples(calc_df, param_posteriors):
         titrant_conc_idx, and genotype_idx columns.
     param_posteriors : dict-like
         Posterior samples keyed by parameter name (with ``theta_`` prefix).
-        ``theta_theta`` must have shape (S, num_titrant_name, num_titrant_conc,
-        num_genotype).
 
     Returns
     -------
@@ -484,13 +496,46 @@ def compute_theta_samples(calc_df, param_posteriors):
     """
     from tfscreen.analysis.hierarchical.posteriors import get_posterior_samples
 
-    theta = get_posterior_samples(param_posteriors, "theta_theta")
-    if hasattr(theta, "shape") and not hasattr(theta, "reshape"):
-        theta = theta[:]   # materialise HDF5 dataset
+    def _load_global(key):
+        v = get_posterior_samples(param_posteriors, key)
+        if hasattr(v, "shape") and not hasattr(v, "reshape"):
+            v = np.asarray(v)
+        v = np.asarray(v)
+        # Drop trailing size-1 dim added by the (N_name, N_conc, 1) plate shape
+        if v.ndim >= 4 and v.shape[-1] == 1:
+            v = v[..., 0]
+        return v  # (S, N_name, N_conc)
 
-    name_idx = calc_df["titrant_name_idx"].values.astype(int)
-    conc_idx  = calc_df["titrant_conc_idx"].values.astype(int)
-    geno_idx  = calc_df["genotype_idx"].values.astype(int)
+    hyper_loc   = _load_global("theta_logit_theta_hyper_loc")    # (S, N_name, N_conc)
+    hyper_scale = _load_global("theta_logit_theta_hyper_scale")  # (S, N_name, N_conc)
 
-    # theta shape: (S, num_titrant_name, num_titrant_conc, num_genotype)
-    return theta[:, name_idx, conc_idx, geno_idx]   # (S, N)
+    # theta_logit_theta_offset is a sample site inside the genotype plate, so
+    # get_posteriors correctly concatenates it across forward batches to shape
+    # (S, N_name, N_conc, N_geno).  It may be an h5py Dataset (lazy).
+    offset_raw = get_posterior_samples(param_posteriors, "theta_logit_theta_offset")
+
+    S = hyper_loc.shape[0]
+    N = len(calc_df)
+    result = np.empty((S, N))
+
+    # Process one (titrant_name_idx, titrant_conc_idx) group at a time so that
+    # the HDF5 read for `offset_raw` is one contiguous (S, N_geno) slice per
+    # group rather than loading the full tensor at once.
+    for (ni, ci), group in calc_df.groupby(["titrant_name_idx", "titrant_conc_idx"]):
+        ni, ci = int(ni), int(ci)
+        gi      = group["genotype_idx"].values.astype(int)
+        row_pos = group.index.values
+
+        if isinstance(offset_raw, np.ndarray):
+            off_sel = offset_raw[:, ni, ci, gi]            # (S, n_group)
+        else:
+            # HDF5: load the (S, N_geno) slice for this (ni, ci), then select gi
+            off_sel = np.asarray(offset_raw[:, ni, ci, :])[:, gi]  # (S, n_group)
+
+        lh_loc   = hyper_loc[:, ni, ci, np.newaxis]    # (S, 1)
+        lh_scale = hyper_scale[:, ni, ci, np.newaxis]  # (S, 1)
+
+        logit_theta = lh_loc + off_sel * lh_scale       # (S, n_group)
+        result[:, row_pos] = 1.0 / (1.0 + np.exp(-logit_theta))
+
+    return result

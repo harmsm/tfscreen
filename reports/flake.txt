@@ -519,7 +519,6 @@
 ./src/tfscreen/analysis/hierarchical/growth_model/components/noise/zero.py:90:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/components/noise/zero.py:95:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/hierarchical/growth_model/components/noise/zero.py:104:48: W292 no newline at end of file
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:2:1: F401 'numpy as np' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:6:1: F401 'flax.struct.field' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:129:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:228:1: W293 blank line contains whitespace
@@ -527,9 +526,10 @@
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:288:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:417:41: E127 continuation line over-indented for visual indent
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:457:27: E127 continuation line over-indented for visual indent
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:492:13: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:493:13: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:496:61: W292 no newline at end of file
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:509:14: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:526:11: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:535:15: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/components/theta/categorical.py:541:18: W292 no newline at end of file
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:6:1: F401 'flax.struct.field' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:108:14: E221 multiple spaces before operator
 ./src/tfscreen/analysis/hierarchical/growth_model/components/theta/hill.py:114:15: E221 multiple spaces before operator
@@ -6540,7 +6540,7 @@
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:193:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:200:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:220:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:361:44: W292 no newline at end of file
+./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_categorical.py:378:44: W292 no newline at end of file
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:4:1: F401 'numpyro.distributions as dist' imported but unused
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:5:1: F401 'numpyro.handlers.trace' imported but unused
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/theta/test_hill.py:36:1: E302 expected 2 blank lines, found 1
@@ -9758,7 +9758,7 @@
 27    E202 whitespace before ']'
 6     E203 whitespace before ':'
 5     E211 whitespace before '('
-1637  E221 multiple spaces before operator
+1638  E221 multiple spaces before operator
 26    E222 multiple spaces after operator
 20    E225 missing whitespace around operator
 1587  E231 missing whitespace after ','
@@ -9785,7 +9785,7 @@
 1     E722 do not use bare 'except'
 1     E731 do not assign a lambda expression, use a def
 12    E741 ambiguous variable name 'l'
-392   F401 '.calibration' imported but unused
+391   F401 '.calibration' imported but unused
 11    F541 f-string is missing placeholders
 7     F811 redefinition of unused 'dataclasses' from line 6
 58    F841 local variable 'titrant_names' is assigned to but never used

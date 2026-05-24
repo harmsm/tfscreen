@@ -279,18 +279,29 @@ def mock_model(training_df):
 @pytest.fixture
 def posterior_theta(training_df):
     """
-    Fake theta_theta posterior of shape (S=5, N_name=2, N_conc=2, N_geno=3).
-    Values are set so that theta[s, name_idx, conc_idx, geno_idx] = s * 100 + name_idx * 10 + conc_idx * 3 + geno_idx,
-    making correctness of the index lookups easy to verify.
+    Fake posteriors matching the three parameters used by compute_theta_samples.
+
+    Layout: S=5, N_name=2, N_conc=2, N_geno=3.
+
+    hyper_loc  = 0  (all zeros)
+    hyper_scale = 1 (all ones)
+    offset[s, ni, ci, gi] = s * 100 + ni * 10 + ci * 3 + gi
+
+    => logit_theta = 0 + offset * 1 = offset
+    => theta = sigmoid(offset)
     """
     S, N_name, N_conc, N_geno = 5, 2, 2, 3
-    arr = np.zeros((S, N_name, N_conc, N_geno))
+    offset = np.zeros((S, N_name, N_conc, N_geno))
     for s in range(S):
         for n in range(N_name):
             for c in range(N_conc):
                 for g in range(N_geno):
-                    arr[s, n, c, g] = s * 100 + n * 10 + c * 3 + g
-    return {"theta_theta": arr}
+                    offset[s, n, c, g] = s * 100 + n * 10 + c * 3 + g
+    return {
+        "theta_logit_theta_hyper_loc":   np.zeros((S, N_name, N_conc)),
+        "theta_logit_theta_hyper_scale": np.ones((S, N_name, N_conc)),
+        "theta_logit_theta_offset":      offset,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -350,9 +361,15 @@ class TestComputeThetaSamples:
     def test_correct_values_indexed(self, mock_model, posterior_theta):
         calc_df, _, _ = build_calc_df(mock_model, None)
         samples = compute_theta_samples(calc_df, posterior_theta)
-        # Spot-check: for sample s=2 and the first row
+        # Spot-check: for sample s=2 and the first row.
+        # offset[s, ni, ci, gi] = s*100 + ni*10 + ci*3 + gi; hyper_loc=0, hyper_scale=1
+        # => theta = sigmoid(offset)
         row = calc_df.iloc[0]
-        expected = 2 * 100 + int(row["titrant_name_idx"]) * 10 + int(row["titrant_conc_idx"]) * 3 + int(row["genotype_idx"])
+        logit = (2 * 100
+                 + int(row["titrant_name_idx"]) * 10
+                 + int(row["titrant_conc_idx"]) * 3
+                 + int(row["genotype_idx"]))
+        expected = 1.0 / (1.0 + np.exp(-logit))
         assert samples[2, 0] == pytest.approx(expected)
 
     def test_all_rows_finite(self, mock_model, posterior_theta):
