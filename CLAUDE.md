@@ -39,10 +39,20 @@ flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127
 ```
 tfs-process-fastq          # FASTQ → read counts
 tfs-process-counts         # counts → ln_cfu DataFrames
-tfs-fit-model              # Main hierarchical Bayesian inference
 tfs-configure-model        # Generate YAML config template
-tfs-summarize-posteriors   # Summarize posterior samples
-tfs-predict                # Make predictions from fitted model
+tfs-prefit-calibration     # Pre-fit linking function via MAP
+tfs-fit-model              # Main hierarchical Bayesian inference
+tfs-sample-posterior       # Draw posterior samples from fitted model
+tfs-param-quantiles        # Summarize posterior parameter quantiles
+tfs-extract-params         # Extract parameters from checkpoint
+tfs-predict-growth         # Predict growth from fitted model
+tfs-predict-theta          # Predict operator occupancy
+tfs-cat-response           # Fit categorical response curves
+tfs-diagnose-nan           # Diagnose NaN issues in inference
+tfs-simulate               # Simulate a full experiment
+tfs-setup-grid             # Set up grid of model configs
+tfs-summarize-grid         # Summarize grid results
+tfs-subset-growth-data     # Subset growth data
 ```
 
 ## Architecture
@@ -134,3 +144,40 @@ The `run_config.yaml` drives `tfs-fit-model`. Key sections:
 - Always set `NUMBA_DISABLE_JIT=1` when running tests — Numba JIT causes test failures
 - Slow tests (marked `@pytest.mark.slow`) are skipped by default; use `--runslow` to include them
 - Smoke tests live in `tests/smoke-tests/` and test end-to-end pipelines
+- **Write or update unit tests for any new code added in a session.** Tests mirror the source layout under `tests/tfscreen/`; a new module at `src/tfscreen/foo/bar.py` gets tests at `tests/tfscreen/foo/test_bar.py`.
+
+## CLI Standards
+
+All `tfs-*` entry points follow these conventions. Apply them when writing or modifying any CLI script.
+
+### File naming
+
+Each entry point lives in `<name_of_script>_cli.py`. The registered console script is `tfs-<name-of-script>` (hyphens in entry point, underscores in filename). Example: `predict_theta_cli.py` → `tfs-predict-theta`.
+
+### Argument layout — use `generalized_main`, no manual argparse
+
+All scripts use `generalized_main` from `tfscreen.util.cli.generalized_main`. The function signature is the CLI spec:
+
+- Parameters **without** a default → positional (required) arguments
+- Parameters **with** a default (including `None`) → `--flag` arguments
+
+Positional argument order (use only what the script needs):
+1. `config_file` — path to YAML config
+2. `posterior_file` — path to posteriors `.h5`/`.npz`
+3. `theta_file` — path to theta CSV (for `tfs-cat-response`)
+
+### Output flag
+
+Always `--out_prefix` (never `--out_root`, `--out`, or `--output_file`). The function parameter must also be named `out_prefix`.
+
+### File-backed list arguments
+
+When a list of genotypes, titrant names, or concentrations is needed, the `_cli` wrapper takes file-path strings (one value per line, `#` comments allowed). Use `manual_arg_types` in `generalized_main` to override the `NoneType` inferred from `default=None`. The shared helper `_read_lines(path)` lives in `tfscreen.util.cli`.
+
+### `in_training_data` column
+
+`tfs-predict-growth` and `tfs-predict-theta` output a boolean column `in_training_data` (1/0) at the `(genotype, titrant_name, titrant_conc)` tuple level.
+
+### Registered entry points
+
+All scripts under `analysis/hierarchical/growth_model/scripts/` and `analysis/cat_response/` follow the `_cli.py` naming convention and are registered in `pyproject.toml`.

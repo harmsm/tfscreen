@@ -14,26 +14,34 @@ plt.rc('legend', fontsize=SMALL_SIZE)    # legend fontsize
 plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 
 
+DEFAULT_COLORS = ["#000000","#D55E00","#0072B2","#E69F00",
+                  "#009E73","#CC79A7","#56B4E9","#F0E442"]
+DEFAULT_MARKERS = ["o","s","v","p","^"]
+
+DEFAULT_HEXBIN_KWARGS = {
+    "bins": "log",
+    "cmap": "plasma",
+}
+
 DEFAULT_SCATTER_KWARGS = {
     "s":10,
-    "alpha":0.1,
-    "edgecolor":"royalblue",
+    "edgecolor":DEFAULT_COLORS[0],
     "facecolor":"none"
 }
 
 DEFAULT_FIT_LINE_KWARGS = {
     "lw":2,
-    "color":"firebrick"
+    "color":DEFAULT_COLORS[1]
 }
 
 DEFAULT_EXPT_SCATTER_KWARGS = {
     "s":70,
-    "edgecolor":"black",
+    "edgecolor":DEFAULT_COLORS[0],
     "facecolor":"none"
 }
 
 DEFAULT_EXPT_ERROR_KWARGS = {
-    "color":"black",
+    "color":DEFAULT_COLORS[0],
     "lw":0,
     "elinewidth":1,
     "capsize":10

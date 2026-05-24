@@ -23,12 +23,12 @@ def err_zscore(
 
     Parameters
     ----------
-    real_values : array_like
-        The true values.
-    est_values : array_like
+    param_est : array_like
         The estimated values.
-    est_std : array_like
+    param_std : array_like
         The standard error on the estimated parameters.
+    param_real : array_like
+        The true values.
     z_min : float, optional
         The minimum Z-score to plot.
     z_max : float, optional

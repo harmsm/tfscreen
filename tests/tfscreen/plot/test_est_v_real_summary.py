@@ -31,7 +31,19 @@ def test_est_v_real_summary_prefix():
     real = np.random.normal(0, 1, 10)
     std = np.random.uniform(0.1, 0.2, 10)
     est = real + np.random.normal(0, std, 10)
-    
+
     fig, axes = est_v_real_summary(est, std, real, axis_prefix="dG")
     assert axes[0].get_xlabel() == 'dG_real'
     assert axes[0].get_ylabel() == 'dG_est'
+
+
+def test_est_v_real_summary_no_prefix():
+    real = np.random.normal(0, 1, 10)
+    std = np.random.uniform(0.1, 0.2, 10)
+    est = real + np.random.normal(0, std, 10)
+
+    plt.close("all")
+    fig, axes = est_v_real_summary(est, std, real)
+    assert axes[0].get_xlabel() == "real"
+    assert axes[0].get_ylabel() == "est"
+    plt.close("all")

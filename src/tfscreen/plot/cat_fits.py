@@ -138,13 +138,15 @@ def cat_fits(x,y,y_std,
 
         if model_df["is_best_model"].iloc[0]:
 
-            final_fit_line_kwargs["color"] = best_model_color
-            final_fit_line_kwargs["lw"] = best_model_lw
-            final_fit_line_kwargs["label"] = m
+            this_fit_line_kwargs = final_fit_line_kwargs | {
+                "color": best_model_color,
+                "lw": best_model_lw,
+                "label": m,
+            }
 
             ax.plot(model_df['x'],model_df['y'],'-',
-                    **final_fit_line_kwargs)
-            
+                    **this_fit_line_kwargs)
+
             ax.fill_between(model_df['x'],
                             model_df['y'] - model_df['y_std'],
                             model_df['y'] + model_df['y_std'],
@@ -152,12 +154,14 @@ def cat_fits(x,y,y_std,
                             zorder=0)
         else:
 
-            final_fit_line_kwargs["color"] = other_model_color
-            final_fit_line_kwargs["lw"] = other_model_lw
-            final_fit_line_kwargs["label"] = m
-            
+            this_fit_line_kwargs = final_fit_line_kwargs | {
+                "color": other_model_color,
+                "lw": other_model_lw,
+                "label": m,
+            }
+
             ax.plot(model_df['x'],model_df['y'],'-',
-                    **final_fit_line_kwargs)
+                    **this_fit_line_kwargs)
 
     # Add legend
     ax.legend(frameon=True,

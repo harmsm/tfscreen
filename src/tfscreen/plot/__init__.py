@@ -28,6 +28,10 @@ from .cat_fits import (
     cat_fits
 )
 
+from .plot_theta_fits import (
+    plot_theta_fits
+)
+
 # -----------------------------------------------------------------------------
 # Big summary plots that incorporate other plots go below here 
 

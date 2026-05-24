@@ -9,8 +9,6 @@ from tfscreen.plot.helper import (
 from matplotlib import pyplot as plt
 import numpy as np
 
-import copy
-
 def uncertainty_calibration(
         param_est,
         param_std,
@@ -72,10 +70,7 @@ def uncertainty_calibration(
     if ax is None:
         _, ax = plt.subplots(1,figsize=(6,6))
 
-    final_scatter_kwargs = copy.deepcopy(DEFAULT_SCATTER_KWARGS)
-    if scatter_kwargs is not None:
-        for k in scatter_kwargs:
-            final_scatter_kwargs[k] = copy.deepcopy(scatter_kwargs[k])
+    final_scatter_kwargs = DEFAULT_SCATTER_KWARGS | (scatter_kwargs or {})
 
     diff = (param_est - param_real)
 

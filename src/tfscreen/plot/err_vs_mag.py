@@ -8,8 +8,6 @@ from tfscreen.plot.helper import (
 
 from matplotlib import pyplot as plt
 
-import copy
-
 def err_vs_mag(
         obs,
         pred,
@@ -50,12 +48,9 @@ def err_vs_mag(
     if ax is None:
         _, ax = plt.subplots(1,figsize=(6,6))
 
-    final_scatter_kwargs = copy.deepcopy(DEFAULT_SCATTER_KWARGS)
-    if scatter_kwargs is not None:
-        for k in scatter_kwargs:
-            final_scatter_kwargs[k] = scatter_kwargs[k]
+    final_scatter_kwargs = DEFAULT_SCATTER_KWARGS | (scatter_kwargs or {})
 
-    
+
 
     x_min, x_max = get_ax_limits(obs)
     span = x_max - x_min

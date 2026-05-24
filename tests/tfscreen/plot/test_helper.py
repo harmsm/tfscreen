@@ -41,16 +41,23 @@ def test_clean_arrays():
     x = np.array([1, 2, np.nan, 4])
     y = np.array([1, np.nan, 3, 4])
     z = np.array([1, 2, 3, 4])
-    
+
     cx, cy, cz = clean_arrays(x, y, z)
-    
+
     expected_x = np.array([1, 4])
     expected_y = np.array([1, 4])
     expected_z = np.array([1, 4])
-    
+
     np.testing.assert_array_equal(cx, expected_x)
     np.testing.assert_array_equal(cy, expected_y)
     np.testing.assert_array_equal(cz, expected_z)
+
+def test_clean_arrays_removes_inf():
+    x = np.array([1, np.inf, 3])
+    y = np.array([1, 2, -np.inf])
+    cx, cy = clean_arrays(x, y)
+    np.testing.assert_array_equal(cx, np.array([1.0]))
+    np.testing.assert_array_equal(cy, np.array([1.0]))
 
 def test_subsample_index():
     arr = np.zeros(100)
