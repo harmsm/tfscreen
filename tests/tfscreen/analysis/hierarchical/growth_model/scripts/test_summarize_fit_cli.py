@@ -222,6 +222,12 @@ class TestReadFinalLoss:
             fh.write("# header\n100 -1234.5\n")
         assert _read_final_loss(p) == pytest.approx(-1234.5)
 
+    def test_reads_first_column_from_comma_delimited_file(self, tmp_path):
+        p = str(tmp_path / "losses.txt")
+        with open(p, "w") as fh:
+            fh.write("9000.0,0.002\n8000.0,0.0018\n7654.3,0.0015\n")
+        assert _read_final_loss(p) == pytest.approx(7654.3)
+
     def test_raises_on_no_numeric_content(self, tmp_path):
         p = str(tmp_path / "losses.txt")
         with open(p, "w") as fh:

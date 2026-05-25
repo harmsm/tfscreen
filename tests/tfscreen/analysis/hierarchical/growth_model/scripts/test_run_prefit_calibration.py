@@ -626,6 +626,39 @@ class TestBuildCalibrationModel:
         # condition_growth and growth_transition flow through unchanged
         assert kwargs["condition_growth"] == "linear"
         assert kwargs["growth_transition"] == "instant"
+        # binding_weight must be 1.0 regardless of production value so the
+        # calibration MAP learns the binding→growth linkage without the
+        # production upweighting drowning the binding signal.
+        assert kwargs["binding_weight"] == 1.0
+
+    def test_binding_weight_reset_from_large_production_value(self):
+        # Reproduces the weighting bug: production YAML stores a large
+        # binding_weight (N_growth / N_binding); the calibration model
+        # must use 1.0 instead.
+        gm_prod = MagicMock()
+        gm_prod.settings = {
+            "theta": "categorical",
+            "activity": "horseshoe",
+            "dk_geno": "fixed",
+            "ln_cfu0": "fixed",
+            "transformation": "logit_norm",
+            "theta_growth_noise": "beta",
+            "theta_binding_noise": "beta",
+            "condition_growth": "linear",
+            "growth_transition": "instant",
+            "batch_size": None,
+            "spiked_genotypes": None,
+            "binding_weight": 250.0,  # typical large production value
+        }
+
+        with patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".run_prefit_calibration_cli.GrowthModel"
+        ) as MockGM:
+            MockGM.return_value = MagicMock()
+            _build_calibration_model(gm_prod, pd.DataFrame(), pd.DataFrame())
+
+        assert MockGM.call_args.kwargs["binding_weight"] == 1.0
 
     def test_does_not_mutate_production_settings(self):
         # Ensure we work on a copy.
@@ -638,7 +671,8 @@ class TestBuildCalibrationModel:
                             "theta_growth_noise": "beta",
                             "theta_binding_noise": "beta",
                             "spiked_genotypes": None,
-                            "batch_size": None}
+                            "batch_size": None,
+                            "binding_weight": 150.0}
         original_settings = dict(gm_prod.settings)
 
         with patch(

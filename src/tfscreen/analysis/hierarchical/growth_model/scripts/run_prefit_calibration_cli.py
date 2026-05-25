@@ -243,6 +243,11 @@ def _build_calibration_model(gm_prod, growth_df_cal, binding_df_cal):
     for k, v in _CALIBRATION_OVERRIDES.items():
         settings[k] = v
     settings["spiked_genotypes"] = None
+    # Equal weighting: the calibration MAP must learn the binding→growth
+    # linkage from both data sources together.  The production binding_weight
+    # (N_growth_prod / N_binding_prod, often >> 1) would drown the binding
+    # signal, so we reset to 1.0 here.
+    settings["binding_weight"] = 1.0
     batch_size = settings.pop("batch_size", None)
 
     return GrowthModel(growth_df_cal,

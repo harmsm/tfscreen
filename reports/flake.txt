@@ -2229,30 +2229,30 @@
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/predict_cli.py:107:1: E305 expected 2 blank lines after class or function definition, found 1
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/predict_theta_cli.py:12:1: C901 'predict_theta' is too complex (11)
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:51:1: F401 'jax' imported but unused
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:254:1: C901 '_inject_calibration_priors' is too complex (19)
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:436:1: C901 '_build_csv_updates' is too complex (13)
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:538:1: C901 '_apply_guesses_updates' is too complex (12)
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:693:1: C901 '_make_calibration_plots' is too complex (23)
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:744:5: F811 redefinition of unused 'jax' from line 51
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:779:14: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:782:15: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:783:15: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:834:7: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:835:7: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:838:15: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:839:14: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:840:14: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:841:14: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:884:15: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:885:15: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:907:19: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:922:21: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:945:20: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:958:25: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:259:1: C901 '_inject_calibration_priors' is too complex (19)
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:441:1: C901 '_build_csv_updates' is too complex (13)
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:543:1: C901 '_apply_guesses_updates' is too complex (12)
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:698:1: C901 '_make_calibration_plots' is too complex (23)
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:749:5: F811 redefinition of unused 'jax' from line 51
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:784:14: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:787:15: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:788:15: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:839:7: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:840:7: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:843:15: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:844:14: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:845:14: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:846:14: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:889:15: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:890:15: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:912:19: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:927:21: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:950:20: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/run_prefit_calibration_cli.py:963:25: E221 multiple spaces before operator
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/setup_grid_cli.py:233:1: C901 'setup_grid' is too complex (17)
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/subset_genotypes_cli.py:40:1: C901 'subset_genotypes' is too complex (23)
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/subset_genotypes_cli.py:93:5: F841 local variable 'all_genotypes' is assigned to but never used
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/summarize_fit_cli.py:95:1: C901 'summarize_fit' is too complex (35)
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/summarize_fit_cli.py:100:1: C901 'summarize_fit' is too complex (35)
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/summarize_posteriors_cli.py:4:1: F401 'tfscreen.analysis.hierarchical.growth_model.model_class.ModelClass as GrowthModel' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/summarize_posteriors_cli.py:9:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/summarize_posteriors_cli.py:10:25: E128 continuation line under-indented for visual indent
@@ -6758,33 +6758,33 @@
 ./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:26:1: F401 'tfscreen.analysis.hierarchical.growth_model.scripts.run_prefit_calibration_cli._identify_field_mapping' imported but unused
 ./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:295:1: E303 too many blank lines (4)
 ./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:299:1: E302 expected 2 blank lines, found 4
-./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:969:67: E127 continuation line over-indented for visual indent
-./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1005:14: E127 continuation line over-indented for visual indent
-./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1024:14: E127 continuation line over-indented for visual indent
+./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1003:67: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1039:14: E127 continuation line over-indented for visual indent
-./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1059:14: E221 multiple spaces before operator
-./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1065:15: E221 multiple spaces before operator
-./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1066:15: E221 multiple spaces before operator
-./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1069:17: E221 multiple spaces before operator
-./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1070:13: E221 multiple spaces before operator
-./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1071:13: E221 multiple spaces before operator
-./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1072:14: E221 multiple spaces before operator
-./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1076:16: E221 multiple spaces before operator
-./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1080:14: E221 multiple spaces before operator
-./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1084:18: E272 multiple spaces before keyword
-./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1085:18: E272 multiple spaces before keyword
-./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1086:18: E272 multiple spaces before keyword
-./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1087:18: E272 multiple spaces before keyword
-./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1114:24: E221 multiple spaces before operator
-./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1116:10: E221 multiple spaces before operator
-./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1133:23: E221 multiple spaces before operator
-./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1134:27: E221 multiple spaces before operator
-./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1141:16: E221 multiple spaces before operator
-./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1142:18: E221 multiple spaces before operator
-./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1606:12: E221 multiple spaces before operator
-./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1632:63: E127 continuation line over-indented for visual indent
-./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1671:38: E702 multiple statements on one line (semicolon)
-./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1690:20: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1058:14: E127 continuation line over-indented for visual indent
+./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1073:14: E127 continuation line over-indented for visual indent
+./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1093:14: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1099:15: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1100:15: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1103:17: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1104:13: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1105:13: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1106:14: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1110:16: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1114:14: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1118:18: E272 multiple spaces before keyword
+./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1119:18: E272 multiple spaces before keyword
+./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1120:18: E272 multiple spaces before keyword
+./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1121:18: E272 multiple spaces before keyword
+./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1148:24: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1150:10: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1167:23: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1168:27: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1175:16: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1176:18: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1640:12: E221 multiple spaces before operator
+./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1666:63: E127 continuation line over-indented for visual indent
+./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1705:38: E702 multiple statements on one line (semicolon)
+./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_run_prefit_calibration.py:1724:20: E221 multiple spaces before operator
 ./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_setup_grid_cli.py:4:1: F401 'tempfile' imported but unused
 ./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_setup_grid_cli.py:6:1: F401 'pytest' imported but unused
 ./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_subset_genotypes.py:84:31: E741 ambiguous variable name 'l'

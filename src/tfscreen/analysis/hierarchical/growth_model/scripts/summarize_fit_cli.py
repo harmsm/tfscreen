@@ -41,14 +41,19 @@ def _resolve_path(path, run_dir):
 
 
 def _read_final_loss(losses_file):
-    """Return the last numeric value from a losses text file."""
+    """Return the last loss value from a losses text file.
+
+    Supports two formats:
+    - Comma-delimited  ``loss,other``  (loss is the first column)
+    - Whitespace-delimited  ``step loss``  (loss is the last column)
+    """
     last_val = None
     with open(losses_file) as fh:
         for line in fh:
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
-            token = line.split()[-1]
+            token = line.split(",")[0] if "," in line else line.split()[-1]
             try:
                 last_val = float(token)
             except ValueError:
