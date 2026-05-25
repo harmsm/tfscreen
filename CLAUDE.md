@@ -52,7 +52,7 @@ tfs-diagnose-nan           # Diagnose NaN issues in inference
 tfs-simulate               # Simulate a full experiment
 tfs-setup-grid             # Set up grid of model configs
 tfs-summarize-grid         # Summarize grid results
-tfs-subset-growth-data     # Subset growth data
+tfs-subset-genotypes       # Subset genotype data
 ```
 
 ## Architecture

@@ -81,4 +81,5 @@ tfs-diagnose-nan = "tfscreen.analysis.hierarchical.growth_model.scripts.diagnose
 tfs-simulate = "tfscreen.simulate.scripts.run_simulation_cli:main"
 tfs-setup-grid = "tfscreen.analysis.hierarchical.growth_model.scripts.setup_grid_cli:main"
 tfs-summarize-grid = "tfscreen.analysis.hierarchical.growth_model.scripts.summarize_grid_cli:main"
-tfs-subset-growth-data = "tfscreen.analysis.hierarchical.growth_model.scripts.subset_growth_data_cli:main"
+tfs-subset-genotypes = "tfscreen.analysis.hierarchical.growth_model.scripts.subset_genotypes_cli:main"
+tfs-summarize-fit = "tfscreen.analysis.hierarchical.growth_model.scripts.summarize_fit_cli:main"

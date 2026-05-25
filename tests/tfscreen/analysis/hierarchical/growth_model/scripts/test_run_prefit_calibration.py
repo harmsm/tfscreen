@@ -1520,7 +1520,7 @@ class TestWriteCalibrationStats:
         stats = json.loads(json_path.read_text())
         expected_keys = {
             "pct_success", "rmse", "normalized_rmse", "pearson_r",
-            "r_squared", "mean_error", "coverage_prob",
+            "spearman_r", "r_squared", "mean_error", "coverage_prob",
             "residual_corr", "residual_corr_p_value", "bp_p_value",
             "n_params", "n_obs",
         }

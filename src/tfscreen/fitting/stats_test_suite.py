@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.stats import pearsonr
+from scipy.stats import pearsonr, spearmanr
 import statsmodels.api as sm
 from statsmodels.stats.diagnostic import het_breuschpagan
 
@@ -43,9 +43,13 @@ def stats_test_suite(param_est,param_real,param_std=None):
             parameter values. This measures the model's resolving power; a
             low value indicates the error is small compared to the signal.
         pearson_r : float
-            Pearson correlation coefficient between the estimated and real 
+            Pearson correlation coefficient between the estimated and real
             parameter values. A value of 1 indicates perfect correlation; 0
             no correlation.
+        spearman_r : float
+            Spearman rank correlation coefficient. More robust than Pearson
+            when a few extreme values dominate. Directly measures whether the
+            model ranks genotypes correctly.
         r_squared : float
             Squared Pearson correlation coefficient. Measures the fraction of
             the variation in the real parameters captured by the estimated 
@@ -99,12 +103,14 @@ def stats_test_suite(param_est,param_real,param_std=None):
     else:
         normalized_rmse = np.inf 
 
-    # R and R^2
-    # Avoid pearsonr warnings if inputs are constant
+    # R, R^2, and Spearman r
+    # Avoid correlation warnings if inputs are constant
     if np.all(param_real == param_real[0]) or np.all(param_est == param_est[0]):
         r_val, _ = np.nan, np.nan
+        spearman_r = np.nan
     else:
         r_val, _ = pearsonr(param_real, param_est)
+        spearman_r, _ = spearmanr(param_real, param_est)
     r_squared = r_val**2
 
     mean_error = np.mean(diff)
@@ -144,6 +150,7 @@ def stats_test_suite(param_est,param_real,param_std=None):
         "rmse":rmse,
         "normalized_rmse":normalized_rmse,
         "pearson_r": r_val,
+        "spearman_r": spearman_r,
         "r_squared": r_squared,
         "mean_error":mean_error,
         "coverage_prob":coverage_prob,

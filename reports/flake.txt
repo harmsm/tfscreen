@@ -2252,6 +2252,7 @@
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/setup_grid_cli.py:233:1: C901 'setup_grid' is too complex (17)
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/subset_genotypes_cli.py:40:1: C901 'subset_genotypes' is too complex (23)
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/subset_genotypes_cli.py:93:5: F841 local variable 'all_genotypes' is assigned to but never used
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/summarize_fit_cli.py:95:1: C901 'summarize_fit' is too complex (35)
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/summarize_posteriors_cli.py:4:1: F401 'tfscreen.analysis.hierarchical.growth_model.model_class.ModelClass as GrowthModel' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/summarize_posteriors_cli.py:9:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/summarize_posteriors_cli.py:10:25: E128 continuation line under-indented for visual indent
@@ -3427,26 +3428,25 @@
 ./src/tfscreen/fitting/stats_test_suite.py:8:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/fitting/stats_test_suite.py:8:31: E231 missing whitespace after ','
 ./src/tfscreen/fitting/stats_test_suite.py:8:42: E231 missing whitespace after ','
-./src/tfscreen/fitting/stats_test_suite.py:46:75: W291 trailing whitespace
-./src/tfscreen/fitting/stats_test_suite.py:51:75: W291 trailing whitespace
-./src/tfscreen/fitting/stats_test_suite.py:62:52: W291 trailing whitespace
-./src/tfscreen/fitting/stats_test_suite.py:77:1: W293 blank line contains whitespace
-./src/tfscreen/fitting/stats_test_suite.py:87:1: W293 blank line contains whitespace
-./src/tfscreen/fitting/stats_test_suite.py:100:33: W291 trailing whitespace
-./src/tfscreen/fitting/stats_test_suite.py:128:1: W293 blank line contains whitespace
-./src/tfscreen/fitting/stats_test_suite.py:137:26: E231 missing whitespace after ','
-./src/tfscreen/fitting/stats_test_suite.py:138:1: W293 blank line contains whitespace
-./src/tfscreen/fitting/stats_test_suite.py:142:5: E303 too many blank lines (2)
-./src/tfscreen/fitting/stats_test_suite.py:143:22: E231 missing whitespace after ':'
-./src/tfscreen/fitting/stats_test_suite.py:144:15: E231 missing whitespace after ':'
-./src/tfscreen/fitting/stats_test_suite.py:145:26: E231 missing whitespace after ':'
-./src/tfscreen/fitting/stats_test_suite.py:148:21: E231 missing whitespace after ':'
-./src/tfscreen/fitting/stats_test_suite.py:149:24: E231 missing whitespace after ':'
-./src/tfscreen/fitting/stats_test_suite.py:150:24: E231 missing whitespace after ':'
-./src/tfscreen/fitting/stats_test_suite.py:151:32: E231 missing whitespace after ':'
-./src/tfscreen/fitting/stats_test_suite.py:152:21: E231 missing whitespace after ':'
-./src/tfscreen/fitting/stats_test_suite.py:154:1: W293 blank line contains whitespace
-./src/tfscreen/fitting/stats_test_suite.py:156:1: W391 blank line at end of file
+./src/tfscreen/fitting/stats_test_suite.py:55:75: W291 trailing whitespace
+./src/tfscreen/fitting/stats_test_suite.py:66:52: W291 trailing whitespace
+./src/tfscreen/fitting/stats_test_suite.py:81:1: W293 blank line contains whitespace
+./src/tfscreen/fitting/stats_test_suite.py:91:1: W293 blank line contains whitespace
+./src/tfscreen/fitting/stats_test_suite.py:104:33: W291 trailing whitespace
+./src/tfscreen/fitting/stats_test_suite.py:134:1: W293 blank line contains whitespace
+./src/tfscreen/fitting/stats_test_suite.py:143:26: E231 missing whitespace after ','
+./src/tfscreen/fitting/stats_test_suite.py:144:1: W293 blank line contains whitespace
+./src/tfscreen/fitting/stats_test_suite.py:148:5: E303 too many blank lines (2)
+./src/tfscreen/fitting/stats_test_suite.py:149:22: E231 missing whitespace after ':'
+./src/tfscreen/fitting/stats_test_suite.py:150:15: E231 missing whitespace after ':'
+./src/tfscreen/fitting/stats_test_suite.py:151:26: E231 missing whitespace after ':'
+./src/tfscreen/fitting/stats_test_suite.py:155:21: E231 missing whitespace after ':'
+./src/tfscreen/fitting/stats_test_suite.py:156:24: E231 missing whitespace after ':'
+./src/tfscreen/fitting/stats_test_suite.py:157:24: E231 missing whitespace after ':'
+./src/tfscreen/fitting/stats_test_suite.py:158:32: E231 missing whitespace after ':'
+./src/tfscreen/fitting/stats_test_suite.py:159:21: E231 missing whitespace after ':'
+./src/tfscreen/fitting/stats_test_suite.py:161:1: W293 blank line contains whitespace
+./src/tfscreen/fitting/stats_test_suite.py:163:1: W391 blank line at end of file
 ./src/tfscreen/genetics/__init__.py:3:1: F401 '.genotype_sorting.standardize_genotypes' imported but unused
 ./src/tfscreen/genetics/__init__.py:3:1: F401 '.genotype_sorting.argsort_genotypes' imported but unused
 ./src/tfscreen/genetics/__init__.py:3:1: F401 '.genotype_sorting.set_categorical_genotype' imported but unused
@@ -6789,6 +6789,11 @@
 ./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_setup_grid_cli.py:6:1: F401 'pytest' imported but unused
 ./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_subset_genotypes.py:84:31: E741 ambiguous variable name 'l'
 ./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_subset_genotypes.py:598:28: E127 continuation line over-indented for visual indent
+./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_summarize_fit_cli.py:15:1: E402 module level import not at top of file
+./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_summarize_fit_cli.py:16:1: E402 module level import not at top of file
+./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_summarize_fit_cli.py:17:1: E402 module level import not at top of file
+./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_summarize_fit_cli.py:18:1: E402 module level import not at top of file
+./tests/tfscreen/analysis/hierarchical/growth_model/scripts/test_summarize_fit_cli.py:20:1: E402 module level import not at top of file
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_batch.py:3:1: F401 'numpy as np' imported but unused
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_batch.py:4:1: F401 'collections.namedtuple' imported but unused
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_batch.py:14:1: E302 expected 2 blank lines, found 1
@@ -9756,7 +9761,7 @@
 ./tests/tfscreen/util/validation/test_check.py:8:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/validation/test_check.py:26:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/validation/test_check.py:42:38: W292 no newline at end of file
-40    C901 'cat_fit' is too complex (19)
+41    C901 'cat_fit' is too complex (19)
 36    E111 indentation is not a multiple of 4
 15    E114 indentation is not a multiple of 4 (comment)
 7     E116 unexpected indentation (comment)
@@ -9789,7 +9794,7 @@
 19    E305 expected 2 blank lines after class or function definition, found 0
 30    E306 expected 1 blank line before a nested definition, found 0
 1     E401 multiple imports on one line
-30    E402 module level import not at top of file
+35    E402 module level import not at top of file
 89    E501 line too long (135 > 127 characters)
 47    E701 multiple statements on one line (colon)
 6     E702 multiple statements on one line (semicolon)
@@ -9802,8 +9807,8 @@
 11    F541 f-string is missing placeholders
 7     F811 redefinition of unused 'dataclasses' from line 6
 58    F841 local variable 'titrant_names' is assigned to but never used
-977   W291 trailing whitespace
+976   W291 trailing whitespace
 115   W292 no newline at end of file
 2590  W293 blank line contains whitespace
 47    W391 blank line at end of file
-9758
+9763
