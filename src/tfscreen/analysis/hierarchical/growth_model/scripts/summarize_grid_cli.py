@@ -9,12 +9,49 @@ A run is considered complete when ``tfs_configure_config.yaml`` exists in the
 subdirectory (i.e. tfs-configure-model finished successfully during setup).
 """
 
+import glob
 import json
 import os
 
 import pandas as pd
 
 from tfscreen.util.cli import generalized_main
+
+
+def _flatten_fit_summary(data):
+    """Flatten a fit_summary JSON dict into a flat dict for a CSV row.
+
+    Metadata scalars (n_parameters, n_*_points, final_loss) are included
+    as-is.  Statistics under ``theta`` and ``growth`` are prefixed with the
+    section and split name, e.g. ``theta_training_rmse``.
+
+    Parameters
+    ----------
+    data : dict
+        Parsed contents of a ``*_fit_summary.json`` file.
+
+    Returns
+    -------
+    dict
+        Flat mapping of column name → value.
+    """
+    flat = {}
+
+    meta = data.get("metadata") or {}
+    for key in ("n_parameters", "n_theta_training_points", "n_theta_test_points",
+                "n_growth_training_points", "final_loss"):
+        if key in meta:
+            flat[key] = meta[key]
+
+    for section, splits in (("theta", ("training", "test")),
+                             ("growth", ("training",))):
+        section_data = data.get(section) or {}
+        for split in splits:
+            stats = section_data.get(split) or {}
+            for k, v in stats.items():
+                flat[f"{section}_{split}_{k}"] = v
+
+    return flat
 
 
 def summarize_grid(grid_dir, out_prefix=None):
@@ -71,6 +108,16 @@ def summarize_grid(grid_dir, out_prefix=None):
         row["configure_complete"] = os.path.exists(
             os.path.join(subdir, "tfs_configure_config.yaml")
         )
+
+        # Merge fit summary statistics if present.
+        matches = sorted(glob.glob(os.path.join(subdir, "*_fit_summary.json")))
+        if matches:
+            try:
+                with open(matches[0]) as fh:
+                    fit_data = json.load(fh)
+                row.update(_flatten_fit_summary(fit_data))
+            except Exception:
+                pass  # malformed JSON — leave columns absent for this run
 
         rows.append(row)
 

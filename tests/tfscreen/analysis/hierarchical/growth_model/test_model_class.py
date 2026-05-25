@@ -161,6 +161,68 @@ def test_read_binding_df_errors(mocker):
     with pytest.raises(ValueError, match="missing col"):
         _read_binding_df("path.csv", growth_df=growth_df)
 
+
+def test_read_binding_df_preserves_canonical_genotype_order():
+    # Regression test: the pd.merge inside add_group_columns converts the
+    # categorical genotype column to object dtype.  _read_binding_df must
+    # restore canonical ordering (wt first, then singles by site) so that
+    # _build_binding_tm assigns the same genotype indices that _setup_batching
+    # expects from the growth_tm.  Without the fix, genotypes appear in
+    # alphabetical order (e.g. H74A=0 instead of wt=0), which misaligns the
+    # binding theta_obs tensor with the batch_idx used by the Hill model.
+
+    # Build a minimal growth_df with the four genotypes in canonical order.
+    # set_categorical_genotype puts wt first, then singles by site number.
+    from tfscreen.genetics import set_categorical_genotype
+    growth_df = pd.DataFrame({
+        "genotype": ["wt", "wt", "M42I", "M42I", "H74A", "H74A", "K84L", "K84L"],
+        "titrant_name": ["iptg"] * 8,
+        "titrant_conc": [0.0, 1.0] * 4,
+        "ln_cfu": [10.0] * 8,
+        "ln_cfu_std": [0.1] * 8,
+        "t_pre": [1.0] * 8,
+        "t_sel": [1.0] * 8,
+        "replicate": [1] * 8,
+        "condition_pre": ["kan"] * 8,
+        "condition_sel": ["kan"] * 8,
+    })
+    growth_df = set_categorical_genotype(growth_df, standardize=True)
+    growth_df = tfscreen.util.dataframe.add_group_columns(
+        growth_df, ["genotype", "titrant_name"], "map_theta_group"
+    )
+
+    binding_df = pd.DataFrame({
+        "genotype": ["wt", "M42I", "H74A", "K84L"],
+        "titrant_name": ["iptg"] * 4,
+        "titrant_conc": [1.0] * 4,
+        "theta_obs": [0.1, 0.5, 0.7, 0.9],
+        "theta_std": [0.02] * 4,
+    })
+
+    result = _read_binding_df(binding_df, growth_df=growth_df)
+
+    # After the fix the genotype column must be categorical with canonical order.
+    assert hasattr(result["genotype"], "cat"), "genotype column must be categorical"
+    categories = list(result["genotype"].cat.categories)
+    assert categories == ["wt", "M42I", "H74A", "K84L"], (
+        f"Expected canonical order ['wt', 'M42I', 'H74A', 'K84L'], got {categories}"
+    )
+
+    # The map_theta_group values must match what the growth_df assigned so that
+    # _setup_batching and the binding tensor stay aligned.
+    # With 1 titrant name each (genotype, titrant_name) pair gets a consecutive
+    # index in canonical genotype order: wt=0, M42I=1, H74A=2, K84L=3.
+    expected = {
+        "wt": 0, "M42I": 1, "H74A": 2, "K84L": 3
+    }
+    for geno, exp_idx in expected.items():
+        row = result[result["genotype"] == geno]
+        assert row["map_theta_group"].iloc[0] == exp_idx, (
+            f"map_theta_group for {geno}: expected {exp_idx}, "
+            f"got {row['map_theta_group'].iloc[0]}"
+        )
+
+
 # ----------------------------------------------------------------------------
 # 7. Tests for _extract_param_est
 # ----------------------------------------------------------------------------

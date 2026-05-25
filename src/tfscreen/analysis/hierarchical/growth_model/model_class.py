@@ -267,6 +267,13 @@ def _read_binding_df(binding_df,
         binding_df = add_group_columns(binding_df, theta_group_cols,
                                        "map_theta_group")
 
+    # The merge inside add_group_columns can convert the categorical genotype
+    # column to object dtype (when the two sides have different category sets).
+    # Restore canonical ordering so _build_binding_tm's add_pivot_index
+    # assigns the same genotype indices as _setup_batching expects.
+    binding_df = tfscreen.genetics.set_categorical_genotype(binding_df,
+                                                            standardize=False)
+
     return binding_df
 
 def _build_binding_tm(binding_df):
