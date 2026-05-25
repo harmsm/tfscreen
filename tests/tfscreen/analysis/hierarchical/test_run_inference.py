@@ -280,25 +280,140 @@ def test_write_losses_append(tmpdir):
     model = MockModel()
     ri = RunInference(model, seed=42)
     out_prefix = os.path.join(tmpdir, "test_losses")
-    # 702-703: file exists
+    # Pre-existing binary file is ignored when current_step != 0
     path = f"{out_prefix}_losses.bin"
     with open(path, "wb") as f:
-        f.write(b"header")
-    
-    # 707: binary write
-    ri._write_losses([1.0, 2.0], out_prefix)
-    assert os.path.getsize(path) > 6
+        f.write(b"existing")
 
-def test_update_loss_deque():
+    ri._write_losses([1.0, 2.0], out_prefix)
+    assert os.path.getsize(path) > 8
+
+
+def test_write_losses_txt_has_header(tmpdir):
+    model = MockModel()
+    ri = RunInference(model, seed=42)
+    out_prefix = os.path.join(tmpdir, "test_hdr")
+
+    # Step 0: header is written even when losses list is empty
+    ri._write_losses(np.array([]), out_prefix)
+    txt_path = f"{out_prefix}_losses.txt"
+    assert os.path.exists(txt_path)
+    with open(txt_path) as fh:
+        first_line = fh.readline().strip()
+    assert first_line == "epoch,loss,relative_change"
+
+
+def test_write_losses_txt_format(tmpdir):
+    model = MockModel()
+    ri = RunInference(model, seed=42)
+    out_prefix = os.path.join(tmpdir, "test_fmt")
+
+    # Init (step 0)
+    ri._write_losses(np.array([]), out_prefix)
+
+    # Simulate one interval having completed
+    ri._current_step = ri._iterations_per_epoch  # epoch 1
+    ri._relative_change = 0.123
+    ri._write_losses(np.array([42.0, 43.0]), out_prefix)
+
+    with open(f"{out_prefix}_losses.txt") as fh:
+        lines = [l.strip() for l in fh if l.strip()]
+
+    assert lines[0] == "epoch,loss,relative_change"
+    # Second line: epoch=1, loss=last value (43.0), relative_change=0.123
+    parts = lines[1].split(",")
+    assert int(parts[0]) == 1
+    assert float(parts[1]) == pytest.approx(43.0)
+    assert float(parts[2]) == pytest.approx(0.123)
+
+
+def test_update_loss_deque_all_constant():
+    """Constant losses produce relative_change=0 via zero numerator."""
     model = MockModel()
     ri = RunInference(model, seed=42)
     from collections import deque
     ri._loss_deque = deque(maxlen=200)
-    # Fill deque to trigger relative change calculation
     ri._update_loss_deque(np.ones(200))
-    # std will be 0, so 1e-10 epsilon prevents div by zero. 
-    # (1 - 1) / 1e-10 = 0
     assert ri._relative_change == 0.0
+
+
+def test_update_loss_deque_uses_total_improvement():
+    """Metric is normalized by total improvement, not current loss magnitude."""
+    model = MockModel()
+    ri = RunInference(model, seed=42)
+    from collections import deque
+
+    # Deque of size 4; warm-up: old_half=[100,90], new_half=[80,70]
+    ri._loss_deque = deque(maxlen=4)
+    ri._update_loss_deque([100.0, 90.0, 80.0, 70.0])
+
+    # loss_start = mean([100,90]) = 95; loss_best = mean([80,70]) = 75
+    # denom = |95 - 75| = 20; numerator = |95 - 75| = 20 → metric = 1.0
+    assert ri._loss_start == pytest.approx(95.0)
+    assert ri._loss_best == pytest.approx(75.0)
+    assert ri._relative_change == pytest.approx(1.0)
+
+
+def test_update_loss_deque_sign_change():
+    """Metric is robust when the loss function crosses zero."""
+    model = MockModel()
+    ri = RunInference(model, seed=42)
+    from collections import deque
+
+    ri._loss_deque = deque(maxlen=4)
+    ri._update_loss_deque([10.0, 5.0, -5.0, -10.0])
+
+    # loss_start = 7.5; loss_best = -7.5; denom = 15; metric = 15/15 = 1.0
+    assert ri._relative_change == pytest.approx(1.0)
+    assert ri._loss_start == pytest.approx(7.5)
+    assert ri._loss_best == pytest.approx(-7.5)
+
+
+def test_update_loss_deque_loss_start_fixed_after_first_check():
+    """loss_start is captured once at the end of warm-up and never updated."""
+    model = MockModel()
+    ri = RunInference(model, seed=42)
+    from collections import deque
+
+    ri._loss_deque = deque(maxlen=4)
+    ri._update_loss_deque([100.0, 90.0, 80.0, 70.0])
+    first_loss_start = ri._loss_start
+
+    ri._update_loss_deque([60.0, 50.0])
+    assert ri._loss_start == first_loss_start
+
+
+def test_update_loss_deque_warmup_returns_inf():
+    """Returns inf while the deque is not yet full."""
+    model = MockModel()
+    ri = RunInference(model, seed=42)
+    from collections import deque
+    ri._loss_deque = deque(maxlen=10)
+    ri._update_loss_deque([1.0, 2.0, 3.0])
+    assert ri._relative_change == np.inf
+
+
+def test_loss_state_reset_at_run_start(mocker):
+    """_loss_start and _loss_best are reset each time run_optimization begins."""
+    model = MockModel()
+    ri = RunInference(model, seed=42)
+
+    # Simulate stale state from a previous run
+    ri._loss_start = 999.0
+    ri._loss_best = -999.0
+
+    mocker.patch("jax.jit", side_effect=lambda x: x)
+    mocker.patch("jax.lax.scan", return_value=("state", jnp.array([1.0])))
+    mock_svi = mocker.Mock()
+    mock_svi.init.return_value = "state"
+    mock_svi.update.return_value = ("state", 1.0)
+    mock_svi.get_params.return_value = {"p": jnp.array(1.0)}
+
+    ri.run_optimization(mock_svi, max_num_epochs=1,
+                        convergence_check_interval=1, checkpoint_interval=1)
+
+    # After the run resets state, _loss_start must not retain the stale value
+    assert ri._loss_start != 999.0
 
 
 def test_get_site_names(mocker):
@@ -389,6 +504,53 @@ def test_restore_checkpoint_current_step(tmpdir):
     restored = ri._restore_checkpoint(checkpoint_file)
     assert ri._current_step == 999
     assert isinstance(restored, SVIState)
+
+
+def test_checkpoint_round_trips_convergence_state(tmpdir):
+    """_write_checkpoint saves loss_start/loss_best; _restore_checkpoint loads them."""
+    model = MockModel()
+    ri = RunInference(model, seed=42)
+    out_prefix = os.path.join(tmpdir, "test_conv")
+
+    ri._loss_start = -12345.0
+    ri._loss_best = -99999.0
+
+    try:
+        state = SVIState(None, None, None)
+    except Exception:
+        state = SVIState(None, None)
+
+    ri._write_checkpoint(state, out_prefix)
+
+    # Fresh instance simulates a restart
+    ri2 = RunInference(model, seed=0)
+    assert ri2._loss_start is None
+    assert ri2._loss_best == np.inf
+
+    ri2._restore_checkpoint(f"{out_prefix}_checkpoint.pkl")
+    assert ri2._loss_start == pytest.approx(-12345.0)
+    assert ri2._loss_best == pytest.approx(-99999.0)
+
+
+def test_checkpoint_missing_convergence_state_uses_defaults(tmpdir):
+    """Old checkpoints without loss_start/loss_best leave defaults intact."""
+    model = MockModel()
+    ri = RunInference(model, seed=42)
+    out_prefix = os.path.join(tmpdir, "test_old")
+
+    try:
+        state = SVIState(None, None, None)
+    except Exception:
+        state = SVIState(None, None)
+
+    import dill as _dill
+    checkpoint_file = f"{out_prefix}_checkpoint.pkl"
+    with open(checkpoint_file, "wb") as f:
+        _dill.dump({'svi_state': state, 'main_key': ri._main_key}, f)
+
+    ri._restore_checkpoint(checkpoint_file)
+    assert ri._loss_start is None   # default — not present in old checkpoint
+    assert ri._loss_best == np.inf  # default
 
 def test_run_optimization_1d_block_idx(mocker):
     """1D block_idx is reshaped to 2D before passing to fast_scan."""

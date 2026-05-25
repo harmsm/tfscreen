@@ -74,17 +74,19 @@ class RunInference:
         self._main_key = random.PRNGKey(self._seed)
         self._current_step = 0
         self._relative_change = np.inf
-        
+        self._loss_start = None
+        self._loss_best = np.inf
+
         # Calculate iterations per epoch
         num_genotypes = self.model.data.num_genotype
-        
+
         # Determine batch size by dry-running get_random_idx
         init_batch_key = int(self.get_key()[1])
         test_idx = self.model.get_random_idx(init_batch_key,num_batches=1)
         batch_size = len(test_idx.flatten())
-        
+
         self._iterations_per_epoch = int(np.ceil(num_genotypes / batch_size))
-        
+
         self._patience_counter = 0
 
 
@@ -138,7 +140,7 @@ class RunInference:
                          svi_state=None,
                          init_params=None,
                          out_prefix="tfs",
-                         convergence_tolerance=0.01,
+                         convergence_tolerance=1e-5,
                          convergence_window=10,
                          patience=10,
                          convergence_check_interval=2,
@@ -164,7 +166,10 @@ class RunInference:
         out_prefix : str, optional
             Root name for output files (checkpoints, losses).
         convergence_tolerance : float, optional
-            Relative change in smoothed loss to declare convergence.
+            Convergence criterion: stop when the window-to-window change in
+            smoothed loss is less than this fraction of the total improvement
+            seen since warm-up ended (i.e., since the loss deque first filled).
+            Default 1e-5.
         convergence_window : int, optional
             Number of epochs to average over for convergence check.
         patience : int, optional
@@ -282,8 +287,10 @@ class RunInference:
         else:
             epoch_checkpoint_interval_steps = None
 
-        # Reset patience counter
+        # Reset convergence state
         self._patience_counter = 0
+        self._loss_start = None
+        self._loss_best = np.inf
         
         # Loop over steps in chunks of check_interval_steps
         current_optimization_step = 0
@@ -659,7 +666,9 @@ class RunInference:
 
         out_dict = {"main_key":self._main_key,
                     "svi_state":host_svi_state,
-                    "current_step":self._current_step}
+                    "current_step":self._current_step,
+                    "loss_start":self._loss_start,
+                    "loss_best":self._loss_best}
 
         tmp_checkpoint_file = f"{out_prefix}_checkpoint.tmp.pkl"
 
@@ -700,7 +709,9 @@ class RunInference:
         host_svi_state = jax.device_get(svi_state)
         out_dict = {"main_key": self._main_key,
                     "svi_state": host_svi_state,
-                    "current_step": self._current_step}
+                    "current_step": self._current_step,
+                    "loss_start": self._loss_start,
+                    "loss_best": self._loss_best}
 
         tmp_file = f"{epoch_file}.tmp"
         with open(tmp_file, "wb") as f:
@@ -729,6 +740,10 @@ class RunInference:
         self._main_key = checkpoint_data['main_key']
         if 'current_step' in checkpoint_data:
             self._current_step = checkpoint_data['current_step']
+        if 'loss_start' in checkpoint_data:
+            self._loss_start = checkpoint_data['loss_start']
+        if 'loss_best' in checkpoint_data:
+            self._loss_best = checkpoint_data['loss_best']
 
         if not isinstance(svi_state,numpyro.infer.svi.SVIState):
             raise ValueError(
@@ -753,31 +768,37 @@ class RunInference:
         losses_file = f"{out_prefix}_losses.bin"
         readable_losses_file = f"{out_prefix}_losses.txt"
 
-        # Delete an existing losses_file if it is here and we are just starting
-        # the run. 
+        # At the start of a run, remove stale files and write the text header.
         if self._current_step == 0:
 
             if os.path.exists(losses_file):
                 os.remove(losses_file)
-    
+
             if os.path.exists(readable_losses_file):
                 os.remove(readable_losses_file)
 
+            with open(readable_losses_file, "w") as f:
+                f.write("epoch,loss,relative_change\n")
+                f.flush()
+                os.fsync(f.fileno())
+
         # No losses to write this iteration, continue
         if len(losses) == 0:
-            return 
+            return
 
-        # Open in append Binary mode
+        epoch = self._current_step // self._iterations_per_epoch
+
+        # Open in append binary mode
         with open(losses_file, "ab") as f:
             np.array(losses).tofile(f)
             f.flush()
             os.fsync(f.fileno())
 
-        # Write a human-readable losses file
-        with open(readable_losses_file,"a") as f:
-            f.write(f"{losses[-1]},{self._relative_change}\n")
+        # Write a human-readable losses file: epoch,loss,relative_change
+        with open(readable_losses_file, "a") as f:
+            f.write(f"{epoch},{losses[-1]},{self._relative_change}\n")
             f.flush()
-            os.fsync(f.fileno())    
+            os.fsync(f.fileno())
 
 
 
@@ -785,9 +806,14 @@ class RunInference:
     def _update_loss_deque(self, losses):
         """
         Update the loss deque and calculate the convergence metric.
-        
-        The metric is defined as the absolute fractional change:
-        abs(mean(old_half) - mean(new_half)) / abs(mean(old_half))
+
+        The metric is the window-to-window change in smoothed loss, normalized
+        by the total improvement seen since the deque first filled (warm-up):
+
+            |mean_old - mean_new| / max(|loss_start - loss_best|, 1e-6)
+
+        loss_start is captured once, when the deque fills for the first time.
+        loss_best is the running minimum of mean_new across all checks.
 
         Parameters
         ----------
@@ -795,34 +821,28 @@ class RunInference:
             List of new losses to add to the deque.
         """
 
-        # Update loss history
         self._loss_deque.extend(list(losses))
 
-        # Check if the deque is full (i.e., we have enough history to compare windows)
+        # Deque must be full before any check (natural warm-up period)
         if len(self._loss_deque) < self._loss_deque.maxlen:
             self._relative_change = np.inf
-            return 
+            return
 
-        # Split the history into the "previous" and "current" halves
         history = np.array(self._loss_deque)
         half = len(history) // 2
-        
-        old_half = history[:half]
-        new_half = history[half:]
+        mean_old = np.mean(history[:half])
+        mean_new = np.mean(history[half:])
 
-        # Calculate means
-        mean_old = np.mean(old_half)
-        mean_new = np.mean(new_half)
+        # Capture loss_start once, at the end of warm-up
+        if self._loss_start is None:
+            self._loss_start = mean_old
 
-        # Prevent division by zero if mean_old is effectively zero
-        if np.abs(mean_old) < 1e-9:
-            if np.isclose(mean_new, mean_old):
-                self._relative_change = 0.0
-            else:
-                self._relative_change = np.inf
-            return 
-        
-        self._relative_change = np.abs((mean_old - mean_new) / mean_old)
+        # Track the best (lowest) smoothed loss seen so far
+        self._loss_best = min(self._loss_best, mean_new)
+
+        # Denominator: total improvement since warm-up, with floor for robustness
+        denom = max(abs(self._loss_start - self._loss_best), 1e-6)
+        self._relative_change = abs(mean_old - mean_new) / denom
 
     def write_params(self,params,out_prefix):
         """

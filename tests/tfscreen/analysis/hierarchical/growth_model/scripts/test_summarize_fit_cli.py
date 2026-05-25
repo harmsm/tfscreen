@@ -86,8 +86,10 @@ def _make_guesses_csv(path, n_params=20):
 
 
 def _make_losses_txt(path, final_loss=-5432.1):
-    lines = [f"{i*100} {-10000 + i*50:.1f}" for i in range(1, 10)]
-    lines.append(f"900 {final_loss}")
+    lines = ["epoch,loss,relative_change"]
+    for i in range(1, 10):
+        lines.append(f"{i*100},{-10000 + i*50:.1f},{1.0 / i:.6f}")
+    lines.append(f"900,{final_loss},0.000010")
     with open(path, "w") as fh:
         fh.write("\n".join(lines) + "\n")
 
@@ -205,19 +207,40 @@ class TestResolvePath:
 
 class TestReadAllLosses:
 
+    def test_returns_all_values_new_format(self, tmp_path):
+        """New epoch,loss,relative_change format — loss is column 1."""
+        p = str(tmp_path / "losses.txt")
+        with open(p, "w") as fh:
+            fh.write("epoch,loss,relative_change\n")
+            fh.write("100,-9000.0,0.5\n200,-8000.0,0.3\n300,-7000.0,0.1\n")
+        epochs, losses = _read_all_losses(p)
+        assert losses == pytest.approx([-9000.0, -8000.0, -7000.0])
+        assert epochs == [100, 200, 300]
+
     def test_returns_all_values_whitespace(self, tmp_path):
+        """Backward-compat: whitespace-delimited step loss."""
         p = str(tmp_path / "losses.txt")
         with open(p, "w") as fh:
             fh.write("100 -9000.0\n200 -8000.0\n300 -7000.0\n")
-        result = _read_all_losses(p)
-        assert result == pytest.approx([-9000.0, -8000.0, -7000.0])
+        epochs, losses = _read_all_losses(p)
+        assert losses == pytest.approx([-9000.0, -8000.0, -7000.0])
 
-    def test_returns_all_values_comma(self, tmp_path):
+    def test_returns_all_values_old_comma(self, tmp_path):
+        """Backward-compat: old comma format loss,other (loss is column 0)."""
         p = str(tmp_path / "losses.txt")
         with open(p, "w") as fh:
             fh.write("9000.0,0.002\n8000.0,0.0018\n7000.0,0.0015\n")
-        result = _read_all_losses(p)
-        assert result == pytest.approx([9000.0, 8000.0, 7000.0])
+        epochs, losses = _read_all_losses(p)
+        assert losses == pytest.approx([9000.0, 8000.0, 7000.0])
+
+    def test_header_line_skipped(self, tmp_path):
+        """Header row (non-numeric first token) is silently skipped."""
+        p = str(tmp_path / "losses.txt")
+        with open(p, "w") as fh:
+            fh.write("epoch,loss,relative_change\n1,-5000.0,0.01\n")
+        _, losses = _read_all_losses(p)
+        assert len(losses) == 1
+        assert losses[0] == pytest.approx(-5000.0)
 
     def test_raises_on_empty(self, tmp_path):
         p = str(tmp_path / "losses.txt")
@@ -229,7 +252,14 @@ class TestReadAllLosses:
 
 class TestReadFinalLoss:
 
-    def test_reads_last_value_from_two_column_file(self, tmp_path):
+    def test_reads_last_value_from_new_format(self, tmp_path):
+        p = str(tmp_path / "losses.txt")
+        with open(p, "w") as fh:
+            fh.write("epoch,loss,relative_change\n")
+            fh.write("100,-9000.0,0.5\n200,-8000.0,0.3\n300,-7654.3,0.1\n")
+        assert _read_final_loss(p) == pytest.approx(-7654.3)
+
+    def test_reads_last_value_from_whitespace_file(self, tmp_path):
         p = str(tmp_path / "losses.txt")
         with open(p, "w") as fh:
             fh.write("100 -9000.0\n200 -8000.0\n300 -7654.3\n")
@@ -247,7 +277,8 @@ class TestReadFinalLoss:
             fh.write("# header\n100 -1234.5\n")
         assert _read_final_loss(p) == pytest.approx(-1234.5)
 
-    def test_reads_first_column_from_comma_delimited_file(self, tmp_path):
+    def test_reads_loss_from_old_comma_format(self, tmp_path):
+        """Old comma format: loss is first column (float, not int epoch)."""
         p = str(tmp_path / "losses.txt")
         with open(p, "w") as fh:
             fh.write("9000.0,0.002\n8000.0,0.0018\n7654.3,0.0015\n")
