@@ -413,7 +413,7 @@ def build_calc_df(model, manual_titrant_df):
         If manual_titrant_df requests (titrant_name, titrant_conc) pairs not
         present in the training data.
     """
-    training_df = (model.growth_tm.df[["genotype", "titrant_name", "titrant_conc",
+    training_df = (model.training_tm.df[["genotype", "titrant_name", "titrant_conc",
                                         "titrant_name_idx", "titrant_conc_idx",
                                         "genotype_idx"]]
                    .drop_duplicates()

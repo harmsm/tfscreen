@@ -37,17 +37,17 @@ def _reconcile_doubles_and_singles(double_genos, single_genos, blacklist):
     return reconciled_doubles, reconciled_singles
 
 
-def subset_growth_data(
-    growth_file,
+def subset_genotypes(
+    data_file,
     n_singles,
     n_steps,
-    out_prefix="growth_subset",
+    out_prefix="genotype_subset",
     whitelist_file=None,
     blacklist_file=None,
     random_seed=42,
 ):
     """
-    Subset a growth dataset into titrated training/left-out pairs for
+    Subset a genotype dataset into titrated training/left-out pairs for
     cross-validation of double-mutant predictive power.
 
     Selects a fixed set of single-mutant genotypes, finds all double mutants
@@ -60,8 +60,8 @@ def subset_growth_data(
 
     Parameters
     ----------
-    growth_file : str
-        Path to the input growth CSV (must contain a 'genotype' column).
+    data_file : str
+        Path to the input CSV (must contain a 'genotype' column).
     n_singles : int
         Target number of single-mutant genotypes to include. Whitelist
         genotypes count toward this total.
@@ -84,9 +84,9 @@ def subset_growth_data(
     n_steps = int(n_steps)
     rng = np.random.default_rng(random_seed)
 
-    df = pd.read_csv(growth_file)
+    df = pd.read_csv(data_file)
     if "genotype" not in df.columns:
-        raise ValueError(f"growth_file '{growth_file}' has no 'genotype' column")
+        raise ValueError(f"data_file '{data_file}' has no 'genotype' column")
 
     # Classify genotypes by mutation count
     num_muts = _get_num_muts(df)
@@ -284,7 +284,7 @@ def subset_growth_data(
 
 def main():
     generalized_main(
-        subset_growth_data,
+        subset_genotypes,
         manual_arg_types={
             "n_singles": int,
             "n_steps": int,

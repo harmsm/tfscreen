@@ -36,6 +36,7 @@ def mock_gm():
         ["IPTG", "IPTG"],
         [0.0, 1.0],
     )
+    gm.training_tm.df = gm.growth_tm.df
     return gm
 
 

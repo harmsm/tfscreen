@@ -85,6 +85,7 @@ def _make_model(theta="none", dk_geno="none", activity="fixed",
         ["iptg","atc"], [1.0, 2.0], ["wt","A","B"],
     ]
     model.growth_tm = mock_tm
+    model.training_tm = mock_tm
     model.growth_df = model_df.copy()
     model.growth_df["t_pre"] = 0.0
     model.growth_df["t_sel"] = 1.0

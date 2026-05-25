@@ -30,7 +30,8 @@ def mock_model_congression():
     mock_tm.tensor_dim_names = ["replicate", "time", "condition_pre", "condition_sel", "titrant_name", "titrant_conc", "genotype"]
     mock_tm.tensor_dim_labels = [["1"], ["1"], ["1"], ["1"], ["iptg"], [0.0, 1.0], ["wt"]]
     model.growth_tm = mock_tm
-    
+    model.training_tm = mock_tm
+
     return model
 
 @pytest.fixture

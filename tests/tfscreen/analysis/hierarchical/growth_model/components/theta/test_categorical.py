@@ -269,6 +269,7 @@ class MockGrowthTM:
 class MockModel:
     def __init__(self, df):
         self.growth_tm = MockGrowthTM(df)
+        self.training_tm = self.growth_tm
 
 
 @pytest.fixture

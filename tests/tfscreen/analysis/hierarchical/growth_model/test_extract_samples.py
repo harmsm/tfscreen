@@ -38,6 +38,7 @@ def _hill_model():
         "map_theta_group": [0,     0,     1,     1],
     })
     model.growth_tm = mock_tm
+    model.training_tm = mock_tm
     return model
 
 
@@ -64,6 +65,7 @@ def _hill_mut_model():
         "titrant_name_idx": [0,    0,    0,    1,    1,    1],
     })
     model.growth_tm = mock_tm
+    model.training_tm = mock_tm
     return model
 
 
@@ -89,6 +91,7 @@ def _lac_dimer_mut_model():
         "titrant_name_idx": [0,     0],
     })
     model.growth_tm = mock_tm
+    model.training_tm = mock_tm
     model.priors.theta.theta_tf_total_M = 6.5e-7
     model.priors.theta.theta_op_total_M = 2.5e-8
     return model

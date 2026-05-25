@@ -617,7 +617,7 @@ def build_calc_df(model, manual_titrant_df):
     import tfscreen.util.dataframe
 
     if manual_titrant_df is None:
-        calc_df = (model.growth_tm.df[["genotype", "titrant_name", "titrant_conc",
+        calc_df = (model.training_tm.df[["genotype", "titrant_name", "titrant_conc",
                                        "map_theta_group"]]
                    .drop_duplicates()
                    .reset_index(drop=True))
@@ -625,13 +625,13 @@ def build_calc_df(model, manual_titrant_df):
         tfscreen.util.dataframe.check_columns(manual_titrant_df,
                                               required_columns=["titrant_name", "titrant_conc"])
         if "genotype" not in manual_titrant_df.columns:
-            genotypes = model.growth_tm.df["genotype"].unique()
+            genotypes = model.training_tm.df["genotype"].unique()
             dfs = [manual_titrant_df.assign(genotype=g) for g in genotypes]
             calc_df = pd.concat(dfs).reset_index(drop=True)
         else:
             calc_df = manual_titrant_df.copy()
 
-        mapping = (model.growth_tm.df[["genotype", "titrant_name", "map_theta_group"]]
+        mapping = (model.training_tm.df[["genotype", "titrant_name", "map_theta_group"]]
                    .drop_duplicates()
                    .set_index(["genotype", "titrant_name"])["map_theta_group"]
                    .to_dict())

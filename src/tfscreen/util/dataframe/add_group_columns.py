@@ -54,8 +54,9 @@ def add_group_columns(target_df,
                 f"columns are: {need_cols - seen_cols}"
             )
 
-        # Do merge
-        target_df = target_df.merge(existing_df[merge_on],
+        # Do merge — deduplicate first so repeated rows in existing_df don't
+        # fan out target_df when group_cols are not unique there.
+        target_df = target_df.merge(existing_df[merge_on].drop_duplicates(),
                                     how="left",
                                     on=group_cols,
                                     sort=False)

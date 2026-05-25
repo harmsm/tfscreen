@@ -338,3 +338,199 @@ def test_svi_with_epistasis_runs_without_error(tmp_path):
 
     assert svi_state is not None
     assert isinstance(params, dict)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# binding_only + struct models
+# ──────────────────────────────────────────────────────────────────────────────
+
+_MWC_STRUCTURE_NAMES = ('H', 'HO', 'L', 'LO', 'HE2', 'LE2')
+
+
+def _make_ddG_prior_csv(tmp_path, genotypes=_GENOTYPES):
+    """Write a minimal ddG prior CSV for mwc_dimer_lnK_ddG_prior."""
+    mut_labels = sorted({
+        part
+        for g in genotypes if g != "wt"
+        for part in g.split("/")
+    })
+    rows = [{"mut": m, **{s: 0.0 for s in _MWC_STRUCTURE_NAMES}} for m in mut_labels]
+    df = pd.DataFrame(rows)
+    path = str(tmp_path / "ddg_prior.csv")
+    df.to_csv(path, index=False)
+    return path
+
+
+def _make_binding_only_csv(tmp_path, genotypes=_GENOTYPES):
+    """Write a minimal binding CSV (no growth data — binding_only mode)."""
+    rows = []
+    for geno in genotypes:
+        for conc in [1e-6, 1e-4]:
+            rows.append({
+                "genotype":     geno,
+                "titrant_name": "iptg",
+                "titrant_conc": conc,
+                "theta_obs":    0.5,
+                "theta_std":    0.05,
+            })
+    df = pd.DataFrame(rows)
+    path = str(tmp_path / "binding_only.csv")
+    df.to_csv(path, index=False)
+    return path
+
+
+def test_binding_only_struct_raises_without_struct_path(tmp_path):
+    """mwc_dimer_lnK_ddG_prior in binding_only mode must raise if struct_ensemble_path is absent."""
+    binding_path = _make_binding_only_csv(tmp_path)
+
+    from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass
+    with pytest.raises(ValueError, match="struct_ensemble_path"):
+        ModelClass(None, binding_path,
+                   binding_only=True,
+                   theta="mwc_dimer_lnK_ddG_prior")
+
+
+@pytest.fixture(scope="module")
+def binding_only_ddG_mc(tmp_path_factory):
+    """
+    ModelClass in binding_only mode with mwc_dimer_lnK_ddG_prior.
+    Scoped to module so it is built once for all tests below.
+    """
+    tmp_path = tmp_path_factory.mktemp("binding_only_ddG")
+    binding_path = _make_binding_only_csv(tmp_path)
+    ddg_path     = _make_ddG_prior_csv(tmp_path)
+
+    from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass
+    return ModelClass(
+        None, binding_path,
+        binding_only=True,
+        theta="mwc_dimer_lnK_ddG_prior",
+        struct_ensemble_path=ddg_path,
+    )
+
+
+class TestBindingOnlyDdGStructFields:
+    """BindingData must carry the struct_* fields when using mwc_dimer_lnK_ddG_prior."""
+
+    def test_struct_names_is_correct_tuple(self, binding_only_ddG_mc):
+        assert set(binding_only_ddG_mc.data.binding.struct_names) == set(_MWC_STRUCTURE_NAMES)
+
+    def test_num_struct_is_six(self, binding_only_ddG_mc):
+        assert binding_only_ddG_mc.data.binding.num_struct == 6
+
+    def test_struct_features_shape(self, binding_only_ddG_mc):
+        M = binding_only_ddG_mc.data.binding.num_mutation
+        S = binding_only_ddG_mc.data.binding.num_struct
+        feat = binding_only_ddG_mc.data.binding.struct_features
+        assert feat.shape == (M, S)
+
+    def test_mut_labels_populated(self, binding_only_ddG_mc):
+        assert len(binding_only_ddG_mc.mut_labels) > 0
+
+    def test_num_mutation_nonzero(self, binding_only_ddG_mc):
+        assert binding_only_ddG_mc.data.binding.num_mutation > 0
+
+    def test_growth_data_is_none(self, binding_only_ddG_mc):
+        assert binding_only_ddG_mc.data.growth is None
+
+    def test_struct_n_chains_is_none_for_ddG_csv(self, binding_only_ddG_mc):
+        # ddG CSV loader does not provide n_chains (it's None)
+        assert binding_only_ddG_mc.data.binding.struct_n_chains is None
+
+
+@pytest.mark.slow
+def test_binding_only_ddG_svi_runs(tmp_path):
+    """Five SVI steps with mwc_dimer_lnK_ddG_prior in binding_only mode must not raise."""
+    from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass
+    from tfscreen.analysis.hierarchical.run_inference import RunInference
+
+    binding_path = _make_binding_only_csv(tmp_path)
+    ddg_path     = _make_ddG_prior_csv(tmp_path)
+
+    mc = ModelClass(
+        None, binding_path,
+        binding_only=True,
+        theta="mwc_dimer_lnK_ddG_prior",
+        struct_ensemble_path=ddg_path,
+    )
+
+    out_prefix = str(tmp_path / "svi_binding_only_ddg")
+    inference = RunInference(model=mc, seed=0)
+    svi = inference.setup_svi(adam_step_size=1e-3)
+    svi_state, params, converged = inference.run_optimization(
+        svi=svi,
+        max_num_epochs=5,
+        out_prefix=out_prefix,
+        checkpoint_interval=100,
+    )
+
+    assert svi_state is not None
+    assert isinstance(params, dict)
+    assert len(params) > 0
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# binding_only mini-batching (batch_size < num_genotypes)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_binding_only_minibatch_get_random_idx_does_not_crash(tmp_path):
+    """
+    get_random_idx must not crash when batch_size < num_genotypes in binding-only mode.
+    Previously the batching code tried to pin all N binding genotypes into a
+    batch_size-sized array, causing an IndexError.
+    """
+    from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass
+
+    # 4 genotypes, batch_size=2 — forces the mini-batch path
+    big_genotypes = ["wt", "M42I", "K84L", "M42I/K84L"]
+    binding_path = _make_binding_only_csv(tmp_path, genotypes=big_genotypes)
+    ddg_path = _make_ddG_prior_csv(tmp_path, genotypes=big_genotypes)
+
+    mc = ModelClass(
+        None, binding_path,
+        binding_only=True,
+        theta="mwc_dimer_lnK_ddG_prior",
+        struct_ensemble_path=ddg_path,
+        batch_size=2,
+    )
+
+    # Should not raise
+    idx = mc.get_random_idx(batch_key=42, num_batches=1)
+    assert len(idx) == 2
+
+    # All genotypes are subsamplable; none are pinned
+    assert mc.data.num_binding == 0
+    assert len(mc.data.not_binding_idx) == 4
+
+
+@pytest.mark.slow
+def test_binding_only_minibatch_svi_runs(tmp_path):
+    """Five SVI steps with batch_size < num_genotypes in binding-only mode must not raise."""
+    from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass
+    from tfscreen.analysis.hierarchical.run_inference import RunInference
+
+    big_genotypes = ["wt", "M42I", "K84L", "M42I/K84L"]
+    binding_path = _make_binding_only_csv(tmp_path, genotypes=big_genotypes)
+    ddg_path = _make_ddG_prior_csv(tmp_path, genotypes=big_genotypes)
+
+    mc = ModelClass(
+        None, binding_path,
+        binding_only=True,
+        theta="mwc_dimer_lnK_ddG_prior",
+        struct_ensemble_path=ddg_path,
+        batch_size=2,
+    )
+
+    out_prefix = str(tmp_path / "svi_binding_only_minibatch")
+    inference = RunInference(model=mc, seed=0)
+    svi = inference.setup_svi(adam_step_size=1e-3)
+    svi_state, params, converged = inference.run_optimization(
+        svi=svi,
+        max_num_epochs=5,
+        out_prefix=out_prefix,
+        checkpoint_interval=100,
+    )
+
+    assert svi_state is not None
+    assert isinstance(params, dict)
+    assert len(params) > 0

@@ -162,20 +162,48 @@ def _resolve_cm_paths(cm_vars, base_dir):
     return out
 
 
+def _relativize_node(node, subdir):
+    """Recursively rewrite absolute path strings in a config node to be relative to subdir."""
+    if isinstance(node, dict):
+        return {k: _relativize_node(v, subdir) for k, v in node.items()}
+    if isinstance(node, list):
+        return [_relativize_node(v, subdir) for v in node]
+    if isinstance(node, str) and node and os.path.isabs(node) and os.path.exists(node):
+        return os.path.relpath(node, subdir)
+    return node
+
+
 def _relativize_config_paths(yaml_path, subdir):
-    """Rewrite absolute data paths in a written config YAML to be relative to subdir."""
+    """Rewrite absolute paths anywhere in a written config YAML to be relative to subdir."""
     with open(yaml_path) as fh:
         cfg = yaml.safe_load(fh)
-    data = cfg.get("data") or {}
-    changed = False
-    for key, path in data.items():
-        if path and isinstance(path, str) and os.path.isabs(path):
-            data[key] = os.path.relpath(path, subdir)
-            changed = True
-    if changed:
-        cfg["data"] = data
+    updated = _relativize_node(cfg, subdir)
+    if updated != cfg:
         with open(yaml_path, "w") as fh:
-            yaml.dump(cfg, fh, default_flow_style=False, sort_keys=False)
+            yaml.dump(updated, fh, default_flow_style=False, sort_keys=False)
+
+
+# ---------------------------------------------------------------------------
+# Template-variable path rewriting
+# ---------------------------------------------------------------------------
+
+def _relativize_template_vars(tmpl_vars, grid_yaml_dir, subdir):
+    """Return tmpl_vars with any path-like string values rewritten relative to subdir.
+
+    A value is treated as a path when it resolves (relative to grid_yaml_dir, or
+    as-is if absolute) to a file or directory that exists on disk.
+    """
+    out = {}
+    for key, val in tmpl_vars.items():
+        if isinstance(val, str) and val:
+            abs_path = val if os.path.isabs(val) else os.path.normpath(
+                os.path.join(grid_yaml_dir, val)
+            )
+            if os.path.exists(abs_path):
+                out[key] = os.path.relpath(abs_path, subdir)
+                continue
+        out[key] = val
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -313,8 +341,9 @@ def setup_grid(grid_yaml, out_prefix="grid"):
 
         # Render Jinja2 template with template-section variables only.
         if jinja_template is not None:
+            rendered_tmpl_vars = _relativize_template_vars(tmpl_vars, grid_yaml_dir, subdir)
             try:
-                rendered = jinja_template.render(**tmpl_vars)
+                rendered = jinja_template.render(**rendered_tmpl_vars)
             except jinja2.UndefinedError as exc:
                 raise ValueError(
                     f"Undefined template variable for run '{run_name}': {exc}"

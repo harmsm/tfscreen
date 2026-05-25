@@ -129,13 +129,17 @@ def test_read_growth_df_no_replicate(mocker, base_growth_df):
 def test_read_binding_df(mocker):
     growth_df = pd.DataFrame({"genotype": ["A"], "titrant_name": ["T1"]})
     binding_df = pd.DataFrame({
-        "genotype": ["A"], "titrant_name": ["T1"], 
+        "genotype": ["A"], "titrant_name": ["T1"],
         "theta_obs": [0.5], "theta_std": [0.1], "titrant_conc": [1.0]
     })
     mocker.patch("tfscreen.util.io.read_dataframe", return_value=binding_df)
     mocker.patch("tfscreen.genetics.set_categorical_genotype", return_value=binding_df)
     mocker.patch("tfscreen.util.dataframe.check_columns")
-    
+    mocker.patch(
+        "tfscreen.analysis.hierarchical.growth_model.model_class.add_group_columns",
+        return_value=binding_df,
+    )
+
     res = _read_binding_df("path.csv", growth_df=growth_df)
     assert "theta_obs" in res.columns
 
@@ -188,6 +192,7 @@ def initialized_model_class():
     model._growth_shares_replicates = False
     model._batch_size = 1
     model.growth_tm = MagicMock()
+    model.training_tm = model.growth_tm
     model.binding_tm = MagicMock()
     model.growth_df = pd.DataFrame()
     model.mut_labels = []

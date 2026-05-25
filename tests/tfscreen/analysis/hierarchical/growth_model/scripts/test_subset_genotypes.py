@@ -1,5 +1,5 @@
 """
-Tests for subset_growth_data_cli.py.
+Tests for subset_genotypes_cli.py.
 
 Synthetic data uses genotypes of the form XsiteY (e.g. A1B) to avoid any
 dependency on the real tfscreen test data files.  The fixture `growth_df`
@@ -16,10 +16,10 @@ import os
 import pandas as pd
 import pytest
 
-from tfscreen.analysis.hierarchical.growth_model.scripts.subset_growth_data_cli import (
+from tfscreen.analysis.hierarchical.growth_model.scripts.subset_genotypes_cli import (
     _mutations_in_genotype,
     _reconcile_doubles_and_singles,
-    subset_growth_data,
+    subset_genotypes,
 )
 
 
@@ -168,7 +168,7 @@ def test_step_count_and_filenames(growth_csv, tmp_path):
     """n_steps output pairs are generated (or fewer if double universe is small)."""
     out = str(tmp_path / "out" / "cv")
     os.makedirs(os.path.dirname(out))
-    subset_growth_data(growth_csv, n_singles=6, n_steps=5, out_prefix=out, random_seed=0)
+    subset_genotypes(growth_csv, n_singles=6, n_steps=5, out_prefix=out, random_seed=0)
     pairs = _output_pairs(os.path.dirname(out))
     # 7 doubles total, 5 linspace steps → 5 unique counts (0,1,3,5,7) → 5 pairs
     assert len(pairs) == 5
@@ -177,7 +177,7 @@ def test_step_count_and_filenames(growth_csv, tmp_path):
 def test_filenames_encode_counts(growth_csv, tmp_path):
     """File names contain the correct singles/doubles counts."""
     out = str(tmp_path / "cv")
-    subset_growth_data(growth_csv, n_singles=6, n_steps=3, out_prefix=out, random_seed=0)
+    subset_genotypes(growth_csv, n_singles=6, n_steps=3, out_prefix=out, random_seed=0)
     files = sorted(os.listdir(tmp_path))
     growth_files = [f for f in files if "_growth.csv" in f]
     # Each growth filename must contain hyphenated singles and doubles counts
@@ -192,7 +192,7 @@ def test_filenames_encode_counts(growth_csv, tmp_path):
 def test_wt_always_in_training(growth_csv, tmp_path):
     """wt genotype appears in every training CSV."""
     out = str(tmp_path / "cv")
-    subset_growth_data(growth_csv, n_singles=4, n_steps=4, out_prefix=out, random_seed=1)
+    subset_genotypes(growth_csv, n_singles=4, n_steps=4, out_prefix=out, random_seed=1)
     for gcsv, _ in _output_pairs(tmp_path):
         df = pd.read_csv(gcsv)
         assert "wt" in df["genotype"].values
@@ -201,7 +201,7 @@ def test_wt_always_in_training(growth_csv, tmp_path):
 def test_first_step_has_zero_doubles(growth_csv, tmp_path):
     """The first output pair always has 0 doubles in the training set."""
     out = str(tmp_path / "cv")
-    subset_growth_data(growth_csv, n_singles=6, n_steps=4, out_prefix=out, random_seed=0)
+    subset_genotypes(growth_csv, n_singles=6, n_steps=4, out_prefix=out, random_seed=0)
     pairs = _output_pairs(tmp_path)
     first_csv, _ = pairs[0]
     df = pd.read_csv(first_csv)
@@ -211,7 +211,7 @@ def test_first_step_has_zero_doubles(growth_csv, tmp_path):
 def test_last_step_has_all_doubles(growth_csv, tmp_path):
     """The last step includes all constructible doubles; left-out file is empty."""
     out = str(tmp_path / "cv")
-    subset_growth_data(growth_csv, n_singles=6, n_steps=4, out_prefix=out, random_seed=0)
+    subset_genotypes(growth_csv, n_singles=6, n_steps=4, out_prefix=out, random_seed=0)
     pairs = _output_pairs(tmp_path)
     last_csv, last_lo = pairs[-1]
     df = pd.read_csv(last_csv)
@@ -223,7 +223,7 @@ def test_last_step_has_all_doubles(growth_csv, tmp_path):
 def test_training_plus_leftout_equals_universe(growth_csv, tmp_path):
     """For every step, training doubles + left-out doubles = the full double universe."""
     out = str(tmp_path / "cv")
-    subset_growth_data(growth_csv, n_singles=6, n_steps=5, out_prefix=out, random_seed=0)
+    subset_genotypes(growth_csv, n_singles=6, n_steps=5, out_prefix=out, random_seed=0)
     for gcsv, lout in _output_pairs(tmp_path):
         df = pd.read_csv(gcsv)
         train_doubles = set(g for g in df["genotype"].unique() if "/" in g)
@@ -235,7 +235,7 @@ def test_training_plus_leftout_equals_universe(growth_csv, tmp_path):
 def test_only_constructible_doubles_in_training(growth_csv, tmp_path):
     """Doubles in the training CSV can only come from the selected singles."""
     out = str(tmp_path / "cv")
-    subset_growth_data(growth_csv, n_singles=4, n_steps=3, out_prefix=out, random_seed=7)
+    subset_genotypes(growth_csv, n_singles=4, n_steps=3, out_prefix=out, random_seed=7)
     for gcsv, _ in _output_pairs(tmp_path):
         df = pd.read_csv(gcsv)
         singles = set(g for g in df["genotype"].unique() if "/" not in g and g != "wt")
@@ -255,7 +255,7 @@ def test_only_constructible_doubles_in_training(growth_csv, tmp_path):
 def test_whitelist_singles_always_selected(growth_csv, whitelist_file, tmp_path):
     """Whitelisted singles appear in every training CSV."""
     out = str(tmp_path / "cv")
-    subset_growth_data(
+    subset_genotypes(
         growth_csv, n_singles=4, n_steps=3,
         out_prefix=out, whitelist_file=whitelist_file, random_seed=0,
     )
@@ -269,7 +269,7 @@ def test_whitelist_singles_always_selected(growth_csv, whitelist_file, tmp_path)
 def test_blacklist_singles_never_selected(growth_csv, blacklist_file, tmp_path):
     """Blacklisted genotypes never appear in any training CSV."""
     out = str(tmp_path / "cv")
-    subset_growth_data(
+    subset_genotypes(
         growth_csv, n_singles=4, n_steps=3,
         out_prefix=out, blacklist_file=blacklist_file, random_seed=0,
     )
@@ -283,7 +283,7 @@ def test_blacklist_singles_never_selected(growth_csv, blacklist_file, tmp_path):
 def test_blacklist_removes_dependent_doubles(growth_csv, blacklist_file, tmp_path):
     """Doubles that require a blacklisted single are excluded from the universe."""
     out = str(tmp_path / "cv")
-    subset_growth_data(
+    subset_genotypes(
         growth_csv, n_singles=4, n_steps=3,
         out_prefix=out, blacklist_file=blacklist_file, random_seed=0,
     )
@@ -324,7 +324,7 @@ def test_reconciliation_drops_orphan_doubles(growth_csv_orphan_doubles, tmp_path
     out_dir = tmp_path / "out"
     out_dir.mkdir()
     out = str(out_dir / "cv")
-    subset_growth_data(
+    subset_genotypes(
         growth_csv_orphan_doubles, n_singles=2, n_steps=3, out_prefix=out, random_seed=0
     )
     for gcsv, lout in _output_pairs(out_dir):
@@ -345,7 +345,7 @@ def test_reconciliation_singles_pool_derived_from_doubles(
     out_dir = tmp_path / "out"
     out_dir.mkdir()
     out = str(out_dir / "cv")
-    subset_growth_data(
+    subset_genotypes(
         growth_csv_orphan_doubles, n_singles=2, n_steps=3, out_prefix=out, random_seed=0
     )
     for gcsv, _ in _output_pairs(out_dir):
@@ -363,7 +363,7 @@ def test_step_deduplication_when_few_doubles(growth_csv, tmp_path):
     """When n_steps > double universe size, output is deduplicated to unique counts."""
     out = str(tmp_path / "cv")
     # 7 doubles, request 20 steps — should collapse to at most 8 unique steps (0..7)
-    subset_growth_data(growth_csv, n_singles=6, n_steps=20, out_prefix=out, random_seed=0)
+    subset_genotypes(growth_csv, n_singles=6, n_steps=20, out_prefix=out, random_seed=0)
     pairs = _output_pairs(tmp_path)
     assert len(pairs) <= 8
 
@@ -377,7 +377,7 @@ def test_error_whitelist_single_not_in_data(growth_csv, tmp_path):
     wl = tmp_path / "wl.txt"
     wl.write_text("NOTREAL\n")
     with pytest.raises(ValueError, match="Whitelist singles not present"):
-        subset_growth_data(
+        subset_genotypes(
             growth_csv, n_singles=3, n_steps=2,
             out_prefix=str(tmp_path / "cv"), whitelist_file=str(wl),
         )
@@ -388,7 +388,7 @@ def test_error_whitelist_double_not_in_data(growth_csv, tmp_path):
     wl = tmp_path / "wl.txt"
     wl.write_text("A1B/Z9Z\n")  # Z9Z is not in data
     with pytest.raises(ValueError, match="Whitelist doubles not present"):
-        subset_growth_data(
+        subset_genotypes(
             growth_csv, n_singles=3, n_steps=2,
             out_prefix=str(tmp_path / "cv"), whitelist_file=str(wl),
         )
@@ -399,7 +399,7 @@ def test_error_whitelist_too_many_mutations(growth_csv, tmp_path):
     wl = tmp_path / "wl.txt"
     wl.write_text("A1B/B2C/C3D\n")
     with pytest.raises(ValueError, match="3 mutations"):
-        subset_growth_data(
+        subset_genotypes(
             growth_csv, n_singles=3, n_steps=2,
             out_prefix=str(tmp_path / "cv"), whitelist_file=str(wl),
         )
@@ -412,7 +412,7 @@ def test_error_whitelist_double_constituent_single_blacklisted(growth_csv, tmp_p
     bl = tmp_path / "bl.txt"
     bl.write_text("B2C\n")
     with pytest.raises(ValueError, match="require singles that are blacklisted"):
-        subset_growth_data(
+        subset_genotypes(
             growth_csv, n_singles=3, n_steps=2,
             out_prefix=str(tmp_path / "cv"),
             whitelist_file=str(wl), blacklist_file=str(bl),
@@ -426,7 +426,7 @@ def test_error_whitelist_blacklist_overlap(growth_csv, tmp_path):
     bl = tmp_path / "bl.txt"
     bl.write_text("A1B\n")
     with pytest.raises(ValueError, match="both whitelist and blacklist"):
-        subset_growth_data(
+        subset_genotypes(
             growth_csv, n_singles=3, n_steps=2,
             out_prefix=str(tmp_path / "cv"),
             whitelist_file=str(wl), blacklist_file=str(bl),
@@ -438,7 +438,7 @@ def test_whitelist_exceeds_n_singles_uses_whitelist_size(growth_csv, tmp_path):
     wl = tmp_path / "wl.txt"
     wl.write_text("A1B\nA1C\nB2C\n")  # 3 whitelist singles
     out = str(tmp_path / "cv")
-    subset_growth_data(
+    subset_genotypes(
         growth_csv, n_singles=2, n_steps=2,
         out_prefix=out, whitelist_file=str(wl),
     )
@@ -463,7 +463,7 @@ def test_trim_respects_n_singles(growth_csv, tmp_path):
     wl = tmp_path / "wl.txt"
     wl.write_text("A1B\n")  # A1B pairs with B2C, B2D, C3D via doubles
     out = str(tmp_path / "cv")
-    subset_growth_data(
+    subset_genotypes(
         growth_csv, n_singles=2, n_steps=3,
         out_prefix=out, whitelist_file=str(wl), random_seed=0,
     )
@@ -479,7 +479,7 @@ def test_wt_in_whitelist_is_silently_ignored(growth_csv, tmp_path):
     wl = tmp_path / "wl.txt"
     wl.write_text("wt\nA1B\n")
     out = str(tmp_path / "cv")
-    subset_growth_data(
+    subset_genotypes(
         growth_csv, n_singles=3, n_steps=2,
         out_prefix=out, whitelist_file=str(wl),
     )
@@ -511,7 +511,7 @@ def test_whitelist_cycles_seeded_before_expansion(tmp_path):
 
     out_dir = tmp_path / "out"
     out_dir.mkdir()
-    subset_growth_data(
+    subset_genotypes(
         str(csv_path), n_singles=2, n_steps=3,
         out_prefix=str(out_dir / "cv"),
         whitelist_file=str(wl), random_seed=0,
@@ -528,7 +528,7 @@ def test_whitelist_double_always_in_training_never_leftout(growth_csv, tmp_path)
     wl = tmp_path / "wl.txt"
     wl.write_text("A1B/B2C\n")
     out = str(tmp_path / "cv")
-    subset_growth_data(
+    subset_genotypes(
         growth_csv, n_singles=4, n_steps=4,
         out_prefix=out, whitelist_file=str(wl), random_seed=0,
     )
@@ -543,7 +543,7 @@ def test_whitelist_double_in_first_step(growth_csv, tmp_path):
     wl = tmp_path / "wl.txt"
     wl.write_text("A1B/B2C\n")
     out = str(tmp_path / "cv")
-    subset_growth_data(
+    subset_genotypes(
         growth_csv, n_singles=4, n_steps=4,
         out_prefix=out, whitelist_file=str(wl), random_seed=0,
     )
@@ -557,7 +557,7 @@ def test_whitelist_double_constituent_singles_forced(growth_csv, tmp_path):
     wl = tmp_path / "wl.txt"
     wl.write_text("A1B/B2C\n")
     out = str(tmp_path / "cv")
-    subset_growth_data(
+    subset_genotypes(
         growth_csv, n_singles=2, n_steps=3,
         out_prefix=out, whitelist_file=str(wl), random_seed=0,
     )
@@ -577,7 +577,7 @@ def test_whitelist_double_excluded_from_titration_universe(growth_csv, tmp_path)
     wl = tmp_path / "wl.txt"
     wl.write_text(f"{wl_double}\n")
     out = str(tmp_path / "cv")
-    subset_growth_data(
+    subset_genotypes(
         growth_csv, n_singles=6, n_steps=4,
         out_prefix=out, whitelist_file=str(wl), random_seed=0,
     )
@@ -594,7 +594,7 @@ def test_error_missing_genotype_column(tmp_path):
     bad = tmp_path / "bad.csv"
     pd.DataFrame({"ln_cfu": [1.0]}).to_csv(bad, index=False)
     with pytest.raises(ValueError, match="no 'genotype' column"):
-        subset_growth_data(str(bad), n_singles=2, n_steps=2,
+        subset_genotypes(str(bad), n_singles=2, n_steps=2,
                            out_prefix=str(tmp_path / "cv"))
 
 
@@ -622,7 +622,7 @@ def test_smoke_real_data(tmp_path):
         pytest.skip("Real growth CSV not found")
 
     out = str(tmp_path / "smoke")
-    subset_growth_data(real_path, n_singles=6, n_steps=5, out_prefix=out, random_seed=42)
+    subset_genotypes(real_path, n_singles=6, n_steps=5, out_prefix=out, random_seed=42)
 
     pairs = _output_pairs(tmp_path)
     assert len(pairs) >= 1
@@ -654,7 +654,7 @@ def test_smoke_real_data_whitelist(tmp_path):
     wl.write_text("M42I\nH74A\nK84L\n")
 
     out = str(tmp_path / "smoke_wl")
-    subset_growth_data(
+    subset_genotypes(
         real_path, n_singles=3, n_steps=4,
         out_prefix=out, whitelist_file=str(wl), random_seed=0,
     )

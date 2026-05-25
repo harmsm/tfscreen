@@ -20,7 +20,8 @@ def mock_model():
         "map_theta_group": [0, 0, 1, 1]
     })
     model.growth_tm = mock_tm
-    
+    model.training_tm = mock_tm
+
     return model
 
 @pytest.fixture

@@ -138,7 +138,7 @@ def extract_parameters(model, posteriors, q_to_get=None):
     q_to_get, param_posteriors = load_posteriors(posteriors, q_to_get)
 
     ctx = ExtractionContext(
-        growth_tm=model.growth_tm,
+        growth_tm=model.training_tm,
         mut_labels=model.mut_labels,
         pair_labels=model.pair_labels,
         growth_shares_replicates=model._growth_shares_replicates,
@@ -294,8 +294,8 @@ def extract_theta_unmeasured(model, posteriors, target_genotypes,
 
     q_to_get, param_posteriors = load_posteriors(posteriors, q_to_get)
 
-    titrant_dim   = model.growth_tm.tensor_dim_names.index("titrant_name")
-    titrant_names = list(model.growth_tm.tensor_dim_labels[titrant_dim])
+    titrant_dim   = model.training_tm.tensor_dim_names.index("titrant_name")
+    titrant_names = list(model.training_tm.tensor_dim_labels[titrant_dim])
 
     extra_kwargs = {}
     theta_priors = model.priors.theta

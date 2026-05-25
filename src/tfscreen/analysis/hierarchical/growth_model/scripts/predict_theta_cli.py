@@ -32,8 +32,7 @@ def predict_theta(config_file,
     together or both omitted.
 
     When any requested genotype was not seen during training,
-    extract_theta_unmeasured is used (requires the theta component to implement
-    predict_unmeasured; raises an error for the 'categorical' component).
+    extract_theta_unmeasured is used.
 
     A boolean column 'in_training_data' is added to the output: 1 if the
     (genotype, titrant_name, titrant_conc) triple was in the training data,
@@ -88,11 +87,13 @@ def predict_theta(config_file,
     param_file = resolve_param_file(param_file, gm, out_prefix)
 
     # Determine training genotypes and (genotype, titrant_name, titrant_conc) set.
-    training_genotypes = set(gm.growth_tm.df["genotype"].unique())
+    # growth_tm is preferred (more genotypes); binding_tm is the fallback for
+    # binding-only runs where growth_tm is None.
+    training_genotypes = set(gm.training_tm.df["genotype"].unique())
     training_tuples = set(
-        zip(gm.growth_tm.df["genotype"],
-            gm.growth_tm.df["titrant_name"],
-            gm.growth_tm.df["titrant_conc"])
+        zip(gm.training_tm.df["genotype"],
+            gm.training_tm.df["titrant_name"],
+            gm.training_tm.df["titrant_conc"])
     )
 
     # Resolve requested genotypes.
@@ -125,7 +126,7 @@ def predict_theta(config_file,
             manual_titrant_df = file_titrant_df
         else:
             training_titrant_df = (
-                gm.growth_tm.df[["titrant_name", "titrant_conc"]]
+                gm.training_tm.df[["titrant_name", "titrant_conc"]]
                 .drop_duplicates()
                 .reset_index(drop=True)
             )
@@ -154,7 +155,7 @@ def predict_theta(config_file,
         if manual_titrant_df is None:
             # Use unique (titrant_name, titrant_conc) pairs from training data.
             manual_titrant_df = (
-                gm.growth_tm.df[["titrant_name", "titrant_conc"]]
+                gm.training_tm.df[["titrant_name", "titrant_conc"]]
                 .drop_duplicates()
                 .reset_index(drop=True)
             )

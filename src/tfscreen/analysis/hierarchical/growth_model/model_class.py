@@ -243,6 +243,11 @@ def _read_binding_df(binding_df,
     tfscreen.util.dataframe.check_columns(binding_df,required_columns=required)
 
 
+    # Drop pre-existing group columns so re-processing doesn't cause merge conflicts.
+    binding_df = binding_df.drop(
+        columns=["map_theta_group", "map_theta_group_tuple"], errors="ignore"
+    )
+
     if growth_df is not None:
         cols = ["genotype","titrant_name"]
         binding_seen = binding_df[cols].drop_duplicates().set_index(cols)
@@ -253,6 +258,14 @@ def _read_binding_df(binding_df,
                 "binding_df contains genotype/titrant_name pairs that were not seen "
                 "in the growth_df."
             )
+        # Inherit map_theta_group indices from growth_df so parameter indexing
+        # stays consistent across the two datasets.
+        binding_df = add_group_columns(binding_df, theta_group_cols,
+                                       "map_theta_group", existing_df=growth_df)
+    else:
+        # Binding-only: assign map_theta_group from binding_df itself.
+        binding_df = add_group_columns(binding_df, theta_group_cols,
+                                       "map_theta_group")
 
     return binding_df
 
@@ -849,15 +862,6 @@ class ModelClass:
                                      "mwc_dimer_unfolded_lnK_nn_prior",
                                      "mwc_dimer_unfolded_lnK_ddG_prior")
 
-        _struct_models = ("lac_dimer_lnK_nn_prior", "lac_dimer_unfolded_lnK_nn_prior",
-                          "mwc_dimer_lnK_nn_prior", "mwc_dimer_unfolded_lnK_nn_prior",
-                          "lac_dimer_lnK_ddG_prior", "lac_dimer_unfolded_lnK_ddG_prior",
-                          "mwc_dimer_lnK_ddG_prior", "mwc_dimer_unfolded_lnK_ddG_prior")
-        if self._theta in _struct_models:
-            raise NotImplementedError(
-                f"theta='{self._theta}' is not yet supported in binding_only mode."
-            )
-
         if _needs_mut:
             _geno_idx = self.binding_tm.tensor_dim_names.index("genotype")
             _genotypes = list(self.binding_tm.tensor_dim_labels[_geno_idx])
@@ -882,26 +886,80 @@ class ModelClass:
                 "pair_nnz_geno_idx": pair_nnz_geno_idx,
             })
 
-        # All genotypes are binding genotypes; no growth-only genotypes
+        _nn_prior_models  = ("lac_dimer_lnK_nn_prior", "lac_dimer_unfolded_lnK_nn_prior",
+                              "mwc_dimer_lnK_nn_prior", "mwc_dimer_unfolded_lnK_nn_prior")
+        _ddG_prior_models = ("lac_dimer_lnK_ddG_prior", "lac_dimer_unfolded_lnK_ddG_prior",
+                              "mwc_dimer_lnK_ddG_prior", "mwc_dimer_unfolded_lnK_ddG_prior")
+        _struct_names_tuple = None
+        if self._theta in _nn_prior_models + _ddG_prior_models:
+            if self._struct_ensemble_path is None:
+                if self._theta in _nn_prior_models:
+                    raise ValueError(
+                        f"theta='{self._theta}' requires struct_ensemble_path "
+                        f"(path to the HDF5 file produced by "
+                        f"generate_struct_ensemble.py)."
+                    )
+                else:
+                    raise ValueError(
+                        f"theta='{self._theta}' requires struct_ensemble_path "
+                        f"(path to a CSV with columns 'mut' and one per structure)."
+                    )
+            from tfscreen.analysis.hierarchical.growth_model.components.theta.struct.io import (
+                load_struct_ensemble,
+                load_ddG_prior_csv,
+            )
+            if self._theta in _ddG_prior_models:
+                _struct_data = load_ddG_prior_csv(
+                    self._struct_ensemble_path, self.mut_labels
+                )
+            else:
+                _pair_labels_for_struct = self.pair_labels if self._epistasis else None
+                _struct_data = load_struct_ensemble(
+                    self._struct_ensemble_path, self.mut_labels, _pair_labels_for_struct
+                )
+            _struct_names_tuple = _struct_data["struct_names"]
+            binding_data_sources.append({
+                "num_struct":               len(_struct_names_tuple),
+                "struct_features":          _struct_data["struct_features"],
+                "struct_n_chains":          _struct_data["struct_n_chains"],
+                "struct_contact_pair_idx":  _struct_data["struct_contact_pair_idx"],
+                "struct_contact_distances": _struct_data["struct_contact_distances"],
+            })
+
+        # Determine effective batch size for binding-only mini-batching.
+        # All genotypes are subsamplable (no growth-only vs binding split).
+        # get_batch() slices BindingData tensors along the genotype axis.
+        actual_batch_size = (
+            min(self._batch_size, num_genotype)
+            if self._batch_size is not None
+            else num_genotype
+        )
+        scale_factor = num_genotype / actual_batch_size  # > 1 when mini-batching
+
+        # Full-genotype index and scale arrays; get_batch() slices these each step.
         batch_idx = np.arange(num_genotype, dtype=int)
+        scale_vector = np.full(num_genotype, scale_factor, dtype=float)
+
         binding_data_sources.append({
-            "batch_idx":      batch_idx,
-            "batch_size":     num_genotype,
-            "scale_vector":   np.ones(num_genotype, dtype=float),
-            "geno_theta_idx": batch_idx,
+            "batch_idx":      batch_idx,           # full N; get_batch slices
+            "batch_size":     actual_batch_size,   # static mini-batch target
+            "scale_vector":   scale_vector,        # full N; get_batch slices
+            "geno_theta_idx": batch_idx,           # full N; get_batch slices
         })
 
         binding_dataclass = populate_dataclass(BindingData, sources=binding_data_sources)
+        if _struct_names_tuple is not None:
+            binding_dataclass = binding_dataclass.replace(struct_names=_struct_names_tuple)
 
         self._data = populate_dataclass(DataClass, sources=[{
             "growth":                 None,
             "binding":                binding_dataclass,
             "num_genotype":           num_genotype,
-            "batch_idx":              batch_idx,
-            "batch_size":             num_genotype,
-            "not_binding_idx":        np.array([], dtype=int),
-            "not_binding_batch_size": 0,
-            "num_binding":            num_genotype,
+            "batch_idx":              batch_idx,          # full range for get_random_idx
+            "batch_size":             num_genotype,        # full count
+            "not_binding_idx":        batch_idx,           # all genotypes are subsamplable
+            "not_binding_batch_size": actual_batch_size,
+            "num_binding":            0,                   # no pinned binding genotypes
         }])
 
     def _initialize_classes(self):
@@ -1078,6 +1136,11 @@ class ModelClass:
     def init_params(self):
         """A dictionary of initial parameter guesses for optimization."""
         return self._init_params
+
+    @property
+    def training_tm(self):
+        """growth_tm when growth data is present, else binding_tm."""
+        return self.growth_tm if self.growth_tm is not None else self.binding_tm
 
     @property
     def jax_model(self):
