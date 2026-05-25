@@ -12,7 +12,8 @@ def sample_posterior(config_file,
                      seed=0,
                      num_posterior_samples=10000,
                      sampling_batch_size=100,
-                     forward_batch_size=512):
+                     forward_batch_size=512,
+                     hessian_chunk_size=64):
     """
     Draw posterior samples from an existing MAP, SVI, or NUTS checkpoint.
 
@@ -46,6 +47,9 @@ def sample_posterior(config_file,
         Parameter sampling batch size (default 100). Not used for NUTS.
     forward_batch_size : int, optional
         Forward-model batch size for posterior predictives (default 512).
+    hessian_chunk_size : int, optional
+        Number of Hessian rows computed per device batch for MAP checkpoints
+        (default 64). Reduce if the Hessian computation hits device OOM.
     """
     if not os.path.isfile(checkpoint_file):
         raise FileNotFoundError(
@@ -82,6 +86,7 @@ def sample_posterior(config_file,
                 num_posterior_samples=num_posterior_samples,
                 sampling_batch_size=sampling_batch_size,
                 forward_batch_size=forward_batch_size,
+                hessian_chunk_size=hessian_chunk_size,
             )
         else:
             # SVI checkpoint: resume with 0 epochs, draw samples directly.
@@ -120,7 +125,8 @@ def main():
                      manual_arg_types={"seed": int,
                                        "num_posterior_samples": int,
                                        "sampling_batch_size": int,
-                                       "forward_batch_size": int})
+                                       "forward_batch_size": int,
+                                       "hessian_chunk_size": int})
 
 
 if __name__ == "__main__":

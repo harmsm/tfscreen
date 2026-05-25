@@ -333,6 +333,20 @@ class TestSummarizeFitComplete:
         summarize_fit(run_dir)
         assert os.path.exists(os.path.join(run_dir, "tfs_summarize_losses.pdf"))
 
+    def test_growth_corr_pdf_written_when_file_present(self, run_dir):
+        # Write a minimal growth_pred CSV
+        pd.DataFrame({
+            "genotype": ["wt"] * 6,
+            "ln_cfu": np.linspace(8.0, 13.0, 6),
+            "median": np.linspace(8.1, 13.1, 6),
+        }).to_csv(os.path.join(run_dir, "tfs_growth_pred.csv"), index=False)
+        summarize_fit(run_dir)
+        assert os.path.exists(os.path.join(run_dir, "tfs_summarize_growth_corr.pdf"))
+
+    def test_growth_corr_pdf_not_written_when_file_absent(self, run_dir):
+        summarize_fit(run_dir)
+        assert not os.path.exists(os.path.join(run_dir, "tfs_summarize_growth_corr.pdf"))
+
     def test_custom_out_prefix(self, run_dir, tmp_path):
         custom_prefix = str(tmp_path / "custom" / "myrun")
         os.makedirs(os.path.dirname(custom_prefix), exist_ok=True)

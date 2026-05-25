@@ -2253,7 +2253,7 @@
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/setup_grid_cli.py:233:1: C901 'setup_grid' is too complex (17)
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/subset_genotypes_cli.py:40:1: C901 'subset_genotypes' is too complex (23)
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/subset_genotypes_cli.py:93:5: F841 local variable 'all_genotypes' is assigned to but never used
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/summarize_fit_cli.py:105:1: C901 'summarize_fit' is too complex (38)
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/summarize_fit_cli.py:105:1: C901 'summarize_fit' is too complex (41)
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/summarize_posteriors_cli.py:4:1: F401 'tfscreen.analysis.hierarchical.growth_model.model_class.ModelClass as GrowthModel' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/summarize_posteriors_cli.py:9:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/summarize_posteriors_cli.py:10:25: E128 continuation line under-indented for visual indent
@@ -2382,19 +2382,18 @@
 ./src/tfscreen/analysis/hierarchical/run_inference.py:844:32: E231 missing whitespace after ','
 ./src/tfscreen/analysis/hierarchical/run_inference.py:844:42: W291 trailing whitespace
 ./src/tfscreen/analysis/hierarchical/run_inference.py:895:5: C901 'RunInference.get_map_posteriors' is too complex (13)
-./src/tfscreen/analysis/hierarchical/run_inference.py:1067:9: F841 local variable 'D' is assigned to but never used
-./src/tfscreen/analysis/hierarchical/run_inference.py:1092:50: E127 continuation line over-indented for visual indent
-./src/tfscreen/analysis/hierarchical/run_inference.py:1133:29: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/run_inference.py:1136:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:1141:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:1149:35: E231 missing whitespace after ','
-./src/tfscreen/analysis/hierarchical/run_inference.py:1153:30: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:1156:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:1160:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:1166:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/run_inference.py:1169:5: C901 'RunInference.get_laplace_posteriors' is too complex (16)
-./src/tfscreen/analysis/hierarchical/run_inference.py:1375:5: C901 'RunInference.get_nuts_posteriors' is too complex (12)
-./src/tfscreen/analysis/hierarchical/run_inference.py:1491:9: F811 redefinition of unused 'init_to_value' from line 9
+./src/tfscreen/analysis/hierarchical/run_inference.py:1133:50: E127 continuation line over-indented for visual indent
+./src/tfscreen/analysis/hierarchical/run_inference.py:1174:29: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/run_inference.py:1177:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:1182:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:1190:35: E231 missing whitespace after ','
+./src/tfscreen/analysis/hierarchical/run_inference.py:1194:30: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:1197:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:1201:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:1207:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/run_inference.py:1210:5: C901 'RunInference.get_laplace_posteriors' is too complex (16)
+./src/tfscreen/analysis/hierarchical/run_inference.py:1420:5: C901 'RunInference.get_nuts_posteriors' is too complex (12)
+./src/tfscreen/analysis/hierarchical/run_inference.py:1536:9: F811 redefinition of unused 'init_to_value' from line 9
 ./src/tfscreen/analysis/hierarchical/tensor_manager.py:13:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/hierarchical/tensor_manager.py:52:22: E231 missing whitespace after ','
 ./src/tfscreen/analysis/hierarchical/tensor_manager.py:52:27: W291 trailing whitespace
@@ -9807,9 +9806,9 @@
 393   F401 '.calibration' imported but unused
 11    F541 f-string is missing placeholders
 7     F811 redefinition of unused 'dataclasses' from line 6
-58    F841 local variable 'titrant_names' is assigned to but never used
+57    F841 local variable 'titrant_names' is assigned to but never used
 976   W291 trailing whitespace
 115   W292 no newline at end of file
 2590  W293 blank line contains whitespace
 47    W391 blank line at end of file
-9764
+9763

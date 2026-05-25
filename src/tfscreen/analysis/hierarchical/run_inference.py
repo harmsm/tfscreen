@@ -997,7 +997,45 @@ class RunInference:
             hf.attrs["num_samples"] = 1
             hf.flush()
 
-    def compute_hessian_sigmas(self, map_params):
+    def _chunked_hessian(self, pe_fn, flat_map, chunk_size):
+        """
+        Compute the full D×D Hessian of ``pe_fn`` at ``flat_map`` in row-chunks.
+
+        ``jax.hessian`` vmaps all D basis-vector JVPs simultaneously, which
+        allocates D × (gradient intermediates) on the accelerator at once —
+        several GB for models with O(10³) parameters.  This helper limits peak
+        device memory to ``chunk_size × (gradient intermediates)`` by looping
+        over row-batches and immediately transferring each chunk to CPU.
+
+        Parameters
+        ----------
+        pe_fn : callable
+            Scalar function of a flat parameter vector.
+        flat_map : jnp.ndarray, shape (D,)
+            Point at which to evaluate the Hessian.
+        chunk_size : int
+            Number of Hessian rows to compute per device batch.  Smaller
+            values use less device memory but require more iterations.
+            ``chunk_size=64`` is a safe default for most GPU sizes.
+
+        Returns
+        -------
+        numpy.ndarray, shape (D, D), dtype float64
+            The full Hessian matrix on CPU.
+        """
+        D = flat_map.shape[0]
+        grad_fn = jax.grad(pe_fn)
+        rows = []
+        for start in range(0, D, chunk_size):
+            end = min(start + chunk_size, D)
+            basis_chunk = jnp.eye(D, dtype=flat_map.dtype)[start:end]
+            _, H_chunk = jax.vmap(
+                lambda v: jax.jvp(grad_fn, (flat_map,), (v,))
+            )(basis_chunk)
+            rows.append(np.array(H_chunk, dtype=np.float64))
+        return np.concatenate(rows, axis=0)
+
+    def compute_hessian_sigmas(self, map_params, hessian_chunk_size=64):
         """
         Compute per-site Hessian-based MAP values and sigmas in *constrained*
         parameter space.
@@ -1029,6 +1067,9 @@ class RunInference:
             returned by ``svi.get_params(svi_state)``.  Keys follow the
             ``{site}_auto_loc`` convention; values are in unconstrained
             space.
+        hessian_chunk_size : int, optional
+            Number of Hessian rows to compute per device batch (default 64).
+            Reduce if you hit device OOM during the Hessian computation.
 
         Returns
         -------
@@ -1071,12 +1112,12 @@ class RunInference:
                 self.model.jax_model, [], model_kwargs, unravel(flat_p)
             )
 
-        hessian = jax.hessian(pe_fn)(flat_map)
+        print(f"Computing Hessian for {D} parameters "
+              f"(chunk_size={hessian_chunk_size}) ...", flush=True)
+        H_np = self._chunked_hessian(pe_fn, flat_map, hessian_chunk_size)
 
-        # Project Hessian to the PD cone in float64 (mirrors the safety
-        # logic in get_laplace_posteriors); we only need the diagonal of
-        # the inverse, which is sigma^2 per element.
-        H_np = np.array(hessian, dtype=np.float64)
+        # Project Hessian to the PD cone in float64; we only need the diagonal
+        # of the inverse, which is sigma^2 per element.
         eigenvalues_np, eigenvectors_np = np.linalg.eigh(H_np)
         eigenvalues_pd = np.maximum(eigenvalues_np, 1e-3)
         cov_diag_np = np.einsum(
@@ -1172,6 +1213,7 @@ class RunInference:
                                num_posterior_samples=10000,
                                sampling_batch_size=100,
                                forward_batch_size=512,
+                               hessian_chunk_size=64,
                                sites_to_save=None):
         """
         Generate posterior samples from a MAP solution using the Laplace approximation.
@@ -1198,17 +1240,20 @@ class RunInference:
             Number of latent samples to draw per batch (default 100).
         forward_batch_size : int, optional
             Number of genotypes to process per forward-model batch (default 512).
+        hessian_chunk_size : int, optional
+            Number of Hessian rows to compute per device batch (default 64).
+            Reduce if you hit device OOM during the Hessian computation.
         sites_to_save : list of str or None, optional
             If given, only these site names are written to the HDF5 file.
             If None (default), all sites are saved.
 
         Notes
         -----
-        Hessian computation and inversion are both O(D²) in memory and
-        O(D³) in compute, where D is the total number of unconstrained
-        parameters.  For models with many per-genotype parameters this can be
-        slow or exceed available memory; in that case prefer running a short
-        SVI pass via ``get_posteriors``.
+        Hessian inversion is O(D²) in memory and O(D³) in compute, where D is
+        the total number of unconstrained parameters.  The Hessian is computed
+        in row-chunks (see ``hessian_chunk_size``) to bound peak device memory
+        to ``chunk_size × (gradient intermediates)`` rather than
+        ``D × (gradient intermediates)``.
         """
         from numpyro.infer.util import potential_energy
         from numpyro.distributions.transforms import biject_to
@@ -1232,14 +1277,15 @@ class RunInference:
         # Flatten to a single vector for Hessian computation
         flat_map, unravel = jax.flatten_util.ravel_pytree(unconstrained)
         D = flat_map.shape[0]
-        print(f"Computing Hessian for {D} parameters ...", flush=True)
+        print(f"Computing Hessian for {D} parameters "
+              f"(chunk_size={hessian_chunk_size}) ...", flush=True)
 
         def pe_fn(flat_p):
             return potential_energy(
                 self.model.jax_model, [], model_kwargs, unravel(flat_p)
             )
 
-        hessian = jax.hessian(pe_fn)(flat_map)
+        H_np = self._chunked_hessian(pe_fn, flat_map, hessian_chunk_size)
 
         # Project Hessian to the PD cone and compute the Cholesky factor of the
         # covariance in float64 (via numpy) so that sampling is numerically
@@ -1257,7 +1303,6 @@ class RunInference:
         # negative eigenvalues to 1e-3 (caps max variance per direction at 1000),
         # then sample as mean + L @ z where z ~ N(0,I) in float32.
         print("Projecting Hessian to PD cone and computing Cholesky ...", flush=True)
-        H_np = np.array(hessian, dtype=np.float64)
         eigenvalues_np, eigenvectors_np = np.linalg.eigh(H_np)
         n_negative = int(np.sum(eigenvalues_np < 0))
         if n_negative > 0:

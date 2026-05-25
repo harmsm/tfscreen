@@ -147,6 +147,8 @@ def summarize_fit(run_dir,
     config_file = _find_unique(run_dir, "_config.yaml", "config")
     theta_pred_file = _find_unique(run_dir, "_theta_pred.csv", "theta predictions")
     losses_file = _find_unique(run_dir, "_losses.txt", "losses", warn_missing=False)
+    growth_pred_file = _find_unique(run_dir, "_growth_pred.csv", "growth predictions",
+                                    warn_missing=False)
 
     # --- Parse YAML config once ---
     config_yaml = None
@@ -288,6 +290,28 @@ def summarize_fit(run_dir,
         print(f"Wrote correlation plot to {pdf_file}")
     except Exception as exc:
         warnings.warn(f"Could not generate correlation plot: {exc}")
+
+    # --- Growth correlation plot ---
+    growth_pdf_file = f"{out_prefix}_growth_corr.pdf"
+    try:
+        if growth_pred_file is not None:
+            growth_pred_df = pd.read_csv(growth_pred_file)
+            fig, ax = plt.subplots(1, 1, figsize=(6, 6))
+            xy_corr(
+                x_values=growth_pred_df["ln_cfu"].values,
+                y_values=growth_pred_df["median"].values,
+                as_hexbin=True,
+                ax=ax,
+            )
+            ax.set_xlabel("Observed ln CFU")
+            ax.set_ylabel("Predicted ln CFU")
+            ax.set_title("Growth prediction")
+            fig.tight_layout()
+            fig.savefig(growth_pdf_file)
+            plt.close(fig)
+            print(f"Wrote growth correlation plot to {growth_pdf_file}")
+    except Exception as exc:
+        warnings.warn(f"Could not generate growth correlation plot: {exc}")
 
     # --- Loss curve plot ---
     loss_pdf_file = f"{out_prefix}_losses.pdf"
