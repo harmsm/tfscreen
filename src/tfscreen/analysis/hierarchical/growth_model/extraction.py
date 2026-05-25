@@ -1,3 +1,4 @@
+import warnings
 import tfscreen
 import pandas as pd
 import numpy as np
@@ -162,9 +163,20 @@ def extract_parameters(model, posteriors, q_to_get=None):
 
     params = {}
     for kwargs in extract:
-        params.update(_extract_param_est(param_posteriors=param_posteriors,
-                                         q_to_get=q_to_get,
-                                         **kwargs))
+        try:
+            params.update(_extract_param_est(param_posteriors=param_posteriors,
+                                             q_to_get=q_to_get,
+                                             **kwargs))
+        except KeyError as exc:
+            param_names = kwargs.get("params_to_get", [])
+            warnings.warn(
+                f"Skipping extraction of {param_names}: {exc}. "
+                "This can happen with MAP checkpoints because computed "
+                "(deterministic) sites like 'ln_cfu0' are absent. "
+                "Run tfs-sample-posterior first to get a full posterior file, "
+                "or use tfs-param-quantiles on the posterior .h5 file.",
+                stacklevel=2,
+            )
 
     return params
 

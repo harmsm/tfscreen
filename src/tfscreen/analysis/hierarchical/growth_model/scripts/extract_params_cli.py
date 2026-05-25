@@ -11,9 +11,14 @@ def extract_params(config_file, checkpoints_file, out_prefix="tfs_params"):
     """
     Extract MAP point estimates from one or more checkpoint files.
 
-    Reads each checkpoint listed in ``checkpoints_file``, converts the
-    optimized guide parameters to constrained natural-parameter space, and
-    writes parameter values as CSV files.  The output format mirrors
+    ``checkpoints_file`` may be either:
+
+    * a single ``.pkl`` checkpoint file (passed directly), or
+    * a plain-text file listing one checkpoint ``.pkl`` path per line
+      (blank lines and lines starting with ``#`` are ignored).
+
+    Converts the optimized guide parameters to constrained natural-parameter
+    space and writes parameter values as CSV files.  The output format mirrors
     ``tfs-param-quantiles``: one CSV per parameter group named
     ``{out_prefix}_{param_name}.csv``.  Instead of quantile columns
     (``median``, ``lower_95``, ...) there is one column per checkpoint named
@@ -35,8 +40,8 @@ def extract_params(config_file, checkpoints_file, out_prefix="tfs_params"):
     config_file : str
         Path to the YAML configuration file used when fitting the model.
     checkpoints_file : str
-        Path to a plain-text file listing one checkpoint .pkl path per line
-        (blank lines and lines starting with ``#`` are ignored).
+        Path to a single ``.pkl`` checkpoint file, or path to a plain-text
+        file listing one checkpoint ``.pkl`` path per line.
     out_prefix : str, optional
         Prefix for output CSV files.  Each parameter group is written to
         ``{out_prefix}_{param_name}.csv``.  Default ``'tfs_params'``.
@@ -44,7 +49,10 @@ def extract_params(config_file, checkpoints_file, out_prefix="tfs_params"):
     gm, _ = read_configuration(config_file)
     ri = RunInference(gm, seed=0)
 
-    checkpoint_paths = read_lines(checkpoints_file)
+    if checkpoints_file.endswith(".pkl"):
+        checkpoint_paths = [checkpoints_file]
+    else:
+        checkpoint_paths = read_lines(checkpoints_file)
     if not checkpoint_paths:
         raise ValueError(f"No checkpoint paths found in '{checkpoints_file}'")
 

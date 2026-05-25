@@ -20,6 +20,7 @@ import yaml
 from tfscreen.analysis.hierarchical.growth_model.scripts.summarize_fit_cli import (
     _find_unique,
     _json_safe,
+    _read_all_losses,
     _read_final_loss,
     _resolve_path,
     summarize_fit,
@@ -202,6 +203,30 @@ class TestResolvePath:
 # _read_final_loss
 # ---------------------------------------------------------------------------
 
+class TestReadAllLosses:
+
+    def test_returns_all_values_whitespace(self, tmp_path):
+        p = str(tmp_path / "losses.txt")
+        with open(p, "w") as fh:
+            fh.write("100 -9000.0\n200 -8000.0\n300 -7000.0\n")
+        result = _read_all_losses(p)
+        assert result == pytest.approx([-9000.0, -8000.0, -7000.0])
+
+    def test_returns_all_values_comma(self, tmp_path):
+        p = str(tmp_path / "losses.txt")
+        with open(p, "w") as fh:
+            fh.write("9000.0,0.002\n8000.0,0.0018\n7000.0,0.0015\n")
+        result = _read_all_losses(p)
+        assert result == pytest.approx([9000.0, 8000.0, 7000.0])
+
+    def test_raises_on_empty(self, tmp_path):
+        p = str(tmp_path / "losses.txt")
+        with open(p, "w") as fh:
+            fh.write("# only comments\n")
+        with pytest.raises(ValueError):
+            _read_all_losses(p)
+
+
 class TestReadFinalLoss:
 
     def test_reads_last_value_from_two_column_file(self, tmp_path):
@@ -303,6 +328,10 @@ class TestSummarizeFitComplete:
             data = json.load(fh)
         assert data["test"] is None
         assert data["metadata"]["n_test_points"] is None
+
+    def test_loss_pdf_written(self, run_dir):
+        summarize_fit(run_dir)
+        assert os.path.exists(os.path.join(run_dir, "tfs_summarize_losses.pdf"))
 
     def test_custom_out_prefix(self, run_dir, tmp_path):
         custom_prefix = str(tmp_path / "custom" / "myrun")

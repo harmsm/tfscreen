@@ -40,14 +40,14 @@ def _resolve_path(path, run_dir):
     return path if os.path.exists(path) else None
 
 
-def _read_final_loss(losses_file):
-    """Return the last loss value from a losses text file.
+def _read_all_losses(losses_file):
+    """Return a list of loss values from a losses text file.
 
     Supports two formats:
     - Comma-delimited  ``loss,other``  (loss is the first column)
     - Whitespace-delimited  ``step loss``  (loss is the last column)
     """
-    last_val = None
+    values = []
     with open(losses_file) as fh:
         for line in fh:
             line = line.strip()
@@ -55,12 +55,17 @@ def _read_final_loss(losses_file):
                 continue
             token = line.split(",")[0] if "," in line else line.split()[-1]
             try:
-                last_val = float(token)
+                values.append(float(token))
             except ValueError:
                 pass
-    if last_val is None:
+    if not values:
         raise ValueError(f"No numeric values found in {losses_file}")
-    return last_val
+    return values
+
+
+def _read_final_loss(losses_file):
+    """Return the last loss value from a losses text file."""
+    return _read_all_losses(losses_file)[-1]
 
 
 def _run_stats(pred_vals, obs_vals):
@@ -181,10 +186,12 @@ def summarize_fit(run_dir,
                 except Exception as exc:
                     warnings.warn(f"Could not count parameters from {guesses_path}: {exc}")
 
-    # --- Read converged loss ---
+    # --- Read converged loss (and keep full history for the loss-curve plot) ---
+    all_losses = None
     if losses_file is not None:
         try:
-            metadata["final_loss"] = _read_final_loss(losses_file)
+            all_losses = _read_all_losses(losses_file)
+            metadata["final_loss"] = all_losses[-1]
         except Exception as exc:
             warnings.warn(f"Could not read final loss from {losses_file}: {exc}")
 
@@ -281,6 +288,22 @@ def summarize_fit(run_dir,
         print(f"Wrote correlation plot to {pdf_file}")
     except Exception as exc:
         warnings.warn(f"Could not generate correlation plot: {exc}")
+
+    # --- Loss curve plot ---
+    loss_pdf_file = f"{out_prefix}_losses.pdf"
+    try:
+        if all_losses is not None:
+            fig, ax = plt.subplots(figsize=(8, 4))
+            ax.plot(range(len(all_losses)), all_losses, lw=1.5, color="steelblue")
+            ax.set_xlabel("Step")
+            ax.set_ylabel("Loss")
+            ax.set_title("Training loss")
+            fig.tight_layout()
+            fig.savefig(loss_pdf_file)
+            plt.close(fig)
+            print(f"Wrote loss curve to {loss_pdf_file}")
+    except Exception as exc:
+        warnings.warn(f"Could not generate loss curve plot: {exc}")
 
     return results
 

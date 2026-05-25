@@ -1809,22 +1809,22 @@
 ./src/tfscreen/analysis/hierarchical/growth_model/data_class.py:184:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/hierarchical/growth_model/data_class.py:191:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/hierarchical/growth_model/data_class.py:192:5: E266 too many leading '#' for block comment
-./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:1:1: F401 'tfscreen' imported but unused
-./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:81:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:85:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:103:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:116:72: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:117:71: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:118:70: W291 trailing whitespace
-./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:171:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:249:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:250:29: E128 continuation line under-indented for visual indent
-./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:297:16: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:321:1: C901 'extract_growth_predictions' is too complex (11)
-./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:420:32: E127 continuation line over-indented for visual indent
-./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:439:16: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:441:16: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:442:16: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:2:1: F401 'tfscreen' imported but unused
+./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:82:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:86:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:104:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:117:72: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:118:71: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:119:70: W291 trailing whitespace
+./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:183:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:261:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:262:29: E128 continuation line under-indented for visual indent
+./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:309:16: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:333:1: C901 'extract_growth_predictions' is too complex (11)
+./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:432:32: E127 continuation line over-indented for visual indent
+./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:451:16: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:453:16: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:454:16: E221 multiple spaces before operator
 ./src/tfscreen/analysis/hierarchical/growth_model/model.py:8:1: F401 'jax' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/model.py:11:1: F401 'typing.Dict' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/model.py:11:1: F401 'typing.Any' imported but unused
@@ -2193,6 +2193,7 @@
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/diagnose_nan_cli.py:39:1: F401 'sys' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/diagnose_nan_cli.py:42:1: F401 'jax.numpy as jnp' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/diagnose_nan_cli.py:43:1: F401 'numpy as np' imported but unused
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/extract_params_cli.py:10:1: C901 'extract_params' is too complex (11)
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/fit_model_cli.py:2:1: F401 'numpy as np' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/fit_model_cli.py:3:1: F401 'jax.numpy as jnp' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/fit_model_cli.py:8:1: F401 'tfscreen.analysis.hierarchical.growth_model.model_class.ModelClass as GrowthModel' imported but unused
@@ -2252,7 +2253,7 @@
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/setup_grid_cli.py:233:1: C901 'setup_grid' is too complex (17)
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/subset_genotypes_cli.py:40:1: C901 'subset_genotypes' is too complex (23)
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/subset_genotypes_cli.py:93:5: F841 local variable 'all_genotypes' is assigned to but never used
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/summarize_fit_cli.py:100:1: C901 'summarize_fit' is too complex (35)
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/summarize_fit_cli.py:105:1: C901 'summarize_fit' is too complex (38)
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/summarize_posteriors_cli.py:4:1: F401 'tfscreen.analysis.hierarchical.growth_model.model_class.ModelClass as GrowthModel' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/summarize_posteriors_cli.py:9:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/summarize_posteriors_cli.py:10:25: E128 continuation line under-indented for visual indent
@@ -9761,7 +9762,7 @@
 ./tests/tfscreen/util/validation/test_check.py:8:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/validation/test_check.py:26:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/validation/test_check.py:42:38: W292 no newline at end of file
-41    C901 'cat_fit' is too complex (19)
+42    C901 'cat_fit' is too complex (19)
 36    E111 indentation is not a multiple of 4
 15    E114 indentation is not a multiple of 4 (comment)
 7     E116 unexpected indentation (comment)
@@ -9811,4 +9812,4 @@
 115   W292 no newline at end of file
 2590  W293 blank line contains whitespace
 47    W391 blank line at end of file
-9763
+9764
