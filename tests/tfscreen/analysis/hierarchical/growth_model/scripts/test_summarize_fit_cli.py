@@ -332,8 +332,16 @@ class TestSummarizeFitComplete:
         with open(os.path.join(run_dir, "tfs_summarize_fit_summary.json")) as fh:
             data = json.load(fh)
         assert "metadata" in data
-        assert "training" in data
-        assert "test" in data
+        assert "theta" in data
+        assert "growth" in data
+
+    def test_json_theta_and_growth_have_training_subkey(self, run_dir):
+        summarize_fit(run_dir)
+        with open(os.path.join(run_dir, "tfs_summarize_fit_summary.json")) as fh:
+            data = json.load(fh)
+        assert "training" in data["theta"]
+        assert "test" in data["theta"]
+        assert "training" in data["growth"]
 
     def test_metadata_fields_populated(self, run_dir):
         summarize_fit(run_dir)
@@ -341,24 +349,58 @@ class TestSummarizeFitComplete:
             data = json.load(fh)
         meta = data["metadata"]
         assert meta["n_parameters"] == 25
-        assert meta["n_training_points"] > 0
+        assert meta["n_theta_training_points"] > 0
         assert meta["final_loss"] == pytest.approx(-4321.0)
 
-    def test_training_stats_populated(self, run_dir):
+    def test_theta_training_stats_populated(self, run_dir):
         summarize_fit(run_dir)
         with open(os.path.join(run_dir, "tfs_summarize_fit_summary.json")) as fh:
             data = json.load(fh)
-        stats = data["training"]
+        stats = data["theta"]["training"]
         assert stats is not None
         for key in ("rmse", "pearson_r", "spearman_r", "r_squared", "mean_error"):
             assert key in stats, f"Missing key: {key}"
 
-    def test_test_stats_null_when_no_ground_truth(self, run_dir):
+    def test_theta_test_null_when_no_ground_truth(self, run_dir):
         summarize_fit(run_dir)
         with open(os.path.join(run_dir, "tfs_summarize_fit_summary.json")) as fh:
             data = json.load(fh)
-        assert data["test"] is None
-        assert data["metadata"]["n_test_points"] is None
+        assert data["theta"]["test"] is None
+        assert data["metadata"]["n_theta_test_points"] is None
+
+    def test_growth_training_null_when_no_growth_pred(self, run_dir):
+        summarize_fit(run_dir)
+        with open(os.path.join(run_dir, "tfs_summarize_fit_summary.json")) as fh:
+            data = json.load(fh)
+        assert data["growth"]["training"] is None
+        assert data["metadata"]["n_growth_training_points"] is None
+
+    def test_growth_training_stats_populated_when_file_present(self, run_dir):
+        pd.DataFrame({
+            "genotype": ["wt"] * 6,
+            "ln_cfu": np.linspace(8.0, 13.0, 6),
+            "median": np.linspace(8.1, 13.1, 6),
+        }).to_csv(os.path.join(run_dir, "tfs_growth_pred.csv"), index=False)
+        summarize_fit(run_dir)
+        with open(os.path.join(run_dir, "tfs_summarize_fit_summary.json")) as fh:
+            data = json.load(fh)
+        stats = data["growth"]["training"]
+        assert stats is not None
+        for key in ("rmse", "pearson_r", "spearman_r", "r_squared", "mean_error"):
+            assert key in stats, f"Missing key: {key}"
+        assert data["metadata"]["n_growth_training_points"] == 6
+
+    def test_growth_training_drops_nan_ln_cfu(self, run_dir):
+        df = pd.DataFrame({
+            "genotype": ["wt"] * 6,
+            "ln_cfu": [8.0, np.nan, 9.0, np.nan, 10.0, 11.0],
+            "median": np.linspace(8.1, 13.1, 6),
+        })
+        df.to_csv(os.path.join(run_dir, "tfs_growth_pred.csv"), index=False)
+        summarize_fit(run_dir)
+        with open(os.path.join(run_dir, "tfs_summarize_fit_summary.json")) as fh:
+            data = json.load(fh)
+        assert data["metadata"]["n_growth_training_points"] == 4
 
     def test_loss_pdf_written(self, run_dir):
         summarize_fit(run_dir)
@@ -392,7 +434,7 @@ class TestSummarizeFitComplete:
 
 class TestSummarizeFitWithGroundTruth:
 
-    def test_test_stats_populated(self, run_dir, ground_truth_file):
+    def test_theta_test_stats_populated(self, run_dir, ground_truth_file):
         # Add out-of-training genotype to pred CSV
         pred_path = os.path.join(run_dir, "run_theta_pred.csv")
         _make_pred_csv(pred_path, n_training=3, extra_genotypes=["E4F"])
@@ -400,17 +442,17 @@ class TestSummarizeFitWithGroundTruth:
         summarize_fit(run_dir, ground_truth_file=ground_truth_file)
         with open(os.path.join(run_dir, "tfs_summarize_fit_summary.json")) as fh:
             data = json.load(fh)
-        assert data["test"] is not None
-        assert data["metadata"]["n_test_points"] == len(TITRANT_CONCS)
+        assert data["theta"]["test"] is not None
+        assert data["metadata"]["n_theta_test_points"] == len(TITRANT_CONCS)
 
-    def test_test_pearson_r_reasonable(self, run_dir, ground_truth_file):
+    def test_theta_test_pearson_r_reasonable(self, run_dir, ground_truth_file):
         pred_path = os.path.join(run_dir, "run_theta_pred.csv")
         _make_pred_csv(pred_path, n_training=3, extra_genotypes=["E4F"])
 
         summarize_fit(run_dir, ground_truth_file=ground_truth_file)
         with open(os.path.join(run_dir, "tfs_summarize_fit_summary.json")) as fh:
             data = json.load(fh)
-        r = data["test"]["pearson_r"]
+        r = data["theta"]["test"]["pearson_r"]
         # Predictions are close to truth so r should be high
         assert r is not None and r > 0.9
 
@@ -430,10 +472,9 @@ class TestSummarizeFitGraceful:
         assert os.path.exists(json_path)
         with open(json_path) as fh:
             data = json.load(fh)
-        assert data["training"] is None
+        assert data["theta"]["training"] is None
 
-    def test_missing_binding_csv_gives_null_training(self, run_dir, tmp_path):
-        # Point config at a non-existent binding file
+    def test_missing_binding_csv_gives_null_theta_training(self, run_dir, tmp_path):
         config_path = os.path.join(run_dir, "run_config.yaml")
         with open(config_path) as fh:
             cfg = yaml.safe_load(fh)
@@ -446,7 +487,7 @@ class TestSummarizeFitGraceful:
             summarize_fit(run_dir)
         with open(os.path.join(run_dir, "tfs_summarize_fit_summary.json")) as fh:
             data = json.load(fh)
-        assert data["training"] is None
+        assert data["theta"]["training"] is None
 
     def test_missing_config_still_writes_json(self, run_dir):
         os.remove(os.path.join(run_dir, "run_config.yaml"))
@@ -465,7 +506,8 @@ class TestSummarizeFitGraceful:
         assert os.path.exists(json_path)
         with open(json_path) as fh:
             data = json.load(fh)
-        assert data["training"] is None
-        assert data["test"] is None
+        assert data["theta"]["training"] is None
+        assert data["theta"]["test"] is None
+        assert data["growth"]["training"] is None
         assert data["metadata"]["n_parameters"] is None
         assert data["metadata"]["final_loss"] is None

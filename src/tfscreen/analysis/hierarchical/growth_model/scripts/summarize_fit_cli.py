@@ -128,11 +128,19 @@ def summarize_fit(run_dir,
     """
     Evaluate theta prediction quality for a tfs-fit-model run directory.
 
-    Scans run_dir for a *_config.yaml, a *_theta_pred.csv, and (optionally)
-    a *_losses.txt, then computes prediction statistics for both training data
-    (binding observations used during fitting) and an optional held-out test
-    set.  Results are written to {out_prefix}_fit_summary.json and a two-panel
-    correlation plot to {out_prefix}_theta_corr.pdf.
+    Scans run_dir for a *_config.yaml, *_theta_pred.csv, *_growth_pred.csv
+    (optional), and *_losses.txt (optional).  Computes prediction statistics
+    and writes three output files:
+
+    - ``{out_prefix}_fit_summary.json`` — nested statistics with top-level
+      keys ``metadata``, ``theta`` (training / test sub-keys), and ``growth``
+      (training sub-key).
+    - ``{out_prefix}_theta_corr.pdf`` — two-panel hexbin correlation plot for
+      theta (training left, test right).
+    - ``{out_prefix}_growth_corr.pdf`` — hexbin correlation plot for ln_cfu
+      (only written when *_growth_pred.csv is present).
+    - ``{out_prefix}_losses.pdf`` — training loss curve (only written when
+      *_losses.txt is present).
 
     Parameters
     ----------
@@ -154,14 +162,17 @@ def summarize_fit(run_dir,
         "ground_truth_file": ground_truth_file,
         "timestamp": datetime.datetime.now().isoformat(),
         "n_parameters": None,
-        "n_training_points": None,
-        "n_test_points": None,
+        "n_theta_training_points": None,
+        "n_theta_test_points": None,
+        "n_growth_training_points": None,
         "final_loss": None,
     }
-    training_stats = None
-    test_stats = None
+    theta_training_stats = None
+    theta_test_stats = None
+    growth_training_stats = None
     train_merged = None
     test_merged = None
+    growth_pred_df = None
 
     # --- Locate files in run_dir ---
     config_file = _find_unique(run_dir, "_config.yaml", "config")
@@ -226,7 +237,7 @@ def summarize_fit(run_dir,
         except Exception as exc:
             warnings.warn(f"Could not load theta predictions from {theta_pred_file}: {exc}")
 
-    # --- Training statistics ---
+    # --- Theta training statistics ---
     if pred_df is not None and binding_df is not None:
         try:
             join_cols = ["genotype", "titrant_name", "titrant_conc"]
@@ -236,16 +247,16 @@ def summarize_fit(run_dir,
                 on=join_cols,
                 how="inner",
             )
-            metadata["n_training_points"] = len(train_merged)
+            metadata["n_theta_training_points"] = len(train_merged)
             if len(train_merged) > 0:
-                training_stats = _run_stats(
+                theta_training_stats = _run_stats(
                     train_merged["median"].values,
                     train_merged["theta_obs"].values,
                 )
         except Exception as exc:
-            warnings.warn(f"Could not compute training statistics: {exc}")
+            warnings.warn(f"Could not compute theta training statistics: {exc}")
 
-    # --- Test statistics ---
+    # --- Theta test statistics ---
     if ground_truth_file is not None and pred_df is not None:
         try:
             gt_df = pd.read_csv(ground_truth_file)
@@ -255,17 +266,41 @@ def summarize_fit(run_dir,
                 on=join_cols,
                 how="inner",
             )
-            metadata["n_test_points"] = len(test_merged)
+            metadata["n_theta_test_points"] = len(test_merged)
             if len(test_merged) > 0:
-                test_stats = _run_stats(
+                theta_test_stats = _run_stats(
                     test_merged["median"].values,
                     test_merged["theta_obs"].values,
                 )
         except Exception as exc:
-            warnings.warn(f"Could not compute test statistics: {exc}")
+            warnings.warn(f"Could not compute theta test statistics: {exc}")
+
+    # --- Growth training statistics ---
+    if growth_pred_file is not None:
+        try:
+            growth_pred_df = pd.read_csv(growth_pred_file)
+            # Drop rows where observed ln_cfu is missing (no observation at that timepoint)
+            growth_valid = growth_pred_df.dropna(subset=["ln_cfu", "median"])
+            metadata["n_growth_training_points"] = len(growth_valid)
+            if len(growth_valid) > 0:
+                growth_training_stats = _run_stats(
+                    growth_valid["median"].values,
+                    growth_valid["ln_cfu"].values,
+                )
+        except Exception as exc:
+            warnings.warn(f"Could not compute growth training statistics: {exc}")
 
     # --- Write JSON ---
-    results = {"metadata": metadata, "training": training_stats, "test": test_stats}
+    results = {
+        "metadata": metadata,
+        "theta": {
+            "training": theta_training_stats,
+            "test": theta_test_stats,
+        },
+        "growth": {
+            "training": growth_training_stats,
+        },
+    }
     json_file = f"{out_prefix}_fit_summary.json"
     try:
         with open(json_file, "w") as fh:
@@ -283,7 +318,7 @@ def summarize_fit(run_dir,
             xy_corr(
                 x_values=train_merged["theta_obs"].values,
                 y_values=train_merged["median"].values,
-                as_hexbin=True,
+                as_hexbin=False,
                 ax=axes[0],
             )
             axes[0].set_xlabel("Observed θ")
@@ -296,7 +331,7 @@ def summarize_fit(run_dir,
             xy_corr(
                 x_values=test_merged["theta_obs"].values,
                 y_values=test_merged["median"].values,
-                as_hexbin=True,
+                as_hexbin=False,
                 ax=axes[1],
             )
             axes[1].set_xlabel("Observed θ")
@@ -315,13 +350,12 @@ def summarize_fit(run_dir,
     # --- Growth correlation plot ---
     growth_pdf_file = f"{out_prefix}_growth_corr.pdf"
     try:
-        if growth_pred_file is not None:
-            growth_pred_df = pd.read_csv(growth_pred_file)
+        if growth_pred_df is not None:
             fig, ax = plt.subplots(1, 1, figsize=(6, 6))
             xy_corr(
                 x_values=growth_pred_df["ln_cfu"].values,
                 y_values=growth_pred_df["median"].values,
-                as_hexbin=True,
+                as_hexbin=False,
                 ax=ax,
             )
             ax.set_xlabel("Observed ln CFU")

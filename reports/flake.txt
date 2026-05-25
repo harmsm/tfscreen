@@ -2254,7 +2254,7 @@
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/subset_genotypes_cli.py:40:1: C901 'subset_genotypes' is too complex (23)
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/subset_genotypes_cli.py:93:5: F841 local variable 'all_genotypes' is assigned to but never used
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/summarize_fit_cli.py:43:1: C901 '_read_all_losses' is too complex (11)
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/summarize_fit_cli.py:125:1: C901 'summarize_fit' is too complex (41)
+./src/tfscreen/analysis/hierarchical/growth_model/scripts/summarize_fit_cli.py:125:1: C901 'summarize_fit' is too complex (45)
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/summarize_posteriors_cli.py:4:1: F401 'tfscreen.analysis.hierarchical.growth_model.model_class.ModelClass as GrowthModel' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/summarize_posteriors_cli.py:9:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/summarize_posteriors_cli.py:10:25: E128 continuation line under-indented for visual indent
