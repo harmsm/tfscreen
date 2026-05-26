@@ -378,18 +378,24 @@ class RunInference:
             Dictionary mapping site names to their genotype dimension index.
         """
 
-        # Run a trace of the model to identify plate structure
+        # Use a minimal probe batch so that data.batch_size matches the actual
+        # tensor dimensions when tracing.  MAP checkpoints trained with
+        # mini-batching store data.binding.batch_size == mini-batch size while
+        # the full tensors have num_genotype entries; tracing with raw
+        # self.model.data causes a plate-size / tensor-size mismatch.
         data_on_gpu = jax.device_put(self.model.data)
+        probe_size = min(2, self.model.data.num_genotype)
+        probe_idx = jnp.arange(probe_size)
+        probe_data = self.model.get_batch(data_on_gpu, probe_idx)
+
         seeded_model = seed(self.model.jax_model, rng_seed=0)
         traced_model = trace(seeded_model)
-        model_trace = traced_model.get_trace(data=data_on_gpu,
+        model_trace = traced_model.get_trace(data=probe_data,
                                              priors=self.model.priors)
-
-        total_num_genotypes = self.model.data.num_genotype
 
         dim_map = {}
         genotype_dim = -1 # default fallback
-        
+
         # First pass: find a site with the genotype plate to identify the dim index
         for name, site in model_trace.items():
             for frame in site.get("cond_indep_stack", []):
@@ -398,7 +404,7 @@ class RunInference:
                     break
             if genotype_dim != -1:
                 break
-        
+
         # Second pass: map all sites that are in the plate or match the genotype size
         for name, site in model_trace.items():
             if site["type"] not in ["sample", "deterministic"]:
@@ -411,18 +417,18 @@ class RunInference:
                     dim_map[name] = frame.dim
                     in_plate = True
                     break
-            
+
             if in_plate:
                 continue
-                
-            # Fallback for deterministics computed outside the plate 
+
+            # Fallback for deterministics computed outside the plate
             # but matching the genotype size at the expected dimension.
             val = site["value"]
             if hasattr(val, "shape"):
                 # Handle negative indexing for the dimension check
                 actual_dim = genotype_dim if genotype_dim >= 0 else len(val.shape) + genotype_dim
                 if actual_dim >= 0 and actual_dim < len(val.shape):
-                    if val.shape[actual_dim] == total_num_genotypes:
+                    if val.shape[actual_dim] == probe_size:
                         dim_map[name] = genotype_dim
 
         return dim_map
