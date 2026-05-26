@@ -627,11 +627,13 @@ class ModelClass:
                                        "lac_dimer_lnK_mut",
                                        "lac_dimer_lnK_nn_prior",
                                        "lac_dimer_lnK_ddG_prior",
+                                       "lac_dimer_unfolded_lnK_mut",
                                        "lac_dimer_unfolded_lnK_nn_prior",
                                        "lac_dimer_unfolded_lnK_ddG_prior",
                                        "mwc_dimer_lnK_mut",
                                        "mwc_dimer_lnK_nn_prior",
                                        "mwc_dimer_lnK_ddG_prior",
+                                       "mwc_dimer_unfolded_lnK_mut",
                                        "mwc_dimer_unfolded_lnK_nn_prior",
                                        "mwc_dimer_unfolded_lnK_ddG_prior") or
                       self._activity in ("hierarchical_mut", "horseshoe_mut") or
@@ -861,11 +863,13 @@ class ModelClass:
                                      "lac_dimer_lnK_mut",
                                      "lac_dimer_lnK_nn_prior",
                                      "lac_dimer_lnK_ddG_prior",
+                                     "lac_dimer_unfolded_lnK_mut",
                                      "lac_dimer_unfolded_lnK_nn_prior",
                                      "lac_dimer_unfolded_lnK_ddG_prior",
                                      "mwc_dimer_lnK_mut",
                                      "mwc_dimer_lnK_nn_prior",
                                      "mwc_dimer_lnK_ddG_prior",
+                                     "mwc_dimer_unfolded_lnK_mut",
                                      "mwc_dimer_unfolded_lnK_nn_prior",
                                      "mwc_dimer_unfolded_lnK_ddG_prior")
 

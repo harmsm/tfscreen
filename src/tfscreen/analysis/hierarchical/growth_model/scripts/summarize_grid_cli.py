@@ -54,6 +54,25 @@ def _flatten_fit_summary(data):
     return flat
 
 
+def _flatten_calib_stats(data):
+    """Flatten a calib_stats JSON dict into a flat dict for a CSV row.
+
+    Every key is prefixed with ``calib_`` to distinguish calibration
+    statistics from fit-summary statistics in the same row.
+
+    Parameters
+    ----------
+    data : dict
+        Parsed contents of a ``*_calib_stats.json`` file.
+
+    Returns
+    -------
+    dict
+        Flat mapping of column name → value.
+    """
+    return {f"calib_{k}": v for k, v in data.items()}
+
+
 def summarize_grid(grid_dir, out_prefix=None):
     """
     Summarize a model grid created by tfs-setup-grid.
@@ -116,6 +135,16 @@ def summarize_grid(grid_dir, out_prefix=None):
                 with open(matches[0]) as fh:
                     fit_data = json.load(fh)
                 row.update(_flatten_fit_summary(fit_data))
+            except Exception:
+                pass  # malformed JSON — leave columns absent for this run
+
+        # Merge calibration statistics if present.
+        matches = sorted(glob.glob(os.path.join(subdir, "*_calib_stats.json")))
+        if matches:
+            try:
+                with open(matches[0]) as fh:
+                    calib_data = json.load(fh)
+                row.update(_flatten_calib_stats(calib_data))
             except Exception:
                 pass  # malformed JSON — leave columns absent for this run
 

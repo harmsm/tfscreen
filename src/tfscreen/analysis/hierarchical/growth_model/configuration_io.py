@@ -332,7 +332,7 @@ def read_configuration(config_file):
     for k in gm.init_params.keys():
         if k not in init_params:
             missing_params.append(k)
-    
+
     if len(missing_params) > 0:
         raise ValueError(f"Missing initial guesses for parameters: {missing_params}")
 
