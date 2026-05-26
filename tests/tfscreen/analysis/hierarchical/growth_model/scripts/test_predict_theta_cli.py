@@ -344,3 +344,50 @@ class TestPredictThetaCheckpointInput:
                           out_prefix=str(tmp_path / "out"))
 
         assert extract_calls["posteriors"] == "map_posterior.h5"
+
+
+# ---------------------------------------------------------------------------
+# genotype_batch_size threading
+# ---------------------------------------------------------------------------
+
+class TestGenotypeBatchSize:
+    """genotype_batch_size is forwarded to extract_theta_unmeasured."""
+
+    def test_custom_batch_size_forwarded(self, mock_extract, mock_gm, tmp_path):
+        gf = str(tmp_path / "genos.txt")
+        _write_lines(gf, ["C2D"])  # out-of-training → unmeasured path
+        out = str(tmp_path / "out")
+        with patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".predict_theta_cli.extract_theta_unmeasured",
+        ) as mock_unmeas:
+            mock_unmeas.return_value = pd.DataFrame({
+                "genotype": ["wt", "A1B", "C2D"],
+                "titrant_name": ["IPTG"] * 3,
+                "titrant_conc": [0.0] * 3,
+                "median": [0.5] * 3,
+            })
+            predict_theta("cfg.yaml", "post.h5",
+                          genotypes_file=gf,
+                          genotype_batch_size=42,
+                          out_prefix=out)
+        assert mock_unmeas.call_args.kwargs["genotype_batch_size"] == 42
+
+    def test_default_batch_size_is_2000(self, mock_extract, mock_gm, tmp_path):
+        gf = str(tmp_path / "genos.txt")
+        _write_lines(gf, ["C2D"])
+        out = str(tmp_path / "out")
+        with patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".predict_theta_cli.extract_theta_unmeasured",
+        ) as mock_unmeas:
+            mock_unmeas.return_value = pd.DataFrame({
+                "genotype": ["wt", "A1B", "C2D"],
+                "titrant_name": ["IPTG"] * 3,
+                "titrant_conc": [0.0] * 3,
+                "median": [0.5] * 3,
+            })
+            predict_theta("cfg.yaml", "post.h5",
+                          genotypes_file=gf,
+                          out_prefix=out)
+        assert mock_unmeas.call_args.kwargs["genotype_batch_size"] == 2000

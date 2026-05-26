@@ -1818,12 +1818,13 @@
 ./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:183:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:261:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:262:29: E128 continuation line under-indented for visual indent
-./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:309:16: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:333:1: C901 'extract_growth_predictions' is too complex (11)
-./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:432:32: E127 continuation line over-indented for visual indent
-./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:451:16: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:453:16: E221 multiple spaces before operator
-./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:454:16: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:263:29: E128 continuation line under-indented for visual indent
+./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:318:16: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:370:1: C901 'extract_growth_predictions' is too complex (11)
+./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:469:32: E127 continuation line over-indented for visual indent
+./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:488:16: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:490:16: E221 multiple spaces before operator
+./src/tfscreen/analysis/hierarchical/growth_model/extraction.py:491:16: E221 multiple spaces before operator
 ./src/tfscreen/analysis/hierarchical/growth_model/model.py:8:1: F401 'jax' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/model.py:11:1: F401 'typing.Dict' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/model.py:11:1: F401 'typing.Any' imported but unused
@@ -6910,29 +6911,30 @@
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_samples.py:88:36: E231 missing whitespace after ','
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_samples.py:176:9: F841 local variable 'q_min' is assigned to but never used
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_samples.py:373:9: F841 local variable 'rng' is assigned to but never used
-./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:8:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:13:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:27:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:35:71: E261 at least two spaces before inline comment
-./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:40:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:43:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:50:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:54:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:62:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:68:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:70:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:76:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:83:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:85:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:90:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:96:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:98:57: E261 at least two spaces before inline comment
-./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:99:35: E261 at least two spaces before inline comment
-./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:100:10: E111 indentation is not a multiple of 4
-./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:100:10: E117 over-indented
-./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:102:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:112:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:121:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:4:1: F401 'unittest.mock.call' imported but unused
+./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:11:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:16:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:30:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:38:71: E261 at least two spaces before inline comment
+./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:43:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:46:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:53:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:57:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:65:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:71:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:73:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:79:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:86:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:88:1: W293 blank line contains whitespace
+./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:93:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:99:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:101:57: E261 at least two spaces before inline comment
+./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:102:35: E261 at least two spaces before inline comment
+./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:103:10: E111 indentation is not a multiple of 4
+./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:103:10: E117 over-indented
+./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:105:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:115:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/hierarchical/growth_model/test_extract_theta_curves.py:124:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_extraction_new_models.py:45:36: E231 missing whitespace after ','
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_extraction_new_models.py:45:43: E231 missing whitespace after ','
 ./tests/tfscreen/analysis/hierarchical/growth_model/test_extraction_new_models.py:45:50: E231 missing whitespace after ','
@@ -9763,7 +9765,7 @@
 3     E124 closing bracket does not match visual indentation
 6     E125 continuation line with same indent as next logical line
 116   E127 continuation line over-indented for visual indent
-51    E128 continuation line under-indented for visual indent
+52    E128 continuation line under-indented for visual indent
 2     E131 continuation line unaligned for hanging indent
 46    E201 whitespace after '['
 27    E202 whitespace before ']'
@@ -9796,7 +9798,7 @@
 1     E722 do not use bare 'except'
 1     E731 do not assign a lambda expression, use a def
 13    E741 ambiguous variable name 'l'
-393   F401 '.calibration' imported but unused
+394   F401 '.calibration' imported but unused
 11    F541 f-string is missing placeholders
 7     F811 redefinition of unused 'dataclasses' from line 6
 58    F841 local variable 'titrant_names' is assigned to but never used
@@ -9804,4 +9806,4 @@
 115   W292 no newline at end of file
 2576  W293 blank line contains whitespace
 47    W391 blank line at end of file
-9756
+9758

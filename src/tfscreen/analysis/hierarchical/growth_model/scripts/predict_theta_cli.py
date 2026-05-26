@@ -16,7 +16,8 @@ def predict_theta(config_file,
                   titrant_names_file=None,
                   titrant_concs_file=None,
                   only_files=False,
-                  num_samples=0):
+                  num_samples=0,
+                  genotype_batch_size=2000):
     """
     Predict operator occupancy (theta) from a fitted hierarchical model.
 
@@ -75,6 +76,11 @@ def predict_theta(config_file,
         Number of joint posterior samples to include as sample_0 … sample_N-1
         columns alongside the quantile columns. Set to None for quantiles only.
         Default 0.
+    genotype_batch_size : int, optional
+        When predicting unmeasured genotypes, process this many at a time to
+        cap the memory used by the epistasis pair-indicator matrix
+        (batch_size × N_pair × 4 bytes).  Smaller values reduce peak memory
+        at the cost of more iterations.  Default 2000.
     """
     if (titrant_names_file is None) != (titrant_concs_file is None):
         raise ValueError(
@@ -164,6 +170,7 @@ def predict_theta(config_file,
             posteriors=param_file,
             target_genotypes=requested_genotypes,
             manual_titrant_df=manual_titrant_df,
+            genotype_batch_size=genotype_batch_size,
         )
     else:
         print(f"Predicting theta for {len(requested_genotypes)} training genotype(s)...",
@@ -196,7 +203,8 @@ def main():
                                        "titrant_names_file": str,
                                        "titrant_concs_file": str,
                                        "only_files": bool,
-                                       "num_samples": int})
+                                       "num_samples": int,
+                                       "genotype_batch_size": int})
 
 
 if __name__ == "__main__":

@@ -259,13 +259,18 @@ def extract_theta_curves(model, posteriors, q_to_get=None, manual_titrant_df=Non
     return calc_df.drop(columns=internal_cols)
 
 def extract_theta_unmeasured(model, posteriors, target_genotypes,
-                            manual_titrant_df, q_to_get=None):
+                            manual_titrant_df, q_to_get=None,
+                            genotype_batch_size=2000):
     """
     Predict theta for unmeasured genotypes using per-mutation additive assembly.
 
     Dispatches to the active theta component's ``predict_unmeasured`` function.
     Genotypes that contain any mutation not seen during training are returned
     with NaN quantiles.
+
+    Processes genotypes in batches of ``genotype_batch_size`` to avoid OOM
+    when the epistasis pair matrix (N_genotype × N_pair) would be too large
+    to materialise all at once.
 
     Parameters
     ----------
@@ -284,6 +289,10 @@ def extract_theta_unmeasured(model, posteriors, target_genotypes,
     q_to_get : dict, optional
         Quantiles to extract.  Defaults to the standard set used by other
         extraction functions.
+    genotype_batch_size : int, optional
+        Number of genotypes to process per batch.  Smaller values reduce peak
+        memory (pair_mat is batch_size × N_pair) at the cost of more iterations.
+        Default 2000.
 
     Returns
     -------
@@ -318,16 +327,44 @@ def extract_theta_unmeasured(model, posteriors, target_genotypes,
     if hasattr(theta_priors, "theta_conc_unit_scale"):
         extra_kwargs["conc_unit_scale"] = float(theta_priors.theta_conc_unit_scale)
 
-    return module.predict_unmeasured(
-        target_genotypes=list(target_genotypes),
-        titrant_names=titrant_names,
-        manual_titrant_df=manual_titrant_df,
-        mut_labels=model.mut_labels,
-        pair_labels=model.pair_labels,
-        param_posteriors=param_posteriors,
-        q_to_get=q_to_get,
-        **extra_kwargs,
-    )
+    target_genotypes = list(target_genotypes)
+    n_total = len(target_genotypes)
+
+    if n_total <= genotype_batch_size:
+        return module.predict_unmeasured(
+            target_genotypes=target_genotypes,
+            titrant_names=titrant_names,
+            manual_titrant_df=manual_titrant_df,
+            mut_labels=model.mut_labels,
+            pair_labels=model.pair_labels,
+            param_posteriors=param_posteriors,
+            q_to_get=q_to_get,
+            **extra_kwargs,
+        )
+
+    # Batched path: process genotype_batch_size genotypes at a time so the
+    # pair indicator matrix (batch × N_pair) fits in memory.
+    n_batches = (n_total + genotype_batch_size - 1) // genotype_batch_size
+    print(f"  Processing {n_total} genotypes in {n_batches} batches "
+          f"of {genotype_batch_size}...", flush=True)
+
+    result_dfs = []
+    for batch_start in tqdm(range(0, n_total, genotype_batch_size),
+                            total=n_batches, desc="theta batches"):
+        batch = target_genotypes[batch_start:batch_start + genotype_batch_size]
+        chunk_df = module.predict_unmeasured(
+            target_genotypes=batch,
+            titrant_names=titrant_names,
+            manual_titrant_df=manual_titrant_df,
+            mut_labels=model.mut_labels,
+            pair_labels=model.pair_labels,
+            param_posteriors=param_posteriors,
+            q_to_get=q_to_get,
+            **extra_kwargs,
+        )
+        result_dfs.append(chunk_df)
+
+    return pd.concat(result_dfs, ignore_index=True)
 
 
 def extract_growth_predictions(model,

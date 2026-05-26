@@ -1,9 +1,12 @@
 import pytest
 import pandas as pd
 import numpy as np
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, call
 from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass
-from tfscreen.analysis.hierarchical.growth_model.extraction import extract_theta_curves
+from tfscreen.analysis.hierarchical.growth_model.extraction import (
+    extract_theta_curves,
+    extract_theta_unmeasured,
+)
 
 @pytest.fixture
 def mock_model():
@@ -122,3 +125,141 @@ def test_extract_theta_curves_file_loading(mock_model):
     with patch("numpy.load", return_value=mock_npz) as mock_load:
         extract_theta_curves(mock_model, "mock.npz")
         mock_load.assert_called_once_with("mock.npz")
+
+
+# ---------------------------------------------------------------------------
+# extract_theta_unmeasured — genotype batching
+# ---------------------------------------------------------------------------
+
+def _make_unmeasured_model(theta_name="hill_mut"):
+    """Minimal model mock for extract_theta_unmeasured."""
+    model = MagicMock(spec=ModelClass)
+    model._theta = theta_name
+    mock_tm = MagicMock()
+    mock_tm.tensor_dim_names = ["titrant_name", "genotype"]
+    mock_tm.tensor_dim_labels = [["IPTG"], ["wt", "A1B"]]
+    mock_tm.df = pd.DataFrame({
+        "genotype": ["wt", "wt", "A1B", "A1B"],
+        "titrant_name": ["IPTG", "IPTG", "IPTG", "IPTG"],
+        "titrant_conc": [0.0, 1.0, 0.0, 1.0],
+    })
+    model.training_tm = mock_tm
+    model.mut_labels = ["M1A", "K2L"]
+    model.pair_labels = []
+    mock_priors = MagicMock()
+    mock_priors.theta = MagicMock(spec=[])  # no theta_tf_total_M etc.
+    model.priors = mock_priors
+    return model
+
+
+def _fake_predict_unmeasured(target_genotypes, titrant_names,
+                             manual_titrant_df, mut_labels,
+                             pair_labels, param_posteriors, q_to_get):
+    """Returns one row per (genotype, titrant_conc) with median=0.5."""
+    rows = []
+    for g in target_genotypes:
+        for _, row in manual_titrant_df.iterrows():
+            rows.append({"genotype": g,
+                         "titrant_name": row["titrant_name"],
+                         "titrant_conc": row["titrant_conc"],
+                         "median": 0.5})
+    return pd.DataFrame(rows)
+
+
+@pytest.fixture
+def patched_unmeasured_module():
+    """Patch the registry so hill_mut has a predict_unmeasured we can spy on."""
+    fake_module = MagicMock()
+    fake_module.predict_unmeasured = MagicMock(side_effect=_fake_predict_unmeasured)
+    registry_patch = {"hill_mut": fake_module}
+    with patch(
+        "tfscreen.analysis.hierarchical.growth_model.extraction.model_registry",
+        {"theta": registry_patch},
+    ), patch(
+        "tfscreen.analysis.hierarchical.growth_model.extraction.load_posteriors",
+        return_value=({"median": 0.5}, {}),
+    ):
+        yield fake_module
+
+
+class TestExtractThetaUnmeasuredBatching:
+
+    def _manual_df(self):
+        return pd.DataFrame({
+            "titrant_name": ["IPTG", "IPTG"],
+            "titrant_conc": [0.0, 1.0],
+        })
+
+    def test_small_list_single_call(self, patched_unmeasured_module):
+        """When N <= batch_size, predict_unmeasured is called exactly once."""
+        model = _make_unmeasured_model()
+        genotypes = ["wt", "A1B", "C3D"]
+        extract_theta_unmeasured(
+            model, {}, genotypes, self._manual_df(),
+            genotype_batch_size=10,
+        )
+        assert patched_unmeasured_module.predict_unmeasured.call_count == 1
+        called_genos = patched_unmeasured_module.predict_unmeasured.call_args.kwargs[
+            "target_genotypes"
+        ]
+        assert called_genos == genotypes
+
+    def test_large_list_splits_into_batches(self, patched_unmeasured_module):
+        """When N > batch_size, predict_unmeasured is called ceil(N/batch) times."""
+        model = _make_unmeasured_model()
+        genotypes = [f"G{i}" for i in range(7)]
+        extract_theta_unmeasured(
+            model, {}, genotypes, self._manual_df(),
+            genotype_batch_size=3,
+        )
+        # ceil(7/3) = 3 calls
+        assert patched_unmeasured_module.predict_unmeasured.call_count == 3
+
+    def test_batched_result_identical_to_single_call(self, patched_unmeasured_module):
+        """Batched output has the same rows as a single-call output, in the same order."""
+        model = _make_unmeasured_model()
+        genotypes = [f"G{i}" for i in range(5)]
+        manual_df = self._manual_df()
+
+        # Single call (batch_size > N)
+        result_single = extract_theta_unmeasured(
+            model, {}, genotypes, manual_df, genotype_batch_size=100,
+        )
+        patched_unmeasured_module.predict_unmeasured.reset_mock()
+
+        # Batched call (batch_size < N)
+        result_batched = extract_theta_unmeasured(
+            model, {}, genotypes, manual_df, genotype_batch_size=2,
+        )
+
+        # Same shape and same genotype ordering
+        assert len(result_single) == len(result_batched)
+        assert list(result_single["genotype"]) == list(result_batched["genotype"])
+        assert list(result_single["titrant_conc"]) == list(result_batched["titrant_conc"])
+
+    def test_batch_boundaries_cover_all_genotypes(self, patched_unmeasured_module):
+        """Every genotype appears in exactly one batch call."""
+        model = _make_unmeasured_model()
+        genotypes = [f"G{i}" for i in range(10)]
+        extract_theta_unmeasured(
+            model, {}, genotypes, self._manual_df(), genotype_batch_size=4,
+        )
+        seen = []
+        for c in patched_unmeasured_module.predict_unmeasured.call_args_list:
+            seen.extend(c.kwargs["target_genotypes"])
+        assert sorted(seen) == sorted(genotypes)
+
+    def test_missing_predict_unmeasured_raises(self):
+        """ValueError when the theta component has no predict_unmeasured."""
+        model = _make_unmeasured_model(theta_name="no_such_component")
+        with patch(
+            "tfscreen.analysis.hierarchical.growth_model.extraction.model_registry",
+            {"theta": {}},
+        ), patch(
+            "tfscreen.analysis.hierarchical.growth_model.extraction.load_posteriors",
+            return_value=({"median": 0.5}, {}),
+        ):
+            with pytest.raises(ValueError, match="predict_unmeasured"):
+                extract_theta_unmeasured(
+                    model, {}, ["wt"], self._manual_df()
+                )
