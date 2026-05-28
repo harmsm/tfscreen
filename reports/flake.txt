@@ -3442,7 +3442,8 @@
 ./src/tfscreen/genetics/__init__.py:19:1: F401 '.get_single_with_wt.get_single_with_wt' imported but unused
 ./src/tfscreen/genetics/__init__.py:23:1: F401 '.library_manager.LibraryManager' imported but unused
 ./src/tfscreen/genetics/__init__.py:25:1: F401 '.build_mut_geno_matrix.build_mut_geno_matrix' imported but unused
-./src/tfscreen/genetics/__init__.py:25:57: W292 no newline at end of file
+./src/tfscreen/genetics/__init__.py:27:1: F401 '.count_mutation_backgrounds.count_mutation_backgrounds' imported but unused
+./src/tfscreen/genetics/__init__.py:27:67: W292 no newline at end of file
 ./src/tfscreen/genetics/build_cycles.py:6:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/genetics/build_cycles.py:26:1: W293 blank line contains whitespace
 ./src/tfscreen/genetics/build_cycles.py:69:26: W291 trailing whitespace
@@ -3462,6 +3463,7 @@
 ./src/tfscreen/genetics/combine_mutation_effects.py:88:1: W293 blank line contains whitespace
 ./src/tfscreen/genetics/combine_mutation_effects.py:102:1: W293 blank line contains whitespace
 ./src/tfscreen/genetics/combine_mutation_effects.py:103:25: W292 no newline at end of file
+./src/tfscreen/genetics/count_mutation_backgrounds.py:8:1: C901 'count_mutation_backgrounds' is too complex (12)
 ./src/tfscreen/genetics/expand_genotype_columns.py:5:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/genetics/expand_genotype_columns.py:16:51: W291 trailing whitespace
 ./src/tfscreen/genetics/expand_genotype_columns.py:47:1: W293 blank line contains whitespace
@@ -9756,7 +9758,7 @@
 ./tests/tfscreen/util/validation/test_check.py:8:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/validation/test_check.py:26:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/validation/test_check.py:42:38: W292 no newline at end of file
-44    C901 'cat_fit' is too complex (19)
+45    C901 'cat_fit' is too complex (19)
 36    E111 indentation is not a multiple of 4
 15    E114 indentation is not a multiple of 4 (comment)
 7     E116 unexpected indentation (comment)
@@ -9798,7 +9800,7 @@
 1     E722 do not use bare 'except'
 1     E731 do not assign a lambda expression, use a def
 13    E741 ambiguous variable name 'l'
-394   F401 '.calibration' imported but unused
+395   F401 '.calibration' imported but unused
 11    F541 f-string is missing placeholders
 7     F811 redefinition of unused 'dataclasses' from line 6
 58    F841 local variable 'titrant_names' is assigned to but never used
@@ -9806,4 +9808,4 @@
 115   W292 no newline at end of file
 2576  W293 blank line contains whitespace
 47    W391 blank line at end of file
-9758
+9760
