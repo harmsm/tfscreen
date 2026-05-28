@@ -4,7 +4,7 @@ import os
 import yaml
 from tfscreen.analysis.hierarchical.growth_model.scripts.configure_model_cli import configure_model
 from tfscreen.analysis.hierarchical.growth_model.scripts.fit_model_cli import fit_model
-from tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors_cli import summarize_posteriors
+from tfscreen.analysis.hierarchical.growth_model.scripts.param_quantiles_cli import param_quantiles as summarize_posteriors
 
 @pytest.mark.slow
 def test_configure_run_binding_only_smoke(tmpdir):
