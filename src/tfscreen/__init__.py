@@ -5,7 +5,6 @@ Exports all public functions and data from submodules for package-level use.
 """
 # Import all public functions from Python files in this directory
 
-from . import calibration
 from . import process_raw
 
 from . import util
