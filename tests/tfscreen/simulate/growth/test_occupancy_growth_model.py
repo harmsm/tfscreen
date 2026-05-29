@@ -1,7 +1,7 @@
 
 import pytest
 import numpy as np
-from tfscreen.models.occupancy_growth_model import OccupancyGrowthModel
+from tfscreen.simulate.growth.occupancy_growth_model import OccupancyGrowthModel
 
 class TestOccupancyGrowthModel:
 

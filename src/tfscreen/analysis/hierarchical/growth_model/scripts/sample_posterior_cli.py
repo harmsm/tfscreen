@@ -26,6 +26,12 @@ def sample_posterior(config_file,
     3. SVI checkpoint (component guide): resumes the fitted guide with 0 additional
        epochs and draws posterior samples directly.
 
+    The .h5 file written by this command can be passed directly to
+    tfs-predict-growth, tfs-predict-theta, and tfs-extract-params to obtain
+    full posterior uncertainty (quantile columns) on any quantity of interest.
+    This is the recommended path for obtaining uncertainty estimates from a
+    MAP-fitted model: fit with tfs-fit-model, sample here, then predict.
+
     Parameters
     ----------
     config_file : str

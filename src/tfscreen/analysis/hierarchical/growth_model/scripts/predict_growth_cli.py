@@ -36,11 +36,19 @@ def predict_growth(config_file,
         Path to the YAML configuration file.
     param_file : str
         Path to a posterior .h5 file produced by tfs-sample-posterior, or a
-        MAP checkpoint .pkl file produced by tfs-fit-model.  When a
-        .pkl file is supplied the MAP point estimate is used: a 1-sample
-        posterior is written to {out_prefix}_map_posterior.h5 and predictions
-        are made at that single parameter set.  NUTS and SVI checkpoints are
-        not supported directly; run tfs-sample-posterior first.
+        MAP checkpoint .pkl file produced by tfs-fit-model.
+
+        When a .pkl file is supplied the output contains a single ``point_est``
+        column with no uncertainty information.
+
+        To obtain uncertainty estimates from a MAP fit, first run
+        tfs-sample-posterior on the .pkl checkpoint; it will construct a
+        Laplace (Hessian-based) posterior approximation and write a .h5 file.
+        Passing that .h5 here produces the full quantile columns (median,
+        lower_95, upper_95, etc.).
+
+        NUTS and SVI checkpoints are not supported directly; run
+        tfs-sample-posterior first.
     out_prefix : str, optional
         Prefix for the output CSV file. Written to {out_prefix}.csv.
         Default 'tfs_growth_pred'.
