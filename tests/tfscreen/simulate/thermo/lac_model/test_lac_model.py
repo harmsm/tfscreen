@@ -2,7 +2,7 @@
 import pytest
 import numpy as np
 from unittest.mock import MagicMock, patch
-from tfscreen.models.lac_model.lac_model import LacModel
+from tfscreen.simulate.thermo.lac_model.lac_model import LacModel
 
 # Dummy model class to simulate behavior of MicroscopicDimerModel etc
 class DummyModel:
@@ -21,7 +21,7 @@ def dummy_models_dict():
     return {"dummy": DummyModel}
 
 def test_lac_model_init(dummy_models_dict):
-    with patch("tfscreen.models.lac_model.lac_model.AVAILABLE_MODELS", dummy_models_dict):
+    with patch("tfscreen.simulate.thermo.lac_model.lac_model.AVAILABLE_MODELS", dummy_models_dict):
         # Missing constant
         with pytest.raises(ValueError, match="Missing constants"):
             LacModel("dummy", {"K1": 1.0}, 1, 1, 1, 1, 1)
@@ -42,7 +42,7 @@ def test_lac_model_init(dummy_models_dict):
         assert "O" not in model.species
 
 def test_lac_model_get_obs(dummy_models_dict):
-    with patch("tfscreen.models.lac_model.lac_model.AVAILABLE_MODELS", dummy_models_dict):
+    with patch("tfscreen.simulate.thermo.lac_model.lac_model.AVAILABLE_MODELS", dummy_models_dict):
         R = 0.001987
         T = 298.0
         

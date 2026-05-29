@@ -4,10 +4,10 @@ import numpy as np
 from unittest.mock import patch, MagicMock
 from scipy.optimize import OptimizeResult
 
-from tfscreen.models.lac_model.linkage_dimer import LinkageDimerModel
-from tfscreen.models.lac_model.mwc_dimer import MWCDimerModel
-from tfscreen.models.lac_model.linkage_dimer_tetramer import LinkageDimerTetramerModel
-from tfscreen.models.lac_model.microscopic_dimer import MicroscopicDimerModel
+from tfscreen.simulate.thermo.lac_model.linkage_dimer import LinkageDimerModel
+from tfscreen.simulate.thermo.lac_model.mwc_dimer import MWCDimerModel
+from tfscreen.simulate.thermo.lac_model.linkage_dimer_tetramer import LinkageDimerTetramerModel
+from tfscreen.simulate.thermo.lac_model.microscopic_dimer import MicroscopicDimerModel
 
 # ----------------------------------------------------------------------------
 # Parameter sets for each model to be used in parametrization

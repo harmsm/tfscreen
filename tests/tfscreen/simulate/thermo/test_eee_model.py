@@ -8,7 +8,7 @@ import sys
 # But EEEModel imports it inside __init__. 
 # So we can import EEEModel, but instantiating it requires mocking.
 
-from tfscreen.models.eee_model import EEEModel
+from tfscreen.simulate.thermo.eee_model import EEEModel
 
 def test_eee_model_init(tmp_path):
     # Test initialization with mocked eee

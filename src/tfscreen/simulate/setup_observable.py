@@ -1,6 +1,6 @@
 
-from tfscreen.models.lac_model import LacModel
-from tfscreen.models.eee_model import EEEModel
+from tfscreen.simulate.thermo.lac_model import LacModel
+from tfscreen.simulate.thermo.eee_model import EEEModel
 
 from tfscreen.util.io import read_dataframe
 
