@@ -3351,10 +3351,9 @@
 ./src/tfscreen/plot/xy_corr.py:94:23: E231 missing whitespace after ','
 ./src/tfscreen/plot/xy_corr.py:97:14: W292 no newline at end of file
 ./src/tfscreen/process_raw/__init__.py:2:1: F401 '.counts_to_lncfu.counts_to_lncfu' imported but unused
-./src/tfscreen/process_raw/__init__.py:3:1: F401 '.od600_to_cfu.od600_to_cfu' imported but unused
-./src/tfscreen/process_raw/__init__.py:4:1: F401 '.process_counts.process_counts' imported but unused
-./src/tfscreen/process_raw/__init__.py:5:1: F401 '.process_fastq.process_fastq' imported but unused
-./src/tfscreen/process_raw/__init__.py:5:41: W292 no newline at end of file
+./src/tfscreen/process_raw/__init__.py:3:1: F401 '.process_counts.process_counts' imported but unused
+./src/tfscreen/process_raw/__init__.py:4:1: F401 '.process_fastq.process_fastq' imported but unused
+./src/tfscreen/process_raw/__init__.py:4:41: W292 no newline at end of file
 ./src/tfscreen/process_raw/counts_to_lncfu.py:11:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/process_raw/counts_to_lncfu.py:30:69: E231 missing whitespace after ','
 ./src/tfscreen/process_raw/counts_to_lncfu.py:37:1: E302 expected 2 blank lines, found 1
@@ -3521,75 +3520,37 @@
 ./src/tfscreen/process_raw/fastq_to_counts.py:652:50: W291 trailing whitespace
 ./src/tfscreen/process_raw/fastq_to_counts.py:653:50: E231 missing whitespace after ','
 ./src/tfscreen/process_raw/fastq_to_counts.py:664:1: W391 blank line at end of file
-./src/tfscreen/process_raw/od600_to_cfu.py:6:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/process_raw/od600_to_cfu.py:7:60: E231 missing whitespace after ','
-./src/tfscreen/process_raw/od600_to_cfu.py:7:71: E231 missing whitespace after ','
-./src/tfscreen/process_raw/od600_to_cfu.py:10:28: W291 trailing whitespace
-./src/tfscreen/process_raw/od600_to_cfu.py:12:78: W291 trailing whitespace
-./src/tfscreen/process_raw/od600_to_cfu.py:15:17: W291 trailing whitespace
-./src/tfscreen/process_raw/od600_to_cfu.py:22:73: W291 trailing whitespace
-./src/tfscreen/process_raw/od600_to_cfu.py:32:68: W291 trailing whitespace
-./src/tfscreen/process_raw/od600_to_cfu.py:33:82: W291 trailing whitespace
-./src/tfscreen/process_raw/od600_to_cfu.py:39:34: E231 missing whitespace after ','
-./src/tfscreen/process_raw/od600_to_cfu.py:39:42: E231 missing whitespace after ','
-./src/tfscreen/process_raw/od600_to_cfu.py:40:39: E231 missing whitespace after ','
-./src/tfscreen/process_raw/od600_to_cfu.py:40:52: E231 missing whitespace after ','
-./src/tfscreen/process_raw/od600_to_cfu.py:61:1: W293 blank line contains whitespace
-./src/tfscreen/process_raw/od600_to_cfu.py:63:18: W291 trailing whitespace
-./src/tfscreen/process_raw/od600_to_cfu.py:68:1: W293 blank line contains whitespace
-./src/tfscreen/process_raw/od600_to_cfu.py:71:1: W293 blank line contains whitespace
-./src/tfscreen/process_raw/od600_to_cfu.py:73:36: E231 missing whitespace after ','
-./src/tfscreen/process_raw/od600_to_cfu.py:76:1: W293 blank line contains whitespace
-./src/tfscreen/process_raw/od600_to_cfu.py:79:1: W293 blank line contains whitespace
-./src/tfscreen/process_raw/od600_to_cfu.py:80:29: W291 trailing whitespace
-./src/tfscreen/process_raw/od600_to_cfu.py:82:1: W293 blank line contains whitespace
-./src/tfscreen/process_raw/od600_to_cfu.py:85:1: W293 blank line contains whitespace
-./src/tfscreen/process_raw/od600_to_cfu.py:87:43: W291 trailing whitespace
-./src/tfscreen/process_raw/od600_to_cfu.py:88:1: W293 blank line contains whitespace
-./src/tfscreen/process_raw/od600_to_cfu.py:91:1: W293 blank line contains whitespace
-./src/tfscreen/process_raw/od600_to_cfu.py:96:1: W293 blank line contains whitespace
-./src/tfscreen/process_raw/process_counts.py:9:1: W293 blank line contains whitespace
-./src/tfscreen/process_raw/process_counts.py:58:75: W291 trailing whitespace
-./src/tfscreen/process_raw/process_counts.py:59:14: W291 trailing whitespace
-./src/tfscreen/process_raw/process_counts.py:60:58: E231 missing whitespace after ','
-./src/tfscreen/process_raw/process_counts.py:62:56: W291 trailing whitespace
-./src/tfscreen/process_raw/process_counts.py:74:32: E211 whitespace before '('
-./src/tfscreen/process_raw/process_counts.py:83:1: W293 blank line contains whitespace
-./src/tfscreen/process_raw/process_counts.py:112:73: W291 trailing whitespace
-./src/tfscreen/process_raw/process_counts.py:115:1: W293 blank line contains whitespace
-./src/tfscreen/process_raw/process_counts.py:117:16: F541 f-string is missing placeholders
-./src/tfscreen/process_raw/process_counts.py:122:1: W293 blank line contains whitespace
-./src/tfscreen/process_raw/process_counts.py:123:21: W291 trailing whitespace
-./src/tfscreen/process_raw/process_counts.py:124:1: W293 blank line contains whitespace
-./src/tfscreen/process_raw/process_counts.py:125:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/process_raw/process_counts.py:127:24: E231 missing whitespace after ','
-./src/tfscreen/process_raw/process_counts.py:129:68: W291 trailing whitespace
-./src/tfscreen/process_raw/process_counts.py:141:1: W293 blank line contains whitespace
-./src/tfscreen/process_raw/process_counts.py:146:41: E231 missing whitespace after ','
-./src/tfscreen/process_raw/process_counts.py:148:26: E231 missing whitespace after ','
-./src/tfscreen/process_raw/process_counts.py:148:37: E231 missing whitespace after ','
-./src/tfscreen/process_raw/process_counts.py:152:37: E231 missing whitespace after ','
-./src/tfscreen/process_raw/process_counts.py:156:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/process_raw/process_counts.py:156:32: E231 missing whitespace after ','
-./src/tfscreen/process_raw/process_counts.py:159:28: E231 missing whitespace after ','
-./src/tfscreen/process_raw/process_counts.py:160:1: W293 blank line contains whitespace
-./src/tfscreen/process_raw/process_counts.py:170:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/process_raw/process_counts.py:173:38: E231 missing whitespace after ','
-./src/tfscreen/process_raw/process_counts.py:175:28: E252 missing whitespace around parameter equals
-./src/tfscreen/process_raw/process_counts.py:175:29: E252 missing whitespace around parameter equals
-./src/tfscreen/process_raw/process_counts.py:176:26: E252 missing whitespace around parameter equals
-./src/tfscreen/process_raw/process_counts.py:176:27: E252 missing whitespace around parameter equals
-./src/tfscreen/process_raw/process_counts.py:177:21: E252 missing whitespace around parameter equals
-./src/tfscreen/process_raw/process_counts.py:177:22: E252 missing whitespace around parameter equals
-./src/tfscreen/process_raw/process_counts.py:178:5: E125 continuation line with same indent as next logical line
-./src/tfscreen/process_raw/process_counts.py:180:73: W291 trailing whitespace
-./src/tfscreen/process_raw/process_counts.py:181:63: W291 trailing whitespace
-./src/tfscreen/process_raw/process_counts.py:186:1: W293 blank line contains whitespace
-./src/tfscreen/process_raw/process_counts.py:188:63: W291 trailing whitespace
-./src/tfscreen/process_raw/process_counts.py:192:44: E231 missing whitespace after ','
-./src/tfscreen/process_raw/process_counts.py:199:1: W293 blank line contains whitespace
-./src/tfscreen/process_raw/process_counts.py:201:33: E231 missing whitespace after ','
-./src/tfscreen/process_raw/process_counts.py:205:44: W292 no newline at end of file
+./src/tfscreen/process_raw/process_counts.py:6:1: W293 blank line contains whitespace
+./src/tfscreen/process_raw/process_counts.py:55:75: W291 trailing whitespace
+./src/tfscreen/process_raw/process_counts.py:56:14: W291 trailing whitespace
+./src/tfscreen/process_raw/process_counts.py:57:58: E231 missing whitespace after ','
+./src/tfscreen/process_raw/process_counts.py:59:56: W291 trailing whitespace
+./src/tfscreen/process_raw/process_counts.py:71:32: E211 whitespace before '('
+./src/tfscreen/process_raw/process_counts.py:80:1: W293 blank line contains whitespace
+./src/tfscreen/process_raw/process_counts.py:109:73: W291 trailing whitespace
+./src/tfscreen/process_raw/process_counts.py:112:1: W293 blank line contains whitespace
+./src/tfscreen/process_raw/process_counts.py:114:16: F541 f-string is missing placeholders
+./src/tfscreen/process_raw/process_counts.py:119:1: W293 blank line contains whitespace
+./src/tfscreen/process_raw/process_counts.py:120:21: W291 trailing whitespace
+./src/tfscreen/process_raw/process_counts.py:121:1: W293 blank line contains whitespace
+./src/tfscreen/process_raw/process_counts.py:122:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/process_raw/process_counts.py:124:24: E231 missing whitespace after ','
+./src/tfscreen/process_raw/process_counts.py:126:68: W291 trailing whitespace
+./src/tfscreen/process_raw/process_counts.py:138:1: W293 blank line contains whitespace
+./src/tfscreen/process_raw/process_counts.py:143:41: E231 missing whitespace after ','
+./src/tfscreen/process_raw/process_counts.py:145:26: E231 missing whitespace after ','
+./src/tfscreen/process_raw/process_counts.py:145:37: E231 missing whitespace after ','
+./src/tfscreen/process_raw/process_counts.py:149:37: E231 missing whitespace after ','
+./src/tfscreen/process_raw/process_counts.py:153:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/process_raw/process_counts.py:157:28: E252 missing whitespace around parameter equals
+./src/tfscreen/process_raw/process_counts.py:157:29: E252 missing whitespace around parameter equals
+./src/tfscreen/process_raw/process_counts.py:158:26: E252 missing whitespace around parameter equals
+./src/tfscreen/process_raw/process_counts.py:158:27: E252 missing whitespace around parameter equals
+./src/tfscreen/process_raw/process_counts.py:159:21: E252 missing whitespace around parameter equals
+./src/tfscreen/process_raw/process_counts.py:159:22: E252 missing whitespace around parameter equals
+./src/tfscreen/process_raw/process_counts.py:160:5: E125 continuation line with same indent as next logical line
+./src/tfscreen/process_raw/process_counts.py:183:33: E231 missing whitespace after ','
+./src/tfscreen/process_raw/process_counts.py:187:44: W292 no newline at end of file
 ./src/tfscreen/process_raw/process_fastq.py:22:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/process_raw/process_fastq.py:25:76: W291 trailing whitespace
 ./src/tfscreen/process_raw/process_fastq.py:26:39: W291 trailing whitespace
@@ -7312,40 +7273,15 @@
 ./tests/tfscreen/process_raw/test_fastq_to_counts.py:1091:1: W293 blank line contains whitespace
 ./tests/tfscreen/process_raw/test_fastq_to_counts.py:1099:1: W293 blank line contains whitespace
 ./tests/tfscreen/process_raw/test_fastq_to_counts.py:1104:45: W292 no newline at end of file
-./tests/tfscreen/process_raw/test_od600_to_cfu.py:13:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/process_raw/test_od600_to_cfu.py:37:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/process_raw/test_od600_to_cfu.py:42:43: E261 at least two spaces before inline comment
-./tests/tfscreen/process_raw/test_od600_to_cfu.py:54:1: W293 blank line contains whitespace
-./tests/tfscreen/process_raw/test_od600_to_cfu.py:59:1: W293 blank line contains whitespace
-./tests/tfscreen/process_raw/test_od600_to_cfu.py:85:1: W293 blank line contains whitespace
-./tests/tfscreen/process_raw/test_od600_to_cfu.py:106:1: W293 blank line contains whitespace
-./tests/tfscreen/process_raw/test_od600_to_cfu.py:108:1: W293 blank line contains whitespace
-./tests/tfscreen/process_raw/test_od600_to_cfu.py:119:5: F841 local variable 'bad_constants' is assigned to but never used
-./tests/tfscreen/process_raw/test_od600_to_cfu.py:119:65: W292 no newline at end of file
-./tests/tfscreen/process_raw/test_process_counts.py:18:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/process_raw/test_process_counts.py:26:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/process_raw/test_process_counts.py:31:1: W293 blank line contains whitespace
-./tests/tfscreen/process_raw/test_process_counts.py:35:1: W293 blank line contains whitespace
-./tests/tfscreen/process_raw/test_process_counts.py:45:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/process_raw/test_process_counts.py:51:1: W293 blank line contains whitespace
-./tests/tfscreen/process_raw/test_process_counts.py:59:32: W291 trailing whitespace
-./tests/tfscreen/process_raw/test_process_counts.py:62:22: E261 at least two spaces before inline comment
-./tests/tfscreen/process_raw/test_process_counts.py:71:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/process_raw/test_process_counts.py:79:1: W293 blank line contains whitespace
-./tests/tfscreen/process_raw/test_process_counts.py:81:1: W293 blank line contains whitespace
-./tests/tfscreen/process_raw/test_process_counts.py:86:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/process_raw/test_process_counts.py:93:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/process_raw/test_process_counts.py:100:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/process_raw/test_process_counts.py:104:14: E114 indentation is not a multiple of 4 (comment)
-./tests/tfscreen/process_raw/test_process_counts.py:104:14: E117 over-indented (comment)
-./tests/tfscreen/process_raw/test_process_counts.py:107:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/process_raw/test_process_counts.py:113:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/process_raw/test_process_counts.py:146:1: W293 blank line contains whitespace
-./tests/tfscreen/process_raw/test_process_counts.py:155:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/process_raw/test_process_counts.py:169:1: W293 blank line contains whitespace
-./tests/tfscreen/process_raw/test_process_counts.py:175:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/process_raw/test_process_counts.py:234:83: W291 trailing whitespace
-./tests/tfscreen/process_raw/test_process_counts.py:240:71: W292 no newline at end of file
+./tests/tfscreen/process_raw/test_process_counts.py:16:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/process_raw/test_process_counts.py:25:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/process_raw/test_process_counts.py:44:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/process_raw/test_process_counts.py:68:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/process_raw/test_process_counts.py:82:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/process_raw/test_process_counts.py:89:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/process_raw/test_process_counts.py:96:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/process_raw/test_process_counts.py:102:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/process_raw/test_process_counts.py:108:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/process_raw/test_process_fastq.py:2:1: F401 'unittest.mock.call' imported but unused
 ./tests/tfscreen/process_raw/test_process_fastq.py:22:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/process_raw/test_process_fastq.py:31:1: E302 expected 2 blank lines, found 1
@@ -7948,9 +7884,9 @@
 ./tests/tfscreen/util/validation/test_check.py:42:38: W292 no newline at end of file
 44    C901 'cat_fit' is too complex (19)
 22    E111 indentation is not a multiple of 4
-9     E114 indentation is not a multiple of 4 (comment)
+8     E114 indentation is not a multiple of 4 (comment)
 6     E116 unexpected indentation (comment)
-19    E117 over-indented
+18    E117 over-indented
 1     E122 continuation line missing indentation or outdented
 2     E124 closing bracket does not match visual indentation
 6     E125 continuation line with same indent as next logical line
@@ -7964,16 +7900,16 @@
 1641  E221 multiple spaces before operator
 26    E222 multiple spaces after operator
 8     E225 missing whitespace around operator
-1142  E231 missing whitespace after ','
+1131  E231 missing whitespace after ','
 79    E251 unexpected spaces around keyword / parameter equals
 14    E252 missing whitespace around parameter equals
-245   E261 at least two spaces before inline comment
+243   E261 at least two spaces before inline comment
 1     E262 inline comment should start with '# '
 5     E265 block comment should start with '# '
 2     E266 too many leading '#' for block comment
 150   E272 multiple spaces before keyword
 1     E301 expected 1 blank line, found 0
-846   E302 expected 2 blank lines, found 1
+840   E302 expected 2 blank lines, found 1
 55    E303 too many blank lines (2)
 17    E305 expected 2 blank lines after class or function definition, found 0
 29    E306 expected 1 blank line before a nested definition, found 0
@@ -7987,12 +7923,12 @@
 1     E722 do not use bare 'except'
 1     E731 do not assign a lambda expression, use a def
 13    E741 ambiguous variable name 'l'
-355   F401 '.process_raw' imported but unused
+354   F401 '.process_raw' imported but unused
 9     F541 f-string is missing placeholders
 6     F811 redefinition of unused 'dataclasses' from line 6
-45    F841 local variable 'titrant_names' is assigned to but never used
-767   W291 trailing whitespace
-101   W292 no newline at end of file
-1843  W293 blank line contains whitespace
+44    F841 local variable 'titrant_names' is assigned to but never used
+753   W291 trailing whitespace
+99    W292 no newline at end of file
+1818  W293 blank line contains whitespace
 33    W391 blank line at end of file
-7948
+7884

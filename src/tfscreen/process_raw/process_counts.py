@@ -1,9 +1,6 @@
 import tfscreen
 
-from tfscreen.process_raw import (
-    od600_to_cfu,
-    counts_to_lncfu
-)
+from tfscreen.process_raw import counts_to_lncfu
 from tfscreen.util.cli import generalized_main
 from tfscreen.util.dataframe import check_columns
     
@@ -153,50 +150,35 @@ def _aggregate_counts(
 
     return counts_df
 
-def _infer_sample_cfu(sample_df,od600_calibration_data):
-
-    # Make sure the sample dataframe has all required columns
-    check_columns(sample_df,required_columns=["od600"])
-    
-    # Extract sample cfu from od600
-    cfu, cfu_std, detectable = od600_to_cfu(sample_df["od600"],
-                                            od600_calibration_data)
-    sample_df["sample_cfu"] = cfu
-    sample_df["sample_cfu_std"] = cfu_std
-    sample_df["sample_cfu_detectable"] = detectable
-
-    return sample_df
-
 def process_counts(
     sample_df: Union[pd.DataFrame, str],
     counts_csv_path: str,
-    od600_calibration_data: Union[str,dict],
     output_file: str,
     counts_glob_prefix: str="counts",
     min_genotype_obs: int=10,
     pseudocount: int=1,
     verbose: bool = True):
 
-    # After this call, sample_df will be indexed by sample name and have 
-    # a column 'obs_file' that points to the csv file to read. 
+    # After this call, sample_df will be indexed by sample name and have
+    # a column 'obs_file' that points to the csv file to read.
     sample_df = _prep_sample_df(sample_df,
                                 counts_csv_path,
                                 counts_glob_prefix,
                                 verbose)
-    
-    # This will be a single dataframe holding all counts for all samples, with
-    # a 'sample' column that can be indexed back to to counts. 
-    counts_df = _aggregate_counts(sample_df)
 
-    # Assign sample cfu/mL given the od600 for each sample
-    sample_df = _infer_sample_cfu(sample_df,od600_calibration_data)
+    # Require the caller to supply sample_cfu and sample_cfu_std directly.
+    check_columns(sample_df, required_columns=["sample_cfu", "sample_cfu_std"])
+
+    # This will be a single dataframe holding all counts for all samples, with
+    # a 'sample' column that can be indexed back to to counts.
+    counts_df = _aggregate_counts(sample_df)
 
     # Infer cfu per genotype
     ln_cfu_df = counts_to_lncfu(sample_df,
                                 counts_df,
                                 min_genotype_obs=min_genotype_obs,
                                 pseudocount=pseudocount)
-    
+
     # Write outputs
     ln_cfu_df.to_csv(output_file,index=False)
 
