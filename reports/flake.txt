@@ -2086,198 +2086,197 @@
 ./src/tfscreen/growth_model/model_class.py:84:25: E222 multiple spaces after operator
 ./src/tfscreen/growth_model/model_class.py:84:43: E231 missing whitespace after ','
 ./src/tfscreen/growth_model/model_class.py:85:42: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:90:69: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:91:65: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:91:88: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:96:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:100:30: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:100:43: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:100:55: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:100:63: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:101:52: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:111:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:115:25: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:119:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:120:5: E303 too many blank lines (2)
-./src/tfscreen/growth_model/model_class.py:122:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/growth_model/model_class.py:157:58: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:89:65: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:89:88: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:94:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:98:30: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:98:43: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:98:55: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:98:63: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:99:52: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:109:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:113:25: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:117:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:118:5: E303 too many blank lines (2)
+./src/tfscreen/growth_model/model_class.py:120:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/growth_model/model_class.py:155:58: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:158:62: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:158:73: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:159:62: E231 missing whitespace after ','
 ./src/tfscreen/growth_model/model_class.py:160:62: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:160:73: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:161:62: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:162:62: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:163:61: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:164:61: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:165:57: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:166:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:168:39: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:169:43: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:170:38: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:171:38: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:174:63: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:175:73: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:176:73: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:178:59: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:179:70: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:180:72: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:184:63: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:187:74: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:188:15: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:189:42: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:189:58: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:190:29: E128 continuation line under-indented for visual indent
-./src/tfscreen/growth_model/model_class.py:191:40: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:192:45: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:192:60: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:192:72: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:233:39: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:242:33: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:242:45: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:243:53: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:246:5: E303 too many blank lines (2)
-./src/tfscreen/growth_model/model_class.py:252:27: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:279:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/growth_model/model_class.py:311:62: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:312:62: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:313:58: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:315:23: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:316:43: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:317:43: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:321:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:356:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:359:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:364:52: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:365:57: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:370:80: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:372:30: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:376:38: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:392:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:393:1: E303 too many blank lines (3)
-./src/tfscreen/growth_model/model_class.py:410:78: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:413:82: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:418:87: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:421:84: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:426:79: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:503:5: C901 'ModelClass._initialize_data' is too complex (16)
-./src/tfscreen/growth_model/model_class.py:503:5: E303 too many blank lines (2)
-./src/tfscreen/growth_model/model_class.py:528:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:529:28: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:531:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:532:35: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:532:48: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:532:56: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:533:46: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:533:66: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:534:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:538:39: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:539:34: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:544:67: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:551:32: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:553:10: E114 indentation is not a multiple of 4 (comment)
-./src/tfscreen/growth_model/model_class.py:553:10: E116 unexpected indentation (comment)
-./src/tfscreen/growth_model/model_class.py:555:76: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:558:45: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:560:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:562:49: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:574:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:582:57: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:604:38: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:605:41: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:605:56: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:606:44: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:606:60: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:607:40: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:607:58: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:608:46: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:608:71: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:610:77: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:617:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:622:39: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:622:45: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:622:53: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:629:40: E127 continuation line over-indented for visual indent
-./src/tfscreen/growth_model/model_class.py:676:25: E221 multiple spaces before operator
+./src/tfscreen/growth_model/model_class.py:161:61: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:162:61: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:163:57: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:164:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:166:39: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:167:43: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:168:38: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:169:38: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:172:63: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:173:73: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:174:73: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:176:59: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:177:70: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:178:72: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:182:63: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:185:74: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:186:15: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:187:42: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:187:58: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:188:29: E128 continuation line under-indented for visual indent
+./src/tfscreen/growth_model/model_class.py:189:40: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:190:45: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:190:60: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:190:72: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:231:39: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:240:33: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:240:45: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:241:53: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:244:5: E303 too many blank lines (2)
+./src/tfscreen/growth_model/model_class.py:250:27: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:277:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/growth_model/model_class.py:309:62: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:310:62: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:311:58: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:313:23: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:314:43: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:315:43: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:319:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:354:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:357:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:362:52: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:363:57: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:368:80: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:370:30: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:374:38: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:390:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:391:1: E303 too many blank lines (3)
+./src/tfscreen/growth_model/model_class.py:408:78: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:411:82: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:416:87: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:419:84: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:424:79: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:501:5: C901 'ModelClass._initialize_data' is too complex (16)
+./src/tfscreen/growth_model/model_class.py:501:5: E303 too many blank lines (2)
+./src/tfscreen/growth_model/model_class.py:526:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:527:28: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:529:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:530:35: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:530:48: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:530:56: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:531:46: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:531:66: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:532:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:536:39: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:537:34: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:542:67: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:549:32: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:551:10: E114 indentation is not a multiple of 4 (comment)
+./src/tfscreen/growth_model/model_class.py:551:10: E116 unexpected indentation (comment)
+./src/tfscreen/growth_model/model_class.py:553:76: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:556:45: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:558:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:560:49: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:572:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:580:57: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:602:38: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:603:41: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:603:56: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:604:44: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:604:60: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:605:40: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:605:58: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:606:46: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:606:71: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:608:77: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:615:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:620:39: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:620:45: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:620:53: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:627:40: E127 continuation line over-indented for visual indent
+./src/tfscreen/growth_model/model_class.py:674:25: E221 multiple spaces before operator
+./src/tfscreen/growth_model/model_class.py:675:32: E127 continuation line over-indented for visual indent
+./src/tfscreen/growth_model/model_class.py:676:26: E221 multiple spaces before operator
 ./src/tfscreen/growth_model/model_class.py:677:32: E127 continuation line over-indented for visual indent
-./src/tfscreen/growth_model/model_class.py:678:26: E221 multiple spaces before operator
-./src/tfscreen/growth_model/model_class.py:679:32: E127 continuation line over-indented for visual indent
-./src/tfscreen/growth_model/model_class.py:719:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:722:78: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:723:32: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:724:60: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:728:36: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:729:36: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:730:32: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:731:38: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:733:77: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:744:56: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:744:62: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:747:74: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:748:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:753:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:754:77: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:755:58: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:757:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:762:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:766:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:770:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:773:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:779:86: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:781:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:788:77: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:815:33: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:816:34: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:817:39: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:821:64: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:824:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:825:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:826:5: E303 too many blank lines (2)
-./src/tfscreen/growth_model/model_class.py:902:25: E221 multiple spaces before operator
+./src/tfscreen/growth_model/model_class.py:717:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:720:78: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:721:32: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:722:60: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:726:36: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:727:36: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:728:32: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:729:38: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:731:77: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:742:56: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:742:62: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:745:74: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:746:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:751:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:752:77: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:753:58: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:755:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:760:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:764:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:768:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:771:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:777:86: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:779:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:786:77: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:813:33: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:814:34: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:815:39: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:819:64: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:822:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:823:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:824:5: E303 too many blank lines (2)
+./src/tfscreen/growth_model/model_class.py:900:25: E221 multiple spaces before operator
+./src/tfscreen/growth_model/model_class.py:901:31: E127 continuation line over-indented for visual indent
 ./src/tfscreen/growth_model/model_class.py:903:31: E127 continuation line over-indented for visual indent
-./src/tfscreen/growth_model/model_class.py:905:31: E127 continuation line over-indented for visual indent
-./src/tfscreen/growth_model/model_class.py:978:5: C901 'ModelClass._initialize_classes' is too complex (15)
-./src/tfscreen/growth_model/model_class.py:998:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:1000:67: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:1001:71: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:1003:68: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:1004:77: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:1005:75: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:1006:40: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:1022:42: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:1023:43: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:1024:40: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:1024:43: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:1024:53: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:1024:56: E231 missing whitespace after ','
-./src/tfscreen/growth_model/model_class.py:1024:64: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:1072:75: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:1075:69: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:1079:75: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:1081:69: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:1091:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:1093:9: E303 too many blank lines (2)
-./src/tfscreen/growth_model/model_class.py:1145:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:1150:5: E303 too many blank lines (2)
-./src/tfscreen/growth_model/model_class.py:1164:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:1174:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:1184:75: W291 trailing whitespace
-./src/tfscreen/growth_model/model_class.py:1198:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:1201:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:1230:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:1242:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:1254:1: W293 blank line contains whitespace
-./src/tfscreen/growth_model/model_class.py:1260:25: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:1261:27: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:1262:31: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:1263:32: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:1264:22: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:1265:22: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:1266:23: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:1267:20: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:1268:29: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:1269:28: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:1270:33: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:1271:34: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:1272:27: E231 missing whitespace after ':'
-./src/tfscreen/growth_model/model_class.py:1273:31: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:976:5: C901 'ModelClass._initialize_classes' is too complex (15)
+./src/tfscreen/growth_model/model_class.py:996:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:998:67: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:999:71: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:1001:68: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:1002:77: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:1003:75: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:1004:40: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:1020:42: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:1021:43: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:1022:40: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:1022:43: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:1022:53: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:1022:56: E231 missing whitespace after ','
+./src/tfscreen/growth_model/model_class.py:1022:64: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:1070:75: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:1073:69: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:1077:75: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:1079:69: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:1089:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:1091:9: E303 too many blank lines (2)
+./src/tfscreen/growth_model/model_class.py:1143:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:1148:5: E303 too many blank lines (2)
+./src/tfscreen/growth_model/model_class.py:1162:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:1172:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:1182:75: W291 trailing whitespace
+./src/tfscreen/growth_model/model_class.py:1196:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:1199:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:1228:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:1240:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:1252:1: W293 blank line contains whitespace
+./src/tfscreen/growth_model/model_class.py:1258:25: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:1259:27: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:1260:31: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:1261:32: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:1262:22: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:1263:22: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:1264:23: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:1265:20: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:1266:29: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:1267:28: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:1268:33: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:1269:34: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:1270:27: E231 missing whitespace after ':'
+./src/tfscreen/growth_model/model_class.py:1271:31: E231 missing whitespace after ':'
 ./src/tfscreen/growth_model/observe/binding.py:9:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/growth_model/observe/binding.py:42:79: E231 missing whitespace after ','
 ./src/tfscreen/growth_model/observe/binding.py:43:83: E231 missing whitespace after ','
@@ -4061,12 +4060,12 @@
 ./src/tfscreen/util/dataframe/get_scaled_cfu.py:131:14: W292 no newline at end of file
 ./src/tfscreen/util/io/__init__.py:2:1: F401 '.read_yaml.read_yaml' imported but unused
 ./src/tfscreen/util/io/__init__.py:6:1: F401 '.read_dataframe.read_dataframe' imported but unused
-./src/tfscreen/util/io/read_dataframe.py:5:1: C901 'read_dataframe' is too complex (15)
-./src/tfscreen/util/io/read_dataframe.py:5:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/util/io/read_dataframe.py:62:1: W293 blank line contains whitespace
-./src/tfscreen/util/io/read_dataframe.py:67:27: E127 continuation line over-indented for visual indent
-./src/tfscreen/util/io/read_dataframe.py:68:1: W293 blank line contains whitespace
-./src/tfscreen/util/io/read_dataframe.py:81:14: W292 no newline at end of file
+./src/tfscreen/util/io/read_dataframe.py:7:1: C901 'read_dataframe' is too complex (16)
+./src/tfscreen/util/io/read_dataframe.py:7:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/util/io/read_dataframe.py:79:1: W293 blank line contains whitespace
+./src/tfscreen/util/io/read_dataframe.py:84:27: E127 continuation line over-indented for visual indent
+./src/tfscreen/util/io/read_dataframe.py:85:1: W293 blank line contains whitespace
+./src/tfscreen/util/io/read_dataframe.py:102:14: W292 no newline at end of file
 ./src/tfscreen/util/io/read_yaml.py:31:1: C901 'read_yaml' is too complex (12)
 ./src/tfscreen/util/numerical/__init__.py:3:1: F401 '.broadcast_args.broadcast_args' imported but unused
 ./src/tfscreen/util/numerical/__init__.py:7:1: F401 '.xfill.xfill' imported but unused
@@ -7804,8 +7803,13 @@
 ./tests/tfscreen/util/io/test_read_dataframe.py:144:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/io/test_read_dataframe.py:150:1: W293 blank line contains whitespace
 ./tests/tfscreen/util/io/test_read_dataframe.py:151:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/util/io/test_read_dataframe.py:157:1: W293 blank line contains whitespace
-./tests/tfscreen/util/io/test_read_dataframe.py:158:60: W292 no newline at end of file
+./tests/tfscreen/util/io/test_read_dataframe.py:162:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/util/io/test_read_dataframe.py:171:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/util/io/test_read_dataframe.py:179:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/util/io/test_read_dataframe.py:192:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/util/io/test_read_dataframe.py:200:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/util/io/test_read_dataframe.py:207:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/util/io/test_read_dataframe.py:215:40: W292 no newline at end of file
 ./tests/tfscreen/util/numerical/test_array_search.py:78:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/numerical/test_array_search.py:143:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/numerical/test_array_search.py:167:1: E302 expected 2 blank lines, found 1
@@ -7900,7 +7904,7 @@
 1641  E221 multiple spaces before operator
 26    E222 multiple spaces after operator
 8     E225 missing whitespace around operator
-1131  E231 missing whitespace after ','
+1130  E231 missing whitespace after ','
 79    E251 unexpected spaces around keyword / parameter equals
 14    E252 missing whitespace around parameter equals
 243   E261 at least two spaces before inline comment
@@ -7909,7 +7913,7 @@
 2     E266 too many leading '#' for block comment
 150   E272 multiple spaces before keyword
 1     E301 expected 1 blank line, found 0
-840   E302 expected 2 blank lines, found 1
+846   E302 expected 2 blank lines, found 1
 55    E303 too many blank lines (2)
 17    E305 expected 2 blank lines after class or function definition, found 0
 29    E306 expected 1 blank line before a nested definition, found 0
@@ -7929,6 +7933,6 @@
 44    F841 local variable 'titrant_names' is assigned to but never used
 753   W291 trailing whitespace
 99    W292 no newline at end of file
-1818  W293 blank line contains whitespace
+1817  W293 blank line contains whitespace
 33    W391 blank line at end of file
-7884
+7888

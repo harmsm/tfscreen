@@ -154,5 +154,62 @@ def test_no_change_if_already_indexed(sample_df):
     """
     indexed_df = sample_df.set_index("id")
     processed_df = read_dataframe(indexed_df.copy(), index_column="id")
-    
+
     pd.testing.assert_frame_equal(processed_df, indexed_df)
+
+# --- Genotype column handling ---
+
+def test_genotype_column_becomes_categorical():
+    """
+    Tests that a valid genotype column is converted to ordered categorical.
+    """
+    df = pd.DataFrame({"genotype": ["wt", "A1T", "A1T/G2C"], "value": [1, 2, 3]})
+    result = read_dataframe(df)
+    assert hasattr(result["genotype"], "cat"), "genotype should be categorical"
+    assert result["genotype"].dtype.name == "category"
+
+def test_genotype_column_standardized():
+    """
+    Tests that out-of-order multi-mutants are standardized (high site first → low site first).
+    """
+    df = pd.DataFrame({"genotype": ["Q2T/A1P", "wt"], "value": [1, 2]})
+    result = read_dataframe(df)
+    assert list(result["genotype"]) == ["A1P/Q2T", "wt"]
+
+def test_genotype_rows_not_reordered():
+    """
+    Tests that rows are not reordered even though categories have canonical order.
+    Categories are always wt → singles → doubles (canonical), but the rows stay
+    in the order the user provided.
+    """
+    df = pd.DataFrame({"genotype": ["A1T/G2C", "wt", "A1T"], "value": [1, 2, 3]})
+    result = read_dataframe(df)
+    # Rows preserve original order
+    assert list(result["genotype"]) == ["A1T/G2C", "wt", "A1T"]
+    # Categories are in canonical order: wt, single, double
+    assert list(result["genotype"].cat.categories) == ["wt", "A1T", "A1T/G2C"]
+
+def test_invalid_genotype_raises_valueerror():
+    """
+    Tests that an unparsable genotype raises ValueError.
+    """
+    df = pd.DataFrame({"genotype": ["wt", "fifty"], "value": [1, 2]})
+    with pytest.raises(ValueError):
+        read_dataframe(df)
+
+def test_no_genotype_column_unchanged(sample_df):
+    """
+    Tests that DataFrames without a genotype column are unaffected.
+    """
+    result = read_dataframe(sample_df.copy())
+    pd.testing.assert_frame_equal(result, sample_df)
+
+def test_genotype_as_index_not_categorized():
+    """
+    Tests that when genotype is set as the index, no categorical conversion is attempted.
+    """
+    df = pd.DataFrame({"genotype": ["wt", "A1T"], "value": [1, 2]})
+    result = read_dataframe(df, index_column="genotype")
+    assert result.index.name == "genotype"
+    # Index should be plain strings, not categorical
+    assert result.index.dtype == object

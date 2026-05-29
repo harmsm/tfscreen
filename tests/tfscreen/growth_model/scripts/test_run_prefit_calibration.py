@@ -142,7 +142,7 @@ class TestIntersectData:
 
     def _basic_growth(self):
         return pd.DataFrame({
-            "genotype": ["A", "A", "B", "C"],
+            "genotype": ["wt", "wt", "A1T", "G2P"],
             "titrant_name": ["IPTG"] * 4,
             "titrant_conc": [0.0, 1.0, 0.0, 0.0],
             "ln_cfu": [1.0, 2.0, 3.0, 4.0],
@@ -150,7 +150,7 @@ class TestIntersectData:
 
     def _basic_binding(self):
         return pd.DataFrame({
-            "genotype": ["A", "A", "B", "D"],
+            "genotype": ["wt", "wt", "A1T", "M3L"],
             "titrant_name": ["IPTG"] * 4,
             "titrant_conc": [0.0, 1.0, 0.0, 0.0],
             "theta_obs": [0.1, 0.5, 0.2, 0.3],
@@ -159,9 +159,9 @@ class TestIntersectData:
 
     def test_intersection_keeps_only_shared_rows(self):
         g, b = _intersect_data(self._basic_growth(), self._basic_binding())
-        # Genotype C is only in growth, D is only in binding; both must drop.
-        assert set(g["genotype"].unique()) == {"A", "B"}
-        assert set(b["genotype"].unique()) == {"A", "B"}
+        # G2P is only in growth, M3L is only in binding; both must drop.
+        assert set(g["genotype"].unique()) == {"wt", "A1T"}
+        assert set(b["genotype"].unique()) == {"wt", "A1T"}
 
     def test_intersection_returns_copies_not_views(self):
         gdf = self._basic_growth()
@@ -172,16 +172,16 @@ class TestIntersectData:
         assert gdf.loc[0, "ln_cfu"] != -999.0
 
     def test_intersection_preserves_per_titrant_resolution(self):
-        # (A, IPTG, 1.0) and (A, IPTG, 0.0) must each be evaluated
+        # (wt, IPTG, 1.0) and (wt, IPTG, 0.0) must each be evaluated
         # separately — we cannot just intersect on genotype.
         growth = pd.DataFrame({
-            "genotype": ["A", "A"],
+            "genotype": ["wt", "wt"],
             "titrant_name": ["IPTG", "IPTG"],
             "titrant_conc": [0.0, 1.0],
             "ln_cfu": [1.0, 2.0],
         })
         binding = pd.DataFrame({
-            "genotype": ["A"],
+            "genotype": ["wt"],
             "titrant_name": ["IPTG"],
             "titrant_conc": [1.0],
             "theta_obs": [0.5],
@@ -193,13 +193,13 @@ class TestIntersectData:
 
     def test_empty_intersection_raises(self):
         growth = pd.DataFrame({
-            "genotype": ["A"],
+            "genotype": ["wt"],
             "titrant_name": ["IPTG"],
             "titrant_conc": [0.0],
             "ln_cfu": [1.0],
         })
         binding = pd.DataFrame({
-            "genotype": ["B"],
+            "genotype": ["A1T"],
             "titrant_name": ["IPTG"],
             "titrant_conc": [0.0],
             "theta_obs": [0.5],
@@ -209,14 +209,14 @@ class TestIntersectData:
             _intersect_data(growth, binding)
 
     def test_missing_column_in_growth_raises(self):
-        growth = pd.DataFrame({"genotype": ["A"], "titrant_name": ["IPTG"]})
+        growth = pd.DataFrame({"genotype": ["wt"], "titrant_name": ["IPTG"]})
         binding = self._basic_binding()
         with pytest.raises(ValueError, match="growth_df is missing"):
             _intersect_data(growth, binding)
 
     def test_missing_column_in_binding_raises(self):
         growth = self._basic_growth()
-        binding = pd.DataFrame({"genotype": ["A"], "titrant_name": ["IPTG"]})
+        binding = pd.DataFrame({"genotype": ["wt"], "titrant_name": ["IPTG"]})
         with pytest.raises(ValueError, match="binding_df is missing"):
             _intersect_data(growth, binding)
 

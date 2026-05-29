@@ -84,10 +84,8 @@ def _read_growth_df(growth_df,
         treatment_cols =  ["condition_pre","condition_sel",
                            "titrant_name","titrant_conc"]
 
-    # Read dataframe, make sure genotypes are categorical, and validate or
-    # calculate ln_cfu and ln_cfu_std
+    # Read dataframe, validate or calculate ln_cfu and ln_cfu_std
     growth_df = tfscreen.util.io.read_dataframe(growth_df)
-    growth_df = tfscreen.genetics.set_categorical_genotype(growth_df,standardize=True)
     growth_df = tfscreen.util.dataframe.get_scaled_cfu(growth_df,need_columns=["ln_cfu","ln_cfu_std"])
 
     # make a replicate column if not defined
