@@ -263,3 +263,42 @@ def test_custom_markers_accepted():
     ax = plot_theta_fits(df, markers=["o", "s"])
     assert ax is not None
     plt.close("all")
+
+
+def test_point_est_used_when_median_absent():
+    """point_est column is used as centre line when median is not present."""
+    rng = np.random.default_rng(42)
+    df = pd.DataFrame({
+        "genotype": ["wt"] * 4,
+        "titrant_name": ["IPTG"] * 4,
+        "titrant_conc": [0.1, 1.0, 10.0, 100.0],
+        "theta_obs": rng.uniform(0.1, 0.9, 4),
+        "theta_std": [0.05] * 4,
+        "point_est": rng.uniform(0.1, 0.9, 4),
+    })
+    plt.close("all")
+    ax = plot_theta_fits(df)
+    assert ax is not None
+    plt.close("all")
+
+
+def test_median_takes_precedence_over_point_est():
+    """median is used when both median and point_est columns are present."""
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame({
+        "genotype": ["wt"] * 4,
+        "titrant_name": ["IPTG"] * 4,
+        "titrant_conc": [0.1, 1.0, 10.0, 100.0],
+        "theta_obs": rng.uniform(0.1, 0.9, 4),
+        "theta_std": [0.05] * 4,
+        "median": np.array([0.1, 0.2, 0.3, 0.4]),
+        "point_est": np.array([0.9, 0.8, 0.7, 0.6]),
+    })
+    plt.close("all")
+    ax = plot_theta_fits(df)
+    # ax.lines includes error-bar lines; find the solid model line (lw=2, no label).
+    # It is the line added by ax.plot(), which has linewidth=2.
+    model_lines = [l for l in ax.lines if l.get_linewidth() == 2]
+    assert len(model_lines) == 1
+    np.testing.assert_array_almost_equal(model_lines[0].get_ydata(), [0.1, 0.2, 0.3, 0.4])
+    plt.close("all")

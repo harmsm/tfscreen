@@ -4,7 +4,7 @@ import os
 import yaml
 from tfscreen.analysis.hierarchical.growth_model.scripts.configure_model_cli import configure_model
 from tfscreen.analysis.hierarchical.growth_model.scripts.fit_model_cli import fit_model
-from tfscreen.analysis.hierarchical.growth_model.scripts.param_quantiles_cli import param_quantiles as summarize_posteriors
+from tfscreen.analysis.hierarchical.growth_model.scripts.extract_params_cli import extract_params as summarize_posteriors
 
 @pytest.mark.slow
 def test_configure_run_binding_only_smoke(tmpdir):
@@ -130,7 +130,7 @@ def test_configure_run_pipeline_smoke(tmpdir):
 
     # Summarize posteriors as a separate step
     summarize_posteriors(config_file=config_file,
-                         posterior_file=f"{out_prefix}_posterior.h5",
+                         param_file=f"{out_prefix}_posterior.h5",
                          out_prefix=out_prefix)
 
     assert os.path.exists(os.path.join(tmpdir, "test_tfs_out_hill_n.csv"))

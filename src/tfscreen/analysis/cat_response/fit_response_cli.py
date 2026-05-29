@@ -25,7 +25,7 @@ def _fit_one(args):
 
 
 def fit_response(df,
-                 theta_col="median",
+                 theta_col=None,
                  sigma_col=None,
                  models_to_run=None,
                  workers=1):
@@ -37,8 +37,9 @@ def fit_response(df,
     df : pd.DataFrame
         Must contain: genotype, titrant_name, titrant_conc, theta_col, and
         either sigma_col or both upper_std and lower_std.
-    theta_col : str
-        Column holding theta values passed to the fitter as y.
+    theta_col : str or None
+        Column holding theta values passed to the fitter as y.  If ``None``,
+        auto-detected: ``median`` if present, then ``point_est``.
     sigma_col : str or None
         Column holding per-observation sigma.  If None and df has
         upper_std / lower_std, sigma = (upper_std - lower_std) / 2.
@@ -60,6 +61,17 @@ def fit_response(df,
     bad = [m for m in models_to_run if m not in MODEL_LIBRARY]
     if bad:
         raise ValueError(f"Unknown model(s): {bad}. Valid: {list(MODEL_LIBRARY)}")
+
+    if theta_col is None:
+        if "median" in df.columns:
+            theta_col = "median"
+        elif "point_est" in df.columns:
+            theta_col = "point_est"
+        else:
+            raise ValueError(
+                "No theta column found. Expected 'median' (posterior) or "
+                "'point_est' (MAP). Pass theta_col explicitly to override."
+            )
 
     if sigma_col is None:
         if "upper_std" in df.columns and "lower_std" in df.columns:
@@ -122,8 +134,9 @@ def main():
     parser.add_argument(
         "--theta_col",
         type=str,
-        default="median",
-        help="Column name for theta values (default: median).",
+        default=None,
+        help="Column name for theta values. Auto-detected if omitted "
+             "('median' if present, else 'point_est').",
     )
     parser.add_argument(
         "--sigma_col",

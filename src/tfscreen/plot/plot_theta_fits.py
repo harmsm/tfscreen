@@ -29,7 +29,9 @@ def plot_theta_fits(df,
         * ``theta_obs`` — observed operator occupancy.
         * ``theta_std`` — standard deviation of ``theta_obs``; used for
           error bars.
-        * ``median`` — posterior/model median of theta; drawn as a line.
+        * ``median`` or ``point_est`` — posterior median or MAP point estimate
+          of theta; drawn as a line.  ``median`` takes precedence if both are
+          present.
 
         Optional columns (each pair must be present together):
 
@@ -112,9 +114,10 @@ def plot_theta_fits(df,
                     capsize=5,
                     color=colors[counter],zorder=0)
 
-        # Median
+        # Central estimate (posterior median or MAP point estimate)
+        center_col = "median" if "median" in g_df.columns else "point_est"
         ax.plot(g_df["titrant_conc"],
-                g_df["median"],
+                g_df[center_col],
                 lw=2,color=colors[counter])
 
         # Standard error

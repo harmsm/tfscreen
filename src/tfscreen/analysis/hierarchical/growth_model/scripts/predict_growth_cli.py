@@ -73,6 +73,7 @@ def predict_growth(config_file,
 
     print(f"Loading configuration from {config_file}...", flush=True)
     gm, _ = read_configuration(config_file)
+    is_map = param_file.endswith(".pkl")
     param_file = resolve_param_file(param_file, gm, out_prefix)
 
     # Build training-data membership set for in_training_data column.
@@ -91,6 +92,7 @@ def predict_growth(config_file,
         training_concs = list(gm.growth_df["titrant_conc"].unique())
         titrant_concs = sorted(set(training_concs) | set(file_concs)) if file_concs else None
 
+    q_to_get = {"point_est": 0.5} if is_map else None
     print("Running growth predictions...", flush=True)
     result_df = predict(model_class=gm,
                         param_posteriors=param_file,
@@ -98,7 +100,8 @@ def predict_growth(config_file,
                         num_samples=num_samples,
                         num_marginal_samples=num_marginal_samples,
                         titrant_conc=titrant_concs,
-                        genotypes=genotypes)
+                        genotypes=genotypes,
+                        q_to_get=q_to_get)
 
     # Apply titrant_name filter post-prediction.
     if titrant_names is not None:

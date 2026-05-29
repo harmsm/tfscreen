@@ -20,7 +20,7 @@ def _fit_one(args):
 
 def cat_response(theta_file,
                  out_prefix="tfs_cat_response",
-                 theta_col="median",
+                 theta_col=None,
                  sigma_col=None,
                  models=None,
                  workers=1):
@@ -41,9 +41,10 @@ def cat_response(theta_file,
     out_prefix : str, optional
         Prefix for the output CSV file. Written to {out_prefix}.csv.
         Default 'tfs_cat_response'.
-    theta_col : str, optional
-        Name of the column holding theta point estimates passed to the fitter.
-        Default 'median'.
+    theta_col : str or None, optional
+        Name of the column holding theta values passed to the fitter.  If
+        ``None`` (default), the column is auto-detected: ``median`` is used if
+        present, then ``point_est``.  Pass explicitly to override.
     sigma_col : str or None, optional
         Name of the column holding per-row theta uncertainty (standard deviation).
         If None, sigma is computed as (upper_std - lower_std) / 2, which requires
@@ -62,6 +63,17 @@ def cat_response(theta_file,
 
     print(f"Reading {theta_file}...", flush=True)
     df = pd.read_csv(theta_file)
+
+    if theta_col is None:
+        if "median" in df.columns:
+            theta_col = "median"
+        elif "point_est" in df.columns:
+            theta_col = "point_est"
+        else:
+            raise ValueError(
+                "No theta column found. Expected 'median' (posterior) or "
+                "'point_est' (MAP). Use --theta_col to specify a column explicitly."
+            )
 
     if sigma_col is None:
         if "upper_std" in df.columns and "lower_std" in df.columns:

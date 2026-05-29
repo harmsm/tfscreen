@@ -287,3 +287,51 @@ class TestPredictGrowthCheckpointInput:
                            out_prefix=str(tmp_path / "out"))
 
         assert predict_calls["param_posteriors"] == "resolved_map.h5"
+
+    def test_pkl_passes_point_est_q_to_get(self, mock_gm, tmp_path):
+        """q_to_get={"point_est": 0.5} is passed to predict when param_file is .pkl."""
+        predict_calls = {}
+
+        def fake_predict(**kwargs):
+            predict_calls["q_to_get"] = kwargs.get("q_to_get")
+            return pd.DataFrame({"genotype": ["wt"], "titrant_name": ["IPTG"],
+                                 "titrant_conc": [0.0], "point_est": [10.0]})
+
+        patches = self._make_fixtures(mock_gm)
+        with patches[0], patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".predict_growth_cli.predict",
+            side_effect=fake_predict,
+        ), patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".predict_growth_cli.resolve_param_file",
+            return_value="resolved.h5",
+        ):
+            predict_growth("cfg.yaml", "run_checkpoint.pkl",
+                           out_prefix=str(tmp_path / "out"))
+
+        assert predict_calls["q_to_get"] == {"point_est": 0.5}
+
+    def test_h5_passes_none_q_to_get(self, mock_gm, tmp_path):
+        """q_to_get=None is passed to predict when param_file is .h5."""
+        predict_calls = {}
+
+        def fake_predict(**kwargs):
+            predict_calls["q_to_get"] = kwargs.get("q_to_get")
+            return pd.DataFrame({"genotype": ["wt"], "titrant_name": ["IPTG"],
+                                 "titrant_conc": [0.0], "median": [10.0]})
+
+        patches = self._make_fixtures(mock_gm)
+        with patches[0], patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".predict_growth_cli.predict",
+            side_effect=fake_predict,
+        ), patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".predict_growth_cli.resolve_param_file",
+            side_effect=lambda pf, gm, op: pf,
+        ):
+            predict_growth("cfg.yaml", "post.h5",
+                           out_prefix=str(tmp_path / "out"))
+
+        assert predict_calls["q_to_get"] is None

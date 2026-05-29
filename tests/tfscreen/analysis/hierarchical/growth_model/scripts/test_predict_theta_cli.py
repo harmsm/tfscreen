@@ -391,3 +391,74 @@ class TestGenotypeBatchSize:
                           genotypes_file=gf,
                           out_prefix=out)
         assert mock_unmeas.call_args.kwargs["genotype_batch_size"] == 2000
+
+
+# ---------------------------------------------------------------------------
+# q_to_get / point_est dispatch
+# ---------------------------------------------------------------------------
+
+class TestPredictThetaQToGet:
+
+    def test_pkl_passes_point_est_q_to_get(self, mock_gm, tmp_path):
+        """q_to_get={"point_est": 0.5} is passed to extract_theta_curves for .pkl input."""
+        extract_calls = {}
+
+        def fake_curves(**kwargs):
+            extract_calls["q_to_get"] = kwargs.get("q_to_get")
+            return pd.DataFrame({"genotype": ["wt"], "titrant_name": ["IPTG"],
+                                 "titrant_conc": [0.0], "point_est": [0.5]})
+
+        with patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".predict_theta_cli.read_configuration",
+            return_value=(mock_gm, {}),
+        ), patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".predict_theta_cli.resolve_param_file",
+            return_value="resolved.h5",
+        ), patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".predict_theta_cli.extract_theta_curves",
+            side_effect=fake_curves,
+        ), patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".predict_theta_cli.extract_theta_unmeasured",
+            return_value=pd.DataFrame({"genotype": ["wt"], "titrant_name": ["IPTG"],
+                                       "titrant_conc": [0.0], "point_est": [0.5]}),
+        ):
+            predict_theta("cfg.yaml", "run_checkpoint.pkl",
+                          out_prefix=str(tmp_path / "out"))
+
+        assert extract_calls["q_to_get"] == {"point_est": 0.5}
+
+    def test_h5_passes_none_q_to_get(self, mock_gm, tmp_path):
+        """q_to_get=None is passed to extract_theta_curves for .h5 input."""
+        extract_calls = {}
+
+        def fake_curves(**kwargs):
+            extract_calls["q_to_get"] = kwargs.get("q_to_get")
+            return pd.DataFrame({"genotype": ["wt"], "titrant_name": ["IPTG"],
+                                 "titrant_conc": [0.0], "median": [0.5]})
+
+        with patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".predict_theta_cli.read_configuration",
+            return_value=(mock_gm, {}),
+        ), patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".predict_theta_cli.resolve_param_file",
+            side_effect=lambda pf, gm, op: pf,
+        ), patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".predict_theta_cli.extract_theta_curves",
+            side_effect=fake_curves,
+        ), patch(
+            "tfscreen.analysis.hierarchical.growth_model.scripts"
+            ".predict_theta_cli.extract_theta_unmeasured",
+            return_value=pd.DataFrame({"genotype": ["wt"], "titrant_name": ["IPTG"],
+                                       "titrant_conc": [0.0], "median": [0.5]}),
+        ):
+            predict_theta("cfg.yaml", "post.h5",
+                          out_prefix=str(tmp_path / "out"))
+
+        assert extract_calls["q_to_get"] is None

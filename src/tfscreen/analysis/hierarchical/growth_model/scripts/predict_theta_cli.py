@@ -90,6 +90,7 @@ def predict_theta(config_file,
 
     print(f"Loading configuration from {config_file}...", flush=True)
     gm, _ = read_configuration(config_file)
+    is_map = param_file.endswith(".pkl")
     param_file = resolve_param_file(param_file, gm, out_prefix)
 
     # Determine training genotypes and (genotype, titrant_name, titrant_conc) set.
@@ -165,21 +166,25 @@ def predict_theta(config_file,
                 .drop_duplicates()
                 .reset_index(drop=True)
             )
+        q_to_get = {"point_est": 0.5} if is_map else None
         result_df = extract_theta_unmeasured(
             model=gm,
             posteriors=param_file,
             target_genotypes=requested_genotypes,
             manual_titrant_df=manual_titrant_df,
             genotype_batch_size=genotype_batch_size,
+            q_to_get=q_to_get,
         )
     else:
         print(f"Predicting theta for {len(requested_genotypes)} training genotype(s)...",
               flush=True)
+        q_to_get = {"point_est": 0.5} if is_map else None
         result_df = extract_theta_curves(
             model=gm,
             posteriors=param_file,
             manual_titrant_df=manual_titrant_df,
             num_samples=num_samples,
+            q_to_get=q_to_get,
         )
         # extract_theta_curves returns all training genotypes when manual_titrant_df
         # has no 'genotype' column; filter to the requested subset.

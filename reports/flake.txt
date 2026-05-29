@@ -100,10 +100,12 @@
 ./src/tfscreen/analysis/cat_response/cat_response.py:138:42: E231 missing whitespace after ','
 ./src/tfscreen/analysis/cat_response/cat_response.py:141:56: W292 no newline at end of file
 ./src/tfscreen/analysis/cat_response/cat_response_cli.py:12:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/analysis/cat_response/cat_response_cli.py:79:56: E127 continuation line over-indented for visual indent
+./src/tfscreen/analysis/cat_response/cat_response_cli.py:21:1: C901 'cat_response' is too complex (11)
+./src/tfscreen/analysis/cat_response/cat_response_cli.py:91:56: E127 continuation line over-indented for visual indent
 ./src/tfscreen/analysis/cat_response/fit_response_cli.py:6:1: F401 'sys' imported but unused
 ./src/tfscreen/analysis/cat_response/fit_response_cli.py:9:1: F401 'numpy as np' imported but unused
-./src/tfscreen/analysis/cat_response/fit_response_cli.py:77:56: E127 continuation line over-indented for visual indent
+./src/tfscreen/analysis/cat_response/fit_response_cli.py:27:1: C901 'fit_response' is too complex (11)
+./src/tfscreen/analysis/cat_response/fit_response_cli.py:89:56: E127 continuation line over-indented for visual indent
 ./src/tfscreen/analysis/extract_epistasis.py:8:1: C901 'mutant_cycle_pivot' is too complex (11)
 ./src/tfscreen/analysis/extract_epistasis.py:8:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/extract_epistasis.py:33:77: W291 trailing whitespace
@@ -2192,7 +2194,6 @@
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/diagnose_nan_cli.py:39:1: F401 'sys' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/diagnose_nan_cli.py:42:1: F401 'jax.numpy as jnp' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/diagnose_nan_cli.py:43:1: F401 'numpy as np' imported but unused
-./src/tfscreen/analysis/hierarchical/growth_model/scripts/extract_params_cli.py:10:1: C901 'extract_params' is too complex (11)
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/fit_model_cli.py:2:1: F401 'numpy as np' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/fit_model_cli.py:3:1: F401 'jax.numpy as jnp' imported but unused
 ./src/tfscreen/analysis/hierarchical/growth_model/scripts/fit_model_cli.py:8:1: F401 'tfscreen.analysis.hierarchical.growth_model.model_class.ModelClass as GrowthModel' imported but unused
@@ -3718,33 +3719,33 @@
 ./src/tfscreen/plot/helper.py:100:17: W292 no newline at end of file
 ./src/tfscreen/plot/hill_fit.py:9:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/plot/plot_theta_fits.py:6:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/plot/plot_theta_fits.py:79:1: W293 blank line contains whitespace
-./src/tfscreen/plot/plot_theta_fits.py:82:35: E231 missing whitespace after ','
-./src/tfscreen/plot/plot_theta_fits.py:82:50: E231 missing whitespace after ','
-./src/tfscreen/plot/plot_theta_fits.py:84:1: W293 blank line contains whitespace
-./src/tfscreen/plot/plot_theta_fits.py:86:73: E225 missing whitespace around operator
-./src/tfscreen/plot/plot_theta_fits.py:87:35: E231 missing whitespace after ','
-./src/tfscreen/plot/plot_theta_fits.py:90:52: E231 missing whitespace after ','
-./src/tfscreen/plot/plot_theta_fits.py:93:1: W293 blank line contains whitespace
-./src/tfscreen/plot/plot_theta_fits.py:96:31: E231 missing whitespace after ','
-./src/tfscreen/plot/plot_theta_fits.py:96:42: E231 missing whitespace after ','
-./src/tfscreen/plot/plot_theta_fits.py:97:1: W293 blank line contains whitespace
-./src/tfscreen/plot/plot_theta_fits.py:100:42: E231 missing whitespace after ','
-./src/tfscreen/plot/plot_theta_fits.py:100:58: E231 missing whitespace after ','
-./src/tfscreen/plot/plot_theta_fits.py:101:1: W293 blank line contains whitespace
-./src/tfscreen/plot/plot_theta_fits.py:103:40: E231 missing whitespace after ','
-./src/tfscreen/plot/plot_theta_fits.py:106:36: E231 missing whitespace after ','
-./src/tfscreen/plot/plot_theta_fits.py:106:46: E231 missing whitespace after ','
-./src/tfscreen/plot/plot_theta_fits.py:113:42: E231 missing whitespace after ','
-./src/tfscreen/plot/plot_theta_fits.py:118:21: E231 missing whitespace after ','
-./src/tfscreen/plot/plot_theta_fits.py:121:28: E231 missing whitespace after ','
-./src/tfscreen/plot/plot_theta_fits.py:122:1: W293 blank line contains whitespace
-./src/tfscreen/plot/plot_theta_fits.py:127:38: E231 missing whitespace after ','
-./src/tfscreen/plot/plot_theta_fits.py:130:27: E231 missing whitespace after ','
-./src/tfscreen/plot/plot_theta_fits.py:131:1: W293 blank line contains whitespace
-./src/tfscreen/plot/plot_theta_fits.py:136:38: E231 missing whitespace after ','
-./src/tfscreen/plot/plot_theta_fits.py:138:1: W293 blank line contains whitespace
-./src/tfscreen/plot/plot_theta_fits.py:149:1: W391 blank line at end of file
+./src/tfscreen/plot/plot_theta_fits.py:81:1: W293 blank line contains whitespace
+./src/tfscreen/plot/plot_theta_fits.py:84:35: E231 missing whitespace after ','
+./src/tfscreen/plot/plot_theta_fits.py:84:50: E231 missing whitespace after ','
+./src/tfscreen/plot/plot_theta_fits.py:86:1: W293 blank line contains whitespace
+./src/tfscreen/plot/plot_theta_fits.py:88:73: E225 missing whitespace around operator
+./src/tfscreen/plot/plot_theta_fits.py:89:35: E231 missing whitespace after ','
+./src/tfscreen/plot/plot_theta_fits.py:92:52: E231 missing whitespace after ','
+./src/tfscreen/plot/plot_theta_fits.py:95:1: W293 blank line contains whitespace
+./src/tfscreen/plot/plot_theta_fits.py:98:31: E231 missing whitespace after ','
+./src/tfscreen/plot/plot_theta_fits.py:98:42: E231 missing whitespace after ','
+./src/tfscreen/plot/plot_theta_fits.py:99:1: W293 blank line contains whitespace
+./src/tfscreen/plot/plot_theta_fits.py:102:42: E231 missing whitespace after ','
+./src/tfscreen/plot/plot_theta_fits.py:102:58: E231 missing whitespace after ','
+./src/tfscreen/plot/plot_theta_fits.py:103:1: W293 blank line contains whitespace
+./src/tfscreen/plot/plot_theta_fits.py:105:40: E231 missing whitespace after ','
+./src/tfscreen/plot/plot_theta_fits.py:108:36: E231 missing whitespace after ','
+./src/tfscreen/plot/plot_theta_fits.py:108:46: E231 missing whitespace after ','
+./src/tfscreen/plot/plot_theta_fits.py:115:42: E231 missing whitespace after ','
+./src/tfscreen/plot/plot_theta_fits.py:121:21: E231 missing whitespace after ','
+./src/tfscreen/plot/plot_theta_fits.py:124:28: E231 missing whitespace after ','
+./src/tfscreen/plot/plot_theta_fits.py:125:1: W293 blank line contains whitespace
+./src/tfscreen/plot/plot_theta_fits.py:130:38: E231 missing whitespace after ','
+./src/tfscreen/plot/plot_theta_fits.py:133:27: E231 missing whitespace after ','
+./src/tfscreen/plot/plot_theta_fits.py:134:1: W293 blank line contains whitespace
+./src/tfscreen/plot/plot_theta_fits.py:139:38: E231 missing whitespace after ','
+./src/tfscreen/plot/plot_theta_fits.py:141:1: W293 blank line contains whitespace
+./src/tfscreen/plot/plot_theta_fits.py:152:1: W391 blank line at end of file
 ./src/tfscreen/plot/uncertainty_calibration.py:12:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/plot/uncertainty_calibration.py:21:5: E125 continuation line with same indent as next logical line
 ./src/tfscreen/plot/uncertainty_calibration.py:24:63: W291 trailing whitespace
@@ -4857,6 +4858,12 @@
 ./tests/tfscreen/analysis/cat_response/test_cat_response.py:113:59: E261 at least two spaces before inline comment
 ./tests/tfscreen/analysis/cat_response/test_cat_response.py:114:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/cat_response/test_cat_response.py:119:1: W391 blank line at end of file
+./tests/tfscreen/analysis/cat_response/test_cat_response_cli.py:14:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/cat_response/test_cat_response_cli.py:19:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/cat_response/test_cat_response_cli.py:24:1: E305 expected 2 blank lines after class or function definition, found 1
+./tests/tfscreen/analysis/cat_response/test_fit_response_cli.py:14:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/cat_response/test_fit_response_cli.py:19:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/analysis/cat_response/test_fit_response_cli.py:24:1: E305 expected 2 blank lines after class or function definition, found 1
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/activity/test_fixed.py:23:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/activity/test_fixed.py:29:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/hierarchical/growth_model/components/activity/test_fixed.py:36:1: E302 expected 2 blank lines, found 1
@@ -7780,6 +7787,7 @@
 ./tests/tfscreen/plot/test_hill_fit.py:3:1: F401 'numpy as np' imported but unused
 ./tests/tfscreen/plot/test_hill_fit.py:118:34: E741 ambiguous variable name 'l'
 ./tests/tfscreen/plot/test_plot_theta_fits.py:2:1: F401 'pytest' imported but unused
+./tests/tfscreen/plot/test_plot_theta_fits.py:301:26: E741 ambiguous variable name 'l'
 ./tests/tfscreen/plot/test_xy_corr.py:2:1: F401 'pytest' imported but unused
 ./tests/tfscreen/plot/test_xy_corr.py:8:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/plot/test_xy_corr.py:11:1: W293 blank line contains whitespace
@@ -8453,7 +8461,7 @@
 ./tests/tfscreen/util/validation/test_check.py:8:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/validation/test_check.py:26:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/validation/test_check.py:42:38: W292 no newline at end of file
-42    C901 'cat_fit' is too complex (19)
+43    C901 'cat_fit' is too complex (19)
 23    E111 indentation is not a multiple of 4
 10    E114 indentation is not a multiple of 4 (comment)
 7     E116 unexpected indentation (comment)
@@ -8480,9 +8488,9 @@
 2     E266 too many leading '#' for block comment
 150   E272 multiple spaces before keyword
 1     E301 expected 1 blank line, found 0
-890   E302 expected 2 blank lines, found 1
+894   E302 expected 2 blank lines, found 1
 61    E303 too many blank lines (2)
-17    E305 expected 2 blank lines after class or function definition, found 0
+19    E305 expected 2 blank lines after class or function definition, found 0
 29    E306 expected 1 blank line before a nested definition, found 0
 1     E401 multiple imports on one line
 35    E402 module level import not at top of file
@@ -8493,7 +8501,7 @@
 2     E713 test for membership should be 'not in'
 1     E722 do not use bare 'except'
 1     E731 do not assign a lambda expression, use a def
-13    E741 ambiguous variable name 'l'
+14    E741 ambiguous variable name 'l'
 361   F401 '.process_raw' imported but unused
 9     F541 f-string is missing placeholders
 6     F811 redefinition of unused 'dataclasses' from line 6
@@ -8502,4 +8510,4 @@
 107   W292 no newline at end of file
 2037  W293 blank line contains whitespace
 39    W391 blank line at end of file
-8455
+8463
