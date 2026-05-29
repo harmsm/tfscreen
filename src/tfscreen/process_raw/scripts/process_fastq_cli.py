@@ -1,4 +1,4 @@
-from .fastq_to_counts import FastqToCounts
+from ..fastq_to_counts import FastqToCounts
 from tfscreen.util.cli import generalized_main
 from tfscreen.genetics import (
     LibraryManager,

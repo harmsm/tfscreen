@@ -65,8 +65,8 @@ test = ["coverage", "flake8", "pytest", "genbadge", "pytest-mock"]
 docs = ["pydata-sphinx-theme"]
 
 [project.scripts]
-tfs-process-fastq = "tfscreen.process_raw.process_fastq:main"
-tfs-process-counts = "tfscreen.process_raw.process_counts:main"
+tfs-process-fastq = "tfscreen.process_raw.scripts.process_fastq_cli:main"
+tfs-process-counts = "tfscreen.process_raw.scripts.process_counts_cli:main"
 tfs-configure-model = "tfscreen.growth_model.scripts.configure_model_cli:main"
 tfs-prefit-calibration = "tfscreen.growth_model.scripts.run_prefit_calibration_cli:main"
 tfs-fit-model = "tfscreen.growth_model.scripts.fit_model_cli:main"

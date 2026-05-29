@@ -1,4 +1,4 @@
 
 from .counts_to_lncfu import counts_to_lncfu
-from .process_counts import process_counts
-from .process_fastq import process_fastq
+from .scripts.process_counts_cli import process_counts
+from .scripts.process_fastq_cli import process_fastq

@@ -3,7 +3,7 @@ import pandas as pd
 import pandas.testing as pd_testing
 from unittest.mock import patch, call
 
-from tfscreen.process_raw.process_counts import (
+from tfscreen.process_raw.scripts.process_counts_cli import (
     _prep_sample_df,
     _aggregate_counts,
     process_counts,
@@ -144,9 +144,9 @@ def test_aggregate_counts(mock_read_csv):
 # ------------------------
 
 @patch('pandas.DataFrame.to_csv')
-@patch('tfscreen.process_raw.process_counts.counts_to_lncfu')
-@patch('tfscreen.process_raw.process_counts._aggregate_counts')
-@patch('tfscreen.process_raw.process_counts._prep_sample_df')
+@patch('tfscreen.process_raw.scripts.process_counts_cli.counts_to_lncfu')
+@patch('tfscreen.process_raw.scripts.process_counts_cli._aggregate_counts')
+@patch('tfscreen.process_raw.scripts.process_counts_cli._prep_sample_df')
 def test_process_counts_orchestration(
     mock_prep, mock_agg, mock_lncfu, mock_to_csv, fx_sample_df
 ):
@@ -190,7 +190,7 @@ def test_process_counts_missing_cfu_columns(tmp_path):
     prepped = bad_df.set_index("sample")
     prepped["obs_file"] = "dummy.csv"
 
-    with patch('tfscreen.process_raw.process_counts._prep_sample_df', return_value=prepped):
+    with patch('tfscreen.process_raw.scripts.process_counts_cli._prep_sample_df', return_value=prepped):
         with pytest.raises(ValueError, match="Not all required columns seen"):
             process_counts(
                 sample_df=bad_df,
