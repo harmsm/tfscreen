@@ -1,5 +1,5 @@
 """
-Tests for struct ensemble wiring in ModelClass.
+Tests for struct ensemble wiring in ModelOrchestrator.
 
 Covers:
   1. Constructor parameter and settings property
@@ -133,7 +133,7 @@ def _make_binding_csv(tmp_path, genotypes=_GENOTYPES):
 # ──────────────────────────────────────────────────────────────────────────────
 
 def test_registry_entry():
-    from tfscreen.tfmodel.registry import model_registry
+    from tfscreen.tfmodel.generative.registry import model_registry
     assert "lac_dimer_lnK_nn_prior" in model_registry["theta"]
 
 
@@ -147,8 +147,8 @@ def test_settings_includes_struct_ensemble_path(tmp_path):
     binding_path = _make_binding_csv(tmp_path)
     h5_path      = _make_struct_ensemble_h5(tmp_path)
 
-    from tfscreen.tfmodel.model_class import ModelClass
-    mc = ModelClass(
+    from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+    mc = ModelOrchestrator(
         growth_path, binding_path,
         theta="lac_dimer_lnK_nn_prior",
         struct_ensemble_path=h5_path,
@@ -162,8 +162,8 @@ def test_default_struct_ensemble_path_is_none(tmp_path):
     growth_path  = _make_growth_csv(tmp_path)
     binding_path = _make_binding_csv(tmp_path)
 
-    from tfscreen.tfmodel.model_class import ModelClass
-    mc = ModelClass(growth_path, binding_path, theta="hill")
+    from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+    mc = ModelOrchestrator(growth_path, binding_path, theta="hill")
     assert mc.settings["struct_ensemble_path"] is None
 
 
@@ -176,9 +176,9 @@ def test_missing_struct_path_raises(tmp_path):
     growth_path  = _make_growth_csv(tmp_path)
     binding_path = _make_binding_csv(tmp_path)
 
-    from tfscreen.tfmodel.model_class import ModelClass
+    from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
     with pytest.raises(ValueError, match="struct_ensemble_path"):
-        ModelClass(growth_path, binding_path, theta="lac_dimer_lnK_nn_prior")
+        ModelOrchestrator(growth_path, binding_path, theta="lac_dimer_lnK_nn_prior")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -188,7 +188,7 @@ def test_missing_struct_path_raises(tmp_path):
 @pytest.fixture(scope="module")
 def fitted_mc(tmp_path_factory):
     """
-    Build a ModelClass with lac_dimer_lnK_nn_prior and a synthetic HDF5 file.
+    Build a ModelOrchestrator with lac_dimer_lnK_nn_prior and a synthetic HDF5 file.
     Expensive to construct, so scoped to the module.
     """
     tmp_path = tmp_path_factory.mktemp("struct_wiring")
@@ -196,8 +196,8 @@ def fitted_mc(tmp_path_factory):
     binding_path = _make_binding_csv(tmp_path)
     h5_path      = _make_struct_ensemble_h5(tmp_path)
 
-    from tfscreen.tfmodel.model_class import ModelClass
-    return ModelClass(
+    from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+    return ModelOrchestrator(
         growth_path, binding_path,
         theta="lac_dimer_lnK_nn_prior",
         struct_ensemble_path=h5_path,
@@ -248,8 +248,8 @@ class TestStructFieldsWithEpistasis:
         binding_path = _make_binding_csv(tmp_path)
         h5_path      = _make_struct_ensemble_h5(tmp_path)
 
-        from tfscreen.tfmodel.model_class import ModelClass
-        return ModelClass(
+        from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+        return ModelOrchestrator(
             growth_path, binding_path,
             theta="lac_dimer_lnK_nn_prior",
             struct_ensemble_path=h5_path,
@@ -281,14 +281,14 @@ def test_svi_runs_without_error(tmp_path):
     return a non-None svi_state and a params dict.
     """
     import os
-    from tfscreen.tfmodel.model_class import ModelClass
-    from tfscreen.tfmodel.run_inference import RunInference
+    from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+    from tfscreen.tfmodel.inference.run_inference import RunInference
 
     growth_path  = _make_growth_csv(tmp_path)
     binding_path = _make_binding_csv(tmp_path)
     h5_path      = _make_struct_ensemble_h5(tmp_path)
 
-    mc = ModelClass(
+    mc = ModelOrchestrator(
         growth_path, binding_path,
         theta="lac_dimer_lnK_nn_prior",
         struct_ensemble_path=h5_path,
@@ -312,14 +312,14 @@ def test_svi_runs_without_error(tmp_path):
 @pytest.mark.slow
 def test_svi_with_epistasis_runs_without_error(tmp_path):
     """Same as above but with epistasis=True (activates horseshoe terms)."""
-    from tfscreen.tfmodel.model_class import ModelClass
-    from tfscreen.tfmodel.run_inference import RunInference
+    from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+    from tfscreen.tfmodel.inference.run_inference import RunInference
 
     growth_path  = _make_growth_csv(tmp_path)
     binding_path = _make_binding_csv(tmp_path)
     h5_path      = _make_struct_ensemble_h5(tmp_path)
 
-    mc = ModelClass(
+    mc = ModelOrchestrator(
         growth_path, binding_path,
         theta="lac_dimer_lnK_nn_prior",
         struct_ensemble_path=h5_path,
@@ -383,9 +383,9 @@ def test_binding_only_struct_raises_without_struct_path(tmp_path):
     """mwc_dimer_lnK_ddG_prior in binding_only mode must raise if struct_ensemble_path is absent."""
     binding_path = _make_binding_only_csv(tmp_path)
 
-    from tfscreen.tfmodel.model_class import ModelClass
+    from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
     with pytest.raises(ValueError, match="struct_ensemble_path"):
-        ModelClass(None, binding_path,
+        ModelOrchestrator(None, binding_path,
                    binding_only=True,
                    theta="mwc_dimer_lnK_ddG_prior")
 
@@ -393,15 +393,15 @@ def test_binding_only_struct_raises_without_struct_path(tmp_path):
 @pytest.fixture(scope="module")
 def binding_only_ddG_mc(tmp_path_factory):
     """
-    ModelClass in binding_only mode with mwc_dimer_lnK_ddG_prior.
+    ModelOrchestrator in binding_only mode with mwc_dimer_lnK_ddG_prior.
     Scoped to module so it is built once for all tests below.
     """
     tmp_path = tmp_path_factory.mktemp("binding_only_ddG")
     binding_path = _make_binding_only_csv(tmp_path)
     ddg_path     = _make_ddG_prior_csv(tmp_path)
 
-    from tfscreen.tfmodel.model_class import ModelClass
-    return ModelClass(
+    from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+    return ModelOrchestrator(
         None, binding_path,
         binding_only=True,
         theta="mwc_dimer_lnK_ddG_prior",
@@ -441,13 +441,13 @@ class TestBindingOnlyDdGStructFields:
 @pytest.mark.slow
 def test_binding_only_ddG_svi_runs(tmp_path):
     """Five SVI steps with mwc_dimer_lnK_ddG_prior in binding_only mode must not raise."""
-    from tfscreen.tfmodel.model_class import ModelClass
-    from tfscreen.tfmodel.run_inference import RunInference
+    from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+    from tfscreen.tfmodel.inference.run_inference import RunInference
 
     binding_path = _make_binding_only_csv(tmp_path)
     ddg_path     = _make_ddG_prior_csv(tmp_path)
 
-    mc = ModelClass(
+    mc = ModelOrchestrator(
         None, binding_path,
         binding_only=True,
         theta="mwc_dimer_lnK_ddG_prior",
@@ -479,14 +479,14 @@ def test_binding_only_minibatch_get_random_idx_does_not_crash(tmp_path):
     Previously the batching code tried to pin all N binding genotypes into a
     batch_size-sized array, causing an IndexError.
     """
-    from tfscreen.tfmodel.model_class import ModelClass
+    from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
 
     # 4 genotypes, batch_size=2 — forces the mini-batch path
     big_genotypes = ["wt", "M42I", "K84L", "M42I/K84L"]
     binding_path = _make_binding_only_csv(tmp_path, genotypes=big_genotypes)
     ddg_path = _make_ddG_prior_csv(tmp_path, genotypes=big_genotypes)
 
-    mc = ModelClass(
+    mc = ModelOrchestrator(
         None, binding_path,
         binding_only=True,
         theta="mwc_dimer_lnK_ddG_prior",
@@ -506,14 +506,14 @@ def test_binding_only_minibatch_get_random_idx_does_not_crash(tmp_path):
 @pytest.mark.slow
 def test_binding_only_minibatch_svi_runs(tmp_path):
     """Five SVI steps with batch_size < num_genotypes in binding-only mode must not raise."""
-    from tfscreen.tfmodel.model_class import ModelClass
-    from tfscreen.tfmodel.run_inference import RunInference
+    from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+    from tfscreen.tfmodel.inference.run_inference import RunInference
 
     big_genotypes = ["wt", "M42I", "K84L", "M42I/K84L"]
     binding_path = _make_binding_only_csv(tmp_path, genotypes=big_genotypes)
     ddg_path = _make_ddG_prior_csv(tmp_path, genotypes=big_genotypes)
 
-    mc = ModelClass(
+    mc = ModelOrchestrator(
         None, binding_path,
         binding_only=True,
         theta="mwc_dimer_lnK_ddG_prior",

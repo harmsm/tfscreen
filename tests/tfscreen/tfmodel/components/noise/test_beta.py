@@ -6,7 +6,7 @@ import numpyro.distributions as dist
 from numpyro.handlers import trace, substitute, seed
 
 # --- Import Module Under Test (MUT) ---
-from tfscreen.tfmodel.components.noise.beta import (
+from tfscreen.tfmodel.generative.components.noise.beta import (
     ModelPriors,
     define_model,
     guide,

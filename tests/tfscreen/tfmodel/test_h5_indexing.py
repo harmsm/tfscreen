@@ -2,14 +2,14 @@ import pytest
 import h5py
 import numpy as np
 import os
-from tfscreen.tfmodel.prediction import predict
-from tfscreen.tfmodel.model_class import ModelClass
+from tfscreen.tfmodel.analysis.prediction import predict
+from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
 import pandas as pd
 
 def test_predict_h5_indexing(tmp_path):
     """Test that predict works with H5 file indexing (sorting fix)."""
     
-    # 1. Create dummy ModelClass
+    # 1. Create dummy ModelOrchestrator
     growth_df = pd.DataFrame({
         "genotype": ["wt"],
         "titrant_name": ["tit1"],
@@ -29,7 +29,7 @@ def test_predict_h5_indexing(tmp_path):
         "theta_obs": [0.5],
         "theta_std": [0.01]
     })
-    mc = ModelClass(growth_df, binding_df)
+    mc = ModelOrchestrator(growth_df, binding_df)
     
     # 2. Create an H5 file with some "posteriors"
     h5_path = tmp_path / "posteriors.h5"
@@ -54,7 +54,7 @@ def test_predict_h5_indexing(tmp_path):
     # We might need to mock Predictive if we just want to test the slice logic.
     
     from unittest.mock import patch
-    with patch("tfscreen.tfmodel.prediction.Predictive") as mock_pred:
+    with patch("tfscreen.tfmodel.analysis.prediction.Predictive") as mock_pred:
         # Mock growth_pred output. 
         # TensorManager has 7 dimensions. Prediction output is (num_samples, *tensor_shape)
         mock_pred.return_value.return_value = {"growth_pred": np.zeros((10, 1, 1, 1, 1, 1, 1, 1))}

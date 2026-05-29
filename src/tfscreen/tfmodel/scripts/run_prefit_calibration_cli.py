@@ -58,8 +58,8 @@ from numpyro.handlers import seed, trace
 
 import tfscreen
 from tfscreen.util.cli.generalized_main import generalized_main
-from tfscreen.tfmodel.run_inference import RunInference
-from tfscreen.tfmodel.model_class import ModelClass as TFModel
+from tfscreen.tfmodel.inference.run_inference import RunInference
+from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
 from tfscreen.tfmodel.configuration_io import (
     read_configuration,
 )
@@ -120,7 +120,7 @@ def _intersect_data(growth_df, binding_df):
 
     Both inputs are read with :func:`tfscreen.util.io.read_dataframe` so a
     file path or DataFrame is acceptable.  Genotypes are *not* coerced to
-    a categorical here — that happens inside ``TFModel`` — so any
+    a categorical here — that happens inside ``ModelOrchestrator`` — so any
     string/category mismatch surfaces as a missing intersection rather
     than a silent miscompare.
 
@@ -231,7 +231,7 @@ def _compute_theta_values(gm_cal, binding_df_cal):
 
 def _build_calibration_model(gm_prod, growth_df_cal, binding_df_cal):
     """
-    Construct the calibration ``TFModel`` with hardcoded calibration
+    Construct the calibration ``ModelOrchestrator`` with hardcoded calibration
     overrides applied on top of the production component selections.
 
     ``condition_growth`` and ``growth_transition`` carry through from the
@@ -251,7 +251,7 @@ def _build_calibration_model(gm_prod, growth_df_cal, binding_df_cal):
     settings["binding_weight"] = 1.0
     batch_size = settings.pop("batch_size", None)
 
-    return TFModel(growth_df_cal,
+    return ModelOrchestrator(growth_df_cal,
                        binding_df_cal,
                        batch_size=batch_size,
                        **settings)
@@ -724,8 +724,8 @@ def _make_calibration_plots(gm_cal, params, out_prefix, growth_pred_std=None):
 
     Parameters
     ----------
-    gm_cal : TFModel
-        Calibration TFModel (exposes ``growth_tm``, ``data``,
+    gm_cal : ModelOrchestrator
+        Calibration ModelOrchestrator (exposes ``growth_tm``, ``data``,
         ``priors``, ``jax_model``).
     params : dict
         MAP parameter dict from the SVI optimiser (keys follow the
@@ -1272,11 +1272,11 @@ def run_prefit_calibration(config_file,
     The script:
 
     1. Reads the production ``config_file`` to obtain the production
-       ``TFModel`` (so we know which priors / guesses files to
+       ``ModelOrchestrator`` (so we know which priors / guesses files to
        update later) and the production data paths.
     2. Filters the growth and binding inputs to their shared
        (genotype, titrant_name, titrant_conc) cells.
-    3. Builds an in-process calibration ``TFModel`` whose
+    3. Builds an in-process calibration ``ModelOrchestrator`` whose
        ``condition_growth`` and ``growth_transition`` components match
        the production choices but whose other components are pinned /
        collapsed (see module docstring).

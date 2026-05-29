@@ -1,6 +1,6 @@
 import jax.numpy as jnp
 import pytest
-from tfscreen.tfmodel.components.theta_rescale.logit import rescale
+from tfscreen.tfmodel.generative.components.theta_rescale.logit import rescale
 
 
 def test_logit_midpoint_is_zero():

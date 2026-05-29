@@ -19,7 +19,7 @@ from tfscreen.tfmodel.configuration_io import (
 
 @pytest.fixture
 def mock_gm(mocker):
-    mock_gm_class = mocker.patch("tfscreen.tfmodel.scripts.configure_model_cli.TFModel")
+    mock_gm_class = mocker.patch("tfscreen.tfmodel.scripts.configure_model_cli.ModelOrchestrator")
     mock_gm_inst = mock_gm_class.return_value
     
     # Mock settings
@@ -115,7 +115,7 @@ def test_read_configuration_logic(tmpdir, mocker):
         "flat_index": [0, 0, 0]
     }).to_csv(guesses_path, index=False)
     
-    mock_gm_class = mocker.patch("tfscreen.tfmodel.configuration_io.TFModel")
+    mock_gm_class = mocker.patch("tfscreen.tfmodel.configuration_io.ModelOrchestrator")
     mock_gm_inst = mock_gm_class.return_value
     mock_gm_inst.init_params = {"param1": 0.0, "param2": jnp.zeros((1,)), "param3": 0.0}
     
@@ -136,7 +136,7 @@ def test_read_configuration_errors(tmpdir):
         read_configuration("nonexistent.yaml")
         
     # All subsequent tests involve parsing the yaml and potentially initializing GM
-    with patch("tfscreen.tfmodel.configuration_io.TFModel"):
+    with patch("tfscreen.tfmodel.configuration_io.ModelOrchestrator"):
         # 2. priors_file missing in yaml
         with open(config_path, "w") as f:
             yaml.dump({"data":{"growth":"g", "binding":"b"}, "components":{}}, f)
@@ -163,7 +163,7 @@ def test_read_configuration_errors(tmpdir):
         with open(config_path, "w") as f:
              yaml.dump({"data":{"growth":"g", "binding":"b"}, "components":{}, "priors_file": "priors.csv", "guesses_file": "guesses.csv"}, f)
         
-        with patch("tfscreen.tfmodel.configuration_io.TFModel") as mock_gm_class:
+        with patch("tfscreen.tfmodel.configuration_io.ModelOrchestrator") as mock_gm_class:
             mock_gm_inst = mock_gm_class.return_value
             mock_gm_inst.init_params = {"param1": 0, "param2": 0} # param2 missing in CSV
             with pytest.raises(ValueError, match="Missing initial guesses for parameters"):

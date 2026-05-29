@@ -2,16 +2,16 @@ import pytest
 import pandas as pd
 import numpy as np
 from unittest.mock import MagicMock, patch, call
-from tfscreen.tfmodel.model_class import ModelClass
-from tfscreen.tfmodel.extraction import (
+from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+from tfscreen.tfmodel.analysis.extraction import (
     extract_theta_curves,
     extract_theta_unmeasured,
 )
 
 @pytest.fixture
 def mock_model():
-    """Create a ModelClass instance with minimal mocked internals."""
-    model = MagicMock(spec=ModelClass)
+    """Create a ModelOrchestrator instance with minimal mocked internals."""
+    model = MagicMock(spec=ModelOrchestrator)
     model._theta = "hill"
     
     # Mock TensorManager and its DataFrame
@@ -133,7 +133,7 @@ def test_extract_theta_curves_file_loading(mock_model):
 
 def _make_unmeasured_model(theta_name="hill_mut"):
     """Minimal model mock for extract_theta_unmeasured."""
-    model = MagicMock(spec=ModelClass)
+    model = MagicMock(spec=ModelOrchestrator)
     model._theta = theta_name
     mock_tm = MagicMock()
     mock_tm.tensor_dim_names = ["titrant_name", "genotype"]
@@ -173,10 +173,10 @@ def patched_unmeasured_module():
     fake_module.predict_unmeasured = MagicMock(side_effect=_fake_predict_unmeasured)
     registry_patch = {"hill_mut": fake_module}
     with patch(
-        "tfscreen.tfmodel.extraction.model_registry",
+        "tfscreen.tfmodel.analysis.extraction.model_registry",
         {"theta": registry_patch},
     ), patch(
-        "tfscreen.tfmodel.extraction.load_posteriors",
+        "tfscreen.tfmodel.analysis.extraction.load_posteriors",
         return_value=({"median": 0.5}, {}),
     ):
         yield fake_module
@@ -253,10 +253,10 @@ class TestExtractThetaUnmeasuredBatching:
         """ValueError when the theta component has no predict_unmeasured."""
         model = _make_unmeasured_model(theta_name="no_such_component")
         with patch(
-            "tfscreen.tfmodel.extraction.model_registry",
+            "tfscreen.tfmodel.analysis.extraction.model_registry",
             {"theta": {}},
         ), patch(
-            "tfscreen.tfmodel.extraction.load_posteriors",
+            "tfscreen.tfmodel.analysis.extraction.load_posteriors",
             return_value=({"median": 0.5}, {}),
         ):
             with pytest.raises(ValueError, match="predict_unmeasured"):

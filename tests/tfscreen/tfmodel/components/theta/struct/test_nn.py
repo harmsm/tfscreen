@@ -6,7 +6,7 @@ import numpyro
 import numpy as np
 import pytest
 
-from tfscreen.tfmodel.components.theta.struct.nn import (
+from tfscreen.tfmodel.generative.components.theta.struct.nn import (
     _DEFAULT_HIDDEN_SIZE,
     compute_nn_predictions,
 )

@@ -2,13 +2,13 @@ import pytest
 import pandas as pd
 import numpy as np
 from unittest.mock import MagicMock, patch
-from tfscreen.tfmodel.model_class import ModelClass
-from tfscreen.tfmodel.extraction import extract_growth_predictions
+from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+from tfscreen.tfmodel.analysis.extraction import extract_growth_predictions
 
 @pytest.fixture
 def mock_model():
-    """Create a ModelClass instance with minimal mocked internals."""
-    model = MagicMock(spec=ModelClass)
+    """Create a ModelOrchestrator instance with minimal mocked internals."""
+    model = MagicMock(spec=ModelOrchestrator)
     
     # Mock growth_df with index columns
     # We need: replicate, time, condition_pre, condition_sel, titrant_name, titrant_conc, genotype

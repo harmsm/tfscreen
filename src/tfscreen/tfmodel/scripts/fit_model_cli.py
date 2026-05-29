@@ -5,8 +5,8 @@ import dill
 
 import optax
 
-from tfscreen.tfmodel.model_class import ModelClass as TFModel
-from tfscreen.tfmodel.run_inference import RunInference
+from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+from tfscreen.tfmodel.inference.run_inference import RunInference
 
 from tfscreen.util.cli.generalized_main import generalized_main
 

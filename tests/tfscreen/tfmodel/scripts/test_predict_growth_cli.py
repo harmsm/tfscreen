@@ -8,7 +8,7 @@ import numpy as np
 from unittest.mock import MagicMock, patch
 
 from tfscreen.tfmodel.scripts.predict_growth_cli import predict_growth
-from tfscreen.tfmodel.checkpoint_io import resolve_param_file
+from tfscreen.tfmodel.inference.checkpoint_io import resolve_param_file
 
 
 # ---------------------------------------------------------------------------

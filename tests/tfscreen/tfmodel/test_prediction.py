@@ -1,12 +1,12 @@
 import pytest
 import pandas as pd
 import numpy as np
-from tfscreen.tfmodel.model_class import ModelClass
-from tfscreen.tfmodel.prediction import copy_model_class
+from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+from tfscreen.tfmodel.analysis.prediction import copy_model_class
 
 @pytest.fixture
 def dummy_mc():
-    """Create a dummy ModelClass instance for testing."""
+    """Create a dummy ModelOrchestrator instance for testing."""
     growth_df = pd.DataFrame({
         "genotype": ["wt", "wt", "M42V", "M42V"],
         "titrant_name": ["tit1", "tit1", "tit1", "tit1"],
@@ -28,7 +28,7 @@ def dummy_mc():
         "theta_std": [0.01, 0.01]
     })
 
-    return ModelClass(growth_df, binding_df)
+    return ModelOrchestrator(growth_df, binding_df)
 
 def test_copy_model_class_defaults(dummy_mc):
     """Test copy_model_class with all None inputs."""

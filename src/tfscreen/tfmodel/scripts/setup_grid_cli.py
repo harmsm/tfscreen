@@ -65,7 +65,7 @@ from tfscreen.util.grid_utils import (
     relativize_config_paths as _relativize_config_paths,
     relativize_template_vars as _relativize_template_vars,
 )
-from tfscreen.tfmodel.registry import model_registry
+from tfscreen.tfmodel.generative.registry import model_registry
 from tfscreen.tfmodel.scripts.configure_model_cli import (
     configure_model,
 )

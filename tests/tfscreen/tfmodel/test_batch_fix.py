@@ -1,6 +1,6 @@
 import pytest
 import jax.numpy as jnp
-from tfscreen.tfmodel.batch import get_batch
+from tfscreen.tfmodel.tensors.batch import get_batch
 
 class MockGrowthData:
     def __init__(self, **kwargs):

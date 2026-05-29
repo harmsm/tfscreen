@@ -2,9 +2,9 @@ import pytest
 import os
 import jax.numpy as jnp
 import numpy as np
-from tfscreen.tfmodel.model_class import ModelClass
-from tfscreen.tfmodel.extraction import extract_parameters
-from tfscreen.tfmodel.run_inference import RunInference
+from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+from tfscreen.tfmodel.analysis.extraction import extract_parameters
+from tfscreen.tfmodel.inference.run_inference import RunInference
 import h5py
 
 @pytest.mark.slow
@@ -17,7 +17,7 @@ def test_checkpoint_and_posterior_smoke(growth_smoke_csv,
     out_prefix = os.path.join(tmpdir, "test_posteriors")
     
     # 1. Initialize and run a short optimization
-    model = ModelClass(
+    model = ModelOrchestrator(
         growth_df=growth_smoke_csv,
         binding_df=binding_smoke_csv,
         condition_growth="linear",
@@ -78,7 +78,7 @@ def test_extract_parameters_smoke(growth_smoke_csv,
     """
     out_prefix = os.path.join(tmpdir, "test_extract")
     
-    model = ModelClass(
+    model = ModelOrchestrator(
         growth_df=growth_smoke_csv,
         binding_df=binding_smoke_csv,
         theta="hill",

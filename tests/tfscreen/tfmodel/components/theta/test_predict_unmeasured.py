@@ -1,6 +1,6 @@
 """
 Tests for:
-  - tfscreen.tfmodel.predict_unmeasured
+  - tfscreen.tfmodel.analysis.predict_unmeasured
       (shared utilities: _build_genotype_indicators, _build_prediction_grid)
   - hill_mut.predict_unmeasured
 """
@@ -9,11 +9,11 @@ import pytest
 import numpy as np
 import pandas as pd
 
-from tfscreen.tfmodel.predict_unmeasured import (
+from tfscreen.tfmodel.analysis.predict_unmeasured import (
     _build_genotype_indicators,
     _build_prediction_grid,
 )
-from tfscreen.tfmodel.components.theta.hill_mut import (
+from tfscreen.tfmodel.generative.components.theta.hill_mut import (
     predict_unmeasured as hill_predict_unmeasured,
 )
 

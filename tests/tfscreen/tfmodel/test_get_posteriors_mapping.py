@@ -6,7 +6,7 @@ from numpyro import handlers
 import numpyro.distributions as dist
 from numpyro.infer import SVI, Trace_ELBO, Predictive
 from numpyro.infer.autoguide import AutoDelta
-from tfscreen.tfmodel.run_inference import RunInference
+from tfscreen.tfmodel.inference.run_inference import RunInference
 from flax import struct
 import jax
 import h5py

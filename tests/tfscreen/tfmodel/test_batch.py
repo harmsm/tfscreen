@@ -4,7 +4,7 @@ import numpy as np
 from collections import namedtuple
 
 # --- Import Module Under Test (MUT) ---
-from tfscreen.tfmodel.batch import get_batch
+from tfscreen.tfmodel.tensors.batch import get_batch
 
 # --- Mock Data Structures ---
 

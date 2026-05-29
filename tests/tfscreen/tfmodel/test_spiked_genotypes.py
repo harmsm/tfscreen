@@ -3,7 +3,7 @@ import pytest
 import pandas as pd
 import numpy as np
 import jax.numpy as jnp
-from tfscreen.tfmodel.model_class import ModelClass, _setup_batching
+from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator, _setup_batching
 from unittest.mock import MagicMock, patch
 
 @pytest.fixture
@@ -45,10 +45,10 @@ def test_spiked_genotypes_masking(dummy_data):
     spiked = ["A10G"]
     
     # We need to mock components to avoid full model initialization errors if any
-    # but ModelClass.__init__ calls _initialize_data which does most of the heavy lifting.
+    # but ModelOrchestrator.__init__ calls _initialize_data which does most of the heavy lifting.
     # We can use real data for this unit test since it's small.
     
-    gm = ModelClass(growth_df, binding_df, spiked_genotypes=spiked)
+    gm = ModelOrchestrator(growth_df, binding_df, spiked_genotypes=spiked)
     
     # Get genotype labels from the growth tensor manager
     genotype_idx = gm.growth_tm.tensor_dim_names.index("genotype")
@@ -66,7 +66,7 @@ def test_spiked_genotypes_validation(dummy_data):
     """Test that specifying a missing genotype raises ValueError."""
     growth_df, binding_df = dummy_data
     with pytest.raises(ValueError, match="not found in the growth dataset"):
-        ModelClass(growth_df, binding_df, spiked_genotypes=["C30W"])
+        ModelOrchestrator(growth_df, binding_df, spiked_genotypes=["C30W"])
 
 def test_setup_batching_zero_division():
     """Test the fix for ZeroDivisionError in _setup_batching."""
@@ -87,7 +87,7 @@ def test_setup_batching_zero_division():
 def test_spiked_genotypes_single_string(dummy_data):
     """Test that a single string is handled correctly as spiked_genotypes."""
     growth_df, binding_df = dummy_data
-    gm = ModelClass(growth_df, binding_df, spiked_genotypes="A10G")
+    gm = ModelOrchestrator(growth_df, binding_df, spiked_genotypes="A10G")
     
     genotype_idx = gm.growth_tm.tensor_dim_names.index("genotype")
     genotype_labels = gm.growth_tm.tensor_dim_labels[genotype_idx]

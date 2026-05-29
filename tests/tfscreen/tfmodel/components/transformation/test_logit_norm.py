@@ -2,7 +2,7 @@ import pytest
 import jax.numpy as jnp
 import numpyro
 
-from tfscreen.tfmodel.components.transformation import (
+from tfscreen.tfmodel.generative.components.transformation import (
     logit_norm,
     _congression as congression,
 )
@@ -43,7 +43,7 @@ def test_update_thetas_logit_norm_distinguishable_from_empirical():
 
     # empirical path would flatten mu/sigma as lam — passing only (lam,) should
     # produce a different (empirical-based) correction.
-    from tfscreen.tfmodel.components.transformation import empirical
+    from tfscreen.tfmodel.generative.components.transformation import empirical
     result_emp = empirical.update_thetas(theta, params=(lam,))
 
     # Both should have correct shape.

@@ -5,7 +5,7 @@ from numpyro.handlers import trace, substitute, seed
 from collections import namedtuple
 
 # --- Import Module Under Test (MUT) ---
-from tfscreen.tfmodel.components.activity.horseshoe import (
+from tfscreen.tfmodel.generative.components.activity.horseshoe import (
     ModelPriors,
     define_model,
     guide,

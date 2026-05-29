@@ -1,11 +1,11 @@
 import pandas as pd
 from tfscreen.tfmodel.configuration_io import read_configuration
-from tfscreen.tfmodel.checkpoint_io import resolve_param_file
-from tfscreen.tfmodel.extraction import (
+from tfscreen.tfmodel.inference.checkpoint_io import resolve_param_file
+from tfscreen.tfmodel.analysis.extraction import (
     extract_theta_curves,
     extract_theta_unmeasured,
 )
-from tfscreen.tfmodel.registry import model_registry
+from tfscreen.tfmodel.generative.registry import model_registry
 from tfscreen.util.cli import generalized_main, read_lines
 
 

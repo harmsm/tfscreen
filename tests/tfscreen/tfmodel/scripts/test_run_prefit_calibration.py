@@ -1,11 +1,11 @@
 """
 Tests for run_prefit_calibration.py.
 
-The pre-fit script builds an in-process calibration TFModel,
+The pre-fit script builds an in-process calibration ModelOrchestrator,
 runs MAP, computes Hessian-based per-site sigmas, and then writes
 in-place updates (with .bak backups) into the production priors and
 guesses CSVs.  These tests exercise the helper functions directly and
-mock the heavy machinery (read_configuration, TFModel, RunInference)
+mock the heavy machinery (read_configuration, ModelOrchestrator, RunInference)
 when testing the orchestration in run_prefit_calibration / main.
 """
 import dataclasses
@@ -50,7 +50,7 @@ from tfscreen.tfmodel.scripts.run_prefit_calibration_cli import (
 #
 # The real component-prior dataclasses are flax.struct.dataclass instances
 # that expose a .replace() method.  We define a few minimal substitutes
-# here so the unit tests don't need to instantiate a full TFModel.
+# here so the unit tests don't need to instantiate a full ModelOrchestrator.
 # ---------------------------------------------------------------------------
 
 @fstruct.dataclass
@@ -608,7 +608,7 @@ class TestBuildCalibrationModel:
 
         with patch(
             "tfscreen.tfmodel.scripts"
-            ".run_prefit_calibration_cli.TFModel"
+            ".run_prefit_calibration_cli.ModelOrchestrator"
         ) as MockGM:
             MockGM.return_value = MagicMock()
             growth_df = pd.DataFrame()
@@ -653,7 +653,7 @@ class TestBuildCalibrationModel:
 
         with patch(
             "tfscreen.tfmodel.scripts"
-            ".run_prefit_calibration_cli.TFModel"
+            ".run_prefit_calibration_cli.ModelOrchestrator"
         ) as MockGM:
             MockGM.return_value = MagicMock()
             _build_calibration_model(gm_prod, pd.DataFrame(), pd.DataFrame())
@@ -677,7 +677,7 @@ class TestBuildCalibrationModel:
 
         with patch(
             "tfscreen.tfmodel.scripts"
-            ".run_prefit_calibration_cli.TFModel"
+            ".run_prefit_calibration_cli.ModelOrchestrator"
         ) as MockGM:
             MockGM.return_value = MagicMock()
             _build_calibration_model(gm_prod, pd.DataFrame(), pd.DataFrame())
@@ -1082,7 +1082,7 @@ class TestPrefitMainCLI:
 def _build_fake_gm_cal(n_rep=1, n_t=3, n_cp=1, n_cs=1, n_tn=1, n_tc=1,
                        n_geno=2, include_ln_cfu0=True):
     """
-    Build a minimal MagicMock stand-in for TFModel that satisfies
+    Build a minimal MagicMock stand-in for ModelOrchestrator that satisfies
     every attribute access in _make_calibration_plots.
 
     Tensor shape convention: (R, T, CP, CS, TN, TC, G).

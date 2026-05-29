@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from numpyro.handlers import trace, substitute, seed
 from unittest.mock import MagicMock
 
-from tfscreen.tfmodel.components.growth_transition.baranyi_k import (
+from tfscreen.tfmodel.generative.components.growth_transition.baranyi_k import (
     define_model,
     guide,
     get_priors,

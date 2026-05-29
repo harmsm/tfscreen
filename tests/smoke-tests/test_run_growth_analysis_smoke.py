@@ -1,7 +1,7 @@
 import pytest
 import os
 import h5py
-from tfscreen.tfmodel.model_class import ModelClass
+from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
 from tfscreen.tfmodel.configuration_io import write_configuration
 from tfscreen.tfmodel.scripts.fit_model_cli import fit_model
 from tfscreen.tfmodel.scripts.sample_posterior_cli import sample_posterior
@@ -26,7 +26,7 @@ def test_run_growth_analysis_smoke(growth_smoke_csv, binding_smoke_csv, tmpdir):
     out_prefix = os.path.join(tmpdir, "run_smoke")
     
     # 1. Initialize a model and write its configuration
-    gm = ModelClass(
+    gm = ModelOrchestrator(
         growth_df=growth_smoke_csv,
         binding_df=binding_smoke_csv,
         condition_growth="linear",
@@ -79,7 +79,7 @@ def test_run_growth_analysis_nuts_smoke(growth_smoke_csv, binding_smoke_csv, tmp
     - a posterior HDF5 is written with the expected keys
     - a checkpoint pkl is written containing 'mcmc_samples'
     """
-    gm = ModelClass(
+    gm = ModelOrchestrator(
         growth_df=growth_smoke_csv,
         binding_df=binding_smoke_csv,
         condition_growth="linear",
@@ -134,7 +134,7 @@ def test_run_growth_analysis_nuts_posterior_smoke(growth_smoke_csv, binding_smok
     Runs a tiny NUTS chain, then re-generates posteriors from the checkpoint
     and verifies that the output HDF5 is recreated correctly.
     """
-    gm = ModelClass(
+    gm = ModelOrchestrator(
         growth_df=growth_smoke_csv,
         binding_df=binding_smoke_csv,
         condition_growth="linear",

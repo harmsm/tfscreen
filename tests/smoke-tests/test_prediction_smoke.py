@@ -3,9 +3,9 @@ import os
 import pandas as pd
 import numpy as np
 import jax.numpy as jnp
-from tfscreen.tfmodel.model_class import ModelClass
-from tfscreen.tfmodel.prediction import predict
-from tfscreen.tfmodel.run_inference import RunInference
+from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+from tfscreen.tfmodel.analysis.prediction import predict
+from tfscreen.tfmodel.inference.run_inference import RunInference
 
 @pytest.mark.slow
 def test_prediction_smoke(growth_smoke_csv, 
@@ -17,7 +17,7 @@ def test_prediction_smoke(growth_smoke_csv,
     out_prefix = os.path.join(tmpdir, "test_predict_smoke")
     
     # 1. Initialize and run a very short optimization to get samples
-    model = ModelClass(
+    model = ModelOrchestrator(
         growth_df=growth_smoke_csv,
         binding_df=binding_smoke_csv,
         theta="hill",
@@ -85,7 +85,7 @@ def test_prediction_smoke(growth_smoke_csv,
         
         # 4. Test categorical theta restriction (as requested)
         # Create model with categorical theta
-        model_cat = ModelClass(
+        model_cat = ModelOrchestrator(
             growth_df=growth_smoke_csv,
             binding_df=binding_smoke_csv,
             theta="categorical"

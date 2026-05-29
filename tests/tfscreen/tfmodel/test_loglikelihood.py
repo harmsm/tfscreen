@@ -92,7 +92,7 @@ def _make_binding_data(n_tname=1, n_tconc=3, n_geno=3,
 class TestGrowthObserveLogLikelihood:
 
     def _import(self):
-        from tfscreen.tfmodel.observe.growth import observe
+        from tfscreen.tfmodel.generative.observe.growth import observe
         return observe
 
     def test_perfect_prediction_beats_imperfect(self):
@@ -204,7 +204,7 @@ class TestGrowthObserveLogLikelihood:
 class TestBindingObserveLogLikelihood:
 
     def _import(self):
-        from tfscreen.tfmodel.observe.binding import observe
+        from tfscreen.tfmodel.generative.observe.binding import observe
         return observe
 
     def test_perfect_prediction_beats_imperfect(self):

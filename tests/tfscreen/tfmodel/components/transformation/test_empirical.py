@@ -1,7 +1,7 @@
 import pytest
 import jax.numpy as jnp
 
-from tfscreen.tfmodel.components.transformation import (
+from tfscreen.tfmodel.generative.components.transformation import (
     empirical,
     _congression as congression,
 )
@@ -36,7 +36,7 @@ def test_update_thetas_uses_empirical_not_logit_norm():
     will differ from the logit_norm correction.  This confirms that the baked-in
     theta_dist="empirical" is honoured and not silently overridden.
     """
-    from tfscreen.tfmodel.components.transformation import logit_norm
+    from tfscreen.tfmodel.generative.components.transformation import logit_norm
 
     theta = jnp.array([[0.1, 0.3, 0.5, 0.7, 0.9]])
     lam = 2.0

@@ -2,13 +2,13 @@ import pytest
 import pandas as pd
 import numpy as np
 from unittest.mock import MagicMock
-from tfscreen.tfmodel.model_class import ModelClass
-from tfscreen.tfmodel.extraction import extract_parameters
+from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+from tfscreen.tfmodel.analysis.extraction import extract_parameters
 
 @pytest.fixture
 def mock_model_congression():
-    """Create a ModelClass instance with minimal mocked internals for congression."""
-    model = MagicMock(spec=ModelClass)
+    """Create a ModelOrchestrator instance with minimal mocked internals for congression."""
+    model = MagicMock(spec=ModelOrchestrator)
     model._transformation = "logit_norm"
     model._theta = "none"
     model._condition_growth = "none"

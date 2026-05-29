@@ -4,10 +4,10 @@ import numpy as np
 import numpyro.handlers
 import numpyro.distributions as dist
 from tfscreen.tfmodel.data_class import DataClass, GrowthData, BindingData
-from tfscreen.tfmodel.batch import get_batch
-from tfscreen.tfmodel.components.dk_geno import hierarchical as dk_geno_hierarchical
-from tfscreen.tfmodel.components.activity import horseshoe as activity_horseshoe
-from tfscreen.tfmodel.model_class import ModelClass
+from tfscreen.tfmodel.tensors.batch import get_batch
+from tfscreen.tfmodel.generative.components.dk_geno import hierarchical as dk_geno_hierarchical
+from tfscreen.tfmodel.generative.components.activity import horseshoe as activity_horseshoe
+from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
 
 def test_batch_scaling_unbiased():
     """
@@ -23,7 +23,7 @@ def test_batch_scaling_unbiased():
     # scale_factor = 95 / 5 = 19.0
     expected_scale = 19.0
     
-    # Create scale vector as it would be in ModelClass.data
+    # Create scale vector as it would be in ModelOrchestrator.data
     full_scale_vector = jnp.ones(total_genotypes)
     not_binding_idx = jnp.arange(num_binding, total_genotypes)
     full_scale_vector = full_scale_vector.at[not_binding_idx].set(expected_scale)

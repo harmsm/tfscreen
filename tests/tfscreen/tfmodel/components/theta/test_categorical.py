@@ -7,7 +7,7 @@ from numpyro.handlers import trace, substitute, seed
 from collections import namedtuple
 
 # --- Import Module Under Test (MUT) ---
-from tfscreen.tfmodel.components.theta.categorical import (
+from tfscreen.tfmodel.generative.components.theta.categorical import (
     ModelPriors,
     ThetaParam,
     define_model,
@@ -227,7 +227,7 @@ def test_population_moments_logic(mock_data):
     with seed(rng_seed=0):
         theta_param = define_model(name, mock_data, priors)
 
-    from tfscreen.tfmodel.components.theta.categorical import get_population_moments
+    from tfscreen.tfmodel.generative.components.theta.categorical import get_population_moments
     mu, sigma = get_population_moments(theta_param, mock_data)
 
     assert mu.shape == (mock_data.num_titrant_name, mock_data.num_titrant_conc, 1)

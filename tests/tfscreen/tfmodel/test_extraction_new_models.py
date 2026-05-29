@@ -14,12 +14,12 @@ import numpy as np
 import pandas as pd
 from unittest.mock import MagicMock
 
-from tfscreen.tfmodel.model_class import ModelClass
-from tfscreen.tfmodel.extraction import (
+from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+from tfscreen.tfmodel.analysis.extraction import (
     extract_parameters,
     extract_theta_curves,
 )
-from tfscreen.tfmodel.components.theta import hill, hill_mut
+from tfscreen.tfmodel.generative.components.theta import hill, hill_mut
 
 
 # ---------------------------------------------------------------------------
@@ -30,7 +30,7 @@ def _make_model(theta="none", dk_geno="none", activity="fixed",
                 condition_growth="none", growth_transition="instant",
                 transformation="none"):
     """Build a minimal MagicMock model with two titrants and three genotypes."""
-    model = MagicMock(spec=ModelClass)
+    model = MagicMock(spec=ModelOrchestrator)
     model._theta = theta
     model._dk_geno = dk_geno
     model._activity = activity

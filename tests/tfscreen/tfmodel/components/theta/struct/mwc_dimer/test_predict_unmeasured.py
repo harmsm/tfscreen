@@ -6,10 +6,10 @@ import pytest
 import numpy as np
 import pandas as pd
 
-from tfscreen.tfmodel.components.theta.struct.mwc_dimer.lnK_mut import (
+from tfscreen.tfmodel.generative.components.theta.struct.mwc_dimer.lnK_mut import (
     predict_unmeasured as lnK_mut_predict,
 )
-from tfscreen.tfmodel.components.theta.struct.mwc_dimer.lnK_nn_prior import (
+from tfscreen.tfmodel.generative.components.theta.struct.mwc_dimer.lnK_nn_prior import (
     predict_unmeasured as lnK_nn_predict,
 )
 

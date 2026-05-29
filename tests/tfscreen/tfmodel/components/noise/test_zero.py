@@ -5,7 +5,7 @@ from numpyro.handlers import trace
 from collections import namedtuple
 
 # --- Import Module Under Test (MUT) ---
-from tfscreen.tfmodel.components.noise.zero import (
+from tfscreen.tfmodel.generative.components.noise.zero import (
     ModelPriors,
     define_model,
     guide,

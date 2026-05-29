@@ -3,8 +3,8 @@ import dill
 import numpy as np
 import h5py
 from tfscreen.tfmodel.configuration_io import read_configuration
-from tfscreen.tfmodel.run_inference import RunInference
-from tfscreen.tfmodel.extraction import extract_parameters
+from tfscreen.tfmodel.inference.run_inference import RunInference
+from tfscreen.tfmodel.analysis.extraction import extract_parameters
 from tfscreen.util.cli import generalized_main
 
 

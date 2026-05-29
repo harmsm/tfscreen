@@ -1,12 +1,12 @@
 """
-Regression tests for the _needs_mut gate in ModelClass.
+Regression tests for the _needs_mut gate in ModelOrchestrator.
 
 Covers the bug where *_unfolded_lnK_mut theta variants were omitted from
 the _needs_mut tuple in both the growth path and the binding_only path,
 causing num_mutation to stay 0 and per-mutation offset guesses to be
 zero-length arrays that failed the guesses-CSV validation.
 
-Each test checks that after ModelClass construction:
+Each test checks that after ModelOrchestrator construction:
   - mut_labels is non-empty
   - data.{growth,binding}.num_mutation > 0
 """
@@ -110,12 +110,12 @@ def test_needs_mut_growth_path(tmp_path, theta):
     Growth-path _needs_mut must fire for *_unfolded_lnK_mut variants so that
     the mutation decomposition matrices are built and num_mutation > 0.
     """
-    from tfscreen.tfmodel.model_class import ModelClass
+    from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
 
     growth_path  = _make_growth_csv(tmp_path)
     binding_path = _make_binding_csv(tmp_path)
 
-    mc = ModelClass(growth_path, binding_path, theta=theta)
+    mc = ModelOrchestrator(growth_path, binding_path, theta=theta)
 
     assert len(mc.mut_labels) > 0, \
         f"{theta} (growth): mut_labels is empty — _needs_mut did not fire"
@@ -137,11 +137,11 @@ def test_needs_mut_binding_only_path(tmp_path, theta):
     mutation matrices are built and per-mutation offset guesses have the right
     shape (not zero-length).
     """
-    from tfscreen.tfmodel.model_class import ModelClass
+    from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
 
     binding_path = _make_binding_csv(tmp_path)
 
-    mc = ModelClass(None, binding_path, binding_only=True, theta=theta)
+    mc = ModelOrchestrator(None, binding_path, binding_only=True, theta=theta)
 
     assert len(mc.mut_labels) > 0, \
         f"{theta} (binding_only): mut_labels is empty — _needs_mut did not fire"
@@ -162,10 +162,10 @@ def test_offset_guesses_have_correct_shape_binding_only(tmp_path, theta):
     The per-mutation offset initial guesses must have length == num_mutation,
     not zero.  A zero-length array indicates _needs_mut did not fire.
     """
-    from tfscreen.tfmodel.model_class import ModelClass
+    from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
 
     binding_path = _make_binding_csv(tmp_path)
-    mc = ModelClass(None, binding_path, binding_only=True, theta=theta)
+    mc = ModelOrchestrator(None, binding_path, binding_only=True, theta=theta)
 
     M = mc.data.binding.num_mutation
     assert M > 0

@@ -47,7 +47,7 @@ class TestLinearGrowthMath:
     """
 
     def _import(self):
-        from tfscreen.tfmodel.components.growth.linear import (
+        from tfscreen.tfmodel.generative.components.growth.linear import (
             calculate_growth, LinearParams as LP
         )
         return calculate_growth, LP
@@ -134,7 +134,7 @@ class TestHillRunModel:
     """
 
     def _import(self):
-        from tfscreen.tfmodel.components.theta.hill import (
+        from tfscreen.tfmodel.generative.components.theta.hill import (
             run_model, ThetaParam as TP
         )
         return run_model, TP
@@ -274,7 +274,7 @@ class TestCongression:
     """
 
     def _import(self):
-        from tfscreen.tfmodel.components.transformation._congression import (
+        from tfscreen.tfmodel.generative.components.transformation._congression import (
             _logit_normal_cdf,
             _empirical_cdf,
             update_thetas,

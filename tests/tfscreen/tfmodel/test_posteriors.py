@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 import h5py
-from tfscreen.tfmodel.posteriors import load_posteriors, get_posterior_samples
+from tfscreen.tfmodel.inference.posteriors import load_posteriors, get_posterior_samples
 
 def test_load_posteriors_dict():
     """Test loading posteriors from a dictionary."""

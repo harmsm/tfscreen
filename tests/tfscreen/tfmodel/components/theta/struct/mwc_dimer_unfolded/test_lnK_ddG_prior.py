@@ -25,7 +25,7 @@ from numpyro.handlers import trace, seed
 import unittest.mock as mock
 
 from tfscreen.genetics.build_mut_geno_matrix import build_mut_sparse_indices
-from tfscreen.tfmodel.components.theta.struct.mwc_dimer_unfolded.lnK_ddG_prior import (
+from tfscreen.tfmodel.generative.components.theta.struct.mwc_dimer_unfolded.lnK_ddG_prior import (
     STRUCTURE_NAMES,
     ModelPriors,
     _get_struct_perm,
@@ -37,7 +37,7 @@ from tfscreen.tfmodel.components.theta.struct.mwc_dimer_unfolded.lnK_ddG_prior i
     get_priors,
     get_extract_specs,
 )
-from tfscreen.tfmodel.components.theta.struct.mwc_dimer_unfolded.thermo import (
+from tfscreen.tfmodel.generative.components.theta.struct.mwc_dimer_unfolded.thermo import (
     ThetaParam,
 )
 
@@ -552,9 +552,9 @@ class TestGuide:
 # ---------------------------------------------------------------------------
 
 def test_registry_entry():
-    from tfscreen.tfmodel.registry import model_registry
+    from tfscreen.tfmodel.generative.registry import model_registry
     assert "mwc_dimer_unfolded_lnK_ddG_prior" in model_registry["theta"]
-    import tfscreen.tfmodel.components.theta.struct.mwc_dimer_unfolded.lnK_ddG_prior as mod
+    import tfscreen.tfmodel.generative.components.theta.struct.mwc_dimer_unfolded.lnK_ddG_prior as mod
     assert model_registry["theta"]["mwc_dimer_unfolded_lnK_ddG_prior"] is mod
 
 
@@ -645,10 +645,10 @@ class TestGetExtractSpecs:
 # predict_unmeasured
 # ---------------------------------------------------------------------------
 
-from tfscreen.tfmodel.components.theta.struct.mwc_dimer_unfolded.lnK_ddG_prior import (
+from tfscreen.tfmodel.generative.components.theta.struct.mwc_dimer_unfolded.lnK_ddG_prior import (
     predict_unmeasured as ddG_predict,
 )
-from tfscreen.tfmodel.components.theta.struct.mwc_dimer_unfolded.lnK_mut import (
+from tfscreen.tfmodel.generative.components.theta.struct.mwc_dimer_unfolded.lnK_mut import (
     predict_unmeasured as lnK_mut_predict,
 )
 

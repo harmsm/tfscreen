@@ -1,7 +1,7 @@
 import os
 import dill
 from tfscreen.tfmodel.configuration_io import read_configuration
-from tfscreen.tfmodel.run_inference import RunInference
+from tfscreen.tfmodel.inference.run_inference import RunInference
 from tfscreen.tfmodel.scripts.fit_model_cli import _run_svi
 from tfscreen.util.cli.generalized_main import generalized_main
 

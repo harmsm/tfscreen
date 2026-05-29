@@ -2,7 +2,7 @@ import pytest
 import pandas as pd
 import numpy as np
 
-from tfscreen.tfmodel.model_class import ModelClass
+from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
 
 def get_mock_df():
     # 4 genotypes, 2 condition pre, 2 condition sel, 2 titrant concs, 3 reps
@@ -41,7 +41,7 @@ def test_growth_shares_replicates():
     growth_df, binding_df = get_mock_df()
     
     # 1. Test without sharing replicates (Default)
-    model_default = ModelClass(growth_df=growth_df, binding_df=binding_df)
+    model_default = ModelOrchestrator(growth_df=growth_df, binding_df=binding_df)
     
     # Map condition conceptually defines (rep, cond) combinations pooled across pre and sel
     # Reps = 2, cond_pre = 2, cond_sel = 1 -> Total 6 combinations
@@ -49,7 +49,7 @@ def test_growth_shares_replicates():
     assert model_default.settings["growth_shares_replicates"] is False
     
     # 2. Test WITH sharing replicates
-    model_shared = ModelClass(growth_df=growth_df, binding_df=binding_df, growth_shares_replicates=True)
+    model_shared = ModelOrchestrator(growth_df=growth_df, binding_df=binding_df, growth_shares_replicates=True)
     
     # Should only be 3 combinations because replicate is ignored (cond_pre=2 + cond_sel=1 = 3)
     assert model_shared.data.growth.num_condition_rep == 3

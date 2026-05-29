@@ -16,7 +16,7 @@ from numpyro.handlers import trace, seed
 import unittest.mock as mock
 
 from tfscreen.genetics.build_mut_geno_matrix import build_mut_sparse_indices
-from tfscreen.tfmodel.components.theta.struct.lac_dimer.lnK_ddG_prior import (
+from tfscreen.tfmodel.generative.components.theta.struct.lac_dimer.lnK_ddG_prior import (
     STRUCTURE_NAMES,
     ModelPriors,
     _get_struct_perm,
@@ -28,7 +28,7 @@ from tfscreen.tfmodel.components.theta.struct.lac_dimer.lnK_ddG_prior import (
     get_priors,
     get_extract_specs,
 )
-from tfscreen.tfmodel.components.theta.struct.lac_dimer.thermo import (
+from tfscreen.tfmodel.generative.components.theta.struct.lac_dimer.thermo import (
     ThetaParam,
 )
 
@@ -432,9 +432,9 @@ class TestGuide:
 # ---------------------------------------------------------------------------
 
 def test_registry_entry():
-    from tfscreen.tfmodel.registry import model_registry
+    from tfscreen.tfmodel.generative.registry import model_registry
     assert "lac_dimer_lnK_ddG_prior" in model_registry["theta"]
-    import tfscreen.tfmodel.components.theta.struct.lac_dimer.lnK_ddG_prior as mod
+    import tfscreen.tfmodel.generative.components.theta.struct.lac_dimer.lnK_ddG_prior as mod
     assert model_registry["theta"]["lac_dimer_lnK_ddG_prior"] is mod
 
 

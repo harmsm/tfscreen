@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, ANY
 from collections import namedtuple
 
 # --- Import Module Under Test (MUT) ---
-from tfscreen.tfmodel.model import jax_model
+from tfscreen.tfmodel.generative.model import jax_model
 from tfscreen.tfmodel.data_class import (
     DataClass, PriorsClass, GrowthData, BindingData, 
     GrowthPriors, BindingPriors

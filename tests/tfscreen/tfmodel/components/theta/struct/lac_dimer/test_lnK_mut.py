@@ -5,7 +5,7 @@ from numpyro.handlers import trace, substitute, seed
 from collections import namedtuple
 
 from functools import partial
-from tfscreen.tfmodel.components.theta.struct.lac_dimer.lnK_mut import (
+from tfscreen.tfmodel.generative.components.theta.struct.lac_dimer.lnK_mut import (
     ModelPriors,
     _assemble_scalar,
     _assemble_titrant,
@@ -15,7 +15,7 @@ from tfscreen.tfmodel.components.theta.struct.lac_dimer.lnK_mut import (
     get_guesses,
     get_priors,
 )
-from tfscreen.tfmodel.components.theta.struct.lac_dimer.thermo import (
+from tfscreen.tfmodel.generative.components.theta.struct.lac_dimer.thermo import (
     ThetaParam,
     run_model,
     get_population_moments,

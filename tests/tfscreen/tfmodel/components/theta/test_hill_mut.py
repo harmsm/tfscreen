@@ -6,7 +6,7 @@ from numpyro.handlers import trace, substitute, seed
 from collections import namedtuple
 
 from functools import partial
-from tfscreen.tfmodel.components.theta.hill_mut import (
+from tfscreen.tfmodel.generative.components.theta.hill_mut import (
     ModelPriors,
     ThetaParam,
     define_model,

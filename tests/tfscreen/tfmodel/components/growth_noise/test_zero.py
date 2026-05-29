@@ -1,7 +1,7 @@
 import pytest
 import jax.numpy as jnp
 
-from tfscreen.tfmodel.components.growth_noise.zero import (
+from tfscreen.tfmodel.generative.components.growth_noise.zero import (
     ModelPriors,
     define_model,
     guide,

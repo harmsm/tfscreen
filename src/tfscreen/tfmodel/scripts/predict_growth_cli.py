@@ -1,6 +1,6 @@
 from tfscreen.tfmodel.configuration_io import read_configuration
-from tfscreen.tfmodel.checkpoint_io import resolve_param_file
-from tfscreen.tfmodel.prediction import predict
+from tfscreen.tfmodel.inference.checkpoint_io import resolve_param_file
+from tfscreen.tfmodel.analysis.prediction import predict
 from tfscreen.util.cli import generalized_main, read_lines
 
 

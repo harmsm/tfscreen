@@ -8,7 +8,7 @@ from numpyro.handlers import trace, substitute, seed
 from collections import namedtuple
 
 # --- Import Module Under Test (MUT) ---
-from tfscreen.tfmodel.components.ln_cfu0.hierarchical import (
+from tfscreen.tfmodel.generative.components.ln_cfu0.hierarchical import (
     ModelPriors,
     define_model,
     guide,

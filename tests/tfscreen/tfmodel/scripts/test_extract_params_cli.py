@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 from flax import struct
 from numpyro.infer.svi import SVIState
 
-from tfscreen.tfmodel.run_inference import RunInference
+from tfscreen.tfmodel.inference.run_inference import RunInference
 from tfscreen.tfmodel.scripts.extract_params_cli import extract_params
 
 
@@ -270,7 +270,7 @@ class TestExtractParamsErrors:
             ".extract_params_cli.read_configuration",
             return_value=(fake_gm, {}),
         ), patch(
-            "tfscreen.tfmodel.run_inference.RunInference.setup_svi",
+            "tfscreen.tfmodel.inference.run_inference.RunInference.setup_svi",
         ) as mock_setup:
             mock_svi = MagicMock()
             mock_svi.optim.get_params.return_value = {"some_param_mean": np.array(1.0)}

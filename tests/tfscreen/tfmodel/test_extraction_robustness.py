@@ -4,18 +4,18 @@ import numpy as np
 import h5py
 import os
 from unittest.mock import MagicMock, patch
-from tfscreen.tfmodel.model_class import ModelClass
-from tfscreen.tfmodel.extraction import (
+from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+from tfscreen.tfmodel.analysis.extraction import (
     extract_parameters, 
     extract_theta_curves,
     extract_growth_predictions
 )
-from tfscreen.tfmodel.posteriors import get_posterior_samples
+from tfscreen.tfmodel.inference.posteriors import get_posterior_samples
 
 @pytest.fixture
 def mock_model():
-    """Create a ModelClass instance with minimal mocked internals."""
-    model = MagicMock(spec=ModelClass)
+    """Create a ModelOrchestrator instance with minimal mocked internals."""
+    model = MagicMock(spec=ModelOrchestrator)
     model._transformation = "none"
     model._theta = "none"
     model._condition_growth = "none"

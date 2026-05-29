@@ -4,7 +4,7 @@ from numpyro.handlers import trace
 from collections import namedtuple
 
 # --- Import Module Under Test (MUT) ---
-from tfscreen.tfmodel.components.dk_geno.fixed import (
+from tfscreen.tfmodel.generative.components.dk_geno.fixed import (
     ModelPriors,
     define_model,
     guide,

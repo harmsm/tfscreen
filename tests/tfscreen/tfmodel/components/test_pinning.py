@@ -6,7 +6,7 @@ import numpyro.distributions as dist
 import pytest
 from numpyro.handlers import seed, trace
 
-from tfscreen.tfmodel.components._pinning import (
+from tfscreen.tfmodel.generative.components._pinning import (
     _hyper,
     _pinned_value,
 )

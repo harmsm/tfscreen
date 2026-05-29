@@ -14,7 +14,7 @@ from collections import namedtuple
 from functools import partial
 from numpyro.handlers import trace, seed, substitute
 
-from tfscreen.tfmodel.components.theta.struct.mwc_dimer.lnK_mut import (
+from tfscreen.tfmodel.generative.components.theta.struct.mwc_dimer.lnK_mut import (
     ModelPriors,
     _assemble_scalar,
     _assemble_titrant,
@@ -25,7 +25,7 @@ from tfscreen.tfmodel.components.theta.struct.mwc_dimer.lnK_mut import (
     get_priors,
     get_extract_specs,
 )
-from tfscreen.tfmodel.components.theta.struct.mwc_dimer.thermo import (
+from tfscreen.tfmodel.generative.components.theta.struct.mwc_dimer.thermo import (
     ThetaParam,
     run_model,
     get_population_moments,
@@ -581,9 +581,9 @@ def test_get_population_moments_shape(mock_data_no_epi):
 # ---------------------------------------------------------------------------
 
 def test_registry_entry():
-    from tfscreen.tfmodel.registry import model_registry
+    from tfscreen.tfmodel.generative.registry import model_registry
     assert "mwc_dimer_lnK_mut" in model_registry["theta"]
-    import tfscreen.tfmodel.components.theta.struct.mwc_dimer.lnK_mut as mod
+    import tfscreen.tfmodel.generative.components.theta.struct.mwc_dimer.lnK_mut as mod
     assert model_registry["theta"]["mwc_dimer_lnK_mut"] is mod
 
 

@@ -2,7 +2,7 @@ import pytest
 import pandas as pd
 import numpy as np
 import jax.numpy as jnp
-from tfscreen.tfmodel.tensor_manager import TensorManager
+from tfscreen.tfmodel.tensors.tensor_manager import TensorManager
 
 @pytest.fixture
 def sample_df():

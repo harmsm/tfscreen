@@ -6,7 +6,7 @@ import pandas as pd
 import numpyro
 import numpyro.distributions as dist
 import h5py
-from tfscreen.tfmodel.run_inference import RunInference
+from tfscreen.tfmodel.inference.run_inference import RunInference
 import os
 import dill
 import optax
@@ -179,7 +179,7 @@ def test_get_posteriors(tmpdir, mocker):
     mock_svi.get_params.return_value = {}
     
     # Mock Predictive
-    mock_predictive = mocker.patch("tfscreen.tfmodel.run_inference.Predictive")
+    mock_predictive = mocker.patch("tfscreen.tfmodel.inference.run_inference.Predictive")
     mock_latent_sampler = mock_predictive.return_value
     mock_latent_sampler.return_value = {"param": jnp.zeros((10, 10))} # Batch size 10, 10 genotypes
     
@@ -199,7 +199,7 @@ def test_get_posteriors_batching_logic(tmpdir, mocker):
     mock_svi.get_params.return_value = {}
     
     # Mock Predictive to return different sizes
-    mock_predictive = mocker.patch("tfscreen.tfmodel.run_inference.Predictive")
+    mock_predictive = mocker.patch("tfscreen.tfmodel.inference.run_inference.Predictive")
     mock_sampler = mock_predictive.return_value
     # num_samples=25, sampling_batch_size=10 -> 3 batches (10, 10, 5)
     # Each loop has 1 latent call and 1 forward call (forward_batch_size=512 > 5 genotypes)
@@ -228,7 +228,7 @@ def test_get_posteriors_full_logic(tmpdir, mocker):
     
     # 465-466: global parameter
     # 479-480: concatenate multiple forward batches (5 genotypes each)
-    mock_predictive = mocker.patch("tfscreen.tfmodel.run_inference.Predictive")
+    mock_predictive = mocker.patch("tfscreen.tfmodel.inference.run_inference.Predictive")
     mock_sampler = mock_predictive.return_value
     mock_sampler.side_effect = [
         {"global_p": jnp.zeros((1, 1)), "geno_p": jnp.zeros((1, 10))}, # latent 
@@ -421,8 +421,8 @@ def test_get_site_names(mocker):
     ri = RunInference(model, seed=42)
     
     # Mock trace and seed
-    mock_trace = mocker.patch("tfscreen.tfmodel.run_inference.trace")
-    mock_seed = mocker.patch("tfscreen.tfmodel.run_inference.seed")
+    mock_trace = mocker.patch("tfscreen.tfmodel.inference.run_inference.trace")
+    mock_seed = mocker.patch("tfscreen.tfmodel.inference.run_inference.seed")
     
     # Mock the trace object
     mock_t = mocker.Mock()

@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from unittest.mock import MagicMock
 from collections import namedtuple
 
-from tfscreen.tfmodel.components.transformation import single as transformation_single
+from tfscreen.tfmodel.generative.components.transformation import single as transformation_single
 from tfscreen.tfmodel.data_class import GrowthData
 
 def test_get_hyperparameters():

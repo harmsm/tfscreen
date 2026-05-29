@@ -1,6 +1,6 @@
 import pytest
 import jax.numpy as jnp
-from tfscreen.tfmodel.components.growth.linear_fixed import (
+from tfscreen.tfmodel.generative.components.growth.linear_fixed import (
     calculate_growth,
     LinearParams
 )

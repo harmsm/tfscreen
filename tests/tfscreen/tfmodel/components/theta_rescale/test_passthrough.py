@@ -1,5 +1,5 @@
 import jax.numpy as jnp
-from tfscreen.tfmodel.components.theta_rescale.passthrough import rescale
+from tfscreen.tfmodel.generative.components.theta_rescale.passthrough import rescale
 
 
 def test_passthrough_identity():

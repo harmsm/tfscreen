@@ -5,7 +5,7 @@ from numpyro.handlers import trace, substitute, seed
 from collections import namedtuple
 
 from tfscreen.genetics.build_mut_geno_matrix import build_mut_sparse_indices
-from tfscreen.tfmodel.components.activity.hierarchical_mut import (
+from tfscreen.tfmodel.generative.components.activity.hierarchical_mut import (
     ModelPriors,
     define_model,
     guide,

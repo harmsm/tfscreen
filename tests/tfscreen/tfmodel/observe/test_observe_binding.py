@@ -6,7 +6,7 @@ from numpyro.handlers import trace
 from collections import namedtuple
 
 # --- Import Module Under Test (MUT) ---
-from tfscreen.tfmodel.observe.binding import observe, guide
+from tfscreen.tfmodel.generative.observe.binding import observe, guide
 
 # --- Mock Data Fixture ---
 

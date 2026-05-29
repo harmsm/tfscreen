@@ -6,7 +6,7 @@ from numpyro.handlers import trace, substitute, seed
 from collections import namedtuple
 
 # --- Import Module Under Test (MUT) ---
-from tfscreen.tfmodel.components.theta.hill import (
+from tfscreen.tfmodel.generative.components.theta.hill import (
     ModelPriors,
     ThetaParam,
     define_model,
@@ -323,7 +323,7 @@ def test_population_moments_helper_shape(mock_data):
 
 import pandas as pd
 
-from tfscreen.tfmodel.components.theta.hill import (
+from tfscreen.tfmodel.generative.components.theta.hill import (
     predict_unmeasured as hill_predict_unmeasured,
 )
 

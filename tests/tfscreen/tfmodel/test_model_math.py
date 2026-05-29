@@ -17,15 +17,15 @@ from numpyro.handlers import trace, seed
 from collections import namedtuple
 from unittest.mock import MagicMock
 
-from tfscreen.tfmodel.model import jax_model
+from tfscreen.tfmodel.generative.model import jax_model
 
 # Real component implementations (the simplest ones — no latent parameters).
-from tfscreen.tfmodel.components.activity import fixed as activity_fixed
-from tfscreen.tfmodel.components.dk_geno import fixed as dk_geno_fixed
-from tfscreen.tfmodel.components.growth_transition import instant as growth_transition_instant
-from tfscreen.tfmodel.components.transformation import single as transformation_single
-from tfscreen.tfmodel.components.noise import zero as noise_zero
-from tfscreen.tfmodel.components.growth_noise import zero as growth_noise_zero
+from tfscreen.tfmodel.generative.components.activity import fixed as activity_fixed
+from tfscreen.tfmodel.generative.components.dk_geno import fixed as dk_geno_fixed
+from tfscreen.tfmodel.generative.components.growth_transition import instant as growth_transition_instant
+from tfscreen.tfmodel.generative.components.transformation import single as transformation_single
+from tfscreen.tfmodel.generative.components.noise import zero as noise_zero
+from tfscreen.tfmodel.generative.components.growth_noise import zero as growth_noise_zero
 
 
 # ---------------------------------------------------------------------------

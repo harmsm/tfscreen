@@ -114,8 +114,8 @@ def write_configuration(gm,
 
     Parameters
     ----------
-    gm : TFModel
-        Initialized TFModel object.
+    gm : ModelOrchestrator
+        Initialized ModelOrchestrator object.
     out_prefix : str
         Root filename for output files.
     growth_df_path : str
@@ -237,11 +237,11 @@ def write_configuration(gm,
         final_guesses[cols].to_csv(guesses_path, index=False)
         print(f"Wrote guesses to {guesses_path}")
 
-from tfscreen.tfmodel.model_class import ModelClass as TFModel
+from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
 
 def read_configuration(config_file):
     """
-    Read the configuration file and initialize the TFModel and init_params.
+    Read the configuration file and initialize the ModelOrchestrator and init_params.
 
     Parameters
     ----------
@@ -250,8 +250,8 @@ def read_configuration(config_file):
 
     Returns
     -------
-    gm : TFModel
-        Initialized TFModel object.
+    gm : ModelOrchestrator
+        Initialized ModelOrchestrator object.
     init_params : dict
         Dictionary of initial parameters for the model.
     """
@@ -276,7 +276,7 @@ def read_configuration(config_file):
 
     batch_size = settings.pop("batch_size", None)
 
-    gm = TFModel(growth_df_path,
+    gm = ModelOrchestrator(growth_df_path,
                      binding_df_path,
                      batch_size=batch_size,
                      **settings)

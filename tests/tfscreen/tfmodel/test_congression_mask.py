@@ -1,6 +1,6 @@
 import pytest
 import jax.numpy as jnp
-from tfscreen.tfmodel.components.transformation import _congression as transformation_congression
+from tfscreen.tfmodel.generative.components.transformation import _congression as transformation_congression
 
 def test_update_thetas_with_mask():
     """Verify that the mask correctly selects between corrected and uncorrected thetas."""

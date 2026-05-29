@@ -44,7 +44,7 @@ import numpy as np
 import dill
 
 from tfscreen.tfmodel.configuration_io import read_configuration
-from tfscreen.tfmodel.run_inference import RunInference
+from tfscreen.tfmodel.inference.run_inference import RunInference
 
 
 def diagnose_nan(config_file,

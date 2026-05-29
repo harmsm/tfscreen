@@ -31,8 +31,8 @@ OUT_FILE  = os.path.join(OUT_DIR, "numpyro_reference_posteriors.npz")
 
 sys.path.insert(0, os.path.join(REPO_ROOT, "src"))
 
-from tfscreen.tfmodel.model_class import ModelClass
-from tfscreen.tfmodel.run_inference import RunInference
+from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+from tfscreen.tfmodel.inference.run_inference import RunInference
 
 GROWTH_CSV  = os.path.join(DATA_DIR, "growth-smoke.csv")
 BINDING_CSV = os.path.join(DATA_DIR, "binding-smoke.csv")
@@ -47,7 +47,7 @@ NUM_SAMPLES = 500    # posterior samples to draw
 
 def run():
     print("Initialising model …")
-    model = ModelClass(
+    model = ModelOrchestrator(
         growth_df=GROWTH_CSV,
         binding_df=BINDING_CSV,
         batch_size=BATCH_SIZE,

@@ -1,6 +1,6 @@
 import pytest
 import jax.numpy as jnp
-from tfscreen.tfmodel.components.growth_transition.instant import (
+from tfscreen.tfmodel.generative.components.growth_transition.instant import (
     define_model, guide, get_priors, get_hyperparameters, get_guesses
 )
 from unittest.mock import MagicMock

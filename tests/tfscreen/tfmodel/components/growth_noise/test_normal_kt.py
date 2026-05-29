@@ -6,7 +6,7 @@ import numpyro.distributions as dist
 from numpyro.infer import Predictive
 import jax
 
-from tfscreen.tfmodel.components.growth_noise.normal_kt import (
+from tfscreen.tfmodel.generative.components.growth_noise.normal_kt import (
     ModelPriors,
     define_model,
     guide,
@@ -15,7 +15,7 @@ from tfscreen.tfmodel.components.growth_noise.normal_kt import (
     get_guesses,
     get_extract_specs,
 )
-from tfscreen.tfmodel.registry import model_registry
+from tfscreen.tfmodel.generative.registry import model_registry
 
 
 class TestNormalKtGrowthNoise:

@@ -10,7 +10,7 @@ Verifies that:
 """
 
 import pytest
-from tfscreen.tfmodel.registry import model_registry
+from tfscreen.tfmodel.generative.registry import model_registry
 
 # Categories whose values are {name: module} dicts.
 COMPONENT_CATEGORIES = [

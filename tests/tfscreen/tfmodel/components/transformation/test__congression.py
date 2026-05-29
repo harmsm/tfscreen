@@ -5,7 +5,7 @@ import numpyro
 from numpyro import distributions as dist
 from unittest.mock import MagicMock, patch
 
-from tfscreen.tfmodel.components.transformation import (
+from tfscreen.tfmodel.generative.components.transformation import (
     _congression as transformation_congression,
 )
 

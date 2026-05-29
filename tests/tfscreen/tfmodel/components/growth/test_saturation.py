@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from numpyro.handlers import trace, substitute, seed
 from collections import namedtuple
 
-from tfscreen.tfmodel.components.growth.saturation import (
+from tfscreen.tfmodel.generative.components.growth.saturation import (
     ModelPriors,
     define_model,
     guide,

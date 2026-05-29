@@ -13,7 +13,7 @@ import numpy as np
 import jax.numpy as jnp
 from collections import namedtuple
 
-from tfscreen.tfmodel.components.theta.struct.mwc_dimer_unfolded.thermo import (
+from tfscreen.tfmodel.generative.components.theta.struct.mwc_dimer_unfolded.thermo import (
     ThetaParam,
     _compute_theta,
     _population_moments,

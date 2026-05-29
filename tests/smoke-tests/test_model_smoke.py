@@ -2,14 +2,14 @@ import pytest
 import os
 import shutil
 import jax.numpy as jnp
-from tfscreen.tfmodel.model_class import ModelClass
-from tfscreen.tfmodel.run_inference import RunInference
-from tfscreen.tfmodel.registry import model_registry
+from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+from tfscreen.tfmodel.inference.run_inference import RunInference
+from tfscreen.tfmodel.generative.registry import model_registry
 
 # Define configurations to test
 # We want to test a representative subset of the registry
 # Define configurations to test. Each configuration is a dictionary of 
-# ModelClass arguments. We want to make sure every entry in the 
+# ModelOrchestrator arguments. We want to make sure every entry in the 
 # model_registry is tested at least once. 
 SMOKE_CONFIGS = [
     # Default-ish config
@@ -79,8 +79,8 @@ def test_model_svi_smoke(growth_smoke_csv,
     """
     out_prefix = os.path.join(tmpdir, "smoke_test")
     
-    # Initialize ModelClass
-    model = ModelClass(
+    # Initialize ModelOrchestrator
+    model = ModelOrchestrator(
         growth_df=growth_smoke_csv,
         binding_df=binding_smoke_csv,
         batch_size=None, # Use all data for smoke test
@@ -113,7 +113,7 @@ def test_model_svi_smoke_lnK_nn_prior(growth_smoke_csv,
     """SVI smoke test for lac_dimer_lnK_nn_prior (requires struct_ensemble_path)."""
     out_prefix = os.path.join(tmpdir, "smoke_nn_prior")
 
-    model = ModelClass(
+    model = ModelOrchestrator(
         growth_df=growth_smoke_csv,
         binding_df=binding_smoke_csv,
         batch_size=None,

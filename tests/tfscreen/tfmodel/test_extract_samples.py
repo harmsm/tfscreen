@@ -12,8 +12,8 @@ import numpy as np
 import pandas as pd
 from unittest.mock import MagicMock
 
-from tfscreen.tfmodel.model_class import ModelClass
-from tfscreen.tfmodel.extraction import (
+from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+from tfscreen.tfmodel.analysis.extraction import (
     extract_theta_curves,
     extract_growth_predictions,
 )
@@ -28,7 +28,7 @@ _Q = {"median": 0.5}   # single quantile keeps assertions simple
 
 def _hill_model():
     """Minimal mock for theta='hill' with 2 groups (wt/iptg, mut/iptg)."""
-    model = MagicMock(spec=ModelClass)
+    model = MagicMock(spec=ModelOrchestrator)
     model._theta = "hill"
     mock_tm = MagicMock()
     mock_tm.df = pd.DataFrame({
@@ -54,7 +54,7 @@ def _hill_posteriors(S=10, num_groups=2):
 
 def _hill_mut_model():
     """Minimal mock for theta='hill_mut', T=2 titrants, G=3 genotypes."""
-    model = MagicMock(spec=ModelClass)
+    model = MagicMock(spec=ModelOrchestrator)
     model._theta = "hill_mut"
     mock_tm = MagicMock()
     mock_tm.df = pd.DataFrame({
@@ -80,7 +80,7 @@ def _hill_mut_posteriors(S=10):
 
 def _lac_dimer_mut_model():
     """Minimal mock for theta='lac_dimer_lnK_mut', T=1 titrant, G=2 genotypes."""
-    model = MagicMock(spec=ModelClass)
+    model = MagicMock(spec=ModelOrchestrator)
     model._theta = "lac_dimer_lnK_mut"
     mock_tm = MagicMock()
     mock_tm.df = pd.DataFrame({
@@ -107,7 +107,7 @@ def _lac_dimer_mut_posteriors(S=10):
 
 def _tf_model():
     """Minimal mock for extract_growth_predictions; 2 rows."""
-    model = MagicMock(spec=ModelClass)
+    model = MagicMock(spec=ModelOrchestrator)
     model.growth_df = pd.DataFrame({
         "replicate":       [0, 0],
         "genotype":        ["G0", "G0"],

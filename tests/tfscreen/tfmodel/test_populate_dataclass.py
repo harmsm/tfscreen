@@ -4,7 +4,7 @@ import numpy as np
 from flax.struct import dataclass
 
 # Assuming the function is in this module
-from tfscreen.tfmodel.populate_dataclass import populate_dataclass
+from tfscreen.tfmodel.tensors.populate_dataclass import populate_dataclass
 
 # --- Setup: Define a target dataclass for testing ---
 
