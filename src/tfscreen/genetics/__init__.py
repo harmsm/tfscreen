@@ -1,4 +1,9 @@
 
+from .data import (
+    CODON_TO_AA,
+    DEGEN_BASE_SPECIFIER,
+    COMPLEMENT_DICT
+)
 
 from .genotype_sorting import (
     standardize_genotypes,

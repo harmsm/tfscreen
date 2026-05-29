@@ -1,32 +1,14 @@
-./create_run_dirs.py:93:19: E221 multiple spaces before operator
-./create_run_dirs.py:94:21: E221 multiple spaces before operator
-./create_run_dirs.py:95:21: E221 multiple spaces before operator
-./create_run_dirs.py:96:19: E221 multiple spaces before operator
-./create_run_dirs.py:110:28: E251 unexpected spaces around keyword / parameter equals
-./create_run_dirs.py:110:28: E221 multiple spaces before operator
-./create_run_dirs.py:110:33: E251 unexpected spaces around keyword / parameter equals
-./create_run_dirs.py:111:27: E251 unexpected spaces around keyword / parameter equals
-./create_run_dirs.py:111:27: E221 multiple spaces before operator
-./create_run_dirs.py:111:33: E251 unexpected spaces around keyword / parameter equals
-./create_run_dirs.py:112:29: E251 unexpected spaces around keyword / parameter equals
-./create_run_dirs.py:112:29: E221 multiple spaces before operator
-./create_run_dirs.py:112:33: E251 unexpected spaces around keyword / parameter equals
-./create_run_dirs.py:113:33: E251 unexpected spaces around keyword / parameter equals
-./create_run_dirs.py:114:29: E251 unexpected spaces around keyword / parameter equals
-./create_run_dirs.py:114:29: E221 multiple spaces before operator
-./create_run_dirs.py:114:33: E251 unexpected spaces around keyword / parameter equals
 ./scripts/generate_struct_ensemble.py:266:11: E221 multiple spaces before operator
 ./scripts/generate_struct_ensemble.py:272:24: E221 multiple spaces before operator
 ./scripts/generate_struct_ensemble.py:433:18: E221 multiple spaces before operator
 ./src/tfscreen/__init__.py:8:1: F401 '.process_raw' imported but unused
 ./src/tfscreen/__init__.py:10:1: F401 '.util' imported but unused
-./src/tfscreen/__init__.py:11:1: F401 '.data' imported but unused
-./src/tfscreen/__init__.py:12:1: F401 '.mle' imported but unused
-./src/tfscreen/__init__.py:13:1: F401 '.plot' imported but unused
-./src/tfscreen/__init__.py:15:1: F401 '.analysis' imported but unused
-./src/tfscreen/__init__.py:16:1: F401 '.simulate' imported but unused
-./src/tfscreen/__init__.py:17:1: F401 '.growth_model' imported but unused
-./src/tfscreen/__init__.py:20:1: W391 blank line at end of file
+./src/tfscreen/__init__.py:11:1: F401 '.mle' imported but unused
+./src/tfscreen/__init__.py:12:1: F401 '.plot' imported but unused
+./src/tfscreen/__init__.py:14:1: F401 '.analysis' imported but unused
+./src/tfscreen/__init__.py:15:1: F401 '.simulate' imported but unused
+./src/tfscreen/__init__.py:16:1: F401 '.growth_model' imported but unused
+./src/tfscreen/__init__.py:19:1: W391 blank line at end of file
 ./src/tfscreen/__version__.py:5:16: W291 trailing whitespace
 ./src/tfscreen/analysis/__init__.py:2:1: F401 '.cat_response.cat_response' imported but unused
 ./src/tfscreen/analysis/__init__.py:6:1: F401 '.extract_epistasis.extract_epistasis' imported but unused
@@ -134,38 +116,20 @@
 ./src/tfscreen/analysis/extract_epistasis.py:229:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/extract_epistasis.py:231:10: W291 trailing whitespace
 ./src/tfscreen/analysis/extract_epistasis.py:233:30: W291 trailing whitespace
-./src/tfscreen/data.py:25:8: E231 missing whitespace after ':'
-./src/tfscreen/data.py:26:8: E231 missing whitespace after ':'
-./src/tfscreen/data.py:27:8: E231 missing whitespace after ':'
-./src/tfscreen/data.py:28:8: E231 missing whitespace after ':'
-./src/tfscreen/data.py:29:8: E231 missing whitespace after ':'
-./src/tfscreen/data.py:30:8: E231 missing whitespace after ':'
-./src/tfscreen/data.py:31:8: E231 missing whitespace after ':'
-./src/tfscreen/data.py:32:8: E231 missing whitespace after ':'
-./src/tfscreen/data.py:33:8: E231 missing whitespace after ':'
-./src/tfscreen/data.py:34:8: E231 missing whitespace after ':'
-./src/tfscreen/data.py:35:8: E231 missing whitespace after ':'
-./src/tfscreen/data.py:36:8: E231 missing whitespace after ':'
-./src/tfscreen/data.py:37:8: E231 missing whitespace after ':'
-./src/tfscreen/data.py:38:8: E231 missing whitespace after ':'
-./src/tfscreen/data.py:41:23: E231 missing whitespace after ':'
-./src/tfscreen/data.py:42:23: E231 missing whitespace after ':'
-./src/tfscreen/data.py:43:23: E231 missing whitespace after ':'
-./src/tfscreen/data.py:44:23: E231 missing whitespace after ':'
-./src/tfscreen/data.py:45:23: E231 missing whitespace after ':'
-./src/tfscreen/data.py:46:23: E231 missing whitespace after ':'
-./src/tfscreen/data.py:46:28: W292 no newline at end of file
-./src/tfscreen/genetics/__init__.py:3:1: F401 '.genotype_sorting.standardize_genotypes' imported but unused
-./src/tfscreen/genetics/__init__.py:3:1: F401 '.genotype_sorting.argsort_genotypes' imported but unused
-./src/tfscreen/genetics/__init__.py:3:1: F401 '.genotype_sorting.set_categorical_genotype' imported but unused
-./src/tfscreen/genetics/__init__.py:9:1: F401 '.expand_genotype_columns.expand_genotype_columns' imported but unused
-./src/tfscreen/genetics/__init__.py:11:1: F401 '.combine_mutation_effects.combine_mutation_effects' imported but unused
-./src/tfscreen/genetics/__init__.py:15:1: F401 '.build_cycles.build_cycles' imported but unused
-./src/tfscreen/genetics/__init__.py:19:1: F401 '.get_single_with_wt.get_single_with_wt' imported but unused
-./src/tfscreen/genetics/__init__.py:23:1: F401 '.library_manager.LibraryManager' imported but unused
-./src/tfscreen/genetics/__init__.py:25:1: F401 '.build_mut_geno_matrix.build_mut_geno_matrix' imported but unused
-./src/tfscreen/genetics/__init__.py:27:1: F401 '.count_mutation_backgrounds.count_mutation_backgrounds' imported but unused
-./src/tfscreen/genetics/__init__.py:27:67: W292 no newline at end of file
+./src/tfscreen/genetics/__init__.py:2:1: F401 '.data.CODON_TO_AA' imported but unused
+./src/tfscreen/genetics/__init__.py:2:1: F401 '.data.DEGEN_BASE_SPECIFIER' imported but unused
+./src/tfscreen/genetics/__init__.py:2:1: F401 '.data.COMPLEMENT_DICT' imported but unused
+./src/tfscreen/genetics/__init__.py:8:1: F401 '.genotype_sorting.standardize_genotypes' imported but unused
+./src/tfscreen/genetics/__init__.py:8:1: F401 '.genotype_sorting.argsort_genotypes' imported but unused
+./src/tfscreen/genetics/__init__.py:8:1: F401 '.genotype_sorting.set_categorical_genotype' imported but unused
+./src/tfscreen/genetics/__init__.py:14:1: F401 '.expand_genotype_columns.expand_genotype_columns' imported but unused
+./src/tfscreen/genetics/__init__.py:16:1: F401 '.combine_mutation_effects.combine_mutation_effects' imported but unused
+./src/tfscreen/genetics/__init__.py:20:1: F401 '.build_cycles.build_cycles' imported but unused
+./src/tfscreen/genetics/__init__.py:24:1: F401 '.get_single_with_wt.get_single_with_wt' imported but unused
+./src/tfscreen/genetics/__init__.py:28:1: F401 '.library_manager.LibraryManager' imported but unused
+./src/tfscreen/genetics/__init__.py:30:1: F401 '.build_mut_geno_matrix.build_mut_geno_matrix' imported but unused
+./src/tfscreen/genetics/__init__.py:32:1: F401 '.count_mutation_backgrounds.count_mutation_backgrounds' imported but unused
+./src/tfscreen/genetics/__init__.py:32:67: W292 no newline at end of file
 ./src/tfscreen/genetics/build_cycles.py:6:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/genetics/build_cycles.py:26:1: W293 blank line contains whitespace
 ./src/tfscreen/genetics/build_cycles.py:69:26: W291 trailing whitespace
@@ -186,6 +150,27 @@
 ./src/tfscreen/genetics/combine_mutation_effects.py:102:1: W293 blank line contains whitespace
 ./src/tfscreen/genetics/combine_mutation_effects.py:103:25: W292 no newline at end of file
 ./src/tfscreen/genetics/count_mutation_backgrounds.py:8:1: C901 'count_mutation_backgrounds' is too complex (12)
+./src/tfscreen/genetics/data.py:25:8: E231 missing whitespace after ':'
+./src/tfscreen/genetics/data.py:26:8: E231 missing whitespace after ':'
+./src/tfscreen/genetics/data.py:27:8: E231 missing whitespace after ':'
+./src/tfscreen/genetics/data.py:28:8: E231 missing whitespace after ':'
+./src/tfscreen/genetics/data.py:29:8: E231 missing whitespace after ':'
+./src/tfscreen/genetics/data.py:30:8: E231 missing whitespace after ':'
+./src/tfscreen/genetics/data.py:31:8: E231 missing whitespace after ':'
+./src/tfscreen/genetics/data.py:32:8: E231 missing whitespace after ':'
+./src/tfscreen/genetics/data.py:33:8: E231 missing whitespace after ':'
+./src/tfscreen/genetics/data.py:34:8: E231 missing whitespace after ':'
+./src/tfscreen/genetics/data.py:35:8: E231 missing whitespace after ':'
+./src/tfscreen/genetics/data.py:36:8: E231 missing whitespace after ':'
+./src/tfscreen/genetics/data.py:37:8: E231 missing whitespace after ':'
+./src/tfscreen/genetics/data.py:38:8: E231 missing whitespace after ':'
+./src/tfscreen/genetics/data.py:41:23: E231 missing whitespace after ':'
+./src/tfscreen/genetics/data.py:42:23: E231 missing whitespace after ':'
+./src/tfscreen/genetics/data.py:43:23: E231 missing whitespace after ':'
+./src/tfscreen/genetics/data.py:44:23: E231 missing whitespace after ':'
+./src/tfscreen/genetics/data.py:45:23: E231 missing whitespace after ':'
+./src/tfscreen/genetics/data.py:46:23: E231 missing whitespace after ':'
+./src/tfscreen/genetics/data.py:46:28: W292 no newline at end of file
 ./src/tfscreen/genetics/expand_genotype_columns.py:5:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/genetics/expand_genotype_columns.py:16:51: W291 trailing whitespace
 ./src/tfscreen/genetics/expand_genotype_columns.py:47:1: W293 blank line contains whitespace
@@ -2680,12 +2665,10 @@
 ./src/tfscreen/mle/__init__.py:2:1: F401 '.fitters.run_least_squares' imported but unused
 ./src/tfscreen/mle/__init__.py:2:1: F401 '.fitters.run_matrix_nls' imported but unused
 ./src/tfscreen/mle/__init__.py:2:1: F401 '.fitters.run_matrix_wls' imported but unused
-./src/tfscreen/mle/__init__.py:2:1: F401 '.fitters.run_ols_2D' imported but unused
-./src/tfscreen/mle/__init__.py:2:1: F401 '.fitters.run_wls_2D' imported but unused
-./src/tfscreen/mle/__init__.py:10:1: F401 '.predict_with_error.predict_with_error' imported but unused
-./src/tfscreen/mle/__init__.py:14:1: F401 '.stats_test_suite.stats_test_suite' imported but unused
-./src/tfscreen/mle/__init__.py:18:1: F401 '.fit_manager.FitManager' imported but unused
-./src/tfscreen/mle/__init__.py:22:1: F401 '.parse_patsy.parse_patsy' imported but unused
+./src/tfscreen/mle/__init__.py:8:1: F401 '.predict_with_error.predict_with_error' imported but unused
+./src/tfscreen/mle/__init__.py:12:1: F401 '.stats_test_suite.stats_test_suite' imported but unused
+./src/tfscreen/mle/__init__.py:16:1: F401 '.fit_manager.FitManager' imported but unused
+./src/tfscreen/mle/__init__.py:20:1: F401 '.parse_patsy.parse_patsy' imported but unused
 ./src/tfscreen/mle/curve_models/__init__.py:4:77: W291 trailing whitespace
 ./src/tfscreen/mle/curve_models/__init__.py:5:42: W291 trailing whitespace
 ./src/tfscreen/mle/curve_models/__init__.py:11:77: W291 trailing whitespace
@@ -2871,9 +2854,7 @@
 ./src/tfscreen/mle/fitters/__init__.py:2:1: F401 '.least_squares.run_least_squares' imported but unused
 ./src/tfscreen/mle/fitters/__init__.py:4:1: F401 '.matrix_nls.run_matrix_nls' imported but unused
 ./src/tfscreen/mle/fitters/__init__.py:5:1: F401 '.matrix_wls.run_matrix_wls' imported but unused
-./src/tfscreen/mle/fitters/__init__.py:7:1: F401 '.wls_2D.run_wls_2D' imported but unused
-./src/tfscreen/mle/fitters/__init__.py:8:1: F401 '.ols_2D.run_ols_2D' imported but unused
-./src/tfscreen/mle/fitters/__init__.py:9:1: W391 blank line at end of file
+./src/tfscreen/mle/fitters/__init__.py:7:1: W391 blank line at end of file
 ./src/tfscreen/mle/fitters/_util.py:5:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/mle/fitters/_util.py:5:14: E231 missing whitespace after ','
 ./src/tfscreen/mle/fitters/_util.py:5:24: E231 missing whitespace after ','
@@ -2914,34 +2895,6 @@
 ./src/tfscreen/mle/fitters/matrix_wls.py:52:40: W291 trailing whitespace
 ./src/tfscreen/mle/fitters/matrix_wls.py:54:1: W293 blank line contains whitespace
 ./src/tfscreen/mle/fitters/matrix_wls.py:55:52: W292 no newline at end of file
-./src/tfscreen/mle/fitters/ols_2D.py:3:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/mle/fitters/ols_2D.py:3:24: E231 missing whitespace after ','
-./src/tfscreen/mle/fitters/ols_2D.py:31:1: W293 blank line contains whitespace
-./src/tfscreen/mle/fitters/ols_2D.py:35:1: W293 blank line contains whitespace
-./src/tfscreen/mle/fitters/ols_2D.py:46:1: W293 blank line contains whitespace
-./src/tfscreen/mle/fitters/ols_2D.py:49:1: W293 blank line contains whitespace
-./src/tfscreen/mle/fitters/ols_2D.py:60:82: E225 missing whitespace around operator
-./src/tfscreen/mle/fitters/ols_2D.py:61:1: W293 blank line contains whitespace
-./src/tfscreen/mle/fitters/ols_2D.py:74:1: W293 blank line contains whitespace
-./src/tfscreen/mle/fitters/ols_2D.py:76:51: W291 trailing whitespace
-./src/tfscreen/mle/fitters/ols_2D.py:77:75: E225 missing whitespace around operator
-./src/tfscreen/mle/fitters/ols_2D.py:78:1: W293 blank line contains whitespace
-./src/tfscreen/mle/fitters/ols_2D.py:81:44: W291 trailing whitespace
-./src/tfscreen/mle/fitters/ols_2D.py:82:71: E225 missing whitespace around operator
-./src/tfscreen/mle/fitters/ols_2D.py:91:1: W391 blank line at end of file
-./src/tfscreen/mle/fitters/wls_2D.py:3:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/mle/fitters/wls_2D.py:37:1: W293 blank line contains whitespace
-./src/tfscreen/mle/fitters/wls_2D.py:42:1: W293 blank line contains whitespace
-./src/tfscreen/mle/fitters/wls_2D.py:61:36: E225 missing whitespace around operator
-./src/tfscreen/mle/fitters/wls_2D.py:62:1: W293 blank line contains whitespace
-./src/tfscreen/mle/fitters/wls_2D.py:64:40: W291 trailing whitespace
-./src/tfscreen/mle/fitters/wls_2D.py:85:35: E225 missing whitespace around operator
-./src/tfscreen/mle/fitters/wls_2D.py:89:39: E225 missing whitespace around operator
-./src/tfscreen/mle/fitters/wls_2D.py:93:1: W293 blank line contains whitespace
-./src/tfscreen/mle/fitters/wls_2D.py:98:39: E225 missing whitespace around operator
-./src/tfscreen/mle/fitters/wls_2D.py:104:64: W291 trailing whitespace
-./src/tfscreen/mle/fitters/wls_2D.py:105:43: E225 missing whitespace around operator
-./src/tfscreen/mle/fitters/wls_2D.py:113:1: W391 blank line at end of file
 ./src/tfscreen/mle/parse_patsy.py:7:1: C901 'parse_patsy' is too complex (14)
 ./src/tfscreen/mle/parse_patsy.py:7:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/mle/parse_patsy.py:49:35: E231 missing whitespace after ','
@@ -4191,23 +4144,6 @@
 ./src/tfscreen/util/dataframe/get_scaled_cfu.py:76:1: W293 blank line contains whitespace
 ./src/tfscreen/util/dataframe/get_scaled_cfu.py:130:1: W293 blank line contains whitespace
 ./src/tfscreen/util/dataframe/get_scaled_cfu.py:131:14: W292 no newline at end of file
-./src/tfscreen/util/design.py:3:1: F401 'pandas as pd' imported but unused
-./src/tfscreen/util/design.py:5:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/util/design.py:53:1: W293 blank line contains whitespace
-./src/tfscreen/util/design.py:57:1: W293 blank line contains whitespace
-./src/tfscreen/util/design.py:61:75: W291 trailing whitespace
-./src/tfscreen/util/design.py:65:1: W293 blank line contains whitespace
-./src/tfscreen/util/design.py:70:1: W293 blank line contains whitespace
-./src/tfscreen/util/design.py:76:1: W293 blank line contains whitespace
-./src/tfscreen/util/design.py:77:41: W291 trailing whitespace
-./src/tfscreen/util/design.py:84:1: W293 blank line contains whitespace
-./src/tfscreen/util/design.py:100:28: E231 missing whitespace after ','
-./src/tfscreen/util/design.py:100:35: E231 missing whitespace after ','
-./src/tfscreen/util/design.py:101:32: E231 missing whitespace after ','
-./src/tfscreen/util/design.py:101:43: E231 missing whitespace after ','
-./src/tfscreen/util/design.py:101:57: E231 missing whitespace after ','
-./src/tfscreen/util/design.py:104:1: W293 blank line contains whitespace
-./src/tfscreen/util/design.py:107:1: W293 blank line contains whitespace
 ./src/tfscreen/util/io/__init__.py:2:1: F401 '.read_yaml.read_yaml' imported but unused
 ./src/tfscreen/util/io/__init__.py:6:1: F401 '.read_dataframe.read_dataframe' imported but unused
 ./src/tfscreen/util/io/read_dataframe.py:5:1: C901 'read_dataframe' is too complex (15)
@@ -6961,25 +6897,6 @@
 ./tests/tfscreen/mle/fitters/test_matrix_wls.py:39:1: W293 blank line contains whitespace
 ./tests/tfscreen/mle/fitters/test_matrix_wls.py:40:43: E261 at least two spaces before inline comment
 ./tests/tfscreen/mle/fitters/test_matrix_wls.py:43:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_ols_2D.py:3:1: F401 'pytest' imported but unused
-./tests/tfscreen/mle/fitters/test_ols_2D.py:6:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/mle/fitters/test_ols_2D.py:10:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_ols_2D.py:12:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_ols_2D.py:17:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/mle/fitters/test_ols_2D.py:20:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_ols_2D.py:29:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_ols_2D.py:31:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_ols_2D.py:35:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/mle/fitters/test_ols_2D.py:39:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_ols_2D.py:41:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_ols_2D.py:45:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/mle/fitters/test_ols_2D.py:49:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_ols_2D.py:51:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_ols_2D.py:54:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/mle/fitters/test_ols_2D.py:58:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_ols_2D.py:60:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_ols_2D.py:64:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/mle/fitters/test_ols_2D.py:69:1: W293 blank line contains whitespace
 ./tests/tfscreen/mle/fitters/test_svd_error.py:7:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/mle/fitters/test_svd_error.py:11:1: W293 blank line contains whitespace
 ./tests/tfscreen/mle/fitters/test_svd_error.py:14:1: W293 blank line contains whitespace
@@ -7021,32 +6938,6 @@
 ./tests/tfscreen/mle/fitters/test_util.py:98:1: W293 blank line contains whitespace
 ./tests/tfscreen/mle/fitters/test_util.py:102:1: W293 blank line contains whitespace
 ./tests/tfscreen/mle/fitters/test_util.py:105:1: W391 blank line at end of file
-./tests/tfscreen/mle/fitters/test_wls_2D.py:3:1: F401 'pytest' imported but unused
-./tests/tfscreen/mle/fitters/test_wls_2D.py:6:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/mle/fitters/test_wls_2D.py:11:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_wls_2D.py:13:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_wls_2D.py:17:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/mle/fitters/test_wls_2D.py:23:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_wls_2D.py:28:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_wls_2D.py:30:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_wls_2D.py:33:44: E261 at least two spaces before inline comment
-./tests/tfscreen/mle/fitters/test_wls_2D.py:35:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_wls_2D.py:36:26: E203 whitespace before ','
-./tests/tfscreen/mle/fitters/test_wls_2D.py:37:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_wls_2D.py:42:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/mle/fitters/test_wls_2D.py:46:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_wls_2D.py:50:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/mle/fitters/test_wls_2D.py:51:36: W291 trailing whitespace
-./tests/tfscreen/mle/fitters/test_wls_2D.py:57:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_wls_2D.py:61:40: E261 at least two spaces before inline comment
-./tests/tfscreen/mle/fitters/test_wls_2D.py:62:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_wls_2D.py:68:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/mle/fitters/test_wls_2D.py:73:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_wls_2D.py:77:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/mle/fitters/test_wls_2D.py:83:39: E261 at least two spaces before inline comment
-./tests/tfscreen/mle/fitters/test_wls_2D.py:85:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_wls_2D.py:87:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_wls_2D.py:91:1: W293 blank line contains whitespace
 ./tests/tfscreen/mle/test_fit_manager.py:6:1: F401 'scipy.special.expit' imported but unused
 ./tests/tfscreen/mle/test_fit_manager.py:8:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/mle/test_fit_manager.py:20:1: E302 expected 2 blank lines, found 1
@@ -8144,21 +8035,21 @@
 1     E131 continuation line unaligned for hanging indent
 44    E201 whitespace after '['
 27    E202 whitespace before ']'
-5     E203 whitespace before ','
+4     E203 whitespace before ','
 5     E211 whitespace before '('
-1648  E221 multiple spaces before operator
+1640  E221 multiple spaces before operator
 26    E222 multiple spaces after operator
-16    E225 missing whitespace around operator
-1157  E231 missing whitespace after ','
-88    E251 unexpected spaces around keyword / parameter equals
+8     E225 missing whitespace around operator
+1151  E231 missing whitespace after ','
+79    E251 unexpected spaces around keyword / parameter equals
 16    E252 missing whitespace around parameter equals
-255   E261 at least two spaces before inline comment
+252   E261 at least two spaces before inline comment
 1     E262 inline comment should start with '# '
 5     E265 block comment should start with '# '
 2     E266 too many leading '#' for block comment
 150   E272 multiple spaces before keyword
 1     E301 expected 1 blank line, found 0
-875   E302 expected 2 blank lines, found 1
+860   E302 expected 2 blank lines, found 1
 55    E303 too many blank lines (2)
 19    E305 expected 2 blank lines after class or function definition, found 0
 29    E306 expected 1 blank line before a nested definition, found 0
@@ -8172,12 +8063,12 @@
 1     E722 do not use bare 'except'
 1     E731 do not assign a lambda expression, use a def
 13    E741 ambiguous variable name 'l'
-358   F401 '.process_raw' imported but unused
+353   F401 '.process_raw' imported but unused
 9     F541 f-string is missing placeholders
 6     F811 redefinition of unused 'dataclasses' from line 6
 46    F841 local variable 'titrant_names' is assigned to but never used
-781   W291 trailing whitespace
+774   W291 trailing whitespace
 102   W292 no newline at end of file
-1938  W293 blank line contains whitespace
-36    W391 blank line at end of file
-8133
+1893  W293 blank line contains whitespace
+34    W391 blank line at end of file
+8024

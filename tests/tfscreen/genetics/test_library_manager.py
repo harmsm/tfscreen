@@ -7,7 +7,7 @@ from tfscreen.genetics.library_manager import _check_char
 from tfscreen.genetics.library_manager import _check_contiguous_lib_blocks
 from tfscreen.genetics.library_manager import _check_lib_key
 from tfscreen.genetics.library_manager import LibraryManager
-from tfscreen.data import CODON_TO_AA
+from tfscreen.genetics.data import CODON_TO_AA
 
 # ----------------------------------------------------------------------------
 # test _check_char
