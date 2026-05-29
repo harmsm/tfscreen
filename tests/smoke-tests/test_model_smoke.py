@@ -2,9 +2,9 @@ import pytest
 import os
 import shutil
 import jax.numpy as jnp
-from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass
-from tfscreen.analysis.hierarchical.run_inference import RunInference
-from tfscreen.analysis.hierarchical.growth_model.registry import model_registry
+from tfscreen.growth_model.model_class import ModelClass
+from tfscreen.growth_model.run_inference import RunInference
+from tfscreen.growth_model.registry import model_registry
 
 # Define configurations to test
 # We want to test a representative subset of the registry

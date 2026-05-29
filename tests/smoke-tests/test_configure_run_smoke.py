@@ -2,9 +2,9 @@ import pytest
 import pandas as pd
 import os
 import yaml
-from tfscreen.analysis.hierarchical.growth_model.scripts.configure_model_cli import configure_model
-from tfscreen.analysis.hierarchical.growth_model.scripts.fit_model_cli import fit_model
-from tfscreen.analysis.hierarchical.growth_model.scripts.extract_params_cli import extract_params as summarize_posteriors
+from tfscreen.growth_model.scripts.configure_model_cli import configure_model
+from tfscreen.growth_model.scripts.fit_model_cli import fit_model
+from tfscreen.growth_model.scripts.extract_params_cli import extract_params as summarize_posteriors
 
 @pytest.mark.slow
 def test_configure_run_binding_only_smoke(tmpdir):

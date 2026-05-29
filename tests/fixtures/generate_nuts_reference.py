@@ -69,9 +69,9 @@ def run():
     import jax
     import jax.numpy as jnp
 
-    from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass
-    from tfscreen.analysis.hierarchical.run_inference import RunInference
-    from tfscreen.analysis.hierarchical.growth_model.extraction import extract_parameters
+    from tfscreen.growth_model.model_class import ModelClass
+    from tfscreen.growth_model.run_inference import RunInference
+    from tfscreen.growth_model.extraction import extract_parameters
 
     print(f"Loading data from {DATA_DIR} …")
     import pandas as pd
