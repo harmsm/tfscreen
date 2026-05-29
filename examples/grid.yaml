@@ -1,0 +1,103 @@
+# ---------------------------------------------------------------------------
+# Example grid YAML for tfs-setup-grid
+#
+# Usage:
+#   tfs-setup-grid grid.yaml --out_prefix my_grid
+#
+# This creates one subdirectory per combination, calls tfs-configure-model
+# inside each, and renders run.srun with the template variables.
+# Run all jobs with:
+#   for d in my_grid/run_*/; do cd "$d" && sbatch run.srun && cd -; done
+# ---------------------------------------------------------------------------
+
+# Directory name for each run.  Variables from both configure_model and
+# template blocks are available.  The |basename filter strips directory
+# paths from file-valued variables.
+run_name: "{{ condition_growth }}__{{ growth_transition }}__{{ theta }}__seed{{ seed }}"
+
+# Jinja2 template file (relative to this YAML) rendered into each subdir.
+output_file: run.srun
+
+
+# ---------------------------------------------------------------------------
+# configure_model blocks
+#
+# Variables here are forwarded to tfs-configure-model.  They are NOT
+# injected into the Jinja2 template.  Paths are resolved relative to this
+# YAML and re-expressed relative to each subdirectory in the written config.
+# ---------------------------------------------------------------------------
+
+configure_model:
+
+  # --- Fixed arguments (single-variant block = always selected) ------------
+
+  - name: data
+    variants:
+      - binding_df: ../data/binding.csv
+        growth_df:  ../data/growth.csv
+
+  - name: fixed_components
+    variants:
+      - activity: horseshoe
+        dk_geno: hierarchical
+        transformation: empirical
+        theta_rescale: passthrough
+
+  # --- Auto: enumerate every registered component for an axis --------------
+  #
+  # 'auto: condition_growth' expands to one variant per entry in the
+  # model_registry["condition_growth"] registry (currently: linear,
+  # linear_fixed, power, saturation).  Incompatible combinations (e.g.
+  # power + logit theta_rescale) are caught by tfs-configure-model,
+  # skipped automatically, and logged in grid_summary.json.
+
+  - name: condition_growth
+    auto: condition_growth
+
+  # --- Manual enumeration: list only the components you want ---------------
+  #
+  # Use this when you want a specific subset rather than everything
+  # registered.  Here we compare the two simplest growth-transition models
+  # and skip the rest.
+
+  - name: growth_transition
+    variants:
+      - growth_transition: instant
+      - growth_transition: baranyi
+
+  # --- Joint (co-varying) block: variants always move together -------------
+  #
+  # Multiple keys in one variant dict are never split by the Cartesian
+  # product.  Use this when parameters are only meaningful in combination.
+  # Here, mutation-level epistasis only makes sense with a _mut theta model.
+
+  - name: theta_and_epistasis
+    variants:
+      - theta: hill          # additive mutation effects; no epistasis
+        epistasis: false
+      - theta: hill_mut      # per-mutation effects, additive
+        epistasis: false
+      - theta: hill_mut      # per-mutation effects, pairwise epistasis
+        epistasis: true
+
+
+# ---------------------------------------------------------------------------
+# template blocks
+#
+# Variables here are injected into the Jinja2 template only.  They are NOT
+# forwarded to tfs-configure-model.
+# ---------------------------------------------------------------------------
+
+template:
+
+  # Random seed — vary to assess stochastic reproducibility.
+  - name: seed
+    variants:
+      - seed: 0
+      - seed: 1
+
+  # Path to the genotypes file for tfs-predict-theta.
+  # Use an absolute path, or a path relative to each run subdirectory.
+  - name: predict_genotypes
+    variants:
+      - predict_genotypes_file: /path/to/predict_genotypes.txt

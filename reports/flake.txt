@@ -2580,7 +2580,9 @@
 ./src/tfscreen/growth_model/scripts/run_prefit_calibration_cli.py:928:21: E221 multiple spaces before operator
 ./src/tfscreen/growth_model/scripts/run_prefit_calibration_cli.py:951:20: E221 multiple spaces before operator
 ./src/tfscreen/growth_model/scripts/run_prefit_calibration_cli.py:964:25: E221 multiple spaces before operator
-./src/tfscreen/growth_model/scripts/setup_grid_cli.py:233:1: C901 'setup_grid' is too complex (17)
+./src/tfscreen/growth_model/scripts/setup_grid_cli.py:60:1: F401 'tfscreen.util.grid_utils.sanitize as _sanitize' imported but unused
+./src/tfscreen/growth_model/scripts/setup_grid_cli.py:60:1: F401 'tfscreen.util.grid_utils.relativize_node as _relativize_node' imported but unused
+./src/tfscreen/growth_model/scripts/setup_grid_cli.py:162:1: C901 'setup_grid' is too complex (17)
 ./src/tfscreen/growth_model/scripts/subset_genotypes_cli.py:40:1: C901 'subset_genotypes' is too complex (23)
 ./src/tfscreen/growth_model/scripts/subset_genotypes_cli.py:93:5: F841 local variable 'all_genotypes' is assigned to but never used
 ./src/tfscreen/growth_model/scripts/summarize_fit_cli.py:43:1: C901 '_read_all_losses' is too complex (11)
@@ -3716,6 +3718,7 @@
 ./src/tfscreen/simulate/run_simulation.py:104:1: W293 blank line contains whitespace
 ./src/tfscreen/simulate/run_simulation.py:109:1: W293 blank line contains whitespace
 ./src/tfscreen/simulate/run_simulation.py:110:1: W391 blank line at end of file
+./src/tfscreen/simulate/scripts/setup_sim_grid_cli.py:101:1: C901 'setup_sim_grid' is too complex (17)
 ./src/tfscreen/simulate/selection_experiment.py:22:1: F401 'pandas.core.groupby.generic.DataFrameGroupBy' imported but unused
 ./src/tfscreen/simulate/selection_experiment.py:42:38: E231 missing whitespace after ':'
 ./src/tfscreen/simulate/selection_experiment.py:43:37: E231 missing whitespace after ':'
@@ -5847,8 +5850,6 @@
 ./tests/tfscreen/growth_model/scripts/test_run_prefit_calibration.py:1666:63: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/growth_model/scripts/test_run_prefit_calibration.py:1705:38: E702 multiple statements on one line (semicolon)
 ./tests/tfscreen/growth_model/scripts/test_run_prefit_calibration.py:1724:20: E221 multiple spaces before operator
-./tests/tfscreen/growth_model/scripts/test_setup_grid_cli.py:4:1: F401 'tempfile' imported but unused
-./tests/tfscreen/growth_model/scripts/test_setup_grid_cli.py:6:1: F401 'pytest' imported but unused
 ./tests/tfscreen/growth_model/scripts/test_subset_genotypes.py:84:31: E741 ambiguous variable name 'l'
 ./tests/tfscreen/growth_model/scripts/test_subset_genotypes.py:598:28: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/growth_model/scripts/test_summarize_fit_cli.py:15:1: E402 module level import not at top of file
@@ -7967,7 +7968,7 @@
 ./tests/tfscreen/util/validation/test_check.py:8:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/validation/test_check.py:26:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/validation/test_check.py:42:38: W292 no newline at end of file
-43    C901 'cat_fit' is too complex (19)
+44    C901 'cat_fit' is too complex (19)
 22    E111 indentation is not a multiple of 4
 9     E114 indentation is not a multiple of 4 (comment)
 6     E116 unexpected indentation (comment)
@@ -8016,4 +8017,4 @@
 102   W292 no newline at end of file
 1853  W293 blank line contains whitespace
 33    W391 blank line at end of file
-7969
+7970

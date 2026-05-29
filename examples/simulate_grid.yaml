@@ -1,0 +1,85 @@
+# ---------------------------------------------------------------------------
+# Example grid YAML for tfs-setup-sim-grid
+#
+# Usage:
+#   tfs-setup-sim-grid simulate_grid.yaml --out_prefix my_sim_grid
+#
+# This creates one subdirectory per combination, writes a tfs_sim_config.yaml
+# in each (base config + overrides), and renders run.sh with the template
+# variables.  Run all simulations with:
+#   for d in my_sim_grid/run_*/; do cd "$d" && bash run.sh && cd -; done
+# ---------------------------------------------------------------------------
+
+# Base simulate config.  Each run inherits all settings from this file; the
+# 'simulate' blocks below override specific top-level keys.
+base_config: simulate_config.yaml
+
+# Directory name for each run.  Variables from both 'simulate' and 'template'
+# blocks are available.  The |basename filter strips directory paths from
+# file-valued variables.
+run_name: "{{ observable_calculator }}__noise{{ growth_rate_noise }}__seed{{ random_seed }}"
+
+# Jinja2 template file (relative to this YAML) rendered into each subdir.
+output_file: run.sh
+
+
+# ---------------------------------------------------------------------------
+# simulate blocks
+#
+# Variables here override top-level keys in the base config.  They are NOT
+# injected into the Jinja2 template.  Paths are resolved relative to this
+# YAML and re-expressed relative to each subdirectory in the written config.
+#
+# Multi-key variants always move together and are never split by the Cartesian
+# product — use this to keep parameters that are only meaningful in combination.
+# ---------------------------------------------------------------------------
+
+simulate:
+
+  # --- Fixed settings (single-variant = always selected) -------------------
+
+  - name: reads
+    variants:
+      - total_num_reads: 2.5e7
+
+  # --- Thermodynamic model -------------------------------------------------
+  #
+  # Uncomment additional variants to compare thermodynamic models.
+  # 'observable_calc_kwargs' is a nested dict — override the whole key when
+  # you need to change model internals.
+
+  - name: thermodynamic_model
+    variants:
+      - observable_calculator: lac
+      # - observable_calculator: eee
+
+  # --- Noise level ---------------------------------------------------------
+
+  - name: noise
+    variants:
+      - growth_rate_noise: 0.01
+      - growth_rate_noise: 0.05
+
+  # --- Random seed ---------------------------------------------------------
+  #
+  # Varying the seed with the same other settings tests reproducibility.
+
+  - name: seed
+    variants:
+      - random_seed: 0
+      - random_seed: 42
+
+
+# ---------------------------------------------------------------------------
+# template blocks
+#
+# Variables here are injected into the Jinja2 template only.  They are NOT
+# written to tfs_sim_config.yaml.
+# ---------------------------------------------------------------------------
+
+template:
+
+  # Number of independent replicates passed to tfs-simulate as a CLI flag.
+  - name: num_replicates
+    variants:
+      - num_replicates: 3

@@ -51,13 +51,20 @@ NOTES
 import itertools
 import json
 import os
-import re
 import shutil
 
 import jinja2
 import yaml
 
 from tfscreen.util.cli import generalized_main
+from tfscreen.util.grid_utils import (
+    sanitize as _sanitize,
+    make_jinja_env as _make_jinja_env,
+    make_run_name as _make_run_name,
+    relativize_node as _relativize_node,
+    relativize_config_paths as _relativize_config_paths,
+    relativize_template_vars as _relativize_template_vars,
+)
 from tfscreen.growth_model.registry import model_registry
 from tfscreen.growth_model.scripts.configure_model_cli import (
     configure_model,
@@ -116,40 +123,6 @@ def _expand_block(block):
 
 
 # ---------------------------------------------------------------------------
-# Run-name helpers
-# ---------------------------------------------------------------------------
-
-def _sanitize(s):
-    """Make a string safe for use as a directory-name component."""
-    return re.sub(r"_+", "_", re.sub(r"[^\w\-]", "_", str(s))).strip("_")
-
-
-def _make_jinja_env(strict=True):
-    """Return a Jinja2 Environment with the ``basename`` filter registered."""
-    env = jinja2.Environment(
-        undefined=jinja2.StrictUndefined if strict else jinja2.Undefined
-    )
-    env.filters["basename"] = os.path.basename
-    return env
-
-
-def _make_run_name(name_template, all_vars, index):
-    """Return a filesystem-safe directory name for this run."""
-    prefix = f"run_{index:04d}"
-    if name_template:
-        try:
-            raw = _make_jinja_env(strict=False).from_string(name_template).render(**all_vars)
-        except jinja2.TemplateError as e:
-            raise ValueError(f"run_name template error: {e}") from e
-        suffix = _sanitize(raw)
-    else:
-        suffix = "_".join(
-            _sanitize(str(v)) for v in all_vars.values() if str(v).strip()
-        )
-    return f"{prefix}_{suffix}" if suffix else prefix
-
-
-# ---------------------------------------------------------------------------
 # Path helpers
 # ---------------------------------------------------------------------------
 
@@ -159,50 +132,6 @@ def _resolve_cm_paths(cm_vars, base_dir):
     for key in _PATH_KEYS:
         if key in out and out[key] and not os.path.isabs(out[key]):
             out[key] = os.path.normpath(os.path.join(base_dir, out[key]))
-    return out
-
-
-def _relativize_node(node, subdir):
-    """Recursively rewrite absolute path strings in a config node to be relative to subdir."""
-    if isinstance(node, dict):
-        return {k: _relativize_node(v, subdir) for k, v in node.items()}
-    if isinstance(node, list):
-        return [_relativize_node(v, subdir) for v in node]
-    if isinstance(node, str) and node and os.path.isabs(node) and os.path.exists(node):
-        return os.path.relpath(node, subdir)
-    return node
-
-
-def _relativize_config_paths(yaml_path, subdir):
-    """Rewrite absolute paths anywhere in a written config YAML to be relative to subdir."""
-    with open(yaml_path) as fh:
-        cfg = yaml.safe_load(fh)
-    updated = _relativize_node(cfg, subdir)
-    if updated != cfg:
-        with open(yaml_path, "w") as fh:
-            yaml.dump(updated, fh, default_flow_style=False, sort_keys=False)
-
-
-# ---------------------------------------------------------------------------
-# Template-variable path rewriting
-# ---------------------------------------------------------------------------
-
-def _relativize_template_vars(tmpl_vars, grid_yaml_dir, subdir):
-    """Return tmpl_vars with any path-like string values rewritten relative to subdir.
-
-    A value is treated as a path when it resolves (relative to grid_yaml_dir, or
-    as-is if absolute) to a file or directory that exists on disk.
-    """
-    out = {}
-    for key, val in tmpl_vars.items():
-        if isinstance(val, str) and val:
-            abs_path = val if os.path.isabs(val) else os.path.normpath(
-                os.path.join(grid_yaml_dir, val)
-            )
-            if os.path.exists(abs_path):
-                out[key] = os.path.relpath(abs_path, subdir)
-                continue
-        out[key] = val
     return out
 
 

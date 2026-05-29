@@ -1,15 +1,13 @@
-"""Tests for path-rewriting helpers in setup_grid_cli."""
+"""Tests for path-rewriting helpers (now in grid_utils, re-exported from setup_grid_cli)."""
 
 import os
-import tempfile
 
-import pytest
 import yaml
 
-from tfscreen.growth_model.scripts.setup_grid_cli import (
-    _relativize_config_paths,
-    _relativize_node,
-    _relativize_template_vars,
+from tfscreen.util.grid_utils import (
+    relativize_config_paths as _relativize_config_paths,
+    relativize_node as _relativize_node,
+    relativize_template_vars as _relativize_template_vars,
 )
 
 

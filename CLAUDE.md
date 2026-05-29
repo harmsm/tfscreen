@@ -50,6 +50,7 @@ tfs-predict-theta          # Predict operator occupancy
 tfs-cat-response           # Fit categorical response curves
 tfs-diagnose-nan           # Diagnose NaN issues in inference
 tfs-simulate               # Simulate a full experiment
+tfs-setup-sim-grid         # Set up grid of simulation runs
 tfs-setup-grid             # Set up grid of model configs
 tfs-summarize-grid         # Summarize grid results
 tfs-subset-genotypes       # Subset genotype data
@@ -131,6 +132,78 @@ The `run_config.yaml` drives `tfs-fit-model`. Key sections:
 - `condition_blocks`: growth conditions (marker, titrant concentrations, selection timepoints)
 - Model component selections (which `activity`, `growth`, `transformation`, etc. modules to use)
 - `calibration_file`: path to wildtype calibration JSON
+
+## YAML Standards
+
+All YAML files in this codebase follow these conventions. Apply them when creating or modifying any YAML file.
+
+### YAML types
+
+There are two categories of YAML in tfscreen:
+
+**Flat config files** drive a single CLI run (`tfs-simulate`, `tfs-fit-model`, etc.).  They have a flat list of top-level keys; nested dicts appear only where a parameter is itself structured (e.g. `observable_calc_kwargs`, `growth`).  See `examples/simulate_config.yaml` for the canonical simulate/process_raw reference.
+
+**Grid YAML files** drive `tfs-setup-grid` or `tfs-setup-sim-grid`.  They describe a Cartesian product of parameter variants and produce one run subdirectory per combination.  See `examples/grid.yaml` (growth_model) and `examples/simulate_grid.yaml` (simulate).
+
+### Flat config conventions
+
+- All keys in `snake_case`.
+- Sections separated by `# --- Section name ---` comment header lines.
+- File paths relative to the config file's own location.
+- Use scientific notation for large numbers (`1.0e5`, not `100000`).
+- Optional top-level blocks (`growth_transition`, `binding_data`) are omitted, not null, when not needed.
+
+### Grid YAML structure
+
+Both grid CLIs share the same top-level skeleton:
+
+```yaml
+# (simulate grids only)
+base_config: path/to/simulate_config.yaml
+
+run_name: "{{ var1 }}__{{ var2 }}"   # Jinja2 template; optional
+output_file: run.sh                   # Jinja2 template file; optional
+
+# Phase blocks (configure_model for tfs-setup-grid; simulate for tfs-setup-sim-grid)
+simulate:          # or: configure_model:
+  - name: <block_name>
+    variants:
+      - key1: value1
+      - key1: value2
+  - name: <joint_block>
+    variants:
+      - key1: val_a   # these two keys always move together
+        key2: val_x
+      - key1: val_b
+        key2: val_y
+
+# Variables forwarded to the Jinja2 template only (not to the config or CLI)
+template:
+  - name: <block_name>
+    variants:
+      - var: value
+```
+
+**Block rules:**
+- Each block item needs `name` + either `auto` (growth_model grids only — enumerates all registered components for an axis) or `variants` (explicit list of dicts).
+- The Cartesian product is taken across **all** blocks (`configure_model`/`simulate` + `template`).
+- Multi-key variants (multiple keys in one dict) always travel together and are never split.
+- `simulate` / `configure_model` variables go to the config; `template` variables go to the Jinja2 template only.  To share a variable, list it in both sections.
+- Variable names in blocks: `snake_case`.
+
+### Shared grid utilities
+
+Both grid CLIs import from `tfscreen.util.grid_utils` for run-name generation, Jinja2 environment setup, and config-path rewriting.  Add new reusable grid helpers there rather than duplicating them.
+
+### `examples/` directory
+
+| File | Purpose |
+|------|---------|
+| `simulate_config.yaml` | Canonical well-commented simulate/process_raw config reference |
+| `simulate_grid.yaml` | Example simulate grid for `tfs-setup-sim-grid` |
+| `run.sh` | Jinja2 shell template for simulate grid runs |
+| `grid.yaml` | Example growth_model grid for `tfs-setup-grid` |
+| `run.srun` | Jinja2 SLURM template for growth_model grid runs |
 
 ### Terminology
 
