@@ -604,7 +604,7 @@ def test_error_missing_genotype_column(tmp_path):
 
 _REAL_GROWTH = os.path.join(
     os.path.dirname(__file__),
-    "../../../../../../notebooks/create-test-data/growth.csv",
+    "../../../../notebooks/create-test-data/growth.csv",
 )
 
 

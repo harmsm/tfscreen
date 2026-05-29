@@ -14,7 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 NUMBA_DISABLE_JIT=1 pytest tests/tfscreen
 
 # Run a single test file
-NUMBA_DISABLE_JIT=1 pytest tests/tfscreen/analysis/hierarchical/growth_model/test_model.py
+NUMBA_DISABLE_JIT=1 pytest tests/tfscreen/growth_model/test_model.py
 
 # Run slow tests too
 NUMBA_DISABLE_JIT=1 pytest tests/tfscreen --runslow
@@ -71,17 +71,19 @@ FASTQ files
 
 | Module | Responsibility |
 |--------|---------------|
+| `growth_model/` | Core hierarchical Bayesian inference engine (the heart of the package) |
 | `process_raw/` | FASTQ parsing, count normalization, ln_cfu calculation |
-| `fitting/` | General-purpose regression (FitManager, least squares, WLS, NLS) |
-| `models/` | Mathematical growth models and thermodynamic models (lac, EEE) |
-| `genetics/` | Genotype library management, mutation effect combination |
-| `calibration/` | Wildtype parameter extraction and calibration pipeline |
 | `simulate/` | Full experiment simulation from thermodynamics to read counts |
-| `analysis/` | Statistical inference (hierarchical Bayesian, independent, cat_response) |
-| `util/` | Shared IO, DataFrame ops, numerical helpers, validation, CLI |
+| `simulate/thermo/` | Thermodynamic models (lac, EEE) used by simulation |
+| `simulate/growth/` | In-progress growth/growth-transition models for simulation |
+| `analysis/` | Downstream statistical analysis of inference outputs (cat_response, extract_epistasis) |
+| `mle/` | General-purpose MLE regression (FitManager, least squares, WLS, NLS) |
+| `mle/curve_models/` | Empirical curve-fitting functions and MODEL_LIBRARY used by cat_response |
+| `genetics/` | Genotype library management, mutation effect combination |
 | `plot/` | Visualization (heatmaps, corner plots, error plots) |
+| `util/` | Shared IO, DataFrame ops, numerical helpers, validation, CLI |
 
-### Core Analysis: `analysis/hierarchical/growth_model/`
+### Core Analysis: `growth_model/`
 
 The hierarchical Bayesian inference engine. Key files:
 
@@ -108,18 +110,18 @@ The hierarchical Bayesian inference engine. Key files:
 
 ### Adding a New Model Component
 
-1. Create `src/tfscreen/analysis/hierarchical/growth_model/components/<category>/myname.py`
+1. Create `src/tfscreen/growth_model/components/<category>/myname.py`
 2. Implement the required interface (follow an existing component as reference)
 3. Register it in `registry.py` under the appropriate category key
-4. Add a test in `tests/tfscreen/analysis/hierarchical/growth_model/components/<category>/`
+4. Add a test in `tests/tfscreen/growth_model/components/<category>/`
 
 ### Key Abstractions
 
-**`FitManager`** (`fitting/fit_manager.py`): General regression wrapper. Set parameter transformations, bounds, fixed vs. free parameters, and a model function via `set_model_func()`.
+**`FitManager`** (`mle/fit_manager.py`): General regression wrapper. Set parameter transformations, bounds, fixed vs. free parameters, and a model function via `set_model_func()`.
 
-**`TensorManager`** (`analysis/hierarchical/tensor_manager.py`): Handles ragged tensors. Genotypes have different numbers of observations; this class pads and indexes into JAX-compatible arrays.
+**`TensorManager`** (`growth_model/tensor_manager.py`): Handles ragged tensors. Genotypes have different numbers of observations; this class pads and indexes into JAX-compatible arrays.
 
-**`DataClass` / `PriorsClass`** (`analysis/hierarchical/growth_model/data_class.py`): Flax pytree dataclasses holding structured experimental data and prior specifications for JAX compilation.
+**`DataClass` / `PriorsClass`** (`growth_model/data_class.py`): Flax pytree dataclasses holding structured experimental data and prior specifications for JAX compilation.
 
 ### Configuration (YAML)
 
@@ -180,4 +182,4 @@ When a list of genotypes, titrant names, or concentrations is needed, the `_cli`
 
 ### Registered entry points
 
-All scripts under `analysis/hierarchical/growth_model/scripts/` and `analysis/cat_response/` follow the `_cli.py` naming convention and are registered in `pyproject.toml`.
+All scripts under `growth_model/scripts/` and `analysis/cat_response/` follow the `_cli.py` naming convention and are registered in `pyproject.toml`.
