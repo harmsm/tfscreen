@@ -180,6 +180,7 @@ class GrowthPriors:
     activity: Any
     transformation: Any
     theta_growth_noise: Any
+    growth_noise: Any
 
 @dataclass(frozen=True)
 class BindingPriors:

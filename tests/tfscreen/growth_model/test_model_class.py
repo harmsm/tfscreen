@@ -358,10 +358,11 @@ def test_initialize_classes_logic(mocker):
         "theta_rescale": {"passthrough": MagicMock()},
         "theta_growth_noise": {"zero": MagicMock()},
         "theta_binding_noise": {"zero": MagicMock()},
+        "growth_noise": {"zero": MagicMock()},
         "observe_binding": MagicMock(),
         "observe_growth": MagicMock()
     }, clear=True):
-        for k in ["condition_growth", "growth_transition", "ln_cfu0", "dk_geno", "activity", "theta", "transformation", "theta_growth_noise", "theta_binding_noise"]:
+        for k in ["condition_growth", "growth_transition", "ln_cfu0", "dk_geno", "activity", "theta", "transformation", "theta_growth_noise", "theta_binding_noise", "growth_noise"]:
             for sub_k in tfscreen.growth_model.model_class.model_registry[k]:
                 tfscreen.growth_model.model_class.model_registry[k][sub_k].get_priors.return_value = {}
                 tfscreen.growth_model.model_class.model_registry[k][sub_k].get_guesses.return_value = {}
@@ -388,6 +389,7 @@ def test_model_class_properties(initialized_model_class):
     model._dk_geno = "dk"
     model._theta_growth_noise = "gn"
     model._theta_binding_noise = "bn"
+    model._growth_noise = "grn"
     model._spiked_genotypes = ["s"]
     model._binding_only = False
     model._growth_shares_replicates = False
@@ -410,6 +412,7 @@ def test_model_class_properties(initialized_model_class):
     assert ModelClass.settings.fget(model)["dk_geno"] == "dk"
     assert ModelClass.settings.fget(model)["theta_growth_noise"] == "gn"
     assert ModelClass.settings.fget(model)["theta_binding_noise"] == "bn"
+    assert ModelClass.settings.fget(model)["growth_noise"] == "grn"
     assert ModelClass.settings.fget(model)["spiked_genotypes"] == ["s"]
     assert ModelClass.settings.fget(model)["growth_shares_replicates"] == False
     assert ModelClass.settings.fget(model)["epistasis"] == True

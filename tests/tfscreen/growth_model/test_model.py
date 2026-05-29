@@ -20,7 +20,8 @@ MockBindingData = namedtuple("MockBindingData", [])
 MockData = namedtuple("MockData", ["growth", "binding"])
 
 MockGrowthPriors = namedtuple("MockGrowthPriors", [
-    "theta_growth_noise", "condition_growth", "growth_transition", "ln_cfu0", "dk_geno", "activity", "transformation"
+    "theta_growth_noise", "condition_growth", "growth_transition", "ln_cfu0", "dk_geno", "activity", "transformation",
+    "growth_noise"
 ])
 MockBindingPriors = namedtuple("MockBindingPriors", ["theta_binding_noise"])
 MockPriors = namedtuple("MockPriors", ["theta", "growth", "binding"])
@@ -41,13 +42,14 @@ def mock_data():
 def mock_priors():
     """Provides a mocked PriorsClass structure."""
     growth = MockGrowthPriors(
-        theta_growth_noise="prior_gn", 
+        theta_growth_noise="prior_gn",
         condition_growth="prior_cg",
         growth_transition="prior_gt",
-        ln_cfu0="prior_cfu0", 
-        dk_geno="prior_dk", 
+        ln_cfu0="prior_cfu0",
+        dk_geno="prior_dk",
         activity="prior_act",
-        transformation="prior_trans"
+        transformation="prior_trans",
+        growth_noise="prior_grn",
     )
     binding = MockBindingPriors(theta_binding_noise="prior_bn")
     return MockPriors(theta="prior_theta", growth=growth, binding=binding)
@@ -82,9 +84,10 @@ def mock_control():
     transformation_update = MagicMock(side_effect=lambda t, params, mask=None: t) # pass-through
     
     # Noise models just pass through or add noise. Let's pass through for simplicity.
-    theta_binding_noise_model = MagicMock(side_effect=lambda n, x, p: x) 
+    theta_binding_noise_model = MagicMock(side_effect=lambda n, x, p: x)
     theta_growth_noise_model = MagicMock(side_effect=lambda n, x, p: x)
-    
+    growth_noise_model = MagicMock(return_value=0.0)  # sigma_k = 0 → no extra noise
+
     binding_observer = MagicMock()
     growth_observer = MagicMock()
 
@@ -99,10 +102,11 @@ def mock_control():
         "transformation": (transformation_model, transformation_update),
         "theta_binding_noise": theta_binding_noise_model,
         "theta_growth_noise": theta_growth_noise_model,
+        "growth_noise": growth_noise_model,
         "theta_rescale": lambda t: t,
         "observe_binding": binding_observer,
         "observe_growth": growth_observer,
-        "is_guide": False # Default to main model
+        "is_guide": False  # Default to main model
     }
 
 # --- Test Cases ---

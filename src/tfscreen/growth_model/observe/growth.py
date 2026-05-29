@@ -7,7 +7,8 @@ from tfscreen.growth_model.data_class import GrowthData
 
 def observe(name: str,
             data: GrowthData,
-            ln_cfu_pred: jnp.ndarray):
+            ln_cfu_pred: jnp.ndarray,
+            sigma_k: jnp.ndarray = 0.0):
     """
     Defines the observation site for the growth (ln_CFU) data.
 
@@ -39,9 +40,15 @@ def observe(name: str,
     ln_cfu_pred : jnp.ndarray
         The deterministically predicted ln(CFU) values from the model,
         with a shape matching `data.ln_cfu`.
+    sigma_k : jnp.ndarray, optional
+        Global growth-rate noise scale (in kt units).  Added in quadrature
+        with ``data.ln_cfu_std`` to give the effective observation scale:
+        ``effective_scale = sqrt(ln_cfu_std² + sigma_k²)``.
+        Defaults to 0.0 (no extra noise).
     """
 
     nu = pyro.sample(f"{name}_nu", dist.Gamma(2.0, 0.1))
+    effective_scale = jnp.sqrt(data.ln_cfu_std ** 2 + sigma_k ** 2)
 
     # Growth observation
     with pyro.plate(f"{name}_replicate", size=data.num_replicate, dim=-7):
@@ -60,12 +67,13 @@ def observe(name: str,
                                         
                                         # Define the observation site
                                         pyro.sample(f"{name}_growth_obs",
-                                                    dist.StudentT(df=nu, loc=ln_cfu_pred, scale=data.ln_cfu_std),
+                                                    dist.StudentT(df=nu, loc=ln_cfu_pred, scale=effective_scale),
                                                     obs=data.ln_cfu)
 
 def guide(name: str,
           data: GrowthData,
-          ln_cfu_pred: jnp.ndarray):
+          ln_cfu_pred: jnp.ndarray,
+          sigma_k: jnp.ndarray = 0.0):
     """
     Guide corresponding to the observation function.
 

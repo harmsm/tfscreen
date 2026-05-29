@@ -81,6 +81,7 @@ def jax_model(data: DataClass,
     theta_growth_noise_model = control["theta_growth_noise"]
     theta_rescale = control["theta_rescale"]
     growth_transition_model = control["growth_transition"]
+    growth_noise_model = control["growth_noise"]
     calculate_growth = control["calculate_growth"]
     growth_observer = control["observe_growth"]
 
@@ -168,8 +169,12 @@ def jax_model(data: DataClass,
                                 t_sel=data.growth.t_sel,
                                 theta=rescaled_theta)
 
-        growth_observer("final_binding_obs",data.growth,None)
-        binding_observer("final_growth_obs",data.binding,None)
+        growth_noise_model("growth_noise",
+                           data.growth,
+                           priors.growth.growth_noise)
+
+        growth_observer("final_binding_obs", data.growth, None)
+        binding_observer("final_growth_obs", data.binding, None)
 
     # real calculation
     else:
@@ -189,14 +194,18 @@ def jax_model(data: DataClass,
                                                t_sel=data.growth.t_sel,
                                                theta=rescaled_theta)
 
+        sigma_k = growth_noise_model("growth_noise",
+                                     data.growth,
+                                     priors.growth.growth_noise)
+
         ln_cfu_pred = ln_cfu0 + total_growth
 
         # Register results
-        pyro.deterministic(f"binding_pred",binding_pred)
-        pyro.deterministic(f"growth_pred",ln_cfu_pred)
+        pyro.deterministic(f"binding_pred", binding_pred)
+        pyro.deterministic(f"growth_pred", ln_cfu_pred)
 
         # Calculate likelihood
-        growth_observer("final_binding_obs",data.growth,ln_cfu_pred)
-        binding_observer("final_growth_obs",data.binding,binding_pred)
+        growth_observer("final_binding_obs", data.growth, ln_cfu_pred, sigma_k=sigma_k)
+        binding_observer("final_growth_obs", data.binding, binding_pred)
 
 

@@ -81,6 +81,7 @@ _CALIBRATION_OVERRIDES = {
     "transformation": "single",
     "theta_growth_noise": "zero",
     "theta_binding_noise": "zero",
+    "growth_noise": "zero",
 }
 
 # Components that contribute pinnable hyperparameters during the pre-fit.

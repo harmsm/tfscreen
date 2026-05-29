@@ -45,8 +45,11 @@ from .components.transformation import single as transformation_single
 from .components.theta_rescale import passthrough as theta_rescale_passthrough
 from .components.theta_rescale import logit as theta_rescale_logit
 
-from .components.noise import zero as no_noise 
-from .components.noise import beta as beta_noise 
+from .components.noise import zero as no_noise
+from .components.noise import beta as beta_noise
+
+from .components.growth_noise import zero as growth_noise_zero
+from .components.growth_noise import normal_kt as growth_noise_normal_kt
 
 from .observe import binding 
 from .observe import growth 
@@ -108,6 +111,10 @@ model_registry = {
     "theta_binding_noise":{
         "zero":no_noise,
         "beta":beta_noise,
+    },
+    "growth_noise":{
+        "zero":growth_noise_zero,
+        "normal_kt":growth_noise_normal_kt,
     },
     "growth_transition":{
         "instant":growth_transition_instant,

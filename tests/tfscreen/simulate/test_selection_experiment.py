@@ -979,7 +979,7 @@ def test_check_cf_growth_transition_multiple_conditions(base_config: dict):
     # condition_pre not a string
     ([{"condition_pre": 42, "model": "instant"}], "'condition_pre' must be a string"),
     # Unknown model name
-    ([{"condition_pre": "M9", "model": "baranyi"}], "must be 'instant' or 'memory'"),
+    ([{"condition_pre": "M9", "model": "not_a_model"}], "must be one of"),
     # Duplicate condition_pre
     (
         [{"condition_pre": "M9", "model": "instant"},
@@ -1004,6 +1004,24 @@ def test_check_cf_growth_transition_multiple_conditions(base_config: dict):
     # memory tau0 not a number
     ([{"condition_pre": "M9", "model": "memory", "tau0": "bad", "k1": 1.0, "k2": 1.0}],
      "'tau0' must be a number"),
+    # baranyi missing tau_lag
+    ([{"condition_pre": "M9", "model": "baranyi", "k_sharp": 0.2}],
+     "requires 'tau_lag'"),
+    # baranyi missing k_sharp
+    ([{"condition_pre": "M9", "model": "baranyi", "tau_lag": 100.0}],
+     "requires 'k_sharp'"),
+    # baranyi k_sharp == 0
+    ([{"condition_pre": "M9", "model": "baranyi", "tau_lag": 100.0, "k_sharp": 0.0}],
+     "'k_sharp' must be > 0"),
+    # two_pop missing k_trans
+    ([{"condition_pre": "M9", "model": "two_pop"}],
+     "requires 'k_trans'"),
+    # two_pop k_trans == 0
+    ([{"condition_pre": "M9", "model": "two_pop", "k_trans": 0.0}],
+     "'k_trans' must be > 0"),
+    # two_pop k_trans not a number
+    ([{"condition_pre": "M9", "model": "two_pop", "k_trans": "bad"}],
+     "'k_trans' must be a number"),
 ])
 def test_check_cf_growth_transition_failures(base_config: dict, bad_gt, match_error):
     """growth_transition validation should raise ValueError for invalid inputs."""
@@ -1011,6 +1029,61 @@ def test_check_cf_growth_transition_failures(base_config: dict, bad_gt, match_er
     cf["growth_transition"] = bad_gt
     with pytest.raises(ValueError, match=match_error):
         _check_cf(cf)
+
+
+def test_check_cf_growth_transition_baranyi(base_config: dict):
+    """A valid baranyi entry should pass and cast tau_lag/k_sharp to float."""
+    cf = base_config.copy()
+    cf["growth_transition"] = [{
+        "condition_pre": "M9",
+        "model": "baranyi",
+        "tau_lag": "120",   # str — should be cast to float
+        "k_sharp": 2,       # int — should be cast to float
+    }]
+    result = _check_cf(cf)
+    entry = result["growth_transition"][0]
+    assert isinstance(entry["tau_lag"], float)
+    assert isinstance(entry["k_sharp"], float)
+    assert entry["tau_lag"] == 120.0
+
+
+def test_check_cf_growth_transition_two_pop(base_config: dict):
+    """A valid two_pop entry should pass and cast k_trans to float."""
+    cf = base_config.copy()
+    cf["growth_transition"] = [{
+        "condition_pre": "M9",
+        "model": "two_pop",
+        "k_trans": "0.001",
+    }]
+    result = _check_cf(cf)
+    entry = result["growth_transition"][0]
+    assert isinstance(entry["k_trans"], float)
+    assert entry["k_trans"] == 0.001
+
+
+def test_compute_kt_baranyi(single_row_df: pd.DataFrame):
+    """baranyi model should return same result as BaranyiTransition.compute_kt."""
+    from tfscreen.simulate.growth.transition_linkage import BaranyiTransition
+    tau_lag, k_sharp = 50.0, 0.2
+    gt = [{"condition_pre": "M9", "model": "baranyi",
+           "tau_lag": tau_lag, "k_sharp": k_sharp}]
+    result = _compute_kt(single_row_df, gt)
+    expected = BaranyiTransition().compute_kt(
+        0.1, 0.5, 30.0, 100.0, tau_lag=tau_lag, k_sharp=k_sharp
+    )
+    np.testing.assert_allclose(result, [expected])
+
+
+def test_compute_kt_two_pop(single_row_df: pd.DataFrame):
+    """two_pop model should return same result as TwoPopTransition.compute_kt."""
+    from tfscreen.simulate.growth.transition_linkage import TwoPopTransition
+    k_trans = 0.001
+    gt = [{"condition_pre": "M9", "model": "two_pop", "k_trans": k_trans}]
+    result = _compute_kt(single_row_df, gt)
+    expected = TwoPopTransition().compute_kt(
+        0.1, 0.5, 30.0, 100.0, k_trans=k_trans
+    )
+    np.testing.assert_allclose(result, [expected])
 
 
 # ----------------------------------------------------------------------------

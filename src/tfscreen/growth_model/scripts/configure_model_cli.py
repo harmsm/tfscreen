@@ -64,6 +64,7 @@ def configure_model(binding_df,
                     theta_rescale_model="passthrough",
                     theta_growth_noise_model="zero",
                     theta_binding_noise_model="zero",
+                    growth_noise_model="zero",
                     spiked=None,
                     growth_shares_replicates=False,
                     epistasis=False,
@@ -134,6 +135,11 @@ def configure_model(binding_df,
     theta_binding_noise_model : str, optional
         Model to use for stochastic experimental noise in theta measured by
         binding. Allowed values are 'beta' (default) or 'zero'.
+    growth_noise_model : str, optional
+        Model for additive growth-rate noise. 'zero' (default) adds no noise;
+        'normal_kt' learns a global sigma_k that inflates the observation scale
+        in quadrature with ln_cfu_std, capturing biological variability in
+        growth rates not explained by theta or dk_geno.
     spiked : list or str, optional
         Names of genotypes that should be excluded from congression
         correction.
@@ -194,6 +200,7 @@ def configure_model(binding_df,
                      theta_rescale=theta_rescale_model,
                      theta_growth_noise=theta_growth_noise_model,
                      theta_binding_noise=theta_binding_noise_model,
+                     growth_noise=growth_noise_model,
                      spiked_genotypes=spiked,
                      growth_shares_replicates=growth_shares_replicates,
                      epistasis=epistasis,

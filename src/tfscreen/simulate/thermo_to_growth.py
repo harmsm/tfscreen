@@ -11,6 +11,7 @@ from tfscreen.genetics import (
 from tfscreen.simulate import (
     setup_observable
 )
+from tfscreen.simulate.growth.growth_linkage import get_growth_model
 
 import pandas as pd
 import numpy as np
@@ -128,7 +129,7 @@ def _apply_growth_params(
     growth_params: dict,
 ) -> np.ndarray:
     """
-    Compute per-row wildtype growth rate k = m*theta + b.
+    Compute per-row growth rate k given theta and per-condition model parameters.
 
     Parameters
     ----------
@@ -137,16 +138,29 @@ def _apply_growth_params(
     theta_array : numpy.ndarray
         1D array of fractional occupancy values (same length).
     growth_params : dict
-        Mapping from condition string to {'m': float, 'b': float}.
+        Mapping from condition string to a parameter dict.  The dict must
+        contain a 'model' key ('linear', 'power', or 'saturation'); all
+        remaining keys are forwarded as keyword arguments to the model's
+        predict() method.  Example::
+
+            growth_params = {
+                "M9":     {"model": "linear",     "b": 0.025, "m": -0.01},
+                "M9+kan": {"model": "saturation", "kmin": 0.001, "kmax": 0.04},
+            }
 
     Returns
     -------
     numpy.ndarray
         Growth rate k for each row.
     """
-    m = np.array([growth_params[c]["m"] for c in condition_array])
-    b = np.array([growth_params[c]["b"] for c in condition_array])
-    return m * theta_array + b
+    result = np.zeros(len(theta_array), dtype=float)
+    for cond in np.unique(condition_array):
+        mask = condition_array == cond
+        params = growth_params[cond].copy()
+        model_name = params.pop("model", "linear")
+        model = get_growth_model(model_name)
+        result[mask] = model.predict(theta_array[mask], **params)
+    return result
 
 
 def thermo_to_growth(
@@ -183,10 +197,11 @@ def thermo_to_growth(
         A DataFrame (or path to one) containing the free energy perturbations
         (ddG) for single mutations on each molecular species in the model.
     growth_params : dict
-        Per-condition linear growth model parameters. Keys are condition strings
-        matching the condition_pre and condition_sel values in sample_df. Each
-        value must be a dict with 'm' (slope, growth rate change per unit theta)
-        and 'b' (intercept, base growth rate at theta=0).
+        Per-condition growth model parameters. Keys are condition strings matching
+        the condition_pre and condition_sel values in sample_df. Each value is a
+        dict with a 'model' key ('linear', 'power', or 'saturation') and the
+        corresponding model parameters (see growth_linkage.py for details).
+        Example: ``{'M9': {'model': 'linear', 'b': 0.025, 'm': -0.01}}``.
     mut_growth_rate_shape : float, default 3
         The shape parameter for the gamma distribution used to assign
         pleiotropic fitness costs.

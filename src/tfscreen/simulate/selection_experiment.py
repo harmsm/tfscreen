@@ -5,6 +5,7 @@ from tfscreen.util.io import (
     read_dataframe,
     read_yaml,
 )
+from tfscreen.simulate.growth.transition_linkage import get_transition_model
 from tfscreen.util.numerical import (
     vstack_padded,
     zero_truncated_poisson,
@@ -211,6 +212,18 @@ def _check_cf(
         raise ValueError("library_selector must be a list of column names.")
 
     # --- Validate growth_transition block ---
+
+    # Per-model required parameters and positivity constraints.
+    # Keys are model names; values are dicts with:
+    #   required: list of required parameter names
+    #   positive: list of parameters that must be > 0
+    _GT_MODEL_SPECS = {
+        "instant": {"required": [],                       "positive": []},
+        "memory":  {"required": ["tau0", "k1", "k2"],    "positive": ["k2"]},
+        "baranyi": {"required": ["tau_lag", "k_sharp"],  "positive": ["k_sharp"]},
+        "two_pop": {"required": ["k_trans"],              "positive": ["k_trans"]},
+    }
+
     if "growth_transition" not in cf or cf["growth_transition"] is None:
         cf["growth_transition"] = None
     else:
@@ -231,18 +244,24 @@ def _check_cf(
             if entry["condition_pre"] in seen_conditions:
                 raise ValueError(f"{loc} duplicate condition_pre '{entry['condition_pre']}'.")
             seen_conditions.add(entry["condition_pre"])
-            if entry["model"] not in ("instant", "memory"):
-                raise ValueError(f"{loc} 'model' must be 'instant' or 'memory'.")
-            if entry["model"] == "memory":
-                for param in ("tau0", "k1", "k2"):
-                    if param not in entry:
-                        raise ValueError(f"{loc} model 'memory' requires '{param}'.")
-                    try:
-                        entry[param] = float(entry[param])
-                    except (TypeError, ValueError):
-                        raise ValueError(f"{loc} '{param}' must be a number.")
-                if entry["k2"] <= 0:
-                    raise ValueError(f"{loc} 'k2' must be > 0.")
+            if entry["model"] not in _GT_MODEL_SPECS:
+                raise ValueError(
+                    f"{loc} 'model' must be one of "
+                    f"{sorted(_GT_MODEL_SPECS)}."
+                )
+            spec = _GT_MODEL_SPECS[entry["model"]]
+            for param in spec["required"]:
+                if param not in entry:
+                    raise ValueError(
+                        f"{loc} model '{entry['model']}' requires '{param}'."
+                    )
+                try:
+                    entry[param] = float(entry[param])
+                except (TypeError, ValueError):
+                    raise ValueError(f"{loc} '{param}' must be a number.")
+            for param in spec["positive"]:
+                if entry[param] <= 0:
+                    raise ValueError(f"{loc} '{param}' must be > 0.")
 
     return cf
 
@@ -878,7 +897,7 @@ def _compute_kt(
     growth_transition : list of dict or None
         Validated growth_transition config (from _check_cf). None means instant
         transition for all conditions. Each entry must have 'condition_pre' and
-        'model'; memory entries also have 'tau0', 'k1', 'k2'.
+        'model' plus any model-specific parameters.
 
     Returns
     -------
@@ -899,17 +918,14 @@ def _compute_kt(
     kt = np.zeros(len(phenotype_df))
     for entry in growth_transition:
         mask = condition_pre == entry["condition_pre"]
-        if entry["model"] == "instant":
-            kt[mask] = k_pre[mask] * t_pre[mask] + k_sel[mask] * t_sel[mask]
-        else:
-            tau = entry["tau0"] + entry["k1"] / (theta[mask] + entry["k2"])
-            dln_pre = k_pre[mask] * t_pre[mask]
-            dln_sel = np.where(
-                t_sel[mask] < tau,
-                k_pre[mask] * t_sel[mask],
-                k_pre[mask] * tau + k_sel[mask] * (t_sel[mask] - tau),
-            )
-            kt[mask] = dln_pre + dln_sel
+        params = {k: v for k, v in entry.items()
+                  if k not in ("condition_pre", "model")}
+        model = get_transition_model(entry["model"])
+        kt[mask] = model.compute_kt(
+            k_pre[mask], k_sel[mask],
+            t_pre[mask], t_sel[mask],
+            theta[mask], **params,
+        )
 
     return kt
 

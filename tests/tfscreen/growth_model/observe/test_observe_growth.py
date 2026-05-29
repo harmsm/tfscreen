@@ -197,3 +197,63 @@ def test_guide_structure(mock_data):
     
     # Check distribution
     assert isinstance(guide_trace[f"{name}_nu"]["fn"], dist.LogNormal)
+
+
+# ---------------------------------------------------------------------------
+# Tests for sigma_k growth-rate noise integration
+# ---------------------------------------------------------------------------
+
+def test_sigma_k_zero_preserves_original_scale(mock_data):
+    """sigma_k=0.0 (default) gives effective_scale == ln_cfu_std."""
+    name = "test_sigma_k_zero"
+    ln_cfu_pred = jnp.ones_like(mock_data.ln_cfu) * 5.0
+    fixed_nu = 10.0
+    conditioned = substitute(observe, data={f"{name}_nu": fixed_nu})
+    rng_key = jax.random.PRNGKey(10)
+
+    tr_no_noise = trace(seed(conditioned, rng_key)).get_trace(
+        name=name, data=mock_data, ln_cfu_pred=ln_cfu_pred, sigma_k=0.0
+    )
+    site = tr_no_noise[f"{name}_growth_obs"]
+
+    # Effective scale should equal ln_cfu_std (sqrt(std^2 + 0^2))
+    base = site["fn"].base_dist
+    expected_scale = mock_data.ln_cfu_std
+    assert jnp.allclose(base.scale, expected_scale)
+
+
+def test_sigma_k_inflates_scale(mock_data):
+    """sigma_k > 0 inflates effective_scale beyond ln_cfu_std."""
+    name = "test_sigma_k_pos"
+    ln_cfu_pred = jnp.ones_like(mock_data.ln_cfu) * 5.0
+    sigma_k = 0.5
+    fixed_nu = 10.0
+    conditioned = substitute(observe, data={f"{name}_nu": fixed_nu})
+    rng_key = jax.random.PRNGKey(11)
+
+    tr_with_noise = trace(seed(conditioned, rng_key)).get_trace(
+        name=name, data=mock_data, ln_cfu_pred=ln_cfu_pred, sigma_k=sigma_k
+    )
+    site = tr_with_noise[f"{name}_growth_obs"]
+
+    base = site["fn"].base_dist
+    expected_scale = jnp.sqrt(mock_data.ln_cfu_std ** 2 + sigma_k ** 2)
+    assert jnp.allclose(base.scale, expected_scale)
+
+
+def test_sigma_k_quadrature_formula(mock_data):
+    """effective_scale = sqrt(ln_cfu_std^2 + sigma_k^2) exactly."""
+    name = "test_quad"
+    ln_cfu_pred = jnp.ones_like(mock_data.ln_cfu) * 5.0
+    ln_cfu_std = mock_data.ln_cfu_std  # 0.2
+    sigma_k = 0.3
+    fixed_nu = 10.0
+    conditioned = substitute(observe, data={f"{name}_nu": fixed_nu})
+    rng_key = jax.random.PRNGKey(12)
+
+    tr = trace(seed(conditioned, rng_key)).get_trace(
+        name=name, data=mock_data, ln_cfu_pred=ln_cfu_pred, sigma_k=sigma_k
+    )
+    base = tr[f"{name}_growth_obs"]["fn"].base_dist
+    expected = jnp.sqrt(ln_cfu_std ** 2 + sigma_k ** 2)
+    assert jnp.allclose(base.scale, expected, rtol=1e-6)

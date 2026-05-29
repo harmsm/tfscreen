@@ -1,91 +1,106 @@
+"""
+Numpy implementations of the growth model components for simulation.
+
+Each class corresponds to one inference-side growth component in
+growth_model/components/growth/ and implements the same mathematical
+formula using numpy instead of JAX.
+
+The growth_params dict passed to thermo_to_growth uses the 'model' key to
+select one of these classes.  All remaining keys are forwarded as keyword
+arguments to predict().
+
+    growth_params = {
+        "M9":        {"model": "linear",     "b": 0.025, "m": -0.01},
+        "M9+kan":    {"model": "saturation", "kmin": 0.001, "kmax": 0.04},
+        "M9+kan_hi": {"model": "power",      "b": 0.001, "a": 0.04, "n": 2.0},
+    }
+"""
 
 import numpy as np
 
-class LinkageModel:
-    """Base class for theta-to-growth linkage models."""
-    name = "base"
-    
-    def predict(self, theta, params):
-        raise NotImplementedError
 
-    def get_param_defs(self):
-        """Return list of (suffix, guess, transform, description)."""
-        raise NotImplementedError
-
-class LinearModel(LinkageModel):
+class LinearGrowth:
     """
-    Linear linkage: growth = intercept + slope * theta
-    
-    Params:
-    - b: intercept (at theta=0)
-    - m: slope (change in growth per unit theta)
+    k = b + m * theta
+
+    Matches the 'linear' and 'linear_fixed' inference components.
+
+    Parameters
+    ----------
+    b : float
+        Baseline growth rate at theta=0.
+    m : float
+        Slope: change in growth rate per unit theta.
     """
-    name = "linear"
+    def predict(self, theta, b, m):
+        return b + m * np.asarray(theta)
 
-    def predict(self, theta, params):
-        # params is formatted as [b, m] relative to the condition
-        return params[0] + params[1] * theta
 
-    def get_param_defs(self):
-        return [
-            ("b", 0.0, "none", "Intercept (theta=0)"),
-            ("m", 0.0, "none", "Slope (d_growth/d_theta)")
-        ]
-
-class PowerLawModel(LinkageModel):
+class PowerGrowth:
     """
-    Power law linkage: growth = intercept + coeff * theta^power
-    
-    Params:
-    - b: intercept (at theta=0)
-    - a: coefficient/amplitude
-    - n: power exponent
-    """
-    name = "power_law"
+    k = b + a * theta**n
 
-    def predict(self, theta, params):
-        # params: [b, a, n]
-        b, a, n = params
+    Matches the 'power' inference component.
+
+    Parameters
+    ----------
+    b : float
+        Baseline growth rate at theta=0.
+    a : float
+        Coefficient on the power-law term.
+    n : float
+        Exponent (n=1 reduces to linear).
+    """
+    def predict(self, theta, b, a, n):
+        theta = np.asarray(theta)
         return b + a * (theta ** n)
 
-    def get_param_defs(self):
-        return [
-            ("b", 0.0, "none", "Intercept (theta=0)"),
-            ("a", 0.0, "none", "Coefficient"),
-            ("n", 1.0, "none", "Power exponent")
-        ]
 
-class SaturationModel(LinkageModel):
+class SaturationGrowth:
     """
-    Saturation linkage: growth = min + (max - min) * (theta / (1 + theta))
-    This is effectively a Hill function with n=1 and K=1, scaled.
-    Alternatively: growth = b + range * (theta / (K + theta)) ?
-    User asked for: min + (max - min)*(theta/(1 + theta))
-    
-    Params:
-    - min: growth at theta=0
-    - max: asymptotic maximum growth (at theta -> infinity)
+    k = kmin + (kmax - kmin) * theta / (1 + theta)
+
+    Matches the 'saturation' inference component.
+
+    Parameters
+    ----------
+    kmin : float
+        Growth rate at theta=0.
+    kmax : float
+        Asymptotic growth rate as theta → ∞.
     """
-    name = "saturation"
+    def predict(self, theta, kmin, kmax):
+        theta = np.asarray(theta)
+        return kmin + (kmax - kmin) * theta / (1.0 + theta)
 
-    def predict(self, theta, params):
-        # params: [min, max]
-        min_val, max_val = params
-        return min_val + (max_val - min_val) * (theta / (1.0 + theta))
-
-    def get_param_defs(self):
-        return [
-            ("min", 0.0, "none", "Minimum growth (theta=0)"),
-            ("max", 0.0, "none", "Maximum growth (theta -> inf)")
-        ]
 
 MODEL_REGISTRY = {
-    "linear": LinearModel,
-    "power_law": PowerLawModel,
-    "saturation": SaturationModel
+    "linear":     LinearGrowth,
+    "power":      PowerGrowth,
+    "saturation": SaturationGrowth,
 }
 
-def get_model(name):
+
+def get_growth_model(name):
+    """Return an instantiated growth model by name.
+
+    Parameters
+    ----------
+    name : str
+        One of the keys in MODEL_REGISTRY.
+
+    Returns
+    -------
+    LinearGrowth | PowerGrowth | SaturationGrowth
+
+    Raises
+    ------
+    ValueError
+        If name is not a known model.
+    """
     if name not in MODEL_REGISTRY:
-        raise ValueError(f"Unknown model: {name}. Available: {list(MODEL_REGISTRY.keys())}")
+        raise ValueError(
+            f"Unknown growth model '{name}'. "
+            f"Available models: {sorted(MODEL_REGISTRY)}"
+        )
     return MODEL_REGISTRY[name]()
