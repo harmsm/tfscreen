@@ -3677,8 +3677,7 @@
 ./src/tfscreen/simulate/library_prediction.py:39:71: W291 trailing whitespace
 ./src/tfscreen/simulate/library_prediction.py:40:57: W291 trailing whitespace
 ./src/tfscreen/simulate/library_prediction.py:42:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/library_prediction.py:46:36: E231 missing whitespace after ','
-./src/tfscreen/simulate/library_prediction.py:50:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/library_prediction.py:47:1: W293 blank line contains whitespace
 ./src/tfscreen/simulate/run_simulation.py:12:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/simulate/run_simulation.py:17:1: W293 blank line contains whitespace
 ./src/tfscreen/simulate/run_simulation.py:18:36: E231 missing whitespace after ','
@@ -3702,22 +3701,21 @@
 ./src/tfscreen/simulate/run_simulation.py:71:77: W291 trailing whitespace
 ./src/tfscreen/simulate/run_simulation.py:72:74: W291 trailing whitespace
 ./src/tfscreen/simulate/run_simulation.py:74:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/run_simulation.py:78:36: E231 missing whitespace after ','
-./src/tfscreen/simulate/run_simulation.py:82:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/run_simulation.py:85:46: E231 missing whitespace after ','
-./src/tfscreen/simulate/run_simulation.py:86:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/run_simulation.py:91:51: E231 missing whitespace after ','
-./src/tfscreen/simulate/run_simulation.py:91:62: E231 missing whitespace after ','
-./src/tfscreen/simulate/run_simulation.py:94:26: E231 missing whitespace after ':'
-./src/tfscreen/simulate/run_simulation.py:95:28: E231 missing whitespace after ':'
-./src/tfscreen/simulate/run_simulation.py:96:31: E231 missing whitespace after ':'
-./src/tfscreen/simulate/run_simulation.py:97:25: E231 missing whitespace after ':'
-./src/tfscreen/simulate/run_simulation.py:98:25: E231 missing whitespace after ':'
-./src/tfscreen/simulate/run_simulation.py:99:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/run_simulation.py:103:50: E231 missing whitespace after ','
-./src/tfscreen/simulate/run_simulation.py:104:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/run_simulation.py:109:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/run_simulation.py:110:1: W391 blank line at end of file
+./src/tfscreen/simulate/run_simulation.py:79:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/run_simulation.py:82:46: E231 missing whitespace after ','
+./src/tfscreen/simulate/run_simulation.py:83:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/run_simulation.py:88:51: E231 missing whitespace after ','
+./src/tfscreen/simulate/run_simulation.py:88:62: E231 missing whitespace after ','
+./src/tfscreen/simulate/run_simulation.py:91:26: E231 missing whitespace after ':'
+./src/tfscreen/simulate/run_simulation.py:92:28: E231 missing whitespace after ':'
+./src/tfscreen/simulate/run_simulation.py:93:31: E231 missing whitespace after ':'
+./src/tfscreen/simulate/run_simulation.py:94:25: E231 missing whitespace after ':'
+./src/tfscreen/simulate/run_simulation.py:95:25: E231 missing whitespace after ':'
+./src/tfscreen/simulate/run_simulation.py:96:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/run_simulation.py:100:50: E231 missing whitespace after ','
+./src/tfscreen/simulate/run_simulation.py:101:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/run_simulation.py:106:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/run_simulation.py:107:1: W391 blank line at end of file
 ./src/tfscreen/simulate/scripts/setup_sim_grid_cli.py:101:1: C901 'setup_sim_grid' is too complex (17)
 ./src/tfscreen/simulate/selection_experiment.py:22:1: F401 'pandas.core.groupby.generic.DataFrameGroupBy' imported but unused
 ./src/tfscreen/simulate/selection_experiment.py:42:38: E231 missing whitespace after ':'
@@ -4108,15 +4106,7 @@
 ./src/tfscreen/util/io/read_dataframe.py:67:27: E127 continuation line over-indented for visual indent
 ./src/tfscreen/util/io/read_dataframe.py:68:1: W293 blank line contains whitespace
 ./src/tfscreen/util/io/read_dataframe.py:81:14: W292 no newline at end of file
-./src/tfscreen/util/io/read_yaml.py:4:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/util/io/read_yaml.py:10:1: W293 blank line contains whitespace
-./src/tfscreen/util/io/read_yaml.py:27:24: E261 at least two spaces before inline comment
-./src/tfscreen/util/io/read_yaml.py:40:1: C901 'read_yaml' is too complex (13)
-./src/tfscreen/util/io/read_yaml.py:41:41: E252 missing whitespace around parameter equals
-./src/tfscreen/util/io/read_yaml.py:41:42: E252 missing whitespace around parameter equals
-./src/tfscreen/util/io/read_yaml.py:57:27: E231 missing whitespace after ','
-./src/tfscreen/util/io/read_yaml.py:69:1: W293 blank line contains whitespace
-./src/tfscreen/util/io/read_yaml.py:107:18: W292 no newline at end of file
+./src/tfscreen/util/io/read_yaml.py:31:1: C901 'read_yaml' is too complex (12)
 ./src/tfscreen/util/numerical/__init__.py:3:1: F401 '.broadcast_args.broadcast_args' imported but unused
 ./src/tfscreen/util/numerical/__init__.py:7:1: F401 '.xfill.xfill' imported but unused
 ./src/tfscreen/util/numerical/__init__.py:11:1: F401 '.transform.to_log' imported but unused
@@ -7450,10 +7440,9 @@
 ./tests/tfscreen/simulate/test_library_prediction.py:45:1: W293 blank line contains whitespace
 ./tests/tfscreen/simulate/test_library_prediction.py:47:1: W293 blank line contains whitespace
 ./tests/tfscreen/simulate/test_library_prediction.py:65:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_library_prediction.py:68:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_library_prediction.py:72:1: E305 expected 2 blank lines after class or function definition, found 1
-./tests/tfscreen/simulate/test_library_prediction.py:72:1: E402 module level import not at top of file
-./tests/tfscreen/simulate/test_library_prediction.py:72:21: E261 at least two spaces before inline comment
+./tests/tfscreen/simulate/test_library_prediction.py:70:1: E305 expected 2 blank lines after class or function definition, found 1
+./tests/tfscreen/simulate/test_library_prediction.py:70:1: E402 module level import not at top of file
+./tests/tfscreen/simulate/test_library_prediction.py:70:21: E261 at least two spaces before inline comment
 ./tests/tfscreen/simulate/test_run_simulation.py:3:1: F401 'os' imported but unused
 ./tests/tfscreen/simulate/test_run_simulation.py:5:1: F401 'unittest.mock.MagicMock' imported but unused
 ./tests/tfscreen/simulate/test_run_simulation.py:7:1: F401 'tfscreen.util' imported but unused
@@ -7881,17 +7870,6 @@
 ./tests/tfscreen/util/io/test_read_dataframe.py:151:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/io/test_read_dataframe.py:157:1: W293 blank line contains whitespace
 ./tests/tfscreen/util/io/test_read_dataframe.py:158:60: W292 no newline at end of file
-./tests/tfscreen/util/io/test_read_yaml.py:7:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/util/io/test_read_yaml.py:11:58: E261 at least two spaces before inline comment
-./tests/tfscreen/util/io/test_read_yaml.py:12:1: W293 blank line contains whitespace
-./tests/tfscreen/util/io/test_read_yaml.py:15:1: W293 blank line contains whitespace
-./tests/tfscreen/util/io/test_read_yaml.py:23:1: W293 blank line contains whitespace
-./tests/tfscreen/util/io/test_read_yaml.py:46:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/util/io/test_read_yaml.py:51:1: W293 blank line contains whitespace
-./tests/tfscreen/util/io/test_read_yaml.py:61:1: W293 blank line contains whitespace
-./tests/tfscreen/util/io/test_read_yaml.py:79:38: E261 at least two spaces before inline comment
-./tests/tfscreen/util/io/test_read_yaml.py:81:1: W293 blank line contains whitespace
-./tests/tfscreen/util/io/test_read_yaml.py:96:1: W293 blank line contains whitespace
 ./tests/tfscreen/util/numerical/test_array_search.py:78:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/numerical/test_array_search.py:143:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/numerical/test_array_search.py:167:1: E302 expected 2 blank lines, found 1
@@ -7986,16 +7964,16 @@
 1641  E221 multiple spaces before operator
 26    E222 multiple spaces after operator
 8     E225 missing whitespace around operator
-1145  E231 missing whitespace after ','
+1142  E231 missing whitespace after ','
 79    E251 unexpected spaces around keyword / parameter equals
-16    E252 missing whitespace around parameter equals
-248   E261 at least two spaces before inline comment
+14    E252 missing whitespace around parameter equals
+245   E261 at least two spaces before inline comment
 1     E262 inline comment should start with '# '
 5     E265 block comment should start with '# '
 2     E266 too many leading '#' for block comment
 150   E272 multiple spaces before keyword
 1     E301 expected 1 blank line, found 0
-849   E302 expected 2 blank lines, found 1
+846   E302 expected 2 blank lines, found 1
 55    E303 too many blank lines (2)
 17    E305 expected 2 blank lines after class or function definition, found 0
 29    E306 expected 1 blank line before a nested definition, found 0
@@ -8014,7 +7992,7 @@
 6     F811 redefinition of unused 'dataclasses' from line 6
 45    F841 local variable 'titrant_names' is assigned to but never used
 767   W291 trailing whitespace
-102   W292 no newline at end of file
-1853  W293 blank line contains whitespace
+101   W292 no newline at end of file
+1843  W293 blank line contains whitespace
 33    W391 blank line at end of file
-7970
+7948

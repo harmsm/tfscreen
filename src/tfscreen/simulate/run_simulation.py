@@ -75,10 +75,7 @@ def run_simulation(cf: Union[Dict[str, Any], str, Path],
     # -------------------------------------------------------------------------
     # Read inputs and set up simulation
 
-    cf = tfscreen.util.read_yaml(cf,override_keys=override_keys)
-    if cf is None:
-        err = "Aborting simulation due to configuration error."
-        raise RuntimeError(err)
+    cf = tfscreen.util.read_yaml(cf, override_keys=override_keys)
     
     # Decide if we are going to write out files, make output directory, and make
     # sure that we are not going to write over anything

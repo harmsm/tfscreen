@@ -133,8 +133,6 @@ def run_simulation_from_config(
         Number of independent experimental replicates to simulate. Default 2.
     """
     cf = tfscreen.util.read_yaml(config_file)
-    if cf is None:
-        raise RuntimeError("Aborting simulation due to configuration error.")
 
     os.makedirs(output_dir, exist_ok=True)
 

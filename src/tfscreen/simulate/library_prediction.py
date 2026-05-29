@@ -43,10 +43,7 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
     # -------------------------------------------------------------------------
     # Read inputs and set up simulation
 
-    cf = tfscreen.util.read_yaml(cf,override_keys=override_keys)
-    if cf is None:
-        err = "Aborting simulation due to configuration error."
-        raise RuntimeError(err)
+    cf = tfscreen.util.read_yaml(cf, override_keys=override_keys)
     
     # -------------------------------------------------------------------------
     # Do main calculation

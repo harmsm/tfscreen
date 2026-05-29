@@ -61,10 +61,10 @@ def test_setup_file_output_success_existing_dir(tmp_path):
 # Tests for run_simulation
 # -----------------------------------------------------------------------------
 
-def test_run_simulation_config_error(mocker):
-    mocker.patch("tfscreen.util.read_yaml", return_value=None)
-    with pytest.raises(RuntimeError, match="Aborting simulation due to configuration error"):
-        run_simulation("bad_config.yaml", None)
+def test_run_simulation_config_error():
+    # read_yaml now raises FileNotFoundError directly on a missing file.
+    with pytest.raises(FileNotFoundError):
+        run_simulation("nonexistent_config.yaml", None)
 
 def test_run_simulation_success(mocker, mock_config, mock_result_dfs):
     lib_df, pheno_df, ddG_df, sample_df, counts_df = mock_result_dfs

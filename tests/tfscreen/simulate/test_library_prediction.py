@@ -62,11 +62,9 @@ def test_library_prediction_success(mocker, mock_config):
     assert pheno_df.equals(mock_phenotype_df)
     assert ddG_df.equals(mock_genotype_ddG_df)
 
-def test_library_prediction_config_error(mocker):
-    # Mock read_yaml returning None
-    mocker.patch("tfscreen.util.read_yaml", return_value=None)
-    
-    with pytest.raises(RuntimeError, match="Aborting simulation due to configuration error"):
-        library_prediction("bad_config.yaml")
+def test_library_prediction_config_error():
+    # read_yaml now raises FileNotFoundError directly on a missing file.
+    with pytest.raises(FileNotFoundError):
+        library_prediction("nonexistent_config.yaml")
 
 import tfscreen.util # Need this imported to patch it correctly via the module where it is used
