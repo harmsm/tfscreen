@@ -1061,7 +1061,7 @@ def _write_calibration_stats(df, out_prefix, n_params=None, n_obs=None):
         a non-NaN ``ln_cfu_pred``).  Written to JSON as an integer or null.
     """
     import json
-    from tfscreen.fitting import stats_test_suite
+    from tfscreen.mle import stats_test_suite
 
     needed = ["ln_cfu", "ln_cfu_pred", "ln_cfu_pred_std"]
     if not all(c in df.columns for c in needed):

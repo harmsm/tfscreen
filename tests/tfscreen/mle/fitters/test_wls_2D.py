@@ -1,7 +1,7 @@
 
 import numpy as np
 import pytest
-from tfscreen.fitting.fitters.wls_2D import run_wls_2D
+from tfscreen.mle.fitters.wls_2D import run_wls_2D
 
 def test_wls_2D_single_dataset():
     x = np.array([0, 1, 2])

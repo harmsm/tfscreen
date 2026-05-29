@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 from scipy.sparse import csr_matrix
-from tfscreen.fitting.fitters._util import get_cov
+from tfscreen.mle.fitters._util import get_cov
 
 def test_get_cov_basic():
     # Linear problem: y = X @ params

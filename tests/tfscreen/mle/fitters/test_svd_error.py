@@ -2,7 +2,7 @@
 import pytest
 import numpy as np
 from unittest.mock import patch
-from tfscreen.fitting.fitters.least_squares import run_least_squares
+from tfscreen.mle.fitters.least_squares import run_least_squares
 
 def test_run_least_squares_svd_error():
     """
@@ -18,7 +18,7 @@ def test_run_least_squares_svd_error():
     args = (np.array([1.0, 2.0, 3.0]),)
     
     # Mock least_squares to raise LinAlgError("SVD did not converge")
-    with patch("tfscreen.fitting.fitters.least_squares.least_squares") as mock_lsq:
+    with patch("tfscreen.mle.fitters.least_squares.least_squares") as mock_lsq:
         mock_lsq.side_effect = np.linalg.LinAlgError("SVD did not converge")
         
         with pytest.warns(UserWarning, match="Fit failed because SVD did not converge"):
@@ -54,7 +54,7 @@ def test_run_least_squares_other_linalg_error():
     args = (np.array([1.0, 2.0, 3.0]),)
     
     # Mock least_squares to raise a different LinAlgError
-    with patch("tfscreen.fitting.fitters.least_squares.least_squares") as mock_lsq:
+    with patch("tfscreen.mle.fitters.least_squares.least_squares") as mock_lsq:
         mock_lsq.side_effect = np.linalg.LinAlgError("Some other error")
         
         with pytest.raises(np.linalg.LinAlgError, match="Some other error"):

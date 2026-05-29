@@ -6,7 +6,7 @@ import pandas as pd
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from tfscreen.analysis.cat_response.cat_fit import cat_fit
-from tfscreen.models.generic import MODEL_LIBRARY
+from tfscreen.mle.curve_models import MODEL_LIBRARY
 from tfscreen.util.cli.generalized_main import generalized_main
 
 def _fit_one(args):

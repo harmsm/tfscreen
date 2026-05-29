@@ -1,7 +1,7 @@
 
 import numpy as np
 import pytest
-from tfscreen.fitting.fitters.matrix_nls import run_matrix_nls
+from tfscreen.mle.fitters.matrix_nls import run_matrix_nls
 
 def test_matrix_nls_linear():
     # Matrix NLS is essentially solving y = X @ params via least_squares

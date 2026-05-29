@@ -2,7 +2,7 @@
 import pytest
 import pandas as pd
 import numpy as np
-from tfscreen.fitting.parse_patsy import parse_patsy
+from tfscreen.mle.parse_patsy import parse_patsy
 
 def test_parse_patsy_simple():
     df = pd.DataFrame({"color": ["red", "blue"], "size": [1, 2]})

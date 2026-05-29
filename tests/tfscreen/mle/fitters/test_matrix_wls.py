@@ -1,7 +1,7 @@
 
 import numpy as np
 import pytest
-from tfscreen.fitting.fitters.matrix_wls import run_matrix_wls
+from tfscreen.mle.fitters.matrix_wls import run_matrix_wls
 
 def test_run_matrix_wls_basic():
     # Simple linear regression: y = 2x + 1

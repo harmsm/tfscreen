@@ -1,7 +1,7 @@
 
 import pytest
 import numpy as np
-from tfscreen.fitting.predict_with_error import predict_with_error
+from tfscreen.mle.predict_with_error import predict_with_error
 
 def linear_model(params, x):
     # y = m*x + b

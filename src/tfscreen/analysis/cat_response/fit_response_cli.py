@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 
 from tfscreen.analysis.cat_response.cat_fit import cat_fit
-from tfscreen.models.generic import MODEL_LIBRARY
+from tfscreen.mle.curve_models import MODEL_LIBRARY
 
 DEFAULT_MODELS = ["flat", "repressor", "inducer", "hill_repressor", "hill_inducer"]
 

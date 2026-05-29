@@ -9,12 +9,11 @@ from . import process_raw
 
 from . import util
 from . import data
-from . import fitting
+from . import mle
 from . import plot
 
 from . import analysis
 from . import simulate
-from . import models
 
 
 

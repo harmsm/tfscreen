@@ -2,7 +2,7 @@
 import pytest
 import numpy as np
 
-from tfscreen.models.generic import guesses
+from tfscreen.mle.curve_models import guesses
 
 @pytest.mark.parametrize("guess_func, expected_cols", [
     (guesses.guess_flat, 1),

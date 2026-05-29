@@ -1,7 +1,7 @@
 
 import pytest
 import numpy as np
-from tfscreen.models.generic.models import (
+from tfscreen.mle.curve_models.models import (
     model_flat,
     model_linear,
     model_hill_3p,

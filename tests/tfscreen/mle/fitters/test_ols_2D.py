@@ -1,7 +1,7 @@
 
 import numpy as np
 import pytest
-from tfscreen.fitting.fitters.ols_2D import run_ols_2D
+from tfscreen.mle.fitters.ols_2D import run_ols_2D
 
 def test_ols_2D_single_dataset():
     # Test with 1D input (single dataset)

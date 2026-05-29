@@ -1,7 +1,7 @@
 
 import numpy as np
 import pytest
-from tfscreen.fitting.fitters.least_squares import run_least_squares, _weighted_residuals
+from tfscreen.mle.fitters.least_squares import run_least_squares, _weighted_residuals
 
 def linear_model(params, x):
     m, b = params

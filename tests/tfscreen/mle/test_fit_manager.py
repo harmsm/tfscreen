@@ -2,7 +2,7 @@
 import pytest
 import numpy as np
 import pandas as pd
-from tfscreen.fitting.fit_manager import FitManager
+from tfscreen.mle.fit_manager import FitManager
 from scipy.special import expit, logit
 
 @pytest.fixture

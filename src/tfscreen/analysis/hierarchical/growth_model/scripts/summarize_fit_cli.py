@@ -9,7 +9,7 @@ import pandas as pd
 import yaml
 from matplotlib import pyplot as plt
 
-from tfscreen.fitting.stats_test_suite import stats_test_suite
+from tfscreen.mle.stats_test_suite import stats_test_suite
 from tfscreen.plot.xy_corr import xy_corr
 from tfscreen.util.cli.generalized_main import generalized_main
 
