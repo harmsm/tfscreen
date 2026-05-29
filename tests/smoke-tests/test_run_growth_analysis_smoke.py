@@ -1,10 +1,10 @@
 import pytest
 import os
 import h5py
-from tfscreen.growth_model.model_class import ModelClass
-from tfscreen.growth_model.configuration_io import write_configuration
-from tfscreen.growth_model.scripts.fit_model_cli import fit_model
-from tfscreen.growth_model.scripts.sample_posterior_cli import sample_posterior
+from tfscreen.tfmodel.model_class import ModelClass
+from tfscreen.tfmodel.configuration_io import write_configuration
+from tfscreen.tfmodel.scripts.fit_model_cli import fit_model
+from tfscreen.tfmodel.scripts.sample_posterior_cli import sample_posterior
 
 
 def _build_config(gm, tmpdir, growth_smoke_csv, binding_smoke_csv):

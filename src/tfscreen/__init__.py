@@ -13,7 +13,7 @@ from . import plot
 
 from . import analysis
 from . import simulate
-from . import growth_model
+from . import tfmodel
 
 
 

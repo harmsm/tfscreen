@@ -31,8 +31,8 @@ OUT_FILE  = os.path.join(OUT_DIR, "numpyro_reference_posteriors.npz")
 
 sys.path.insert(0, os.path.join(REPO_ROOT, "src"))
 
-from tfscreen.growth_model.model_class import ModelClass
-from tfscreen.growth_model.run_inference import RunInference
+from tfscreen.tfmodel.model_class import ModelClass
+from tfscreen.tfmodel.run_inference import RunInference
 
 GROWTH_CSV  = os.path.join(DATA_DIR, "growth-smoke.csv")
 BINDING_CSV = os.path.join(DATA_DIR, "binding-smoke.csv")

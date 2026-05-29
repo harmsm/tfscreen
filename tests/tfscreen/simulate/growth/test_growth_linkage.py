@@ -90,7 +90,7 @@ class TestSaturationGrowth:
         np.testing.assert_allclose(result, 0.5)
 
 
-class TestGetGrowthModel:
+class TestGetTFModel:
 
     @pytest.mark.parametrize("name", list(MODEL_REGISTRY))
     def test_known_models_returned(self, name):

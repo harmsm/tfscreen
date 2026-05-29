@@ -3,9 +3,9 @@ import os
 import pandas as pd
 import numpy as np
 import jax.numpy as jnp
-from tfscreen.growth_model.model_class import ModelClass
-from tfscreen.growth_model.prediction import predict
-from tfscreen.growth_model.run_inference import RunInference
+from tfscreen.tfmodel.model_class import ModelClass
+from tfscreen.tfmodel.prediction import predict
+from tfscreen.tfmodel.run_inference import RunInference
 
 @pytest.mark.slow
 def test_prediction_smoke(growth_smoke_csv, 

@@ -2,9 +2,9 @@ import pytest
 import os
 import jax.numpy as jnp
 import numpy as np
-from tfscreen.growth_model.model_class import ModelClass
-from tfscreen.growth_model.extraction import extract_parameters
-from tfscreen.growth_model.run_inference import RunInference
+from tfscreen.tfmodel.model_class import ModelClass
+from tfscreen.tfmodel.extraction import extract_parameters
+from tfscreen.tfmodel.run_inference import RunInference
 import h5py
 
 @pytest.mark.slow
