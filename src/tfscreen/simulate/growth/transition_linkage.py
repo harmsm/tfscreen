@@ -1,13 +1,15 @@
 """
-Numpy implementations of the growth-transition components for simulation.
+Growth-transition components for simulation.
 
-Each class corresponds to one inference-side growth_transition component in
-growth_model/components/growth_transition/ and computes the total log-growth
-(kt = Δln_cfu) for a pre-selection + selection experiment.
+Each class wraps one inference-side growth_transition component from
+``tfscreen.tfmodel.generative.components.growth_transition`` and delegates
+all arithmetic to that shared implementation.
 
-The Baranyi and two-population formulas are translated directly from
-growth_model/components/growth_transition/_baranyi.py and two_pop.py,
-replacing jnp with np.
+``BaranyiTransition`` and ``TwoPopTransition`` call the tfmodel deterministic
+functions directly (``_baranyi.compute_growth`` and
+``two_pop._compute_growth``), ensuring that the simulate and inference paths
+use identical maths.  ``InstantTransition`` and ``MemoryTransition`` are
+simple enough to implement inline or have no shared tfmodel core.
 
 The growth_transition list in a simulation config selects one of these
 classes per condition_pre:
@@ -25,6 +27,12 @@ classes per condition_pre:
 """
 
 import numpy as np
+from tfscreen.tfmodel.generative.components.growth_transition._baranyi import (
+    compute_growth as _baranyi_compute_growth,
+)
+from tfscreen.tfmodel.generative.components.growth_transition.two_pop import (
+    _compute_growth as _two_pop_compute_growth,
+)
 
 
 class InstantTransition:
@@ -99,12 +107,8 @@ class BaranyiTransition:
     """
     def compute_kt(self, k_pre, k_sel, t_pre, t_sel, theta=None,
                    tau_lag=100.0, k_sharp=1.0):
-        term1 = np.logaddexp(0.0, k_sharp * (t_sel - tau_lag))
-        term0 = np.logaddexp(0.0, -k_sharp * tau_lag)
-        integrated_sigmoid = (term1 - term0) / k_sharp
-        dln_pre = k_pre * t_pre
-        dln_sel = k_pre * t_sel + (k_sel - k_pre) * integrated_sigmoid
-        return dln_pre + dln_sel
+        return np.array(_baranyi_compute_growth(k_pre, k_sel, t_pre, t_sel,
+                                                tau=tau_lag, k=k_sharp))
 
 
 class TwoPopTransition:
@@ -129,28 +133,8 @@ class TwoPopTransition:
         Transition rate from pre-selection to selection growth (must be > 0).
     """
     def compute_kt(self, k_pre, k_sel, t_pre, t_sel, theta=None, k_trans=1e-6):
-        k_pre = np.asarray(k_pre, dtype=float)
-        k_sel = np.asarray(k_sel, dtype=float)
-        t_pre = np.asarray(t_pre, dtype=float)
-        t_sel = np.asarray(t_sel, dtype=float)
-
-        D = k_pre - k_sel - k_trans
-        valid = D > 0
-        # Replace invalid D with 1.0 before any log so log(safe_D) stays finite
-        # even for the invalid branch (those results are discarded by np.where).
-        safe_D = np.where(valid, D, np.ones_like(D))
-
-        a = k_sel * t_sel
-        b = (k_pre - k_trans) * t_sel
-        m = np.maximum(a, b)
-        scaled_num = k_trans * np.exp(a - m) + safe_D * np.exp(b - m)
-
-        two_pop_sel = m + np.log(scaled_num) - np.log(safe_D)
-        fallback_sel = k_pre * t_sel   # k_trans → 0 limit: no transition
-
-        dln_sel = np.where(valid, two_pop_sel, fallback_sel)
-        dln_pre = k_pre * t_pre
-        return dln_pre + dln_sel
+        return np.array(_two_pop_compute_growth(k_pre, k_sel, t_pre, t_sel,
+                                                k_trans=k_trans))
 
 
 TRANSITION_REGISTRY = {

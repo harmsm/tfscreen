@@ -2,6 +2,12 @@ import pytest
 import numpy as np
 from scipy.integrate import quad
 
+from tfscreen.tfmodel.generative.components.growth_transition._baranyi import (
+    compute_growth as _baranyi_compute_growth,
+)
+from tfscreen.tfmodel.generative.components.growth_transition.two_pop import (
+    _compute_growth as _two_pop_compute_growth,
+)
 from tfscreen.simulate.growth.transition_linkage import (
     InstantTransition,
     MemoryTransition,
@@ -251,3 +257,90 @@ class TestGetTransitionModel:
     def test_unknown_model_raises(self):
         with pytest.raises(ValueError, match="Unknown transition model"):
             get_transition_model("not_a_real_model")
+
+
+# ---------------------------------------------------------------------------
+# Cross-validation: simulate wrappers must agree with tfmodel implementations
+# ---------------------------------------------------------------------------
+
+_SCALAR_CASES = [
+    dict(k_pre=0.1,  k_sel=0.05,  t_pre=30.0,  t_sel=100.0),
+    dict(k_pre=0.05, k_sel=0.1,   t_pre=10.0,  t_sel=200.0),   # k_sel > k_pre
+    dict(k_pre=0.2,  k_sel=0.001, t_pre=0.0,   t_sel=60.0),
+]
+
+_VECTOR_CASES = [
+    dict(k_pre=np.array([0.1, 0.2]),
+         k_sel=np.array([0.05, 0.06]),
+         t_pre=np.array([30.0, 40.0]),
+         t_sel=np.array([100.0, 80.0])),
+]
+
+
+class TestBaranyiAgreementWithTFModel:
+    """BaranyiTransition.compute_kt must return the same values as _baranyi.compute_growth."""
+
+    @pytest.mark.parametrize("case", _SCALAR_CASES)
+    def test_scalar_agreement(self, case):
+        tau_lag, k_sharp = 50.0, 0.2
+        sim = BaranyiTransition().compute_kt(
+            case["k_pre"], case["k_sel"], case["t_pre"], case["t_sel"],
+            tau_lag=tau_lag, k_sharp=k_sharp,
+        )
+        ref = float(_baranyi_compute_growth(
+            case["k_pre"], case["k_sel"], case["t_pre"], case["t_sel"],
+            tau=tau_lag, k=k_sharp,
+        ))
+        np.testing.assert_allclose(sim, ref, rtol=1e-6)
+
+    @pytest.mark.parametrize("case", _VECTOR_CASES)
+    def test_vector_agreement(self, case):
+        tau_lag, k_sharp = 50.0, 0.2
+        sim = BaranyiTransition().compute_kt(
+            case["k_pre"], case["k_sel"], case["t_pre"], case["t_sel"],
+            tau_lag=tau_lag, k_sharp=k_sharp,
+        )
+        ref = np.array(_baranyi_compute_growth(
+            case["k_pre"], case["k_sel"], case["t_pre"], case["t_sel"],
+            tau=tau_lag, k=k_sharp,
+        ))
+        np.testing.assert_allclose(sim, ref, rtol=1e-6)
+
+    def test_returns_numpy_array(self):
+        result = BaranyiTransition().compute_kt(0.1, 0.05, 30.0, 100.0,
+                                                tau_lag=50.0, k_sharp=0.2)
+        assert isinstance(result, np.ndarray)
+
+
+class TestTwoPopAgreementWithTFModel:
+    """TwoPopTransition.compute_kt must return the same values as two_pop._compute_growth."""
+
+    @pytest.mark.parametrize("case", _SCALAR_CASES)
+    def test_scalar_agreement(self, case):
+        k_trans = 0.001
+        sim = TwoPopTransition().compute_kt(
+            case["k_pre"], case["k_sel"], case["t_pre"], case["t_sel"],
+            k_trans=k_trans,
+        )
+        ref = float(_two_pop_compute_growth(
+            case["k_pre"], case["k_sel"], case["t_pre"], case["t_sel"],
+            k_trans=k_trans,
+        ))
+        np.testing.assert_allclose(sim, ref, rtol=1e-6)
+
+    @pytest.mark.parametrize("case", _VECTOR_CASES)
+    def test_vector_agreement(self, case):
+        k_trans = 0.001
+        sim = TwoPopTransition().compute_kt(
+            case["k_pre"], case["k_sel"], case["t_pre"], case["t_sel"],
+            k_trans=k_trans,
+        )
+        ref = np.array(_two_pop_compute_growth(
+            case["k_pre"], case["k_sel"], case["t_pre"], case["t_sel"],
+            k_trans=k_trans,
+        ))
+        np.testing.assert_allclose(sim, ref, rtol=1e-6)
+
+    def test_returns_numpy_array(self):
+        result = TwoPopTransition().compute_kt(0.1, 0.05, 30.0, 100.0, k_trans=0.001)
+        assert isinstance(result, np.ndarray)
