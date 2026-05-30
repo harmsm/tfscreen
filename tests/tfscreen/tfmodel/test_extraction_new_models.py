@@ -62,7 +62,7 @@ def _make_model(theta="none", dk_geno="none", activity="fixed",
         "condition_sel_idx":[0,    0,    0,    1,    1,    1],
     })
 
-    if dk_geno in ("hierarchical", "hierarchical_mut"):
+    if dk_geno == "hierarchical":
         model_df["map_ln_cfu0"] = [0, 1, 2, 3, 4, 5]
 
     mock_tm = MagicMock()
@@ -188,38 +188,11 @@ class TestExtractParametersHillMut:
 
 class TestExtractParametersHierarchicalMut:
 
-    def _dk_geno_mut_posteriors(self, S=5):
-        return {
-            "ln_cfu0":        np.random.rand(S, 6),
-            "dk_geno":        np.random.rand(S, 3),
-            "dk_geno_d_dk_geno": np.random.rand(S, 2),  # M=2
-        }
-
     def _activity_mut_posteriors(self, S=5):
         return {
             "activity":                np.random.rand(S, 3),
             "activity_d_log_activity": np.random.rand(S, 2),  # M=2
         }
-
-    def test_dk_geno_hierarchical_mut_extracts_ln_cfu0_and_dk_geno(self):
-        model = _make_model(dk_geno="hierarchical_mut")
-        params = extract_parameters(model, self._dk_geno_mut_posteriors(), q_to_get=_Q)
-        assert "ln_cfu0" in params
-        assert "dk_geno" in params
-
-    def test_dk_geno_hierarchical_mut_extracts_per_mutation(self):
-        model = _make_model(dk_geno="hierarchical_mut")
-        params = extract_parameters(model, self._dk_geno_mut_posteriors(), q_to_get=_Q)
-        assert "d_dk_geno" in params
-        df = params["d_dk_geno"]
-        assert len(df) == 2   # M=2 mutations
-        assert "mutation" in df.columns
-
-    def test_dk_geno_hierarchical_mut_dk_geno_shape(self):
-        model = _make_model(dk_geno="hierarchical_mut")
-        params = extract_parameters(model, self._dk_geno_mut_posteriors(), q_to_get=_Q)
-        assert len(params["dk_geno"]) == 3
-        assert "genotype" in params["dk_geno"].columns
 
     def test_activity_hierarchical_mut_extracts_activity_and_per_mutation(self):
         model = _make_model(activity="hierarchical_mut")
@@ -230,21 +203,6 @@ class TestExtractParametersHierarchicalMut:
         df = params["d_log_activity"]
         assert len(df) == 2   # M=2 mutations
         assert "mutation" in df.columns
-
-    def test_dk_geno_hierarchical_mut_same_genotype_output_as_hierarchical(self):
-        """The assembled dk_geno and ln_cfu0 tables are identical for both variants."""
-        base_post = {
-            "ln_cfu0": np.ones((4, 6)) * 0.5,
-            "dk_geno": np.ones((4, 3)) * 0.25,
-        }
-        model_hier = _make_model(dk_geno="hierarchical")
-        model_mut  = _make_model(dk_geno="hierarchical_mut")
-        p_hier = extract_parameters(model_hier, base_post, q_to_get=_Q)
-        p_mut  = extract_parameters(model_mut,
-                                    {**base_post, "dk_geno_d_dk_geno": np.ones((4, 2))},
-                                    q_to_get=_Q)
-        pd.testing.assert_frame_equal(p_hier["dk_geno"], p_mut["dk_geno"])
-        pd.testing.assert_frame_equal(p_hier["ln_cfu0"], p_mut["ln_cfu0"])
 
     def test_activity_hierarchical_mut_same_genotype_output_as_horseshoe(self):
         base_post = {"activity": np.ones((4, 3)) * 0.7}

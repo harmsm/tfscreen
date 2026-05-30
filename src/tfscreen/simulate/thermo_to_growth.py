@@ -3,7 +3,6 @@ Generate phenotypes from a genotype library via prior-predictive theta sampling.
 """
 
 from tfscreen.genetics import (
-    combine_mutation_effects,
     set_categorical_genotype,
     standardize_genotypes,
     argsort_genotypes,
@@ -16,9 +15,8 @@ import pandas as pd
 import numpy as np
 from numpy.random import Generator
 from tqdm.auto import tqdm
-from scipy.stats import gamma
 
-from typing import Iterable, Union, Callable, Optional
+from typing import Iterable, Optional
 
 
 def _assign_activity(unique_genotypes,
@@ -47,40 +45,31 @@ def _assign_activity(unique_genotypes,
 
 
 def _assign_dk_geno(unique_genotypes,
-                    shape_param=3,
-                    scale_param=0.002,
-                    mut_combine_fcn="sum",
+                    hyper_loc=-3.5,
+                    hyper_scale=1.0,
+                    hyper_shift=0.02,
                     rng: Generator | None = None):
     """
-    Assign a global fitness cost (dk_geno) to each genotype.
+    Assign a pleiotropic growth-rate effect (dk_geno) to each genotype.
 
-    Per-mutation costs are drawn from a gamma distribution and combined for
-    multi-mutation genotypes, producing a distribution skewed towards
-    deleterious (negative) values.
+    Each genotype draws independently from the shifted lognormal:
+        dk_geno = hyper_shift - exp(Normal(hyper_loc, hyper_scale))
+
+    Wild-type receives dk_geno = 0.  This matches the prior used in the
+    hierarchical tfmodel inference component.
     """
     if rng is None:
         rng = np.random.default_rng()
 
-    g_lookup = pd.Series(list(unique_genotypes),
-                         index=unique_genotypes).str.split("/", expand=True)
-    if "wt" in g_lookup.index:
-        g_lookup.loc["wt", :] = np.nan
-    single_mutations = g_lookup.stack().unique()
+    dk_geno = {}
+    for g in unique_genotypes:
+        if g == "wt":
+            dk_geno[g] = 0.0
+        else:
+            offset = rng.normal(hyper_loc, hyper_scale)
+            dk_geno[g] = float(hyper_shift - np.exp(offset))
 
-    dk_geno_values = scale_param / 2 - gamma.rvs(
-        a=shape_param,
-        scale=scale_param,
-        size=len(single_mutations),
-        random_state=rng,
-    )
-
-    mut_dk_mapper = pd.Series(data=dk_geno_values, index=single_mutations)
-
-    return combine_mutation_effects(
-        unique_genotypes=unique_genotypes,
-        single_mutant_effects=mut_dk_mapper,
-        mut_combine_fcn=mut_combine_fcn,
-    )
+    return pd.Series(dk_geno)
 
 
 def _apply_growth_params(condition_array, theta_array, growth_params,
@@ -127,11 +116,11 @@ def thermo_to_growth(
     theta_rng_key,
     growth_params: dict,
     theta_priors_overrides: Optional[dict] = None,
-    mut_growth_rate_shape: float = 3,
-    mut_growth_rate_scale: float = 0.002,
+    dk_geno_hyper_loc: float = -3.5,
+    dk_geno_hyper_scale: float = 1.0,
+    dk_geno_hyper_shift: float = 0.02,
     activity_wt: float = 1.0,
     activity_mut_scale: float = 0.0,
-    dk_geno_combine_fcn: Optional[Union[str, Callable]] = "sum",
     rng: Generator | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
@@ -154,17 +143,22 @@ def thermo_to_growth(
         Per-condition growth model parameters keyed by condition string.
     theta_priors_overrides : dict or None
         Overrides to the theta component's default hyperparameters.
-    mut_growth_rate_shape : float
-        Shape of the gamma distribution for dk_geno sampling.
-    mut_growth_rate_scale : float
-        Scale of the gamma distribution for dk_geno sampling.
+    dk_geno_hyper_loc : float
+        Mean of the normal distribution in log-space for dk_geno sampling.
+        Matches the ``hyper_loc`` hyperparameter of the hierarchical tfmodel
+        dk_geno component.
+    dk_geno_hyper_scale : float
+        Std dev of the normal distribution in log-space for dk_geno sampling.
+        Matches the ``hyper_scale`` hyperparameter of the hierarchical tfmodel
+        dk_geno component.
+    dk_geno_hyper_shift : float
+        Shift applied after exponentiation: dk_geno = hyper_shift - exp(offset).
+        Controls the maximum possible (beneficial) growth-rate effect.
     activity_wt : float
         TF activity of the wild-type genotype.
     activity_mut_scale : float
         Std dev of log(activity) for mutant genotypes.  0 gives all genotypes
         identical activity.
-    dk_geno_combine_fcn : str or callable
-        Method for combining per-mutation dk_geno values.
     rng : numpy.random.Generator or None
         NumPy RNG for dk_geno / activity sampling.
 
@@ -268,8 +262,8 @@ def thermo_to_growth(
     # ── Per-genotype fitness cost and activity ────────────────────────────────
 
     genotype_dk_geno_series = _assign_dk_geno(
-        unique_genotypes, mut_growth_rate_shape, mut_growth_rate_scale,
-        dk_geno_combine_fcn, rng,
+        unique_genotypes, dk_geno_hyper_loc, dk_geno_hyper_scale,
+        dk_geno_hyper_shift, rng,
     )
     phenotype_df["dk_geno"] = phenotype_df["genotype"].map(genotype_dk_geno_series)
 

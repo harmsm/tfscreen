@@ -111,15 +111,31 @@ def test_assign_dk_geno_sampling_and_integration(rng):
     result = _assign_dk_geno(genotypes, rng=rng)
 
     assert isinstance(result, pd.Series)
-    assert len(result) == len(genotypes)
+    assert set(result.index) == set(genotypes)
+    # wt is always zero
     assert result.loc["wt"] == 0.0
+    # single mutants are each drawn from the shifted lognormal (bounded above by hyper_shift=0.02)
+    assert result.loc["A1B"] < 0.02
+    assert result.loc["C2D"] < 0.02
+    # double mutant is an independent draw, not a sum of singles
+    assert result.loc["A1B/C2D"] < 0.02
+    assert result.loc["A1B/C2D"] != result.loc["A1B"] + result.loc["C2D"]
 
-    expected_A1B = -0.0053917202444200745
-    expected_C2D = -0.007178919203856204
 
-    assert np.isclose(result.loc["A1B"], expected_A1B, rtol=1e-5)
-    assert np.isclose(result.loc["C2D"], expected_C2D, rtol=1e-5)
-    assert np.isclose(result.loc["A1B/C2D"], expected_A1B + expected_C2D, rtol=1e-5)
+def test_assign_dk_geno_reproducible(rng):
+    genotypes = ["wt", "A1B", "C2D"]
+    r1 = _assign_dk_geno(genotypes, rng=np.random.default_rng(42))
+    r2 = _assign_dk_geno(genotypes, rng=np.random.default_rng(42))
+    np.testing.assert_array_equal(r1.values, r2.values)
+
+
+def test_assign_dk_geno_distribution(rng):
+    # With many genotypes, the bulk should be negative (deleterious)
+    genotypes = [f"M{i}" for i in range(500)]
+    result = _assign_dk_geno(genotypes, rng=rng)
+    assert (result < 0).mean() > 0.5
+    # All values bounded above by hyper_shift default
+    assert (result <= 0.02).all()
 
 
 # ----------------------------------------------------------------------------

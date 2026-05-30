@@ -54,7 +54,7 @@ SMOKE_CONFIGS = [
     # test mutation-decomposed Hill theta
     {
         "theta":"hill_mut",
-        "dk_geno":"hierarchical_mut",
+        "dk_geno":"hierarchical",
         "activity":"hierarchical_mut",
         "epistasis":False,
     },

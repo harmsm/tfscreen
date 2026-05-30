@@ -14,7 +14,6 @@ from .components.ln_cfu0 import hierarchical as ln_cfu0
 
 from .components.dk_geno import fixed as dk_geno_fixed
 from .components.dk_geno import hierarchical as dk_geno_hierarchical
-from .components.dk_geno import hierarchical_mut as dk_geno_mut_decomp
 
 from .components.activity import fixed as activity_fixed
 from .components.activity import hierarchical as activity_hierarchical
@@ -70,7 +69,6 @@ model_registry = {
     "dk_geno":{
         "fixed":dk_geno_fixed,
         "hierarchical":dk_geno_hierarchical,
-        "hierarchical_mut":dk_geno_mut_decomp,
     },
     "activity":{
         "fixed":activity_fixed,

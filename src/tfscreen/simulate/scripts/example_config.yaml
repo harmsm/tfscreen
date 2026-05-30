@@ -205,22 +205,17 @@ growth:
 # sampling a per-mutation cost from a gamma distribution and summing across
 # mutations. The formula is:
 #
-#   dk_geno = (scale/2) - Gamma(shape, scale)
+#   dk_geno = hyper_shift - exp(Normal(hyper_loc, hyper_scale))
 #
-# so the distribution is centered slightly below zero (most mutations are
-# mildly deleterious) with a short right tail (a few beneficial variants).
-# Increasing mut_growth_rate_scale widens the distribution in both directions,
-# producing more dead variants and more fast-growers simultaneously. Changing
-# mut_growth_rate_shape adjusts the skew of the gamma while keeping the scale
-# fixed.
-#
-# Example reference points (approximate, condition-dependent):
-#   shape=3, scale=0.002 (defaults): ~0.2% dead, ~1.4% faster than wt,
-#                                     fastest ~5% above wt growth rate
-#   shape=3, scale=0.02:             ~81% dead, fastest ~50% above wt
-#   shape=3, scale=0.0002:           ~0% dead, fastest ~0.4% above wt
-mut_growth_rate_shape: 3
-mut_growth_rate_scale: 0.002
+# so the distribution is centered slightly below zero (most genotypes are
+# mildly deleterious) with a short right tail capped at hyper_shift.
+# Increasing hyper_scale widens the distribution in both directions.
+# hyper_loc controls the typical log-magnitude of the deleterious effect.
+# hyper_shift sets the maximum possible beneficial effect.
+# These parameters match the hierarchical tfmodel inference prior.
+dk_geno_hyper_loc: -3.5
+dk_geno_hyper_scale: 1.0
+dk_geno_hyper_shift: 0.02
 
 # -----------------------------------------------------------------------------
 # Experimental simulation information

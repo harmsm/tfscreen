@@ -106,12 +106,13 @@ growth:
   pheS+4CP: {m:  0.006226, b: 0.010741}
   pheS-4CP: {m: -0.000344, b: 0.017862}
 
-# Per-mutation pleiotropic growth cost is sampled from a gamma distribution:
-#   dk_geno = (scale/2) - Gamma(shape, scale)
-# Most variants are mildly deleterious; a short right tail allows beneficial
-# mutations.  Defaults (shape=3, scale=0.002): ~0.2% dead, ~1.4% faster than wt.
-mut_growth_rate_shape: 3
-mut_growth_rate_scale: 0.002
+# Per-genotype pleiotropic growth cost is sampled from a shifted lognormal:
+#   dk_geno = hyper_shift - exp(Normal(hyper_loc, hyper_scale))
+# Most variants are mildly deleterious; a short right tail (at most hyper_shift)
+# allows beneficial mutations.  Matches the hierarchical tfmodel inference prior.
+dk_geno_hyper_loc: -3.5
+dk_geno_hyper_scale: 1.0
+dk_geno_hyper_shift: 0.02
 
 # Per-genotype TF activity (A) — a scalar that multiplies the theta contribution
 # to growth: k = b + A * m * theta.  The wild-type is fixed at activity_wt=1.0

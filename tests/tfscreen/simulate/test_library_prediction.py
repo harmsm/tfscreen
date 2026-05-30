@@ -14,8 +14,9 @@ def mock_config():
         "struct_ensemble_path": None,
         "theta_priors": None,
         "growth": {"cond_A": {"m": 1.0, "b": 0.0}},
-        "mut_growth_rate_shape": 1.0,
-        "mut_growth_rate_scale": 0.5,
+        "dk_geno_hyper_loc": -3.5,
+        "dk_geno_hyper_scale": 1.0,
+        "dk_geno_hyper_shift": 0.02,
     }
 
 
@@ -67,8 +68,9 @@ def test_library_prediction_success(mocker, mock_config):
     assert kwargs["theta_component"] == "mock_theta"
     assert kwargs["sim_data"] is mock_sim_data
     assert kwargs["growth_params"] == mock_config["growth"]
-    assert kwargs["mut_growth_rate_shape"] == mock_config["mut_growth_rate_shape"]
-    assert kwargs["mut_growth_rate_scale"] == mock_config["mut_growth_rate_scale"]
+    assert kwargs["dk_geno_hyper_loc"] == mock_config["dk_geno_hyper_loc"]
+    assert kwargs["dk_geno_hyper_scale"] == mock_config["dk_geno_hyper_scale"]
+    assert kwargs["dk_geno_hyper_shift"] == mock_config["dk_geno_hyper_shift"]
 
     assert lib_df.equals(mock_library_df)
     assert pheno_df.equals(mock_phenotype_df)
