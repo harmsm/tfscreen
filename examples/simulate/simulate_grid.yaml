@@ -12,15 +12,15 @@
 
 # Base simulate config.  Each run inherits all settings from this file; the
 # 'simulate' blocks below override specific top-level keys.
-base_config: simulate_config.yaml
+base_config: simulate_config.yaml    # in the same examples/simulate/ directory
 
 # Directory name for each run.  Variables from both 'simulate' and 'template'
 # blocks are available.  The |basename filter strips directory paths from
 # file-valued variables.
-run_name: "{{ observable_calculator }}__noise{{ growth_rate_noise }}__seed{{ random_seed }}"
+run_name: "{{ theta_component }}__noise{{ tube_noise_sigma }}__seed{{ random_seed }}"
 
 # Jinja2 template file (relative to this YAML) rendered into each subdir.
-output_file: run.sh
+output_file: run.sh    # in the same examples/simulate/ directory
 
 
 # ---------------------------------------------------------------------------
@@ -40,25 +40,24 @@ simulate:
 
   - name: reads
     variants:
-      - total_num_reads: 2.5e7
+      - total_num_reads: 25_000_000
 
-  # --- Thermodynamic model -------------------------------------------------
+  # --- Theta component (thermodynamic model) --------------------------------
   #
+  # Any key in model_registry["theta"] except "simple" is valid.
   # Uncomment additional variants to compare thermodynamic models.
-  # 'observable_calc_kwargs' is a nested dict — override the whole key when
-  # you need to change model internals.
 
   - name: thermodynamic_model
     variants:
-      - observable_calculator: lac
-      # - observable_calculator: eee
+      - theta_component: mwc_dimer_lnK_mut
+      # - theta_component: hill
 
   # --- Noise level ---------------------------------------------------------
 
   - name: noise
     variants:
-      - growth_rate_noise: 0.01
-      - growth_rate_noise: 0.05
+      - tube_noise_sigma: 0.001
+      - tube_noise_sigma: 0.005
 
   # --- Random seed ---------------------------------------------------------
   #

@@ -26,6 +26,7 @@ from tfscreen.tfmodel.generative.components.growth_transition import instant as 
 from tfscreen.tfmodel.generative.components.transformation import single as transformation_single
 from tfscreen.tfmodel.generative.components.noise import zero as noise_zero
 from tfscreen.tfmodel.generative.components.growth_noise import zero as growth_noise_zero
+from tfscreen.tfmodel.generative.components.sample_offset import zero as sample_offset_zero
 
 
 # ---------------------------------------------------------------------------
@@ -47,7 +48,7 @@ _MockData = namedtuple("_MockData", ["growth", "binding"])
 _MockGrowthPriors = namedtuple(
     "_MockGrowthPriors",
     ["condition_growth", "ln_cfu0", "dk_geno", "activity", "transformation",
-     "theta_growth_noise", "growth_transition", "growth_noise"],
+     "theta_growth_noise", "growth_transition", "growth_noise", "sample_offset"],
 )
 _MockBindingPriors = namedtuple("_MockBindingPriors", ["theta_binding_noise"])
 _MockPriors = namedtuple("_MockPriors", ["theta", "growth", "binding"])
@@ -84,6 +85,7 @@ def real_priors():
         theta_growth_noise=noise_zero.get_priors(),
         growth_transition=growth_transition_instant.get_priors(),
         growth_noise=growth_noise_zero.get_priors(),
+        sample_offset=sample_offset_zero.get_priors(),
     )
     binding = _MockBindingPriors(theta_binding_noise=noise_zero.get_priors())
     return _MockPriors(theta=MagicMock(), growth=growth, binding=binding)
@@ -126,6 +128,7 @@ def _build_control(mock_data, real_priors, is_guide=False):
         "theta_growth_noise": noise_zero.define_model,
         "theta_binding_noise": noise_zero.define_model,
         "growth_noise": growth_noise_zero.define_model,
+        "sample_offset": sample_offset_zero.define_model,
         "theta_rescale": lambda t: t,
         "observe_growth": observe_growth,
         "observe_binding": observe_binding,

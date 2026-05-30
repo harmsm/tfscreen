@@ -5,7 +5,10 @@ from tfscreen.simulate import (
     build_sample_dataframes,
     thermo_to_growth,
 )
+from tfscreen.simulate.sim_data_class import build_sim_data
 from tfscreen.genetics import library_manager
+
+import jax
 
 from typing import Any, Dict, Union
 from pathlib import Path
@@ -15,7 +18,7 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
     """
     Predict the "ground-truth" phenotypes for a transcription factor screen
     experiment given a library, thermodynamic model, and map between that model
-    and bacterial growth rate. 
+    and bacterial growth rate.
 
     Parameters
     ----------
@@ -24,27 +27,27 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
         to a YAML file containing the configuration parameters.
     override_keys : dict, default=None
         after reading the configuration file, replace keys in the configuration
-        with the key/value pairs in override keys. No error checking is done 
-        on these keys; the user is responsible for checking their sanity. 
+        with the key/value pairs in override keys. No error checking is done
+        on these keys; the user is responsible for checking their sanity.
 
     Returns
     -------
     library_df : pandas.DataFrame
-        dataframe holding genotypes one would get when using the degenerate 
+        dataframe holding genotypes one would get when using the degenerate
         codons and sequences specified in the configuration
     phenotype_df : pandas.DataFrame
         dataframe with predicted fractional occupancy and growth rates for each
         of the genotypes in each of the conditions specified in the configuration
-    genotype_ddG_df : pandas.DataFrame
-        predicted effects of each genotype on the free energies of all 
-        conformations defined in the thermodynamic model 
+    genotype_theta_df : pandas.DataFrame
+        wide-form dataframe with one row per genotype and one column per unique
+        effector concentration giving the ground-truth theta value
     """
-    
+
     # -------------------------------------------------------------------------
     # Read inputs and set up simulation
 
     cf = tfscreen.util.read_yaml(cf, override_keys=override_keys)
-    
+
     # -------------------------------------------------------------------------
     # Do main calculation
 
@@ -58,18 +61,30 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
         replicate=1
     )
 
-    # Calculate phenotype for each genotype across all conditions in sample_df
-    phenotype_df, genotype_ddG_df = thermo_to_growth(
-        genotypes=library_df["genotype"],
+    # Build SimData: lightweight container for the theta model
+    sim_data = build_sim_data(
+        library_df=library_df,
         sample_df=sample_df,
-        observable_calculator=cf["observable_calculator"],
-        observable_calc_kwargs=cf["observable_calc_kwargs"],
-        ddG_df=cf["ddG_spreadsheet"],
+        struct_ensemble_path=cf.get('struct_ensemble_path'),
+    )
+
+    # RNG key for prior-predictive theta sampling
+    theta_rng_seed = cf.get('theta_rng_seed', 0)
+    theta_rng_key = jax.random.PRNGKey(theta_rng_seed)
+
+    # Calculate phenotype for each genotype across all conditions in sample_df
+    phenotype_df, genotype_theta_df = thermo_to_growth(
+        genotypes=library_df["genotype"],
+        sim_data=sim_data,
+        sample_df=sample_df,
+        theta_component=cf['theta_component'],
+        theta_rng_key=theta_rng_key,
         growth_params=cf['growth'],
+        theta_priors_overrides=cf.get('theta_priors'),
         mut_growth_rate_shape=cf['mut_growth_rate_shape'],
         mut_growth_rate_scale=cf['mut_growth_rate_scale'],
         activity_wt=cf.get('activity_wt', 1.0),
         activity_mut_scale=cf.get('activity_mut_scale', 0.0),
     )
 
-    return library_df, phenotype_df, genotype_ddG_df
+    return library_df, phenotype_df, genotype_theta_df

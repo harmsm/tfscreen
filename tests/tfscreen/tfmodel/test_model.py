@@ -21,7 +21,7 @@ MockData = namedtuple("MockData", ["growth", "binding"])
 
 MockGrowthPriors = namedtuple("MockGrowthPriors", [
     "theta_growth_noise", "condition_growth", "growth_transition", "ln_cfu0", "dk_geno", "activity", "transformation",
-    "growth_noise"
+    "growth_noise", "sample_offset"
 ])
 MockBindingPriors = namedtuple("MockBindingPriors", ["theta_binding_noise"])
 MockPriors = namedtuple("MockPriors", ["theta", "growth", "binding"])
@@ -50,6 +50,7 @@ def mock_priors():
         activity="prior_act",
         transformation="prior_trans",
         growth_noise="prior_grn",
+        sample_offset="prior_so",
     )
     binding = MockBindingPriors(theta_binding_noise="prior_bn")
     return MockPriors(theta="prior_theta", growth=growth, binding=binding)
@@ -87,6 +88,7 @@ def mock_control():
     theta_binding_noise_model = MagicMock(side_effect=lambda n, x, p: x)
     theta_growth_noise_model = MagicMock(side_effect=lambda n, x, p: x)
     growth_noise_model = MagicMock(return_value=0.0)  # sigma_k = 0 → no extra noise
+    sample_offset_model = MagicMock(return_value=0.0)  # delta_sample = 0 → no offset
 
     binding_observer = MagicMock()
     growth_observer = MagicMock()
@@ -103,6 +105,7 @@ def mock_control():
         "theta_binding_noise": theta_binding_noise_model,
         "theta_growth_noise": theta_growth_noise_model,
         "growth_noise": growth_noise_model,
+        "sample_offset": sample_offset_model,
         "theta_rescale": lambda t: t,
         "observe_binding": binding_observer,
         "observe_growth": growth_observer,

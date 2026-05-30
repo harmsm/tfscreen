@@ -3,9 +3,13 @@ from .build_sample_dataframes import (
     build_sample_dataframes,
 )
 
+from .sim_data_class import (
+    SimData,
+    build_sim_data,
+)
 
-from .setup_observable import (
-    setup_observable
+from .sample_theta import (
+    sample_theta_prior,
 )
 
 from .thermo_to_growth import (

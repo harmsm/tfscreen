@@ -41,7 +41,7 @@ def base_config() -> dict:
         "prob_index_hop": 0.01,
         "lib_assembly_skew_sigma": 0.5,
         "transformation_poisson_lambda": 0.8,
-        "growth_rate_noise": 0.05,
+        "tube_noise_sigma": 0.002,
         "final_cfu_pct_err": 0.03,
         "random_seed": 42,
         "cfu0": 1.0e7,

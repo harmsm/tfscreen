@@ -359,10 +359,11 @@ def test_initialize_classes_logic(mocker):
         "theta_growth_noise": {"zero": MagicMock()},
         "theta_binding_noise": {"zero": MagicMock()},
         "growth_noise": {"zero": MagicMock()},
+        "sample_offset": {"zero": MagicMock()},
         "observe_binding": MagicMock(),
         "observe_growth": MagicMock()
     }, clear=True):
-        for k in ["condition_growth", "growth_transition", "ln_cfu0", "dk_geno", "activity", "theta", "transformation", "theta_growth_noise", "theta_binding_noise", "growth_noise"]:
+        for k in ["condition_growth", "growth_transition", "ln_cfu0", "dk_geno", "activity", "theta", "transformation", "theta_growth_noise", "theta_binding_noise", "growth_noise", "sample_offset"]:
             for sub_k in tfscreen.tfmodel.model_orchestrator.model_registry[k]:
                 tfscreen.tfmodel.model_orchestrator.model_registry[k][sub_k].get_priors.return_value = {}
                 tfscreen.tfmodel.model_orchestrator.model_registry[k][sub_k].get_guesses.return_value = {}
@@ -390,6 +391,7 @@ def test_model_class_properties(initialized_model_class):
     model._theta_growth_noise = "gn"
     model._theta_binding_noise = "bn"
     model._growth_noise = "grn"
+    model._sample_offset = "so"
     model._spiked_genotypes = ["s"]
     model._binding_only = False
     model._growth_shares_replicates = False

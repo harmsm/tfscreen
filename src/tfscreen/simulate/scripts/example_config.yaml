@@ -269,12 +269,12 @@ multi_plasmid_combine_fcn:
 # cfu/mL at start of pre-growth
 cfu0: 6.5e7
 
-# Noise applied to growth. A single global standard deviation is computed as
-# growth_rate_noise * mean(kt) across all genotypes and conditions, then
-# independent normal noise with that std is added to every genotype-condition
-# kt value. This represents replicate-to-replicate variability in bulk growth
-# rates. Set to None or 0 to disable.
-growth_rate_noise: 0.01
+# Per-tube environmental growth-rate noise (hr⁻¹).  Each physical tube gets its
+# own delta_k ~ Normal(0, tube_noise_sigma); the kt contribution per tube is
+# delta_k * (t_pre + t_sel), shared by all genotypes in that tube.  A value of
+# ~0.001–0.002 hr⁻¹ is typical for well-controlled liquid cultures.
+# Set to 0 or null to disable.
+tube_noise_sigma: 0.002
 
 # -----------------------------------------------------------------------------
 # Growth transition model

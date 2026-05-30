@@ -42,33 +42,24 @@ spiked_seqs:
 # Phenotype calculation
 # ---------------------------------------------------------------------------
 
-# Thermodynamic model for computing operator occupancy (theta) from genotype
-# ddG values.  Options: "lac", "eee".
-observable_calculator: "lac"
+# Registered theta component name.  Any key in model_registry["theta"] is
+# valid except "simple" (calibration-only).  Examples: "hill", "mwc_dimer_lnK_mut".
+theta_component: "mwc_dimer_lnK_mut"
 
-observable_calc_kwargs:
-  T: 310       # K
-  R: 0.001987  # kcal/mol/K
-  model_to_use: "microscopic_dimer"
-  wt_K_dict:
-    K_l_2u: 4.35E-08
-    K_l_h: 20
-    K_l_o: 1.83E-04
-    K_h_o: 1.20E+08
-    K_l_e: 1.0E+06
-    K_le_e: 1.0E+06
-    K_h_e: 5.60E+04
-    K_he_e: 5.60E+04
-    K_lo_e: 7.60E+05
-    K_loe_e: 7.60E+05
-    K_ho_e: 1.0E+04
-    K_hoe_e: 1.0E+04
-  r_total: 3.3e-7  # molar, total monomer repressor concentration
-  o_total: 8.3e-8  # molar, total operator concentration
-  e_name: "iptg"   # name of effector (must match titrant_name in condition_blocks)
+# Optional: path to structural ensemble file required by lnK_nn_prior and
+# lnK_ddG_prior theta components.  Omit (or set to null) for all other models.
+#   .h5 / .hdf5  → HDF5 LigandMPNN ensemble (lnK_nn_prior)
+#   .csv         → per-mutation per-structure ddG prior means (lnK_ddG_prior)
+# struct_ensemble_path: null
 
-# CSV with per-mutation ddG effects on each thermodynamic state.
-ddG_spreadsheet: "ddG_ensemble_clean_with_effector.csv"
+# Optional: overrides for the theta component's default hyperparameters.
+# Any key returned by the component's get_hyperparameters() can be overridden.
+# Omit this block to use all component defaults.
+# theta_priors:
+#   theta_tf_total_M: 3.3e-7
+
+# Integer seed for the JAX RNG used when sampling theta from the prior.
+theta_rng_seed: 0
 
 # ---------------------------------------------------------------------------
 # Conditions
@@ -122,6 +113,15 @@ growth:
 mut_growth_rate_shape: 3
 mut_growth_rate_scale: 0.002
 
+# Per-genotype TF activity (A) — a scalar that multiplies the theta contribution
+# to growth: k = b + A * m * theta.  The wild-type is fixed at activity_wt=1.0
+# by inference convention.  Set activity_mut_scale > 0 to draw each mutant
+# genotype's log(A) independently from Normal(log(activity_wt), activity_mut_scale).
+# activity_mut_scale=0 (default) gives all genotypes identical activity, matching
+# the 'fixed' activity inference component.
+activity_wt: 1.0
+activity_mut_scale: 0.0
+
 # ---------------------------------------------------------------------------
 # Experimental simulation parameters
 # ---------------------------------------------------------------------------
@@ -129,10 +129,10 @@ mut_growth_rate_scale: 0.002
 # Number of transformants per sub-library.  Keys must match the characters in
 # library_combos (e.g. 'single-1', 'double-1-2') plus 'spiked'.
 transform_sizes:
-  single-1: 1.0e5
-  single-2: 1.0e5
-  double-1-2: 3.0e5
-  spiked: 1.0e3
+  single-1: 100_000
+  single-2: 100_000
+  double-1-2: 300_000
+  spiked: 1_000
 
 # Mixing ratio of sub-libraries in the pooled library.  Only the ratio matters.
 library_mixture:
@@ -157,12 +157,14 @@ multi_plasmid_combine_fcn:
   pheS: "max"
 
 # Colony-forming units per mL at the start of pre-growth.
-cfu0: 6.5e7
+cfu0: 65_000_000.0
 
-# Global replicate-to-replicate growth rate noise.  Standard deviation of added
-# normal noise = growth_rate_noise * mean(k * t) across all genotypes and conditions.
+# Per-tube environmental growth-rate noise (hr⁻¹).  Each physical tube gets its
+# own delta_k ~ Normal(0, tube_noise_sigma); the kt contribution per tube is
+# delta_k * (t_pre + t_sel), shared by all genotypes in that tube.  A value of
+# ~0.001–0.002 hr⁻¹ is typical for well-controlled liquid cultures.
 # Set to 0 or null to disable.
-growth_rate_noise: 0.01
+tube_noise_sigma: 0.002
 
 # ---------------------------------------------------------------------------
 # Growth transition model (optional)
@@ -194,7 +196,7 @@ growth_transition:
 # ---------------------------------------------------------------------------
 
 # Total sequencing reads across all samples.
-total_num_reads: 2.5e7
+total_num_reads: 25_000_000
 
 # Fraction of reads re-assigned to a randomly chosen genotype (index hopping).
 # Set to 0 or null to disable.

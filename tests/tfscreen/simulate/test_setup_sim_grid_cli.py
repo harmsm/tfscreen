@@ -23,7 +23,7 @@ def base_config(tmp_path):
     cfg = {
         "reading_frame": 0,
         "observable_calculator": "lac",
-        "growth_rate_noise": 0.01,
+        "tube_noise_sigma": 0.01,
         "random_seed": None,
     }
     p = tmp_path / "simulate_config.yaml"
@@ -40,7 +40,7 @@ base_config: {base_config}
 simulate:
   - name: noise
     variants:
-      - growth_rate_noise: 0.05
+      - tube_noise_sigma: 0.05
 """
     p = tmp_path / "grid.yaml"
     p.write_text(content)
@@ -71,24 +71,24 @@ def test_expand_block_auto_raises():
 # ---------------------------------------------------------------------------
 
 def test_resolve_paths_relative(tmp_path):
-    f = tmp_path / "ddG.csv"
+    f = tmp_path / "struct.h5"
     f.write_text("x")
-    result = _resolve_paths({"ddG_spreadsheet": "ddG.csv"}, str(tmp_path))
-    assert os.path.isabs(result["ddG_spreadsheet"])
-    assert result["ddG_spreadsheet"] == str(f)
+    result = _resolve_paths({"struct_ensemble_path": "struct.h5"}, str(tmp_path))
+    assert os.path.isabs(result["struct_ensemble_path"])
+    assert result["struct_ensemble_path"] == str(f)
 
 
 def test_resolve_paths_absolute_unchanged(tmp_path):
-    f = tmp_path / "ddG.csv"
+    f = tmp_path / "struct.h5"
     f.write_text("x")
     abs_path = str(f)
-    result = _resolve_paths({"ddG_spreadsheet": abs_path}, "/some/other/dir")
-    assert result["ddG_spreadsheet"] == abs_path
+    result = _resolve_paths({"struct_ensemble_path": abs_path}, "/some/other/dir")
+    assert result["struct_ensemble_path"] == abs_path
 
 
 def test_resolve_paths_unknown_key_unchanged(tmp_path):
-    result = _resolve_paths({"growth_rate_noise": 0.01}, str(tmp_path))
-    assert result["growth_rate_noise"] == 0.01
+    result = _resolve_paths({"tube_noise_sigma": 0.01}, str(tmp_path))
+    assert result["tube_noise_sigma"] == 0.01
 
 
 # ---------------------------------------------------------------------------
@@ -110,7 +110,7 @@ def test_setup_sim_grid_writes_config(tmp_path, minimal_grid_yaml):
     assert os.path.isfile(cfg_path)
     with open(cfg_path) as fh:
         cfg = yaml.safe_load(fh)
-    assert cfg["growth_rate_noise"] == 0.05
+    assert cfg["tube_noise_sigma"] == 0.05
 
 
 def test_setup_sim_grid_writes_combo_json(tmp_path, minimal_grid_yaml):
@@ -146,8 +146,8 @@ base_config: {base_config}
 simulate:
   - name: noise
     variants:
-      - growth_rate_noise: 0.01
-      - growth_rate_noise: 0.05
+      - tube_noise_sigma: 0.01
+      - tube_noise_sigma: 0.05
 
   - name: seed
     variants:
@@ -178,7 +178,7 @@ output_file: run.sh
 simulate:
   - name: noise
     variants:
-      - growth_rate_noise: 0.05
+      - tube_noise_sigma: 0.05
 
 template:
   - name: reps

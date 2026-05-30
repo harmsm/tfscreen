@@ -10,14 +10,14 @@ GRID YAML FORMAT
 
     base_config: ../simulate_config.yaml   # base config to override
 
-    run_name: "{{ observable_calculator }}__noise{{ growth_rate_noise }}"
+    run_name: "{{ theta_component }}__noise{{ growth_rate_noise }}"
     output_file: run.sh   # Jinja2 template; looked up next to this YAML
 
     simulate:              # key-value overrides applied to the base config
       - name: thermodynamic_model
         variants:
-          - observable_calculator: lac
-          - observable_calculator: eee
+          - theta_component: mwc_dimer_lnK_mut
+          - theta_component: hill
       - name: noise
         variants:
           - growth_rate_noise: 0.01
@@ -37,8 +37,8 @@ NOTES
   variables are NOT written to the config.  To share a variable, list it in both.
 - ``run_name`` may reference variables from either section.
 - Use the ``basename`` Jinja2 filter to strip path info from filenames:
-      run_name: "{{ ddG_spreadsheet | basename }}__noise{{ growth_rate_noise }}"
-- Relative paths in ``simulate`` blocks (e.g. ``ddG_spreadsheet``) are resolved
+      run_name: "{{ struct_ensemble_path | basename }}__noise{{ growth_rate_noise }}"
+- Relative paths in ``simulate`` blocks (e.g. ``struct_ensemble_path``) are resolved
   relative to the grid YAML's directory, then re-expressed relative to each
   subdirectory in the written config.
 - Relative paths already in the base config are resolved relative to the base
@@ -61,7 +61,7 @@ from tfscreen.util.grid_utils import (
 )
 
 # Top-level keys in the simulate config that hold file paths.
-_SIM_PATH_KEYS = frozenset({"ddG_spreadsheet", "calibration_file"})
+_SIM_PATH_KEYS = frozenset({"struct_ensemble_path", "calibration_file"})
 
 # Fixed filename for the per-run config written into each subdirectory.
 _SIM_CONFIG_FILENAME = "tfs_sim_config.yaml"

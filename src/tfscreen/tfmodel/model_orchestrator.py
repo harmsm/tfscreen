@@ -465,6 +465,7 @@ class ModelOrchestrator:
                  theta_growth_noise="zero",
                  theta_binding_noise="zero",
                  growth_noise="zero",
+                 sample_offset="zero",
                  spiked_genotypes=None,
                  growth_shares_replicates=False,
                  epistasis=False,
@@ -488,6 +489,7 @@ class ModelOrchestrator:
         self._theta_growth_noise = theta_growth_noise
         self._theta_binding_noise = theta_binding_noise
         self._growth_noise = growth_noise
+        self._sample_offset = sample_offset
         self._spiked_genotypes = spiked_genotypes
         self._growth_shares_replicates = growth_shares_replicates
         self._epistasis = epistasis
@@ -1015,6 +1017,7 @@ class ModelOrchestrator:
                         ("transformation", self._transformation, "growth"),
                         ("theta_growth_noise", self._theta_growth_noise, "growth"),
                         ("growth_noise", self._growth_noise, "growth"),
+                        ("sample_offset", self._sample_offset, "growth"),
                         ("theta_binding_noise", self._theta_binding_noise, "binding")]
 
         main_control_kwargs = {"is_guide":False}
@@ -1130,6 +1133,7 @@ class ModelOrchestrator:
                 transformation=None,
                 theta_growth_noise=None,
                 growth_noise=None,
+                sample_offset=None,
             )
         else:
             growth_priors = populate_dataclass(GrowthPriors,
@@ -1268,6 +1272,7 @@ class ModelOrchestrator:
             "theta_growth_noise":self._theta_growth_noise,
             "theta_binding_noise":self._theta_binding_noise,
             "growth_noise":self._growth_noise,
+            "sample_offset":self._sample_offset,
             "spiked_genotypes":self._spiked_genotypes,
             "growth_shares_replicates": self._growth_shares_replicates,
             "epistasis": self._epistasis,

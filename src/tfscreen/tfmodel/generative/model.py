@@ -33,6 +33,8 @@ def jax_model(data: DataClass,
         - transformation
         - dk_geno
         - growth_transition
+        - growth_noise
+        - sample_offset
         - calculate_growth
         - theta_binding_noise
         - theta_growth_noise
@@ -82,6 +84,7 @@ def jax_model(data: DataClass,
     theta_rescale = control["theta_rescale"]
     growth_transition_model = control["growth_transition"]
     growth_noise_model = control["growth_noise"]
+    sample_offset_model = control["sample_offset"]
     calculate_growth = control["calculate_growth"]
     growth_observer = control["observe_growth"]
 
@@ -173,6 +176,10 @@ def jax_model(data: DataClass,
                            data.growth,
                            priors.growth.growth_noise)
 
+        sample_offset_model("sample_offset",
+                            data.growth,
+                            priors.growth.sample_offset)
+
         growth_observer("final_binding_obs", data.growth, None)
         binding_observer("final_growth_obs", data.binding, None)
 
@@ -198,7 +205,11 @@ def jax_model(data: DataClass,
                                      data.growth,
                                      priors.growth.growth_noise)
 
-        ln_cfu_pred = ln_cfu0 + total_growth
+        delta_sample = sample_offset_model("sample_offset",
+                                           data.growth,
+                                           priors.growth.sample_offset)
+
+        ln_cfu_pred = ln_cfu0 + total_growth + delta_sample
 
         # Register results
         pyro.deterministic(f"binding_pred", binding_pred)

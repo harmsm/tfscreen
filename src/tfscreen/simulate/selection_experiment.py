@@ -171,7 +171,7 @@ def _check_cf(
     cf = _check_dict_number("prob_index_hop", cf, min_allowed=0, max_allowed=1, allow_none=True)
     cf = _check_dict_number("lib_assembly_skew_sigma", cf, min_allowed=0, allow_none=True)
     cf = _check_dict_number("transformation_poisson_lambda", cf, min_allowed=0, allow_none=True)
-    cf = _check_dict_number("growth_rate_noise", cf, min_allowed=0, allow_none=True)
+    cf = _check_dict_number("tube_noise_sigma", cf, min_allowed=0, allow_none=True)
     cf = _check_dict_number("random_seed", cf, cast_type=int, min_allowed=0, allow_none=True)
     cf = _check_dict_number("cfu0", cf, allow_none=False,min_allowed=0)
     cf = _check_dict_number("total_num_reads", cf, cast_type=int, min_allowed=0, inclusive_min=False)
@@ -975,7 +975,7 @@ def _simulate_library_group(
 
     condition_selector = cf["condition_selector"]
     transformation_poisson_lambda = cf["transformation_poisson_lambda"]
-    growth_rate_noise = cf["growth_rate_noise"]
+    tube_noise_sigma = cf["tube_noise_sigma"]
     library_mixture = cf["library_mixture"]
     transform_sizes = cf["transform_sizes"]
     multi_plasmid_combine_fcn = cf["multi_plasmid_combine_fcn"]
@@ -1058,10 +1058,16 @@ def _simulate_library_group(
     # Create a 2D array of (genotype,conditions) holding kt. 
     genotype_vs_kt = genotype_vs_kt_pivot.to_numpy()
     
-    # Add noise to the growth rate
-    if growth_rate_noise is not None:
-        std = np.abs(np.mean(genotype_vs_kt) * growth_rate_noise)
-        genotype_vs_kt += rng.normal(scale=std, size=genotype_vs_kt.shape)
+    # Add per-tube environmental noise: one delta_k per condition, shared across
+    # all genotypes in that tube.  tube_noise_sigma is in growth-rate units
+    # (hr⁻¹); the kt contribution is delta_k * t_total, which we read from the
+    # first row of the pivot (t_pre + t_sel is the same for every genotype).
+    if tube_noise_sigma is not None and tube_noise_sigma > 0:
+        t_pre_per_condition = sub_df.groupby(condition_selector, observed=True)["t_pre"].first().reindex(genotype_vs_kt_pivot.columns).to_numpy()
+        t_sel_per_condition = sub_df.groupby(condition_selector, observed=True)["t_sel"].first().reindex(genotype_vs_kt_pivot.columns).to_numpy()
+        t_total = t_pre_per_condition + t_sel_per_condition
+        delta_k = rng.normal(scale=tube_noise_sigma, size=len(t_total))
+        genotype_vs_kt += delta_k[np.newaxis, :] * t_total[np.newaxis, :]
     
     # Name of the library (e.g. kanR, pheS, ... ) for looking up how to 
     # combine multiple plasmid effects

@@ -24,6 +24,7 @@ COMPONENT_CATEGORIES = [
     "theta_binding_noise",
     "growth_transition",
     "growth_noise",
+    "sample_offset",
 ]
 
 # Categories whose value is a single module (not a dict).

@@ -51,6 +51,9 @@ from .components.noise import beta as beta_noise
 from .components.growth_noise import zero as growth_noise_zero
 from .components.growth_noise import normal_kt as growth_noise_normal_kt
 
+from .components.sample_offset import zero as sample_offset_zero
+from .components.sample_offset import normal as sample_offset_normal
+
 from .observe import binding 
 from .observe import growth 
 
@@ -115,6 +118,10 @@ model_registry = {
     "growth_noise":{
         "zero":growth_noise_zero,
         "normal_kt":growth_noise_normal_kt,
+    },
+    "sample_offset":{
+        "zero":sample_offset_zero,
+        "normal":sample_offset_normal,
     },
     "growth_transition":{
         "instant":growth_transition_instant,

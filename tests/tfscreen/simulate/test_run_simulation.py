@@ -75,7 +75,7 @@ def test_run_simulation_success(mocker, mock_config, mock_result_dfs):
     mock_sel_exp = mocker.patch("tfscreen.simulate.run_simulation.selection_experiment", return_value=(sample_df, counts_df))
     
     # Mock file output setup
-    mock_file_dict = {"library": "lib.csv", "phenotype": "pheno.csv", "genotype_ddG": "ddG.csv", "sample": "sample.csv", "counts": "counts.csv"}
+    mock_file_dict = {"library": "lib.csv", "phenotype": "pheno.csv", "genotype_theta": "theta.csv", "sample": "sample.csv", "counts": "counts.csv"}
     mocker.patch("tfscreen.simulate.run_simulation._setup_file_output", return_value=mock_file_dict)
     
     # Mock to_csv

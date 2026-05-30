@@ -1,0 +1,44 @@
+
+# ---------------------------------------------------------------------------
+# Library configuration for tfs-process-fastq
+#
+# Pass this file as the run_config argument:
+#   tfs-process-fastq R1.fastq.gz R2.fastq.gz out/ library_config.yaml
+#
+# If you are running both tfs-simulate and tfs-process-fastq on the same
+# experiment, you can pass the simulate config directly to tfs-process-fastq
+# instead of maintaining a separate file — the extra keys (growth rates,
+# conditions, etc.) are silently ignored by the FASTQ processor.
+# ---------------------------------------------------------------------------
+
+# Reading frame 0, 1, 2. No reverse (negative) strand allowed.
+reading_frame: 0
+
+# Amino acid residue number for the first in-frame residue of the amplicon.
+first_amplicon_residue: 27
+
+# Wildtype DNA sequence of the amplicon.
+wt_seq: gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatggcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctgcacgcgccgtcgcaaattgtcgcggcgattaaatctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg
+
+# Degenerate codon pattern for library positions.  '.' = wildtype; 'nnt' = NNT
+# codon (encodes all 20 amino acids + stop with reduced synonymous redundancy).
+# Must be the same length as wt_seq.
+degen_sites: ......nntnnt.............................................................................................nntnnt.........................................................................................................
+
+# sub_libraries groups contiguous degenerate positions that were cloned together.
+# '.' = wildtype; any other character defines a sub-library block.  Blocks must
+# be contiguous (......111... ok; ....11.1... not ok).
+sub_libraries: ......111111.............................................................................................222222.........................................................................................................
+
+# Flanking sequences immediately upstream and downstream of the amplicon.
+expected_5p: cgcgtggtgaaccag
+expected_3p: gtagaacgaagcggc
+
+# Which genotype classes to include.  'single-x' = all single-mutation variants
+# in sub-library x.  'double-x-y' = all pairwise combinations between x and y.
+library_combos: ["single-1", "single-2", "double-1-2"]
+
+# Control sequences added as spikes.  Must be the same length as wt_seq.
+spiked_seqs:
+- gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatggcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctggcggcgccgtcgcaaattgtcgcggcgattctgtctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg  # k84l
+- gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgattgcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctgcacgcgccgtcgcaaattgtcgcggcgattctgtctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg  # m42i/k84l

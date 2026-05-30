@@ -181,6 +181,7 @@ class GrowthPriors:
     transformation: Any
     theta_growth_noise: Any
     growth_noise: Any
+    sample_offset: Any
 
 @dataclass(frozen=True)
 class BindingPriors:
