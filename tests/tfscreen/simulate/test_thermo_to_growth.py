@@ -374,3 +374,258 @@ def test_thermo_to_growth_propagates_rng(
     call_args = mock_assign_dk.call_args
     passed_rng = call_args.args[4] if call_args.args else call_args.kwargs.get("rng")
     assert passed_rng is rng
+
+
+# ============================================================================
+# test thermo_to_growth — activity_component routing
+# ============================================================================
+
+class TestThermo_to_growth_ActivityComponent:
+    """
+    Verify that the activity_component parameter correctly routes between
+    _assign_activity (fixed path) and sample_activity_prior (component path).
+    """
+
+    @pytest.fixture
+    def base_call_kwargs(self, test_sample_df, simple_growth_params):
+        return dict(
+            sample_df=test_sample_df,
+            theta_component="mock",
+            theta_rng_key=0,
+            growth_params=simple_growth_params,
+        )
+
+    def _run(self, mocker, genotypes, concs, theta_gc, **kwargs):
+        sim_data = _make_sim_data_mock(genotypes, concs)
+        _patch_thermo_deps(mocker, genotypes, None, theta_gc)
+        return thermo_to_growth(genotypes=genotypes, sim_data=sim_data, **kwargs)
+
+    # -- default ("fixed") path -----------------------------------------------
+
+    def test_default_uses_assign_activity(
+        self, mocker, test_genotypes, base_call_kwargs
+    ):
+        """Default activity_component='fixed' must call _assign_activity."""
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.zeros((3, 2))
+        sim_data = _make_sim_data_mock(test_genotypes, concs)
+        _patch_thermo_deps(mocker, test_genotypes,
+                           base_call_kwargs["sample_df"], theta_gc)
+
+        mock_assign = mocker.patch(
+            "tfscreen.simulate.thermo_to_growth._assign_activity",
+            return_value=pd.Series(1.0, index=["A1B/C2D", "A1B", "wt"]),
+        )
+
+        thermo_to_growth(
+            genotypes=test_genotypes,
+            sim_data=sim_data,
+            **base_call_kwargs,
+        )
+        mock_assign.assert_called_once()
+
+    def test_fixed_explicit_does_not_call_sample_activity_prior(
+        self, mocker, test_genotypes, base_call_kwargs
+    ):
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.zeros((3, 2))
+        sim_data = _make_sim_data_mock(test_genotypes, concs)
+        _patch_thermo_deps(mocker, test_genotypes,
+                           base_call_kwargs["sample_df"], theta_gc)
+
+        mock_sample = mocker.patch(
+            "tfscreen.simulate.thermo_to_growth.sample_activity_prior"
+        )
+
+        thermo_to_growth(
+            genotypes=test_genotypes,
+            sim_data=sim_data,
+            activity_component="fixed",
+            **base_call_kwargs,
+        )
+        mock_sample.assert_not_called()
+
+    # -- non-fixed component path ---------------------------------------------
+
+    def test_non_fixed_calls_sample_activity_prior(
+        self, mocker, test_genotypes, base_call_kwargs
+    ):
+        """activity_component='horseshoe' must call sample_activity_prior."""
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.zeros((3, 2))
+        sim_data = _make_sim_data_mock(test_genotypes, concs)
+        _patch_thermo_deps(mocker, test_genotypes,
+                           base_call_kwargs["sample_df"], theta_gc)
+
+        # Return values in sim_data order (3 genotypes)
+        mock_sample = mocker.patch(
+            "tfscreen.simulate.thermo_to_growth.sample_activity_prior",
+            return_value=np.array([1.0, 1.2, 0.8]),  # wt, A1B, A1B/C2D
+        )
+
+        thermo_to_growth(
+            genotypes=test_genotypes,
+            sim_data=sim_data,
+            activity_component="horseshoe",
+            activity_rng_key=42,
+            **base_call_kwargs,
+        )
+        mock_sample.assert_called_once()
+
+    def test_non_fixed_does_not_call_assign_activity(
+        self, mocker, test_genotypes, base_call_kwargs
+    ):
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.zeros((3, 2))
+        sim_data = _make_sim_data_mock(test_genotypes, concs)
+        _patch_thermo_deps(mocker, test_genotypes,
+                           base_call_kwargs["sample_df"], theta_gc)
+
+        mocker.patch(
+            "tfscreen.simulate.thermo_to_growth.sample_activity_prior",
+            return_value=np.ones(3),
+        )
+        mock_assign = mocker.patch(
+            "tfscreen.simulate.thermo_to_growth._assign_activity"
+        )
+
+        thermo_to_growth(
+            genotypes=test_genotypes,
+            sim_data=sim_data,
+            activity_component="horseshoe",
+            **base_call_kwargs,
+        )
+        mock_assign.assert_not_called()
+
+    def test_non_fixed_component_name_forwarded(
+        self, mocker, test_genotypes, base_call_kwargs
+    ):
+        """The component name must be passed as the first arg to sample_activity_prior."""
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.zeros((3, 2))
+        sim_data = _make_sim_data_mock(test_genotypes, concs)
+        _patch_thermo_deps(mocker, test_genotypes,
+                           base_call_kwargs["sample_df"], theta_gc)
+
+        mock_sample = mocker.patch(
+            "tfscreen.simulate.thermo_to_growth.sample_activity_prior",
+            return_value=np.ones(3),
+        )
+
+        thermo_to_growth(
+            genotypes=test_genotypes,
+            sim_data=sim_data,
+            activity_component="hierarchical",
+            **base_call_kwargs,
+        )
+        called_component = mock_sample.call_args[0][0]
+        assert called_component == "hierarchical"
+
+    def test_activity_rng_key_forwarded(
+        self, mocker, test_genotypes, base_call_kwargs
+    ):
+        """activity_rng_key must be passed to sample_activity_prior."""
+        import jax
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.zeros((3, 2))
+        sim_data = _make_sim_data_mock(test_genotypes, concs)
+        _patch_thermo_deps(mocker, test_genotypes,
+                           base_call_kwargs["sample_df"], theta_gc)
+
+        mock_sample = mocker.patch(
+            "tfscreen.simulate.thermo_to_growth.sample_activity_prior",
+            return_value=np.ones(3),
+        )
+        expected_key = jax.random.PRNGKey(77)
+
+        thermo_to_growth(
+            genotypes=test_genotypes,
+            sim_data=sim_data,
+            activity_component="horseshoe",
+            activity_rng_key=expected_key,
+            **base_call_kwargs,
+        )
+        passed_key = mock_sample.call_args[0][2]
+        np.testing.assert_array_equal(np.array(passed_key),
+                                      np.array(expected_key))
+
+    def test_activity_priors_overrides_forwarded(
+        self, mocker, test_genotypes, base_call_kwargs
+    ):
+        """activity_priors_overrides must be forwarded to sample_activity_prior."""
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.zeros((3, 2))
+        sim_data = _make_sim_data_mock(test_genotypes, concs)
+        _patch_thermo_deps(mocker, test_genotypes,
+                           base_call_kwargs["sample_df"], theta_gc)
+
+        mock_sample = mocker.patch(
+            "tfscreen.simulate.thermo_to_growth.sample_activity_prior",
+            return_value=np.ones(3),
+        )
+        overrides = {"global_scale_tau_scale": 0.01}
+
+        thermo_to_growth(
+            genotypes=test_genotypes,
+            sim_data=sim_data,
+            activity_component="horseshoe",
+            activity_priors_overrides=overrides,
+            **base_call_kwargs,
+        )
+        passed_overrides = mock_sample.call_args[0][3]
+        assert passed_overrides == overrides
+
+    def test_component_activities_appear_in_phenotype_df(
+        self, mocker, test_genotypes, base_call_kwargs
+    ):
+        """Values from sample_activity_prior must propagate to phenotype_df."""
+        concs = np.array([10.0, 100.0])
+        # theta_gc rows match sim_data (all_genotypes) order: wt, A1B, A1B/C2D
+        theta_gc = np.full((3, 2), 0.5)
+        sim_data = _make_sim_data_mock(test_genotypes, concs)
+        _patch_thermo_deps(mocker, test_genotypes,
+                           base_call_kwargs["sample_df"], theta_gc)
+
+        # sample_activity_prior returns values in sim_data order
+        # test_genotypes = ["wt", "A1B", "A1B/C2D"]
+        mock_activities = np.array([1.0, 2.0, 0.5])
+        mocker.patch(
+            "tfscreen.simulate.thermo_to_growth.sample_activity_prior",
+            return_value=mock_activities,
+        )
+
+        phenotype_df, _ = thermo_to_growth(
+            genotypes=test_genotypes,
+            sim_data=sim_data,
+            activity_component="horseshoe",
+            **base_call_kwargs,
+        )
+
+        # Every genotype should have its expected activity value
+        for genotype, expected_act in zip(test_genotypes, mock_activities):
+            rows = phenotype_df[phenotype_df["genotype"] == genotype]
+            np.testing.assert_allclose(rows["activity"].values, expected_act)
+
+    def test_none_rng_key_does_not_raise(
+        self, mocker, test_genotypes, base_call_kwargs
+    ):
+        """activity_rng_key=None should default gracefully (PRNGKey(0))."""
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.zeros((3, 2))
+        sim_data = _make_sim_data_mock(test_genotypes, concs)
+        _patch_thermo_deps(mocker, test_genotypes,
+                           base_call_kwargs["sample_df"], theta_gc)
+
+        mocker.patch(
+            "tfscreen.simulate.thermo_to_growth.sample_activity_prior",
+            return_value=np.ones(3),
+        )
+
+        # Should not raise even with activity_rng_key=None
+        thermo_to_growth(
+            genotypes=test_genotypes,
+            sim_data=sim_data,
+            activity_component="horseshoe",
+            activity_rng_key=None,
+            **base_call_kwargs,
+        )

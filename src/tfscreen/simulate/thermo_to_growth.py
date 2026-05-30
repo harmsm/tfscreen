@@ -8,6 +8,7 @@ from tfscreen.genetics import (
     argsort_genotypes,
 )
 from tfscreen.simulate.sample_theta import sample_theta_prior
+from tfscreen.simulate.sample_activity import sample_activity_prior
 from tfscreen.simulate.growth.growth_linkage import get_growth_model
 from tfscreen.simulate.growth.transition_linkage import get_transition_model
 
@@ -122,6 +123,9 @@ def thermo_to_growth(
     activity_wt: float = 1.0,
     activity_mut_scale: float = 0.0,
     rng: Generator | None = None,
+    activity_component: str = "fixed",
+    activity_rng_key=None,
+    activity_priors_overrides: Optional[dict] = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Generate phenotypes from genotypes via prior-predictive theta sampling.
@@ -155,12 +159,30 @@ def thermo_to_growth(
         Shift applied after exponentiation: dk_geno = hyper_shift - exp(offset).
         Controls the maximum possible (beneficial) growth-rate effect.
     activity_wt : float
-        TF activity of the wild-type genotype.
+        TF activity of the wild-type genotype.  Used only when
+        ``activity_component == "fixed"``.
     activity_mut_scale : float
-        Std dev of log(activity) for mutant genotypes.  0 gives all genotypes
-        identical activity.
+        Std dev of log(activity) for mutant genotypes under the plain
+        LogNormal path.  0 gives all genotypes identical activity.  Used
+        only when ``activity_component == "fixed"``.
     rng : numpy.random.Generator or None
-        NumPy RNG for dk_geno / activity sampling.
+        NumPy RNG for dk_geno / activity sampling.  Used only for the
+        ``"fixed"`` LogNormal path (``activity_mut_scale > 0``).
+    activity_component : str, default ``"fixed"``
+        Registered activity component name (e.g. ``"horseshoe"``,
+        ``"hierarchical"``).  When ``"fixed"`` the existing
+        ``activity_wt`` / ``activity_mut_scale`` path is used unchanged.
+        For any other component, ``sample_activity_prior`` is called and
+        ``activity_wt`` / ``activity_mut_scale`` / ``rng`` are ignored for
+        the activity draw.
+    activity_rng_key : jax.random.PRNGKey or None
+        Seed for prior-predictive activity sampling when
+        ``activity_component != "fixed"``.  Defaults to
+        ``jax.random.PRNGKey(0)`` if not provided.
+    activity_priors_overrides : dict or None
+        Key-value overrides applied to the activity component's
+        ``get_hyperparameters()`` before sampling.  Ignored when
+        ``activity_component == "fixed"``.
 
     Returns
     -------
@@ -267,10 +289,24 @@ def thermo_to_growth(
     )
     phenotype_df["dk_geno"] = phenotype_df["genotype"].map(genotype_dk_geno_series)
 
-    genotype_activity_series = _assign_activity(
-        unique_genotypes, activity_wt=activity_wt,
-        activity_mut_scale=activity_mut_scale, rng=rng,
-    )
+    if activity_component != "fixed":
+        import jax
+        if activity_rng_key is None:
+            activity_rng_key = jax.random.PRNGKey(0)
+        # sample_activity_prior returns activities in sim_data (all_genotypes)
+        # order; reindex to unique_genotypes order via unique_sim_indices.
+        raw_activity = sample_activity_prior(
+            activity_component, sim_data, activity_rng_key,
+            activity_priors_overrides,
+        )
+        genotype_activity_series = pd.Series(
+            raw_activity[unique_sim_indices], index=unique_genotypes
+        )
+    else:
+        genotype_activity_series = _assign_activity(
+            unique_genotypes, activity_wt=activity_wt,
+            activity_mut_scale=activity_mut_scale, rng=rng,
+        )
     phenotype_df["activity"] = phenotype_df["genotype"].map(genotype_activity_series)
 
     # ── Validate growth_params coverage ──────────────────────────────────────

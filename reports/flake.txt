@@ -1331,11 +1331,12 @@
 ./src/tfscreen/simulate/__init__.py:6:1: F401 '.sim_data_class.SimData' imported but unused
 ./src/tfscreen/simulate/__init__.py:6:1: F401 '.sim_data_class.build_sim_data' imported but unused
 ./src/tfscreen/simulate/__init__.py:11:1: F401 '.sample_theta.sample_theta_prior' imported but unused
-./src/tfscreen/simulate/__init__.py:15:1: F401 '.thermo_to_growth.thermo_to_growth' imported but unused
-./src/tfscreen/simulate/__init__.py:19:1: F401 '.library_prediction.library_prediction' imported but unused
-./src/tfscreen/simulate/__init__.py:23:1: F401 '.selection_experiment.selection_experiment' imported but unused
-./src/tfscreen/simulate/__init__.py:27:1: F401 '.run_simulation.run_simulation' imported but unused
-./src/tfscreen/simulate/__init__.py:29:2: W292 no newline at end of file
+./src/tfscreen/simulate/__init__.py:15:1: F401 '.sample_activity.sample_activity_prior' imported but unused
+./src/tfscreen/simulate/__init__.py:19:1: F401 '.thermo_to_growth.thermo_to_growth' imported but unused
+./src/tfscreen/simulate/__init__.py:23:1: F401 '.library_prediction.library_prediction' imported but unused
+./src/tfscreen/simulate/__init__.py:27:1: F401 '.selection_experiment.selection_experiment' imported but unused
+./src/tfscreen/simulate/__init__.py:31:1: F401 '.run_simulation.run_simulation' imported but unused
+./src/tfscreen/simulate/__init__.py:33:2: W292 no newline at end of file
 ./src/tfscreen/simulate/build_sample_dataframes.py:4:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/simulate/build_sample_dataframes.py:56:1: W293 blank line contains whitespace
 ./src/tfscreen/simulate/build_sample_dataframes.py:68:1: W293 blank line contains whitespace
@@ -1529,9 +1530,9 @@
 ./src/tfscreen/simulate/selection_experiment.py:1305:1: W293 blank line contains whitespace
 ./src/tfscreen/simulate/selection_experiment.py:1306:33: E231 missing whitespace after ','
 ./src/tfscreen/simulate/selection_experiment.py:1309:1: W391 blank line at end of file
-./src/tfscreen/simulate/thermo_to_growth.py:12:1: F401 'tfscreen.simulate.growth.transition_linkage.get_transition_model' imported but unused
-./src/tfscreen/simulate/thermo_to_growth.py:17:1: F401 'tqdm.auto.tqdm' imported but unused
-./src/tfscreen/simulate/thermo_to_growth.py:239:5: F841 local variable 'n_geno' is assigned to but never used
+./src/tfscreen/simulate/thermo_to_growth.py:13:1: F401 'tfscreen.simulate.growth.transition_linkage.get_transition_model' imported but unused
+./src/tfscreen/simulate/thermo_to_growth.py:18:1: F401 'tqdm.auto.tqdm' imported but unused
+./src/tfscreen/simulate/thermo_to_growth.py:261:5: F841 local variable 'n_geno' is assigned to but never used
 ./src/tfscreen/tfmodel/__init__.py:2:73: W291 trailing whitespace
 ./src/tfscreen/tfmodel/__init__.py:3:20: W291 trailing whitespace
 ./src/tfscreen/tfmodel/__init__.py:18:65: W291 trailing whitespace
@@ -5281,6 +5282,9 @@
 ./tests/tfscreen/simulate/test_run_simulation.py:106:1: W293 blank line contains whitespace
 ./tests/tfscreen/simulate/test_run_simulation.py:109:5: F841 local variable 'results' is assigned to but never used
 ./tests/tfscreen/simulate/test_run_simulation.py:110:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_sample_activity.py:19:1: F401 'unittest.mock.call' imported but unused
+./tests/tfscreen/simulate/test_sample_activity.py:309:37: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_sample_activity.py:311:37: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/simulate/test_selection_experiment.py:4:1: F401 'numpy.ma' imported but unused
 ./tests/tfscreen/simulate/test_selection_experiment.py:6:1: F401 'scipy.stats.gmean' imported but unused
 ./tests/tfscreen/simulate/test_selection_experiment.py:9:1: F401 'unittest.mock.MagicMock' imported but unused
@@ -5432,6 +5436,9 @@
 ./tests/tfscreen/simulate/test_selection_experiment.py:1269:1: W293 blank line contains whitespace
 ./tests/tfscreen/simulate/test_selection_experiment.py:1272:1: W293 blank line contains whitespace
 ./tests/tfscreen/simulate/test_selection_experiment.py:1274:73: W292 no newline at end of file
+./tests/tfscreen/simulate/test_sim_data_class.py:115:55: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_sim_data_class.py:125:49: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_sim_data_class.py:133:50: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/simulate/test_thermo_to_growth.py:23:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/simulate/test_thermo_to_growth.py:27:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/simulate/test_thermo_to_growth.py:36:1: E302 expected 2 blank lines, found 1
@@ -7692,7 +7699,7 @@
 1     E122 continuation line missing indentation or outdented
 2     E124 closing bracket does not match visual indentation
 6     E125 continuation line with same indent as next logical line
-127   E127 continuation line over-indented for visual indent
+132   E127 continuation line over-indented for visual indent
 64    E128 continuation line under-indented for visual indent
 1     E131 continuation line unaligned for hanging indent
 44    E201 whitespace after '['
@@ -7725,7 +7732,7 @@
 1     E722 do not use bare 'except'
 1     E731 do not assign a lambda expression, use a def
 12    E741 ambiguous variable name 'l'
-364   F401 '.process_raw' imported but unused
+366   F401 '.process_raw' imported but unused
 9     F541 f-string is missing placeholders
 6     F811 redefinition of unused 'dataclasses' from line 6
 45    F841 local variable 'e' is assigned to but never used
@@ -7733,4 +7740,4 @@
 92    W292 no newline at end of file
 1736  W293 blank line contains whitespace
 29    W391 blank line at end of file
-7686
+7693

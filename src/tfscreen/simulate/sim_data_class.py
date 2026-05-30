@@ -61,6 +61,14 @@ class SimData:
     struct_n_chains         : (S,) int32 or None
     struct_contact_pair_idx : (P, 2) int32 or None
     struct_contact_distances: (P, S) float32 or None
+
+    Optional — genotype-level activity components (horseshoe, hierarchical)
+    -----------------------------------------------------------------------
+    scale_vector : (G,) float32 — per-genotype observation weights; all
+                   ones for simulation.  Populated by build_sim_data.
+    wt_indexes   : (num_wt,) int32 — indices of wild-type genotypes in the
+                   genotype list.  Activity components pin these to 1.0.
+                   Populated by build_sim_data.
     """
 
     # ── Required: shape scalars ──────────────────────────────────────────────
@@ -91,6 +99,20 @@ class SimData:
     struct_n_chains:          Any = field(pytree_node=False, default=None)
     struct_contact_pair_idx:  Any = field(pytree_node=False, default=None)
     struct_contact_distances: Any = field(pytree_node=False, default=None)
+
+    # ── Optional: activity component support ──────────────────────────────────
+    # Required by genotype-level activity components (horseshoe, hierarchical).
+    # build_sim_data always populates both fields; the defaults allow SimData
+    # instances constructed elsewhere (e.g. in tests) to omit them.
+    #
+    # scale_vector : shape (G,) — per-genotype observation weights used by
+    #     numpyro.handlers.scale inside activity define_model.  All ones for
+    #     simulation (no subsampling).
+    # wt_indexes   : shape (num_wt,) int32 — indices into the genotype list
+    #     identifying wild-type genotypes.  Activity components pin these to
+    #     1.0 regardless of the sampled offset.
+    scale_vector: Any = field(pytree_node=False, default=None)
+    wt_indexes:   Any = field(pytree_node=False, default=None)
 
 
 def build_sim_data(library_df,
@@ -128,6 +150,9 @@ def build_sim_data(library_df,
     # ── Genotypes ─────────────────────────────────────────────────────────────
     genotypes = library_df["genotype"].tolist()
     G = len(genotypes)
+    wt_indexes = jnp.array(
+        [i for i, g in enumerate(genotypes) if g == "wt"], dtype=jnp.int32
+    )
 
     # ── Concentrations ────────────────────────────────────────────────────────
     concs = np.sort(sample_df["titrant_conc"].unique()).astype(float)
@@ -192,5 +217,7 @@ def build_sim_data(library_df,
         mut_nnz_geno_idx=mut_nnz_geno_idx,
         pair_nnz_pair_idx=pair_nnz_pair_idx,
         pair_nnz_geno_idx=pair_nnz_geno_idx,
+        scale_vector=jnp.ones(G),
+        wt_indexes=wt_indexes,
         **struct_kw,
     )

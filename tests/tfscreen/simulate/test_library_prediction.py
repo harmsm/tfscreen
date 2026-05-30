@@ -61,7 +61,11 @@ def test_library_prediction_success(mocker, mock_config):
         sample_df=mock_sample_df,
         struct_ensemble_path=None,
     )
-    mock_jax_key.assert_called_once_with(7)
+    # PRNGKey is now called twice: once for theta (seed=7) and once for
+    # activity (seed=1, the default when 'activity_rng_seed' is absent).
+    mock_jax_key.assert_any_call(7)
+    mock_jax_key.assert_any_call(1)
+    assert mock_jax_key.call_count == 2
 
     mock_thermo.assert_called_once()
     _, kwargs = mock_thermo.call_args
@@ -71,6 +75,9 @@ def test_library_prediction_success(mocker, mock_config):
     assert kwargs["dk_geno_hyper_loc"] == mock_config["dk_geno_hyper_loc"]
     assert kwargs["dk_geno_hyper_scale"] == mock_config["dk_geno_hyper_scale"]
     assert kwargs["dk_geno_hyper_shift"] == mock_config["dk_geno_hyper_shift"]
+    # New activity routing keys must be forwarded to thermo_to_growth
+    assert kwargs["activity_component"] == "fixed"   # default when key absent
+    assert kwargs["activity_priors_overrides"] is None
 
     assert lib_df.equals(mock_library_df)
     assert pheno_df.equals(mock_phenotype_df)

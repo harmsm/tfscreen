@@ -12,6 +12,10 @@ from .sample_theta import (
     sample_theta_prior,
 )
 
+from .sample_activity import (
+    sample_activity_prior,
+)
+
 from .thermo_to_growth import (
     thermo_to_growth,
 )
