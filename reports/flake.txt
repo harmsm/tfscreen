@@ -1743,6 +1743,8 @@
 ./src/tfscreen/tfmodel/analysis/prediction.py:307:1: W293 blank line contains whitespace
 ./src/tfscreen/tfmodel/analysis/prediction.py:312:1: W293 blank line contains whitespace
 ./src/tfscreen/tfmodel/analysis/prediction.py:316:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/analysis/prior_predictive.py:3:1: F401 'jax.numpy as jnp' imported but unused
+./src/tfscreen/tfmodel/analysis/prior_predictive.py:105:33: E203 whitespace before ':'
 ./src/tfscreen/tfmodel/configuration_io.py:6:1: F401 'dataclasses' imported but unused
 ./src/tfscreen/tfmodel/configuration_io.py:8:1: F401 'tfscreen' imported but unused
 ./src/tfscreen/tfmodel/configuration_io.py:11:1: E302 expected 2 blank lines, found 1
@@ -3859,6 +3861,7 @@
 ./src/tfscreen/tfmodel/scripts/fit_model_cli.py:561:74: E231 missing whitespace after ':'
 ./src/tfscreen/tfmodel/scripts/fit_model_cli.py:563:1: E305 expected 2 blank lines after class or function definition, found 1
 ./src/tfscreen/tfmodel/scripts/predict_theta_cli.py:12:1: C901 'predict_theta' is too complex (11)
+./src/tfscreen/tfmodel/scripts/prior_predictive_cli.py:1:1: F401 'os' imported but unused
 ./src/tfscreen/tfmodel/scripts/run_prefit_calibration_cli.py:51:1: F401 'jax' imported but unused
 ./src/tfscreen/tfmodel/scripts/run_prefit_calibration_cli.py:255:24: E128 continuation line under-indented for visual indent
 ./src/tfscreen/tfmodel/scripts/run_prefit_calibration_cli.py:256:24: E128 continuation line under-indented for visual indent
@@ -7926,7 +7929,7 @@
 1     E131 continuation line unaligned for hanging indent
 44    E201 whitespace after '['
 27    E202 whitespace before ']'
-4     E203 whitespace before ','
+5     E203 whitespace before ','
 5     E211 whitespace before '('
 1641  E221 multiple spaces before operator
 26    E222 multiple spaces after operator
@@ -7954,7 +7957,7 @@
 1     E722 do not use bare 'except'
 1     E731 do not assign a lambda expression, use a def
 13    E741 ambiguous variable name 'l'
-354   F401 '.process_raw' imported but unused
+356   F401 '.process_raw' imported but unused
 9     F541 f-string is missing placeholders
 6     F811 redefinition of unused 'dataclasses' from line 6
 44    F841 local variable 'e' is assigned to but never used
@@ -7962,4 +7965,4 @@
 99    W292 no newline at end of file
 1817  W293 blank line contains whitespace
 33    W391 blank line at end of file
-7915
+7918
