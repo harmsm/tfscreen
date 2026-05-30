@@ -1603,66 +1603,64 @@
 ./src/tfscreen/simulate/thermo/lac_model/microscopic_dimer.py:166:67: W291 trailing whitespace
 ./src/tfscreen/simulate/thermo/lac_model/microscopic_dimer.py:174:1: W293 blank line contains whitespace
 ./src/tfscreen/simulate/thermo/lac_model/microscopic_dimer.py:201:69: W292 no newline at end of file
-./src/tfscreen/simulate/thermo/lac_model/mwc_dimer.py:9:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/simulate/thermo/lac_model/mwc_dimer.py:29:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/simulate/thermo/lac_model/mwc_dimer.py:71:73: W291 trailing whitespace
-./src/tfscreen/simulate/thermo/lac_model/mwc_dimer.py:86:37: E231 missing whitespace after ','
-./src/tfscreen/simulate/thermo/lac_model/mwc_dimer.py:86:45: E231 missing whitespace after ','
-./src/tfscreen/simulate/thermo/lac_model/mwc_dimer.py:86:53: E231 missing whitespace after ','
-./src/tfscreen/simulate/thermo/lac_model/mwc_dimer.py:86:61: E231 missing whitespace after ','
-./src/tfscreen/simulate/thermo/lac_model/mwc_dimer.py:135:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/thermo/lac_model/mwc_dimer.py:161:21: W292 no newline at end of file
+./src/tfscreen/simulate/thermo/lac_model/mwc_dimer.py:14:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/simulate/thermo/lac_model/mwc_dimer.py:34:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/simulate/thermo/lac_model/mwc_dimer.py:76:73: W291 trailing whitespace
+./src/tfscreen/simulate/thermo/lac_model/mwc_dimer.py:91:37: E231 missing whitespace after ','
+./src/tfscreen/simulate/thermo/lac_model/mwc_dimer.py:91:45: E231 missing whitespace after ','
+./src/tfscreen/simulate/thermo/lac_model/mwc_dimer.py:91:53: E231 missing whitespace after ','
+./src/tfscreen/simulate/thermo/lac_model/mwc_dimer.py:91:61: E231 missing whitespace after ','
+./src/tfscreen/simulate/thermo/lac_model/mwc_dimer.py:165:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/thermo/lac_model/mwc_dimer.py:191:21: W292 no newline at end of file
 ./src/tfscreen/simulate/thermo_to_growth.py:24:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/simulate/thermo_to_growth.py:29:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:86:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:100:49: W291 trailing whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:108:23: W291 trailing whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:109:27: W291 trailing whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:113:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:124:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:126:1: E303 too many blank lines (3)
-./src/tfscreen/simulate/thermo_to_growth.py:228:51: E231 missing whitespace after ','
-./src/tfscreen/simulate/thermo_to_growth.py:228:58: E231 missing whitespace after ','
-./src/tfscreen/simulate/thermo_to_growth.py:243:41: W291 trailing whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:244:39: E231 missing whitespace after ','
-./src/tfscreen/simulate/thermo_to_growth.py:244:49: E231 missing whitespace after ','
-./src/tfscreen/simulate/thermo_to_growth.py:245:42: E231 missing whitespace after ','
-./src/tfscreen/simulate/thermo_to_growth.py:245:57: E231 missing whitespace after ','
-./src/tfscreen/simulate/thermo_to_growth.py:250:63: W291 trailing whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:251:6: W291 trailing whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:252:76: W291 trailing whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:253:77: W291 trailing whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:255:76: W291 trailing whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:256:76: W291 trailing whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:257:38: W291 trailing whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:259:77: W291 trailing whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:261:5: E265 block comment should start with '# '
-./src/tfscreen/simulate/thermo_to_growth.py:262:5: E265 block comment should start with '# '
-./src/tfscreen/simulate/thermo_to_growth.py:263:5: E265 block comment should start with '# '
-./src/tfscreen/simulate/thermo_to_growth.py:263:63: W291 trailing whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:264:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:271:76: W291 trailing whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:272:42: W291 trailing whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:274:73: W291 trailing whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:275:75: W291 trailing whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:280:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:283:79: W291 trailing whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:285:20: W291 trailing whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:286:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:287:18: E231 missing whitespace after ','
-./src/tfscreen/simulate/thermo_to_growth.py:296:21: E231 missing whitespace after ','
-./src/tfscreen/simulate/thermo_to_growth.py:301:40: E231 missing whitespace after ','
-./src/tfscreen/simulate/thermo_to_growth.py:301:53: E231 missing whitespace after ','
-./src/tfscreen/simulate/thermo_to_growth.py:302:43: W291 trailing whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:303:39: W291 trailing whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:304:50: W291 trailing whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:306:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:307:61: W291 trailing whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:313:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/thermo_to_growth.py:350:38: E231 missing whitespace after ','
-./src/tfscreen/simulate/thermo_to_growth.py:355:48: E231 missing whitespace after ':'
-./src/tfscreen/simulate/thermo_to_growth.py:358:18: E231 missing whitespace after ','
-./src/tfscreen/simulate/thermo_to_growth.py:361:1: W391 blank line at end of file
+./src/tfscreen/simulate/thermo_to_growth.py:131:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/thermo_to_growth.py:145:49: W291 trailing whitespace
+./src/tfscreen/simulate/thermo_to_growth.py:153:23: W291 trailing whitespace
+./src/tfscreen/simulate/thermo_to_growth.py:154:27: W291 trailing whitespace
+./src/tfscreen/simulate/thermo_to_growth.py:158:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/thermo_to_growth.py:169:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/thermo_to_growth.py:171:1: E303 too many blank lines (3)
+./src/tfscreen/simulate/thermo_to_growth.py:288:51: E231 missing whitespace after ','
+./src/tfscreen/simulate/thermo_to_growth.py:288:58: E231 missing whitespace after ','
+./src/tfscreen/simulate/thermo_to_growth.py:303:41: W291 trailing whitespace
+./src/tfscreen/simulate/thermo_to_growth.py:304:39: E231 missing whitespace after ','
+./src/tfscreen/simulate/thermo_to_growth.py:304:49: E231 missing whitespace after ','
+./src/tfscreen/simulate/thermo_to_growth.py:305:42: E231 missing whitespace after ','
+./src/tfscreen/simulate/thermo_to_growth.py:305:57: E231 missing whitespace after ','
+./src/tfscreen/simulate/thermo_to_growth.py:310:63: W291 trailing whitespace
+./src/tfscreen/simulate/thermo_to_growth.py:311:6: W291 trailing whitespace
+./src/tfscreen/simulate/thermo_to_growth.py:312:76: W291 trailing whitespace
+./src/tfscreen/simulate/thermo_to_growth.py:313:77: W291 trailing whitespace
+./src/tfscreen/simulate/thermo_to_growth.py:315:76: W291 trailing whitespace
+./src/tfscreen/simulate/thermo_to_growth.py:316:76: W291 trailing whitespace
+./src/tfscreen/simulate/thermo_to_growth.py:317:38: W291 trailing whitespace
+./src/tfscreen/simulate/thermo_to_growth.py:319:77: W291 trailing whitespace
+./src/tfscreen/simulate/thermo_to_growth.py:321:5: E265 block comment should start with '# '
+./src/tfscreen/simulate/thermo_to_growth.py:322:5: E265 block comment should start with '# '
+./src/tfscreen/simulate/thermo_to_growth.py:323:5: E265 block comment should start with '# '
+./src/tfscreen/simulate/thermo_to_growth.py:323:63: W291 trailing whitespace
+./src/tfscreen/simulate/thermo_to_growth.py:324:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/thermo_to_growth.py:331:76: W291 trailing whitespace
+./src/tfscreen/simulate/thermo_to_growth.py:332:42: W291 trailing whitespace
+./src/tfscreen/simulate/thermo_to_growth.py:334:73: W291 trailing whitespace
+./src/tfscreen/simulate/thermo_to_growth.py:335:75: W291 trailing whitespace
+./src/tfscreen/simulate/thermo_to_growth.py:340:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/thermo_to_growth.py:343:79: W291 trailing whitespace
+./src/tfscreen/simulate/thermo_to_growth.py:345:20: W291 trailing whitespace
+./src/tfscreen/simulate/thermo_to_growth.py:346:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/thermo_to_growth.py:347:18: E231 missing whitespace after ','
+./src/tfscreen/simulate/thermo_to_growth.py:356:21: E231 missing whitespace after ','
+./src/tfscreen/simulate/thermo_to_growth.py:361:40: E231 missing whitespace after ','
+./src/tfscreen/simulate/thermo_to_growth.py:361:53: E231 missing whitespace after ','
+./src/tfscreen/simulate/thermo_to_growth.py:362:43: W291 trailing whitespace
+./src/tfscreen/simulate/thermo_to_growth.py:363:39: W291 trailing whitespace
+./src/tfscreen/simulate/thermo_to_growth.py:364:50: W291 trailing whitespace
+./src/tfscreen/simulate/thermo_to_growth.py:366:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/thermo_to_growth.py:422:38: E231 missing whitespace after ','
+./src/tfscreen/simulate/thermo_to_growth.py:427:48: E231 missing whitespace after ':'
+./src/tfscreen/simulate/thermo_to_growth.py:430:18: E231 missing whitespace after ','
+./src/tfscreen/simulate/thermo_to_growth.py:433:1: W391 blank line at end of file
 ./src/tfscreen/tfmodel/__init__.py:2:73: W291 trailing whitespace
 ./src/tfscreen/tfmodel/__init__.py:3:20: W291 trailing whitespace
 ./src/tfscreen/tfmodel/__init__.py:18:65: W291 trailing whitespace
@@ -5588,13 +5586,19 @@
 ./tests/tfscreen/simulate/test_setup_observable.py:124:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/simulate/test_setup_observable.py:126:53: E261 at least two spaces before inline comment
 ./tests/tfscreen/simulate/test_setup_observable.py:128:83: W292 no newline at end of file
-./tests/tfscreen/simulate/test_thermo_to_growth.py:23:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_thermo_to_growth.py:27:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_thermo_to_growth.py:31:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_thermo_to_growth.py:35:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_thermo_to_growth.py:44:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_thermo_to_growth.py:119:14: E131 continuation line unaligned for hanging indent
-./tests/tfscreen/simulate/test_thermo_to_growth.py:128:14: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_thermo_to_growth.py:24:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_thermo_to_growth.py:28:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_thermo_to_growth.py:32:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_thermo_to_growth.py:36:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_thermo_to_growth.py:45:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_thermo_to_growth.py:118:32: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_thermo_to_growth.py:120:32: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_thermo_to_growth.py:126:32: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_thermo_to_growth.py:128:32: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_thermo_to_growth.py:181:14: E131 continuation line unaligned for hanging indent
+./tests/tfscreen/simulate/test_thermo_to_growth.py:190:14: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_thermo_to_growth.py:217:44: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_thermo_to_growth.py:224:35: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/simulate/thermo/lac_model/test_lac_model.py:4:1: F401 'unittest.mock.MagicMock' imported but unused
 ./tests/tfscreen/simulate/thermo/lac_model/test_lac_model.py:8:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/simulate/thermo/lac_model/test_lac_model.py:13:45: E261 at least two spaces before inline comment
@@ -5653,10 +5657,6 @@
 ./tests/tfscreen/simulate/thermo/lac_model/test_model_implementations.py:144:40: E261 at least two spaces before inline comment
 ./tests/tfscreen/simulate/thermo/lac_model/test_model_implementations.py:150:1: W293 blank line contains whitespace
 ./tests/tfscreen/simulate/thermo/lac_model/test_model_implementations.py:157:5: E303 too many blank lines (2)
-./tests/tfscreen/simulate/thermo/lac_model/test_model_implementations.py:161:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/thermo/lac_model/test_model_implementations.py:165:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/thermo/lac_model/test_model_implementations.py:171:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/thermo/lac_model/test_model_implementations.py:174:1: W293 blank line contains whitespace
 ./tests/tfscreen/simulate/thermo/test_eee_model.py:8:43: W291 trailing whitespace
 ./tests/tfscreen/simulate/thermo/test_eee_model.py:13:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/simulate/thermo/test_eee_model.py:20:1: W293 blank line contains whitespace
@@ -7924,7 +7924,7 @@
 1     E122 continuation line missing indentation or outdented
 2     E124 closing bracket does not match visual indentation
 6     E125 continuation line with same indent as next logical line
-122   E127 continuation line over-indented for visual indent
+128   E127 continuation line over-indented for visual indent
 66    E128 continuation line under-indented for visual indent
 1     E131 continuation line unaligned for hanging indent
 44    E201 whitespace after '['
@@ -7961,8 +7961,8 @@
 9     F541 f-string is missing placeholders
 6     F811 redefinition of unused 'dataclasses' from line 6
 44    F841 local variable 'e' is assigned to but never used
-753   W291 trailing whitespace
+752   W291 trailing whitespace
 99    W292 no newline at end of file
-1817  W293 blank line contains whitespace
+1812  W293 blank line contains whitespace
 33    W391 blank line at end of file
 7918

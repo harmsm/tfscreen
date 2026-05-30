@@ -6,6 +6,7 @@ from numpy.random import Generator
 
 from tfscreen.simulate.thermo_to_growth import (
     _assign_ddG,
+    _assign_activity,
     _assign_dk_geno,
     _apply_growth_params,
     thermo_to_growth,
@@ -65,6 +66,67 @@ def test_assign_ddG_calls_combiner(mocker, simple_genotypes, simple_ddG_df):
         mut_combine_fcn="mean",
     )
     assert result == "success"
+
+
+# ----------------------------------------------------------------------------
+# test _assign_activity
+# ----------------------------------------------------------------------------
+
+class TestAssignActivity:
+
+    def test_returns_series(self):
+        genotypes = ["wt", "A1B", "C2D"]
+        result = _assign_activity(genotypes)
+        assert isinstance(result, pd.Series)
+
+    def test_all_genotypes_covered(self):
+        genotypes = ["wt", "A1B", "C2D", "A1B/C2D"]
+        result = _assign_activity(genotypes)
+        assert set(result.index) == set(genotypes)
+
+    def test_wt_gets_activity_wt(self):
+        genotypes = ["wt", "A1B"]
+        result = _assign_activity(genotypes, activity_wt=1.0)
+        assert np.isclose(result.loc["wt"], 1.0)
+
+    def test_wt_gets_custom_activity_wt(self):
+        genotypes = ["wt", "A1B"]
+        result = _assign_activity(genotypes, activity_wt=0.5)
+        assert np.isclose(result.loc["wt"], 0.5)
+
+    def test_zero_scale_all_equal_to_wt(self):
+        genotypes = ["wt", "A1B", "C2D", "A1B/C2D"]
+        result = _assign_activity(genotypes, activity_wt=1.0, activity_mut_scale=0.0)
+        assert np.allclose(result.values, 1.0)
+
+    def test_positive_scale_mutants_vary(self):
+        rng = np.random.default_rng(42)
+        genotypes = ["wt", "A1B", "C2D", "E3F", "G4H"]
+        result = _assign_activity(genotypes, activity_wt=1.0, activity_mut_scale=0.5, rng=rng)
+        mut_values = result.drop("wt").values
+        assert not np.allclose(mut_values, 1.0), "Mutants should vary when scale > 0"
+
+    def test_activities_are_positive(self):
+        rng = np.random.default_rng(0)
+        genotypes = ["wt"] + [f"X{i}Y" for i in range(20)]
+        result = _assign_activity(genotypes, activity_wt=1.0, activity_mut_scale=1.0, rng=rng)
+        assert np.all(result.values > 0.0)
+
+    def test_reproducible_with_same_rng_seed(self):
+        genotypes = ["wt", "A1B", "C2D"]
+        r1 = _assign_activity(genotypes, activity_mut_scale=0.3,
+                               rng=np.random.default_rng(7))
+        r2 = _assign_activity(genotypes, activity_mut_scale=0.3,
+                               rng=np.random.default_rng(7))
+        np.testing.assert_array_equal(r1.values, r2.values)
+
+    def test_different_seeds_give_different_values(self):
+        genotypes = ["wt", "A1B", "C2D"]
+        r1 = _assign_activity(genotypes, activity_mut_scale=0.3,
+                               rng=np.random.default_rng(1))
+        r2 = _assign_activity(genotypes, activity_mut_scale=0.3,
+                               rng=np.random.default_rng(2))
+        assert not np.allclose(r1.loc["A1B"], r2.loc["A1B"])
 
 
 # ----------------------------------------------------------------------------
@@ -137,6 +199,30 @@ class TestApplyGrowthParams:
     def test_missing_condition_raises(self, growth_params):
         with pytest.raises(KeyError):
             _apply_growth_params(np.array(["nonexistent"]), np.array([0.5]), growth_params)
+
+    def test_activity_scales_theta_contribution(self, growth_params):
+        conds = np.array(["sel", "sel"])
+        theta = np.array([1.0, 1.0])
+        activity = np.array([0.5, 2.0])
+        k = _apply_growth_params(conds, theta, growth_params, activity_array=activity)
+        b = growth_params["sel"]["b"]
+        m = growth_params["sel"]["m"]
+        np.testing.assert_allclose(k, b + activity * m * theta)
+
+    def test_activity_none_defaults_to_one(self, growth_params):
+        conds = np.array(["sel"])
+        theta = np.array([0.5])
+        k_default = _apply_growth_params(conds, theta, growth_params, activity_array=None)
+        k_explicit = _apply_growth_params(conds, theta, growth_params,
+                                           activity_array=np.array([1.0]))
+        np.testing.assert_allclose(k_default, k_explicit)
+
+    def test_zero_activity_returns_baseline(self, growth_params):
+        conds = np.array(["sel"])
+        theta = np.array([0.7])
+        k = _apply_growth_params(conds, theta, growth_params,
+                                  activity_array=np.array([0.0]))
+        assert np.isclose(k[0], growth_params["sel"]["b"])
 
 
 # ----------------------------------------------------------------------------
@@ -253,22 +339,25 @@ def test_thermo_to_growth_integration(
     assert phenotype_df.shape[0] == 6
     assert "theta" in phenotype_df.columns
     assert "dk_geno" in phenotype_df.columns
+    assert "activity" in phenotype_df.columns
     assert "k_pre" in phenotype_df.columns
     assert "k_sel" in phenotype_df.columns
 
-    # k = m*theta + b + dk_geno — verify with explicit calculation
+    # With default activity_wt=1.0 and activity_mut_scale=0.0, all activity=1.0
+    # k = b + 1.0 * m * theta + dk_geno
     m_pre = simple_growth_params["M9"]["m"]
     b_pre = simple_growth_params["M9"]["b"]
     m_sel = simple_growth_params["M9+Ab"]["m"]
     b_sel = simple_growth_params["M9+Ab"]["b"]
     dk = phenotype_df["genotype"].map(mock_dk_geno).to_numpy()
     theta = phenotype_df["theta"].to_numpy()
+    activity = phenotype_df["activity"].to_numpy()
 
     np.testing.assert_allclose(
-        phenotype_df["k_pre"].to_numpy(), m_pre * theta + b_pre + dk
+        phenotype_df["k_pre"].to_numpy(), b_pre + activity * m_pre * theta + dk
     )
     np.testing.assert_allclose(
-        phenotype_df["k_sel"].to_numpy(), m_sel * theta + b_sel + dk
+        phenotype_df["k_sel"].to_numpy(), b_sel + activity * m_sel * theta + dk
     )
 
     assert isinstance(genotype_ddG_df, pd.DataFrame)

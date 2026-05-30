@@ -158,18 +158,121 @@ class TestCommonModelBehavior:
         """Test that solver failure emits warning and returns NaNs."""
         model = ModelClass(1e-9, 1e-9, 1e-9)
         K_array = np.ones(num_K)
-        
+
         # Path to root varies slightly or we mock it globally in the module
         # But 'root' is imported into the module namespace.
         module_path = ModelClass.__module__
-        
+
         with patch(f"{module_path}.root") as mock_root:
             mock_res = MagicMock(spec=OptimizeResult)
             mock_res.success = False
             mock_res.message = "Mock failure"
             mock_root.return_value = mock_res
-            
+
             with pytest.warns(UserWarning, match="Solver failed"):
                 concs = model.get_concs(K_array)
-                
+
             assert np.all(np.isnan(concs))
+
+
+# ----------------------------------------------------------------------------
+# Wild-type lac repressor parameters (Sochor 2014, PeerJ 2:e498)
+# ----------------------------------------------------------------------------
+
+_WT_K_ARRAY = np.array([
+    6.3,     # K_h_l  (dimensionless)
+    4.2e8,   # K_h_o  (M-1)
+    5.6e4,   # K_h_e  (M-1)
+    0.1,     # K_l_o  (M-1)
+    7.6e5,   # K_l_e  (M-1)
+])
+
+_MWC_PARAMS = [
+    # (label, K_array, e_total)
+    ("wt_iptg_titration",
+     _WT_K_ARRAY,
+     np.array([0.0, 1e-6, 1e-5, 1e-4, 1e-3])),
+    ("wt_low_effector",
+     _WT_K_ARRAY,
+     np.array([0.0, 1e-7, 5e-7, 1e-6])),
+    ("high_K_h_o",
+     np.array([6.3, 1e10, 5.6e4, 0.1, 7.6e5]),
+     np.array([0.0, 1e-5, 1e-4, 1e-3])),
+    ("weak_binding",
+     np.array([1.0, 1e4, 1e3, 0.01, 1e4]),
+     np.array([0.0, 1e-5, 1e-3])),
+]
+
+
+class TestMWCDimerAgreementWithTFModel:
+    """
+    Cross-validate MWCDimerModel.get_fx_operator (now delegates to JAX
+    _compute_theta) against the old scipy/numba get_concs-derived theta.
+
+    Both should agree to within ~15 % — the operator-depletion approximation
+    used by the JAX path is accurate to that level when TF >> op (the typical
+    biophysical regime).
+    """
+
+    def _old_get_fx_operator(self, model, K_array):
+        """Reproduce the pre-delegation get_fx_operator from get_concs."""
+        all_concs = model.get_concs(K_array)
+        o_free_conc = all_concs[:, model._species_map['O']]
+        o_free_conc = np.minimum(o_free_conc, model.o_total)
+        return (model.o_total - o_free_conc) / (model.o_total + 1e-30)
+
+    @pytest.mark.parametrize("label,K_array,e_total", _MWC_PARAMS,
+                             ids=[p[0] for p in _MWC_PARAMS])
+    def test_jax_agrees_with_scipy_solver(self, label, K_array, e_total):
+        r_total = 6.5e-7
+        o_total = 2.5e-8
+        model = MWCDimerModel(r_total=r_total, o_total=o_total, e_total=e_total)
+
+        jax_theta = model.get_fx_operator(K_array)
+        scipy_theta = self._old_get_fx_operator(model, K_array)
+
+        assert jax_theta.shape == scipy_theta.shape
+        np.testing.assert_allclose(jax_theta, scipy_theta, rtol=0.15,
+                                   err_msg=f"JAX and scipy theta disagree for '{label}'")
+
+    def test_get_fx_operator_returns_numpy(self):
+        model = MWCDimerModel(r_total=6.5e-7, o_total=2.5e-8,
+                              e_total=np.array([0.0, 1e-5]))
+        result = model.get_fx_operator(_WT_K_ARRAY)
+        assert isinstance(result, np.ndarray)
+
+    def test_get_fx_operator_shape(self):
+        e_total = np.array([0.0, 1e-6, 1e-5, 1e-4])
+        model = MWCDimerModel(r_total=6.5e-7, o_total=2.5e-8, e_total=e_total)
+        result = model.get_fx_operator(_WT_K_ARRAY)
+        assert result.shape == (len(e_total),)
+
+    def test_get_fx_operator_range(self):
+        e_total = np.array([0.0, 1e-6, 1e-5, 1e-4, 1e-3])
+        model = MWCDimerModel(r_total=6.5e-7, o_total=2.5e-8, e_total=e_total)
+        result = model.get_fx_operator(_WT_K_ARRAY)
+        assert np.all(result >= 0.0)
+        assert np.all(result <= 1.0 + 1e-6)
+
+    def test_theta_decreases_with_iptg(self):
+        """Increasing IPTG (effector) should decrease operator occupancy."""
+        e_total = np.array([0.0, 1e-6, 1e-5, 1e-4, 1e-3])
+        model = MWCDimerModel(r_total=6.5e-7, o_total=2.5e-8, e_total=e_total)
+        theta = model.get_fx_operator(_WT_K_ARRAY)
+        assert np.all(np.diff(theta) <= 0.0), "theta should be non-increasing with IPTG"
+
+    def test_non_uniform_r_total_raises(self):
+        r_total = np.array([6.5e-7, 7.0e-7])
+        o_total = 2.5e-8
+        e_total = np.array([1e-6, 1e-5])
+        model = MWCDimerModel(r_total=r_total, o_total=o_total, e_total=e_total)
+        with pytest.raises(ValueError, match="uniform r_total"):
+            model.get_fx_operator(_WT_K_ARRAY)
+
+    def test_non_uniform_o_total_raises(self):
+        r_total = 6.5e-7
+        o_total = np.array([2.5e-8, 3.0e-8])
+        e_total = np.array([1e-6, 1e-5])
+        model = MWCDimerModel(r_total=r_total, o_total=o_total, e_total=e_total)
+        with pytest.raises(ValueError, match="uniform o_total"):
+            model.get_fx_operator(_WT_K_ARRAY)

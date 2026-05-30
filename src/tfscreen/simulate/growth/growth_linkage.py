@@ -21,7 +21,7 @@ import numpy as np
 
 class LinearGrowth:
     """
-    k = b + m * theta
+    k = b + activity * m * theta
 
     Matches the 'linear' and 'linear_fixed' inference components.
 
@@ -31,14 +31,16 @@ class LinearGrowth:
         Baseline growth rate at theta=0.
     m : float
         Slope: change in growth rate per unit theta.
+    activity : float or array-like, default 1.0
+        Per-genotype TF activity scaling factor.
     """
-    def predict(self, theta, b, m):
-        return b + m * np.asarray(theta)
+    def predict(self, theta, b, m, activity=1.0):
+        return b + np.asarray(activity) * m * np.asarray(theta)
 
 
 class PowerGrowth:
     """
-    k = b + a * theta**n
+    k = b + activity * a * theta**n
 
     Matches the 'power' inference component.
 
@@ -50,15 +52,17 @@ class PowerGrowth:
         Coefficient on the power-law term.
     n : float
         Exponent (n=1 reduces to linear).
+    activity : float or array-like, default 1.0
+        Per-genotype TF activity scaling factor.
     """
-    def predict(self, theta, b, a, n):
+    def predict(self, theta, b, a, n, activity=1.0):
         theta = np.asarray(theta)
-        return b + a * (theta ** n)
+        return b + np.asarray(activity) * a * (theta ** n)
 
 
 class SaturationGrowth:
     """
-    k = kmin + (kmax - kmin) * theta / (1 + theta)
+    k = kmin + activity * (kmax - kmin) * theta / (1 + theta)
 
     Matches the 'saturation' inference component.
 
@@ -68,10 +72,12 @@ class SaturationGrowth:
         Growth rate at theta=0.
     kmax : float
         Asymptotic growth rate as theta → ∞.
+    activity : float or array-like, default 1.0
+        Per-genotype TF activity scaling factor.
     """
-    def predict(self, theta, kmin, kmax):
+    def predict(self, theta, kmin, kmax, activity=1.0):
         theta = np.asarray(theta)
-        return kmin + (kmax - kmin) * theta / (1.0 + theta)
+        return kmin + np.asarray(activity) * (kmax - kmin) * theta / (1.0 + theta)
 
 
 MODEL_REGISTRY = {

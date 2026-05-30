@@ -37,6 +37,29 @@ class TestLinearGrowth:
         m = LinearGrowth()
         assert np.isclose(m.predict(1.0, b=0.03, m=-0.02), 0.01)
 
+    def test_activity_default_one_unchanged(self):
+        m = LinearGrowth()
+        np.testing.assert_allclose(
+            m.predict(THETA, b=0.025, m=-0.01),
+            m.predict(THETA, b=0.025, m=-0.01, activity=1.0),
+        )
+
+    def test_activity_scales_theta_term(self):
+        m = LinearGrowth()
+        result = m.predict(THETA, b=0.0, m=1.0, activity=2.0)
+        np.testing.assert_allclose(result, 2.0 * THETA)
+
+    def test_activity_zero_returns_b(self):
+        m = LinearGrowth()
+        result = m.predict(THETA, b=0.05, m=-0.01, activity=0.0)
+        np.testing.assert_allclose(result, 0.05)
+
+    def test_activity_vectorized(self):
+        m = LinearGrowth()
+        activity = np.array([0.5, 1.0, 2.0, 0.5, 1.0])
+        result = m.predict(THETA, b=0.0, m=1.0, activity=activity)
+        np.testing.assert_allclose(result, activity * THETA)
+
 
 class TestPowerGrowth:
 
@@ -60,6 +83,23 @@ class TestPowerGrowth:
     def test_scalar_input(self):
         m = PowerGrowth()
         assert np.isclose(m.predict(2.0, b=0.0, a=1.0, n=3.0), 8.0)
+
+    def test_activity_default_one_unchanged(self):
+        m = PowerGrowth()
+        np.testing.assert_allclose(
+            m.predict(THETA, b=0.025, a=-0.01, n=2.0),
+            m.predict(THETA, b=0.025, a=-0.01, n=2.0, activity=1.0),
+        )
+
+    def test_activity_scales_theta_term(self):
+        m = PowerGrowth()
+        result = m.predict(THETA, b=0.0, a=1.0, n=2.0, activity=3.0)
+        np.testing.assert_allclose(result, 3.0 * THETA ** 2.0)
+
+    def test_activity_zero_returns_b(self):
+        m = PowerGrowth()
+        result = m.predict(THETA, b=0.05, a=-0.01, n=2.0, activity=0.0)
+        np.testing.assert_allclose(result, 0.05)
 
 
 class TestSaturationGrowth:
@@ -88,6 +128,24 @@ class TestSaturationGrowth:
         m = SaturationGrowth()
         result = m.predict(1.0, kmin=0.0, kmax=1.0)
         np.testing.assert_allclose(result, 0.5)
+
+    def test_activity_default_one_unchanged(self):
+        m = SaturationGrowth()
+        np.testing.assert_allclose(
+            m.predict(THETA, kmin=0.01, kmax=0.05),
+            m.predict(THETA, kmin=0.01, kmax=0.05, activity=1.0),
+        )
+
+    def test_activity_scales_theta_term(self):
+        m = SaturationGrowth()
+        result_half = m.predict(THETA, kmin=0.0, kmax=1.0, activity=0.5)
+        result_full = m.predict(THETA, kmin=0.0, kmax=1.0, activity=1.0)
+        np.testing.assert_allclose(result_half, 0.5 * result_full)
+
+    def test_activity_zero_returns_kmin(self):
+        m = SaturationGrowth()
+        result = m.predict(THETA, kmin=0.03, kmax=0.10, activity=0.0)
+        np.testing.assert_allclose(result, 0.03)
 
 
 class TestGetTFModel:

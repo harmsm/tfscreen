@@ -67,7 +67,9 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
         ddG_df=cf["ddG_spreadsheet"],
         growth_params=cf['growth'],
         mut_growth_rate_shape=cf['mut_growth_rate_shape'],
-        mut_growth_rate_scale=cf['mut_growth_rate_scale']
+        mut_growth_rate_scale=cf['mut_growth_rate_scale'],
+        activity_wt=cf.get('activity_wt', 1.0),
+        activity_mut_scale=cf.get('activity_mut_scale', 0.0),
     )
 
     return library_df, phenotype_df, genotype_ddG_df

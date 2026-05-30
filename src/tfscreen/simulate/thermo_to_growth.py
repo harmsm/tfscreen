@@ -53,6 +53,51 @@ def _assign_ddG(unique_genotypes,
     )
 
 
+def _assign_activity(unique_genotypes,
+                     activity_wt=1.0,
+                     activity_mut_scale=0.0,
+                     rng: Generator | None = None):
+    """
+    Assign per-genotype TF activity values.
+
+    The wild-type genotype (``"wt"``) receives ``activity_wt``.  Each mutant
+    genotype draws independently from
+    ``LogNormal(log(activity_wt), activity_mut_scale)``.
+    When ``activity_mut_scale == 0`` every genotype gets ``activity_wt``,
+    which reproduces the 'fixed' activity model used in inference.
+
+    Parameters
+    ----------
+    unique_genotypes : Iterable[str]
+        An iterable of all unique genotype strings.
+    activity_wt : float, default 1.0
+        Activity of the wild-type genotype.  Inference convention fixes this
+        at 1.0 so that mutant activities are interpreted relative to WT.
+    activity_mut_scale : float, default 0.0
+        Standard deviation of ``log(activity)`` for mutant genotypes.
+        Set to 0 to give all genotypes identical activity.
+    rng : numpy.random.Generator, optional
+        An initialized NumPy random number generator.
+
+    Returns
+    -------
+    pandas.Series
+        Series indexed by genotype with the per-genotype activity value.
+    """
+    if rng is None:
+        rng = np.random.default_rng()
+
+    log_a_wt = np.log(activity_wt)
+    activities = {}
+    for g in unique_genotypes:
+        if g == "wt" or activity_mut_scale == 0.0:
+            activities[g] = float(activity_wt)
+        else:
+            activities[g] = float(np.exp(rng.normal(log_a_wt, activity_mut_scale)))
+
+    return pd.Series(activities)
+
+
 def _assign_dk_geno(unique_genotypes,
                     shape_param=3,
                     scale_param=0.002,
@@ -127,6 +172,7 @@ def _apply_growth_params(
     condition_array: np.ndarray,
     theta_array: np.ndarray,
     growth_params: dict,
+    activity_array: np.ndarray | None = None,
 ) -> np.ndarray:
     """
     Compute per-row growth rate k given theta and per-condition model parameters.
@@ -147,19 +193,25 @@ def _apply_growth_params(
                 "M9":     {"model": "linear",     "b": 0.025, "m": -0.01},
                 "M9+kan": {"model": "saturation", "kmin": 0.001, "kmax": 0.04},
             }
+    activity_array : numpy.ndarray, optional
+        Per-row TF activity scaling factors.  When None, defaults to 1.0 for
+        all rows (equivalent to the 'fixed' activity model in inference).
 
     Returns
     -------
     numpy.ndarray
         Growth rate k for each row.
     """
+    if activity_array is None:
+        activity_array = np.ones(len(theta_array), dtype=float)
     result = np.zeros(len(theta_array), dtype=float)
     for cond in np.unique(condition_array):
         mask = condition_array == cond
         params = growth_params[cond].copy()
         model_name = params.pop("model", "linear")
         model = get_growth_model(model_name)
-        result[mask] = model.predict(theta_array[mask], **params)
+        result[mask] = model.predict(theta_array[mask],
+                                     activity=activity_array[mask], **params)
     return result
 
 
@@ -172,6 +224,8 @@ def thermo_to_growth(
     growth_params: dict,
     mut_growth_rate_shape: float = 3,
     mut_growth_rate_scale: float = 0.002,
+    activity_wt: float = 1.0,
+    activity_mut_scale: float = 0.0,
     ddG_combine_fcn: Optional[Union[str, Callable]] = "sum",
     dk_geno_combine_fcn: Optional[Union[str, Callable]] = "sum",
     rng: Generator | None = None,
@@ -207,6 +261,12 @@ def thermo_to_growth(
         pleiotropic fitness costs.
     mut_growth_rate_scale : float, default 0.002
         The scale parameter for the gamma distribution.
+    activity_wt : float, default 1.0
+        TF activity of the wild-type genotype.  Inference convention fixes
+        this at 1.0 so mutant activities are relative to WT.
+    activity_mut_scale : float, default 0.0
+        Std dev of log(activity) for mutant genotypes.  0 gives all genotypes
+        identical activity (equivalent to the 'fixed' inference component).
     ddG_combine_fcn : str or callable, default "sum"
         The method for combining ddG effects for multi-mutation genotypes.
     dk_geno_combine_fcn : str or callable, default "sum"
@@ -304,15 +364,24 @@ def thermo_to_growth(
                             left_on='feature_id', 
                             right_index=True)
     
-    # Get global shifts in growth rate induced by mutations. 
+    # Get global shifts in growth rate induced by mutations.
     genotype_dk_geno_series = _assign_dk_geno(unique_genotypes,
                                               mut_growth_rate_shape,
                                               mut_growth_rate_scale,
                                               dk_geno_combine_fcn,
                                               rng)
-    
+
     # Load the calcualted dk_geno into the phenotype_df
     phenotype_df["dk_geno"] = phenotype_df["genotype"].map(genotype_dk_geno_series)
+
+    # Get per-genotype TF activity.
+    genotype_activity_series = _assign_activity(unique_genotypes,
+                                                activity_wt=activity_wt,
+                                                activity_mut_scale=activity_mut_scale,
+                                                rng=rng)
+
+    # Load activity into the phenotype_df
+    phenotype_df["activity"] = phenotype_df["genotype"].map(genotype_activity_series)
 
     # Validate that every condition appearing in phenotype_df is covered by
     # growth_params. Errors here are preferable to silent wrong results.
@@ -326,17 +395,20 @@ def thermo_to_growth(
         raise ValueError(err)
 
     theta = phenotype_df["theta"].to_numpy()
+    activity = phenotype_df["activity"].to_numpy()
 
-    # Get growth-rate in pre-selection condition given theta: k = m*theta + b
+    # Get growth-rate in pre-selection condition given theta: k = b + activity*m*theta
     k_pre = _apply_growth_params(phenotype_df["condition_pre"].to_numpy(),
                                  theta,
-                                 growth_params)
+                                 growth_params,
+                                 activity_array=activity)
     phenotype_df["k_pre"] = k_pre + phenotype_df["dk_geno"].to_numpy()
 
-    # Get growth-rate in selection condition given theta: k = m*theta + b
+    # Get growth-rate in selection condition given theta: k = b + activity*m*theta
     k_sel = _apply_growth_params(phenotype_df["condition_sel"].to_numpy(),
                                  theta,
-                                 growth_params)
+                                 growth_params,
+                                 activity_array=activity)
     phenotype_df["k_sel"] = k_sel + phenotype_df["dk_geno"].to_numpy()
 
     # -------------------------------------------------------------------------

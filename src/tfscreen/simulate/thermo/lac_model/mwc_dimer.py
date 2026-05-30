@@ -1,7 +1,12 @@
 import numpy as np
+import jax.numpy as jnp
 from scipy.optimize import root
 import warnings
 from numba import jit
+
+from tfscreen.tfmodel.generative.components.theta.struct.mwc_dimer.thermo import (
+    _compute_theta as _mwc_jax_compute_theta,
+)
 
 # --- Numba JIT-Compiled Objective Function ---
 # This function is compiled to machine code by Numba for a massive speedup.
@@ -125,11 +130,36 @@ class MWCDimerModel:
         return results
 
     def get_fx_operator(self, K_array):
-        """Calculates the fraction of operator bound by repressor."""
-        all_concs = self.get_concs(K_array)
-        o_free_conc = all_concs[:, self._species_map['O']]
-        o_free_conc = np.minimum(o_free_conc, self.o_total)
-        return (self.o_total - o_free_conc) / (self.o_total + 1e-30)
+        """Calculates the fraction of operator bound by repressor.
+
+        Delegates to the shared JAX implementation in
+        ``tfscreen.tfmodel.generative.components.theta.struct.mwc_dimer.thermo``
+        using the operator-depletion approximation (valid when TF >> op,
+        typically < 5 % error for wild-type lac repressor parameters).
+
+        ``r_total`` and ``o_total`` must be uniform across all conditions
+        (only the effector concentration varies per condition).
+        """
+        if not np.allclose(self.r_total_dimer, self.r_total_dimer[0], rtol=1e-6, atol=0):
+            raise ValueError(
+                "get_fx_operator requires uniform r_total across all conditions."
+            )
+        if not np.allclose(self.o_total, self.o_total[0], rtol=1e-6, atol=0):
+            raise ValueError(
+                "get_fx_operator requires uniform o_total across all conditions."
+            )
+        K_h_l, K_h_o, K_h_e, K_l_o, K_l_e = K_array
+        theta = _mwc_jax_compute_theta(
+            ln_K_h_l=jnp.array([float(np.log(K_h_l))]),    # (G=1,)
+            ln_K_h_o=jnp.array([float(np.log(K_h_o))]),    # (G=1,)
+            ln_K_h_e=jnp.array([[float(np.log(K_h_e))]]),  # (T=1, G=1)
+            ln_K_l_o=jnp.array([float(np.log(K_l_o))]),    # (G=1,)
+            ln_K_l_e=jnp.array([[float(np.log(K_l_e))]]),  # (T=1, G=1)
+            titrant_conc=jnp.array(self.e_total),           # (C,)
+            tf_total=float(self.r_total_dimer[0] * 2),      # monomer units
+            op_total=float(self.o_total[0]),
+        )
+        return np.array(theta[0, :, 0])  # (T=1, C, G=1) → (C,)
 
     def _solve_single(self, e_total, o_total, r_total_dimer, K_array):
     
