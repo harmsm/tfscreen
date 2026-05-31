@@ -36,11 +36,8 @@ The fix is to add a floor to those constraints via
 """
 
 import argparse
-import sys
 
 import jax
-import jax.numpy as jnp
-import numpy as np
 import dill
 
 from tfscreen.tfmodel.configuration_io import read_configuration

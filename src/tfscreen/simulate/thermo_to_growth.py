@@ -9,12 +9,10 @@ from tfscreen.genetics import (
 )
 from tfscreen.simulate.sample_theta import sample_theta_prior
 from tfscreen.simulate.growth.growth_linkage import get_growth_model
-from tfscreen.simulate.growth.transition_linkage import get_transition_model
 
 import pandas as pd
 import numpy as np
 from numpy.random import Generator
-from tqdm.auto import tqdm
 
 from typing import Iterable, Optional
 

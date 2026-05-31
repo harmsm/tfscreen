@@ -63,7 +63,7 @@ from tfscreen.tfmodel.generative.components.theta.struct.horseshoe import (
     sample_pair_ddG,
     _DEFAULT_D0,
 )
-from tfscreen.tfmodel.generative.components.theta.struct.lac_dimer.thermo import (
+from tfscreen.tfmodel.generative.components.theta.struct.lac_dimer.thermo import (  # noqa: F401
     ThetaParam,
     _compute_theta,
     _population_moments,
@@ -609,8 +609,7 @@ def get_extract_specs(ctx):
 
     return specs
 
-
-from tfscreen.tfmodel.generative.components.theta.struct.lac_dimer.thermo import (
+from tfscreen.tfmodel.generative.components.theta.struct.lac_dimer.thermo import (  # noqa: F401  # noqa: F401
     build_calc_df,
     compute_theta_samples,
 )

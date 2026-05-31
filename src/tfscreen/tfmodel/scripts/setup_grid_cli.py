@@ -58,10 +58,8 @@ import yaml
 
 from tfscreen.util.cli import generalized_main
 from tfscreen.util.grid_utils import (
-    sanitize as _sanitize,
     make_jinja_env as _make_jinja_env,
     make_run_name as _make_run_name,
-    relativize_node as _relativize_node,
     relativize_config_paths as _relativize_config_paths,
     relativize_template_vars as _relativize_template_vars,
 )

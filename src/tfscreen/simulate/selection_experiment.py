@@ -19,7 +19,6 @@ import numpy.ma as ma
 from numpy.random import Generator
 
 import pandas as pd
-from pandas.core.groupby.generic import DataFrameGroupBy
 
 from scipy.stats import (
     gmean,

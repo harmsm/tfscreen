@@ -1,5 +1,5 @@
 
-from .generalized_main import (
+from .generalized_main import (  # noqa: F401
     generalized_main
 )
 

@@ -55,7 +55,7 @@ from tfscreen.tfmodel.generative.components.theta.struct.horseshoe import (
     sample_pair_ddG,
     _DEFAULT_D0,
 )
-from tfscreen.tfmodel.generative.components.theta.struct.mwc_dimer.thermo import (
+from tfscreen.tfmodel.generative.components.theta.struct.mwc_dimer.thermo import (  # noqa: F401
     ThetaParam,
     _compute_theta,
     _population_moments,
@@ -686,8 +686,7 @@ def predict_unmeasured(
         result_df[q_name] = np.quantile(theta_samples, q_val, axis=0)
     return result_df
 
-
-from tfscreen.tfmodel.generative.components.theta.struct.mwc_dimer.thermo import (
+from tfscreen.tfmodel.generative.components.theta.struct.mwc_dimer.thermo import (  # noqa: F401  # noqa: F401
     build_calc_df,
     compute_theta_samples,
 )

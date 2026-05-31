@@ -3,9 +3,7 @@ import yaml
 import pandas as pd
 import numpy as np
 import jax.numpy as jnp
-import dataclasses
 import warnings
-import tfscreen
 from tfscreen.__version__ import __version__
 
 def _extract_scalars(obj, prefix=""):

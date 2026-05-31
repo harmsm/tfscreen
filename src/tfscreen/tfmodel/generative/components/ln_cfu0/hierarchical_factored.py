@@ -16,7 +16,6 @@ from tfscreen.tfmodel.generative.components.ln_cfu0.hierarchical import (
     _per_geno_loc_scale,
     _empirical_group_estimates,
     _mad_scale,
-    _SCALE_FLOOR,
     _FALLBACK_HYPER_LOC,
     _FALLBACK_SPIKED_LOC,
     _FALLBACK_WT_LOC,

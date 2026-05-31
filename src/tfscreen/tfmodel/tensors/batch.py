@@ -1,6 +1,5 @@
 from tfscreen.tfmodel.data_class import DataClass
 
-import jax
 import jax.numpy as jnp
 
 def get_batch(full_data: DataClass, idx: jnp.ndarray) -> DataClass:

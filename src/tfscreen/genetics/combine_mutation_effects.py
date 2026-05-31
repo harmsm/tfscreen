@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from typing import Union, Callable, Optional, Iterable
+from typing import Union, Callable, Iterable
 
 # A dictionary of recognized string aggregators for the combine function
 PANDAS_AGGREGATORS = {"sum", "mean", "prod", "min", "max", "std", "var"}

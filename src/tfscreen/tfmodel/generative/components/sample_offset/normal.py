@@ -36,7 +36,6 @@ when added to ln_cfu_pred.  The tubes plate is closed before the genotype
 plate opens, so sharing dim=-1 causes no conflict.
 """
 
-import numpy as np
 import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist

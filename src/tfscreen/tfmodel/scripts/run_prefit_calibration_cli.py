@@ -48,7 +48,6 @@ import sys
 
 import numpy as np
 import pandas as pd
-import jax
 import jax.numpy as jnp
 import optax
 

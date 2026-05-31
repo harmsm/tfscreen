@@ -10,12 +10,8 @@ from numpyro.infer import (
     SVI,
     Trace_ELBO,
     Predictive,
-    init_to_value
 )
 from numpyro.optim import ClippedAdam
-import optax
-
-from numpyro.infer.autoguide import AutoDelta
 import numpy as np
 import dill
 from tqdm.auto import tqdm
@@ -33,8 +29,6 @@ from collections import deque
 from functools import partial
 import os
 import h5py
-from .posteriors import load_posteriors
-
 class RunInference:
     """
     Manages the SVI (Stochastic Variational Inference) process for a model.

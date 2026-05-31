@@ -1,6 +1,5 @@
 import numpy as np
 import jax
-import jax.numpy as jnp
 from numpyro.handlers import seed, trace
 from numpyro.infer import Predictive
 

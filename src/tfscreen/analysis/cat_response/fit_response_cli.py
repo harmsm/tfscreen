@@ -3,10 +3,8 @@ CLI for fitting cat_response models to theta-vs-titrant data per genotype.
 """
 
 import argparse
-import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-import numpy as np
 import pandas as pd
 
 from tfscreen.analysis.cat_response.cat_fit import cat_fit

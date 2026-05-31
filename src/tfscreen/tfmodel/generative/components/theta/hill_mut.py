@@ -31,7 +31,7 @@ import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
 import pandas as pd
-from flax.struct import dataclass, field
+from flax.struct import dataclass
 from typing import Dict, Any
 
 from functools import partial

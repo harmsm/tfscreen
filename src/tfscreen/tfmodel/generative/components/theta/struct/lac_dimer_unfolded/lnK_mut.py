@@ -25,7 +25,7 @@ from typing import Dict, Any
 
 from tfscreen.tfmodel.data_class import GrowthData
 from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix, apply_mut_matrix
-from tfscreen.tfmodel.generative.components.theta.struct.lac_dimer_unfolded.thermo import (
+from tfscreen.tfmodel.generative.components.theta.struct.lac_dimer_unfolded.thermo import (  # noqa: F401
     ThetaParam,
     _compute_theta,
     _population_moments,
@@ -594,8 +594,7 @@ def get_extract_specs(ctx):
 
     return specs
 
-
-from tfscreen.tfmodel.generative.components.theta.struct.lac_dimer_unfolded.thermo import (
+from tfscreen.tfmodel.generative.components.theta.struct.lac_dimer_unfolded.thermo import (  # noqa: F401  # noqa: F401
     build_calc_df,
     compute_theta_samples,
 )

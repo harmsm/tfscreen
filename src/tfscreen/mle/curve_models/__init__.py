@@ -20,7 +20,7 @@ with weighted least squares.
 
 import numpy as np
 
-from .models import (
+from .models import (  # noqa: F401
     model_flat,
     model_linear,
     model_hill_3p,

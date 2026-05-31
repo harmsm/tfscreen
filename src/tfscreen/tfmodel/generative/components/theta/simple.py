@@ -28,7 +28,6 @@ These match the contract used by downstream transformations (e.g.
 when theta is "known".
 """
 
-import jax
 import jax.numpy as jnp
 import numpyro as pyro
 from flax.struct import dataclass, field

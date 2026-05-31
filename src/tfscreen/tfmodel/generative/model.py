@@ -5,10 +5,8 @@ from tfscreen.tfmodel.data_class import (
     PriorsClass,
 )
 
-import jax
 import jax.numpy as jnp
 import numpyro as pyro
-from typing import Dict, Any
 
 def jax_model(data: DataClass,
               priors: PriorsClass,

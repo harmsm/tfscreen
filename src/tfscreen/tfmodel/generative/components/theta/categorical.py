@@ -3,10 +3,7 @@ import numpy as np
 import pandas as pd
 import numpyro as pyro
 import numpyro.distributions as dist
-from flax.struct import (
-    dataclass,
-    field
-)
+from flax.struct import dataclass
 from typing import Dict, Any
 from tfscreen.tfmodel.data_class import DataClass
 

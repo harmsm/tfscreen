@@ -7,7 +7,6 @@ from flax.struct import (
     field
 )
 from tfscreen.tfmodel.data_class import GrowthData
-from typing import Optional, Tuple, Union
 
 def _logit_normal_cdf(x, mu, sigma):
     """

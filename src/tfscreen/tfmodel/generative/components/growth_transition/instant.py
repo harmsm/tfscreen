@@ -1,5 +1,4 @@
 import jax.numpy as jnp
-import numpyro as pyro
 from flax.struct import dataclass
 from tfscreen.tfmodel.data_class import GrowthData
 from typing import Dict, Any
