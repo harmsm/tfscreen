@@ -31,7 +31,7 @@ def test_run_growth_analysis_smoke(growth_smoke_csv, binding_smoke_csv, tmpdir):
         binding_df=binding_smoke_csv,
         condition_growth="linear",
         transformation="logit_norm",
-        theta="hill",
+        theta="hill_geno",
         batch_size=None
     )
     
@@ -84,7 +84,7 @@ def test_run_growth_analysis_nuts_smoke(growth_smoke_csv, binding_smoke_csv, tmp
         binding_df=binding_smoke_csv,
         condition_growth="linear",
         transformation="logit_norm",
-        theta="hill",
+        theta="hill_geno",
         batch_size=None,
     )
     config_file = _build_config(gm, tmpdir, growth_smoke_csv, binding_smoke_csv)
@@ -139,7 +139,7 @@ def test_run_growth_analysis_nuts_posterior_smoke(growth_smoke_csv, binding_smok
         binding_df=binding_smoke_csv,
         condition_growth="linear",
         transformation="logit_norm",
-        theta="hill",
+        theta="hill_geno",
         batch_size=None,
     )
     config_file = _build_config(gm, tmpdir, growth_smoke_csv, binding_smoke_csv)

@@ -12,7 +12,7 @@ from tfscreen.tfmodel.analysis.extraction import (
 def mock_model():
     """Create a ModelOrchestrator instance with minimal mocked internals."""
     model = MagicMock(spec=ModelOrchestrator)
-    model._theta = "hill"
+    model._theta = "hill_geno"
     
     # Mock TensorManager and its DataFrame
     mock_tm = MagicMock()
@@ -92,7 +92,7 @@ def test_extract_theta_curves_manual_df_with_genotypes(mock_model, mock_posterio
 
 def test_extract_theta_curves_wrong_theta_model(mock_model, mock_posteriors):
     """Test that it raises ValueError for a theta model without the extraction interface."""
-    mock_model._theta = "simple"
+    mock_model._theta = "_simple"
     with pytest.raises(ValueError, match="does not support this interface"):
         extract_theta_curves(mock_model, mock_posteriors)
 
@@ -114,7 +114,7 @@ def test_extract_theta_curves_invalid_genotype(mock_model, mock_posteriors):
 
 def test_extract_theta_curves_file_loading(mock_model):
     """Test loading posteriors from file."""
-    mock_model._theta = "hill"
+    mock_model._theta = "hill_geno"
     mock_npz = {
         "theta_hill_n": np.ones((5, 2)),
         "theta_log_hill_K": np.ones((5, 2)),

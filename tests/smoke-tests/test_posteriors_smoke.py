@@ -22,7 +22,7 @@ def test_checkpoint_and_posterior_smoke(growth_smoke_csv,
         binding_df=binding_smoke_csv,
         condition_growth="linear",
         transformation="logit_norm",
-        theta="hill",
+        theta="hill_geno",
         batch_size=None
     )
     
@@ -81,7 +81,7 @@ def test_extract_parameters_smoke(growth_smoke_csv,
     model = ModelOrchestrator(
         growth_df=growth_smoke_csv,
         binding_df=binding_smoke_csv,
-        theta="hill",
+        theta="hill_geno",
         transformation="logit_norm"
     )
     

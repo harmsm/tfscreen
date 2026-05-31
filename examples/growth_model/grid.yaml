@@ -38,8 +38,8 @@ configure_model:
 
   - name: fixed_components
     variants:
-      - activity: horseshoe
-        dk_geno: hierarchical
+      - activity: horseshoe_geno
+        dk_geno: hierarchical_geno
         transformation: empirical
         theta_rescale: passthrough
 
@@ -73,7 +73,7 @@ configure_model:
 
   - name: theta_and_epistasis
     variants:
-      - theta: hill          # additive mutation effects; no epistasis
+      - theta: hill_geno     # additive mutation effects; no epistasis
         epistasis: false
       - theta: hill_mut      # per-mutation effects, additive
         epistasis: false

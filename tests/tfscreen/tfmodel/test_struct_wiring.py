@@ -134,7 +134,7 @@ def _make_binding_csv(tmp_path, genotypes=_GENOTYPES):
 
 def test_registry_entry():
     from tfscreen.tfmodel.generative.registry import model_registry
-    assert "lac_dimer_lnK_nn_prior" in model_registry["theta"]
+    assert "thermo.O2_C4_K3_U0_a.PnnC" in model_registry["theta"]
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -150,7 +150,7 @@ def test_settings_includes_struct_ensemble_path(tmp_path):
     from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
     mc = ModelOrchestrator(
         growth_path, binding_path,
-        theta="lac_dimer_lnK_nn_prior",
+        theta="thermo.O2_C4_K3_U0_a.PnnC",
         struct_ensemble_path=h5_path,
     )
     assert "struct_ensemble_path" in mc.settings
@@ -163,7 +163,7 @@ def test_default_struct_ensemble_path_is_none(tmp_path):
     binding_path = _make_binding_csv(tmp_path)
 
     from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
-    mc = ModelOrchestrator(growth_path, binding_path, theta="hill")
+    mc = ModelOrchestrator(growth_path, binding_path, theta="hill_geno")
     assert mc.settings["struct_ensemble_path"] is None
 
 
@@ -178,7 +178,7 @@ def test_missing_struct_path_raises(tmp_path):
 
     from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
     with pytest.raises(ValueError, match="struct_ensemble_path"):
-        ModelOrchestrator(growth_path, binding_path, theta="lac_dimer_lnK_nn_prior")
+        ModelOrchestrator(growth_path, binding_path, theta="thermo.O2_C4_K3_U0_a.PnnC")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -199,7 +199,7 @@ def fitted_mc(tmp_path_factory):
     from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
     return ModelOrchestrator(
         growth_path, binding_path,
-        theta="lac_dimer_lnK_nn_prior",
+        theta="thermo.O2_C4_K3_U0_a.PnnC",
         struct_ensemble_path=h5_path,
     )
 
@@ -251,7 +251,7 @@ class TestStructFieldsWithEpistasis:
         from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
         return ModelOrchestrator(
             growth_path, binding_path,
-            theta="lac_dimer_lnK_nn_prior",
+            theta="thermo.O2_C4_K3_U0_a.PnnC",
             struct_ensemble_path=h5_path,
             epistasis=True,
         )
@@ -290,7 +290,7 @@ def test_svi_runs_without_error(tmp_path):
 
     mc = ModelOrchestrator(
         growth_path, binding_path,
-        theta="lac_dimer_lnK_nn_prior",
+        theta="thermo.O2_C4_K3_U0_a.PnnC",
         struct_ensemble_path=h5_path,
     )
 
@@ -321,7 +321,7 @@ def test_svi_with_epistasis_runs_without_error(tmp_path):
 
     mc = ModelOrchestrator(
         growth_path, binding_path,
-        theta="lac_dimer_lnK_nn_prior",
+        theta="thermo.O2_C4_K3_U0_a.PnnC",
         struct_ensemble_path=h5_path,
         epistasis=True,
     )
@@ -387,7 +387,7 @@ def test_binding_only_struct_raises_without_struct_path(tmp_path):
     with pytest.raises(ValueError, match="struct_ensemble_path"):
         ModelOrchestrator(None, binding_path,
                    binding_only=True,
-                   theta="mwc_dimer_lnK_ddG_prior")
+                   theta="thermo.O2_C12_K5_U0_a.PddG")
 
 
 @pytest.fixture(scope="module")
@@ -404,7 +404,7 @@ def binding_only_ddG_mc(tmp_path_factory):
     return ModelOrchestrator(
         None, binding_path,
         binding_only=True,
-        theta="mwc_dimer_lnK_ddG_prior",
+        theta="thermo.O2_C12_K5_U0_a.PddG",
         struct_ensemble_path=ddg_path,
     )
 
@@ -450,7 +450,7 @@ def test_binding_only_ddG_svi_runs(tmp_path):
     mc = ModelOrchestrator(
         None, binding_path,
         binding_only=True,
-        theta="mwc_dimer_lnK_ddG_prior",
+        theta="thermo.O2_C12_K5_U0_a.PddG",
         struct_ensemble_path=ddg_path,
     )
 
@@ -489,7 +489,7 @@ def test_binding_only_minibatch_get_random_idx_does_not_crash(tmp_path):
     mc = ModelOrchestrator(
         None, binding_path,
         binding_only=True,
-        theta="mwc_dimer_lnK_ddG_prior",
+        theta="thermo.O2_C12_K5_U0_a.PddG",
         struct_ensemble_path=ddg_path,
         batch_size=2,
     )
@@ -516,7 +516,7 @@ def test_binding_only_minibatch_svi_runs(tmp_path):
     mc = ModelOrchestrator(
         None, binding_path,
         binding_only=True,
-        theta="mwc_dimer_lnK_ddG_prior",
+        theta="thermo.O2_C12_K5_U0_a.PddG",
         struct_ensemble_path=ddg_path,
         batch_size=2,
     )

@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 import h5py
 
-from tfscreen.tfmodel.generative.components.theta.struct.io import (
+from tfscreen.tfmodel.generative.components.theta.thermo.io import (
     _build_contact_arrays,
     _read_h5_structure,
     load_struct_ensemble,

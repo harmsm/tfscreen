@@ -451,9 +451,9 @@ class ModelOrchestrator:
                  condition_growth="linear",
                  growth_transition="instant",
                  ln_cfu0="hierarchical",
-                 dk_geno="hierarchical",
-                 activity="horseshoe",
-                 theta="hill",
+                 dk_geno="hierarchical_geno",
+                 activity="horseshoe_geno",
+                 theta="hill_geno",
                  transformation="empirical",
                  theta_rescale="passthrough",
                  theta_growth_noise="logit_normal",
@@ -620,18 +620,18 @@ class ModelOrchestrator:
         # on GrowthData; downstream components use apply_mut_matrix for efficient
         # scatter without embedding the dense matrix as an XLA constant literal.
         _needs_mut = (self._theta in ("hill_mut", "lac_dimer_mut",
-                                       "lac_dimer_lnK_mut",
-                                       "lac_dimer_lnK_nn_prior",
-                                       "lac_dimer_lnK_ddG_prior",
-                                       "lac_dimer_unfolded_lnK_mut",
-                                       "lac_dimer_unfolded_lnK_nn_prior",
-                                       "lac_dimer_unfolded_lnK_ddG_prior",
-                                       "mwc_dimer_lnK_mut",
-                                       "mwc_dimer_lnK_nn_prior",
-                                       "mwc_dimer_lnK_ddG_prior",
-                                       "mwc_dimer_unfolded_lnK_mut",
-                                       "mwc_dimer_unfolded_lnK_nn_prior",
-                                       "mwc_dimer_unfolded_lnK_ddG_prior") or
+                                       "thermo.O2_C4_K3_U0_a.PK",
+                                       "thermo.O2_C4_K3_U0_a.PnnC",
+                                       "thermo.O2_C4_K3_U0_a.PddG",
+                                       "thermo.O2_C4_K3_U1_a.PK",
+                                       "thermo.O2_C4_K3_U1_a.PnnC",
+                                       "thermo.O2_C4_K3_U1_a.PddG",
+                                       "thermo.O2_C12_K5_U0_a.PK",
+                                       "thermo.O2_C12_K5_U0_a.PnnC",
+                                       "thermo.O2_C12_K5_U0_a.PddG",
+                                       "thermo.O2_C12_K5_U1_a.PK",
+                                       "thermo.O2_C12_K5_U1_a.PnnC",
+                                       "thermo.O2_C12_K5_U1_a.PddG") or
                       self._activity in ("hierarchical_mut", "horseshoe_mut") or
                       self._dk_geno == "hierarchical_mut")
         self.mut_labels = []
@@ -667,10 +667,10 @@ class ModelOrchestrator:
         # (mwc_dimer_lnK_ddG_prior).
         # struct_names is a tuple and cannot go through populate_dataclass (which
         # rejects tuples); it is injected via .replace() after GrowthData is built.
-        _nn_prior_models   = ("lac_dimer_lnK_nn_prior", "lac_dimer_unfolded_lnK_nn_prior",
-                               "mwc_dimer_lnK_nn_prior", "mwc_dimer_unfolded_lnK_nn_prior")
-        _ddG_prior_models  = ("lac_dimer_lnK_ddG_prior", "lac_dimer_unfolded_lnK_ddG_prior",
-                               "mwc_dimer_lnK_ddG_prior", "mwc_dimer_unfolded_lnK_ddG_prior")
+        _nn_prior_models   = ("thermo.O2_C4_K3_U0_a.PnnC", "thermo.O2_C4_K3_U1_a.PnnC",
+                               "thermo.O2_C12_K5_U0_a.PnnC", "thermo.O2_C12_K5_U1_a.PnnC")
+        _ddG_prior_models  = ("thermo.O2_C4_K3_U0_a.PddG", "thermo.O2_C4_K3_U1_a.PddG",
+                               "thermo.O2_C12_K5_U0_a.PddG", "thermo.O2_C12_K5_U1_a.PddG")
         _needs_struct = self._theta in _nn_prior_models + _ddG_prior_models
         _struct_names_tuple = None
         if _needs_struct:
@@ -686,7 +686,7 @@ class ModelOrchestrator:
                         f"theta='{self._theta}' requires struct_ensemble_path "
                         f"(path to a CSV with columns 'mut' and one per structure)."
                     )
-            from tfscreen.tfmodel.generative.components.theta.struct.io import (
+            from tfscreen.tfmodel.generative.components.theta.thermo.io import (
                 load_struct_ensemble,
                 load_ddG_prior_csv,
             )
@@ -856,18 +856,18 @@ class ModelOrchestrator:
         # Mutation decomposition matrices for mutation-level theta components
         _needs_mut = self._theta in ("hill_mut",
                                      "lac_dimer_mut",
-                                     "lac_dimer_lnK_mut",
-                                     "lac_dimer_lnK_nn_prior",
-                                     "lac_dimer_lnK_ddG_prior",
-                                     "lac_dimer_unfolded_lnK_mut",
-                                     "lac_dimer_unfolded_lnK_nn_prior",
-                                     "lac_dimer_unfolded_lnK_ddG_prior",
-                                     "mwc_dimer_lnK_mut",
-                                     "mwc_dimer_lnK_nn_prior",
-                                     "mwc_dimer_lnK_ddG_prior",
-                                     "mwc_dimer_unfolded_lnK_mut",
-                                     "mwc_dimer_unfolded_lnK_nn_prior",
-                                     "mwc_dimer_unfolded_lnK_ddG_prior")
+                                     "thermo.O2_C4_K3_U0_a.PK",
+                                     "thermo.O2_C4_K3_U0_a.PnnC",
+                                     "thermo.O2_C4_K3_U0_a.PddG",
+                                     "thermo.O2_C4_K3_U1_a.PK",
+                                     "thermo.O2_C4_K3_U1_a.PnnC",
+                                     "thermo.O2_C4_K3_U1_a.PddG",
+                                     "thermo.O2_C12_K5_U0_a.PK",
+                                     "thermo.O2_C12_K5_U0_a.PnnC",
+                                     "thermo.O2_C12_K5_U0_a.PddG",
+                                     "thermo.O2_C12_K5_U1_a.PK",
+                                     "thermo.O2_C12_K5_U1_a.PnnC",
+                                     "thermo.O2_C12_K5_U1_a.PddG")
 
         if _needs_mut:
             _geno_idx = self.binding_tm.tensor_dim_names.index("genotype")
@@ -893,10 +893,10 @@ class ModelOrchestrator:
                 "pair_nnz_geno_idx": pair_nnz_geno_idx,
             })
 
-        _nn_prior_models  = ("lac_dimer_lnK_nn_prior", "lac_dimer_unfolded_lnK_nn_prior",
-                              "mwc_dimer_lnK_nn_prior", "mwc_dimer_unfolded_lnK_nn_prior")
-        _ddG_prior_models = ("lac_dimer_lnK_ddG_prior", "lac_dimer_unfolded_lnK_ddG_prior",
-                              "mwc_dimer_lnK_ddG_prior", "mwc_dimer_unfolded_lnK_ddG_prior")
+        _nn_prior_models  = ("thermo.O2_C4_K3_U0_a.PnnC", "thermo.O2_C4_K3_U1_a.PnnC",
+                              "thermo.O2_C12_K5_U0_a.PnnC", "thermo.O2_C12_K5_U1_a.PnnC")
+        _ddG_prior_models = ("thermo.O2_C4_K3_U0_a.PddG", "thermo.O2_C4_K3_U1_a.PddG",
+                              "thermo.O2_C12_K5_U0_a.PddG", "thermo.O2_C12_K5_U1_a.PddG")
         _struct_names_tuple = None
         if self._theta in _nn_prior_models + _ddG_prior_models:
             if self._struct_ensemble_path is None:
@@ -911,7 +911,7 @@ class ModelOrchestrator:
                         f"theta='{self._theta}' requires struct_ensemble_path "
                         f"(path to a CSV with columns 'mut' and one per structure)."
                     )
-            from tfscreen.tfmodel.generative.components.theta.struct.io import (
+            from tfscreen.tfmodel.generative.components.theta.thermo.io import (
                 load_struct_ensemble,
                 load_ddG_prior_csv,
             )

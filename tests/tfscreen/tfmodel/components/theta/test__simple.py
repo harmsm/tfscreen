@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from numpyro.handlers import trace, seed
 from collections import namedtuple
 
-from tfscreen.tfmodel.generative.components.theta.simple import (
+from tfscreen.tfmodel.generative.components.theta._simple import (
     ModelPriors,
     ThetaParam,
     define_model,

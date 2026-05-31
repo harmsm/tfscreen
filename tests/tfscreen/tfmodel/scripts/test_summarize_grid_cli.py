@@ -22,7 +22,7 @@ from tfscreen.tfmodel.scripts.summarize_grid_cli import (
 def _make_combo(subdir, configure_model=None, template=None):
     """Write a minimal combo.json into subdir."""
     combo = {
-        "configure_model": configure_model or {"theta": "hill"},
+        "configure_model": configure_model or {"theta": "hill_geno"},
         "template": template or {},
     }
     with open(os.path.join(subdir, "combo.json"), "w") as fh:

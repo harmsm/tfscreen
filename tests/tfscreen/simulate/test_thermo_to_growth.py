@@ -556,10 +556,10 @@ class TestThermo_to_growth_ActivityComponent:
         assert "fixed" in _ACTIVITY_COMPONENTS
 
     def test_activity_components_contains_horseshoe(self):
-        assert "horseshoe" in _ACTIVITY_COMPONENTS
+        assert "horseshoe_geno" in _ACTIVITY_COMPONENTS
 
     def test_activity_components_contains_hierarchical(self):
-        assert "hierarchical" in _ACTIVITY_COMPONENTS
+        assert "hierarchical_geno" in _ACTIVITY_COMPONENTS
 
     # -- unknown component raises ---------------------------------------------
 
@@ -633,7 +633,7 @@ class TestThermo_to_growth_ActivityComponent:
         )
         thermo_to_growth(
             genotypes=test_genotypes, sim_data=sim_data,
-            activity_component="horseshoe", **base_call_kwargs,
+            activity_component="horseshoe_geno", **base_call_kwargs,
         )
         mock_hs.assert_called_once()
 
@@ -653,7 +653,7 @@ class TestThermo_to_growth_ActivityComponent:
         )
         thermo_to_growth(
             genotypes=test_genotypes, sim_data=sim_data,
-            activity_component="horseshoe", **base_call_kwargs,
+            activity_component="horseshoe_geno", **base_call_kwargs,
         )
         mock_assign.assert_not_called()
 
@@ -672,7 +672,7 @@ class TestThermo_to_growth_ActivityComponent:
         overrides = {"global_scale_tau_scale": 0.01}
         thermo_to_growth(
             genotypes=test_genotypes, sim_data=sim_data,
-            activity_component="horseshoe",
+            activity_component="horseshoe_geno",
             activity_priors_overrides=overrides,
             **base_call_kwargs,
         )
@@ -693,7 +693,7 @@ class TestThermo_to_growth_ActivityComponent:
         )
         thermo_to_growth(
             genotypes=test_genotypes, sim_data=sim_data,
-            activity_component="hierarchical", **base_call_kwargs,
+            activity_component="hierarchical_geno", **base_call_kwargs,
         )
         mock_hi.assert_called_once()
 
@@ -715,7 +715,7 @@ class TestThermo_to_growth_ActivityComponent:
         )
         phenotype_df, _ = thermo_to_growth(
             genotypes=test_genotypes, sim_data=sim_data,
-            activity_component="horseshoe", **base_call_kwargs,
+            activity_component="horseshoe_geno", **base_call_kwargs,
         )
         for geno, expected in activity_map.items():
             rows = phenotype_df[phenotype_df["genotype"] == geno]

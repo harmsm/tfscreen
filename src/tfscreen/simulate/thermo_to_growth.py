@@ -150,7 +150,7 @@ def _sample_hierarchical_activity(unique_genotypes,
 # (The mutation-decomposed variants horseshoe_mut / hierarchical_mut operate
 # in mutation space and require the tfmodel component interface; add them here
 # if a numpy equivalent is implemented in future.)
-_ACTIVITY_COMPONENTS = {"fixed", "horseshoe", "hierarchical"}
+_ACTIVITY_COMPONENTS = {"fixed", "horseshoe_geno", "hierarchical_geno"}
 
 
 def _assign_dk_geno(unique_genotypes,
@@ -429,11 +429,11 @@ def thermo_to_growth(
             f"Must be one of: {sorted(_ACTIVITY_COMPONENTS)}"
         )
 
-    if activity_component == "horseshoe":
+    if activity_component == "horseshoe_geno":
         genotype_activity_series = _sample_horseshoe_activity(
             unique_genotypes, params=activity_priors_overrides, rng=rng,
         )
-    elif activity_component == "hierarchical":
+    elif activity_component == "hierarchical_geno":
         genotype_activity_series = _sample_hierarchical_activity(
             unique_genotypes, params=activity_priors_overrides, rng=rng,
         )

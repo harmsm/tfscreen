@@ -593,8 +593,8 @@ class TestBuildCalibrationModel:
     def test_overrides_replace_production_components(self):
         gm_prod = MagicMock()
         gm_prod.settings = {
-            "theta": "categorical",          # → simple
-            "activity": "horseshoe",         # → hierarchical
+            "theta": "categorical_geno",          # → simple
+            "activity": "horseshoe_geno",         # → hierarchical
             "dk_geno": "fixed",              # → hierarchical
             "ln_cfu0": "fixed",              # → hierarchical
             "transformation": "logit_norm",  # → single
@@ -637,8 +637,8 @@ class TestBuildCalibrationModel:
         # must use 1.0 instead.
         gm_prod = MagicMock()
         gm_prod.settings = {
-            "theta": "categorical",
-            "activity": "horseshoe",
+            "theta": "categorical_geno",
+            "activity": "horseshoe_geno",
             "dk_geno": "fixed",
             "ln_cfu0": "fixed",
             "transformation": "logit_norm",
@@ -663,8 +663,8 @@ class TestBuildCalibrationModel:
     def test_does_not_mutate_production_settings(self):
         # Ensure we work on a copy.
         gm_prod = MagicMock()
-        gm_prod.settings = {"theta": "categorical",
-                            "activity": "horseshoe",
+        gm_prod.settings = {"theta": "categorical_geno",
+                            "activity": "horseshoe_geno",
                             "dk_geno": "fixed",
                             "ln_cfu0": "fixed",
                             "transformation": "logit_norm",

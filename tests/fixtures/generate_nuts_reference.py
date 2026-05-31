@@ -90,7 +90,7 @@ def run():
     model = ModelOrchestrator(
         growth_df=growth_df,
         binding_df=binding_df,
-        activity="hierarchical",
+        activity="hierarchical_geno",
         transformation="single",
     )
 
@@ -128,9 +128,9 @@ def run():
             "num_divergences": num_div,
             "model_config": {
                 "condition_growth": "linear",
-                "dk_geno":          "hierarchical",
-                "activity":         "hierarchical",
-                "theta":            "hill",
+                "dk_geno":          "hierarchical_geno",
+                "activity":         "hierarchical_geno",
+                "theta":            "hill_geno",
                 "transformation":   "single",
                 "theta_growth_noise": "zero",
                 "theta_binding_noise": "zero",

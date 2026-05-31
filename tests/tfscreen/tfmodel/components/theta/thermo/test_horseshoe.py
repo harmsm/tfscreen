@@ -6,7 +6,7 @@ import numpyro
 import numpyro.distributions as dist
 import pytest
 
-from tfscreen.tfmodel.generative.components.theta.struct.horseshoe import (
+from tfscreen.tfmodel.generative.components.theta.thermo.horseshoe import (
     _DEFAULT_D0,
     sample_pair_ddG,
 )

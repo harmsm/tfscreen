@@ -14,7 +14,7 @@ from numpyro import handlers
 from tfscreen.tfmodel.generative.registry import model_registry
 
 # Components excluded from simulation (calibration-only, no generative prior).
-_EXCLUDED = frozenset({"simple"})
+_EXCLUDED = frozenset({"_simple"})
 
 
 def sample_theta_prior(component_name,

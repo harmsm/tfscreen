@@ -102,8 +102,8 @@ def _make_binding_csv(tmp_path, genotypes=_GENOTYPES):
 # ──────────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("theta", [
-    "lac_dimer_unfolded_lnK_mut",
-    "mwc_dimer_unfolded_lnK_mut",
+    "thermo.O2_C4_K3_U1_a.PK",
+    "thermo.O2_C12_K5_U1_a.PK",
 ])
 def test_needs_mut_growth_path(tmp_path, theta):
     """
@@ -128,8 +128,8 @@ def test_needs_mut_growth_path(tmp_path, theta):
 # ──────────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("theta", [
-    "lac_dimer_unfolded_lnK_mut",
-    "mwc_dimer_unfolded_lnK_mut",
+    "thermo.O2_C4_K3_U1_a.PK",
+    "thermo.O2_C12_K5_U1_a.PK",
 ])
 def test_needs_mut_binding_only_path(tmp_path, theta):
     """
@@ -154,8 +154,8 @@ def test_needs_mut_binding_only_path(tmp_path, theta):
 # ──────────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("theta", [
-    "lac_dimer_unfolded_lnK_mut",
-    "mwc_dimer_unfolded_lnK_mut",
+    "thermo.O2_C4_K3_U1_a.PK",
+    "thermo.O2_C12_K5_U1_a.PK",
 ])
 def test_offset_guesses_have_correct_shape_binding_only(tmp_path, theta):
     """
