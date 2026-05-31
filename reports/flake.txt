@@ -5221,21 +5221,29 @@
 ./tests/tfscreen/process_raw/test_process_fastq.py:357:1: W293 blank line contains whitespace
 ./tests/tfscreen/process_raw/test_process_fastq.py:360:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/process_raw/test_process_fastq.py:368:78: W292 no newline at end of file
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:51:32: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:61:32: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:74:32: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:81:31: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:53:32: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:63:32: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:76:32: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/simulate/growth/test_transition_linkage.py:83:31: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:91:15: E221 multiple spaces before operator
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:92:33: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:99:32: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:120:32: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:136:32: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:146:32: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:157:32: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:164:28: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:85:31: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:93:15: E221 multiple spaces before operator
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:94:33: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:101:32: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:122:32: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:138:32: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:148:32: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:159:32: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/simulate/growth/test_transition_linkage.py:166:28: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:176:32: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:168:28: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:178:32: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:410:51: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:449:33: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:452:32: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:467:32: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:473:28: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:475:28: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:485:32: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:490:53: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/simulate/test_build_sample_dataframes.py:9:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/simulate/test_build_sample_dataframes.py:33:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/simulate/test_build_sample_dataframes.py:52:1: W293 blank line contains whitespace
@@ -7715,7 +7723,7 @@
 1     E122 continuation line missing indentation or outdented
 2     E124 closing bracket does not match visual indentation
 6     E125 continuation line with same indent as next logical line
-129   E127 continuation line over-indented for visual indent
+137   E127 continuation line over-indented for visual indent
 66    E128 continuation line under-indented for visual indent
 3     E131 continuation line unaligned for hanging indent
 43    E201 whitespace after '['
@@ -7756,4 +7764,4 @@
 91    W292 no newline at end of file
 1722  W293 blank line contains whitespace
 29    W391 blank line at end of file
-7709
+7717

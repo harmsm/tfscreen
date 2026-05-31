@@ -9,21 +9,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ### Testing
+
+`NUMBA_DISABLE_JIT=1` is set automatically by `tests/conftest.py` — no prefix needed on the command line.
+
 ```bash
-# Run all unit tests (NUMBA_DISABLE_JIT=1 is required)
-NUMBA_DISABLE_JIT=1 pytest tests/tfscreen
+# Run all unit tests
+~/miniconda3/bin/pytest tests/tfscreen
 
 # Run a single test file
-NUMBA_DISABLE_JIT=1 pytest tests/tfscreen/tfmodel/test_model.py
+~/miniconda3/bin/pytest tests/tfscreen/tfmodel/test_model.py
 
 # Run slow tests too
-NUMBA_DISABLE_JIT=1 pytest tests/tfscreen --runslow
+~/miniconda3/bin/pytest tests/tfscreen --runslow
 
 # Run smoke tests
-NUMBA_DISABLE_JIT=1 pytest tests/smoke-tests --runslow
+~/miniconda3/bin/pytest tests/smoke-tests --runslow
 
 # Run with coverage
-NUMBA_DISABLE_JIT=1 coverage run --branch -m pytest tests/tfscreen --runslow
+~/miniconda3/bin/coverage run --branch -m pytest tests/tfscreen --runslow
 ```
 
 ### Linting

@@ -111,6 +111,80 @@ class BaranyiTransition:
                                                 tau=tau_lag, k=k_sharp))
 
 
+class BaranyiKTransition:
+    """
+    Baranyi integrated-sigmoid transition with sharpness modulated by rate difference.
+
+    The sigmoid sharpness decreases as the growth-rate difference grows, so a
+    larger switch demands a slower (more inertial) transition:
+
+        k = k0 / (1 + gamma * |k_sel - k_pre|)
+
+    Total growth:
+
+        dln_cfu_sel = k_pre * t_sel
+                      + (k_sel - k_pre)
+                        * [logaddexp(0, k*(t_sel - tau)) - logaddexp(0, -k*tau)] / k
+
+        kt = k_pre * t_pre + dln_cfu_sel
+
+    Matches the 'baranyi_k' inference component via
+    growth_model/components/growth_transition/baranyi_k.py.
+
+    Parameters
+    ----------
+    tau : float
+        Midpoint of the sigmoid transition (minutes).
+    k0 : float
+        Base sigmoid sharpness when growth rates are identical (must be > 0).
+    gamma : float
+        Coefficient scaling the rate-difference suppression of sharpness (must be >= 0).
+    """
+    def compute_kt(self, k_pre, k_sel, t_pre, t_sel, theta=None,
+                   tau=100.0, k0=1.0, gamma=1.0):
+        delta_g = np.abs(np.asarray(k_sel) - np.asarray(k_pre))
+        k = k0 / (1.0 + gamma * delta_g)
+        return np.array(_baranyi_compute_growth(k_pre, k_sel, t_pre, t_sel,
+                                                tau=tau, k=k))
+
+
+class BaranyiTauTransition:
+    """
+    Baranyi integrated-sigmoid transition with midpoint delayed by rate difference.
+
+    The transition midpoint is pushed later as the growth-rate difference grows,
+    so a larger switch takes longer to begin:
+
+        tau = tau_0 + k0 * |k_sel - k_pre|
+
+    Total growth:
+
+        dln_cfu_sel = k_pre * t_sel
+                      + (k_sel - k_pre)
+                        * [logaddexp(0, k*(t_sel - tau)) - logaddexp(0, -k*tau)] / k
+
+        kt = k_pre * t_pre + dln_cfu_sel
+
+    Matches the 'baranyi_tau' inference component via
+    growth_model/components/growth_transition/baranyi_tau.py.
+
+    Parameters
+    ----------
+    tau_0 : float
+        Base transition midpoint (minutes).
+    k0 : float
+        Coefficient scaling how much the rate difference delays the midpoint.
+    k : float
+        Fixed sigmoid sharpness (must be > 0).
+    """
+    def compute_kt(self, k_pre, k_sel, t_pre, t_sel, theta=None,
+                   tau_0=100.0, k0=1.0, k=1.0):
+        delta_g = np.abs(np.asarray(k_sel) - np.asarray(k_pre))
+        tau = tau_0 + k0 * delta_g
+        return np.array(_baranyi_compute_growth(k_pre, k_sel, t_pre, t_sel,
+                                                tau=tau, k=k))
+
+
 class TwoPopTransition:
     """
     Two-population ODE transition model.
@@ -138,10 +212,12 @@ class TwoPopTransition:
 
 
 TRANSITION_REGISTRY = {
-    "instant":  InstantTransition,
-    "memory":   MemoryTransition,
-    "baranyi":  BaranyiTransition,
-    "two_pop":  TwoPopTransition,
+    "instant":    InstantTransition,
+    "memory":     MemoryTransition,
+    "baranyi":    BaranyiTransition,
+    "baranyi_k":  BaranyiKTransition,
+    "baranyi_tau": BaranyiTauTransition,
+    "two_pop":    TwoPopTransition,
 }
 
 

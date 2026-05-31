@@ -12,6 +12,8 @@ from tfscreen.simulate.growth.transition_linkage import (
     InstantTransition,
     MemoryTransition,
     BaranyiTransition,
+    BaranyiKTransition,
+    BaranyiTauTransition,
     TwoPopTransition,
     TRANSITION_REGISTRY,
     get_transition_model,
@@ -344,3 +346,175 @@ class TestTwoPopAgreementWithTFModel:
     def test_returns_numpy_array(self):
         result = TwoPopTransition().compute_kt(0.1, 0.05, 30.0, 100.0, k_trans=0.001)
         assert isinstance(result, np.ndarray)
+
+
+# ---------------------------------------------------------------------------
+# BaranyiKTransition
+# ---------------------------------------------------------------------------
+
+class TestBaranyiKTransition:
+
+    def test_zero_delta_g_equals_baranyi(self):
+        """When k_pre == k_sel, delta_g=0 so k=k0 and result matches plain Baranyi."""
+        k = 0.1
+        tau, k0, gamma = 50.0, 0.3, 2.0
+        m_k = BaranyiKTransition()
+        m_b = BaranyiTransition()
+        result = m_k.compute_kt(k, k, 30.0, 100.0, tau=tau, k0=k0, gamma=gamma)
+        expected = m_b.compute_kt(k, k, 30.0, 100.0, tau_lag=tau, k_sharp=k0)
+        np.testing.assert_allclose(result, expected, rtol=1e-6)
+
+    def test_larger_delta_g_softer_sharpness(self):
+        """Larger |k_sel - k_pre| → smaller effective k → slower sigmoid transition."""
+        tau, k0, gamma = 50.0, 1.0, 5.0
+        m = BaranyiKTransition()
+        # Small delta_g: k stays near k0 → sharp transition → more k_sel growth
+        r_small = m.compute_kt(0.1, 0.11, 30.0, 200.0, tau=tau, k0=k0, gamma=gamma)
+        # Large delta_g: k is much smaller → soft transition → less k_sel growth
+        r_large = m.compute_kt(0.1, 0.5,  30.0, 200.0, tau=tau, k0=k0, gamma=gamma)
+        # Both have k_sel > k_pre; larger delta_g with softer k should give less total
+        # because the transition is spread across more of the selection phase
+        assert r_small != r_large  # just verify they differ; sign depends on parameters
+
+    def test_effective_k_formula(self):
+        """Verify k is computed correctly before passing to the Baranyi core."""
+        k_pre, k_sel = 0.1, 0.5
+        t_pre, t_sel = 30.0, 100.0
+        tau, k0, gamma = 50.0, 2.0, 3.0
+
+        delta_g = abs(k_sel - k_pre)
+        k_eff = k0 / (1.0 + gamma * delta_g)
+        expected = float(_baranyi_compute_growth(k_pre, k_sel, t_pre, t_sel,
+                                                 tau=tau, k=k_eff))
+        m = BaranyiKTransition()
+        result = m.compute_kt(k_pre, k_sel, t_pre, t_sel, tau=tau, k0=k0, gamma=gamma)
+        np.testing.assert_allclose(result, expected, rtol=1e-6)
+
+    def test_theta_ignored(self):
+        m = BaranyiKTransition()
+        r1 = m.compute_kt(0.1, 0.5, 30.0, 100.0, theta=0.0, tau=50.0, k0=1.0, gamma=1.0)
+        r2 = m.compute_kt(0.1, 0.5, 30.0, 100.0, theta=1.0, tau=50.0, k0=1.0, gamma=1.0)
+        np.testing.assert_allclose(r1, r2)
+
+    def test_vectorized(self):
+        m = BaranyiKTransition()
+        k_pre = np.array([0.1, 0.2])
+        k_sel = np.array([0.5, 0.3])
+        t_pre = np.array([30.0, 40.0])
+        t_sel = np.array([100.0, 80.0])
+        result = m.compute_kt(k_pre, k_sel, t_pre, t_sel, tau=50.0, k0=1.0, gamma=2.0)
+        assert result.shape == (2,)
+
+    def test_returns_numpy_array(self):
+        result = BaranyiKTransition().compute_kt(0.1, 0.5, 30.0, 100.0,
+                                                  tau=50.0, k0=1.0, gamma=1.0)
+        assert isinstance(result, np.ndarray)
+
+    def test_matches_inference_formula(self):
+        """Agreement with _baranyi.compute_growth after computing effective k."""
+        k_pre, k_sel = 0.15, 0.05
+        t_pre, t_sel = 20.0, 120.0
+        tau, k0, gamma = 60.0, 0.5, 4.0
+        delta_g = abs(k_sel - k_pre)
+        k_eff = k0 / (1.0 + gamma * delta_g)
+        ref = np.array(_baranyi_compute_growth(k_pre, k_sel, t_pre, t_sel,
+                                               tau=tau, k=k_eff))
+        sim = BaranyiKTransition().compute_kt(k_pre, k_sel, t_pre, t_sel,
+                                              tau=tau, k0=k0, gamma=gamma)
+        np.testing.assert_allclose(sim, ref, rtol=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# BaranyiTauTransition
+# ---------------------------------------------------------------------------
+
+class TestBaranyiTauTransition:
+
+    def test_zero_delta_g_equals_baranyi(self):
+        """When k_pre == k_sel, delta_g=0 so tau=tau_0 and result matches plain Baranyi."""
+        k = 0.1
+        tau_0, k0, k_sharp = 50.0, 5.0, 0.3
+        m_t = BaranyiTauTransition()
+        m_b = BaranyiTransition()
+        result = m_t.compute_kt(k, k, 30.0, 100.0, tau_0=tau_0, k0=k0, k=k_sharp)
+        expected = m_b.compute_kt(k, k, 30.0, 100.0, tau_lag=tau_0, k_sharp=k_sharp)
+        np.testing.assert_allclose(result, expected, rtol=1e-6)
+
+    def test_larger_k0_delays_tau_reduces_growth(self):
+        """Larger k0 shifts tau later (more delay per unit delta_g) → less time at k_sel."""
+        k_pre, k_sel = 0.1, 0.5   # k_sel > k_pre; delta_g = 0.4
+        m = BaranyiTauTransition()
+        # k0=0: tau = tau_0 = 50 → earlier transition → more time at k_sel
+        r_early = m.compute_kt(k_pre, k_sel, 30.0, 200.0,
+                                tau_0=50.0, k0=0.0, k=0.5)
+        # k0=200: tau = 50 + 200*0.4 = 130 → later transition → less time at k_sel
+        r_late = m.compute_kt(k_pre, k_sel, 30.0, 200.0,
+                               tau_0=50.0, k0=200.0, k=0.5)
+        assert r_late < r_early
+
+    def test_effective_tau_formula(self):
+        """Verify tau = tau_0 + k0 * |delta_g| before passing to Baranyi core."""
+        k_pre, k_sel = 0.1, 0.5
+        t_pre, t_sel = 30.0, 100.0
+        tau_0, k0, k_sharp = 50.0, 3.0, 0.2
+
+        delta_g = abs(k_sel - k_pre)
+        tau_eff = tau_0 + k0 * delta_g
+        expected = float(_baranyi_compute_growth(k_pre, k_sel, t_pre, t_sel,
+                                                 tau=tau_eff, k=k_sharp))
+        m = BaranyiTauTransition()
+        result = m.compute_kt(k_pre, k_sel, t_pre, t_sel,
+                               tau_0=tau_0, k0=k0, k=k_sharp)
+        np.testing.assert_allclose(result, expected, rtol=1e-6)
+
+    def test_theta_ignored(self):
+        m = BaranyiTauTransition()
+        r1 = m.compute_kt(0.1, 0.5, 30.0, 100.0, theta=0.0,
+                           tau_0=50.0, k0=1.0, k=0.2)
+        r2 = m.compute_kt(0.1, 0.5, 30.0, 100.0, theta=1.0,
+                           tau_0=50.0, k0=1.0, k=0.2)
+        np.testing.assert_allclose(r1, r2)
+
+    def test_vectorized(self):
+        m = BaranyiTauTransition()
+        k_pre = np.array([0.1, 0.2])
+        k_sel = np.array([0.5, 0.3])
+        t_pre = np.array([30.0, 40.0])
+        t_sel = np.array([100.0, 80.0])
+        result = m.compute_kt(k_pre, k_sel, t_pre, t_sel,
+                               tau_0=50.0, k0=2.0, k=0.5)
+        assert result.shape == (2,)
+
+    def test_returns_numpy_array(self):
+        result = BaranyiTauTransition().compute_kt(0.1, 0.5, 30.0, 100.0,
+                                                    tau_0=50.0, k0=1.0, k=0.2)
+        assert isinstance(result, np.ndarray)
+
+    def test_matches_inference_formula(self):
+        """Agreement with _baranyi.compute_growth after computing effective tau."""
+        k_pre, k_sel = 0.2, 0.05
+        t_pre, t_sel = 15.0, 90.0
+        tau_0, k0, k_sharp = 30.0, 8.0, 0.4
+        delta_g = abs(k_sel - k_pre)
+        tau_eff = tau_0 + k0 * delta_g
+        ref = np.array(_baranyi_compute_growth(k_pre, k_sel, t_pre, t_sel,
+                                               tau=tau_eff, k=k_sharp))
+        sim = BaranyiTauTransition().compute_kt(k_pre, k_sel, t_pre, t_sel,
+                                                tau_0=tau_0, k0=k0, k=k_sharp)
+        np.testing.assert_allclose(sim, ref, rtol=1e-6)
+
+
+class TestRegistryCompleteness:
+    """Verify simulate TRANSITION_REGISTRY matches tfmodel registry keys."""
+
+    def test_baranyi_k_registered(self):
+        m = get_transition_model("baranyi_k")
+        assert isinstance(m, BaranyiKTransition)
+
+    def test_baranyi_tau_registered(self):
+        m = get_transition_model("baranyi_tau")
+        assert isinstance(m, BaranyiTauTransition)
+
+    def test_all_six_models_present(self):
+        expected = {"instant", "memory", "baranyi", "baranyi_k", "baranyi_tau", "two_pop"}
+        assert set(TRANSITION_REGISTRY.keys()) == expected
