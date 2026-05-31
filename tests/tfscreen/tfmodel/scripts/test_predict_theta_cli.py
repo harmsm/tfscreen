@@ -30,7 +30,7 @@ def _make_tm_df(genotypes, titrant_names, titrant_concs):
 @pytest.fixture
 def mock_gm():
     gm = MagicMock()
-    gm._theta = "hill"
+    gm._theta = "hill_geno"
     gm.growth_tm.df = _make_tm_df(
         ["wt", "A1B"],
         ["IPTG", "IPTG"],

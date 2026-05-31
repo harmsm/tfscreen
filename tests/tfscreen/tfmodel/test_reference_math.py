@@ -134,7 +134,7 @@ class TestHillRunModel:
     """
 
     def _import(self):
-        from tfscreen.tfmodel.generative.components.theta.hill import (
+        from tfscreen.tfmodel.generative.components.theta.hill_geno import (
             run_model, ThetaParam as TP
         )
         return run_model, TP
