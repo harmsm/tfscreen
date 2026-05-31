@@ -48,14 +48,14 @@ from typing import Dict, Any, Union
 
 from tfscreen.tfmodel.data_class import GrowthData, BindingData
 from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix, apply_mut_matrix
-from tfscreen.tfmodel.generative.components.theta.struct.prior import (
+from tfscreen.tfmodel.generative.components.theta.thermo.prior import (
     sample_ddG,
 )
-from tfscreen.tfmodel.generative.components.theta.struct.horseshoe import (
+from tfscreen.tfmodel.generative.components.theta.thermo.horseshoe import (
     sample_pair_ddG,
     _DEFAULT_D0,
 )
-from tfscreen.tfmodel.generative.components.theta.struct.mwc_dimer.thermo import (
+from tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U0_a.thermo import (
     ThetaParam,
     _compute_theta,
     _population_moments,
@@ -612,7 +612,7 @@ def predict_unmeasured(
         _build_genotype_indicators,
         _build_prediction_grid,
     )
-    from tfscreen.tfmodel.generative.components.theta.struct.mwc_dimer.thermo import (
+    from tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U0_a.thermo import (
         _solve_theta_np,
         _ZERO_CONC_VALUE,
     )
@@ -687,7 +687,7 @@ def predict_unmeasured(
     return result_df
 
 
-from tfscreen.tfmodel.generative.components.theta.struct.mwc_dimer.thermo import (
+from tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U0_a.thermo import (
     build_calc_df,
     compute_theta_samples,
 )

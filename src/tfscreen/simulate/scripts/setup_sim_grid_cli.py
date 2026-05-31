@@ -16,8 +16,8 @@ GRID YAML FORMAT
     simulate:              # key-value overrides applied to the base config
       - name: thermodynamic_model
         variants:
-          - theta_component: mwc_dimer_lnK_mut
-          - theta_component: hill
+          - theta_component: thermo.O2_C12_K5_U0_a.PK
+          - theta_component: hill_geno
       - name: noise
         variants:
           - growth_rate_noise: 0.01

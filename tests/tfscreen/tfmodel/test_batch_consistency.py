@@ -5,8 +5,8 @@ import numpyro.handlers
 import numpyro.distributions as dist
 from tfscreen.tfmodel.data_class import DataClass, GrowthData, BindingData
 from tfscreen.tfmodel.tensors.batch import get_batch
-from tfscreen.tfmodel.generative.components.dk_geno import hierarchical as dk_geno_hierarchical
-from tfscreen.tfmodel.generative.components.activity import horseshoe as activity_horseshoe
+from tfscreen.tfmodel.generative.components.dk_geno import hierarchical_geno as dk_geno_hierarchical
+from tfscreen.tfmodel.generative.components.activity import horseshoe_geno as activity_horseshoe
 from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
 
 def test_batch_scaling_unbiased():

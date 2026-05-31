@@ -14,7 +14,7 @@ from collections import namedtuple
 from numpyro.handlers import trace, seed
 
 from tfscreen.genetics.build_mut_geno_matrix import build_mut_sparse_indices
-from tfscreen.tfmodel.generative.components.theta.struct.mwc_dimer.lnK_nn_prior import (
+from tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U0_a.PnnC import (
     STRUCTURE_NAMES,
     ModelPriors,
     _get_struct_perm,
@@ -26,7 +26,7 @@ from tfscreen.tfmodel.generative.components.theta.struct.mwc_dimer.lnK_nn_prior 
     get_priors,
     get_extract_specs,
 )
-from tfscreen.tfmodel.generative.components.theta.struct.mwc_dimer.thermo import (
+from tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U0_a.thermo import (
     ThetaParam,
 )
 
@@ -557,9 +557,9 @@ class TestGuide:
 
 def test_registry_entry():
     from tfscreen.tfmodel.generative.registry import model_registry
-    assert "mwc_dimer_lnK_nn_prior" in model_registry["theta"]
-    import tfscreen.tfmodel.generative.components.theta.struct.mwc_dimer.lnK_nn_prior as mod
-    assert model_registry["theta"]["mwc_dimer_lnK_nn_prior"] is mod
+    assert "thermo.O2_C12_K5_U0_a.PnnC" in model_registry["theta"]
+    import tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U0_a.PnnC as mod
+    assert model_registry["theta"]["thermo.O2_C12_K5_U0_a.PnnC"] is mod
 
 
 # ---------------------------------------------------------------------------

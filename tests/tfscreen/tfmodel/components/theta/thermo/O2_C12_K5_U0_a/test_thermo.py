@@ -11,7 +11,7 @@ import numpy as np
 import jax.numpy as jnp
 from collections import namedtuple
 
-from tfscreen.tfmodel.generative.components.theta.struct.mwc_dimer.thermo import (
+from tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U0_a.thermo import (
     ThetaParam,
     _compute_theta,
     _population_moments,

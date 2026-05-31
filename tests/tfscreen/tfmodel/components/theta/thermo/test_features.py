@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from tfscreen.tfmodel.generative.components.theta.struct.features import (
+from tfscreen.tfmodel.generative.components.theta.thermo.features import (
     _AA_TO_IDX,
     _ALPHABET,
     FEATURE_DIM,

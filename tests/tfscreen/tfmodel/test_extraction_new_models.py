@@ -19,7 +19,7 @@ from tfscreen.tfmodel.analysis.extraction import (
     extract_parameters,
     extract_theta_curves,
 )
-from tfscreen.tfmodel.generative.components.theta import hill, hill_mut
+from tfscreen.tfmodel.generative.components.theta import hill_geno as hill, hill_mut
 
 
 # ---------------------------------------------------------------------------
@@ -62,7 +62,7 @@ def _make_model(theta="none", dk_geno="none", activity="fixed",
         "condition_sel_idx":[0,    0,    0,    1,    1,    1],
     })
 
-    if dk_geno == "hierarchical":
+    if dk_geno == "hierarchical_geno":
         model_df["map_ln_cfu0"] = [0, 1, 2, 3, 4, 5]
 
     mock_tm = MagicMock()
@@ -206,7 +206,7 @@ class TestExtractParametersHierarchicalMut:
 
     def test_activity_hierarchical_mut_same_genotype_output_as_horseshoe(self):
         base_post = {"activity": np.ones((4, 3)) * 0.7}
-        model_hs  = _make_model(activity="horseshoe")
+        model_hs  = _make_model(activity="horseshoe_geno")
         model_mut = _make_model(activity="hierarchical_mut")
         p_hs  = extract_parameters(model_hs,  base_post, q_to_get=_Q)
         p_mut = extract_parameters(model_mut,
@@ -223,7 +223,7 @@ class TestBuildCalcDfHill:
 
     @pytest.fixture
     def model(self):
-        return _make_model(theta="hill")
+        return _make_model(theta="hill_geno")
 
     def test_with_genotype_attaches_map_theta_group(self, model):
         manual_df = pd.DataFrame({
@@ -435,7 +435,7 @@ class TestExtractThetaCurvesHillMut:
 class TestExtractThetaCurvesDispatcher:
 
     def test_dispatches_to_hill(self):
-        model = _make_model(theta="hill")
+        model = _make_model(theta="hill_geno")
         posteriors = {
             "theta_hill_n":     np.random.rand(5, 6),
             "theta_log_hill_K": np.random.rand(5, 6),
@@ -460,7 +460,7 @@ class TestExtractThetaCurvesDispatcher:
 
     def test_raises_for_categorical(self):
         # categorical now supports the interface; use 'simple' to test the error path
-        model = _make_model(theta="simple")
+        model = _make_model(theta="_simple")
         with pytest.raises(ValueError, match=r"does not support this interface"):
             extract_theta_curves(model, {})
 
@@ -482,7 +482,7 @@ class TestExtractThetaCurvesDispatcher:
         t_l  = rng.uniform(0.0, 0.3, (S, 1))
 
         # hill model: single group
-        model_hill = _make_model(theta="hill")
+        model_hill = _make_model(theta="hill_geno")
         # Restrict to just iptg/wt for simplicity
         model_hill.growth_tm.df = pd.DataFrame({
             "genotype": ["wt"],

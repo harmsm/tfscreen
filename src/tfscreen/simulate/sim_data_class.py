@@ -155,12 +155,12 @@ def build_sim_data(library_df,
     if struct_ensemble_path is not None:
         path_lower = str(struct_ensemble_path).lower()
         if path_lower.endswith(".csv"):
-            from tfscreen.tfmodel.generative.components.theta.struct.io import (
+            from tfscreen.tfmodel.generative.components.theta.thermo.io import (
                 load_ddG_prior_csv,
             )
             raw = load_ddG_prior_csv(struct_ensemble_path, mut_labels)
         else:
-            from tfscreen.tfmodel.generative.components.theta.struct.io import (
+            from tfscreen.tfmodel.generative.components.theta.thermo.io import (
                 load_struct_ensemble,
             )
             raw = load_struct_ensemble(

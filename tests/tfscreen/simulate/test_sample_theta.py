@@ -34,13 +34,13 @@ def _make_mock_module(G, C):
 
 def test_raises_on_unknown_component(mock_sim_data):
     with patch("tfscreen.simulate.sample_theta.model_registry",
-               {"theta": {"hill": MagicMock()}}):
+               {"theta": {"hill_geno": MagicMock()}}):
         with pytest.raises(ValueError, match="not found"):
             sample_theta_prior("does_not_exist", mock_sim_data, rng_key=0)
 
 
 def test_raises_on_excluded_component(mock_sim_data):
-    # "simple" is in _EXCLUDED
+    # "_simple" is in _EXCLUDED
     for excluded in _EXCLUDED:
         with patch("tfscreen.simulate.sample_theta.model_registry",
                    {"theta": {excluded: MagicMock()}}):
@@ -58,9 +58,9 @@ def test_returns_theta_gc_shape(mock_sim_data):
     mock_module = _make_mock_module(G, C)
 
     with patch("tfscreen.simulate.sample_theta.model_registry",
-               {"theta": {"hill": mock_module}}):
+               {"theta": {"hill_geno": mock_module}}):
         with patch("tfscreen.simulate.sample_theta.handlers"):
-            theta_gc, theta_param = sample_theta_prior("hill", mock_sim_data, rng_key=0)
+            theta_gc, theta_param = sample_theta_prior("hill_geno", mock_sim_data, rng_key=0)
 
     assert theta_gc.shape == (G, C)
 
@@ -70,9 +70,9 @@ def test_returns_numpy_array(mock_sim_data):
     mock_module = _make_mock_module(G, C)
 
     with patch("tfscreen.simulate.sample_theta.model_registry",
-               {"theta": {"hill": mock_module}}):
+               {"theta": {"hill_geno": mock_module}}):
         with patch("tfscreen.simulate.sample_theta.handlers"):
-            theta_gc, _ = sample_theta_prior("hill", mock_sim_data, rng_key=0)
+            theta_gc, _ = sample_theta_prior("hill_geno", mock_sim_data, rng_key=0)
 
     assert isinstance(theta_gc, np.ndarray)
 
@@ -83,9 +83,9 @@ def test_priors_overrides_applied(mock_sim_data):
 
     overrides = {"alpha": 2.5, "beta": 0.1}
     with patch("tfscreen.simulate.sample_theta.model_registry",
-               {"theta": {"hill": mock_module}}):
+               {"theta": {"hill_geno": mock_module}}):
         with patch("tfscreen.simulate.sample_theta.handlers"):
-            sample_theta_prior("hill", mock_sim_data, rng_key=0,
+            sample_theta_prior("hill_geno", mock_sim_data, rng_key=0,
                                priors_overrides=overrides)
 
     # ModelPriors should have been called with the override values merged in
@@ -100,8 +100,8 @@ def test_define_model_called_with_correct_args(mock_sim_data):
     mock_priors = mock_module.ModelPriors.return_value
 
     with patch("tfscreen.simulate.sample_theta.model_registry",
-               {"theta": {"hill": mock_module}}):
+               {"theta": {"hill_geno": mock_module}}):
         with patch("tfscreen.simulate.sample_theta.handlers"):
-            sample_theta_prior("hill", mock_sim_data, rng_key=0)
+            sample_theta_prior("hill_geno", mock_sim_data, rng_key=0)
 
     mock_module.define_model.assert_called_once_with("theta", mock_sim_data, mock_priors)

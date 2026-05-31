@@ -23,7 +23,7 @@ def mock_gm(mocker):
     mock_gm_inst = mock_gm_class.return_value
     
     # Mock settings
-    mock_gm_inst.settings = {"batch_size": 128, "theta": "hill"}
+    mock_gm_inst.settings = {"batch_size": 128, "theta": "hill_geno"}
     
     # Mock priors
     mock_priors = MagicMock()

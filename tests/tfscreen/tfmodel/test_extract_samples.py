@@ -29,7 +29,7 @@ _Q = {"median": 0.5}   # single quantile keeps assertions simple
 def _hill_model():
     """Minimal mock for theta='hill' with 2 groups (wt/iptg, mut/iptg)."""
     model = MagicMock(spec=ModelOrchestrator)
-    model._theta = "hill"
+    model._theta = "hill_geno"
     mock_tm = MagicMock()
     mock_tm.df = pd.DataFrame({
         "genotype":        ["wt",  "wt",  "mut", "mut"],
@@ -81,7 +81,7 @@ def _hill_mut_posteriors(S=10):
 def _lac_dimer_mut_model():
     """Minimal mock for theta='lac_dimer_lnK_mut', T=1 titrant, G=2 genotypes."""
     model = MagicMock(spec=ModelOrchestrator)
-    model._theta = "lac_dimer_lnK_mut"
+    model._theta = "thermo.O2_C4_K3_U0_a.PK"
     mock_tm = MagicMock()
     mock_tm.df = pd.DataFrame({
         "genotype":         ["wt",  "mut"],

@@ -20,7 +20,7 @@ def test_prediction_smoke(growth_smoke_csv,
     model = ModelOrchestrator(
         growth_df=growth_smoke_csv,
         binding_df=binding_smoke_csv,
-        theta="hill",
+        theta="hill_geno",
         transformation="logit_norm"
     )
     
@@ -88,7 +88,7 @@ def test_prediction_smoke(growth_smoke_csv,
         model_cat = ModelOrchestrator(
             growth_df=growth_smoke_csv,
             binding_df=binding_smoke_csv,
-            theta="categorical"
+            theta="categorical_geno"
         )
         
         # Generate a valid posterior file for model_cat

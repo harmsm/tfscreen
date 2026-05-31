@@ -241,12 +241,12 @@ def test_extract_param_est():
 @pytest.fixture
 def initialized_model_class():
     model = MagicMock(spec=ModelOrchestrator)
-    model._theta = "hill"
+    model._theta = "hill_geno"
     model._condition_growth = "hierarchical"
     model._growth_transition = "instant"
     model._ln_cfu0 = "hierarchical"
-    model._dk_geno = "hierarchical"
-    model._activity = "hierarchical"
+    model._dk_geno = "hierarchical_geno"
+    model._activity = "hierarchical_geno"
     model._transformation = "single"
     model._theta_growth_noise = "zero"
     model._theta_binding_noise = "zero"
@@ -351,9 +351,9 @@ def test_initialize_classes_logic(mocker):
         "condition_growth": {"hierarchical": MagicMock(), "independent": MagicMock()},
         "growth_transition": {"instant": MagicMock(), "linear": MagicMock()},
         "ln_cfu0": {"hierarchical": MagicMock()},
-        "dk_geno": {"hierarchical": MagicMock()},
-        "activity": {"hierarchical": MagicMock(), "horseshoe": MagicMock()},
-        "theta": {"categorical": MagicMock(), "hill": MagicMock(), "fixed": MagicMock()},
+        "dk_geno": {"hierarchical_geno": MagicMock()},
+        "activity": {"hierarchical_geno": MagicMock(), "horseshoe_geno": MagicMock()},
+        "theta": {"categorical_geno": MagicMock(), "hill_geno": MagicMock(), "fixed": MagicMock()},
         "transformation": {"logit_norm": MagicMock(), "single": MagicMock()},
         "theta_rescale": {"passthrough": MagicMock()},
         "theta_growth_noise": {"zero": MagicMock(), "logit_normal": MagicMock()},
@@ -368,8 +368,8 @@ def test_initialize_classes_logic(mocker):
                 tfscreen.tfmodel.model_orchestrator.model_registry[k][sub_k].get_priors.return_value = {}
                 tfscreen.tfmodel.model_orchestrator.model_registry[k][sub_k].get_guesses.return_value = {}
 
-        model = ModelOrchestrator("g.csv", "b.csv", theta="categorical", transformation="logit_norm", condition_growth="independent", growth_transition="instant")
-        assert model._theta == "categorical"
+        model = ModelOrchestrator("g.csv", "b.csv", theta="categorical_geno", transformation="logit_norm", condition_growth="independent", growth_transition="instant")
+        assert model._theta == "categorical_geno"
 
 
 def test_model_class_properties(initialized_model_class):
@@ -422,10 +422,10 @@ def test_model_class_properties(initialized_model_class):
 
 def test_extract_parameters_full(initialized_model_class):
     model = initialized_model_class
-    model._theta = "hill"
+    model._theta = "hill_geno"
     model._condition_growth = "hierarchical"
-    model._dk_geno = "hierarchical"
-    model._activity = "hierarchical"
+    model._dk_geno = "hierarchical_geno"
+    model._activity = "hierarchical_geno"
     model._transformation = "logit_norm"
     model.growth_tm.df = pd.DataFrame({
         "genotype": ["wt"], "titrant_name": ["T"], 
@@ -474,7 +474,7 @@ def test_extract_parameters_npz(initialized_model_class, tmpdir):
 
 def test_extract_parameters_categorical(initialized_model_class):
     model = initialized_model_class
-    model._theta = "categorical"
+    model._theta = "categorical_geno"
     model._condition_growth = "none"
     model._dk_geno = "none"
     model._activity = "fixed"
@@ -485,7 +485,7 @@ def test_extract_parameters_categorical(initialized_model_class):
 
 def test_extract_theta_curves_full(initialized_model_class, tmpdir):
     model = initialized_model_class
-    model._theta = "hill"
+    model._theta = "hill_geno"
     model.growth_tm.df = pd.DataFrame({"genotype": ["wt"], "titrant_name": ["T"], "titrant_conc": [1.0], "map_theta_group": [0]})
     post = {
         "theta_hill_n": np.zeros((1, 1, 1)), "theta_log_hill_K": np.zeros((1, 1, 1)),
@@ -502,7 +502,7 @@ def test_extract_theta_curves_full(initialized_model_class, tmpdir):
 
 def test_extract_theta_curves_manual(initialized_model_class):
     model = initialized_model_class
-    model._theta = "hill"
+    model._theta = "hill_geno"
     model.growth_tm.df = pd.DataFrame({"genotype": ["wt"], "titrant_name": ["T"], "map_theta_group": [0]})
     post = {
         "theta_hill_n": np.zeros((1, 1, 1)), "theta_log_hill_K": np.zeros((1, 1, 1)),
@@ -526,10 +526,10 @@ def test_extract_theta_curves_manual(initialized_model_class):
 
 def test_extract_theta_curves_errors(initialized_model_class):
     model = initialized_model_class
-    model._theta = "simple"
+    model._theta = "_simple"
     with pytest.raises(ValueError, match="does not support this interface"):
         extract_theta_curves(model, {})
-    model._theta = "hill"
+    model._theta = "hill_geno"
     with pytest.raises(ValueError, match="should be a dictionary"):
         extract_theta_curves(model, {}, q_to_get="not_a_dict")
 
@@ -666,9 +666,9 @@ def test_binding_weight_explicit_in_settings(mocker):
     model._condition_growth = "linear"
     model._growth_transition = "instant"
     model._ln_cfu0 = "hierarchical"
-    model._dk_geno = "hierarchical"
-    model._activity = "horseshoe"
-    model._theta = "hill"
+    model._dk_geno = "hierarchical_geno"
+    model._activity = "horseshoe_geno"
+    model._theta = "hill_geno"
     model._transformation = "empirical"
     model._theta_rescale = "passthrough"
     model._theta_growth_noise = "zero"
@@ -691,9 +691,9 @@ def test_binding_weight_auto_in_settings(mocker):
     model._condition_growth = "linear"
     model._growth_transition = "instant"
     model._ln_cfu0 = "hierarchical"
-    model._dk_geno = "hierarchical"
-    model._activity = "horseshoe"
-    model._theta = "hill"
+    model._dk_geno = "hierarchical_geno"
+    model._activity = "horseshoe_geno"
+    model._theta = "hill_geno"
     model._transformation = "empirical"
     model._theta_rescale = "passthrough"
     model._theta_growth_noise = "zero"

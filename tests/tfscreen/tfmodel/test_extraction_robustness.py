@@ -69,7 +69,7 @@ def mock_model():
 def test_extract_parameters_all_models(mock_model):
     """Test extract_parameters with various model configurations to hit coverage."""
     # Test 'categorical' theta
-    mock_model._theta = "categorical"
+    mock_model._theta = "categorical_geno"
     posteriors = {"theta_theta": np.random.rand(10, 1)}
     params = extract_parameters(mock_model, posteriors)
     assert "theta" in params
@@ -126,8 +126,8 @@ def test_extract_parameters_all_models(mock_model):
 
     # Test 'hierarchical' dk_geno (includes activity)
     mock_model._growth_transition = "instant"
-    mock_model._dk_geno = "hierarchical"
-    mock_model._activity = "hierarchical"
+    mock_model._dk_geno = "hierarchical_geno"
+    mock_model._activity = "hierarchical_geno"
     mock_model.growth_tm.df["map_ln_cfu0"] = 0
     posteriors = {
         "ln_cfu0": np.random.rand(10, 1),
@@ -140,13 +140,13 @@ def test_extract_parameters_all_models(mock_model):
     assert "activity" in params
 
     # Test 'horseshoe' activity (ensure ln_cfu0 and dk_geno are present if dk_geno is hierarchical)
-    mock_model._activity = "horseshoe"
+    mock_model._activity = "horseshoe_geno"
     posteriors["activity"] = np.random.rand(10, 1) # activity is already there from previous step
     params = extract_parameters(mock_model, posteriors)
     assert "activity" in params
 
     # Reset and test 'hill' theta
-    mock_model._theta = "hill"
+    mock_model._theta = "hill_geno"
     mock_model._condition_growth = "none"
     mock_model._dk_geno = "none"
     mock_model._activity = "fixed"
@@ -163,7 +163,7 @@ def test_extract_parameters_all_models(mock_model):
 
 def test_extract_theta_curves_manual_genotype(mock_model):
     """Test extract_theta_curves with manual_titrant_df including genotype."""
-    mock_model._theta = "hill"
+    mock_model._theta = "hill_geno"
     manual_df = pd.DataFrame({
         "titrant_name": ["iptg"],
         "titrant_conc": [2.0],
@@ -181,7 +181,7 @@ def test_extract_theta_curves_manual_genotype(mock_model):
 
 def test_extract_theta_curves_broadcast(mock_model):
     """Test extract_theta_curves broadcasting across genotypes."""
-    mock_model._theta = "hill"
+    mock_model._theta = "hill_geno"
     # Create two genotypes in the model
     mock_model.growth_tm.df = pd.DataFrame({
         "genotype": ["wt", "mut"],
@@ -297,7 +297,7 @@ def test_extract_parameters_h5_file(mock_model, tmp_path):
 
 def test_extract_theta_curves_hdf5_path(mock_model, tmp_path):
     """Test extract_theta_curves loading from an HDF5 file path."""
-    mock_model._theta = "hill"
+    mock_model._theta = "hill_geno"
     h5_path = os.path.join(tmp_path, "theta.h5")
     posteriors = {
         "theta_hill_n": np.random.rand(10, 1),
@@ -373,7 +373,7 @@ def test_extract_growth_predictions_hdf5_multiple_groups(mock_model, tmp_path):
 
 def test_extract_theta_curves_q_to_get_error(mock_model):
     """Test extract_theta_curves with invalid q_to_get."""
-    mock_model._theta = "hill"
+    mock_model._theta = "hill_geno"
     with pytest.raises(ValueError, match="q_to_get should be a dictionary"):
         extract_theta_curves(mock_model, {}, q_to_get=[0.5])
 

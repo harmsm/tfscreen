@@ -29,7 +29,7 @@ def test_configure_run_binding_only_smoke(tmpdir):
     out_prefix = os.path.join(tmpdir, "test_tfs_binding_only")
 
     configure_model(binding_path,
-                              theta_model="categorical",
+                              theta_model="categorical_geno",
                               out_prefix=out_prefix)
 
     config_file = f"{out_prefix}_config.yaml"

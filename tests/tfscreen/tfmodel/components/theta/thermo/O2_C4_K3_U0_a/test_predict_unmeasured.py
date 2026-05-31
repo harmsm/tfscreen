@@ -6,10 +6,10 @@ import pytest
 import numpy as np
 import pandas as pd
 
-from tfscreen.tfmodel.generative.components.theta.struct.lac_dimer.lnK_mut import (
+from tfscreen.tfmodel.generative.components.theta.thermo.O2_C4_K3_U0_a.PK import (
     predict_unmeasured as lnK_mut_predict,
 )
-from tfscreen.tfmodel.generative.components.theta.struct.lac_dimer.lnK_nn_prior import (
+from tfscreen.tfmodel.generative.components.theta.thermo.O2_C4_K3_U0_a.PnnC import (
     predict_unmeasured as lnK_nn_predict,
 )
 

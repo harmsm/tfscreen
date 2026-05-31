@@ -16,10 +16,10 @@ SMOKE_CONFIGS = [
     {
         "condition_growth":"linear",
         "transformation":"empirical",
-        "theta":"hill",
+        "theta":"hill_geno",
         "growth_transition":"instant",
-        "dk_geno":"hierarchical",
-        "activity":"horseshoe",
+        "dk_geno":"hierarchical_geno",
+        "activity":"horseshoe_geno",
         "ln_cfu0":"hierarchical",
         "theta_growth_noise":"zero",
         "theta_binding_noise":"zero"
@@ -28,10 +28,10 @@ SMOKE_CONFIGS = [
     {
         "condition_growth":"linear",
         "transformation":"logit_norm",
-        "theta":"categorical",
+        "theta":"categorical_geno",
         "growth_transition":"memory",
         "dk_geno":"fixed",
-        "activity":"hierarchical",
+        "activity":"hierarchical_geno",
         "theta_growth_noise":"beta",
         "theta_binding_noise":"beta"
     },
@@ -39,7 +39,7 @@ SMOKE_CONFIGS = [
     {
         "condition_growth":"power",
         "transformation":"logit_norm",
-        "theta":"hill",
+        "theta":"hill_geno",
         "growth_transition":"baranyi",
         "activity":"fixed",
     },
@@ -54,13 +54,13 @@ SMOKE_CONFIGS = [
     # test mutation-decomposed Hill theta
     {
         "theta":"hill_mut",
-        "dk_geno":"hierarchical",
+        "dk_geno":"hierarchical_geno",
         "activity":"hierarchical_mut",
         "epistasis":False,
     },
     # test lac_dimer_lnK_mut theta (partition-function model)
     {
-        "theta":"lac_dimer_lnK_mut",
+        "theta":"thermo.O2_C4_K3_U0_a.PK",
         "epistasis":False,
     },
 ]
@@ -117,7 +117,7 @@ def test_model_svi_smoke_lnK_nn_prior(growth_smoke_csv,
         growth_df=growth_smoke_csv,
         binding_df=binding_smoke_csv,
         batch_size=None,
-        theta="lac_dimer_lnK_nn_prior",
+        theta="thermo.O2_C4_K3_U0_a.PnnC",
         struct_ensemble_path=struct_smoke_h5_path,
         epistasis=False,
     )

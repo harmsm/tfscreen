@@ -6,7 +6,7 @@ import numpyro
 import numpyro.distributions as dist
 import pytest
 
-from tfscreen.tfmodel.generative.components.theta.struct.prior import (
+from tfscreen.tfmodel.generative.components.theta.thermo.prior import (
     sample_ddG,
 )
 

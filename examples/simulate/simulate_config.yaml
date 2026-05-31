@@ -43,13 +43,13 @@ spiked_seqs:
 # ---------------------------------------------------------------------------
 
 # Registered theta component name.  Any key in model_registry["theta"] is
-# valid except "simple" (calibration-only).  Examples: "hill", "mwc_dimer_lnK_mut".
-theta_component: "mwc_dimer_lnK_mut"
+# valid except "_simple" (calibration-only).  Examples: "hill_geno", "thermo.O2_C12_K5_U0_a.PK".
+theta_component: "thermo.O2_C12_K5_U0_a.PK"
 
-# Optional: path to structural ensemble file required by lnK_nn_prior and
-# lnK_ddG_prior theta components.  Omit (or set to null) for all other models.
-#   .h5 / .hdf5  → HDF5 LigandMPNN ensemble (lnK_nn_prior)
-#   .csv         → per-mutation per-structure ddG prior means (lnK_ddG_prior)
+# Optional: path to structural ensemble file required by PnnC and
+# PddG theta components.  Omit (or set to null) for all other models.
+#   .h5 / .hdf5  → HDF5 LigandMPNN ensemble (PnnC)
+#   .csv         → per-mutation per-structure ddG prior means (PddG)
 # struct_ensemble_path: null
 
 # Optional: overrides for the theta component's default hyperparameters.

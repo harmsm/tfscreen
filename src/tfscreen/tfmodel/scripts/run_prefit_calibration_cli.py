@@ -74,9 +74,9 @@ from tfscreen.tfmodel.configuration_io import (
 # so the calibration MAP can refine the production priors.
 # ---------------------------------------------------------------------------
 _CALIBRATION_OVERRIDES = {
-    "theta": "simple",
-    "activity": "hierarchical",
-    "dk_geno": "hierarchical",
+    "theta": "_simple",
+    "activity": "hierarchical_geno",
+    "dk_geno": "hierarchical_geno",
     "ln_cfu0": "hierarchical",
     "transformation": "single",
     "theta_growth_noise": "zero",
