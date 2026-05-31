@@ -1,6 +1,5 @@
 
 from .components.growth import linear as growth_hierarchical
-from .components.growth import linear_fixed as growth_fixed
 from .components.growth import power as growth_power
 from .components.growth import saturation as growth_saturation
 from .components.growth_transition import instant as growth_transition_instant
@@ -11,6 +10,7 @@ from .components.growth_transition import baranyi_tau as growth_transition_baran
 from .components.growth_transition import two_pop as growth_transition_two_pop
 
 from .components.ln_cfu0 import hierarchical as ln_cfu0
+from .components.ln_cfu0 import hierarchical_factored as ln_cfu0_factored
 
 from .components.dk_geno import fixed as dk_geno_fixed
 from .components.dk_geno import hierarchical as dk_geno_hierarchical
@@ -46,6 +46,7 @@ from .components.theta_rescale import logit as theta_rescale_logit
 
 from .components.noise import zero as no_noise
 from .components.noise import beta as beta_noise
+from .components.noise import logit_normal as logit_normal_noise
 
 from .components.growth_noise import zero as growth_noise_zero
 from .components.growth_noise import normal_kt as growth_noise_normal_kt
@@ -59,12 +60,12 @@ from .observe import growth
 model_registry = {
     "condition_growth":{
         "linear":growth_hierarchical,
-        "linear_fixed":growth_fixed,
         "power":growth_power,
         "saturation":growth_saturation,
     },
     "ln_cfu0":{
         "hierarchical":ln_cfu0,
+        "hierarchical_factored":ln_cfu0_factored,
     },
     "dk_geno":{
         "fixed":dk_geno_fixed,
@@ -108,6 +109,7 @@ model_registry = {
     "theta_growth_noise":{
         "zero":no_noise,
         "beta":beta_noise,
+        "logit_normal":logit_normal_noise,
     },
     "theta_binding_noise":{
         "zero":no_noise,

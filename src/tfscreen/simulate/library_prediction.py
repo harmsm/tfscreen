@@ -72,10 +72,6 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
     theta_rng_seed = cf.get('theta_rng_seed', 0)
     theta_rng_key = jax.random.PRNGKey(theta_rng_seed)
 
-    # RNG key for prior-predictive activity sampling
-    activity_rng_seed = cf.get('activity_rng_seed', 1)
-    activity_rng_key = jax.random.PRNGKey(activity_rng_seed)
-
     # Calculate phenotype for each genotype across all conditions in sample_df
     phenotype_df, genotype_theta_df = thermo_to_growth(
         genotypes=library_df["genotype"],
@@ -91,8 +87,8 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
         activity_wt=cf.get('activity_wt', 1.0),
         activity_mut_scale=cf.get('activity_mut_scale', 0.0),
         activity_component=cf.get('activity_component', 'fixed'),
-        activity_rng_key=activity_rng_key,
         activity_priors_overrides=cf.get('activity_priors'),
+        theta_rescale=cf.get('theta_rescale', 'passthrough'),
     )
 
     return library_df, phenotype_df, genotype_theta_df

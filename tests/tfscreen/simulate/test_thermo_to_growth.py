@@ -8,7 +8,11 @@ from tfscreen.simulate.thermo_to_growth import (
     _assign_activity,
     _assign_dk_geno,
     _apply_growth_params,
+    _sample_horseshoe_activity,
+    _sample_hierarchical_activity,
+    _ACTIVITY_COMPONENTS,
     thermo_to_growth,
+    _THETA_RESCALE,
 )
 
 
@@ -377,17 +381,358 @@ def test_thermo_to_growth_propagates_rng(
 
 
 # ============================================================================
-# test thermo_to_growth — activity_component routing
+# test _sample_horseshoe_activity
+# ============================================================================
+
+class TestSampleHorseshoeActivity:
+
+    def test_returns_series(self):
+        result = _sample_horseshoe_activity(["wt", "A1B", "C2D"])
+        assert isinstance(result, pd.Series)
+
+    def test_all_genotypes_covered(self):
+        genotypes = ["wt", "A1B", "C2D", "A1B/C2D"]
+        result = _sample_horseshoe_activity(genotypes)
+        assert set(result.index) == set(genotypes)
+
+    def test_all_values_positive(self):
+        genotypes = ["wt"] + [f"M{i}" for i in range(20)]
+        result = _sample_horseshoe_activity(
+            genotypes, rng=np.random.default_rng(0)
+        )
+        assert np.all(result.values > 0.0)
+
+    def test_wt_is_exactly_one(self):
+        genotypes = ["wt", "A1B", "C2D"]
+        result = _sample_horseshoe_activity(
+            genotypes, rng=np.random.default_rng(5)
+        )
+        assert np.isclose(result.loc["wt"], 1.0)
+
+    def test_reproducible_with_same_seed(self):
+        genotypes = ["wt", "A1B", "C2D"]
+        r1 = _sample_horseshoe_activity(genotypes, rng=np.random.default_rng(42))
+        r2 = _sample_horseshoe_activity(genotypes, rng=np.random.default_rng(42))
+        np.testing.assert_array_equal(r1.values, r2.values)
+
+    def test_different_seeds_differ(self):
+        genotypes = ["wt", "A1B", "C2D", "D4E"]
+        r1 = _sample_horseshoe_activity(genotypes, rng=np.random.default_rng(1))
+        r2 = _sample_horseshoe_activity(genotypes, rng=np.random.default_rng(2))
+        assert not np.allclose(r1.loc["A1B"], r2.loc["A1B"])
+
+    def test_tiny_tau_shrinks_to_one(self):
+        """Very small global_scale_tau_scale → all activities ≈ 1.0."""
+        genotypes = ["wt"] + [f"M{i}" for i in range(15)]
+        result = _sample_horseshoe_activity(
+            genotypes,
+            params={"global_scale_tau_scale": 1e-8},
+            rng=np.random.default_rng(0),
+        )
+        np.testing.assert_allclose(result.values, 1.0, atol=1e-5)
+
+    def test_params_override_applied(self):
+        """Custom params dict must replace the default hyperparameter."""
+        genotypes = ["wt"] + [f"M{i}" for i in range(10)]
+        # Run twice with the same seed but different tau_scale — results differ
+        r_small = _sample_horseshoe_activity(
+            genotypes, params={"global_scale_tau_scale": 0.001},
+            rng=np.random.default_rng(99),
+        )
+        r_large = _sample_horseshoe_activity(
+            genotypes, params={"global_scale_tau_scale": 10.0},
+            rng=np.random.default_rng(99),
+        )
+        # Larger tau_scale → larger variance in log(activity)
+        assert r_large.std() > r_small.std()
+
+
+# ============================================================================
+# test _sample_hierarchical_activity
+# ============================================================================
+
+class TestSampleHierarchicalActivity:
+
+    def test_returns_series(self):
+        result = _sample_hierarchical_activity(["wt", "A1B", "C2D"])
+        assert isinstance(result, pd.Series)
+
+    def test_all_genotypes_covered(self):
+        genotypes = ["wt", "A1B", "C2D", "A1B/C2D"]
+        result = _sample_hierarchical_activity(genotypes)
+        assert set(result.index) == set(genotypes)
+
+    def test_all_values_positive(self):
+        genotypes = ["wt"] + [f"M{i}" for i in range(20)]
+        result = _sample_hierarchical_activity(
+            genotypes, rng=np.random.default_rng(0)
+        )
+        assert np.all(result.values > 0.0)
+
+    def test_wt_is_exactly_one(self):
+        genotypes = ["wt", "A1B", "C2D"]
+        result = _sample_hierarchical_activity(
+            genotypes, rng=np.random.default_rng(3)
+        )
+        assert np.isclose(result.loc["wt"], 1.0)
+
+    def test_reproducible_with_same_seed(self):
+        genotypes = ["wt", "A1B", "C2D"]
+        r1 = _sample_hierarchical_activity(
+            genotypes, rng=np.random.default_rng(42)
+        )
+        r2 = _sample_hierarchical_activity(
+            genotypes, rng=np.random.default_rng(42)
+        )
+        np.testing.assert_array_equal(r1.values, r2.values)
+
+    def test_different_seeds_differ(self):
+        genotypes = ["wt", "A1B", "C2D", "D4E"]
+        r1 = _sample_hierarchical_activity(
+            genotypes, rng=np.random.default_rng(1)
+        )
+        r2 = _sample_hierarchical_activity(
+            genotypes, rng=np.random.default_rng(2)
+        )
+        assert not np.allclose(r1.loc["A1B"], r2.loc["A1B"])
+
+    def test_tiny_scale_shrinks_to_shared_mean(self):
+        """Very small hyper_scale_loc → all mutant activities ≈ exp(hyper_loc)."""
+        genotypes = ["wt"] + [f"M{i}" for i in range(15)]
+        # hyper_loc_loc=0, so exp(hyper_loc) ≈ 1.0 when hyper_loc_scale is also tiny
+        result = _sample_hierarchical_activity(
+            genotypes,
+            params={"hyper_loc_loc": 0.0, "hyper_loc_scale": 1e-8,
+                    "hyper_scale_loc": 1e-8},
+            rng=np.random.default_rng(0),
+        )
+        np.testing.assert_allclose(result.values, 1.0, atol=1e-5)
+
+    def test_params_override_applied(self):
+        """Larger hyper_scale_loc → more spread in mutant activities."""
+        genotypes = ["wt"] + [f"M{i}" for i in range(20)]
+        r_tight = _sample_hierarchical_activity(
+            genotypes,
+            params={"hyper_loc_loc": 0.0, "hyper_loc_scale": 0.001,
+                    "hyper_scale_loc": 0.001},
+            rng=np.random.default_rng(7),
+        )
+        r_wide = _sample_hierarchical_activity(
+            genotypes,
+            params={"hyper_loc_loc": 0.0, "hyper_loc_scale": 0.001,
+                    "hyper_scale_loc": 2.0},
+            rng=np.random.default_rng(7),
+        )
+        assert r_wide.std() > r_tight.std()
+
+
+# ============================================================================
+# test _ACTIVITY_COMPONENTS registry and thermo_to_growth routing
 # ============================================================================
 
 class TestThermo_to_growth_ActivityComponent:
     """
-    Verify that the activity_component parameter correctly routes between
-    _assign_activity (fixed path) and sample_activity_prior (component path).
+    Verify that activity_component routes correctly to the numpy samplers
+    and that unknown names raise ValueError.
     """
 
     @pytest.fixture
     def base_call_kwargs(self, test_sample_df, simple_growth_params):
+        return dict(
+            sample_df=test_sample_df,
+            theta_component="mock",
+            theta_rng_key=0,
+            growth_params=simple_growth_params,
+        )
+
+    def _setup(self, mocker, genotypes, concs, theta_gc, sample_df):
+        sim_data = _make_sim_data_mock(genotypes, concs)
+        _patch_thermo_deps(mocker, genotypes, sample_df, theta_gc)
+        return sim_data
+
+    # -- registry set ---------------------------------------------------------
+
+    def test_activity_components_contains_fixed(self):
+        assert "fixed" in _ACTIVITY_COMPONENTS
+
+    def test_activity_components_contains_horseshoe(self):
+        assert "horseshoe" in _ACTIVITY_COMPONENTS
+
+    def test_activity_components_contains_hierarchical(self):
+        assert "hierarchical" in _ACTIVITY_COMPONENTS
+
+    # -- unknown component raises ---------------------------------------------
+
+    def test_unknown_component_raises(self, mocker, test_genotypes, base_call_kwargs):
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.zeros((3, 2))
+        sim_data = self._setup(mocker, test_genotypes, concs, theta_gc,
+                               base_call_kwargs["sample_df"])
+        with pytest.raises(ValueError, match="activity_component"):
+            thermo_to_growth(
+                genotypes=test_genotypes,
+                sim_data=sim_data,
+                activity_component="horseshoe_mut",
+                **base_call_kwargs,
+            )
+
+    # -- fixed path -----------------------------------------------------------
+
+    def test_fixed_calls_assign_activity(
+        self, mocker, test_genotypes, base_call_kwargs
+    ):
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.zeros((3, 2))
+        sim_data = self._setup(mocker, test_genotypes, concs, theta_gc,
+                               base_call_kwargs["sample_df"])
+        mock_assign = mocker.patch(
+            "tfscreen.simulate.thermo_to_growth._assign_activity",
+            return_value=pd.Series(1.0, index=["A1B/C2D", "A1B", "wt"]),
+        )
+        thermo_to_growth(
+            genotypes=test_genotypes, sim_data=sim_data, **base_call_kwargs
+        )
+        mock_assign.assert_called_once()
+
+    def test_fixed_does_not_call_horseshoe_or_hierarchical(
+        self, mocker, test_genotypes, base_call_kwargs
+    ):
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.zeros((3, 2))
+        sim_data = self._setup(mocker, test_genotypes, concs, theta_gc,
+                               base_call_kwargs["sample_df"])
+        mock_hs = mocker.patch(
+            "tfscreen.simulate.thermo_to_growth._sample_horseshoe_activity"
+        )
+        mock_hi = mocker.patch(
+            "tfscreen.simulate.thermo_to_growth._sample_hierarchical_activity"
+        )
+        mocker.patch(
+            "tfscreen.simulate.thermo_to_growth._assign_activity",
+            return_value=pd.Series(1.0, index=["A1B/C2D", "A1B", "wt"]),
+        )
+        thermo_to_growth(
+            genotypes=test_genotypes, sim_data=sim_data,
+            activity_component="fixed", **base_call_kwargs
+        )
+        mock_hs.assert_not_called()
+        mock_hi.assert_not_called()
+
+    # -- horseshoe path -------------------------------------------------------
+
+    def test_horseshoe_calls_sample_horseshoe_activity(
+        self, mocker, test_genotypes, base_call_kwargs
+    ):
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.zeros((3, 2))
+        sim_data = self._setup(mocker, test_genotypes, concs, theta_gc,
+                               base_call_kwargs["sample_df"])
+        mock_hs = mocker.patch(
+            "tfscreen.simulate.thermo_to_growth._sample_horseshoe_activity",
+            return_value=pd.Series(1.0, index=["A1B/C2D", "A1B", "wt"]),
+        )
+        thermo_to_growth(
+            genotypes=test_genotypes, sim_data=sim_data,
+            activity_component="horseshoe", **base_call_kwargs,
+        )
+        mock_hs.assert_called_once()
+
+    def test_horseshoe_does_not_call_assign_activity(
+        self, mocker, test_genotypes, base_call_kwargs
+    ):
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.zeros((3, 2))
+        sim_data = self._setup(mocker, test_genotypes, concs, theta_gc,
+                               base_call_kwargs["sample_df"])
+        mocker.patch(
+            "tfscreen.simulate.thermo_to_growth._sample_horseshoe_activity",
+            return_value=pd.Series(1.0, index=["A1B/C2D", "A1B", "wt"]),
+        )
+        mock_assign = mocker.patch(
+            "tfscreen.simulate.thermo_to_growth._assign_activity"
+        )
+        thermo_to_growth(
+            genotypes=test_genotypes, sim_data=sim_data,
+            activity_component="horseshoe", **base_call_kwargs,
+        )
+        mock_assign.assert_not_called()
+
+    def test_horseshoe_priors_overrides_forwarded(
+        self, mocker, test_genotypes, base_call_kwargs
+    ):
+        """activity_priors_overrides must be forwarded as params=."""
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.zeros((3, 2))
+        sim_data = self._setup(mocker, test_genotypes, concs, theta_gc,
+                               base_call_kwargs["sample_df"])
+        mock_hs = mocker.patch(
+            "tfscreen.simulate.thermo_to_growth._sample_horseshoe_activity",
+            return_value=pd.Series(1.0, index=["A1B/C2D", "A1B", "wt"]),
+        )
+        overrides = {"global_scale_tau_scale": 0.01}
+        thermo_to_growth(
+            genotypes=test_genotypes, sim_data=sim_data,
+            activity_component="horseshoe",
+            activity_priors_overrides=overrides,
+            **base_call_kwargs,
+        )
+        assert mock_hs.call_args.kwargs["params"] == overrides
+
+    # -- hierarchical path ----------------------------------------------------
+
+    def test_hierarchical_calls_sample_hierarchical_activity(
+        self, mocker, test_genotypes, base_call_kwargs
+    ):
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.zeros((3, 2))
+        sim_data = self._setup(mocker, test_genotypes, concs, theta_gc,
+                               base_call_kwargs["sample_df"])
+        mock_hi = mocker.patch(
+            "tfscreen.simulate.thermo_to_growth._sample_hierarchical_activity",
+            return_value=pd.Series(1.0, index=["A1B/C2D", "A1B", "wt"]),
+        )
+        thermo_to_growth(
+            genotypes=test_genotypes, sim_data=sim_data,
+            activity_component="hierarchical", **base_call_kwargs,
+        )
+        mock_hi.assert_called_once()
+
+    # -- values propagate into phenotype_df -----------------------------------
+
+    def test_horseshoe_activities_appear_in_phenotype_df(
+        self, mocker, test_genotypes, base_call_kwargs
+    ):
+        """Values returned by _sample_horseshoe_activity appear in phenotype_df."""
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.full((3, 2), 0.5)
+        sim_data = self._setup(mocker, test_genotypes, concs, theta_gc,
+                               base_call_kwargs["sample_df"])
+        # test_genotypes sorted: A1B, A1B/C2D, wt
+        activity_map = {"wt": 1.0, "A1B": 2.0, "A1B/C2D": 0.5}
+        mocker.patch(
+            "tfscreen.simulate.thermo_to_growth._sample_horseshoe_activity",
+            return_value=pd.Series(activity_map),
+        )
+        phenotype_df, _ = thermo_to_growth(
+            genotypes=test_genotypes, sim_data=sim_data,
+            activity_component="horseshoe", **base_call_kwargs,
+        )
+        for geno, expected in activity_map.items():
+            rows = phenotype_df[phenotype_df["genotype"] == geno]
+            np.testing.assert_allclose(rows["activity"].values, expected)
+
+
+# ============================================================================
+# test thermo_to_growth — theta_noise_sigma_logit
+# ============================================================================
+
+class TestThermo_to_growth_ThetaNoise:
+    """
+    Verify logit-normal theta noise applied via theta_noise_sigma_logit.
+    """
+
+    @pytest.fixture
+    def base_kwargs(self, test_sample_df, simple_growth_params):
         return dict(
             sample_df=test_sample_df,
             theta_component="mock",
@@ -400,232 +745,255 @@ class TestThermo_to_growth_ActivityComponent:
         _patch_thermo_deps(mocker, genotypes, None, theta_gc)
         return thermo_to_growth(genotypes=genotypes, sim_data=sim_data, **kwargs)
 
-    # -- default ("fixed") path -----------------------------------------------
-
-    def test_default_uses_assign_activity(
-        self, mocker, test_genotypes, base_call_kwargs
+    def test_zero_sigma_leaves_theta_unchanged(
+        self, mocker, test_genotypes, base_kwargs
     ):
-        """Default activity_component='fixed' must call _assign_activity."""
+        """theta_noise_sigma_logit=0 must not alter theta values."""
         concs = np.array([10.0, 100.0])
-        theta_gc = np.zeros((3, 2))
-        sim_data = _make_sim_data_mock(test_genotypes, concs)
-        _patch_thermo_deps(mocker, test_genotypes,
-                           base_call_kwargs["sample_df"], theta_gc)
-
-        mock_assign = mocker.patch(
-            "tfscreen.simulate.thermo_to_growth._assign_activity",
-            return_value=pd.Series(1.0, index=["A1B/C2D", "A1B", "wt"]),
+        theta_gc = np.array([[0.2, 0.8], [0.3, 0.7], [0.5, 0.5]])
+        phenotype_df, _ = self._run(
+            mocker, test_genotypes, concs, theta_gc,
+            theta_noise_sigma_logit=0.0,
+            rng=np.random.default_rng(0),
+            **base_kwargs,
         )
+        expected_thetas = sorted([0.2, 0.8, 0.3, 0.7, 0.5, 0.5])
+        actual_thetas = sorted(phenotype_df["theta"].tolist())
+        np.testing.assert_allclose(actual_thetas, expected_thetas, atol=1e-8)
 
-        thermo_to_growth(
-            genotypes=test_genotypes,
-            sim_data=sim_data,
-            **base_call_kwargs,
-        )
-        mock_assign.assert_called_once()
-
-    def test_fixed_explicit_does_not_call_sample_activity_prior(
-        self, mocker, test_genotypes, base_call_kwargs
+    def test_nonzero_sigma_perturbs_theta(
+        self, mocker, test_genotypes, base_kwargs
     ):
+        """theta_noise_sigma_logit > 0 must produce theta values different from input."""
         concs = np.array([10.0, 100.0])
-        theta_gc = np.zeros((3, 2))
-        sim_data = _make_sim_data_mock(test_genotypes, concs)
-        _patch_thermo_deps(mocker, test_genotypes,
-                           base_call_kwargs["sample_df"], theta_gc)
-
-        mock_sample = mocker.patch(
-            "tfscreen.simulate.thermo_to_growth.sample_activity_prior"
-        )
-
-        thermo_to_growth(
-            genotypes=test_genotypes,
-            sim_data=sim_data,
-            activity_component="fixed",
-            **base_call_kwargs,
-        )
-        mock_sample.assert_not_called()
-
-    # -- non-fixed component path ---------------------------------------------
-
-    def test_non_fixed_calls_sample_activity_prior(
-        self, mocker, test_genotypes, base_call_kwargs
-    ):
-        """activity_component='horseshoe' must call sample_activity_prior."""
-        concs = np.array([10.0, 100.0])
-        theta_gc = np.zeros((3, 2))
-        sim_data = _make_sim_data_mock(test_genotypes, concs)
-        _patch_thermo_deps(mocker, test_genotypes,
-                           base_call_kwargs["sample_df"], theta_gc)
-
-        # Return values in sim_data order (3 genotypes)
-        mock_sample = mocker.patch(
-            "tfscreen.simulate.thermo_to_growth.sample_activity_prior",
-            return_value=np.array([1.0, 1.2, 0.8]),  # wt, A1B, A1B/C2D
-        )
-
-        thermo_to_growth(
-            genotypes=test_genotypes,
-            sim_data=sim_data,
-            activity_component="horseshoe",
-            activity_rng_key=42,
-            **base_call_kwargs,
-        )
-        mock_sample.assert_called_once()
-
-    def test_non_fixed_does_not_call_assign_activity(
-        self, mocker, test_genotypes, base_call_kwargs
-    ):
-        concs = np.array([10.0, 100.0])
-        theta_gc = np.zeros((3, 2))
-        sim_data = _make_sim_data_mock(test_genotypes, concs)
-        _patch_thermo_deps(mocker, test_genotypes,
-                           base_call_kwargs["sample_df"], theta_gc)
-
-        mocker.patch(
-            "tfscreen.simulate.thermo_to_growth.sample_activity_prior",
-            return_value=np.ones(3),
-        )
-        mock_assign = mocker.patch(
-            "tfscreen.simulate.thermo_to_growth._assign_activity"
-        )
-
-        thermo_to_growth(
-            genotypes=test_genotypes,
-            sim_data=sim_data,
-            activity_component="horseshoe",
-            **base_call_kwargs,
-        )
-        mock_assign.assert_not_called()
-
-    def test_non_fixed_component_name_forwarded(
-        self, mocker, test_genotypes, base_call_kwargs
-    ):
-        """The component name must be passed as the first arg to sample_activity_prior."""
-        concs = np.array([10.0, 100.0])
-        theta_gc = np.zeros((3, 2))
-        sim_data = _make_sim_data_mock(test_genotypes, concs)
-        _patch_thermo_deps(mocker, test_genotypes,
-                           base_call_kwargs["sample_df"], theta_gc)
-
-        mock_sample = mocker.patch(
-            "tfscreen.simulate.thermo_to_growth.sample_activity_prior",
-            return_value=np.ones(3),
-        )
-
-        thermo_to_growth(
-            genotypes=test_genotypes,
-            sim_data=sim_data,
-            activity_component="hierarchical",
-            **base_call_kwargs,
-        )
-        called_component = mock_sample.call_args[0][0]
-        assert called_component == "hierarchical"
-
-    def test_activity_rng_key_forwarded(
-        self, mocker, test_genotypes, base_call_kwargs
-    ):
-        """activity_rng_key must be passed to sample_activity_prior."""
-        import jax
-        concs = np.array([10.0, 100.0])
-        theta_gc = np.zeros((3, 2))
-        sim_data = _make_sim_data_mock(test_genotypes, concs)
-        _patch_thermo_deps(mocker, test_genotypes,
-                           base_call_kwargs["sample_df"], theta_gc)
-
-        mock_sample = mocker.patch(
-            "tfscreen.simulate.thermo_to_growth.sample_activity_prior",
-            return_value=np.ones(3),
-        )
-        expected_key = jax.random.PRNGKey(77)
-
-        thermo_to_growth(
-            genotypes=test_genotypes,
-            sim_data=sim_data,
-            activity_component="horseshoe",
-            activity_rng_key=expected_key,
-            **base_call_kwargs,
-        )
-        passed_key = mock_sample.call_args[0][2]
-        np.testing.assert_array_equal(np.array(passed_key),
-                                      np.array(expected_key))
-
-    def test_activity_priors_overrides_forwarded(
-        self, mocker, test_genotypes, base_call_kwargs
-    ):
-        """activity_priors_overrides must be forwarded to sample_activity_prior."""
-        concs = np.array([10.0, 100.0])
-        theta_gc = np.zeros((3, 2))
-        sim_data = _make_sim_data_mock(test_genotypes, concs)
-        _patch_thermo_deps(mocker, test_genotypes,
-                           base_call_kwargs["sample_df"], theta_gc)
-
-        mock_sample = mocker.patch(
-            "tfscreen.simulate.thermo_to_growth.sample_activity_prior",
-            return_value=np.ones(3),
-        )
-        overrides = {"global_scale_tau_scale": 0.01}
-
-        thermo_to_growth(
-            genotypes=test_genotypes,
-            sim_data=sim_data,
-            activity_component="horseshoe",
-            activity_priors_overrides=overrides,
-            **base_call_kwargs,
-        )
-        passed_overrides = mock_sample.call_args[0][3]
-        assert passed_overrides == overrides
-
-    def test_component_activities_appear_in_phenotype_df(
-        self, mocker, test_genotypes, base_call_kwargs
-    ):
-        """Values from sample_activity_prior must propagate to phenotype_df."""
-        concs = np.array([10.0, 100.0])
-        # theta_gc rows match sim_data (all_genotypes) order: wt, A1B, A1B/C2D
         theta_gc = np.full((3, 2), 0.5)
-        sim_data = _make_sim_data_mock(test_genotypes, concs)
-        _patch_thermo_deps(mocker, test_genotypes,
-                           base_call_kwargs["sample_df"], theta_gc)
-
-        # sample_activity_prior returns values in sim_data order
-        # test_genotypes = ["wt", "A1B", "A1B/C2D"]
-        mock_activities = np.array([1.0, 2.0, 0.5])
-        mocker.patch(
-            "tfscreen.simulate.thermo_to_growth.sample_activity_prior",
-            return_value=mock_activities,
+        phenotype_df, _ = self._run(
+            mocker, test_genotypes, concs, theta_gc,
+            theta_noise_sigma_logit=1.0,
+            rng=np.random.default_rng(42),
+            **base_kwargs,
         )
+        assert not np.allclose(phenotype_df["theta"].values, 0.5)
 
-        phenotype_df, _ = thermo_to_growth(
-            genotypes=test_genotypes,
-            sim_data=sim_data,
-            activity_component="horseshoe",
-            **base_call_kwargs,
-        )
-
-        # Every genotype should have its expected activity value
-        for genotype, expected_act in zip(test_genotypes, mock_activities):
-            rows = phenotype_df[phenotype_df["genotype"] == genotype]
-            np.testing.assert_allclose(rows["activity"].values, expected_act)
-
-    def test_none_rng_key_does_not_raise(
-        self, mocker, test_genotypes, base_call_kwargs
+    def test_noisy_theta_stays_in_unit_interval(
+        self, mocker, test_genotypes, base_kwargs
     ):
-        """activity_rng_key=None should default gracefully (PRNGKey(0))."""
+        """Even with large sigma_logit, theta must remain in (0, 1)."""
         concs = np.array([10.0, 100.0])
-        theta_gc = np.zeros((3, 2))
-        sim_data = _make_sim_data_mock(test_genotypes, concs)
-        _patch_thermo_deps(mocker, test_genotypes,
-                           base_call_kwargs["sample_df"], theta_gc)
+        theta_gc = np.array([[0.01, 0.99], [0.5, 0.5], [0.3, 0.7]])
+        phenotype_df, _ = self._run(
+            mocker, test_genotypes, concs, theta_gc,
+            theta_noise_sigma_logit=5.0,
+            rng=np.random.default_rng(0),
+            **base_kwargs,
+        )
+        theta_vals = phenotype_df["theta"].values
+        assert np.all(theta_vals > 0.0)
+        assert np.all(theta_vals < 1.0)
 
-        mocker.patch(
-            "tfscreen.simulate.thermo_to_growth.sample_activity_prior",
-            return_value=np.ones(3),
+    def test_reproducible_with_same_rng(
+        self, mocker, test_genotypes, base_kwargs
+    ):
+        """Same rng seed must produce identical noisy theta values."""
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.full((3, 2), 0.5)
+
+        df1, _ = self._run(
+            mocker, test_genotypes, concs, theta_gc,
+            theta_noise_sigma_logit=0.5,
+            rng=np.random.default_rng(7),
+            **base_kwargs,
+        )
+        df2, _ = self._run(
+            mocker, test_genotypes, concs, theta_gc,
+            theta_noise_sigma_logit=0.5,
+            rng=np.random.default_rng(7),
+            **base_kwargs,
+        )
+        np.testing.assert_array_equal(df1["theta"].values, df2["theta"].values)
+
+    def test_different_seeds_give_different_theta(
+        self, mocker, test_genotypes, base_kwargs
+    ):
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.full((3, 2), 0.5)
+
+        df1, _ = self._run(
+            mocker, test_genotypes, concs, theta_gc,
+            theta_noise_sigma_logit=0.5,
+            rng=np.random.default_rng(1),
+            **base_kwargs,
+        )
+        df2, _ = self._run(
+            mocker, test_genotypes, concs, theta_gc,
+            theta_noise_sigma_logit=0.5,
+            rng=np.random.default_rng(2),
+            **base_kwargs,
+        )
+        assert not np.allclose(df1["theta"].values, df2["theta"].values)
+
+
+# ============================================================================
+# test thermo_to_growth — theta_rescale
+# ============================================================================
+
+class TestThermo_to_growth_ThetaRescale:
+    """
+    Verify that the theta_rescale parameter transforms theta before it reaches
+    the growth model while leaving the stored 'theta' column and
+    genotype_theta_df unchanged.
+    """
+
+    @pytest.fixture
+    def base_kwargs(self, test_sample_df, simple_growth_params):
+        return dict(
+            sample_df=test_sample_df,
+            theta_component="mock",
+            theta_rng_key=0,
+            growth_params=simple_growth_params,
         )
 
-        # Should not raise even with activity_rng_key=None
-        thermo_to_growth(
-            genotypes=test_genotypes,
-            sim_data=sim_data,
-            activity_component="horseshoe",
-            activity_rng_key=None,
-            **base_call_kwargs,
+    def _run(self, mocker, genotypes, concs, theta_gc, **kwargs):
+        sim_data = _make_sim_data_mock(genotypes, concs)
+        _patch_thermo_deps(mocker, genotypes, None, theta_gc)
+        return thermo_to_growth(genotypes=genotypes, sim_data=sim_data, **kwargs)
+
+    # -- module-level dict ----------------------------------------------------
+
+    def test_rescale_dict_has_passthrough_and_logit(self):
+        assert "passthrough" in _THETA_RESCALE
+        assert "logit" in _THETA_RESCALE
+
+    def test_passthrough_is_identity(self):
+        x = np.array([0.1, 0.5, 0.9])
+        np.testing.assert_array_equal(_THETA_RESCALE["passthrough"](x), x)
+
+    def test_logit_matches_manual_formula(self):
+        x = np.array([0.1, 0.5, 0.9])
+        eps = 1e-6
+        expected = np.log(np.clip(x, eps, 1-eps) / (1.0 - np.clip(x, eps, 1-eps)))
+        np.testing.assert_allclose(_THETA_RESCALE["logit"](x), expected)
+
+    def test_logit_clips_boundary_values(self):
+        x = np.array([0.0, 1.0])
+        result = _THETA_RESCALE["logit"](x)
+        assert np.all(np.isfinite(result))
+
+    # -- unknown name raises --------------------------------------------------
+
+    def test_unknown_theta_rescale_raises(
+        self, mocker, test_genotypes, base_kwargs
+    ):
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.full((3, 2), 0.5)
+        with pytest.raises(ValueError, match="theta_rescale"):
+            self._run(
+                mocker, test_genotypes, concs, theta_gc,
+                theta_rescale="nonexistent",
+                **base_kwargs,
+            )
+
+    # -- passthrough leaves theta column and k unchanged ----------------------
+
+    def test_passthrough_matches_default(
+        self, mocker, test_genotypes, base_kwargs
+    ):
+        """Explicit passthrough must produce identical results to the default."""
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.array([[0.2, 0.8], [0.3, 0.7], [0.5, 0.5]])
+
+        df_default, _ = self._run(
+            mocker, test_genotypes, concs, theta_gc,
+            rng=np.random.default_rng(42),
+            **base_kwargs,
         )
+        df_passthrough, _ = self._run(
+            mocker, test_genotypes, concs, theta_gc,
+            theta_rescale="passthrough",
+            rng=np.random.default_rng(42),
+            **base_kwargs,
+        )
+        np.testing.assert_array_equal(
+            df_default["k_pre"].values, df_passthrough["k_pre"].values
+        )
+        np.testing.assert_array_equal(
+            df_default["theta"].values, df_passthrough["theta"].values
+        )
+
+    # -- logit rescale changes k but not stored theta -------------------------
+
+    def test_logit_changes_k_relative_to_passthrough(
+        self, mocker, test_genotypes, base_kwargs
+    ):
+        """logit rescale must produce different k values than passthrough."""
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.array([[0.2, 0.8], [0.3, 0.7], [0.5, 0.5]])
+
+        df_pass, _ = self._run(
+            mocker, test_genotypes, concs, theta_gc,
+            theta_rescale="passthrough",
+            **base_kwargs,
+        )
+        df_logit, _ = self._run(
+            mocker, test_genotypes, concs, theta_gc,
+            theta_rescale="logit",
+            **base_kwargs,
+        )
+        assert not np.allclose(df_pass["k_pre"].values, df_logit["k_pre"].values)
+
+    def test_logit_theta_column_stays_in_unit_interval(
+        self, mocker, test_genotypes, base_kwargs
+    ):
+        """The stored 'theta' column must remain in (0, 1) even with logit rescale."""
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.array([[0.2, 0.8], [0.3, 0.7], [0.5, 0.5]])
+
+        df, _ = self._run(
+            mocker, test_genotypes, concs, theta_gc,
+            theta_rescale="logit",
+            **base_kwargs,
+        )
+        theta_vals = df["theta"].values
+        assert np.all(theta_vals > 0.0)
+        assert np.all(theta_vals < 1.0)
+
+    def test_logit_k_matches_hand_calculation(
+        self, mocker, test_genotypes, base_kwargs, simple_growth_params
+    ):
+        """k = b + activity * m * logit(theta) + dk_geno for the linear model."""
+        concs = np.array([10.0, 100.0])
+        # Use theta=0.5 so logit(0.5)=0 and dk_geno=0 (wt only) for easy math.
+        # wt gets dk_geno=0, others may not — use all identical theta and zero
+        # activity_mut_scale so only the logit transform matters.
+        theta_gc = np.full((3, 2), 0.5)
+
+        df, _ = self._run(
+            mocker, test_genotypes, concs, theta_gc,
+            theta_rescale="logit",
+            activity_wt=1.0,
+            activity_mut_scale=0.0,
+            **base_kwargs,
+        )
+        # logit(0.5) = 0, so k = b + activity * m * 0 + dk_geno = b + dk_geno
+        b_pre = simple_growth_params["M9"]["b"]
+        b_sel = simple_growth_params["M9+Ab"]["b"]
+        dk = df["dk_geno"].values
+        np.testing.assert_allclose(df["k_pre"].values, b_pre + dk, rtol=1e-6)
+        np.testing.assert_allclose(df["k_sel"].values, b_sel + dk, rtol=1e-6)
+
+    def test_genotype_theta_df_stays_in_unit_interval_under_logit(
+        self, mocker, test_genotypes, base_kwargs
+    ):
+        """genotype_theta_df stores pre-rescale (0-1) theta regardless of theta_rescale."""
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.array([[0.2, 0.8], [0.3, 0.7], [0.5, 0.5]])
+
+        _, geno_theta_df = self._run(
+            mocker, test_genotypes, concs, theta_gc,
+            theta_rescale="logit",
+            **base_kwargs,
+        )
+        theta_cols = [c for c in geno_theta_df.columns if c.startswith("theta_at_")]
+        vals = geno_theta_df[theta_cols].values
+        assert np.all(vals > 0.0)
+        assert np.all(vals < 1.0)

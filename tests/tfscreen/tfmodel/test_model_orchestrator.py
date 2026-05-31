@@ -356,7 +356,7 @@ def test_initialize_classes_logic(mocker):
         "theta": {"categorical": MagicMock(), "hill": MagicMock(), "fixed": MagicMock()},
         "transformation": {"logit_norm": MagicMock(), "single": MagicMock()},
         "theta_rescale": {"passthrough": MagicMock()},
-        "theta_growth_noise": {"zero": MagicMock()},
+        "theta_growth_noise": {"zero": MagicMock(), "logit_normal": MagicMock()},
         "theta_binding_noise": {"zero": MagicMock()},
         "growth_noise": {"zero": MagicMock()},
         "sample_offset": {"zero": MagicMock()},

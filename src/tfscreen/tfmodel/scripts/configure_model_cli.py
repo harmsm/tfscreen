@@ -99,7 +99,7 @@ def configure_model(binding_df,
     condition_growth_model: str, optional
         Model to use to describe growth under different conditions (e.g.,
         pheS+4CP). Allowed values are 'linear' (default), 'linear_independent',
-        'linear_fixed', 'power', or 'saturation'.
+        'power', or 'saturation'.
     growth_transition_model : str, optional
         Model to use to describe the transition between the pre-selection
         and selection phases. Allowed values are 'instant' (default), 'memory',

@@ -405,8 +405,8 @@ class ModelOrchestrator:
     binding_df : pd.DataFrame or str
         DataFrame or path to file with binding data.
     condition_growth : str, optional
-        Model name for condition-specific growth. Allowed values are 'linear' 
-        (default), 'linear_independent', 'linear_fixed', 'power', or 'saturation'.
+        Model name for condition-specific growth. Allowed values are 'linear'
+        (default), 'linear_independent', 'power', or 'saturation'.
     growth_transition : str, optional
         Model name for growth transition. Allowed values are 'instant' (default), 
         'memory', or 'baranyi'.
@@ -424,7 +424,8 @@ class ModelOrchestrator:
         Model name for transformation correction. Allowed values are 'single', 
         'empirical', or 'logit_norm'. Default 'empirical'
     theta_growth_noise : str, optional
-        Model name for noise on theta in the growth model ('zero' or 'beta').
+        Model name for noise on theta in the growth model ('zero', 'beta',
+        or 'logit_normal'). Default 'logit_normal'.
     theta_binding_noise : str, optional
         Model name for noise on theta in the binding model ('zero' or 'beta').
     spiked_genotypes : list or str, optional
@@ -462,7 +463,7 @@ class ModelOrchestrator:
                  theta="hill",
                  transformation="empirical",
                  theta_rescale="passthrough",
-                 theta_growth_noise="zero",
+                 theta_growth_noise="logit_normal",
                  theta_binding_noise="zero",
                  growth_noise="zero",
                  sample_offset="zero",

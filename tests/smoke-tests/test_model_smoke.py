@@ -37,7 +37,7 @@ SMOKE_CONFIGS = [
     },
     # test other transition and transformation
     {
-        "condition_growth":"linear_fixed",
+        "condition_growth":"power",
         "transformation":"logit_norm",
         "theta":"hill",
         "growth_transition":"baranyi",

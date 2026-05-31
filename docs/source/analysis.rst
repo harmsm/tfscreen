@@ -110,7 +110,6 @@ Defines how the growth rate responds to changes in transcription factor occupanc
 
 *   **linear** (default): Shared hierarchical prior for growth rates across conditions.
 *   **linear_independent**: Each condition has an independent prior.
-*   **linear_fixed**: Growth parameters are fixed to specified values.
 *   **power**: Model growth using a power law relationship.
 *   **saturation**: Model growth using a saturating (Michaelis-Menten-like) relationship.
 

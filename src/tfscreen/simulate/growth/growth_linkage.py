@@ -23,7 +23,7 @@ class LinearGrowth:
     """
     k = b + activity * m * theta
 
-    Matches the 'linear' and 'linear_fixed' inference components.
+    Matches the 'linear' inference component.
 
     Parameters
     ----------

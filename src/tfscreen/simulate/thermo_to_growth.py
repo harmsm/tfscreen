@@ -8,7 +8,6 @@ from tfscreen.genetics import (
     argsort_genotypes,
 )
 from tfscreen.simulate.sample_theta import sample_theta_prior
-from tfscreen.simulate.sample_activity import sample_activity_prior
 from tfscreen.simulate.growth.growth_linkage import get_growth_model
 from tfscreen.simulate.growth.transition_linkage import get_transition_model
 
@@ -18,6 +17,15 @@ from numpy.random import Generator
 from tqdm.auto import tqdm
 
 from typing import Iterable, Optional
+
+_EPS = 1e-6
+
+_THETA_RESCALE = {
+    "passthrough": lambda x: x,
+    "logit": lambda x: np.log(
+        np.clip(x, _EPS, 1.0 - _EPS) / (1.0 - np.clip(x, _EPS, 1.0 - _EPS))
+    ),
+}
 
 
 def _assign_activity(unique_genotypes,
@@ -43,6 +51,108 @@ def _assign_activity(unique_genotypes,
             activities[g] = float(np.exp(rng.normal(log_a_wt, activity_mut_scale)))
 
     return pd.Series(activities)
+
+
+def _sample_horseshoe_activity(unique_genotypes,
+                               params: Optional[dict] = None,
+                               rng: Generator | None = None):
+    """
+    Sample per-genotype TF activity from a horseshoe prior in log-activity space.
+
+    Mirrors the ``horseshoe`` activity component used in tfmodel inference:
+
+        tau      ~ HalfNormal(global_scale_tau_scale)
+        lambda_i ~ HalfNormal(1)
+        z_i      ~ Normal(0, 1)
+        log(A_i) = z_i * tau * lambda_i
+        A_i      = exp(log(A_i))
+
+    Wild-type genotypes always receive A = 1.0.
+
+    Parameters
+    ----------
+    unique_genotypes : array-like of str
+    params : dict or None
+        Override any of the default hyperparameters:
+        ``global_scale_tau_scale`` (default 0.1).
+    rng : numpy.random.Generator or None
+
+    Returns
+    -------
+    pandas.Series
+        Per-genotype activity values indexed by genotype string.
+    """
+    if rng is None:
+        rng = np.random.default_rng()
+    p = {"global_scale_tau_scale": 0.1}
+    if params:
+        p.update(params)
+
+    G = len(unique_genotypes)
+    tau = abs(rng.standard_normal()) * p["global_scale_tau_scale"]
+    lambdas = np.abs(rng.standard_normal(G))
+    offsets = rng.standard_normal(G)
+    log_activities = offsets * tau * lambdas
+    activities = np.exp(log_activities)
+
+    result = pd.Series(activities, index=list(unique_genotypes), dtype=float)
+    result[result.index == "wt"] = 1.0
+    return result
+
+
+def _sample_hierarchical_activity(unique_genotypes,
+                                   params: Optional[dict] = None,
+                                   rng: Generator | None = None):
+    """
+    Sample per-genotype TF activity from a hierarchical log-normal prior.
+
+    Mirrors the ``hierarchical`` activity component used in tfmodel inference:
+
+        hyper_loc   ~ Normal(hyper_loc_loc, hyper_loc_scale)
+        hyper_scale ~ HalfNormal(hyper_scale_loc)
+        offset_i    ~ Normal(0, 1)
+        log(A_i)    = hyper_loc + offset_i * hyper_scale
+        A_i         = exp(log(A_i))
+
+    Wild-type genotypes always receive A = 1.0.
+
+    Parameters
+    ----------
+    unique_genotypes : array-like of str
+    params : dict or None
+        Override any of the default hyperparameters:
+        ``hyper_loc_loc`` (default 0.0), ``hyper_loc_scale`` (default 0.01),
+        ``hyper_scale_loc`` (default 0.1).
+    rng : numpy.random.Generator or None
+
+    Returns
+    -------
+    pandas.Series
+        Per-genotype activity values indexed by genotype string.
+    """
+    if rng is None:
+        rng = np.random.default_rng()
+    p = {"hyper_loc_loc": 0.0, "hyper_loc_scale": 0.01, "hyper_scale_loc": 0.1}
+    if params:
+        p.update(params)
+
+    G = len(unique_genotypes)
+    hyper_loc = rng.normal(p["hyper_loc_loc"], p["hyper_loc_scale"])
+    hyper_scale = abs(rng.standard_normal()) * p["hyper_scale_loc"]
+    offsets = rng.standard_normal(G)
+    log_activities = hyper_loc + offsets * hyper_scale
+    activities = np.clip(np.exp(log_activities), a_min=None, a_max=1e30)
+
+    result = pd.Series(activities, index=list(unique_genotypes), dtype=float)
+    result[result.index == "wt"] = 1.0
+    return result
+
+
+# Components supported by the numpy simulation path.
+# (The mutation-decomposed variants horseshoe_mut / hierarchical_mut operate
+# in mutation space and require the tfmodel component interface; add them here
+# if a numpy equivalent is implemented in future.)
+_ACTIVITY_COMPONENTS = {"fixed", "horseshoe", "hierarchical"}
 
 
 def _assign_dk_geno(unique_genotypes,
@@ -117,6 +227,7 @@ def thermo_to_growth(
     theta_rng_key,
     growth_params: dict,
     theta_priors_overrides: Optional[dict] = None,
+    theta_noise_sigma_logit: float = 0.0,
     dk_geno_hyper_loc: float = -3.5,
     dk_geno_hyper_scale: float = 1.0,
     dk_geno_hyper_shift: float = 0.02,
@@ -124,8 +235,8 @@ def thermo_to_growth(
     activity_mut_scale: float = 0.0,
     rng: Generator | None = None,
     activity_component: str = "fixed",
-    activity_rng_key=None,
     activity_priors_overrides: Optional[dict] = None,
+    theta_rescale: str = "passthrough",
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Generate phenotypes from genotypes via prior-predictive theta sampling.
@@ -147,6 +258,12 @@ def thermo_to_growth(
         Per-condition growth model parameters keyed by condition string.
     theta_priors_overrides : dict or None
         Overrides to the theta component's default hyperparameters.
+    theta_noise_sigma_logit : float, default 0.0
+        Standard deviation of additive Normal noise applied on the logit
+        scale after prior-predictive theta sampling, giving:
+            theta_noisy = sigmoid(logit(theta_pred) + Normal(0, sigma_logit))
+        Set to 0.0 (default) for deterministic theta. Mirrors the
+        'logit_normal' theta_growth_noise component in tfmodel inference.
     dk_geno_hyper_loc : float
         Mean of the normal distribution in log-space for dk_geno sampling.
         Matches the ``hyper_loc`` hyperparameter of the hierarchical tfmodel
@@ -166,23 +283,29 @@ def thermo_to_growth(
         LogNormal path.  0 gives all genotypes identical activity.  Used
         only when ``activity_component == "fixed"``.
     rng : numpy.random.Generator or None
-        NumPy RNG for dk_geno / activity sampling.  Used only for the
-        ``"fixed"`` LogNormal path (``activity_mut_scale > 0``).
+        NumPy RNG used for all stochastic sampling (dk_geno, activity).
     activity_component : str, default ``"fixed"``
-        Registered activity component name (e.g. ``"horseshoe"``,
-        ``"hierarchical"``).  When ``"fixed"`` the existing
-        ``activity_wt`` / ``activity_mut_scale`` path is used unchanged.
-        For any other component, ``sample_activity_prior`` is called and
-        ``activity_wt`` / ``activity_mut_scale`` / ``rng`` are ignored for
-        the activity draw.
-    activity_rng_key : jax.random.PRNGKey or None
-        Seed for prior-predictive activity sampling when
-        ``activity_component != "fixed"``.  Defaults to
-        ``jax.random.PRNGKey(0)`` if not provided.
+        Activity distribution to use.  One of ``"fixed"``, ``"horseshoe"``,
+        or ``"hierarchical"``.  When ``"fixed"``, ``activity_wt`` and
+        ``activity_mut_scale`` control the draw; the other two components
+        are pure-numpy implementations of the matching tfmodel priors and
+        ignore ``activity_wt`` / ``activity_mut_scale``.
     activity_priors_overrides : dict or None
-        Key-value overrides applied to the activity component's
-        ``get_hyperparameters()`` before sampling.  Ignored when
-        ``activity_component == "fixed"``.
+        Hyperparameter overrides forwarded to the horseshoe or hierarchical
+        sampler.  Keys and defaults:
+
+        * ``"horseshoe"``     — ``global_scale_tau_scale`` (default 0.1)
+        * ``"hierarchical"``  — ``hyper_loc_loc`` (0.0),
+          ``hyper_loc_scale`` (0.01), ``hyper_scale_loc`` (0.1)
+
+        Ignored when ``activity_component == "fixed"``.
+    theta_rescale : str, default ``"passthrough"``
+        Transformation applied to theta before it is passed to the growth
+        model.  Mirrors the ``theta_rescale`` component in ``tfmodel``.
+        ``"passthrough"`` leaves theta in (0, 1); ``"logit"`` maps theta to
+        the logit scale ``log(θ/(1−θ))``.  The ``"theta"`` column in
+        ``phenotype_df`` and ``genotype_theta_df`` always store the
+        pre-rescale (0–1) value.
 
     Returns
     -------
@@ -200,6 +323,12 @@ def thermo_to_growth(
 
     if rng is None:
         rng = np.random.default_rng()
+
+    if theta_rescale not in _THETA_RESCALE:
+        raise ValueError(
+            f"theta_rescale '{theta_rescale}' not recognized. "
+            f"It should be one of: {list(_THETA_RESCALE.keys())}"
+        )
 
     # ── Sort genotypes and sample_df in a stereotyped way ────────────────────
 
@@ -226,6 +355,13 @@ def thermo_to_growth(
     )
 
     print("Done.", flush=True)
+
+    # ── Apply logit-normal noise to theta ─────────────────────────────────────
+    if theta_noise_sigma_logit > 0.0:
+        theta_safe = np.clip(theta_gc, 1e-6, 1.0 - 1e-6)
+        logit_theta = np.log(theta_safe / (1.0 - theta_safe))
+        epsilon = rng.normal(0.0, theta_noise_sigma_logit, size=theta_gc.shape)
+        theta_gc = 1.0 / (1.0 + np.exp(-(logit_theta + epsilon)))
 
     # ── Build genotype_theta_df (ground-truth parameters for comparison) ─────
     # Wide form: rows = genotypes (in sim_data order), cols = concentrations.
@@ -289,20 +425,21 @@ def thermo_to_growth(
     )
     phenotype_df["dk_geno"] = phenotype_df["genotype"].map(genotype_dk_geno_series)
 
-    if activity_component != "fixed":
-        import jax
-        if activity_rng_key is None:
-            activity_rng_key = jax.random.PRNGKey(0)
-        # sample_activity_prior returns activities in sim_data (all_genotypes)
-        # order; reindex to unique_genotypes order via unique_sim_indices.
-        raw_activity = sample_activity_prior(
-            activity_component, sim_data, activity_rng_key,
-            activity_priors_overrides,
+    if activity_component not in _ACTIVITY_COMPONENTS:
+        raise ValueError(
+            f"activity_component '{activity_component}' not recognized. "
+            f"Must be one of: {sorted(_ACTIVITY_COMPONENTS)}"
         )
-        genotype_activity_series = pd.Series(
-            raw_activity[unique_sim_indices], index=unique_genotypes
+
+    if activity_component == "horseshoe":
+        genotype_activity_series = _sample_horseshoe_activity(
+            unique_genotypes, params=activity_priors_overrides, rng=rng,
         )
-    else:
+    elif activity_component == "hierarchical":
+        genotype_activity_series = _sample_hierarchical_activity(
+            unique_genotypes, params=activity_priors_overrides, rng=rng,
+        )
+    else:  # "fixed"
         genotype_activity_series = _assign_activity(
             unique_genotypes, activity_wt=activity_wt,
             activity_mut_scale=activity_mut_scale, rng=rng,
@@ -323,12 +460,14 @@ def thermo_to_growth(
     theta = phenotype_df["theta"].to_numpy()
     activity = phenotype_df["activity"].to_numpy()
 
+    growth_theta = _THETA_RESCALE[theta_rescale](theta)
+
     k_pre = _apply_growth_params(phenotype_df["condition_pre"].to_numpy(),
-                                 theta, growth_params, activity_array=activity)
+                                 growth_theta, growth_params, activity_array=activity)
     phenotype_df["k_pre"] = k_pre + phenotype_df["dk_geno"].to_numpy()
 
     k_sel = _apply_growth_params(phenotype_df["condition_sel"].to_numpy(),
-                                 theta, growth_params, activity_array=activity)
+                                 growth_theta, growth_params, activity_array=activity)
     phenotype_df["k_sel"] = k_sel + phenotype_df["dk_geno"].to_numpy()
 
     # ── Final column ordering ─────────────────────────────────────────────────
