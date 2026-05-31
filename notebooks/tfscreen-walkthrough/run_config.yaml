@@ -1,4 +1,7 @@
 
+# -----------------------------------------------------------------------------
+# Library genetic information
+# -----------------------------------------------------------------------------
 
 # Reading frame 0, 1, 2. no reverse (negative) allowed.
 reading_frame: 0
@@ -13,9 +16,9 @@ wt_seq: gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatggcggagctgaattacattcccaac
 degen_sites: ......nntnnt.............................................................................................nntnnt.........................................................................................................
 #......nntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnnt......nntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnnt
 
-# sub_libraries defines blocks of contiguous library components cloned in 
+# sub_libraries defines blocks of contiguous library components cloned in
 # together. '.' indicates wildtype sequence; each unique character beside '.'
-# defines a unique sub-library. These must be contiguous (...111... is okay, 
+# defines a unique sub-library. These must be contiguous (...111... is okay,
 # ...11.1... is not)
 sub_libraries: ......111111.............................................................................................222222.........................................................................................................
 #......111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111......222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222
@@ -32,7 +35,7 @@ expected_3p: gtagaacgaagcggc
 library_combos: ["single-1","single-2","double-1-2"]
 
 # These are sequences that are not part of the library that we include as controls
-# etc. 
+# etc.
 spiked_seqs:
 - gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatggcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctggcggcgccgtcgcaaattgtcgcggcgattctgtctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg
 - gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgattgcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctggcggcgccgtcgcaaattgtcgcggcgattctgtctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg
@@ -44,7 +47,7 @@ spiked_seqs:
 # -----------------------------------------------------------------------------
 
 # -----------------------------------------------------------------------------
-# Ensemble 
+# Ensemble
 
 ###### MWC microscopic dimer ########
 ## BEST GUESS FOR MODEL
@@ -94,7 +97,7 @@ observable_calc_kwargs:
 #   e_name: "iptg"  # name of effector in conditions. (only one allowed)
 
 ###### linkage microscopic dimer ########
-## Historical linkage model. 
+## Historical linkage model.
 # observable_calculator: "lac"
 # observable_calc_kwargs:
 #   T: 310       # K
@@ -164,7 +167,7 @@ condition_blocks:
     t_sel: [160, 180, 200]
 
   - library: "kanR"
-    titrant_name: "iptg" 
+    titrant_name: "iptg"
     titrant_conc: [0.01, 0.03, 0.1, 1.0]
     condition_pre: "kanR-kan"
     t_pre: 30
@@ -182,24 +185,21 @@ condition_blocks:
 # -----------------------------------------------------------------------------
 # Phenotype calculation parameters
 
-# Describes how bacteria grow under different conditions as a function of 
+# Describes how bacteria grow under different conditions as a function of
 # operator occupancy
-calibration_file: "2025-12-13_calibration.json" 
+calibration_file: "2025-12-13_calibration.json"
 
-# We assign effects on intrinsic growth rate using a gamma distribution. We use
-# the formula mut_growth = wt_growth + (scale/2 - Gamma(shape,scale)). This
-# distribution will have a short right tail of variants that grow faster than 
-# wildtype and a long left tail of variants that grow slower. Increasing 
-# mut_growth_rate_scale simultaneously increases the number of genotypes with
-# super low and super high growth rates, interfering with the inference. The 
-# default values of (3, 0.002) cause 0.2% of variants have negative growth rates 
-# and 1.4% grow faster than wildtype. The fastest grower will have a growth 
-# rate 5% faster than wildtype. A shape parameter of 0.02 will cause 81% of 
-# variants to have a negative growth rate, and the fastest grower to grow 50%
-# faster than wildtype. A value of 0.0002 will have no dead phenotypes and a 
-# a fastest genotype that is 0.4% faster than wildtype. 
-mut_growth_rate_shape: 3  
-mut_growth_rate_scale: 0.002
+# Per-genotype pleiotropic growth cost is sampled from a shifted lognormal:
+#
+#   dk_geno = hyper_shift - exp(Normal(hyper_loc, hyper_scale))
+#
+# so the distribution is centered slightly below zero (most genotypes are
+# mildly deleterious) with a short right tail capped at hyper_shift.
+# Increasing hyper_scale widens the distribution in both directions.
+# These parameters match the hierarchical tfmodel inference prior.
+dk_geno_hyper_loc: -3.5
+dk_geno_hyper_scale: 1.0
+dk_geno_hyper_shift: 0.02
 
 # -----------------------------------------------------------------------------
 # Experimental simulation information
@@ -225,46 +225,77 @@ library_mixture:
   spiked: 1
 
 # sigma value to give to log normal distribution for generating genotype
-# frequencies in the library. 0 gives an even distribution; higher numbers 
-# give greater skew (meaning some genotypes have very high frequency). 
-# 1-2 is a good guess for a real library. 
+# frequencies in the library. 0 gives an even distribution; higher numbers
+# give greater skew (meaning some genotypes have very high frequency).
+# 1-2 is a good guess for a real library.
 lib_assembly_skew_sigma: 1.5
 
-# The number of plasmids per cell is set by sampling from a Poisson
-# distribution. If 0 or None, each cell gets exactly one plasmid. Otherwise,
-# do Poisson sampling. 
+# The number of plasmids per cell is set by sampling from a zero-truncated
+# Poisson distribution with this lambda. If 0 or None, each cell gets exactly
+# one plasmid.
 transformation_poisson_lambda: 1.5
 
-# If there are multiple plasmids in a cell, this indicates how to add up their
-# effect given different libraries. Possible values are `min`, `max`, `mean`, 
-# and `gmean` (geometric mean). We recommend assigning based on occupancy. For
-# a repressor of an antibiotic resistance gene, we'd recommend `min`. This says
-# take the growth rate of the plasmid with the *lowest* growth rate, corresponding
-# to the repressor with the strongest binding to the operator, and thus the 
-# lowest resistance. For an inducer of antibiotic resistance, we'd recommend 
-# `max`. The keys should match the keys in 'library' in the phenotype_df. If
-# this is not specified, us "mean" for all libraries. 
+# How to combine growth rates when a cell contains multiple plasmids. Valid
+# options are: min, max, mean, gmean, sum. Keys must match the library names
+# in condition_blocks. If this key is omitted, "mean" is used for all
+# libraries. For a repressor of an antibiotic resistance gene we recommend
+# "min" (the tightest-binding plasmid dominates). For an inducer of antibiotic
+# resistance we recommend "max".
 multi_plasmid_combine_fcn:
   kanR: "min"
   pheS: "max"
 
-# cfu/mL at start of pre-growth 
+# cfu/mL at start of pre-growth
 cfu0: 6.5e7
 
-# percent noise to apply to all growth rates. (growth_noise*base_value is
-# the standard deviation of the random normal distribution to sample). This
-# is the underlying rep-to-rep variability. 
-growth_rate_noise: 0.01
+# Per-tube environmental growth-rate noise (hr⁻¹).  Each physical tube gets its
+# own delta_k ~ Normal(0, tube_noise_sigma); the kt contribution per tube is
+# delta_k * (t_pre + t_sel), shared by all genotypes in that tube.
+# Set to 0 or null to disable.
+tube_noise_sigma: 0.002
+
+# -----------------------------------------------------------------------------
+# Growth transition model
+
+# When bacteria switch from pre-selection to selection medium there is a lag
+# before they reach their new growth rate. The simulation can model this with
+# the "memory" model:
+#
+#   tau = tau0 + k1 / (theta + k2)
+#
+# where theta is operator occupancy (0–1), tau is the lag time (minutes),
+# tau0 is a baseline lag independent of occupancy, k1 scales the
+# occupancy-dependence of the lag, and k2 prevents division by zero (must
+# be > 0). Bacteria grow at k_pre for the first min(t_sel, tau) minutes of
+# selection, then switch to k_sel.
+#
+# Higher theta (more TF bound) reduces tau when k1 > 0, meaning bacteria
+# with higher occupancy adapt more quickly.
+#
+# Every condition_pre that appears in condition_blocks must have an entry
+# here. Use model: "instant" for conditions where no lag is observed.
+#
+# Omit this block entirely to use an instant transition everywhere.
+growth_transition:
+  - condition_pre: "pheS-4CP"
+    model: "memory"
+    tau0: 90.0    # baseline lag ~90 min; pheS shows a pronounced memory effect
+    k1: 5.0       # occupancy has a strong influence on lag for pheS
+    k2: 0.2       # keeps denominator finite; sets the curvature near theta=0
+
+  - condition_pre: "kanR-kan"
+    model: "memory"
+    tau0: 60.0    # shorter baseline lag for kanR
+    k1: 2.0       # weaker occupancy-dependence than pheS
+    k2: 0.2
 
 # -----------------------------------------------------------------------------
 # Data collection parameters
 
 # Total number of reads coming out of the experiment
-total_num_reads: 2.5e7 
+total_num_reads: 2.5e7
 
-# number of reads that should be re-assigned a resampled genotype after the
-# initial sampling (index-hopping/read bleedthrough)
+# Fraction of sequencing reads to re-assign to a randomly chosen genotype,
+# simulating index hopping / read bleedthrough between samples. Set to None
+# or 0 to disable.
 prob_index_hop: 0.05
-
-
-

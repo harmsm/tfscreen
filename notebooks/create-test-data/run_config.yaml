@@ -190,20 +190,17 @@ condition_blocks:
 # operator occupancy
 calibration_file: "2025-12-13_calibration.json" 
 
-# We assign effects on intrinsic growth rate using a gamma distribution. We use
-# the formula mut_growth = wt_growth + (scale/2 - Gamma(shape,scale)). This
-# distribution will have a short right tail of variants that grow faster than 
-# wildtype and a long left tail of variants that grow slower. Increasing 
-# mut_growth_rate_scale simultaneously increases the number of genotypes with
-# super low and super high growth rates, interfering with the inference. The 
-# default values of (3, 0.002) cause 0.2% of variants have negative growth rates 
-# and 1.4% grow faster than wildtype. The fastest grower will have a growth 
-# rate 5% faster than wildtype. A shape parameter of 0.02 will cause 81% of 
-# variants to have a negative growth rate, and the fastest grower to grow 50%
-# faster than wildtype. A value of 0.0002 will have no dead phenotypes and a 
-# a fastest genotype that is 0.4% faster than wildtype. 
-mut_growth_rate_shape: 3  
-mut_growth_rate_scale: 0.002
+# Per-genotype pleiotropic growth cost is sampled from a shifted lognormal:
+#
+#   dk_geno = hyper_shift - exp(Normal(hyper_loc, hyper_scale))
+#
+# so the distribution is centered slightly below zero (most genotypes are
+# mildly deleterious) with a short right tail capped at hyper_shift.
+# Increasing hyper_scale widens the distribution in both directions.
+# These parameters match the hierarchical tfmodel inference prior.
+dk_geno_hyper_loc: -3.5
+dk_geno_hyper_scale: 1.0
+dk_geno_hyper_shift: 0.02
 
 # -----------------------------------------------------------------------------
 # Experimental simulation information
@@ -255,10 +252,8 @@ multi_plasmid_combine_fcn:
 # cfu/mL at start of pre-growth 
 cfu0: 6.5e7
 
-# percent noise to apply to all growth rates. (growth_noise*base_value is
-# the standard deviation of the random normal distribution to sample). This
-# is the underlying rep-to-rep variability. 
-growth_rate_noise: 0.01
+# Per-tube environmental growth-rate noise (hr⁻¹).
+tube_noise_sigma: 0.002
 
 # -----------------------------------------------------------------------------
 # Data collection parameters
