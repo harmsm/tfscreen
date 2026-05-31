@@ -19,7 +19,9 @@ class ModelPriors:
     k1_loc, k1_scale : float
         Normal prior parameters for per-condition memory coefficient k1.
     k2_loc, k2_scale : float
-        Normal prior parameters for per-condition memory offset k2.
+        Normal prior parameters for log(k2). The offset k2 = exp(Normal(k2_loc,
+        k2_scale)), enforcing k2 > 0 so the denominator (theta + k2) is always
+        positive.
     """
     tau0_loc: float
     tau0_scale: float
@@ -74,21 +76,16 @@ def define_model(name: str,
         k1_per_condition = pyro.sample(
             f"{name}_k1", dist.Normal(priors.k1_loc, priors.k1_scale)
         )
-        k2_per_condition = pyro.sample(
+        ln_k2_per_condition = pyro.sample(
             f"{name}_k2", dist.Normal(priors.k2_loc, priors.k2_scale)
         )
+    k2_per_condition = jnp.exp(ln_k2_per_condition)
 
     tau0_expanded = tau0_per_condition[data.map_condition_pre]
     k1_expanded = k1_per_condition[data.map_condition_pre]
     k2_expanded = k2_per_condition[data.map_condition_pre]
 
-    # Clamp denominator away from zero so neither the forward pass nor the
-    # backward pass produces inf/NaN.  jnp.where evaluates both branches in
-    # the backward pass, so a bare division by near-zero produces inf
-    # gradients even when the condition masks it out.
-    denom = theta + k2_expanded
-    safe_denom = jnp.where(jnp.abs(denom) > 1e-6, denom, jnp.sign(denom + 1e-30) * 1e-6)
-    tau = tau0_expanded + (k1_expanded / safe_denom)
+    tau = tau0_expanded + (k1_expanded / (theta + k2_expanded))
 
     dln_cfu_pre = g_pre * t_pre
     dln_cfu_sel = jnp.where(
@@ -136,18 +133,17 @@ def guide(name: str,
             f"{name}_k1",
             dist.Normal(k1_locs[..., idx], k1_scales[..., idx])
         )
-        k2_per_condition = pyro.sample(
+        ln_k2_per_condition = pyro.sample(
             f"{name}_k2",
             dist.Normal(k2_locs[..., idx], k2_scales[..., idx])
         )
+    k2_per_condition = jnp.exp(ln_k2_per_condition)
 
     tau0_expanded = tau0_per_condition[data.map_condition_pre]
     k1_expanded = k1_per_condition[data.map_condition_pre]
     k2_expanded = k2_per_condition[data.map_condition_pre]
 
-    denom = theta + k2_expanded
-    safe_denom = jnp.where(jnp.abs(denom) > 1e-6, denom, jnp.sign(denom + 1e-30) * 1e-6)
-    tau = tau0_expanded + (k1_expanded / safe_denom)
+    tau = tau0_expanded + (k1_expanded / (theta + k2_expanded))
 
     dln_cfu_pre = g_pre * t_pre
     dln_cfu_sel = jnp.where(
@@ -164,12 +160,12 @@ def get_hyperparameters() -> Dict[str, Any]:
     Get default values for the model hyperparameters.
     """
     return {
-        "tau0_loc": 100.0, # takes about 100 minutes to turn over
-        "tau0_scale": 50.0,
+        "tau0_loc": 45.0,  # ~1.5 doubling times for E. coli (~30 min each)
+        "tau0_scale": 20.0,
         "k1_loc": 1.0,
-        "k1_scale": 10.0, # no strong constraints on k_2
-        "k2_loc": 1.0,
-        "k2_scale": 10.0, # no strong constraints on k2
+        "k1_scale": 10.0,  # no strong constraints on k1
+        "k2_loc": 0.0,     # log-space: exp(0) = 1.0 in natural scale
+        "k2_scale": 1.0,   # log-space: 2σ range ≈ exp(±2) = [0.14, 7.4]
     }
 
 
@@ -181,11 +177,11 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
     _DEFAULT_SCALE = 1.0
 
     return {
-        f"{name}_tau0_locs": jnp.full(num_cond_rep, 100.0),
-        f"{name}_tau0_scales": jnp.full(num_cond_rep, 100.0),
-        f"{name}_k1_locs": jnp.full(num_cond_rep,1.0),
+        f"{name}_tau0_locs": jnp.full(num_cond_rep, 45.0),
+        f"{name}_tau0_scales": jnp.full(num_cond_rep, 20.0),
+        f"{name}_k1_locs": jnp.full(num_cond_rep, 1.0),
         f"{name}_k1_scales": jnp.full(num_cond_rep, _DEFAULT_SCALE),
-        f"{name}_k2_locs": jnp.full(num_cond_rep, 1.0),
+        f"{name}_k2_locs": jnp.full(num_cond_rep, 0.0),
         f"{name}_k2_scales": jnp.full(num_cond_rep, _DEFAULT_SCALE),
     }
 

@@ -1904,10 +1904,6 @@
 ./src/tfscreen/tfmodel/generative/components/growth_transition/instant.py:54:28: W291 trailing whitespace
 ./src/tfscreen/tfmodel/generative/components/growth_transition/instant.py:74:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/tfmodel/generative/components/growth_transition/instant.py:80:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/tfmodel/generative/components/growth_transition/memory.py:167:27: E261 at least two spaces before inline comment
-./src/tfscreen/tfmodel/generative/components/growth_transition/memory.py:170:26: E261 at least two spaces before inline comment
-./src/tfscreen/tfmodel/generative/components/growth_transition/memory.py:172:26: E261 at least two spaces before inline comment
-./src/tfscreen/tfmodel/generative/components/growth_transition/memory.py:186:49: E231 missing whitespace after ','
 ./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:40:20: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:41:21: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:42:17: E221 multiple spaces before operator
@@ -5221,29 +5217,34 @@
 ./tests/tfscreen/process_raw/test_process_fastq.py:357:1: W293 blank line contains whitespace
 ./tests/tfscreen/process_raw/test_process_fastq.py:360:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/process_raw/test_process_fastq.py:368:78: W292 no newline at end of file
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:53:32: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:63:32: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:76:32: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:83:31: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:85:31: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:93:15: E221 multiple spaces before operator
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:94:33: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:101:32: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:122:32: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:138:32: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:148:32: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:159:32: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:166:28: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:168:28: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:178:32: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:410:51: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:449:33: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:452:32: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:467:32: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:473:28: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:475:28: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:485:32: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/growth/test_transition_linkage.py:490:53: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:60:32: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:70:32: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:83:32: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:90:31: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:92:31: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:100:15: E221 multiple spaces before operator
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:101:33: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:108:32: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:129:32: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:145:32: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:155:32: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:166:32: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:173:28: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:175:28: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:185:32: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:417:51: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:456:33: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:459:32: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:474:32: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:480:28: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:482:28: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:492:32: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:497:53: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:564:14: E221 multiple spaces before operator
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:565:14: E221 multiple spaces before operator
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:566:14: E221 multiple spaces before operator
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:567:14: E221 multiple spaces before operator
+./tests/tfscreen/simulate/growth/test_transition_linkage.py:568:14: E221 multiple spaces before operator
 ./tests/tfscreen/simulate/test_build_sample_dataframes.py:9:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/simulate/test_build_sample_dataframes.py:33:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/simulate/test_build_sample_dataframes.py:52:1: W293 blank line contains whitespace
@@ -5605,11 +5606,11 @@
 ./tests/tfscreen/tfmodel/components/growth_transition/test_instant.py:47:1: W293 blank line contains whitespace
 ./tests/tfscreen/tfmodel/components/growth_transition/test_instant.py:49:1: W293 blank line contains whitespace
 ./tests/tfscreen/tfmodel/components/growth_transition/test_instant.py:51:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/components/growth_transition/test_memory.py:98:10: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/components/growth_transition/test_memory.py:99:10: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/components/growth_transition/test_memory.py:100:10: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/components/growth_transition/test_memory.py:101:10: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/components/growth_transition/test_memory.py:102:10: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/components/growth_transition/test_memory.py:103:10: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/components/ln_cfu0/test_hierarchical.py:5:1: F401 'numpyro' imported but unused
 ./tests/tfscreen/tfmodel/components/ln_cfu0/test_hierarchical.py:6:1: F401 'numpyro.distributions as dist' imported but unused
 ./tests/tfscreen/tfmodel/components/ln_cfu0/test_hierarchical.py:38:35: E261 at least two spaces before inline comment
@@ -7730,13 +7731,13 @@
 28    E202 whitespace before ']'
 5     E203 whitespace before ','
 5     E211 whitespace before '('
-1703  E221 multiple spaces before operator
+1708  E221 multiple spaces before operator
 26    E222 multiple spaces after operator
 8     E225 missing whitespace around operator
-1096  E231 missing whitespace after ','
+1095  E231 missing whitespace after ','
 79    E251 unexpected spaces around keyword / parameter equals
 14    E252 missing whitespace around parameter equals
-229   E261 at least two spaces before inline comment
+226   E261 at least two spaces before inline comment
 1     E262 inline comment should start with '# '
 2     E265 block comment should start with '# '
 2     E266 too many leading '#' for block comment
@@ -7764,4 +7765,4 @@
 91    W292 no newline at end of file
 1722  W293 blank line contains whitespace
 29    W391 blank line at end of file
-7717
+7718

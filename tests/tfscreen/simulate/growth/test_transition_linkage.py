@@ -1,12 +1,19 @@
 import pytest
 import numpy as np
 from scipy.integrate import quad
+from unittest.mock import MagicMock
+import jax.numpy as jnp
+from numpyro.handlers import substitute
 
 from tfscreen.tfmodel.generative.components.growth_transition._baranyi import (
     compute_growth as _baranyi_compute_growth,
 )
 from tfscreen.tfmodel.generative.components.growth_transition.two_pop import (
     _compute_growth as _two_pop_compute_growth,
+)
+from tfscreen.tfmodel.generative.components.growth_transition.memory import (
+    define_model as _memory_define_model,
+    get_priors as _memory_get_priors,
 )
 from tfscreen.simulate.growth.transition_linkage import (
     InstantTransition,
@@ -502,6 +509,87 @@ class TestBaranyiTauTransition:
         sim = BaranyiTauTransition().compute_kt(k_pre, k_sel, t_pre, t_sel,
                                                 tau_0=tau_0, k0=k0, k=k_sharp)
         np.testing.assert_allclose(sim, ref, rtol=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# MemoryTransition cross-validation against tfmodel define_model
+# ---------------------------------------------------------------------------
+
+class TestMemoryAgreementWithInference:
+    """
+    MemoryTransition.compute_kt (numpy, natural-scale params) must produce the
+    same numbers as the inference define_model (JAX) when the log-space sample
+    site gt_k2 is set to log(k2).
+    """
+
+    def _make_mock_data(self, n_obs):
+        data = MagicMock()
+        data.num_condition_rep = 1
+        data.map_condition_pre = jnp.zeros((n_obs,), dtype=int)
+        return data
+
+    @pytest.mark.parametrize("tau0,k1,k2,theta,t_sel", [
+        (50.0,  1.0, 1.0, 0.5,  100.0),
+        (45.0, 10.0, 2.0, 0.1,  200.0),
+        (30.0,  5.0, 0.5, 0.9,   60.0),
+        (80.0,  0.0, 1.0, 0.0,  150.0),   # k1=0: tau = tau0 regardless of k2
+    ])
+    def test_scalar_agreement(self, tau0, k1, k2, theta, t_sel):
+        k_pre, k_sel, t_pre = 0.1, 0.5, 30.0
+
+        sim = MemoryTransition().compute_kt(
+            k_pre, k_sel, t_pre, t_sel, theta=theta,
+            tau0=tau0, k1=k1, k2=k2,
+        )
+
+        mock_data = self._make_mock_data(1)
+        subs = {
+            "gt_tau0": jnp.array([tau0]),
+            "gt_k1":   jnp.array([k1]),
+            "gt_k2":   jnp.array([float(np.log(k2))]),   # inference site is ln_k2
+        }
+        priors = _memory_get_priors()
+        inf = substitute(_memory_define_model, data=subs)(
+            name="gt", data=mock_data, priors=priors,
+            g_pre=jnp.array([k_pre]),
+            g_sel=jnp.array([k_sel]),
+            t_pre=jnp.array([t_pre]),
+            t_sel=jnp.array([t_sel]),
+            theta=jnp.array([theta]),
+        )
+        np.testing.assert_allclose(float(inf[0]), sim, rtol=1e-6)
+
+    def test_vector_agreement(self):
+        tau0, k1, k2 = 50.0, 5.0, 1.5
+        k_pre  = np.array([0.1, 0.2])
+        k_sel  = np.array([0.5, 0.3])
+        t_pre  = np.array([30.0, 40.0])
+        t_sel  = np.array([100.0, 80.0])
+        theta  = np.array([0.3, 0.7])
+
+        sim = MemoryTransition().compute_kt(
+            k_pre, k_sel, t_pre, t_sel, theta=theta,
+            tau0=tau0, k1=k1, k2=k2,
+        )
+
+        mock_data = MagicMock()
+        mock_data.num_condition_rep = 1
+        mock_data.map_condition_pre = jnp.zeros((2,), dtype=int)
+        subs = {
+            "gt_tau0": jnp.array([tau0]),
+            "gt_k1":   jnp.array([k1]),
+            "gt_k2":   jnp.array([float(np.log(k2))]),
+        }
+        priors = _memory_get_priors()
+        inf = substitute(_memory_define_model, data=subs)(
+            name="gt", data=mock_data, priors=priors,
+            g_pre=jnp.array(k_pre),
+            g_sel=jnp.array(k_sel),
+            t_pre=jnp.array(t_pre),
+            t_sel=jnp.array(t_sel),
+            theta=jnp.array(theta),
+        )
+        np.testing.assert_allclose(np.array(inf), sim, rtol=1e-6)
 
 
 class TestRegistryCompleteness:

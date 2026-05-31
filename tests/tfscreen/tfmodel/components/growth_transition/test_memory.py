@@ -84,15 +84,16 @@ def test_define_model_piecewise_logic(mock_data):
     """
     When t_sel < tau, growth = g_pre*t_pre + g_pre*t_sel.
     When t_sel >= tau, growth = g_pre*t_pre + g_pre*tau + g_sel*(t_sel-tau).
+    k1=0 so tau = tau0 regardless of k2; gt_k2 site holds ln_k2 (log-space).
     """
     mock_data.num_condition_rep = 1
     mock_data.map_condition_pre = jnp.zeros((2,), dtype=int)
 
-    # tau = tau0 + k1/(theta+k2) = 5 + 0 = 5
+    # tau = tau0 + k1/(theta+k2) = 5 + 0 = 5; ln_k2=0 → k2=1 (irrelevant since k1=0)
     subs = {
         "gt_tau0": jnp.array([5.0]),
         "gt_k1":   jnp.array([0.0]),
-        "gt_k2":   jnp.array([1.0]),
+        "gt_k2":   jnp.array([0.0]),   # log-space: exp(0) = 1.0
     }
 
     g_pre  = jnp.array([1.0, 1.0])
@@ -111,6 +112,61 @@ def test_define_model_piecewise_logic(mock_data):
     expected_1 = 1.0 * 10.0 + 1.0 * 5.0 + 2.0 * (8.0 - 5.0)  # t_sel >= tau
     assert jnp.allclose(result[0], expected_0, atol=1e-5)
     assert jnp.allclose(result[1], expected_1, atol=1e-5)
+
+
+def test_define_model_k2_always_positive(mock_data):
+    """k2 = exp(sampled ln_k2) must be positive regardless of the raw sample value."""
+    mock_data.num_condition_rep = 1
+    mock_data.map_condition_pre = jnp.zeros((2,), dtype=int)
+
+    g_pre = jnp.array([1.0, 1.0])
+    g_sel = jnp.array([0.5, 0.5])
+    t_pre = jnp.array([10.0, 10.0])
+    t_sel = jnp.array([20.0, 20.0])
+    theta = jnp.array([0.5, 0.5])
+
+    # Substitute a large-negative ln_k2 (would give near-zero k2 in natural scale)
+    # and a large-positive one; both should yield finite, positive tau.
+    for ln_k2_val in [-5.0, -1.0, 0.0, 2.0, 5.0]:
+        subs = {
+            "gt_tau0": jnp.array([45.0]),
+            "gt_k1":   jnp.array([1.0]),
+            "gt_k2":   jnp.array([ln_k2_val]),
+        }
+        priors = get_priors()
+        result = substitute(define_model, data=subs)(
+            name="gt", data=mock_data, priors=priors,
+            g_pre=g_pre, g_sel=g_sel, t_pre=t_pre, t_sel=t_sel, theta=theta,
+        )
+        assert jnp.all(jnp.isfinite(result)), f"non-finite result for ln_k2={ln_k2_val}"
+
+
+def test_define_model_theta_dependence_via_k2(mock_data):
+    """Higher theta shortens tau (with k1>0, k2>0), giving more time at g_sel."""
+    mock_data.num_condition_rep = 1
+    mock_data.map_condition_pre = jnp.zeros((2,), dtype=int)
+
+    # tau0=50, k1=10, ln_k2=0 (k2=1)
+    # theta=0.1: tau = 50 + 10/(0.1+1) ≈ 59.1  → t_sel=200 > tau
+    # theta=0.9: tau = 50 + 10/(0.9+1) ≈ 55.3  → t_sel=200 > tau
+    # Higher theta → shorter tau → more time at faster g_sel=0.5 > g_pre=0.1
+    subs = {
+        "gt_tau0": jnp.array([50.0]),
+        "gt_k1":   jnp.array([10.0]),
+        "gt_k2":   jnp.array([0.0]),   # ln_k2=0 → k2=1
+    }
+    g_pre = jnp.array([0.1, 0.1])
+    g_sel = jnp.array([0.5, 0.5])
+    t_pre = jnp.array([30.0, 30.0])
+    t_sel = jnp.array([200.0, 200.0])
+    theta = jnp.array([0.1, 0.9])
+
+    priors = get_priors()
+    result = substitute(define_model, data=subs)(
+        name="gt", data=mock_data, priors=priors,
+        g_pre=g_pre, g_sel=g_sel, t_pre=t_pre, t_sel=t_sel, theta=theta,
+    )
+    assert result[1] > result[0], "higher theta should yield more growth when g_sel > g_pre"
 
 
 def test_guide_structure(mock_data):
