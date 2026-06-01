@@ -2,80 +2,36 @@
 tfscreen
 ========
 
-Library for simulating and analyzing high-throughput screens of transcription
-factor function.
+`tfscreen` is a Python library for simulating and analyzing high-throughput screens of transcription
+factor (TF) function. It is designed to infer the energetic effects of mutations on conformations
+in the TF energy landscape — information that enables interpretable predictive models of how
+arbitrary combinations of mutations affect the TF response curve (operator binding versus allosteric
+effector).
 
-Nomenclature
+The core strategy is to measure operator occupancy for thousands of double-mutant cycles across
+multiple allosteric effector concentrations. A single set of energetic effects must explain all
+measurements simultaneously, which resolves the per-conformation contribution of each mutation and
+separates epistasis from structural contacts (cycle-specific) from epistasis arising from
+redistribution of the energy landscape (shared across cycles).
+
+Occupancy is inferred from *E. coli* growth in a dual-marker selection scheme: *kanR* (kanamycin
+resistance, growth enhanced when expressed) and *pheS** (4-chloro-L-phenylalanine sensitivity,
+growth reduced when expressed) respond in opposite directions to a shift in occupancy. Libraries
+of TF variants are grown in different effector/selection combinations and variant frequencies are
+followed over time by direct sequencing. A hierarchical Bayesian model jointly fits the growth
+data and direct binding measurements, learning the relationship between occupancy and growth rate
+along the way.
+
+Documentation
+-------------
+
+Full documentation is available at https://tfscreen.readthedocs.io.
+
+Installation
 ------------
-+ *condition*: A growth condition defined by marker, selection, and iptg. A
-  genotype will have the same average growth rate in the same condition.
-+ *sample*: A tube growing under a specific growth condition. It is defined by
-  replicate, marker, selection, and iptg.
-+ *timepoint*: An aliquot of a given sample taken at a specific time. It is
-  defined by replicate, marker, selection, iptg, and time.
 
-Model naming conventions
-------------------------
+Clone the repository and install in editable mode::
 
-Model components are selected by name in the run configuration YAML.  The
-names follow a set of conventions that encode what each component does.
-
-**Level of parameterization**
-
-Models that infer one parameter per *genotype* carry a ``_geno`` suffix;
-models that decompose effects at the *mutation* level carry a ``_mut`` suffix.
-Models with no natural per-mutation alternative (e.g. ``fixed``) have no
-suffix.
-
-Examples: ``hierarchical_geno``, ``horseshoe_mut``, ``hill_geno``,
-``hill_mut``.
-
-**Thermodynamic theta models**
-
-Operator-occupancy (θ) models derived from an explicit partition function use
-a three-part dot-separated name::
-
-    thermo.{MODEL}.{PRIOR}
-
-*MODEL* encodes the partition-function topology with four fields separated by
-underscores:
-
-+-------+--------------------------------------------------------------------+
-| Field | Meaning                                                            |
-+=======+====================================================================+
-| ``O`` | Oligomeric state (e.g. ``O2`` = homodimer)                         |
-+-------+--------------------------------------------------------------------+
-| ``C`` | Number of conformational states                                     |
-+-------+--------------------------------------------------------------------+
-| ``K`` | Number of independent equilibrium constants                        |
-+-------+--------------------------------------------------------------------+
-| ``U`` | Unfolded state: ``U0`` = folded only, ``U1`` = folding equilibrium |
-+-------+--------------------------------------------------------------------+
-
-A trailing letter (``a``, ``b``, …) disambiguates topologically distinct
-models that share the same O/C/K/U counts.  These letters carry no ordering;
-``a`` simply means "first registered variant."
-
-Currently implemented models:
-
-+ ``O2_C4_K3_U0_a`` — four-state lac-repressor homodimer (no unfolding)
-+ ``O2_C4_K3_U1_a`` — same with an explicit folding/unfolding equilibrium
-+ ``O2_C12_K5_U0_a`` — full MWC two-state homodimer (no unfolding)
-+ ``O2_C12_K5_U1_a`` — same with an explicit folding/unfolding equilibrium
-
-*PRIOR* describes how the equilibrium constants are parameterized:
-
-+----------+--------------------------------------------------------------+
-| Name     | Description                                                  |
-+==========+==============================================================+
-| ``PK``   | Independent normal prior on each log-K                       |
-+----------+--------------------------------------------------------------+
-| ``PddG`` | Priors informed by estimated ΔΔG values                      |
-+----------+--------------------------------------------------------------+
-| ``PnnC`` | Neural network predicting per-conformation ΔΔG values        |
-+----------+--------------------------------------------------------------+
-| ``PnnK`` | Neural network predicting log-K values directly (planned)    |
-+----------+--------------------------------------------------------------+
-
-Full example names: ``thermo.O2_C4_K3_U0_a.PK``,
-``thermo.O2_C12_K5_U1_a.PnnC``.
+    git clone https://github.com/harmslab/tfscreen
+    cd tfscreen
+    pip install -e .

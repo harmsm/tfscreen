@@ -2,7 +2,7 @@
 LigandMPNN Features
 ===================
 
-Some tfscreen theta components (e.g. ``lac_dimer_nn_mut``) use per-position
+Some tfscreen theta components (e.g. ``thermo.O2_C4_K3_U0_a.PnnC``) use per-position
 log-probability features from `LigandMPNN
 <https://github.com/dauparas/LigandMPNN>`_ as structural inputs. These
 features are computed once — outside the main tfscreen environment — and

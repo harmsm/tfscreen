@@ -306,3 +306,76 @@ Additional noise components (default ``zero`` for all):
 * ``--theta_binding_noise_model``: ``zero`` (default), ``beta``
 * ``--growth_noise_model``: ``zero`` (default), ``normal_kt`` (learns a global
   growth-rate noise term *σ_k* in quadrature with *ln_cfu_std*)
+
+---
+
+.. _model-naming:
+
+Model Naming Conventions
+========================
+
+Model component names follow a set of conventions that encode what each component does.
+
+Level of Parameterisation
+--------------------------
+
+Models that infer one parameter per *genotype* carry a ``_geno`` suffix; models that
+decompose effects at the *mutation* level carry a ``_mut`` suffix. Models with no
+natural per-mutation alternative (e.g. ``fixed``) have no suffix.
+
+Examples: ``hierarchical_geno``, ``horseshoe_mut``, ``hill_geno``, ``hill_mut``.
+
+Thermodynamic Theta Models
+---------------------------
+
+Operator-occupancy (*θ*) models derived from an explicit partition function use a
+three-part dot-separated name::
+
+    thermo.{MODEL}.{PRIOR}
+
+*MODEL* encodes the partition-function topology with four underscore-separated fields:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 10 60
+
+   * - Field
+     - Meaning
+   * - ``O``
+     - Oligomeric state (e.g. ``O2`` = homodimer)
+   * - ``C``
+     - Number of conformational states
+   * - ``K``
+     - Number of independent equilibrium constants
+   * - ``U``
+     - Unfolded state: ``U0`` = folded only, ``U1`` = folding equilibrium
+
+A trailing letter (``a``, ``b``, …) disambiguates topologically distinct models
+that share the same O/C/K/U counts. These letters carry no ordering; ``a`` simply
+means "first registered variant."
+
+Currently implemented models:
+
+* ``O2_C4_K3_U0_a`` — four-state lac-repressor homodimer (no unfolding)
+* ``O2_C4_K3_U1_a`` — same with an explicit folding/unfolding equilibrium
+* ``O2_C12_K5_U0_a`` — full MWC two-state homodimer (no unfolding)
+* ``O2_C12_K5_U1_a`` — same with an explicit folding/unfolding equilibrium
+
+*PRIOR* describes how the equilibrium constants are parameterised:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 10 60
+
+   * - Name
+     - Description
+   * - ``PK``
+     - Independent normal prior on each log-*K*
+   * - ``PddG``
+     - Priors informed by estimated ΔΔG values
+   * - ``PnnC``
+     - Neural network predicting per-conformation ΔΔG values
+   * - ``PnnK``
+     - Neural network predicting log-*K* values directly (planned)
+
+Full example names: ``thermo.O2_C4_K3_U0_a.PK``, ``thermo.O2_C12_K5_U1_a.PnnC``.
