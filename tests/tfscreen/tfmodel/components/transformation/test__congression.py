@@ -38,7 +38,7 @@ def test_empirical_cdf():
     assert cdf.shape == (5,)
     assert cdf[0] == 0.16666667 # Interp 0.0 at 0.1 returns y[0]
     assert jnp.isclose(cdf[2], 0.5) # 0.5 is exactly in theta
-    assert cdf[4] == 0.8333333 # Interp 1.0 at 0.9 returns y[2]
+    assert jnp.isclose(cdf[4], 5/6, atol=1e-5) # Interp 1.0 at 0.9 returns y[2]
 
 
 # -------------------------------------------------------------------------

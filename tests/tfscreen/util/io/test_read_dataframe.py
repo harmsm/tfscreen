@@ -211,5 +211,5 @@ def test_genotype_as_index_not_categorized():
     df = pd.DataFrame({"genotype": ["wt", "A1T"], "value": [1, 2]})
     result = read_dataframe(df, index_column="genotype")
     assert result.index.name == "genotype"
-    # Index should be plain strings, not categorical
-    assert result.index.dtype == object
+    # Index should be plain strings, not categorical (dtype varies: object or StringDtype)
+    assert not isinstance(result.index.dtype, pd.CategoricalDtype)
