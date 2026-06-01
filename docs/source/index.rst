@@ -11,6 +11,7 @@ tfscreen
    simulation
    process-raw
    analysis
+   grid
    ligandmpnn-features
 
 Simulation
@@ -25,8 +26,12 @@ Analysis
 --------
 `tfscreen` provides robust statistical tools, including Bayesian hierarchical models, to extract biochemical parameters from screen data. See the :doc:`analysis` page for more details.
 
-Nomenclature
+Grid Setup
 ----------
+Both the simulation and model-fitting workflows support parameter sweeps via a grid mechanism. See the :doc:`grid` page for the grid YAML format and the ``tfs-setup-grid``, ``tfs-setup-sim-grid``, and ``tfs-summarize-grid`` commands.
+
+Nomenclature
+------------
 * **condition**: A growth condition defined by marker, selection, and iptg. A genotype will have the same average growth rate in the same condition.
 * **sample**: A tube growing under a specific growth condition. It is defined by replicate, marker, selection, and iptg.
 * **timepoint**: An aliquot of a given sample taken at a specific time. It is defined by replicate, marker, selection, iptg, and time.

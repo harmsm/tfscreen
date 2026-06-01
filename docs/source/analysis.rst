@@ -2,167 +2,307 @@
 Analysis
 ========
 
-The `tfscreen.analysis` module provides tools for extracting quantitative biochemical parameters from high-throughput screening data. The primary tool is a Bayesian hierarchical model that jointly fits growth and direct binding data.
+The ``tfscreen.tfmodel`` module provides a hierarchical Bayesian model that
+infers per-genotype and operator occupancy
+(*θ*) from bacterial growth data and direct binding measurements.
 
-Hierarchical Growth Model
-=========================
+Standard Workflow
+=================
 
-The hierarchical model allows for robust parameter estimation by sharing information across variants and conditions. It can account for experimental noise, transformation effects, and pleiotropic growth defects.
+A complete analysis run consists of the following steps. The example commands
+assume all input files are in the current working directory and use the
+default output-file naming convention (``tfs_configure_*``, ``tfs_fit_model_*``,
+etc.). The :download:`example run.srun <../../examples/tfmodel/run.srun>`
+shows a complete Slurm script for a cluster run.
 
-Input Requirements
-------------------
+Step 1: Configure Model (``tfs-configure-model``)
+--------------------------------------------------
 
-To run the analysis, you need two CSV or Excel files: one for growth data and one for optional direct binding data (e.g., from a separate assay).
+Validates the input data, maps categorical labels to numerical indices, selects
+model components, and writes three configuration files:
 
-Growth Data (``growth_df``)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
+* ``{out_prefix}_config.yaml`` — main configuration read by all downstream steps
+* ``{out_prefix}_priors.csv`` — prior distribution settings for all parameters
+* ``{out_prefix}_guesses.csv`` — initial-value guesses for array parameters
 
-The growth spreadsheet must contain the following columns:
-
-*   **genotype**: The name of the variant (e.g., "wt" or "A12V"). "wt" is used as the reference for activity and growth.
-*   **ln_cfu** (or **cfu**): The log-transformed colony forming units (or raw CFU counts).
-*   **ln_cfu_std** (or **cfu_std**): The standard deviation of the ``ln_cfu`` measurement.
-*   **t_pre**: Time (in hours) of the pre-selection outgrowth phase.
-*   **t_sel**: Time (in hours) of the selective growth phase.
-*   **condition_pre**: Name of the pre-selection condition.
-*   **condition_sel**: Name of the selection condition.
-*   **titrant_name**: Name of the chemical effector (e.g., "IPTG").
-*   **titrant_conc**: Concentration of the titrant.
-*   **replicate**: Replicate number (integer).
-
-Binding Data (``binding_df``)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Direct binding data (optional) helps constrain the occupancy parameters (theta). It must contain:
-
-*   **genotype**: The variant name (must match those in the growth data).
-*   **titrant_name**: Name of the titrant.
-*   **titrant_conc**: Concentration of the titrant.
-*   **theta_obs**: Observed fractional occupancy (0.0 to 1.0).
-*   **theta_std**: Standard deviation of the ``theta_obs`` measurement.
-
-Step 1: Configuration (``tfs-configure-model``)
------------------------------------------------
-
-The first step is to prepare the model configuration. This script validates your input files, maps categorical labels to numerical indices, and sets up the model components.
-
-**What it does:**
-
-*   Generates a ``tfs_config.yaml`` file containing all model settings.
-*   Creates ``tfs_priors.csv`` and ``tfs_guesses.csv`` for initial parameter values.
-
-**Usage:**
+``binding_df`` (direct binding measurements) is the only required argument.
+``growth_df`` is optional; omitting it configures a binding-only model.
 
 .. code-block:: bash
 
-    tfs-configure-model --growth_df library_growth.csv --binding_df binding_data.csv --out_root my_analysis
+    tfs-configure-model binding.csv \
+        --growth_df growth.csv \
+        --out_prefix tfs_configure
 
-Step 2: Inference (``tfs-fit-model``)
+Key component flags (see :ref:`model-components` for the full list):
+
+* ``--condition_growth_model`` — how growth rate depends on TF occupancy (default: ``linear``)
+* ``--growth_transition_model`` — pre-to-selection phase lag model (default: ``instant``)
+* ``--activity_model`` — per-genotype TF activity prior (default: ``horseshoe_geno``)
+* ``--theta_model`` — operator occupancy parameterisation (default: ``hill_geno``)
+* ``--dk_geno_model`` — pleiotropic growth-effect prior (default: ``hierarchical_geno``)
+* ``--transformation_model`` — multi-plasmid congression correction (default: ``empirical``)
+
+Step 2: Pre-fit Calibration (``tfs-prefit-calibration``)
+---------------------------------------------------------
+
+Runs a fast MAP fit on a simplified version of the model to calibrate the priors
+for the ``condition_growth`` and ``growth_transition`` components. The
+calibration fit is restricted to the intersection of genotypes and titrant
+conditions present in both the growth and binding data.
+
+After convergence the script updates the production ``{out_prefix}_priors.csv``
+and ``{out_prefix}_guesses.csv`` files in place (a ``.bak`` backup is written
+first), giving the full production fit a warm start. Diagnostic PDFs (one per
+genotype) and a ``{out_prefix}_calib_stats.json`` file are also written.
+
+.. code-block:: bash
+
+    tfs-prefit-calibration tfs_configure_config.yaml \
+        --seed 42 \
+        --convergence_tolerance 0.00001
+
+Step 3: Fit Model (``tfs-fit-model``)
 --------------------------------------
 
-This script performs the actual parameter estimation using the JAX-based inference engine. It supports both Stochastic Variational Inference (SVI) for full posterior estimation and Maximum A Posteriori (MAP) for faster point estimates.
+Performs the main parameter estimation. Three inference methods are available
+via ``--analysis_method``:
 
-**What it does:**
+* **map** — Maximum A Posteriori optimisation (Adam). Fast; produces a point
+  estimate. Use ``tfs-sample-posterior`` afterwards to obtain uncertainty
+  estimates via a Laplace approximation.
+* **svi** (default) — Stochastic Variational Inference. Automatically runs a
+  short MAP pre-pass (``--pre_map_num_epoch``) before the full variational fit.
+  Produces a full approximate posterior; posterior samples are drawn after
+  convergence.
+* **nuts** — No-U-Turn Sampler (exact MCMC). Slowest; most accurate.
 
-*   Loads the configuration and data into GPU/CPU memory via JAX.
-*   Optimizes the model parameters.
-*   Samples from the posterior distribution (if using SVI).
-*   Saves the results to an HDF5 file (e.g., ``my_analysis_posterior.h5``) and creates checkpoints.
-
-**Usage:**
+The example below matches the MAP configuration used in the example ``run.srun``:
 
 .. code-block:: bash
 
-    tfs-fit-model --config_file my_analysis_config.yaml --seed 42 --analysis_method svi
+    tfs-fit-model \
+        tfs_configure_config.yaml \
+        --seed 42 \
+        --analysis_method map \
+        --adam_step_size 1e-6 \
+        --convergence_check_interval 100 \
+        --convergence_window 50 \
+        --checkpoint_interval 100 \
+        --max_num_epochs 100000000 \
+        --pre_map_num_epoch 100000 \
+        --convergence_tolerance 0.0005 \
+        --patience 5
 
-Step 3: Summarization (``tfs-summarize-posteriors``)
+Key outputs (with default ``--out_prefix tfs_fit_model``):
+
+* ``tfs_fit_model_checkpoint.pkl`` — optimizer checkpoint; resume with ``--checkpoint_file``
+* ``tfs_fit_model_params.npz`` — MAP/SVI parameter point estimates
+
+Step 4: Sample Posterior (``tfs-sample-posterior``)
 ----------------------------------------------------
 
-Finally, you can extract human-readable summaries from the posterior samples.
+Draws posterior samples from a checkpoint produced by ``tfs-fit-model``. The
+checkpoint type is detected automatically:
 
-**What it does:**
-
-*   Extracts physical parameters (activity, Hill coefficients, etc.) into spreadsheets.
-*   Generates growth predictions to compare against original data.
-*   Computes fractional occupancy curves.
-
-**Usage:**
+* **MAP checkpoint** — constructs a Laplace (Hessian-based) Gaussian
+  approximation at the MAP point, then draws samples.
+* **SVI checkpoint** — draws directly from the fitted variational distribution
+  (resumes with 0 additional optimisation epochs).
+* **NUTS checkpoint** — reconstructs posteriors from the saved MCMC samples.
 
 .. code-block:: bash
 
-    tfs-summarize-posteriors --config_file my_analysis_config.yaml --posterior_file my_analysis_posterior.h5
+    tfs-sample-posterior \
+        tfs_configure_config.yaml \
+        tfs_fit_model_checkpoint.pkl \
+        --num_posterior_samples 1000 \
+        --sampling_batch_size 10 \
+        --seed 42
 
-**Key Outputs:**
+Output (default ``--out_prefix tfs_posterior``):
 
-*   ``my_analysis_parameters.csv``: Summary of all estimated biochemical parameters.
-*   ``my_analysis_growth_pred.csv``: Model predictions vs. experimental observations.
-*   ``my_analysis_theta_curves.csv``: Estimated occupancy curves for each genotype.
+* ``tfs_posterior.h5`` — posterior samples for all latent variables; passed to
+  the prediction steps below.
+
+Step 5: Extract Parameters (``tfs-extract-params``)
+----------------------------------------------------
+
+Extracts interpretable parameter summaries from a posterior ``.h5`` file and
+writes one CSV per parameter group.
+
+.. code-block:: bash
+
+    tfs-extract-params \
+        tfs_configure_config.yaml \
+        tfs_posterior.h5
+
+Outputs (default ``--out_prefix tfs_params``):
+
+* ``tfs_params_activity.csv`` — per-genotype TF activity *A* with posterior quantiles
+* ``tfs_params_theta.csv`` — inferred occupancy parameters (Hill *Kd*, *n*, etc.)
+* Additional CSVs depending on the components selected during configuration.
+
+Step 6: Predict Growth (``tfs-predict-growth``)
+------------------------------------------------
+
+Predicts ln(CFU) from the fitted model. By default, predictions are produced at
+every (genotype, replicate, condition, titrant_name, titrant_conc, time)
+combination present in the training data.
+
+.. code-block:: bash
+
+    tfs-predict-growth \
+        tfs_configure_config.yaml \
+        tfs_posterior.h5
+
+Output (default ``--out_prefix tfs_growth_pred``):
+
+* ``tfs_growth_pred.csv`` — one row per prediction point; quantile columns
+  (``median``, ``lower_95``, ``upper_95``, etc.) plus ``in_training_data``.
+
+To add predictions at novel genotypes or concentrations, use
+``--genotypes_file`` or ``--titrant_concs_file`` (plain-text files, one value
+per line). Pass ``--only_files`` to skip training-data combinations and predict
+only at the file-specified inputs.
+
+Step 7: Predict Theta (``tfs-predict-theta``)
+----------------------------------------------
+
+Predicts operator occupancy *θ* as a function of titrant concentration.
+
+.. code-block:: bash
+
+    tfs-predict-theta \
+        tfs_configure_config.yaml \
+        tfs_posterior.h5 \
+        --genotypes_file predict_genotypes.txt
+
+Output (default ``--out_prefix tfs_theta_pred``):
+
+* ``tfs_theta_pred.csv`` — one row per (genotype, titrant_name, titrant_conc)
+  with posterior quantile columns and an ``in_training_data`` flag.
+
+``predict_genotypes.txt`` is a plain-text file with one genotype per line
+(e.g. ``M42I/K84L`` or ``wt``). Genotypes not seen during training can be
+predicted using the mutation-additivity model when the chosen ``theta_model``
+supports it (e.g. ``hill_mut``).
+
+Step 8: Categorise Response (``tfs-cat-response``)
+---------------------------------------------------
+
+Fits categorical response curve models to the *θ*-vs-titrant output of
+``tfs-predict-theta`` and selects the best-fitting model per
+(genotype, titrant_name) pair by AIC weight.
+
+.. code-block:: bash
+
+    tfs-cat-response \
+        tfs_theta_pred.csv \
+        --workers 8
+
+Output (default ``--out_prefix tfs_cat_response``):
+
+* ``tfs_cat_response.csv`` — one row per (genotype, titrant_name) with
+  ``best_model``, AIC weights, and fitted parameters for every model.
+
+---
+
+.. _model-components:
 
 Model Components
 ================
 
-The hierarchical model is modular, allowing you to select different sub-models for various physical processes. These are specified during the configuration step (``tfs-configure-model``).
+``tfs-configure-model`` accepts ``--<axis>_model`` flags to select from a
+registry of pluggable sub-models for each aspect of the generative process.
 
-Condition Growth (``condition_growth_model``)
----------------------------------------------
-
-Defines how the growth rate responds to changes in transcription factor occupancy across different conditions.
-
-*   **linear** (default): Shared hierarchical prior for growth rates across conditions.
-*   **linear_independent**: Each condition has an independent prior.
-*   **power**: Model growth using a power law relationship.
-*   **saturation**: Model growth using a saturating (Michaelis-Menten-like) relationship.
-
-Growth Transition (``growth_transition_model``)
+Condition Growth (``--condition_growth_model``)
 -----------------------------------------------
 
-Describes how genotypes transition between the pre-selection and selection growth phases.
+Maps operator occupancy to per-condition growth rates: *k = b + A·m·θ*.
 
-*   **instant** (default): Genotypes immediately assume the new growth rate upon switching conditions.
-*   **memory**: Accounts for a "lag" or memory effect during the transition.
-*   **baranyi**: Uses the Baranyi-Roberts model to describe the transition into exponential growth.
+* **linear** (default) — shared hierarchical prior for *m* and *b* across conditions
+* **power** — power-law relationship; incompatible with ``--theta_rescale_model logit``
+* **saturation** — saturating (Michaelis-Menten-like) relationship; incompatible with ``logit``
 
-Genotype Death/Pleiotropy (``dk_geno_model``)
----------------------------------------------
+Growth Transition (``--growth_transition_model``)
+--------------------------------------------------
 
-Models the baseline effect of a genotype on growth, independent of transcription factor occupancy.
+Models the lag phase when bacteria switch from pre-selection to selection medium.
 
-*   **hierarchical** (default): Genotype-specific effects are sampled from a global prior.
-*   **fixed**: No genotype-specific growth effects are modeled.
-*   **mut_decomp**: Decomposes genotypes into individual mutation effects and pairwise interactions.
+* **instant** (default) — no lag; genotypes immediately adopt the new growth rate
+* **memory** — occupancy-dependent lag time
+* **baranyi** — Baranyi–Roberts lag model
+* **baranyi_k** — Baranyi model parameterised through growth rate *k*
+* **baranyi_tau** — Baranyi model parameterised through lag time *τ*
+* **two_pop** — two-population lag model
 
-Activity (``activity_model``)
------------------------------
-
-Defines the "strength" of a genotype's effect on transcription given its occupancy of the binding site.
-
-*   **horseshoe** (default): Uses a sparse horseshoe prior to identify variants with significant activity differences.
-*   **hierarchical**: Uses a standard hierarchical prior for variant activity.
-*   **fixed**: All variants are assumed to have the same activity as wildtype.
-*   **mut_decomp**: Decomposes activity into individual mutation and pairwise interaction effects.
-
-Occupancy (``theta_model``)
----------------------------
-
-Describes the fractional occupancy (theta) of the binding site by the transcription factor.
-
-*   **hill** (default): Models occupancy using the Hill equation (requires ``titrant_conc``).
-*   **categorical**: Treats occupancy at each titrant concentration as an independent parameter.
-*   **hill_mut**: Decomposes Hill parameters (Kd and n) into mutation-specific effects.
-
-Transformation (``transformation_model``)
+Initial Population (``--ln_cfu0_model``)
 -----------------------------------------
 
-Corrects for biases introduced during the bacterial transformation process.
+Models the starting genotype frequencies in each replicate.
 
-*   **empirical** (default): Uses an empirical relationship to correct for "congression" where multiple plasmids enter a single cell.
-*   **logit_norm**: Uses a logit-normal distribution for transformation correction.
-*   **single**: Assumes each cell received exactly one plasmid.
+* **hierarchical** (default) — shared global prior on ln(CFU\ :sub:`0`)
+* **hierarchical_factored** — factored hierarchical prior
 
-Experimental Noise (``theta_growth_noise_model`` / ``theta_binding_noise_model``)
---------------------------------------------------------------------------------
+Pleiotropic Growth Effect (``--dk_geno_model``)
+------------------------------------------------
 
-Models stochastic noise in the measurement of fractional occupancy.
+Models the growth-rate offset attributable to each genotype independent of TF
+occupancy (*dk_geno*).
 
-*   **zero** (default): No additional stochastic noise is modeled.
-*   **beta**: Uses a Beta distribution to model measurements of fractional occupancy.
+* **hierarchical_geno** (default) — per-genotype effects drawn from a global prior
+* **fixed** — no genotype-specific pleiotropic effects
+
+Activity (``--activity_model``)
+---------------------------------
+
+Models the per-genotype scalar *A* that multiplies the occupancy contribution
+to growth.
+
+* **horseshoe_geno** (default) — sparse horseshoe prior over genotypes
+* **hierarchical_geno** — standard hierarchical prior over genotypes
+* **horseshoe_mut** — sparse horseshoe prior, decomposed by mutation
+* **hierarchical_mut** — hierarchical prior, decomposed by mutation
+* **fixed** — all genotypes share the wildtype activity (*A* = 1)
+
+Occupancy (``--theta_model``)
+------------------------------
+
+Parameterises fractional operator occupancy *θ* as a function of titrant
+concentration.
+
+* **hill_geno** (default) — Hill equation with per-genotype *Kd* and *n*
+* **categorical_geno** — independent *θ* at each titrant concentration
+* **hill_mut** — Hill equation with per-mutation additive effects on *Kd* and *n*
+* **thermo.\*** — thermodynamic partition-function models (see
+  ``configure_model_cli.py`` docstring for the full set of registry keys)
+
+Transformation Correction (``--transformation_model``)
+-------------------------------------------------------
+
+Corrects for congression (multiple plasmids entering one cell during
+transformation).
+
+* **empirical** (default) — empirical correction curve
+* **logit_norm** — logit-normal correction
+* **single** — no correction (assumes exactly one plasmid per cell)
+
+Theta Rescale (``--theta_rescale_model``)
+------------------------------------------
+
+Rescales *θ* before it enters the condition-growth model.
+
+* **passthrough** (default) — identity; *θ* ∈ [0, 1]
+* **logit** — maps *θ* → log(*θ*/(1−*θ*)); expands dynamic range at extremes.
+  Incompatible with the ``power`` and ``saturation`` growth models.
+
+Noise Models
+------------
+
+Additional noise components (default ``zero`` for all):
+
+* ``--theta_growth_noise_model``: ``zero`` (default), ``beta``, ``logit_normal``
+* ``--theta_binding_noise_model``: ``zero`` (default), ``beta``
+* ``--growth_noise_model``: ``zero`` (default), ``normal_kt`` (learns a global
+  growth-rate noise term *σ_k* in quadrature with *ln_cfu_std*)
