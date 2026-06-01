@@ -720,7 +720,8 @@ def _sim_growth(
     all_kt = genotype_vs_kt[transformants]
 
     # Expand the 2D mask to 3D to match the shape of all_kt.
-    expanded_mask = np.broadcast_to(trans_mask[:, :, np.newaxis], all_kt.shape)
+    # .copy() required: numpy 2.x rejects read-only broadcast arrays as ma masks
+    expanded_mask = np.broadcast_to(trans_mask[:, :, np.newaxis], all_kt.shape).copy()
     masked_kt = ma.array(all_kt, mask=expanded_mask)
 
     # Calculate the kt for each cell by combining effects of plasmids
@@ -1054,8 +1055,9 @@ def _simulate_library_group(
     # stack, these will be removed. 
     genotype_vs_kt_pivot = sparse_pivot.reindex(ordered_genotypes, fill_value=0)
     
-    # Create a 2D array of (genotype,conditions) holding kt. 
-    genotype_vs_kt = genotype_vs_kt_pivot.to_numpy()
+    # Create a 2D array of (genotype,conditions) holding kt.
+    # .copy() required: pandas 3.x CoW returns a read-only view from to_numpy()
+    genotype_vs_kt = genotype_vs_kt_pivot.to_numpy().copy()
     
     # Add per-tube environmental noise: one delta_k per condition, shared across
     # all genotypes in that tube.  tube_noise_sigma is in growth-rate units
