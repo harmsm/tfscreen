@@ -59,7 +59,7 @@ def _run_map(ri,
     max_num_epochs : int, optional
         Maximum number of MAP optimization epochs (default 100000).
     convergence_tolerance : float, optional
-        Relative change in smoothed loss to declare MAP convergence (default 0.01).
+        Relative change in smoothed loss to declare MAP convergence (default 1e-5).
     convergence_window : int, optional
         Number of epochs to average for convergence check (default 10).
     patience : int, optional
@@ -182,7 +182,7 @@ def _run_svi(ri,
     elbo_num_particles : int, optional
         Number of particles for ELBO estimation during SVI (default 2).
     convergence_tolerance : float, optional
-        Relative change in loss to declare SVI convergence (default 0.01).
+        Relative change in loss to declare SVI convergence (default 1e-5).
     convergence_window : int, optional
         Number of epochs to average for convergence check (default 10).
     patience : int, optional
@@ -382,7 +382,7 @@ def fit_model(config_file,
     elbo_num_particles : int, optional
         Number of particles for ELBO estimation (default 2).
     convergence_tolerance : float, optional
-        Relative change in loss to declare SVI convergence (default 0.01).
+        Relative change in loss to declare SVI convergence (default 1e-5).
     convergence_window : int, optional
         Number of epochs to average for convergence check (default 10).
     patience : int, optional

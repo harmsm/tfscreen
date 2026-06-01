@@ -70,7 +70,7 @@ def subset_genotypes(
         included in training are spaced linearly from 0 to all possible,
         with duplicate counts collapsed.
     out_prefix : str, optional
-        Prefix for all output files. Default 'growth_subset'.
+        Prefix for all output files. Default 'genotype_subset'.
     whitelist_file : str, optional
         Path to a plain-text file (one genotype per line, # comments allowed)
         of genotypes that must be included in the selected singles.

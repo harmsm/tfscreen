@@ -3,7 +3,7 @@ Tests for struct ensemble wiring in ModelOrchestrator.
 
 Covers:
   1. Constructor parameter and settings property
-  2. Error handling when struct_ensemble_path is missing
+  2. Error handling when thermo_data is missing
   3. Full integration: GrowthData.struct_* fields populated correctly
   4. _needs_mut activated for lac_dimer_lnK_nn_prior
   5. Registry entry is present
@@ -141,8 +141,8 @@ def test_registry_entry():
 # Constructor / settings (no data loading needed)
 # ──────────────────────────────────────────────────────────────────────────────
 
-def test_settings_includes_struct_ensemble_path(tmp_path):
-    """settings property must expose struct_ensemble_path."""
+def test_settings_includes_thermo_data(tmp_path):
+    """settings property must expose thermo_data."""
     growth_path  = _make_growth_csv(tmp_path)
     binding_path = _make_binding_csv(tmp_path)
     h5_path      = _make_struct_ensemble_h5(tmp_path)
@@ -151,33 +151,33 @@ def test_settings_includes_struct_ensemble_path(tmp_path):
     mc = ModelOrchestrator(
         growth_path, binding_path,
         theta="thermo.O2_C4_K3_U0_a.PnnC",
-        struct_ensemble_path=h5_path,
+        thermo_data=h5_path,
     )
-    assert "struct_ensemble_path" in mc.settings
-    assert mc.settings["struct_ensemble_path"] == h5_path
+    assert "thermo_data" in mc.settings
+    assert mc.settings["thermo_data"] == h5_path
 
 
-def test_default_struct_ensemble_path_is_none(tmp_path):
-    """struct_ensemble_path defaults to None and appears as None in settings."""
+def test_default_thermo_data_is_none(tmp_path):
+    """thermo_data defaults to None and appears as None in settings."""
     growth_path  = _make_growth_csv(tmp_path)
     binding_path = _make_binding_csv(tmp_path)
 
     from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
     mc = ModelOrchestrator(growth_path, binding_path, theta="hill_geno")
-    assert mc.settings["struct_ensemble_path"] is None
+    assert mc.settings["thermo_data"] is None
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Error handling
 # ──────────────────────────────────────────────────────────────────────────────
 
-def test_missing_struct_path_raises(tmp_path):
-    """lac_dimer_lnK_nn_prior without struct_ensemble_path must raise ValueError."""
+def test_missing_thermo_data_raises(tmp_path):
+    """thermo model without thermo_data must raise ValueError."""
     growth_path  = _make_growth_csv(tmp_path)
     binding_path = _make_binding_csv(tmp_path)
 
     from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
-    with pytest.raises(ValueError, match="struct_ensemble_path"):
+    with pytest.raises(ValueError, match="--thermo_data"):
         ModelOrchestrator(growth_path, binding_path, theta="thermo.O2_C4_K3_U0_a.PnnC")
 
 
@@ -200,7 +200,7 @@ def fitted_mc(tmp_path_factory):
     return ModelOrchestrator(
         growth_path, binding_path,
         theta="thermo.O2_C4_K3_U0_a.PnnC",
-        struct_ensemble_path=h5_path,
+        thermo_data=h5_path,
     )
 
 
@@ -252,7 +252,7 @@ class TestStructFieldsWithEpistasis:
         return ModelOrchestrator(
             growth_path, binding_path,
             theta="thermo.O2_C4_K3_U0_a.PnnC",
-            struct_ensemble_path=h5_path,
+            thermo_data=h5_path,
             epistasis=True,
         )
 
@@ -291,7 +291,7 @@ def test_svi_runs_without_error(tmp_path):
     mc = ModelOrchestrator(
         growth_path, binding_path,
         theta="thermo.O2_C4_K3_U0_a.PnnC",
-        struct_ensemble_path=h5_path,
+        thermo_data=h5_path,
     )
 
     out_prefix = str(tmp_path / "svi_out")
@@ -322,7 +322,7 @@ def test_svi_with_epistasis_runs_without_error(tmp_path):
     mc = ModelOrchestrator(
         growth_path, binding_path,
         theta="thermo.O2_C4_K3_U0_a.PnnC",
-        struct_ensemble_path=h5_path,
+        thermo_data=h5_path,
         epistasis=True,
     )
 
@@ -379,12 +379,12 @@ def _make_binding_only_csv(tmp_path, genotypes=_GENOTYPES):
     return path
 
 
-def test_binding_only_struct_raises_without_struct_path(tmp_path):
-    """mwc_dimer_lnK_ddG_prior in binding_only mode must raise if struct_ensemble_path is absent."""
+def test_binding_only_struct_raises_without_thermo_data(tmp_path):
+    """mwc_dimer_lnK_ddG_prior in binding_only mode must raise if thermo_data is absent."""
     binding_path = _make_binding_only_csv(tmp_path)
 
     from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
-    with pytest.raises(ValueError, match="struct_ensemble_path"):
+    with pytest.raises(ValueError, match="--thermo_data"):
         ModelOrchestrator(None, binding_path,
                    binding_only=True,
                    theta="thermo.O2_C12_K5_U0_a.PddG")
@@ -405,7 +405,7 @@ def binding_only_ddG_mc(tmp_path_factory):
         None, binding_path,
         binding_only=True,
         theta="thermo.O2_C12_K5_U0_a.PddG",
-        struct_ensemble_path=ddg_path,
+        thermo_data=ddg_path,
     )
 
 
@@ -451,7 +451,7 @@ def test_binding_only_ddG_svi_runs(tmp_path):
         None, binding_path,
         binding_only=True,
         theta="thermo.O2_C12_K5_U0_a.PddG",
-        struct_ensemble_path=ddg_path,
+        thermo_data=ddg_path,
     )
 
     out_prefix = str(tmp_path / "svi_binding_only_ddg")
@@ -490,7 +490,7 @@ def test_binding_only_minibatch_get_random_idx_does_not_crash(tmp_path):
         None, binding_path,
         binding_only=True,
         theta="thermo.O2_C12_K5_U0_a.PddG",
-        struct_ensemble_path=ddg_path,
+        thermo_data=ddg_path,
         batch_size=2,
     )
 
@@ -517,7 +517,7 @@ def test_binding_only_minibatch_svi_runs(tmp_path):
         None, binding_path,
         binding_only=True,
         theta="thermo.O2_C12_K5_U0_a.PddG",
-        struct_ensemble_path=ddg_path,
+        thermo_data=ddg_path,
         batch_size=2,
     )
 

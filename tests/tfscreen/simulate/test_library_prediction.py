@@ -11,7 +11,7 @@ def mock_config():
         "condition_blocks": [{"some": "block"}],
         "theta_component": "mock_theta",
         "theta_rng_seed": 7,
-        "struct_ensemble_path": None,
+        "thermo_data": None,
         "theta_priors": None,
         "growth": {"cond_A": {"m": 1.0, "b": 0.0}},
         "dk_geno_hyper_loc": -3.5,
@@ -59,7 +59,7 @@ def test_library_prediction_success(mocker, mock_config):
     mock_build_sim_data.assert_called_once_with(
         library_df=mock_library_df,
         sample_df=mock_sample_df,
-        struct_ensemble_path=None,
+        thermo_data=None,
     )
     mock_jax_key.assert_called_once_with(7)
 

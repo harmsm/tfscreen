@@ -63,7 +63,7 @@ def configure_model(binding_df,
                     spiked=None,
                     growth_shares_replicates=False,
                     epistasis=False,
-                    struct_ensemble_path=None,
+                    thermo_data=None,
                     batch_size=1024,
                     binding_weight=None):
     """
@@ -93,30 +93,34 @@ def configure_model(binding_df,
         Default 'tfs_configure'.
     condition_growth_model: str, optional
         Model to use to describe growth under different conditions (e.g.,
-        pheS+4CP). Allowed values are 'linear' (default), 'linear_independent',
-        'power', or 'saturation'.
+        pheS+4CP). Allowed values are 'linear' (default), 'power', or
+        'saturation'.
     growth_transition_model : str, optional
         Model to use to describe the transition between the pre-selection
         and selection phases. Allowed values are 'instant' (default), 'memory',
-        or 'baranyi'.
+        'baranyi', 'baranyi_k', 'baranyi_tau', or 'two_pop'.
     ln_cfu0_model : str, optional
         Model to use to describe ln_cfu0, the initial populations of genotypes
-        in each replicate. Only 'hierarchical' is allowed at this point.
+        in each replicate. Allowed values are 'hierarchical' (default) or
+        'hierarchical_factored'.
     dk_geno_model : str, optional
         Model to use to describe dk_geno, the pleiotropic effect of a genotype
-        on growth, independent of occupancy. Allowed values are 'hierarchical'
-        (default), 'fixed', or 'hierarchical_mut'.
+        on growth, independent of occupancy. Allowed values are
+        'hierarchical_geno' (default) or 'fixed'.
     activity_model : str, optional
         Model to use to describe activity, a scalar multiplied against
         occupancy that defines how strongly a genotype alters transcription
-        given its occupancy. Allowed values are 'fixed' (default), 'hierarchical',
-        'horseshoe', or 'hierarchical_mut'.
+        given its occupancy. Allowed values are 'fixed', 'hierarchical_geno',
+        'horseshoe_geno' (default), 'hierarchical_mut', or 'horseshoe_mut'.
     theta_model : str, optional
         Model to use to describe theta, the fractional occupancy of a genotype
-        on the transcription factor binding site. Allowed values are 'hill'
-        (default), 'categorical', 'hill_mut', 'lac_dimer_lnK_mut',
-        'lac_dimer_lnK_nn_prior', 'mwc_dimer_lnK_mut', 'mwc_dimer_lnK_nn_prior',
-        or 'mwc_dimer_lnK_ddG_prior'.
+        on the transcription factor binding site. Allowed values are
+        'hill_geno' (default), 'categorical_geno', 'hill_mut', and the
+        thermodynamic partition-function models (pass the exact registry key,
+        e.g. 'thermo.O2_C4_K3_U0_a.PK', 'thermo.O2_C4_K3_U0_a.PnnC',
+        'thermo.O2_C4_K3_U0_a.PddG', 'thermo.O2_C12_K5_U0_a.PK',
+        'thermo.O2_C12_K5_U0_a.PnnC', 'thermo.O2_C12_K5_U0_a.PddG', and
+        their O2_C4_K3_U1_a / O2_C12_K5_U1_a unfolded equivalents).
     transformation_model : str, optional
         Model for transformation correction. Allowed values are 'single',
         'empirical', or 'logit_norm'. Default 'empirical'.
@@ -126,10 +130,11 @@ def configure_model(binding_df,
         log(theta/(1-theta)), expanding the dynamic range at both extremes).
     theta_growth_noise_model : str, optional
         Model to use for stochastic experimental noise in theta measured by
-        bacterial growth. Allowed values are 'beta' (default) or 'zero'.
+        bacterial growth. Allowed values are 'zero' (default), 'beta', or
+        'logit_normal'.
     theta_binding_noise_model : str, optional
         Model to use for stochastic experimental noise in theta measured by
-        binding. Allowed values are 'beta' (default) or 'zero'.
+        binding. Allowed values are 'zero' (default) or 'beta'.
     growth_noise_model : str, optional
         Model for additive growth-rate noise. 'zero' (default) adds no noise;
         'normal_kt' learns a global sigma_k that inflates the observation scale
@@ -147,14 +152,14 @@ def configure_model(binding_df,
         True, each pair of mutations present in the same genotype gets an
         independent epistasis term. When False (default), effects are purely
         additive at the mutation level.
-    struct_ensemble_path : str, optional
-        Path to the structural data file.  Required when ``theta_model`` is a
-        struct-based model; ignored otherwise.  For ``lac_dimer_lnK_nn_prior``
-        and ``mwc_dimer_lnK_nn_prior`` this must be the HDF5 file produced by
-        ``scripts/generate_struct_ensemble.py``.  For
-        ``mwc_dimer_lnK_ddG_prior`` this must be a CSV file with a ``mut``
-        column and one column per structure (``H``, ``HO``, ``L``, ``LO``,
-        ``HE2``, ``LE2``) containing pre-computed ΔΔG prior means.
+    thermo_data : str, optional
+        Path to the structural/thermodynamic data file.  Required when
+        ``theta_model`` is a thermo-based model; ignored otherwise.  For
+        ``*_lnK_nn_prior`` models this must be the HDF5 file produced by
+        ``scripts/generate_struct_ensemble.py``.  For ``*_lnK_ddG_prior``
+        models this must be a CSV file with a ``mut`` column and one column per
+        structure (``H``, ``HO``, ``L``, ``LO``, ``HE2``, ``LE2``) containing
+        pre-computed ΔΔG prior means.
     batch_size : int, optional
         Mini-batch size for SVI. Defaults to 1024. Set to None to use the full
         dataset as a single batch.
@@ -199,7 +204,7 @@ def configure_model(binding_df,
                      spiked_genotypes=spiked,
                      growth_shares_replicates=growth_shares_replicates,
                      epistasis=epistasis,
-                     struct_ensemble_path=struct_ensemble_path,
+                     thermo_data=thermo_data,
                      batch_size=batch_size,
                      binding_weight=binding_weight)
 
@@ -216,7 +221,7 @@ def main():
                             manual_arg_types={"binding_df":str,
                                               "growth_df":str,
                                               "spiked":list,
-                                              "struct_ensemble_path":str,
+                                              "thermo_data":str,
                                               "batch_size":int,
                                               "binding_weight":float},
                             manual_arg_nargs={"spiked":"+"})

@@ -47,7 +47,7 @@ configure_model:
   #
   # 'auto: condition_growth' expands to one variant per entry in the
   # model_registry["condition_growth"] registry (currently: linear,
-  # linear_fixed, power, saturation).  Incompatible combinations (e.g.
+  # power, saturation).  Incompatible combinations (e.g.
   # power + logit theta_rescale) are caught by tfs-configure-model,
   # skipped automatically, and logged in grid_summary.json.
 

@@ -37,8 +37,8 @@ NOTES
   variables are NOT written to the config.  To share a variable, list it in both.
 - ``run_name`` may reference variables from either section.
 - Use the ``basename`` Jinja2 filter to strip path info from filenames:
-      run_name: "{{ struct_ensemble_path | basename }}__noise{{ growth_rate_noise }}"
-- Relative paths in ``simulate`` blocks (e.g. ``struct_ensemble_path``) are resolved
+      run_name: "{{ thermo_data | basename }}__noise{{ growth_rate_noise }}"
+- Relative paths in ``simulate`` blocks (e.g. ``thermo_data``) are resolved
   relative to the grid YAML's directory, then re-expressed relative to each
   subdirectory in the written config.
 - Relative paths already in the base config are resolved relative to the base
@@ -61,7 +61,7 @@ from tfscreen.util.grid_utils import (
 )
 
 # Top-level keys in the simulate config that hold file paths.
-_SIM_PATH_KEYS = frozenset({"struct_ensemble_path", "calibration_file"})
+_SIM_PATH_KEYS = frozenset({"thermo_data", "calibration_file"})
 
 # Fixed filename for the per-run config written into each subdirectory.
 _SIM_CONFIG_FILENAME = "tfs_sim_config.yaml"

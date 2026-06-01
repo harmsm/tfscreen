@@ -44,7 +44,7 @@ NOTES
 - Incompatible component combinations are skipped automatically and logged in
   ``grid_summary.json``.
 - Relative paths in configure_model blocks (binding_df, growth_df,
-  struct_ensemble_path) are resolved relative to the grid YAML's directory, then
+  thermo_data) are resolved relative to the grid YAML's directory, then
   re-expressed relative to each subdirectory in the written config file.
 """
 
@@ -84,7 +84,7 @@ _COMPONENT_AXES = frozenset({
 })
 
 # configure_model arguments that are file paths and need abs→rel rewriting.
-_PATH_KEYS = frozenset({"binding_df", "growth_df", "struct_ensemble_path"})
+_PATH_KEYS = frozenset({"binding_df", "growth_df", "thermo_data"})
 
 # Fixed output prefix used inside every per-combination run.
 _CONFIGURE_OUT_PREFIX = "tfs_configure"

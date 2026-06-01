@@ -73,17 +73,17 @@ def test_expand_block_auto_raises():
 def test_resolve_paths_relative(tmp_path):
     f = tmp_path / "struct.h5"
     f.write_text("x")
-    result = _resolve_paths({"struct_ensemble_path": "struct.h5"}, str(tmp_path))
-    assert os.path.isabs(result["struct_ensemble_path"])
-    assert result["struct_ensemble_path"] == str(f)
+    result = _resolve_paths({"thermo_data": "struct.h5"}, str(tmp_path))
+    assert os.path.isabs(result["thermo_data"])
+    assert result["thermo_data"] == str(f)
 
 
 def test_resolve_paths_absolute_unchanged(tmp_path):
     f = tmp_path / "struct.h5"
     f.write_text("x")
     abs_path = str(f)
-    result = _resolve_paths({"struct_ensemble_path": abs_path}, "/some/other/dir")
-    assert result["struct_ensemble_path"] == abs_path
+    result = _resolve_paths({"thermo_data": abs_path}, "/some/other/dir")
+    assert result["thermo_data"] == abs_path
 
 
 def test_resolve_paths_unknown_key_unchanged(tmp_path):

@@ -122,9 +122,9 @@ def _process_paired_fastq(f1_fastq: str,
         If ``None``, process the entire files.
     chunk_size : int
         break the reads into chunks of chunk_size reads for processing by their
-        own workier
+        own worker
     num_workers : int or None
-        number of workers to use. If not specified, set to os.cup_count() - 1
+        number of workers to use. If not specified, set to os.cpu_count() - 1
 
     Returns
     -------
@@ -346,7 +346,7 @@ def process_fastq(f1_fastq: str,
         input file/dict to initialize a LibraryManager or a pre-initialized
         library instance. This defines the expected library. See the docstring
         for the `LibraryManager` class for more details on the inputs. 
-    phred_cutoff : int
+    phred_cutoff : int, default 10
         assign any base with phred < cutoff to "N"
     min_read_length : int, default=50
         toss reads where the final readable sequence is less than this long
@@ -368,9 +368,9 @@ def process_fastq(f1_fastq: str,
         only read the first max_num_reads. if None, read whole files.
     chunk_size : int
         break the reads into chunks of chunk_size reads for processing by their
-        own workier
+        own worker
     num_workers : int or None
-        number of workers to use. If not specified, set to os.cup_count() - 1
+        number of workers to use. If not specified, set to os.cpu_count() - 1
     
     Returns
     -------

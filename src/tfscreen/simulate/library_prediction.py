@@ -65,7 +65,7 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
     sim_data = build_sim_data(
         library_df=library_df,
         sample_df=sample_df,
-        struct_ensemble_path=cf.get('struct_ensemble_path'),
+        thermo_data=cf.get('thermo_data'),
     )
 
     # RNG key for prior-predictive theta sampling

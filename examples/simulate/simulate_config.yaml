@@ -46,11 +46,11 @@ spiked_seqs:
 # valid except "_simple" (calibration-only).  Examples: "hill_geno", "thermo.O2_C12_K5_U0_a.PK".
 theta_component: "thermo.O2_C12_K5_U0_a.PK"
 
-# Optional: path to structural ensemble file required by PnnC and
+# Optional: path to structural/thermodynamic data file required by PnnC and
 # PddG theta components.  Omit (or set to null) for all other models.
-#   .h5 / .hdf5  → HDF5 LigandMPNN ensemble (PnnC)
+#   .h5 / .hdf5  → HDF5 structural ensemble (PnnC)
 #   .csv         → per-mutation per-structure ddG prior means (PddG)
-# struct_ensemble_path: null
+# thermo_data: null
 
 # Optional: overrides for the theta component's default hyperparameters.
 # Any key returned by the component's get_hyperparameters() can be overridden.

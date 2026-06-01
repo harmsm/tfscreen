@@ -110,7 +110,7 @@ def test_model_svi_smoke_lnK_nn_prior(growth_smoke_csv,
                                        binding_smoke_csv,
                                        struct_smoke_h5_path,
                                        tmpdir):
-    """SVI smoke test for lac_dimer_lnK_nn_prior (requires struct_ensemble_path)."""
+    """SVI smoke test for lac_dimer_lnK_nn_prior (requires thermo_data)."""
     out_prefix = os.path.join(tmpdir, "smoke_nn_prior")
 
     model = ModelOrchestrator(
@@ -118,7 +118,7 @@ def test_model_svi_smoke_lnK_nn_prior(growth_smoke_csv,
         binding_df=binding_smoke_csv,
         batch_size=None,
         theta="thermo.O2_C4_K3_U0_a.PnnC",
-        struct_ensemble_path=struct_smoke_h5_path,
+        thermo_data=struct_smoke_h5_path,
         epistasis=False,
     )
 

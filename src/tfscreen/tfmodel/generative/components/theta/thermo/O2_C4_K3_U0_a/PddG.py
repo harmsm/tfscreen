@@ -27,7 +27,7 @@ Data requirements
     num_mutation            — M
     num_struct              — S (must equal 4)
 
-Input CSV format (passed via ``struct_ensemble_path``)
+Input CSV format (passed via ``thermo_data``)
 ------------------------------------------------------
 A CSV with columns ``mut`` (mutation label) and one column per structure
 (``H``, ``HD``, ``L``, ``LE2`` in any order).  Mutations absent from the CSV

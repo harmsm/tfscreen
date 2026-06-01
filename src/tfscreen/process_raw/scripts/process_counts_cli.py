@@ -132,10 +132,10 @@ def _aggregate_counts(
     Returns
     -------
     pandas.DataFrame
-        The validated sample dataframe, which includes the 'obs_file' column
-        pointing to the raw data for each sample.
+        Long-form counts DataFrame with columns 'sample', 'genotype', and
+        'counts', concatenated across all samples.
     """
-    
+
     counts_dfs = []
     for s in tqdm(sample_df.index):
 
@@ -158,6 +158,40 @@ def process_counts(
     min_genotype_obs: int=10,
     pseudocount: int=1,
     verbose: bool = True):
+    """
+    Convert per-sample genotype count CSVs into a single ln_cfu DataFrame.
+
+    Reads sample metadata from sample_df, matches each sample to a counts
+    CSV file in counts_csv_path, aggregates all counts, converts to ln(CFU)
+    via counts_to_lncfu, and writes the result to output_file.
+
+    Parameters
+    ----------
+    sample_df : str or pandas.DataFrame
+        Path to (or pre-loaded) sample metadata CSV.  Must contain a unique
+        'sample' column (used as the index) plus 'sample_cfu' and
+        'sample_cfu_std' columns giving the total CFU and its uncertainty for
+        each sample tube.
+    counts_csv_path : str
+        Directory containing per-sample count CSV files.  Each file must
+        match the glob pattern ``{counts_glob_prefix}*{sample}*.csv``.
+    output_file : str
+        Path to write the output ln_cfu CSV (passed directly to
+        tfs-fit-model as the growth data).
+    counts_glob_prefix : str, optional
+        Prefix used when globbing for count files in counts_csv_path.
+        Default 'counts'.
+    min_genotype_obs : int, optional
+        Minimum total count across samples for a genotype to be retained.
+        Genotypes below this threshold are dropped before the ln_cfu
+        calculation.  Default 10.
+    pseudocount : int, optional
+        Pseudocount added to each genotype count before the log transform,
+        to avoid log(0).  Default 1.
+    verbose : bool, optional
+        If True, print a summary of matched samples and file paths.
+        Default True.
+    """
 
     # After this call, sample_df will be indexed by sample name and have
     # a column 'obs_file' that points to the csv file to read.

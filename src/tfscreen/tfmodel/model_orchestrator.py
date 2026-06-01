@@ -463,7 +463,7 @@ class ModelOrchestrator:
                  spiked_genotypes=None,
                  growth_shares_replicates=False,
                  epistasis=False,
-                 struct_ensemble_path=None,
+                 thermo_data=None,
                  binding_weight=None):
 
         self._ln_cfu_df = growth_df
@@ -487,7 +487,7 @@ class ModelOrchestrator:
         self._spiked_genotypes = spiked_genotypes
         self._growth_shares_replicates = growth_shares_replicates
         self._epistasis = epistasis
-        self._struct_ensemble_path = struct_ensemble_path
+        self._thermo_data = thermo_data
         self._binding_weight = binding_weight
 
         self._initialize_data()
@@ -662,9 +662,8 @@ class ModelOrchestrator:
             })
 
         # Build structural data for theta components that use per-structure
-        # ΔΔG inference.  struct_ensemble_path is either an HDF5 file
-        # (lac_dimer_lnK_nn_prior, mwc_dimer_lnK_nn_prior) or a CSV file
-        # (mwc_dimer_lnK_ddG_prior).
+        # ΔΔG inference.  thermo_data is either an HDF5 file
+        # (*_lnK_nn_prior models) or a CSV file (*_lnK_ddG_prior models).
         # struct_names is a tuple and cannot go through populate_dataclass (which
         # rejects tuples); it is injected via .replace() after GrowthData is built.
         _nn_prior_models   = ("thermo.O2_C4_K3_U0_a.PnnC", "thermo.O2_C4_K3_U1_a.PnnC",
@@ -674,16 +673,16 @@ class ModelOrchestrator:
         _needs_struct = self._theta in _nn_prior_models + _ddG_prior_models
         _struct_names_tuple = None
         if _needs_struct:
-            if self._struct_ensemble_path is None:
+            if self._thermo_data is None:
                 if self._theta in _nn_prior_models:
                     raise ValueError(
-                        f"theta='{self._theta}' requires struct_ensemble_path "
+                        f"theta='{self._theta}' requires --thermo_data "
                         f"(path to the HDF5 file produced by "
                         f"generate_struct_ensemble.py)."
                     )
                 else:
                     raise ValueError(
-                        f"theta='{self._theta}' requires struct_ensemble_path "
+                        f"theta='{self._theta}' requires --thermo_data "
                         f"(path to a CSV with columns 'mut' and one per structure)."
                     )
             from tfscreen.tfmodel.generative.components.theta.thermo.io import (
@@ -692,12 +691,12 @@ class ModelOrchestrator:
             )
             if self._theta in _ddG_prior_models:
                 _struct_data = load_ddG_prior_csv(
-                    self._struct_ensemble_path, mut_labels
+                    self._thermo_data, mut_labels
                 )
             else:
                 _pair_labels_for_struct = self.pair_labels if self._epistasis else None
                 _struct_data = load_struct_ensemble(
-                    self._struct_ensemble_path, mut_labels, _pair_labels_for_struct
+                    self._thermo_data, mut_labels, _pair_labels_for_struct
                 )
             _struct_names_tuple = _struct_data["struct_names"]   # tuple; set via .replace()
             growth_data_sources.append({
@@ -899,16 +898,16 @@ class ModelOrchestrator:
                               "thermo.O2_C12_K5_U0_a.PddG", "thermo.O2_C12_K5_U1_a.PddG")
         _struct_names_tuple = None
         if self._theta in _nn_prior_models + _ddG_prior_models:
-            if self._struct_ensemble_path is None:
+            if self._thermo_data is None:
                 if self._theta in _nn_prior_models:
                     raise ValueError(
-                        f"theta='{self._theta}' requires struct_ensemble_path "
+                        f"theta='{self._theta}' requires --thermo_data "
                         f"(path to the HDF5 file produced by "
                         f"generate_struct_ensemble.py)."
                     )
                 else:
                     raise ValueError(
-                        f"theta='{self._theta}' requires struct_ensemble_path "
+                        f"theta='{self._theta}' requires --thermo_data "
                         f"(path to a CSV with columns 'mut' and one per structure)."
                     )
             from tfscreen.tfmodel.generative.components.theta.thermo.io import (
@@ -917,12 +916,12 @@ class ModelOrchestrator:
             )
             if self._theta in _ddG_prior_models:
                 _struct_data = load_ddG_prior_csv(
-                    self._struct_ensemble_path, self.mut_labels
+                    self._thermo_data, self.mut_labels
                 )
             else:
                 _pair_labels_for_struct = self.pair_labels if self._epistasis else None
                 _struct_data = load_struct_ensemble(
-                    self._struct_ensemble_path, self.mut_labels, _pair_labels_for_struct
+                    self._thermo_data, self.mut_labels, _pair_labels_for_struct
                 )
             _struct_names_tuple = _struct_data["struct_names"]
             binding_data_sources.append({
@@ -1270,6 +1269,6 @@ class ModelOrchestrator:
             "spiked_genotypes":self._spiked_genotypes,
             "growth_shares_replicates": self._growth_shares_replicates,
             "epistasis": self._epistasis,
-            "struct_ensemble_path": self._struct_ensemble_path,
+            "thermo_data": self._thermo_data,
             "binding_weight": self._binding_weight,
         }

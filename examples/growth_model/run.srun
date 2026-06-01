@@ -75,8 +75,8 @@ tfs-sample-posterior \
 # Summarize and predict
 # ---------------------------------------------------------------------------
 
-echo ">>> Parameter quantiles"
-tfs-param-quantiles \
+echo ">>> Extract parameters"
+tfs-extract-params \
     tfs_configure_config.yaml \
     tfs_posterior.h5
 

@@ -96,7 +96,7 @@ class SimData:
 
 def build_sim_data(library_df,
                    sample_df,
-                   struct_ensemble_path=None,
+                   thermo_data=None,
                    skip_pairs=False):
     """
     Build a SimData from the simulation pipeline's core inputs.
@@ -109,10 +109,10 @@ def build_sim_data(library_df,
     sample_df : pd.DataFrame
         Must contain a ``"titrant_conc"`` column (mM).  Only unique values
         are used; replicate / time structure is ignored.
-    struct_ensemble_path : str or None
-        Path to the structural data file required by lnK_nn_prior and
-        lnK_ddG_prior theta components.
-          - ``.h5`` / ``.hdf5``: HDF5 LigandMPNN ensemble (for lnK_nn_prior).
+    thermo_data : str or None
+        Path to the structural/thermodynamic data file required by thermo theta
+        components.
+          - ``.h5`` / ``.hdf5``: HDF5 structural ensemble (for lnK_nn_prior).
           - ``.csv``: per-mutation per-structure ddG prior means
             (for lnK_ddG_prior).
         Pass None for components that do not need structural data
@@ -152,19 +152,19 @@ def build_sim_data(library_df,
         struct_contact_pair_idx=None,
         struct_contact_distances=None,
     )
-    if struct_ensemble_path is not None:
-        path_lower = str(struct_ensemble_path).lower()
+    if thermo_data is not None:
+        path_lower = str(thermo_data).lower()
         if path_lower.endswith(".csv"):
             from tfscreen.tfmodel.generative.components.theta.thermo.io import (
                 load_ddG_prior_csv,
             )
-            raw = load_ddG_prior_csv(struct_ensemble_path, mut_labels)
+            raw = load_ddG_prior_csv(thermo_data, mut_labels)
         else:
             from tfscreen.tfmodel.generative.components.theta.thermo.io import (
                 load_struct_ensemble,
             )
             raw = load_struct_ensemble(
-                h5_path=struct_ensemble_path,
+                h5_path=thermo_data,
                 mut_labels=mut_labels,
                 pair_labels=pair_labels if not skip_pairs else None,
             )

@@ -396,7 +396,7 @@ def test_model_class_properties(initialized_model_class):
     model._binding_only = False
     model._growth_shares_replicates = False
     model._epistasis = True
-    model._struct_ensemble_path = None
+    model._thermo_data = None
     model._binding_weight = 1.0
 
     assert ModelOrchestrator.jax_model.fget(model) == "jm"
@@ -676,7 +676,7 @@ def test_binding_weight_explicit_in_settings(mocker):
     model._spiked_genotypes = None
     model._growth_shares_replicates = False
     model._epistasis = False
-    model._struct_ensemble_path = None
+    model._thermo_data = None
     model._batch_size = None
     s = ModelOrchestrator.settings.fget(model)
     assert "binding_weight" in s
@@ -701,7 +701,7 @@ def test_binding_weight_auto_in_settings(mocker):
     model._spiked_genotypes = None
     model._growth_shares_replicates = False
     model._epistasis = False
-    model._struct_ensemble_path = None
+    model._thermo_data = None
     model._batch_size = None
     s = ModelOrchestrator.settings.fget(model)
     assert s["binding_weight"] == pytest.approx(n_growth / n_binding)

@@ -53,7 +53,7 @@ def _generate_binding_data(cf, library_df, binding_cfg, rng):
     sim_data = build_sim_data(
         library_df=library_df,
         sample_df=binding_sample_df,
-        struct_ensemble_path=cf.get("struct_ensemble_path"),
+        thermo_data=cf.get("thermo_data"),
     )
 
     # Sample theta from the prior using the same seed as the main run
