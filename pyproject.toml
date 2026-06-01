@@ -37,7 +37,7 @@ dependencies = [
   "jinja2",
 ]
 
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [{ name = "Mike Harms", email = "harms@uoregon.edu" }]
 maintainers = [{ name = "Mike Harms", email = "harms@uoregon.edu" }]
 description = "Simulate or analyze a high-throughput screen of a transcription factor library"
