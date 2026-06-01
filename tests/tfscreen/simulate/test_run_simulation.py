@@ -61,10 +61,10 @@ def test_setup_file_output_success_existing_dir(tmp_path):
 # Tests for run_simulation
 # -----------------------------------------------------------------------------
 
-def test_run_simulation_config_error(mocker):
-    mocker.patch("tfscreen.util.read_yaml", return_value=None)
-    with pytest.raises(RuntimeError, match="Aborting simulation due to configuration error"):
-        run_simulation("bad_config.yaml", None)
+def test_run_simulation_config_error():
+    # read_yaml now raises FileNotFoundError directly on a missing file.
+    with pytest.raises(FileNotFoundError):
+        run_simulation("nonexistent_config.yaml", None)
 
 def test_run_simulation_success(mocker, mock_config, mock_result_dfs):
     lib_df, pheno_df, ddG_df, sample_df, counts_df = mock_result_dfs
@@ -75,7 +75,7 @@ def test_run_simulation_success(mocker, mock_config, mock_result_dfs):
     mock_sel_exp = mocker.patch("tfscreen.simulate.run_simulation.selection_experiment", return_value=(sample_df, counts_df))
     
     # Mock file output setup
-    mock_file_dict = {"library": "lib.csv", "phenotype": "pheno.csv", "genotype_ddG": "ddG.csv", "sample": "sample.csv", "counts": "counts.csv"}
+    mock_file_dict = {"library": "lib.csv", "phenotype": "pheno.csv", "genotype_theta": "theta.csv", "sample": "sample.csv", "counts": "counts.csv"}
     mocker.patch("tfscreen.simulate.run_simulation._setup_file_output", return_value=mock_file_dict)
     
     # Mock to_csv

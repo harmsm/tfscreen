@@ -21,6 +21,7 @@ from tfscreen.simulate.selection_experiment import (
     MULTI_PLASMID_COMBINE_FCNS,
     _sim_sequencing,
     _calc_genotype_cfu0,
+    _compute_kt,
     _simulate_library_group,
     selection_experiment
 )
@@ -40,7 +41,7 @@ def base_config() -> dict:
         "prob_index_hop": 0.01,
         "lib_assembly_skew_sigma": 0.5,
         "transformation_poisson_lambda": 0.8,
-        "growth_rate_noise": 0.05,
+        "tube_noise_sigma": 0.002,
         "final_cfu_pct_err": 0.03,
         "random_seed": 42,
         "cfu0": 1.0e7,
@@ -908,8 +909,333 @@ def test_simulate_library_group_handles_sparse_data(
 # test selection_experiment (End-to-End)
 # ----------------------------------------------------------------------------
 
-def test_selection_experiment_end_to_end(mocker, base_config: dict, 
-                                         base_library_df: pd.DataFrame, 
+# ----------------------------------------------------------------------------
+# test _check_cf — growth_transition validation
+# ----------------------------------------------------------------------------
+
+def test_check_cf_growth_transition_absent(base_config: dict):
+    """Absent growth_transition key should result in None, not an error."""
+    cf = base_config.copy()
+    cf.pop("growth_transition", None)
+    result = _check_cf(cf)
+    assert result["growth_transition"] is None
+
+
+def test_check_cf_growth_transition_none(base_config: dict):
+    """Explicit None for growth_transition should be accepted."""
+    cf = base_config.copy()
+    cf["growth_transition"] = None
+    result = _check_cf(cf)
+    assert result["growth_transition"] is None
+
+
+def test_check_cf_growth_transition_instant(base_config: dict):
+    """A single instant entry should pass validation without error."""
+    cf = base_config.copy()
+    cf["growth_transition"] = [{"condition_pre": "M9", "model": "instant"}]
+    result = _check_cf(cf)
+    assert len(result["growth_transition"]) == 1
+    assert result["growth_transition"][0]["model"] == "instant"
+
+
+def test_check_cf_growth_transition_memory(base_config: dict):
+    """A valid memory entry should pass and cast tau0/k1/k2 to float."""
+    cf = base_config.copy()
+    cf["growth_transition"] = [{
+        "condition_pre": "M9",
+        "model": "memory",
+        "tau0": "120",   # str — should be cast to float
+        "k1": 2,         # int — should be cast to float
+        "k2": 0.5,
+    }]
+    result = _check_cf(cf)
+    entry = result["growth_transition"][0]
+    assert isinstance(entry["tau0"], float)
+    assert isinstance(entry["k1"], float)
+    assert isinstance(entry["k2"], float)
+    assert entry["tau0"] == 120.0
+
+
+def test_check_cf_growth_transition_multiple_conditions(base_config: dict):
+    """Multiple distinct condition_pre entries should all pass."""
+    cf = base_config.copy()
+    cf["growth_transition"] = [
+        {"condition_pre": "M9", "model": "instant"},
+        {"condition_pre": "M9+Ab", "model": "memory", "tau0": 100.0, "k1": 1.0, "k2": 1.0},
+    ]
+    result = _check_cf(cf)
+    assert len(result["growth_transition"]) == 2
+
+
+@pytest.mark.parametrize("bad_gt, match_error", [
+    # Not a list
+    ({"condition_pre": "M9", "model": "instant"}, "must be a list"),
+    # Entry is not a dict
+    (["not_a_dict"], "must be a dict"),
+    # Missing condition_pre
+    ([{"model": "instant"}], "missing required key 'condition_pre'"),
+    # Missing model
+    ([{"condition_pre": "M9"}], "missing required key 'model'"),
+    # condition_pre not a string
+    ([{"condition_pre": 42, "model": "instant"}], "'condition_pre' must be a string"),
+    # Unknown model name
+    ([{"condition_pre": "M9", "model": "not_a_model"}], "must be one of"),
+    # Duplicate condition_pre
+    (
+        [{"condition_pre": "M9", "model": "instant"},
+         {"condition_pre": "M9", "model": "instant"}],
+        "duplicate condition_pre"
+    ),
+    # memory missing tau0
+    ([{"condition_pre": "M9", "model": "memory", "k1": 1.0, "k2": 1.0}],
+     "requires 'tau0'"),
+    # memory missing k1
+    ([{"condition_pre": "M9", "model": "memory", "tau0": 100.0, "k2": 1.0}],
+     "requires 'k1'"),
+    # memory missing k2
+    ([{"condition_pre": "M9", "model": "memory", "tau0": 100.0, "k1": 1.0}],
+     "requires 'k2'"),
+    # memory k2 == 0
+    ([{"condition_pre": "M9", "model": "memory", "tau0": 100.0, "k1": 1.0, "k2": 0.0}],
+     "'k2' must be > 0"),
+    # memory k2 < 0
+    ([{"condition_pre": "M9", "model": "memory", "tau0": 100.0, "k1": 1.0, "k2": -1.0}],
+     "'k2' must be > 0"),
+    # memory tau0 not a number
+    ([{"condition_pre": "M9", "model": "memory", "tau0": "bad", "k1": 1.0, "k2": 1.0}],
+     "'tau0' must be a number"),
+    # baranyi missing tau_lag
+    ([{"condition_pre": "M9", "model": "baranyi", "k_sharp": 0.2}],
+     "requires 'tau_lag'"),
+    # baranyi missing k_sharp
+    ([{"condition_pre": "M9", "model": "baranyi", "tau_lag": 100.0}],
+     "requires 'k_sharp'"),
+    # baranyi k_sharp == 0
+    ([{"condition_pre": "M9", "model": "baranyi", "tau_lag": 100.0, "k_sharp": 0.0}],
+     "'k_sharp' must be > 0"),
+    # two_pop missing k_trans
+    ([{"condition_pre": "M9", "model": "two_pop"}],
+     "requires 'k_trans'"),
+    # two_pop k_trans == 0
+    ([{"condition_pre": "M9", "model": "two_pop", "k_trans": 0.0}],
+     "'k_trans' must be > 0"),
+    # two_pop k_trans not a number
+    ([{"condition_pre": "M9", "model": "two_pop", "k_trans": "bad"}],
+     "'k_trans' must be a number"),
+])
+def test_check_cf_growth_transition_failures(base_config: dict, bad_gt, match_error):
+    """growth_transition validation should raise ValueError for invalid inputs."""
+    cf = base_config.copy()
+    cf["growth_transition"] = bad_gt
+    with pytest.raises(ValueError, match=match_error):
+        _check_cf(cf)
+
+
+def test_check_cf_growth_transition_baranyi(base_config: dict):
+    """A valid baranyi entry should pass and cast tau_lag/k_sharp to float."""
+    cf = base_config.copy()
+    cf["growth_transition"] = [{
+        "condition_pre": "M9",
+        "model": "baranyi",
+        "tau_lag": "120",   # str — should be cast to float
+        "k_sharp": 2,       # int — should be cast to float
+    }]
+    result = _check_cf(cf)
+    entry = result["growth_transition"][0]
+    assert isinstance(entry["tau_lag"], float)
+    assert isinstance(entry["k_sharp"], float)
+    assert entry["tau_lag"] == 120.0
+
+
+def test_check_cf_growth_transition_two_pop(base_config: dict):
+    """A valid two_pop entry should pass and cast k_trans to float."""
+    cf = base_config.copy()
+    cf["growth_transition"] = [{
+        "condition_pre": "M9",
+        "model": "two_pop",
+        "k_trans": "0.001",
+    }]
+    result = _check_cf(cf)
+    entry = result["growth_transition"][0]
+    assert isinstance(entry["k_trans"], float)
+    assert entry["k_trans"] == 0.001
+
+
+def test_compute_kt_baranyi(single_row_df: pd.DataFrame):
+    """baranyi model should return same result as BaranyiTransition.compute_kt."""
+    from tfscreen.simulate.growth.transition_linkage import BaranyiTransition
+    tau_lag, k_sharp = 50.0, 0.2
+    gt = [{"condition_pre": "M9", "model": "baranyi",
+           "tau_lag": tau_lag, "k_sharp": k_sharp}]
+    result = _compute_kt(single_row_df, gt)
+    expected = BaranyiTransition().compute_kt(
+        0.1, 0.5, 30.0, 100.0, tau_lag=tau_lag, k_sharp=k_sharp
+    )
+    np.testing.assert_allclose(result, [expected])
+
+
+def test_compute_kt_two_pop(single_row_df: pd.DataFrame):
+    """two_pop model should return same result as TwoPopTransition.compute_kt."""
+    from tfscreen.simulate.growth.transition_linkage import TwoPopTransition
+    k_trans = 0.001
+    gt = [{"condition_pre": "M9", "model": "two_pop", "k_trans": k_trans}]
+    result = _compute_kt(single_row_df, gt)
+    expected = TwoPopTransition().compute_kt(
+        0.1, 0.5, 30.0, 100.0, k_trans=k_trans
+    )
+    np.testing.assert_allclose(result, [expected])
+
+
+# ----------------------------------------------------------------------------
+# test _compute_kt
+# ----------------------------------------------------------------------------
+
+@pytest.fixture
+def single_row_df() -> pd.DataFrame:
+    """A one-row phenotype DataFrame for simple _compute_kt tests."""
+    return pd.DataFrame([{
+        "condition_pre": "M9",
+        "k_pre": 0.1,
+        "k_sel": 0.5,
+        "t_pre": 30.0,
+        "t_sel": 100.0,
+        "theta": 0.5,
+    }])
+
+
+def test_compute_kt_none_gives_instant(single_row_df: pd.DataFrame):
+    """growth_transition=None should return the instant-transition formula."""
+    result = _compute_kt(single_row_df, growth_transition=None)
+    expected = 0.1 * 30.0 + 0.5 * 100.0   # 3 + 50 = 53
+    np.testing.assert_allclose(result, [expected])
+
+
+def test_compute_kt_instant_model(single_row_df: pd.DataFrame):
+    """model='instant' should return the same result as growth_transition=None."""
+    gt = [{"condition_pre": "M9", "model": "instant"}]
+    result = _compute_kt(single_row_df, growth_transition=gt)
+    expected = 0.1 * 30.0 + 0.5 * 100.0
+    np.testing.assert_allclose(result, [expected])
+
+
+def test_compute_kt_memory_lag_not_expired(single_row_df: pd.DataFrame):
+    """When tau > t_sel the bacteria grow at k_pre throughout all of t_sel."""
+    # tau = 200 + 1/(0.5+1) = 200.667, t_sel=100 → lag not expired
+    gt = [{"condition_pre": "M9", "model": "memory",
+           "tau0": 200.0, "k1": 1.0, "k2": 1.0}]
+    result = _compute_kt(single_row_df, growth_transition=gt)
+    expected = 0.1 * 30.0 + 0.1 * 100.0   # grows at k_pre the whole time: 3 + 10 = 13
+    np.testing.assert_allclose(result, [expected])
+
+
+def test_compute_kt_memory_lag_expired(single_row_df: pd.DataFrame):
+    """When tau < t_sel the bacteria transition partway through t_sel."""
+    # tau = 50 + 1/(0.5+1) = 50 + 2/3 ≈ 50.667, t_sel=100 → lag expires
+    tau0, k1, k2, theta = 50.0, 1.0, 1.0, 0.5
+    tau = tau0 + k1 / (theta + k2)          # ≈ 50.667
+    k_pre, k_sel, t_pre, t_sel = 0.1, 0.5, 30.0, 100.0
+    expected = k_pre * t_pre + k_pre * tau + k_sel * (t_sel - tau)
+    gt = [{"condition_pre": "M9", "model": "memory",
+           "tau0": tau0, "k1": k1, "k2": k2}]
+    result = _compute_kt(single_row_df, growth_transition=gt)
+    np.testing.assert_allclose(result, [expected])
+
+
+def test_compute_kt_memory_tau_equals_t_sel(single_row_df: pd.DataFrame):
+    """When tau == t_sel both branches give the same answer."""
+    # Force tau exactly to t_sel=100: tau0=100 - k1/(theta+k2) = 100 - 1/1.5
+    k_pre, k_sel, t_pre, t_sel = 0.1, 0.5, 30.0, 100.0
+    theta, k1, k2 = 0.5, 1.0, 1.0
+    tau0 = t_sel - k1 / (theta + k2)        # tau will equal exactly t_sel
+    tau = tau0 + k1 / (theta + k2)
+    # Both branches collapse to the same value: k_pre*t_pre + k_pre*tau + 0
+    expected = k_pre * t_pre + k_pre * tau  # k_sel * 0 = 0
+    gt = [{"condition_pre": "M9", "model": "memory",
+           "tau0": tau0, "k1": k1, "k2": k2}]
+    result = _compute_kt(single_row_df, growth_transition=gt)
+    np.testing.assert_allclose(result, [expected], rtol=1e-10)
+
+
+def test_compute_kt_memory_higher_theta_shorter_tau():
+    """Higher theta should reduce tau (k1>0), meaning earlier transition."""
+    df_lo = pd.DataFrame([{"condition_pre": "M9", "k_pre": 0.1, "k_sel": 0.5,
+                            "t_pre": 30.0, "t_sel": 200.0, "theta": 0.1}])
+    df_hi = pd.DataFrame([{"condition_pre": "M9", "k_pre": 0.1, "k_sel": 0.5,
+                            "t_pre": 30.0, "t_sel": 200.0, "theta": 0.9}])
+    gt = [{"condition_pre": "M9", "model": "memory",
+           "tau0": 50.0, "k1": 10.0, "k2": 1.0}]
+    kt_lo = _compute_kt(df_lo, gt)[0]
+    kt_hi = _compute_kt(df_hi, gt)[0]
+    # Higher theta → smaller tau → more time at k_sel (which > k_pre) → more growth
+    assert kt_hi > kt_lo
+
+
+def test_compute_kt_mixed_conditions():
+    """Two condition_pre values, one instant and one memory, computed correctly."""
+    df = pd.DataFrame([
+        {"condition_pre": "cond_A", "k_pre": 0.1, "k_sel": 0.5,
+         "t_pre": 30.0, "t_sel": 100.0, "theta": 0.5},
+        {"condition_pre": "cond_B", "k_pre": 0.1, "k_sel": 0.5,
+         "t_pre": 30.0, "t_sel": 100.0, "theta": 0.5},
+    ])
+    tau0, k1, k2, theta = 50.0, 1.0, 1.0, 0.5
+    tau = tau0 + k1 / (theta + k2)
+    k_pre, k_sel, t_pre, t_sel = 0.1, 0.5, 30.0, 100.0
+
+    expected_instant = k_pre * t_pre + k_sel * t_sel
+    expected_memory  = k_pre * t_pre + k_pre * tau + k_sel * (t_sel - tau)
+
+    gt = [
+        {"condition_pre": "cond_A", "model": "instant"},
+        {"condition_pre": "cond_B", "model": "memory",
+         "tau0": tau0, "k1": k1, "k2": k2},
+    ]
+    result = _compute_kt(df, gt)
+    np.testing.assert_allclose(result[0], expected_instant)
+    np.testing.assert_allclose(result[1], expected_memory)
+
+
+def test_compute_kt_memory_less_than_instant(single_row_df: pd.DataFrame):
+    """Memory kt must be <= instant kt when k_sel > k_pre (lag costs growth time)."""
+    gt_instant = None
+    gt_memory  = [{"condition_pre": "M9", "model": "memory",
+                   "tau0": 50.0, "k1": 1.0, "k2": 1.0}]
+    kt_instant = _compute_kt(single_row_df, gt_instant)[0]
+    kt_memory  = _compute_kt(single_row_df, gt_memory)[0]
+    # Lag delays the switch to faster k_sel, so total growth is lower
+    assert kt_memory <= kt_instant
+
+
+# ----------------------------------------------------------------------------
+# test selection_experiment — growth_transition coverage error
+# ----------------------------------------------------------------------------
+
+def test_selection_experiment_missing_condition_pre_raises(
+    mocker,
+    base_config: dict,
+    base_library_df: pd.DataFrame,
+    base_phenotype_df: pd.DataFrame,
+):
+    """selection_experiment should raise if a condition_pre lacks a growth_transition entry."""
+    cfg = base_config.copy()
+    # Configure a transition only for a condition that doesn't exist in the data;
+    # "M9" (the real condition_pre) is left uncovered → must error.
+    cfg["growth_transition"] = [
+        {"condition_pre": "not_in_data", "model": "instant"}
+    ]
+
+    mocker.patch("tfscreen.simulate.selection_experiment.read_yaml", return_value=cfg)
+    mocker.patch(
+        "tfscreen.simulate.selection_experiment.read_dataframe",
+        side_effect=[base_phenotype_df, base_library_df],
+    )
+
+    with pytest.raises(ValueError, match="condition_pre values.*no entry"):
+        selection_experiment("dummy.yaml", "dummy_lib.csv", "dummy_pheno.csv")
+
+
+def test_selection_experiment_end_to_end(mocker, base_config: dict,
+                                         base_library_df: pd.DataFrame,
                                          base_phenotype_df: pd.DataFrame):
     """
     Integration test.

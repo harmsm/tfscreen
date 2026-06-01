@@ -69,9 +69,9 @@ def run():
     import jax
     import jax.numpy as jnp
 
-    from tfscreen.analysis.hierarchical.growth_model.model_class import ModelClass
-    from tfscreen.analysis.hierarchical.run_inference import RunInference
-    from tfscreen.analysis.hierarchical.growth_model.extraction import extract_parameters
+    from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+    from tfscreen.tfmodel.inference.run_inference import RunInference
+    from tfscreen.tfmodel.analysis.extraction import extract_parameters
 
     print(f"Loading data from {DATA_DIR} …")
     import pandas as pd
@@ -87,10 +87,10 @@ def run():
     # different modes, making coverage comparisons unreliable.
     # hierarchical activity (Normal hyperprior) and single transformation mix well.
     print("Initialising model (NUTS-friendly settings) …")
-    model = ModelClass(
+    model = ModelOrchestrator(
         growth_df=growth_df,
         binding_df=binding_df,
-        activity="hierarchical",
+        activity="hierarchical_geno",
         transformation="single",
     )
 
@@ -128,9 +128,9 @@ def run():
             "num_divergences": num_div,
             "model_config": {
                 "condition_growth": "linear",
-                "dk_geno":          "hierarchical",
-                "activity":         "hierarchical",
-                "theta":            "hill",
+                "dk_geno":          "hierarchical_geno",
+                "activity":         "hierarchical_geno",
+                "theta":            "hill_geno",
                 "transformation":   "single",
                 "theta_growth_noise": "zero",
                 "theta_binding_noise": "zero",

@@ -1,7 +1,7 @@
 
 from tfscreen.util.io import read_yaml
 from tfscreen.util.validation import check_number
-from tfscreen.data import (
+from .data import (
     CODON_TO_AA,
     DEGEN_BASE_SPECIFIER,
 )
@@ -300,7 +300,7 @@ class LibraryManager:
         if isinstance(run_config["library_combos"],str) or not hasattr(run_config["library_combos"],"__iter__"):
             raise ValueError(
                 f"library_combos should be a list of strings of library combinations. "
-                f"library_combos '{run_config["library_combos"]}' is not valid."
+                f"library_combos '{run_config['library_combos']}' is not valid."
             )
         self.library_combos = []
         for lib_key in run_config["library_combos"]:

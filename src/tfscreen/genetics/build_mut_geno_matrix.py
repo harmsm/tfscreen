@@ -2,7 +2,7 @@
 import numpy as np
 
 
-def build_mut_geno_matrix(genotypes):
+def build_mut_geno_matrix(genotypes, skip_pairs=False):
     """
     Build binary indicator matrices mapping mutations and mutation pairs to
     genotypes, from an ordered list of genotype strings.
@@ -16,6 +16,10 @@ def build_mut_geno_matrix(genotypes):
     genotypes : array-like of str
         Ordered list of genotype strings. The column order of the output
         matrices follows this order.
+    skip_pairs : bool, optional
+        If True, skip building the pair index arrays entirely and return empty
+        arrays of shape ``(0,)``. Use this when epistasis is disabled to avoid
+        iterating over all multi-mutation genotypes. Default is False.
 
     Returns
     -------
@@ -27,10 +31,14 @@ def build_mut_geno_matrix(genotypes):
     mut_geno_matrix : np.ndarray, shape (num_mutation, num_genotype)
         Binary float32 matrix. ``mut_geno_matrix[m, g] == 1`` iff mutation
         ``m`` is present in genotype ``g``.
-    pair_geno_matrix : np.ndarray, shape (num_pair, num_genotype)
-        Binary float32 matrix. ``pair_geno_matrix[p, g] == 1`` iff both
-        mutations of pair ``p`` are present in genotype ``g``. Empty
-        (shape ``(0, num_genotype)``) when no multi-mutation genotypes exist.
+    pair_nnz_pair_idx : np.ndarray, shape (nnz,), dtype int32
+        Row (pair) index of each nonzero entry in the logical
+        ``(num_pair, num_genotype)`` binary pair-genotype matrix, stored in
+        COO format.  Empty (shape ``(0,)``) when there are no multi-mutation
+        genotypes or when ``skip_pairs=True``.
+    pair_nnz_geno_idx : np.ndarray, shape (nnz,), dtype int32
+        Column (genotype) index of each nonzero entry, matching
+        ``pair_nnz_pair_idx`` element-for-element.
     """
 
     genotypes = list(genotypes)
@@ -63,6 +71,12 @@ def build_mut_geno_matrix(genotypes):
     # Collect unique observed mutation pairs (from genotypes with >= 2 mutations).
     # Pairs are stored in canonical form: the two mutation strings sorted
     # alphabetically and joined with "/".
+    if skip_pairs:
+        pair_labels = []
+        pair_nnz_pair_idx = np.zeros(0, dtype=np.int32)
+        pair_nnz_geno_idx = np.zeros(0, dtype=np.int32)
+        return mut_labels, pair_labels, mut_geno_matrix, pair_nnz_pair_idx, pair_nnz_geno_idx
+
     pair_seen = {}
     for muts in geno_muts:
         if len(muts) < 2:
@@ -75,10 +89,13 @@ def build_mut_geno_matrix(genotypes):
                     pair_seen[label] = len(pair_seen)
 
     pair_labels = list(pair_seen.keys())
-    num_pair = len(pair_labels)
 
-    # Build pair_geno_matrix [num_pair, num_genotype].
-    pair_geno_matrix = np.zeros((num_pair, num_genotype), dtype=np.float32)
+    # Build COO representation of the (num_pair, num_genotype) binary matrix.
+    # For a library of double mutants each genotype contributes exactly one
+    # nonzero; triples contribute C(k,2) nonzeros.  This avoids the O(P*G)
+    # dense allocation (which can exceed 100 GiB for large libraries).
+    rows = []
+    cols = []
     for g_idx, muts in enumerate(geno_muts):
         if len(muts) < 2:
             continue
@@ -86,6 +103,101 @@ def build_mut_geno_matrix(genotypes):
             for j in range(i + 1, len(muts)):
                 a, b = sorted([muts[i], muts[j]])
                 label = f"{a}/{b}"
-                pair_geno_matrix[pair_seen[label], g_idx] = 1.0
+                rows.append(pair_seen[label])
+                cols.append(g_idx)
 
-    return mut_labels, pair_labels, mut_geno_matrix, pair_geno_matrix
+    pair_nnz_pair_idx = np.array(rows, dtype=np.int32)
+    pair_nnz_geno_idx = np.array(cols, dtype=np.int32)
+
+    return mut_labels, pair_labels, mut_geno_matrix, pair_nnz_pair_idx, pair_nnz_geno_idx
+
+
+def apply_pair_matrix(epi, pair_nnz_pair_idx, pair_nnz_geno_idx, num_genotype):
+    """Scatter epistasis values to genotypes via COO pair-genotype indices.
+
+    This is the memory-efficient equivalent of ``epi @ pair_geno_matrix`` where
+    ``pair_geno_matrix`` is the dense ``(num_pair, num_genotype)`` binary matrix
+    stored instead in COO format as ``(pair_nnz_pair_idx, pair_nnz_geno_idx)``.
+
+    Parameters
+    ----------
+    epi : jnp.ndarray, shape (..., num_pair)
+        Epistasis values, one per pair. Leading dimensions are broadcast.
+    pair_nnz_pair_idx : array-like, shape (nnz,)
+        Row (pair) index of each nonzero.
+    pair_nnz_geno_idx : array-like, shape (nnz,)
+        Column (genotype) index of each nonzero.
+    num_genotype : int
+        Size of the genotype dimension in the output.
+
+    Returns
+    -------
+    jnp.ndarray, shape (..., num_genotype)
+        ``result[..., g] = sum_k epi[..., pair_nnz_pair_idx[k]]``
+        for all ``k`` where ``pair_nnz_geno_idx[k] == g``.
+    """
+    import jax.numpy as jnp
+    leading = epi.shape[:-1]
+    result = jnp.zeros((*leading, num_genotype))
+    return result.at[..., pair_nnz_geno_idx].add(epi[..., pair_nnz_pair_idx])
+
+
+def apply_mut_matrix(d, mut_nnz_mut_idx, mut_nnz_geno_idx, num_genotype):
+    """Scatter per-mutation values to genotypes via COO mutation-genotype indices.
+
+    Memory-efficient equivalent of ``d @ mut_geno_matrix`` where
+    ``mut_geno_matrix`` is the dense ``(num_mutation, num_genotype)`` binary
+    matrix stored instead in COO format as
+    ``(mut_nnz_mut_idx, mut_nnz_geno_idx)``.
+
+    This avoids embedding the full dense matrix as an XLA constant literal
+    during JAX JIT compilation, which would consume O(num_mutation × num_genotype)
+    device memory even for sparse libraries.
+
+    Parameters
+    ----------
+    d : jnp.ndarray, shape (..., num_mutation)
+        Per-mutation values.  Leading dimensions are broadcast.
+    mut_nnz_mut_idx : array-like, shape (nnz,)
+        Row (mutation) index of each nonzero in the COO representation.
+    mut_nnz_geno_idx : array-like, shape (nnz,)
+        Column (genotype) index of each nonzero, matching ``mut_nnz_mut_idx``.
+    num_genotype : int
+        Size of the genotype dimension in the output.
+
+    Returns
+    -------
+    jnp.ndarray, shape (..., num_genotype)
+        ``result[..., g] = sum_k d[..., mut_nnz_mut_idx[k]]``
+        for all ``k`` where ``mut_nnz_geno_idx[k] == g``.
+    """
+    import jax.numpy as jnp
+    leading = d.shape[:-1]
+    result = jnp.zeros((*leading, num_genotype))
+    return result.at[..., mut_nnz_geno_idx].add(d[..., mut_nnz_mut_idx])
+
+
+def build_mut_sparse_indices(mut_geno_matrix):
+    """
+    Build COO sparse index arrays from a dense mutation-genotype indicator matrix.
+
+    Converts the dense ``(num_mutation, num_genotype)`` binary float32 matrix
+    returned by ``build_mut_geno_matrix`` into two parallel int32 index arrays
+    that can be used with ``apply_mut_matrix`` for memory-efficient scatter
+    operations inside JAX JIT.
+
+    Parameters
+    ----------
+    mut_geno_matrix : np.ndarray, shape (num_mutation, num_genotype)
+        Dense binary indicator matrix where ``mut_geno_matrix[m, g] == 1``
+        iff mutation ``m`` is present in genotype ``g``.
+
+    Returns
+    -------
+    mut_nnz_mut_idx : np.ndarray, shape (nnz,), dtype int32
+        Row (mutation) index of each nonzero entry.
+    mut_nnz_geno_idx : np.ndarray, shape (nnz,), dtype int32
+        Column (genotype) index of each nonzero entry.
+    """
+    rows, cols = np.nonzero(mut_geno_matrix)
+    return rows.astype(np.int32), cols.astype(np.int32)

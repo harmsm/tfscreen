@@ -3,9 +3,9 @@ import os
 import pandas as pd
 import numpy as np
 import jax.numpy as jnp
-from tfscreen.analysis.hierarchical.growth_model import GrowthModel as ModelClass
-from tfscreen.analysis.hierarchical.growth_model.prediction import predict
-from tfscreen.analysis.hierarchical.run_inference import RunInference
+from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+from tfscreen.tfmodel.analysis.prediction import predict
+from tfscreen.tfmodel.inference.run_inference import RunInference
 
 @pytest.mark.slow
 def test_prediction_smoke(growth_smoke_csv, 
@@ -14,13 +14,13 @@ def test_prediction_smoke(growth_smoke_csv,
     """
     Smoke test for the simplified prediction logic.
     """
-    out_root = os.path.join(tmpdir, "test_predict_smoke")
+    out_prefix = os.path.join(tmpdir, "test_predict_smoke")
     
     # 1. Initialize and run a very short optimization to get samples
-    model = ModelClass(
+    model = ModelOrchestrator(
         growth_df=growth_smoke_csv,
         binding_df=binding_smoke_csv,
-        theta="hill",
+        theta="hill_geno",
         transformation="logit_norm"
     )
     
@@ -30,16 +30,16 @@ def test_prediction_smoke(growth_smoke_csv,
     svi_state, params, converged = inference.run_optimization(
         svi=svi,
         max_num_epochs=1,
-        out_root=out_root
+        out_prefix=out_prefix
     )
     
     inference.get_posteriors(
         svi=svi,
         svi_state=svi_state,
-        out_root=out_root,
+        out_prefix=out_prefix,
         num_posterior_samples=5
     )
-    posterior_file = f"{out_root}_posterior.h5"
+    posterior_file = f"{out_prefix}_posterior.h5"
     
     # 2. Test prediction with quantitative expansion and genotype subsetting
     all_genotypes = model.growth_tm.tensor_dim_labels[-1]
@@ -85,23 +85,23 @@ def test_prediction_smoke(growth_smoke_csv,
         
         # 4. Test categorical theta restriction (as requested)
         # Create model with categorical theta
-        model_cat = ModelClass(
+        model_cat = ModelOrchestrator(
             growth_df=growth_smoke_csv,
             binding_df=binding_smoke_csv,
-            theta="categorical"
+            theta="categorical_geno"
         )
         
         # Generate a valid posterior file for model_cat
         inference_cat = RunInference(model=model_cat, seed=42)
         svi_cat = inference_cat.setup_svi(adam_step_size=1e-3)
         svi_state_cat, _, _ = inference_cat.run_optimization(
-            svi=svi_cat, max_num_epochs=1, out_root=f"{out_root}_cat"
+            svi=svi_cat, max_num_epochs=1, out_prefix=f"{out_prefix}_cat"
         )
         inference_cat.get_posteriors(
             svi=svi_cat, svi_state=svi_state_cat, 
-            out_root=f"{out_root}_cat", num_posterior_samples=5
+            out_prefix=f"{out_prefix}_cat", num_posterior_samples=5
         )
-        posterior_file_cat = f"{out_root}_cat_posterior.h5"
+        posterior_file_cat = f"{out_prefix}_cat_posterior.h5"
 
         predict(
             model_cat,

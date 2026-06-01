@@ -1,6 +1,6 @@
-from tfscreen.models.generic import MODEL_LIBRARY
+from tfscreen.mle.curve_models import MODEL_LIBRARY
 
-from tfscreen.fitting import (
+from tfscreen.mle import (
     run_least_squares,
     predict_with_error,
     run_matrix_wls

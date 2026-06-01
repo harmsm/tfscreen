@@ -1,5 +1,5 @@
 
-from tfscreen.data import (
+from tfscreen.genetics.data import (
     COMPLEMENT_DICT
 )
 

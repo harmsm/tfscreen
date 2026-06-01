@@ -1,40 +1,54 @@
-==================
+===================
 Processing Raw Data
-==================
+===================
 
-This section describes how to process raw sequencing reads into genotype counts, and how to combine those counts into final values suitable for downstream statistical modeling.
+This section describes how to process raw sequencing reads into genotype
+counts, and how to combine those counts into final values suitable for
+downstream statistical modelling.
 
 There are two primary scripts for processing raw data:
 
-1. ``tfs-process-fastq``: Analyzes paired-end FASTQ files to count the occurrence of each genotype.
-2. ``tfs-process-counts``: Aggregates counts across multiple samples, predicts CFU per mL from OD600, and computes adjusted log-counts (``ln_cfu``) for analysis.
+1. ``tfs-process-fastq``: Analyses paired-end FASTQ files to count the
+   occurrence of each genotype.
+2. ``tfs-process-counts``: Aggregates counts across multiple samples and
+   computes adjusted log-counts (``ln_cfu``) for analysis.
 
 Configuration File (run_config.yaml)
-------------------------------------
+-------------------------------------
 
-The ``tfs-process-fastq`` script requires a ``run_config.yaml`` file to describe the library of expected sequences. You can view or download an :download:`example run_config.yaml <run_config.yaml>` file. Below is a description of its expected fields:
+``tfs-process-fastq`` requires a ``run_config.yaml`` file describing the
+library of expected sequences. You can view or download an
+:download:`example run_config.yaml <run_config.yaml>` file. Expected fields:
 
 * ``reading_frame``: Amino acid reading frame offset (0, 1, or 2).
-* ``first_amplicon_residue``: Amino acid residue number for the first in-frame residue.
+* ``first_amplicon_residue``: Amino acid residue number for the first in-frame
+  residue.
 * ``wt_seq``: The wildtype nucleic acid sequence.
-* ``degen_sites``: Degenerate codons defining the library as a string matching the length of ``wt_seq`` (e.g., using "NNS", "NNK", and "." to indicate wildtype).
-* ``sub_libraries``: Defines contiguous blocks of library components cloned in together. "." indicates wildtype sequence; each unique character beside "." defines a unique sub-library (must be contiguous).
-* ``expected_5p`` / ``expected_3p``: Flanking sequences just upstream and downstream of the amplicon.
-* ``library_combos``: A list of strings formatted like ``single-x`` or ``double-x-y``, where ``x`` and ``y`` correspond to characters in the ``sub_libraries`` field. ``single-x`` specifies all individual degenerate codons in ``x``. ``double-x-y`` specifies double mutants between sub-libraries ``x`` and ``y``.
-* ``spiked_seqs``: A list of specific nucleic acid sequences that are not part of the library but should be identified as controls.
+* ``degen_sites``: Degenerate codon pattern the same length as ``wt_seq``
+  (e.g. ``NNT``, ``NNK``, or ``.`` for wildtype).
+* ``sub_libraries``: Contiguous blocks of library components cloned together.
+  ``.`` indicates wildtype; each unique character besides ``.`` defines a
+  sub-library (blocks must be contiguous).
+* ``expected_5p`` / ``expected_3p``: Flanking sequences immediately upstream
+  and downstream of the amplicon.
+* ``library_combos``: List of strings such as ``single-x`` or ``double-x-y``,
+  where ``x`` and ``y`` match characters in ``sub_libraries``. ``single-x``
+  specifies all single-mutation variants in sub-library ``x``; ``double-x-y``
+  specifies all pairwise combinations between sub-libraries ``x`` and ``y``.
+* ``spiked_seqs``: Specific nucleic acid sequences (not part of the combinatorial
+  library) that should be identified as controls.
 
 tfs-process-fastq
 -----------------
 
-The ``tfs-process-fastq`` script takes a pair of paired-end FASTQ files and counts the protein genotypes observed in the reads. It compares the reads to a predefined library of expected sequences, ensuring quality filtering and accurate matching before returning the final genotype counts. 
+Reads paired-end FASTQ files and counts the protein genotype observed in each
+read pair. Each read is matched against the predefined library after quality
+filtering and flanking-sequence detection.
 
-**Why run it?** 
-To convert raw sequencing output (FASTQ) into a quantifiable count dataframe for each sample, determining how many times each specific genotype was observed.
+**Outputs** (written to ``out_dir``):
 
-**Outputs:**
-It generates two output CSV files in the specified ``out_dir``: 
-- ``stats_[filename].csv``: Overall statistics on read success/failure rates.
-- ``counts_[filename].csv``: The raw counts for each expected genotype.
+* ``stats_{filename}.csv`` — overall read success/failure statistics.
+* ``counts_{filename}.csv`` — raw counts for each expected genotype.
 
 **Usage:**
 
@@ -44,49 +58,58 @@ It generates two output CSV files in the specified ``out_dir``:
 
 **Positional arguments:**
 
-* ``f1_fastq``: Path to the read 1 FASTQ file (can be gzipped).
-* ``f2_fastq``: Path to the read 2 FASTQ file.
-* ``out_dir``: Output directory to write the CSV files.
-* ``run_config``: Path to a configuration file or dictionary initializing the expected library.
+* ``f1_fastq``: Path to the read-1 FASTQ file (gzip-compressed accepted).
+* ``f2_fastq``: Path to the read-2 FASTQ file.
+* ``out_dir``: Directory to write output CSV files (created if absent).
+* ``run_config``: Path to the library configuration YAML file.
 
 **Optional arguments:**
 
-* ``--phred_cutoff``: Minimum Phred quality score (default: 10, bases below are assigned "N").
-* ``--min_read_length``: Toss reads shorter than this length (default: 50).
-* ``--allowed_num_flank_diffs``: Allowed mismatches when finding the 5' and 3' flanks (default: 1).
-* ``--allowed_diff_from_expected``: Allowed mismatches from library genotypes (default: 2).
-* ``--print_raw_seq``: If flagged, prints the sequence matches to standard output for debugging.
-* ``--max_num_reads``: Stop processing after this many reads.
-* ``--chunk_size``: Block size of reads to chunk for multiprocessing.
-* ``--num_workers``: Number of parallel workers to use (defaults to available CPUs minus 1).
+* ``--phred_cutoff``: Minimum Phred quality score; bases below this threshold
+  are replaced with ``N`` (default: 10).
+* ``--min_read_length``: Discard reads shorter than this length (default: 50).
+* ``--allowed_num_flank_diffs``: Allowed mismatches when locating 5′ and 3′
+  flanks (default: 1).
+* ``--allowed_diff_from_expected``: Allowed mismatches from library genotypes
+  (default: 2).
+* ``--print_raw_seq``: If set, prints sequence matches to stdout for debugging.
+* ``--max_num_reads``: Stop after this many reads.
+* ``--chunk_size``: Block size for multiprocessing batches.
+* ``--num_workers``: Number of parallel workers (default: available CPUs − 1).
 
 tfs-process-counts
 ------------------
 
-The ``tfs-process-counts`` script takes the individual count CSV files generated by ``tfs-process-fastq``, aggregates them according to a sample metadata file, and infers absolute colony-forming units (CFU)/mL based on OD600 measurements.
+Takes the per-sample count CSVs produced by ``tfs-process-fastq``, aggregates
+them according to a sample metadata file, and converts raw counts into
+ln(CFU) values using per-sample CFU estimates.
 
-**Why run it?** 
-To merge all your individual sample reads into a unified dataset and translate raw, relative sequencing counts into biologically meaningful terms (ln(CFU)) given cell density.
-
-**Outputs:**
-A final combined CSV file (specified by ``output_file``) containing ``ln_cfu`` per genotype across all samples, ready for hierarchical modeling and analysis.
+**Output:** A single CSV file (``output_file``) containing ``ln_cfu`` per
+genotype across all samples, ready for hierarchical modelling.
 
 **Usage:**
 
 .. code-block:: bash
 
-    tfs-process-counts <sample_df> <counts_csv_path> <od600_calibration_data> <output_file> [options]
+    tfs-process-counts <sample_df> <counts_csv_path> <output_file> [options]
 
 **Positional arguments:**
 
-* ``sample_df``: Path to a CSV file describing samples, must contain ``sample`` and ``od600`` columns.
-* ``counts_csv_path``: Directory path containing the observation CSV files.
-* ``od600_calibration_data``: Path to a JSON or CSV holding OD600-to-CFU calibration parameters.
-* ``output_file``: Desired filename for the merged and processed final CSV.
+* ``sample_df``: Path to a CSV file describing samples. Must contain a unique
+  ``sample`` column (used as the row index) plus ``sample_cfu`` and
+  ``sample_cfu_std`` columns giving the total CFU and its standard deviation
+  for each sample tube.
+* ``counts_csv_path``: Directory containing the per-sample count CSV files.
+  Each file is found by globbing
+  ``{counts_glob_prefix}*{sample}*.csv`` within this directory.
+* ``output_file``: Path for the output ln_cfu CSV.
 
 **Optional arguments:**
 
-* ``--counts_glob_prefix``: The file prefix used to glob observation files (default: ``counts``).
-* ``--min_genotype_obs``: The minimum overall observations required across samples to retain a genotype (default: 10).
-* ``--pseudocount``: Pseudocount added to adjust zero-counts before log transformation (default: 1).
-* ``--verbose``: Verbosity flag.
+* ``--counts_glob_prefix``: File prefix used when globbing for count files
+  (default: ``counts``).
+* ``--min_genotype_obs``: Minimum total counts across all samples for a
+  genotype to be retained (default: 10).
+* ``--pseudocount``: Pseudocount added to zero counts before log transformation
+  (default: 1).
+* ``--verbose``: If set, prints a summary of matched samples and file paths.

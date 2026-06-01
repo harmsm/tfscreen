@@ -1,9 +1,10 @@
 import pytest
 import os
 import h5py
-from tfscreen.analysis.hierarchical.growth_model import GrowthModel as ModelClass
-from tfscreen.analysis.hierarchical.growth_model.configuration_io import write_configuration
-from tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis import run_growth_analysis
+from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+from tfscreen.tfmodel.configuration_io import write_configuration
+from tfscreen.tfmodel.scripts.fit_model_cli import fit_model
+from tfscreen.tfmodel.scripts.sample_posterior_cli import sample_posterior
 
 
 def _build_config(gm, tmpdir, growth_smoke_csv, binding_smoke_csv):
@@ -11,7 +12,7 @@ def _build_config(gm, tmpdir, growth_smoke_csv, binding_smoke_csv):
     config_root = os.path.join(tmpdir, "smoke")
     write_configuration(
         gm=gm,
-        out_root=config_root,
+        out_prefix=config_root,
         growth_df_path=str(growth_smoke_csv),
         binding_df_path=str(binding_smoke_csv),
     )
@@ -22,22 +23,22 @@ def test_run_growth_analysis_smoke(growth_smoke_csv, binding_smoke_csv, tmpdir):
     """
     Smoke test for run_growth_analysis script.
     """
-    out_root = os.path.join(tmpdir, "run_smoke")
+    out_prefix = os.path.join(tmpdir, "run_smoke")
     
     # 1. Initialize a model and write its configuration
-    gm = ModelClass(
+    gm = ModelOrchestrator(
         growth_df=growth_smoke_csv,
         binding_df=binding_smoke_csv,
         condition_growth="linear",
         transformation="logit_norm",
-        theta="hill",
+        theta="hill_geno",
         batch_size=None
     )
     
     config_root = os.path.join(tmpdir, "smoke")
     write_configuration(
         gm=gm,
-        out_root=config_root,
+        out_prefix=config_root,
         growth_df_path=str(growth_smoke_csv),
         binding_df_path=str(binding_smoke_csv)
     )
@@ -47,11 +48,11 @@ def test_run_growth_analysis_smoke(growth_smoke_csv, binding_smoke_csv, tmpdir):
     
     # 2. Run the analysis using the script entry point
     # We use very small epochs and samples for speed
-    run_growth_analysis(
+    fit_model(
         config_file=config_file,
         seed=42,
         analysis_method="svi",
-        out_root=out_root,
+        out_prefix=out_prefix,
         max_num_epochs=1,
         num_posterior_samples=5,
         sampling_batch_size=5,
@@ -60,7 +61,7 @@ def test_run_growth_analysis_smoke(growth_smoke_csv, binding_smoke_csv, tmpdir):
     )
     
     # 3. Verify outputs
-    posterior_file = f"{out_root}_posterior.h5"
+    posterior_file = f"{out_prefix}_posterior.h5"
     assert os.path.exists(posterior_file)
     
     # Load and check the saved file
@@ -78,24 +79,24 @@ def test_run_growth_analysis_nuts_smoke(growth_smoke_csv, binding_smoke_csv, tmp
     - a posterior HDF5 is written with the expected keys
     - a checkpoint pkl is written containing 'mcmc_samples'
     """
-    gm = ModelClass(
+    gm = ModelOrchestrator(
         growth_df=growth_smoke_csv,
         binding_df=binding_smoke_csv,
         condition_growth="linear",
         transformation="logit_norm",
-        theta="hill",
+        theta="hill_geno",
         batch_size=None,
     )
     config_file = _build_config(gm, tmpdir, growth_smoke_csv, binding_smoke_csv)
     assert os.path.exists(config_file)
 
-    out_root = os.path.join(tmpdir, "nuts_smoke")
+    out_prefix = os.path.join(tmpdir, "nuts_smoke")
 
-    _, mcmc_samples, converged = run_growth_analysis(
+    _, mcmc_samples, converged = fit_model(
         config_file=config_file,
         seed=42,
         analysis_method="nuts",
-        out_root=out_root,
+        out_prefix=out_prefix,
         nuts_num_warmup=5,
         nuts_num_samples=10,
         nuts_num_chains=1,
@@ -111,14 +112,14 @@ def test_run_growth_analysis_nuts_smoke(growth_smoke_csv, binding_smoke_csv, tmp
 
     # Checkpoint written with mcmc_samples key
     import dill
-    chk_path = f"{out_root}_checkpoint.pkl"
+    chk_path = f"{out_prefix}_checkpoint.pkl"
     assert os.path.exists(chk_path)
     with open(chk_path, "rb") as f:
         chk = dill.load(f)
     assert "mcmc_samples" in chk
 
     # Posterior HDF5 written with growth_pred
-    posterior_file = f"{out_root}_posterior.h5"
+    posterior_file = f"{out_prefix}_posterior.h5"
     assert os.path.exists(posterior_file)
     with h5py.File(posterior_file, "r") as hf:
         assert "growth_pred" in hf
@@ -133,23 +134,23 @@ def test_run_growth_analysis_nuts_posterior_smoke(growth_smoke_csv, binding_smok
     Runs a tiny NUTS chain, then re-generates posteriors from the checkpoint
     and verifies that the output HDF5 is recreated correctly.
     """
-    gm = ModelClass(
+    gm = ModelOrchestrator(
         growth_df=growth_smoke_csv,
         binding_df=binding_smoke_csv,
         condition_growth="linear",
         transformation="logit_norm",
-        theta="hill",
+        theta="hill_geno",
         batch_size=None,
     )
     config_file = _build_config(gm, tmpdir, growth_smoke_csv, binding_smoke_csv)
 
     # Step 1: run NUTS to produce a checkpoint
     nuts_root = os.path.join(tmpdir, "nuts_for_post")
-    run_growth_analysis(
+    fit_model(
         config_file=config_file,
         seed=42,
         analysis_method="nuts",
-        out_root=nuts_root,
+        out_prefix=nuts_root,
         nuts_num_warmup=5,
         nuts_num_samples=10,
         nuts_num_chains=1,
@@ -160,16 +161,14 @@ def test_run_growth_analysis_nuts_posterior_smoke(growth_smoke_csv, binding_smok
 
     # Step 2: re-generate posteriors from the NUTS checkpoint
     post_root = os.path.join(tmpdir, "nuts_post")
-    run_growth_analysis(
+    sample_posterior(
         config_file=config_file,
-        seed=0,          # seed is unused for NUTS posterior mode but required by API
-        analysis_method="posterior",
         checkpoint_file=chk_path,
-        out_root=post_root,
+        out_prefix=post_root,
         forward_batch_size=10,
     )
 
-    posterior_file = f"{post_root}_posterior.h5"
+    posterior_file = f"{post_root}.h5"
     assert os.path.exists(posterior_file)
     with h5py.File(posterior_file, "r") as hf:
         assert "growth_pred" in hf

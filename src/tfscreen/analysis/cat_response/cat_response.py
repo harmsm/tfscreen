@@ -1,6 +1,6 @@
 
 from .cat_fit import cat_fit
-from tfscreen.models.generic import MODEL_LIBRARY
+from tfscreen.mle.curve_models import MODEL_LIBRARY
 
 from tfscreen.util.numerical import xfill
 

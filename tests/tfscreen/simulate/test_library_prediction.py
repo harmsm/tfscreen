@@ -1,72 +1,84 @@
-
 import pytest
 import pandas as pd
+import tfscreen.util
 from unittest.mock import MagicMock
 from tfscreen.simulate.library_prediction import library_prediction
+
 
 @pytest.fixture
 def mock_config():
     return {
         "condition_blocks": [{"some": "block"}],
-        "observable_calculator": "mock_calc",
-        "observable_calc_kwargs": {"k": "v"},
-        "ddG_spreadsheet": "ddG.csv",
-        "calibration_file": "cal.csv",
-        "mut_growth_rate_shape": 1.0,
-        "mut_growth_rate_scale": 0.5
+        "theta_component": "mock_theta",
+        "theta_rng_seed": 7,
+        "thermo_data": None,
+        "theta_priors": None,
+        "growth": {"cond_A": {"m": 1.0, "b": 0.0}},
+        "dk_geno_hyper_loc": -3.5,
+        "dk_geno_hyper_scale": 1.0,
+        "dk_geno_hyper_shift": 0.02,
     }
 
+
 def test_library_prediction_success(mocker, mock_config):
-    # Mock read_yaml
     mocker.patch("tfscreen.util.read_yaml", return_value=mock_config)
 
-    # Mock LibraryManager
-    mock_lm_cls = mocker.patch("tfscreen.simulate.library_prediction.library_manager.LibraryManager")
-    mock_lm_instance = mock_lm_cls.return_value
-    mock_library_df = pd.DataFrame({"genotype": ["WT", "M1"]})
-    mock_lm_instance.build_library_df.return_value = mock_library_df
+    mock_lm_cls = mocker.patch(
+        "tfscreen.simulate.library_prediction.library_manager.LibraryManager"
+    )
+    mock_library_df = pd.DataFrame({"genotype": ["wt", "M1"]})
+    mock_lm_cls.return_value.build_library_df.return_value = mock_library_df
 
-    # Mock build_sample_dataframes
-    mock_sample_df = pd.DataFrame({"condition": ["A", "B"]})
-    mock_build_sample = mocker.patch("tfscreen.simulate.library_prediction.build_sample_dataframes", return_value=mock_sample_df)
+    mock_sample_df = pd.DataFrame({"titrant_conc": [0.0, 1.0]})
+    mock_build_sample = mocker.patch(
+        "tfscreen.simulate.library_prediction.build_sample_dataframes",
+        return_value=mock_sample_df,
+    )
 
-    # Mock thermo_to_growth
-    mock_phenotype_df = pd.DataFrame({"phenotype": [1.0, 0.5]})
-    mock_genotype_ddG_df = pd.DataFrame({"ddG": [0.0, 1.0]})
-    mock_thermo = mocker.patch("tfscreen.simulate.library_prediction.thermo_to_growth", return_value=(mock_phenotype_df, mock_genotype_ddG_df))
+    mock_sim_data = MagicMock()
+    mock_build_sim_data = mocker.patch(
+        "tfscreen.simulate.library_prediction.build_sim_data",
+        return_value=mock_sim_data,
+    )
 
-    # Call function
-    lib_df, pheno_df, ddG_df = library_prediction(cf="config.yaml")
+    mock_phenotype_df = pd.DataFrame({"theta": [0.5, 0.3]})
+    mock_genotype_theta_df = pd.DataFrame({"genotype": ["wt", "M1"]})
+    mock_thermo = mocker.patch(
+        "tfscreen.simulate.library_prediction.thermo_to_growth",
+        return_value=(mock_phenotype_df, mock_genotype_theta_df),
+    )
 
-    # Assertions
+    mock_jax_key = mocker.patch("tfscreen.simulate.library_prediction.jax.random.PRNGKey",
+                                return_value="mock_key")
+
+    lib_df, pheno_df, theta_df = library_prediction(cf="config.yaml")
+
     tfscreen.util.read_yaml.assert_called_once_with("config.yaml", override_keys=None)
     mock_lm_cls.assert_called_once_with(mock_config)
-    mock_lm_instance.build_library_df.assert_called_once()
-    
     mock_build_sample.assert_called_once_with(mock_config["condition_blocks"], replicate=1)
-    
-    # Check thermo_to_growth call
+    mock_build_sim_data.assert_called_once_with(
+        library_df=mock_library_df,
+        sample_df=mock_sample_df,
+        thermo_data=None,
+    )
+    mock_jax_key.assert_called_once_with(7)
+
     mock_thermo.assert_called_once()
     _, kwargs = mock_thermo.call_args
-    assert kwargs["genotypes"].equals(mock_library_df["genotype"])
-    assert kwargs["sample_df"].equals(mock_sample_df)
-    assert kwargs["observable_calculator"] == mock_config["observable_calculator"]
-    assert kwargs["observable_calc_kwargs"] == mock_config["observable_calc_kwargs"]
-    assert kwargs["ddG_df"] == mock_config["ddG_spreadsheet"]
-    assert kwargs["calibration_data"] == mock_config["calibration_file"]
-    assert kwargs["mut_growth_rate_shape"] == mock_config["mut_growth_rate_shape"]
-    assert kwargs["mut_growth_rate_scale"] == mock_config["mut_growth_rate_scale"]
+    assert kwargs["theta_component"] == "mock_theta"
+    assert kwargs["sim_data"] is mock_sim_data
+    assert kwargs["growth_params"] == mock_config["growth"]
+    assert kwargs["dk_geno_hyper_loc"] == mock_config["dk_geno_hyper_loc"]
+    assert kwargs["dk_geno_hyper_scale"] == mock_config["dk_geno_hyper_scale"]
+    assert kwargs["dk_geno_hyper_shift"] == mock_config["dk_geno_hyper_shift"]
+    assert kwargs["activity_component"] == "fixed"       # default when key absent
+    assert kwargs["activity_priors_overrides"] is None
 
-    # Check returns
     assert lib_df.equals(mock_library_df)
     assert pheno_df.equals(mock_phenotype_df)
-    assert ddG_df.equals(mock_genotype_ddG_df)
+    assert theta_df.equals(mock_genotype_theta_df)
 
-def test_library_prediction_config_error(mocker):
-    # Mock read_yaml returning None
-    mocker.patch("tfscreen.util.read_yaml", return_value=None)
-    
-    with pytest.raises(RuntimeError, match="Aborting simulation due to configuration error"):
-        library_prediction("bad_config.yaml")
 
-import tfscreen.util # Need this imported to patch it correctly via the module where it is used
+def test_library_prediction_config_error():
+    with pytest.raises(FileNotFoundError):
+        library_prediction("nonexistent_config.yaml")

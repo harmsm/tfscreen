@@ -7,7 +7,7 @@ import numpy as np
 import os
 
 # Import the functions and classes to be tested
-from tfscreen.process_raw.process_fastq import (
+from tfscreen.process_raw.scripts.process_fastq_cli import (
     _process_reads_chunk,
     _process_pairs_chunk,
     _process_paired_fastq,
@@ -132,8 +132,8 @@ def test_process_pairs_chunk_reconcile_failure(mock_ftc):
 # _process_paired_fastq
 # -----------------------------------------------------------------------------
 
-@patch('tfscreen.process_raw.process_fastq.as_completed')
-@patch('tfscreen.process_raw.process_fastq.ProcessPoolExecutor')
+@patch('tfscreen.process_raw.scripts.process_fastq_cli.as_completed')
+@patch('tfscreen.process_raw.scripts.process_fastq_cli.ProcessPoolExecutor')
 def test_process_paired_fastq_orchestration(mock_executor_cls, mock_as_completed, tmp_path, mock_ftc):
     """
     Tests the orchestration logic of _process_paired_fastq by mocking the
@@ -230,7 +230,7 @@ def test_create_stats_df_empty_input():
 # _create_counts_df
 # -----------------------------------------------------------------------------
 
-@patch('tfscreen.process_raw.process_fastq.set_categorical_genotype')
+@patch('tfscreen.process_raw.scripts.process_fastq_cli.set_categorical_genotype')
 def test_create_counts_df_happy_path(mock_set_categorical):
     """Test standard conversion of a sequence counter to a counts DataFrame."""
     mock_set_categorical.side_effect = lambda df, standardize, sort: df
@@ -250,7 +250,7 @@ def test_create_counts_df_happy_path(mock_set_categorical):
     
     pd_testing.assert_frame_equal(result_df, expected_df)
 
-@patch('tfscreen.process_raw.process_fastq.set_categorical_genotype')
+@patch('tfscreen.process_raw.scripts.process_fastq_cli.set_categorical_genotype')
 def test_create_counts_df_empty_sequences(mock_set_categorical):
     """Test with an empty sequence counter, ensuring all expected genotypes are 0."""
     mock_set_categorical.side_effect = lambda df, standardize, sort: df
@@ -270,7 +270,7 @@ def test_create_counts_df_empty_sequences(mock_set_categorical):
 
     pd_testing.assert_frame_equal(result_df, expected_df)
 
-@patch('tfscreen.process_raw.process_fastq.set_categorical_genotype')
+@patch('tfscreen.process_raw.scripts.process_fastq_cli.set_categorical_genotype')
 def test_create_counts_df_empty_expected(mock_set_categorical):
     """Test with an empty list of expected genotypes, producing an empty DataFrame."""
     mock_set_categorical.side_effect = lambda df, standardize, sort: df
@@ -285,7 +285,7 @@ def test_create_counts_df_empty_expected(mock_set_categorical):
     result_df = _create_counts_df(sequences, expected_genotypes)
     pd_testing.assert_frame_equal(result_df, expected_df)
 
-@patch('tfscreen.process_raw.process_fastq.set_categorical_genotype')
+@patch('tfscreen.process_raw.scripts.process_fastq_cli.set_categorical_genotype')
 def test_create_counts_df_with_unknown(mock_set_categorical):
     """Test that unknown genotypes are aggregated from messages."""
     mock_set_categorical.side_effect = lambda df, standardize, sort: df
@@ -314,10 +314,10 @@ def test_create_counts_df_with_unknown(mock_set_categorical):
 # process_fastq
 # -----------------------------------------------------------------------------
 
-@patch('tfscreen.process_raw.process_fastq._create_counts_df')
-@patch('tfscreen.process_raw.process_fastq._create_stats_df')
-@patch('tfscreen.process_raw.process_fastq._process_paired_fastq')
-@patch('tfscreen.process_raw.process_fastq.FastqToCounts')
+@patch('tfscreen.process_raw.scripts.process_fastq_cli._create_counts_df')
+@patch('tfscreen.process_raw.scripts.process_fastq_cli._create_stats_df')
+@patch('tfscreen.process_raw.scripts.process_fastq_cli._process_paired_fastq')
+@patch('tfscreen.process_raw.scripts.process_fastq_cli.FastqToCounts')
 def test_process_fastq_happy_path_with_instance(mock_ftc_cls, mock_process_paired, mock_create_stats, mock_create_counts, tmp_path):
     """
     Tests the main `process_fastq` function by passing a mock LibraryManager

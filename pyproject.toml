@@ -24,20 +24,20 @@ dependencies = [
   "PyYAML",
   "corner",
   "numba",
-  "patsy",
-  "pybktree",
+"pybktree",
   "pyfastx",
   "optax",
-  "numpyro",
+  "numpyro>=0.19.0",
   "dill",
   "flax",
   "jax",
   "jaxlib",
   "h5py",
   "scipy",
+  "jinja2",
 ]
 
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [{ name = "Mike Harms", email = "harms@uoregon.edu" }]
 maintainers = [{ name = "Mike Harms", email = "harms@uoregon.edu" }]
 description = "Simulate or analyze a high-throughput screen of a transcription factor library"
@@ -60,16 +60,32 @@ classifiers = [
 Repository = "https://github.com/harmslab/tfscreen.git"
 "Bug Tracker" = "https://github.com/harmslab/tfscreen/issues"
 
+[tool.pytest.ini_options]
+markers = [
+    "slow: mark test as slow to run",
+]
+
 [project.optional-dependencies]
 test = ["coverage", "flake8", "pytest", "genbadge", "pytest-mock"]
 docs = ["pydata-sphinx-theme"]
 
 [project.scripts]
-tfs-process-fastq = "tfscreen.process_raw.process_fastq:main"
-tfs-process-counts = "tfscreen.process_raw.process_counts:main"
-tfs-growth-analysis = "tfscreen.analysis.hierarchical.growth_model.scripts.run_growth_analysis:main"
-tfs-prefit-calibration = "tfscreen.analysis.hierarchical.growth_model.scripts.run_prefit_calibration:main"
-tfs-configure-growth-analysis = "tfscreen.analysis.hierarchical.growth_model.scripts.configure_growth_analysis:main"
-tfs-summarize-posteriors = "tfscreen.analysis.hierarchical.growth_model.scripts.summarize_posteriors:main"
-tfs-predict = "tfscreen.analysis.hierarchical.growth_model.scripts.predict_cli:main"
-tfs-diagnose-nan = "tfscreen.analysis.hierarchical.growth_model.scripts.diagnose_nan:main"
+tfs-process-fastq = "tfscreen.process_raw.scripts.process_fastq_cli:main"
+tfs-process-counts = "tfscreen.process_raw.scripts.process_counts_cli:main"
+tfs-configure-model = "tfscreen.tfmodel.scripts.configure_model_cli:main"
+tfs-prefit-calibration = "tfscreen.tfmodel.scripts.run_prefit_calibration_cli:main"
+tfs-fit-model = "tfscreen.tfmodel.scripts.fit_model_cli:main"
+tfs-sample-posterior = "tfscreen.tfmodel.scripts.sample_posterior_cli:main"
+tfs-sample-prior = "tfscreen.tfmodel.scripts.prior_predictive_cli:main"
+tfs-extract-params = "tfscreen.tfmodel.scripts.extract_params_cli:main"
+tfs-predict-growth = "tfscreen.tfmodel.scripts.predict_growth_cli:main"
+tfs-predict-theta = "tfscreen.tfmodel.scripts.predict_theta_cli:main"
+tfs-cat-response = "tfscreen.analysis.cat_response.cat_response_cli:main"
+tfs-diagnose-nan = "tfscreen.tfmodel.scripts.diagnose_nan_cli:main"
+tfs-simulate = "tfscreen.simulate.scripts.run_simulation_cli:main"
+tfs-setup-sim-grid = "tfscreen.simulate.scripts.setup_sim_grid_cli:main"
+tfs-setup-grid = "tfscreen.tfmodel.scripts.setup_grid_cli:main"
+tfs-summarize-grid = "tfscreen.tfmodel.scripts.summarize_grid_cli:main"
+tfs-subset-genotypes = "tfscreen.tfmodel.scripts.subset_genotypes_cli:main"
+tfs-summarize-fit = "tfscreen.tfmodel.scripts.summarize_fit_cli:main"
+tfs-summarize-sbc = "tfscreen.tfmodel.scripts.summarize_sbc_cli:main"

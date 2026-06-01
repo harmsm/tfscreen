@@ -9,21 +9,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ### Testing
+
+`NUMBA_DISABLE_JIT=1` is set automatically by `tests/conftest.py` — no prefix needed on the command line.
+
 ```bash
-# Run all unit tests (NUMBA_DISABLE_JIT=1 is required)
-NUMBA_DISABLE_JIT=1 pytest tests/tfscreen
+# Run all unit tests
+~/miniconda3/bin/pytest tests/tfscreen
 
 # Run a single test file
-NUMBA_DISABLE_JIT=1 pytest tests/tfscreen/analysis/hierarchical/growth_model/test_model.py
+~/miniconda3/bin/pytest tests/tfscreen/tfmodel/test_model.py
 
 # Run slow tests too
-NUMBA_DISABLE_JIT=1 pytest tests/tfscreen --runslow
+~/miniconda3/bin/pytest tests/tfscreen --runslow
 
 # Run smoke tests
-NUMBA_DISABLE_JIT=1 pytest tests/smoke-tests --runslow
+~/miniconda3/bin/pytest tests/smoke-tests --runslow
 
 # Run with coverage
-NUMBA_DISABLE_JIT=1 coverage run --branch -m pytest tests/tfscreen --runslow
+~/miniconda3/bin/coverage run --branch -m pytest tests/tfscreen --runslow
 ```
 
 ### Linting
@@ -39,10 +42,21 @@ flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127
 ```
 tfs-process-fastq          # FASTQ → read counts
 tfs-process-counts         # counts → ln_cfu DataFrames
-tfs-growth-analysis        # Main hierarchical Bayesian inference
-tfs-configure-growth-analysis  # Generate YAML config template
-tfs-summarize-posteriors   # Summarize posterior samples
-tfs-predict                # Make predictions from fitted model
+tfs-configure-model        # Generate YAML config template
+tfs-prefit-calibration     # Pre-fit linking function via MAP
+tfs-fit-model              # Main hierarchical Bayesian inference
+tfs-sample-posterior       # Draw posterior samples from fitted model
+tfs-param-quantiles        # Summarize posterior parameter quantiles
+tfs-extract-params         # Extract parameters from checkpoint
+tfs-predict-growth         # Predict growth from fitted model
+tfs-predict-theta          # Predict operator occupancy
+tfs-cat-response           # Fit categorical response curves
+tfs-diagnose-nan           # Diagnose NaN issues in inference
+tfs-simulate               # Simulate a full experiment
+tfs-setup-sim-grid         # Set up grid of simulation runs
+tfs-setup-grid             # Set up grid of model configs
+tfs-summarize-grid         # Summarize grid results
+tfs-subset-genotypes       # Subset genotype data
 ```
 
 ## Architecture
@@ -52,7 +66,7 @@ tfs-predict                # Make predictions from fitted model
 FASTQ files
     → tfs-process-fastq → counts CSV
     → tfs-process-counts → ln_cfu DataFrame
-    → tfs-growth-analysis (with run_config.yaml) → posteriors (HDF5 + pkl)
+    → tfs-fit-model (with run_config.yaml) → posteriors (HDF5 + pkl)
     → tfs-summarize-posteriors → summary CSV
     → tfs-predict → predictions CSV
 ```
@@ -61,17 +75,19 @@ FASTQ files
 
 | Module | Responsibility |
 |--------|---------------|
+| `tfmodel/` | Core hierarchical Bayesian inference engine (the heart of the package) |
 | `process_raw/` | FASTQ parsing, count normalization, ln_cfu calculation |
-| `fitting/` | General-purpose regression (FitManager, least squares, WLS, NLS) |
-| `models/` | Mathematical growth models and thermodynamic models (lac, EEE) |
-| `genetics/` | Genotype library management, mutation effect combination |
-| `calibration/` | Wildtype parameter extraction and calibration pipeline |
 | `simulate/` | Full experiment simulation from thermodynamics to read counts |
-| `analysis/` | Statistical inference (hierarchical Bayesian, independent, cat_response) |
-| `util/` | Shared IO, DataFrame ops, numerical helpers, validation, CLI |
+| `simulate/thermo/` | Thermodynamic models (lac, EEE) used by simulation |
+| `simulate/growth/` | In-progress growth/growth-transition models for simulation |
+| `analysis/` | Downstream statistical analysis of inference outputs (cat_response, extract_epistasis) |
+| `mle/` | General-purpose MLE regression (FitManager, least squares, WLS, NLS) |
+| `mle/curve_models/` | Empirical curve-fitting functions and MODEL_LIBRARY used by cat_response |
+| `genetics/` | Genotype library management, mutation effect combination |
 | `plot/` | Visualization (heatmaps, corner plots, error plots) |
+| `util/` | Shared IO, DataFrame ops, numerical helpers, validation, CLI |
 
-### Core Analysis: `analysis/hierarchical/growth_model/`
+### Core Analysis: `tfmodel/`
 
 The hierarchical Bayesian inference engine. Key files:
 
@@ -79,7 +95,7 @@ The hierarchical Bayesian inference engine. Key files:
   `ln_cfu = ln_cfu0 + (k_pre + dk_geno + m_pre·A·θ)·t_pre + (k_sel + dk_geno + m_sel·A·θ)·t_sel`
   where θ = operator occupancy, A = per-genotype TF activity, dk_geno = pleiotropic growth effect.
 
-- **`model_class.py`** — `GrowthModel`: top-level class orchestrating data loading, inference, and prediction.
+- **`model_class.py`** — `TFModel`: top-level class orchestrating data loading, inference, and prediction.
 
 - **`run_inference.py`** — `RunInference`: coordinates JAX/Numpyro sampling (NUTS) and MAP estimation (optax).
 
@@ -98,27 +114,101 @@ The hierarchical Bayesian inference engine. Key files:
 
 ### Adding a New Model Component
 
-1. Create `src/tfscreen/analysis/hierarchical/growth_model/components/<category>/myname.py`
+1. Create `src/tfscreen/tfmodel/components/<category>/myname.py`
 2. Implement the required interface (follow an existing component as reference)
 3. Register it in `registry.py` under the appropriate category key
-4. Add a test in `tests/tfscreen/analysis/hierarchical/growth_model/components/<category>/`
+4. Add a test in `tests/tfscreen/tfmodel/components/<category>/`
 
 ### Key Abstractions
 
-**`FitManager`** (`fitting/fit_manager.py`): General regression wrapper. Set parameter transformations, bounds, fixed vs. free parameters, and a model function via `set_model_func()`.
+**`FitManager`** (`mle/fit_manager.py`): General regression wrapper. Set parameter transformations, bounds, fixed vs. free parameters, and a model function via `set_model_func()`.
 
-**`TensorManager`** (`analysis/hierarchical/tensor_manager.py`): Handles ragged tensors. Genotypes have different numbers of observations; this class pads and indexes into JAX-compatible arrays.
+**`TensorManager`** (`tfmodel/tensor_manager.py`): Handles ragged tensors. Genotypes have different numbers of observations; this class pads and indexes into JAX-compatible arrays.
 
-**`DataClass` / `PriorsClass`** (`analysis/hierarchical/growth_model/data_class.py`): Flax pytree dataclasses holding structured experimental data and prior specifications for JAX compilation.
+**`DataClass` / `PriorsClass`** (`tfmodel/data_class.py`): Flax pytree dataclasses holding structured experimental data and prior specifications for JAX compilation.
 
 ### Configuration (YAML)
 
-The `run_config.yaml` drives `tfs-growth-analysis`. Key sections:
-- `library`: defines the genetic library (WT sequence, degenerate sites, sub-libraries)
-- `observable_calculator`: thermodynamic model (`lac`, `eee`, `linkage_dimer`) and parameters
-- `condition_blocks`: growth conditions (marker, titrant concentrations, selection timepoints)
-- Model component selections (which `activity`, `growth`, `transformation`, etc. modules to use)
-- `calibration_file`: path to wildtype calibration JSON
+See **YAML Standards** below for the full conventions. The tfmodel config (`tfs_configure_config.yaml`) is generated by `tfs-configure-model` and drives `tfs-fit-model`. It contains `data`, `components`, `priors_file`, and `guesses_file` sections. Do not hand-edit it.
+
+## YAML Standards
+
+All YAML files in this codebase follow these conventions. Apply them when creating or modifying any YAML file.
+
+### YAML types
+
+There are two categories of YAML in tfscreen:
+
+**Flat config files** drive a single CLI run (`tfs-simulate`, `tfs-fit-model`, etc.).  They have a flat list of top-level keys; nested dicts appear only where a parameter is itself structured (e.g. `observable_calc_kwargs`, `growth`).  See `examples/simulate_config.yaml` for the canonical simulate/process_raw reference.
+
+**Grid YAML files** drive `tfs-setup-grid` or `tfs-setup-sim-grid`.  They describe a Cartesian product of parameter variants and produce one run subdirectory per combination.  See `examples/grid.yaml` (tfmodel) and `examples/simulate_grid.yaml` (simulate).
+
+### Flat config conventions
+
+- All keys in `snake_case`.
+- Sections separated by `# --- Section name ---` comment header lines.
+- File paths relative to the config file's own location.
+- **Int vs float**: write count-like values as integers (`25_000_000`, `100_000`) and rate/fraction values as floats (`0.01`, `1.5e-7`). PyYAML preserves this distinction; `read_yaml` does not coerce between them. Underscores in integer literals are valid YAML and improve readability.
+- Optional top-level blocks (`growth_transition`, `binding_data`) are omitted, not null, when not needed.
+
+### Grid YAML structure
+
+Both grid CLIs share the same top-level skeleton:
+
+```yaml
+# (simulate grids only)
+base_config: path/to/simulate_config.yaml
+
+run_name: "{{ var1 }}__{{ var2 }}"   # Jinja2 template; optional
+output_file: run.sh                   # Jinja2 template file; optional
+
+# Phase blocks (configure_model for tfs-setup-grid; simulate for tfs-setup-sim-grid)
+simulate:          # or: configure_model:
+  - name: <block_name>
+    variants:
+      - key1: value1
+      - key1: value2
+  - name: <joint_block>
+    variants:
+      - key1: val_a   # these two keys always move together
+        key2: val_x
+      - key1: val_b
+        key2: val_y
+
+# Variables forwarded to the Jinja2 template only (not to the config or CLI)
+template:
+  - name: <block_name>
+    variants:
+      - var: value
+```
+
+**Block rules:**
+- Each block item needs `name` + either `auto` (tfmodel grids only — enumerates all registered components for an axis) or `variants` (explicit list of dicts).
+- The Cartesian product is taken across **all** blocks (`configure_model`/`simulate` + `template`).
+- Multi-key variants (multiple keys in one dict) always travel together and are never split.
+- `simulate` / `configure_model` variables go to the config; `template` variables go to the Jinja2 template only.  To share a variable, list it in both sections.
+- Variable names in blocks: `snake_case`.
+
+### Shared grid utilities
+
+Both grid CLIs import from `tfscreen.util.grid_utils` for run-name generation, Jinja2 environment setup, and config-path rewriting.  Add new reusable grid helpers there rather than duplicating them.
+
+### `examples/` directory
+
+| File | Purpose |
+|------|---------|
+| `simulate/simulate_config.yaml` | Canonical well-commented simulate config reference |
+| `simulate/simulate_grid.yaml` | Example simulate grid for `tfs-setup-sim-grid` |
+| `simulate/run.sh` | Jinja2 shell template rendered into each simulate grid run subdir |
+| `tfmodel/grid.yaml` | Example tfmodel grid for `tfs-setup-grid` |
+| `tfmodel/run.srun` | Jinja2 SLURM template rendered into each tfmodel grid run subdir |
+| `process_raw/library_config.yaml` | Minimal library genetics config for `tfs-process-fastq` |
+
+### `process_raw` YAML
+
+`tfs-process-fastq` accepts a `run_config` argument that is passed to `LibraryManager`. It reads only the library genetics keys: `reading_frame`, `wt_seq`, `degen_sites`, `sub_libraries`, `expected_5p`, `expected_3p`, `library_combos`, `spiked_seqs`. All other keys are ignored.
+
+**Recommended practice**: maintain one `run_config.yaml` per experiment and pass it to both `tfs-simulate` and `tfs-process-fastq` — no need for a separate file. Use `examples/process_raw/library_config.yaml` only when you need a minimal standalone library config (e.g. for processing real data without a matching simulation).
 
 ### Terminology
 
@@ -134,3 +224,40 @@ The `run_config.yaml` drives `tfs-growth-analysis`. Key sections:
 - Always set `NUMBA_DISABLE_JIT=1` when running tests — Numba JIT causes test failures
 - Slow tests (marked `@pytest.mark.slow`) are skipped by default; use `--runslow` to include them
 - Smoke tests live in `tests/smoke-tests/` and test end-to-end pipelines
+- **Write or update unit tests for any new code added in a session.** Tests mirror the source layout under `tests/tfscreen/`; a new module at `src/tfscreen/foo/bar.py` gets tests at `tests/tfscreen/foo/test_bar.py`.
+
+## CLI Standards
+
+All `tfs-*` entry points follow these conventions. Apply them when writing or modifying any CLI script.
+
+### File naming
+
+Each entry point lives in `<name_of_script>_cli.py`. The registered console script is `tfs-<name-of-script>` (hyphens in entry point, underscores in filename). Example: `predict_theta_cli.py` → `tfs-predict-theta`.
+
+### Argument layout — use `generalized_main`, no manual argparse
+
+All scripts use `generalized_main` from `tfscreen.util.cli.generalized_main`. The function signature is the CLI spec:
+
+- Parameters **without** a default → positional (required) arguments
+- Parameters **with** a default (including `None`) → `--flag` arguments
+
+Positional argument order (use only what the script needs):
+1. `config_file` — path to YAML config
+2. `posterior_file` — path to posteriors `.h5`/`.npz`
+3. `theta_file` — path to theta CSV (for `tfs-cat-response`)
+
+### Output flag
+
+Always `--out_prefix` (never `--out_root`, `--out`, or `--output_file`). The function parameter must also be named `out_prefix`.
+
+### File-backed list arguments
+
+When a list of genotypes, titrant names, or concentrations is needed, the `_cli` wrapper takes file-path strings (one value per line, `#` comments allowed). Use `manual_arg_types` in `generalized_main` to override the `NoneType` inferred from `default=None`. The shared helper `_read_lines(path)` lives in `tfscreen.util.cli`.
+
+### `in_training_data` column
+
+`tfs-predict-growth` and `tfs-predict-theta` output a boolean column `in_training_data` (1/0) at the `(genotype, titrant_name, titrant_conc)` tuple level.
+
+### Registered entry points
+
+All scripts under `tfmodel/scripts/` and `analysis/cat_response/` follow the `_cli.py` naming convention and are registered in `pyproject.toml`.

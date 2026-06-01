@@ -1,0 +1,222 @@
+
+# ---------------------------------------------------------------------------
+# Library genetic information
+# ---------------------------------------------------------------------------
+
+# Reading frame 0, 1, 2. No reverse (negative) strand allowed.
+reading_frame: 0
+
+# Amino acid residue number for the first in-frame residue of the amplicon.
+first_amplicon_residue: 27
+
+# Wildtype DNA sequence of the amplicon.
+wt_seq: gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatggcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctgcacgcgccgtcgcaaattgtcgcggcgattaaatctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg
+
+# Degenerate codon pattern for library positions.  '.' = wildtype; 'nnt' = NNT
+# codon (encodes all 20 amino acids + stop with reduced synonymous redundancy).
+# Must be the same length as wt_seq.
+degen_sites: ......nntnnt.............................................................................................nntnnt.........................................................................................................
+
+# sub_libraries groups contiguous degenerate positions that were cloned together.
+# '.' = wildtype; any other character defines a sub-library block.  Blocks must
+# be contiguous (......111... ok; ....11.1... not ok).
+sub_libraries: ......111111.............................................................................................222222.........................................................................................................
+
+# Flanking sequences immediately upstream and downstream of the amplicon.
+expected_5p: cgcgtggtgaaccag
+expected_3p: gtagaacgaagcggc
+
+# Which genotype classes to include in the library.  'single-x' = all
+# single-mutation variants in sub-library x.  'double-x-y' = all pairwise
+# combinations between sub-libraries x and y.  'double-x-x' = internal
+# doubles within sub-library x.
+library_combos: ["single-1", "single-2", "double-1-2"]
+
+# Control sequences (e.g. known variants) added as spikes.  Must be the same
+# length as wt_seq.
+spiked_seqs:
+- gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatggcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctggcggcgccgtcgcaaattgtcgcggcgattctgtctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg  # k84l
+- gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgattgcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctgcacgcgccgtcgcaaattgtcgcggcgattctgtctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg  # m42i/k84l
+
+# ---------------------------------------------------------------------------
+# Phenotype calculation
+# ---------------------------------------------------------------------------
+
+# Registered theta component name.  Any key in model_registry["theta"] is
+# valid except "_simple" (calibration-only).  Examples: "hill_geno", "thermo.O2_C12_K5_U0_a.PK".
+theta_component: "thermo.O2_C12_K5_U0_a.PK"
+
+# Optional: path to structural/thermodynamic data file required by PnnC and
+# PddG theta components.  Omit (or set to null) for all other models.
+#   .h5 / .hdf5  → HDF5 structural ensemble (PnnC)
+#   .csv         → per-mutation per-structure ddG prior means (PddG)
+# thermo_data: null
+
+# Optional: overrides for the theta component's default hyperparameters.
+# Any key returned by the component's get_hyperparameters() can be overridden.
+# Omit this block to use all component defaults.
+# theta_priors:
+#   theta_tf_total_M: 3.3e-7
+
+# Integer seed for the JAX RNG used when sampling theta from the prior.
+theta_rng_seed: 0
+
+# ---------------------------------------------------------------------------
+# Conditions
+# ---------------------------------------------------------------------------
+
+# Each block defines one set of growth conditions.  The Cartesian product of
+# titrant_conc × t_sel gives one sample per entry.  condition_pre and
+# condition_sel must also appear as keys in the 'growth' section below.
+condition_blocks:
+  - library: "kanR"
+    titrant_name: "iptg"
+    titrant_conc: [0, 0.0001, 0.001, 0.003]
+    condition_pre: "kanR-kan"
+    t_pre: 30
+    condition_sel: "kanR+kan"
+    t_sel: [160, 180, 200]
+
+  - library: "kanR"
+    titrant_name: "iptg"
+    titrant_conc: [0.01, 0.03, 0.1, 1.0]
+    condition_pre: "kanR-kan"
+    t_pre: 30
+    condition_sel: "kanR+kan"
+    t_sel: [145, 165, 180]
+
+  - library: "pheS"
+    titrant_name: "iptg"
+    titrant_conc: [0, 0.0001, 0.001, 0.003, 0.01, 0.03, 0.1, 1.0]
+    condition_pre: "pheS-4CP"
+    t_pre: 30
+    condition_sel: "pheS+4CP"
+    t_sel: [95, 110, 125]
+
+# ---------------------------------------------------------------------------
+# Growth rate parameters
+# ---------------------------------------------------------------------------
+
+# Linear mapping from operator occupancy (theta) to growth rate k for each
+# condition:  k = m * theta + b.  Every condition_pre and condition_sel that
+# appears in condition_blocks must have an entry here, and vice versa.
+growth:
+  kanR+kan: {m: -0.009933, b: 0.000000}
+  kanR-kan: {m:  0.000808, b: 0.004670}
+  pheS+4CP: {m:  0.006226, b: 0.010741}
+  pheS-4CP: {m: -0.000344, b: 0.017862}
+
+# Per-genotype pleiotropic growth cost is sampled from a shifted lognormal:
+#   dk_geno = hyper_shift - exp(Normal(hyper_loc, hyper_scale))
+# Most variants are mildly deleterious; a short right tail (at most hyper_shift)
+# allows beneficial mutations.  Matches the hierarchical tfmodel inference prior.
+dk_geno_hyper_loc: -3.5
+dk_geno_hyper_scale: 1.0
+dk_geno_hyper_shift: 0.02
+
+# Per-genotype TF activity (A) — a scalar that multiplies the theta contribution
+# to growth: k = b + A * m * theta.  The wild-type is fixed at activity_wt=1.0
+# by inference convention.  Set activity_mut_scale > 0 to draw each mutant
+# genotype's log(A) independently from Normal(log(activity_wt), activity_mut_scale).
+# activity_mut_scale=0 (default) gives all genotypes identical activity, matching
+# the 'fixed' activity inference component.
+activity_wt: 1.0
+activity_mut_scale: 0.0
+
+# ---------------------------------------------------------------------------
+# Experimental simulation parameters
+# ---------------------------------------------------------------------------
+
+# Number of transformants per sub-library.  Keys must match the characters in
+# library_combos (e.g. 'single-1', 'double-1-2') plus 'spiked'.
+transform_sizes:
+  single-1: 100_000
+  single-2: 100_000
+  double-1-2: 300_000
+  spiked: 1_000
+
+# Mixing ratio of sub-libraries in the pooled library.  Only the ratio matters.
+library_mixture:
+  single-1: 100
+  single-2: 100
+  double-1-2: 1000
+  spiked: 1
+
+# Sigma of the log-normal used to draw initial genotype frequencies.  0 = flat
+# distribution; 1–2 is realistic for a typical transformation.
+lib_assembly_skew_sigma: 1.5
+
+# Each bacterium receives a number of plasmids drawn from a zero-truncated
+# Poisson with this lambda.  Set to 0 or null for exactly one plasmid per cell.
+transformation_poisson_lambda: 1.5
+
+# When a cell carries multiple plasmids, growth rates are combined via this
+# function.  Recommended: 'min' for repressors of antibiotic resistance (tightest
+# binder dominates); 'max' for inducers.  Default: 'mean' for all libraries.
+multi_plasmid_combine_fcn:
+  kanR: "min"
+  pheS: "max"
+
+# Colony-forming units per mL at the start of pre-growth.
+cfu0: 65_000_000.0
+
+# Per-tube environmental growth-rate noise (hr⁻¹).  Each physical tube gets its
+# own delta_k ~ Normal(0, tube_noise_sigma); the kt contribution per tube is
+# delta_k * (t_pre + t_sel), shared by all genotypes in that tube.  A value of
+# ~0.001–0.002 hr⁻¹ is typical for well-controlled liquid cultures.
+# Set to 0 or null to disable.
+tube_noise_sigma: 0.002
+
+# ---------------------------------------------------------------------------
+# Growth transition model (optional)
+# ---------------------------------------------------------------------------
+
+# Models the lag phase when bacteria switch from pre-selection to selection medium.
+# Every condition_pre in condition_blocks must have an entry.  Use model: "instant"
+# for conditions with no detectable lag.  Omit this block to use instant everywhere.
+#
+# "memory" model:  tau = tau0 + k1 / (theta + k2)
+#   tau0 = baseline lag (minutes)
+#   k1   = occupancy-dependence of lag (higher = more effect)
+#   k2   = curvature constant (> 0; prevents division by zero)
+growth_transition:
+  - condition_pre: "pheS-4CP"
+    model: "memory"
+    tau0: 90.0
+    k1: 5.0
+    k2: 0.2
+
+  - condition_pre: "kanR-kan"
+    model: "memory"
+    tau0: 60.0
+    k1: 2.0
+    k2: 0.2
+
+# ---------------------------------------------------------------------------
+# Data collection parameters
+# ---------------------------------------------------------------------------
+
+# Total sequencing reads across all samples.
+total_num_reads: 25_000_000
+
+# Fraction of reads re-assigned to a randomly chosen genotype (index hopping).
+# Set to 0 or null to disable.
+prob_index_hop: 0.05
+
+# Random seed for reproducibility.  Set to null for a random seed each run.
+random_seed: null
+
+# ---------------------------------------------------------------------------
+# Binding data simulation (optional)
+# ---------------------------------------------------------------------------
+
+# If present, tfs-simulate also writes a binding CSV with per-genotype theta
+# curves.  titrant_name must match e_name in observable_calc_kwargs.
+#
+# binding_data:
+#   genotypes:
+#     - wt
+#     - A47V
+#   titrant_name: iptg
+#   titrant_conc: [0, 0.0001, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1.0]
+#   noise: 0.02

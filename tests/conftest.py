@@ -3,6 +3,9 @@ import pytest
 import os
 import glob
 
+# Set before any tfscreen/numba imports happen during collection.
+os.environ.setdefault("NUMBA_DISABLE_JIT", "1")
+
 def get_files(base_dir):
     """
     Traverse base_dir and return a dictionary that keys all files and some
@@ -100,9 +103,6 @@ def pytest_addoption(parser):
                      action="store_true",
                      default=False,
                      help="run slow tests")
-
-def pytest_configure(config):
-    config.addinivalue_line("markers", "slow: mark test as slow to run")
 
 def pytest_collection_modifyitems(config, items):
     if config.getoption("--runslow"):

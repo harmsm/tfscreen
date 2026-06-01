@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Any, Callable, Optional, TypeVar, Union
+from typing import Any, Callable, Optional, TypeVar
 
 # Define a generic Numeric type for hinting
 _Numeric = TypeVar("_Numeric", int, float)

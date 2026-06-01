@@ -2,11 +2,9 @@ import pytest
 import os
 import jax.numpy as jnp
 import numpy as np
-from tfscreen.analysis.hierarchical.growth_model import (
-    GrowthModel as ModelClass,
-    extract_parameters
-)
-from tfscreen.analysis.hierarchical.run_inference import RunInference
+from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+from tfscreen.tfmodel.analysis.extraction import extract_parameters
+from tfscreen.tfmodel.inference.run_inference import RunInference
 import h5py
 
 @pytest.mark.slow
@@ -16,15 +14,15 @@ def test_checkpoint_and_posterior_smoke(growth_smoke_csv,
     """
     Test the full workflow: Run SVI, save checkpoint, restore, and generate posteriors.
     """
-    out_root = os.path.join(tmpdir, "test_posteriors")
+    out_prefix = os.path.join(tmpdir, "test_posteriors")
     
     # 1. Initialize and run a short optimization
-    model = ModelClass(
+    model = ModelOrchestrator(
         growth_df=growth_smoke_csv,
         binding_df=binding_smoke_csv,
         condition_growth="linear",
         transformation="logit_norm",
-        theta="hill",
+        theta="hill_geno",
         batch_size=None
     )
     
@@ -37,11 +35,11 @@ def test_checkpoint_and_posterior_smoke(growth_smoke_csv,
     svi_state, params, converged = inference.run_optimization(
         svi=svi,
         max_num_epochs=2,
-        out_root=out_root,
+        out_prefix=out_prefix,
         checkpoint_interval=1 
     )
     
-    checkpoint_file = f"{out_root}_checkpoint.pkl"
+    checkpoint_file = f"{out_prefix}_checkpoint.pkl"
     assert os.path.exists(checkpoint_file)
     
     # 2. Restore from checkpoint in a new RunInference instance
@@ -57,13 +55,13 @@ def test_checkpoint_and_posterior_smoke(growth_smoke_csv,
     new_inference.get_posteriors(
         svi=svi,
         svi_state=restored_state,
-        out_root=out_root,
+        out_prefix=out_prefix,
         num_posterior_samples=10,
         sampling_batch_size=5,
         forward_batch_size=10
     )
     
-    posterior_file = f"{out_root}_posterior.h5"
+    posterior_file = f"{out_prefix}_posterior.h5"
     assert os.path.exists(posterior_file)
     
     # Load and check the saved file
@@ -78,12 +76,12 @@ def test_extract_parameters_smoke(growth_smoke_csv,
     """
     Test extracting parameter DataFrames from generated posteriors.
     """
-    out_root = os.path.join(tmpdir, "test_extract")
+    out_prefix = os.path.join(tmpdir, "test_extract")
     
-    model = ModelClass(
+    model = ModelOrchestrator(
         growth_df=growth_smoke_csv,
         binding_df=binding_smoke_csv,
-        theta="hill",
+        theta="hill_geno",
         transformation="logit_norm"
     )
     
@@ -93,16 +91,16 @@ def test_extract_parameters_smoke(growth_smoke_csv,
     svi_state, params, converged = inference.run_optimization(
         svi=svi,
         max_num_epochs=1,
-        out_root=out_root
+        out_prefix=out_prefix
     )
     
     inference.get_posteriors(
         svi=svi,
         svi_state=svi_state,
-        out_root=out_root,
+        out_prefix=out_prefix,
         num_posterior_samples=5
     )
-    posterior_file = f"{out_root}_posterior.h5"
+    posterior_file = f"{out_prefix}_posterior.h5"
     
     # Test extraction
     param_dfs = extract_parameters(model, posterior_file)

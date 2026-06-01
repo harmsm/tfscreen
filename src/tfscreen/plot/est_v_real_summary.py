@@ -11,7 +11,6 @@ from tfscreen.plot import (
 )
 
 
-import numpy as np
 from matplotlib import pyplot as plt
 
 def est_v_real_summary(

@@ -19,7 +19,7 @@ def _setup_file_output(output_dir,
         err = "if output_dir is specified, output_prefix must be a string\n"
         raise ValueError(err)
     
-    roots = ["library","phenotype","genotype_ddG","sample","counts"]
+    roots = ["library","phenotype","genotype_theta","sample","counts"]
     files = [f"{output_prefix}{r}.csv" for r in roots]
     files_with_path = [os.path.join(output_dir,f) for f in files]
     file_dict = dict([(roots[i],files_with_path[i]) for i in range(len(roots))])
@@ -75,17 +75,14 @@ def run_simulation(cf: Union[Dict[str, Any], str, Path],
     # -------------------------------------------------------------------------
     # Read inputs and set up simulation
 
-    cf = tfscreen.util.read_yaml(cf,override_keys=override_keys)
-    if cf is None:
-        err = "Aborting simulation due to configuration error."
-        raise RuntimeError(err)
+    cf = tfscreen.util.read_yaml(cf, override_keys=override_keys)
     
     # Decide if we are going to write out files, make output directory, and make
     # sure that we are not going to write over anything
     file_dict = _setup_file_output(output_dir,output_prefix)
     
     # Build library and predict its phenotypes
-    library_df, phenotype_df, genotype_ddG_df = library_prediction(cf)
+    library_df, phenotype_df, genotype_theta_df = library_prediction(cf)
 
     # Perform selection experiment
     sample_df, counts_df = selection_experiment(cf,library_df,phenotype_df)
@@ -93,7 +90,7 @@ def run_simulation(cf: Union[Dict[str, Any], str, Path],
     # Prepare outputs
     out_dict = {"library":library_df,
                 "phenotype":phenotype_df,
-                "genotype_ddG":genotype_ddG_df,
+                "genotype_theta":genotype_theta_df,
                 "sample":sample_df,
                 "counts":counts_df}
     

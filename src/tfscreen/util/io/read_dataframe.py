@@ -2,6 +2,8 @@ import pandas as pd
 
 import warnings
 
+from tfscreen.genetics.genotype_sorting import set_categorical_genotype
+
 def read_dataframe(source, index_column=None):
     """
     Reads a spreadsheet from a file path or DataFrame.
@@ -9,6 +11,14 @@ def read_dataframe(source, index_column=None):
     Handles .csv, .tsv, and .xlsx/.xls files. It can also intelligently
     set the index, including finding and using the common 'Unnamed: 0'
     column that pandas creates when an index is saved to a file.
+
+    If a 'genotype' column is present (and is not used as the index),
+    it is automatically standardized and converted to an ordered
+    pd.Categorical. Standardization normalizes mutation notation
+    (e.g., sorts multi-mutant alleles by site: Q2T/A1P → A1P/Q2T,
+    collapses self-mutations to 'wt', etc.) and raises ValueError for
+    any unrecognizable genotype string. The category order follows the
+    original row order of the DataFrame; rows are not reordered.
 
     Parameters
     ----------
@@ -25,6 +35,13 @@ def read_dataframe(source, index_column=None):
     -------
     pandas.DataFrame
         The processed DataFrame.
+
+    Raises
+    ------
+    ValueError
+        If a 'genotype' column is present and contains an unrecognizable
+        genotype string (e.g., 'AfiftyT', '50', or conflicting mutations
+        at the same site).
     """
     # 1. Handle different source types (path vs. DataFrame)
     if isinstance(source, str):
@@ -77,5 +94,9 @@ def read_dataframe(source, index_column=None):
         elif df.index.name != index_column:
             # If after all that, we still can't find it, raise an error.
             raise ValueError(f"Column '{index_column}' not found in the DataFrame.")
+
+    # 4. Standardize and categorize the genotype column if present as a column
+    if "genotype" in df.columns:
+        df = set_categorical_genotype(df, standardize=True, sort=False)
 
     return df

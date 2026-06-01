@@ -5,6 +5,7 @@ from tfscreen.util.io import (
     read_dataframe,
     read_yaml,
 )
+from tfscreen.simulate.growth.transition_linkage import get_transition_model
 from tfscreen.util.numerical import (
     vstack_padded,
     zero_truncated_poisson,
@@ -18,7 +19,6 @@ import numpy.ma as ma
 from numpy.random import Generator
 
 import pandas as pd
-from pandas.core.groupby.generic import DataFrameGroupBy
 
 from scipy.stats import (
     gmean,
@@ -170,7 +170,7 @@ def _check_cf(
     cf = _check_dict_number("prob_index_hop", cf, min_allowed=0, max_allowed=1, allow_none=True)
     cf = _check_dict_number("lib_assembly_skew_sigma", cf, min_allowed=0, allow_none=True)
     cf = _check_dict_number("transformation_poisson_lambda", cf, min_allowed=0, allow_none=True)
-    cf = _check_dict_number("growth_rate_noise", cf, min_allowed=0, allow_none=True)
+    cf = _check_dict_number("tube_noise_sigma", cf, min_allowed=0, allow_none=True)
     cf = _check_dict_number("random_seed", cf, cast_type=int, min_allowed=0, allow_none=True)
     cf = _check_dict_number("cfu0", cf, allow_none=False,min_allowed=0)
     cf = _check_dict_number("total_num_reads", cf, cast_type=int, min_allowed=0, inclusive_min=False)
@@ -209,6 +209,58 @@ def _check_cf(
         raise ValueError("condition_selector must be a list of column names.")
     if not isinstance(cf["library_selector"], list):
         raise ValueError("library_selector must be a list of column names.")
+
+    # --- Validate growth_transition block ---
+
+    # Per-model required parameters and positivity constraints.
+    # Keys are model names; values are dicts with:
+    #   required: list of required parameter names
+    #   positive: list of parameters that must be > 0
+    _GT_MODEL_SPECS = {
+        "instant": {"required": [],                       "positive": []},
+        "memory":  {"required": ["tau0", "k1", "k2"],    "positive": ["k2"]},
+        "baranyi": {"required": ["tau_lag", "k_sharp"],  "positive": ["k_sharp"]},
+        "two_pop": {"required": ["k_trans"],              "positive": ["k_trans"]},
+    }
+
+    if "growth_transition" not in cf or cf["growth_transition"] is None:
+        cf["growth_transition"] = None
+    else:
+        gt = cf["growth_transition"]
+        if not isinstance(gt, list):
+            raise ValueError("'growth_transition' must be a list of condition entries.")
+
+        seen_conditions = set()
+        for i, entry in enumerate(gt):
+            loc = f"growth_transition[{i}]"
+            if not isinstance(entry, dict):
+                raise ValueError(f"{loc} must be a dict.")
+            for required_key in ("condition_pre", "model"):
+                if required_key not in entry:
+                    raise ValueError(f"{loc} is missing required key '{required_key}'.")
+            if not isinstance(entry["condition_pre"], str):
+                raise ValueError(f"{loc} 'condition_pre' must be a string.")
+            if entry["condition_pre"] in seen_conditions:
+                raise ValueError(f"{loc} duplicate condition_pre '{entry['condition_pre']}'.")
+            seen_conditions.add(entry["condition_pre"])
+            if entry["model"] not in _GT_MODEL_SPECS:
+                raise ValueError(
+                    f"{loc} 'model' must be one of "
+                    f"{sorted(_GT_MODEL_SPECS)}."
+                )
+            spec = _GT_MODEL_SPECS[entry["model"]]
+            for param in spec["required"]:
+                if param not in entry:
+                    raise ValueError(
+                        f"{loc} model '{entry['model']}' requires '{param}'."
+                    )
+                try:
+                    entry[param] = float(entry[param])
+                except (TypeError, ValueError):
+                    raise ValueError(f"{loc} '{param}' must be a number.")
+            for param in spec["positive"]:
+                if entry[param] <= 0:
+                    raise ValueError(f"{loc} '{param}' must be > 0.")
 
     return cf
 
@@ -831,6 +883,52 @@ def _calc_genotype_cfu0(
     return genotype_cfu0 
 
 
+def _compute_kt(
+    phenotype_df: pd.DataFrame,
+    growth_transition: list | None,
+) -> np.ndarray:
+    """Compute total log-growth (k*t) for every row in phenotype_df.
+
+    Parameters
+    ----------
+    phenotype_df : pandas.DataFrame
+        Must have columns: k_pre, k_sel, t_pre, t_sel, theta, condition_pre.
+    growth_transition : list of dict or None
+        Validated growth_transition config (from _check_cf). None means instant
+        transition for all conditions. Each entry must have 'condition_pre' and
+        'model' plus any model-specific parameters.
+
+    Returns
+    -------
+    numpy.ndarray
+        1-D array of kt values aligned with phenotype_df rows.
+    """
+    k_pre = phenotype_df["k_pre"].to_numpy()
+    k_sel = phenotype_df["k_sel"].to_numpy()
+    t_pre = phenotype_df["t_pre"].to_numpy()
+    t_sel = phenotype_df["t_sel"].to_numpy()
+
+    if growth_transition is None:
+        return k_pre * t_pre + k_sel * t_sel
+
+    theta = phenotype_df["theta"].to_numpy()
+    condition_pre = phenotype_df["condition_pre"].to_numpy()
+
+    kt = np.zeros(len(phenotype_df))
+    for entry in growth_transition:
+        mask = condition_pre == entry["condition_pre"]
+        params = {k: v for k, v in entry.items()
+                  if k not in ("condition_pre", "model")}
+        model = get_transition_model(entry["model"])
+        kt[mask] = model.compute_kt(
+            k_pre[mask], k_sel[mask],
+            t_pre[mask], t_sel[mask],
+            theta[mask], **params,
+        )
+
+    return kt
+
+
 def _simulate_library_group(
     sub_df: pd.DataFrame,
     index_offset: int,
@@ -876,7 +974,7 @@ def _simulate_library_group(
 
     condition_selector = cf["condition_selector"]
     transformation_poisson_lambda = cf["transformation_poisson_lambda"]
-    growth_rate_noise = cf["growth_rate_noise"]
+    tube_noise_sigma = cf["tube_noise_sigma"]
     library_mixture = cf["library_mixture"]
     transform_sizes = cf["transform_sizes"]
     multi_plasmid_combine_fcn = cf["multi_plasmid_combine_fcn"]
@@ -959,10 +1057,16 @@ def _simulate_library_group(
     # Create a 2D array of (genotype,conditions) holding kt. 
     genotype_vs_kt = genotype_vs_kt_pivot.to_numpy()
     
-    # Add noise to the growth rate
-    if growth_rate_noise is not None:
-        std = np.abs(np.mean(genotype_vs_kt) * growth_rate_noise)
-        genotype_vs_kt += rng.normal(scale=std, size=genotype_vs_kt.shape)
+    # Add per-tube environmental noise: one delta_k per condition, shared across
+    # all genotypes in that tube.  tube_noise_sigma is in growth-rate units
+    # (hr⁻¹); the kt contribution is delta_k * t_total, which we read from the
+    # first row of the pivot (t_pre + t_sel is the same for every genotype).
+    if tube_noise_sigma is not None and tube_noise_sigma > 0:
+        t_pre_per_condition = sub_df.groupby(condition_selector, observed=True)["t_pre"].first().reindex(genotype_vs_kt_pivot.columns).to_numpy()
+        t_sel_per_condition = sub_df.groupby(condition_selector, observed=True)["t_sel"].first().reindex(genotype_vs_kt_pivot.columns).to_numpy()
+        t_total = t_pre_per_condition + t_sel_per_condition
+        delta_k = rng.normal(scale=tube_noise_sigma, size=len(t_total))
+        genotype_vs_kt += delta_k[np.newaxis, :] * t_total[np.newaxis, :]
     
     # Name of the library (e.g. kanR, pheS, ... ) for looking up how to 
     # combine multiple plasmid effects
@@ -1134,11 +1238,22 @@ def selection_experiment(
     # Remove genotypes from phenotype_df that are not in the library
     phenotype_df = phenotype_df[phenotype_df["genotype"].isin(ordered_genotypes)]
 
+    # If growth_transition is configured, verify every condition_pre in the data
+    # has an entry. Error out rather than silently defaulting.
+    if cf["growth_transition"] is not None:
+        configured = {e["condition_pre"] for e in cf["growth_transition"]}
+        present = set(phenotype_df["condition_pre"].unique())
+        missing = present - configured
+        if missing:
+            raise ValueError(
+                f"The following condition_pre values appear in the data but have no "
+                f"entry in 'growth_transition': {sorted(missing)}"
+            )
+
     # Calculate growth given k values and times at each condition. Set growth
     # to zero for nan values. (These can arise if the thermodynamic model
-    # failed. Interpret as "this bug does not grow"). 
-    phenotype_df["kt"] = (phenotype_df["k_pre"] * phenotype_df["t_pre"] +
-                          phenotype_df["k_sel"] * phenotype_df["t_sel"])
+    # failed. Interpret as "this bug does not grow").
+    phenotype_df["kt"] = _compute_kt(phenotype_df, cf["growth_transition"])
     phenotype_df["kt"] = phenotype_df["kt"].fillna(0)
 
     # groupby on phenotype_df that lets us select individual libraries 
