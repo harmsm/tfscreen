@@ -101,8 +101,9 @@ def _generate_binding_data(cf, library_df, binding_cfg, rng):
 def run_simulation_from_config(
     config_file,
     output_dir,
-    output_prefix="tfscreen_",
-    num_replicates=2,
+    output_prefix="tfs_sim_",
+    num_replicates=1,
+    seed=None,
 ):
     """
     Simulate a TF selection experiment from a YAML configuration file.
@@ -120,18 +121,22 @@ def run_simulation_from_config(
     output_dir : str
         Directory to write output CSV files into (created if absent).
     output_prefix : str
-        Prefix for all output filenames. Default 'tfscreen_'.
+        Prefix for all output filenames. Default 'tfs_sim_'.
     num_replicates : int
-        Number of independent experimental replicates to simulate. Default 2.
+        Number of independent experimental replicates to simulate. Default 1.
+    seed : int, optional
+        Random seed. Overrides random_seed in the config file when provided.
     """
     cf = tfscreen.util.read_yaml(config_file)
+    if seed is not None:
+        cf["random_seed"] = seed
 
     os.makedirs(output_dir, exist_ok=True)
 
     def out_path(name):
         return os.path.join(output_dir, f"{output_prefix}{name}.csv")
 
-    output_names = ["library", "phenotype", "genotype_theta", "growth"]
+    output_names = ["library", "parameters", "genotype_theta", "growth"]
     if "binding_data" in cf:
         output_names.append("binding")
 
@@ -146,7 +151,7 @@ def run_simulation_from_config(
     # -------------------------------------------------------------------------
     # Ground-truth library and phenotypes (deterministic given the config)
 
-    library_df, phenotype_df, genotype_theta_df = library_prediction(cf)
+    library_df, phenotype_df, genotype_theta_df, parameters_df = library_prediction(cf)
 
     # -------------------------------------------------------------------------
     # Simulate independent replicates
@@ -193,10 +198,10 @@ def run_simulation_from_config(
     # Write outputs
 
     library_df.to_csv(out_path("library"), index=False)
-    phenotype_df.to_csv(out_path("phenotype"), index=False)
+    parameters_df.to_csv(out_path("parameters"), index=False)
     genotype_theta_df.to_csv(out_path("genotype_theta"), index=False)
     growth_df.to_csv(out_path("growth"), index=False)
-    print(f"\nWrote: {', '.join(out_path(n) for n in ['library', 'phenotype', 'genotype_theta', 'growth'])}")
+    print(f"\nWrote: {', '.join(out_path(n) for n in ['library', 'parameters', 'genotype_theta', 'growth'])}")
 
     if "binding_data" in cf:
         binding_df = _generate_binding_data(cf, library_df, cf["binding_data"], rng)
@@ -205,4 +210,5 @@ def run_simulation_from_config(
 
 
 def main():
-    return generalized_main(run_simulation_from_config)
+    return generalized_main(run_simulation_from_config,
+                            manual_arg_types={"seed": int})

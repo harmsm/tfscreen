@@ -95,30 +95,31 @@ def sample_posterior(config_file,
                 hessian_chunk_size=hessian_chunk_size,
             )
         else:
-            # SVI checkpoint: resume with 0 epochs, draw samples directly.
+            # SVI checkpoint: resume with 0 epochs to restore guide state,
+            # then draw samples directly from the variational posterior.
             print("Detected SVI checkpoint. Drawing variational posterior samples...", flush=True)
-            _run_svi(ri,
-                     init_params=init_params,
-                     checkpoint_file=checkpoint_file,
-                     out_prefix=ri_prefix,
-                     max_num_epochs=0,
-                     num_posterior_samples=num_posterior_samples,
-                     sampling_batch_size=sampling_batch_size,
-                     forward_batch_size=forward_batch_size,
-                     always_get_posterior=True,
-                     # Convergence / optimizer kwargs are unused at 0 epochs but
-                     # required by _run_svi's signature; use neutral defaults.
-                     adam_step_size=1e-3,
-                     adam_final_step_size=1e-6,
-                     adam_clip_norm=1.0,
-                     elbo_num_particles=2,
-                     convergence_tolerance=1e-5,
-                     convergence_window=10,
-                     patience=10,
-                     convergence_check_interval=2,
-                     checkpoint_interval=10,
-                     init_param_jitter=0.0,
-                     epoch_checkpoint_interval=None)
+            svi_obj, svi_state, _, _ = _run_svi(ri,
+                                                 init_params=init_params,
+                                                 checkpoint_file=checkpoint_file,
+                                                 out_prefix=ri_prefix,
+                                                 max_num_epochs=0,
+                                                 adam_step_size=1e-3,
+                                                 adam_final_step_size=1e-6,
+                                                 adam_clip_norm=1.0,
+                                                 elbo_num_particles=2,
+                                                 convergence_tolerance=1e-5,
+                                                 convergence_window=10,
+                                                 patience=10,
+                                                 convergence_check_interval=2,
+                                                 checkpoint_interval=10,
+                                                 init_param_jitter=0.0,
+                                                 epoch_checkpoint_interval=None)
+            ri.get_posteriors(svi=svi_obj,
+                              svi_state=svi_state,
+                              out_prefix=ri_prefix,
+                              num_posterior_samples=num_posterior_samples,
+                              sampling_batch_size=sampling_batch_size,
+                              forward_batch_size=forward_batch_size)
 
     src = f"{ri_prefix}_posterior.h5"
     dst = f"{out_prefix}.h5"

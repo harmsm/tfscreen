@@ -10,6 +10,7 @@ from tfscreen.simulate.thermo_to_growth import (
     _apply_growth_params,
     _sample_horseshoe_activity,
     _sample_hierarchical_activity,
+    _theta_param_to_df,
     _ACTIVITY_COMPONENTS,
     thermo_to_growth,
     _THETA_RESCALE,
@@ -306,7 +307,7 @@ def test_thermo_to_growth_integration(
     sim_data = _make_sim_data_mock(test_genotypes, concs)
     _patch_thermo_deps(mocker, test_genotypes, test_sample_df, theta_gc)
 
-    phenotype_df, genotype_theta_df = thermo_to_growth(
+    phenotype_df, genotype_theta_df, parameters_df = thermo_to_growth(
         genotypes=test_genotypes,
         sim_data=sim_data,
         sample_df=test_sample_df,
@@ -319,6 +320,7 @@ def test_thermo_to_growth_integration(
     assert isinstance(phenotype_df, pd.DataFrame)
     assert phenotype_df.shape[0] == 6
     assert "theta" in phenotype_df.columns
+    # phenotype_df retains dk_geno and activity for selection_experiment
     assert "dk_geno" in phenotype_df.columns
     assert "activity" in phenotype_df.columns
     assert "k_pre" in phenotype_df.columns
@@ -348,6 +350,52 @@ def test_thermo_to_growth_integration(
     assert "genotype" in genotype_theta_df.columns
     theta_cols = [c for c in genotype_theta_df.columns if c.startswith("theta_at_")]
     assert len(theta_cols) == 2   # two unique concentrations
+    # No duplicate genotypes
+    assert genotype_theta_df["genotype"].nunique() == len(genotype_theta_df)
+
+    # parameters_df: one row per unique genotype, dk_geno + activity always present
+    assert isinstance(parameters_df, pd.DataFrame)
+    assert parameters_df.shape[0] == 3   # 3 unique genotypes
+    assert list(parameters_df.columns[:3]) == ["genotype", "dk_geno", "activity"]
+    # wt always gets dk_geno == 0
+    wt_row = parameters_df[parameters_df["genotype"] == "wt"]
+    assert np.isclose(float(wt_row["dk_geno"].iloc[0]), 0.0)
+    # With activity_mut_scale=0, all activities == 1.0
+    np.testing.assert_allclose(parameters_df["activity"].values, 1.0)
+
+
+def test_genotype_theta_df_no_duplicates_with_repeated_genotypes(
+    mocker, test_sample_df, simple_growth_params
+):
+    """genotype_theta_df must have one row per unique genotype even when the
+    same genotype appears multiple times in the library (e.g. two sub-libraries)."""
+    # Supply 5 rows where "wt" and "A1B" each appear twice
+    genotypes_with_dups = ["wt", "A1B", "wt", "A1B", "A1B/C2D"]
+    concs = np.array([10.0, 100.0])
+    # theta_gc has 5 rows (one per library entry); duplicate genotypes get
+    # distinct values, but only one row per unique genotype should be kept.
+    theta_gc = np.array([
+        [0.1, 0.9],   # wt  (first occurrence)
+        [0.3, 0.7],   # A1B (first occurrence)
+        [0.2, 0.8],   # wt  (second occurrence — should be dropped)
+        [0.4, 0.6],   # A1B (second occurrence — should be dropped)
+        [0.5, 0.5],   # A1B/C2D
+    ])
+    sim_data = _make_sim_data_mock(genotypes_with_dups, concs)
+    _patch_thermo_deps(mocker, genotypes_with_dups, test_sample_df, theta_gc)
+
+    _, genotype_theta_df, _ = thermo_to_growth(
+        genotypes=genotypes_with_dups,
+        sim_data=sim_data,
+        sample_df=test_sample_df,
+        theta_component="mock",
+        theta_rng_key=0,
+        growth_params=simple_growth_params,
+    )
+
+    assert genotype_theta_df["genotype"].nunique() == len(genotype_theta_df), \
+        "genotype_theta_df must not contain duplicate genotype rows"
+    assert len(genotype_theta_df) == 3   # wt, A1B, A1B/C2D
 
 
 def test_thermo_to_growth_propagates_rng(
@@ -362,7 +410,7 @@ def test_thermo_to_growth_propagates_rng(
 
     mock_assign_dk = mocker.patch(
         "tfscreen.simulate.thermo_to_growth._assign_dk_geno",
-        return_value=pd.Series(0.0, index=["wt", "A1B", "A1B/C2D"]),
+        return_value=pd.Series({"wt": 0.0, "A1B": 0.0, "A1B/C2D": 0.0}),
     )
 
     thermo_to_growth(
@@ -713,13 +761,17 @@ class TestThermo_to_growth_ActivityComponent:
             "tfscreen.simulate.thermo_to_growth._sample_horseshoe_activity",
             return_value=pd.Series(activity_map),
         )
-        phenotype_df, _ = thermo_to_growth(
+        phenotype_df, _, parameters_df = thermo_to_growth(
             genotypes=test_genotypes, sim_data=sim_data,
             activity_component="horseshoe_geno", **base_call_kwargs,
         )
         for geno, expected in activity_map.items():
             rows = phenotype_df[phenotype_df["genotype"] == geno]
             np.testing.assert_allclose(rows["activity"].values, expected)
+        # Same activity values must appear in parameters_df (one row per genotype)
+        for geno, expected in activity_map.items():
+            row = parameters_df[parameters_df["genotype"] == geno]
+            np.testing.assert_allclose(float(row["activity"].iloc[0]), expected)
 
 
 # ============================================================================
@@ -751,7 +803,7 @@ class TestThermo_to_growth_ThetaNoise:
         """theta_noise_sigma_logit=0 must not alter theta values."""
         concs = np.array([10.0, 100.0])
         theta_gc = np.array([[0.2, 0.8], [0.3, 0.7], [0.5, 0.5]])
-        phenotype_df, _ = self._run(
+        phenotype_df, _, _ = self._run(
             mocker, test_genotypes, concs, theta_gc,
             theta_noise_sigma_logit=0.0,
             rng=np.random.default_rng(0),
@@ -767,7 +819,7 @@ class TestThermo_to_growth_ThetaNoise:
         """theta_noise_sigma_logit > 0 must produce theta values different from input."""
         concs = np.array([10.0, 100.0])
         theta_gc = np.full((3, 2), 0.5)
-        phenotype_df, _ = self._run(
+        phenotype_df, _, _ = self._run(
             mocker, test_genotypes, concs, theta_gc,
             theta_noise_sigma_logit=1.0,
             rng=np.random.default_rng(42),
@@ -781,7 +833,7 @@ class TestThermo_to_growth_ThetaNoise:
         """Even with large sigma_logit, theta must remain in (0, 1)."""
         concs = np.array([10.0, 100.0])
         theta_gc = np.array([[0.01, 0.99], [0.5, 0.5], [0.3, 0.7]])
-        phenotype_df, _ = self._run(
+        phenotype_df, _, _ = self._run(
             mocker, test_genotypes, concs, theta_gc,
             theta_noise_sigma_logit=5.0,
             rng=np.random.default_rng(0),
@@ -798,13 +850,13 @@ class TestThermo_to_growth_ThetaNoise:
         concs = np.array([10.0, 100.0])
         theta_gc = np.full((3, 2), 0.5)
 
-        df1, _ = self._run(
+        df1, _, _ = self._run(
             mocker, test_genotypes, concs, theta_gc,
             theta_noise_sigma_logit=0.5,
             rng=np.random.default_rng(7),
             **base_kwargs,
         )
-        df2, _ = self._run(
+        df2, _, _ = self._run(
             mocker, test_genotypes, concs, theta_gc,
             theta_noise_sigma_logit=0.5,
             rng=np.random.default_rng(7),
@@ -818,13 +870,13 @@ class TestThermo_to_growth_ThetaNoise:
         concs = np.array([10.0, 100.0])
         theta_gc = np.full((3, 2), 0.5)
 
-        df1, _ = self._run(
+        df1, _, _ = self._run(
             mocker, test_genotypes, concs, theta_gc,
             theta_noise_sigma_logit=0.5,
             rng=np.random.default_rng(1),
             **base_kwargs,
         )
-        df2, _ = self._run(
+        df2, _, _ = self._run(
             mocker, test_genotypes, concs, theta_gc,
             theta_noise_sigma_logit=0.5,
             rng=np.random.default_rng(2),
@@ -902,12 +954,12 @@ class TestThermo_to_growth_ThetaRescale:
         concs = np.array([10.0, 100.0])
         theta_gc = np.array([[0.2, 0.8], [0.3, 0.7], [0.5, 0.5]])
 
-        df_default, _ = self._run(
+        df_default, _, _ = self._run(
             mocker, test_genotypes, concs, theta_gc,
             rng=np.random.default_rng(42),
             **base_kwargs,
         )
-        df_passthrough, _ = self._run(
+        df_passthrough, _, _ = self._run(
             mocker, test_genotypes, concs, theta_gc,
             theta_rescale="passthrough",
             rng=np.random.default_rng(42),
@@ -929,12 +981,12 @@ class TestThermo_to_growth_ThetaRescale:
         concs = np.array([10.0, 100.0])
         theta_gc = np.array([[0.2, 0.8], [0.3, 0.7], [0.5, 0.5]])
 
-        df_pass, _ = self._run(
+        df_pass, _, _ = self._run(
             mocker, test_genotypes, concs, theta_gc,
             theta_rescale="passthrough",
             **base_kwargs,
         )
-        df_logit, _ = self._run(
+        df_logit, _, _ = self._run(
             mocker, test_genotypes, concs, theta_gc,
             theta_rescale="logit",
             **base_kwargs,
@@ -948,7 +1000,7 @@ class TestThermo_to_growth_ThetaRescale:
         concs = np.array([10.0, 100.0])
         theta_gc = np.array([[0.2, 0.8], [0.3, 0.7], [0.5, 0.5]])
 
-        df, _ = self._run(
+        df, _, _ = self._run(
             mocker, test_genotypes, concs, theta_gc,
             theta_rescale="logit",
             **base_kwargs,
@@ -967,7 +1019,7 @@ class TestThermo_to_growth_ThetaRescale:
         # activity_mut_scale so only the logit transform matters.
         theta_gc = np.full((3, 2), 0.5)
 
-        df, _ = self._run(
+        df, _, _ = self._run(
             mocker, test_genotypes, concs, theta_gc,
             theta_rescale="logit",
             activity_wt=1.0,
@@ -988,7 +1040,7 @@ class TestThermo_to_growth_ThetaRescale:
         concs = np.array([10.0, 100.0])
         theta_gc = np.array([[0.2, 0.8], [0.3, 0.7], [0.5, 0.5]])
 
-        _, geno_theta_df = self._run(
+        _, geno_theta_df, _ = self._run(
             mocker, test_genotypes, concs, theta_gc,
             theta_rescale="logit",
             **base_kwargs,
@@ -997,3 +1049,145 @@ class TestThermo_to_growth_ThetaRescale:
         vals = geno_theta_df[theta_cols].values
         assert np.all(vals > 0.0)
         assert np.all(vals < 1.0)
+
+
+# ============================================================================
+# test _theta_param_to_df
+# ============================================================================
+
+from dataclasses import dataclass as _stdlib_dataclass
+
+
+@_stdlib_dataclass
+class _MockThetaParam2D:
+    """Minimal stand-in for a real ThetaParam with only 2-D per-genotype fields."""
+    theta_low: object
+    theta_high: object
+    log_hill_K: object
+    hill_n: object
+
+
+@_stdlib_dataclass
+class _MockThetaParamMixed:
+    """ThetaParam with 2-D per-genotype fields AND a 3-D population field."""
+    theta_low: object
+    mu: object      # 3-D — should be ignored
+
+
+class TestThetaParamToDf:
+    """Unit tests for _theta_param_to_df."""
+
+    def _make_param_single_titrant(self, G):
+        """Return a _MockThetaParam2D with shape (1, G) fields."""
+        rng = np.random.default_rng(0)
+        return _MockThetaParam2D(
+            theta_low=rng.random((1, G)),
+            theta_high=rng.random((1, G)),
+            log_hill_K=rng.standard_normal((1, G)),
+            hill_n=np.abs(rng.standard_normal((1, G))),
+        )
+
+    def test_returns_dataframe(self):
+        genotypes = ["wt", "A1V", "B2G"]
+        sim_idx = np.array([0, 1, 2])
+        param = self._make_param_single_titrant(3)
+        df = _theta_param_to_df(param, genotypes, sim_idx)
+        assert isinstance(df, pd.DataFrame)
+
+    def test_genotype_column_present_and_correct(self):
+        genotypes = ["wt", "A1V", "B2G"]
+        sim_idx = np.array([0, 1, 2])
+        param = self._make_param_single_titrant(3)
+        df = _theta_param_to_df(param, genotypes, sim_idx)
+        assert "genotype" in df.columns
+        assert list(df["genotype"]) == genotypes
+
+    def test_genotype_is_first_column(self):
+        genotypes = ["wt", "A1V"]
+        sim_idx = np.array([0, 1])
+        param = self._make_param_single_titrant(2)
+        df = _theta_param_to_df(param, genotypes, sim_idx)
+        assert df.columns[0] == "genotype"
+
+    def test_single_titrant_fields_extracted(self):
+        """All four 2-D fields must appear as columns (T=1 is squeezed)."""
+        genotypes = ["wt", "A1V", "B2G"]
+        sim_idx = np.array([0, 1, 2])
+        param = self._make_param_single_titrant(3)
+        df = _theta_param_to_df(param, genotypes, sim_idx)
+        for fname in ["theta_low", "theta_high", "log_hill_K", "hill_n"]:
+            assert fname in df.columns, f"Missing column: {fname}"
+
+    def test_3d_field_is_skipped(self):
+        """A field with ndim=3 (e.g. population moments) must not appear."""
+        genotypes = ["wt", "A1V"]
+        sim_idx = np.array([0, 1])
+        param = _MockThetaParamMixed(
+            theta_low=np.array([[0.1, 0.2]]),   # (1, 2) — kept
+            mu=np.array([[[0.5], [0.6]]]),        # (1, 2, 1) — skipped
+        )
+        df = _theta_param_to_df(param, genotypes, sim_idx)
+        assert "theta_low" in df.columns
+        assert "mu" not in df.columns
+
+    def test_values_match_theta_param(self):
+        """Extracted values must match the raw theta_param arrays."""
+        genotypes = ["wt", "A1V", "B2G"]
+        sim_idx = np.array([0, 1, 2])
+        param = self._make_param_single_titrant(3)
+        df = _theta_param_to_df(param, genotypes, sim_idx)
+        np.testing.assert_allclose(df["theta_low"].values, param.theta_low[0])
+        np.testing.assert_allclose(df["theta_high"].values, param.theta_high[0])
+
+    def test_sim_indices_select_correct_rows(self):
+        """sim_indices must select the right columns from theta_param."""
+        # sim_data has 5 genotypes; we want 3 of them in reverse order
+        G_sim = 5
+        G_out = 3
+        sim_idx = np.array([4, 2, 0])   # select in reverse from sim_data
+        rng = np.random.default_rng(7)
+        theta_low_full = rng.random((1, G_sim))
+        param = _MockThetaParam2D(
+            theta_low=theta_low_full,
+            theta_high=rng.random((1, G_sim)),
+            log_hill_K=rng.standard_normal((1, G_sim)),
+            hill_n=np.abs(rng.standard_normal((1, G_sim))),
+        )
+        genotypes = ["g4", "g2", "g0"]
+        df = _theta_param_to_df(param, genotypes, sim_idx)
+        expected = theta_low_full[0, sim_idx]
+        np.testing.assert_allclose(df["theta_low"].values, expected)
+
+    def test_multi_titrant_creates_suffixed_columns(self):
+        """When T > 1, columns are named field_T0, field_T1, …"""
+        T, G = 2, 3
+        rng = np.random.default_rng(1)
+        param = _MockThetaParam2D(
+            theta_low=rng.random((T, G)),
+            theta_high=rng.random((T, G)),
+            log_hill_K=rng.standard_normal((T, G)),
+            hill_n=np.abs(rng.standard_normal((T, G))),
+        )
+        genotypes = ["wt", "A1V", "B2G"]
+        sim_idx = np.array([0, 1, 2])
+        df = _theta_param_to_df(param, genotypes, sim_idx)
+        assert "theta_low_T0" in df.columns
+        assert "theta_low_T1" in df.columns
+        assert "theta_low" not in df.columns   # unsuffixed form absent
+
+    def test_non_dataclass_returns_genotype_only(self):
+        """A non-dataclass theta_param (e.g. MagicMock) yields only 'genotype' column."""
+        from unittest.mock import MagicMock
+        mock_param = MagicMock()
+        genotypes = ["wt", "A1V"]
+        sim_idx = np.array([0, 1])
+        df = _theta_param_to_df(mock_param, genotypes, sim_idx)
+        assert set(df.columns) == {"genotype"}
+        assert list(df["genotype"]) == genotypes
+
+    def test_one_row_per_genotype(self):
+        genotypes = ["wt", "A1V", "B2G", "C3H"]
+        sim_idx = np.array([0, 1, 2, 3])
+        param = self._make_param_single_titrant(4)
+        df = _theta_param_to_df(param, genotypes, sim_idx)
+        assert len(df) == 4

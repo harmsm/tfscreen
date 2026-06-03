@@ -4,6 +4,7 @@ import os
 import yaml
 from tfscreen.tfmodel.scripts.configure_model_cli import configure_model
 from tfscreen.tfmodel.scripts.fit_model_cli import fit_model
+from tfscreen.tfmodel.scripts.sample_posterior_cli import sample_posterior
 from tfscreen.tfmodel.scripts.extract_params_cli import extract_params as summarize_posteriors
 
 @pytest.mark.slow
@@ -48,12 +49,15 @@ def test_configure_run_binding_only_smoke(tmpdir):
 
     out_prefix = os.path.join(tmpdir, "test_tfs_binding_only_out")
     fit_model(config_file=config_file,
-                        seed=42,
-                        max_num_epochs=1,
-                        num_posterior_samples=10,
-                        sampling_batch_size=10,
-                        always_get_posterior=True,
-                        out_prefix=out_prefix)
+              seed=42,
+              max_num_epochs=1,
+              out_prefix=out_prefix)
+
+    sample_posterior(config_file=config_file,
+                     checkpoint_file=f"{out_prefix}_checkpoint.pkl",
+                     out_prefix=f"{out_prefix}_posterior",
+                     num_posterior_samples=10,
+                     sampling_batch_size=10)
 
     assert os.path.exists(f"{out_prefix}_posterior.h5")
 
@@ -114,17 +118,18 @@ def test_configure_run_pipeline_smoke(tmpdir):
     assert "priors" not in config
     assert "init_params" not in config
 
-    # Run analysis (smoke test)
-    # We use max_num_epochs=1 to make it fast
-    # We use always_get_posterior=True to ensure the posterior file is written
+    # Run analysis (smoke test); use max_num_epochs=1 to make it fast
     out_prefix = os.path.join(tmpdir, "test_tfs_out")
     fit_model(config_file=config_file,
-                        seed=42,
-                        max_num_epochs=1,
-                        num_posterior_samples=10,
-                        sampling_batch_size=10,
-                        always_get_posterior=True,
-                        out_prefix=out_prefix)
+              seed=42,
+              max_num_epochs=1,
+              out_prefix=out_prefix)
+
+    sample_posterior(config_file=config_file,
+                     checkpoint_file=f"{out_prefix}_checkpoint.pkl",
+                     out_prefix=f"{out_prefix}_posterior",
+                     num_posterior_samples=10,
+                     sampling_batch_size=10)
 
     assert os.path.exists(os.path.join(tmpdir, "test_tfs_out_posterior.h5"))
 
@@ -205,9 +210,12 @@ def test_configure_run_binding_weight_smoke(tmpdir):
     fit_model(config_file=f"{out_auto}_config.yaml",
               seed=42,
               max_num_epochs=1,
-              num_posterior_samples=10,
-              sampling_batch_size=10,
-              always_get_posterior=True,
               out_prefix=out_fit)
+
+    sample_posterior(config_file=f"{out_auto}_config.yaml",
+                     checkpoint_file=f"{out_fit}_checkpoint.pkl",
+                     out_prefix=f"{out_fit}_posterior",
+                     num_posterior_samples=10,
+                     sampling_batch_size=10)
 
     assert os.path.exists(f"{out_fit}_posterior.h5")

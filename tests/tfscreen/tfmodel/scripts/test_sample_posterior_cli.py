@@ -180,15 +180,19 @@ class TestSamplePosteriorMap:
         ckpt_path = str(tmp_path / "svi.pkl")
         open(ckpt_path, "w").close()
 
+        fake_svi_obj = MagicMock()
+        fake_svi_state = MagicMock()
+
         with patch("tfscreen.tfmodel.scripts.sample_posterior_cli.read_configuration",
                    return_value=(MagicMock(), {})), \
              patch("tfscreen.tfmodel.scripts.sample_posterior_cli.RunInference",
                    return_value=ri), \
              patch("tfscreen.tfmodel.scripts.sample_posterior_cli.dill") as mock_dill, \
-             patch("tfscreen.tfmodel.scripts.sample_posterior_cli._run_svi") as mock_svi:
+             patch("tfscreen.tfmodel.scripts.sample_posterior_cli._run_svi",
+                   return_value=(fake_svi_obj, fake_svi_state, {}, False)) as mock_svi:
 
             mock_dill.load.return_value = {"svi_state": MagicMock()}
-            mock_svi.side_effect = lambda *a, **kw: open(h5_src, "w").close()
+            ri.get_posteriors.side_effect = lambda **kw: open(h5_src, "w").close()
 
             from tfscreen.tfmodel.scripts.sample_posterior_cli import sample_posterior
             sample_posterior("cfg.yaml", ckpt_path,
@@ -206,11 +210,9 @@ class TestSamplePosteriorSvi:
 
     def _run_svi_test(self, tmp_path):
         ri = MagicMock()
-        fake_optim = MagicMock()
-        fake_optim.get_params.return_value = {"some_param_mean": np.array(1.0)}
-        fake_svi = MagicMock()
-        fake_svi.optim = fake_optim
-        ri.setup_svi.return_value = fake_svi
+        fake_svi_state = MagicMock()
+        fake_svi_obj = MagicMock()
+        ri.setup_svi.return_value = fake_svi_obj
 
         h5_src = str(tmp_path / "out_tmp_posterior_posterior.h5")
         ckpt_path = str(tmp_path / "svi.pkl")
@@ -219,10 +221,16 @@ class TestSamplePosteriorSvi:
         captured = {}
 
         def fake_run_svi(ri_obj, init_params, checkpoint_file, out_prefix,
-                         max_num_epochs, always_get_posterior=False, **kwargs):
+                         max_num_epochs, **kwargs):
             captured["max_num_epochs"] = max_num_epochs
-            captured["always_get_posterior"] = always_get_posterior
+            return fake_svi_obj, fake_svi_state, {}, False
+
+        def fake_get_posteriors(**kwargs):
+            captured["get_posteriors_called"] = True
+            captured["get_posteriors_kwargs"] = kwargs
             open(h5_src, "w").close()
+
+        ri.get_posteriors.side_effect = fake_get_posteriors
 
         with patch("tfscreen.tfmodel.scripts.sample_posterior_cli.read_configuration",
                    return_value=(MagicMock(), {})), \
@@ -244,9 +252,9 @@ class TestSamplePosteriorSvi:
         captured = self._run_svi_test(tmp_path)
         assert captured["max_num_epochs"] == 0
 
-    def test_svi_always_get_posterior_is_true(self, tmp_path):
+    def test_svi_calls_get_posteriors_directly(self, tmp_path):
         captured = self._run_svi_test(tmp_path)
-        assert captured["always_get_posterior"] is True
+        assert captured.get("get_posteriors_called") is True
 
     def test_svi_output_renamed(self, tmp_path):
         self._run_svi_test(tmp_path)

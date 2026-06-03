@@ -357,9 +357,14 @@ class RunInference:
                     self._write_checkpoint(svi_state, out_prefix)
                     break
 
+        # Write a final checkpoint when the loop exits by reaching max_num_epochs
+        # (convergence already writes its own checkpoint via the break path above).
+        if not converged and total_steps > 0:
+            self._write_checkpoint(svi_state, out_prefix)
+
         # Get final parameters
         params = svi.get_params(svi_state)
-        
+
         return svi_state, params, converged
 
     def _get_genotype_dim_map(self):
@@ -413,6 +418,16 @@ class RunInference:
                     break
 
             if in_plate:
+                continue
+
+            # Skip sites that belong to a non-genotype plate at the genotype
+            # dim — they are indexed by a different axis (e.g. condition_pre)
+            # and must NOT be treated as genotype-indexed.
+            in_other_plate_at_geno_dim = any(
+                frame.dim == genotype_dim
+                for frame in site.get("cond_indep_stack", [])
+            )
+            if in_other_plate_at_geno_dim:
                 continue
 
             # Fallback for deterministics computed outside the plate

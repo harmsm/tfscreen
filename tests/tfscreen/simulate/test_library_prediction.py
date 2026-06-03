@@ -43,15 +43,18 @@ def test_library_prediction_success(mocker, mock_config):
 
     mock_phenotype_df = pd.DataFrame({"theta": [0.5, 0.3]})
     mock_genotype_theta_df = pd.DataFrame({"genotype": ["wt", "M1"]})
+    mock_parameters_df = pd.DataFrame({"genotype": ["wt", "M1"],
+                                        "dk_geno": [0.0, -0.01],
+                                        "activity": [1.0, 1.0]})
     mock_thermo = mocker.patch(
         "tfscreen.simulate.library_prediction.thermo_to_growth",
-        return_value=(mock_phenotype_df, mock_genotype_theta_df),
+        return_value=(mock_phenotype_df, mock_genotype_theta_df, mock_parameters_df),
     )
 
     mock_jax_key = mocker.patch("tfscreen.simulate.library_prediction.jax.random.PRNGKey",
                                 return_value="mock_key")
 
-    lib_df, pheno_df, theta_df = library_prediction(cf="config.yaml")
+    lib_df, pheno_df, theta_df, params_df = library_prediction(cf="config.yaml")
 
     tfscreen.util.read_yaml.assert_called_once_with("config.yaml", override_keys=None)
     mock_lm_cls.assert_called_once_with(mock_config)
@@ -77,6 +80,7 @@ def test_library_prediction_success(mocker, mock_config):
     assert lib_df.equals(mock_library_df)
     assert pheno_df.equals(mock_phenotype_df)
     assert theta_df.equals(mock_genotype_theta_df)
+    assert params_df.equals(mock_parameters_df)
 
 
 def test_library_prediction_config_error():

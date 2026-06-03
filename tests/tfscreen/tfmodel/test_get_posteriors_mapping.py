@@ -123,6 +123,53 @@ def test_get_posteriors_batching_mapping(tmpdir):
         np.testing.assert_allclose(det_p_in, post_batched["det_p_in"][:])
         np.testing.assert_allclose(det_p_out, post_batched["det_p_out"][:])
 
+def test_dim_map_excludes_non_genotype_plate_at_same_dim():
+    """A plate at dim=-1 that is NOT the genotype plate must not appear in dim_map.
+
+    Reproduces a bug where hierarchical_factored's tube_offset site (in the
+    condition_pre plate at dim=-1) was falsely identified as genotype-indexed
+    when num_condition_pre == probe_size == 2.  The shape mismatch caused:
+    (1, 1, G, 1, 1, 1, G) vs (1, T, CP, 1, 1, TC, G) during posterior sampling.
+    """
+
+    class MockModelWithCondPre:
+        def __init__(self, num_genotype=10, num_cond_pre=2):
+            self.data = MockData(num_genotype=num_genotype,
+                                 batch_size=num_genotype,
+                                 batch_idx=jnp.arange(num_genotype))
+            self._num_cond_pre = num_cond_pre
+            self.priors = {}
+
+        def jax_model(self, data, priors):
+            with numpyro.plate("shared_genotype_plate", data.num_genotype, dim=-1):
+                numpyro.sample("geno_p", dist.Normal(0, 1))
+            # Separate plate at the same dim as genotype — must NOT appear in dim_map
+            with numpyro.plate("replicate_plate", 1, dim=-2):
+                with numpyro.plate("cond_pre_plate", self._num_cond_pre, dim=-1):
+                    numpyro.sample("tube_offset", dist.Normal(0, 1))
+
+        def jax_model_guide(self, data, priors):
+            return AutoDelta(self.jax_model)(data, priors)
+
+        def get_random_idx(self, key=None, num_batches=1):
+            if num_batches == 1:
+                return np.array([0])
+            return np.zeros((num_batches, 1), dtype=int)
+
+        def get_batch(self, data, indices):
+            return MockData(num_genotype=len(indices),
+                            batch_size=len(indices),
+                            batch_idx=indices)
+
+    # Use num_genotype=10, num_cond_pre=2 — probe_size becomes min(2,10)=2 == num_cond_pre
+    model = MockModelWithCondPre(num_genotype=10, num_cond_pre=2)
+    ri = RunInference(model, seed=0)
+    dim_map = ri._get_genotype_dim_map()
+
+    assert "geno_p" in dim_map, "genotype-plate site must appear in dim_map"
+    assert "tube_offset" not in dim_map, "non-genotype plate site must not appear in dim_map"
+
+
 def test_get_posteriors_shape_ambiguity(tmpdir):
     # Test with num_genotypes == num_titrants to ensure it doesn't get "mixed up"
     num_genotypes = 3

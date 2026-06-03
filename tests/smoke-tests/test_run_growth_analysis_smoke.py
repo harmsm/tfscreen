@@ -54,16 +54,22 @@ def test_run_growth_analysis_smoke(growth_smoke_csv, binding_smoke_csv, tmpdir):
         analysis_method="svi",
         out_prefix=out_prefix,
         max_num_epochs=1,
+        forward_batch_size=10,
+    )
+
+    sample_posterior(
+        config_file=config_file,
+        checkpoint_file=f"{out_prefix}_checkpoint.pkl",
+        out_prefix=f"{out_prefix}_posterior",
         num_posterior_samples=5,
         sampling_batch_size=5,
         forward_batch_size=10,
-        always_get_posterior=True
     )
-    
+
     # 3. Verify outputs
     posterior_file = f"{out_prefix}_posterior.h5"
     assert os.path.exists(posterior_file)
-    
+
     # Load and check the saved file
     with h5py.File(posterior_file, 'r') as data:
         assert "growth_pred" in data

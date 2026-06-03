@@ -41,6 +41,10 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
     genotype_theta_df : pandas.DataFrame
         wide-form dataframe with one row per genotype and one column per unique
         effector concentration giving the ground-truth theta value
+    parameters_df : pandas.DataFrame
+        one row per unique genotype; columns ``dk_geno``, ``activity``, and
+        any scalar per-genotype fields from the theta component (e.g.
+        ``theta_low``, ``theta_high``, ``log_hill_K``, ``hill_n``)
     """
 
     # -------------------------------------------------------------------------
@@ -73,7 +77,7 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
     theta_rng_key = jax.random.PRNGKey(theta_rng_seed)
 
     # Calculate phenotype for each genotype across all conditions in sample_df
-    phenotype_df, genotype_theta_df = thermo_to_growth(
+    phenotype_df, genotype_theta_df, parameters_df = thermo_to_growth(
         genotypes=library_df["genotype"],
         sim_data=sim_data,
         sample_df=sample_df,
@@ -91,4 +95,4 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
         theta_rescale=cf.get('theta_rescale', 'passthrough'),
     )
 
-    return library_df, phenotype_df, genotype_theta_df
+    return library_df, phenotype_df, genotype_theta_df, parameters_df
