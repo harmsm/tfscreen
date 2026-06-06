@@ -143,23 +143,56 @@ def test_read_binding_df(mocker):
     res = _read_binding_df("path.csv", growth_df=growth_df)
     assert "theta_obs" in res.columns
 
-def test_read_binding_df_errors(mocker):
+def test_read_binding_df_missing_col_error(mocker):
     growth_df = pd.DataFrame({"genotype": ["A"], "titrant_name": ["T1"]})
     binding_df = pd.DataFrame({
-        "genotype": ["B"], "titrant_name": ["T1"], 
+        "genotype": ["A"], "titrant_name": ["T1"],
         "theta_obs": [0.5], "theta_std": [0.1], "titrant_conc": [1.0]
     })
     mocker.patch("tfscreen.util.io.read_dataframe", return_value=binding_df)
     mocker.patch("tfscreen.genetics.set_categorical_genotype", return_value=binding_df)
-    mocker.patch("tfscreen.util.dataframe.check_columns")
-    
-    with patch("pandas.Index.isin", return_value=np.array([False])):
-        with pytest.raises(ValueError, match="not seen"):
-            _read_binding_df("path.csv", growth_df=growth_df)
-        
     mocker.patch("tfscreen.util.dataframe.check_columns", side_effect=ValueError("missing col"))
     with pytest.raises(ValueError, match="missing col"):
         _read_binding_df("path.csv", growth_df=growth_df)
+
+
+def test_read_binding_df_extra_pairs_dropped_with_warning():
+    """binding rows whose (genotype, titrant_name) is absent from growth_df are dropped."""
+    from tfscreen.genetics import set_categorical_genotype
+    import tfscreen.util.dataframe
+
+    growth_df = pd.DataFrame({
+        "genotype": ["wt", "wt"],
+        "titrant_name": ["iptg", "iptg"],
+        "titrant_conc": [0.0, 1.0],
+        "ln_cfu": [10.0, 10.0],
+        "ln_cfu_std": [0.1, 0.1],
+        "t_pre": [1.0, 1.0],
+        "t_sel": [1.0, 1.0],
+        "replicate": [1, 1],
+        "condition_pre": ["kan", "kan"],
+        "condition_sel": ["kan", "kan"],
+    })
+    growth_df = set_categorical_genotype(growth_df, standardize=True)
+    growth_df = tfscreen.util.dataframe.add_group_columns(
+        growth_df, ["genotype", "titrant_name"], "map_theta_group"
+    )
+
+    # binding has "wt" (in growth) and "M42I" (not in growth)
+    binding_df = pd.DataFrame({
+        "genotype": ["wt", "M42I"],
+        "titrant_name": ["iptg", "iptg"],
+        "titrant_conc": [1.0, 1.0],
+        "theta_obs": [0.1, 0.5],
+        "theta_std": [0.02, 0.02],
+    })
+
+    with pytest.warns(UserWarning, match="will be dropped"):
+        result = _read_binding_df(binding_df, growth_df=growth_df)
+
+    # Only the "wt" row should survive
+    assert set(result["genotype"]) == {"wt"}
+    assert len(result) == 1
 
 
 def test_read_binding_df_preserves_canonical_genotype_order():

@@ -5,6 +5,7 @@ from tfscreen.util.io import (
     read_dataframe,
     read_yaml,
 )
+from tfscreen.util.validation import check_unknown_keys
 from tfscreen.simulate.growth.transition_linkage import get_transition_model
 from tfscreen.util.numerical import (
     vstack_padded,
@@ -43,6 +44,29 @@ MULTI_PLASMID_COMBINE_FCNS = {"gmean":gmean,
                               "min":ma.min,
                               "max":ma.max,
                               "sum":ma.sum}
+
+# All recognized top-level keys for a simulate config file.
+SIMULATE_KNOWN_KEYS = frozenset({
+    # Library genetics (passed to LibraryManager)
+    "reading_frame", "first_amplicon_residue", "wt_seq", "degen_sites",
+    "sub_libraries", "library_combos", "spiked_seqs", "expected_5p", "expected_3p",
+    # Phenotype / theta calculation
+    "theta_component", "theta_rng_seed", "thermo_data", "theta_priors", "theta_rescale",
+    # Conditions and growth
+    "condition_blocks", "growth",
+    "dk_geno_hyper_loc", "dk_geno_hyper_scale", "dk_geno_hyper_shift",
+    "activity_wt", "activity_mut_scale", "activity_component", "activity_priors",
+    # Experimental simulation parameters
+    "transform_sizes", "library_mixture", "lib_assembly_skew_sigma",
+    "transformation_poisson_lambda", "multi_plasmid_combine_fcn", "cfu0",
+    "tube_noise_sigma", "growth_transition",
+    # Data collection
+    "total_num_reads", "prob_index_hop", "random_seed", "final_cfu_pct_err",
+    # Column selectors (rarely overridden)
+    "condition_selector", "library_selector",
+    # Optional output blocks
+    "binding_data", "presplit_data",
+})
   
 def _check_dict_number(
     key: str,
@@ -162,6 +186,8 @@ def _check_cf(
 
     # Load from YAML if a path is provided, otherwise assume it's a dict
     cf = read_yaml(cf)
+
+    check_unknown_keys(cf, SIMULATE_KNOWN_KEYS, label="simulate config")
 
     if "final_cfu_pct_err" not in cf:
         cf["final_cfu_pct_err"] = 0.05

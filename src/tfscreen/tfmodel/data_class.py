@@ -150,6 +150,33 @@ class BindingData:
 
 
 @dataclass(frozen=True)
+class PreSplitData:
+    """
+    Holds the optional pre-split (t = -t_pre) sequencing observations.
+
+    These are taken from a single pooled aliquot just before the culture is
+    split into titrant-concentration conditions, so they carry no
+    condition_sel or titrant_conc index.  The prediction for each observation
+    is simply ``ln_cfu0[replicate, condition_pre, genotype]``, making this a
+    direct side-channel constraint on the initial-population parameter.
+
+    Tensors are shaped ``(num_replicate, num_condition_pre, num_genotype)``
+    and use the same categorical orderings as the companion GrowthData so
+    that slicing with ``data.growth.batch_idx`` aligns the genotype axis.
+    """
+
+    # Data tensors
+    ln_cfu_t0: jnp.ndarray
+    ln_cfu_t0_std: jnp.ndarray
+    good_mask: jnp.ndarray
+
+    # Tensor dimensions (aligned with GrowthData)
+    num_replicate: int = field(pytree_node=False)
+    num_condition_pre: int = field(pytree_node=False)
+    num_genotype: int = field(pytree_node=False)
+
+
+@dataclass(frozen=True)
 class DataClass:
     """
     A container holding data needed to specify tfmodel, treated as a JAX
@@ -157,17 +184,19 @@ class DataClass:
     """
 
     num_genotype: int = field(pytree_node=False)
-    
+
     batch_idx: jnp.ndarray
     batch_size: int = field(pytree_node=False)
 
     not_binding_idx: jnp.ndarray
     not_binding_batch_size: int = field(pytree_node=False)
-    num_binding: int = field(pytree_node=False) 
+    num_binding: int = field(pytree_node=False)
 
     # GrowthData when running the joint growth+binding model; None in binding_only mode.
     growth: Any = field(default=None)
     binding: BindingData = field(default=None)
+    # Optional pre-split observations (t = -t_pre aliquot before condition split).
+    presplit: Any = field(default=None)
 
 
 @dataclass(frozen=True)

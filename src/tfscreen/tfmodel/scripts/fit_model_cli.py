@@ -238,11 +238,13 @@ def _run_svi(ri,
         epoch_checkpoint_interval=epoch_checkpoint_interval
     )
 
-    # Write convergence information to stdout
-    if converged:
-        print("SVI run converged.",flush=True)
-    else:
-        print("SVI run has not yet converged.",flush=True)
+    # Write convergence information to stdout (skip when restoring from
+    # checkpoint with no additional epochs — convergence is not meaningful).
+    if max_num_epochs > 0:
+        if converged:
+            print("SVI run converged.",flush=True)
+        else:
+            print("SVI run has not yet converged.",flush=True)
 
     return svi_obj, svi_state, params, converged
 

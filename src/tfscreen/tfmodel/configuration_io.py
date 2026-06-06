@@ -5,6 +5,16 @@ import numpy as np
 import jax.numpy as jnp
 import warnings
 from tfscreen.__version__ import __version__
+from tfscreen.util.validation import check_unknown_keys
+
+# All recognized top-level keys for a tfmodel config file.
+TFMODEL_KNOWN_KEYS = frozenset({
+    "tfscreen_version",
+    "data",
+    "components",
+    "priors_file",
+    "guesses_file",
+})
 
 def _extract_scalars(obj, prefix=""):
     """Recursively extract scalar values from PriorsClass."""
@@ -106,7 +116,8 @@ def _update_dataclass(dc, prefix, flat_dict):
 def write_configuration(gm,
                         out_prefix,
                         growth_df_path=None,
-                        binding_df_path=None):
+                        binding_df_path=None,
+                        presplit_df_path=None):
     """
     Write model configuration and extracted priors/guesses to files.
 
@@ -144,6 +155,8 @@ def write_configuration(gm,
         data_paths["growth"] = growth_df_path
     if binding_df_path is not None:
         data_paths["binding"] = binding_df_path
+    if presplit_df_path is not None:
+        data_paths["presplit"] = presplit_df_path
 
     config = {
         "tfscreen_version": __version__,
@@ -260,10 +273,13 @@ def read_configuration(config_file):
     with open(config_file, "r") as f:
         config = yaml.safe_load(f)
 
+    check_unknown_keys(config, TFMODEL_KNOWN_KEYS, label="tfmodel config")
+
     # Check sanity of format and read in data paths and components
     if "data" in config and "components" in config:
         growth_df_path = config["data"].get("growth")
         binding_df_path = config["data"].get("binding")
+        presplit_df_path = config["data"].get("presplit")
         settings = config["components"]
     else:
         raise ValueError(f"Configuration file '{config_file}' has an unrecognized format.")
@@ -273,10 +289,14 @@ def read_configuration(config_file):
             warnings.warn(f"Configuration file version {config['tfscreen_version']} does not match current tfscreen version {__version__}")
 
     batch_size = settings.pop("batch_size", None)
+    # presplit_df is a data path, not a component setting; pop it if it
+    # ended up in settings (older configs that serialised it there).
+    settings.pop("presplit_df", None)
 
     gm = ModelOrchestrator(growth_df_path,
                      binding_df_path,
                      batch_size=batch_size,
+                     presplit_df=presplit_df_path,
                      **settings)
 
     # Update Priors from CSV

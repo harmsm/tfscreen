@@ -760,13 +760,25 @@ class TestInjectCalibrationPriors:
         for suffix, _ in _PINNED_COMPONENTS["activity"]:
             assert suffix in pinned
 
-    def test_pins_dk_geno_and_ln_cfu0(self):
+    def test_pins_ln_cfu0_hyperparams(self):
         gm_cal, gm_prod = self._make_models()
         _inject_calibration_priors(gm_cal, gm_prod, np.array([[0.5]]))
-        for comp in ("dk_geno", "ln_cfu0"):
-            pinned = getattr(gm_cal._priors.growth, comp).pinned
-            for suffix, _ in _PINNED_COMPONENTS[comp]:
-                assert suffix in pinned
+        pinned = gm_cal._priors.growth.ln_cfu0.pinned
+        for suffix, _ in _PINNED_COMPONENTS["ln_cfu0"]:
+            assert suffix in pinned
+
+    def test_dk_geno_not_in_pinned_components(self):
+        # dk_geno uses the fixed component during calibration (all zeros).
+        # Pinning hyperparameters is meaningless for a fixed component, so
+        # dk_geno must not appear in _PINNED_COMPONENTS.
+        assert "dk_geno" not in _PINNED_COMPONENTS
+
+    def test_dk_geno_not_pinned_after_inject(self):
+        # _inject_calibration_priors must leave dk_geno.pinned untouched
+        # (empty) because the fixed component has no hyperparameters.
+        gm_cal, gm_prod = self._make_models()
+        _inject_calibration_priors(gm_cal, gm_prod, np.array([[0.5]]))
+        assert gm_cal._priors.growth.dk_geno.pinned == {}
 
     def test_theta_values_are_set(self):
         gm_cal, gm_prod = self._make_models()
@@ -1238,6 +1250,25 @@ class TestMakeCalibrationPlots:
         pdf_names = {p.name for p in tmp_path.glob("*.pdf")}
         assert "myrun_calib_geno0.pdf" in pdf_names
         assert "myrun_calib_geno1.pdf" in pdf_names
+
+    def test_slash_in_genotype_name_replaced_with_dash(self, tmp_path, mocker):
+        """Genotype names containing '/' (multi-mutation notation) must have '/'
+        replaced with '-' so the output path is a valid filename."""
+        gm_cal, map_samples = _build_fake_gm_cal(n_geno=2)
+        # Override genotype labels so one contains a slash.
+        gm_cal.growth_tm.tensor_dim_labels[
+            gm_cal.growth_tm.tensor_dim_names.index("genotype")
+        ] = ["A1T/G2P", "wt"]
+        self._patch_predictive(mocker, map_samples)
+
+        _make_calibration_plots(gm_cal, params={},
+                                out_prefix=str(tmp_path / "run"))
+
+        pdf_names = {p.name for p in tmp_path.glob("*.pdf")}
+        assert "run_calib_A1T-G2P.pdf" in pdf_names
+        assert "run_calib_wt.pdf" in pdf_names
+        # The original slash form must not appear as a file.
+        assert not any("A1T/G2P" in name for name in pdf_names)
 
     def test_skips_genotype_with_no_valid_observations(self, tmp_path, mocker):
         gm_cal, map_samples = _build_fake_gm_cal(n_geno=2)

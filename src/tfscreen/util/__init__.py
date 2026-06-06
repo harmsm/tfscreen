@@ -1,6 +1,7 @@
 
 from .validation import (  # noqa: F401
-    check_number
+    check_number,
+    check_unknown_keys,
 )
 
 from .io import (  # noqa: F401

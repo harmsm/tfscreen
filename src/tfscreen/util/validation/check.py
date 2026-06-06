@@ -4,6 +4,36 @@ from typing import Any, Callable, Optional, TypeVar
 # Define a generic Numeric type for hinting
 _Numeric = TypeVar("_Numeric", int, float)
 
+
+def check_unknown_keys(
+    config: dict,
+    allowed_keys: frozenset,
+    label: str = "config",
+) -> None:
+    """
+    Raise ValueError if config contains any keys not in allowed_keys.
+
+    Parameters
+    ----------
+    config : dict
+        The configuration dictionary to validate.
+    allowed_keys : frozenset
+        The complete set of recognized top-level keys.
+    label : str
+        Human-readable name for the config type, used in the error message.
+
+    Raises
+    ------
+    ValueError
+        If any key in config is not in allowed_keys, listing all unknown keys.
+    """
+    unknown = sorted(set(config) - allowed_keys)
+    if unknown:
+        raise ValueError(
+            f"Unrecognized key(s) in {label}: {unknown}.\n"
+            f"Valid keys are: {sorted(allowed_keys)}."
+        )
+
 def check_number(
     value: Any,
     param_name: Optional[str] = None,

@@ -157,6 +157,8 @@ def get_priors():
 
 
 def get_extract_specs(ctx):
+    if "condition_rep" not in ctx.growth_tm.map_groups:
+        return []
     cond_rep_cols = (["condition_rep"] if ctx.growth_shares_replicates
                      else ["replicate", "condition_rep"])
     return [dict(

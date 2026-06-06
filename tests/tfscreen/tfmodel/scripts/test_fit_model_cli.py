@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 
 from tfscreen.tfmodel.scripts.fit_model_cli import (
     fit_model,
+    _run_svi,
 )
 
 
@@ -235,3 +236,43 @@ class TestEpochCheckpointIntervalPassthrough:
 
         kwargs = run_svi_mock.call_args.kwargs
         assert kwargs["epoch_checkpoint_interval"] == 1000
+
+
+# ---------------------------------------------------------------------------
+# _run_svi — convergence message suppression when max_num_epochs=0
+# ---------------------------------------------------------------------------
+
+class TestRunSviConvergenceMessage:
+    """_run_svi must not print a converged/not-converged message when
+    max_num_epochs=0 (checkpoint-restore mode used by tfs-sample-posterior)."""
+
+    def _make_ri(self):
+        ri = MagicMock()
+        ri._iterations_per_epoch = 1
+        ri.setup_svi.return_value = MagicMock()
+        # run_optimization returns (state, params, converged=False)
+        ri.run_optimization.return_value = (MagicMock(), {}, False)
+        return ri
+
+    def test_no_message_when_zero_epochs(self, capsys):
+        ri = self._make_ri()
+        _run_svi(ri, init_params={}, checkpoint_file=None,
+                 out_prefix="tfs", max_num_epochs=0)
+        out = capsys.readouterr().out
+        assert "converged" not in out.lower()
+
+    def test_converged_message_when_epochs_run_and_converged(self, capsys):
+        ri = self._make_ri()
+        ri.run_optimization.return_value = (MagicMock(), {}, True)
+        _run_svi(ri, init_params={}, checkpoint_file=None,
+                 out_prefix="tfs", max_num_epochs=10)
+        out = capsys.readouterr().out
+        assert "SVI run converged." in out
+
+    def test_not_converged_message_when_epochs_run_and_not_converged(self, capsys):
+        ri = self._make_ri()
+        ri.run_optimization.return_value = (MagicMock(), {}, False)
+        _run_svi(ri, init_params={}, checkpoint_file=None,
+                 out_prefix="tfs", max_num_epochs=10)
+        out = capsys.readouterr().out
+        assert "SVI run has not yet converged." in out

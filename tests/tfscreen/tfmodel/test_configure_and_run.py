@@ -14,7 +14,8 @@ from tfscreen.tfmodel.scripts.configure_model_cli import (
 from tfscreen.tfmodel.scripts.fit_model_cli import fit_model
 from tfscreen.tfmodel.configuration_io import (
     read_configuration,
-    _update_dataclass
+    _update_dataclass,
+    TFMODEL_KNOWN_KEYS,
 )
 
 @pytest.fixture
@@ -174,6 +175,45 @@ def test_read_configuration_errors(tmpdir):
              yaml.dump({"data":{"growth":"g", "binding":"b"}, "components":{}, "priors_file": "priors.csv", "guesses_file": "missing_guesses.csv"}, f)
         with pytest.raises(FileNotFoundError, match="Guesses file not found"):
             read_configuration(config_path)
+
+
+# ----------------------------------------------------------------------------
+# test TFMODEL_KNOWN_KEYS / unknown-key validation in read_configuration
+# ----------------------------------------------------------------------------
+
+def test_tfmodel_known_keys_is_frozenset():
+    assert isinstance(TFMODEL_KNOWN_KEYS, frozenset)
+    assert "data" in TFMODEL_KNOWN_KEYS
+    assert "components" in TFMODEL_KNOWN_KEYS
+
+
+def test_read_configuration_unknown_key_raises(tmpdir):
+    config_path = os.path.join(tmpdir, "bad_config.yaml")
+    with open(config_path, "w") as f:
+        yaml.dump({
+            "data": {"growth": "g"},
+            "components": {},
+            "priors_file": "priors.csv",
+            "guesses_file": "guesses.csv",
+            "not_a_real_key": 42,
+        }, f)
+    with pytest.raises(ValueError, match="not_a_real_key"):
+        read_configuration(config_path)
+
+
+def test_read_configuration_unknown_key_error_mentions_label(tmpdir):
+    config_path = os.path.join(tmpdir, "bad_config.yaml")
+    with open(config_path, "w") as f:
+        yaml.dump({
+            "data": {"growth": "g"},
+            "components": {},
+            "priors_file": "priors.csv",
+            "guesses_file": "guesses.csv",
+            "typo_key": "oops",
+        }, f)
+    with pytest.raises(ValueError, match="tfmodel config"):
+        read_configuration(config_path)
+
 
 def test_configure_model_errors(tmpdir):
     # Missing binding_df

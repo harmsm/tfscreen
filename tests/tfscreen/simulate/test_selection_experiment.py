@@ -19,6 +19,7 @@ from tfscreen.simulate.selection_experiment import (
     _sim_transform_and_mix,
     _sim_growth,
     MULTI_PLASMID_COMBINE_FCNS,
+    SIMULATE_KNOWN_KEYS,
     _sim_sequencing,
     _calc_genotype_cfu0,
     _compute_kt,
@@ -1272,3 +1273,42 @@ def test_selection_experiment_end_to_end(mocker, base_config: dict,
     
     total_reads = base_config["total_num_reads"]
     assert np.isclose(counts_df["counts"].sum(), total_reads, rtol=0.01)
+
+
+# ----------------------------------------------------------------------------
+# test SIMULATE_KNOWN_KEYS / unknown-key validation in _check_cf
+# ----------------------------------------------------------------------------
+
+def test_simulate_known_keys_is_frozenset():
+    assert isinstance(SIMULATE_KNOWN_KEYS, frozenset)
+    assert len(SIMULATE_KNOWN_KEYS) > 0
+
+
+def test_check_cf_unknown_key_raises(base_config: dict):
+    bad = dict(base_config)
+    bad["not_a_real_key"] = 42
+    with pytest.raises(ValueError, match="not_a_real_key"):
+        _check_cf(bad)
+
+
+def test_check_cf_unknown_key_error_mentions_label(base_config: dict):
+    bad = dict(base_config)
+    bad["typo_key"] = "oops"
+    with pytest.raises(ValueError, match="simulate config"):
+        _check_cf(bad)
+
+
+def test_check_cf_multiple_unknown_keys(base_config: dict):
+    bad = dict(base_config)
+    bad["key_one"] = 1
+    bad["key_two"] = 2
+    with pytest.raises(ValueError) as exc_info:
+        _check_cf(bad)
+    msg = str(exc_info.value)
+    assert "key_one" in msg
+    assert "key_two" in msg
+
+
+def test_check_cf_all_known_keys_accepted(base_config: dict):
+    # Every key in the fixture must already be a known key; no error should be raised.
+    _check_cf(base_config)

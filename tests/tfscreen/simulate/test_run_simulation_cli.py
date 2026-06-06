@@ -32,7 +32,7 @@ def test_seed_cli_parsed_as_int():
     captured = {}
 
     def fake_run(config_file, output_dir, output_prefix="tfs_sim_",
-                 num_replicates=1, seed=None):
+                 num_replicates=2, seed=None):
         captured["seed"] = seed
 
     generalized_main(
@@ -49,7 +49,7 @@ def test_seed_cli_defaults_to_none():
     captured = {}
 
     def fake_run(config_file, output_dir, output_prefix="tfs_sim_",
-                 num_replicates=1, seed=None):
+                 num_replicates=2, seed=None):
         captured["seed"] = seed
 
     generalized_main(

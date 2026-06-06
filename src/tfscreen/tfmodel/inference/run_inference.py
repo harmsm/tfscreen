@@ -733,6 +733,46 @@ class RunInference:
             dill.dump(out_dict, f)
         os.replace(tmp_file, epoch_file)
 
+    def restore_svi_from_checkpoint(self, checkpoint_file, init_params=None):
+        """
+        Rebuild a component SVI object and restore its state from a checkpoint,
+        without running any optimization steps or convergence checks.
+
+        ``svi.init()`` must be called at least once to wire up ``constrain_fn``
+        on the SVI object before ``svi.get_params()`` can be used.  The state
+        produced by ``init()`` is immediately discarded and replaced with the
+        one loaded from the checkpoint.
+
+        Parameters
+        ----------
+        checkpoint_file : str
+            Path to the checkpoint .pkl file produced by tfs-fit-model.
+        init_params : dict or None, optional
+            Initial parameter values forwarded to ``svi.init()``.  The values
+            are never used in inference (the checkpoint overwrites them), but
+            they must be structurally valid for the model.
+
+        Returns
+        -------
+        svi : numpyro.infer.SVI
+            Initialized SVI object with ``constrain_fn`` populated.
+        svi_state : numpyro.infer.svi.SVIState
+            Optimizer state restored from the checkpoint.
+        """
+        svi = self.setup_svi(guide_type="component")
+
+        # init() is required to populate svi.constrain_fn; the resulting state
+        # is thrown away — the checkpoint state is used instead.
+        data_on_gpu = jax.device_put(self.model.data)
+        batch_idx = jax.device_put(self.model.get_random_idx())
+        batch_data = self.model.get_batch(data_on_gpu, batch_idx)
+        init_key = self.get_key()
+        svi.init(init_key, init_params=init_params,
+                 priors=self.model.priors, data=batch_data)
+
+        svi_state = self._restore_checkpoint(checkpoint_file)
+        return svi, svi_state
+
     def _restore_checkpoint(self,checkpoint_file):
         """
         Load an SVI state and PRNG key from a checkpoint file.

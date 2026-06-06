@@ -7,6 +7,7 @@ from tfscreen.tfmodel.data_class import (
 
 import jax.numpy as jnp
 import numpyro as pyro
+import numpyro.distributions as dist
 
 def jax_model(data: DataClass,
               priors: PriorsClass,
@@ -183,6 +184,31 @@ def jax_model(data: DataClass,
 
     # real calculation
     else:
+
+        # Pre-split (t = -t_pre) observations — direct constraint on ln_cfu0.
+        # ln_cfu0 shape: (num_rep, 1, num_cp, 1, 1, 1, batch_size)
+        # Squeeze broadcast dims to get (num_rep, num_cp, batch_size).
+        if getattr(data, "presplit", None) is not None:
+            ln_cfu0_3d = ln_cfu0[:, 0, :, 0, 0, 0, :]
+            ps = data.presplit
+            bi = data.growth.batch_idx
+            obs_t0  = ps.ln_cfu_t0[:, :, bi]
+            std_t0  = ps.ln_cfu_t0_std[:, :, bi]
+            mask_t0 = ps.good_mask[:, :, bi]
+            with pyro.plate("presplit_replicate",
+                            size=ps.num_replicate, dim=-3):
+                with pyro.plate("presplit_condition_pre",
+                                size=ps.num_condition_pre, dim=-2):
+                    with pyro.plate("shared_genotype_plate",
+                                    size=data.growth.batch_size, dim=-1):
+                        with pyro.handlers.scale(
+                                scale=data.growth.scale_vector):
+                            with pyro.handlers.mask(mask=mask_t0):
+                                pyro.sample(
+                                    "presplit_obs",
+                                    dist.Normal(ln_cfu0_3d, std_t0),
+                                    obs=obs_t0,
+                                )
 
         # calculate observable (all tensors have correct dimensions)
         g_pre, g_sel = calculate_growth(params=growth_params,

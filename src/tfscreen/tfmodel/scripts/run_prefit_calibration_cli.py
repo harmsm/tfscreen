@@ -11,7 +11,9 @@ linking-function MAP doesn't have to fight the full hierarchy:
 - ``theta``                → ``simple`` (theta values pinned from binding data)
 - ``activity``             → ``hierarchical`` with hyperparams *pinned* to their
                              prior locs (degenerate, no learning)
-- ``dk_geno``              → ``hierarchical`` with hyperparams *pinned*
+- ``dk_geno``              → ``fixed`` (all zeros; eliminates the WT-anchor
+                             bias that arises when mutants have non-zero mean
+                             pleiotropic effects)
 - ``ln_cfu0``              → ``hierarchical`` with hyperparams *pinned*
 - ``transformation``       → ``single`` (no learning)
 - ``theta_*_noise``        → ``zero`` (no learning)
@@ -75,7 +77,7 @@ from tfscreen.tfmodel.configuration_io import (
 _CALIBRATION_OVERRIDES = {
     "theta": "_simple",
     "activity": "hierarchical_geno",
-    "dk_geno": "hierarchical_geno",
+    "dk_geno": "fixed",
     "ln_cfu0": "hierarchical",
     "transformation": "single",
     "theta_growth_noise": "zero",
@@ -91,11 +93,6 @@ _PINNED_COMPONENTS = {
     "activity": (
         ("hyper_loc",   "hyper_loc_loc"),
         ("hyper_scale", "hyper_scale_loc"),
-    ),
-    "dk_geno": (
-        ("hyper_loc",   "hyper_loc_loc"),
-        ("hyper_scale", "hyper_scale_loc"),
-        ("hyper_shift", "hyper_shift_loc"),
     ),
     "ln_cfu0": (
         ("hyper_loc",   "ln_cfu0_hyper_loc_loc"),
@@ -984,7 +981,8 @@ def _make_calibration_plots(gm_cal, params, out_prefix, growth_pred_std=None):
             axes[extra_i // n_cols][extra_i % n_cols].set_visible(False)
 
         fig.tight_layout(rect=[0, 0, 1, 0.95])
-        pdf_path = f"{out_prefix}_calib_{geno_name}.pdf"
+        safe_geno_name = geno_name.replace("/", "-")
+        pdf_path = f"{out_prefix}_calib_{safe_geno_name}.pdf"
         fig.savefig(pdf_path, format="pdf", bbox_inches="tight")
         plt.close(fig)
         print(f"  Saved {pdf_path}", flush=True)
