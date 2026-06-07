@@ -8,31 +8,31 @@ from jax import numpy as jnp
 from numpyro.handlers import seed, trace
 from numpyro.infer import Predictive
 
-def copy_model_class(model_class,
-                     t_pre=None,
-                     t_sel=None,
-                     titrant_conc=None):
+def copy_orchestrator(orchestrator,
+                      t_pre=None,
+                      t_sel=None,
+                      titrant_conc=None):
     """
     Generate a fresh ModelOrchestrator instance with model components from an old
     ModelOrchestrator and new quantitative data passed in by the user.
 
-    The default behavior is to use values from `model_class.growth_df`.
-    Quantitative inputs (t_pre, t_sel, titrant_conc) can be expanded beyond 
-    those in the original dataframe. 
+    The default behavior is to use values from `orchestrator.growth_df`.
+    Quantitative inputs (t_pre, t_sel, titrant_conc) can be expanded beyond
+    those in the original dataframe.
 
     Parameters
     ----------
-    model_class : ModelOrchestrator
+    orchestrator : ModelOrchestrator
         The original ModelOrchestrator instance to copy.
     t_pre : list, optional
-        List of timepoints for pre-growth. Must be >= 0. If None, uses the 
-        value(s) from `model_class.growth_df`. 
+        List of timepoints for pre-growth. Must be >= 0. If None, uses the
+        value(s) from `orchestrator.growth_df`.
     t_sel : list, optional
-        List of timepoints for selection. Must be >= 0. If None, uses 
-        values from `model_class.growth_df`.
+        List of timepoints for selection. Must be >= 0. If None, uses
+        values from `orchestrator.growth_df`.
     titrant_conc : list, optional
-        List of titrant concentrations. Must be >= 0. If None, uses 
-        values from `model_class.growth_df`.
+        List of titrant concentrations. Must be >= 0. If None, uses
+        values from `orchestrator.growth_df`.
 
     Returns
     -------
@@ -41,7 +41,7 @@ def copy_model_class(model_class,
         combinations of all inputs.
     """
 
-    df = model_class.growth_df
+    df = orchestrator.growth_df
 
     def _get_input(value, col_name):
         """
@@ -91,10 +91,10 @@ def copy_model_class(model_class,
 
     # We keep the binding_df as is, as it's keyed by genotype/titrant_name
     # and we aren't subsetting those in this step.
-    new_binding_df = model_class.binding_df.copy()
+    new_binding_df = orchestrator.binding_df.copy()
 
     # Create new ModelOrchestrator using settings from the old one
-    settings = model_class.settings.copy()
+    settings = orchestrator.settings.copy()
     
     return ModelOrchestrator(
         growth_df=new_growth_df,
@@ -150,7 +150,7 @@ def _convert_map_params(map_params, model_trace):
     return constrained
 
 
-def predict(model_class,
+def predict(orchestrator,
             param_posteriors,
             predict_sites=None,
             q_to_get=None,
@@ -166,7 +166,7 @@ def predict(model_class,
 
     Parameters
     ----------
-    model_class : ModelOrchestrator
+    orchestrator : ModelOrchestrator
         The original ModelOrchestrator used for training.
     param_posteriors : dict or str
         Posterior samples. Can be a dictionary, or path to .h5 file.
@@ -186,16 +186,16 @@ def predict(model_class,
         quantile predictions. If None, uses all available samples.
     t_pre : list, optional
         List of timepoints for pre-growth. Must be >= 0. If None, uses the
-        value(s) from `model_class.growth_df`.
+        value(s) from `orchestrator.growth_df`.
     t_sel : list, optional
         List of timepoints for selection. Must be >= 0. If None, uses
-        values from `model_class.growth_df`.
+        values from `orchestrator.growth_df`.
     titrant_conc : list, optional
         List of titrant concentrations. Must be >= 0. If None, uses
-        values from `model_class.growth_df`.
+        values from `orchestrator.growth_df`.
     genotypes : list, optional
         List of genotypes to include in the prediction. Must be a subset
-        of those in `model_class.growth_df`. If None, uses all genotypes.
+        of those in `orchestrator.growth_df`. If None, uses all genotypes.
 
     Returns
     -------
@@ -216,16 +216,16 @@ def predict(model_class,
         predict_sites = [predict_sites]
 
     # Create the expanded prediction model
-    new_mc = copy_model_class(model_class,
-                              t_pre=t_pre,
-                              t_sel=t_sel,
-                              titrant_conc=titrant_conc)
+    new_orchestrator = copy_orchestrator(orchestrator,
+                                         t_pre=t_pre,
+                                         t_sel=t_sel,
+                                         titrant_conc=titrant_conc)
 
 
     # -------------------------------------------------------------------------
     # Genotype subsetting
     
-    all_genotypes = new_mc.growth_tm.tensor_dim_labels[-1]
+    all_genotypes = new_orchestrator.growth_tm.tensor_dim_labels[-1]
     if genotypes is None:
         genotypes = all_genotypes.tolist()
         genotype_indices = np.arange(len(all_genotypes))
@@ -244,17 +244,17 @@ def predict(model_class,
         genotype_indices = np.array(genotype_indices)
 
     # Use existing get_batch to subset the data tensors
-    subset_data = new_mc.get_batch(new_mc.data, jnp.array(genotype_indices))
+    subset_data = new_orchestrator.get_batch(new_orchestrator.data, jnp.array(genotype_indices))
 
     # -------------------------------------------------------------------------
     # Model trace — run first so bijections are available for MAP detection.
     #
-    # We use the original model_class because posteriors match its structure.
+    # We use the original orchestrator because posteriors match its structure.
 
-    seeded_model = seed(model_class.jax_model, rng_seed=0)
+    seeded_model = seed(orchestrator.jax_model, rng_seed=0)
     traced_model = trace(seeded_model)
-    model_trace = traced_model.get_trace(data=model_class.data,
-                                         priors=model_class.priors)
+    model_trace = traced_model.get_trace(data=orchestrator.data,
+                                         priors=orchestrator.priors)
 
     # -------------------------------------------------------------------------
     # MAP param conversion (if needed)
@@ -311,14 +311,14 @@ def predict(model_class,
             
             # Find the corresponding dimension in the TensorManager
             dim_idx = None
-            for i, name in enumerate(model_class.growth_tm.tensor_dim_names):
+            for i, name in enumerate(orchestrator.growth_tm.tensor_dim_names):
                 if name.lower() in plate_name:
                     dim_idx = i
                     break
             
             if dim_idx is not None:
-                old_labels = model_class.growth_tm.tensor_dim_labels[dim_idx]
-                new_labels = new_mc.growth_tm.tensor_dim_labels[dim_idx]
+                old_labels = orchestrator.growth_tm.tensor_dim_labels[dim_idx]
+                new_labels = new_orchestrator.growth_tm.tensor_dim_labels[dim_idx]
 
                 if not np.array_equal(old_labels, new_labels):
                     try:
@@ -337,7 +337,7 @@ def predict(model_class,
     # -------------------------------------------------------------------------
     # Run Prediction
     
-    predictive = Predictive(new_mc.jax_model, 
+    predictive = Predictive(new_orchestrator.jax_model, 
                             posterior_samples=sliced_samples, 
                             return_sites=predict_sites)
     
@@ -345,7 +345,7 @@ def predict(model_class,
     predict_key = jax.random.PRNGKey(0) 
     predictions = predictive(predict_key, 
                              data=subset_data, 
-                             priors=new_mc.priors)
+                             priors=new_orchestrator.priors)
     
     # -------------------------------------------------------------------------
     # Calculate Quantiles and Join
@@ -353,23 +353,23 @@ def predict(model_class,
     # tm._pivot_index columns in df contain the integer codes for each dimension
     # (replicate_idx, time_idx, etc.)
     # We want a dataframe that only has the subsetted genotypes.
-    base_df = new_mc.growth_df.copy()
+    base_df = new_orchestrator.growth_df.copy()
     base_df = base_df[base_df["genotype"].isin(genotypes)].copy()
 
     # Replace the dummy ln_cfu/ln_cfu_std zeros with observed values from the
-    # original model_class.growth_df (NaN where there is no matching observation,
+    # original orchestrator.growth_df (NaN where there is no matching observation,
     # e.g. for expanded prediction grids).
     merge_keys = ["replicate", "condition_pre", "condition_sel",
                   "titrant_name", "genotype", "t_pre", "t_sel", "titrant_conc"]
     obs_cols = merge_keys + ["ln_cfu", "ln_cfu_std"]
-    orig_obs = model_class.growth_df[obs_cols].drop_duplicates(subset=merge_keys)
+    orig_obs = orchestrator.growth_df[obs_cols].drop_duplicates(subset=merge_keys)
     base_df = base_df.drop(columns=["ln_cfu", "ln_cfu_std"]).merge(
         orig_obs, on=merge_keys, how="left"
     )
     
     # Re-calculate indices for the subsetted dataframe relative to the 
-    # using the new_mc TM but subset the df.
-    tm = new_mc.growth_tm
+    # using the new_orchestrator TM but subset the df.
+    tm = new_orchestrator.growth_tm
     indices = [base_df[f"{dim}_idx"].values for dim in tm.tensor_dim_names]
     
     # Since we used get_batch, the predictions only have the subsetted genotypes.

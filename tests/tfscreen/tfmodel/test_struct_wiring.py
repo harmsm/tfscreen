@@ -148,13 +148,13 @@ def test_settings_includes_thermo_data(tmp_path):
     h5_path      = _make_struct_ensemble_h5(tmp_path)
 
     from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
-    mc = ModelOrchestrator(
+    orchestrator = ModelOrchestrator(
         growth_path, binding_path,
         theta="thermo.O2_C4_K3_U0_a.PnnC",
         thermo_data=h5_path,
     )
-    assert "thermo_data" in mc.settings
-    assert mc.settings["thermo_data"] == h5_path
+    assert "thermo_data" in orchestrator.settings
+    assert orchestrator.settings["thermo_data"] == h5_path
 
 
 def test_default_thermo_data_is_none(tmp_path):
@@ -163,8 +163,8 @@ def test_default_thermo_data_is_none(tmp_path):
     binding_path = _make_binding_csv(tmp_path)
 
     from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
-    mc = ModelOrchestrator(growth_path, binding_path, theta="hill_geno")
-    assert mc.settings["thermo_data"] is None
+    orchestrator = ModelOrchestrator(growth_path, binding_path, theta="hill_geno")
+    assert orchestrator.settings["thermo_data"] is None
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -186,7 +186,7 @@ def test_missing_thermo_data_raises(tmp_path):
 # ──────────────────────────────────────────────────────────────────────────────
 
 @pytest.fixture(scope="module")
-def fitted_mc(tmp_path_factory):
+def fitted_orchestrator(tmp_path_factory):
     """
     Build a ModelOrchestrator with lac_dimer_lnK_nn_prior and a synthetic HDF5 file.
     Expensive to construct, so scoped to the module.
@@ -205,39 +205,39 @@ def fitted_mc(tmp_path_factory):
 
 
 class TestStructFieldsOnGrowthData:
-    def test_struct_names_is_correct_tuple(self, fitted_mc):
-        assert fitted_mc.data.growth.struct_names == STRUCTURE_NAMES
+    def test_struct_names_is_correct_tuple(self, fitted_orchestrator):
+        assert fitted_orchestrator.data.growth.struct_names == STRUCTURE_NAMES
 
-    def test_num_struct_is_four(self, fitted_mc):
-        assert fitted_mc.data.growth.num_struct == 4
+    def test_num_struct_is_four(self, fitted_orchestrator):
+        assert fitted_orchestrator.data.growth.num_struct == 4
 
-    def test_struct_features_shape(self, fitted_mc):
-        M = fitted_mc.data.growth.num_mutation
-        S = fitted_mc.data.growth.num_struct
-        feat = fitted_mc.data.growth.struct_features
+    def test_struct_features_shape(self, fitted_orchestrator):
+        M = fitted_orchestrator.data.growth.num_mutation
+        S = fitted_orchestrator.data.growth.num_struct
+        feat = fitted_orchestrator.data.growth.struct_features
         assert feat.shape == (M, S, 60)
 
-    def test_struct_n_chains_shape(self, fitted_mc):
-        S = fitted_mc.data.growth.num_struct
-        assert fitted_mc.data.growth.struct_n_chains.shape == (S,)
+    def test_struct_n_chains_shape(self, fitted_orchestrator):
+        S = fitted_orchestrator.data.growth.num_struct
+        assert fitted_orchestrator.data.growth.struct_n_chains.shape == (S,)
 
-    def test_struct_n_chains_value(self, fitted_mc):
+    def test_struct_n_chains_value(self, fitted_orchestrator):
         # All structures were written with n_chains_bearing_mut=2
         import jax.numpy as jnp
-        n = fitted_mc.data.growth.struct_n_chains
+        n = fitted_orchestrator.data.growth.struct_n_chains
         assert int(n[0]) == 2
 
-    def test_no_contact_distances_without_epistasis(self, fitted_mc):
+    def test_no_contact_distances_without_epistasis(self, fitted_orchestrator):
         # Fixture was built without epistasis=True, so no contact arrays
-        assert fitted_mc.data.growth.struct_contact_distances is None
-        assert fitted_mc.data.growth.struct_contact_pair_idx  is None
+        assert fitted_orchestrator.data.growth.struct_contact_distances is None
+        assert fitted_orchestrator.data.growth.struct_contact_pair_idx  is None
 
-    def test_mut_labels_populated(self, fitted_mc):
+    def test_mut_labels_populated(self, fitted_orchestrator):
         # _needs_mut must have fired for lac_dimer_lnK_nn_prior
-        assert len(fitted_mc.mut_labels) > 0
+        assert len(fitted_orchestrator.mut_labels) > 0
 
-    def test_num_mutation_nonzero(self, fitted_mc):
-        assert fitted_mc.data.growth.num_mutation > 0
+    def test_num_mutation_nonzero(self, fitted_orchestrator):
+        assert fitted_orchestrator.data.growth.num_mutation > 0
 
 
 class TestStructFieldsWithEpistasis:
@@ -288,14 +288,14 @@ def test_svi_runs_without_error(tmp_path):
     binding_path = _make_binding_csv(tmp_path)
     h5_path      = _make_struct_ensemble_h5(tmp_path)
 
-    mc = ModelOrchestrator(
+    orchestrator = ModelOrchestrator(
         growth_path, binding_path,
         theta="thermo.O2_C4_K3_U0_a.PnnC",
         thermo_data=h5_path,
     )
 
     out_prefix = str(tmp_path / "svi_out")
-    inference = RunInference(model=mc, seed=0)
+    inference = RunInference(model=orchestrator, seed=0)
     svi = inference.setup_svi(adam_step_size=1e-3)
     svi_state, params, converged = inference.run_optimization(
         svi=svi,
@@ -319,7 +319,7 @@ def test_svi_with_epistasis_runs_without_error(tmp_path):
     binding_path = _make_binding_csv(tmp_path)
     h5_path      = _make_struct_ensemble_h5(tmp_path)
 
-    mc = ModelOrchestrator(
+    orchestrator = ModelOrchestrator(
         growth_path, binding_path,
         theta="thermo.O2_C4_K3_U0_a.PnnC",
         thermo_data=h5_path,
@@ -327,7 +327,7 @@ def test_svi_with_epistasis_runs_without_error(tmp_path):
     )
 
     out_prefix = str(tmp_path / "svi_epi_out")
-    inference = RunInference(model=mc, seed=0)
+    inference = RunInference(model=orchestrator, seed=0)
     svi = inference.setup_svi(adam_step_size=1e-3)
     svi_state, params, converged = inference.run_optimization(
         svi=svi,
@@ -391,7 +391,7 @@ def test_binding_only_struct_raises_without_thermo_data(tmp_path):
 
 
 @pytest.fixture(scope="module")
-def binding_only_ddG_mc(tmp_path_factory):
+def binding_only_ddG_orchestrator(tmp_path_factory):
     """
     ModelOrchestrator in binding_only mode with mwc_dimer_lnK_ddG_prior.
     Scoped to module so it is built once for all tests below.
@@ -412,30 +412,30 @@ def binding_only_ddG_mc(tmp_path_factory):
 class TestBindingOnlyDdGStructFields:
     """BindingData must carry the struct_* fields when using mwc_dimer_lnK_ddG_prior."""
 
-    def test_struct_names_is_correct_tuple(self, binding_only_ddG_mc):
-        assert set(binding_only_ddG_mc.data.binding.struct_names) == set(_MWC_STRUCTURE_NAMES)
+    def test_struct_names_is_correct_tuple(self, binding_only_ddG_orchestrator):
+        assert set(binding_only_ddG_orchestrator.data.binding.struct_names) == set(_MWC_STRUCTURE_NAMES)
 
-    def test_num_struct_is_six(self, binding_only_ddG_mc):
-        assert binding_only_ddG_mc.data.binding.num_struct == 6
+    def test_num_struct_is_six(self, binding_only_ddG_orchestrator):
+        assert binding_only_ddG_orchestrator.data.binding.num_struct == 6
 
-    def test_struct_features_shape(self, binding_only_ddG_mc):
-        M = binding_only_ddG_mc.data.binding.num_mutation
-        S = binding_only_ddG_mc.data.binding.num_struct
-        feat = binding_only_ddG_mc.data.binding.struct_features
+    def test_struct_features_shape(self, binding_only_ddG_orchestrator):
+        M = binding_only_ddG_orchestrator.data.binding.num_mutation
+        S = binding_only_ddG_orchestrator.data.binding.num_struct
+        feat = binding_only_ddG_orchestrator.data.binding.struct_features
         assert feat.shape == (M, S)
 
-    def test_mut_labels_populated(self, binding_only_ddG_mc):
-        assert len(binding_only_ddG_mc.mut_labels) > 0
+    def test_mut_labels_populated(self, binding_only_ddG_orchestrator):
+        assert len(binding_only_ddG_orchestrator.mut_labels) > 0
 
-    def test_num_mutation_nonzero(self, binding_only_ddG_mc):
-        assert binding_only_ddG_mc.data.binding.num_mutation > 0
+    def test_num_mutation_nonzero(self, binding_only_ddG_orchestrator):
+        assert binding_only_ddG_orchestrator.data.binding.num_mutation > 0
 
-    def test_growth_data_is_none(self, binding_only_ddG_mc):
-        assert binding_only_ddG_mc.data.growth is None
+    def test_growth_data_is_none(self, binding_only_ddG_orchestrator):
+        assert binding_only_ddG_orchestrator.data.growth is None
 
-    def test_struct_n_chains_is_none_for_ddG_csv(self, binding_only_ddG_mc):
+    def test_struct_n_chains_is_none_for_ddG_csv(self, binding_only_ddG_orchestrator):
         # ddG CSV loader does not provide n_chains (it's None)
-        assert binding_only_ddG_mc.data.binding.struct_n_chains is None
+        assert binding_only_ddG_orchestrator.data.binding.struct_n_chains is None
 
 
 @pytest.mark.slow
@@ -447,7 +447,7 @@ def test_binding_only_ddG_svi_runs(tmp_path):
     binding_path = _make_binding_only_csv(tmp_path)
     ddg_path     = _make_ddG_prior_csv(tmp_path)
 
-    mc = ModelOrchestrator(
+    orchestrator = ModelOrchestrator(
         None, binding_path,
         binding_only=True,
         theta="thermo.O2_C12_K5_U0_a.PddG",
@@ -455,7 +455,7 @@ def test_binding_only_ddG_svi_runs(tmp_path):
     )
 
     out_prefix = str(tmp_path / "svi_binding_only_ddg")
-    inference = RunInference(model=mc, seed=0)
+    inference = RunInference(model=orchestrator, seed=0)
     svi = inference.setup_svi(adam_step_size=1e-3)
     svi_state, params, converged = inference.run_optimization(
         svi=svi,
@@ -486,7 +486,7 @@ def test_binding_only_minibatch_get_random_idx_does_not_crash(tmp_path):
     binding_path = _make_binding_only_csv(tmp_path, genotypes=big_genotypes)
     ddg_path = _make_ddG_prior_csv(tmp_path, genotypes=big_genotypes)
 
-    mc = ModelOrchestrator(
+    orchestrator = ModelOrchestrator(
         None, binding_path,
         binding_only=True,
         theta="thermo.O2_C12_K5_U0_a.PddG",
@@ -495,12 +495,12 @@ def test_binding_only_minibatch_get_random_idx_does_not_crash(tmp_path):
     )
 
     # Should not raise
-    idx = mc.get_random_idx(batch_key=42, num_batches=1)
+    idx = orchestrator.get_random_idx(batch_key=42, num_batches=1)
     assert len(idx) == 2
 
     # All genotypes are subsamplable; none are pinned
-    assert mc.data.num_binding == 0
-    assert len(mc.data.not_binding_idx) == 4
+    assert orchestrator.data.num_binding == 0
+    assert len(orchestrator.data.not_binding_idx) == 4
 
 
 @pytest.mark.slow
@@ -513,7 +513,7 @@ def test_binding_only_minibatch_svi_runs(tmp_path):
     binding_path = _make_binding_only_csv(tmp_path, genotypes=big_genotypes)
     ddg_path = _make_ddG_prior_csv(tmp_path, genotypes=big_genotypes)
 
-    mc = ModelOrchestrator(
+    orchestrator = ModelOrchestrator(
         None, binding_path,
         binding_only=True,
         theta="thermo.O2_C12_K5_U0_a.PddG",
@@ -522,7 +522,7 @@ def test_binding_only_minibatch_svi_runs(tmp_path):
     )
 
     out_prefix = str(tmp_path / "svi_binding_only_minibatch")
-    inference = RunInference(model=mc, seed=0)
+    inference = RunInference(model=orchestrator, seed=0)
     svi = inference.setup_svi(adam_step_size=1e-3)
     svi_state, params, converged = inference.run_optimization(
         svi=svi,

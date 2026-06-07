@@ -82,8 +82,8 @@ def diagnose_nan(config_file,
     jax.config.update("jax_debug_nans", True)
     jax.config.update("jax_disable_jit", True)
 
-    gm, init_params = read_configuration(config_file)
-    ri = RunInference(gm, seed=seed)
+    orchestrator, init_params = read_configuration(config_file)
+    ri = RunInference(orchestrator, seed=seed)
 
     svi_obj = ri.setup_svi(adam_step_size=1e-6, guide_type="component")
 

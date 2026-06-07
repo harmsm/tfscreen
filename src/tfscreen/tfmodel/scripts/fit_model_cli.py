@@ -432,14 +432,14 @@ def fit_model(config_file,
                     "overwrite, delete the file or change out_prefix."
                 )
 
-    gm, init_params = read_configuration(config_file)
+    orchestrator, init_params = read_configuration(config_file)
 
     # For posterior mode the seed is optional: the checkpoint restores the PRNG
     # key for SVI checkpoints, and any valid key works for MAP/Laplace sampling.
     effective_seed = seed if seed is not None else 0
 
     # Run SVI / MAP
-    ri = RunInference(gm, effective_seed)
+    ri = RunInference(orchestrator, effective_seed)
 
     if analysis_method == "svi":
         if pre_map_num_epoch > 0 and checkpoint_file is None:

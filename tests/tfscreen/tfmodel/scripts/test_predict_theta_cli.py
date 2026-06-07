@@ -28,16 +28,16 @@ def _make_tm_df(genotypes, titrant_names, titrant_concs):
 
 
 @pytest.fixture
-def mock_gm():
-    gm = MagicMock()
-    gm._theta = "hill_geno"
-    gm.growth_tm.df = _make_tm_df(
+def mock_orchestrator():
+    orchestrator = MagicMock()
+    orchestrator._theta = "hill_geno"
+    orchestrator.growth_tm.df = _make_tm_df(
         ["wt", "A1B"],
         ["IPTG", "IPTG"],
         [0.0, 1.0],
     )
-    gm.training_tm.df = gm.growth_tm.df
-    return gm
+    orchestrator.training_tm.df = orchestrator.growth_tm.df
+    return orchestrator
 
 
 def _fake_extract(model, posteriors, **kwargs):
@@ -54,15 +54,15 @@ def _fake_extract(model, posteriors, **kwargs):
 
 
 @pytest.fixture
-def mock_extract(mock_gm):
+def mock_extract(mock_orchestrator):
     with patch(
         "tfscreen.tfmodel.scripts"
         ".predict_theta_cli.read_configuration",
-        return_value=(mock_gm, {}),
+        return_value=(mock_orchestrator, {}),
     ), patch(
         "tfscreen.tfmodel.scripts"
         ".predict_theta_cli.resolve_param_file",
-        side_effect=lambda pf, gm, op: pf,  # pass-through
+        side_effect=lambda pf, orchestrator, op: pf,  # pass-through
     ), patch(
         "tfscreen.tfmodel.scripts"
         ".predict_theta_cli.extract_theta_curves",
@@ -94,7 +94,7 @@ def test_mismatched_titrant_files_raises(mock_extract, tmp_path):
 
 class TestPredictThetaDefaults:
 
-    def test_no_files_uses_all_training_genotypes(self, mock_extract, mock_gm, tmp_path):
+    def test_no_files_uses_all_training_genotypes(self, mock_extract, mock_orchestrator, tmp_path):
         out = str(tmp_path / "out")
         with patch(
             "tfscreen.tfmodel.scripts"
@@ -114,7 +114,7 @@ class TestPredictThetaDefaults:
 
 class TestPredictThetaUnion:
 
-    def test_genotypes_file_unions_with_training(self, mock_extract, mock_gm, tmp_path):
+    def test_genotypes_file_unions_with_training(self, mock_extract, mock_orchestrator, tmp_path):
         gf = str(tmp_path / "genos.txt")
         _write_lines(gf, ["C2D"])  # out-of-training
         out = str(tmp_path / "out")
@@ -135,7 +135,7 @@ class TestPredictThetaUnion:
         assert "A1B" in target
         assert "C2D" in target
 
-    def test_titrant_files_union_with_training_grid(self, mock_extract, mock_gm, tmp_path):
+    def test_titrant_files_union_with_training_grid(self, mock_extract, mock_orchestrator, tmp_path):
         nf = str(tmp_path / "names.txt")
         cf = str(tmp_path / "concs.txt")
         _write_lines(nf, ["IPTG"])
@@ -158,7 +158,7 @@ class TestPredictThetaUnion:
         assert 1.0 in titrant_df["titrant_conc"].values
         assert 5.0 in titrant_df["titrant_conc"].values
 
-    def test_single_titrant_name_broadcast_across_concs(self, mock_extract, mock_gm, tmp_path):
+    def test_single_titrant_name_broadcast_across_concs(self, mock_extract, mock_orchestrator, tmp_path):
         nf = str(tmp_path / "names.txt")
         cf = str(tmp_path / "concs.txt")
         _write_lines(nf, ["IPTG"])
@@ -180,7 +180,7 @@ class TestPredictThetaUnion:
         assert list(titrant_df["titrant_name"]) == ["IPTG", "IPTG", "IPTG", "IPTG"]
         assert set(titrant_df["titrant_conc"]) >= {0.0, 10.0, 100.0}
 
-    def test_mismatched_titrant_file_lengths_raises(self, mock_extract, mock_gm, tmp_path):
+    def test_mismatched_titrant_file_lengths_raises(self, mock_extract, mock_orchestrator, tmp_path):
         nf = str(tmp_path / "names.txt")
         cf = str(tmp_path / "concs.txt")
         _write_lines(nf, ["IPTG", "ATC"])
@@ -191,7 +191,7 @@ class TestPredictThetaUnion:
                           titrant_concs_file=cf,
                           out_prefix=str(tmp_path / "out"))
 
-    def test_duplicate_titrant_pairs_not_repeated(self, mock_extract, mock_gm, tmp_path):
+    def test_duplicate_titrant_pairs_not_repeated(self, mock_extract, mock_orchestrator, tmp_path):
         nf = str(tmp_path / "names.txt")
         cf = str(tmp_path / "concs.txt")
         _write_lines(nf, ["IPTG"])
@@ -223,7 +223,7 @@ class TestPredictThetaUnion:
 
 class TestPredictThetaOnlyFiles:
 
-    def test_only_files_restricts_genotypes_to_file(self, mock_extract, mock_gm, tmp_path):
+    def test_only_files_restricts_genotypes_to_file(self, mock_extract, mock_orchestrator, tmp_path):
         gf = str(tmp_path / "genos.txt")
         _write_lines(gf, ["A1B"])
         out = str(tmp_path / "out")
@@ -244,7 +244,7 @@ class TestPredictThetaOnlyFiles:
         df = pd.read_csv(f"{out}.csv")
         assert set(df["genotype"].unique()) <= {"A1B"}
 
-    def test_only_files_restricts_titrant_grid_to_file(self, mock_extract, mock_gm, tmp_path):
+    def test_only_files_restricts_titrant_grid_to_file(self, mock_extract, mock_orchestrator, tmp_path):
         nf = str(tmp_path / "names.txt")
         cf = str(tmp_path / "concs.txt")
         _write_lines(nf, ["IPTG"])
@@ -275,12 +275,12 @@ class TestPredictThetaOnlyFiles:
 
 class TestPredictThetaCheckpointInput:
 
-    def _base_patches(self, mock_gm):
+    def _base_patches(self, mock_orchestrator):
         return [
             patch(
                 "tfscreen.tfmodel.scripts"
                 ".predict_theta_cli.read_configuration",
-                return_value=(mock_gm, {}),
+                return_value=(mock_orchestrator, {}),
             ),
             patch(
                 "tfscreen.tfmodel.scripts"
@@ -300,15 +300,15 @@ class TestPredictThetaCheckpointInput:
             ),
         ]
 
-    def test_pkl_calls_resolve_param_file(self, mock_gm, tmp_path):
+    def test_pkl_calls_resolve_param_file(self, mock_orchestrator, tmp_path):
         """resolve_param_file is invoked when param_file ends with .pkl."""
         resolve_calls = []
 
-        def fake_resolve(pf, gm, op):
+        def fake_resolve(pf, orchestrator, op):
             resolve_calls.append(pf)
             return "resolved.h5"
 
-        p = self._base_patches(mock_gm)
+        p = self._base_patches(mock_orchestrator)
         with p[0], p[1], p[2], patch(
             "tfscreen.tfmodel.scripts"
             ".predict_theta_cli.resolve_param_file",
@@ -319,7 +319,7 @@ class TestPredictThetaCheckpointInput:
 
         assert resolve_calls == ["run_checkpoint.pkl"]
 
-    def test_resolved_path_passed_to_extract(self, mock_gm, tmp_path):
+    def test_resolved_path_passed_to_extract(self, mock_orchestrator, tmp_path):
         """The path returned by resolve_param_file reaches extract_theta_curves."""
         extract_calls = {}
 
@@ -330,7 +330,7 @@ class TestPredictThetaCheckpointInput:
                 "titrant_conc": [0.0], "median": [0.5],
             })
 
-        p = self._base_patches(mock_gm)
+        p = self._base_patches(mock_orchestrator)
         with p[0], patch(
             "tfscreen.tfmodel.scripts"
             ".predict_theta_cli.extract_theta_curves",
@@ -353,7 +353,7 @@ class TestPredictThetaCheckpointInput:
 class TestGenotypeBatchSize:
     """genotype_batch_size is forwarded to extract_theta_unmeasured."""
 
-    def test_custom_batch_size_forwarded(self, mock_extract, mock_gm, tmp_path):
+    def test_custom_batch_size_forwarded(self, mock_extract, mock_orchestrator, tmp_path):
         gf = str(tmp_path / "genos.txt")
         _write_lines(gf, ["C2D"])  # out-of-training → unmeasured path
         out = str(tmp_path / "out")
@@ -373,7 +373,7 @@ class TestGenotypeBatchSize:
                           out_prefix=out)
         assert mock_unmeas.call_args.kwargs["genotype_batch_size"] == 42
 
-    def test_default_batch_size_is_2000(self, mock_extract, mock_gm, tmp_path):
+    def test_default_batch_size_is_2000(self, mock_extract, mock_orchestrator, tmp_path):
         gf = str(tmp_path / "genos.txt")
         _write_lines(gf, ["C2D"])
         out = str(tmp_path / "out")
@@ -399,7 +399,7 @@ class TestGenotypeBatchSize:
 
 class TestPredictThetaQToGet:
 
-    def test_pkl_passes_point_est_q_to_get(self, mock_gm, tmp_path):
+    def test_pkl_passes_point_est_q_to_get(self, mock_orchestrator, tmp_path):
         """q_to_get={"point_est": 0.5} is passed to extract_theta_curves for .pkl input."""
         extract_calls = {}
 
@@ -411,7 +411,7 @@ class TestPredictThetaQToGet:
         with patch(
             "tfscreen.tfmodel.scripts"
             ".predict_theta_cli.read_configuration",
-            return_value=(mock_gm, {}),
+            return_value=(mock_orchestrator, {}),
         ), patch(
             "tfscreen.tfmodel.scripts"
             ".predict_theta_cli.resolve_param_file",
@@ -431,7 +431,7 @@ class TestPredictThetaQToGet:
 
         assert extract_calls["q_to_get"] == {"point_est": 0.5}
 
-    def test_h5_passes_none_q_to_get(self, mock_gm, tmp_path):
+    def test_h5_passes_none_q_to_get(self, mock_orchestrator, tmp_path):
         """q_to_get=None is passed to extract_theta_curves for .h5 input."""
         extract_calls = {}
 
@@ -443,11 +443,11 @@ class TestPredictThetaQToGet:
         with patch(
             "tfscreen.tfmodel.scripts"
             ".predict_theta_cli.read_configuration",
-            return_value=(mock_gm, {}),
+            return_value=(mock_orchestrator, {}),
         ), patch(
             "tfscreen.tfmodel.scripts"
             ".predict_theta_cli.resolve_param_file",
-            side_effect=lambda pf, gm, op: pf,
+            side_effect=lambda pf, orchestrator, op: pf,
         ), patch(
             "tfscreen.tfmodel.scripts"
             ".predict_theta_cli.extract_theta_curves",

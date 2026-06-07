@@ -188,7 +188,7 @@ def configure_model(binding_df,
         check_component_compatibility(condition_growth_model, theta_rescale_model)
 
     # Initialize model to build mappings and get guesses
-    gm = ModelOrchestrator(growth_df,
+    orchestrator = ModelOrchestrator(growth_df,
                      binding_df,
                      presplit_df=presplit_df,
                      binding_only=binding_only,
@@ -214,7 +214,7 @@ def configure_model(binding_df,
     # names, the data file paths, and the parameter guesses/priors.
     growth_path = None if binding_only else (growth_df if isinstance(growth_df, str) else "growth.csv")
     presplit_path = presplit_df if isinstance(presplit_df, str) else None
-    write_configuration(gm=gm,
+    write_configuration(orchestrator=orchestrator,
                         out_prefix=out_prefix,
                         growth_df_path=growth_path,
                         binding_df_path=binding_df if isinstance(binding_df, str) else "binding.csv",

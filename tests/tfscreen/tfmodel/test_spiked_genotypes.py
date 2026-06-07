@@ -48,14 +48,14 @@ def test_spiked_genotypes_masking(dummy_data):
     # but ModelOrchestrator.__init__ calls _initialize_data which does most of the heavy lifting.
     # We can use real data for this unit test since it's small.
     
-    gm = ModelOrchestrator(growth_df, binding_df, spiked_genotypes=spiked)
+    orchestrator = ModelOrchestrator(growth_df, binding_df, spiked_genotypes=spiked)
     
     # Get genotype labels from the growth tensor manager
-    genotype_idx = gm.growth_tm.tensor_dim_names.index("genotype")
-    genotype_labels = gm.growth_tm.tensor_dim_labels[genotype_idx]
+    genotype_idx = orchestrator.growth_tm.tensor_dim_names.index("genotype")
+    genotype_labels = orchestrator.growth_tm.tensor_dim_labels[genotype_idx]
     
     # Check the congression_mask in the data object
-    mask = np.array(gm.data.growth.congression_mask)
+    mask = np.array(orchestrator.data.growth.congression_mask)
     for i, label in enumerate(genotype_labels):
         if label == "A10G":
             assert not mask[i], f"Genotype {label} should be masked (False)"
@@ -87,12 +87,12 @@ def test_setup_batching_zero_division():
 def test_spiked_genotypes_single_string(dummy_data):
     """Test that a single string is handled correctly as spiked_genotypes."""
     growth_df, binding_df = dummy_data
-    gm = ModelOrchestrator(growth_df, binding_df, spiked_genotypes="A10G")
+    orchestrator = ModelOrchestrator(growth_df, binding_df, spiked_genotypes="A10G")
     
-    genotype_idx = gm.growth_tm.tensor_dim_names.index("genotype")
-    genotype_labels = gm.growth_tm.tensor_dim_labels[genotype_idx]
+    genotype_idx = orchestrator.growth_tm.tensor_dim_names.index("genotype")
+    genotype_labels = orchestrator.growth_tm.tensor_dim_labels[genotype_idx]
     
-    mask = np.array(gm.data.growth.congression_mask)
+    mask = np.array(orchestrator.data.growth.congression_mask)
     for i, label in enumerate(genotype_labels):
         if label == "A10G":
             assert not mask[i]

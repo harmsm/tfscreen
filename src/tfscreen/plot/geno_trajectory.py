@@ -26,7 +26,7 @@ _T_FINE = 50
 # Prediction helpers
 # ---------------------------------------------------------------------------
 
-def _compute_map_predictions(gm, params):
+def _compute_map_predictions(orchestrator, params):
     """
     Run the forward model at the MAP point and return prediction tensors.
 
@@ -36,7 +36,7 @@ def _compute_map_predictions(gm, params):
 
     Parameters
     ----------
-    gm : ModelOrchestrator
+    orchestrator : ModelOrchestrator
         Fitted model orchestrator.
     params : dict
         MAP parameter dict with ``{site}_auto_loc`` keys (unconstrained space).
@@ -61,12 +61,12 @@ def _compute_map_predictions(gm, params):
     from numpyro.infer import Predictive
     from numpyro.infer.autoguide import AutoDelta
 
-    guide = AutoDelta(gm.jax_model)
-    all_indices = jnp.arange(gm.data.num_genotype)
-    full_data = gm.get_batch(gm.data, all_indices)
-    pred_fn = Predictive(gm.jax_model, guide=guide, params=params, num_samples=1)
+    guide = AutoDelta(orchestrator.jax_model)
+    all_indices = jnp.arange(orchestrator.data.num_genotype)
+    full_data = orchestrator.get_batch(orchestrator.data, all_indices)
+    pred_fn = Predictive(orchestrator.jax_model, guide=guide, params=params, num_samples=1)
     map_samples = pred_fn(
-        jax.random.PRNGKey(0), data=full_data, priors=gm.priors
+        jax.random.PRNGKey(0), data=full_data, priors=orchestrator.priors
     )
 
     if "growth_pred" not in map_samples:
@@ -84,7 +84,7 @@ def _compute_map_predictions(gm, params):
     )
 
     # --- Fine-grid forward pass ---
-    gd = gm.data.growth
+    gd = orchestrator.data.growth
     good_mask    = np.asarray(gd.good_mask)        # (R, T, CP, CS, TN, TC, G)
     t_sel_tensor = np.asarray(gd.t_sel)
     n_rep, n_t, n_cp, n_cs, n_tn, n_tc, n_geno = good_mask.shape
@@ -119,13 +119,13 @@ def _compute_map_predictions(gm, params):
         ln_cfu_std=jnp.ones(fine_shape),
     )
     fine_data = full_data.replace(growth=fine_gd)
-    fine_samples = pred_fn(jax.random.PRNGKey(1), data=fine_data, priors=gm.priors)
+    fine_samples = pred_fn(jax.random.PRNGKey(1), data=fine_data, priors=orchestrator.priors)
     growth_pred_fine = np.asarray(fine_samples["growth_pred"][0])
 
     return growth_pred, ln_cfu0_map, growth_pred_fine, t_fine_1d
 
 
-def _compute_posterior_predictions(gm, posterior_file):
+def _compute_posterior_predictions(orchestrator, posterior_file):
     """
     Load ``growth_pred`` from a posterior HDF5 file and compute summary statistics.
 
@@ -135,7 +135,7 @@ def _compute_posterior_predictions(gm, posterior_file):
 
     Parameters
     ----------
-    gm : ModelOrchestrator
+    orchestrator : ModelOrchestrator
         Fitted model orchestrator (used only for shape validation; not called).
     posterior_file : str or h5py.File
         Path to an HDF5 posterior file or an already-open ``h5py.File`` handle.
@@ -190,7 +190,7 @@ def _compute_posterior_predictions(gm, posterior_file):
 # ---------------------------------------------------------------------------
 
 def plot_geno_trajectory(
-    gm,
+    orchestrator,
     out_prefix,
     params=None,
     posterior_file=None,
@@ -209,7 +209,7 @@ def plot_geno_trajectory(
     * **Observed data** — ``ln_cfu ± ln_cfu_std`` error bars at their
       ``t_sel`` x-coordinates (circles, one colour per replicate).
     * **Pre-split observations** *(optional)* — ``ln_cfu_t0 ± ln_cfu_t0_std``
-      as square markers at ``x = −t_pre`` when ``gm.data.presplit`` is not
+      as square markers at ``x = −t_pre`` when ``orchestrator.data.presplit`` is not
       ``None``.  The same pooled aliquot value appears in every subplot that
       shares the same ``(replicate, condition_pre, genotype)`` triple, which
       is correct because the measurement predates the condition split.
@@ -223,7 +223,7 @@ def plot_geno_trajectory(
 
     Parameters
     ----------
-    gm : ModelOrchestrator
+    orchestrator : ModelOrchestrator
         Fitted model orchestrator.
     out_prefix : str
         Prefix for output files.  Each genotype's PDF is written to
@@ -238,7 +238,7 @@ def plot_geno_trajectory(
         posterior median with a 90 % credible-interval shaded band.
     genotypes : list of str, optional
         Subset of genotype names to plot.  If ``None``, all genotypes in
-        ``gm`` are plotted.  Names not found in the model are warned about
+        ``orchestrator`` are plotted.  Names not found in the model are warned about
         and silently skipped.
     titrant_names : list of str, optional
         Subset of titrant names to include.  If ``None``, all titrant names
@@ -299,17 +299,17 @@ def plot_geno_trajectory(
         if isinstance(params, str):
             params = dict(np.load(params))
         growth_pred, ln_cfu0_map, growth_pred_fine, t_fine_1d = (
-            _compute_map_predictions(gm, params)
+            _compute_map_predictions(orchestrator, params)
         )
     else:
         growth_pred, growth_pred_lo, growth_pred_hi, ln_cfu0_map = (
-            _compute_posterior_predictions(gm, posterior_file)
+            _compute_posterior_predictions(orchestrator, posterior_file)
         )
 
     # -----------------------------------------------------------------------
     # Data tensors
     # -----------------------------------------------------------------------
-    gd = gm.data.growth
+    gd = orchestrator.data.growth
     good_mask    = np.asarray(gd.good_mask)        # (R, T, CP, CS, TN, TC, G)
     t_pre_tensor = np.asarray(gd.t_pre)
     t_sel_tensor = np.asarray(gd.t_sel)
@@ -321,7 +321,7 @@ def plot_geno_trajectory(
     # -----------------------------------------------------------------------
     # Dimension labels and helper maps
     # -----------------------------------------------------------------------
-    tm = gm.growth_tm
+    tm = orchestrator.growth_tm
     dn = tm.tensor_dim_names
 
     geno_labels = list(tm.tensor_dim_labels[dn.index("genotype")])
@@ -342,7 +342,7 @@ def plot_geno_trajectory(
 
     # (genotype, titrant_name, titrant_conc) → mean observed theta
     theta_map: dict = {}
-    for _, row in gm.binding_df.iterrows():
+    for _, row in orchestrator.binding_df.iterrows():
         key = (
             str(row["genotype"]),
             str(row["titrant_name"]),
@@ -354,7 +354,7 @@ def plot_geno_trajectory(
     # -----------------------------------------------------------------------
     # Pre-split data (optional)
     # -----------------------------------------------------------------------
-    presplit = gm.data.presplit
+    presplit = orchestrator.data.presplit
     if presplit is not None:
         ps_ln_cfu     = np.asarray(presplit.ln_cfu_t0)      # (R, CP, G)
         ps_ln_cfu_std = np.asarray(presplit.ln_cfu_t0_std)  # (R, CP, G)

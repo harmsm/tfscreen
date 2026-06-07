@@ -67,7 +67,7 @@ def sample_prior(config_file,
         independence.  Default 0.
     """
     print(f"Loading configuration from {config_file}...", flush=True)
-    gm, _ = read_configuration(config_file)
+    orchestrator, _ = read_configuration(config_file)
 
     width = len(str(num_datasets))
 
@@ -75,10 +75,10 @@ def sample_prior(config_file,
         tag = str(i).zfill(max(width, 3))
         print(f"Drawing prior sample {i + 1}/{num_datasets}...", flush=True)
 
-        predictions, latent_params = draw_prior(gm, rng_key=seed + i, num_draws=1)
+        predictions, latent_params = draw_prior(orchestrator, rng_key=seed + i, num_draws=1)
 
         rng = np.random.default_rng(seed + i) if noise else None
-        growth_df = growth_df_from_prior(gm, latent_params, draw_idx=0, noise_rng=rng)
+        growth_df = growth_df_from_prior(orchestrator, latent_params, draw_idx=0, noise_rng=rng)
 
         csv_path = f"{out_prefix}_{tag}_growth.csv"
         growth_df.to_csv(csv_path, index=False)

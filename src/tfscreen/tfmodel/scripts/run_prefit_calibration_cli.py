@@ -171,7 +171,7 @@ def _intersect_data(growth_df, binding_df):
 # theta_values for the simple component
 # ---------------------------------------------------------------------------
 
-def _compute_theta_values(gm_cal, binding_df_cal):
+def _compute_theta_values(orchestrator_cal, binding_df_cal):
     """
     Build a (num_titrant_name, num_titrant_conc) theta tensor for the
     simple-theta component of the calibration model.
@@ -183,13 +183,13 @@ def _compute_theta_values(gm_cal, binding_df_cal):
     cell is set to 0.5 (uninformative midpoint).
 
     The dimension ordering is taken from
-    ``gm_cal.binding_tm.tensor_dim_labels`` so the resulting array
+    ``orchestrator_cal.binding_tm.tensor_dim_labels`` so the resulting array
     matches the layout the simple-theta component expects.
     """
-    tn_idx = gm_cal.binding_tm.tensor_dim_names.index("titrant_name")
-    tc_idx = gm_cal.binding_tm.tensor_dim_names.index("titrant_conc")
-    titrant_name_labels = list(gm_cal.binding_tm.tensor_dim_labels[tn_idx])
-    titrant_conc_labels = list(gm_cal.binding_tm.tensor_dim_labels[tc_idx])
+    tn_idx = orchestrator_cal.binding_tm.tensor_dim_names.index("titrant_name")
+    tc_idx = orchestrator_cal.binding_tm.tensor_dim_names.index("titrant_conc")
+    titrant_name_labels = list(orchestrator_cal.binding_tm.tensor_dim_labels[tn_idx])
+    titrant_conc_labels = list(orchestrator_cal.binding_tm.tensor_dim_labels[tc_idx])
 
     n_name = len(titrant_name_labels)
     n_conc = len(titrant_conc_labels)
@@ -226,7 +226,7 @@ def _compute_theta_values(gm_cal, binding_df_cal):
 # Calibration model construction
 # ---------------------------------------------------------------------------
 
-def _build_calibration_model(gm_prod, growth_df_cal, binding_df_cal):
+def _build_calibration_model(orchestrator_prod, growth_df_cal, binding_df_cal):
     """
     Construct the calibration ``ModelOrchestrator`` with hardcoded calibration
     overrides applied on top of the production component selections.
@@ -237,7 +237,7 @@ def _build_calibration_model(gm_prod, growth_df_cal, binding_df_cal):
     sees the (calibration-genotype × calibration-condition) intersection,
     which by construction does not include the production's spiked rows.
     """
-    settings = dict(gm_prod.settings)
+    settings = dict(orchestrator_prod.settings)
     for k, v in _CALIBRATION_OVERRIDES.items():
         settings[k] = v
     settings["spiked_genotypes"] = None
@@ -254,7 +254,7 @@ def _build_calibration_model(gm_prod, growth_df_cal, binding_df_cal):
                        **settings)
 
 
-def _inject_calibration_priors(gm_cal, gm_prod, theta_values):
+def _inject_calibration_priors(orchestrator_cal, orchestrator_prod, theta_values):
     """
     Wire the calibration model's priors into shape:
 
@@ -268,10 +268,10 @@ def _inject_calibration_priors(gm_cal, gm_prod, theta_values):
       those hyperparameters to their prior loc / scale defaults so the
       MAP doesn't try to learn them from calibration-only data.
 
-    Mutates ``gm_cal._priors`` in place.
+    Mutates ``orchestrator_cal._priors`` in place.
     """
-    prod_growth = gm_prod.priors.growth
-    cal_growth = gm_cal.priors.growth
+    prod_growth = orchestrator_prod.priors.growth
+    cal_growth = orchestrator_cal.priors.growth
 
     cg_prod = prod_growth.condition_growth
     cg_cal = cal_growth.condition_growth
@@ -335,21 +335,21 @@ def _inject_calibration_priors(gm_cal, gm_prod, theta_values):
     new_growth = cal_growth.replace(**growth_updates)
 
     # theta priors live on PriorsClass.theta
-    theta_priors = gm_cal.priors.theta
+    theta_priors = orchestrator_cal.priors.theta
     if hasattr(theta_priors, "replace"):
         new_theta = theta_priors.replace(theta_values=theta_values)
     else:
         new_theta = theta_priors
 
-    new_priors = gm_cal.priors.replace(growth=new_growth, theta=new_theta)
-    gm_cal._priors = new_priors
+    new_priors = orchestrator_cal.priors.replace(growth=new_growth, theta=new_theta)
+    orchestrator_cal._priors = new_priors
 
 
 # ---------------------------------------------------------------------------
 # Field mapping introspection
 # ---------------------------------------------------------------------------
 
-def _identify_field_mapping(gm_cal):
+def _identify_field_mapping(orchestrator_cal):
     """
     Enumerate the ``condition_growth`` and ``growth_transition`` sample sites
     and derive their ``ModelPriors`` field names.
@@ -374,8 +374,8 @@ def _identify_field_mapping(gm_cal):
     dict[str, dict]
         Site name → ``{"component", "dist_class", "is_array", ...field names...}``.
     """
-    model_trace = trace(seed(gm_cal.jax_model, rng_seed=0)).get_trace(
-        data=gm_cal.data, priors=gm_cal.priors
+    model_trace = trace(seed(orchestrator_cal.jax_model, rng_seed=0)).get_trace(
+        data=orchestrator_cal.data, priors=orchestrator_cal.priors
     )
 
     out = {}
@@ -693,7 +693,7 @@ def _run_calibration_map(ri,
 # Diagnostic plots
 # ---------------------------------------------------------------------------
 
-def _run_calibration_diagnostics(gm_cal, params, out_prefix, growth_pred_std=None):
+def _run_calibration_diagnostics(orchestrator_cal, params, out_prefix, growth_pred_std=None):
     """
     Generate per-genotype trajectory PDFs and write correlation / stats outputs.
 
@@ -703,7 +703,7 @@ def _run_calibration_diagnostics(gm_cal, params, out_prefix, growth_pred_std=Non
 
     Parameters
     ----------
-    gm_cal : ModelOrchestrator
+    orchestrator_cal : ModelOrchestrator
         Calibration ModelOrchestrator.
     params : dict
         MAP parameter dict (``{site}_auto_loc`` keys).
@@ -714,7 +714,7 @@ def _run_calibration_diagnostics(gm_cal, params, out_prefix, growth_pred_std=Non
         shape ``(R, T, CP, CS, TN, TC, G)``.
     """
     growth_df_out = plot_geno_trajectory(
-        gm_cal,
+        orchestrator_cal,
         out_prefix,
         params=params,
         growth_pred_std=growth_pred_std,
@@ -850,7 +850,7 @@ def _make_correlation_plot(df, out_prefix):
 # Laplace-based prediction uncertainty
 # ---------------------------------------------------------------------------
 
-def _compute_growth_pred_std(ri, params, gm_cal, n_samples=100):
+def _compute_growth_pred_std(ri, params, orchestrator_cal, n_samples=100):
     """
     Estimate per-cell growth_pred standard deviation via Laplace samples.
 
@@ -879,17 +879,17 @@ def _compute_growth_pred_std(ri, params, gm_cal, n_samples=100):
     if not unconstrained:
         return None
 
-    data_on_gpu = jax.device_put(gm_cal.data)
-    all_indices = jnp.arange(gm_cal.data.num_genotype)
-    full_data = gm_cal.get_batch(data_on_gpu, all_indices)
-    model_kwargs = {"priors": gm_cal.priors, "data": full_data}
+    data_on_gpu = jax.device_put(orchestrator_cal.data)
+    all_indices = jnp.arange(orchestrator_cal.data.num_genotype)
+    full_data = orchestrator_cal.get_batch(data_on_gpu, all_indices)
+    model_kwargs = {"priors": orchestrator_cal.priors, "data": full_data}
 
     flat_map, unravel = jax.flatten_util.ravel_pytree(unconstrained)
     D = int(flat_map.shape[0])
 
     def pe_fn(flat_p):
         return potential_energy(
-            gm_cal.jax_model, [], model_kwargs, unravel(flat_p)
+            orchestrator_cal.jax_model, [], model_kwargs, unravel(flat_p)
         )
 
     hessian = jax.hessian(pe_fn)(flat_map)
@@ -901,7 +901,7 @@ def _compute_growth_pred_std(ri, params, gm_cal, n_samples=100):
     L = jnp.array(L_np, dtype=jnp.float32)
 
     # Per-site unconstrained → constrained bijections.
-    model_trace = trace(seed(gm_cal.jax_model, rng_seed=0)).get_trace(**model_kwargs)
+    model_trace = trace(seed(orchestrator_cal.jax_model, rng_seed=0)).get_trace(**model_kwargs)
     site_transforms = {
         name: biject_to(site["fn"].support)
         for name, site in model_trace.items()
@@ -919,8 +919,8 @@ def _compute_growth_pred_std(ri, params, gm_cal, n_samples=100):
         for k, v in unc_samples.items()
     }
 
-    pred_fn = Predictive(gm_cal.jax_model, posterior_samples=constrained_samples)
-    pred = pred_fn(ri.get_key(), data=full_data, priors=gm_cal.priors)
+    pred_fn = Predictive(orchestrator_cal.jax_model, posterior_samples=constrained_samples)
+    pred = pred_fn(ri.get_key(), data=full_data, priors=orchestrator_cal.priors)
 
     if "growth_pred" not in pred:
         return None
@@ -1042,11 +1042,11 @@ def run_prefit_calibration(config_file,
 
     # 1. Resolve production config and CSV targets.
     priors_path, guesses_path = _resolve_csv_paths(config_file)
-    gm_prod, _ = read_configuration(config_file)
+    orchestrator_prod, _ = read_configuration(config_file)
 
     # 2. Filter to the calibration (genotype, titrant_name, titrant_conc)
     # intersection.  read_configuration already loaded the production
-    # data paths into gm_prod; pull them straight off the config so we
+    # data paths into orchestrator_prod; pull them straight off the config so we
     # don't depend on an internal attribute.
     with open(config_file, "r") as fh:
         cfg = yaml.safe_load(fh)
@@ -1055,17 +1055,17 @@ def run_prefit_calibration(config_file,
     growth_df_cal, binding_df_cal = _intersect_data(growth_path, binding_path)
 
     # 3. Build the calibration model with overrides applied.
-    gm_cal = _build_calibration_model(gm_prod, growth_df_cal, binding_df_cal)
-    theta_values = _compute_theta_values(gm_cal, binding_df_cal)
-    _inject_calibration_priors(gm_cal, gm_prod, theta_values)
+    orchestrator_cal = _build_calibration_model(orchestrator_prod, growth_df_cal, binding_df_cal)
+    theta_values = _compute_theta_values(orchestrator_cal, binding_df_cal)
+    _inject_calibration_priors(orchestrator_cal, orchestrator_prod, theta_values)
 
     # 4. MAP fit + Hessian sigmas.
     effective_seed = seed if seed is not None else 0
-    ri = RunInference(gm_cal, effective_seed)
+    ri = RunInference(orchestrator_cal, effective_seed)
 
     svi_state, params, converged = _run_calibration_map(
         ri,
-        init_params=gm_cal.init_params,
+        init_params=orchestrator_cal.init_params,
         out_prefix=out_prefix,
         checkpoint_file=checkpoint_file,
         adam_step_size=adam_step_size,
@@ -1086,7 +1086,7 @@ def run_prefit_calibration(config_file,
     hessian_results = ri.compute_hessian_sigmas(params)
 
     # 5. Map sample sites → CSV fields and apply in-place updates.
-    field_mapping = _identify_field_mapping(gm_cal)
+    field_mapping = _identify_field_mapping(orchestrator_cal)
     prior_updates, guess_updates = _build_csv_updates(field_mapping,
                                                       hessian_results)
     _apply_priors_updates(priors_path, prior_updates)
@@ -1094,8 +1094,8 @@ def run_prefit_calibration(config_file,
 
     # 6. Write per-genotype diagnostic plots with Laplace-based prediction uncertainty.
     print("Computing growth_pred uncertainty via Laplace samples ...", flush=True)
-    growth_pred_std = _compute_growth_pred_std(ri, params, gm_cal)
-    _run_calibration_diagnostics(gm_cal, params, out_prefix,
+    growth_pred_std = _compute_growth_pred_std(ri, params, orchestrator_cal)
+    _run_calibration_diagnostics(orchestrator_cal, params, out_prefix,
                                  growth_pred_std=growth_pred_std)
 
     return svi_state, params, converged

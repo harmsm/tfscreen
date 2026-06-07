@@ -227,17 +227,17 @@ class TestIntersectData:
 
 class TestComputeThetaValues:
 
-    def _make_gm_cal(self, titrant_names, titrant_concs):
+    def _make_orchestrator_cal(self, titrant_names, titrant_concs):
         """Return a MagicMock with the binding_tm shape used by the helper."""
-        gm = MagicMock()
+        orchestrator = MagicMock()
         # Order matters; the helper reads names then concs by index lookup.
-        gm.binding_tm.tensor_dim_names = ["titrant_name", "titrant_conc"]
-        gm.binding_tm.tensor_dim_labels = [list(titrant_names),
-                                           list(titrant_concs)]
-        return gm
+        orchestrator.binding_tm.tensor_dim_names = ["titrant_name", "titrant_conc"]
+        orchestrator.binding_tm.tensor_dim_labels = [list(titrant_names),
+                                                     list(titrant_concs)]
+        return orchestrator
 
     def test_inverse_variance_weighted_mean(self):
-        gm = self._make_gm_cal(["IPTG"], [1.0])
+        orchestrator = self._make_orchestrator_cal(["IPTG"], [1.0])
         # Two genotypes: theta=0.2 (sigma=0.1) and theta=0.8 (sigma=0.01)
         # Inverse-variance weights heavily favor the second, so the
         # consensus should be ~0.8 (not the unweighted 0.5).
@@ -247,24 +247,24 @@ class TestComputeThetaValues:
             "theta_obs": [0.2, 0.8],
             "theta_std": [0.1, 0.01],
         })
-        theta = np.asarray(_compute_theta_values(gm, binding_df))
+        theta = np.asarray(_compute_theta_values(orchestrator, binding_df))
         assert theta.shape == (1, 1)
         # Closer to 0.8 than to the midpoint 0.5
         assert theta[0, 0] > 0.7
 
     def test_falls_back_to_plain_mean_when_all_stds_zero(self):
-        gm = self._make_gm_cal(["IPTG"], [1.0])
+        orchestrator = self._make_orchestrator_cal(["IPTG"], [1.0])
         binding_df = pd.DataFrame({
             "titrant_name": ["IPTG", "IPTG"],
             "titrant_conc": [1.0, 1.0],
             "theta_obs": [0.3, 0.7],
             "theta_std": [0.0, 0.0],  # invalid weights → fallback to mean
         })
-        theta = np.asarray(_compute_theta_values(gm, binding_df))
+        theta = np.asarray(_compute_theta_values(orchestrator, binding_df))
         assert theta[0, 0] == pytest.approx(0.5)
 
     def test_unobserved_cell_defaults_to_midpoint(self):
-        gm = self._make_gm_cal(["IPTG"], [0.0, 1.0])
+        orchestrator = self._make_orchestrator_cal(["IPTG"], [0.0, 1.0])
         # Only the IPTG=1.0 cell is observed.
         binding_df = pd.DataFrame({
             "titrant_name": ["IPTG"],
@@ -272,19 +272,19 @@ class TestComputeThetaValues:
             "theta_obs": [0.9],
             "theta_std": [0.01],
         })
-        theta = np.asarray(_compute_theta_values(gm, binding_df))
+        theta = np.asarray(_compute_theta_values(orchestrator, binding_df))
         assert theta[0, 0] == pytest.approx(0.5)
         assert theta[0, 1] > 0.85
 
     def test_clip_to_open_interval(self):
-        gm = self._make_gm_cal(["IPTG"], [0.0, 1.0])
+        orchestrator = self._make_orchestrator_cal(["IPTG"], [0.0, 1.0])
         binding_df = pd.DataFrame({
             "titrant_name": ["IPTG", "IPTG"],
             "titrant_conc": [0.0, 1.0],
             "theta_obs": [0.0, 1.0],
             "theta_std": [0.01, 0.01],
         })
-        theta = np.asarray(_compute_theta_values(gm, binding_df))
+        theta = np.asarray(_compute_theta_values(orchestrator, binding_df))
         # Zero and one would blow up the downstream logit; expect clipping.
         assert theta[0, 0] > 0.0
         assert theta[0, 1] < 1.0
@@ -591,8 +591,8 @@ class TestResolveCsvPaths:
 class TestBuildCalibrationModel:
 
     def test_overrides_replace_production_components(self):
-        gm_prod = MagicMock()
-        gm_prod.settings = {
+        orchestrator_prod = MagicMock()
+        orchestrator_prod.settings = {
             "theta": "categorical_geno",          # → simple
             "activity": "horseshoe_geno",         # → hierarchical
             "dk_geno": "fixed",              # → hierarchical
@@ -613,7 +613,7 @@ class TestBuildCalibrationModel:
             MockGM.return_value = MagicMock()
             growth_df = pd.DataFrame()
             binding_df = pd.DataFrame()
-            _build_calibration_model(gm_prod, growth_df, binding_df)
+            _build_calibration_model(orchestrator_prod, growth_df, binding_df)
 
         kwargs = MockGM.call_args.kwargs
         # Overrides applied
@@ -635,8 +635,8 @@ class TestBuildCalibrationModel:
         # Reproduces the weighting bug: production YAML stores a large
         # binding_weight (N_growth / N_binding); the calibration model
         # must use 1.0 instead.
-        gm_prod = MagicMock()
-        gm_prod.settings = {
+        orchestrator_prod = MagicMock()
+        orchestrator_prod.settings = {
             "theta": "categorical_geno",
             "activity": "horseshoe_geno",
             "dk_geno": "fixed",
@@ -656,14 +656,14 @@ class TestBuildCalibrationModel:
             ".run_prefit_calibration_cli.ModelOrchestrator"
         ) as MockGM:
             MockGM.return_value = MagicMock()
-            _build_calibration_model(gm_prod, pd.DataFrame(), pd.DataFrame())
+            _build_calibration_model(orchestrator_prod, pd.DataFrame(), pd.DataFrame())
 
         assert MockGM.call_args.kwargs["binding_weight"] == 1.0
 
     def test_does_not_mutate_production_settings(self):
         # Ensure we work on a copy.
-        gm_prod = MagicMock()
-        gm_prod.settings = {"theta": "categorical_geno",
+        orchestrator_prod = MagicMock()
+        orchestrator_prod.settings = {"theta": "categorical_geno",
                             "activity": "horseshoe_geno",
                             "dk_geno": "fixed",
                             "ln_cfu0": "fixed",
@@ -673,16 +673,16 @@ class TestBuildCalibrationModel:
                             "spiked_genotypes": None,
                             "batch_size": None,
                             "binding_weight": 150.0}
-        original_settings = dict(gm_prod.settings)
+        original_settings = dict(orchestrator_prod.settings)
 
         with patch(
             "tfscreen.tfmodel.scripts"
             ".run_prefit_calibration_cli.ModelOrchestrator"
         ) as MockGM:
             MockGM.return_value = MagicMock()
-            _build_calibration_model(gm_prod, pd.DataFrame(), pd.DataFrame())
+            _build_calibration_model(orchestrator_prod, pd.DataFrame(), pd.DataFrame())
 
-        assert gm_prod.settings == original_settings
+        assert orchestrator_prod.settings == original_settings
 
 
 # ---------------------------------------------------------------------------
@@ -692,9 +692,9 @@ class TestBuildCalibrationModel:
 class TestInjectCalibrationPriors:
 
     def _make_models(self, gt_has_pinned=True):
-        gm_cal = MagicMock()
-        gm_prod = MagicMock()
-        gm_cal._priors_history = []
+        orchestrator_cal = MagicMock()
+        orchestrator_prod = MagicMock()
+        orchestrator_cal._priors_history = []
 
         cal_priors = _make_fake_priors(gt_has_pinned=gt_has_pinned)
         prod_priors = _make_fake_priors(gt_has_pinned=True)
@@ -710,60 +710,60 @@ class TestInjectCalibrationPriors:
                 ),
             ),
         )
-        gm_cal.priors = cal_priors
-        gm_prod.priors = prod_priors
+        orchestrator_cal.priors = cal_priors
+        orchestrator_prod.priors = prod_priors
 
         # Capture all writes to _priors so the test can introspect them.
         def _setter(value):
-            gm_cal._priors_history.append(value)
-        type(gm_cal)._priors = property(
+            orchestrator_cal._priors_history.append(value)
+        type(orchestrator_cal)._priors = property(
             lambda self: self._priors_history[-1] if self._priors_history else None,
             lambda self, v: self._priors_history.append(v),
         )
-        return gm_cal, gm_prod
+        return orchestrator_cal, orchestrator_prod
 
     def test_copies_production_condition_growth_and_clears_pinned(self):
-        gm_cal, gm_prod = self._make_models()
+        orchestrator_cal, orchestrator_prod = self._make_models()
         theta_values = np.array([[0.5]])
-        _inject_calibration_priors(gm_cal, gm_prod, theta_values)
+        _inject_calibration_priors(orchestrator_cal, orchestrator_prod, theta_values)
 
-        new_priors = gm_cal._priors
+        new_priors = orchestrator_cal._priors
         assert new_priors.growth.condition_growth.growth_k_hyper_loc == 2.5
         assert new_priors.growth.condition_growth.k_hyper_loc_scale == 0.4
         # pinned cleared regardless of production's contents
         assert new_priors.growth.condition_growth.pinned == {}
 
     def test_copies_growth_transition_and_clears_pinned(self):
-        gm_cal, gm_prod = self._make_models()
+        orchestrator_cal, orchestrator_prod = self._make_models()
         theta_values = np.array([[0.5]])
-        _inject_calibration_priors(gm_cal, gm_prod, theta_values)
+        _inject_calibration_priors(orchestrator_cal, orchestrator_prod, theta_values)
 
-        new_priors = gm_cal._priors
+        new_priors = orchestrator_cal._priors
         assert new_priors.growth.growth_transition.pre_t_hyper_loc == 3.5
         assert new_priors.growth.growth_transition.pinned == {}
 
     def test_handles_growth_transition_without_pinned(self):
         # The "instant" growth_transition has no pinned field at all.
-        gm_cal, gm_prod = self._make_models(gt_has_pinned=False)
+        orchestrator_cal, orchestrator_prod = self._make_models(gt_has_pinned=False)
         theta_values = np.array([[0.5]])
         # Should not raise.
-        _inject_calibration_priors(gm_cal, gm_prod, theta_values)
-        new_priors = gm_cal._priors
+        _inject_calibration_priors(orchestrator_cal, orchestrator_prod, theta_values)
+        new_priors = orchestrator_cal._priors
         assert new_priors.growth.growth_transition.pre_t_hyper_loc == 3.5
 
     def test_pins_activity_hyperparams_to_prior_locs(self):
-        gm_cal, gm_prod = self._make_models()
+        orchestrator_cal, orchestrator_prod = self._make_models()
         theta_values = np.array([[0.5]])
-        _inject_calibration_priors(gm_cal, gm_prod, theta_values)
-        pinned = gm_cal._priors.growth.activity.pinned
+        _inject_calibration_priors(orchestrator_cal, orchestrator_prod, theta_values)
+        pinned = orchestrator_cal._priors.growth.activity.pinned
         # Both suffixes from _PINNED_COMPONENTS["activity"] populated.
         for suffix, _ in _PINNED_COMPONENTS["activity"]:
             assert suffix in pinned
 
     def test_pins_ln_cfu0_hyperparams(self):
-        gm_cal, gm_prod = self._make_models()
-        _inject_calibration_priors(gm_cal, gm_prod, np.array([[0.5]]))
-        pinned = gm_cal._priors.growth.ln_cfu0.pinned
+        orchestrator_cal, orchestrator_prod = self._make_models()
+        _inject_calibration_priors(orchestrator_cal, orchestrator_prod, np.array([[0.5]]))
+        pinned = orchestrator_cal._priors.growth.ln_cfu0.pinned
         for suffix, _ in _PINNED_COMPONENTS["ln_cfu0"]:
             assert suffix in pinned
 
@@ -776,15 +776,15 @@ class TestInjectCalibrationPriors:
     def test_dk_geno_not_pinned_after_inject(self):
         # _inject_calibration_priors must leave dk_geno.pinned untouched
         # (empty) because the fixed component has no hyperparameters.
-        gm_cal, gm_prod = self._make_models()
-        _inject_calibration_priors(gm_cal, gm_prod, np.array([[0.5]]))
-        assert gm_cal._priors.growth.dk_geno.pinned == {}
+        orchestrator_cal, orchestrator_prod = self._make_models()
+        _inject_calibration_priors(orchestrator_cal, orchestrator_prod, np.array([[0.5]]))
+        assert orchestrator_cal._priors.growth.dk_geno.pinned == {}
 
     def test_theta_values_are_set(self):
-        gm_cal, gm_prod = self._make_models()
+        orchestrator_cal, orchestrator_prod = self._make_models()
         theta_values = np.array([[0.1, 0.9]])
-        _inject_calibration_priors(gm_cal, gm_prod, theta_values)
-        result = gm_cal._priors.theta.theta_values
+        _inject_calibration_priors(orchestrator_cal, orchestrator_prod, theta_values)
+        result = orchestrator_cal._priors.theta.theta_values
         assert np.allclose(np.asarray(result), theta_values)
 
 
@@ -808,7 +808,7 @@ class TestRunPrefitCalibrationOrchestration:
             }, fh)
         return str(cfg), str(priors), str(guesses)
 
-    def _patch_pipeline(self, mocker, gm_cal=None, params=None,
+    def _patch_pipeline(self, mocker, orchestrator_cal=None, params=None,
                         hessian_results=None, field_mapping=None):
         """Stub out every heavy callsite of run_prefit_calibration."""
         mocker.patch(
@@ -821,12 +821,12 @@ class TestRunPrefitCalibrationOrchestration:
             ".run_prefit_calibration_cli._intersect_data",
             return_value=(pd.DataFrame(), pd.DataFrame()),
         )
-        gm_cal = gm_cal or MagicMock()
-        gm_cal.init_params = {}
+        orchestrator_cal = orchestrator_cal or MagicMock()
+        orchestrator_cal.init_params = {}
         mocker.patch(
             "tfscreen.tfmodel.scripts"
             ".run_prefit_calibration_cli._build_calibration_model",
-            return_value=gm_cal,
+            return_value=orchestrator_cal,
         )
         mocker.patch(
             "tfscreen.tfmodel.scripts"
@@ -1139,16 +1139,16 @@ class TestComputeGrowthPredStd:
         mocker.patch("numpyro.infer.Predictive", return_value=mock_pred_inst)
 
     def _make_inputs(self, n_params=2):
-        """Build (ri, gm_cal, params) mocks for _compute_growth_pred_std."""
+        """Build (ri, orchestrator_cal, params) mocks for _compute_growth_pred_std."""
         ri = MagicMock()
         ri.get_key.return_value = jax.random.PRNGKey(0)
-        gm_cal = MagicMock()
-        gm_cal.data.num_genotype = 3
-        gm_cal.get_batch.return_value = MagicMock()
-        gm_cal.priors = MagicMock()
+        orchestrator_cal = MagicMock()
+        orchestrator_cal.data.num_genotype = 3
+        orchestrator_cal.get_batch.return_value = MagicMock()
+        orchestrator_cal.priors = MagicMock()
         params = {f"site{i}_auto_loc": np.float32(float(i))
                   for i in range(n_params)}
-        return ri, gm_cal, params
+        return ri, orchestrator_cal, params
 
     # ------------------------------------------------------------------
     # Tests
@@ -1157,33 +1157,33 @@ class TestComputeGrowthPredStd:
     def test_returns_none_when_params_empty(self):
         """No _auto_loc params → early-exit None without touching JAX."""
         ri = MagicMock()
-        gm_cal = MagicMock()
-        gm_cal.data.num_genotype = 2
-        gm_cal.get_batch.return_value = MagicMock()
-        assert _compute_growth_pred_std(ri, {}, gm_cal) is None
+        orchestrator_cal = MagicMock()
+        orchestrator_cal.data.num_genotype = 2
+        orchestrator_cal.get_batch.return_value = MagicMock()
+        assert _compute_growth_pred_std(ri, {}, orchestrator_cal) is None
 
     def test_returns_none_when_growth_pred_absent(self, mocker):
         """When Predictive returns no growth_pred site, result must be None."""
         n_params, n_samples = 2, 4
-        ri, gm_cal, params = self._make_inputs(n_params)
+        ri, orchestrator_cal, params = self._make_inputs(n_params)
         self._patch_heavy_machinery(
             mocker, n_params, n_samples,
             pred_output={"other_site": np.ones((n_samples, 3))},
         )
-        assert _compute_growth_pred_std(ri, params, gm_cal,
+        assert _compute_growth_pred_std(ri, params, orchestrator_cal,
                                         n_samples=n_samples) is None
 
     def test_returns_array_matching_growth_pred_shape(self, mocker):
         """Output shape must equal the (R,T,CP,CS,TN,TC,G) tensor shape."""
         n_params, n_samples = 2, 4
         tensor_shape = (1, 3, 1, 1, 1, 1, 2)
-        ri, gm_cal, params = self._make_inputs(n_params)
+        ri, orchestrator_cal, params = self._make_inputs(n_params)
         growth_pred = np.ones((n_samples,) + tensor_shape) * 5.0
         self._patch_heavy_machinery(
             mocker, n_params, n_samples,
             pred_output={"growth_pred": growth_pred},
         )
-        result = _compute_growth_pred_std(ri, params, gm_cal,
+        result = _compute_growth_pred_std(ri, params, orchestrator_cal,
                                           n_samples=n_samples)
         assert result is not None
         assert result.shape == tensor_shape
@@ -1192,13 +1192,13 @@ class TestComputeGrowthPredStd:
         """All Laplace samples identical → elementwise std must be 0."""
         n_params, n_samples = 2, 6
         tensor_shape = (1, 2, 1, 1, 1, 1, 3)
-        ri, gm_cal, params = self._make_inputs(n_params)
+        ri, orchestrator_cal, params = self._make_inputs(n_params)
         growth_pred = np.ones((n_samples,) + tensor_shape) * 7.0
         self._patch_heavy_machinery(
             mocker, n_params, n_samples,
             pred_output={"growth_pred": growth_pred},
         )
-        result = _compute_growth_pred_std(ri, params, gm_cal,
+        result = _compute_growth_pred_std(ri, params, orchestrator_cal,
                                           n_samples=n_samples)
         assert np.allclose(result, 0.0)
 
@@ -1206,14 +1206,14 @@ class TestComputeGrowthPredStd:
         """Output must equal np.std(growth_pred_samples, axis=0) exactly."""
         n_params, n_samples = 2, 10
         tensor_shape = (1, 2, 1, 1, 1, 1, 3)
-        ri, gm_cal, params = self._make_inputs(n_params)
+        ri, orchestrator_cal, params = self._make_inputs(n_params)
         rng = np.random.default_rng(42)
         growth_pred = rng.normal(size=(n_samples,) + tensor_shape).astype(np.float32)
         self._patch_heavy_machinery(
             mocker, n_params, n_samples,
             pred_output={"growth_pred": growth_pred},
         )
-        result = _compute_growth_pred_std(ri, params, gm_cal,
+        result = _compute_growth_pred_std(ri, params, orchestrator_cal,
                                           n_samples=n_samples)
         # Compare in float64 (the function casts before computing std).
         expected = growth_pred.astype(np.float64).std(axis=0)
@@ -1224,7 +1224,7 @@ class TestComputeGrowthPredStd:
         must produce finite std (not inf/nan) after float64 cast + clipping."""
         n_params, n_samples = 2, 4
         tensor_shape = (1, 2, 1, 1, 1, 1, 2)
-        ri, gm_cal, params = self._make_inputs(n_params)
+        ri, orchestrator_cal, params = self._make_inputs(n_params)
         # Values near the float32 overflow boundary (~1e38); squaring these
         # in float32 would overflow to inf inside np.std.
         growth_pred = np.full((n_samples,) + tensor_shape, 1e20, dtype=np.float32)
@@ -1233,7 +1233,7 @@ class TestComputeGrowthPredStd:
             mocker, n_params, n_samples,
             pred_output={"growth_pred": growth_pred},
         )
-        result = _compute_growth_pred_std(ri, params, gm_cal,
+        result = _compute_growth_pred_std(ri, params, orchestrator_cal,
                                           n_samples=n_samples)
         assert result is not None
         assert np.all(np.isfinite(result))

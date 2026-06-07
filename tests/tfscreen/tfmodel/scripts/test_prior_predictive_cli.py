@@ -138,7 +138,7 @@ class TestSamplePrior:
         latent_params = {"activity": np.array([[1.0]])}
         fake_growth_df = pd.DataFrame({"ln_cfu": [1.0]})
 
-        def fake_draw_prior(gm, rng_key, num_draws):
+        def fake_draw_prior(orchestrator, rng_key, num_draws):
             seeds_used.append(rng_key)
             return {}, latent_params
 
@@ -161,7 +161,7 @@ class TestSamplePrior:
         captured = {}
         latent_params = {"activity": np.array([[1.0]])}
 
-        def fake_growth_df(gm, params, draw_idx, noise_rng):
+        def fake_growth_df(orchestrator, params, draw_idx, noise_rng):
             captured["noise_rng"] = noise_rng
             return pd.DataFrame({"ln_cfu": [1.0]})
 
@@ -185,7 +185,7 @@ class TestSamplePrior:
         captured = {}
         latent_params = {"activity": np.array([[1.0]])}
 
-        def fake_growth_df(gm, params, draw_idx, noise_rng):
+        def fake_growth_df(orchestrator, params, draw_idx, noise_rng):
             captured["noise_rng"] = noise_rng
             return pd.DataFrame({"ln_cfu": [1.0]})
 

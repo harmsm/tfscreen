@@ -8,7 +8,7 @@ pass via _compute_map_predictions / _compute_posterior_predictions, and
 (b) matplotlib PDF rendering.  Both are mocked out here so tests run fast
 and without GPU/display dependencies.
 
-A helper ``_make_fake_gm`` constructs a minimal mock ModelOrchestrator
+A helper ``_make_fake_orchestrator`` constructs a minimal mock ModelOrchestrator
 whose attributes match what plot_geno_trajectory reads.  The mock returns
 deterministic numpy arrays for all data tensors and a small but realistic
 dimension structure (2 replicates, 3 timepoints, 1 condition_pre,
@@ -52,7 +52,7 @@ TC_VALS     = [0.0]
 # Fake ModelOrchestrator
 # ---------------------------------------------------------------------------
 
-def _make_fake_gm(with_presplit=False):
+def _make_fake_orchestrator(with_presplit=False):
     """
     Return a MagicMock that quacks like a ModelOrchestrator for the
     attributes accessed by plot_geno_trajectory.
@@ -133,12 +133,12 @@ def _make_fake_gm(with_presplit=False):
         "theta_obs":    [0.5, 0.3, 0.5, 0.3],
     })
 
-    gm = MagicMock()
-    gm.data       = data
-    gm.growth_tm  = tm
-    gm.binding_df = binding_df
+    orchestrator = MagicMock()
+    orchestrator.data       = data
+    orchestrator.growth_tm  = tm
+    orchestrator.binding_df = binding_df
 
-    return gm
+    return orchestrator
 
 
 def _fake_map_predictions(shape):
@@ -159,15 +159,15 @@ def _fake_map_predictions(shape):
 
 class TestArgumentValidation:
     def test_raises_when_neither_provided(self, tmp_path):
-        gm = _make_fake_gm()
+        orchestrator = _make_fake_orchestrator()
         with pytest.raises(ValueError, match="Exactly one"):
-            plot_geno_trajectory(gm, str(tmp_path / "out"))
+            plot_geno_trajectory(orchestrator, str(tmp_path / "out"))
 
     def test_raises_when_both_provided(self, tmp_path):
-        gm = _make_fake_gm()
+        orchestrator = _make_fake_orchestrator()
         with pytest.raises(ValueError, match="Exactly one"):
             plot_geno_trajectory(
-                gm,
+                orchestrator,
                 str(tmp_path / "out"),
                 params={"x_auto_loc": np.array(1.0)},
                 posterior_file="some_file.h5",
@@ -182,46 +182,46 @@ class TestMapPath:
     @pytest.fixture
     def patched_plot(self, tmp_path):
         """Patch _compute_map_predictions and matplotlib.pyplot.savefig."""
-        gm = _make_fake_gm()
+        orchestrator = _make_fake_orchestrator()
         fake_preds = _fake_map_predictions(SHAPE)
 
         with patch(
             "tfscreen.plot.geno_trajectory._compute_map_predictions",
             return_value=fake_preds,
         ), patch("matplotlib.pyplot.savefig"), patch("matplotlib.pyplot.close"):
-            yield gm, tmp_path
+            yield orchestrator, tmp_path
 
     def test_returns_dataframe(self, patched_plot):
-        gm, tmp_path = patched_plot
+        orchestrator, tmp_path = patched_plot
         result = plot_geno_trajectory(
-            gm,
+            orchestrator,
             str(tmp_path / "out"),
             params={"x_auto_loc": np.array(1.0)},
         )
         assert isinstance(result, pd.DataFrame)
 
     def test_df_has_ln_cfu_pred(self, patched_plot):
-        gm, tmp_path = patched_plot
+        orchestrator, tmp_path = patched_plot
         result = plot_geno_trajectory(
-            gm,
+            orchestrator,
             str(tmp_path / "out"),
             params={"x_auto_loc": np.array(1.0)},
         )
         assert "ln_cfu_pred" in result.columns
 
     def test_csv_written_by_default(self, patched_plot):
-        gm, tmp_path = patched_plot
+        orchestrator, tmp_path = patched_plot
         plot_geno_trajectory(
-            gm,
+            orchestrator,
             str(tmp_path / "out"),
             params={"x_auto_loc": np.array(1.0)},
         )
         assert os.path.exists(tmp_path / "out_calib_growth_df.csv")
 
     def test_csv_not_written_when_disabled(self, patched_plot):
-        gm, tmp_path = patched_plot
+        orchestrator, tmp_path = patched_plot
         plot_geno_trajectory(
-            gm,
+            orchestrator,
             str(tmp_path / "out"),
             params={"x_auto_loc": np.array(1.0)},
             write_csv=False,
@@ -229,10 +229,10 @@ class TestMapPath:
         assert not os.path.exists(tmp_path / "out_calib_growth_df.csv")
 
     def test_growth_pred_std_in_csv(self, patched_plot):
-        gm, tmp_path = patched_plot
+        orchestrator, tmp_path = patched_plot
         gps = np.ones(SHAPE) * 0.1
         plot_geno_trajectory(
-            gm,
+            orchestrator,
             str(tmp_path / "out"),
             params={"x_auto_loc": np.array(1.0)},
             growth_pred_std=gps,
@@ -247,46 +247,46 @@ class TestMapPath:
 
 class TestGenotypeFilter:
     @pytest.fixture
-    def gm_and_path(self, tmp_path):
-        gm = _make_fake_gm()
-        return gm, tmp_path
+    def orchestrator_and_path(self, tmp_path):
+        orchestrator = _make_fake_orchestrator()
+        return orchestrator, tmp_path
 
-    def _run(self, gm, tmp_path, **kwargs):
+    def _run(self, orchestrator, tmp_path, **kwargs):
         fake_preds = _fake_map_predictions(SHAPE)
         with patch(
             "tfscreen.plot.geno_trajectory._compute_map_predictions",
             return_value=fake_preds,
         ), patch("matplotlib.pyplot.savefig"), patch("matplotlib.pyplot.close"):
             return plot_geno_trajectory(
-                gm,
+                orchestrator,
                 str(tmp_path / "out"),
                 params={"x_auto_loc": np.array(1.0)},
                 **kwargs,
             )
 
-    def test_no_filter_plots_all_genotypes(self, gm_and_path, capsys):
-        gm, tmp_path = gm_and_path
-        self._run(gm, tmp_path)
+    def test_no_filter_plots_all_genotypes(self, orchestrator_and_path, capsys):
+        orchestrator, tmp_path = orchestrator_and_path
+        self._run(orchestrator, tmp_path)
         captured = capsys.readouterr()
         for name in GENO_NAMES:
             assert name in captured.out
 
-    def test_genotype_subset(self, gm_and_path, capsys):
-        gm, tmp_path = gm_and_path
-        self._run(gm, tmp_path, genotypes=["WT"])
+    def test_genotype_subset(self, orchestrator_and_path, capsys):
+        orchestrator, tmp_path = orchestrator_and_path
+        self._run(orchestrator, tmp_path, genotypes=["WT"])
         captured = capsys.readouterr()
         assert "WT" in captured.out
         assert "mut1" not in captured.out
 
-    def test_unknown_genotype_warns(self, gm_and_path, capsys):
-        gm, tmp_path = gm_and_path
-        self._run(gm, tmp_path, genotypes=["WT", "nonexistent"])
+    def test_unknown_genotype_warns(self, orchestrator_and_path, capsys):
+        orchestrator, tmp_path = orchestrator_and_path
+        self._run(orchestrator, tmp_path, genotypes=["WT", "nonexistent"])
         captured = capsys.readouterr()
         assert "nonexistent" in captured.err
 
-    def test_all_unknown_returns_df(self, gm_and_path):
-        gm, tmp_path = gm_and_path
-        result = self._run(gm, tmp_path, genotypes=["nonexistent"])
+    def test_all_unknown_returns_df(self, orchestrator_and_path):
+        orchestrator, tmp_path = orchestrator_and_path
+        result = self._run(orchestrator, tmp_path, genotypes=["nonexistent"])
         # Should still return a DataFrame (from the full data), just no PDFs.
         assert isinstance(result, pd.DataFrame)
 
@@ -296,29 +296,29 @@ class TestGenotypeFilter:
 # ---------------------------------------------------------------------------
 
 class TestTitrantNameFilter:
-    def _run(self, gm, tmp_path, **kwargs):
+    def _run(self, orchestrator, tmp_path, **kwargs):
         fake_preds = _fake_map_predictions(SHAPE)
         with patch(
             "tfscreen.plot.geno_trajectory._compute_map_predictions",
             return_value=fake_preds,
         ), patch("matplotlib.pyplot.savefig"), patch("matplotlib.pyplot.close"):
             return plot_geno_trajectory(
-                gm,
+                orchestrator,
                 str(tmp_path / "out"),
                 params={"x_auto_loc": np.array(1.0)},
                 **kwargs,
             )
 
     def test_matching_titrant_produces_output(self, tmp_path, capsys):
-        gm = _make_fake_gm()
-        self._run(gm, tmp_path, titrant_names=["IPTG"])
+        orchestrator = _make_fake_orchestrator()
+        self._run(orchestrator, tmp_path, titrant_names=["IPTG"])
         captured = capsys.readouterr()
         # PDFs should still be saved (the filter matches).
         assert "Saved" in captured.out
 
     def test_nonmatching_titrant_no_pdfs(self, tmp_path, capsys):
-        gm = _make_fake_gm()
-        self._run(gm, tmp_path, titrant_names=["arabinose"])
+        orchestrator = _make_fake_orchestrator()
+        self._run(orchestrator, tmp_path, titrant_names=["arabinose"])
         captured = capsys.readouterr()
         # No valid condition combos → no PDF files saved (the CSV may still be).
         assert ".pdf" not in captured.out
@@ -329,7 +329,7 @@ class TestTitrantNameFilter:
 # ---------------------------------------------------------------------------
 
 class TestPresplit:
-    def _run(self, gm, tmp_path):
+    def _run(self, orchestrator, tmp_path):
         fake_preds = _fake_map_predictions(SHAPE)
         ax_mock = MagicMock()
         # Capture all errorbar calls to verify presplit is rendered.
@@ -354,7 +354,7 @@ class TestPresplit:
             return_value=(MagicMock(), axes_array),
         ), patch("matplotlib.pyplot.savefig"), patch("matplotlib.pyplot.close"):
             plot_geno_trajectory(
-                gm,
+                orchestrator,
                 str(tmp_path / "out"),
                 params={"x_auto_loc": np.array(1.0)},
             )
@@ -372,8 +372,8 @@ class TestPresplit:
         return a.ndim == 0 and float(a) < 0
 
     def test_presplit_errorbar_called_when_data_present(self, tmp_path):
-        gm = _make_fake_gm(with_presplit=True)
-        ax_mock = self._run(gm, tmp_path)
+        orchestrator = _make_fake_orchestrator(with_presplit=True)
+        ax_mock = self._run(orchestrator, tmp_path)
         # The presplit errorbar is called with a scalar negative x (−t_pre);
         # selection-phase errorbars use array x values.
         neg_x_calls = [
@@ -386,8 +386,8 @@ class TestPresplit:
         )
 
     def test_no_presplit_errorbar_at_negative_x(self, tmp_path):
-        gm = _make_fake_gm(with_presplit=False)
-        ax_mock = self._run(gm, tmp_path)
+        orchestrator = _make_fake_orchestrator(with_presplit=False)
+        ax_mock = self._run(orchestrator, tmp_path)
         neg_x_calls = [
             c for c in ax_mock.errorbar.call_args_list
             if c.args and self._is_scalar_negative(c.args[0])
@@ -422,8 +422,8 @@ class TestPosteriorPath:
 
     def test_compute_posterior_predictions_shapes(self, tmp_path):
         h5_path = self._make_h5(tmp_path)
-        gm = _make_fake_gm()
-        med, lo, hi, ln_cfu0 = _compute_posterior_predictions(gm, h5_path)
+        orchestrator = _make_fake_orchestrator()
+        med, lo, hi, ln_cfu0 = _compute_posterior_predictions(orchestrator, h5_path)
         assert med.shape == SHAPE
         assert lo.shape  == SHAPE
         assert hi.shape  == SHAPE
@@ -432,17 +432,17 @@ class TestPosteriorPath:
     def test_compute_posterior_predictions_ordering(self, tmp_path):
         """5th percentile ≤ median ≤ 95th percentile everywhere."""
         h5_path = self._make_h5(tmp_path)
-        gm = _make_fake_gm()
-        med, lo, hi, _ = _compute_posterior_predictions(gm, h5_path)
+        orchestrator = _make_fake_orchestrator()
+        med, lo, hi, _ = _compute_posterior_predictions(orchestrator, h5_path)
         assert np.all(lo <= med + 1e-9)
         assert np.all(med <= hi + 1e-9)
 
     def test_posterior_path_returns_df_with_lo_hi(self, tmp_path):
         h5_path = self._make_h5(tmp_path)
-        gm = _make_fake_gm()
+        orchestrator = _make_fake_orchestrator()
         with patch("matplotlib.pyplot.savefig"), patch("matplotlib.pyplot.close"):
             result = plot_geno_trajectory(
-                gm,
+                orchestrator,
                 str(tmp_path / "out"),
                 posterior_file=h5_path,
             )
@@ -457,9 +457,9 @@ class TestPosteriorPath:
         with h5py.File(h5_path, "w") as fh:
             fh.create_dataset("something_else", data=np.zeros(3))
 
-        gm = _make_fake_gm()
+        orchestrator = _make_fake_orchestrator()
         with pytest.raises(ValueError, match="growth_pred not found"):
-            _compute_posterior_predictions(gm, h5_path)
+            _compute_posterior_predictions(orchestrator, h5_path)
 
     def test_params_path_loads_npz(self, tmp_path):
         """Passing a string path to params loads the .npz file."""
@@ -467,7 +467,7 @@ class TestPosteriorPath:
         np.savez(npz_path, x_auto_loc=np.array(1.0))
 
         fake_preds = _fake_map_predictions(SHAPE)
-        gm = _make_fake_gm()
+        orchestrator = _make_fake_orchestrator()
 
         with patch(
             "tfscreen.plot.geno_trajectory._compute_map_predictions",
@@ -475,7 +475,7 @@ class TestPosteriorPath:
         ) as mock_fn, patch("matplotlib.pyplot.savefig"), patch(
             "matplotlib.pyplot.close"
         ):
-            plot_geno_trajectory(gm, str(tmp_path / "out"), params=npz_path)
+            plot_geno_trajectory(orchestrator, str(tmp_path / "out"), params=npz_path)
 
         # The helper should have been called with a dict (loaded from npz),
         # not the raw string path.

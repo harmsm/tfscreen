@@ -117,7 +117,7 @@ class TestExtractParamsCheckpoint:
         out_prefix = str(tmp_path / "out")
         captured = {}
 
-        def fake_extract(gm, posteriors, q_to_get=None):
+        def fake_extract(orchestrator, posteriors, q_to_get=None):
             captured["q_to_get"] = q_to_get
             return {"activity": pd.DataFrame({"genotype": ["wt"], "point_est": [0.5]})}
 
@@ -140,7 +140,7 @@ class TestExtractParamsCheckpoint:
         ckpt_path = _make_map_checkpoint(tmp_path, model, step=100)
         captured = {}
 
-        def fake_extract(gm, posteriors, q_to_get=None):
+        def fake_extract(orchestrator, posteriors, q_to_get=None):
             captured["posteriors"] = posteriors
             return {"activity": pd.DataFrame({"genotype": ["wt"], "point_est": [0.5]})}
 
@@ -175,7 +175,7 @@ class TestExtractParamsPosterior:
         with h5py.File(posterior_file, "w") as f:
             f.create_dataset("dummy_param", data=np.ones((10, 4)))
 
-        def fake_extract(gm, posteriors, q_to_get=None):
+        def fake_extract(orchestrator, posteriors, q_to_get=None):
             captured["q_to_get"] = q_to_get
             return {"activity": pd.DataFrame({"genotype": ["wt"], "median": [0.5]})}
 

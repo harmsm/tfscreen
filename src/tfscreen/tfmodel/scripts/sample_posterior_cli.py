@@ -62,8 +62,8 @@ def sample_posterior(config_file,
             "Run tfs-fit-model first to produce a checkpoint."
         )
 
-    gm, init_params = read_configuration(config_file)
-    ri = RunInference(gm, seed)
+    orchestrator, init_params = read_configuration(config_file)
+    ri = RunInference(orchestrator, seed)
 
     with open(checkpoint_file, "rb") as f:
         chk_data = dill.load(f)

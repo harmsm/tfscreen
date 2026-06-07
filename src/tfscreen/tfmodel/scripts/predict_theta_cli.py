@@ -97,18 +97,18 @@ def predict_theta(config_file,
         )
 
     print(f"Loading configuration from {config_file}...", flush=True)
-    gm, _ = read_configuration(config_file)
+    orchestrator, _ = read_configuration(config_file)
     is_map = param_file.endswith(".pkl")
-    param_file = resolve_param_file(param_file, gm, out_prefix)
+    param_file = resolve_param_file(param_file, orchestrator, out_prefix)
 
     # Determine training genotypes and (genotype, titrant_name, titrant_conc) set.
     # growth_tm is preferred (more genotypes); binding_tm is the fallback for
     # binding-only runs where growth_tm is None.
-    training_genotypes = set(gm.training_tm.df["genotype"].unique())
+    training_genotypes = set(orchestrator.training_tm.df["genotype"].unique())
     training_tuples = set(
-        zip(gm.training_tm.df["genotype"],
-            gm.training_tm.df["titrant_name"],
-            gm.training_tm.df["titrant_conc"])
+        zip(orchestrator.training_tm.df["genotype"],
+            orchestrator.training_tm.df["titrant_name"],
+            orchestrator.training_tm.df["titrant_conc"])
     )
 
     # Resolve requested genotypes.
@@ -141,7 +141,7 @@ def predict_theta(config_file,
             manual_titrant_df = file_titrant_df
         else:
             training_titrant_df = (
-                gm.training_tm.df[["titrant_name", "titrant_conc"]]
+                orchestrator.training_tm.df[["titrant_name", "titrant_conc"]]
                 .drop_duplicates()
                 .reset_index(drop=True)
             )
@@ -157,10 +157,10 @@ def predict_theta(config_file,
     out_of_training = [g for g in requested_genotypes if g not in training_genotypes]
 
     if out_of_training:
-        module = model_registry.get("theta", {}).get(gm._theta)
+        module = model_registry.get("theta", {}).get(orchestrator._theta)
         if module is None or not hasattr(module, "predict_unmeasured"):
             raise ValueError(
-                f"The theta component '{gm._theta}' does not support prediction "
+                f"The theta component '{orchestrator._theta}' does not support prediction "
                 "for genotypes not seen during training. Remove out-of-training "
                 "genotypes from genotypes_file, or use a theta component that "
                 "implements predict_unmeasured (e.g. 'hill')."
@@ -170,13 +170,13 @@ def predict_theta(config_file,
         if manual_titrant_df is None:
             # Use unique (titrant_name, titrant_conc) pairs from training data.
             manual_titrant_df = (
-                gm.training_tm.df[["titrant_name", "titrant_conc"]]
+                orchestrator.training_tm.df[["titrant_name", "titrant_conc"]]
                 .drop_duplicates()
                 .reset_index(drop=True)
             )
         q_to_get = {"point_est": 0.5} if is_map else None
         result_df = extract_theta_unmeasured(
-            model=gm,
+            orchestrator=orchestrator,
             posteriors=param_file,
             target_genotypes=requested_genotypes,
             manual_titrant_df=manual_titrant_df,
@@ -188,7 +188,7 @@ def predict_theta(config_file,
               flush=True)
         q_to_get = {"point_est": 0.5} if is_map else None
         result_df = extract_theta_curves(
-            model=gm,
+            orchestrator=orchestrator,
             posteriors=param_file,
             manual_titrant_df=manual_titrant_df,
             num_samples=num_samples,

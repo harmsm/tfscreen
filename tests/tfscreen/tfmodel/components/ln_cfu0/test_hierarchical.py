@@ -325,7 +325,7 @@ def test_get_priors_no_data_returns_defaults():
 
 
 def test_get_priors_accepts_data_keyword():
-    """get_priors must accept an optional `data` keyword (model_class detects this)."""
+    """get_priors must accept an optional `data` keyword (ModelOrchestrator detects this)."""
     sig = inspect.signature(get_priors)
     assert "data" in sig.parameters
     assert sig.parameters["data"].default is None

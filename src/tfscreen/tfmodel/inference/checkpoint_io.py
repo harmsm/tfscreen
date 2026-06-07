@@ -2,7 +2,7 @@ import os
 import dill
 
 
-def resolve_param_file(param_file, gm, out_prefix):
+def resolve_param_file(param_file, orchestrator, out_prefix):
     """
     Return a posterior .h5 path, converting a MAP checkpoint on the fly if needed.
 
@@ -22,7 +22,7 @@ def resolve_param_file(param_file, gm, out_prefix):
     ----------
     param_file : str
         Path to a posterior .h5 file or a MAP checkpoint .pkl file.
-    gm : ModelOrchestrator
+    orchestrator : ModelOrchestrator
         Already-loaded model instance (from ``read_configuration``).
     out_prefix : str
         Output prefix for the calling script.  The intermediate map posterior
@@ -52,7 +52,7 @@ def resolve_param_file(param_file, gm, out_prefix):
 
     from tfscreen.tfmodel.inference.run_inference import RunInference
 
-    ri = RunInference(gm, seed=0)
+    ri = RunInference(orchestrator, seed=0)
     temp_svi = ri.setup_svi(guide_type="delta")
     map_params = temp_svi.optim.get_params(chk_data["svi_state"].optim_state)
 

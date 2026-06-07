@@ -5,11 +5,11 @@ from tfscreen.tfmodel.scripts.fit_model_cli import fit_model
 
 @pytest.fixture
 def mock_growth_model(mocker):
-    mock_gm_class = mocker.patch("tfscreen.tfmodel.scripts.fit_model_cli.read_configuration")
-    mock_gm_instance = MagicMock()
+    mock_orchestrator_class = mocker.patch("tfscreen.tfmodel.scripts.fit_model_cli.read_configuration")
+    mock_orchestrator_instance = MagicMock()
     mock_init_params = {"a": 1.0}
-    mock_gm_class.return_value = (mock_gm_instance, mock_init_params)
-    return mock_gm_class, mock_gm_instance
+    mock_orchestrator_class.return_value = (mock_orchestrator_instance, mock_init_params)
+    return mock_orchestrator_class, mock_orchestrator_instance
 
 @pytest.fixture
 def mock_run_inference(mocker):

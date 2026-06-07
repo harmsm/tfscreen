@@ -80,29 +80,29 @@ def predict_growth(config_file,
     file_concs = [float(x) for x in read_lines(titrant_concs_file)] if titrant_concs_file else []
 
     print(f"Loading configuration from {config_file}...", flush=True)
-    gm, _ = read_configuration(config_file)
+    orchestrator, _ = read_configuration(config_file)
     is_map = param_file.endswith(".pkl")
-    param_file = resolve_param_file(param_file, gm, out_prefix)
+    param_file = resolve_param_file(param_file, orchestrator, out_prefix)
 
     # Build training-data membership set for in_training_data column.
     training_tuples = set(
-        zip(gm.growth_df["genotype"],
-            gm.growth_df["titrant_name"],
-            gm.growth_df["titrant_conc"])
+        zip(orchestrator.growth_df["genotype"],
+            orchestrator.growth_df["titrant_name"],
+            orchestrator.growth_df["titrant_conc"])
     )
 
     if only_files:
         genotypes = file_genotypes if file_genotypes else None
         titrant_concs = file_concs if file_concs else None
     else:
-        training_genotypes = list(gm.growth_df["genotype"].unique())
+        training_genotypes = list(orchestrator.growth_df["genotype"].unique())
         genotypes = list(dict.fromkeys(training_genotypes + file_genotypes)) if file_genotypes else None
-        training_concs = list(gm.growth_df["titrant_conc"].unique())
+        training_concs = list(orchestrator.growth_df["titrant_conc"].unique())
         titrant_concs = sorted(set(training_concs) | set(file_concs)) if file_concs else None
 
     q_to_get = {"point_est": 0.5} if is_map else None
     print("Running growth predictions...", flush=True)
-    result_df = predict(model_class=gm,
+    result_df = predict(orchestrator=orchestrator,
                         param_posteriors=param_file,
                         predict_sites=["growth_pred"],
                         num_samples=num_samples,

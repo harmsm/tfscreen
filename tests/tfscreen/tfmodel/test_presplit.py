@@ -177,8 +177,8 @@ def test_model_orchestrator_without_presplit(minimal_growth_df,
         "theta_obs": [0.5] * 3,
         "theta_std": [0.1] * 3,
     })
-    gm = ModelOrchestrator(minimal_growth_df, binding_df, presplit_df=None)
-    assert gm.data.presplit is None
+    orchestrator = ModelOrchestrator(minimal_growth_df, binding_df, presplit_df=None)
+    assert orchestrator.data.presplit is None
 
 
 def test_model_orchestrator_with_presplit(minimal_growth_df,
@@ -192,9 +192,9 @@ def test_model_orchestrator_with_presplit(minimal_growth_df,
         "theta_obs": [0.5] * 3,
         "theta_std": [0.1] * 3,
     })
-    gm = ModelOrchestrator(minimal_growth_df, binding_df,
+    orchestrator = ModelOrchestrator(minimal_growth_df, binding_df,
                            presplit_df=minimal_presplit_df)
-    ps = gm.data.presplit
+    ps = orchestrator.data.presplit
     assert ps is not None
     assert isinstance(ps, PreSplitData)
     assert ps.num_replicate == 2
@@ -222,11 +222,11 @@ def test_jax_model_presplit_obs_site_present(minimal_growth_df,
         "theta_obs": [0.5] * 3,
         "theta_std": [0.1] * 3,
     })
-    gm = ModelOrchestrator(minimal_growth_df, binding_df,
+    orchestrator = ModelOrchestrator(minimal_growth_df, binding_df,
                            presplit_df=minimal_presplit_df)
 
-    model_fn = gm.jax_model
-    tr = trace(seed(model_fn, 0)).get_trace(gm.data, gm.priors)
+    model_fn = orchestrator.jax_model
+    tr = trace(seed(model_fn, 0)).get_trace(orchestrator.data, orchestrator.priors)
     assert "presplit_obs" in tr
 
 
@@ -240,8 +240,8 @@ def test_jax_model_no_presplit_obs_site_without_data(minimal_growth_df):
         "theta_obs": [0.5] * 3,
         "theta_std": [0.1] * 3,
     })
-    gm = ModelOrchestrator(minimal_growth_df, binding_df)
+    orchestrator = ModelOrchestrator(minimal_growth_df, binding_df)
 
-    model_fn = gm.jax_model
-    tr = trace(seed(model_fn, 0)).get_trace(gm.data, gm.priors)
+    model_fn = orchestrator.jax_model
+    tr = trace(seed(model_fn, 0)).get_trace(orchestrator.data, orchestrator.priors)
     assert "presplit_obs" not in tr
