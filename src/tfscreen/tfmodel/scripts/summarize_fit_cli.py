@@ -147,9 +147,12 @@ def summarize_fit(run_dir,
     run_dir : str
         Directory containing model fit outputs.
     ground_truth_file : str, optional
-        CSV with columns genotype, titrant_name, titrant_conc, theta_obs,
-        theta_std containing known theta values for evaluating out-of-sample
-        prediction.  When omitted, only training statistics are computed.
+        CSV with columns genotype, titrant_name, titrant_conc, and a theta
+        column containing known theta values for evaluating out-of-sample
+        prediction.  The theta column is resolved in order: ``theta_obs``
+        (preferred) → ``theta`` (fallback).  If neither is present a warning
+        is issued and test statistics are skipped.  When the argument is
+        omitted entirely, only training statistics are computed.
     out_prefix : str, optional
         Prefix for output files.  Defaults to {run_dir}/tfs_summarize.
     """
@@ -261,17 +264,30 @@ def summarize_fit(run_dir,
         try:
             gt_df = pd.read_csv(ground_truth_file)
             join_cols = ["genotype", "titrant_name", "titrant_conc"]
+            if "theta_obs" in gt_df.columns:
+                theta_col = "theta_obs"
+            elif "theta" in gt_df.columns:
+                theta_col = "theta"
+            else:
+                warnings.warn(
+                    f"Ground truth file {ground_truth_file} has neither "
+                    f"'theta_obs' nor 'theta' column; skipping test statistics"
+                )
+                theta_col = None
+            if theta_col is not None:
+                gt_df = gt_df.rename(columns={theta_col: "theta_obs"})
             test_merged = pred_df.merge(
                 gt_df[join_cols + ["theta_obs"]],
                 on=join_cols,
                 how="inner",
-            )
-            metadata["n_theta_test_points"] = len(test_merged)
-            if len(test_merged) > 0:
-                theta_test_stats = _run_stats(
-                    test_merged["median"].values,
-                    test_merged["theta_obs"].values,
-                )
+            ) if theta_col is not None else None
+            if test_merged is not None:
+                metadata["n_theta_test_points"] = len(test_merged)
+                if len(test_merged) > 0:
+                    theta_test_stats = _run_stats(
+                        test_merged["median"].values,
+                        test_merged["theta_obs"].values,
+                    )
         except Exception as exc:
             warnings.warn(f"Could not compute theta test statistics: {exc}")
 

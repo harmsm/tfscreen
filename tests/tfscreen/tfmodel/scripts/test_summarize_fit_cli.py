@@ -127,20 +127,25 @@ def run_dir(tmp_path):
     return str(tmp_path)
 
 
-@pytest.fixture
-def ground_truth_file(tmp_path):
-    """Ground-truth file containing the 4th genotype (not in training data)."""
+def _make_ground_truth_csv(path, theta_col="theta_obs"):
+    """Write a ground-truth CSV for the 4th genotype using the given column name."""
     rows = []
     for tc in TITRANT_CONCS:
         rows.append({
             "genotype": "E4F",
             "titrant_name": TITRANT_NAME,
             "titrant_conc": tc,
-            "theta_obs": THETA_OBS[3] + tc * 0.0001,
+            theta_col: THETA_OBS[3] + tc * 0.0001,
             "theta_std": 0.02,
         })
-    path = str(tmp_path / "ground_truth.csv")
     pd.DataFrame(rows).to_csv(path, index=False)
+
+
+@pytest.fixture
+def ground_truth_file(tmp_path):
+    """Ground-truth file containing the 4th genotype (not in training data)."""
+    path = str(tmp_path / "ground_truth.csv")
+    _make_ground_truth_csv(path, theta_col="theta_obs")
     return path
 
 
@@ -455,6 +460,43 @@ class TestSummarizeFitWithGroundTruth:
         r = data["theta"]["test"]["pearson_r"]
         # Predictions are close to truth so r should be high
         assert r is not None and r > 0.9
+
+    def test_theta_col_fallback_to_theta(self, run_dir, tmp_path):
+        """Ground-truth file with 'theta' column (no 'theta_obs') still works."""
+        pred_path = os.path.join(run_dir, "run_theta_pred.csv")
+        _make_pred_csv(pred_path, n_training=3, extra_genotypes=["E4F"])
+
+        gt_path = str(tmp_path / "gt_theta_col.csv")
+        _make_ground_truth_csv(gt_path, theta_col="theta")
+
+        summarize_fit(run_dir, ground_truth_file=gt_path)
+        with open(os.path.join(run_dir, "tfs_summarize_fit_summary.json")) as fh:
+            data = json.load(fh)
+        assert data["theta"]["test"] is not None
+        assert data["metadata"]["n_theta_test_points"] == len(TITRANT_CONCS)
+
+    def test_missing_theta_col_warns_and_skips(self, run_dir, tmp_path):
+        """Ground-truth file with no theta column issues a warning and skips test stats."""
+        pred_path = os.path.join(run_dir, "run_theta_pred.csv")
+        _make_pred_csv(pred_path, n_training=3, extra_genotypes=["E4F"])
+
+        gt_path = str(tmp_path / "gt_no_theta.csv")
+        pd.DataFrame({
+            "genotype": ["E4F"],
+            "titrant_name": [TITRANT_NAME],
+            "titrant_conc": [0.0],
+            "some_other_col": [0.5],
+        }).to_csv(gt_path, index=False)
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            summarize_fit(run_dir, ground_truth_file=gt_path)
+        assert any("neither" in str(x.message).lower() for x in w)
+
+        with open(os.path.join(run_dir, "tfs_summarize_fit_summary.json")) as fh:
+            data = json.load(fh)
+        assert data["theta"]["test"] is None
+        assert data["metadata"]["n_theta_test_points"] is None
 
 
 # ---------------------------------------------------------------------------

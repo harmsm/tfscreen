@@ -42,3 +42,7 @@ from .est_v_real_summary import (  # noqa: F401
 from .heatmap import (  # noqa: F401
     heatmap
 )
+
+from .geno_trajectory import (  # noqa: F401
+    plot_geno_trajectory,
+)

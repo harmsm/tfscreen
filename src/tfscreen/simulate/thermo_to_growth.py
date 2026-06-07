@@ -376,8 +376,10 @@ def thermo_to_growth(
         ``selection_experiment`` can use them downstream; they are also
         collected in ``parameters_df`` for file output.
     genotype_theta_df : pd.DataFrame
-        Wide-form dataframe with one row per genotype and one column per
-        unique effector concentration, giving the ground-truth theta value.
+        Long-form dataframe with one row per (genotype, titrant_name,
+        titrant_conc) combination.  Columns: ``genotype``, ``titrant_name``,
+        ``titrant_conc``, ``theta``.  Sorted by (genotype, titrant_name,
+        titrant_conc); ``genotype`` is an ordered categorical.
         Use this to compare simulation inputs against fitted posteriors.
     parameters_df : pd.DataFrame
         One row per unique genotype.  Always contains ``genotype``,
@@ -440,31 +442,45 @@ def thermo_to_growth(
     geno_to_sim_idx = {g: i for i, g in enumerate(all_genotypes)}
     unique_sim_indices = np.array([geno_to_sim_idx[g] for g in unique_genotypes])
 
-    # ── Build genotype_theta_df (ground-truth theta per unique genotype) ──────
-    # Wide form: one row per UNIQUE genotype (in sorted unique_genotypes order),
-    # one column per concentration.  unique_sim_indices maps each unique genotype
-    # to its representative row in theta_gc, eliminating duplicates.
-
-    conc_vals = np.array(sim_data.titrant_conc)
-    conc_col_names = [f"theta_at_{c:.6g}mM" for c in conc_vals]
-    genotype_theta_df = pd.DataFrame(
-        theta_gc[unique_sim_indices],
-        index=list(unique_genotypes),
-        columns=conc_col_names,
-    )
-    genotype_theta_df.index.name = "genotype"
-    genotype_theta_df = genotype_theta_df.reset_index()
-    genotype_theta_df = set_categorical_genotype(genotype_theta_df)
-
     # ── Map sample_df concentrations to unique-concentration indices ──────────
     # sample_df may have duplicate concentrations across rows; each row maps to
     # one column of theta_gc.
     # Use float64 values from sample_df directly (same source as build_sim_data)
-    # rather than conc_vals, which is float32 from the JAX array and would cause
-    # dict-lookup misses due to float32→float64 precision loss.
+    # rather than sim_data.titrant_conc, which is float32 from the JAX array and
+    # would cause dict-lookup misses due to float32→float64 precision loss.
     sorted_concs_f64 = np.sort(sample_df["titrant_conc"].unique()).astype(float)
     conc_to_col = {c: i for i, c in enumerate(sorted_concs_f64)}
     sample_conc_idx = sample_df["titrant_conc"].map(conc_to_col).values.astype(int)
+
+    # ── Build genotype_theta_df (ground-truth theta per unique genotype) ──────
+    # Long form: one row per (genotype, titrant_name, titrant_conc).
+    # unique_sim_indices maps each unique genotype to its representative row in
+    # theta_gc, eliminating duplicates from sub-libraries.
+    tn_conc_pairs = (
+        sample_df[["titrant_name", "titrant_conc"]]
+        .drop_duplicates()
+        .sort_values(["titrant_name", "titrant_conc"])
+        .reset_index(drop=True)
+    )
+    pair_col_indices = np.array(
+        [conc_to_col[float(c)] for c in tn_conc_pairs["titrant_conc"]]
+    )
+    # theta_vals shape: (n_unique_geno, n_pairs)
+    theta_vals = theta_gc[unique_sim_indices][:, pair_col_indices]
+
+    n_geno = len(unique_genotypes)
+    n_pairs = len(tn_conc_pairs)
+    genotype_theta_df = pd.DataFrame({
+        "genotype":     np.repeat(list(unique_genotypes), n_pairs),
+        "titrant_name": np.tile(tn_conc_pairs["titrant_name"].values, n_geno),
+        "titrant_conc": np.tile(tn_conc_pairs["titrant_conc"].values.astype(float),
+                                n_geno),
+        "theta":        theta_vals.ravel(),
+    })
+    genotype_theta_df = set_categorical_genotype(genotype_theta_df)
+    genotype_theta_df = genotype_theta_df.sort_values(
+        ["genotype", "titrant_name", "titrant_conc"]
+    ).reset_index(drop=True)
 
     print("Calculating growth rates and building phenotype dataframe... ",
           end="", flush=True)

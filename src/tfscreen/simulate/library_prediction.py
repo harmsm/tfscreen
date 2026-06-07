@@ -39,8 +39,9 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
         dataframe with predicted fractional occupancy and growth rates for each
         of the genotypes in each of the conditions specified in the configuration
     genotype_theta_df : pandas.DataFrame
-        wide-form dataframe with one row per genotype and one column per unique
-        effector concentration giving the ground-truth theta value
+        long-form dataframe with one row per (genotype, titrant_name,
+        titrant_conc) combination; columns: genotype, titrant_name,
+        titrant_conc, theta
     parameters_df : pandas.DataFrame
         one row per unique genotype; columns ``dk_geno``, ``activity``, and
         any scalar per-genotype fields from the theta component (e.g.

@@ -243,9 +243,10 @@ def run_simulation_from_config(
 
     Runs library_prediction once to establish ground-truth phenotypes, then
     simulates num_replicates independent experimental replicates using
-    selection_experiment. Writes library, phenotype, genotype_theta, and
-    analysis-ready growth CSV files. If the config contains a 'binding_data'
-    block, also writes a simulated binding curve CSV.
+    selection_experiment. Writes library, parameters, genotype_theta (long-form:
+    genotype/titrant_name/titrant_conc/theta), and analysis-ready growth CSV
+    files. If the config contains a 'binding_data' block, also writes a
+    simulated binding curve CSV.
 
     Parameters
     ----------

@@ -102,6 +102,54 @@ def copy_model_class(model_class,
         **settings
     )
 
+def _convert_map_params(map_params, model_trace):
+    """
+    Convert a raw MAP parameter dict to a constrained posterior dict.
+
+    ``AutoDelta`` guide parameters are stored in *unconstrained* space with
+    ``{site}_auto_loc`` keys.  ``Predictive(posterior_samples=...)`` expects
+    values in *constrained* space keyed by bare site name, with a leading
+    sample dimension.  This function applies the per-site bijection and adds
+    that dimension so the rest of :func:`predict` can treat the MAP point as
+    a 1-sample posterior.
+
+    Parameters
+    ----------
+    map_params : dict-like
+        Raw MAP parameter dict (e.g., from ``np.load("_params.npz")``).
+        All keys must end with ``_auto_loc``.
+    model_trace : dict
+        NumPyro model trace produced by ``numpyro.handlers.trace``.  Used to
+        look up the ``fn.support`` bijection for each latent site.
+
+    Returns
+    -------
+    dict
+        Constrained values keyed by bare site name, each with shape
+        ``(1, *site_shape)``.
+    """
+    from numpyro.distributions.transforms import biject_to
+
+    constrained = {}
+    for k, v in map_params.items():
+        k = str(k)
+        if not k.endswith("_auto_loc"):
+            continue
+        site_name = k[: -len("_auto_loc")]
+        val = jnp.array(np.asarray(v))
+
+        site = model_trace.get(site_name)
+        if (site is not None
+                and site["type"] == "sample"
+                and not site.get("is_observed", False)):
+            val = biject_to(site["fn"].support)(val)
+
+        # Add the leading sample dimension expected by predict().
+        constrained[site_name] = jnp.expand_dims(val, 0)
+
+    return constrained
+
+
 def predict(model_class,
             param_posteriors,
             predict_sites=None,
@@ -199,12 +247,38 @@ def predict(model_class,
     subset_data = new_mc.get_batch(new_mc.data, jnp.array(genotype_indices))
 
     # -------------------------------------------------------------------------
+    # Model trace — run first so bijections are available for MAP detection.
+    #
+    # We use the original model_class because posteriors match its structure.
+
+    seeded_model = seed(model_class.jax_model, rng_seed=0)
+    traced_model = trace(seeded_model)
+    model_trace = traced_model.get_trace(data=model_class.data,
+                                         priors=model_class.priors)
+
+    # -------------------------------------------------------------------------
+    # MAP param conversion (if needed)
+    #
+    # Raw MAP params from RunInference.write_params() / np.load("_params.npz")
+    # have keys like ``{site}_auto_loc`` in *unconstrained* space and no
+    # leading sample dimension.  Convert them to constrained space with a
+    # size-1 leading dim so the rest of this function treats them as a
+    # 1-sample posterior.
+    #
+    # Genuine posterior files produced by get_posteriors() / get_map_posteriors()
+    # already store constrained values keyed by bare site name and are left
+    # unchanged.
+
+    if any(str(k).endswith("_auto_loc") for k in param_posteriors.keys()):
+        param_posteriors = _convert_map_params(param_posteriors, model_trace)
+
+    # -------------------------------------------------------------------------
     # Sample selection from posterior
-    
+
     # Identify how many samples we have
     first_key = next(iter(param_posteriors.keys()))
     total_available = param_posteriors[first_key].shape[0]
-    
+
     # Sample indices for running through the model (quantile computation)
     n_for_quantiles = total_available if num_marginal_samples is None else min(num_marginal_samples, total_available)
     rng = np.random.default_rng()
@@ -213,13 +287,6 @@ def predict(model_class,
 
     # -------------------------------------------------------------------------
     # Parameter slicing
-    
-    # Run a trace of the original model to identify plate structure
-    # We use the original model class because posteriors match its structure.
-    seeded_model = seed(model_class.jax_model, rng_seed=0)
-    traced_model = trace(seeded_model)
-    model_trace = traced_model.get_trace(data=model_class.data,
-                                         priors=model_class.priors)
 
     sliced_samples = {}
     for site_name, site in model_trace.items():

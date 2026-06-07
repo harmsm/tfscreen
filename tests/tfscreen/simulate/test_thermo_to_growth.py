@@ -345,13 +345,16 @@ def test_thermo_to_growth_integration(
         phenotype_df["k_sel"].to_numpy(), b_sel + activity * m_sel * theta + dk
     )
 
-    # genotype_theta_df: one row per unique genotype, columns theta_at_*mM
+    # genotype_theta_df: long form — one row per (genotype, titrant_name, titrant_conc)
     assert isinstance(genotype_theta_df, pd.DataFrame)
-    assert "genotype" in genotype_theta_df.columns
-    theta_cols = [c for c in genotype_theta_df.columns if c.startswith("theta_at_")]
-    assert len(theta_cols) == 2   # two unique concentrations
-    # No duplicate genotypes
-    assert genotype_theta_df["genotype"].nunique() == len(genotype_theta_df)
+    assert list(genotype_theta_df.columns) == ["genotype", "titrant_name",
+                                               "titrant_conc", "theta"]
+    # 3 unique genotypes × 2 unique concentrations = 6 rows
+    assert len(genotype_theta_df) == 6
+    # Each (genotype, titrant_name, titrant_conc) triple is unique
+    assert genotype_theta_df.duplicated(
+        subset=["genotype", "titrant_name", "titrant_conc"]
+    ).sum() == 0
 
     # parameters_df: one row per unique genotype, dk_geno + activity always present
     assert isinstance(parameters_df, pd.DataFrame)
@@ -393,9 +396,12 @@ def test_genotype_theta_df_no_duplicates_with_repeated_genotypes(
         growth_params=simple_growth_params,
     )
 
-    assert genotype_theta_df["genotype"].nunique() == len(genotype_theta_df), \
-        "genotype_theta_df must not contain duplicate genotype rows"
-    assert len(genotype_theta_df) == 3   # wt, A1B, A1B/C2D
+    # 3 unique genotypes × 2 concentrations = 6 rows; no duplicated (geno, conc) pairs
+    assert genotype_theta_df["genotype"].nunique() == 3
+    assert len(genotype_theta_df) == 6
+    assert genotype_theta_df.duplicated(
+        subset=["genotype", "titrant_name", "titrant_conc"]
+    ).sum() == 0
 
 
 def test_thermo_to_growth_propagates_rng(

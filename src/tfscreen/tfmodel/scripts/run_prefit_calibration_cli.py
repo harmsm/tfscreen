@@ -64,6 +64,7 @@ from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
 from tfscreen.tfmodel.configuration_io import (
     read_configuration,
 )
+from tfscreen.plot.geno_trajectory import plot_geno_trajectory
 
 
 # ---------------------------------------------------------------------------
@@ -692,334 +693,34 @@ def _run_calibration_map(ri,
 # Diagnostic plots
 # ---------------------------------------------------------------------------
 
-def _make_calibration_plots(gm_cal, params, out_prefix, growth_pred_std=None):
+def _run_calibration_diagnostics(gm_cal, params, out_prefix, growth_pred_std=None):
     """
-    Generate per-genotype calibration diagnostic plots as PDFs.
+    Generate per-genotype trajectory PDFs and write correlation / stats outputs.
 
-    For each genotype in the calibration data, writes one PDF containing
-    one subplot per (condition_pre, condition_sel, titrant_name, titrant_conc)
-    combination.  Each subplot shows:
-
-    * **Observed** — the experimental ``ln_cfu ± ln_cfu_std`` data points
-      plotted at their ``t_sel`` x-coordinates (selection-phase time).
-    * **Model prediction** — a smooth 100-point trajectory computed from
-      the MAP parameter estimates:
-
-      - Pre-selection phase (x from ``-t_pre`` to 0): a straight line from
-        ``(−t_pre, ln_cfu0)`` to ``(0, ln_cfu0 + g_pre·t_pre)``, where
-        ``ln_cfu0`` comes from the ``ln_cfu0`` deterministic site and the
-        pre-selection slope ``g_pre`` is derived from the selection-phase
-        intercept.
-      - Selection phase (x from 0 to ``max(t_sel)``): a straight line with
-        slope ``g_sel`` estimated by fitting the MAP ``growth_pred`` values
-        at the observed ``t_sel`` times.
-
-    The linear-in-time approximation for the smooth trajectory is exact for
-    the ``instant`` growth-transition component and a reasonable visual
-    approximation for non-linear variants.
+    Delegates the trajectory plots to :func:`tfscreen.plot.plot_geno_trajectory`,
+    then uses the returned predictions DataFrame to write the goodness-of-fit
+    stats JSON and the observed-vs-predicted correlation PDF.
 
     Parameters
     ----------
     gm_cal : ModelOrchestrator
-        Calibration ModelOrchestrator (exposes ``growth_tm``, ``data``,
-        ``priors``, ``jax_model``).
+        Calibration ModelOrchestrator.
     params : dict
-        MAP parameter dict from the SVI optimiser (keys follow the
-        ``{site}_auto_loc`` convention).
+        MAP parameter dict (``{site}_auto_loc`` keys).
     out_prefix : str
-        File-name prefix; each genotype's PDF is written to
-        ``{out_prefix}_calib_{genotype}.pdf``.
+        File-name prefix for all outputs.
+    growth_pred_std : np.ndarray or None
+        Optional Laplace-based per-cell prediction standard deviations,
+        shape ``(R, T, CP, CS, TN, TC, G)``.
     """
-    try:
-        import matplotlib
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-    except ImportError:
-        print(
-            "  warning: matplotlib not available; skipping calibration plots.",
-            file=sys.stderr,
-        )
+    growth_df_out = plot_geno_trajectory(
+        gm_cal,
+        out_prefix,
+        params=params,
+        growth_pred_std=growth_pred_std,
+    )
+    if growth_df_out is None:
         return
-
-    from numpyro.infer import Predictive
-    from numpyro.infer.autoguide import AutoDelta
-    import jax
-
-    print("Generating calibration quality plots ...", flush=True)
-
-    # --- Run Predictive at the MAP point to recover growth_pred and ln_cfu0 ---
-    guide = AutoDelta(gm_cal.jax_model)
-    all_indices = jnp.arange(gm_cal.data.num_genotype)
-    full_data = gm_cal.get_batch(gm_cal.data, all_indices)
-    pred_fn = Predictive(gm_cal.jax_model, guide=guide, params=params, num_samples=1)
-    map_samples = pred_fn(
-        jax.random.PRNGKey(0), data=full_data, priors=gm_cal.priors
-    )
-
-    if "growth_pred" not in map_samples:
-        print(
-            "  warning: growth_pred not in model trace; skipping plots.",
-            file=sys.stderr,
-        )
-        return
-
-    # Remove leading sample dimension (num_samples=1).
-    # growth_pred: (R, T, CP, CS, TN, TC, G) at the original observed timepoints.
-    # Kept separately from growth_pred_fine (fine-grid) so the CSV can record
-    # predictions that align row-for-row with the observed growth_df entries.
-    growth_pred = np.asarray(map_samples["growth_pred"][0])
-
-    # ln_cfu0 deterministic: (R, CP, G) — registered by the hierarchical component
-    ln_cfu0_map = (
-        np.asarray(map_samples["ln_cfu0"][0])
-        if "ln_cfu0" in map_samples
-        else None
-    )
-
-    # --- Data tensors from the calibration model ---
-    gd = gm_cal.data.growth
-    good_mask    = np.asarray(gd.good_mask)        # (R, T, CP, CS, TN, TC, G)
-    t_pre_tensor = np.asarray(gd.t_pre)            # (R, T, CP, CS, TN, TC, G)
-    t_sel_tensor = np.asarray(gd.t_sel)            # (R, T, CP, CS, TN, TC, G)
-    ln_cfu_obs   = np.asarray(gd.ln_cfu)           # (R, T, CP, CS, TN, TC, G)
-    ln_cfu_std   = np.asarray(gd.ln_cfu_std)       # (R, T, CP, CS, TN, TC, G)
-
-    n_rep, n_t, n_cp, n_cs, n_tn, n_tc, n_geno = good_mask.shape
-
-    # --- Fine-grid Predictive for exact smooth selection-phase trajectories ---
-    # Replace the T dimension with T_FINE evenly-spaced points from 0 to the
-    # global max t_sel.  t_pre is constant over T within each condition cell,
-    # so we broadcast from the first observed timepoint.  The same pred_fn is
-    # reused with the new data argument; JAX will retrace for the new shape.
-    T_FINE = 50
-    global_max_t_sel = float(np.nanmax(t_sel_tensor[good_mask]))
-    t_fine_1d = np.linspace(0.0, global_max_t_sel, T_FINE)
-    fine_shape = (n_rep, T_FINE, n_cp, n_cs, n_tn, n_tc, n_geno)
-
-    # Helper: broadcast a 7-D array from T=1 (time-constant) to T_FINE.
-    # All per-condition tensors are constant along the T axis; slicing any
-    # timepoint and broadcasting is therefore exact.
-    def _bc_t(arr, *, dtype=None):
-        a = np.asarray(arr)
-        r = np.broadcast_to(a[:, 0:1, ...], fine_shape).copy()
-        return jnp.array(r if dtype is None else r.astype(dtype))
-
-    t_sel_fine = np.broadcast_to(
-        t_fine_1d[None, :, None, None, None, None, None], fine_shape
-    ).copy()
-
-    # Active wherever any observed timepoint was valid for that cell.
-    has_data_bc = good_mask.any(axis=1, keepdims=True)   # (R,1,CP,CS,TN,TC,G)
-    good_mask_fine = np.broadcast_to(has_data_bc, fine_shape).copy()
-
-    # map_condition_pre / map_condition_sel are also shape (R,T,CP,CS,TN,TC,G);
-    # each element is an index into per-condition-rep arrays, constant over T.
-    gd_full = full_data.growth
-    fine_gd = gd_full.replace(
-        num_time=T_FINE,
-        t_sel=jnp.array(t_sel_fine),
-        t_pre=_bc_t(gd_full.t_pre),
-        good_mask=jnp.array(good_mask_fine),
-        map_condition_pre=_bc_t(gd_full.map_condition_pre, dtype=int),
-        map_condition_sel=_bc_t(gd_full.map_condition_sel, dtype=int),
-        ln_cfu=jnp.zeros(fine_shape),
-        ln_cfu_std=jnp.ones(fine_shape),
-    )
-    fine_data = full_data.replace(growth=fine_gd)
-    map_samples_fine = pred_fn(
-        jax.random.PRNGKey(1), data=fine_data, priors=gm_cal.priors
-    )
-    # shape: (R, T_FINE, CP, CS, TN, TC, G)
-    growth_pred_fine = np.asarray(map_samples_fine["growth_pred"][0])
-
-    # --- Dimension labels from the TensorManager ---
-    tm  = gm_cal.growth_tm
-    dn  = tm.tensor_dim_names
-
-    geno_labels = list(tm.tensor_dim_labels[dn.index("genotype")])
-    rep_labels  = list(tm.tensor_dim_labels[dn.index("replicate")])
-    cp_labels   = list(tm.tensor_dim_labels[dn.index("condition_pre")])
-    tn_labels   = list(tm.tensor_dim_labels[dn.index("titrant_name")])
-    tc_labels   = list(tm.tensor_dim_labels[dn.index("titrant_conc")])
-
-    # Map (cp_idx, cs_idx) → actual condition_sel name.  The tensor uses the
-    # reduced (integer) condition_sel dimension; the original string name lives
-    # in the processed DataFrame alongside the integer index column.
-    df = tm.df
-    cs_name_map = {}
-    for _, row in df.drop_duplicates(
-        ["condition_pre_idx", "condition_sel_idx"]
-    ).iterrows():
-        cs_name_map[
-            (int(row["condition_pre_idx"]), int(row["condition_sel_idx"]))
-        ] = str(row["condition_sel"])
-
-    # Map (genotype, titrant_name, titrant_conc) → mean observed theta.
-    # Averages over binding replicates so a single scalar appears in the title.
-    theta_map: dict = {}
-    for _, row in gm_cal.binding_df.iterrows():
-        key = (str(row["genotype"]), str(row["titrant_name"]), float(row["titrant_conc"]))
-        theta_map.setdefault(key, []).append(float(row["theta_obs"]))
-    theta_map = {k: float(np.nanmean(v)) for k, v in theta_map.items()}
-
-    prop_colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-
-    for g_i, geno_name in enumerate(geno_labels):
-
-        # Collect valid (cp, cs, tn, tc) combinations and the replicates that
-        # contribute observations.
-        condition_combos: dict = {}
-        for r_i in range(n_rep):
-            for cp_i in range(n_cp):
-                for cs_i in range(n_cs):
-                    for tn_i in range(n_tn):
-                        for tc_i in range(n_tc):
-                            if good_mask[r_i, :, cp_i, cs_i, tn_i, tc_i, g_i].any():
-                                condition_combos.setdefault(
-                                    (cp_i, cs_i, tn_i, tc_i), []
-                                ).append(r_i)
-
-        if not condition_combos:
-            continue
-
-        n_combos = len(condition_combos)
-        n_cols   = min(3, n_combos)
-        n_rows   = (n_combos + n_cols - 1) // n_cols
-
-        fig, axes = plt.subplots(
-            n_rows, n_cols,
-            figsize=(5 * n_cols, 4 * n_rows),
-            squeeze=False,
-            sharey=True,
-        )
-        fig.suptitle(
-            f"Calibration fit — genotype: {geno_name}",
-            fontsize=13,
-            fontweight="bold",
-        )
-
-        for combo_i, ((cp_i, cs_i, tn_i, tc_i), rep_list) in enumerate(
-            condition_combos.items()
-        ):
-            ax = axes[combo_i // n_cols][combo_i % n_cols]
-
-            cp_name = str(cp_labels[cp_i])
-            cs_name = cs_name_map.get((cp_i, cs_i), f"sel_{cs_i}")
-            tn_name = str(tn_labels[tn_i])
-            tc_val  = float(tc_labels[tc_i])
-
-            theta_obs = theta_map.get((geno_name, tn_name, tc_val))
-            theta_str = f", θ = {theta_obs:.3f}" if theta_obs is not None else ""
-            ax.set_title(
-                f"{cp_name} → {cs_name}\n{tn_name} = {tc_val:.3g}{theta_str}",
-                fontsize=9,
-            )
-            ax.set_xlabel("Time")
-            ax.set_ylabel("ln(CFU)")
-            ax.axvline(0.0, color="0.6", lw=0.8, ls="--")
-
-            # Collect valid per-replicate data for this condition combination.
-            rep_data = []
-            for r_i in rep_list:
-                mask    = good_mask[r_i, :, cp_i, cs_i, tn_i, tc_i, g_i]
-                valid_t = np.where(mask)[0]
-                if len(valid_t) == 0:
-                    continue
-                rep_data.append({
-                    "r_i":   r_i,
-                    "t_sel": t_sel_tensor[r_i, valid_t, cp_i, cs_i, tn_i, tc_i, g_i],
-                    "obs":   ln_cfu_obs[r_i, valid_t, cp_i, cs_i, tn_i, tc_i, g_i],
-                    "std":   ln_cfu_std[r_i, valid_t, cp_i, cs_i, tn_i, tc_i, g_i],
-                    "t_pre": float(np.nanmedian(
-                        t_pre_tensor[r_i, valid_t, cp_i, cs_i, tn_i, tc_i, g_i]
-                    )),
-                })
-
-            if not rep_data:
-                ax.set_visible(False)
-                continue
-
-            max_t_sel = float(max(np.nanmax(rd["t_sel"]) for rd in rep_data))
-            max_t_pre = float(max(rd["t_pre"] for rd in rep_data))
-
-            # Plot each replicate in its own colour: data points + model line.
-            for rd in rep_data:
-                r_i       = rd["r_i"]
-                rep_color = prop_colors[r_i % len(prop_colors)]
-                rep_label = str(rep_labels[r_i])
-
-                # Observed data with error bars
-                ax.errorbar(
-                    rd["t_sel"], rd["obs"], yerr=rd["std"],
-                    fmt="o", color=rep_color, ms=5, lw=1, capsize=3,
-                    label=rep_label, zorder=3,
-                )
-
-                # Exact model prediction for this replicate.
-                # growth_pred_fine: (R, T_FINE, CP, CS, TN, TC, G)
-                y_fine_r    = growth_pred_fine[r_i, :, cp_i, cs_i, tn_i, tc_i, g_i]
-                calc_at_0_r = float(y_fine_r[0])
-
-                # ln_cfu0 anchor; fall back to calc_at_0 when site is absent.
-                if ln_cfu0_map is not None and ln_cfu0_map.ndim == 3:
-                    ln_cfu0_r = float(ln_cfu0_map[r_i, cp_i, g_i])
-                else:
-                    ln_cfu0_r = calc_at_0_r
-
-                # Pre-selection: two-point line (-t_pre, ln_cfu0) → (0, calc_at_0)
-                # Selection: exact fine-grid predictions
-                t_smooth = np.concatenate([np.array([-rd["t_pre"], 0.0]), t_fine_1d])
-                y_smooth = np.concatenate([np.array([ln_cfu0_r, calc_at_0_r]), y_fine_r])
-                ax.plot(t_smooth, y_smooth, "-", color=rep_color, lw=1.8, zorder=4)
-
-            ax.legend(fontsize=8, loc="best")
-            x_pad = (max_t_sel + max_t_pre) * 0.03
-            ax.set_xlim(-max_t_pre - x_pad, max_t_sel + x_pad)
-
-        # Hide unused subplots
-        for extra_i in range(n_combos, n_rows * n_cols):
-            axes[extra_i // n_cols][extra_i % n_cols].set_visible(False)
-
-        fig.tight_layout(rect=[0, 0, 1, 0.95])
-        safe_geno_name = geno_name.replace("/", "-")
-        pdf_path = f"{out_prefix}_calib_{safe_geno_name}.pdf"
-        fig.savefig(pdf_path, format="pdf", bbox_inches="tight")
-        plt.close(fig)
-        print(f"  Saved {pdf_path}", flush=True)
-
-    # --- Write predictions CSV ---
-    # Extract the MAP-predicted ln_cfu at every valid (observed) tensor cell,
-    # then attach it as a new column alongside the original growth_df rows.
-    #
-    # The tensor has 7 dimensions: (R, T, CP, CS, TN, TC, G).
-    # tm.df carries _idx columns for 6 of them (all except T); the T dimension
-    # is identified by the t_sel float value, which is the same in both the
-    # tensor and the DataFrame.
-    r_idx, t_idx, cp_idx, cs_idx, tn_idx, tc_idx, g_idx = np.where(good_mask)
-
-    idx = (r_idx, t_idx, cp_idx, cs_idx, tn_idx, tc_idx, g_idx)
-    pred_lookup_dict = {
-        "replicate_idx":     r_idx.astype(int),
-        "condition_pre_idx": cp_idx.astype(int),
-        "condition_sel_idx": cs_idx.astype(int),
-        "titrant_name_idx":  tn_idx.astype(int),
-        "titrant_conc_idx":  tc_idx.astype(int),
-        "genotype_idx":      g_idx.astype(int),
-        "t_sel":             t_sel_tensor[idx],
-        "ln_cfu_pred":       growth_pred[idx],
-    }
-    if growth_pred_std is not None:
-        pred_lookup_dict["ln_cfu_pred_std"] = growth_pred_std[idx]
-    pred_lookup = pd.DataFrame(pred_lookup_dict)
-
-    merge_cols = [
-        "replicate_idx", "condition_pre_idx", "condition_sel_idx",
-        "titrant_name_idx", "titrant_conc_idx", "genotype_idx", "t_sel",
-    ]
-    growth_df_out = df.merge(pred_lookup, on=merge_cols, how="left")
-    csv_path = f"{out_prefix}_calib_growth_df.csv"
-    growth_df_out.to_csv(csv_path, index=False)
-    print(f"  Saved {csv_path}", flush=True)
 
     n_params = int(sum(np.asarray(v).size
                        for k, v in params.items()
@@ -1028,8 +729,6 @@ def _make_calibration_plots(gm_cal, params, out_prefix, growth_pred_std=None):
     _write_calibration_stats(growth_df_out, out_prefix,
                              n_params=n_params, n_obs=n_obs)
     _make_correlation_plot(growth_df_out, out_prefix)
-
-    print("Calibration plots complete.", flush=True)
 
 
 # ---------------------------------------------------------------------------
@@ -1396,7 +1095,8 @@ def run_prefit_calibration(config_file,
     # 6. Write per-genotype diagnostic plots with Laplace-based prediction uncertainty.
     print("Computing growth_pred uncertainty via Laplace samples ...", flush=True)
     growth_pred_std = _compute_growth_pred_std(ri, params, gm_cal)
-    _make_calibration_plots(gm_cal, params, out_prefix, growth_pred_std=growth_pred_std)
+    _run_calibration_diagnostics(gm_cal, params, out_prefix,
+                                 growth_pred_std=growth_pred_std)
 
     return svi_state, params, converged
 
