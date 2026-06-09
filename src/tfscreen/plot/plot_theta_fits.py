@@ -141,7 +141,7 @@ def plot_theta_fits(df,
     
     ax.set_xscale("log")
     ax.set_xlabel("titrant conc (mM)")
-    ax.set_ylim(0,1)
+    ax.set_ylim(-0.05,1.05)
     ax.set_ylabel("$\\theta$")
     ax.legend()
     ax.spines['top'].set_visible(False)

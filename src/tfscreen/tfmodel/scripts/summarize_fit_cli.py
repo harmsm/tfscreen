@@ -10,6 +10,8 @@ import yaml
 from matplotlib import pyplot as plt
 
 from tfscreen.mle.stats_test_suite import stats_test_suite
+from tfscreen.plot import default_styles  # noqa: F401 — applies global rcParams on import
+from tfscreen.plot.default_styles import DEFAULT_COLORS
 from tfscreen.plot.xy_corr import xy_corr
 from tfscreen.util.cli.generalized_main import generalized_main
 
@@ -63,6 +65,9 @@ def _try_plot_theta_fits(binding_df, pred_df, out_prefix):
         for geno in sorted(merged["genotype"].unique().tolist(), key=str):
             geno_df = merged[merged["genotype"] == geno]
             safe_name = str(geno).replace("/", "_").replace(" ", "_")
+            csv_path = f"{out_prefix}_{safe_name}_theta_fits.csv"
+            geno_df.to_csv(csv_path, index=False)
+            print(f"Wrote theta fit data to {csv_path}")
             ax = plot_theta_fits(geno_df, title=str(geno))
             fig = ax.get_figure()
             pdf_path = f"{out_prefix}_{safe_name}_theta_fits.pdf"
@@ -106,6 +111,9 @@ def _try_plot_trajectories(config_file, config_yaml, run_dir, out_prefix, bindin
         for geno in sorted(pred_df["genotype"].unique().tolist(), key=str):
             geno_df = pred_df[pred_df["genotype"] == geno]
             safe_name = str(geno).replace("/", "_").replace(" ", "_")
+            csv_path = f"{out_prefix}_{safe_name}_trajectory.csv"
+            geno_df.to_csv(csv_path, index=False)
+            print(f"Wrote trajectory data to {csv_path}")
             fig = plot_geno_trajectory(geno_df)
             pdf_path = f"{out_prefix}_{safe_name}_trajectory.pdf"
             fig.savefig(pdf_path, format="pdf", bbox_inches="tight")
@@ -231,15 +239,34 @@ def summarize_fit(run_dir,
 
     Scans run_dir for a *_config.yaml, *_theta_pred.csv, *_growth_pred.csv
     (optional), and *_losses.txt (optional).  Computes prediction statistics
-    and writes three output files:
+    and writes output files to the summary directory.
+
+    **CSV files are the authoritative outputs.**  Every plot written by this
+    function has a matched CSV containing the exact data used to generate it.
+    The PDFs are human-readable summaries; the CSVs are the record of truth
+    for downstream quantitative analysis.
+
+    Output files written:
 
     - ``{out_prefix}_fit_summary.json`` — nested statistics with top-level
       keys ``metadata``, ``theta`` (training / test sub-keys), and ``growth``
       (training sub-key).
-    - ``{out_prefix}_theta_corr.pdf`` — two-panel hexbin correlation plot for
-      theta (training left, test right).
-    - ``{out_prefix}_growth_corr.pdf`` — hexbin correlation plot for ln_cfu
-      (only written when *_growth_pred.csv is present).
+    - ``{out_prefix}_theta_corr_training.csv`` — joined (observed, predicted)
+      theta pairs for training genotypes.
+    - ``{out_prefix}_theta_corr_test.csv`` — same for test genotypes (only
+      written when *ground_truth_file* is provided and has matching rows).
+    - ``{out_prefix}_theta_corr.pdf`` — two-panel correlation plot for theta
+      (training left, test right).
+    - ``{out_prefix}_growth_corr.csv`` — relative symlink to the
+      *_growth_pred.csv in run_dir (only created when that file is present).
+    - ``{out_prefix}_growth_corr.pdf`` — correlation plot for ln_cfu (only
+      written when *_growth_pred.csv is present).
+    - ``{out_prefix}_{genotype}_theta_fits.csv`` / ``.pdf`` — per-genotype
+      joined observation + prediction data and fit plot (one pair per
+      genotype present in both binding and prediction CSVs).
+    - ``{out_prefix}_{genotype}_trajectory.csv`` / ``.pdf`` — per-genotype
+      predicted growth trajectory data and plot (only when growth data is
+      configured and a posterior/params file is found).
     - ``{out_prefix}_losses.pdf`` — training loss curve (only written when
       *_losses.txt is present).
 
@@ -259,7 +286,8 @@ def summarize_fit(run_dir,
     """
     run_dir = os.path.abspath(run_dir)
     if out_prefix is None:
-        out_prefix = os.path.join(run_dir, "tfs_summarize")
+        out_prefix = os.path.join(run_dir, "summary", "tfs_summarize")
+    os.makedirs(os.path.dirname(os.path.abspath(out_prefix)), exist_ok=True)
 
     metadata = {
         "run_dir": run_dir,
@@ -432,6 +460,23 @@ def summarize_fit(run_dir,
     except Exception as exc:
         warnings.warn(f"Could not write JSON to {json_file}: {exc}")
 
+    # --- Theta correlation CSVs ---
+    if train_merged is not None and len(train_merged) > 0:
+        csv_file = f"{out_prefix}_theta_corr_training.csv"
+        try:
+            train_merged.to_csv(csv_file, index=False)
+            print(f"Wrote theta training data to {csv_file}")
+        except Exception as exc:
+            warnings.warn(f"Could not write theta training CSV to {csv_file}: {exc}")
+
+    if test_merged is not None and len(test_merged) > 0:
+        csv_file = f"{out_prefix}_theta_corr_test.csv"
+        try:
+            test_merged.to_csv(csv_file, index=False)
+            print(f"Wrote theta test data to {csv_file}")
+        except Exception as exc:
+            warnings.warn(f"Could not write theta test CSV to {csv_file}: {exc}")
+
     # --- Correlation plot ---
     pdf_file = f"{out_prefix}_theta_corr.pdf"
     try:
@@ -470,6 +515,21 @@ def summarize_fit(run_dir,
     except Exception as exc:
         warnings.warn(f"Could not generate correlation plot: {exc}")
 
+    # --- Growth correlation CSV symlink ---
+    if growth_pred_file is not None:
+        growth_csv_file = f"{out_prefix}_growth_corr.csv"
+        try:
+            rel_target = os.path.relpath(
+                os.path.abspath(growth_pred_file),
+                os.path.dirname(os.path.abspath(growth_csv_file)),
+            )
+            if os.path.islink(growth_csv_file):
+                os.remove(growth_csv_file)
+            os.symlink(rel_target, growth_csv_file)
+            print(f"Linked growth data to {growth_csv_file}")
+        except Exception as exc:
+            warnings.warn(f"Could not create growth CSV symlink at {growth_csv_file}: {exc}")
+
     # --- Growth correlation plot ---
     growth_pdf_file = f"{out_prefix}_growth_corr.pdf"
     try:
@@ -496,7 +556,7 @@ def summarize_fit(run_dir,
     try:
         if all_losses is not None:
             fig, ax = plt.subplots(figsize=(8, 4))
-            ax.plot(all_epochs, all_losses, lw=1.5, color="steelblue")
+            ax.plot(all_epochs, all_losses, lw=1.5, color=DEFAULT_COLORS[2])
             ax.set_xlabel("Epoch")
             ax.set_ylabel("Loss")
             ax.set_title("Training loss")

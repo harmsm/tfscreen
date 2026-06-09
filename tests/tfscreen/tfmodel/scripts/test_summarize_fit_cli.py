@@ -332,15 +332,19 @@ class TestSummarizeFitComplete:
 
     def test_json_written(self, run_dir):
         summarize_fit(run_dir)
-        assert os.path.exists(os.path.join(run_dir, "tfs_summarize_fit_summary.json"))
+        assert os.path.exists(os.path.join(run_dir, "summary", "tfs_summarize_fit_summary.json"))
+
+    def test_summary_dir_created(self, run_dir):
+        summarize_fit(run_dir)
+        assert os.path.isdir(os.path.join(run_dir, "summary"))
 
     def test_pdf_written(self, run_dir):
         summarize_fit(run_dir)
-        assert os.path.exists(os.path.join(run_dir, "tfs_summarize_theta_corr.pdf"))
+        assert os.path.exists(os.path.join(run_dir, "summary", "tfs_summarize_theta_corr.pdf"))
 
     def test_json_is_valid(self, run_dir):
         summarize_fit(run_dir)
-        with open(os.path.join(run_dir, "tfs_summarize_fit_summary.json")) as fh:
+        with open(os.path.join(run_dir, "summary", "tfs_summarize_fit_summary.json")) as fh:
             data = json.load(fh)
         assert "metadata" in data
         assert "theta" in data
@@ -348,7 +352,7 @@ class TestSummarizeFitComplete:
 
     def test_json_theta_and_growth_have_training_subkey(self, run_dir):
         summarize_fit(run_dir)
-        with open(os.path.join(run_dir, "tfs_summarize_fit_summary.json")) as fh:
+        with open(os.path.join(run_dir, "summary", "tfs_summarize_fit_summary.json")) as fh:
             data = json.load(fh)
         assert "training" in data["theta"]
         assert "test" in data["theta"]
@@ -356,7 +360,7 @@ class TestSummarizeFitComplete:
 
     def test_metadata_fields_populated(self, run_dir):
         summarize_fit(run_dir)
-        with open(os.path.join(run_dir, "tfs_summarize_fit_summary.json")) as fh:
+        with open(os.path.join(run_dir, "summary", "tfs_summarize_fit_summary.json")) as fh:
             data = json.load(fh)
         meta = data["metadata"]
         assert meta["n_parameters"] == 25
@@ -365,7 +369,7 @@ class TestSummarizeFitComplete:
 
     def test_theta_training_stats_populated(self, run_dir):
         summarize_fit(run_dir)
-        with open(os.path.join(run_dir, "tfs_summarize_fit_summary.json")) as fh:
+        with open(os.path.join(run_dir, "summary", "tfs_summarize_fit_summary.json")) as fh:
             data = json.load(fh)
         stats = data["theta"]["training"]
         assert stats is not None
@@ -374,14 +378,14 @@ class TestSummarizeFitComplete:
 
     def test_theta_test_null_when_no_ground_truth(self, run_dir):
         summarize_fit(run_dir)
-        with open(os.path.join(run_dir, "tfs_summarize_fit_summary.json")) as fh:
+        with open(os.path.join(run_dir, "summary", "tfs_summarize_fit_summary.json")) as fh:
             data = json.load(fh)
         assert data["theta"]["test"] is None
         assert data["metadata"]["n_theta_test_points"] is None
 
     def test_growth_training_null_when_no_growth_pred(self, run_dir):
         summarize_fit(run_dir)
-        with open(os.path.join(run_dir, "tfs_summarize_fit_summary.json")) as fh:
+        with open(os.path.join(run_dir, "summary", "tfs_summarize_fit_summary.json")) as fh:
             data = json.load(fh)
         assert data["growth"]["training"] is None
         assert data["metadata"]["n_growth_training_points"] is None
@@ -393,7 +397,7 @@ class TestSummarizeFitComplete:
             "median": np.linspace(8.1, 13.1, 6),
         }).to_csv(os.path.join(run_dir, "tfs_growth_pred.csv"), index=False)
         summarize_fit(run_dir)
-        with open(os.path.join(run_dir, "tfs_summarize_fit_summary.json")) as fh:
+        with open(os.path.join(run_dir, "summary", "tfs_summarize_fit_summary.json")) as fh:
             data = json.load(fh)
         stats = data["growth"]["training"]
         assert stats is not None
@@ -409,13 +413,13 @@ class TestSummarizeFitComplete:
         })
         df.to_csv(os.path.join(run_dir, "tfs_growth_pred.csv"), index=False)
         summarize_fit(run_dir)
-        with open(os.path.join(run_dir, "tfs_summarize_fit_summary.json")) as fh:
+        with open(os.path.join(run_dir, "summary", "tfs_summarize_fit_summary.json")) as fh:
             data = json.load(fh)
         assert data["metadata"]["n_growth_training_points"] == 4
 
     def test_loss_pdf_written(self, run_dir):
         summarize_fit(run_dir)
-        assert os.path.exists(os.path.join(run_dir, "tfs_summarize_losses.pdf"))
+        assert os.path.exists(os.path.join(run_dir, "summary", "tfs_summarize_losses.pdf"))
 
     def test_growth_corr_pdf_written_when_file_present(self, run_dir):
         # Write a minimal growth_pred CSV
@@ -425,15 +429,89 @@ class TestSummarizeFitComplete:
             "median": np.linspace(8.1, 13.1, 6),
         }).to_csv(os.path.join(run_dir, "tfs_growth_pred.csv"), index=False)
         summarize_fit(run_dir)
-        assert os.path.exists(os.path.join(run_dir, "tfs_summarize_growth_corr.pdf"))
+        assert os.path.exists(os.path.join(run_dir, "summary", "tfs_summarize_growth_corr.pdf"))
 
     def test_growth_corr_pdf_not_written_when_file_absent(self, run_dir):
         summarize_fit(run_dir)
-        assert not os.path.exists(os.path.join(run_dir, "tfs_summarize_growth_corr.pdf"))
+        assert not os.path.exists(os.path.join(run_dir, "summary", "tfs_summarize_growth_corr.pdf"))
+
+    # ------------------------------------------------------------------
+    # CSV outputs
+    # ------------------------------------------------------------------
+
+    def test_theta_corr_training_csv_written(self, run_dir):
+        summarize_fit(run_dir)
+        csv_path = os.path.join(run_dir, "summary", "tfs_summarize_theta_corr_training.csv")
+        assert os.path.exists(csv_path)
+        df = pd.read_csv(csv_path)
+        assert "theta_obs" in df.columns
+        assert "median" in df.columns
+        assert len(df) > 0
+
+    def test_theta_corr_training_csv_not_written_when_no_binding(self, run_dir):
+        config_path = os.path.join(run_dir, "run_config.yaml")
+        with open(config_path) as fh:
+            cfg = yaml.safe_load(fh)
+        cfg["data"]["binding"] = "/nonexistent/binding.csv"
+        with open(config_path, "w") as fh:
+            yaml.dump(cfg, fh)
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            summarize_fit(run_dir)
+        assert not os.path.exists(
+            os.path.join(run_dir, "summary", "tfs_summarize_theta_corr_training.csv")
+        )
+
+    def test_theta_corr_test_csv_not_written_without_ground_truth(self, run_dir):
+        summarize_fit(run_dir)
+        assert not os.path.exists(
+            os.path.join(run_dir, "summary", "tfs_summarize_theta_corr_test.csv")
+        )
+
+    def test_theta_corr_test_csv_written_with_ground_truth(self, run_dir, ground_truth_file):
+        pred_path = os.path.join(run_dir, "run_theta_pred.csv")
+        _make_pred_csv(pred_path, n_training=3, extra_genotypes=["E4F"])
+        summarize_fit(run_dir, ground_truth_file=ground_truth_file)
+        csv_path = os.path.join(run_dir, "summary", "tfs_summarize_theta_corr_test.csv")
+        assert os.path.exists(csv_path)
+        df = pd.read_csv(csv_path)
+        assert "theta_obs" in df.columns
+        assert "median" in df.columns
+        assert len(df) == len(TITRANT_CONCS)
+
+    def test_growth_corr_csv_symlink_created(self, run_dir):
+        growth_pred_path = os.path.join(run_dir, "tfs_growth_pred.csv")
+        pd.DataFrame({
+            "genotype": ["wt"] * 6,
+            "ln_cfu": np.linspace(8.0, 13.0, 6),
+            "median": np.linspace(8.1, 13.1, 6),
+        }).to_csv(growth_pred_path, index=False)
+        summarize_fit(run_dir)
+        csv_path = os.path.join(run_dir, "summary", "tfs_summarize_growth_corr.csv")
+        assert os.path.islink(csv_path)
+        # symlink must resolve to the actual growth pred file
+        assert os.path.realpath(csv_path) == os.path.realpath(growth_pred_path)
+
+    def test_growth_corr_csv_symlink_not_created_when_file_absent(self, run_dir):
+        summarize_fit(run_dir)
+        assert not os.path.exists(
+            os.path.join(run_dir, "summary", "tfs_summarize_growth_corr.csv")
+        )
+
+    def test_growth_corr_csv_symlink_overwritten_on_rerun(self, run_dir):
+        growth_pred_path = os.path.join(run_dir, "tfs_growth_pred.csv")
+        pd.DataFrame({
+            "genotype": ["wt"] * 3,
+            "ln_cfu": [8.0, 9.0, 10.0],
+            "median": [8.1, 9.1, 10.1],
+        }).to_csv(growth_pred_path, index=False)
+        summarize_fit(run_dir)
+        summarize_fit(run_dir)  # second call must not raise
+        csv_path = os.path.join(run_dir, "summary", "tfs_summarize_growth_corr.csv")
+        assert os.path.islink(csv_path)
 
     def test_custom_out_prefix(self, run_dir, tmp_path):
         custom_prefix = str(tmp_path / "custom" / "myrun")
-        os.makedirs(os.path.dirname(custom_prefix), exist_ok=True)
         summarize_fit(run_dir, out_prefix=custom_prefix)
         assert os.path.exists(f"{custom_prefix}_fit_summary.json")
         assert os.path.exists(f"{custom_prefix}_theta_corr.pdf")
@@ -451,7 +529,7 @@ class TestSummarizeFitWithGroundTruth:
         _make_pred_csv(pred_path, n_training=3, extra_genotypes=["E4F"])
 
         summarize_fit(run_dir, ground_truth_file=ground_truth_file)
-        with open(os.path.join(run_dir, "tfs_summarize_fit_summary.json")) as fh:
+        with open(os.path.join(run_dir, "summary", "tfs_summarize_fit_summary.json")) as fh:
             data = json.load(fh)
         assert data["theta"]["test"] is not None
         assert data["metadata"]["n_theta_test_points"] == len(TITRANT_CONCS)
@@ -461,7 +539,7 @@ class TestSummarizeFitWithGroundTruth:
         _make_pred_csv(pred_path, n_training=3, extra_genotypes=["E4F"])
 
         summarize_fit(run_dir, ground_truth_file=ground_truth_file)
-        with open(os.path.join(run_dir, "tfs_summarize_fit_summary.json")) as fh:
+        with open(os.path.join(run_dir, "summary", "tfs_summarize_fit_summary.json")) as fh:
             data = json.load(fh)
         r = data["theta"]["test"]["pearson_r"]
         # Predictions are close to truth so r should be high
@@ -476,7 +554,7 @@ class TestSummarizeFitWithGroundTruth:
         _make_ground_truth_csv(gt_path, theta_col="theta")
 
         summarize_fit(run_dir, ground_truth_file=gt_path)
-        with open(os.path.join(run_dir, "tfs_summarize_fit_summary.json")) as fh:
+        with open(os.path.join(run_dir, "summary", "tfs_summarize_fit_summary.json")) as fh:
             data = json.load(fh)
         assert data["theta"]["test"] is not None
         assert data["metadata"]["n_theta_test_points"] == len(TITRANT_CONCS)
@@ -499,7 +577,7 @@ class TestSummarizeFitWithGroundTruth:
             summarize_fit(run_dir, ground_truth_file=gt_path)
         assert any("neither" in str(x.message).lower() for x in w)
 
-        with open(os.path.join(run_dir, "tfs_summarize_fit_summary.json")) as fh:
+        with open(os.path.join(run_dir, "summary", "tfs_summarize_fit_summary.json")) as fh:
             data = json.load(fh)
         assert data["theta"]["test"] is None
         assert data["metadata"]["n_theta_test_points"] is None
@@ -516,7 +594,7 @@ class TestSummarizeFitGraceful:
         with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
             summarize_fit(run_dir)
-        json_path = os.path.join(run_dir, "tfs_summarize_fit_summary.json")
+        json_path = os.path.join(run_dir, "summary", "tfs_summarize_fit_summary.json")
         assert os.path.exists(json_path)
         with open(json_path) as fh:
             data = json.load(fh)
@@ -533,7 +611,7 @@ class TestSummarizeFitGraceful:
         with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
             summarize_fit(run_dir)
-        with open(os.path.join(run_dir, "tfs_summarize_fit_summary.json")) as fh:
+        with open(os.path.join(run_dir, "summary", "tfs_summarize_fit_summary.json")) as fh:
             data = json.load(fh)
         assert data["theta"]["training"] is None
 
@@ -542,7 +620,7 @@ class TestSummarizeFitGraceful:
         with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
             summarize_fit(run_dir)
-        assert os.path.exists(os.path.join(run_dir, "tfs_summarize_fit_summary.json"))
+        assert os.path.exists(os.path.join(run_dir, "summary", "tfs_summarize_fit_summary.json"))
 
     def test_empty_run_dir_writes_json_with_nulls(self, tmp_path):
         empty_dir = str(tmp_path / "empty")
@@ -550,7 +628,7 @@ class TestSummarizeFitGraceful:
         with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
             summarize_fit(empty_dir)
-        json_path = os.path.join(empty_dir, "tfs_summarize_fit_summary.json")
+        json_path = os.path.join(empty_dir, "summary", "tfs_summarize_fit_summary.json")
         assert os.path.exists(json_path)
         with open(json_path) as fh:
             data = json.load(fh)
@@ -742,6 +820,37 @@ class TestTryPlotThetaFits:
             _try_plot_theta_fits(_MOCK_BINDING_WITH_STD, pred_subset,
                                  str(tmp_path / "out"))
         assert mock_plot.call_count == 2
+
+    # ------------------------------------------------------------------
+    # CSV output: one CSV per genotype alongside each PDF
+    # ------------------------------------------------------------------
+
+    def test_writes_csv_per_genotype(self, tmp_path):
+        out_prefix = str(tmp_path / "out")
+        mock_ax = self._make_mock_ax()
+        with patch(_PATCH_PLOT_THETA_FITS, return_value=mock_ax):
+            _try_plot_theta_fits(_MOCK_BINDING_WITH_STD, _MOCK_PRED_FOR_THETA, out_prefix)
+        for geno in ["wt", "A1B", "C2D"]:
+            csv_path = f"{out_prefix}_{geno}_theta_fits.csv"
+            assert os.path.exists(csv_path), f"Missing CSV for {geno}"
+            df = pd.read_csv(csv_path)
+            assert "theta_obs" in df.columns
+            assert "median" in df.columns
+            assert all(df["genotype"] == geno)
+
+    def test_csv_written_before_pdf(self, tmp_path):
+        """CSV must exist even if savefig raises."""
+        out_prefix = str(tmp_path / "out")
+        mock_ax = self._make_mock_ax()
+        mock_ax.get_figure.return_value.savefig.side_effect = RuntimeError("render failed")
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            with patch(_PATCH_PLOT_THETA_FITS, return_value=mock_ax):
+                _try_plot_theta_fits(_MOCK_BINDING_WITH_STD, _MOCK_PRED_FOR_THETA, out_prefix)
+        # savefig raised inside the try block so warn should fire, but the
+        # CSV for the first genotype (A1B, alphabetically first) must exist
+        # because it is written before savefig is called
+        assert os.path.exists(f"{out_prefix}_A1B_theta_fits.csv")
 
     # ------------------------------------------------------------------
     # Guard: plot raises
@@ -968,6 +1077,31 @@ class TestTryPlotTrajectories:
             )
         _, kwargs = mock_pdf.call_args
         assert kwargs["genotypes"] is None
+
+    # ------------------------------------------------------------------
+    # CSV output: one CSV per genotype alongside each trajectory PDF
+    # ------------------------------------------------------------------
+
+    def test_writes_csv_per_genotype(self, tmp_path):
+        (tmp_path / "run_posterior.h5").touch()
+        out_prefix = str(tmp_path / "out")
+        mock_fig = MagicMock()
+        with patch(_PATCH_READ_CONFIG, return_value=(MagicMock(), {})), \
+             patch(_PATCH_PREDICT_DF, return_value=_MOCK_PRED_DF), \
+             patch(_PATCH_PLOT_GENO, return_value=mock_fig):
+            _try_plot_trajectories(
+                config_file=str(tmp_path / "cfg.yaml"),
+                config_yaml=_CONFIG_WITH_GROWTH,
+                run_dir=str(tmp_path),
+                out_prefix=out_prefix,
+                binding_df=_MOCK_BINDING_DF,
+            )
+        for geno in sorted(_MOCK_PRED_DF["genotype"].unique().tolist(), key=str):
+            safe = geno.replace("/", "_").replace(" ", "_")
+            csv_path = f"{out_prefix}_{safe}_trajectory.csv"
+            assert os.path.exists(csv_path), f"Missing CSV for {geno}"
+            df = pd.read_csv(csv_path)
+            assert all(df["genotype"] == geno)
 
     # ------------------------------------------------------------------
     # Guard: predict_geno_trajectory_df raises
