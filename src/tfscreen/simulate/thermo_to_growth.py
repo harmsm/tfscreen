@@ -294,6 +294,7 @@ def thermo_to_growth(
     theta_rng_key,
     growth_params: dict,
     theta_priors_overrides: Optional[dict] = None,
+    theta_sim_priors_overrides: Optional[dict] = None,
     theta_noise_sigma_logit: float = 0.0,
     dk_geno_hyper_loc: float = -3.5,
     dk_geno_hyper_scale: float = 1.0,
@@ -325,7 +326,12 @@ def thermo_to_growth(
     growth_params : dict
         Per-condition growth model parameters keyed by condition string.
     theta_priors_overrides : dict or None
-        Overrides to the theta component's default hyperparameters.
+        Overrides to the theta component's default ``ModelPriors``
+        hyperparameters (prior-predictive path only; ignored when the
+        component defines ``simulate``).
+    theta_sim_priors_overrides : dict or None
+        Overrides to the theta component's ``SimPriors`` defaults
+        (perturbation path only; ignored for components without ``simulate``).
     theta_noise_sigma_logit : float, default 0.0
         Standard deviation of additive Normal noise applied on the logit
         scale after prior-predictive theta sampling, giving:
@@ -435,6 +441,7 @@ def thermo_to_growth(
         sim_data=sim_data,
         rng_key=theta_rng_key,
         priors_overrides=theta_priors_overrides,
+        sim_priors_overrides=theta_sim_priors_overrides,
     )
 
     print("Done.", flush=True)

@@ -6,14 +6,19 @@ from numpyro.handlers import trace, substitute, seed
 from collections import namedtuple
 
 # --- Import Module Under Test (MUT) ---
+import jax
+
 from tfscreen.tfmodel.generative.components.theta.hill_geno import (
     ModelPriors,
     ThetaParam,
+    SimPriors,
     define_model,
     guide,
+    simulate,
     run_model,
     get_population_moments,
     get_hyperparameters,
+    get_sim_hyperparameters,
     get_guesses,
     get_priors,
     _population_moments,
@@ -487,3 +492,144 @@ class TestHillPredictUnmeasured:
         iptg_pred   = result.loc[result["titrant_name"] == "IPTG",   "median"].values[0]
         tmaipp_pred = result.loc[result["titrant_name"] == "TMAIPP", "median"].values[0]
         assert abs(iptg_pred - tmaipp_pred) > 0.05
+
+
+# ---------------------------------------------------------------------------
+# SimPriors / get_sim_hyperparameters
+# ---------------------------------------------------------------------------
+
+def test_get_sim_hyperparameters_returns_dict():
+    params = get_sim_hyperparameters()
+    assert isinstance(params, dict)
+    for key in ["wt_theta_low", "wt_theta_high", "wt_log_K", "wt_hill_n",
+                "sigma_logit_low", "sigma_logit_delta", "sigma_log_K", "sigma_log_n",
+                "p_stuck_bound", "p_never_binds", "p_inverted"]:
+        assert key in params
+
+
+def test_sim_priors_constructs():
+    sp = SimPriors(**get_sim_hyperparameters())
+    assert isinstance(sp, SimPriors)
+    assert 0.0 < sp.wt_theta_low < 1.0
+    assert 0.0 < sp.wt_theta_high < 1.0
+    assert sp.p_stuck_bound + sp.p_never_binds + sp.p_inverted < 1.0
+
+
+# ---------------------------------------------------------------------------
+# simulate
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def sim_mock_data(mock_data):
+    """Mock data compatible with simulate() — only needs num_genotype and log_titrant_conc."""
+    return mock_data._replace(scatter_theta=0)
+
+
+def test_simulate_output_shapes(sim_mock_data):
+    rng_key = jax.random.PRNGKey(0)
+    sim_priors = SimPriors(**get_sim_hyperparameters())
+    theta_gc, theta_param = simulate("theta", sim_mock_data, sim_priors, rng_key)
+
+    G = sim_mock_data.num_genotype
+    C = sim_mock_data.num_titrant_conc
+
+    assert theta_gc.shape == (G, C)
+    assert theta_param.theta_low.shape  == (1, G)
+    assert theta_param.theta_high.shape == (1, G)
+    assert theta_param.log_hill_K.shape == (1, G)
+    assert theta_param.hill_n.shape     == (1, G)
+    assert theta_param.mu    is None
+    assert theta_param.sigma is None
+
+
+def test_simulate_theta_in_unit_interval(sim_mock_data):
+    rng_key = jax.random.PRNGKey(1)
+    sim_priors = SimPriors(**get_sim_hyperparameters())
+    theta_gc, _ = simulate("theta", sim_mock_data, sim_priors, rng_key)
+    assert np.all(theta_gc >= 0.0)
+    assert np.all(theta_gc <= 1.0)
+
+
+def test_simulate_normal_genotypes_wide_range(mock_data):
+    """With many genotypes and all normal, most curves should span > 0.5 dynamic range."""
+    WideData = namedtuple("WideData", mock_data._fields)
+    data = WideData(**{
+        **mock_data._asdict(),
+        "num_genotype": 200,
+        "log_titrant_conc": jnp.linspace(-8, 2, 20),
+        "num_titrant_conc": 20,
+        "scatter_theta": 0,
+    })
+
+    params = get_sim_hyperparameters()
+    params.update({"p_stuck_bound": 0.0, "p_never_binds": 0.0, "p_inverted": 0.0})
+    sim_priors = SimPriors(**params)
+
+    rng_key = jax.random.PRNGKey(42)
+    theta_gc, _ = simulate("theta", data, sim_priors, rng_key)
+
+    dynamic_range = np.ptp(theta_gc, axis=1)  # max - min per genotype
+    assert np.median(dynamic_range) > 0.5, (
+        f"Median dynamic range {np.median(dynamic_range):.3f} is too small"
+    )
+
+
+def test_simulate_stuck_bound_genotypes(mock_data):
+    """Stuck-bound genotypes should have near-zero dynamic range."""
+    LargeData = namedtuple("LargeData", mock_data._fields)
+    data = LargeData(**{
+        **mock_data._asdict(),
+        "num_genotype": 500,
+        "log_titrant_conc": jnp.linspace(-8, 2, 20),
+        "num_titrant_conc": 20,
+        "scatter_theta": 0,
+    })
+
+    params = get_sim_hyperparameters()
+    params.update({"p_stuck_bound": 1.0, "p_never_binds": 0.0, "p_inverted": 0.0})
+    sim_priors = SimPriors(**params)
+
+    rng_key = jax.random.PRNGKey(7)
+    theta_gc, _ = simulate("theta", data, sim_priors, rng_key)
+
+    dynamic_range = np.ptp(theta_gc, axis=1)
+    assert np.all(dynamic_range < 0.3), (
+        f"Stuck-bound genotypes should have small dynamic range; max was {dynamic_range.max():.3f}"
+    )
+
+
+def test_simulate_mixture_probabilities_error(sim_mock_data):
+    """SimPriors with mixture probabilities summing > 1 should raise."""
+    params = get_sim_hyperparameters()
+    params.update({"p_stuck_bound": 0.5, "p_never_binds": 0.5, "p_inverted": 0.2})
+    sim_priors = SimPriors(**params)
+    with pytest.raises(ValueError, match="sum to more than 1"):
+        simulate("theta", sim_mock_data, sim_priors, jax.random.PRNGKey(0))
+
+
+def test_simulate_deterministic_with_same_key(sim_mock_data):
+    """Same rng_key should produce identical results."""
+    sim_priors = SimPriors(**get_sim_hyperparameters())
+    t1, _ = simulate("theta", sim_mock_data, sim_priors, jax.random.PRNGKey(99))
+    t2, _ = simulate("theta", sim_mock_data, sim_priors, jax.random.PRNGKey(99))
+    np.testing.assert_array_equal(t1, t2)
+
+
+def test_simulate_different_keys_differ(sim_mock_data):
+    """Different rng_keys should (almost always) produce different results."""
+    sim_priors = SimPriors(**get_sim_hyperparameters())
+    t1, _ = simulate("theta", sim_mock_data, sim_priors, jax.random.PRNGKey(0))
+    t2, _ = simulate("theta", sim_mock_data, sim_priors, jax.random.PRNGKey(1))
+    assert not np.allclose(t1, t2)
+
+
+def test_simulate_theta_param_compatible_with_run_model(mock_data):
+    """ThetaParam from simulate() should be usable by run_model without error."""
+    data = mock_data._replace(scatter_theta=0)
+    sim_priors = SimPriors(**get_sim_hyperparameters())
+    _, theta_param = simulate("theta", data, sim_priors, jax.random.PRNGKey(5))
+    result = run_model(theta_param, data)
+    G = data.num_genotype
+    C = data.num_titrant_conc
+    # simulate() always produces T=1 (no per-titrant structure); run_model reflects that
+    assert result.shape == (1, C, G)

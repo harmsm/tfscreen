@@ -8,6 +8,7 @@ parameters from the model prior, making the simulation consistent with the
 model family being inferred.
 """
 
+import inspect
 import numpy as np
 from numpyro import handlers
 
@@ -20,36 +21,44 @@ _EXCLUDED = frozenset({"_simple"})
 def sample_theta_prior(component_name,
                        sim_data,
                        rng_key,
-                       priors_overrides=None):
+                       priors_overrides=None,
+                       sim_priors_overrides=None):
     """
-    Draw one sample of theta from the prior of a registered theta component.
+    Draw one sample of theta from a registered theta component.
+
+    If the component defines a ``simulate`` function (detected via
+    ``inspect.isfunction``), the perturbation-based path is used: wildtype
+    reference parameters are drawn from ``SimPriors`` built from
+    ``get_sim_hyperparameters()`` plus any ``sim_priors_overrides``.
+
+    Otherwise the prior-predictive path is used: ``define_model`` is called
+    inside a seeded NumPyro trace, and ``run_model`` produces ``theta_gc``.
 
     Parameters
     ----------
     component_name : str
-        A key in ``model_registry["theta"]`` (e.g. ``"hill"``,
-        ``"mwc_dimer_lnK_mut"``).  ``"simple"`` is not supported.
+        A key in ``model_registry["theta"]`` (e.g. ``"hill_geno"``,
+        ``"mwc_dimer_lnK_mut"``).  ``"_simple"`` is not supported.
     sim_data : SimData
         Built by ``build_sim_data``.  Must have all fields required by the
         chosen component.
     rng_key : jax.random.PRNGKey
-        Seed for the NumPyro sampler.
+        Seed for sampling (NumPyro or NumPy depending on the path taken).
     priors_overrides : dict or None
-        Key-value overrides applied to ``get_hyperparameters()`` before
-        constructing the priors object.  Use to set physical constants such
-        as ``theta_tf_total_M`` or concentration unit scales without
-        modifying the component defaults.
+        Overrides for the inference ``ModelPriors`` (prior-predictive path
+        only).  Ignored when the component provides ``simulate``.
+    sim_priors_overrides : dict or None
+        Overrides for ``SimPriors`` (perturbation path only).  Ignored when
+        the component does not provide ``simulate``.
 
     Returns
     -------
     theta : np.ndarray, shape (num_genotype, num_titrant_conc)
         Ground-truth fractional occupancy for each genotype at each unique
-        effector concentration.  Store alongside phenotype_df to enable
-        comparison with fitted posteriors.
+        effector concentration.
     theta_param : ThetaParam
-        Sampled parameter pytree (structure is model-specific).  Contains
-        the underlying equilibrium constants, Hill parameters, etc. that
-        generated ``theta``.
+        Sampled parameter pytree.  When the perturbation path is used,
+        ``mu`` and ``sigma`` fields are ``None``.
 
     Raises
     ------
@@ -71,17 +80,24 @@ def sample_theta_prior(component_name,
 
     module = theta_registry[component_name]
 
-    # Build priors: start from module defaults, then apply any overrides.
+    # Perturbation-based path: component defines a simulate() function.
+    if inspect.isfunction(getattr(module, "simulate", None)):
+        sim_params = module.get_sim_hyperparameters()
+        if sim_priors_overrides:
+            sim_params.update(sim_priors_overrides)
+        sim_priors = module.SimPriors(**sim_params)
+        return module.simulate("theta", sim_data, sim_priors, rng_key)
+
+    # Prior-predictive fallback: seed the NumPyro trace and call define_model.
+    # handlers.seed gives every pyro.sample site a reproducible draw
+    # without needing a full Predictive wrapper.  pyro.param sites return
+    # their init_value (module default) when no param_store is active,
+    # which is the correct behaviour for prior-predictive simulation.
     params = module.get_hyperparameters()
     if priors_overrides:
         params.update(priors_overrides)
     priors = module.ModelPriors(**params)
 
-    # Seed the NumPyro trace and call define_model directly.
-    # handlers.seed gives every pyro.sample site a reproducible draw
-    # without needing a full Predictive wrapper.  pyro.param sites return
-    # their init_value (module default) when no param_store is active,
-    # which is the correct behaviour for prior-predictive simulation.
     with handlers.seed(rng_seed=rng_key):
         theta_param = module.define_model("theta", sim_data, priors)
 

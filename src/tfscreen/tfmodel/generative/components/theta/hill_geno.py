@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
 from flax.struct import dataclass
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from tfscreen.tfmodel.data_class import DataClass
 
@@ -74,8 +74,63 @@ class ThetaParam:
     theta_high: jnp.ndarray
     log_hill_K: jnp.ndarray
     hill_n: jnp.ndarray
-    mu: jnp.ndarray
-    sigma: jnp.ndarray
+    mu: Optional[jnp.ndarray]
+    sigma: Optional[jnp.ndarray]
+
+
+@dataclass(frozen=True)
+class SimPriors:
+    """
+    Parameters controlling perturbation-based theta simulation for hill_geno.
+
+    Genotypes are drawn from one of four phenotype categories:
+
+    * **normal** (probability ``1 - p_stuck_bound - p_never_binds - p_inverted``):
+      Hill curve perturbed around the wildtype reference.
+    * **stuck-bound** (``p_stuck_bound``): theta ≈ ``wt_theta_low`` throughout.
+    * **never-binds** (``p_never_binds``): theta ≈ ``wt_theta_high`` throughout.
+    * **inverted** (``p_inverted``): curve runs from ``wt_theta_high`` to ``wt_theta_low``.
+
+    Attributes
+    ----------
+    wt_theta_low : float
+        Wildtype theta at zero ligand concentration.
+    wt_theta_high : float
+        Wildtype theta at saturating ligand concentration.
+    wt_log_K : float
+        Wildtype log(K_D); sets the Hill-curve midpoint.
+    wt_hill_n : float
+        Wildtype Hill coefficient (cooperativity).
+    sigma_logit_low : float
+        Std dev of additive Normal noise on logit(theta_low) for normal genotypes.
+    sigma_logit_delta : float
+        Std dev of additive Normal noise on logit_delta (= logit_high - logit_low)
+        for normal and inverted genotypes.
+    sigma_log_K : float
+        Std dev of additive Normal noise on log_K for all genotypes.
+    sigma_log_n : float
+        Std dev of additive Normal noise on log(hill_n) for all genotypes.
+    p_stuck_bound : float
+        Fraction of genotypes assigned to the stuck-bound category.
+    p_never_binds : float
+        Fraction of genotypes assigned to the never-binds category.
+    p_inverted : float
+        Fraction of genotypes assigned to the inverted category.
+    """
+
+    wt_theta_low: float
+    wt_theta_high: float
+    wt_log_K: float
+    wt_hill_n: float
+
+    sigma_logit_low: float
+    sigma_logit_delta: float
+    sigma_log_K: float
+    sigma_log_n: float
+
+    p_stuck_bound: float
+    p_never_binds: float
+    p_inverted: float
 
 
 def _population_moments(
@@ -362,6 +417,126 @@ def guide(name: str,
                       mu=mu, sigma=sigma)
 
 
+def simulate(name: str,
+             data: DataClass,
+             sim_priors: SimPriors,
+             rng_key) -> tuple:
+    """
+    Perturbation-based theta simulation for hill_geno.
+
+    Generates per-genotype Hill curves by perturbing a wildtype reference.
+    Genotypes are assigned to one of four phenotype categories (normal,
+    stuck-bound, never-binds, inverted) and their parameters drawn from
+    Normal distributions centered on the wildtype reference.
+
+    The returned ``ThetaParam`` has ``mu=None`` and ``sigma=None`` because
+    population-moment hyperparameters are not sampled in this path.  Downstream
+    ``run_model`` and ``_theta_param_to_df`` only read the per-genotype fields
+    (``theta_low``, ``theta_high``, ``log_hill_K``, ``hill_n``), so this is safe.
+
+    Parameters
+    ----------
+    name : str
+        Unused; present for interface consistency with ``define_model``.
+    data : DataClass
+        Must expose ``num_genotype`` and ``log_titrant_conc``.
+    sim_priors : SimPriors
+        Wildtype reference and perturbation distributions.
+    rng_key : jax.random.PRNGKey
+        Seed for NumPy RNG (converted internally).
+
+    Returns
+    -------
+    theta_gc : np.ndarray, shape (num_genotype, num_titrant_conc)
+        Fractional occupancy for each genotype at each unique concentration.
+    theta_param : ThetaParam
+        Per-genotype fields shape ``(1, num_genotype)``; ``mu`` and ``sigma``
+        are ``None``.
+    """
+    _eps = 1e-6
+    seed = int(jax.random.randint(rng_key, shape=(), minval=0, maxval=2**30))
+    rng = np.random.default_rng(seed)
+
+    G = data.num_genotype
+    log_conc = np.array(data.log_titrant_conc)  # (C,)
+
+    # Wildtype reference in logit space
+    wt_logit_low   = float(np.log(np.clip(sim_priors.wt_theta_low,  _eps, 1 - _eps)
+                                  / (1 - np.clip(sim_priors.wt_theta_low,  _eps, 1 - _eps))))
+    wt_logit_high  = float(np.log(np.clip(sim_priors.wt_theta_high, _eps, 1 - _eps)
+                                  / (1 - np.clip(sim_priors.wt_theta_high, _eps, 1 - _eps))))
+    wt_logit_delta = wt_logit_high - wt_logit_low
+    wt_log_n       = float(np.log(sim_priors.wt_hill_n))
+
+    # Assign phenotype categories
+    p_normal = 1.0 - sim_priors.p_stuck_bound - sim_priors.p_never_binds - sim_priors.p_inverted
+    if p_normal < 0:
+        raise ValueError(
+            "SimPriors mixture probabilities (p_stuck_bound + p_never_binds + p_inverted) "
+            "sum to more than 1.0"
+        )
+    probs = [p_normal, sim_priors.p_stuck_bound, sim_priors.p_never_binds, sim_priors.p_inverted]
+    categories = rng.choice(4, size=G, p=probs)
+
+    # Per-genotype parameters, initialised to wildtype
+    logit_low   = np.full(G, wt_logit_low)
+    logit_delta = np.full(G, wt_logit_delta)
+    log_K       = np.full(G, sim_priors.wt_log_K)
+    log_n       = np.full(G, wt_log_n)
+
+    # Category 0: normal (wildtype-like, full perturbation on all parameters)
+    m0 = categories == 0
+    n0 = int(m0.sum())
+    logit_low[m0]   += rng.normal(0.0, sim_priors.sigma_logit_low,   n0)
+    logit_delta[m0] += rng.normal(0.0, sim_priors.sigma_logit_delta, n0)
+    log_K[m0]       += rng.normal(0.0, sim_priors.sigma_log_K,       n0)
+    log_n[m0]       += rng.normal(0.0, sim_priors.sigma_log_n,       n0)
+
+    # Category 1: stuck-bound (theta ≈ wt_theta_low, near-zero transition)
+    m1 = categories == 1
+    n1 = int(m1.sum())
+    logit_low[m1]   = wt_logit_low + rng.normal(0.0, sim_priors.sigma_logit_low, n1)
+    logit_delta[m1] = rng.normal(0.0, 0.1, n1)
+    log_K[m1]       += rng.normal(0.0, sim_priors.sigma_log_K, n1)
+    log_n[m1]       += rng.normal(0.0, sim_priors.sigma_log_n, n1)
+
+    # Category 2: never-binds (theta ≈ wt_theta_high, near-zero transition)
+    m2 = categories == 2
+    n2 = int(m2.sum())
+    logit_low[m2]   = wt_logit_high + rng.normal(0.0, sim_priors.sigma_logit_low, n2)
+    logit_delta[m2] = rng.normal(0.0, 0.1, n2)
+    log_K[m2]       += rng.normal(0.0, sim_priors.sigma_log_K, n2)
+    log_n[m2]       += rng.normal(0.0, sim_priors.sigma_log_n, n2)
+
+    # Category 3: inverted (theta goes from wt_theta_high to wt_theta_low)
+    m3 = categories == 3
+    n3 = int(m3.sum())
+    logit_low[m3]   = wt_logit_high + rng.normal(0.0, sim_priors.sigma_logit_low,   n3)
+    logit_delta[m3] = -wt_logit_delta + rng.normal(0.0, sim_priors.sigma_logit_delta, n3)
+    log_K[m3]       += rng.normal(0.0, sim_priors.sigma_log_K, n3)
+    log_n[m3]       += rng.normal(0.0, sim_priors.sigma_log_n, n3)
+
+    # Convert to probability space
+    theta_low_arr  = 1.0 / (1.0 + np.exp(-logit_low))               # (G,)
+    theta_high_arr = 1.0 / (1.0 + np.exp(-(logit_low + logit_delta))) # (G,)
+    hill_n_arr     = np.exp(log_n)                                     # (G,)
+
+    # Compute theta: (G, C)
+    occupancy = 1.0 / (1.0 + np.exp(-hill_n_arr[:, None] * (log_conc[None, :] - log_K[:, None])))
+    theta_gc  = theta_low_arr[:, None] + (theta_high_arr - theta_low_arr)[:, None] * occupancy
+
+    theta_param = ThetaParam(
+        theta_low  = jnp.array(theta_low_arr)[None, :],    # (1, G)
+        theta_high = jnp.array(theta_high_arr)[None, :],   # (1, G)
+        log_hill_K = jnp.array(log_K)[None, :],            # (1, G)
+        hill_n     = jnp.array(hill_n_arr)[None, :],       # (1, G)
+        mu    = None,
+        sigma = None,
+    )
+
+    return theta_gc, theta_param
+
+
 def run_model(theta_param: ThetaParam, data: DataClass) -> jnp.ndarray:
     """
     Calculates fractional occupancy (theta) using the Hill equation.
@@ -437,6 +612,33 @@ def get_hyperparameters() -> Dict[str, Any]:
     parameters["theta_log_hill_n_hyper_scale"]      = 1.0
 
     return parameters
+
+
+def get_sim_hyperparameters() -> Dict[str, Any]:
+    """
+    Default hyperparameters for perturbation-based simulation (``SimPriors``).
+
+    Wildtype reference is a full-range decreasing Hill curve (theta: ~1→~0)
+    matching the lac/IPTG system.  Perturbation sigmas allow realistic spread
+    across the genotype library.
+
+    Returns
+    -------
+    dict[str, Any]
+    """
+    return {
+        "wt_theta_low":  0.99,
+        "wt_theta_high": 0.01,
+        "wt_log_K":      -4.1,   # ln(0.017 mM) — lac/IPTG default
+        "wt_hill_n":     2.0,
+        "sigma_logit_low":   0.5,
+        "sigma_logit_delta": 0.5,
+        "sigma_log_K":   0.5,
+        "sigma_log_n":   0.3,
+        "p_stuck_bound": 0.05,
+        "p_never_binds": 0.05,
+        "p_inverted":    0.02,
+    }
 
 
 def get_guesses(name: str, data: DataClass) -> Dict[str, Any]:

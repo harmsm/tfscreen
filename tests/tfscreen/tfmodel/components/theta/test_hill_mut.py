@@ -5,15 +5,19 @@ import numpyro.distributions as dist
 from numpyro.handlers import trace, substitute, seed
 from collections import namedtuple
 
+import jax
 from functools import partial
 from tfscreen.tfmodel.generative.components.theta.hill_mut import (
     ModelPriors,
     ThetaParam,
+    SimPriors,
     define_model,
     guide,
+    simulate,
     run_model,
     get_population_moments,
     get_hyperparameters,
+    get_sim_hyperparameters,
     get_guesses,
     get_priors,
     _assemble,
@@ -452,3 +456,211 @@ def test_get_population_moments_shape(mock_data_no_epi):
     assert mu.shape == (T, C, 1)
     assert sigma.shape == (T, C, 1)
     assert jnp.all(sigma > 0)
+
+
+# ---------------------------------------------------------------------------
+# SimPriors / get_sim_hyperparameters
+# ---------------------------------------------------------------------------
+
+def test_get_sim_hyperparameters_returns_dict():
+    params = get_sim_hyperparameters()
+    assert isinstance(params, dict)
+    for key in ["wt_theta_low", "wt_theta_high", "wt_log_K", "wt_hill_n",
+                "sigma_d_logit_low", "sigma_d_logit_delta",
+                "sigma_d_log_K", "sigma_d_log_n",
+                "epi_tau_scale", "epi_slab_scale", "epi_slab_df"]:
+        assert key in params, f"Missing key: {key}"
+
+
+def test_get_sim_hyperparameters_horseshoe_defaults_positive():
+    """Horseshoe defaults must all be strictly positive."""
+    params = get_sim_hyperparameters()
+    assert params["epi_tau_scale"]  > 0.0
+    assert params["epi_slab_scale"] > 0.0
+    assert params["epi_slab_df"]    > 0.0
+
+
+def test_sim_priors_constructs():
+    sp = SimPriors(**get_sim_hyperparameters())
+    assert isinstance(sp, SimPriors)
+    assert 0.0 < sp.wt_theta_low < 1.0
+    assert 0.0 < sp.wt_theta_high < 1.0
+    assert sp.wt_hill_n > 0.0
+    # Horseshoe attributes must exist and be non-negative
+    assert sp.epi_tau_scale  >= 0.0
+    assert sp.epi_slab_scale >= 0.0
+    assert sp.epi_slab_df    >= 0.0
+
+
+# ---------------------------------------------------------------------------
+# simulate – no epistasis
+# ---------------------------------------------------------------------------
+
+class TestSimulateNoEpi:
+
+    def test_output_shapes(self, mock_data_no_epi):
+        sp = SimPriors(**get_sim_hyperparameters())
+        theta_gc, theta_param = simulate("theta", mock_data_no_epi, sp, jax.random.PRNGKey(0))
+        G = mock_data_no_epi.num_genotype
+        C = mock_data_no_epi.num_titrant_conc
+        assert theta_gc.shape == (G, C)
+        assert theta_param.theta_low.shape  == (1, G)
+        assert theta_param.theta_high.shape == (1, G)
+        assert theta_param.log_hill_K.shape == (1, G)
+        assert theta_param.hill_n.shape     == (1, G)
+        assert theta_param.mu    is None
+        assert theta_param.sigma is None
+
+    def test_theta_in_unit_interval(self, mock_data_no_epi):
+        sp = SimPriors(**get_sim_hyperparameters())
+        theta_gc, _ = simulate("theta", mock_data_no_epi, sp, jax.random.PRNGKey(1))
+        assert np.all(theta_gc >= 0.0)
+        assert np.all(theta_gc <= 1.0)
+
+    def test_wt_genotype_exact_reference(self, mock_data_no_epi):
+        """Wildtype (column 0, no mutations) receives zero additive deltas, so
+        its assembled parameters must exactly match the WT SimPriors reference."""
+        sp = SimPriors(**get_sim_hyperparameters())
+        _, theta_param = simulate("theta", mock_data_no_epi, sp, jax.random.PRNGKey(2))
+        # Column 0 is WT: no mutation indicator → zero additive delta on every param
+        wt_theta_low  = float(theta_param.theta_low[0, 0])
+        wt_theta_high = float(theta_param.theta_high[0, 0])
+        assert abs(wt_theta_low  - sp.wt_theta_low)  < 1e-5
+        assert abs(wt_theta_high - sp.wt_theta_high) < 1e-5
+        # WT curve must be decreasing: theta goes from ~1 at low conc to ~0 at high conc
+        assert wt_theta_low > wt_theta_high
+
+    def test_mutant_differs_from_wt(self, mock_data_no_epi):
+        """With non-zero sigma_d_log_K, mutant genotypes should have a shifted K."""
+        params = get_sim_hyperparameters()
+        params["sigma_d_log_K"] = 2.0   # large effect to ensure visible shift
+        sp = SimPriors(**params)
+        theta_gc, _ = simulate("theta", mock_data_no_epi, sp, jax.random.PRNGKey(3))
+        # Single mutants (columns 1 and 2) should differ from wt (column 0) at mid-conc
+        assert not np.allclose(theta_gc[0], theta_gc[1], atol=1e-3) or \
+               not np.allclose(theta_gc[0], theta_gc[2], atol=1e-3)
+
+    def test_deterministic_same_key(self, mock_data_no_epi):
+        sp = SimPriors(**get_sim_hyperparameters())
+        t1, _ = simulate("theta", mock_data_no_epi, sp, jax.random.PRNGKey(99))
+        t2, _ = simulate("theta", mock_data_no_epi, sp, jax.random.PRNGKey(99))
+        np.testing.assert_array_equal(t1, t2)
+
+    def test_different_keys_differ(self, mock_data_no_epi):
+        sp = SimPriors(**get_sim_hyperparameters())
+        t1, _ = simulate("theta", mock_data_no_epi, sp, jax.random.PRNGKey(0))
+        t2, _ = simulate("theta", mock_data_no_epi, sp, jax.random.PRNGKey(1))
+        assert not np.allclose(t1, t2)
+
+    def test_compatible_with_run_model(self, mock_data_no_epi):
+        """ThetaParam from simulate() should be usable by run_model."""
+        data = mock_data_no_epi._replace(scatter_theta=0)
+        sp = SimPriors(**get_sim_hyperparameters())
+        _, theta_param = simulate("theta", data, sp, jax.random.PRNGKey(5))
+        result = run_model(theta_param, data)
+        G = data.num_genotype
+        C = data.num_titrant_conc
+        # simulate() always produces T=1
+        assert result.shape == (1, C, G)
+
+
+# ---------------------------------------------------------------------------
+# simulate – with epistasis
+# ---------------------------------------------------------------------------
+
+class TestSimulateEpi:
+
+    def test_output_shapes(self, mock_data_epi):
+        sp = SimPriors(**get_sim_hyperparameters())
+        theta_gc, theta_param = simulate("theta", mock_data_epi, sp, jax.random.PRNGKey(0))
+        G = mock_data_epi.num_genotype
+        C = mock_data_epi.num_titrant_conc
+        assert theta_gc.shape == (G, C)
+        assert theta_param.theta_low.shape == (1, G)
+
+    def test_theta_in_unit_interval(self, mock_data_epi):
+        sp = SimPriors(**get_sim_hyperparameters())
+        theta_gc, _ = simulate("theta", mock_data_epi, sp, jax.random.PRNGKey(7))
+        assert np.all(theta_gc >= 0.0)
+        assert np.all(theta_gc <= 1.0)
+
+    def test_epistasis_only_shifts_double_mutant(self, mock_data_epi):
+        """
+        With zero mutation deltas but non-zero epistasis, only the double-mutant
+        column (index 3) can differ from the wildtype column (index 0).
+        Single mutants (indices 1 and 2) have no pair membership, so they must
+        equal the wildtype reference regardless of the epistasis draw.
+        """
+        params = get_sim_hyperparameters()
+        params.update({
+            "sigma_d_logit_low":   0.0,
+            "sigma_d_logit_delta": 0.0,
+            "sigma_d_log_K":       0.0,
+            "sigma_d_log_n":       0.0,
+            "epi_tau_scale":  2.0,    # large τ → large horseshoe effects
+            "epi_slab_scale": 2.0,
+            "epi_slab_df":    4.0,
+        })
+        sp = SimPriors(**params)
+        theta_gc, _ = simulate("theta", mock_data_epi, sp, jax.random.PRNGKey(42))
+        # Columns 0, 1, 2 have no pair membership → must equal WT reference
+        np.testing.assert_allclose(theta_gc[0], theta_gc[1], atol=1e-6)
+        np.testing.assert_allclose(theta_gc[0], theta_gc[2], atol=1e-6)
+        # Column 3 (double mutant M42I/K84L) may differ due to epistasis
+
+    def test_epi_tau_zero_produces_no_epistasis(self, mock_data_epi):
+        """
+        epi_tau_scale=0.0 makes τ=0 exactly, so all epistasis effects are zero.
+        With zero mutation deltas too, all four genotypes must be identical.
+        """
+        params = get_sim_hyperparameters()
+        params.update({
+            "sigma_d_logit_low":   0.0,
+            "sigma_d_logit_delta": 0.0,
+            "sigma_d_log_K":       0.0,
+            "sigma_d_log_n":       0.0,
+            "epi_tau_scale":       0.0,   # hard off-switch: τ = 0 exactly
+        })
+        sp = SimPriors(**params)
+        theta_gc, _ = simulate("theta", mock_data_epi, sp, jax.random.PRNGKey(42))
+        # No mutation delta, no epistasis → all columns are the WT reference
+        np.testing.assert_allclose(theta_gc[0], theta_gc[1], atol=1e-10)
+        np.testing.assert_allclose(theta_gc[0], theta_gc[2], atol=1e-10)
+        np.testing.assert_allclose(theta_gc[0], theta_gc[3], atol=1e-10)
+
+    def test_horseshoe_larger_tau_produces_larger_effects(self, mock_data_epi):
+        """
+        Over many random seeds, a larger epi_tau_scale should produce larger
+        median absolute epistasis effects on the double-mutant log_K.
+        """
+        base = get_sim_hyperparameters()
+        base.update({
+            "sigma_d_logit_low":   0.0,
+            "sigma_d_logit_delta": 0.0,
+            "sigma_d_log_K":       0.0,
+            "sigma_d_log_n":       0.0,
+        })
+
+        def median_abs_epi(tau_scale, n=200):
+            params = dict(base)
+            params["epi_tau_scale"] = tau_scale
+            sp = SimPriors(**params)
+            effects = []
+            for seed_val in range(n):
+                _, tp = simulate("theta", mock_data_epi, sp,
+                                 jax.random.PRNGKey(seed_val))
+                # Epistasis affects col 3 (double mutant); col 0 is pure WT
+                effects.append(float(tp.log_hill_K[0, 3] - tp.log_hill_K[0, 0]))
+            return float(np.median(np.abs(effects)))
+
+        small_epi = median_abs_epi(0.1)
+        large_epi = median_abs_epi(1.0)
+        assert large_epi > small_epi, (
+            f"Expected larger tau to produce larger effects, but "
+            f"small={small_epi:.4f}, large={large_epi:.4f}")
+
+    def test_deterministic_same_key(self, mock_data_epi):
+        sp = SimPriors(**get_sim_hyperparameters())
+        t1, _ = simulate("theta", mock_data_epi, sp, jax.random.PRNGKey(11))
+        t2, _ = simulate("theta", mock_data_epi, sp, jax.random.PRNGKey(11))
+        np.testing.assert_array_equal(t1, t2)

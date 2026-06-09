@@ -105,3 +105,68 @@ def test_define_model_called_with_correct_args(mock_sim_data):
             sample_theta_prior("hill_geno", mock_sim_data, rng_key=0)
 
     mock_module.define_model.assert_called_once_with("theta", mock_sim_data, mock_priors)
+
+
+# ----------------------------------------------------------------------------
+# Perturbation-path dispatch (simulate function present)
+# ----------------------------------------------------------------------------
+
+def _make_simulate_module(G, C):
+    """Return a mock theta module that exposes a real simulate() function."""
+    mock_module = MagicMock()
+    mock_module.get_sim_hyperparameters.return_value = {"alpha": 1.0}
+    mock_module.SimPriors.return_value = MagicMock()
+
+    expected_theta = np.ones((G, C)) * 0.7
+    expected_param = MagicMock(name="theta_param")
+
+    def fake_simulate(name, data, sim_priors, rng_key):
+        return expected_theta, expected_param
+
+    mock_module.simulate = fake_simulate
+    mock_module._expected_theta = expected_theta
+    mock_module._expected_param = expected_param
+    return mock_module
+
+
+def test_dispatch_uses_simulate_when_present(mock_sim_data):
+    G = mock_sim_data.num_genotype
+    C = mock_sim_data.num_titrant_conc
+    mock_module = _make_simulate_module(G, C)
+
+    with patch("tfscreen.simulate.sample_theta.model_registry",
+               {"theta": {"hill_geno": mock_module}}):
+        theta_gc, theta_param = sample_theta_prior("hill_geno", mock_sim_data, rng_key=0)
+
+    np.testing.assert_array_equal(theta_gc, mock_module._expected_theta)
+    assert theta_param is mock_module._expected_param
+    mock_module.define_model.assert_not_called()
+
+
+def test_dispatch_prior_path_when_no_simulate(mock_sim_data):
+    """Prior-predictive path is used when simulate is not a real function."""
+    G, C = mock_sim_data.num_genotype, mock_sim_data.num_titrant_conc
+    mock_module = _make_mock_module(G, C)
+    # MagicMock.simulate is a MagicMock, not a function — should fall through to prior path
+
+    with patch("tfscreen.simulate.sample_theta.model_registry",
+               {"theta": {"hill_geno": mock_module}}):
+        with patch("tfscreen.simulate.sample_theta.handlers"):
+            sample_theta_prior("hill_geno", mock_sim_data, rng_key=0)
+
+    mock_module.define_model.assert_called_once()
+
+
+def test_sim_priors_overrides_applied(mock_sim_data):
+    G = mock_sim_data.num_genotype
+    C = mock_sim_data.num_titrant_conc
+    mock_module = _make_simulate_module(G, C)
+
+    overrides = {"alpha": 9.9}
+    with patch("tfscreen.simulate.sample_theta.model_registry",
+               {"theta": {"hill_geno": mock_module}}):
+        sample_theta_prior("hill_geno", mock_sim_data, rng_key=0,
+                           sim_priors_overrides=overrides)
+
+    call_kwargs = mock_module.SimPriors.call_args[1]
+    assert call_kwargs["alpha"] == 9.9
