@@ -65,6 +65,7 @@ from tfscreen.tfmodel.configuration_io import (
     read_configuration,
 )
 from tfscreen.plot.geno_trajectory import plot_geno_trajectory
+from tfscreen.tfmodel.analysis.prediction import predict
 
 
 # ---------------------------------------------------------------------------
@@ -96,8 +97,8 @@ _PINNED_COMPONENTS = {
         ("hyper_scale", "hyper_scale_loc"),
     ),
     "ln_cfu0": (
-        ("hyper_loc",   "ln_cfu0_hyper_loc_loc"),
-        ("hyper_scale", "ln_cfu0_hyper_scale_loc"),
+        ("hyper_loc",   "ln_cfu0_hyper_loc_locs"),
+        ("hyper_scale", "ln_cfu0_hyper_scale_locs"),
     ),
 }
 
@@ -325,7 +326,16 @@ def _inject_calibration_priors(orchestrator_cal, orchestrator_prod, theta_values
         pinned_dict = {}
         for suffix, field_name in suffix_field_pairs:
             if hasattr(comp, field_name):
-                pinned_dict[suffix] = float(getattr(comp, field_name))
+                val = getattr(comp, field_name)
+                arr = np.asarray(val)
+                if arr.ndim == 0:
+                    # Scalar field (e.g. activity hyper_loc_loc)
+                    pinned_dict[suffix] = float(arr)
+                else:
+                    # Array field (e.g. ln_cfu0 per-class arrays) — expand to
+                    # per-class entries so _hyper() finds "hyper_loc_0" etc.
+                    for i, v in enumerate(arr.flat):
+                        pinned_dict[f"{suffix}_{i}"] = float(v)
         if pinned_dict and hasattr(comp, "replace"):
             pinned_components[comp_name] = comp.replace(pinned=pinned_dict)
 
@@ -693,13 +703,26 @@ def _run_calibration_map(ri,
 # Diagnostic plots
 # ---------------------------------------------------------------------------
 
+_DIAG_PLOT_COLS = [
+    "replicate", "condition_pre", "condition_sel",
+    "titrant_name", "titrant_conc", "genotype",
+    "t_sel", "ln_cfu", "ln_cfu_std", "q05", "median", "q95",
+]
+_DIAG_CONDITION_COLS = [
+    "condition_pre", "condition_sel", "titrant_name", "titrant_conc"
+]
+
+
 def _run_calibration_diagnostics(orchestrator_cal, params, out_prefix, growth_pred_std=None):
     """
     Generate per-genotype trajectory PDFs and write correlation / stats outputs.
 
-    Delegates the trajectory plots to :func:`tfscreen.plot.plot_geno_trajectory`,
-    then uses the returned predictions DataFrame to write the goodness-of-fit
-    stats JSON and the observed-vs-predicted correlation PDF.
+    Calls :func:`~tfscreen.tfmodel.analysis.prediction.predict` at the
+    observed timepoints to obtain MAP point estimates, then iterates over
+    genotypes to save one trajectory PDF per genotype via
+    :func:`~tfscreen.plot.geno_trajectory.plot_geno_trajectory`.  Also
+    writes the goodness-of-fit stats JSON and the observed-vs-predicted
+    correlation PDF.
 
     Parameters
     ----------
@@ -713,22 +736,117 @@ def _run_calibration_diagnostics(orchestrator_cal, params, out_prefix, growth_pr
         Optional Laplace-based per-cell prediction standard deviations,
         shape ``(R, T, CP, CS, TN, TC, G)``.
     """
-    growth_df_out = plot_geno_trajectory(
-        orchestrator_cal,
-        out_prefix,
-        params=params,
-        growth_pred_std=growth_pred_std,
-    )
-    if growth_df_out is None:
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
         return
 
+    # ------------------------------------------------------------------
+    # 1. MAP predictions at the observed timepoints.
+    #    q_to_get uses "median" so the returned columns match
+    #    plot_geno_trajectory's expected column names directly.
+    # ------------------------------------------------------------------
+    all_dfs = predict(
+        orchestrator_cal,
+        params,
+        predict_sites=["growth_pred", "ln_cfu0"],
+        q_to_get={"median": 0.5, "q05": 0.05, "q95": 0.95},
+        num_samples=None,
+        num_marginal_samples=1,
+    )
+    pred_df = all_dfs["growth_pred"]
+    ln_cfu0_raw = all_dfs["ln_cfu0"]
+
+    # ------------------------------------------------------------------
+    # 2. Add ln_cfu_pred (alias for median) and optional Laplace std for
+    #    the stats / correlation helpers.
+    # ------------------------------------------------------------------
+    pred_df = pred_df.copy()
+    pred_df["ln_cfu_pred"] = pred_df["median"]
+
+    if growth_pred_std is not None:
+        tm = orchestrator_cal.growth_tm
+        try:
+            indices = tuple(
+                pred_df[f"{dim}_idx"].values for dim in tm.tensor_dim_names
+            )
+            pred_df["ln_cfu_pred_std"] = growth_pred_std[indices]
+        except (KeyError, IndexError):
+            pass
+
+    # ------------------------------------------------------------------
+    # 3. Calibration stats + observed-vs-predicted correlation.
+    # ------------------------------------------------------------------
     n_params = int(sum(np.asarray(v).size
                        for k, v in params.items()
                        if k.endswith("_auto_loc")))
-    n_obs = int(growth_df_out["ln_cfu_pred"].notna().sum())
-    _write_calibration_stats(growth_df_out, out_prefix,
+    n_obs = int(pred_df["ln_cfu_pred"].notna().sum())
+    _write_calibration_stats(pred_df, out_prefix,
                              n_params=n_params, n_obs=n_obs)
-    _make_correlation_plot(growth_df_out, out_prefix)
+    _make_correlation_plot(pred_df, out_prefix)
+
+    # ------------------------------------------------------------------
+    # 4. Build anchor rows (t_sel = -t_pre) from ln_cfu0 predictions.
+    #    Mirror the logic in predict_and_plot_geno_trajectory.
+    # ------------------------------------------------------------------
+    t_pre_df = (
+        orchestrator_cal.growth_df[["replicate", "condition_pre", "t_pre"]]
+        .drop_duplicates(subset=["replicate", "condition_pre"])
+    )
+    ln_cfu0_vals = (
+        ln_cfu0_raw[["replicate", "condition_pre", "genotype",
+                     "q05", "median", "q95"]]
+        .drop_duplicates(subset=["replicate", "condition_pre", "genotype"])
+    )
+    valid_combos = (
+        orchestrator_cal.growth_df[_DIAG_CONDITION_COLS].drop_duplicates()
+    )
+    anchor_df = (
+        ln_cfu0_vals
+        .merge(valid_combos, on="condition_pre", how="inner")
+        .merge(t_pre_df, on=["replicate", "condition_pre"], how="left")
+    )
+    anchor_df["t_sel"] = -anchor_df["t_pre"]
+    anchor_df["ln_cfu"] = np.nan
+    anchor_df["ln_cfu_std"] = np.nan
+
+    presplit_df = getattr(orchestrator_cal, "presplit_df", None)
+    if presplit_df is not None:
+        ps = presplit_df[
+            ["replicate", "condition_pre", "genotype", "ln_cfu", "ln_cfu_std"]
+        ].rename(columns={"ln_cfu": "_ps_ln", "ln_cfu_std": "_ps_ln_std"})
+        anchor_df = anchor_df.merge(
+            ps, on=["replicate", "condition_pre", "genotype"], how="left"
+        )
+        anchor_df["ln_cfu"] = anchor_df["_ps_ln"]
+        anchor_df["ln_cfu_std"] = anchor_df["_ps_ln_std"]
+        anchor_df = anchor_df.drop(columns=["_ps_ln", "_ps_ln_std"])
+
+    # ------------------------------------------------------------------
+    # 5. One trajectory PDF per genotype.
+    # ------------------------------------------------------------------
+    genotypes = sorted(pred_df["genotype"].unique().tolist(), key=str)
+    for geno in genotypes:
+        geno_pred = pred_df[pred_df["genotype"] == geno]
+        geno_anchor = anchor_df[anchor_df["genotype"] == geno]
+        geno_df = pd.concat(
+            [geno_pred[_DIAG_PLOT_COLS], geno_anchor[_DIAG_PLOT_COLS]],
+            ignore_index=True,
+        )
+        safe_name = str(geno).replace("/", "_").replace(" ", "_")
+        geno_df.to_csv(f"{out_prefix}_{safe_name}_trajectory.csv")
+        try:
+            fig = plot_geno_trajectory(geno_df)
+            safe_name = str(geno).replace("/", "_").replace(" ", "_")
+            pdf_path = f"{out_prefix}_{safe_name}_trajectory.pdf"
+            fig.savefig(pdf_path, format="pdf", bbox_inches="tight")
+            plt.close(fig)
+            print(f"  Saved {pdf_path}", flush=True)
+        except Exception as exc:
+            print(
+                f"  Warning: trajectory plot failed for {geno!r}: {exc}",
+                flush=True,
+            )
 
 
 # ---------------------------------------------------------------------------

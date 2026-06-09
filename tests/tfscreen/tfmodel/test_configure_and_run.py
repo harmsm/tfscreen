@@ -176,6 +176,25 @@ def test_read_configuration_errors(tmpdir):
         with pytest.raises(FileNotFoundError, match="Guesses file not found"):
             read_configuration(config_path)
 
+        # 7. Stale guesses file: array parameter has wrong number of values
+        guesses_path2 = os.path.join(tmpdir, "guesses_stale.csv")
+        pd.DataFrame({
+            "parameter": ["param_arr", "param_arr"],
+            "value": [1.0, 2.0],
+            "flat_index": [0, 1]
+        }).to_csv(guesses_path2, index=False)
+        with open(config_path, "w") as f:
+            yaml.dump({"data":{"growth":"g", "binding":"b"}, "components":{},
+                       "priors_file": "priors.csv", "guesses_file": "guesses_stale.csv"}, f)
+        with patch("tfscreen.tfmodel.configuration_io.ModelOrchestrator") as mock_orch_cls:
+            mock_orch_inst = mock_orch_cls.return_value
+            # Model expects shape (5,) but CSV only has 2 values
+            mock_orch_inst.init_params = {"param_arr": jnp.zeros((5,))}
+            with patch("tfscreen.tfmodel.configuration_io._update_dataclass",
+                       return_value=MagicMock()):
+                with pytest.raises(ValueError, match="stale"):
+                    read_configuration(config_path)
+
 
 # ----------------------------------------------------------------------------
 # test TFMODEL_KNOWN_KEYS / unknown-key validation in read_configuration

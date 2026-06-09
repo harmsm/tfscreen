@@ -77,6 +77,16 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
     theta_rng_seed = cf.get('theta_rng_seed', 0)
     theta_rng_key = jax.random.PRNGKey(theta_rng_seed)
 
+    dk_geno_zero = cf.get('dk_geno_zero', False)
+    if dk_geno_zero:
+        dk_geno_hyper_loc = cf.get('dk_geno_hyper_loc', -3.5)
+        dk_geno_hyper_scale = cf.get('dk_geno_hyper_scale', 1.0)
+        dk_geno_hyper_shift = cf.get('dk_geno_hyper_shift', 0.02)
+    else:
+        dk_geno_hyper_loc = cf['dk_geno_hyper_loc']
+        dk_geno_hyper_scale = cf['dk_geno_hyper_scale']
+        dk_geno_hyper_shift = cf['dk_geno_hyper_shift']
+
     # Calculate phenotype for each genotype across all conditions in sample_df
     phenotype_df, genotype_theta_df, parameters_df = thermo_to_growth(
         genotypes=library_df["genotype"],
@@ -86,9 +96,10 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
         theta_rng_key=theta_rng_key,
         growth_params=cf['growth'],
         theta_priors_overrides=cf.get('theta_priors'),
-        dk_geno_hyper_loc=cf['dk_geno_hyper_loc'],
-        dk_geno_hyper_scale=cf['dk_geno_hyper_scale'],
-        dk_geno_hyper_shift=cf['dk_geno_hyper_shift'],
+        dk_geno_hyper_loc=dk_geno_hyper_loc,
+        dk_geno_hyper_scale=dk_geno_hyper_scale,
+        dk_geno_hyper_shift=dk_geno_hyper_shift,
+        dk_geno_zero=dk_geno_zero,
         activity_wt=cf.get('activity_wt', 1.0),
         activity_mut_scale=cf.get('activity_mut_scale', 0.0),
         activity_component=cf.get('activity_component', 'fixed'),

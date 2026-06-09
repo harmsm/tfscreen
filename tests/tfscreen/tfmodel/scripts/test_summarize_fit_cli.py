@@ -8,6 +8,7 @@ Matplotlib is forced to the Agg backend so no display is required.
 import json
 import os
 import warnings
+from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")
@@ -17,12 +18,16 @@ import pandas as pd
 import pytest
 import yaml
 
+from unittest.mock import MagicMock, patch
+
 from tfscreen.tfmodel.scripts.summarize_fit_cli import (
+    _find_params_or_posterior,
     _find_unique,
     _json_safe,
     _read_all_losses,
     _read_final_loss,
     _resolve_path,
+    _try_plot_trajectories,
     summarize_fit,
 )
 
@@ -553,3 +558,300 @@ class TestSummarizeFitGraceful:
         assert data["growth"]["training"] is None
         assert data["metadata"]["n_parameters"] is None
         assert data["metadata"]["final_loss"] is None
+
+
+# ---------------------------------------------------------------------------
+# _find_params_or_posterior
+# ---------------------------------------------------------------------------
+
+class TestFindParamsOrPosterior:
+
+    def test_returns_none_when_neither_present(self, tmp_path):
+        kind, path = _find_params_or_posterior(str(tmp_path))
+        assert kind is None
+        assert path is None
+
+    def test_finds_posterior_h5(self, tmp_path):
+        (tmp_path / "run_posterior.h5").touch()
+        kind, path = _find_params_or_posterior(str(tmp_path))
+        assert kind == "posterior"
+        assert path == str(tmp_path / "run_posterior.h5")
+
+    def test_finds_params_npz(self, tmp_path):
+        (tmp_path / "run_params.npz").touch()
+        kind, path = _find_params_or_posterior(str(tmp_path))
+        assert kind == "params"
+        assert path == str(tmp_path / "run_params.npz")
+
+    def test_prefers_posterior_over_params(self, tmp_path):
+        (tmp_path / "run_posterior.h5").touch()
+        (tmp_path / "run_params.npz").touch()
+        kind, path = _find_params_or_posterior(str(tmp_path))
+        assert kind == "posterior"
+
+    def test_warns_on_multiple_posterior_files(self, tmp_path):
+        (tmp_path / "a_posterior.h5").touch()
+        (tmp_path / "b_posterior.h5").touch()
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            kind, path = _find_params_or_posterior(str(tmp_path))
+        assert kind == "posterior"
+        assert any("posterior" in str(x.message).lower() for x in w)
+
+    def test_warns_on_multiple_params_files_falls_back_to_first(self, tmp_path):
+        (tmp_path / "a_params.npz").touch()
+        (tmp_path / "b_params.npz").touch()
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            kind, path = _find_params_or_posterior(str(tmp_path))
+        assert kind == "params"
+        assert path == str(tmp_path / "a_params.npz")
+        assert any("params" in str(x.message).lower() for x in w)
+
+
+# ---------------------------------------------------------------------------
+# _try_plot_trajectories
+# ---------------------------------------------------------------------------
+
+_MOCK_BINDING_DF = pd.DataFrame({
+    "genotype": ["wt", "A1B", "C2D"],
+    "titrant_name": ["IPTG"] * 3,
+    "titrant_conc": [0.0] * 3,
+    "theta_obs": [0.1, 0.5, 0.9],
+})
+
+_CONFIG_WITH_GROWTH = {"data": {"growth": "growth.csv", "binding": "binding.csv"}}
+_CONFIG_NO_GROWTH   = {"data": {"binding": "binding.csv"}}
+
+
+class TestTryPlotTrajectories:
+
+    # ------------------------------------------------------------------
+    # Guard: no growth data in config
+    # ------------------------------------------------------------------
+
+    def test_skips_silently_when_no_growth_key(self, tmp_path):
+        with patch("tfscreen.plot.geno_trajectory.plot_geno_trajectory") as mock_pg:
+            _try_plot_trajectories(
+                config_file=str(tmp_path / "cfg.yaml"),
+                config_yaml=_CONFIG_NO_GROWTH,
+                run_dir=str(tmp_path),
+                out_prefix=str(tmp_path / "out"),
+                binding_df=_MOCK_BINDING_DF,
+            )
+        mock_pg.assert_not_called()
+
+    def test_skips_silently_when_config_yaml_is_none(self, tmp_path):
+        with patch("tfscreen.plot.geno_trajectory.plot_geno_trajectory") as mock_pg:
+            _try_plot_trajectories(
+                config_file=str(tmp_path / "cfg.yaml"),
+                config_yaml=None,
+                run_dir=str(tmp_path),
+                out_prefix=str(tmp_path / "out"),
+                binding_df=_MOCK_BINDING_DF,
+            )
+        mock_pg.assert_not_called()
+
+    # ------------------------------------------------------------------
+    # Guard: no params / posterior file
+    # ------------------------------------------------------------------
+
+    def test_warns_and_skips_when_no_pred_file(self, tmp_path):
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            with patch("tfscreen.plot.geno_trajectory.plot_geno_trajectory") as mock_pg:
+                _try_plot_trajectories(
+                    config_file=str(tmp_path / "cfg.yaml"),
+                    config_yaml=_CONFIG_WITH_GROWTH,
+                    run_dir=str(tmp_path),
+                    out_prefix=str(tmp_path / "out"),
+                    binding_df=_MOCK_BINDING_DF,
+                )
+        mock_pg.assert_not_called()
+        assert any("posterior" in str(x.message).lower() or
+                   "params" in str(x.message).lower() for x in w)
+
+    # ------------------------------------------------------------------
+    # Guard: read_configuration raises
+    # ------------------------------------------------------------------
+
+    def test_warns_and_skips_when_orchestrator_load_fails(self, tmp_path):
+        (tmp_path / "run_posterior.h5").touch()
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            with patch(
+                "tfscreen.tfmodel.configuration_io.read_configuration",
+                side_effect=RuntimeError("load failed"),
+            ), patch(
+                "tfscreen.plot.geno_trajectory.plot_geno_trajectory"
+            ) as mock_pg:
+                _try_plot_trajectories(
+                    config_file=str(tmp_path / "cfg.yaml"),
+                    config_yaml=_CONFIG_WITH_GROWTH,
+                    run_dir=str(tmp_path),
+                    out_prefix=str(tmp_path / "out"),
+                    binding_df=_MOCK_BINDING_DF,
+                )
+        mock_pg.assert_not_called()
+        assert any("trajectory" in str(x.message).lower() for x in w)
+
+    # ------------------------------------------------------------------
+    # Happy path: posterior.h5 present
+    # ------------------------------------------------------------------
+
+    def test_calls_plot_with_posterior_file_when_h5_present(self, tmp_path):
+        h5_path = str(tmp_path / "run_posterior.h5")
+        (tmp_path / "run_posterior.h5").touch()
+        mock_orch = MagicMock()
+        with patch(
+            "tfscreen.tfmodel.configuration_io.read_configuration",
+            return_value=(mock_orch, {}),
+        ), patch(
+            "tfscreen.plot.geno_trajectory.plot_geno_trajectory"
+        ) as mock_pg:
+            _try_plot_trajectories(
+                config_file=str(tmp_path / "cfg.yaml"),
+                config_yaml=_CONFIG_WITH_GROWTH,
+                run_dir=str(tmp_path),
+                out_prefix=str(tmp_path / "out"),
+                binding_df=_MOCK_BINDING_DF,
+            )
+        mock_pg.assert_called_once()
+        _, kwargs = mock_pg.call_args
+        assert kwargs.get("posterior_file") == h5_path
+        assert "params" not in kwargs
+
+    # ------------------------------------------------------------------
+    # Happy path: only params.npz present (fallback)
+    # ------------------------------------------------------------------
+
+    def test_calls_plot_with_params_when_only_npz_present(self, tmp_path):
+        npz_path = str(tmp_path / "run_params.npz")
+        (tmp_path / "run_params.npz").touch()
+        mock_orch = MagicMock()
+        with patch(
+            "tfscreen.tfmodel.configuration_io.read_configuration",
+            return_value=(mock_orch, {}),
+        ), patch(
+            "tfscreen.plot.geno_trajectory.plot_geno_trajectory"
+        ) as mock_pg:
+            _try_plot_trajectories(
+                config_file=str(tmp_path / "cfg.yaml"),
+                config_yaml=_CONFIG_WITH_GROWTH,
+                run_dir=str(tmp_path),
+                out_prefix=str(tmp_path / "out"),
+                binding_df=_MOCK_BINDING_DF,
+            )
+        mock_pg.assert_called_once()
+        _, kwargs = mock_pg.call_args
+        assert kwargs.get("params") == npz_path
+        assert "posterior_file" not in kwargs
+
+    # ------------------------------------------------------------------
+    # Genotype list derived from binding_df
+    # ------------------------------------------------------------------
+
+    def test_passes_genotypes_from_binding_df(self, tmp_path):
+        (tmp_path / "run_posterior.h5").touch()
+        mock_orch = MagicMock()
+        with patch(
+            "tfscreen.tfmodel.configuration_io.read_configuration",
+            return_value=(mock_orch, {}),
+        ), patch(
+            "tfscreen.plot.geno_trajectory.plot_geno_trajectory"
+        ) as mock_pg:
+            _try_plot_trajectories(
+                config_file=str(tmp_path / "cfg.yaml"),
+                config_yaml=_CONFIG_WITH_GROWTH,
+                run_dir=str(tmp_path),
+                out_prefix=str(tmp_path / "out"),
+                binding_df=_MOCK_BINDING_DF,
+            )
+        _, kwargs = mock_pg.call_args
+        assert set(kwargs["genotypes"]) == {"wt", "A1B", "C2D"}
+
+    def test_passes_none_genotypes_when_binding_df_is_none(self, tmp_path):
+        (tmp_path / "run_posterior.h5").touch()
+        mock_orch = MagicMock()
+        with patch(
+            "tfscreen.tfmodel.configuration_io.read_configuration",
+            return_value=(mock_orch, {}),
+        ), patch(
+            "tfscreen.plot.geno_trajectory.plot_geno_trajectory"
+        ) as mock_pg:
+            _try_plot_trajectories(
+                config_file=str(tmp_path / "cfg.yaml"),
+                config_yaml=_CONFIG_WITH_GROWTH,
+                run_dir=str(tmp_path),
+                out_prefix=str(tmp_path / "out"),
+                binding_df=None,
+            )
+        _, kwargs = mock_pg.call_args
+        assert kwargs["genotypes"] is None
+
+    # ------------------------------------------------------------------
+    # Guard: plot_geno_trajectory itself raises
+    # ------------------------------------------------------------------
+
+    def test_warns_gracefully_when_plot_raises(self, tmp_path):
+        (tmp_path / "run_posterior.h5").touch()
+        mock_orch = MagicMock()
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            with patch(
+                "tfscreen.tfmodel.configuration_io.read_configuration",
+                return_value=(mock_orch, {}),
+            ), patch(
+                "tfscreen.plot.geno_trajectory.plot_geno_trajectory",
+                side_effect=RuntimeError("plot failed"),
+            ):
+                _try_plot_trajectories(
+                    config_file=str(tmp_path / "cfg.yaml"),
+                    config_yaml=_CONFIG_WITH_GROWTH,
+                    run_dir=str(tmp_path),
+                    out_prefix=str(tmp_path / "out"),
+                    binding_df=_MOCK_BINDING_DF,
+                )
+        assert any("trajectory" in str(x.message).lower() for x in w)
+
+    # ------------------------------------------------------------------
+    # Integration: summarize_fit calls _try_plot_trajectories
+    # ------------------------------------------------------------------
+
+    def test_summarize_fit_calls_plot_when_h5_and_growth_config_present(self, run_dir):
+        # Add a growth key to the config and a fake posterior file.
+        config_path = os.path.join(run_dir, "run_config.yaml")
+        with open(config_path) as fh:
+            cfg = yaml.safe_load(fh)
+        cfg["data"]["growth"] = "growth.csv"
+        with open(config_path, "w") as fh:
+            yaml.dump(cfg, fh)
+        (Path(run_dir) / "run_posterior.h5").touch()
+
+        with patch(
+            "tfscreen.tfmodel.configuration_io.read_configuration",
+            return_value=(MagicMock(), {}),
+        ), patch(
+            "tfscreen.plot.geno_trajectory.plot_geno_trajectory"
+        ) as mock_pg:
+            summarize_fit(run_dir)
+
+        mock_pg.assert_called_once()
+
+    def test_summarize_fit_skips_plot_when_no_pred_file(self, run_dir):
+        config_path = os.path.join(run_dir, "run_config.yaml")
+        with open(config_path) as fh:
+            cfg = yaml.safe_load(fh)
+        cfg["data"]["growth"] = "growth.csv"
+        with open(config_path, "w") as fh:
+            yaml.dump(cfg, fh)
+        # No posterior.h5 or params.npz written.
+
+        with patch(
+            "tfscreen.plot.geno_trajectory.plot_geno_trajectory"
+        ) as mock_pg:
+            with warnings.catch_warnings(record=True):
+                warnings.simplefilter("always")
+                summarize_fit(run_dir)
+
+        mock_pg.assert_not_called()

@@ -143,6 +143,28 @@ def test_assign_dk_geno_distribution(rng):
     assert (result <= 0.02).all()
 
 
+def test_assign_dk_geno_fixed_value_zero():
+    genotypes = ["wt", "A1B", "C2D", "A1B/C2D"]
+    result = _assign_dk_geno(genotypes, fixed_value=0.0)
+    assert isinstance(result, pd.Series)
+    assert set(result.index) == set(genotypes)
+    np.testing.assert_array_equal(result.values, 0.0)
+
+
+def test_assign_dk_geno_fixed_value_nonzero():
+    genotypes = ["wt", "A1B", "C2D"]
+    result = _assign_dk_geno(genotypes, fixed_value=-0.05)
+    np.testing.assert_array_equal(result.values, -0.05)
+
+
+def test_assign_dk_geno_fixed_value_skips_rng():
+    """fixed_value must not call the RNG — result is identical regardless of seed."""
+    genotypes = ["wt", "A1B", "C2D"]
+    r1 = _assign_dk_geno(genotypes, fixed_value=0.0, rng=np.random.default_rng(1))
+    r2 = _assign_dk_geno(genotypes, fixed_value=0.0, rng=np.random.default_rng(2))
+    np.testing.assert_array_equal(r1.values, r2.values)
+
+
 # ----------------------------------------------------------------------------
 # test _apply_growth_params
 # ----------------------------------------------------------------------------
@@ -432,6 +454,83 @@ def test_thermo_to_growth_propagates_rng(
     call_args = mock_assign_dk.call_args
     passed_rng = call_args.args[4] if call_args.args else call_args.kwargs.get("rng")
     assert passed_rng is rng
+
+
+def test_thermo_to_growth_dk_geno_zero_sets_all_to_zero(
+    mocker, test_genotypes, test_sample_df, simple_growth_params
+):
+    """dk_geno_zero=True must set dk_geno=0 for every genotype."""
+    concs = np.array([10.0, 100.0])
+    theta_gc = np.full((3, 2), 0.5)
+    sim_data = _make_sim_data_mock(test_genotypes, concs)
+    _patch_thermo_deps(mocker, test_genotypes, test_sample_df, theta_gc)
+
+    phenotype_df, _, parameters_df = thermo_to_growth(
+        genotypes=test_genotypes,
+        sim_data=sim_data,
+        sample_df=test_sample_df,
+        theta_component="mock",
+        theta_rng_key=0,
+        growth_params=simple_growth_params,
+        dk_geno_zero=True,
+    )
+
+    np.testing.assert_array_equal(phenotype_df["dk_geno"].values, 0.0)
+    np.testing.assert_array_equal(parameters_df["dk_geno"].values, 0.0)
+
+
+def test_thermo_to_growth_dk_geno_zero_passes_fixed_value(
+    mocker, test_genotypes, test_sample_df, simple_growth_params
+):
+    """dk_geno_zero=True must pass fixed_value=0.0 to _assign_dk_geno."""
+    concs = np.array([10.0, 100.0])
+    theta_gc = np.zeros((3, 2))
+    sim_data = _make_sim_data_mock(test_genotypes, concs)
+    _patch_thermo_deps(mocker, test_genotypes, test_sample_df, theta_gc)
+
+    mock_assign_dk = mocker.patch(
+        "tfscreen.simulate.thermo_to_growth._assign_dk_geno",
+        return_value=pd.Series({"wt": 0.0, "A1B": 0.0, "A1B/C2D": 0.0}),
+    )
+
+    thermo_to_growth(
+        genotypes=test_genotypes,
+        sim_data=sim_data,
+        sample_df=test_sample_df,
+        theta_component="mock",
+        theta_rng_key=0,
+        growth_params=simple_growth_params,
+        dk_geno_zero=True,
+    )
+
+    assert mock_assign_dk.call_args.kwargs.get("fixed_value") == 0.0
+
+
+def test_thermo_to_growth_dk_geno_zero_false_passes_none(
+    mocker, test_genotypes, test_sample_df, simple_growth_params
+):
+    """dk_geno_zero=False (default) must pass fixed_value=None to _assign_dk_geno."""
+    concs = np.array([10.0, 100.0])
+    theta_gc = np.zeros((3, 2))
+    sim_data = _make_sim_data_mock(test_genotypes, concs)
+    _patch_thermo_deps(mocker, test_genotypes, test_sample_df, theta_gc)
+
+    mock_assign_dk = mocker.patch(
+        "tfscreen.simulate.thermo_to_growth._assign_dk_geno",
+        return_value=pd.Series({"wt": 0.0, "A1B": 0.0, "A1B/C2D": 0.0}),
+    )
+
+    thermo_to_growth(
+        genotypes=test_genotypes,
+        sim_data=sim_data,
+        sample_df=test_sample_df,
+        theta_component="mock",
+        theta_rng_key=0,
+        growth_params=simple_growth_params,
+        dk_geno_zero=False,
+    )
+
+    assert mock_assign_dk.call_args.kwargs.get("fixed_value") is None
 
 
 # ============================================================================

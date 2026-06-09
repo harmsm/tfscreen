@@ -8,6 +8,65 @@ from jax import numpy as jnp
 from numpyro.handlers import seed, trace
 from numpyro.infer import Predictive
 
+def _align_site_to_tm_dims(spatial_shape, tm_sizes):
+    """
+    Map each axis of a predicted site's spatial_shape to the correct
+    TensorManager dimension index.
+
+    Right-to-left alignment is tried first.  It is correct when the
+    non-broadcast site dimensions are tail-aligned with the TM ordering —
+    e.g. growth_pred (7-D, full TM rank) or theta_growth_pred (7-D with
+    broadcast size-1 dims on the left).
+
+    For sites whose non-broadcast dims are NOT tail-aligned — notably ln_cfu0
+    with shape (n_rep, n_cp, n_geno) where n_rep and n_cp sit at TM positions
+    0 and 2 rather than at the tail — we fall back to a greedy left-to-right
+    subsequence search through tm_sizes.
+
+    Parameters
+    ----------
+    spatial_shape : tuple of int
+        Shape of the prediction site with the sample axis removed.
+    tm_sizes : tuple of int
+        Sizes of each TensorManager dimension in order.
+
+    Returns
+    -------
+    list of int
+        tm_dims[i] is the TM dimension index for spatial_shape[i].
+    """
+    n_tm = len(tm_sizes)
+    n_sp = len(spatial_shape)
+
+    rt_dims = [n_tm - n_sp + i for i in range(n_sp)]
+
+    # Check whether non-broadcast axes agree with their right-to-left positions.
+    rt_ok = all(
+        spatial_shape[i] == tm_sizes[rt_dims[i]]
+        for i in range(n_sp)
+        if spatial_shape[i] != 1
+    )
+    if rt_ok:
+        return rt_dims
+
+    # Right-to-left is wrong: greedy left-to-right subsequence match on
+    # non-broadcast dims.  Size-1 (broadcast) dims keep their rt_dims entry
+    # because modulo makes the exact TM position irrelevant.
+    result = list(rt_dims)
+    j = 0
+    for i in range(n_sp):
+        if spatial_shape[i] == 1:
+            continue
+        while j < n_tm and tm_sizes[j] != spatial_shape[i]:
+            j += 1
+        if j >= n_tm:
+            return rt_dims  # No match — fall back to right-to-left
+        result[i] = j
+        j += 1
+
+    return result
+
+
 def copy_orchestrator(orchestrator,
                       t_pre=None,
                       t_sel=None,
@@ -104,23 +163,29 @@ def copy_orchestrator(orchestrator,
 
 def _convert_map_params(map_params, model_trace):
     """
-    Convert a raw MAP parameter dict to a constrained posterior dict.
+    Convert a raw MAP parameter dict to a posterior dict suitable for Predictive.
 
-    ``AutoDelta`` guide parameters are stored in *unconstrained* space with
-    ``{site}_auto_loc`` keys.  ``Predictive(posterior_samples=...)`` expects
-    values in *constrained* space keyed by bare site name, with a leading
-    sample dimension.  This function applies the per-site bijection and adds
-    that dimension so the rest of :func:`predict` can treat the MAP point as
-    a 1-sample posterior.
+    ``AutoDelta`` guide parameters are stored in *constrained* space with
+    ``{site}_auto_loc`` keys because ``RunInference.write_params`` calls
+    ``svi.get_params(svi_state)``, which applies the SVI ``constrain_fn``
+    before saving.  ``Predictive(posterior_samples=...)`` expects values keyed
+    by bare site name with a leading sample dimension.  This function strips
+    the ``_auto_loc`` suffix and adds that dimension so the rest of
+    :func:`predict` can treat the MAP point as a 1-sample posterior.
+
+    .. note::
+        Do **not** apply ``biject_to`` or any other transform here.  The values
+        are already constrained; a second transform would corrupt positive-
+        constrained sites (e.g. ``ln_cfu0_hyper_scale``) by applying ``exp``
+        to a value that is already in positive space.
 
     Parameters
     ----------
     map_params : dict-like
         Raw MAP parameter dict (e.g., from ``np.load("_params.npz")``).
-        All keys must end with ``_auto_loc``.
+        Keys end with ``_auto_loc``; values are already in constrained space.
     model_trace : dict
-        NumPyro model trace produced by ``numpyro.handlers.trace``.  Used to
-        look up the ``fn.support`` bijection for each latent site.
+        NumPyro model trace (unused; retained for interface compatibility).
 
     Returns
     -------
@@ -128,8 +193,6 @@ def _convert_map_params(map_params, model_trace):
         Constrained values keyed by bare site name, each with shape
         ``(1, *site_shape)``.
     """
-    from numpyro.distributions.transforms import biject_to
-
     constrained = {}
     for k, v in map_params.items():
         k = str(k)
@@ -137,14 +200,8 @@ def _convert_map_params(map_params, model_trace):
             continue
         site_name = k[: -len("_auto_loc")]
         val = jnp.array(np.asarray(v))
-
-        site = model_trace.get(site_name)
-        if (site is not None
-                and site["type"] == "sample"
-                and not site.get("is_observed", False)):
-            val = biject_to(site["fn"].support)(val)
-
-        # Add the leading sample dimension expected by predict().
+        # Values are already constrained (svi.get_params() applied constrain_fn).
+        # Add the leading sample dimension expected by Predictive.
         constrained[site_name] = jnp.expand_dims(val, 0)
 
     return constrained
@@ -260,9 +317,10 @@ def predict(orchestrator,
     # MAP param conversion (if needed)
     #
     # Raw MAP params from RunInference.write_params() / np.load("_params.npz")
-    # have keys like ``{site}_auto_loc`` in *unconstrained* space and no
-    # leading sample dimension.  Convert them to constrained space with a
-    # size-1 leading dim so the rest of this function treats them as a
+    # have keys like ``{site}_auto_loc`` in *constrained* space (because
+    # write_params receives the output of svi.get_params(), which applies
+    # constrain_fn) and no leading sample dimension.  Rename the keys and add
+    # a size-1 leading dim so the rest of this function treats them as a
     # 1-sample posterior.
     #
     # Genuine posterior files produced by get_posteriors() / get_map_posteriors()
@@ -337,15 +395,20 @@ def predict(orchestrator,
     # -------------------------------------------------------------------------
     # Run Prediction
     
-    predictive = Predictive(new_orchestrator.jax_model, 
-                            posterior_samples=sliced_samples, 
+    predictive = Predictive(new_orchestrator.jax_model,
+                            posterior_samples=sliced_samples,
                             return_sites=predict_sites)
-    
+
     # We need a key, even if not used for randomness in deterministic sites
-    predict_key = jax.random.PRNGKey(0) 
-    predictions = predictive(predict_key, 
-                             data=subset_data, 
-                             priors=new_orchestrator.priors)
+    predict_key = jax.random.PRNGKey(0)
+    # Use the ORIGINAL orchestrator's priors so that any pinned hyperpriors
+    # (e.g. activity_hyper_loc/activity_hyper_scale in the calibration model)
+    # remain pinned at their calibrated values rather than being sampled from
+    # the default prior.  new_orchestrator is rebuilt from settings-only
+    # (component names, no priors) so its priors are all-default.
+    predictions = predictive(predict_key,
+                             data=subset_data,
+                             priors=orchestrator.priors)
     
     # -------------------------------------------------------------------------
     # Calculate Quantiles and Join
@@ -384,17 +447,21 @@ def predict(orchestrator,
     # Update indices for genotype to be relative for the prediction tensor
     indices[-1] = relative_geno_indices
 
+    # TM dimension sizes matching the current (possibly genotype-subsetted) indices.
+    tm_sizes = tuple(int(idx.max()) + 1 if len(idx) > 0 else 1 for idx in indices)
+
     all_dfs = {}
     for site in predict_sites:
         site_samples = predictions[site]  # shape: (num_samples, ...)
 
-        # Compute the per-row index tuple once — shape is the same for every
-        # quantile and for individual sample draws.
-        # q_arr drops the leading sample axis, so spatial_shape == site_samples.shape[1:].
-        # We align right-to-left and use modulo to handle size-1 broadcast axes.
+        # Map each axis of the site's spatial shape to the correct TM dimension.
+        # Right-to-left alignment works for full-rank and tail-aligned sites;
+        # _align_site_to_tm_dims falls back to subsequence matching for sites
+        # like ln_cfu0 whose batch dims are not at the tail of the TM ordering.
         spatial_shape = site_samples.shape[1:]
+        tm_dims = _align_site_to_tm_dims(spatial_shape, tm_sizes)
         aligned_indices = tuple(
-            indices[len(indices) - len(spatial_shape) + i] % spatial_shape[i]
+            indices[tm_dims[i]] % spatial_shape[i]
             for i in range(len(spatial_shape))
         )
 
@@ -408,7 +475,7 @@ def predict(orchestrator,
         has_broadcast = any(sz == 1 for sz in spatial_shape)
         if has_broadcast:
             nontrivial_tm_idx = [
-                len(indices) - len(spatial_shape) + i
+                tm_dims[i]
                 for i, sz in enumerate(spatial_shape) if sz > 1
             ]
             if nontrivial_tm_idx:

@@ -3,10 +3,10 @@ import pandas as pd
 import numpy as np
 import jax.numpy as jnp
 import numpyro.distributions as dist
-from numpyro.distributions.transforms import biject_to
+from unittest.mock import MagicMock, patch
 
 from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
-from tfscreen.tfmodel.analysis.prediction import copy_orchestrator, _convert_map_params
+from tfscreen.tfmodel.analysis.prediction import copy_orchestrator, _convert_map_params, _align_site_to_tm_dims, predict
 
 @pytest.fixture
 def dummy_orchestrator():
@@ -107,10 +107,10 @@ def fake_trace():
     Minimal model trace for testing _convert_map_params.
 
     Includes:
-    - an unconstrained site (Normal → real support → identity bijection)
-    - a positive-constrained site (HalfNormal → positive support → softplus bijection)
-    - an observed site (must be ignored)
-    - a deterministic site (must be ignored)
+    - an unconstrained site (Normal → real support)
+    - a positive-constrained site (HalfNormal → positive support)
+    - an observed site (must be passed through with raw value)
+    - a deterministic site (must be ignored — no _auto_loc key)
     """
     return {
         "real_site": {
@@ -157,7 +157,7 @@ class TestConvertMapParams:
             )
 
     def test_identity_for_unconstrained_site(self, fake_trace):
-        """Normal (real support) site value is unchanged by the bijection."""
+        """Normal (real support) site value is passed through unchanged."""
         raw_val = np.array(-2.3)
         map_params = {"real_site_auto_loc": raw_val}
         out = _convert_map_params(map_params, fake_trace)
@@ -167,17 +167,35 @@ class TestConvertMapParams:
             rtol=1e-5,
         )
 
-    def test_bijection_for_positive_site(self, fake_trace):
-        """HalfNormal (positive support) site value is transformed to be positive."""
-        raw_val = np.array(-3.0)   # arbitrary unconstrained value
+    def test_positive_site_passes_through_unchanged(self, fake_trace):
+        """HalfNormal (positive support) site value is passed through as-is.
+
+        RunInference.write_params() calls svi.get_params(), which applies
+        constrain_fn before saving, so stored _auto_loc values are already in
+        constrained (positive) space.  _convert_map_params must NOT apply a
+        second bijection.
+
+        Regression: a previous version incorrectly called biject_to(positive)
+        (== ExpTransform) on the stored value, mapping e.g. 2.09 → exp(2.09)
+        = 8.09 instead of leaving it as 2.09.  This corrupted ln_cfu0 for
+        library genotypes (which use a sampled HalfNormal scale) while leaving
+        wt predictions unaffected (wt uses a fixed prior scale).
+        """
+        # Use the real-world value from prefit9 that exposed the bug.
+        raw_val = np.array(2.09)   # already constrained (positive)
         map_params = {"positive_site_auto_loc": raw_val}
         out = _convert_map_params(map_params, fake_trace)
         constrained = float(out["positive_site"][0])
-        # Result must be strictly positive.
-        assert constrained > 0, f"Expected positive constrained value, got {constrained}"
-        # Must match what biject_to gives.
-        expected = float(biject_to(dist.HalfNormal(1.0).support)(jnp.array(raw_val)))
-        np.testing.assert_allclose(constrained, expected, rtol=1e-5)
+
+        # Value must pass through unchanged — no bijection should be applied.
+        np.testing.assert_allclose(constrained, float(raw_val), rtol=1e-5,
+                                   err_msg="positive site value should not be re-transformed")
+
+        # Explicit guard against the old bug: exp(2.09) ≈ 8.09, not 2.09.
+        assert abs(constrained - float(np.exp(raw_val))) > 1.0, (
+            f"Output ({constrained:.4f}) looks like exp(input) "
+            f"({float(np.exp(raw_val)):.4f}) — biject_to was probably re-introduced"
+        )
 
     def test_observed_site_ignored(self, fake_trace):
         """Keys whose site is marked is_observed are not converted."""
@@ -186,13 +204,8 @@ class TestConvertMapParams:
             "observed_site_auto_loc": np.array(1.0),
         }
         out = _convert_map_params(map_params, fake_trace)
-        # observed_site should still appear (key is not filtered by _convert_map_params
-        # — it has no _auto_loc guard in the trace loop, so the bijection path is
-        # simply skipped and the raw value is passed through with leading dim).
-        # The important thing: real_site IS bijected, observed_site is NOT blocked.
+        # Both sites should appear with their raw values and a leading sample dim.
         assert "real_site" in out
-        # observed_site: site is_observed=True so bijection branch is skipped;
-        # value should be expanded raw value.
         assert "observed_site" in out
         assert out["observed_site"].shape[0] == 1
 
@@ -222,3 +235,134 @@ class TestConvertMapParams:
         out = _convert_map_params(map_params, fake_trace)
         assert "mystery_site" in out
         np.testing.assert_allclose(float(out["mystery_site"][0]), 5.0)
+
+
+# ---------------------------------------------------------------------------
+# _align_site_to_tm_dims
+# ---------------------------------------------------------------------------
+
+# TM dim order: rep=2, t=3, cp=2, cs=1, tn=1, tc=8, geno=473
+_TM_SIZES = (2, 3, 2, 1, 1, 8, 473)
+
+
+class TestAlignSiteToTmDims:
+    def test_full_rank_identity(self):
+        """A 7-D site matching TM exactly maps to [0,1,2,3,4,5,6]."""
+        spatial = (2, 3, 2, 1, 1, 8, 473)
+        assert _align_site_to_tm_dims(spatial, _TM_SIZES) == [0, 1, 2, 3, 4, 5, 6]
+
+    def test_tail_aligned_1d(self):
+        """A 1-D site of size 473 should map to the last TM dim (geno)."""
+        assert _align_site_to_tm_dims((473,), _TM_SIZES) == [6]
+
+    def test_tail_aligned_2d(self):
+        """(8, 473) should map to TM dims [5, 6] (titrant_conc, geno)."""
+        assert _align_site_to_tm_dims((8, 473), _TM_SIZES) == [5, 6]
+
+    def test_broadcast_left_padding(self):
+        """theta_growth_pred shape (1,1,1,1,1,8,473) — non-broadcast tail match."""
+        spatial = (1, 1, 1, 1, 1, 8, 473)
+        result = _align_site_to_tm_dims(spatial, _TM_SIZES)
+        # Size-1 dims use right-to-left (modulo-safe); non-broadcast dims are [5, 6].
+        assert result[5] == 5
+        assert result[6] == 6
+
+    def test_ln_cfu0_shape(self):
+        """ln_cfu0 shape (2, 2, 473) should map to TM dims [0, 2, 6] = rep, cp, geno."""
+        assert _align_site_to_tm_dims((2, 2, 473), _TM_SIZES) == [0, 2, 6]
+
+    def test_ln_cfu0_tube_offset_shape(self):
+        """(n_rep, n_cp) = (2, 2) maps to TM dims [0, 2]."""
+        assert _align_site_to_tm_dims((2, 2), _TM_SIZES) == [0, 2]
+
+    def test_single_geno_dim(self):
+        """1-D (473,) still maps to geno regardless of other TM sizes."""
+        tm = (5, 3, 7, 473)
+        assert _align_site_to_tm_dims((473,), tm) == [3]
+
+    def test_fallback_to_right_to_left_on_no_match(self):
+        """If subsequence matching fails, right-to-left is returned."""
+        # spatial size 999 is not in any TM dim
+        result = _align_site_to_tm_dims((999,), _TM_SIZES)
+        assert result == [6]  # right-to-left: len=7, n_sp=1 → 7-1+0=6
+
+
+# ---------------------------------------------------------------------------
+# predict() — priors propagation
+# ---------------------------------------------------------------------------
+
+class TestPredictPriorsPropagate:
+    """
+    Verify that predict() uses orchestrator.priors (the original calibration
+    priors, which may contain pinned hyperpriors) when calling Predictive,
+    not new_orchestrator.priors (the copy's default/reset priors).
+
+    Regression test for the bug where copy_orchestrator() always creates
+    priors with default values (e.g. theta_values=[[0.5]]) which would be
+    used instead of the fitted calibration priors.
+    """
+
+    def test_predict_passes_original_priors_to_predictive(self, dummy_orchestrator, mocker):
+        """
+        predict() must forward orchestrator.priors (not copy's priors) to
+        the Predictive call.  We patch Predictive to capture what priors
+        argument was passed and assert it is the ORIGINAL orchestrator's
+        priors object.
+        """
+        original_priors = dummy_orchestrator.priors
+        # Sanity-check: copy_orchestrator creates an orchestrator whose priors
+        # differ from the original (defaults are reset on copy).
+        copy_orch = copy_orchestrator(dummy_orchestrator)
+        # Priors are not the same object (copy builds fresh defaults).
+        assert copy_orch.priors is not original_priors
+
+        # Capture the priors argument that reach Predictive.__call__.
+        captured = {}
+
+        real_predictive_class = __import__(
+            "numpyro.infer", fromlist=["Predictive"]
+        ).Predictive
+
+        class CapturingPredictive:
+            """Thin wrapper that records the priors kwarg then delegates."""
+            def __init__(self, *args, **kwargs):
+                self._inner = real_predictive_class(*args, **kwargs)
+
+            def __call__(self, rng_key, **kwargs):
+                captured["priors"] = kwargs.get("priors")
+                return self._inner(rng_key, **kwargs)
+
+        mocker.patch(
+            "tfscreen.tfmodel.analysis.prediction.Predictive",
+            CapturingPredictive,
+        )
+
+        # Build a trivial 1-sample posterior dict (MAP-style, no _auto_loc).
+        # Just need the latent sites that exist in the dummy model trace.
+        from numpyro.handlers import seed, trace as nptrace
+        seeded = seed(dummy_orchestrator.jax_model, rng_seed=0)
+        model_tr = nptrace(seeded).get_trace(
+            data=dummy_orchestrator.data,
+            priors=dummy_orchestrator.priors,
+        )
+        fake_posteriors = {
+            name: np.zeros((1,) + site["value"].shape)
+            for name, site in model_tr.items()
+            if site["type"] == "sample" and not site.get("is_observed", False)
+        }
+
+        predict(
+            dummy_orchestrator,
+            fake_posteriors,
+            predict_sites=["growth_pred"],
+            num_samples=None,
+        )
+
+        assert "priors" in captured, "CapturingPredictive was never called"
+        assert captured["priors"] is original_priors, (
+            "predict() passed the copy's priors to Predictive instead of "
+            "the original orchestrator's priors.  This regression means "
+            "pinned hyperpriors (e.g. activity_hyper_loc/scale in the "
+            "calibration model) will be randomly re-sampled from the "
+            "default prior, producing wildly incorrect predictions."
+        )

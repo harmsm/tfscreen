@@ -54,7 +54,7 @@ SIMULATE_KNOWN_KEYS = frozenset({
     "theta_component", "theta_rng_seed", "thermo_data", "theta_priors", "theta_rescale",
     # Conditions and growth
     "condition_blocks", "growth",
-    "dk_geno_hyper_loc", "dk_geno_hyper_scale", "dk_geno_hyper_shift",
+    "dk_geno_hyper_loc", "dk_geno_hyper_scale", "dk_geno_hyper_shift", "dk_geno_zero",
     "activity_wt", "activity_mut_scale", "activity_component", "activity_priors",
     # Experimental simulation parameters
     "transform_sizes", "library_mixture", "lib_assembly_skew_sigma",

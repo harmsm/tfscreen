@@ -14,6 +14,63 @@ from tfscreen.plot.xy_corr import xy_corr
 from tfscreen.util.cli.generalized_main import generalized_main
 
 
+def _find_params_or_posterior(run_dir):
+    """Return (kind, path) for the best available prediction source in run_dir.
+
+    Preference order: ``*_posterior.h5`` first (richer uncertainty), then
+    ``*_params.npz`` (MAP fallback).  Returns ``(None, None)`` when neither
+    is found.  Warns when multiple files of the same type are present and
+    uses the first alphabetically.
+    """
+    for suffix, kind in (("_posterior.h5", "posterior"), ("_params.npz", "params")):
+        matches = sorted(glob.glob(os.path.join(run_dir, f"*{suffix}")))
+        if not matches:
+            continue
+        if len(matches) > 1:
+            warnings.warn(
+                f"Multiple {kind} files found in {run_dir}; "
+                f"using {os.path.basename(matches[0])}"
+            )
+        return kind, matches[0]
+    return None, None
+
+
+def _try_plot_trajectories(config_file, config_yaml, run_dir, out_prefix, binding_df):
+    """Attempt to generate per-genotype growth trajectory plots.
+
+    Silently skips when the run has no growth data.  Warns and returns on any
+    other failure so that the rest of summarize_fit output is unaffected.
+    """
+    if config_yaml is None or not config_yaml.get("data", {}).get("growth"):
+        return
+
+    kind, pred_path = _find_params_or_posterior(run_dir)
+    if pred_path is None:
+        warnings.warn(
+            "No *_posterior.h5 or *_params.npz found in "
+            f"{run_dir}; skipping trajectory plots."
+        )
+        return
+
+    try:
+        from tfscreen.tfmodel.configuration_io import read_configuration
+        from tfscreen.plot.geno_trajectory import plot_geno_trajectory
+
+        orchestrator, _ = read_configuration(config_file)
+
+        genotypes = list(binding_df["genotype"].unique()) if binding_df is not None else None
+
+        kwargs = {"posterior_file": pred_path} if kind == "posterior" else {"params": pred_path}
+        plot_geno_trajectory(
+            orchestrator,
+            out_prefix,
+            genotypes=genotypes,
+            **kwargs,
+        )
+    except Exception as exc:
+        warnings.warn(f"Could not generate trajectory plots: {exc}")
+
+
 def _find_unique(run_dir, suffix, label, warn_missing=True):
     """Return single file in run_dir matching *suffix, or None."""
     matches = sorted(glob.glob(os.path.join(run_dir, f"*{suffix}")))
@@ -305,6 +362,9 @@ def summarize_fit(run_dir,
                 )
         except Exception as exc:
             warnings.warn(f"Could not compute growth training statistics: {exc}")
+
+    # --- Trajectory plots ---
+    _try_plot_trajectories(config_file, config_yaml, run_dir, out_prefix, binding_df)
 
     # --- Write JSON ---
     results = {

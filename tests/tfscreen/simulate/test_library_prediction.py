@@ -86,3 +86,93 @@ def test_library_prediction_success(mocker, mock_config):
 def test_library_prediction_config_error():
     with pytest.raises(FileNotFoundError):
         library_prediction("nonexistent_config.yaml")
+
+
+def test_library_prediction_dk_geno_zero_passes_flag(mocker, mock_config):
+    """dk_geno_zero=True in config must be forwarded to thermo_to_growth."""
+    config = {**mock_config, "dk_geno_zero": True}
+    mocker.patch("tfscreen.util.read_yaml", return_value=config)
+    mocker.patch(
+        "tfscreen.simulate.library_prediction.library_manager.LibraryManager"
+    ).return_value.build_library_df.return_value = pd.DataFrame({"genotype": ["wt", "M1"]})
+    mocker.patch(
+        "tfscreen.simulate.library_prediction.build_sample_dataframes",
+        return_value=pd.DataFrame({"titrant_conc": [0.0]}),
+    )
+    mocker.patch("tfscreen.simulate.library_prediction.build_sim_data", return_value=MagicMock())
+    mocker.patch("tfscreen.simulate.library_prediction.jax.random.PRNGKey", return_value="k")
+
+    mock_thermo = mocker.patch(
+        "tfscreen.simulate.library_prediction.thermo_to_growth",
+        return_value=(
+            pd.DataFrame({"theta": [0.5]}),
+            pd.DataFrame({"genotype": ["wt"]}),
+            pd.DataFrame({"genotype": ["wt"], "dk_geno": [0.0], "activity": [1.0]}),
+        ),
+    )
+
+    library_prediction(cf="config.yaml")
+
+    _, kwargs = mock_thermo.call_args
+    assert kwargs["dk_geno_zero"] is True
+
+
+def test_library_prediction_dk_geno_zero_makes_hyper_params_optional(mocker):
+    """When dk_geno_zero=True the three dk_geno_hyper_* keys may be absent."""
+    config = {
+        "condition_blocks": [{"some": "block"}],
+        "theta_component": "mock_theta",
+        "theta_rng_seed": 0,
+        "thermo_data": None,
+        "theta_priors": None,
+        "growth": {"cond_A": {"m": 1.0, "b": 0.0}},
+        "dk_geno_zero": True,
+        # dk_geno_hyper_* intentionally absent
+    }
+    mocker.patch("tfscreen.util.read_yaml", return_value=config)
+    mocker.patch(
+        "tfscreen.simulate.library_prediction.library_manager.LibraryManager"
+    ).return_value.build_library_df.return_value = pd.DataFrame({"genotype": ["wt"]})
+    mocker.patch(
+        "tfscreen.simulate.library_prediction.build_sample_dataframes",
+        return_value=pd.DataFrame({"titrant_conc": [0.0]}),
+    )
+    mocker.patch("tfscreen.simulate.library_prediction.build_sim_data", return_value=MagicMock())
+    mocker.patch("tfscreen.simulate.library_prediction.jax.random.PRNGKey", return_value="k")
+    mocker.patch(
+        "tfscreen.simulate.library_prediction.thermo_to_growth",
+        return_value=(
+            pd.DataFrame({"theta": [0.5]}),
+            pd.DataFrame({"genotype": ["wt"]}),
+            pd.DataFrame({"genotype": ["wt"], "dk_geno": [0.0], "activity": [1.0]}),
+        ),
+    )
+
+    # Must not raise KeyError despite missing dk_geno_hyper_* keys
+    library_prediction(cf="config.yaml")
+
+
+def test_library_prediction_missing_hyper_params_raises_without_dk_geno_zero(mocker):
+    """Without dk_geno_zero, missing dk_geno_hyper_* must raise KeyError."""
+    config = {
+        "condition_blocks": [{"some": "block"}],
+        "theta_component": "mock_theta",
+        "theta_rng_seed": 0,
+        "thermo_data": None,
+        "theta_priors": None,
+        "growth": {"cond_A": {"m": 1.0, "b": 0.0}},
+        # dk_geno_hyper_* absent and dk_geno_zero not set
+    }
+    mocker.patch("tfscreen.util.read_yaml", return_value=config)
+    mocker.patch(
+        "tfscreen.simulate.library_prediction.library_manager.LibraryManager"
+    ).return_value.build_library_df.return_value = pd.DataFrame({"genotype": ["wt"]})
+    mocker.patch(
+        "tfscreen.simulate.library_prediction.build_sample_dataframes",
+        return_value=pd.DataFrame({"titrant_conc": [0.0]}),
+    )
+    mocker.patch("tfscreen.simulate.library_prediction.build_sim_data", return_value=MagicMock())
+    mocker.patch("tfscreen.simulate.library_prediction.jax.random.PRNGKey", return_value="k")
+
+    with pytest.raises(KeyError):
+        library_prediction(cf="config.yaml")

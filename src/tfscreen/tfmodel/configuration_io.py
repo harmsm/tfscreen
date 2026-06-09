@@ -340,6 +340,15 @@ def read_configuration(config_file):
                 orig_val = orchestrator.init_params[param_name]
                 if hasattr(orig_val, 'shape') and orig_val.shape != ():
                     orig_shape = orig_val.shape
+                    if val_array.size != np.prod(orig_shape):
+                        raise ValueError(
+                            f"Parameter '{param_name}' has {val_array.size} "
+                            f"{'value' if val_array.size == 1 else 'values'} in "
+                            f"'{guesses_file}' but the current model expects shape "
+                            f"{orig_shape} ({int(np.prod(orig_shape))} values).  "
+                            f"The guesses file is likely stale — regenerate it with "
+                            f"tfs-configure-model and re-run tfs-prefit-calibration."
+                        )
                     init_params[param_name] = jnp.array(val_array.reshape(orig_shape))
                 else:
                     init_params[param_name] = float(val_array[0])

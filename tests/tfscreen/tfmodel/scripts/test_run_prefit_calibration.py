@@ -95,8 +95,9 @@ class _FakeDkGeno:
 
 @fstruct.dataclass
 class _FakeLnCfu0:
-    ln_cfu0_hyper_loc_loc: float = 5.0
-    ln_cfu0_hyper_scale_loc: float = 1.0
+    # Array fields (one element per library class) matching the real ModelPriors.
+    ln_cfu0_hyper_loc_locs: object = None
+    ln_cfu0_hyper_scale_locs: object = None
     pinned: dict = fstruct.field(default_factory=dict, pytree_node=False)
 
 
@@ -128,7 +129,10 @@ def _make_fake_priors(gt_has_pinned=True):
             growth_transition=gt,
             activity=_FakeActivity(),
             dk_geno=_FakeDkGeno(),
-            ln_cfu0=_FakeLnCfu0(),
+            ln_cfu0=_FakeLnCfu0(
+                ln_cfu0_hyper_loc_locs=jnp.array([5.0]),
+                ln_cfu0_hyper_scale_locs=jnp.array([1.0]),
+            ),
         ),
         theta=_FakeTheta(),
     )
@@ -760,12 +764,41 @@ class TestInjectCalibrationPriors:
         for suffix, _ in _PINNED_COMPONENTS["activity"]:
             assert suffix in pinned
 
-    def test_pins_ln_cfu0_hyperparams(self):
+    def test_pins_ln_cfu0_hyperparams_single_class(self):
+        # Single-class case: array fields of length 1 must produce
+        # "hyper_loc_0" and "hyper_scale_0" in the pinned dict, matching
+        # the site suffix "{name}_hyper_loc_0" used by define_model in
+        # the hierarchical ln_cfu0 component.
         orchestrator_cal, orchestrator_prod = self._make_models()
         _inject_calibration_priors(orchestrator_cal, orchestrator_prod, np.array([[0.5]]))
         pinned = orchestrator_cal._priors.growth.ln_cfu0.pinned
-        for suffix, _ in _PINNED_COMPONENTS["ln_cfu0"]:
-            assert suffix in pinned
+        assert "hyper_loc_0" in pinned, f"pinned keys: {list(pinned)}"
+        assert "hyper_scale_0" in pinned, f"pinned keys: {list(pinned)}"
+        assert pinned["hyper_loc_0"] == pytest.approx(5.0)
+        assert pinned["hyper_scale_0"] == pytest.approx(1.0)
+
+    def test_pins_ln_cfu0_hyperparams_multi_class(self):
+        # Multi-class case: 2-element arrays must produce per-class entries
+        # "hyper_loc_0", "hyper_loc_1", "hyper_scale_0", "hyper_scale_1".
+        orchestrator_cal, orchestrator_prod = self._make_models()
+        # Replace the ln_cfu0 component in orchestrator_cal.priors (the
+        # MagicMock attribute that _inject_calibration_priors reads).
+        two_class_ln_cfu0 = _FakeLnCfu0(
+            ln_cfu0_hyper_loc_locs=jnp.array([5.0, 7.0]),
+            ln_cfu0_hyper_scale_locs=jnp.array([1.0, 2.0]),
+        )
+        cal_priors = orchestrator_cal.priors
+        new_growth = cal_priors.growth.replace(ln_cfu0=two_class_ln_cfu0)
+        orchestrator_cal.priors = cal_priors.replace(growth=new_growth)
+
+        _inject_calibration_priors(orchestrator_cal, orchestrator_prod, np.array([[0.5]]))
+        pinned = orchestrator_cal._priors.growth.ln_cfu0.pinned
+        for key, expected in [
+            ("hyper_loc_0", 5.0), ("hyper_loc_1", 7.0),
+            ("hyper_scale_0", 1.0), ("hyper_scale_1", 2.0),
+        ]:
+            assert key in pinned, f"missing '{key}'; pinned keys: {list(pinned)}"
+            assert pinned[key] == pytest.approx(expected)
 
     def test_dk_geno_not_in_pinned_components(self):
         # dk_geno uses the fixed component during calibration (all zeros).
@@ -1399,9 +1432,79 @@ class TestMakeCorrelationPlot:
         _make_correlation_plot(df, str(tmp_path / "run"))
         assert not (tmp_path / "run_calib_correlation.pdf").exists()
 
+    # -----------------------------------------------------------------
+    # Helpers shared by the _run_calibration_diagnostics tests below.
+    # -----------------------------------------------------------------
+
+    @staticmethod
+    def _make_fake_predict_dfs(genotypes=("gA", "gB"), n_t=3):
+        """Return (all_dfs, orchestrator_mock) for diagnostics tests."""
+        rng = np.random.default_rng(0)
+        rows = []
+        for i, g in enumerate(genotypes):
+            for t_i, t in enumerate(np.linspace(0, 10, n_t)):
+                rows.append({
+                    "replicate": "r1",
+                    "condition_pre": "cp1",
+                    "condition_sel": "cs1",
+                    "titrant_name": "tn1",
+                    "titrant_conc": 0.0,
+                    "genotype": g,
+                    "t_sel": t,
+                    "ln_cfu": rng.uniform(8, 12),
+                    "ln_cfu_std": 0.2,
+                    "q05": rng.uniform(7, 9),
+                    "median": rng.uniform(9, 11),
+                    "q95": rng.uniform(11, 13),
+                    "replicate_idx": 0,
+                    "time_idx": t_i,
+                    "condition_pre_idx": 0,
+                    "condition_sel_idx": 0,
+                    "titrant_name_idx": 0,
+                    "titrant_conc_idx": 0,
+                    "genotype_idx": i,
+                })
+
+        pred_df = pd.DataFrame(rows)
+
+        ln_cfu0_rows = []
+        for i, g in enumerate(genotypes):
+            ln_cfu0_rows.append({
+                "replicate": "r1",
+                "condition_pre": "cp1",
+                "genotype": g,
+                "q05": 8.5,
+                "median": 9.0,
+                "q95": 9.5,
+            })
+        ln_cfu0_df = pd.DataFrame(ln_cfu0_rows)
+
+        all_dfs = {"growth_pred": pred_df, "ln_cfu0": ln_cfu0_df}
+
+        orch = MagicMock()
+        orch.growth_df = pd.DataFrame({
+            "replicate": ["r1"] * len(genotypes),
+            "condition_pre": ["cp1"] * len(genotypes),
+            "condition_sel": ["cs1"] * len(genotypes),
+            "titrant_name": ["tn1"] * len(genotypes),
+            "titrant_conc": [0.0] * len(genotypes),
+            "genotype": list(genotypes),
+            "t_pre": [5.0] * len(genotypes),
+            "t_sel": [10.0] * len(genotypes),
+            "ln_cfu": [10.0] * len(genotypes),
+            "ln_cfu_std": [0.2] * len(genotypes),
+        })
+        orch.presplit_df = None
+        orch.growth_tm.tensor_dim_names = [
+            "replicate", "time", "condition_pre", "condition_sel",
+            "titrant_name", "titrant_conc", "genotype",
+        ]
+
+        return all_dfs, orch
+
     def test_run_calibration_diagnostics_calls_both_helpers(self, tmp_path, mocker):
-        """_run_calibration_diagnostics must call _write_calibration_stats and
-        _make_correlation_plot after plot_geno_trajectory returns a DataFrame."""
+        """_run_calibration_diagnostics calls _write_calibration_stats and
+        _make_correlation_plot with a DataFrame that has ln_cfu_pred."""
         mock_stats = mocker.patch(
             "tfscreen.tfmodel.scripts"
             ".run_prefit_calibration_cli._write_calibration_stats",
@@ -1410,35 +1513,167 @@ class TestMakeCorrelationPlot:
             "tfscreen.tfmodel.scripts"
             ".run_prefit_calibration_cli._make_correlation_plot",
         )
-
-        # plot_geno_trajectory returns a fake predictions DataFrame.
-        fake_df = pd.DataFrame({
-            "ln_cfu":      [1.0, 2.0, 3.0],
-            "ln_cfu_pred": [1.1, 2.2, np.nan],  # one NaN → n_obs == 2
-        })
         mocker.patch(
             "tfscreen.tfmodel.scripts"
             ".run_prefit_calibration_cli.plot_geno_trajectory",
-            return_value=fake_df,
+            return_value=MagicMock(),
+        )
+        all_dfs, orch = self._make_fake_predict_dfs()
+        mocker.patch(
+            "tfscreen.tfmodel.scripts"
+            ".run_prefit_calibration_cli.predict",
+            return_value=all_dfs,
         )
 
-        # params has one _auto_loc key with 2 elements → n_params == 2.
         params = {"alpha_auto_loc": np.array([0.5, 0.6])}
-        _run_calibration_diagnostics(
-            MagicMock(), params, out_prefix=str(tmp_path / "run")
-        )
+        _run_calibration_diagnostics(orch, params, out_prefix=str(tmp_path / "run"))
 
         assert mock_stats.call_count == 1
         assert mock_corr.call_count == 1
-        # Both receive the same DataFrame as first argument.
         df_arg_stats = mock_stats.call_args.args[0]
         df_arg_corr  = mock_corr.call_args.args[0]
         assert isinstance(df_arg_stats, pd.DataFrame)
         assert isinstance(df_arg_corr, pd.DataFrame)
-        assert df_arg_stats is df_arg_corr
-        # n_params and n_obs must be forwarded as keyword arguments.
+        assert "ln_cfu_pred" in df_arg_stats.columns
+        # n_params and n_obs forwarded as kwargs
         stats_kwargs = mock_stats.call_args.kwargs
-        assert "n_params" in stats_kwargs
-        assert "n_obs" in stats_kwargs
+        assert "n_params" in stats_kwargs and "n_obs" in stats_kwargs
         assert isinstance(stats_kwargs["n_params"], int)
         assert isinstance(stats_kwargs["n_obs"], int)
+
+    def test_run_calibration_diagnostics_one_pdf_per_genotype(self, tmp_path, mocker):
+        """One trajectory PDF must be written for each genotype."""
+        genotypes = ("genoX", "genoY", "genoZ")
+        all_dfs, orch = self._make_fake_predict_dfs(genotypes=genotypes)
+        mocker.patch(
+            "tfscreen.tfmodel.scripts"
+            ".run_prefit_calibration_cli.predict",
+            return_value=all_dfs,
+        )
+        mocker.patch(
+            "tfscreen.tfmodel.scripts"
+            ".run_prefit_calibration_cli._write_calibration_stats",
+        )
+        mocker.patch(
+            "tfscreen.tfmodel.scripts"
+            ".run_prefit_calibration_cli._make_correlation_plot",
+        )
+        # plot_geno_trajectory returns a real Figure so savefig works.
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        mocker.patch(
+            "tfscreen.tfmodel.scripts"
+            ".run_prefit_calibration_cli.plot_geno_trajectory",
+            side_effect=lambda df, **kw: plt.subplots(1)[0].get_figure(),
+        )
+
+        prefix = str(tmp_path / "run")
+        _run_calibration_diagnostics(orch, {}, out_prefix=prefix)
+
+        pdfs = [f for f in tmp_path.iterdir() if f.suffix == ".pdf"
+                and "trajectory" in f.name]
+        assert len(pdfs) == len(genotypes), \
+            f"expected {len(genotypes)} PDFs, got {len(pdfs)}: {sorted(pdfs)}"
+
+    def test_run_calibration_diagnostics_pdf_named_by_genotype(self, tmp_path, mocker):
+        """Each PDF filename must contain the genotype name."""
+        all_dfs, orch = self._make_fake_predict_dfs(genotypes=("WT", "V44A"))
+        mocker.patch(
+            "tfscreen.tfmodel.scripts"
+            ".run_prefit_calibration_cli.predict",
+            return_value=all_dfs,
+        )
+        mocker.patch(
+            "tfscreen.tfmodel.scripts"
+            ".run_prefit_calibration_cli._write_calibration_stats",
+        )
+        mocker.patch(
+            "tfscreen.tfmodel.scripts"
+            ".run_prefit_calibration_cli._make_correlation_plot",
+        )
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        mocker.patch(
+            "tfscreen.tfmodel.scripts"
+            ".run_prefit_calibration_cli.plot_geno_trajectory",
+            side_effect=lambda df, **kw: plt.subplots(1)[0].get_figure(),
+        )
+
+        prefix = str(tmp_path / "run")
+        _run_calibration_diagnostics(orch, {}, out_prefix=prefix)
+
+        names = [f.name for f in tmp_path.iterdir() if f.suffix == ".pdf"]
+        assert any("WT" in n for n in names)
+        assert any("V44A" in n for n in names)
+
+    def test_run_calibration_diagnostics_genotype_slash_sanitized(self, tmp_path, mocker):
+        """Slashes in genotype names are replaced with underscores in filenames."""
+        all_dfs, orch = self._make_fake_predict_dfs(genotypes=("a/b",))
+        mocker.patch(
+            "tfscreen.tfmodel.scripts"
+            ".run_prefit_calibration_cli.predict",
+            return_value=all_dfs,
+        )
+        mocker.patch(
+            "tfscreen.tfmodel.scripts"
+            ".run_prefit_calibration_cli._write_calibration_stats",
+        )
+        mocker.patch(
+            "tfscreen.tfmodel.scripts"
+            ".run_prefit_calibration_cli._make_correlation_plot",
+        )
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        mocker.patch(
+            "tfscreen.tfmodel.scripts"
+            ".run_prefit_calibration_cli.plot_geno_trajectory",
+            side_effect=lambda df, **kw: plt.subplots(1)[0].get_figure(),
+        )
+
+        prefix = str(tmp_path / "run")
+        _run_calibration_diagnostics(orch, {}, out_prefix=prefix)
+
+        names = [f.name for f in tmp_path.iterdir() if f.suffix == ".pdf"]
+        assert any("a_b" in n for n in names), \
+            f"Expected 'a_b' in a filename, got: {names}"
+        assert not any("a/b" in n for n in names)
+
+    def test_run_calibration_diagnostics_growth_pred_std_attached(self, tmp_path, mocker):
+        """When growth_pred_std is supplied, ln_cfu_pred_std appears in the
+        DataFrame passed to _write_calibration_stats."""
+        all_dfs, orch = self._make_fake_predict_dfs(genotypes=("g0",))
+        mocker.patch(
+            "tfscreen.tfmodel.scripts"
+            ".run_prefit_calibration_cli.predict",
+            return_value=all_dfs,
+        )
+        mock_stats = mocker.patch(
+            "tfscreen.tfmodel.scripts"
+            ".run_prefit_calibration_cli._write_calibration_stats",
+        )
+        mocker.patch(
+            "tfscreen.tfmodel.scripts"
+            ".run_prefit_calibration_cli._make_correlation_plot",
+        )
+        mocker.patch(
+            "tfscreen.tfmodel.scripts"
+            ".run_prefit_calibration_cli.plot_geno_trajectory",
+            return_value=MagicMock(),
+        )
+
+        # Shape (1,3,1,1,1,1,1) matches 1 replicate × 3 times × ... × 1 geno
+        gp_std = np.full((1, 3, 1, 1, 1, 1, 1), 0.42)
+        _run_calibration_diagnostics(
+            orch, {}, out_prefix=str(tmp_path / "run"),
+            growth_pred_std=gp_std,
+        )
+
+        df_arg = mock_stats.call_args.args[0]
+        assert "ln_cfu_pred_std" in df_arg.columns
+        assert np.allclose(df_arg["ln_cfu_pred_std"].dropna(), 0.42)

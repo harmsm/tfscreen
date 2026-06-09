@@ -219,7 +219,8 @@ def _assign_dk_geno(unique_genotypes,
                     hyper_loc=-3.5,
                     hyper_scale=1.0,
                     hyper_shift=0.02,
-                    rng: Generator | None = None):
+                    rng: Generator | None = None,
+                    fixed_value: float | None = None):
     """
     Assign a pleiotropic growth-rate effect (dk_geno) to each genotype.
 
@@ -228,7 +229,13 @@ def _assign_dk_geno(unique_genotypes,
 
     Wild-type receives dk_geno = 0.  This matches the prior used in the
     hierarchical tfmodel inference component.
+
+    If fixed_value is not None, all genotypes (including wild-type) receive
+    that value and no stochastic sampling is performed.
     """
+    if fixed_value is not None:
+        return pd.Series({g: float(fixed_value) for g in unique_genotypes})
+
     if rng is None:
         rng = np.random.default_rng()
 
@@ -291,6 +298,7 @@ def thermo_to_growth(
     dk_geno_hyper_loc: float = -3.5,
     dk_geno_hyper_scale: float = 1.0,
     dk_geno_hyper_shift: float = 0.02,
+    dk_geno_zero: bool = False,
     activity_wt: float = 1.0,
     activity_mut_scale: float = 0.0,
     rng: Generator | None = None,
@@ -335,6 +343,11 @@ def thermo_to_growth(
     dk_geno_hyper_shift : float
         Shift applied after exponentiation: dk_geno = hyper_shift - exp(offset).
         Controls the maximum possible (beneficial) growth-rate effect.
+    dk_geno_zero : bool, default False
+        When True, assign dk_geno = 0 to every genotype and skip stochastic
+        sampling entirely.  The three ``dk_geno_hyper_*`` parameters are
+        ignored.  Useful for simulations where no pleiotropic growth effects
+        are desired.
     activity_wt : float
         TF activity of the wild-type genotype.  Used only when
         ``activity_component == "fixed"``.
@@ -517,6 +530,7 @@ def thermo_to_growth(
     genotype_dk_geno_series = _assign_dk_geno(
         unique_genotypes, dk_geno_hyper_loc, dk_geno_hyper_scale,
         dk_geno_hyper_shift, rng,
+        fixed_value=0.0 if dk_geno_zero else None,
     )
     phenotype_df["dk_geno"] = phenotype_df["genotype"].map(genotype_dk_geno_series)
 
