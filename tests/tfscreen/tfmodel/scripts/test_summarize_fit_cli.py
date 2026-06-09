@@ -27,6 +27,7 @@ from tfscreen.tfmodel.scripts.summarize_fit_cli import (
     _read_all_losses,
     _read_final_loss,
     _resolve_path,
+    _try_plot_theta_fits,
     _try_plot_trajectories,
     summarize_fit,
 )
@@ -610,6 +611,172 @@ class TestFindParamsOrPosterior:
 
 
 # ---------------------------------------------------------------------------
+# _try_plot_theta_fits
+# ---------------------------------------------------------------------------
+
+_PATCH_PLOT_THETA_FITS = "tfscreen.plot.plot_theta_fits.plot_theta_fits"
+
+_MOCK_BINDING_WITH_STD = pd.DataFrame({
+    "genotype": ["wt", "A1B", "C2D"],
+    "titrant_name": ["IPTG"] * 3,
+    "titrant_conc": [10.0] * 3,
+    "theta_obs": [0.1, 0.5, 0.9],
+    "theta_std": [0.02, 0.02, 0.02],
+})
+
+_MOCK_PRED_FOR_THETA = pd.DataFrame({
+    "genotype": ["wt", "A1B", "C2D"],
+    "titrant_name": ["IPTG"] * 3,
+    "titrant_conc": [10.0] * 3,
+    "median": [0.12, 0.48, 0.88],
+    "in_training_data": [1, 1, 1],
+})
+
+
+class TestTryPlotThetaFits:
+
+    def _make_mock_ax(self):
+        mock_ax = MagicMock()
+        mock_ax.get_figure.return_value = MagicMock()
+        return mock_ax
+
+    # ------------------------------------------------------------------
+    # Guard: None inputs
+    # ------------------------------------------------------------------
+
+    def test_skips_silently_when_binding_df_is_none(self, tmp_path):
+        with patch(_PATCH_PLOT_THETA_FITS) as mock_plot:
+            _try_plot_theta_fits(None, _MOCK_PRED_FOR_THETA, str(tmp_path / "out"))
+        mock_plot.assert_not_called()
+
+    def test_skips_silently_when_pred_df_is_none(self, tmp_path):
+        with patch(_PATCH_PLOT_THETA_FITS) as mock_plot:
+            _try_plot_theta_fits(_MOCK_BINDING_WITH_STD, None, str(tmp_path / "out"))
+        mock_plot.assert_not_called()
+
+    # ------------------------------------------------------------------
+    # Guard: missing theta_std column
+    # ------------------------------------------------------------------
+
+    def test_warns_and_skips_when_theta_std_missing(self, tmp_path):
+        binding_no_std = _MOCK_BINDING_WITH_STD.drop(columns=["theta_std"])
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            with patch(_PATCH_PLOT_THETA_FITS) as mock_plot:
+                _try_plot_theta_fits(binding_no_std, _MOCK_PRED_FOR_THETA,
+                                     str(tmp_path / "out"))
+        mock_plot.assert_not_called()
+        assert any("theta_std" in str(x.message).lower() for x in w)
+
+    # ------------------------------------------------------------------
+    # Happy path: one call per genotype, savefig called with correct paths
+    # ------------------------------------------------------------------
+
+    def test_calls_plot_once_per_genotype(self, tmp_path):
+        mock_ax = self._make_mock_ax()
+        with patch(_PATCH_PLOT_THETA_FITS, return_value=mock_ax) as mock_plot:
+            _try_plot_theta_fits(_MOCK_BINDING_WITH_STD, _MOCK_PRED_FOR_THETA,
+                                 str(tmp_path / "out"))
+        assert mock_plot.call_count == 3
+
+    def test_savefig_called_with_correct_paths(self, tmp_path):
+        out_prefix = str(tmp_path / "out")
+        mock_ax = self._make_mock_ax()
+        mock_fig = mock_ax.get_figure.return_value
+        with patch(_PATCH_PLOT_THETA_FITS, return_value=mock_ax):
+            _try_plot_theta_fits(_MOCK_BINDING_WITH_STD, _MOCK_PRED_FOR_THETA, out_prefix)
+        saved_paths = {call.args[0] for call in mock_fig.savefig.call_args_list}
+        for geno in ["wt", "A1B", "C2D"]:
+            assert f"{out_prefix}_{geno}_theta_fits.pdf" in saved_paths
+
+    def test_title_set_to_genotype_name(self, tmp_path):
+        mock_ax = self._make_mock_ax()
+        with patch(_PATCH_PLOT_THETA_FITS, return_value=mock_ax) as mock_plot:
+            _try_plot_theta_fits(_MOCK_BINDING_WITH_STD, _MOCK_PRED_FOR_THETA,
+                                 str(tmp_path / "out"))
+        titles = {call.kwargs.get("title") or call.args[1]
+                  for call in mock_plot.call_args_list
+                  if mock_plot.call_args_list}
+        # title is passed as kwarg
+        titles = {call.kwargs["title"] for call in mock_plot.call_args_list}
+        assert titles == {"wt", "A1B", "C2D"}
+
+    # ------------------------------------------------------------------
+    # Filename sanitization
+    # ------------------------------------------------------------------
+
+    def test_slash_in_genotype_sanitized_in_filename(self, tmp_path):
+        out_prefix = str(tmp_path / "out")
+        binding = _MOCK_BINDING_WITH_STD.copy()
+        binding["genotype"] = binding["genotype"].replace("wt", "wt/mut")
+        pred = _MOCK_PRED_FOR_THETA.copy()
+        pred["genotype"] = pred["genotype"].replace("wt", "wt/mut")
+        mock_ax = self._make_mock_ax()
+        mock_fig = mock_ax.get_figure.return_value
+        with patch(_PATCH_PLOT_THETA_FITS, return_value=mock_ax):
+            _try_plot_theta_fits(binding, pred, out_prefix)
+        saved_paths = {call.args[0] for call in mock_fig.savefig.call_args_list}
+        assert f"{out_prefix}_wt_mut_theta_fits.pdf" in saved_paths
+
+    def test_space_in_genotype_sanitized_in_filename(self, tmp_path):
+        out_prefix = str(tmp_path / "out")
+        binding = _MOCK_BINDING_WITH_STD.copy()
+        binding["genotype"] = binding["genotype"].replace("wt", "wt mut")
+        pred = _MOCK_PRED_FOR_THETA.copy()
+        pred["genotype"] = pred["genotype"].replace("wt", "wt mut")
+        mock_ax = self._make_mock_ax()
+        mock_fig = mock_ax.get_figure.return_value
+        with patch(_PATCH_PLOT_THETA_FITS, return_value=mock_ax):
+            _try_plot_theta_fits(binding, pred, out_prefix)
+        saved_paths = {call.args[0] for call in mock_fig.savefig.call_args_list}
+        assert f"{out_prefix}_wt_mut_theta_fits.pdf" in saved_paths
+
+    # ------------------------------------------------------------------
+    # Only genotypes present in both dfs are plotted
+    # ------------------------------------------------------------------
+
+    def test_only_genotypes_in_both_dfs_are_plotted(self, tmp_path):
+        pred_subset = _MOCK_PRED_FOR_THETA[_MOCK_PRED_FOR_THETA["genotype"] != "C2D"].copy()
+        mock_ax = self._make_mock_ax()
+        with patch(_PATCH_PLOT_THETA_FITS, return_value=mock_ax) as mock_plot:
+            _try_plot_theta_fits(_MOCK_BINDING_WITH_STD, pred_subset,
+                                 str(tmp_path / "out"))
+        assert mock_plot.call_count == 2
+
+    # ------------------------------------------------------------------
+    # Guard: plot raises
+    # ------------------------------------------------------------------
+
+    def test_warns_gracefully_when_plot_raises(self, tmp_path):
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            with patch(_PATCH_PLOT_THETA_FITS, side_effect=RuntimeError("render failed")):
+                _try_plot_theta_fits(_MOCK_BINDING_WITH_STD, _MOCK_PRED_FOR_THETA,
+                                     str(tmp_path / "out"))
+        assert any("theta fit" in str(x.message).lower() for x in w)
+
+    # ------------------------------------------------------------------
+    # Integration: summarize_fit calls _try_plot_theta_fits
+    # ------------------------------------------------------------------
+
+    def test_summarize_fit_calls_plot_theta_fits_per_training_genotype(self, run_dir):
+        mock_ax = MagicMock()
+        mock_ax.get_figure.return_value = MagicMock()
+        with patch(_PATCH_PLOT_THETA_FITS, return_value=mock_ax) as mock_plot:
+            summarize_fit(run_dir)
+        # run_dir fixture has 3 training genotypes
+        assert mock_plot.call_count == 3
+
+    def test_summarize_fit_skips_theta_fits_when_no_pred_csv(self, run_dir):
+        os.remove(os.path.join(run_dir, "run_theta_pred.csv"))
+        with patch(_PATCH_PLOT_THETA_FITS) as mock_plot:
+            with warnings.catch_warnings(record=True):
+                warnings.simplefilter("always")
+                summarize_fit(run_dir)
+        mock_plot.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
 # _try_plot_trajectories
 # ---------------------------------------------------------------------------
 
@@ -623,6 +790,16 @@ _MOCK_BINDING_DF = pd.DataFrame({
 _CONFIG_WITH_GROWTH = {"data": {"growth": "growth.csv", "binding": "binding.csv"}}
 _CONFIG_NO_GROWTH   = {"data": {"binding": "binding.csv"}}
 
+_PATCH_PREDICT_DF = "tfscreen.plot.geno_trajectory.predict_geno_trajectory_df"
+_PATCH_PLOT_GENO  = "tfscreen.plot.geno_trajectory.plot_geno_trajectory"
+_PATCH_READ_CONFIG = "tfscreen.tfmodel.configuration_io.read_configuration"
+
+# DataFrame returned by the mock predict_geno_trajectory_df — one row per
+# genotype so the per-genotype loop fires exactly len(GENOTYPES) times.
+_MOCK_PRED_DF = pd.DataFrame({
+    "genotype": list(_MOCK_BINDING_DF["genotype"]),
+})
+
 
 class TestTryPlotTrajectories:
 
@@ -631,7 +808,7 @@ class TestTryPlotTrajectories:
     # ------------------------------------------------------------------
 
     def test_skips_silently_when_no_growth_key(self, tmp_path):
-        with patch("tfscreen.plot.geno_trajectory.plot_geno_trajectory") as mock_pg:
+        with patch(_PATCH_PREDICT_DF) as mock_pdf:
             _try_plot_trajectories(
                 config_file=str(tmp_path / "cfg.yaml"),
                 config_yaml=_CONFIG_NO_GROWTH,
@@ -639,10 +816,10 @@ class TestTryPlotTrajectories:
                 out_prefix=str(tmp_path / "out"),
                 binding_df=_MOCK_BINDING_DF,
             )
-        mock_pg.assert_not_called()
+        mock_pdf.assert_not_called()
 
     def test_skips_silently_when_config_yaml_is_none(self, tmp_path):
-        with patch("tfscreen.plot.geno_trajectory.plot_geno_trajectory") as mock_pg:
+        with patch(_PATCH_PREDICT_DF) as mock_pdf:
             _try_plot_trajectories(
                 config_file=str(tmp_path / "cfg.yaml"),
                 config_yaml=None,
@@ -650,7 +827,7 @@ class TestTryPlotTrajectories:
                 out_prefix=str(tmp_path / "out"),
                 binding_df=_MOCK_BINDING_DF,
             )
-        mock_pg.assert_not_called()
+        mock_pdf.assert_not_called()
 
     # ------------------------------------------------------------------
     # Guard: no params / posterior file
@@ -659,7 +836,7 @@ class TestTryPlotTrajectories:
     def test_warns_and_skips_when_no_pred_file(self, tmp_path):
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            with patch("tfscreen.plot.geno_trajectory.plot_geno_trajectory") as mock_pg:
+            with patch(_PATCH_PREDICT_DF) as mock_pdf:
                 _try_plot_trajectories(
                     config_file=str(tmp_path / "cfg.yaml"),
                     config_yaml=_CONFIG_WITH_GROWTH,
@@ -667,7 +844,7 @@ class TestTryPlotTrajectories:
                     out_prefix=str(tmp_path / "out"),
                     binding_df=_MOCK_BINDING_DF,
                 )
-        mock_pg.assert_not_called()
+        mock_pdf.assert_not_called()
         assert any("posterior" in str(x.message).lower() or
                    "params" in str(x.message).lower() for x in w)
 
@@ -679,12 +856,8 @@ class TestTryPlotTrajectories:
         (tmp_path / "run_posterior.h5").touch()
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            with patch(
-                "tfscreen.tfmodel.configuration_io.read_configuration",
-                side_effect=RuntimeError("load failed"),
-            ), patch(
-                "tfscreen.plot.geno_trajectory.plot_geno_trajectory"
-            ) as mock_pg:
+            with patch(_PATCH_READ_CONFIG, side_effect=RuntimeError("load failed")), \
+                 patch(_PATCH_PREDICT_DF) as mock_pdf:
                 _try_plot_trajectories(
                     config_file=str(tmp_path / "cfg.yaml"),
                     config_yaml=_CONFIG_WITH_GROWTH,
@@ -692,23 +865,19 @@ class TestTryPlotTrajectories:
                     out_prefix=str(tmp_path / "out"),
                     binding_df=_MOCK_BINDING_DF,
                 )
-        mock_pg.assert_not_called()
+        mock_pdf.assert_not_called()
         assert any("trajectory" in str(x.message).lower() for x in w)
 
     # ------------------------------------------------------------------
-    # Happy path: posterior.h5 present
+    # Happy path: posterior.h5 present — passes h5 path as second arg
     # ------------------------------------------------------------------
 
-    def test_calls_plot_with_posterior_file_when_h5_present(self, tmp_path):
+    def test_calls_predict_df_with_h5_path(self, tmp_path):
         h5_path = str(tmp_path / "run_posterior.h5")
         (tmp_path / "run_posterior.h5").touch()
-        mock_orch = MagicMock()
-        with patch(
-            "tfscreen.tfmodel.configuration_io.read_configuration",
-            return_value=(mock_orch, {}),
-        ), patch(
-            "tfscreen.plot.geno_trajectory.plot_geno_trajectory"
-        ) as mock_pg:
+        with patch(_PATCH_READ_CONFIG, return_value=(MagicMock(), {})), \
+             patch(_PATCH_PREDICT_DF, return_value=_MOCK_PRED_DF) as mock_pdf, \
+             patch(_PATCH_PLOT_GENO, return_value=MagicMock()):
             _try_plot_trajectories(
                 config_file=str(tmp_path / "cfg.yaml"),
                 config_yaml=_CONFIG_WITH_GROWTH,
@@ -716,25 +885,20 @@ class TestTryPlotTrajectories:
                 out_prefix=str(tmp_path / "out"),
                 binding_df=_MOCK_BINDING_DF,
             )
-        mock_pg.assert_called_once()
-        _, kwargs = mock_pg.call_args
-        assert kwargs.get("posterior_file") == h5_path
-        assert "params" not in kwargs
+        mock_pdf.assert_called_once()
+        args, _ = mock_pdf.call_args
+        assert args[1] == h5_path
 
     # ------------------------------------------------------------------
-    # Happy path: only params.npz present (fallback)
+    # Happy path: only params.npz present (fallback) — passes npz path
     # ------------------------------------------------------------------
 
-    def test_calls_plot_with_params_when_only_npz_present(self, tmp_path):
+    def test_calls_predict_df_with_npz_path(self, tmp_path):
         npz_path = str(tmp_path / "run_params.npz")
         (tmp_path / "run_params.npz").touch()
-        mock_orch = MagicMock()
-        with patch(
-            "tfscreen.tfmodel.configuration_io.read_configuration",
-            return_value=(mock_orch, {}),
-        ), patch(
-            "tfscreen.plot.geno_trajectory.plot_geno_trajectory"
-        ) as mock_pg:
+        with patch(_PATCH_READ_CONFIG, return_value=(MagicMock(), {})), \
+             patch(_PATCH_PREDICT_DF, return_value=_MOCK_PRED_DF) as mock_pdf, \
+             patch(_PATCH_PLOT_GENO, return_value=MagicMock()):
             _try_plot_trajectories(
                 config_file=str(tmp_path / "cfg.yaml"),
                 config_yaml=_CONFIG_WITH_GROWTH,
@@ -742,10 +906,34 @@ class TestTryPlotTrajectories:
                 out_prefix=str(tmp_path / "out"),
                 binding_df=_MOCK_BINDING_DF,
             )
-        mock_pg.assert_called_once()
-        _, kwargs = mock_pg.call_args
-        assert kwargs.get("params") == npz_path
-        assert "posterior_file" not in kwargs
+        mock_pdf.assert_called_once()
+        args, _ = mock_pdf.call_args
+        assert args[1] == npz_path
+
+    # ------------------------------------------------------------------
+    # Happy path: one PDF saved per genotype
+    # ------------------------------------------------------------------
+
+    def test_saves_per_genotype_pdfs(self, tmp_path):
+        (tmp_path / "run_posterior.h5").touch()
+        out_prefix = str(tmp_path / "out")
+        mock_fig = MagicMock()
+        with patch(_PATCH_READ_CONFIG, return_value=(MagicMock(), {})), \
+             patch(_PATCH_PREDICT_DF, return_value=_MOCK_PRED_DF), \
+             patch(_PATCH_PLOT_GENO, return_value=mock_fig) as mock_plot:
+            _try_plot_trajectories(
+                config_file=str(tmp_path / "cfg.yaml"),
+                config_yaml=_CONFIG_WITH_GROWTH,
+                run_dir=str(tmp_path),
+                out_prefix=out_prefix,
+                binding_df=_MOCK_BINDING_DF,
+            )
+        genotypes = sorted(_MOCK_PRED_DF["genotype"].unique().tolist(), key=str)
+        assert mock_plot.call_count == len(genotypes)
+        saved_paths = {call.args[0] for call in mock_fig.savefig.call_args_list}
+        for geno in genotypes:
+            safe = geno.replace("/", "_").replace(" ", "_")
+            assert f"{out_prefix}_{safe}_trajectory.pdf" in saved_paths
 
     # ------------------------------------------------------------------
     # Genotype list derived from binding_df
@@ -753,13 +941,9 @@ class TestTryPlotTrajectories:
 
     def test_passes_genotypes_from_binding_df(self, tmp_path):
         (tmp_path / "run_posterior.h5").touch()
-        mock_orch = MagicMock()
-        with patch(
-            "tfscreen.tfmodel.configuration_io.read_configuration",
-            return_value=(mock_orch, {}),
-        ), patch(
-            "tfscreen.plot.geno_trajectory.plot_geno_trajectory"
-        ) as mock_pg:
+        with patch(_PATCH_READ_CONFIG, return_value=(MagicMock(), {})), \
+             patch(_PATCH_PREDICT_DF, return_value=_MOCK_PRED_DF) as mock_pdf, \
+             patch(_PATCH_PLOT_GENO, return_value=MagicMock()):
             _try_plot_trajectories(
                 config_file=str(tmp_path / "cfg.yaml"),
                 config_yaml=_CONFIG_WITH_GROWTH,
@@ -767,18 +951,14 @@ class TestTryPlotTrajectories:
                 out_prefix=str(tmp_path / "out"),
                 binding_df=_MOCK_BINDING_DF,
             )
-        _, kwargs = mock_pg.call_args
+        _, kwargs = mock_pdf.call_args
         assert set(kwargs["genotypes"]) == {"wt", "A1B", "C2D"}
 
     def test_passes_none_genotypes_when_binding_df_is_none(self, tmp_path):
         (tmp_path / "run_posterior.h5").touch()
-        mock_orch = MagicMock()
-        with patch(
-            "tfscreen.tfmodel.configuration_io.read_configuration",
-            return_value=(mock_orch, {}),
-        ), patch(
-            "tfscreen.plot.geno_trajectory.plot_geno_trajectory"
-        ) as mock_pg:
+        with patch(_PATCH_READ_CONFIG, return_value=(MagicMock(), {})), \
+             patch(_PATCH_PREDICT_DF, return_value=_MOCK_PRED_DF) as mock_pdf, \
+             patch(_PATCH_PLOT_GENO, return_value=MagicMock()):
             _try_plot_trajectories(
                 config_file=str(tmp_path / "cfg.yaml"),
                 config_yaml=_CONFIG_WITH_GROWTH,
@@ -786,25 +966,19 @@ class TestTryPlotTrajectories:
                 out_prefix=str(tmp_path / "out"),
                 binding_df=None,
             )
-        _, kwargs = mock_pg.call_args
+        _, kwargs = mock_pdf.call_args
         assert kwargs["genotypes"] is None
 
     # ------------------------------------------------------------------
-    # Guard: plot_geno_trajectory itself raises
+    # Guard: predict_geno_trajectory_df raises
     # ------------------------------------------------------------------
 
     def test_warns_gracefully_when_plot_raises(self, tmp_path):
         (tmp_path / "run_posterior.h5").touch()
-        mock_orch = MagicMock()
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            with patch(
-                "tfscreen.tfmodel.configuration_io.read_configuration",
-                return_value=(mock_orch, {}),
-            ), patch(
-                "tfscreen.plot.geno_trajectory.plot_geno_trajectory",
-                side_effect=RuntimeError("plot failed"),
-            ):
+            with patch(_PATCH_READ_CONFIG, return_value=(MagicMock(), {})), \
+                 patch(_PATCH_PREDICT_DF, side_effect=RuntimeError("plot failed")):
                 _try_plot_trajectories(
                     config_file=str(tmp_path / "cfg.yaml"),
                     config_yaml=_CONFIG_WITH_GROWTH,
@@ -818,8 +992,9 @@ class TestTryPlotTrajectories:
     # Integration: summarize_fit calls _try_plot_trajectories
     # ------------------------------------------------------------------
 
-    def test_summarize_fit_calls_plot_when_h5_and_growth_config_present(self, run_dir):
-        # Add a growth key to the config and a fake posterior file.
+    def test_summarize_fit_calls_predict_df_when_h5_and_growth_config_present(
+        self, run_dir
+    ):
         config_path = os.path.join(run_dir, "run_config.yaml")
         with open(config_path) as fh:
             cfg = yaml.safe_load(fh)
@@ -828,15 +1003,12 @@ class TestTryPlotTrajectories:
             yaml.dump(cfg, fh)
         (Path(run_dir) / "run_posterior.h5").touch()
 
-        with patch(
-            "tfscreen.tfmodel.configuration_io.read_configuration",
-            return_value=(MagicMock(), {}),
-        ), patch(
-            "tfscreen.plot.geno_trajectory.plot_geno_trajectory"
-        ) as mock_pg:
+        with patch(_PATCH_READ_CONFIG, return_value=(MagicMock(), {})), \
+             patch(_PATCH_PREDICT_DF, return_value=_MOCK_PRED_DF) as mock_pdf, \
+             patch(_PATCH_PLOT_GENO, return_value=MagicMock()):
             summarize_fit(run_dir)
 
-        mock_pg.assert_called_once()
+        mock_pdf.assert_called_once()
 
     def test_summarize_fit_skips_plot_when_no_pred_file(self, run_dir):
         config_path = os.path.join(run_dir, "run_config.yaml")
@@ -847,11 +1019,9 @@ class TestTryPlotTrajectories:
             yaml.dump(cfg, fh)
         # No posterior.h5 or params.npz written.
 
-        with patch(
-            "tfscreen.plot.geno_trajectory.plot_geno_trajectory"
-        ) as mock_pg:
+        with patch(_PATCH_PREDICT_DF) as mock_pdf:
             with warnings.catch_warnings(record=True):
                 warnings.simplefilter("always")
                 summarize_fit(run_dir)
 
-        mock_pg.assert_not_called()
+        mock_pdf.assert_not_called()

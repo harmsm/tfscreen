@@ -1513,36 +1513,22 @@
 ./src/tfscreen/tfmodel/analysis/predict_unmeasured.py:99:16: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/analysis/predict_unmeasured.py:120:13: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/analysis/prediction.py:11:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/tfmodel/analysis/prediction.py:99:73: W291 trailing whitespace
-./src/tfscreen/tfmodel/analysis/prediction.py:136:71: W291 trailing whitespace
-./src/tfscreen/tfmodel/analysis/prediction.py:157:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/analysis/prediction.py:164:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/tfmodel/analysis/prediction.py:210:1: C901 'predict' is too complex (26)
-./src/tfscreen/tfmodel/analysis/prediction.py:271:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/analysis/prediction.py:282:5: E303 too many blank lines (2)
-./src/tfscreen/tfmodel/analysis/prediction.py:284:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/analysis/prediction.py:297:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/analysis/prediction.py:299:18: E111 indentation is not a multiple of 4
-./src/tfscreen/tfmodel/analysis/prediction.py:299:18: E117 over-indented
-./src/tfscreen/tfmodel/analysis/prediction.py:353:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/analysis/prediction.py:356:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/analysis/prediction.py:361:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/analysis/prediction.py:364:67: W291 trailing whitespace
-./src/tfscreen/tfmodel/analysis/prediction.py:365:76: W291 trailing whitespace
-./src/tfscreen/tfmodel/analysis/prediction.py:369:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/analysis/prediction.py:70:1: C901 'copy_orchestrator' is too complex (11)
+./src/tfscreen/tfmodel/analysis/prediction.py:195:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/tfmodel/analysis/prediction.py:241:1: C901 'predict' is too complex (22)
+./src/tfscreen/tfmodel/analysis/prediction.py:302:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/analysis/prediction.py:368:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/analysis/prediction.py:371:1: W293 blank line contains whitespace
 ./src/tfscreen/tfmodel/analysis/prediction.py:376:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/analysis/prediction.py:385:58: E741 ambiguous variable name 'l'
-./src/tfscreen/tfmodel/analysis/prediction.py:388:26: E111 indentation is not a multiple of 4
-./src/tfscreen/tfmodel/analysis/prediction.py:388:26: E117 over-indented
-./src/tfscreen/tfmodel/analysis/prediction.py:391:25: E122 continuation line missing indentation or outdented
-./src/tfscreen/tfmodel/analysis/prediction.py:397:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/analysis/prediction.py:379:67: W291 trailing whitespace
+./src/tfscreen/tfmodel/analysis/prediction.py:380:76: W291 trailing whitespace
+./src/tfscreen/tfmodel/analysis/prediction.py:384:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/analysis/prediction.py:391:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/analysis/prediction.py:400:58: E741 ambiguous variable name 'l'
+./src/tfscreen/tfmodel/analysis/prediction.py:403:26: E111 indentation is not a multiple of 4
+./src/tfscreen/tfmodel/analysis/prediction.py:403:26: E117 over-indented
+./src/tfscreen/tfmodel/analysis/prediction.py:406:25: E122 continuation line missing indentation or outdented
 ./src/tfscreen/tfmodel/analysis/prediction.py:412:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/analysis/prediction.py:415:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/analysis/prediction.py:432:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/analysis/prediction.py:433:71: W291 trailing whitespace
-./src/tfscreen/tfmodel/analysis/prediction.py:437:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/analysis/prediction.py:442:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/analysis/prediction.py:446:1: W293 blank line contains whitespace
 ./src/tfscreen/tfmodel/analysis/prior_predictive.py:104:33: E203 whitespace before ':'
 ./src/tfscreen/tfmodel/analysis/sbc.py:130:1: C901 'summarize_sbc' is too complex (17)
 ./src/tfscreen/tfmodel/configuration_io.py:19:1: E302 expected 2 blank lines, found 1
@@ -3624,8 +3610,8 @@
 ./src/tfscreen/tfmodel/scripts/setup_grid_cli.py:160:1: C901 'setup_grid' is too complex (17)
 ./src/tfscreen/tfmodel/scripts/subset_genotypes_cli.py:40:1: C901 'subset_genotypes' is too complex (23)
 ./src/tfscreen/tfmodel/scripts/subset_genotypes_cli.py:93:5: F841 local variable 'all_genotypes' is assigned to but never used
-./src/tfscreen/tfmodel/scripts/summarize_fit_cli.py:100:1: C901 '_read_all_losses' is too complex (11)
-./src/tfscreen/tfmodel/scripts/summarize_fit_cli.py:182:1: C901 'summarize_fit' is too complex (49)
+./src/tfscreen/tfmodel/scripts/summarize_fit_cli.py:144:1: C901 '_read_all_losses' is too complex (11)
+./src/tfscreen/tfmodel/scripts/summarize_fit_cli.py:226:1: C901 'summarize_fit' is too complex (49)
 ./src/tfscreen/tfmodel/scripts/summarize_grid_cli.py:47:30: E127 continuation line over-indented for visual indent
 ./src/tfscreen/tfmodel/scripts/summarize_grid_cli.py:76:1: C901 'summarize_grid' is too complex (14)
 ./src/tfscreen/tfmodel/tensors/batch.py:5:1: E302 expected 2 blank lines, found 1
@@ -6469,7 +6455,8 @@
 ./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:19:1: E402 module level import not at top of file
 ./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:21:1: E402 module level import not at top of file
 ./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:23:1: E402 module level import not at top of file
-./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:624:18: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:791:18: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:794:17: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/scripts/test_summarize_grid_cli.py:79:9: F841 local variable 'data' is assigned to but never used
 ./tests/tfscreen/tfmodel/scripts/test_summarize_grid_cli.py:183:91: E712 comparison to True should be 'if cond is True:' or 'if cond:'
 ./tests/tfscreen/tfmodel/test_batch.py:3:1: F401 'numpy as np' imported but unused
@@ -7601,11 +7588,11 @@
 ./tests/tfscreen/util/validation/test_check.py:8:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/validation/test_check.py:26:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/validation/test_check.py:75:70: W292 no newline at end of file
-45    C901 'cat_fit' is too complex (19)
-16    E111 indentation is not a multiple of 4
+46    C901 'cat_fit' is too complex (19)
+15    E111 indentation is not a multiple of 4
 6     E114 indentation is not a multiple of 4 (comment)
 6     E116 unexpected indentation (comment)
-12    E117 over-indented
+11    E117 over-indented
 1     E122 continuation line missing indentation or outdented
 2     E124 closing bracket does not match visual indentation
 6     E125 continuation line with same indent as next logical line
@@ -7616,7 +7603,7 @@
 28    E202 whitespace before ']'
 6     E203 whitespace before ','
 5     E211 whitespace before '('
-1712  E221 multiple spaces before operator
+1713  E221 multiple spaces before operator
 26    E222 multiple spaces after operator
 8     E225 missing whitespace around operator
 1119  E231 missing whitespace after ','
@@ -7629,7 +7616,7 @@
 146   E272 multiple spaces before keyword
 1     E301 expected 1 blank line, found 0
 802   E302 expected 2 blank lines, found 1
-51    E303 too many blank lines (2)
+50    E303 too many blank lines (2)
 17    E305 expected 2 blank lines after class or function definition, found 1
 29    E306 expected 1 blank line before a nested definition, found 0
 1     E401 multiple imports on one line
@@ -7645,8 +7632,8 @@
 11    F541 f-string is missing placeholders
 3     F811 redefinition of unused 'np' from line 1
 40    F841 local variable 'e' is assigned to but never used
-673   W291 trailing whitespace
+670   W291 trailing whitespace
 86    W292 no newline at end of file
-1698  W293 blank line contains whitespace
+1689  W293 blank line contains whitespace
 29    W391 blank line at end of file
-7603
+7590

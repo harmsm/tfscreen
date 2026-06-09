@@ -70,7 +70,8 @@ def _align_site_to_tm_dims(spatial_shape, tm_sizes):
 def copy_orchestrator(orchestrator,
                       t_pre=None,
                       t_sel=None,
-                      titrant_conc=None):
+                      titrant_conc=None,
+                      genotypes=None):
     """
     Generate a fresh ModelOrchestrator instance with model components from an old
     ModelOrchestrator and new quantitative data passed in by the user.
@@ -92,11 +93,14 @@ def copy_orchestrator(orchestrator,
     titrant_conc : list, optional
         List of titrant concentrations. Must be >= 0. If None, uses
         values from `orchestrator.growth_df`.
+    genotypes : list, optional
+        Subset of genotypes to include. Must be a subset of those in
+        ``orchestrator.growth_df``. If None, uses all genotypes.
 
     Returns
     -------
     ModelOrchestrator
-        A new ModelOrchestrator instance initialized with the exhaustive 
+        A new ModelOrchestrator instance initialized with the exhaustive
         combinations of all inputs.
     """
 
@@ -133,9 +137,22 @@ def copy_orchestrator(orchestrator,
     titrant_conc_list = _get_input(titrant_conc, "titrant_conc")
 
     # Get all unique categorical combinations
-    categorical_cols = ["replicate", "condition_pre", "condition_sel", 
+    categorical_cols = ["replicate", "condition_pre", "condition_sel",
                         "titrant_name", "genotype"]
     unique_cats = df[categorical_cols].drop_duplicates()
+
+    # Subset genotypes when requested.  Doing this here ensures the new
+    # orchestrator's TM labels differ from the original's, which causes the
+    # parameter-slicing loop in predict() to fire correctly.
+    if genotypes is not None:
+        all_genos = set(str(g) for g in unique_cats["genotype"].tolist())
+        geno_strs = [str(g) for g in genotypes]
+        missing = [g for g in geno_strs if g not in all_genos]
+        if missing:
+            raise ValueError(f"Genotype(s) not found in orchestrator: {missing}")
+        unique_cats = unique_cats[
+            unique_cats["genotype"].astype(str).isin(set(geno_strs))
+        ]
 
     # Build exhaustive combinations of quantitative values
     quant_combos = list(itertools.product(t_pre_list, t_sel_list, titrant_conc_list))
@@ -154,7 +171,21 @@ def copy_orchestrator(orchestrator,
 
     # Create new ModelOrchestrator using settings from the old one
     settings = orchestrator.settings.copy()
-    
+
+    # When subsetting genotypes, restrict spiked_genotypes in settings to
+    # only those present in the subset.  Spiked genotypes affect per-genotype
+    # masks (spiked_mask) which control per_geno_loc/scale at prediction time
+    # via the non-centred parameterisation — so any spiked genotype that IS in
+    # the subset must remain marked as spiked; those outside the subset are
+    # simply omitted.  Dropping all spiked_genotypes would silently mis-classify
+    # in-subset spiked genotypes as library genotypes and corrupt predictions.
+    if genotypes is not None:
+        geno_set = set(geno_strs)
+        orig_spiked = settings.get("spiked_genotypes") or []
+        settings["spiked_genotypes"] = [
+            g for g in orig_spiked if str(g) in geno_set
+        ]
+
     return ModelOrchestrator(
         growth_df=new_growth_df,
         binding_df=new_binding_df,
@@ -272,36 +303,20 @@ def predict(orchestrator,
     if isinstance(predict_sites, str):
         predict_sites = [predict_sites]
 
-    # Create the expanded prediction model
+    # Create the expanded prediction model, subsetting genotypes if requested.
+    # Passing genotypes to copy_orchestrator ensures the new orchestrator's TM
+    # labels are a strict subset of the original's, which triggers parameter
+    # slicing in the loop below.  Validation of unknown genotype names is also
+    # handled inside copy_orchestrator.
     new_orchestrator = copy_orchestrator(orchestrator,
                                          t_pre=t_pre,
                                          t_sel=t_sel,
-                                         titrant_conc=titrant_conc)
+                                         titrant_conc=titrant_conc,
+                                         genotypes=genotypes)
 
-
-    # -------------------------------------------------------------------------
-    # Genotype subsetting
-    
-    all_genotypes = new_orchestrator.growth_tm.tensor_dim_labels[-1]
-    if genotypes is None:
-        genotypes = all_genotypes.tolist()
-        genotype_indices = np.arange(len(all_genotypes))
-    else:
-        # Validate and find indices
-        genotype_indices = []
-        for g in genotypes:
-            matches = np.where(all_genotypes == g)[0]
-            if len(matches) == 0:
-                # Try string fallback
-                matches = np.where(all_genotypes.astype(str) == str(g))[0]
-            
-            if len(matches) == 0:
-                 raise ValueError(f"Genotype {g} not found in model.")
-            genotype_indices.append(matches[0])
-        genotype_indices = np.array(genotype_indices)
-
-    # Use existing get_batch to subset the data tensors
-    subset_data = new_orchestrator.get_batch(new_orchestrator.data, jnp.array(genotype_indices))
+    # After copy_orchestrator the new TM contains exactly the requested
+    # genotypes (or all genotypes when genotypes=None).
+    genotypes = new_orchestrator.growth_tm.tensor_dim_labels[-1].tolist()
 
     # -------------------------------------------------------------------------
     # Model trace — run first so bijections are available for MAP detection.
@@ -407,17 +422,15 @@ def predict(orchestrator,
     # the default prior.  new_orchestrator is rebuilt from settings-only
     # (component names, no priors) so its priors are all-default.
     predictions = predictive(predict_key,
-                             data=subset_data,
+                             data=new_orchestrator.data,
                              priors=orchestrator.priors)
-    
+
     # -------------------------------------------------------------------------
     # Calculate Quantiles and Join
-    
-    # tm._pivot_index columns in df contain the integer codes for each dimension
-    # (replicate_idx, time_idx, etc.)
-    # We want a dataframe that only has the subsetted genotypes.
+
+    # new_orchestrator already contains exactly the requested genotypes, so
+    # growth_df needs no further filtering.
     base_df = new_orchestrator.growth_df.copy()
-    base_df = base_df[base_df["genotype"].isin(genotypes)].copy()
 
     # Replace the dummy ln_cfu/ln_cfu_std zeros with observed values from the
     # original orchestrator.growth_df (NaN where there is no matching observation,
@@ -429,23 +442,9 @@ def predict(orchestrator,
     base_df = base_df.drop(columns=["ln_cfu", "ln_cfu_std"]).merge(
         orig_obs, on=merge_keys, how="left"
     )
-    
-    # Re-calculate indices for the subsetted dataframe relative to the 
-    # using the new_orchestrator TM but subset the df.
+
     tm = new_orchestrator.growth_tm
     indices = [base_df[f"{dim}_idx"].values for dim in tm.tensor_dim_names]
-    
-    # Since we used get_batch, the predictions only have the subsetted genotypes.
-    # The last dimension of predictions[site] will match the length of genotype_indices.
-    # To map back to the tensor indices, we need to map genotype_idx in base_df
-    # to its relative position in the genotype_indices array.
-    
-    # Mapping from original genotype index to new relative index
-    geno_map = {orig_idx: i for i, orig_idx in enumerate(genotype_indices)}
-    relative_geno_indices = base_df["genotype_idx"].map(geno_map).values
-    
-    # Update indices for genotype to be relative for the prediction tensor
-    indices[-1] = relative_geno_indices
 
     # TM dimension sizes matching the current (possibly genotype-subsetted) indices.
     tm_sizes = tuple(int(idx.max()) + 1 if len(idx) > 0 else 1 for idx in indices)

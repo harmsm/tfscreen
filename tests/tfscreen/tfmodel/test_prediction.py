@@ -97,6 +97,133 @@ def test_copy_orchestrator_no_subsetting_binding(dummy_orchestrator):
     assert len(new_orchestrator.binding_df) == 2
 
 
+def test_copy_orchestrator_genotypes_subset(dummy_orchestrator):
+    """Requesting a subset of genotypes restricts growth_df rows."""
+    new_orch = copy_orchestrator(dummy_orchestrator, genotypes=["wt"])
+    assert set(new_orch.growth_df["genotype"]) == {"wt"}
+
+
+def test_copy_orchestrator_genotypes_subset_tm_labels(dummy_orchestrator):
+    """TM genotype labels match the requested subset."""
+    new_orch = copy_orchestrator(dummy_orchestrator, genotypes=["wt"])
+    labels = new_orch.growth_tm.tensor_dim_labels[-1].tolist()
+    assert labels == ["wt"]
+
+
+def test_copy_orchestrator_genotypes_subset_row_count(dummy_orchestrator):
+    """Row count matches the single-genotype cross-product."""
+    new_orch = copy_orchestrator(dummy_orchestrator, genotypes=["wt"])
+    # 1 genotype * 1 t_pre * 2 t_sel * 2 titrant_conc = 4
+    assert len(new_orch.growth_df) == 4
+
+
+def test_copy_orchestrator_genotypes_all_explicit(dummy_orchestrator):
+    """Passing all genotypes explicitly is equivalent to genotypes=None."""
+    new_all = copy_orchestrator(dummy_orchestrator)
+    new_explicit = copy_orchestrator(dummy_orchestrator, genotypes=["wt", "M42V"])
+    assert set(new_explicit.growth_df["genotype"]) == set(new_all.growth_df["genotype"])
+
+
+def test_copy_orchestrator_genotypes_unknown_raises(dummy_orchestrator):
+    """Requesting an unknown genotype raises ValueError."""
+    with pytest.raises(ValueError, match="not found"):
+        copy_orchestrator(dummy_orchestrator, genotypes=["no_such_geno"])
+
+
+def test_copy_orchestrator_genotypes_partial_unknown_raises(dummy_orchestrator):
+    """A mix of valid and unknown genotypes still raises."""
+    with pytest.raises(ValueError, match="not found"):
+        copy_orchestrator(dummy_orchestrator, genotypes=["wt", "no_such_geno"])
+
+
+def test_copy_orchestrator_genotypes_tm_labels_differ_from_original(dummy_orchestrator):
+    """Subset TM labels must differ from the original so slicing fires in predict()."""
+    new_orch = copy_orchestrator(dummy_orchestrator, genotypes=["wt"])
+    orig_labels = dummy_orchestrator.growth_tm.tensor_dim_labels[-1].tolist()
+    new_labels = new_orch.growth_tm.tensor_dim_labels[-1].tolist()
+    assert orig_labels != new_labels
+
+
+@pytest.fixture
+def spiked_orchestrator():
+    """ModelOrchestrator with one spiked genotype (A1G) and two library genotypes."""
+    growth_df = pd.DataFrame({
+        "genotype": ["wt", "wt", "M42V", "M42V", "A1G", "A1G"],
+        "titrant_name": ["tit1"] * 6,
+        "titrant_conc": [0.0, 1.0] * 3,
+        "condition_pre": ["pre1"] * 6,
+        "condition_sel": ["sel1"] * 6,
+        "t_pre": [10.0] * 6,
+        "t_sel": [0.0, 20.0] * 3,
+        "ln_cfu": [0.0, 5.0, 0.0, 3.0, 0.0, 4.0],
+        "ln_cfu_std": [0.1] * 6,
+        "replicate": [1] * 6,
+    })
+    binding_df = pd.DataFrame({
+        "genotype": ["wt", "M42V", "A1G"],
+        "titrant_name": ["tit1"] * 3,
+        "titrant_conc": [0.5] * 3,
+        "theta_obs": [0.5, 0.2, 0.9],
+        "theta_std": [0.01] * 3,
+    })
+    return ModelOrchestrator(growth_df, binding_df, spiked_genotypes=["A1G"])
+
+
+def test_copy_orchestrator_spiked_outside_subset_dropped(spiked_orchestrator):
+    """Spiked genotypes not in the requested subset are removed from settings."""
+    new_orch = copy_orchestrator(spiked_orchestrator, genotypes=["wt", "M42V"])
+    assert new_orch.settings.get("spiked_genotypes") == []
+
+
+def test_copy_orchestrator_spiked_inside_subset_retained(spiked_orchestrator):
+    """Spiked genotypes that are in the requested subset are kept in settings."""
+    new_orch = copy_orchestrator(spiked_orchestrator, genotypes=["wt", "A1G"])
+    assert "A1G" in (new_orch.settings.get("spiked_genotypes") or [])
+
+
+def test_copy_orchestrator_spiked_partial_overlap():
+    """Only spiked genotypes present in the subset survive."""
+    # Build a fresh orchestrator with two spiked genotypes: A1G and S5T
+    growth_df = pd.DataFrame({
+        "genotype": ["wt", "wt", "M42V", "M42V", "A1G", "A1G", "S5T", "S5T"],
+        "titrant_name": ["tit1"] * 8,
+        "titrant_conc": [0.0, 1.0] * 4,
+        "condition_pre": ["pre1"] * 8,
+        "condition_sel": ["sel1"] * 8,
+        "t_pre": [10.0] * 8,
+        "t_sel": [0.0, 20.0] * 4,
+        "ln_cfu": [0.0, 5.0, 0.0, 3.0, 0.0, 4.0, 0.0, 4.5],
+        "ln_cfu_std": [0.1] * 8,
+        "replicate": [1] * 8,
+    })
+    binding_df = pd.DataFrame({
+        "genotype": ["wt", "M42V", "A1G"],
+        "titrant_name": ["tit1"] * 3,
+        "titrant_conc": [0.5] * 3,
+        "theta_obs": [0.5, 0.2, 0.9],
+        "theta_std": [0.01] * 3,
+    })
+    orch2 = ModelOrchestrator(growth_df, binding_df, spiked_genotypes=["A1G", "S5T"])
+    new_orch = copy_orchestrator(orch2, genotypes=["wt", "A1G"])
+    spiked_kept = new_orch.settings.get("spiked_genotypes") or []
+    assert "A1G" in spiked_kept
+    assert "S5T" not in spiked_kept
+
+
+def test_copy_orchestrator_no_spiked_in_settings_unaffected(dummy_orchestrator):
+    """When spiked_genotypes is absent from settings, subsetting doesn't break."""
+    assert not dummy_orchestrator.settings.get("spiked_genotypes")
+    new_orch = copy_orchestrator(dummy_orchestrator, genotypes=["wt"])
+    assert set(new_orch.growth_df["genotype"]) == {"wt"}
+
+
+def test_copy_orchestrator_spiked_no_subset_unchanged(spiked_orchestrator):
+    """Without genotype subsetting, spiked_genotypes in settings are unchanged."""
+    new_orch = copy_orchestrator(spiked_orchestrator)
+    assert new_orch.settings.get("spiked_genotypes") == \
+        spiked_orchestrator.settings.get("spiked_genotypes")
+
+
 # ---------------------------------------------------------------------------
 # _convert_map_params
 # ---------------------------------------------------------------------------

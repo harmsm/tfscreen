@@ -35,6 +35,44 @@ def _find_params_or_posterior(run_dir):
     return None, None
 
 
+def _try_plot_theta_fits(binding_df, pred_df, out_prefix):
+    """Generate per-genotype theta fit plots merging binding observations with predictions.
+
+    Silently skips when binding_df or pred_df is None.  Warns and returns on
+    any failure so that the rest of summarize_fit output is unaffected.
+    """
+    if binding_df is None or pred_df is None:
+        return
+
+    if "theta_std" not in binding_df.columns:
+        warnings.warn(
+            "binding_df has no 'theta_std' column; skipping theta fit plots."
+        )
+        return
+
+    try:
+        from tfscreen.plot.plot_theta_fits import plot_theta_fits
+
+        join_cols = ["genotype", "titrant_name", "titrant_conc"]
+        binding_sel = [c for c in join_cols + ["theta_obs", "theta_std"]
+                       if c in binding_df.columns]
+        merged = pred_df.merge(binding_df[binding_sel], on=join_cols, how="inner")
+        if len(merged) == 0:
+            return
+
+        for geno in sorted(merged["genotype"].unique().tolist(), key=str):
+            geno_df = merged[merged["genotype"] == geno]
+            safe_name = str(geno).replace("/", "_").replace(" ", "_")
+            ax = plot_theta_fits(geno_df, title=str(geno))
+            fig = ax.get_figure()
+            pdf_path = f"{out_prefix}_{safe_name}_theta_fits.pdf"
+            fig.savefig(pdf_path, format="pdf", bbox_inches="tight")
+            plt.close(fig)
+            print(f"Wrote theta fit plot to {pdf_path}")
+    except Exception as exc:
+        warnings.warn(f"Could not generate theta fit plots: {exc}")
+
+
 def _try_plot_trajectories(config_file, config_yaml, run_dir, out_prefix, binding_df):
     """Attempt to generate per-genotype growth trajectory plots.
 
@@ -54,19 +92,25 @@ def _try_plot_trajectories(config_file, config_yaml, run_dir, out_prefix, bindin
 
     try:
         from tfscreen.tfmodel.configuration_io import read_configuration
-        from tfscreen.plot.geno_trajectory import plot_geno_trajectory
+        from tfscreen.plot.geno_trajectory import predict_geno_trajectory_df, plot_geno_trajectory
 
         orchestrator, _ = read_configuration(config_file)
 
         genotypes = list(binding_df["genotype"].unique()) if binding_df is not None else None
 
-        kwargs = {"posterior_file": pred_path} if kind == "posterior" else {"params": pred_path}
-        plot_geno_trajectory(
+        pred_df = predict_geno_trajectory_df(
             orchestrator,
-            out_prefix,
+            pred_path,
             genotypes=genotypes,
-            **kwargs,
         )
+        for geno in sorted(pred_df["genotype"].unique().tolist(), key=str):
+            geno_df = pred_df[pred_df["genotype"] == geno]
+            safe_name = str(geno).replace("/", "_").replace(" ", "_")
+            fig = plot_geno_trajectory(geno_df)
+            pdf_path = f"{out_prefix}_{safe_name}_trajectory.pdf"
+            fig.savefig(pdf_path, format="pdf", bbox_inches="tight")
+            plt.close(fig)
+            print(f"Wrote trajectory plot to {pdf_path}")
     except Exception as exc:
         warnings.warn(f"Could not generate trajectory plots: {exc}")
 
@@ -365,6 +409,9 @@ def summarize_fit(run_dir,
 
     # --- Trajectory plots ---
     _try_plot_trajectories(config_file, config_yaml, run_dir, out_prefix, binding_df)
+
+    # --- Per-genotype theta fit plots ---
+    _try_plot_theta_fits(binding_df, pred_df, out_prefix)
 
     # --- Write JSON ---
     results = {

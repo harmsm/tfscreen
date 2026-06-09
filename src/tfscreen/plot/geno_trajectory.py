@@ -200,26 +200,23 @@ def plot_geno_trajectory(
     return fig
 
 
-def predict_and_plot_geno_trajectory(
+def predict_geno_trajectory_df(
     orchestrator,
     param_posteriors,
     genotypes=None,
     titrant_names=None,
     t_fine=_T_FINE,
     num_marginal_samples=200,
-    figsize=None,
-    colors=None,
-    markers=None,
 ):
     """
-    Run forward predictions and plot per-genotype growth trajectories.
+    Run forward predictions and return the merged trajectory DataFrame.
 
     Calls :func:`~tfscreen.tfmodel.analysis.prediction.predict` with a fine
-    ``t_sel`` grid to produce smooth trajectory curves with credible-interval
-    bands, merges in observed data, and delegates to
+    ``t_sel`` grid, merges in observed data and a pre-selection anchor from
+    the ``ln_cfu0`` site, and returns a single DataFrame ready for
     :func:`plot_geno_trajectory`.  Only ``(condition_pre, condition_sel,
     titrant_name, titrant_conc)`` combinations present in
-    ``orchestrator.growth_df`` are included in the output.
+    ``orchestrator.growth_df`` are included.
 
     Parameters
     ----------
@@ -240,16 +237,11 @@ def predict_and_plot_geno_trajectory(
         Number of posterior samples to run through the model when computing
         quantiles.  Passed directly to :func:`~.prediction.predict`.
         Defaults to 200.
-    figsize : tuple of (float, float), optional
-        Passed to :func:`plot_geno_trajectory`.
-    colors : list of str, optional
-        Passed to :func:`plot_geno_trajectory`.
-    markers : list of str, optional
-        Passed to :func:`plot_geno_trajectory`.
 
     Returns
     -------
-    matplotlib.figure.Figure
+    pd.DataFrame
+        Merged prediction DataFrame with columns matching ``_KEEP_COLS``.
     """
     from tfscreen.tfmodel.analysis.prediction import predict
 
@@ -345,7 +337,66 @@ def predict_and_plot_geno_trajectory(
         .drop_duplicates()
     )
     pred_df = pred_df.merge(valid_combos, on=_CONDITION_COLS, how="inner")
+    return pred_df
 
+
+def predict_and_plot_geno_trajectory(
+    orchestrator,
+    param_posteriors,
+    genotypes=None,
+    titrant_names=None,
+    t_fine=_T_FINE,
+    num_marginal_samples=200,
+    figsize=None,
+    colors=None,
+    markers=None,
+):
+    """
+    Run forward predictions and plot per-genotype growth trajectories.
+
+    Calls :func:`predict_geno_trajectory_df` to build the merged prediction
+    DataFrame, then delegates to :func:`plot_geno_trajectory`.  Only
+    ``(condition_pre, condition_sel, titrant_name, titrant_conc)`` combinations
+    present in ``orchestrator.growth_df`` are included in the output.
+
+    Parameters
+    ----------
+    orchestrator : ModelOrchestrator
+        Fitted model orchestrator.
+    param_posteriors : dict or str
+        MAP parameter dict (keys ending in ``_auto_loc``), path to a
+        ``_params.npz`` file, or path to a ``_posterior.h5`` file.
+    genotypes : list of str, optional
+        Subset of genotypes to include.  If ``None``, uses all genotypes in
+        the orchestrator.
+    titrant_names : list of str, optional
+        Subset of titrant names to include.  If ``None``, uses all.
+    t_fine : int, optional
+        Number of equally-spaced selection-phase time points for the fine grid.
+        Defaults to ``_T_FINE`` (50).
+    num_marginal_samples : int, optional
+        Number of posterior samples to run through the model when computing
+        quantiles.  Passed directly to :func:`~.prediction.predict`.
+        Defaults to 200.
+    figsize : tuple of (float, float), optional
+        Passed to :func:`plot_geno_trajectory`.
+    colors : list of str, optional
+        Passed to :func:`plot_geno_trajectory`.
+    markers : list of str, optional
+        Passed to :func:`plot_geno_trajectory`.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
+    pred_df = predict_geno_trajectory_df(
+        orchestrator,
+        param_posteriors,
+        genotypes=genotypes,
+        titrant_names=titrant_names,
+        t_fine=t_fine,
+        num_marginal_samples=num_marginal_samples,
+    )
     return plot_geno_trajectory(
         pred_df, figsize=figsize, colors=colors, markers=markers
     )
