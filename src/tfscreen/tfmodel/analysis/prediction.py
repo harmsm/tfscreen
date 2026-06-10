@@ -3,6 +3,7 @@ import numpy as np
 import itertools
 from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
 from tfscreen.tfmodel.inference.posteriors import load_posteriors, get_posterior_samples
+from tfscreen.tfmodel.tensors.batch import get_batch as _get_batch
 import jax
 from jax import numpy as jnp
 from numpyro.handlers import seed, trace
@@ -416,13 +417,30 @@ def predict(orchestrator,
 
     # We need a key, even if not used for randomness in deterministic sites
     predict_key = jax.random.PRNGKey(0)
+
+    # Build a canonical-indexed data view for prediction.  The static
+    # new_orchestrator.data.growth.batch_idx uses a binding-first ordering
+    # (binding genotypes at positions 0..num_binding-1, then library genotypes
+    # at positions num_binding..N-1).  Posterior samples, however, are always
+    # stored in canonical genotype order (index g = genotype g).  Passing the
+    # static data to Predictive would misalign posterior params vs. mask
+    # lookups for all non-canonical positions.
+    #
+    # get_batch with arange(num_genotype) sets batch_idx = arange(num_genotype)
+    # (canonical), which is exactly what get_posteriors uses when saving
+    # samples.  This makes per-genotype lookups (masks, offsets) consistent
+    # with the stored posterior values.
+    num_geno = new_orchestrator.data.growth.num_genotype
+    all_indices = jnp.arange(num_geno, dtype=jnp.int32)
+    pred_data = _get_batch(new_orchestrator.data, all_indices)
+
     # Use the ORIGINAL orchestrator's priors so that any pinned hyperpriors
     # (e.g. activity_hyper_loc/activity_hyper_scale in the calibration model)
     # remain pinned at their calibrated values rather than being sampled from
     # the default prior.  new_orchestrator is rebuilt from settings-only
     # (component names, no priors) so its priors are all-default.
     predictions = predictive(predict_key,
-                             data=new_orchestrator.data,
+                             data=pred_data,
                              priors=orchestrator.priors)
 
     # -------------------------------------------------------------------------

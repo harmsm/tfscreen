@@ -52,6 +52,7 @@ SIMULATE_KNOWN_KEYS = frozenset({
     "sub_libraries", "library_combos", "spiked_seqs", "expected_5p", "expected_3p",
     # Phenotype / theta calculation
     "theta_component", "theta_rng_seed", "thermo_data", "theta_priors", "theta_rescale",
+    "theta_sim_priors",
     # Conditions and growth
     "condition_blocks", "growth",
     "dk_geno_hyper_loc", "dk_geno_hyper_scale", "dk_geno_hyper_shift", "dk_geno_zero",

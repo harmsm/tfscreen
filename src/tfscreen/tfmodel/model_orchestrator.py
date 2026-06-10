@@ -469,10 +469,16 @@ def _setup_batching(growth_genotypes,
     num_not_binding = len(not_binding_idx)
     not_binding_batch_size = batch_size - num_binding
 
-    # Build idx array. The first entries correspond to the binding data and are 
-    # the same for all rounds
-    idx = np.zeros(batch_size,dtype=int)
+    # Build idx array. The first entries correspond to the binding data and are
+    # the same for all rounds. Non-binding positions are filled with
+    # not_binding_idx[:not_binding_batch_size] as a deterministic default.
+    # During training, get_random_idx() overrides these entries with a fresh
+    # random sample each step. During prediction (no get_random_idx call),
+    # the static batch_idx is used directly, so it must contain valid indices.
+    idx = np.zeros(batch_size, dtype=int)
     idx[:num_binding] = binding_idx
+    if not_binding_batch_size > 0:
+        idx[num_binding:] = not_binding_idx[:not_binding_batch_size]
 
     # Calculate scale vector, which will be the same for all rounds
     scale_vector = np.ones(batch_size,dtype=float)
