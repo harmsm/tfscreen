@@ -142,5 +142,5 @@ def test_latent_params_compatible_with_predict(dummy_orchestrator):
     _, latent_params = draw_prior(dummy_orchestrator, rng_key=0, num_draws=2)
     result = predict(dummy_orchestrator, latent_params, predict_sites=["growth_pred"],
                      num_samples=None, num_marginal_samples=2)
-    assert "median" in result.columns or any(c in result.columns
-                                             for c in ["lower_95", "upper_95"])
+    assert "q0.5" in result.columns or any(c in result.columns
+                                           for c in ["q0.025", "q0.975"])

@@ -56,30 +56,27 @@ def mock_posteriors():
 def test_extract_growth_predictions_basic(mock_model, mock_posteriors):
     """Test default behavior for extracting growth predictions."""
     results = extract_growth_predictions(mock_model, mock_posteriors)
-    
+
     # Check output structure
     assert isinstance(results, pd.DataFrame)
-    assert "median" in results.columns
+    assert "q0.5" in results.columns
     assert len(results) == len(mock_model.growth_df)
-    
+
     # Verify values
-    # Row 0 -> median should be 10.5
-    assert results.iloc[0]["median"] == 10.5
-    # Row 1 -> median should be 11.5
-    assert results.iloc[1]["median"] == 11.5
+    # Row 0 -> q0.5 should be 10.5
+    assert results.iloc[0]["q0.5"] == 10.5
+    # Row 1 -> q0.5 should be 11.5
+    assert results.iloc[1]["q0.5"] == 11.5
 
 def test_extract_growth_predictions_custom_quantiles(mock_model, mock_posteriors):
     """Test extracting custom quantiles."""
-    q_to_get = {"mean": 0.5, "low": 0.1, "high": 0.9}
-    # Add columns to mock_model.growth_df for this test
-    for q in q_to_get:
-        mock_model.growth_df[q] = np.nan
-    results = extract_growth_predictions(mock_model, mock_posteriors, q_to_get=q_to_get)
-    
-    assert "mean" in results.columns
-    assert "low" in results.columns
-    assert "high" in results.columns
-    assert results.iloc[0]["mean"] == 10.5
+    results = extract_growth_predictions(mock_model, mock_posteriors,
+                                         q_to_get=[0.1, 0.5, 0.9])
+
+    assert "q0.5" in results.columns
+    assert "q0.1" in results.columns
+    assert "q0.9" in results.columns
+    assert results.iloc[0]["q0.5"] == 10.5
 
 def test_extract_growth_predictions_missing_field(mock_model):
     """Test error handling when growth_pred is missing from posteriors."""
@@ -88,8 +85,8 @@ def test_extract_growth_predictions_missing_field(mock_model):
 
 def test_extract_growth_predictions_invalid_quantiles(mock_model, mock_posteriors):
     """Test error handling for bad quantile input."""
-    with pytest.raises(ValueError, match="q_to_get should be a dictionary"):
-        extract_growth_predictions(mock_model, mock_posteriors, q_to_get=[0.5])
+    with pytest.raises(ValueError, match="should be a 1-D array-like"):
+        extract_growth_predictions(mock_model, mock_posteriors, q_to_get={"x": 0.5})
 
 def test_extract_growth_predictions_file_loading(mock_model):
     """Test loading posteriors from file."""

@@ -48,7 +48,7 @@ def _fake_extract(model, posteriors, **kwargs):
     else:
         pairs = [("IPTG", 0.0), ("IPTG", 1.0)]
     target = kwargs.get("target_genotypes") or ["wt", "A1B"]
-    rows = [{"genotype": g, "titrant_name": tn, "titrant_conc": tc, "median": 0.5}
+    rows = [{"genotype": g, "titrant_name": tn, "titrant_conc": tc, "q0.5": 0.5}
             for g in target for tn, tc in pairs]
     return pd.DataFrame(rows)
 
@@ -102,7 +102,7 @@ class TestPredictThetaDefaults:
         ) as mock_curves:
             mock_curves.return_value = pd.DataFrame(
                 {"genotype": ["wt"], "titrant_name": ["IPTG"],
-                 "titrant_conc": [0.0], "median": [0.5]}
+                 "titrant_conc": [0.0], "q0.5": [0.5]}
             )
             predict_theta("cfg.yaml", "post.h5", out_prefix=out)
         assert mock_curves.called
@@ -126,7 +126,7 @@ class TestPredictThetaUnion:
                 {"genotype": ["wt", "A1B", "C2D"],
                  "titrant_name": ["IPTG"] * 3,
                  "titrant_conc": [0.0] * 3,
-                 "median": [0.5] * 3}
+                 "q0.5": [0.5] * 3}
             )
             predict_theta("cfg.yaml", "post.h5",
                           genotypes_file=gf, out_prefix=out)
@@ -147,7 +147,7 @@ class TestPredictThetaUnion:
         ) as mock_curves:
             mock_curves.return_value = pd.DataFrame(
                 {"genotype": ["wt"], "titrant_name": ["IPTG"],
-                 "titrant_conc": [0.0], "median": [0.5]}
+                 "titrant_conc": [0.0], "q0.5": [0.5]}
             )
             predict_theta("cfg.yaml", "post.h5",
                           titrant_names_file=nf,
@@ -170,7 +170,7 @@ class TestPredictThetaUnion:
         ) as mock_curves:
             mock_curves.return_value = pd.DataFrame(
                 {"genotype": ["wt"], "titrant_name": ["IPTG"],
-                 "titrant_conc": [0.0], "median": [0.5]}
+                 "titrant_conc": [0.0], "q0.5": [0.5]}
             )
             predict_theta("cfg.yaml", "post.h5",
                           titrant_names_file=nf,
@@ -203,7 +203,7 @@ class TestPredictThetaUnion:
         ) as mock_curves:
             mock_curves.return_value = pd.DataFrame(
                 {"genotype": ["wt"], "titrant_name": ["IPTG"],
-                 "titrant_conc": [0.0], "median": [0.5]}
+                 "titrant_conc": [0.0], "q0.5": [0.5]}
             )
             predict_theta("cfg.yaml", "post.h5",
                           titrant_names_file=nf,
@@ -233,7 +233,7 @@ class TestPredictThetaOnlyFiles:
         ) as mock_curves:
             mock_curves.return_value = pd.DataFrame(
                 {"genotype": ["A1B"], "titrant_name": ["IPTG"],
-                 "titrant_conc": [0.0], "median": [0.5]}
+                 "titrant_conc": [0.0], "q0.5": [0.5]}
             )
             predict_theta("cfg.yaml", "post.h5",
                           genotypes_file=gf,
@@ -256,7 +256,7 @@ class TestPredictThetaOnlyFiles:
         ) as mock_curves:
             mock_curves.return_value = pd.DataFrame(
                 {"genotype": ["wt"], "titrant_name": ["IPTG"],
-                 "titrant_conc": [5.0], "median": [0.5]}
+                 "titrant_conc": [5.0], "q0.5": [0.5]}
             )
             predict_theta("cfg.yaml", "post.h5",
                           titrant_names_file=nf,
@@ -287,7 +287,7 @@ class TestPredictThetaCheckpointInput:
                 ".predict_theta_cli.extract_theta_curves",
                 return_value=pd.DataFrame({
                     "genotype": ["wt"], "titrant_name": ["IPTG"],
-                    "titrant_conc": [0.0], "median": [0.5],
+                    "titrant_conc": [0.0], "q0.5": [0.5],
                 }),
             ),
             patch(
@@ -295,7 +295,7 @@ class TestPredictThetaCheckpointInput:
                 ".predict_theta_cli.extract_theta_unmeasured",
                 return_value=pd.DataFrame({
                     "genotype": ["wt"], "titrant_name": ["IPTG"],
-                    "titrant_conc": [0.0], "median": [0.5],
+                    "titrant_conc": [0.0], "q0.5": [0.5],
                 }),
             ),
         ]
@@ -327,7 +327,7 @@ class TestPredictThetaCheckpointInput:
             extract_calls["posteriors"] = kwargs.get("posteriors")
             return pd.DataFrame({
                 "genotype": ["wt"], "titrant_name": ["IPTG"],
-                "titrant_conc": [0.0], "median": [0.5],
+                "titrant_conc": [0.0], "q0.5": [0.5],
             })
 
         p = self._base_patches(mock_orchestrator)
@@ -365,7 +365,7 @@ class TestGenotypeBatchSize:
                 "genotype": ["wt", "A1B", "C2D"],
                 "titrant_name": ["IPTG"] * 3,
                 "titrant_conc": [0.0] * 3,
-                "median": [0.5] * 3,
+                "q0.5": [0.5] * 3,
             })
             predict_theta("cfg.yaml", "post.h5",
                           genotypes_file=gf,
@@ -385,7 +385,7 @@ class TestGenotypeBatchSize:
                 "genotype": ["wt", "A1B", "C2D"],
                 "titrant_name": ["IPTG"] * 3,
                 "titrant_conc": [0.0] * 3,
-                "median": [0.5] * 3,
+                "q0.5": [0.5] * 3,
             })
             predict_theta("cfg.yaml", "post.h5",
                           genotypes_file=gf,
@@ -400,13 +400,13 @@ class TestGenotypeBatchSize:
 class TestPredictThetaQToGet:
 
     def test_pkl_passes_point_est_q_to_get(self, mock_orchestrator, tmp_path):
-        """q_to_get={"point_est": 0.5} is passed to extract_theta_curves for .pkl input."""
+        """q_to_get=[0.5] is passed to extract_theta_curves for .pkl input."""
         extract_calls = {}
 
         def fake_curves(**kwargs):
             extract_calls["q_to_get"] = kwargs.get("q_to_get")
             return pd.DataFrame({"genotype": ["wt"], "titrant_name": ["IPTG"],
-                                 "titrant_conc": [0.0], "point_est": [0.5]})
+                                 "titrant_conc": [0.0], "q0.5": [0.5]})
 
         with patch(
             "tfscreen.tfmodel.scripts"
@@ -424,12 +424,12 @@ class TestPredictThetaQToGet:
             "tfscreen.tfmodel.scripts"
             ".predict_theta_cli.extract_theta_unmeasured",
             return_value=pd.DataFrame({"genotype": ["wt"], "titrant_name": ["IPTG"],
-                                       "titrant_conc": [0.0], "point_est": [0.5]}),
+                                       "titrant_conc": [0.0], "q0.5": [0.5]}),
         ):
             predict_theta("cfg.yaml", "run_checkpoint.pkl",
                           out_prefix=str(tmp_path / "out"))
 
-        assert extract_calls["q_to_get"] == {"point_est": 0.5}
+        assert extract_calls["q_to_get"] == [0.5]
 
     def test_h5_passes_none_q_to_get(self, mock_orchestrator, tmp_path):
         """q_to_get=None is passed to extract_theta_curves for .h5 input."""
@@ -438,7 +438,7 @@ class TestPredictThetaQToGet:
         def fake_curves(**kwargs):
             extract_calls["q_to_get"] = kwargs.get("q_to_get")
             return pd.DataFrame({"genotype": ["wt"], "titrant_name": ["IPTG"],
-                                 "titrant_conc": [0.0], "median": [0.5]})
+                                 "titrant_conc": [0.0], "q0.5": [0.5]})
 
         with patch(
             "tfscreen.tfmodel.scripts"
@@ -456,7 +456,7 @@ class TestPredictThetaQToGet:
             "tfscreen.tfmodel.scripts"
             ".predict_theta_cli.extract_theta_unmeasured",
             return_value=pd.DataFrame({"genotype": ["wt"], "titrant_name": ["IPTG"],
-                                       "titrant_conc": [0.0], "median": [0.5]}),
+                                       "titrant_conc": [0.0], "q0.5": [0.5]}),
         ):
             predict_theta("cfg.yaml", "post.h5",
                           out_prefix=str(tmp_path / "out"))

@@ -15,5 +15,5 @@ class TestSummarizeSbcMain:
 
     def test_summarize_sbc_imported_from_analysis(self):
         from tfscreen.tfmodel.scripts.summarize_sbc_cli import summarize_sbc
-        from tfscreen.tfmodel.analysis.sbc import summarize_sbc as canonical
+        from tfscreen.tfmodel.analysis.error_calibration import summarize_sbc as canonical
         assert summarize_sbc is canonical

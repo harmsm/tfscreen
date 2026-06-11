@@ -61,25 +61,25 @@ def fit_response(df,
         raise ValueError(f"Unknown model(s): {bad}. Valid: {list(MODEL_LIBRARY)}")
 
     if theta_col is None:
-        if "median" in df.columns:
-            theta_col = "median"
+        if "q0.5" in df.columns:
+            theta_col = "q0.5"
         elif "point_est" in df.columns:
             theta_col = "point_est"
         else:
             raise ValueError(
-                "No theta column found. Expected 'median' (posterior) or "
+                "No theta column found. Expected 'q0.5' (posterior median) or "
                 "'point_est' (MAP). Pass theta_col explicitly to override."
             )
 
     if sigma_col is None:
-        if "upper_std" in df.columns and "lower_std" in df.columns:
+        if "q0.841" in df.columns and "q0.159" in df.columns:
             df = df.copy()
-            df["_sigma"] = (df["upper_std"] - df["lower_std"]) / 2
+            df["_sigma"] = (df["q0.841"] - df["q0.159"]) / 2
             sigma_col = "_sigma"
         else:
             raise ValueError(
-                "No sigma_col specified and df lacks upper_std/lower_std columns. "
-                "Provide --sigma_col or ensure upper_std and lower_std are present."
+                "No sigma_col specified and df lacks q0.841/q0.159 columns. "
+                "Provide --sigma_col or ensure q0.841 and q0.159 are present."
             )
 
     work_items = []

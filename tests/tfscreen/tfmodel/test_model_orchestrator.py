@@ -486,8 +486,8 @@ def test_extract_parameters_full(initialized_model_class):
 
 def test_extract_parameters_errors(initialized_model_class):
     model = initialized_model_class
-    with pytest.raises(ValueError, match="should be a dictionary"):
-        extract_parameters(model, {}, q_to_get="not_a_dict")
+    with pytest.raises(ValueError, match="should be a 1-D array-like"):
+        extract_parameters(model, {}, q_to_get={"not": "valid"})
 
 def test_extract_parameters_npz(initialized_model_class, tmpdir):
     model = initialized_model_class
@@ -563,8 +563,8 @@ def test_extract_theta_curves_errors(initialized_model_class):
     with pytest.raises(ValueError, match="does not support this interface"):
         extract_theta_curves(model, {})
     model._theta = "hill_geno"
-    with pytest.raises(ValueError, match="should be a dictionary"):
-        extract_theta_curves(model, {}, q_to_get="not_a_dict")
+    with pytest.raises(ValueError, match="should be a 1-D array-like"):
+        extract_theta_curves(model, {}, q_to_get={"not": "valid"})
 
 def test_extract_growth_predictions_full(initialized_model_class, tmpdir):
     model = initialized_model_class
@@ -590,12 +590,12 @@ def test_extract_growth_predictions_full(initialized_model_class, tmpdir):
     })
     post = {"growth_pred": np.zeros((1, 1, 1, 1, 1, 1, 1, 1))}
     res = extract_growth_predictions(model, post)
-    assert "median" in res.columns
-    
+    assert "q0.5" in res.columns
+
     with pytest.raises(ValueError, match="'growth_pred' not found"):
         extract_growth_predictions(model, {})
-    with pytest.raises(ValueError, match="should be a dictionary"):
-        extract_growth_predictions(model, {"growth_pred": None}, q_to_get="bad")
+    with pytest.raises(ValueError, match="should be a 1-D array-like"):
+        extract_growth_predictions(model, {"growth_pred": None}, q_to_get={"not": "valid"})
         
     path = os.path.join(tmpdir, "gp.npz")
     np.savez(path, growth_pred=np.zeros((1,1,1,1,1,1,1,1)))

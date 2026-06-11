@@ -36,15 +36,15 @@ def _make_theta_df(center_col):
         "titrant_name": ["IPTG", "IPTG"],
         "titrant_conc": [0.0, 1.0],
         center_col: [0.3, 0.7],
-        "upper_std": [0.4, 0.8],
-        "lower_std": [0.2, 0.6],
+        "q0.841": [0.4, 0.8],
+        "q0.159": [0.2, 0.6],
     })
 
 
 class TestThetaColAutoDetect:
 
-    def test_autodetects_median(self, tmp_path):
-        """Values from median column are passed to the fitter."""
+    def test_autodetects_q0_5(self, tmp_path):
+        """Values from q0.5 column are passed to the fitter."""
         f = str(tmp_path / "theta.csv")
         captured = {}
 
@@ -52,7 +52,7 @@ class TestThetaColAutoDetect:
             captured["y"] = list(y)
             return (_FLAT_RESULT, None)
 
-        df = _make_theta_df("median")
+        df = _make_theta_df("q0.5")
         with patch("tfscreen.analysis.cat_response.cat_response_cli.pd.read_csv",
                    return_value=df), \
              patch("tfscreen.analysis.cat_response.cat_response_cli.cat_fit",
@@ -90,7 +90,7 @@ class TestThetaColAutoDetect:
             captured["y"] = list(y)
             return (_FLAT_RESULT, None)
 
-        df = _make_theta_df("median").copy()
+        df = _make_theta_df("q0.5").copy()
         df["my_col"] = [0.11, 0.22]
         with patch("tfscreen.analysis.cat_response.cat_response_cli.pd.read_csv",
                    return_value=df), \
@@ -101,8 +101,8 @@ class TestThetaColAutoDetect:
 
         assert captured["y"] == pytest.approx([0.11, 0.22])
 
-    def test_median_preferred_over_point_est(self, tmp_path):
-        """When both median and point_est are present, median wins."""
+    def test_q0_5_preferred_over_point_est(self, tmp_path):
+        """When both q0.5 and point_est are present, q0.5 wins."""
         f = str(tmp_path / "theta.csv")
         captured = {}
 
@@ -110,7 +110,7 @@ class TestThetaColAutoDetect:
             captured["y"] = list(y)
             return (_FLAT_RESULT, None)
 
-        df = _make_theta_df("median").copy()
+        df = _make_theta_df("q0.5").copy()
         df["point_est"] = [0.9, 0.8]
         with patch("tfscreen.analysis.cat_response.cat_response_cli.pd.read_csv",
                    return_value=df), \
@@ -122,14 +122,14 @@ class TestThetaColAutoDetect:
         assert captured["y"] == pytest.approx([0.3, 0.7])
 
     def test_raises_when_no_theta_col(self, tmp_path):
-        """ValueError when neither median nor point_est is present."""
+        """ValueError when neither q0.5 nor point_est is present."""
         f = str(tmp_path / "theta.csv")
         df = pd.DataFrame({
             "genotype": ["wt"],
             "titrant_name": ["IPTG"],
             "titrant_conc": [0.0],
-            "upper_std": [0.5],
-            "lower_std": [0.3],
+            "q0.841": [0.5],
+            "q0.159": [0.3],
         })
         with patch("tfscreen.analysis.cat_response.cat_response_cli.pd.read_csv",
                    return_value=df):

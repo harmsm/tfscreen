@@ -49,18 +49,18 @@ def test_extract_theta_curves_basic(mock_model, mock_posteriors):
     assert "genotype" in results.columns
     assert "titrant_name" in results.columns
     assert "titrant_conc" in results.columns
-    assert "median" in results.columns
-    
+    assert "q0.5" in results.columns
+
     # Should have unique (genotype, titrant_name, titrant_conc)
     # wt: 0.0, 1.0; mut: 0.0, 1.0 -> 4 rows
     assert len(results) == 4
-    
+
     # Verify values for wt at conc=1.0
     # hill_n=2, log_K=-1.0 (K=0.367), high=0.9, low=0.1
     # occupancy = 1 / (1 + exp(-2 * (log(1.0) - (-1.0)))) = 1 / (1 + exp(-2)) = 1 / (1 + 0.135) = 0.88
     # theta = 0.1 + (0.9 - 0.1) * 0.88 = 0.1 + 0.8 * 0.88 = 0.804
     wt_1 = results[(results["genotype"] == "wt") & (results["titrant_conc"] == 1.0)]
-    assert np.allclose(wt_1["median"], 0.804, atol=1e-3)
+    assert np.allclose(wt_1["q0.5"], 0.804, atol=1e-3)
 
 def test_extract_theta_curves_manual_df(mock_model, mock_posteriors):
     """Test providing a manual titrant DataFrame."""
@@ -155,14 +155,14 @@ def _make_unmeasured_model(theta_name="hill_mut"):
 def _fake_predict_unmeasured(target_genotypes, titrant_names,
                              manual_titrant_df, mut_labels,
                              pair_labels, param_posteriors, q_to_get):
-    """Returns one row per (genotype, titrant_conc) with median=0.5."""
+    """Returns one row per (genotype, titrant_conc) with q0.5=0.5."""
     rows = []
     for g in target_genotypes:
         for _, row in manual_titrant_df.iterrows():
             rows.append({"genotype": g,
                          "titrant_name": row["titrant_name"],
                          "titrant_conc": row["titrant_conc"],
-                         "median": 0.5})
+                         "q0.5": 0.5})
     return pd.DataFrame(rows)
 
 
@@ -177,7 +177,7 @@ def patched_unmeasured_module():
         {"theta": registry_patch},
     ), patch(
         "tfscreen.tfmodel.analysis.extraction.load_posteriors",
-        return_value=({"median": 0.5}, {}),
+        return_value=({"q0.5": 0.5}, {}),
     ):
         yield fake_module
 
@@ -257,7 +257,7 @@ class TestExtractThetaUnmeasuredBatching:
             {"theta": {}},
         ), patch(
             "tfscreen.tfmodel.analysis.extraction.load_posteriors",
-            return_value=({"median": 0.5}, {}),
+            return_value=({"q0.5": 0.5}, {}),
         ):
             with pytest.raises(ValueError, match="predict_unmeasured"):
                 extract_theta_unmeasured(

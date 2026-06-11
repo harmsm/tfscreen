@@ -1453,9 +1453,9 @@ class TestMakeCorrelationPlot:
                     "t_sel": t,
                     "ln_cfu": rng.uniform(8, 12),
                     "ln_cfu_std": 0.2,
-                    "q05": rng.uniform(7, 9),
-                    "median": rng.uniform(9, 11),
-                    "q95": rng.uniform(11, 13),
+                    "q0.05": rng.uniform(7, 9),
+                    "q0.5": rng.uniform(9, 11),
+                    "q0.95": rng.uniform(11, 13),
                     "replicate_idx": 0,
                     "time_idx": t_i,
                     "condition_pre_idx": 0,
@@ -1473,9 +1473,9 @@ class TestMakeCorrelationPlot:
                 "replicate": "r1",
                 "condition_pre": "cp1",
                 "genotype": g,
-                "q05": 8.5,
-                "median": 9.0,
-                "q95": 9.5,
+                "q0.05": 8.5,
+                "q0.5": 9.0,
+                "q0.95": 9.5,
             })
         ln_cfu0_df = pd.DataFrame(ln_cfu0_rows)
 

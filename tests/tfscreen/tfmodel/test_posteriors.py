@@ -7,11 +7,11 @@ def test_load_posteriors_dict():
     """Test loading posteriors from a dictionary."""
     posteriors = {"param1": np.array([1, 2, 3]), "param2": np.array([4, 5, 6])}
     q, p = load_posteriors(posteriors)
-    
+
     assert p == posteriors
-    assert "median" in q
-    assert q["median"] == 0.5
-    assert len(q) == 9
+    assert "q0.5" in q
+    assert q["q0.5"] == 0.5
+    assert len(q) == 17
 
 def test_load_posteriors_npz(tmp_path):
     """Test loading posteriors from an .npz file."""
@@ -22,7 +22,7 @@ def test_load_posteriors_npz(tmp_path):
     
     assert "param1" in p
     assert np.array_equal(p["param1"], [1, 2, 3])
-    assert "median" in q
+    assert "q0.5" in q
 
 def test_load_posteriors_h5(tmp_path):
     """Test loading posteriors from an .h5 file."""
@@ -45,19 +45,19 @@ def test_load_posteriors_h5(tmp_path):
 def test_load_posteriors_custom_q():
     """Test loading with custom quantiles."""
     posteriors = {"param1": np.array([1, 2, 3])}
-    custom_q = {"test": 0.123}
-    q, p = load_posteriors(posteriors, q_to_get=custom_q)
-    
-    assert q == custom_q
+    q, p = load_posteriors(posteriors, q_to_get=[0.123])
+
+    assert "q0.123" in q
+    assert q["q0.123"] == 0.123
     assert p == posteriors
 
 def test_load_posteriors_errors():
     """Test validation errors."""
     posteriors = {"param1": np.array([1, 2, 3])}
-    
-    with pytest.raises(ValueError, match="q_to_get should be a dictionary"):
-        load_posteriors(posteriors, q_to_get=[0.5])
-    
+
+    with pytest.raises(ValueError, match="q_to_get should be a 1-D array-like"):
+        load_posteriors(posteriors, q_to_get={"test": 0.5})
+
     # Test invalid file path (np.load will raise error)
     with pytest.raises(Exception):
         load_posteriors("non_existent_file.npz")

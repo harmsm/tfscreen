@@ -706,7 +706,7 @@ def _run_calibration_map(ri,
 _DIAG_PLOT_COLS = [
     "replicate", "condition_pre", "condition_sel",
     "titrant_name", "titrant_conc", "genotype",
-    "t_sel", "ln_cfu", "ln_cfu_std", "q05", "median", "q95",
+    "t_sel", "ln_cfu", "ln_cfu_std", "q0.05", "q0.5", "q0.95",
 ]
 _DIAG_CONDITION_COLS = [
     "condition_pre", "condition_sel", "titrant_name", "titrant_conc"
@@ -750,7 +750,7 @@ def _run_calibration_diagnostics(orchestrator_cal, params, out_prefix, growth_pr
         orchestrator_cal,
         params,
         predict_sites=["growth_pred", "ln_cfu0"],
-        q_to_get={"median": 0.5, "q05": 0.05, "q95": 0.95},
+        q_to_get=[0.05, 0.5, 0.95],
         num_samples=None,
         num_marginal_samples=1,
     )
@@ -758,11 +758,11 @@ def _run_calibration_diagnostics(orchestrator_cal, params, out_prefix, growth_pr
     ln_cfu0_raw = all_dfs["ln_cfu0"]
 
     # ------------------------------------------------------------------
-    # 2. Add ln_cfu_pred (alias for median) and optional Laplace std for
+    # 2. Add ln_cfu_pred (alias for q0.5) and optional Laplace std for
     #    the stats / correlation helpers.
     # ------------------------------------------------------------------
     pred_df = pred_df.copy()
-    pred_df["ln_cfu_pred"] = pred_df["median"]
+    pred_df["ln_cfu_pred"] = pred_df["q0.5"]
 
     if growth_pred_std is not None:
         tm = orchestrator_cal.growth_tm
@@ -795,7 +795,7 @@ def _run_calibration_diagnostics(orchestrator_cal, params, out_prefix, growth_pr
     )
     ln_cfu0_vals = (
         ln_cfu0_raw[["replicate", "condition_pre", "genotype",
-                     "q05", "median", "q95"]]
+                     "q0.05", "q0.5", "q0.95"]]
         .drop_duplicates(subset=["replicate", "condition_pre", "genotype"])
     )
     valid_combos = (

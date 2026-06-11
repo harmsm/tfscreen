@@ -70,7 +70,7 @@ def _extract_from_checkpoint(orchestrator, ckpt_path, out_prefix):
     posteriors = {k: np.expand_dims(np.asarray(v), 0) for k, v in constrained.items()}
 
     print(f"Writing parameter CSVs to {out_prefix}_*.csv...", flush=True)
-    param_dfs = extract_parameters(orchestrator, posteriors, q_to_get={"point_est": 0.5})
+    param_dfs = extract_parameters(orchestrator, posteriors, q_to_get=[0.5])
     for p_name, df in param_dfs.items():
         out_file = f"{out_prefix}_{p_name}.csv"
         df.to_csv(out_file, index=False)

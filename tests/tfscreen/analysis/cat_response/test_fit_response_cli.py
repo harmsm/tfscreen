@@ -36,15 +36,15 @@ def _make_df(center_col):
         "titrant_name": ["IPTG", "IPTG"],
         "titrant_conc": [0.0, 1.0],
         center_col: [0.3, 0.7],
-        "upper_std": [0.4, 0.8],
-        "lower_std": [0.2, 0.6],
+        "q0.841": [0.4, 0.8],
+        "q0.159": [0.2, 0.6],
     })
 
 
 class TestFitResponseThetaColAutoDetect:
 
-    def test_autodetects_median(self):
-        """Values from median column are passed to the fitter."""
+    def test_autodetects_q0_5(self):
+        """Values from q0.5 column are passed to the fitter."""
         captured = {}
 
         def fake_fit(x, y, y_std, models_to_run):
@@ -53,12 +53,12 @@ class TestFitResponseThetaColAutoDetect:
 
         with patch("tfscreen.analysis.cat_response.fit_response_cli.cat_fit",
                    side_effect=fake_fit), _SYNC_EXECUTOR:
-            fit_response(_make_df("median"), models_to_run=["flat"])
+            fit_response(_make_df("q0.5"), models_to_run=["flat"])
 
         assert captured["y"] == pytest.approx([0.3, 0.7])
 
     def test_autodetects_point_est(self):
-        """Values from point_est column are passed to the fitter when median is absent."""
+        """Values from point_est column are passed to the fitter when q0.5 is absent."""
         captured = {}
 
         def fake_fit(x, y, y_std, models_to_run):
@@ -72,14 +72,14 @@ class TestFitResponseThetaColAutoDetect:
         assert captured["y"] == pytest.approx([0.3, 0.7])
 
     def test_explicit_theta_col_overrides(self):
-        """Explicit theta_col is used even when median is also present."""
+        """Explicit theta_col is used even when q0.5 is also present."""
         captured = {}
 
         def fake_fit(x, y, y_std, models_to_run):
             captured["y"] = list(y)
             return (_FLAT_RESULT, None)
 
-        df = _make_df("median").copy()
+        df = _make_df("q0.5").copy()
         df["my_col"] = [0.11, 0.22]
         with patch("tfscreen.analysis.cat_response.fit_response_cli.cat_fit",
                    side_effect=fake_fit), _SYNC_EXECUTOR:
@@ -87,15 +87,15 @@ class TestFitResponseThetaColAutoDetect:
 
         assert captured["y"] == pytest.approx([0.11, 0.22])
 
-    def test_median_preferred_over_point_est(self):
-        """When both median and point_est are present, median wins."""
+    def test_q0_5_preferred_over_point_est(self):
+        """When both q0.5 and point_est are present, q0.5 wins."""
         captured = {}
 
         def fake_fit(x, y, y_std, models_to_run):
             captured["y"] = list(y)
             return (_FLAT_RESULT, None)
 
-        df = _make_df("median").copy()
+        df = _make_df("q0.5").copy()
         df["point_est"] = [0.9, 0.8]
         with patch("tfscreen.analysis.cat_response.fit_response_cli.cat_fit",
                    side_effect=fake_fit), _SYNC_EXECUTOR:
@@ -104,13 +104,13 @@ class TestFitResponseThetaColAutoDetect:
         assert captured["y"] == pytest.approx([0.3, 0.7])
 
     def test_raises_when_no_theta_col(self):
-        """ValueError when neither median nor point_est is present."""
+        """ValueError when neither q0.5 nor point_est is present."""
         df = pd.DataFrame({
             "genotype": ["wt"],
             "titrant_name": ["IPTG"],
             "titrant_conc": [0.0],
-            "upper_std": [0.5],
-            "lower_std": [0.3],
+            "q0.841": [0.5],
+            "q0.159": [0.3],
         })
         with pytest.raises(ValueError, match="No theta column found"):
             fit_response(df, models_to_run=["flat"])

@@ -46,7 +46,7 @@ def mock_predict(mock_orchestrator):
         genotypes = kwargs.get("genotypes") or mock_orchestrator.growth_df["genotype"].unique().tolist()
         concs = kwargs.get("titrant_conc") or mock_orchestrator.growth_df["titrant_conc"].unique().tolist()
         rows = [{"genotype": g, "titrant_name": "IPTG", "titrant_conc": c,
-                 "median": 10.0}
+                 "q0.5": 10.0}
                 for g in genotypes for c in concs]
         return pd.DataFrame(rows)
 
@@ -209,7 +209,7 @@ class TestPredictGrowthCheckpointInput:
             genotypes = kwargs.get("genotypes") or mock_orchestrator.growth_df["genotype"].unique().tolist()
             concs = kwargs.get("titrant_conc") or mock_orchestrator.growth_df["titrant_conc"].unique().tolist()
             rows = [{"genotype": g, "titrant_name": "IPTG", "titrant_conc": c,
-                     "median": 10.0}
+                     "q0.5": 10.0}
                     for g in genotypes for c in concs]
             return pd.DataFrame(rows)
 
@@ -271,7 +271,7 @@ class TestPredictGrowthCheckpointInput:
         def fake_predict(**kwargs):
             predict_calls["param_posteriors"] = kwargs.get("param_posteriors")
             return pd.DataFrame({"genotype": ["wt"], "titrant_name": ["IPTG"],
-                                  "titrant_conc": [0.0], "median": [10.0]})
+                                  "titrant_conc": [0.0], "q0.5": [10.0]})
 
         patches = self._make_fixtures(mock_orchestrator)
         with patches[0], patch(
@@ -289,13 +289,13 @@ class TestPredictGrowthCheckpointInput:
         assert predict_calls["param_posteriors"] == "resolved_map.h5"
 
     def test_pkl_passes_point_est_q_to_get(self, mock_orchestrator, tmp_path):
-        """q_to_get={"point_est": 0.5} is passed to predict when param_file is .pkl."""
+        """q_to_get=[0.5] is passed to predict when param_file is .pkl."""
         predict_calls = {}
 
         def fake_predict(**kwargs):
             predict_calls["q_to_get"] = kwargs.get("q_to_get")
             return pd.DataFrame({"genotype": ["wt"], "titrant_name": ["IPTG"],
-                                 "titrant_conc": [0.0], "point_est": [10.0]})
+                                 "titrant_conc": [0.0], "q0.5": [10.0]})
 
         patches = self._make_fixtures(mock_orchestrator)
         with patches[0], patch(
@@ -310,7 +310,7 @@ class TestPredictGrowthCheckpointInput:
             predict_growth("cfg.yaml", "run_checkpoint.pkl",
                            out_prefix=str(tmp_path / "out"))
 
-        assert predict_calls["q_to_get"] == {"point_est": 0.5}
+        assert predict_calls["q_to_get"] == [0.5]
 
     def test_h5_passes_none_q_to_get(self, mock_orchestrator, tmp_path):
         """q_to_get=None is passed to predict when param_file is .h5."""
@@ -319,7 +319,7 @@ class TestPredictGrowthCheckpointInput:
         def fake_predict(**kwargs):
             predict_calls["q_to_get"] = kwargs.get("q_to_get")
             return pd.DataFrame({"genotype": ["wt"], "titrant_name": ["IPTG"],
-                                 "titrant_conc": [0.0], "median": [10.0]})
+                                 "titrant_conc": [0.0], "q0.5": [10.0]})
 
         patches = self._make_fixtures(mock_orchestrator)
         with patches[0], patch(

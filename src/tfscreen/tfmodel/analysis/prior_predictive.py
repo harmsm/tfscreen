@@ -112,17 +112,17 @@ def growth_df_from_prior(orchestrator, latent_params, draw_idx=0, noise_rng=None
         orchestrator,
         single_draw,
         predict_sites=["growth_pred"],
-        q_to_get={"_prior_ln_cfu": 0.5},
+        q_to_get=[0.5],
         num_samples=None,
     )
 
     # pred_df may contain extra rows (expanded grid); merge to keep original rows.
     out_df = orchestrator.growth_df.drop(columns=["ln_cfu"]).merge(
-        pred_df[merge_keys + ["_prior_ln_cfu"]],
+        pred_df[merge_keys + ["q0.5"]],
         on=merge_keys,
         how="left",
     )
-    out_df = out_df.rename(columns={"_prior_ln_cfu": "ln_cfu"})
+    out_df = out_df.rename(columns={"q0.5": "ln_cfu"})
 
     if noise_rng is not None:
         out_df["ln_cfu"] = (

@@ -1,6 +1,28 @@
 import numpy as np
 import h5py
 
+# ---------------------------------------------------------------------------
+# Default quantile levels and column-name helper
+# ---------------------------------------------------------------------------
+
+_DEFAULT_QUANTILE_LEVELS = np.array([
+    0.001, 0.005, 0.01, 0.025, 0.05,
+    0.10, 0.159, 0.25, 0.50, 0.75, 0.841, 0.90,
+    0.95, 0.975, 0.99, 0.995, 0.999,
+])
+
+
+def quantile_col(level):
+    """Return the standard column name for quantile *level*.
+
+    Uses ``f"q{level:g}"`` so trailing zeros are stripped:
+    ``quantile_col(0.5)`` → ``"q0.5"``,
+    ``quantile_col(0.025)`` → ``"q0.025"``,
+    ``quantile_col(0.159)`` → ``"q0.159"``.
+    """
+    return f"q{level:g}"
+
+
 def get_posterior_samples(param_posteriors, param_name):
     """
     Get posterior samples for a parameter, handling name fallbacks and HDF5.
@@ -39,7 +61,7 @@ def get_posterior_samples(param_posteriors, param_name):
                 keys_str = ", ".join(available_keys[:5]) + " ... " + ", ".join(available_keys[-5:])
             else:
                 keys_str = ", ".join(available_keys)
-            
+
             error_msg = f"Parameter '{param_name}' not found in posteriors. Available keys: {keys_str}"
             raise KeyError(error_msg)
 
@@ -49,25 +71,36 @@ def get_posterior_samples(param_posteriors, param_name):
 
 def load_posteriors(posteriors, q_to_get=None):
     """
-    Consolidates the reading logic for posterior samples and sets default quantiles.
+    Consolidate the reading logic for posterior samples and build quantile mapping.
 
     Parameters
     ----------
     posteriors : dict or str
-        Assumes this is a dictionary of posteriors keying parameters to
-        numpy arrays, a numpy.lib.npyio.NpzFile object, or a path to a
-        .npz or .h5/.hdf5 file containing posterior samples for model
+        A dictionary of posteriors keying parameters to numpy arrays, a
+        ``numpy.lib.npyio.NpzFile`` object, or a path to a ``.npz`` or
+        ``.h5``/``.hdf5`` file containing posterior samples for model
         parameters.
-    q_to_get : dict, optional
-        Dictionary mapping output column names to quantile values (between 0 and 1)
-        to extract from the posterior samples. If None, a default set of quantiles
-        is used (min, lower_95, lower_std, lower_quartile, median, upper_std,
-        upper_quartile, upper_95, max).
+    q_to_get : array-like of float, optional
+        Quantile levels in [0, 1] to extract from posterior samples.  Column
+        names are generated automatically as ``q{level:g}``
+        (e.g. ``q0.5`` for the median, ``q0.025`` for the 2.5th percentile).
+        If ``None``, a dense default set is used::
+
+            [0.001, 0.005, 0.01, 0.025, 0.05,
+             0.10, 0.159, 0.25, 0.50, 0.75, 0.841, 0.90,
+             0.95, 0.975, 0.99, 0.995, 0.999]
 
     Returns
     -------
     tuple
-        A tuple containing (q_to_get, param_posteriors).
+        ``(q_dict, param_posteriors)`` where ``q_dict`` maps column names to
+        quantile levels (e.g. ``{"q0.5": 0.5, "q0.025": 0.025, ...}``).
+
+    Raises
+    ------
+    ValueError
+        If ``q_to_get`` cannot be converted to a 1-D float array or any
+        value is outside [0, 1].
     """
 
     # Load the posterior file
@@ -95,22 +128,24 @@ def load_posteriors(posteriors, q_to_get=None):
             "path), an .h5 file (loaded or path), or an h5py group."
         )
 
-    # Named quantiles to pull from the posterior distribution
+    # Build the quantile level array
     if q_to_get is None:
-        q_to_get = {"min": 0.0,
-                    "lower_95": 0.025,
-                    "lower_std": 0.159,
-                    "lower_quartile": 0.25,
-                    "median": 0.5,
-                    "upper_quartile": 0.75,
-                    "upper_std": 0.841,
-                    "upper_95": 0.975,
-                    "max": 1.0}
+        q_arr = _DEFAULT_QUANTILE_LEVELS
+    else:
+        try:
+            q_arr = np.atleast_1d(np.asarray(q_to_get, dtype=float)).ravel()
+        except (TypeError, ValueError):
+            raise ValueError(
+                "q_to_get should be a 1-D array-like of quantile levels in [0, 1]; "
+                f"got {type(q_to_get).__name__}"
+            )
+        if not np.all((q_arr >= 0) & (q_arr <= 1)):
+            raise ValueError(
+                "q_to_get values must all be in [0, 1]; "
+                f"got min={float(q_arr.min()):.4g}, max={float(q_arr.max()):.4g}"
+            )
 
-    # make sure q_to_get is a dictionary
-    if not isinstance(q_to_get, dict):
-        raise ValueError(
-            "q_to_get should be a dictionary keying column names to quantiles"
-        )
-    
-    return q_to_get, param_posteriors
+    # Build column-name → level dict used by all downstream extraction code
+    q_dict = {quantile_col(level): float(level) for level in q_arr}
+
+    return q_dict, param_posteriors

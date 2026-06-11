@@ -75,9 +75,9 @@ def _make_pred_csv(path, n_training=3, extra_genotypes=None):
                 "genotype": g,
                 "titrant_name": TITRANT_NAME,
                 "titrant_conc": tc,
-                "median": theta + tc * 0.0001,
-                "lower_95": theta - 0.05,
-                "upper_95": theta + 0.05,
+                "q0.5": theta + tc * 0.0001,
+                "q0.025": theta - 0.05,
+                "q0.975": theta + 0.05,
                 "in_training_data": in_train,
             })
     pd.DataFrame(rows).to_csv(path, index=False)
@@ -394,7 +394,7 @@ class TestSummarizeFitComplete:
         pd.DataFrame({
             "genotype": ["wt"] * 6,
             "ln_cfu": np.linspace(8.0, 13.0, 6),
-            "median": np.linspace(8.1, 13.1, 6),
+            "q0.5": np.linspace(8.1, 13.1, 6),
         }).to_csv(os.path.join(run_dir, "tfs_growth_pred.csv"), index=False)
         summarize_fit(run_dir)
         with open(os.path.join(run_dir, "summary", "tfs_summarize_fit_summary.json")) as fh:
@@ -409,7 +409,7 @@ class TestSummarizeFitComplete:
         df = pd.DataFrame({
             "genotype": ["wt"] * 6,
             "ln_cfu": [8.0, np.nan, 9.0, np.nan, 10.0, 11.0],
-            "median": np.linspace(8.1, 13.1, 6),
+            "q0.5": np.linspace(8.1, 13.1, 6),
         })
         df.to_csv(os.path.join(run_dir, "tfs_growth_pred.csv"), index=False)
         summarize_fit(run_dir)
@@ -426,7 +426,7 @@ class TestSummarizeFitComplete:
         pd.DataFrame({
             "genotype": ["wt"] * 6,
             "ln_cfu": np.linspace(8.0, 13.0, 6),
-            "median": np.linspace(8.1, 13.1, 6),
+            "q0.5": np.linspace(8.1, 13.1, 6),
         }).to_csv(os.path.join(run_dir, "tfs_growth_pred.csv"), index=False)
         summarize_fit(run_dir)
         assert os.path.exists(os.path.join(run_dir, "summary", "tfs_summarize_growth_corr.pdf"))
@@ -445,7 +445,7 @@ class TestSummarizeFitComplete:
         assert os.path.exists(csv_path)
         df = pd.read_csv(csv_path)
         assert "theta_obs" in df.columns
-        assert "median" in df.columns
+        assert "q0.5" in df.columns
         assert len(df) > 0
 
     def test_theta_corr_training_csv_not_written_when_no_binding(self, run_dir):
@@ -476,7 +476,7 @@ class TestSummarizeFitComplete:
         assert os.path.exists(csv_path)
         df = pd.read_csv(csv_path)
         assert "theta_obs" in df.columns
-        assert "median" in df.columns
+        assert "q0.5" in df.columns
         assert len(df) == len(TITRANT_CONCS)
 
     def test_growth_corr_csv_symlink_created(self, run_dir):
@@ -484,7 +484,7 @@ class TestSummarizeFitComplete:
         pd.DataFrame({
             "genotype": ["wt"] * 6,
             "ln_cfu": np.linspace(8.0, 13.0, 6),
-            "median": np.linspace(8.1, 13.1, 6),
+            "q0.5": np.linspace(8.1, 13.1, 6),
         }).to_csv(growth_pred_path, index=False)
         summarize_fit(run_dir)
         csv_path = os.path.join(run_dir, "summary", "tfs_summarize_growth_corr.csv")
@@ -503,7 +503,7 @@ class TestSummarizeFitComplete:
         pd.DataFrame({
             "genotype": ["wt"] * 3,
             "ln_cfu": [8.0, 9.0, 10.0],
-            "median": [8.1, 9.1, 10.1],
+            "q0.5": [8.1, 9.1, 10.1],
         }).to_csv(growth_pred_path, index=False)
         summarize_fit(run_dir)
         summarize_fit(run_dir)  # second call must not raise
@@ -706,7 +706,7 @@ _MOCK_PRED_FOR_THETA = pd.DataFrame({
     "genotype": ["wt", "A1B", "C2D"],
     "titrant_name": ["IPTG"] * 3,
     "titrant_conc": [10.0] * 3,
-    "median": [0.12, 0.48, 0.88],
+    "q0.5": [0.12, 0.48, 0.88],
     "in_training_data": [1, 1, 1],
 })
 
@@ -835,7 +835,7 @@ class TestTryPlotThetaFits:
             assert os.path.exists(csv_path), f"Missing CSV for {geno}"
             df = pd.read_csv(csv_path)
             assert "theta_obs" in df.columns
-            assert "median" in df.columns
+            assert "q0.5" in df.columns
             assert all(df["genotype"] == geno)
 
     def test_csv_written_before_pdf(self, tmp_path):
@@ -1159,3 +1159,443 @@ class TestTryPlotTrajectories:
                 summarize_fit(run_dir)
 
         mock_pdf.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# _build_transform_registry / _compute_*_obs / _summarize_params
+# ---------------------------------------------------------------------------
+
+from tfscreen.tfmodel.scripts.summarize_fit_cli import (
+    _build_transform_registry,
+    _compute_direct_obs,
+    _compute_diff_obs,
+    _compute_epi_obs,
+    _summarize_params,
+    _try_plot_params_corr,
+)
+
+# Shared sim_parameters DataFrame used across param-summary tests.
+_SIM_DF = pd.DataFrame([
+    {"genotype": "wt",      "activity": 1.0,  "theta_low": 0.90, "theta_high": 0.05, "log_hill_K": -4.0},
+    {"genotype": "A1G",     "activity": 0.5,  "theta_low": 0.70, "theta_high": 0.08, "log_hill_K": -3.5},
+    {"genotype": "B2H",     "activity": 2.0,  "theta_low": 0.80, "theta_high": 0.03, "log_hill_K": -4.5},
+    {"genotype": "C3K",     "activity": 1.5,  "theta_low": 0.85, "theta_high": 0.04, "log_hill_K": -4.1},
+    {"genotype": "A1G/B2H", "activity": 1.2,  "theta_low": 0.75, "theta_high": 0.06, "log_hill_K": -4.2},
+    {"genotype": "A1G/C3K", "activity": 0.8,  "theta_low": 0.78, "theta_high": 0.07, "log_hill_K": -3.9},
+])
+
+
+def _logit(x):
+    x = np.clip(x, 1e-9, 1 - 1e-9)
+    return np.log(x / (1 - x))
+
+
+class TestBuildTransformRegistry:
+
+    def test_direct_column_registered(self):
+        reg = _build_transform_registry(_SIM_DF)
+        assert "activity" in reg
+        assert reg["activity"]["wt"] == pytest.approx(1.0)
+        assert reg["activity"]["A1G"] == pytest.approx(0.5)
+
+    def test_log_prefix_registered(self):
+        reg = _build_transform_registry(_SIM_DF)
+        assert "log_activity" in reg
+        assert reg["log_activity"]["A1G"] == pytest.approx(np.log(0.5))
+
+    def test_logit_theta_col_registered_under_long_name(self):
+        reg = _build_transform_registry(_SIM_DF)
+        assert "logit_theta_low" in reg
+        assert reg["logit_theta_low"]["wt"] == pytest.approx(_logit(0.90))
+
+    def test_logit_theta_col_also_registered_under_short_name(self):
+        # theta_low → logit_low (short form used by hill_mut component)
+        reg = _build_transform_registry(_SIM_DF)
+        assert "logit_low" in reg
+        assert reg["logit_low"]["A1G"] == pytest.approx(_logit(0.70))
+
+    def test_logit_delta_compound_registered(self):
+        reg = _build_transform_registry(_SIM_DF)
+        expected_wt = _logit(0.05) - _logit(0.90)
+        assert "logit_delta" in reg
+        assert reg["logit_delta"]["wt"] == pytest.approx(expected_wt)
+
+    def test_logit_delta_absent_when_theta_high_missing(self):
+        df = _SIM_DF.drop(columns=["theta_high"])
+        reg = _build_transform_registry(df)
+        assert "logit_delta" not in reg
+
+    def test_direct_column_log_hill_K_not_double_logged(self):
+        # log_hill_K is already logged in sim; should appear as direct match.
+        reg = _build_transform_registry(_SIM_DF)
+        assert "log_hill_K" in reg
+        assert reg["log_hill_K"]["wt"] == pytest.approx(-4.0)
+
+
+class TestComputeDirectObs:
+
+    def test_returns_obs_for_genotype_key(self):
+        obs_s = _build_transform_registry(_SIM_DF)["activity"]
+        params_df = pd.DataFrame({"genotype": ["wt", "A1G", "B2H"], "q0.5": [1.0, 0.4, 1.9]})
+        obs = _compute_direct_obs(params_df, obs_s)
+        assert obs == pytest.approx([1.0, 0.5, 2.0])
+
+    def test_returns_none_when_no_genotype_column(self):
+        obs_s = _build_transform_registry(_SIM_DF)["activity"]
+        params_df = pd.DataFrame({"condition": ["A"], "q0.5": [1.0]})
+        assert _compute_direct_obs(params_df, obs_s) is None
+
+    def test_nan_for_unknown_genotype(self):
+        obs_s = _build_transform_registry(_SIM_DF)["activity"]
+        params_df = pd.DataFrame({"genotype": ["wt", "UNKNOWN"], "q0.5": [1.0, 0.5]})
+        obs = _compute_direct_obs(params_df, obs_s)
+        assert obs[0] == pytest.approx(1.0)
+        assert np.isnan(obs[1])
+
+    def test_extra_columns_preserved(self):
+        # The function only computes obs; it does not modify params_df
+        obs_s = _build_transform_registry(_SIM_DF)["activity"]
+        params_df = pd.DataFrame({
+            "genotype": ["wt"],
+            "titrant_name": ["iptg"],
+            "q0.5": [0.9],
+        })
+        obs = _compute_direct_obs(params_df, obs_s)
+        assert obs == pytest.approx([1.0])
+
+
+class TestComputeDiffObs:
+
+    def test_computes_diff_from_wt(self):
+        obs_s = _build_transform_registry(_SIM_DF)["activity"]
+        # activity: wt=1.0, A1G=0.5, B2H=2.0
+        params_df = pd.DataFrame({
+            "titrant_name": ["iptg", "iptg"],
+            "mutation": ["A1G", "B2H"],
+            "q0.5": [-0.55, 0.95],
+        })
+        obs = _compute_diff_obs(params_df, obs_s)
+        assert obs == pytest.approx([-0.5, 1.0])
+
+    def test_returns_none_when_no_mutation_column(self):
+        obs_s = _build_transform_registry(_SIM_DF)["activity"]
+        params_df = pd.DataFrame({"genotype": ["A1G"], "q0.5": [0.5]})
+        assert _compute_diff_obs(params_df, obs_s) is None
+
+    def test_returns_nan_when_wt_absent(self):
+        df_no_wt = _SIM_DF[_SIM_DF["genotype"] != "wt"].copy()
+        obs_s = df_no_wt.set_index("genotype")["activity"]
+        params_df = pd.DataFrame({"mutation": ["A1G"], "q0.5": [0.4]})
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            obs = _compute_diff_obs(params_df, obs_s)
+        assert np.all(np.isnan(obs))
+        assert any("wt" in str(x.message).lower() for x in w)
+
+    def test_nan_for_unknown_mutation(self):
+        obs_s = _build_transform_registry(_SIM_DF)["activity"]
+        params_df = pd.DataFrame({"mutation": ["A1G", "UNKNOWN"], "q0.5": [0.0, 0.0]})
+        obs = _compute_diff_obs(params_df, obs_s)
+        assert obs[0] == pytest.approx(-0.5)
+        assert np.isnan(obs[1])
+
+    def test_diff_with_logit_low_transform(self):
+        obs_s = _build_transform_registry(_SIM_DF)["logit_low"]
+        # logit(theta_low[A1G]) - logit(theta_low[wt]) = logit(0.7) - logit(0.9)
+        params_df = pd.DataFrame({"mutation": ["A1G"], "q0.5": [0.0]})
+        obs = _compute_diff_obs(params_df, obs_s)
+        expected = _logit(0.70) - _logit(0.90)
+        assert obs == pytest.approx([expected])
+
+
+class TestComputeEpiObs:
+
+    def test_computes_epistasis_for_double_mutant(self):
+        obs_s = _build_transform_registry(_SIM_DF)["activity"]
+        # ep = (activity[A1G/B2H] - activity[B2H]) - (activity[A1G] - activity[wt])
+        #    = (1.2 - 2.0) - (0.5 - 1.0) = -0.8 - (-0.5) = -0.3
+        params_df = pd.DataFrame({"pair": ["A1G/B2H"], "q0.5": [0.0]})
+        obs = _compute_epi_obs(params_df, obs_s, "activity")
+        assert obs == pytest.approx([-0.3])
+
+    def test_returns_none_when_no_pair_column(self):
+        obs_s = _build_transform_registry(_SIM_DF)["activity"]
+        params_df = pd.DataFrame({"genotype": ["A1G/B2H"], "q0.5": [0.0]})
+        assert _compute_epi_obs(params_df, obs_s, "activity") is None
+
+    def test_nan_for_unknown_pair(self):
+        obs_s = _build_transform_registry(_SIM_DF)["activity"]
+        params_df = pd.DataFrame({"pair": ["A1G/B2H", "X1Y/Z2W"], "q0.5": [0.0, 0.0]})
+        obs = _compute_epi_obs(params_df, obs_s, "activity")
+        assert obs[0] == pytest.approx(-0.3)
+        assert np.isnan(obs[1])
+
+    def test_reversed_pair_order_resolved_via_standardize(self):
+        # extract_epistasis standardizes 'B2H/A1G' → 'A1G/B2H'; the pair
+        # column in the params file may use the opposite order.
+        obs_s = _build_transform_registry(_SIM_DF)["activity"]
+        params_df = pd.DataFrame({"pair": ["B2H/A1G"], "q0.5": [0.0]})
+        obs = _compute_epi_obs(params_df, obs_s, "activity")
+        assert obs == pytest.approx([-0.3])
+
+    def test_logit_delta_compound_epi(self):
+        obs_s = _build_transform_registry(_SIM_DF)["logit_delta"]
+        params_df = pd.DataFrame({"pair": ["A1G/B2H"], "q0.5": [0.0]})
+        obs = _compute_epi_obs(params_df, obs_s, "logit_delta")
+        # Manually compute expected epistasis
+        def ld(row): return _logit(row["theta_high"]) - _logit(row["theta_low"])
+        sim_idx = _SIM_DF.set_index("genotype")
+        ld_wt  = ld(sim_idx.loc["wt"])
+        ld_a1g = ld(sim_idx.loc["A1G"])
+        ld_b2h = ld(sim_idx.loc["B2H"])
+        ld_dbl = ld(sim_idx.loc["A1G/B2H"])
+        expected = (ld_dbl - ld_b2h) - (ld_a1g - ld_wt)
+        assert obs == pytest.approx([expected])
+
+
+class TestTryPlotParamsCorr:
+
+    def _make_df(self, n=10, nan_obs=False):
+        obs = np.linspace(0.0, 1.0, n)
+        med = obs + np.random.default_rng(0).normal(0, 0.05, n)
+        df = pd.DataFrame({"obs": obs, "q0.5": med})
+        if nan_obs:
+            df.loc[::3, "obs"] = np.nan
+        return df
+
+    def test_pdf_written(self, tmp_path):
+        pdf = str(tmp_path / "out.pdf")
+        _try_plot_params_corr(self._make_df(), "activity", pdf)
+        assert os.path.exists(pdf)
+
+    def test_skips_when_fewer_than_two_valid_rows(self, tmp_path):
+        pdf = str(tmp_path / "out.pdf")
+        df = pd.DataFrame({"obs": [np.nan, np.nan], "q0.5": [0.5, 0.6]})
+        _try_plot_params_corr(df, "activity", pdf)
+        assert not os.path.exists(pdf)
+
+    def test_skips_when_only_one_valid_row(self, tmp_path):
+        pdf = str(tmp_path / "out.pdf")
+        df = pd.DataFrame({"obs": [1.0, np.nan], "q0.5": [1.1, 0.5]})
+        _try_plot_params_corr(df, "activity", pdf)
+        assert not os.path.exists(pdf)
+
+    def test_nan_rows_dropped_before_plot(self, tmp_path):
+        pdf = str(tmp_path / "out.pdf")
+        _try_plot_params_corr(self._make_df(nan_obs=True), "activity", pdf)
+        assert os.path.exists(pdf)
+
+    def test_warns_gracefully_on_failure(self, tmp_path):
+        pdf = str(tmp_path / "out.pdf")
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            with patch("tfscreen.tfmodel.scripts.summarize_fit_cli.xy_corr",
+                       side_effect=RuntimeError("render failed")):
+                _try_plot_params_corr(self._make_df(), "activity", pdf)
+        assert not os.path.exists(pdf)
+        assert any("correlation plot" in str(x.message).lower() for x in w)
+
+    def test_label_used_in_axis_titles(self, tmp_path):
+        """Axis labels include the param name; just check no crash with unusual label."""
+        pdf = str(tmp_path / "out.pdf")
+        _try_plot_params_corr(self._make_df(), "logit_low", pdf)
+        assert os.path.exists(pdf)
+
+
+class TestSummarizeParams:
+    """Integration tests for _summarize_params using real file I/O."""
+
+    def _write_sim_params(self, path):
+        _SIM_DF.to_csv(path, index=False)
+
+    def _write_direct_params(self, path, col="activity"):
+        # genotype + titrant_name + median columns (as tfs_params_activity.csv looks)
+        rows = []
+        for g in _SIM_DF["genotype"]:
+            rows.append({"genotype": g, "titrant_name": "iptg", "q0.5": 0.0})
+        pd.DataFrame(rows).to_csv(path, index=False)
+
+    def _write_diff_params(self, path, col="activity"):
+        rows = []
+        for g in ["A1G", "B2H"]:
+            rows.append({"titrant_name": "iptg", "mutation": g, "q0.5": 0.0})
+        pd.DataFrame(rows).to_csv(path, index=False)
+
+    def _write_epi_params(self, path, col="activity"):
+        rows = [
+            {"titrant_name": "iptg", "pair": "A1G/B2H", "q0.5": 0.0},
+            {"titrant_name": "iptg", "pair": "A1G/C3K", "q0.5": 0.0},
+        ]
+        pd.DataFrame(rows).to_csv(path, index=False)
+
+    def test_no_output_when_sim_params_absent(self, tmp_path):
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        _summarize_params(str(tmp_path), out_prefix)
+        assert not any(f.name.startswith("tfs_summarize_params")
+                       for f in (tmp_path / "summary").iterdir())
+
+    def test_direct_csv_written_with_obs(self, tmp_path):
+        self._write_sim_params(str(tmp_path / "run_sim_parameters.csv"))
+        self._write_direct_params(str(tmp_path / "run_params_activity.csv"))
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        _summarize_params(str(tmp_path), out_prefix)
+        out_path = out_prefix + "_params_activity.csv"
+        assert os.path.exists(out_path)
+        df = pd.read_csv(out_path)
+        assert "obs" in df.columns
+        expected = dict(zip(_SIM_DF["genotype"], _SIM_DF["activity"]))
+        for _, row in df.iterrows():
+            assert row["obs"] == pytest.approx(expected[row["genotype"]])
+
+    def test_diff_csv_written_with_obs(self, tmp_path):
+        self._write_sim_params(str(tmp_path / "run_sim_parameters.csv"))
+        self._write_diff_params(str(tmp_path / "run_params_d_activity.csv"))
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            _summarize_params(str(tmp_path), out_prefix)
+        out_path = out_prefix + "_params_d_activity.csv"
+        assert os.path.exists(out_path)
+        df = pd.read_csv(out_path)
+        assert "obs" in df.columns
+        wt_act = 1.0
+        for _, row in df.iterrows():
+            act = {"A1G": 0.5, "B2H": 2.0}[row["mutation"]]
+            assert row["obs"] == pytest.approx(act - wt_act)
+
+    def test_epi_csv_written_with_obs(self, tmp_path):
+        self._write_sim_params(str(tmp_path / "run_sim_parameters.csv"))
+        self._write_epi_params(str(tmp_path / "run_params_epi_activity.csv"))
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            _summarize_params(str(tmp_path), out_prefix)
+        out_path = out_prefix + "_params_epi_activity.csv"
+        assert os.path.exists(out_path)
+        df = pd.read_csv(out_path)
+        assert "obs" in df.columns
+        # ep = (1.2 - 2.0) - (0.5 - 1.0) = -0.3
+        assert df.loc[df["pair"] == "A1G/B2H", "obs"].values[0] == pytest.approx(-0.3)
+
+    def test_logit_low_diff_obs(self, tmp_path):
+        self._write_sim_params(str(tmp_path / "run_sim_parameters.csv"))
+        pd.DataFrame([
+            {"titrant_name": "iptg", "mutation": "A1G", "q0.5": 0.0},
+        ]).to_csv(str(tmp_path / "run_params_d_logit_low.csv"), index=False)
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            _summarize_params(str(tmp_path), out_prefix)
+        out_path = out_prefix + "_params_d_logit_low.csv"
+        assert os.path.exists(out_path)
+        df = pd.read_csv(out_path)
+        expected = _logit(0.70) - _logit(0.90)
+        assert df["obs"].values[0] == pytest.approx(expected)
+
+    def test_logit_delta_epi_obs(self, tmp_path):
+        self._write_sim_params(str(tmp_path / "run_sim_parameters.csv"))
+        pd.DataFrame([
+            {"titrant_name": "iptg", "pair": "A1G/B2H", "q0.5": 0.0},
+        ]).to_csv(str(tmp_path / "run_params_epi_logit_delta.csv"), index=False)
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            _summarize_params(str(tmp_path), out_prefix)
+        out_path = out_prefix + "_params_epi_logit_delta.csv"
+        assert os.path.exists(out_path)
+        df = pd.read_csv(out_path)
+        sim_idx = _SIM_DF.set_index("genotype")
+        def ld(g): return _logit(sim_idx.loc[g, "theta_high"]) - _logit(sim_idx.loc[g, "theta_low"])
+        expected = (ld("A1G/B2H") - ld("B2H")) - (ld("A1G") - ld("wt"))
+        assert df["obs"].values[0] == pytest.approx(expected)
+
+    def test_warns_when_expected_direct_file_missing(self, tmp_path):
+        self._write_sim_params(str(tmp_path / "run_sim_parameters.csv"))
+        # Deliberately omit *_params_activity.csv
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _summarize_params(str(tmp_path), out_prefix)
+        assert any("activity" in str(x.message) for x in w)
+
+    def test_output_written_to_summary_dir(self, tmp_path):
+        self._write_sim_params(str(tmp_path / "run_sim_parameters.csv"))
+        self._write_direct_params(str(tmp_path / "run_params_activity.csv"))
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            _summarize_params(str(tmp_path), out_prefix)
+        summary_dir = tmp_path / "summary"
+        written = [f.name for f in summary_dir.iterdir()]
+        assert any("params_activity" in n for n in written)
+
+    def test_direct_pdf_written_alongside_csv(self, tmp_path):
+        self._write_sim_params(str(tmp_path / "run_sim_parameters.csv"))
+        self._write_direct_params(str(tmp_path / "run_params_activity.csv"))
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            _summarize_params(str(tmp_path), out_prefix)
+        assert os.path.exists(out_prefix + "_params_activity.pdf")
+
+    def test_diff_pdf_written_alongside_csv(self, tmp_path):
+        self._write_sim_params(str(tmp_path / "run_sim_parameters.csv"))
+        self._write_diff_params(str(tmp_path / "run_params_d_activity.csv"))
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            _summarize_params(str(tmp_path), out_prefix)
+        assert os.path.exists(out_prefix + "_params_d_activity.pdf")
+
+    def test_epi_pdf_written_alongside_csv(self, tmp_path):
+        self._write_sim_params(str(tmp_path / "run_sim_parameters.csv"))
+        self._write_epi_params(str(tmp_path / "run_params_epi_activity.csv"))
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            _summarize_params(str(tmp_path), out_prefix)
+        assert os.path.exists(out_prefix + "_params_epi_activity.pdf")
+
+    def test_file_without_genotype_key_skipped_silently(self, tmp_path):
+        self._write_sim_params(str(tmp_path / "run_sim_parameters.csv"))
+        # ln_cfu0-style file: no genotype column
+        pd.DataFrame([
+            {"condition_rep": "kanR+kan", "q0.5": 30.5},
+        ]).to_csv(str(tmp_path / "run_params_ln_cfu0.csv"), index=False)
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            _summarize_params(str(tmp_path), out_prefix)
+        # No crash and no output file for ln_cfu0 (not in sim_params columns)
+        summary_dir = tmp_path / "summary"
+        assert not any("ln_cfu0" in f.name for f in summary_dir.iterdir())
+
+    def test_summarize_fit_calls_summarize_params(self, run_dir):
+        """_summarize_params is invoked from summarize_fit end-to-end."""
+        sim_path = os.path.join(run_dir, "tfs_sim_parameters.csv")
+        _SIM_DF.to_csv(sim_path, index=False)
+        params_path = os.path.join(run_dir, "tfs_params_activity.csv")
+        rows = [{"genotype": g, "titrant_name": "iptg", "q0.5": 0.0}
+                for g in _SIM_DF["genotype"]]
+        pd.DataFrame(rows).to_csv(params_path, index=False)
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            summarize_fit(run_dir)
+        out_csv = os.path.join(run_dir, "summary", "tfs_summarize_params_activity.csv")
+        out_pdf = os.path.join(run_dir, "summary", "tfs_summarize_params_activity.pdf")
+        assert os.path.exists(out_csv)
+        assert os.path.exists(out_pdf)
+        df = pd.read_csv(out_csv)
+        assert "obs" in df.columns

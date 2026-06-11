@@ -27,14 +27,14 @@ def _make_df(genotypes=("wt",), titrant_names=("IPTG",),
                     "titrant_conc": c,
                     "theta_obs": rng.uniform(0.1, 0.9),
                     "theta_std": 0.05,
-                    "median": rng.uniform(0.1, 0.9),
+                    "q0.5": rng.uniform(0.1, 0.9),
                 }
                 if with_std_band:
-                    row["lower_std"] = row["median"] - 0.1
-                    row["upper_std"] = row["median"] + 0.1
+                    row["q0.159"] = row["q0.5"] - 0.1
+                    row["q0.841"] = row["q0.5"] + 0.1
                 if with_95_band:
-                    row["lower_95"] = row["median"] - 0.2
-                    row["upper_95"] = row["median"] + 0.2
+                    row["q0.025"] = row["q0.5"] - 0.2
+                    row["q0.975"] = row["q0.5"] + 0.2
                 rows.append(row)
     return pd.DataFrame(rows)
 
@@ -265,8 +265,8 @@ def test_custom_markers_accepted():
     plt.close("all")
 
 
-def test_point_est_used_when_median_absent():
-    """point_est column is used as centre line when median is not present."""
+def test_point_est_used_when_q0_5_absent():
+    """point_est column is used as centre line when q0.5 is not present."""
     rng = np.random.default_rng(42)
     df = pd.DataFrame({
         "genotype": ["wt"] * 4,
@@ -282,8 +282,8 @@ def test_point_est_used_when_median_absent():
     plt.close("all")
 
 
-def test_median_takes_precedence_over_point_est():
-    """median is used when both median and point_est columns are present."""
+def test_q0_5_takes_precedence_over_point_est():
+    """q0.5 is used when both q0.5 and point_est columns are present."""
     rng = np.random.default_rng(0)
     df = pd.DataFrame({
         "genotype": ["wt"] * 4,
@@ -291,7 +291,7 @@ def test_median_takes_precedence_over_point_est():
         "titrant_conc": [0.1, 1.0, 10.0, 100.0],
         "theta_obs": rng.uniform(0.1, 0.9, 4),
         "theta_std": [0.05] * 4,
-        "median": np.array([0.1, 0.2, 0.3, 0.4]),
+        "q0.5": np.array([0.1, 0.2, 0.3, 0.4]),
         "point_est": np.array([0.9, 0.8, 0.7, 0.6]),
     })
     plt.close("all")

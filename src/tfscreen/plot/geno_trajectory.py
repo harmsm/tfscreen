@@ -22,7 +22,7 @@ _CONDITION_COLS = [
 _KEEP_COLS = [
     "replicate", "condition_pre", "condition_sel",
     "titrant_name", "titrant_conc", "genotype",
-    "t_sel", "ln_cfu", "ln_cfu_std", "q05", "median", "q95",
+    "t_sel", "ln_cfu", "ln_cfu_std", "q0.05", "q0.5", "q0.95",
 ]
 
 
@@ -52,12 +52,12 @@ def plot_geno_trajectory(
           pre-selection phase).
         * ``ln_cfu`` — observed ln(CFU); ``NaN`` where no observation exists.
         * ``ln_cfu_std`` — observed std; ``NaN`` where no observation exists.
-        * ``median`` — predicted median trajectory; ``NaN`` where unavailable.
+        * ``q0.5`` — predicted median trajectory; ``NaN`` where unavailable.
 
         Optional columns (both must be present together to draw a credible
         interval):
 
-        * ``q05``, ``q95`` — 5th/95th percentile of the posterior predictive.
+        * ``q0.05``, ``q0.95`` — 5th/95th percentile of the posterior predictive.
 
     figsize : tuple of (float, float), optional
         Figure ``(width, height)`` in inches.  Defaults to
@@ -108,7 +108,7 @@ def plot_geno_trajectory(
     }
     rep_marker = {r: markers[i % len(markers)] for i, r in enumerate(replicates)}
 
-    has_ci = {"q05", "q95"} <= set(pred_df.columns)
+    has_ci = {"q0.05", "q0.95"} <= set(pred_df.columns)
 
     for combo_i, cond_row in conditions.iterrows():
         ax = axes[combo_i // n_cols][combo_i % n_cols]
@@ -166,11 +166,11 @@ def plot_geno_trajectory(
                     )
 
                 # Predicted median line
-                line_df = rep_df.dropna(subset=["median"])
+                line_df = rep_df.dropna(subset=["q0.5"])
                 if not line_df.empty:
                     ax.plot(
                         line_df["t_sel"],
-                        line_df["median"],
+                        line_df["q0.5"],
                         ls,
                         color=color,
                         lw=1.8,
@@ -180,12 +180,12 @@ def plot_geno_trajectory(
 
                 # 90 % credible interval band
                 if has_ci:
-                    ci_df = rep_df.dropna(subset=["q05", "q95"])
+                    ci_df = rep_df.dropna(subset=["q0.05", "q0.95"])
                     if not ci_df.empty:
                         ax.fill_between(
                             ci_df["t_sel"],
-                            ci_df["q05"],
-                            ci_df["q95"],
+                            ci_df["q0.05"],
+                            ci_df["q0.95"],
                             color=color,
                             alpha=0.2,
                             zorder=2,
@@ -255,13 +255,11 @@ def predict_geno_trajectory_df(
     max_t_sel = float(np.nanmax(t_sel_tensor[good_mask]))
     t_sel_grid = np.linspace(0.0, max_t_sel, t_fine).tolist()
 
-    q_spec = {"q05": 0.05, "median": 0.5, "q95": 0.95}
-
     all_dfs = predict(
         orchestrator,
         param_posteriors,
         predict_sites=["growth_pred", "ln_cfu0"],
-        q_to_get=q_spec,
+        q_to_get=[0.05, 0.5, 0.95],
         num_samples=None,
         num_marginal_samples=num_marginal_samples,
         t_sel=t_sel_grid,
@@ -278,7 +276,7 @@ def predict_geno_trajectory_df(
         .drop_duplicates(subset=["replicate", "condition_pre"])
     )
     ln_cfu0_vals = (
-        ln_cfu0_raw[["replicate", "condition_pre", "genotype", "q05", "median", "q95"]]
+        ln_cfu0_raw[["replicate", "condition_pre", "genotype", "q0.05", "q0.5", "q0.95"]]
         .drop_duplicates(subset=["replicate", "condition_pre", "genotype"])
     )
     valid_combos = orchestrator.growth_df[_CONDITION_COLS].drop_duplicates()
@@ -313,7 +311,7 @@ def predict_geno_trajectory_df(
     obs_df = orchestrator.growth_df[obs_cols].copy()
     if genotypes is not None:
         obs_df = obs_df[obs_df["genotype"].isin(list(genotypes))]
-    for col in ("q05", "median", "q95"):
+    for col in ("q0.05", "q0.5", "q0.95"):
         obs_df[col] = np.nan
 
     # Titrant-name filter (predict() has no titrant_name argument)

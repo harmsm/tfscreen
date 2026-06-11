@@ -112,6 +112,7 @@ class TestExtractParamsCheckpoint:
         assert os.path.exists(f"{out_prefix}_activity.csv")
 
     def test_passes_point_est_q_to_get(self, tmp_path):
+        """q_to_get=[0.5] is passed to extract_parameters for MAP checkpoints."""
         model = ExtractModel(num_genotype=4)
         ckpt_path = _make_map_checkpoint(tmp_path, model, step=100)
         out_prefix = str(tmp_path / "out")
@@ -119,7 +120,7 @@ class TestExtractParamsCheckpoint:
 
         def fake_extract(orchestrator, posteriors, q_to_get=None):
             captured["q_to_get"] = q_to_get
-            return {"activity": pd.DataFrame({"genotype": ["wt"], "point_est": [0.5]})}
+            return {"activity": pd.DataFrame({"genotype": ["wt"], "q0.5": [0.5]})}
 
         fake_gm = FakeTFModel(model)
         with patch(
@@ -133,7 +134,7 @@ class TestExtractParamsCheckpoint:
         ):
             extract_params("cfg.yaml", ckpt_path, out_prefix=out_prefix)
 
-        assert captured["q_to_get"] == {"point_est": 0.5}
+        assert captured["q_to_get"] == [0.5]
 
     def test_posteriors_have_leading_sample_dim(self, tmp_path):
         model = ExtractModel(num_genotype=4)

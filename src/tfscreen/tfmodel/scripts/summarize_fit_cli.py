@@ -2,6 +2,7 @@ import datetime
 import glob
 import json
 import os
+import re
 import warnings
 
 import numpy as np
@@ -231,6 +232,248 @@ def _blank_panel(ax, message):
             ha="center", va="center", fontsize=12, color="gray")
 
 
+def _build_transform_registry(sim_df):
+    """Return a dict mapping parameter name → obs Series indexed by genotype.
+
+    Supports four resolution strategies (tried in this order at registration):
+
+    1. **Compound**: ``logit_delta`` = logit(theta_high) – logit(theta_low),
+       registered before the column loop so it is never overwritten.
+    2. **Direct**: column name is the parameter name.
+    3. **log_ prefix**: ``log_{col}`` → ``np.log(sim[col])``.
+    4. **logit_ prefix**: ``logit_{col}`` → logit(sim[col]).  For columns
+       that start with ``theta_`` the short form is also registered, e.g.
+       ``theta_low`` registers both ``logit_theta_low`` and ``logit_low``.
+
+    ``setdefault`` is used for entries 2–4 so compound entries win.
+    """
+    sim_lookup = sim_df.set_index("genotype")
+    sim_cols = [c for c in sim_df.columns if c != "genotype"]
+    registry = {}
+
+    # Compound: logit_delta = logit(theta_high) - logit(theta_low)
+    if "theta_high" in sim_cols and "theta_low" in sim_cols:
+        high = sim_lookup["theta_high"].clip(1e-9, 1 - 1e-9)
+        low = sim_lookup["theta_low"].clip(1e-9, 1 - 1e-9)
+        registry["logit_delta"] = np.log(high / (1 - high)) - np.log(low / (1 - low))
+
+    for col in sim_cols:
+        col_s = sim_lookup[col]
+        clipped = col_s.clip(1e-9, 1 - 1e-9)
+        logit_s = np.log(clipped / (1 - clipped))
+
+        registry.setdefault(col, col_s)
+        registry.setdefault(f"log_{col}", np.log(col_s))
+        registry.setdefault(f"logit_{col}", logit_s)
+
+        # For theta_* columns also register the short logit/log/direct forms,
+        # e.g. theta_low → logit_low, log_low, low.
+        if col.startswith("theta_"):
+            base = col[6:]
+            registry.setdefault(f"logit_{base}", logit_s)
+            registry.setdefault(f"log_{base}", np.log(col_s))
+            registry.setdefault(base, col_s)
+
+    return registry
+
+
+def _compute_direct_obs(params_df, obs_series):
+    """Return obs array for a direct params file keyed on genotype.
+
+    Returns ``None`` when params_df has no ``genotype`` column (e.g. files
+    keyed on condition/replicate that cannot be matched to sim_parameters).
+    """
+    if "genotype" not in params_df.columns:
+        return None
+    return obs_series.reindex(params_df["genotype"]).values
+
+
+def _compute_diff_obs(params_df, obs_series):
+    """Return obs array for a diff params file keyed on mutation.
+
+    obs = sim[mutation] − sim[wt].  Returns ``None`` when params_df has no
+    ``mutation`` column.  Sets obs to NaN when ``wt`` is absent from
+    obs_series.
+    """
+    if "mutation" not in params_df.columns:
+        return None
+    if "wt" not in obs_series.index:
+        warnings.warn("'wt' not found in sim_parameters; setting diff obs to NaN")
+        return np.full(len(params_df), np.nan)
+    wt_val = obs_series["wt"]
+    return obs_series.reindex(params_df["mutation"]).values - wt_val
+
+
+def _compute_epi_obs(params_df, obs_series, param_name):
+    """Return obs array for an epi params file keyed on pair.
+
+    Uses ``extract_epistasis`` (additive scale) to compute per-double-mutant
+    epistasis from the ground-truth obs_series.  Genotypes not present in the
+    result (triple+, unrecognised pairs) receive NaN.  Returns ``None`` when
+    params_df has no ``pair`` column.
+    """
+    from tfscreen.analysis.extract_epistasis import extract_epistasis
+
+    if "pair" not in params_df.columns:
+        return None
+
+    work_df = pd.DataFrame({
+        "genotype": obs_series.index,
+        "_obs": obs_series.values,
+    })
+    try:
+        ep_result = extract_epistasis(work_df, y_obs="_obs", scale="add")
+    except Exception as exc:
+        warnings.warn(f"extract_epistasis failed for {param_name}: {exc}")
+        return np.full(len(params_df), np.nan)
+
+    if len(ep_result) == 0:
+        return np.full(len(params_df), np.nan)
+
+    from tfscreen.genetics import standardize_genotypes
+
+    ep_map = ep_result.set_index("genotype")["ep_obs"]
+    std_pairs = pd.Series(standardize_genotypes(params_df["pair"]),
+                          index=params_df.index)
+    return ep_map.reindex(std_pairs).values
+
+
+def _try_plot_params_corr(out_df, label, pdf_path):
+    """Save a scatter correlation plot of obs vs median for a params CSV.
+
+    Silently skips when fewer than two finite (obs, median) pairs exist.
+    Warns and returns on any other failure so the rest of the output is
+    unaffected.
+    """
+    try:
+        valid = out_df[["obs", "q0.5"]].dropna()
+        if len(valid) < 2:
+            return
+        fig, ax = plt.subplots(1, 1, figsize=(6, 6))
+        xy_corr(
+            x_values=valid["obs"].values,
+            y_values=valid["q0.5"].values,
+            as_hexbin=False,
+            ax=ax,
+        )
+        ax.set_xlabel(f"Simulated {label}")
+        ax.set_ylabel(f"Predicted {label}")
+        ax.set_title(label)
+        fig.tight_layout()
+        fig.savefig(pdf_path, format="pdf", bbox_inches="tight")
+        plt.close(fig)
+        print(f"Wrote parameter correlation plot to {pdf_path}")
+    except Exception as exc:
+        warnings.warn(f"Could not generate parameter correlation plot {pdf_path}: {exc}")
+
+
+def _summarize_params(run_dir, out_prefix):
+    """Annotate *_params_*.csv files with ground-truth obs from tfs_sim_parameters.csv.
+
+    Scans run_dir for a ``*_sim_parameters.csv`` file.  If absent the function
+    returns silently (real-data runs have no ground truth).
+
+    For each non-genotype column in sim_parameters the function checks that a
+    matching ``*_params_{col}.csv`` exists and warns if it does not.
+
+    All ``*_params_*.csv`` files in run_dir are then classified by their
+    suffix as *direct* (genotype key), *diff* (``_d_`` infix, mutation key),
+    or *epi* (``_epi_`` infix, pair key).  An ``obs`` column is appended to
+    each file whose parameter name resolves via the transform registry and
+    written to the summary directory under ``{out_prefix}_params_*.csv``.
+    """
+    sim_path = _find_unique(run_dir, "_sim_parameters.csv", "sim_parameters",
+                            warn_missing=False)
+    if sim_path is None:
+        return
+
+    try:
+        sim_df = pd.read_csv(sim_path)
+    except Exception as exc:
+        warnings.warn(f"Could not load sim parameters from {sim_path}: {exc}")
+        return
+
+    if "genotype" not in sim_df.columns:
+        warnings.warn(
+            f"sim_parameters {sim_path} has no 'genotype' column; "
+            "skipping param summaries"
+        )
+        return
+
+    sim_cols = [c for c in sim_df.columns if c != "genotype"]
+
+    for col in sim_cols:
+        if not glob.glob(os.path.join(run_dir, f"*_params_{col}.csv")):
+            warnings.warn(f"Expected *_params_{col}.csv in {run_dir} but none found")
+
+    transform_registry = _build_transform_registry(sim_df)
+
+    for param_file in sorted(glob.glob(os.path.join(run_dir, "*_params_*.csv"))):
+        basename = os.path.basename(param_file)
+
+        m_epi = re.search(r"_params_epi_(.+)\.csv$", basename)
+        m_diff = re.search(r"_params_d_(.+)\.csv$", basename)
+        m_direct = re.search(r"_params_(.+)\.csv$", basename)
+
+        if m_epi:
+            kind, param_name = "epi", m_epi.group(1)
+        elif m_diff:
+            kind, param_name = "diff", m_diff.group(1)
+        elif m_direct:
+            kind, param_name = "direct", m_direct.group(1)
+        else:
+            continue
+
+        if param_name not in transform_registry:
+            continue
+
+        obs_series = transform_registry[param_name]
+
+        try:
+            params_df = pd.read_csv(param_file)
+        except Exception as exc:
+            warnings.warn(f"Could not read {param_file}: {exc}")
+            continue
+
+        obs = None
+        try:
+            if kind == "direct":
+                obs = _compute_direct_obs(params_df, obs_series)
+            elif kind == "diff":
+                obs = _compute_diff_obs(params_df, obs_series)
+            else:
+                obs = _compute_epi_obs(params_df, obs_series, param_name)
+        except Exception as exc:
+            warnings.warn(f"Could not compute obs for {basename}: {exc}")
+            continue
+
+        if obs is None:
+            continue
+
+        out_df = params_df.copy()
+        out_df["obs"] = obs
+
+        if kind == "epi":
+            out_name = f"{out_prefix}_params_epi_{param_name}.csv"
+            plot_label = f"epi_{param_name}"
+        elif kind == "diff":
+            out_name = f"{out_prefix}_params_d_{param_name}.csv"
+            plot_label = f"d_{param_name}"
+        else:
+            out_name = f"{out_prefix}_params_{param_name}.csv"
+            plot_label = param_name
+
+        try:
+            out_df.to_csv(out_name, index=False)
+            print(f"Wrote parameter summary to {out_name}")
+        except Exception as exc:
+            warnings.warn(f"Could not write {out_name}: {exc}")
+            continue
+
+        pdf_name = out_name.replace(".csv", ".pdf")
+        _try_plot_params_corr(out_df, plot_label, pdf_name)
+
+
 def summarize_fit(run_dir,
                   ground_truth_file=None,
                   out_prefix=None):
@@ -382,7 +625,7 @@ def summarize_fit(run_dir,
             metadata["n_theta_training_points"] = len(train_merged)
             if len(train_merged) > 0:
                 theta_training_stats = _run_stats(
-                    train_merged["median"].values,
+                    train_merged["q0.5"].values,
                     train_merged["theta_obs"].values,
                 )
         except Exception as exc:
@@ -414,7 +657,7 @@ def summarize_fit(run_dir,
                 metadata["n_theta_test_points"] = len(test_merged)
                 if len(test_merged) > 0:
                     theta_test_stats = _run_stats(
-                        test_merged["median"].values,
+                        test_merged["q0.5"].values,
                         test_merged["theta_obs"].values,
                     )
         except Exception as exc:
@@ -425,11 +668,11 @@ def summarize_fit(run_dir,
         try:
             growth_pred_df = pd.read_csv(growth_pred_file)
             # Drop rows where observed ln_cfu is missing (no observation at that timepoint)
-            growth_valid = growth_pred_df.dropna(subset=["ln_cfu", "median"])
+            growth_valid = growth_pred_df.dropna(subset=["ln_cfu", "q0.5"])
             metadata["n_growth_training_points"] = len(growth_valid)
             if len(growth_valid) > 0:
                 growth_training_stats = _run_stats(
-                    growth_valid["median"].values,
+                    growth_valid["q0.5"].values,
                     growth_valid["ln_cfu"].values,
                 )
         except Exception as exc:
@@ -485,7 +728,7 @@ def summarize_fit(run_dir,
         if train_merged is not None and len(train_merged) > 0:
             xy_corr(
                 x_values=train_merged["theta_obs"].values,
-                y_values=train_merged["median"].values,
+                y_values=train_merged["q0.5"].values,
                 as_hexbin=False,
                 ax=axes[0],
             )
@@ -498,7 +741,7 @@ def summarize_fit(run_dir,
         if test_merged is not None and len(test_merged) > 0:
             xy_corr(
                 x_values=test_merged["theta_obs"].values,
-                y_values=test_merged["median"].values,
+                y_values=test_merged["q0.5"].values,
                 as_hexbin=False,
                 ax=axes[1],
             )
@@ -537,7 +780,7 @@ def summarize_fit(run_dir,
             fig, ax = plt.subplots(1, 1, figsize=(6, 6))
             xy_corr(
                 x_values=growth_pred_df["ln_cfu"].values,
-                y_values=growth_pred_df["median"].values,
+                y_values=growth_pred_df["q0.5"].values,
                 as_hexbin=False,
                 ax=ax,
             )
@@ -566,6 +809,9 @@ def summarize_fit(run_dir,
             print(f"Wrote loss curve to {loss_pdf_file}")
     except Exception as exc:
         warnings.warn(f"Could not generate loss curve plot: {exc}")
+
+    # --- Sim-parameter correlation CSVs ---
+    _summarize_params(run_dir, out_prefix)
 
     return results
 

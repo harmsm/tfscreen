@@ -174,7 +174,7 @@ def predict_theta(config_file,
                 .drop_duplicates()
                 .reset_index(drop=True)
             )
-        q_to_get = {"point_est": 0.5} if is_map else None
+        q_to_get = [0.5] if is_map else None
         result_df = extract_theta_unmeasured(
             orchestrator=orchestrator,
             posteriors=param_file,
@@ -186,7 +186,7 @@ def predict_theta(config_file,
     else:
         print(f"Predicting theta for {len(requested_genotypes)} training genotype(s)...",
               flush=True)
-        q_to_get = {"point_est": 0.5} if is_map else None
+        q_to_get = [0.5] if is_map else None
         result_df = extract_theta_curves(
             orchestrator=orchestrator,
             posteriors=param_file,

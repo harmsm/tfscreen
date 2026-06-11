@@ -58,11 +58,11 @@ def _make_pred_df(
                         "t_sel": t,
                         "ln_cfu": (base + slope * t) if (include_obs and t >= 0) else np.nan,
                         "ln_cfu_std": 0.2 if (include_obs and t >= 0) else np.nan,
-                        "median": med,
+                        "q0.5": med,
                     }
                     if include_ci:
-                        row["q05"] = med - 0.5
-                        row["q95"] = med + 0.5
+                        row["q0.05"] = med - 0.5
+                        row["q0.95"] = med + 0.5
                     rows.append(row)
     return pd.DataFrame(rows)
 
@@ -145,7 +145,7 @@ class TestObservedAndPredicted:
 
     def test_no_crash_all_nan_median(self):
         df = _make_pred_df()
-        df["median"] = np.nan
+        df["q0.5"] = np.nan
         fig = plot_geno_trajectory(df)
         assert isinstance(fig, plt.Figure)
         plt.close(fig)
@@ -361,9 +361,9 @@ class TestPredictAndPlotNpzLoading:
             "t_sel": np.linspace(0, 10, 5),
             "ln_cfu": [np.nan] * 5,
             "ln_cfu_std": [np.nan] * 5,
-            "q05": np.linspace(8, 12, 5) - 0.5,
-            "median": np.linspace(8, 12, 5),
-            "q95": np.linspace(8, 12, 5) + 0.5,
+            "q0.05": np.linspace(8, 12, 5) - 0.5,
+            "q0.5": np.linspace(8, 12, 5),
+            "q0.95": np.linspace(8, 12, 5) + 0.5,
         })
         orchestrator.growth_df = pd.DataFrame({
             "replicate": ["r0"],
@@ -387,9 +387,9 @@ class TestPredictAndPlotNpzLoading:
                     "replicate": ["r0"],
                     "condition_pre": ["pre"],
                     "genotype": ["g0"],
-                    "q05": [9.5],
-                    "median": [10.0],
-                    "q95": [10.5],
+                    "q0.05": [9.5],
+                    "q0.5": [10.0],
+                    "q0.95": [10.5],
                 })
                 return {"growth_pred": fine_df, "ln_cfu0": ln0}
             return fine_df
@@ -454,17 +454,17 @@ def _mock_predict_two_sites(orch, params, predict_sites, **kwargs):
         "t_sel": np.linspace(0, 10, 5),
         "ln_cfu": [np.nan] * 5,
         "ln_cfu_std": [np.nan] * 5,
-        "q05": np.linspace(8, 12, 5) - 0.5,
-        "median": np.linspace(8, 12, 5),
-        "q95": np.linspace(8, 12, 5) + 0.5,
+        "q0.05": np.linspace(8, 12, 5) - 0.5,
+        "q0.5": np.linspace(8, 12, 5),
+        "q0.95": np.linspace(8, 12, 5) + 0.5,
     })
     ln0 = pd.DataFrame({
         "replicate": ["r0"],
         "condition_pre": ["pre"],
         "genotype": ["g0"],
-        "q05": [9.5],
-        "median": [10.0],
-        "q95": [10.5],
+        "q0.05": [9.5],
+        "q0.5": [10.0],
+        "q0.95": [10.5],
     })
     return {"growth_pred": fine_df, "ln_cfu0": ln0}
 

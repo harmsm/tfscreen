@@ -100,7 +100,7 @@ def predict_growth(config_file,
         training_concs = list(orchestrator.growth_df["titrant_conc"].unique())
         titrant_concs = sorted(set(training_concs) | set(file_concs)) if file_concs else None
 
-    q_to_get = {"point_est": 0.5} if is_map else None
+    q_to_get = [0.5] if is_map else None
     print("Running growth predictions...", flush=True)
     result_df = predict(orchestrator=orchestrator,
                         param_posteriors=param_file,
