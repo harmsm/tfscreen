@@ -6537,10 +6537,10 @@
 ./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:19:1: E402 module level import not at top of file
 ./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:21:1: E402 module level import not at top of file
 ./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:23:1: E402 module level import not at top of file
-./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:900:18: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:903:17: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:1168:1: E402 module level import not at top of file
-./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:1348:14: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:961:18: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:964:17: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:1229:1: E402 module level import not at top of file
+./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:1409:14: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/scripts/test_summarize_grid_cli.py:79:9: F841 local variable 'data' is assigned to but never used
 ./tests/tfscreen/tfmodel/scripts/test_summarize_grid_cli.py:183:91: E712 comparison to True should be 'if cond is True:' or 'if cond:'
 ./tests/tfscreen/tfmodel/test_batch.py:3:1: F401 'numpy as np' imported but unused

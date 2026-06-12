@@ -133,8 +133,8 @@ def run_dir(tmp_path):
     return str(tmp_path)
 
 
-def _make_ground_truth_csv(path, theta_col="theta_obs"):
-    """Write a ground-truth CSV for the 4th genotype using the given column name."""
+def _make_ref_theta_csv(path, theta_col="theta_obs"):
+    """Write a ref theta CSV for the 4th genotype using the given column name."""
     rows = []
     for tc in TITRANT_CONCS:
         rows.append({
@@ -148,10 +148,10 @@ def _make_ground_truth_csv(path, theta_col="theta_obs"):
 
 
 @pytest.fixture
-def ground_truth_file(tmp_path):
-    """Ground-truth file containing the 4th genotype (not in training data)."""
-    path = str(tmp_path / "ground_truth.csv")
-    _make_ground_truth_csv(path, theta_col="theta_obs")
+def ref_theta_file(tmp_path):
+    """Ref theta file containing the 4th genotype (not in training data)."""
+    path = str(tmp_path / "ref_theta.csv")
+    _make_ref_theta_csv(path, theta_col="theta_obs")
     return path
 
 
@@ -376,7 +376,7 @@ class TestSummarizeFitComplete:
         for key in ("rmse", "pearson_r", "spearman_r", "r_squared", "mean_error"):
             assert key in stats, f"Missing key: {key}"
 
-    def test_theta_test_null_when_no_ground_truth(self, run_dir):
+    def test_theta_test_null_when_no_ref_theta(self, run_dir):
         summarize_fit(run_dir)
         with open(os.path.join(run_dir, "summary", "tfs_summarize_fit_summary.json")) as fh:
             data = json.load(fh)
@@ -444,7 +444,7 @@ class TestSummarizeFitComplete:
         csv_path = os.path.join(run_dir, "summary", "tfs_summarize_theta_corr_training.csv")
         assert os.path.exists(csv_path)
         df = pd.read_csv(csv_path)
-        assert "theta_obs" in df.columns
+        assert "ref" in df.columns
         assert "q0.5" in df.columns
         assert len(df) > 0
 
@@ -462,43 +462,48 @@ class TestSummarizeFitComplete:
             os.path.join(run_dir, "summary", "tfs_summarize_theta_corr_training.csv")
         )
 
-    def test_theta_corr_test_csv_not_written_without_ground_truth(self, run_dir):
+    def test_theta_corr_test_csv_not_written_without_ref_theta(self, run_dir):
         summarize_fit(run_dir)
         assert not os.path.exists(
             os.path.join(run_dir, "summary", "tfs_summarize_theta_corr_test.csv")
         )
 
-    def test_theta_corr_test_csv_written_with_ground_truth(self, run_dir, ground_truth_file):
+    def test_theta_corr_test_csv_written_with_ref_theta_file(self, run_dir, ref_theta_file):
         pred_path = os.path.join(run_dir, "run_theta_pred.csv")
         _make_pred_csv(pred_path, n_training=3, extra_genotypes=["E4F"])
-        summarize_fit(run_dir, ground_truth_file=ground_truth_file)
+        summarize_fit(run_dir, ref_theta_file=ref_theta_file)
         csv_path = os.path.join(run_dir, "summary", "tfs_summarize_theta_corr_test.csv")
         assert os.path.exists(csv_path)
         df = pd.read_csv(csv_path)
-        assert "theta_obs" in df.columns
+        assert "ref" in df.columns
         assert "q0.5" in df.columns
         assert len(df) == len(TITRANT_CONCS)
 
-    def test_growth_corr_csv_symlink_created(self, run_dir):
+    def test_growth_corr_csv_written(self, run_dir):
         growth_pred_path = os.path.join(run_dir, "tfs_growth_pred.csv")
         pd.DataFrame({
             "genotype": ["wt"] * 6,
             "ln_cfu": np.linspace(8.0, 13.0, 6),
+            "ln_cfu_std": np.ones(6) * 0.1,
             "q0.5": np.linspace(8.1, 13.1, 6),
         }).to_csv(growth_pred_path, index=False)
         summarize_fit(run_dir)
         csv_path = os.path.join(run_dir, "summary", "tfs_summarize_growth_corr.csv")
-        assert os.path.islink(csv_path)
-        # symlink must resolve to the actual growth pred file
-        assert os.path.realpath(csv_path) == os.path.realpath(growth_pred_path)
+        assert os.path.exists(csv_path)
+        assert not os.path.islink(csv_path)
+        df = pd.read_csv(csv_path)
+        assert "ref" in df.columns
+        assert "ref_std" in df.columns
+        assert "ln_cfu" not in df.columns
+        assert "ln_cfu_std" not in df.columns
 
-    def test_growth_corr_csv_symlink_not_created_when_file_absent(self, run_dir):
+    def test_growth_corr_csv_not_written_when_file_absent(self, run_dir):
         summarize_fit(run_dir)
         assert not os.path.exists(
             os.path.join(run_dir, "summary", "tfs_summarize_growth_corr.csv")
         )
 
-    def test_growth_corr_csv_symlink_overwritten_on_rerun(self, run_dir):
+    def test_growth_corr_csv_overwritten_on_rerun(self, run_dir):
         growth_pred_path = os.path.join(run_dir, "tfs_growth_pred.csv")
         pd.DataFrame({
             "genotype": ["wt"] * 3,
@@ -508,7 +513,8 @@ class TestSummarizeFitComplete:
         summarize_fit(run_dir)
         summarize_fit(run_dir)  # second call must not raise
         csv_path = os.path.join(run_dir, "summary", "tfs_summarize_growth_corr.csv")
-        assert os.path.islink(csv_path)
+        assert os.path.exists(csv_path)
+        assert not os.path.islink(csv_path)
 
     def test_custom_out_prefix(self, run_dir, tmp_path):
         custom_prefix = str(tmp_path / "custom" / "myrun")
@@ -518,27 +524,27 @@ class TestSummarizeFitComplete:
 
 
 # ---------------------------------------------------------------------------
-# summarize_fit — with ground truth (test statistics)
+# summarize_fit — with ref theta file (test statistics)
 # ---------------------------------------------------------------------------
 
-class TestSummarizeFitWithGroundTruth:
+class TestSummarizeFitWithRefTheta:
 
-    def test_theta_test_stats_populated(self, run_dir, ground_truth_file):
+    def test_theta_test_stats_populated(self, run_dir, ref_theta_file):
         # Add out-of-training genotype to pred CSV
         pred_path = os.path.join(run_dir, "run_theta_pred.csv")
         _make_pred_csv(pred_path, n_training=3, extra_genotypes=["E4F"])
 
-        summarize_fit(run_dir, ground_truth_file=ground_truth_file)
+        summarize_fit(run_dir, ref_theta_file=ref_theta_file)
         with open(os.path.join(run_dir, "summary", "tfs_summarize_fit_summary.json")) as fh:
             data = json.load(fh)
         assert data["theta"]["test"] is not None
         assert data["metadata"]["n_theta_test_points"] == len(TITRANT_CONCS)
 
-    def test_theta_test_pearson_r_reasonable(self, run_dir, ground_truth_file):
+    def test_theta_test_pearson_r_reasonable(self, run_dir, ref_theta_file):
         pred_path = os.path.join(run_dir, "run_theta_pred.csv")
         _make_pred_csv(pred_path, n_training=3, extra_genotypes=["E4F"])
 
-        summarize_fit(run_dir, ground_truth_file=ground_truth_file)
+        summarize_fit(run_dir, ref_theta_file=ref_theta_file)
         with open(os.path.join(run_dir, "summary", "tfs_summarize_fit_summary.json")) as fh:
             data = json.load(fh)
         r = data["theta"]["test"]["pearson_r"]
@@ -546,25 +552,25 @@ class TestSummarizeFitWithGroundTruth:
         assert r is not None and r > 0.9
 
     def test_theta_col_fallback_to_theta(self, run_dir, tmp_path):
-        """Ground-truth file with 'theta' column (no 'theta_obs') still works."""
+        """Ref theta file with 'theta' column (no 'theta_obs') still works."""
         pred_path = os.path.join(run_dir, "run_theta_pred.csv")
         _make_pred_csv(pred_path, n_training=3, extra_genotypes=["E4F"])
 
-        gt_path = str(tmp_path / "gt_theta_col.csv")
-        _make_ground_truth_csv(gt_path, theta_col="theta")
+        gt_path = str(tmp_path / "ref_theta_col.csv")
+        _make_ref_theta_csv(gt_path, theta_col="theta")
 
-        summarize_fit(run_dir, ground_truth_file=gt_path)
+        summarize_fit(run_dir, ref_theta_file=gt_path)
         with open(os.path.join(run_dir, "summary", "tfs_summarize_fit_summary.json")) as fh:
             data = json.load(fh)
         assert data["theta"]["test"] is not None
         assert data["metadata"]["n_theta_test_points"] == len(TITRANT_CONCS)
 
     def test_missing_theta_col_warns_and_skips(self, run_dir, tmp_path):
-        """Ground-truth file with no theta column issues a warning and skips test stats."""
+        """Ref theta file with no theta column issues a warning and skips test stats."""
         pred_path = os.path.join(run_dir, "run_theta_pred.csv")
         _make_pred_csv(pred_path, n_training=3, extra_genotypes=["E4F"])
 
-        gt_path = str(tmp_path / "gt_no_theta.csv")
+        gt_path = str(tmp_path / "ref_no_theta.csv")
         pd.DataFrame({
             "genotype": ["E4F"],
             "titrant_name": [TITRANT_NAME],
@@ -574,13 +580,68 @@ class TestSummarizeFitWithGroundTruth:
 
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            summarize_fit(run_dir, ground_truth_file=gt_path)
+            summarize_fit(run_dir, ref_theta_file=gt_path)
         assert any("neither" in str(x.message).lower() for x in w)
 
         with open(os.path.join(run_dir, "summary", "tfs_summarize_fit_summary.json")) as fh:
             data = json.load(fh)
         assert data["theta"]["test"] is None
         assert data["metadata"]["n_theta_test_points"] is None
+
+    def test_auto_discovers_sim_genotype_theta_in_run_dir(self, run_dir):
+        """*_sim_genotype_theta.csv in run_dir is used automatically when no arg given."""
+        pred_path = os.path.join(run_dir, "run_theta_pred.csv")
+        _make_pred_csv(pred_path, n_training=3, extra_genotypes=["E4F"])
+        _make_ref_theta_csv(
+            os.path.join(run_dir, "tfs_sim_genotype_theta.csv"), theta_col="theta_obs"
+        )
+
+        summarize_fit(run_dir)
+        with open(os.path.join(run_dir, "summary", "tfs_summarize_fit_summary.json")) as fh:
+            data = json.load(fh)
+        assert data["theta"]["test"] is not None
+        assert data["metadata"]["n_theta_test_points"] == len(TITRANT_CONCS)
+        assert data["metadata"]["ref_theta_file"] is not None
+
+    def test_ref_theta_file_arg_overrides_auto_discovery(self, run_dir, tmp_path):
+        """Explicit ref_theta_file takes precedence over auto-discovered file."""
+        pred_path = os.path.join(run_dir, "run_theta_pred.csv")
+        _make_pred_csv(pred_path, n_training=3, extra_genotypes=["E4F"])
+
+        # Auto-discoverable file: has no matching genotypes → would give 0 test points
+        pd.DataFrame({
+            "genotype": ["NOMATCH"],
+            "titrant_name": [TITRANT_NAME],
+            "titrant_conc": [0.0],
+            "theta_obs": [0.5],
+        }).to_csv(os.path.join(run_dir, "tfs_sim_genotype_theta.csv"), index=False)
+
+        # Explicit file: has the real test genotype → should win
+        explicit_path = str(tmp_path / "explicit_ref.csv")
+        _make_ref_theta_csv(explicit_path, theta_col="theta_obs")
+
+        summarize_fit(run_dir, ref_theta_file=explicit_path)
+        with open(os.path.join(run_dir, "summary", "tfs_summarize_fit_summary.json")) as fh:
+            data = json.load(fh)
+        assert data["metadata"]["ref_theta_file"] == explicit_path
+        assert data["metadata"]["n_theta_test_points"] == len(TITRANT_CONCS)
+
+    def test_metadata_ref_theta_file_recorded(self, run_dir, ref_theta_file):
+        """ref_theta_file path is recorded in JSON metadata."""
+        pred_path = os.path.join(run_dir, "run_theta_pred.csv")
+        _make_pred_csv(pred_path, n_training=3, extra_genotypes=["E4F"])
+
+        summarize_fit(run_dir, ref_theta_file=ref_theta_file)
+        with open(os.path.join(run_dir, "summary", "tfs_summarize_fit_summary.json")) as fh:
+            data = json.load(fh)
+        assert data["metadata"]["ref_theta_file"] == ref_theta_file
+
+    def test_metadata_ref_theta_file_null_when_nothing_found(self, run_dir):
+        """ref_theta_file metadata key is None when neither arg nor auto-discovery finds a file."""
+        summarize_fit(run_dir)
+        with open(os.path.join(run_dir, "summary", "tfs_summarize_fit_summary.json")) as fh:
+            data = json.load(fh)
+        assert data["metadata"]["ref_theta_file"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -1358,9 +1419,9 @@ class TestTryPlotParamsCorr:
     def _make_df(self, n=10, nan_obs=False):
         obs = np.linspace(0.0, 1.0, n)
         med = obs + np.random.default_rng(0).normal(0, 0.05, n)
-        df = pd.DataFrame({"obs": obs, "q0.5": med})
+        df = pd.DataFrame({"ref": obs, "q0.5": med})
         if nan_obs:
-            df.loc[::3, "obs"] = np.nan
+            df.loc[::3, "ref"] = np.nan
         return df
 
     def test_pdf_written(self, tmp_path):
@@ -1370,13 +1431,13 @@ class TestTryPlotParamsCorr:
 
     def test_skips_when_fewer_than_two_valid_rows(self, tmp_path):
         pdf = str(tmp_path / "out.pdf")
-        df = pd.DataFrame({"obs": [np.nan, np.nan], "q0.5": [0.5, 0.6]})
+        df = pd.DataFrame({"ref": [np.nan, np.nan], "q0.5": [0.5, 0.6]})
         _try_plot_params_corr(df, "activity", pdf)
         assert not os.path.exists(pdf)
 
     def test_skips_when_only_one_valid_row(self, tmp_path):
         pdf = str(tmp_path / "out.pdf")
-        df = pd.DataFrame({"obs": [1.0, np.nan], "q0.5": [1.1, 0.5]})
+        df = pd.DataFrame({"ref": [1.0, np.nan], "q0.5": [1.1, 0.5]})
         _try_plot_params_corr(df, "activity", pdf)
         assert not os.path.exists(pdf)
 
@@ -1444,10 +1505,10 @@ class TestSummarizeParams:
         out_path = out_prefix + "_params_activity.csv"
         assert os.path.exists(out_path)
         df = pd.read_csv(out_path)
-        assert "obs" in df.columns
+        assert "ref" in df.columns
         expected = dict(zip(_SIM_DF["genotype"], _SIM_DF["activity"]))
         for _, row in df.iterrows():
-            assert row["obs"] == pytest.approx(expected[row["genotype"]])
+            assert row["ref"] == pytest.approx(expected[row["genotype"]])
 
     def test_diff_csv_written_with_obs(self, tmp_path):
         self._write_sim_params(str(tmp_path / "run_sim_parameters.csv"))
@@ -1460,11 +1521,11 @@ class TestSummarizeParams:
         out_path = out_prefix + "_params_d_activity.csv"
         assert os.path.exists(out_path)
         df = pd.read_csv(out_path)
-        assert "obs" in df.columns
+        assert "ref" in df.columns
         wt_act = 1.0
         for _, row in df.iterrows():
             act = {"A1G": 0.5, "B2H": 2.0}[row["mutation"]]
-            assert row["obs"] == pytest.approx(act - wt_act)
+            assert row["ref"] == pytest.approx(act - wt_act)
 
     def test_epi_csv_written_with_obs(self, tmp_path):
         self._write_sim_params(str(tmp_path / "run_sim_parameters.csv"))
@@ -1477,9 +1538,9 @@ class TestSummarizeParams:
         out_path = out_prefix + "_params_epi_activity.csv"
         assert os.path.exists(out_path)
         df = pd.read_csv(out_path)
-        assert "obs" in df.columns
+        assert "ref" in df.columns
         # ep = (1.2 - 2.0) - (0.5 - 1.0) = -0.3
-        assert df.loc[df["pair"] == "A1G/B2H", "obs"].values[0] == pytest.approx(-0.3)
+        assert df.loc[df["pair"] == "A1G/B2H", "ref"].values[0] == pytest.approx(-0.3)
 
     def test_logit_low_diff_obs(self, tmp_path):
         self._write_sim_params(str(tmp_path / "run_sim_parameters.csv"))
@@ -1495,7 +1556,7 @@ class TestSummarizeParams:
         assert os.path.exists(out_path)
         df = pd.read_csv(out_path)
         expected = _logit(0.70) - _logit(0.90)
-        assert df["obs"].values[0] == pytest.approx(expected)
+        assert df["ref"].values[0] == pytest.approx(expected)
 
     def test_logit_delta_epi_obs(self, tmp_path):
         self._write_sim_params(str(tmp_path / "run_sim_parameters.csv"))
@@ -1513,7 +1574,7 @@ class TestSummarizeParams:
         sim_idx = _SIM_DF.set_index("genotype")
         def ld(g): return _logit(sim_idx.loc[g, "theta_high"]) - _logit(sim_idx.loc[g, "theta_low"])
         expected = (ld("A1G/B2H") - ld("B2H")) - (ld("A1G") - ld("wt"))
-        assert df["obs"].values[0] == pytest.approx(expected)
+        assert df["ref"].values[0] == pytest.approx(expected)
 
     def test_warns_when_expected_direct_file_missing(self, tmp_path):
         self._write_sim_params(str(tmp_path / "run_sim_parameters.csv"))
@@ -1598,4 +1659,4 @@ class TestSummarizeParams:
         assert os.path.exists(out_csv)
         assert os.path.exists(out_pdf)
         df = pd.read_csv(out_csv)
-        assert "obs" in df.columns
+        assert "ref" in df.columns

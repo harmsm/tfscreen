@@ -233,7 +233,7 @@ def _blank_panel(ax, message):
 
 
 def _build_transform_registry(sim_df):
-    """Return a dict mapping parameter name → obs Series indexed by genotype.
+    """Return a dict mapping parameter name → ref Series indexed by genotype.
 
     Supports four resolution strategies (tried in this order at registration):
 
@@ -277,38 +277,38 @@ def _build_transform_registry(sim_df):
     return registry
 
 
-def _compute_direct_obs(params_df, obs_series):
-    """Return obs array for a direct params file keyed on genotype.
+def _compute_direct_obs(params_df, ref_series):
+    """Return ref array for a direct params file keyed on genotype.
 
     Returns ``None`` when params_df has no ``genotype`` column (e.g. files
     keyed on condition/replicate that cannot be matched to sim_parameters).
     """
     if "genotype" not in params_df.columns:
         return None
-    return obs_series.reindex(params_df["genotype"]).values
+    return ref_series.reindex(params_df["genotype"]).values
 
 
-def _compute_diff_obs(params_df, obs_series):
-    """Return obs array for a diff params file keyed on mutation.
+def _compute_diff_obs(params_df, ref_series):
+    """Return ref array for a diff params file keyed on mutation.
 
-    obs = sim[mutation] − sim[wt].  Returns ``None`` when params_df has no
-    ``mutation`` column.  Sets obs to NaN when ``wt`` is absent from
-    obs_series.
+    ref = sim[mutation] − sim[wt].  Returns ``None`` when params_df has no
+    ``mutation`` column.  Sets ref to NaN when ``wt`` is absent from
+    ref_series.
     """
     if "mutation" not in params_df.columns:
         return None
-    if "wt" not in obs_series.index:
-        warnings.warn("'wt' not found in sim_parameters; setting diff obs to NaN")
+    if "wt" not in ref_series.index:
+        warnings.warn("'wt' not found in sim_parameters; setting diff ref to NaN")
         return np.full(len(params_df), np.nan)
-    wt_val = obs_series["wt"]
-    return obs_series.reindex(params_df["mutation"]).values - wt_val
+    wt_val = ref_series["wt"]
+    return ref_series.reindex(params_df["mutation"]).values - wt_val
 
 
-def _compute_epi_obs(params_df, obs_series, param_name):
-    """Return obs array for an epi params file keyed on pair.
+def _compute_epi_obs(params_df, ref_series, param_name):
+    """Return ref array for an epi params file keyed on pair.
 
     Uses ``extract_epistasis`` (additive scale) to compute per-double-mutant
-    epistasis from the ground-truth obs_series.  Genotypes not present in the
+    epistasis from the ground-truth ref_series.  Genotypes not present in the
     result (triple+, unrecognised pairs) receive NaN.  Returns ``None`` when
     params_df has no ``pair`` column.
     """
@@ -318,8 +318,8 @@ def _compute_epi_obs(params_df, obs_series, param_name):
         return None
 
     work_df = pd.DataFrame({
-        "genotype": obs_series.index,
-        "_obs": obs_series.values,
+        "genotype": ref_series.index,
+        "_obs": ref_series.values,
     })
     try:
         ep_result = extract_epistasis(work_df, y_obs="_obs", scale="add")
@@ -339,19 +339,19 @@ def _compute_epi_obs(params_df, obs_series, param_name):
 
 
 def _try_plot_params_corr(out_df, label, pdf_path):
-    """Save a scatter correlation plot of obs vs median for a params CSV.
+    """Save a scatter correlation plot of ref vs median for a params CSV.
 
-    Silently skips when fewer than two finite (obs, median) pairs exist.
+    Silently skips when fewer than two finite (ref, median) pairs exist.
     Warns and returns on any other failure so the rest of the output is
     unaffected.
     """
     try:
-        valid = out_df[["obs", "q0.5"]].dropna()
+        valid = out_df[["ref", "q0.5"]].dropna()
         if len(valid) < 2:
             return
         fig, ax = plt.subplots(1, 1, figsize=(6, 6))
         xy_corr(
-            x_values=valid["obs"].values,
+            x_values=valid["ref"].values,
             y_values=valid["q0.5"].values,
             as_hexbin=False,
             ax=ax,
@@ -368,7 +368,7 @@ def _try_plot_params_corr(out_df, label, pdf_path):
 
 
 def _summarize_params(run_dir, out_prefix):
-    """Annotate *_params_*.csv files with ground-truth obs from tfs_sim_parameters.csv.
+    """Annotate *_params_*.csv files with ground-truth ref from tfs_sim_parameters.csv.
 
     Scans run_dir for a ``*_sim_parameters.csv`` file.  If absent the function
     returns silently (real-data runs have no ground truth).
@@ -378,7 +378,7 @@ def _summarize_params(run_dir, out_prefix):
 
     All ``*_params_*.csv`` files in run_dir are then classified by their
     suffix as *direct* (genotype key), *diff* (``_d_`` infix, mutation key),
-    or *epi* (``_epi_`` infix, pair key).  An ``obs`` column is appended to
+    or *epi* (``_epi_`` infix, pair key).  A ``ref`` column is appended to
     each file whose parameter name resolves via the transform registry and
     written to the summary directory under ``{out_prefix}_params_*.csv``.
     """
@@ -427,7 +427,7 @@ def _summarize_params(run_dir, out_prefix):
         if param_name not in transform_registry:
             continue
 
-        obs_series = transform_registry[param_name]
+        ref_series = transform_registry[param_name]
 
         try:
             params_df = pd.read_csv(param_file)
@@ -435,23 +435,23 @@ def _summarize_params(run_dir, out_prefix):
             warnings.warn(f"Could not read {param_file}: {exc}")
             continue
 
-        obs = None
+        ref = None
         try:
             if kind == "direct":
-                obs = _compute_direct_obs(params_df, obs_series)
+                ref = _compute_direct_obs(params_df, ref_series)
             elif kind == "diff":
-                obs = _compute_diff_obs(params_df, obs_series)
+                ref = _compute_diff_obs(params_df, ref_series)
             else:
-                obs = _compute_epi_obs(params_df, obs_series, param_name)
+                ref = _compute_epi_obs(params_df, ref_series, param_name)
         except Exception as exc:
-            warnings.warn(f"Could not compute obs for {basename}: {exc}")
+            warnings.warn(f"Could not compute ref for {basename}: {exc}")
             continue
 
-        if obs is None:
+        if ref is None:
             continue
 
         out_df = params_df.copy()
-        out_df["obs"] = obs
+        out_df["ref"] = ref
 
         if kind == "epi":
             out_name = f"{out_prefix}_params_epi_{param_name}.csv"
@@ -475,7 +475,7 @@ def _summarize_params(run_dir, out_prefix):
 
 
 def summarize_fit(run_dir,
-                  ground_truth_file=None,
+                  ref_theta_file=None,
                   out_prefix=None):
     """
     Evaluate theta prediction quality for a tfs-fit-model run directory.
@@ -494,10 +494,11 @@ def summarize_fit(run_dir,
     - ``{out_prefix}_fit_summary.json`` — nested statistics with top-level
       keys ``metadata``, ``theta`` (training / test sub-keys), and ``growth``
       (training sub-key).
-    - ``{out_prefix}_theta_corr_training.csv`` — joined (observed, predicted)
-      theta pairs for training genotypes.
+    - ``{out_prefix}_theta_corr_training.csv`` — joined (ref, predicted)
+      theta pairs for training genotypes; ``ref`` column holds the training
+      observation used as ground truth.
     - ``{out_prefix}_theta_corr_test.csv`` — same for test genotypes (only
-      written when *ground_truth_file* is provided and has matching rows).
+      written when a ref theta file is resolved and has matching rows).
     - ``{out_prefix}_theta_corr.pdf`` — two-panel correlation plot for theta
       (training left, test right).
     - ``{out_prefix}_growth_corr.csv`` — relative symlink to the
@@ -517,13 +518,17 @@ def summarize_fit(run_dir,
     ----------
     run_dir : str
         Directory containing model fit outputs.
-    ground_truth_file : str, optional
+    ref_theta_file : str, optional
         CSV with columns genotype, titrant_name, titrant_conc, and a theta
         column containing known theta values for evaluating out-of-sample
-        prediction.  The theta column is resolved in order: ``theta_obs``
-        (preferred) → ``theta`` (fallback).  If neither is present a warning
-        is issued and test statistics are skipped.  When the argument is
-        omitted entirely, only training statistics are computed.
+        prediction.  When omitted the function looks for a
+        ``*_sim_genotype_theta.csv`` file in *run_dir* automatically (the
+        file produced by ``tfs-simulate``).  The theta column is resolved
+        in order: ``theta_obs`` (preferred) → ``theta`` (fallback); it is
+        renamed to ``ref`` in the output CSV.  If neither column is present
+        a warning is issued and test statistics are skipped.  Pass this
+        argument explicitly to use a theta reference from outside *run_dir*
+        or with a non-standard name.
     out_prefix : str, optional
         Prefix for output files.  Defaults to {run_dir}/tfs_summarize.
     """
@@ -534,7 +539,7 @@ def summarize_fit(run_dir,
 
     metadata = {
         "run_dir": run_dir,
-        "ground_truth_file": ground_truth_file,
+        "ref_theta_file": None,
         "timestamp": datetime.datetime.now().isoformat(),
         "n_parameters": None,
         "n_theta_training_points": None,
@@ -621,20 +626,26 @@ def summarize_fit(run_dir,
                 binding_df[join_cols + ["theta_obs"]],
                 on=join_cols,
                 how="inner",
-            )
+            ).rename(columns={"theta_obs": "ref"})
             metadata["n_theta_training_points"] = len(train_merged)
             if len(train_merged) > 0:
                 theta_training_stats = _run_stats(
                     train_merged["q0.5"].values,
-                    train_merged["theta_obs"].values,
+                    train_merged["ref"].values,
                 )
         except Exception as exc:
             warnings.warn(f"Could not compute theta training statistics: {exc}")
 
+    # --- Resolve ref_theta_file: explicit arg wins, else auto-discover ---
+    if ref_theta_file is None:
+        ref_theta_file = _find_unique(run_dir, "_sim_genotype_theta.csv",
+                                      "ref theta", warn_missing=False)
+    metadata["ref_theta_file"] = ref_theta_file
+
     # --- Theta test statistics ---
-    if ground_truth_file is not None and pred_df is not None:
+    if ref_theta_file is not None and pred_df is not None:
         try:
-            gt_df = pd.read_csv(ground_truth_file)
+            gt_df = pd.read_csv(ref_theta_file)
             join_cols = ["genotype", "titrant_name", "titrant_conc"]
             if "theta_obs" in gt_df.columns:
                 theta_col = "theta_obs"
@@ -642,14 +653,14 @@ def summarize_fit(run_dir,
                 theta_col = "theta"
             else:
                 warnings.warn(
-                    f"Ground truth file {ground_truth_file} has neither "
+                    f"Ref theta file {ref_theta_file} has neither "
                     f"'theta_obs' nor 'theta' column; skipping test statistics"
                 )
                 theta_col = None
             if theta_col is not None:
-                gt_df = gt_df.rename(columns={theta_col: "theta_obs"})
+                gt_df = gt_df.rename(columns={theta_col: "ref"})
             test_merged = pred_df.merge(
-                gt_df[join_cols + ["theta_obs"]],
+                gt_df[join_cols + ["ref"]],
                 on=join_cols,
                 how="inner",
             ) if theta_col is not None else None
@@ -658,10 +669,10 @@ def summarize_fit(run_dir,
                 if len(test_merged) > 0:
                     theta_test_stats = _run_stats(
                         test_merged["q0.5"].values,
-                        test_merged["theta_obs"].values,
+                        test_merged["ref"].values,
                     )
         except Exception as exc:
-            warnings.warn(f"Could not compute theta test statistics: {exc}")
+            warnings.warn(f"Could not compute theta test statistics from {ref_theta_file}: {exc}")
 
     # --- Growth training statistics ---
     if growth_pred_file is not None:
@@ -727,7 +738,7 @@ def summarize_fit(run_dir,
 
         if train_merged is not None and len(train_merged) > 0:
             xy_corr(
-                x_values=train_merged["theta_obs"].values,
+                x_values=train_merged["ref"].values,
                 y_values=train_merged["q0.5"].values,
                 as_hexbin=False,
                 ax=axes[0],
@@ -740,7 +751,7 @@ def summarize_fit(run_dir,
 
         if test_merged is not None and len(test_merged) > 0:
             xy_corr(
-                x_values=test_merged["theta_obs"].values,
+                x_values=test_merged["ref"].values,
                 y_values=test_merged["q0.5"].values,
                 as_hexbin=False,
                 ax=axes[1],
@@ -758,20 +769,18 @@ def summarize_fit(run_dir,
     except Exception as exc:
         warnings.warn(f"Could not generate correlation plot: {exc}")
 
-    # --- Growth correlation CSV symlink ---
+    # --- Growth correlation CSV ---
     if growth_pred_file is not None:
         growth_csv_file = f"{out_prefix}_growth_corr.csv"
         try:
-            rel_target = os.path.relpath(
-                os.path.abspath(growth_pred_file),
-                os.path.dirname(os.path.abspath(growth_csv_file)),
+            growth_copy_df = pd.read_csv(growth_pred_file)
+            growth_copy_df = growth_copy_df.rename(
+                columns={"ln_cfu": "ref", "ln_cfu_std": "ref_std"}
             )
-            if os.path.islink(growth_csv_file):
-                os.remove(growth_csv_file)
-            os.symlink(rel_target, growth_csv_file)
-            print(f"Linked growth data to {growth_csv_file}")
+            growth_copy_df.to_csv(growth_csv_file, index=False)
+            print(f"Wrote growth data to {growth_csv_file}")
         except Exception as exc:
-            warnings.warn(f"Could not create growth CSV symlink at {growth_csv_file}: {exc}")
+            warnings.warn(f"Could not write growth CSV at {growth_csv_file}: {exc}")
 
     # --- Growth correlation plot ---
     growth_pdf_file = f"{out_prefix}_growth_corr.pdf"
@@ -819,7 +828,7 @@ def summarize_fit(run_dir,
 def main():
     return generalized_main(
         summarize_fit,
-        manual_arg_types={"ground_truth_file": str},
+        manual_arg_types={"ref_theta_file": str},
     )
 
 
