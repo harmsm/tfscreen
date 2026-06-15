@@ -43,7 +43,6 @@ def base_config() -> dict:
         "lib_assembly_skew_sigma": 0.5,
         "transformation_poisson_lambda": 0.8,
         "tube_noise_sigma": 0.002,
-        "final_cfu_pct_err": 0.03,
         "random_seed": 42,
         "cfu0": 1.0e7,
         "total_num_reads": 5_000_000,

@@ -56,7 +56,6 @@ def _minimal_cf(noise=0.0, extra_keys=None):
     cf = {
         "cfu0": 1e8,
         "total_num_reads": 30_000_000,
-        "final_cfu_pct_err": 0.05,
         "prob_index_hop": None,
         "presplit_data": {"noise": noise},
     }
@@ -194,7 +193,6 @@ def test_run_simulation_writes_presplit_csv(tmp_path):
         "random_seed": 1,
         "cfu0": 1e8,
         "total_num_reads": 10_000_000,
-        "final_cfu_pct_err": 0.05,
         "prob_index_hop": None,
         "presplit_data": {"noise": 0.0},
     }
@@ -232,7 +230,7 @@ def test_run_simulation_no_presplit_without_config(tmp_path):
     growth_df = pd.DataFrame({"genotype": ["wt"], "ln_cfu": [10.0]})
 
     cf = {"random_seed": 1, "cfu0": 1e8, "total_num_reads": 1_000_000,
-          "final_cfu_pct_err": 0.05, "prob_index_hop": None}
+          "prob_index_hop": None}
 
     with patch("tfscreen.util.read_yaml", return_value=cf), \
          patch("tfscreen.simulate.scripts.run_simulation_cli.library_prediction",

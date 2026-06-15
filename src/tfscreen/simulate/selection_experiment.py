@@ -62,7 +62,7 @@ SIMULATE_KNOWN_KEYS = frozenset({
     "transformation_poisson_lambda", "multi_plasmid_combine_fcn", "cfu0",
     "tube_noise_sigma", "growth_transition",
     # Data collection
-    "total_num_reads", "prob_index_hop", "random_seed", "final_cfu_pct_err",
+    "total_num_reads", "prob_index_hop", "random_seed",
     # Column selectors (rarely overridden)
     "condition_selector", "library_selector",
     # Optional output blocks
@@ -190,9 +190,6 @@ def _check_cf(
 
     check_unknown_keys(cf, SIMULATE_KNOWN_KEYS, label="simulate config")
 
-    if "final_cfu_pct_err" not in cf:
-        cf["final_cfu_pct_err"] = 0.05
-
     # --- Validate single numerical values ---
     cf = _check_dict_number("prob_index_hop", cf, min_allowed=0, max_allowed=1, allow_none=True)
     cf = _check_dict_number("lib_assembly_skew_sigma", cf, min_allowed=0, allow_none=True)
@@ -201,7 +198,6 @@ def _check_cf(
     cf = _check_dict_number("random_seed", cf, cast_type=int, min_allowed=0, allow_none=True)
     cf = _check_dict_number("cfu0", cf, allow_none=False,min_allowed=0)
     cf = _check_dict_number("total_num_reads", cf, cast_type=int, min_allowed=0, inclusive_min=False)
-    cf = _check_dict_number("final_cfu_pct_err",cf,min_allowed=0,inclusive_min=False,allow_none=False)
 
     # --- Validate nested dictionaries ---
     for key in ["transform_sizes", "library_mixture"]:
@@ -1008,8 +1004,7 @@ def _simulate_library_group(
     multi_plasmid_combine_fcn = cf["multi_plasmid_combine_fcn"]
     prob_index_hop = cf["prob_index_hop"]
     total_cfu0 = cf["cfu0"]
-    final_cfu_pct_err = cf["final_cfu_pct_err"]
-    
+
     num_genotypes = len(ordered_genotypes)
 
     # -- create output dataframes --
@@ -1111,7 +1106,7 @@ def _simulate_library_group(
     
     # Record cfu/mL over all conditions
     sample_df.loc[:,"sample_cfu"] = np.sum(trans_cfu,axis=0)
-    sample_df.loc[:,"sample_cfu_std"] = sample_df.loc[:,"sample_cfu"]*final_cfu_pct_err
+    sample_df.loc[:,"sample_cfu_std"] = 0.0
 
     # -- simulate sequencing -- 
     print("--> simulating sequencing",flush=True)

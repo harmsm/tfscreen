@@ -122,8 +122,7 @@ def _generate_presplit_data(combined_sample_df, combined_counts_df, cf, rng):
         initial log-CFU per genotype computed by the simulation).
     cf : dict
         Full run configuration (already read from YAML).  Used keys:
-        ``cfu0``, ``total_num_reads``, ``final_cfu_pct_err``,
-        ``prob_index_hop``.  The optional ``presplit_data`` sub-dict may
+        ``cfu0``, ``total_num_reads``, ``prob_index_hop``.  The optional ``presplit_data`` sub-dict may
         contain a scalar ``noise`` key (default 0) to add extra Gaussian noise
         to ``ln_cfu`` on the log scale.
     rng : numpy.random.Generator
@@ -139,7 +138,6 @@ def _generate_presplit_data(combined_sample_df, combined_counts_df, cf, rng):
         transformation pool) receive ``ln_cfu = NaN``.
     """
     total_cfu0        = float(cf["cfu0"])
-    final_cfu_pct_err = float(cf.get("final_cfu_pct_err", 0.05))
     presplit_cfg      = cf.get("presplit_data", {})
     extra_noise       = float(presplit_cfg.get("noise", 0.0)) if presplit_cfg else 0.0
     pseudocount       = 1
@@ -188,20 +186,18 @@ def _generate_presplit_data(combined_sample_df, combined_counts_df, cf, rng):
 
         # ---------- counts → ln_cfu (mirrors counts_to_lncfu logic) ----------
         sample_cfu     = total_cfu0
-        sample_cfu_std = total_cfu0 * final_cfu_pct_err
 
         total_adjusted = counts.sum() + len(counts) * pseudocount
         adj_counts     = counts + pseudocount
         freq_est       = adj_counts / total_adjusted
         cfu_est        = freq_est * sample_cfu
 
-        # Variance from binomial frequency uncertainty + sample-CFU uncertainty
+        # Variance from binomial frequency uncertainty only
         var_freq      = freq_est * (1.0 - freq_est) / total_adjusted
         with np.errstate(divide="ignore", invalid="ignore"):
             rel_var_freq  = np.where(freq_est > 0,
                                      var_freq / (freq_est ** 2), 0.0)
-        rel_var_cfu       = (sample_cfu_std / sample_cfu) ** 2
-        ln_cfu_var        = rel_var_freq + rel_var_cfu
+        ln_cfu_var        = rel_var_freq
 
         # Optional additional noise on the log scale
         if extra_noise > 0.0:

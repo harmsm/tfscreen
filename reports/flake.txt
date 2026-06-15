@@ -1313,26 +1313,25 @@
 ./src/tfscreen/simulate/run_simulation.py:101:1: W293 blank line contains whitespace
 ./src/tfscreen/simulate/run_simulation.py:106:1: W293 blank line contains whitespace
 ./src/tfscreen/simulate/run_simulation.py:107:1: W391 blank line at end of file
-./src/tfscreen/simulate/scripts/run_simulation_cli.py:141:15: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/run_simulation_cli.py:143:17: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/run_simulation_cli.py:144:16: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/run_simulation_cli.py:145:16: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/run_simulation_cli.py:149:20: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/run_simulation_cli.py:150:22: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/run_simulation_cli.py:151:21: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/run_simulation_cli.py:170:43: E127 continuation line over-indented for visual indent
-./src/tfscreen/simulate/scripts/run_simulation_cli.py:171:14: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/run_simulation_cli.py:172:16: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/run_simulation_cli.py:177:17: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/run_simulation_cli.py:190:19: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/run_simulation_cli.py:194:19: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/run_simulation_cli.py:195:17: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/run_simulation_cli.py:196:16: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/run_simulation_cli.py:199:17: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/run_simulation_cli.py:201:25: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/run_simulation_cli.py:203:20: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/run_simulation_cli.py:204:19: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/run_simulation_cli.py:218:19: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/run_simulation_cli.py:140:15: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/run_simulation_cli.py:141:17: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/run_simulation_cli.py:142:16: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/run_simulation_cli.py:143:16: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/run_simulation_cli.py:147:20: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/run_simulation_cli.py:148:22: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/run_simulation_cli.py:149:21: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/run_simulation_cli.py:168:43: E127 continuation line over-indented for visual indent
+./src/tfscreen/simulate/scripts/run_simulation_cli.py:169:14: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/run_simulation_cli.py:170:16: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/run_simulation_cli.py:175:17: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/run_simulation_cli.py:188:19: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/run_simulation_cli.py:191:19: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/run_simulation_cli.py:192:17: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/run_simulation_cli.py:193:16: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/run_simulation_cli.py:196:17: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/run_simulation_cli.py:198:25: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/run_simulation_cli.py:200:19: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/run_simulation_cli.py:214:19: E221 multiple spaces before operator
 ./src/tfscreen/simulate/scripts/setup_sim_grid_cli.py:101:1: C901 'setup_sim_grid' is too complex (17)
 ./src/tfscreen/simulate/selection_experiment.py:42:38: E231 missing whitespace after ':'
 ./src/tfscreen/simulate/selection_experiment.py:43:37: E231 missing whitespace after ':'
@@ -1343,140 +1342,134 @@
 ./src/tfscreen/simulate/selection_experiment.py:72:1: C901 '_check_dict_number' is too complex (13)
 ./src/tfscreen/simulate/selection_experiment.py:72:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/simulate/selection_experiment.py:115:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:158:1: C901 '_check_cf' is too complex (26)
+./src/tfscreen/simulate/selection_experiment.py:158:1: C901 '_check_cf' is too complex (25)
 ./src/tfscreen/simulate/selection_experiment.py:180:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:202:57: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:204:48: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:204:51: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:204:65: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:204:85: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:227:28: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:228:28: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:294:1: C901 '_check_lib_spec' is too complex (12)
-./src/tfscreen/simulate/selection_experiment.py:294:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/simulate/selection_experiment.py:346:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:351:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:373:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:426:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:442:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:450:36: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:450:44: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:460:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/simulate/selection_experiment.py:470:78: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:513:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:517:77: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:518:75: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:528:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:531:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:577:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:588:38: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:589:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:592:53: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:596:55: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:602:32: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:607:30: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:608:53: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:612:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/simulate/selection_experiment.py:654:51: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:660:35: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:665:78: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:682:50: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:682:52: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:684:75: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:686:44: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:687:46: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:688:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:689:67: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:739:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:756:79: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:762:29: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:804:43: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:810:74: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:811:18: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:817:79: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:819:33: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:824:80: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:829:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:835:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:846:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:889:73: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:894:76: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:911:25: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:1012:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:1020:26: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:1020:36: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:1020:44: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:1020:52: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:1020:60: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:1028:28: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:1029:32: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:1037:42: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:1046:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:1047:78: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:1049:63: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:1055:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:1057:51: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:1064:28: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:1066:77: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:1067:24: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:1074:79: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:199:57: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:223:28: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:224:28: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:290:1: C901 '_check_lib_spec' is too complex (12)
+./src/tfscreen/simulate/selection_experiment.py:290:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/simulate/selection_experiment.py:342:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/selection_experiment.py:347:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/selection_experiment.py:369:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/selection_experiment.py:422:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/selection_experiment.py:438:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/selection_experiment.py:446:36: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:446:44: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:456:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/simulate/selection_experiment.py:466:78: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:509:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/selection_experiment.py:513:77: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:514:75: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:524:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/selection_experiment.py:527:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/selection_experiment.py:573:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/selection_experiment.py:584:38: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:585:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/selection_experiment.py:588:53: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:592:55: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:598:32: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:603:30: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:604:53: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:608:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/simulate/selection_experiment.py:650:51: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:656:35: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:661:78: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:678:50: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:678:52: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:680:75: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:682:44: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:683:46: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:684:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/selection_experiment.py:685:67: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:735:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/selection_experiment.py:752:79: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:758:29: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:800:43: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:806:74: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:807:18: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:813:79: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:815:33: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:820:80: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:825:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/selection_experiment.py:831:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/selection_experiment.py:842:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/selection_experiment.py:885:73: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:890:76: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:907:25: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:1015:26: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:1015:36: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:1015:44: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:1015:52: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:1015:60: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:1023:28: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:1024:32: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:1032:42: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:1041:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/selection_experiment.py:1042:78: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:1044:63: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:1050:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/selection_experiment.py:1052:51: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:1059:28: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:1061:77: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:1062:24: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:1069:79: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:1074:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/selection_experiment.py:1075:77: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:1077:36: W291 trailing whitespace
 ./src/tfscreen/simulate/selection_experiment.py:1079:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:1080:77: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:1082:36: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:1084:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:1088:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:1094:128: E501 line too long (145 > 127 characters)
-./src/tfscreen/simulate/selection_experiment.py:1095:128: E501 line too long (145 > 127 characters)
-./src/tfscreen/simulate/selection_experiment.py:1099:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:1100:72: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:1104:34: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:1111:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:1113:20: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:1113:53: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:1114:20: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:1114:56: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:1116:32: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:1117:38: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:1129:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:1137:41: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:1144:49: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:1146:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:1151:36: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:1152:37: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:1152:45: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:1152:53: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:1152:61: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:1157:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/simulate/selection_experiment.py:1192:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:1213:57: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:1214:53: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:1217:28: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:1217:39: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:1222:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:1228:78: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:1231:19: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:1239:33: E261 at least two spaces before inline comment
-./src/tfscreen/simulate/selection_experiment.py:1240:49: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:1241:37: E231 missing whitespace after ':'
+./src/tfscreen/simulate/selection_experiment.py:1083:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/selection_experiment.py:1089:128: E501 line too long (145 > 127 characters)
+./src/tfscreen/simulate/selection_experiment.py:1090:128: E501 line too long (145 > 127 characters)
+./src/tfscreen/simulate/selection_experiment.py:1094:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/selection_experiment.py:1095:72: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:1099:34: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:1106:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/selection_experiment.py:1108:20: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:1108:53: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:1109:20: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:1111:32: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:1112:38: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:1124:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/selection_experiment.py:1132:41: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:1139:49: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:1141:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/selection_experiment.py:1146:36: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:1147:37: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:1147:45: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:1147:53: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:1147:61: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:1152:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/simulate/selection_experiment.py:1187:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/selection_experiment.py:1208:57: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:1209:53: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:1212:28: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:1212:39: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:1217:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/selection_experiment.py:1223:78: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:1226:19: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:1234:33: E261 at least two spaces before inline comment
+./src/tfscreen/simulate/selection_experiment.py:1235:49: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:1236:37: E231 missing whitespace after ':'
+./src/tfscreen/simulate/selection_experiment.py:1238:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/selection_experiment.py:1239:76: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:1241:19: W291 trailing whitespace
 ./src/tfscreen/simulate/selection_experiment.py:1243:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:1244:76: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:1246:19: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:1248:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:1256:77: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:1257:43: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:1261:41: E127 continuation line over-indented for visual indent
-./src/tfscreen/simulate/selection_experiment.py:1264:49: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:1288:71: W291 trailing whitespace
-./src/tfscreen/simulate/selection_experiment.py:1296:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:1297:76: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:1302:11: F541 f-string is missing placeholders
-./src/tfscreen/simulate/selection_experiment.py:1307:38: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:1324:6: E114 indentation is not a multiple of 4 (comment)
-./src/tfscreen/simulate/selection_experiment.py:1331:51: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:1332:48: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:1333:1: W293 blank line contains whitespace
-./src/tfscreen/simulate/selection_experiment.py:1334:33: E231 missing whitespace after ','
-./src/tfscreen/simulate/selection_experiment.py:1337:1: W391 blank line at end of file
+./src/tfscreen/simulate/selection_experiment.py:1251:77: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:1252:43: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:1256:41: E127 continuation line over-indented for visual indent
+./src/tfscreen/simulate/selection_experiment.py:1259:49: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:1283:71: W291 trailing whitespace
+./src/tfscreen/simulate/selection_experiment.py:1291:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/selection_experiment.py:1292:76: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:1297:11: F541 f-string is missing placeholders
+./src/tfscreen/simulate/selection_experiment.py:1302:38: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:1319:6: E114 indentation is not a multiple of 4 (comment)
+./src/tfscreen/simulate/selection_experiment.py:1326:51: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:1327:48: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:1328:1: W293 blank line contains whitespace
+./src/tfscreen/simulate/selection_experiment.py:1329:33: E231 missing whitespace after ','
+./src/tfscreen/simulate/selection_experiment.py:1332:1: W391 blank line at end of file
 ./src/tfscreen/simulate/sim_data_class.py:97:1: E303 too many blank lines (3)
 ./src/tfscreen/simulate/thermo_to_growth.py:102:36: E127 continuation line over-indented for visual indent
 ./src/tfscreen/simulate/thermo_to_growth.py:103:36: E127 continuation line over-indented for visual indent
@@ -3676,9 +3669,9 @@
 ./src/tfscreen/tfmodel/scripts/setup_grid_cli.py:160:1: C901 'setup_grid' is too complex (17)
 ./src/tfscreen/tfmodel/scripts/subset_genotypes_cli.py:40:1: C901 'subset_genotypes' is too complex (23)
 ./src/tfscreen/tfmodel/scripts/subset_genotypes_cli.py:93:5: F841 local variable 'all_genotypes' is assigned to but never used
-./src/tfscreen/tfmodel/scripts/summarize_fit_cli.py:153:1: C901 '_read_all_losses' is too complex (11)
-./src/tfscreen/tfmodel/scripts/summarize_fit_cli.py:370:1: C901 '_summarize_params' is too complex (23)
-./src/tfscreen/tfmodel/scripts/summarize_fit_cli.py:477:1: C901 'summarize_fit' is too complex (59)
+./src/tfscreen/tfmodel/scripts/summarize_fit_cli.py:154:1: C901 '_read_all_losses' is too complex (11)
+./src/tfscreen/tfmodel/scripts/summarize_fit_cli.py:413:1: C901 '_summarize_params' is too complex (23)
+./src/tfscreen/tfmodel/scripts/summarize_fit_cli.py:521:1: C901 'summarize_fit' is too complex (59)
 ./src/tfscreen/tfmodel/scripts/summarize_grid_cli.py:47:30: E127 continuation line over-indented for visual indent
 ./src/tfscreen/tfmodel/scripts/summarize_grid_cli.py:76:1: C901 'summarize_grid' is too complex (14)
 ./src/tfscreen/tfmodel/tensors/batch.py:5:1: E302 expected 2 blank lines, found 1
@@ -5175,28 +5168,28 @@
 ./tests/tfscreen/simulate/test_build_sample_dataframes.py:128:55: W292 no newline at end of file
 ./tests/tfscreen/simulate/test_generate_presplit_data.py:11:1: F401 'pytest' imported but unused
 ./tests/tfscreen/simulate/test_generate_presplit_data.py:14:1: F401 'unittest.mock.MagicMock' imported but unused
-./tests/tfscreen/simulate/test_generate_presplit_data.py:75:39: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_generate_presplit_data.py:74:39: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_generate_presplit_data.py:86:42: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/simulate/test_generate_presplit_data.py:87:42: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/test_generate_presplit_data.py:88:42: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/test_generate_presplit_data.py:90:39: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/test_generate_presplit_data.py:98:39: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/test_generate_presplit_data.py:106:39: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/test_generate_presplit_data.py:124:39: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/test_generate_presplit_data.py:125:14: E221 multiple spaces before operator
-./tests/tfscreen/simulate/test_generate_presplit_data.py:141:20: E221 multiple spaces before operator
-./tests/tfscreen/simulate/test_generate_presplit_data.py:142:51: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/test_generate_presplit_data.py:143:22: E221 multiple spaces before operator
-./tests/tfscreen/simulate/test_generate_presplit_data.py:144:51: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/test_generate_presplit_data.py:146:22: E221 multiple spaces before operator
-./tests/tfscreen/simulate/test_generate_presplit_data.py:159:35: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/test_generate_presplit_data.py:161:35: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/test_generate_presplit_data.py:163:36: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/test_generate_presplit_data.py:174:11: E221 multiple spaces before operator
-./tests/tfscreen/simulate/test_generate_presplit_data.py:178:32: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/test_generate_presplit_data.py:222:11: E221 multiple spaces before operator
-./tests/tfscreen/simulate/test_generate_presplit_data.py:227:33: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/test_generate_presplit_data.py:229:31: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/test_generate_presplit_data.py:231:33: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_generate_presplit_data.py:89:39: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_generate_presplit_data.py:97:39: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_generate_presplit_data.py:105:39: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_generate_presplit_data.py:123:39: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_generate_presplit_data.py:124:14: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_generate_presplit_data.py:140:20: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_generate_presplit_data.py:141:51: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_generate_presplit_data.py:142:22: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_generate_presplit_data.py:143:51: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_generate_presplit_data.py:145:22: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_generate_presplit_data.py:158:35: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_generate_presplit_data.py:160:35: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_generate_presplit_data.py:162:36: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_generate_presplit_data.py:173:11: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_generate_presplit_data.py:177:32: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_generate_presplit_data.py:220:11: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_generate_presplit_data.py:225:33: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_generate_presplit_data.py:227:31: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_generate_presplit_data.py:229:33: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/simulate/test_library_prediction.py:47:41: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/simulate/test_run_simulation.py:3:1: F401 'os' imported but unused
 ./tests/tfscreen/simulate/test_run_simulation.py:5:1: F401 'unittest.mock.MagicMock' imported but unused
@@ -5223,152 +5216,152 @@
 ./tests/tfscreen/simulate/test_selection_experiment.py:9:1: F401 'unittest.mock.MagicMock' imported but unused
 ./tests/tfscreen/simulate/test_selection_experiment.py:34:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/simulate/test_selection_experiment.py:39:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_selection_experiment.py:69:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_selection_experiment.py:78:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_selection_experiment.py:86:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:117:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_selection_experiment.py:142:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_selection_experiment.py:176:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:179:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:186:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_selection_experiment.py:195:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:204:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_selection_experiment.py:222:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:228:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:237:51: W291 trailing whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:238:63: W291 trailing whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:250:16: E261 at least two spaces before inline comment
-./tests/tfscreen/simulate/test_selection_experiment.py:252:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_selection_experiment.py:252:57: W291 trailing whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:253:69: W291 trailing whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:273:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_selection_experiment.py:277:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:281:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:284:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:287:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:290:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:294:52: W291 trailing whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:295:64: W291 trailing whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:304:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:307:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:315:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_selection_experiment.py:321:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:323:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:327:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_selection_experiment.py:333:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:336:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:338:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:339:61: E231 missing whitespace after ','
-./tests/tfscreen/simulate/test_selection_experiment.py:344:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_selection_experiment.py:346:31: E231 missing whitespace after ','
-./tests/tfscreen/simulate/test_selection_experiment.py:346:32: E261 at least two spaces before inline comment
-./tests/tfscreen/simulate/test_selection_experiment.py:369:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:374:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_selection_experiment.py:381:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:384:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:386:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:391:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_selection_experiment.py:401:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:407:1: E303 too many blank lines (3)
-./tests/tfscreen/simulate/test_selection_experiment.py:411:1: E302 expected 2 blank lines, found 3
-./tests/tfscreen/simulate/test_selection_experiment.py:417:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:419:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:422:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:429:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_selection_experiment.py:437:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:445:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:449:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:453:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:457:31: E261 at least two spaces before inline comment
-./tests/tfscreen/simulate/test_selection_experiment.py:461:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:465:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_selection_experiment.py:471:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:486:22: W291 trailing whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:487:24: W291 trailing whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:489:70: W291 trailing whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:498:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:501:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:515:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:518:25: E261 at least two spaces before inline comment
-./tests/tfscreen/simulate/test_selection_experiment.py:529:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:534:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:551:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:68:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_selection_experiment.py:77:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_selection_experiment.py:85:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:116:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_selection_experiment.py:141:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_selection_experiment.py:175:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:178:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:185:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_selection_experiment.py:194:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:203:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_selection_experiment.py:221:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:227:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:236:51: W291 trailing whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:237:63: W291 trailing whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:249:16: E261 at least two spaces before inline comment
+./tests/tfscreen/simulate/test_selection_experiment.py:251:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_selection_experiment.py:251:57: W291 trailing whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:252:69: W291 trailing whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:272:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_selection_experiment.py:276:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:280:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:283:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:286:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:289:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:293:52: W291 trailing whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:294:64: W291 trailing whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:303:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:306:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:314:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_selection_experiment.py:320:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:322:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:326:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_selection_experiment.py:332:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:335:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:337:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:338:61: E231 missing whitespace after ','
+./tests/tfscreen/simulate/test_selection_experiment.py:343:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_selection_experiment.py:345:31: E231 missing whitespace after ','
+./tests/tfscreen/simulate/test_selection_experiment.py:345:32: E261 at least two spaces before inline comment
+./tests/tfscreen/simulate/test_selection_experiment.py:368:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:373:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_selection_experiment.py:380:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:383:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:385:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:390:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_selection_experiment.py:400:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:406:1: E303 too many blank lines (3)
+./tests/tfscreen/simulate/test_selection_experiment.py:410:1: E302 expected 2 blank lines, found 3
+./tests/tfscreen/simulate/test_selection_experiment.py:416:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:418:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:421:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:428:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_selection_experiment.py:436:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:444:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:448:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:452:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:456:31: E261 at least two spaces before inline comment
+./tests/tfscreen/simulate/test_selection_experiment.py:460:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:464:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_selection_experiment.py:470:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:485:22: W291 trailing whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:486:24: W291 trailing whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:488:70: W291 trailing whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:497:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:500:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:514:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:517:25: E261 at least two spaces before inline comment
+./tests/tfscreen/simulate/test_selection_experiment.py:528:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:533:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:550:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:553:20: E261 at least two spaces before inline comment
 ./tests/tfscreen/simulate/test_selection_experiment.py:554:20: E261 at least two spaces before inline comment
 ./tests/tfscreen/simulate/test_selection_experiment.py:555:20: E261 at least two spaces before inline comment
-./tests/tfscreen/simulate/test_selection_experiment.py:556:20: E261 at least two spaces before inline comment
-./tests/tfscreen/simulate/test_selection_experiment.py:570:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_selection_experiment.py:577:47: E261 at least two spaces before inline comment
+./tests/tfscreen/simulate/test_selection_experiment.py:569:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_selection_experiment.py:576:47: E261 at least two spaces before inline comment
+./tests/tfscreen/simulate/test_selection_experiment.py:582:20: E261 at least two spaces before inline comment
 ./tests/tfscreen/simulate/test_selection_experiment.py:583:20: E261 at least two spaces before inline comment
 ./tests/tfscreen/simulate/test_selection_experiment.py:584:20: E261 at least two spaces before inline comment
-./tests/tfscreen/simulate/test_selection_experiment.py:585:20: E261 at least two spaces before inline comment
-./tests/tfscreen/simulate/test_selection_experiment.py:593:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:596:9: F811 redefinition of unused 'gmean' from line 6
-./tests/tfscreen/simulate/test_selection_experiment.py:604:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:608:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:615:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_selection_experiment.py:622:59: W291 trailing whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:624:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:641:41: E261 at least two spaces before inline comment
-./tests/tfscreen/simulate/test_selection_experiment.py:655:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_selection_experiment.py:663:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:679:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_selection_experiment.py:687:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:694:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:702:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_selection_experiment.py:713:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:592:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:595:9: F811 redefinition of unused 'gmean' from line 6
+./tests/tfscreen/simulate/test_selection_experiment.py:603:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:607:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:614:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_selection_experiment.py:621:59: W291 trailing whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:623:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:640:41: E261 at least two spaces before inline comment
+./tests/tfscreen/simulate/test_selection_experiment.py:654:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_selection_experiment.py:662:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:678:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_selection_experiment.py:686:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:693:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:701:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_selection_experiment.py:712:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:713:48: W291 trailing whitespace
 ./tests/tfscreen/simulate/test_selection_experiment.py:714:48: W291 trailing whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:715:48: W291 trailing whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:721:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:724:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_selection_experiment.py:732:43: E261 at least two spaces before inline comment
-./tests/tfscreen/simulate/test_selection_experiment.py:747:31: E201 whitespace after '['
-./tests/tfscreen/simulate/test_selection_experiment.py:748:54: E202 whitespace before ']'
-./tests/tfscreen/simulate/test_selection_experiment.py:749:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:753:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:755:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:756:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_selection_experiment.py:765:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:767:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:771:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:779:63: W291 trailing whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:780:75: W291 trailing whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:781:77: W291 trailing whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:790:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:795:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:798:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:804:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:809:25: E261 at least two spaces before inline comment
-./tests/tfscreen/simulate/test_selection_experiment.py:815:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:819:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:821:45: W291 trailing whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:822:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:823:48: W291 trailing whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:826:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:834:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:839:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_selection_experiment.py:843:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:849:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:853:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:856:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:859:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_selection_experiment.py:863:37: W291 trailing whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:884:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:889:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:892:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:897:41: E261 at least two spaces before inline comment
-./tests/tfscreen/simulate/test_selection_experiment.py:917:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/simulate/test_selection_experiment.py:1148:12: F841 local variable 'k_sel' is assigned to but never used
-./tests/tfscreen/simulate/test_selection_experiment.py:1163:29: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/test_selection_experiment.py:1165:29: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/test_selection_experiment.py:1187:20: E221 multiple spaces before operator
-./tests/tfscreen/simulate/test_selection_experiment.py:1202:14: E221 multiple spaces before operator
-./tests/tfscreen/simulate/test_selection_experiment.py:1205:14: E221 multiple spaces before operator
-./tests/tfscreen/simulate/test_selection_experiment.py:1243:69: W291 trailing whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:1255:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:1266:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:1270:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:1273:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_selection_experiment.py:1314:27: W292 no newline at end of file
+./tests/tfscreen/simulate/test_selection_experiment.py:720:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:723:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_selection_experiment.py:731:43: E261 at least two spaces before inline comment
+./tests/tfscreen/simulate/test_selection_experiment.py:746:31: E201 whitespace after '['
+./tests/tfscreen/simulate/test_selection_experiment.py:747:54: E202 whitespace before ']'
+./tests/tfscreen/simulate/test_selection_experiment.py:748:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:752:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:754:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:755:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_selection_experiment.py:764:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:766:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:770:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:778:63: W291 trailing whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:779:75: W291 trailing whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:780:77: W291 trailing whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:789:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:794:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:797:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:803:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:808:25: E261 at least two spaces before inline comment
+./tests/tfscreen/simulate/test_selection_experiment.py:814:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:818:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:820:45: W291 trailing whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:821:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:822:48: W291 trailing whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:825:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:833:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:838:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_selection_experiment.py:842:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:848:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:852:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:855:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:858:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_selection_experiment.py:862:37: W291 trailing whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:883:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:888:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:891:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:896:41: E261 at least two spaces before inline comment
+./tests/tfscreen/simulate/test_selection_experiment.py:916:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/simulate/test_selection_experiment.py:1147:12: F841 local variable 'k_sel' is assigned to but never used
+./tests/tfscreen/simulate/test_selection_experiment.py:1162:29: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_selection_experiment.py:1164:29: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_selection_experiment.py:1186:20: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_selection_experiment.py:1201:14: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_selection_experiment.py:1204:14: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_selection_experiment.py:1242:69: W291 trailing whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:1254:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:1265:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:1269:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:1272:1: W293 blank line contains whitespace
+./tests/tfscreen/simulate/test_selection_experiment.py:1313:27: W292 no newline at end of file
 ./tests/tfscreen/simulate/test_thermo_to_growth.py:28:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/simulate/test_thermo_to_growth.py:32:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/simulate/test_thermo_to_growth.py:41:1: E302 expected 2 blank lines, found 1
@@ -6540,7 +6533,8 @@
 ./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:961:18: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:964:17: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:1229:1: E402 module level import not at top of file
-./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:1409:14: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:1411:14: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:1741:21: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/scripts/test_summarize_grid_cli.py:79:9: F841 local variable 'data' is assigned to but never used
 ./tests/tfscreen/tfmodel/scripts/test_summarize_grid_cli.py:183:91: E712 comparison to True should be 'if cond is True:' or 'if cond:'
 ./tests/tfscreen/tfmodel/test_batch.py:3:1: F401 'numpy as np' imported but unused
@@ -7679,7 +7673,7 @@
 1768  E221 multiple spaces before operator
 26    E222 multiple spaces after operator
 8     E225 missing whitespace around operator
-1120  E231 missing whitespace after ','
+1115  E231 missing whitespace after ','
 103   E251 unexpected spaces around keyword / parameter equals
 14    E252 missing whitespace around parameter equals
 228   E261 at least two spaces before inline comment
@@ -7707,6 +7701,6 @@
 40    F841 local variable 'e' is assigned to but never used
 669   W291 trailing whitespace
 86    W292 no newline at end of file
-1675  W293 blank line contains whitespace
+1674  W293 blank line contains whitespace
 29    W391 blank line at end of file
-7663
+7657

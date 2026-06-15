@@ -1231,7 +1231,9 @@ from tfscreen.tfmodel.scripts.summarize_fit_cli import (
     _compute_direct_obs,
     _compute_diff_obs,
     _compute_epi_obs,
+    _extract_quantile_data,
     _summarize_params,
+    _try_calibration,
     _try_plot_params_corr,
 )
 
@@ -1660,3 +1662,335 @@ class TestSummarizeParams:
         assert os.path.exists(out_pdf)
         df = pd.read_csv(out_csv)
         assert "ref" in df.columns
+
+
+# ---------------------------------------------------------------------------
+# _extract_quantile_data
+# ---------------------------------------------------------------------------
+
+_PATCH_CALIBRATION_SUMMARY = (
+    "tfscreen.tfmodel.scripts.summarize_fit_cli.calibration_summary"
+)
+
+
+class TestExtractQuantileData:
+
+    def test_standard_q_cols_returns_matrix_and_levels(self):
+        df = pd.DataFrame({
+            "q0.025": [0.1, 0.2],
+            "q0.5":   [0.5, 0.6],
+            "q0.975": [0.9, 1.0],
+            "ref":    [0.4, 0.5],
+        })
+        mat, levels = _extract_quantile_data(df)
+        assert levels == pytest.approx([0.025, 0.5, 0.975])
+        assert mat.shape == (2, 3)
+        assert mat[0, 1] == pytest.approx(0.5)   # q0.5 for first row
+
+    def test_levels_sorted_numerically_not_lexicographically(self):
+        # q0.1 < q0.25 numerically; lexicographic would put q0.25 < q0.1
+        df = pd.DataFrame({"q0.25": [0.3], "q0.1": [0.1], "q0.9": [0.8]})
+        _, levels = _extract_quantile_data(df)
+        assert list(levels) == pytest.approx([0.1, 0.25, 0.9])
+
+    def test_returns_none_none_when_no_q_cols(self):
+        df = pd.DataFrame({"ref": [0.1], "genotype": ["wt"]})
+        mat, levels = _extract_quantile_data(df)
+        assert mat is None
+        assert levels is None
+
+    def test_returns_none_none_with_exactly_one_q_col(self):
+        df = pd.DataFrame({"q0.5": [0.5], "ref": [0.4]})
+        mat, levels = _extract_quantile_data(df)
+        assert mat is None
+        assert levels is None
+
+    def test_non_q_columns_excluded(self):
+        df = pd.DataFrame({
+            "q0.5":    [0.5],
+            "q0.975":  [0.9],
+            "quality": [1.0],   # must not match
+        })
+        mat, levels = _extract_quantile_data(df)
+        assert mat is not None
+        assert mat.shape == (1, 2)
+        assert list(levels) == pytest.approx([0.5, 0.975])
+
+    def test_returns_values_in_same_row_order_as_df(self):
+        df = pd.DataFrame({
+            "q0.025": [0.10, 0.20, 0.30],
+            "q0.975": [0.80, 0.85, 0.90],
+        })
+        mat, _ = _extract_quantile_data(df)
+        assert mat[1, 0] == pytest.approx(0.20)
+        assert mat[2, 1] == pytest.approx(0.90)
+
+
+# ---------------------------------------------------------------------------
+# _try_calibration
+# ---------------------------------------------------------------------------
+
+def _make_calibration_df(n=20, q_cols=True, ref_col="ref"):
+    """Build a minimal DataFrame for calibration tests."""
+    rng = np.random.default_rng(42)
+    data = {}
+    if ref_col:
+        data[ref_col] = rng.uniform(0, 1, n)
+    if q_cols:
+        data["q0.025"] = rng.uniform(0.0, 0.3, n)
+        data["q0.5"]   = rng.uniform(0.3, 0.7, n)
+        data["q0.975"] = rng.uniform(0.7, 1.0, n)
+    else:
+        data["q0.5"] = rng.uniform(0.3, 0.7, n)
+    return pd.DataFrame(data)
+
+
+class TestTryCalibration:
+
+    def test_calls_calibration_summary_with_correct_shapes(self, tmp_path):
+        df = _make_calibration_df(n=30)
+        out_prefix = str(tmp_path / "cal")
+        with patch(_PATCH_CALIBRATION_SUMMARY) as mock_cal:
+            _try_calibration(df, "ref", out_prefix, "test label")
+        mock_cal.assert_called_once()
+        _, kwargs = mock_cal.call_args
+        assert kwargs["true_vals"].shape == (30,)
+        assert kwargs["quantile_matrix"].shape == (30, 3)
+        assert kwargs["quantile_levels"].tolist() == pytest.approx([0.025, 0.5, 0.975])
+        assert kwargs["out_prefix"] == out_prefix
+        assert kwargs["label"] == "test label"
+
+    def test_skips_silently_when_df_is_none(self, tmp_path):
+        with patch(_PATCH_CALIBRATION_SUMMARY) as mock_cal:
+            _try_calibration(None, "ref", str(tmp_path / "cal"), "label")
+        mock_cal.assert_not_called()
+
+    def test_skips_silently_when_ref_col_absent(self, tmp_path):
+        df = _make_calibration_df()
+        df = df.drop(columns=["ref"])
+        with patch(_PATCH_CALIBRATION_SUMMARY) as mock_cal:
+            _try_calibration(df, "ref", str(tmp_path / "cal"), "label")
+        mock_cal.assert_not_called()
+
+    def test_skips_silently_when_fewer_than_two_q_cols(self, tmp_path):
+        df = _make_calibration_df(q_cols=False)   # only q0.5
+        with patch(_PATCH_CALIBRATION_SUMMARY) as mock_cal:
+            _try_calibration(df, "ref", str(tmp_path / "cal"), "label")
+        mock_cal.assert_not_called()
+
+    def test_warns_gracefully_when_calibration_summary_raises(self, tmp_path):
+        df = _make_calibration_df()
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            with patch(_PATCH_CALIBRATION_SUMMARY, side_effect=RuntimeError("boom")):
+                _try_calibration(df, "ref", str(tmp_path / "cal"), "my label")
+        assert any("my label" in str(x.message) for x in w)
+
+    def test_passes_ref_col_values_as_true_vals(self, tmp_path):
+        rng = np.random.default_rng(7)
+        ref_vals = rng.uniform(0, 1, 10)
+        df = pd.DataFrame({
+            "ref":    ref_vals,
+            "q0.1":   rng.uniform(0, 0.4, 10),
+            "q0.9":   rng.uniform(0.6, 1.0, 10),
+        })
+        with patch(_PATCH_CALIBRATION_SUMMARY) as mock_cal:
+            _try_calibration(df, "ref", str(tmp_path / "cal"), "label")
+        _, kwargs = mock_cal.call_args
+        np.testing.assert_array_equal(kwargs["true_vals"], ref_vals)
+
+    def test_works_with_non_default_ref_col_name(self, tmp_path):
+        df = _make_calibration_df(ref_col="ln_cfu")
+        df = df.rename(columns={"ref": "other"})  # ensure "ref" is absent
+        with patch(_PATCH_CALIBRATION_SUMMARY) as mock_cal:
+            _try_calibration(df, "ln_cfu", str(tmp_path / "cal"), "growth")
+        mock_cal.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Integration: calibration called from each summarize_fit call site
+# ---------------------------------------------------------------------------
+
+def _make_pred_csv_with_quantiles(path, n_training=3, extra_genotypes=None):
+    """Like _make_pred_csv but includes q0.025 / q0.5 / q0.975."""
+    rows = []
+    genotypes = list(GENOTYPES[:n_training])
+    if extra_genotypes:
+        genotypes += extra_genotypes
+    theta_map = dict(zip(GENOTYPES, THETA_PRED))
+    for g in genotypes:
+        in_train = 1 if g in GENOTYPES[:n_training] else 0
+        theta = theta_map.get(g, 0.5)
+        for tc in TITRANT_CONCS:
+            rows.append({
+                "genotype": g,
+                "titrant_name": TITRANT_NAME,
+                "titrant_conc": tc,
+                "q0.025": max(0.0, theta - 0.10),
+                "q0.5":   theta + tc * 0.0001,
+                "q0.975": min(1.0, theta + 0.10),
+                "in_training_data": in_train,
+            })
+    pd.DataFrame(rows).to_csv(path, index=False)
+
+
+class TestCalibrationIntegration:
+    """Verify calibration_summary is (or isn't) called from each wiring point."""
+
+    # ------------------------------------------------------------------
+    # Theta training
+    # ------------------------------------------------------------------
+
+    def test_calibration_called_for_theta_training_with_quantile_cols(self, run_dir):
+        _make_pred_csv_with_quantiles(os.path.join(run_dir, "run_theta_pred.csv"))
+        with patch(_PATCH_CALIBRATION_SUMMARY) as mock_cal:
+            summarize_fit(run_dir)
+        prefixes = [call.kwargs["out_prefix"] for call in mock_cal.call_args_list]
+        assert any("theta_training" in p for p in prefixes)
+
+    def test_calibration_skipped_for_theta_training_without_quantile_cols(self, run_dir):
+        # Overwrite with a pred CSV that has only q0.5 (no interval columns)
+        rows = []
+        for g in GENOTYPES[:3]:
+            for tc in TITRANT_CONCS:
+                rows.append({
+                    "genotype": g, "titrant_name": TITRANT_NAME,
+                    "titrant_conc": tc, "q0.5": 0.5, "in_training_data": 1,
+                })
+        pd.DataFrame(rows).to_csv(
+            os.path.join(run_dir, "run_theta_pred.csv"), index=False
+        )
+        with patch(_PATCH_CALIBRATION_SUMMARY) as mock_cal:
+            summarize_fit(run_dir)
+        prefixes = [call.kwargs["out_prefix"] for call in mock_cal.call_args_list]
+        assert not any("theta_training" in p for p in prefixes)
+
+    # ------------------------------------------------------------------
+    # Theta test
+    # ------------------------------------------------------------------
+
+    def test_calibration_called_for_theta_test_with_quantile_cols(
+        self, run_dir, ref_theta_file
+    ):
+        _make_pred_csv_with_quantiles(
+            os.path.join(run_dir, "run_theta_pred.csv"),
+            n_training=3, extra_genotypes=["E4F"],
+        )
+        with patch(_PATCH_CALIBRATION_SUMMARY) as mock_cal:
+            summarize_fit(run_dir, ref_theta_file=ref_theta_file)
+        prefixes = [call.kwargs["out_prefix"] for call in mock_cal.call_args_list]
+        assert any("theta_test" in p for p in prefixes)
+
+    def test_calibration_skipped_for_theta_test_when_no_ref_theta_file(self, run_dir):
+        _make_pred_csv_with_quantiles(os.path.join(run_dir, "run_theta_pred.csv"))
+        with patch(_PATCH_CALIBRATION_SUMMARY) as mock_cal:
+            summarize_fit(run_dir)
+        prefixes = [call.kwargs["out_prefix"] for call in mock_cal.call_args_list]
+        assert not any("theta_test" in p for p in prefixes)
+
+    # ------------------------------------------------------------------
+    # Growth
+    # ------------------------------------------------------------------
+
+    def test_calibration_called_for_growth_with_quantile_cols(self, run_dir):
+        pd.DataFrame({
+            "genotype": ["wt"] * 6,
+            "ln_cfu":   np.linspace(8.0, 13.0, 6),
+            "q0.025":   np.linspace(7.5, 12.5, 6),
+            "q0.5":     np.linspace(8.0, 13.0, 6),
+            "q0.975":   np.linspace(8.5, 13.5, 6),
+        }).to_csv(os.path.join(run_dir, "tfs_growth_pred.csv"), index=False)
+        with patch(_PATCH_CALIBRATION_SUMMARY) as mock_cal:
+            summarize_fit(run_dir)
+        prefixes = [call.kwargs["out_prefix"] for call in mock_cal.call_args_list]
+        assert any("growth" in p for p in prefixes)
+
+    def test_calibration_uses_ref_col_for_growth(self, run_dir):
+        pd.DataFrame({
+            "genotype": ["wt"] * 6,
+            "ln_cfu":   np.linspace(8.0, 13.0, 6),
+            "q0.025":   np.linspace(7.5, 12.5, 6),
+            "q0.5":     np.linspace(8.0, 13.0, 6),
+            "q0.975":   np.linspace(8.5, 13.5, 6),
+        }).to_csv(os.path.join(run_dir, "tfs_growth_pred.csv"), index=False)
+        with patch(_PATCH_CALIBRATION_SUMMARY) as mock_cal:
+            summarize_fit(run_dir)
+        growth_calls = [c for c in mock_cal.call_args_list
+                        if "growth" in c.kwargs["out_prefix"]]
+        assert len(growth_calls) == 1
+        # true_vals must come from the renamed "ref" column (was ln_cfu)
+        np.testing.assert_array_almost_equal(
+            growth_calls[0].kwargs["true_vals"],
+            np.linspace(8.0, 13.0, 6),
+        )
+
+    def test_calibration_skipped_for_growth_without_quantile_cols(self, run_dir):
+        pd.DataFrame({
+            "genotype": ["wt"] * 6,
+            "ln_cfu":   np.linspace(8.0, 13.0, 6),
+            "q0.5":     np.linspace(8.0, 13.0, 6),
+        }).to_csv(os.path.join(run_dir, "tfs_growth_pred.csv"), index=False)
+        with patch(_PATCH_CALIBRATION_SUMMARY) as mock_cal:
+            summarize_fit(run_dir)
+        prefixes = [call.kwargs["out_prefix"] for call in mock_cal.call_args_list]
+        assert not any("growth" in p for p in prefixes)
+
+    def test_calibration_skipped_for_growth_when_no_growth_pred_file(self, run_dir):
+        with patch(_PATCH_CALIBRATION_SUMMARY) as mock_cal:
+            summarize_fit(run_dir)
+        prefixes = [call.kwargs["out_prefix"] for call in mock_cal.call_args_list]
+        assert not any("growth" in p for p in prefixes)
+
+    # ------------------------------------------------------------------
+    # Params
+    # ------------------------------------------------------------------
+
+    def test_calibration_called_for_params_with_quantile_cols(self, run_dir):
+        _SIM_DF.to_csv(os.path.join(run_dir, "tfs_sim_parameters.csv"), index=False)
+        rows = [
+            {"genotype": g, "titrant_name": "iptg",
+             "q0.025": 0.0, "q0.5": 0.0, "q0.975": 0.0}
+            for g in _SIM_DF["genotype"]
+        ]
+        pd.DataFrame(rows).to_csv(
+            os.path.join(run_dir, "tfs_params_activity.csv"), index=False
+        )
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            with patch(_PATCH_CALIBRATION_SUMMARY) as mock_cal:
+                summarize_fit(run_dir)
+        prefixes = [call.kwargs["out_prefix"] for call in mock_cal.call_args_list]
+        assert any("params_activity" in p for p in prefixes)
+
+    def test_calibration_skipped_for_params_without_quantile_cols(self, run_dir):
+        _SIM_DF.to_csv(os.path.join(run_dir, "tfs_sim_parameters.csv"), index=False)
+        rows = [{"genotype": g, "titrant_name": "iptg", "q0.5": 0.0}
+                for g in _SIM_DF["genotype"]]
+        pd.DataFrame(rows).to_csv(
+            os.path.join(run_dir, "tfs_params_activity.csv"), index=False
+        )
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            with patch(_PATCH_CALIBRATION_SUMMARY) as mock_cal:
+                summarize_fit(run_dir)
+        prefixes = [call.kwargs["out_prefix"] for call in mock_cal.call_args_list]
+        assert not any("params_activity" in p for p in prefixes)
+
+    def test_params_calibration_out_prefix_strips_csv_extension(self, run_dir):
+        _SIM_DF.to_csv(os.path.join(run_dir, "tfs_sim_parameters.csv"), index=False)
+        rows = [
+            {"genotype": g, "titrant_name": "iptg",
+             "q0.025": 0.0, "q0.5": 0.0, "q0.975": 0.0}
+            for g in _SIM_DF["genotype"]
+        ]
+        pd.DataFrame(rows).to_csv(
+            os.path.join(run_dir, "tfs_params_activity.csv"), index=False
+        )
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            with patch(_PATCH_CALIBRATION_SUMMARY) as mock_cal:
+                summarize_fit(run_dir)
+        params_calls = [c for c in mock_cal.call_args_list
+                        if "params_activity" in c.kwargs["out_prefix"]]
+        assert len(params_calls) == 1
+        assert not params_calls[0].kwargs["out_prefix"].endswith(".csv")

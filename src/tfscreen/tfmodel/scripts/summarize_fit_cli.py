@@ -14,6 +14,7 @@ from tfscreen.mle.stats_test_suite import stats_test_suite
 from tfscreen.plot import default_styles  # noqa: F401 — applies global rcParams on import
 from tfscreen.plot.default_styles import DEFAULT_COLORS
 from tfscreen.plot.xy_corr import xy_corr
+from tfscreen.tfmodel.analysis.error_calibration import calibration_summary
 from tfscreen.util.cli.generalized_main import generalized_main
 
 
@@ -230,6 +231,48 @@ def _blank_panel(ax, message):
     ax.set_axis_off()
     ax.text(0.5, 0.5, message, transform=ax.transAxes,
             ha="center", va="center", fontsize=12, color="gray")
+
+
+def _extract_quantile_data(df):
+    """Return (quantile_matrix, levels) from a DataFrame with q{level} columns.
+
+    Columns must match ``q{float}`` exactly (e.g. ``q0.025``, ``q0.5``).
+    Returns ``(None, None)`` when fewer than two such columns exist.
+    """
+    q_cols = sorted(
+        [c for c in df.columns if re.match(r"^q\d*\.?\d+$", c)],
+        key=lambda c: float(c[1:]),
+    )
+    if len(q_cols) < 2:
+        return None, None
+    levels = np.array([float(c[1:]) for c in q_cols])
+    return df[q_cols].values, levels
+
+
+def _try_calibration(df, ref_col, out_prefix, label):
+    """Run calibration_summary on df[ref_col] vs quantile columns.
+
+    Silently skips when df is None, ref_col is absent, or fewer than two
+    quantile columns exist.  Warns and returns on any other failure so the
+    rest of the output is unaffected.
+    """
+    if df is None:
+        return
+    if ref_col not in df.columns:
+        return
+    quantile_matrix, levels = _extract_quantile_data(df)
+    if quantile_matrix is None:
+        return
+    try:
+        calibration_summary(
+            true_vals=df[ref_col].values,
+            quantile_matrix=quantile_matrix,
+            quantile_levels=levels,
+            out_prefix=out_prefix,
+            label=label,
+        )
+    except Exception as exc:
+        warnings.warn(f"Could not run calibration summary for {label}: {exc}")
 
 
 def _build_transform_registry(sim_df):
@@ -472,6 +515,7 @@ def _summarize_params(run_dir, out_prefix):
 
         pdf_name = out_name.replace(".csv", ".pdf")
         _try_plot_params_corr(out_df, plot_label, pdf_name)
+        _try_calibration(out_df, "ref", out_name[:-4], plot_label)
 
 
 def summarize_fit(run_dir,
@@ -633,6 +677,10 @@ def summarize_fit(run_dir,
                     train_merged["q0.5"].values,
                     train_merged["ref"].values,
                 )
+                _try_calibration(
+                    train_merged, "ref",
+                    f"{out_prefix}_theta_training", "theta training",
+                )
         except Exception as exc:
             warnings.warn(f"Could not compute theta training statistics: {exc}")
 
@@ -670,6 +718,10 @@ def summarize_fit(run_dir,
                     theta_test_stats = _run_stats(
                         test_merged["q0.5"].values,
                         test_merged["ref"].values,
+                    )
+                    _try_calibration(
+                        test_merged, "ref",
+                        f"{out_prefix}_theta_test", "theta test",
                     )
         except Exception as exc:
             warnings.warn(f"Could not compute theta test statistics from {ref_theta_file}: {exc}")
@@ -770,17 +822,21 @@ def summarize_fit(run_dir,
         warnings.warn(f"Could not generate correlation plot: {exc}")
 
     # --- Growth correlation CSV ---
+    growth_copy_df = None
     if growth_pred_file is not None:
         growth_csv_file = f"{out_prefix}_growth_corr.csv"
         try:
-            growth_copy_df = pd.read_csv(growth_pred_file)
-            growth_copy_df = growth_copy_df.rename(
+            growth_copy_df = pd.read_csv(growth_pred_file).rename(
                 columns={"ln_cfu": "ref", "ln_cfu_std": "ref_std"}
             )
             growth_copy_df.to_csv(growth_csv_file, index=False)
             print(f"Wrote growth data to {growth_csv_file}")
         except Exception as exc:
             warnings.warn(f"Could not write growth CSV at {growth_csv_file}: {exc}")
+        _try_calibration(
+            growth_copy_df, "ref",
+            f"{out_prefix}_growth", "growth",
+        )
 
     # --- Growth correlation plot ---
     growth_pdf_file = f"{out_prefix}_growth_corr.pdf"
