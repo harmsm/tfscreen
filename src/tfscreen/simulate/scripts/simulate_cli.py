@@ -1,4 +1,5 @@
 import os
+import yaml
 import numpy as np
 import pandas as pd
 import jax
@@ -57,8 +58,10 @@ def _generate_binding_data(cf, library_df, binding_cfg, rng):
         thermo_data=cf.get("thermo_data"),
     )
 
-    # Sample theta from the prior using the same seed as the main run
-    theta_rng_key = jax.random.PRNGKey(cf.get("theta_rng_seed", 0))
+    # Sample theta using the same seed as the main library_prediction run so
+    # binding theta values are consistent with the ground-truth phenotypes.
+    seed = cf.get("seed", None)
+    theta_rng_key = jax.random.PRNGKey(seed if seed is not None else 0)
     theta_gc, _ = sample_theta_prior(
         component_name=cf["theta_component"],
         sim_data=sim_data,
@@ -255,16 +258,18 @@ def run_simulation_from_config(
     num_replicates : int
         Number of independent experimental replicates to simulate. Default 2.
     seed : int, optional
-        Random seed. Overrides random_seed in the config file when provided.
+        Random seed. Overrides seed in the config file when provided.
     """
     cf = tfscreen.util.read_yaml(config_file)
     if seed is not None:
-        cf["random_seed"] = seed
+        cf["seed"] = seed
 
     os.makedirs(output_dir, exist_ok=True)
 
     def out_path(name):
         return os.path.join(output_dir, f"{output_prefix}{name}.csv")
+
+    config_out = os.path.join(output_dir, f"{output_prefix}input-config.yaml")
 
     output_names = ["library", "parameters", "genotype_theta", "growth"]
     if "binding_data" in cf:
@@ -272,16 +277,18 @@ def run_simulation_from_config(
     if "presplit_data" in cf:
         output_names.append("presplit")
 
-    existing = [n for n in output_names if os.path.exists(out_path(n))]
+    existing = [out_path(n) for n in output_names if os.path.exists(out_path(n))]
+    if os.path.exists(config_out):
+        existing.append(config_out)
     if existing:
-        paths = ", ".join(out_path(n) for n in existing)
+        paths = ", ".join(existing)
         raise FileExistsError(
             f"Output files already exist: {paths}\n"
             f"Delete them or choose a different output_dir / output_prefix "
             f"before re-running."
         )
 
-    base_seed = cf.get("random_seed", None)
+    base_seed = cf.get("seed", None)
     rng = np.random.default_rng(base_seed)
 
     # -------------------------------------------------------------------------
@@ -302,7 +309,7 @@ def run_simulation_from_config(
         # Give each replicate a distinct (but reproducible) random seed so
         # that replicates differ even when a base seed is set.
         rep_cf = dict(cf)
-        rep_cf["random_seed"] = (
+        rep_cf["seed"] = (
             base_seed * num_replicates + rep if base_seed is not None else None
         )
 
@@ -351,6 +358,10 @@ def run_simulation_from_config(
                                               cf, rng)
         presplit_df.to_csv(out_path("presplit"), index=False)
         print(f"Wrote: {out_path('presplit')}")
+
+    with open(config_out, "w") as fh:
+        yaml.dump(cf, fh, default_flow_style=False, sort_keys=False)
+    print(f"Wrote: {config_out}")
 
 
 def main():

@@ -10,7 +10,7 @@ import pandas as pd
 import yaml
 from matplotlib import pyplot as plt
 
-from tfscreen.mle.stats_test_suite import stats_test_suite
+from tfscreen.analysis.stats_test_suite import stats_test_suite
 from tfscreen.plot import default_styles  # noqa: F401 — applies global rcParams on import
 from tfscreen.plot.default_styles import DEFAULT_COLORS
 from tfscreen.plot.xy_corr import xy_corr

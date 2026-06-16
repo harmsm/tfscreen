@@ -90,7 +90,7 @@ def test_read_presplit_df_passes_through_valid(minimal_presplit_df,
 
 
 def test_read_presplit_df_drops_unknown_genotypes(minimal_presplit_df,
-                                                   minimal_growth_df):
+                                                   minimal_growth_df, capsys):
     df_extra = minimal_presplit_df.copy()
     extra_row = pd.DataFrame([{"replicate": 1, "condition_pre": "kanR",
                                 "genotype": "A99V",
@@ -99,6 +99,9 @@ def test_read_presplit_df_drops_unknown_genotypes(minimal_presplit_df,
 
     gdf = _read_growth_df(minimal_growth_df.copy())
     result = _read_presplit_df(df_extra, gdf)
+    captured = capsys.readouterr()
+    assert "will be dropped" in captured.out
+    assert "A99V" in captured.out
 
     assert "A99V" not in result["genotype"].values
     assert len(result) == len(minimal_presplit_df)

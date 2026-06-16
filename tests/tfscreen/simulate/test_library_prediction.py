@@ -10,7 +10,7 @@ def mock_config():
     return {
         "condition_blocks": [{"some": "block"}],
         "theta_component": "mock_theta",
-        "theta_rng_seed": 7,
+        "seed": 7,
         "thermo_data": None,
         "theta_priors": None,
         "growth": {"cond_A": {"m": 1.0, "b": 0.0}},
@@ -64,7 +64,7 @@ def test_library_prediction_success(mocker, mock_config):
         sample_df=mock_sample_df,
         thermo_data=None,
     )
-    mock_jax_key.assert_called_once_with(7)
+    mock_jax_key.assert_called_once_with(7)   # seed value
 
     mock_thermo.assert_called_once()
     _, kwargs = mock_thermo.call_args
@@ -76,6 +76,7 @@ def test_library_prediction_success(mocker, mock_config):
     assert kwargs["dk_geno_hyper_shift"] == mock_config["dk_geno_hyper_shift"]
     assert kwargs["activity_component"] == "fixed"       # default when key absent
     assert kwargs["activity_priors_overrides"] is None
+    assert kwargs["rng"] is not None                     # seeded RNG passed through
 
     assert lib_df.equals(mock_library_df)
     assert pheno_df.equals(mock_phenotype_df)
@@ -122,7 +123,7 @@ def test_library_prediction_dk_geno_zero_makes_hyper_params_optional(mocker):
     config = {
         "condition_blocks": [{"some": "block"}],
         "theta_component": "mock_theta",
-        "theta_rng_seed": 0,
+        "seed": 0,
         "thermo_data": None,
         "theta_priors": None,
         "growth": {"cond_A": {"m": 1.0, "b": 0.0}},
@@ -157,7 +158,7 @@ def test_library_prediction_missing_hyper_params_raises_without_dk_geno_zero(moc
     config = {
         "condition_blocks": [{"some": "block"}],
         "theta_component": "mock_theta",
-        "theta_rng_seed": 0,
+        "seed": 0,
         "thermo_data": None,
         "theta_priors": None,
         "growth": {"cond_A": {"m": 1.0, "b": 0.0}},
@@ -176,3 +177,143 @@ def test_library_prediction_missing_hyper_params_raises_without_dk_geno_zero(moc
 
     with pytest.raises(KeyError):
         library_prediction(cf="config.yaml")
+
+
+# ---------------------------------------------------------------------------
+# Unified seed: seed drives both JAX key and numpy RNG
+# ---------------------------------------------------------------------------
+
+def _make_mock_thermo_return():
+    return (
+        pd.DataFrame({"theta": [0.5]}),
+        pd.DataFrame({"genotype": ["wt"]}),
+        pd.DataFrame({"genotype": ["wt"], "dk_geno": [0.0], "activity": [1.0]}),
+    )
+
+
+def _patch_library_deps(mocker, config):
+    mocker.patch("tfscreen.util.read_yaml", return_value=config)
+    mocker.patch(
+        "tfscreen.simulate.library_prediction.library_manager.LibraryManager"
+    ).return_value.build_library_df.return_value = pd.DataFrame({"genotype": ["wt"]})
+    mocker.patch(
+        "tfscreen.simulate.library_prediction.build_sample_dataframes",
+        return_value=pd.DataFrame({"titrant_conc": [0.0]}),
+    )
+    mocker.patch("tfscreen.simulate.library_prediction.build_sim_data", return_value=MagicMock())
+
+
+def test_jax_key_derived_from_seed(mocker):
+    """JAX PRNGKey is called with the value of seed."""
+    config = {
+        "condition_blocks": [{"some": "block"}],
+        "theta_component": "mock_theta",
+        "seed": 42,
+        "thermo_data": None,
+        "theta_priors": None,
+        "growth": {"cond_A": {"m": 1.0, "b": 0.0}},
+        "dk_geno_hyper_loc": -3.5,
+        "dk_geno_hyper_scale": 1.0,
+        "dk_geno_hyper_shift": 0.02,
+    }
+    _patch_library_deps(mocker, config)
+    mock_jax_key = mocker.patch(
+        "tfscreen.simulate.library_prediction.jax.random.PRNGKey", return_value="k"
+    )
+    mocker.patch(
+        "tfscreen.simulate.library_prediction.thermo_to_growth",
+        return_value=_make_mock_thermo_return(),
+    )
+
+    library_prediction(cf="config.yaml")
+
+    mock_jax_key.assert_called_once_with(42)
+
+
+def test_jax_key_defaults_to_zero_when_no_seed(mocker):
+    """When seed is absent the JAX PRNGKey falls back to 0."""
+    config = {
+        "condition_blocks": [{"some": "block"}],
+        "theta_component": "mock_theta",
+        "thermo_data": None,
+        "theta_priors": None,
+        "growth": {"cond_A": {"m": 1.0, "b": 0.0}},
+        "dk_geno_hyper_loc": -3.5,
+        "dk_geno_hyper_scale": 1.0,
+        "dk_geno_hyper_shift": 0.02,
+    }
+    _patch_library_deps(mocker, config)
+    mock_jax_key = mocker.patch(
+        "tfscreen.simulate.library_prediction.jax.random.PRNGKey", return_value="k"
+    )
+    mocker.patch(
+        "tfscreen.simulate.library_prediction.thermo_to_growth",
+        return_value=_make_mock_thermo_return(),
+    )
+
+    library_prediction(cf="config.yaml")
+
+    mock_jax_key.assert_called_once_with(0)
+
+
+def test_numpy_rng_passed_to_thermo_to_growth(mocker):
+    """A seeded numpy RNG is always forwarded to thermo_to_growth."""
+    import numpy as np
+    config = {
+        "condition_blocks": [{"some": "block"}],
+        "theta_component": "mock_theta",
+        "seed": 99,
+        "thermo_data": None,
+        "theta_priors": None,
+        "growth": {"cond_A": {"m": 1.0, "b": 0.0}},
+        "dk_geno_hyper_loc": -3.5,
+        "dk_geno_hyper_scale": 1.0,
+        "dk_geno_hyper_shift": 0.02,
+    }
+    _patch_library_deps(mocker, config)
+    mocker.patch("tfscreen.simulate.library_prediction.jax.random.PRNGKey", return_value="k")
+    mock_thermo = mocker.patch(
+        "tfscreen.simulate.library_prediction.thermo_to_growth",
+        return_value=_make_mock_thermo_return(),
+    )
+
+    library_prediction(cf="config.yaml")
+
+    _, kwargs = mock_thermo.call_args
+    assert isinstance(kwargs["rng"], np.random.Generator)
+
+
+def test_numpy_rng_seeded_with_seed(mocker):
+    """The numpy RNG passed to thermo_to_growth is seeded from seed,
+    so two calls with the same seed produce the same first draw."""
+    import numpy as np
+    captured_rngs = []
+
+    def capture_rng(*args, **kwargs):
+        captured_rngs.append(kwargs["rng"])
+        return _make_mock_thermo_return()
+
+    config = {
+        "condition_blocks": [{"some": "block"}],
+        "theta_component": "mock_theta",
+        "seed": 5,
+        "thermo_data": None,
+        "theta_priors": None,
+        "growth": {"cond_A": {"m": 1.0, "b": 0.0}},
+        "dk_geno_hyper_loc": -3.5,
+        "dk_geno_hyper_scale": 1.0,
+        "dk_geno_hyper_shift": 0.02,
+    }
+
+    for _ in range(2):
+        _patch_library_deps(mocker, config)
+        mocker.patch("tfscreen.simulate.library_prediction.jax.random.PRNGKey", return_value="k")
+        mocker.patch(
+            "tfscreen.simulate.library_prediction.thermo_to_growth",
+            side_effect=capture_rng,
+        )
+        library_prediction(cf="config.yaml")
+
+    draw_a = captured_rngs[0].integers(0, 2**32)
+    draw_b = captured_rngs[1].integers(0, 2**32)
+    assert draw_a == draw_b, "Same seed must produce identical RNG state"

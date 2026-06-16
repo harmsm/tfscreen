@@ -5,7 +5,7 @@ import pytest
 import pandas as pd
 from unittest.mock import patch
 
-from tfscreen.analysis.cat_response.cat_response_cli import cat_response
+from tfscreen.analysis.cat_response.scripts.cat_response_cli import cat_response
 
 
 # Run ProcessPoolExecutor synchronously so cat_fit mocks work in-process.
@@ -22,7 +22,7 @@ class _SyncExecutor:
     def submit(self, fn, *args): return _SyncFuture(fn(*args))
 
 _SYNC_EXECUTOR = patch(
-    "tfscreen.analysis.cat_response.cat_response_cli.ProcessPoolExecutor",
+    "tfscreen.analysis.cat_response.scripts.cat_response_cli.ProcessPoolExecutor",
     return_value=_SyncExecutor(),
 )
 
@@ -53,9 +53,9 @@ class TestThetaColAutoDetect:
             return (_FLAT_RESULT, None)
 
         df = _make_theta_df("q0.5")
-        with patch("tfscreen.analysis.cat_response.cat_response_cli.pd.read_csv",
+        with patch("tfscreen.analysis.cat_response.scripts.cat_response_cli.pd.read_csv",
                    return_value=df), \
-             patch("tfscreen.analysis.cat_response.cat_response_cli.cat_fit",
+             patch("tfscreen.analysis.cat_response.scripts.cat_response_cli.cat_fit",
                    side_effect=fake_fit), \
              _SYNC_EXECUTOR:
             cat_response(f, out_prefix=str(tmp_path / "out"))
@@ -72,9 +72,9 @@ class TestThetaColAutoDetect:
             return (_FLAT_RESULT, None)
 
         df = _make_theta_df("point_est")
-        with patch("tfscreen.analysis.cat_response.cat_response_cli.pd.read_csv",
+        with patch("tfscreen.analysis.cat_response.scripts.cat_response_cli.pd.read_csv",
                    return_value=df), \
-             patch("tfscreen.analysis.cat_response.cat_response_cli.cat_fit",
+             patch("tfscreen.analysis.cat_response.scripts.cat_response_cli.cat_fit",
                    side_effect=fake_fit), \
              _SYNC_EXECUTOR:
             cat_response(f, out_prefix=str(tmp_path / "out"))
@@ -92,9 +92,9 @@ class TestThetaColAutoDetect:
 
         df = _make_theta_df("q0.5").copy()
         df["my_col"] = [0.11, 0.22]
-        with patch("tfscreen.analysis.cat_response.cat_response_cli.pd.read_csv",
+        with patch("tfscreen.analysis.cat_response.scripts.cat_response_cli.pd.read_csv",
                    return_value=df), \
-             patch("tfscreen.analysis.cat_response.cat_response_cli.cat_fit",
+             patch("tfscreen.analysis.cat_response.scripts.cat_response_cli.cat_fit",
                    side_effect=fake_fit), \
              _SYNC_EXECUTOR:
             cat_response(f, theta_col="my_col", out_prefix=str(tmp_path / "out"))
@@ -112,9 +112,9 @@ class TestThetaColAutoDetect:
 
         df = _make_theta_df("q0.5").copy()
         df["point_est"] = [0.9, 0.8]
-        with patch("tfscreen.analysis.cat_response.cat_response_cli.pd.read_csv",
+        with patch("tfscreen.analysis.cat_response.scripts.cat_response_cli.pd.read_csv",
                    return_value=df), \
-             patch("tfscreen.analysis.cat_response.cat_response_cli.cat_fit",
+             patch("tfscreen.analysis.cat_response.scripts.cat_response_cli.cat_fit",
                    side_effect=fake_fit), \
              _SYNC_EXECUTOR:
             cat_response(f, out_prefix=str(tmp_path / "out"))
@@ -131,7 +131,7 @@ class TestThetaColAutoDetect:
             "q0.841": [0.5],
             "q0.159": [0.3],
         })
-        with patch("tfscreen.analysis.cat_response.cat_response_cli.pd.read_csv",
+        with patch("tfscreen.analysis.cat_response.scripts.cat_response_cli.pd.read_csv",
                    return_value=df):
             with pytest.raises(ValueError, match="No theta column found"):
                 cat_response(f, out_prefix=str(tmp_path / "out"))

@@ -20,6 +20,14 @@ import yaml
 
 from unittest.mock import MagicMock, patch
 
+# _build_transform_registry registers log_{col} for every sim column, including
+# log_hill_K which has negative values → np.log(negative) = NaN + RuntimeWarning.
+# This is expected behaviour (the log_log_hill_K entry is just NaN), so suppress
+# across this module rather than wrapping every individual test.
+pytestmark = pytest.mark.filterwarnings(
+    "ignore:invalid value encountered in log:RuntimeWarning"
+)
+
 from tfscreen.tfmodel.scripts.summarize_fit_cli import (
     _find_params_or_posterior,
     _find_unique,
@@ -1503,7 +1511,9 @@ class TestSummarizeParams:
         self._write_direct_params(str(tmp_path / "run_params_activity.csv"))
         out_prefix = str(tmp_path / "summary" / "tfs_summarize")
         os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
-        _summarize_params(str(tmp_path), out_prefix)
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            _summarize_params(str(tmp_path), out_prefix)
         out_path = out_prefix + "_params_activity.csv"
         assert os.path.exists(out_path)
         df = pd.read_csv(out_path)

@@ -156,7 +156,7 @@ def test_read_binding_df_missing_col_error(mocker):
         _read_binding_df("path.csv", growth_df=growth_df)
 
 
-def test_read_binding_df_extra_pairs_dropped_with_warning():
+def test_read_binding_df_extra_pairs_dropped_with_warning(capsys):
     """binding rows whose (genotype, titrant_name) is absent from growth_df are dropped."""
     from tfscreen.genetics import set_categorical_genotype
     import tfscreen.util.dataframe
@@ -187,8 +187,10 @@ def test_read_binding_df_extra_pairs_dropped_with_warning():
         "theta_std": [0.02, 0.02],
     })
 
-    with pytest.warns(UserWarning, match="will be dropped"):
-        result = _read_binding_df(binding_df, growth_df=growth_df)
+    result = _read_binding_df(binding_df, growth_df=growth_df)
+    captured = capsys.readouterr()
+    assert "will be dropped" in captured.out
+    assert "M42I" in captured.out
 
     # Only the "wt" row should survive
     assert set(result["genotype"]) == {"wt"}

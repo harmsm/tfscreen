@@ -25,7 +25,6 @@ import numpy as np
 
 from functools import partial
 import inspect
-import warnings
 
 # Declare float datatype
 FLOAT_DTYPE = jnp.float64 if jax.config.read("jax_enable_x64") else jnp.float32
@@ -247,12 +246,18 @@ def _read_binding_df(binding_df,
         growth_seen = growth_df[cols].drop_duplicates().set_index(cols)
         extra = binding_seen.index[~binding_seen.index.isin(growth_seen.index)]
         if len(extra) > 0:
-            warnings.warn(
-                f"binding_df contains {len(extra)} genotype/titrant_name pair(s) "
-                f"not present in growth_df; those rows will be dropped. "
-                f"Extra pairs: {list(extra[:5])}{'...' if len(extra) > 5 else ''}",
-                UserWarning,
-                stacklevel=2,
+            by_titrant = {}
+            for geno, tname in extra:
+                by_titrant.setdefault(tname, []).append(geno)
+            detail = "\n".join(
+                f"  {tname}: {', '.join(sorted(genos))}"
+                for tname, genos in sorted(by_titrant.items())
+            )
+            print(
+                f"Syncing binding_df to growth_df: {len(extra)} "
+                f"genotype/titrant_name pair(s) not in growth_df will be dropped.\n"
+                + detail,
+                flush=True,
             )
         # Inherit map_theta_group indices from growth_df so parameter indexing
         # stays consistent across the two datasets. Rows in binding_df with no
@@ -354,15 +359,15 @@ def _read_presplit_df(presplit_df, growth_df):
     )
 
     growth_genotypes = set(growth_df["genotype"])
-    n_before = len(presplit_df)
-    presplit_df = presplit_df[
-        presplit_df["genotype"].isin(growth_genotypes)
-    ].copy()
-    n_dropped = n_before - len(presplit_df)
+    mask = presplit_df["genotype"].isin(growth_genotypes)
+    dropped_genos = sorted(set(presplit_df.loc[~mask, "genotype"].astype(str)))
+    n_dropped = int((~mask).sum())
+    presplit_df = presplit_df[mask].copy()
     if n_dropped > 0:
         print(
-            f"presplit_df: dropped {n_dropped} rows whose genotype was not "
-            f"found in growth_df.",
+            f"Syncing presplit_df to growth_df: {n_dropped} row(s) for "
+            f"{len(dropped_genos)} genotype(s) not found in growth_df will be dropped.\n"
+            f"  Dropped genotypes: {', '.join(dropped_genos)}",
             flush=True,
         )
 

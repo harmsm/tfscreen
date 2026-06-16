@@ -9,9 +9,6 @@ from .predict_with_error import (  # noqa: F401
     predict_with_error
 )
 
-from .stats_test_suite import (  # noqa: F401
-    stats_test_suite
-)
 
 from .fit_manager import (  # noqa: F401
     FitManager

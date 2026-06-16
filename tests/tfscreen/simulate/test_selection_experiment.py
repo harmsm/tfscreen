@@ -43,7 +43,7 @@ def base_config() -> dict:
         "lib_assembly_skew_sigma": 0.5,
         "transformation_poisson_lambda": 0.8,
         "tube_noise_sigma": 0.002,
-        "random_seed": 42,
+        "seed": 42,
         "cfu0": 1.0e7,
         "total_num_reads": 5_000_000,
         "transform_sizes": {
@@ -198,7 +198,7 @@ def test_check_cf_loads_from_path(mocker, base_config: dict):
     # Assert that the loader was called correctly
     mock_loader.assert_called_once_with(dummy_path)
     # Assert that the loaded config was processed
-    assert validated_cf["random_seed"] == 42
+    assert validated_cf["seed"] == 42
 
 @pytest.mark.parametrize("key_to_pop, nested_key_to_pop, bad_value, match_error", [
     # Test required numerical key missing

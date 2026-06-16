@@ -1,7 +1,7 @@
 
 import pytest
 import numpy as np
-from tfscreen.mle.stats_test_suite import stats_test_suite
+from tfscreen.analysis.stats_test_suite import stats_test_suite
 
 def test_stats_test_suite_perfect_fit():
     param_real = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
@@ -86,7 +86,7 @@ def test_stats_test_suite_no_std():
 import warnings
 def test_het_breuschpagan_linalg_error(mocker):
     # Mock het_breuschpagan to raise LinAlgError
-    mocker.patch("tfscreen.mle.stats_test_suite.het_breuschpagan", side_effect=np.linalg.LinAlgError)
+    mocker.patch("tfscreen.analysis.stats_test_suite.het_breuschpagan", side_effect=np.linalg.LinAlgError)
     
     param_real = np.array([1.0, 2.0, 3.0])
     param_est = np.array([1.1, 2.2, 3.3])

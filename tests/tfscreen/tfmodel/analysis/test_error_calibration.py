@@ -242,7 +242,8 @@ class TestCalibrationCurve:
 
     def test_empty_pit_after_nan_removal(self):
         pit = np.full(10, np.nan)
-        curve = calibration_curve(pit)
+        with pytest.warns(RuntimeWarning):
+            curve = calibration_curve(pit)
         # np.mean of an empty slice returns NaN
         for v in curve.values():
             assert np.isnan(v)

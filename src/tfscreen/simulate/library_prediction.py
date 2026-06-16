@@ -9,6 +9,7 @@ from tfscreen.simulate.sim_data_class import build_sim_data
 from tfscreen.genetics import library_manager
 
 import jax
+import numpy as np
 
 from typing import Any, Dict, Union
 from pathlib import Path
@@ -73,9 +74,12 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
         thermo_data=cf.get('thermo_data'),
     )
 
-    # RNG key for prior-predictive theta sampling
-    theta_rng_seed = cf.get('theta_rng_seed', 0)
-    theta_rng_key = jax.random.PRNGKey(theta_rng_seed)
+    # Derive both RNG objects from the single seed.  They are independent
+    # objects with independent state; using the same integer for both introduces
+    # no correlation between the two streams.
+    seed = cf.get('seed', None)
+    theta_rng_key = jax.random.PRNGKey(seed if seed is not None else 0)
+    rng = np.random.default_rng(seed)
 
     dk_geno_zero = cf.get('dk_geno_zero', False)
     if dk_geno_zero:
@@ -103,6 +107,7 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
         dk_geno_zero=dk_geno_zero,
         activity_wt=cf.get('activity_wt', 1.0),
         activity_mut_scale=cf.get('activity_mut_scale', 0.0),
+        rng=rng,
         activity_component=cf.get('activity_component', 'fixed'),
         activity_priors_overrides=cf.get('activity_priors'),
         theta_rescale=cf.get('theta_rescale', 'passthrough'),

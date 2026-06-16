@@ -1,5 +1,5 @@
 """
-Tests for _generate_presplit_data in run_simulation_cli.
+Tests for _generate_presplit_data in simulate_cli.
 
 Coverage:
   - Output columns and shape for a simple two-genotype, two-condition case
@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 from unittest.mock import patch, MagicMock
 
-from tfscreen.simulate.scripts.run_simulation_cli import _generate_presplit_data
+from tfscreen.simulate.scripts.simulate_cli import _generate_presplit_data
 
 
 # ---------------------------------------------------------------------------
@@ -168,7 +168,7 @@ def test_reproducibility():
 
 def test_run_simulation_writes_presplit_csv(tmp_path):
     """presplit CSV is written when presplit_data block is in the config."""
-    from tfscreen.simulate.scripts.run_simulation_cli import run_simulation_from_config
+    from tfscreen.simulate.scripts.simulate_cli import run_simulation_from_config
 
     lib_df   = pd.DataFrame({"genotype": ["wt", "A1V"]})
     pheno_df = pd.DataFrame({"genotype": ["wt", "A1V"]})
@@ -190,7 +190,7 @@ def test_run_simulation_writes_presplit_csv(tmp_path):
     growth_df = pd.DataFrame({"genotype": ["wt", "A1V"], "ln_cfu": [10.0, 9.9]})
 
     cf = {
-        "random_seed": 1,
+        "seed": 1,
         "cfu0": 1e8,
         "total_num_reads": 10_000_000,
         "prob_index_hop": None,
@@ -198,11 +198,11 @@ def test_run_simulation_writes_presplit_csv(tmp_path):
     }
 
     with patch("tfscreen.util.read_yaml", return_value=cf), \
-         patch("tfscreen.simulate.scripts.run_simulation_cli.library_prediction",
+         patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
                return_value=(lib_df, pheno_df, theta_df, params_df)), \
-         patch("tfscreen.simulate.scripts.run_simulation_cli.selection_experiment",
+         patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
                return_value=(sample_df, counts_df)), \
-         patch("tfscreen.simulate.scripts.run_simulation_cli.counts_to_lncfu",
+         patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
                return_value=growth_df):
         run_simulation_from_config("fake_config.yaml", str(tmp_path))
 
@@ -215,7 +215,7 @@ def test_run_simulation_writes_presplit_csv(tmp_path):
 
 def test_run_simulation_no_presplit_without_config(tmp_path):
     """presplit CSV is NOT written when presplit_data is absent from config."""
-    from tfscreen.simulate.scripts.run_simulation_cli import run_simulation_from_config
+    from tfscreen.simulate.scripts.simulate_cli import run_simulation_from_config
 
     lib_df   = pd.DataFrame({"genotype": ["wt"]})
     pheno_df = pd.DataFrame({"genotype": ["wt"]})
@@ -229,15 +229,15 @@ def test_run_simulation_no_presplit_without_config(tmp_path):
                                 "counts": 1000, "ln_cfu_0": 10.0}])
     growth_df = pd.DataFrame({"genotype": ["wt"], "ln_cfu": [10.0]})
 
-    cf = {"random_seed": 1, "cfu0": 1e8, "total_num_reads": 1_000_000,
+    cf = {"seed": 1, "cfu0": 1e8, "total_num_reads": 1_000_000,
           "prob_index_hop": None}
 
     with patch("tfscreen.util.read_yaml", return_value=cf), \
-         patch("tfscreen.simulate.scripts.run_simulation_cli.library_prediction",
+         patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
                return_value=(lib_df, pheno_df, theta_df, params_df)), \
-         patch("tfscreen.simulate.scripts.run_simulation_cli.selection_experiment",
+         patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
                return_value=(sample_df, counts_df)), \
-         patch("tfscreen.simulate.scripts.run_simulation_cli.counts_to_lncfu",
+         patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
                return_value=growth_df):
         run_simulation_from_config("fake_config.yaml", str(tmp_path))
 

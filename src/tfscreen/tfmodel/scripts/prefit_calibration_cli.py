@@ -24,23 +24,17 @@ calibration runs only against fully-observed cells.
 
 After MAP convergence, the script:
 
-1. Estimates a per-site 1-sigma uncertainty from the Hessian of the
-   negative log-joint at the MAP point (delta-method propagated through
-   any constrained-support bijections).
-2. Identifies which fields of the production ``ModelPriors`` provide
+1. Identifies which fields of the production ``ModelPriors`` provide
    ``dist.loc`` / ``dist.scale`` for each calibrated sample site, using
    a sentinel-trace introspection so we don't have to hard-code the
    field-naming conventions of every component.
-3. Updates the production ``{out_prefix}_guesses.csv`` *in place*, writing
-   a ``.bak`` backup before overwriting.  For simple-prior
+2. Updates the production priors and guesses CSVs *in place*, writing
+   ``.bak`` backups before overwriting.  For simple-prior
    ``condition_growth`` and ``growth_transition`` components, per-condition
    MAP estimates are written directly as per-condition guess values
    (``{site}_locs`` rows in the guesses CSV), giving the production SVI a
    warm start from the calibration fit.  Only rows belonging to
    ``condition_growth`` or ``growth_transition`` are touched.
-
-   For legacy hierarchical components (if any), scalar hyper-site MAP
-   estimates also update the corresponding rows in the priors CSV.
 """
 
 import dataclasses
@@ -64,8 +58,6 @@ from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
 from tfscreen.tfmodel.configuration_io import (
     read_configuration,
 )
-from tfscreen.plot.geno_trajectory import plot_geno_trajectory
-from tfscreen.tfmodel.analysis.prediction import predict
 
 
 # ---------------------------------------------------------------------------
@@ -446,31 +438,30 @@ def _csv_row_name(component, field_name):
     return f"growth.{component}.{field_name}"
 
 
-def _build_csv_updates(field_mapping, hessian_results):
+def _build_csv_updates(field_mapping, params):
     """
-    Translate the sentinel-trace mapping plus per-site MAP / sigma
-    estimates into two flat dicts of in-place updates:
+    Translate the sentinel-trace field mapping and MAP params into two flat
+    dicts of in-place updates.
 
     Returns
     -------
     prior_updates : dict[str, float]
         ``{csv_row_name → new_value}`` for the priors CSV.
-        Normal sites contribute two rows (loc field ← MAP, scale field ←
-        Hessian sigma); HalfNormal contributes one (scale field ← MAP,
-        recentering the prior on the MAP point).
-    guess_updates : dict[str, float]
-        ``{site_name → MAP value}`` for the guesses CSV.  Only scalar
-        sites are included.
+        Scalar Normal/HalfNormal sites write the MAP value to their
+        ``loc_field`` / ``scale_field`` respectively.
+    guess_updates : dict[str, np.ndarray | float]
+        ``{site_name → MAP value}`` for the guesses CSV.
+        Array sites write per-condition MAP arrays (keyed as
+        ``{site_name}_locs``); scalar sites write a single float.
     """
     prior_updates = {}
     guess_updates = {}
 
     for site_name, info in field_mapping.items():
-        if site_name not in hessian_results:
+        auto_loc_key = f"{site_name}_auto_loc"
+        if auto_loc_key not in params:
             continue
-        result = hessian_results[site_name]
-        map_val_arr = np.asarray(result["map"])
-        sigma_arr = np.asarray(result["sigma"])
+        map_val_arr = np.asarray(params[auto_loc_key])
 
         component = info["component"]
         dist_class = info["dist_class"]
@@ -479,9 +470,8 @@ def _build_csv_updates(field_mapping, hessian_results):
         is_array = info.get("is_array", False)
 
         if is_array:
-            # Simple-prior per-condition array site.
-            # Write per-condition MAP estimates to guesses so the production
-            # SVI starts from the calibration fit.  Priors are left unchanged.
+            # Simple-prior per-condition array site: write MAP array to guesses
+            # so the production SVI starts from the calibration fit.
             if loc_field is not None:
                 guess_updates[f"{site_name}_locs"] = map_val_arr
         else:
@@ -489,22 +479,16 @@ def _build_csv_updates(field_mapping, hessian_results):
             if map_val_arr.shape != ():
                 continue
             map_val = float(map_val_arr)
-            sigma_val = float(sigma_arr) if sigma_arr.shape == () else None
 
             if dist_class == "Normal":
                 if loc_field is not None:
                     prior_updates[_csv_row_name(component, loc_field)] = map_val
-                if scale_field is not None and sigma_val is not None:
-                    prior_updates[_csv_row_name(component, scale_field)] = sigma_val
             elif dist_class == "HalfNormal":
                 if scale_field is not None:
-                    # Recenter the HalfNormal on the MAP point.
                     prior_updates[_csv_row_name(component, scale_field)] = map_val
             else:
                 if loc_field is not None:
                     prior_updates[_csv_row_name(component, loc_field)] = map_val
-                if scale_field is not None and sigma_val is not None:
-                    prior_updates[_csv_row_name(component, scale_field)] = sigma_val
 
             guess_updates[site_name] = map_val
 
@@ -699,365 +683,6 @@ def _run_calibration_map(ri,
     return svi_state, params, converged
 
 
-# ---------------------------------------------------------------------------
-# Diagnostic plots
-# ---------------------------------------------------------------------------
-
-_DIAG_PLOT_COLS = [
-    "replicate", "condition_pre", "condition_sel",
-    "titrant_name", "titrant_conc", "genotype",
-    "t_sel", "ln_cfu", "ln_cfu_std", "q0.05", "q0.5", "q0.95",
-]
-_DIAG_CONDITION_COLS = [
-    "condition_pre", "condition_sel", "titrant_name", "titrant_conc"
-]
-
-
-def _run_calibration_diagnostics(orchestrator_cal, params, out_prefix, growth_pred_std=None):
-    """
-    Generate per-genotype trajectory PDFs and write correlation / stats outputs.
-
-    Calls :func:`~tfscreen.tfmodel.analysis.prediction.predict` at the
-    observed timepoints to obtain MAP point estimates, then iterates over
-    genotypes to save one trajectory PDF per genotype via
-    :func:`~tfscreen.plot.geno_trajectory.plot_geno_trajectory`.  Also
-    writes the goodness-of-fit stats JSON and the observed-vs-predicted
-    correlation PDF.
-
-    Parameters
-    ----------
-    orchestrator_cal : ModelOrchestrator
-        Calibration ModelOrchestrator.
-    params : dict
-        MAP parameter dict (``{site}_auto_loc`` keys).
-    out_prefix : str
-        File-name prefix for all outputs.
-    growth_pred_std : np.ndarray or None
-        Optional Laplace-based per-cell prediction standard deviations,
-        shape ``(R, T, CP, CS, TN, TC, G)``.
-    """
-    try:
-        import matplotlib.pyplot as plt
-    except ImportError:
-        return
-
-    # ------------------------------------------------------------------
-    # 1. MAP predictions at the observed timepoints.
-    #    q_to_get uses "median" so the returned columns match
-    #    plot_geno_trajectory's expected column names directly.
-    # ------------------------------------------------------------------
-    all_dfs = predict(
-        orchestrator_cal,
-        params,
-        predict_sites=["growth_pred", "ln_cfu0"],
-        q_to_get=[0.05, 0.5, 0.95],
-        num_samples=None,
-        num_marginal_samples=1,
-    )
-    pred_df = all_dfs["growth_pred"]
-    ln_cfu0_raw = all_dfs["ln_cfu0"]
-
-    # ------------------------------------------------------------------
-    # 2. Add ln_cfu_pred (alias for q0.5) and optional Laplace std for
-    #    the stats / correlation helpers.
-    # ------------------------------------------------------------------
-    pred_df = pred_df.copy()
-    pred_df["ln_cfu_pred"] = pred_df["q0.5"]
-
-    if growth_pred_std is not None:
-        tm = orchestrator_cal.growth_tm
-        try:
-            indices = tuple(
-                pred_df[f"{dim}_idx"].values for dim in tm.tensor_dim_names
-            )
-            pred_df["ln_cfu_pred_std"] = growth_pred_std[indices]
-        except (KeyError, IndexError):
-            pass
-
-    # ------------------------------------------------------------------
-    # 3. Calibration stats + observed-vs-predicted correlation.
-    # ------------------------------------------------------------------
-    n_params = int(sum(np.asarray(v).size
-                       for k, v in params.items()
-                       if k.endswith("_auto_loc")))
-    n_obs = int(pred_df["ln_cfu_pred"].notna().sum())
-    _write_calibration_stats(pred_df, out_prefix,
-                             n_params=n_params, n_obs=n_obs)
-    _make_correlation_plot(pred_df, out_prefix)
-
-    # ------------------------------------------------------------------
-    # 4. Build anchor rows (t_sel = -t_pre) from ln_cfu0 predictions.
-    #    Mirror the logic in predict_and_plot_geno_trajectory.
-    # ------------------------------------------------------------------
-    t_pre_df = (
-        orchestrator_cal.growth_df[["replicate", "condition_pre", "t_pre"]]
-        .drop_duplicates(subset=["replicate", "condition_pre"])
-    )
-    ln_cfu0_vals = (
-        ln_cfu0_raw[["replicate", "condition_pre", "genotype",
-                     "q0.05", "q0.5", "q0.95"]]
-        .drop_duplicates(subset=["replicate", "condition_pre", "genotype"])
-    )
-    valid_combos = (
-        orchestrator_cal.growth_df[_DIAG_CONDITION_COLS].drop_duplicates()
-    )
-    anchor_df = (
-        ln_cfu0_vals
-        .merge(valid_combos, on="condition_pre", how="inner")
-        .merge(t_pre_df, on=["replicate", "condition_pre"], how="left")
-    )
-    anchor_df["t_sel"] = -anchor_df["t_pre"]
-    anchor_df["ln_cfu"] = np.nan
-    anchor_df["ln_cfu_std"] = np.nan
-
-    presplit_df = getattr(orchestrator_cal, "presplit_df", None)
-    if presplit_df is not None:
-        ps = presplit_df[
-            ["replicate", "condition_pre", "genotype", "ln_cfu", "ln_cfu_std"]
-        ].rename(columns={"ln_cfu": "_ps_ln", "ln_cfu_std": "_ps_ln_std"})
-        anchor_df = anchor_df.merge(
-            ps, on=["replicate", "condition_pre", "genotype"], how="left"
-        )
-        anchor_df["ln_cfu"] = anchor_df["_ps_ln"]
-        anchor_df["ln_cfu_std"] = anchor_df["_ps_ln_std"]
-        anchor_df = anchor_df.drop(columns=["_ps_ln", "_ps_ln_std"])
-
-    # ------------------------------------------------------------------
-    # 5. One trajectory PDF per genotype.
-    # ------------------------------------------------------------------
-    genotypes = sorted(pred_df["genotype"].unique().tolist(), key=str)
-    for geno in genotypes:
-        geno_pred = pred_df[pred_df["genotype"] == geno]
-        geno_anchor = anchor_df[anchor_df["genotype"] == geno]
-        geno_df = pd.concat(
-            [geno_pred[_DIAG_PLOT_COLS], geno_anchor[_DIAG_PLOT_COLS]],
-            ignore_index=True,
-        )
-        safe_name = str(geno).replace("/", "_").replace(" ", "_")
-        geno_df.to_csv(f"{out_prefix}_{safe_name}_trajectory.csv")
-        try:
-            fig = plot_geno_trajectory(geno_df)
-            safe_name = str(geno).replace("/", "_").replace(" ", "_")
-            pdf_path = f"{out_prefix}_{safe_name}_trajectory.pdf"
-            fig.savefig(pdf_path, format="pdf", bbox_inches="tight")
-            plt.close(fig)
-            print(f"  Saved {pdf_path}", flush=True)
-        except Exception as exc:
-            print(
-                f"  Warning: trajectory plot failed for {geno!r}: {exc}",
-                flush=True,
-            )
-
-
-# ---------------------------------------------------------------------------
-# Calibration stats JSON and correlation plot
-# ---------------------------------------------------------------------------
-
-def _write_calibration_stats(df, out_prefix, n_params=None, n_obs=None):
-    """
-    Compute goodness-of-fit statistics on the calibration predictions and
-    write ``{out_prefix}_calib_stats.json``.
-
-    Requires ``ln_cfu``, ``ln_cfu_pred``, and ``ln_cfu_pred_std`` columns in
-    ``df``; returns silently if any are absent or if no valid rows remain
-    after dropping NaNs.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Merged predictions DataFrame.
-    out_prefix : str
-        File-name prefix for the JSON output.
-    n_params : int or None
-        Number of free model parameters (from ``_auto_loc`` keys in the MAP
-        params dict).  Written to JSON as an integer or null.
-    n_obs : int or None
-        Number of valid observations used for the calibration fit (rows with
-        a non-NaN ``ln_cfu_pred``).  Written to JSON as an integer or null.
-    """
-    import json
-    from tfscreen.mle import stats_test_suite
-
-    needed = ["ln_cfu", "ln_cfu_pred", "ln_cfu_pred_std"]
-    if not all(c in df.columns for c in needed):
-        return
-
-    valid = df.dropna(subset=needed)
-    if len(valid) == 0:
-        return
-
-    stats = stats_test_suite(
-        valid["ln_cfu_pred"].to_numpy(dtype=float),
-        valid["ln_cfu"].to_numpy(dtype=float),
-        valid["ln_cfu_pred_std"].to_numpy(dtype=float),
-    )
-
-    # json.dump cannot serialise numpy scalars or NaN; normalise to Python
-    # float / None so the output is always valid JSON.
-    serialisable = {
-        k: (None if (v is None or not np.isfinite(float(v))) else float(v))
-        for k, v in stats.items()
-    }
-    serialisable["n_params"] = int(n_params) if n_params is not None else None
-    serialisable["n_obs"] = int(n_obs) if n_obs is not None else None
-
-    json_path = f"{out_prefix}_calib_stats.json"
-    with open(json_path, "w") as fh:
-        json.dump(serialisable, fh, indent=2)
-    print(f"  Saved {json_path}", flush=True)
-
-
-def _make_correlation_plot(df, out_prefix):
-    """
-    Write ``{out_prefix}_calib_correlation.pdf``: observed vs. predicted
-    ln_cfu, coloured by genotype.
-
-    Series colours are taken from the active matplotlib prop-cycle, cycling
-    for any number of genotypes.  Requires ``ln_cfu``, ``ln_cfu_pred``, and
-    ``genotype`` columns; returns silently if any are absent.
-    """
-    try:
-        import matplotlib.pyplot as plt
-    except ImportError:
-        return
-
-    from tfscreen.plot.helper import get_ax_limits
-
-    needed = ["ln_cfu", "ln_cfu_pred", "genotype"]
-    if not all(c in df.columns for c in needed):
-        return
-
-    valid = df.dropna(subset=["ln_cfu", "ln_cfu_pred"])
-    if len(valid) == 0:
-        return
-
-    genotypes = pd.unique(valid["genotype"])
-    prop_colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-    colors = {g: prop_colors[i % len(prop_colors)] for i, g in enumerate(genotypes)}
-
-    fig, ax = plt.subplots(1, figsize=(6, 6))
-    ax.set_aspect("equal")
-
-    for g, g_df in valid.groupby("genotype", observed=True):
-        ax.scatter(g_df["ln_cfu"], g_df["ln_cfu_pred"],
-                   s=50, edgecolor=colors[g], facecolor="none", label=g)
-
-    lims = get_ax_limits(x_values=valid["ln_cfu"],
-                         y_values=valid["ln_cfu_pred"],
-                         pad_by=0.1)
-    ax.set_xlim(lims)
-    ax.set_ylim(lims)
-    ax.plot(lims, lims, "--", color="gray", zorder=-20)
-    ax.legend(fontsize=8)
-
-    ticks = np.arange(np.ceil(lims[0]), np.floor(lims[1]) + 1, 2)
-    ax.set_xticks(ticks)
-    ax.set_yticks(ticks)
-
-    ax.set_xlabel("ln_cfu obs")
-    ax.set_ylabel("ln_cfu pred")
-
-    fig.tight_layout()
-    pdf_path = f"{out_prefix}_calib_correlation.pdf"
-    fig.savefig(pdf_path, format="pdf", bbox_inches="tight")
-    plt.close(fig)
-    print(f"  Saved {pdf_path}", flush=True)
-
-
-# ---------------------------------------------------------------------------
-# Laplace-based prediction uncertainty
-# ---------------------------------------------------------------------------
-
-def _compute_growth_pred_std(ri, params, orchestrator_cal, n_samples=100):
-    """
-    Estimate per-cell growth_pred standard deviation via Laplace samples.
-
-    Recomputes the Hessian of the negative log-joint at the MAP point,
-    projects it to the PD cone, draws ``n_samples`` samples from the
-    resulting Gaussian, runs the forward model on each, and returns the
-    elementwise standard deviation of ``growth_pred`` across samples.
-
-    The Hessian computation duplicates work already done in
-    ``compute_hessian_sigmas``; this is intentional so that the full
-    covariance (not just the diagonal) is available for sampling.
-
-    Returns ``None`` if ``growth_pred`` is absent from the model trace or
-    if the parameter dict is empty.
-    """
-    from numpyro.infer.util import potential_energy
-    from numpyro.distributions.transforms import biject_to
-    from numpyro.infer import Predictive
-    import jax.flatten_util
-
-    unconstrained = {
-        k[: -len("_auto_loc")]: jnp.array(v)
-        for k, v in params.items()
-        if k.endswith("_auto_loc")
-    }
-    if not unconstrained:
-        return None
-
-    data_on_gpu = jax.device_put(orchestrator_cal.data)
-    all_indices = jnp.arange(orchestrator_cal.data.num_genotype)
-    full_data = orchestrator_cal.get_batch(data_on_gpu, all_indices)
-    model_kwargs = {"priors": orchestrator_cal.priors, "data": full_data}
-
-    flat_map, unravel = jax.flatten_util.ravel_pytree(unconstrained)
-    D = int(flat_map.shape[0])
-
-    def pe_fn(flat_p):
-        return potential_energy(
-            orchestrator_cal.jax_model, [], model_kwargs, unravel(flat_p)
-        )
-
-    hessian = jax.hessian(pe_fn)(flat_map)
-    H_np = np.array(hessian, dtype=np.float64)
-    eigenvalues_np, eigenvectors_np = np.linalg.eigh(H_np)
-    eigenvalues_pd = np.maximum(eigenvalues_np, 1e-3)
-    cov_np = eigenvectors_np @ np.diag(1.0 / eigenvalues_pd) @ eigenvectors_np.T
-    L_np = np.linalg.cholesky(cov_np)
-    L = jnp.array(L_np, dtype=jnp.float32)
-
-    # Per-site unconstrained → constrained bijections.
-    model_trace = trace(seed(orchestrator_cal.jax_model, rng_seed=0)).get_trace(**model_kwargs)
-    site_transforms = {
-        name: biject_to(site["fn"].support)
-        for name, site in model_trace.items()
-        if site["type"] == "sample" and not site.get("is_observed", False)
-    }
-
-    # Draw n_samples at once: (n_samples, D).
-    sample_key = ri.get_key()
-    z = jax.random.normal(sample_key, shape=(n_samples, D))
-    flat_samples = flat_map[None] + z @ L.T
-
-    unc_samples = jax.vmap(unravel)(flat_samples)
-    constrained_samples = {
-        k: jax.vmap(site_transforms[k])(v) if k in site_transforms else v
-        for k, v in unc_samples.items()
-    }
-
-    pred_fn = Predictive(orchestrator_cal.jax_model, posterior_samples=constrained_samples)
-    pred = pred_fn(ri.get_key(), data=full_data, priors=orchestrator_cal.priors)
-
-    if "growth_pred" not in pred:
-        return None
-
-    # pred["growth_pred"]: (n_samples, R, T, CP, CS, TN, TC, G)
-    #
-    # Some Laplace samples land far from the MAP (badly-constrained directions
-    # have large variance after Hessian eigenvalue clamping).  The resulting
-    # forward-model predictions can be enormous in float32, and squaring them
-    # inside np.std overflows to inf.  Two guards:
-    #   1. Cast to float64 — extends the safe range from ~3e38 to ~1e308.
-    #   2. Clip to ±_GROWTH_PRED_CLIP — any prediction outside this window is
-    #      physically nonsensical (ln_cfu values live in ~[0, 30]) and would
-    #      produce a misleadingly large std even in float64.
-    _GROWTH_PRED_CLIP = 1e4
-    gp = np.asarray(pred["growth_pred"], dtype=np.float64)
-    np.clip(gp, -_GROWTH_PRED_CLIP, _GROWTH_PRED_CLIP, out=gp)
-    return gp.std(axis=0)
-
 
 # ---------------------------------------------------------------------------
 # Public entry point
@@ -1200,21 +825,11 @@ def run_prefit_calibration(config_file,
         epoch_checkpoint_interval=epoch_checkpoint_interval
     )
 
-    print("Computing Hessian-based per-site uncertainties ...", flush=True)
-    hessian_results = ri.compute_hessian_sigmas(params)
-
     # 5. Map sample sites → CSV fields and apply in-place updates.
     field_mapping = _identify_field_mapping(orchestrator_cal)
-    prior_updates, guess_updates = _build_csv_updates(field_mapping,
-                                                      hessian_results)
+    prior_updates, guess_updates = _build_csv_updates(field_mapping, params)
     _apply_priors_updates(priors_path, prior_updates)
     _apply_guesses_updates(guesses_path, guess_updates)
-
-    # 6. Write per-genotype diagnostic plots with Laplace-based prediction uncertainty.
-    print("Computing growth_pred uncertainty via Laplace samples ...", flush=True)
-    growth_pred_std = _compute_growth_pred_std(ri, params, orchestrator_cal)
-    _run_calibration_diagnostics(orchestrator_cal, params, out_prefix,
-                                 growth_pred_std=growth_pred_std)
 
     return svi_state, params, converged
 

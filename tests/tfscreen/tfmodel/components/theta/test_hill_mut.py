@@ -1,3 +1,5 @@
+import warnings
+
 import pytest
 import numpy as np
 import jax.numpy as jnp
@@ -653,8 +655,11 @@ class TestSimulateEpi:
                 effects.append(float(tp.log_hill_K[0, 3] - tp.log_hill_K[0, 0]))
             return float(np.median(np.abs(effects)))
 
-        small_epi = median_abs_epi(0.1)
-        large_epi = median_abs_epi(1.0)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message="overflow encountered in exp",
+                                    category=RuntimeWarning)
+            small_epi = median_abs_epi(0.1)
+            large_epi = median_abs_epi(1.0)
         assert large_epi > small_epi, (
             f"Expected larger tau to produce larger effects, but "
             f"small={small_epi:.4f}, large={large_epi:.4f}")

@@ -51,7 +51,7 @@ SIMULATE_KNOWN_KEYS = frozenset({
     "reading_frame", "first_amplicon_residue", "wt_seq", "degen_sites",
     "sub_libraries", "library_combos", "spiked_seqs", "expected_5p", "expected_3p",
     # Phenotype / theta calculation
-    "theta_component", "theta_rng_seed", "thermo_data", "theta_priors", "theta_rescale",
+    "theta_component", "thermo_data", "theta_priors", "theta_rescale",
     "theta_sim_priors",
     # Conditions and growth
     "condition_blocks", "growth",
@@ -62,7 +62,7 @@ SIMULATE_KNOWN_KEYS = frozenset({
     "transformation_poisson_lambda", "multi_plasmid_combine_fcn", "cfu0",
     "tube_noise_sigma", "growth_transition",
     # Data collection
-    "total_num_reads", "prob_index_hop", "random_seed",
+    "total_num_reads", "prob_index_hop", "seed",
     # Column selectors (rarely overridden)
     "condition_selector", "library_selector",
     # Optional output blocks
@@ -195,7 +195,7 @@ def _check_cf(
     cf = _check_dict_number("lib_assembly_skew_sigma", cf, min_allowed=0, allow_none=True)
     cf = _check_dict_number("transformation_poisson_lambda", cf, min_allowed=0, allow_none=True)
     cf = _check_dict_number("tube_noise_sigma", cf, min_allowed=0, allow_none=True)
-    cf = _check_dict_number("random_seed", cf, cast_type=int, min_allowed=0, allow_none=True)
+    cf = _check_dict_number("seed", cf, cast_type=int, min_allowed=0, allow_none=True)
     cf = _check_dict_number("cfu0", cf, allow_none=False,min_allowed=0)
     cf = _check_dict_number("total_num_reads", cf, cast_type=int, min_allowed=0, inclusive_min=False)
 
@@ -1218,7 +1218,7 @@ def selection_experiment(
     print("Setting up calculation.", flush=True)
 
     # Initialize random number generator
-    rng = np.random.default_rng(cf["random_seed"])
+    rng = np.random.default_rng(cf["seed"])
 
     # Expand the library_df so every genotype is seen in every library_origin 
     # to keep indexing consistent when we mix libraries. The .fillna(0) in this

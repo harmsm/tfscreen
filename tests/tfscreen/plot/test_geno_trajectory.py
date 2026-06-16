@@ -146,7 +146,8 @@ class TestObservedAndPredicted:
     def test_no_crash_all_nan_median(self):
         df = _make_pred_df()
         df["q0.5"] = np.nan
-        fig = plot_geno_trajectory(df)
+        with pytest.warns(UserWarning, match="No artists with labels"):
+            fig = plot_geno_trajectory(df)
         assert isinstance(fig, plt.Figure)
         plt.close(fig)
 
