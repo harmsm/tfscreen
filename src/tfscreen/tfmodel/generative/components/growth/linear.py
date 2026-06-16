@@ -151,10 +151,10 @@ def get_hyperparameters():
     Get default values for the model hyperparameters.
     """
     parameters = {}
-    parameters["k_loc"] = 0.025
+    parameters["k_loc"] = 0.020
     parameters["k_scale"] = 0.1
     parameters["m_loc"] = 0.0
-    parameters["m_scale"] = 0.05
+    parameters["m_scale"] = 0.01
 
     return parameters
 
@@ -170,7 +170,7 @@ def get_guesses(name, data):
     Falls back to hard-coded defaults when ``data.ln_cfu`` or ``data.t_sel``
     are not 7-D tensors.
     """
-    _DEFAULT_K = 0.025
+    _DEFAULT_K = 0.020
     _DEFAULT_SCALE = 0.01
 
     num_cond_rep = data.num_condition_rep

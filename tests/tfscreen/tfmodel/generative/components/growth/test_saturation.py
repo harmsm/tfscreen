@@ -39,13 +39,13 @@ def test_get_hyperparameters():
     assert isinstance(params, dict)
     assert "min_loc" in params
     assert "max_loc" in params
-    assert params["min_loc"] == 0.025
+    assert params["min_loc"] == 0.020
 
 
 def test_get_priors():
     priors = get_priors()
     assert isinstance(priors, ModelPriors)
-    assert priors.min_loc == 0.025
+    assert priors.min_loc == 0.020
     assert not hasattr(priors, "pinned")
 
 

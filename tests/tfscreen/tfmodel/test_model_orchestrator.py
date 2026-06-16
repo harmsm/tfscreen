@@ -117,10 +117,29 @@ def test_read_growth_df_no_replicate(mocker, base_growth_df):
     mocker.patch("tfscreen.util.dataframe.get_scaled_cfu", return_value=df_no_rep)
     mocker.patch("tfscreen.util.dataframe.check_columns")
     mocker.patch("tfscreen.tfmodel.model_orchestrator.add_group_columns", return_value=df_no_rep)
-    
+
     res = _read_growth_df("path.csv")
     assert "replicate" in res.columns
     assert res["replicate"].iloc[0] == 1
+
+def test_read_growth_df_coerces_time_to_float(mocker, base_growth_df):
+    """t_pre and t_sel stored as int64 (e.g. from pd.read_csv with integer values)
+    must be cast to float64 so that downstream merges against float prediction grids
+    don't produce int/float dtype warnings."""
+    df_int_time = base_growth_df.copy()
+    df_int_time["t_pre"] = df_int_time["t_pre"].astype(int)
+    df_int_time["t_sel"] = df_int_time["t_sel"].astype(int)
+    assert df_int_time["t_pre"].dtype == int
+    assert df_int_time["t_sel"].dtype == int
+
+    mocker.patch("tfscreen.util.io.read_dataframe", return_value=df_int_time)
+    mocker.patch("tfscreen.util.dataframe.get_scaled_cfu", return_value=df_int_time)
+    mocker.patch("tfscreen.util.dataframe.check_columns")
+    mocker.patch("tfscreen.tfmodel.model_orchestrator.add_group_columns", return_value=df_int_time)
+
+    res = _read_growth_df("path.csv")
+    assert res["t_pre"].dtype == float, f"expected float, got {res['t_pre'].dtype}"
+    assert res["t_sel"].dtype == float, f"expected float, got {res['t_sel'].dtype}"
 
 # ----------------------------------------------------------------------------
 # 5. Tests for _read_binding_df

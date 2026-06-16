@@ -39,14 +39,14 @@ def test_get_hyperparameters():
     assert isinstance(params, dict)
     assert "k_loc" in params
     assert "n_loc" in params
-    assert params["k_loc"] == 0.025
+    assert params["k_loc"] == 0.020
     assert params["n_loc"] == 0.0
 
 
 def test_get_priors():
     priors = get_priors()
     assert isinstance(priors, ModelPriors)
-    assert priors.k_loc == 0.025
+    assert priors.k_loc == 0.020
     assert priors.n_loc == 0.0
     assert not hasattr(priors, "pinned")
 

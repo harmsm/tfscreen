@@ -82,6 +82,12 @@ def _read_growth_df(growth_df,
     growth_df = tfscreen.util.io.read_dataframe(growth_df)
     growth_df = tfscreen.util.dataframe.get_scaled_cfu(growth_df,need_columns=["ln_cfu","ln_cfu_std"])
 
+    # Ensure time columns are float so that merge/concat with float prediction
+    # grids (e.g. linspace t_sel) doesn't produce int/float dtype warnings.
+    for _col in ("t_pre", "t_sel"):
+        if _col in growth_df.columns:
+            growth_df[_col] = growth_df[_col].astype(float)
+
     # make a replicate column if not defined
     if "replicate" not in growth_df.columns:
         growth_df["replicate"] = 1

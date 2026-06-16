@@ -113,13 +113,13 @@ def test_get_hyperparameters():
     assert "k_scale" in params
     assert "m_loc" in params
     assert "m_scale" in params
-    assert params["k_loc"] == 0.025
+    assert params["k_loc"] == 0.020
 
 
 def test_get_priors():
     priors = get_priors()
     assert isinstance(priors, ModelPriors)
-    assert priors.k_loc == 0.025
+    assert priors.k_loc == 0.020
     assert priors.m_loc == 0.0
     assert not hasattr(priors, "pinned")
 

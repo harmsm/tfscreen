@@ -129,9 +129,6 @@ theta_component: "thermo.O2_C12_K5_U0_a.PK"
 # theta_sim_priors:
 #   epi_tau_scale: 0.0
 
-# Integer seed for the JAX RNG used when sampling theta from the prior.
-theta_rng_seed: 0
-
 # ---------------------------------------------------------------------------
 # Conditions
 # ---------------------------------------------------------------------------
@@ -278,7 +275,7 @@ total_num_reads: 25_000_000
 prob_index_hop: 0.05
 
 # Random seed for reproducibility.  Set to null for a random seed each run.
-random_seed: null
+seed: null
 
 # ---------------------------------------------------------------------------
 # Binding data simulation (optional)
