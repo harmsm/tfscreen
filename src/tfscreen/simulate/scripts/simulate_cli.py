@@ -2,32 +2,24 @@ import os
 import yaml
 import numpy as np
 import pandas as pd
-import jax
 
 import tfscreen
 from tfscreen.simulate import library_prediction, selection_experiment
 from tfscreen.simulate.selection_experiment import _sim_index_hop
-from tfscreen.simulate.sim_data_class import build_sim_data
-from tfscreen.simulate.sample_theta import sample_theta_prior
 from tfscreen.genetics import standardize_genotypes
 from tfscreen.process_raw import counts_to_lncfu
 from tfscreen.util.cli.generalized_main import generalized_main
 
 
-def _generate_binding_data(cf, library_df, binding_cfg, rng):
+def _generate_binding_data(binding_cfg, rng, binding_theta_df):
     """
     Generate simulated binding curve data for specific genotypes.
 
-    Samples theta from the same prior used by library_prediction (same
-    theta_component and theta_rng_seed) but evaluated at the binding
-    concentrations.  Adds Gaussian noise to the ground-truth theta values.
+    Uses pre-computed (stratified) theta values from library_prediction and
+    adds Gaussian noise to produce observed theta values.
 
     Parameters
     ----------
-    cf : dict
-        Full run configuration (already read from YAML).
-    library_df : pandas.DataFrame
-        Library returned by library_prediction (has a 'genotype' column).
     binding_cfg : dict
         The 'binding_data' sub-dict from the config. Must contain:
           genotypes   : list of genotype strings
@@ -35,6 +27,9 @@ def _generate_binding_data(cf, library_df, binding_cfg, rng):
           titrant_conc: list of concentrations (mM)
           noise       : float, sigma for Gaussian noise on theta_obs
     rng : numpy.random.Generator
+    binding_theta_df : pandas.DataFrame
+        Pre-computed binding theta from library_prediction.  Must contain
+        columns ``genotype``, ``titrant_conc``, ``theta_true``.
 
     Returns
     -------
@@ -46,47 +41,22 @@ def _generate_binding_data(cf, library_df, binding_cfg, rng):
     titrant_conc = list(binding_cfg["titrant_conc"])
     noise = float(binding_cfg.get("noise", 0.0))
 
-    # Build a SimData for just the binding concentrations
-    binding_sample_df = pd.DataFrame({
-        "titrant_conc": titrant_conc,
-        "condition_pre": "binding",
-        "condition_sel": "binding",
-    })
-    sim_data = build_sim_data(
-        library_df=library_df,
-        sample_df=binding_sample_df,
-        thermo_data=cf.get("thermo_data"),
-    )
-
-    # Sample theta using the same seed as the main library_prediction run so
-    # binding theta values are consistent with the ground-truth phenotypes.
-    seed = cf.get("seed", None)
-    theta_rng_key = jax.random.PRNGKey(seed if seed is not None else 0)
-    theta_gc, _ = sample_theta_prior(
-        component_name=cf["theta_component"],
-        sim_data=sim_data,
-        rng_key=theta_rng_key,
-        priors_overrides=cf.get("theta_priors"),
-    )
-
-    # Build lookup: genotype string → row index in library_df (sim_data order)
-    all_genotypes = library_df["genotype"].tolist()
-    geno_to_idx = {g: i for i, g in enumerate(all_genotypes)}
-
-    # Sorted unique concentrations (same order as sim_data.titrant_conc)
-    sorted_concs = np.sort(np.unique(titrant_conc))
-    conc_to_col = {float(c): i for i, c in enumerate(sorted_concs)}
+    # Build lookup: (genotype, conc) → theta_true
+    theta_lookup = {
+        (row["genotype"], float(row["titrant_conc"])): row["theta_true"]
+        for _, row in binding_theta_df.iterrows()
+    }
 
     rows = []
     for g in genotypes:
-        if g not in geno_to_idx:
-            raise ValueError(
-                f"Genotype '{g}' in binding_data.genotypes is not in the library."
-            )
-        row_idx = geno_to_idx[g]
         for conc in titrant_conc:
-            col_idx = conc_to_col[float(conc)]
-            theta_true = float(theta_gc[row_idx, col_idx])
+            key = (g, float(conc))
+            if key not in theta_lookup:
+                raise ValueError(
+                    f"No pre-computed theta for genotype '{g}' at conc {conc}. "
+                    f"Ensure binding_data.genotypes and titrant_conc match the config."
+                )
+            theta_true = float(theta_lookup[key])
             if noise > 0:
                 theta_obs = float(np.clip(theta_true + rng.normal(0, noise), 0, 1))
             else:
@@ -294,7 +264,7 @@ def run_simulation_from_config(
     # -------------------------------------------------------------------------
     # Ground-truth library and phenotypes (deterministic given the config)
 
-    library_df, phenotype_df, genotype_theta_df, parameters_df = library_prediction(cf)
+    library_df, phenotype_df, genotype_theta_df, parameters_df, binding_theta_df = library_prediction(cf)
 
     # -------------------------------------------------------------------------
     # Simulate independent replicates
@@ -347,7 +317,7 @@ def run_simulation_from_config(
     print(f"\nWrote: {', '.join(out_path(n) for n in ['library', 'parameters', 'genotype_theta', 'growth'])}")
 
     if "binding_data" in cf:
-        binding_df = _generate_binding_data(cf, library_df, cf["binding_data"], rng)
+        binding_df = _generate_binding_data(cf["binding_data"], rng, binding_theta_df)
         binding_df.to_csv(out_path("binding"), index=False)
         print(f"Wrote: {out_path('binding')}")
 

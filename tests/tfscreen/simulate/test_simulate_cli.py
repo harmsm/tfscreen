@@ -72,7 +72,7 @@ def patched_simulation(tmp_path):
 
     with patch("tfscreen.util.read_yaml", return_value={"seed": 99}) as mock_yaml, \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
-               return_value=(lib_df, pheno_df, theta_df, params_df)), \
+               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
                return_value=(sample_df, counts_df)), \
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
@@ -118,7 +118,7 @@ def test_writes_parameters_not_phenotype(tmp_path):
 
     with patch("tfscreen.util.read_yaml", return_value={"seed": 0}), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
-               return_value=(lib_df, pheno_df, theta_df, params_df)), \
+               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
                return_value=(sample_df, counts_df)), \
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
@@ -142,7 +142,7 @@ def test_output_file_names_include_expected_stems(tmp_path):
 
     with patch("tfscreen.util.read_yaml", return_value={"seed": 0}), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
-               return_value=(lib_df, pheno_df, theta_df, params_df)), \
+               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
                return_value=(sample_df, counts_df)), \
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
@@ -156,38 +156,55 @@ def test_output_file_names_include_expected_stems(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# _generate_binding_data: JAX key derived from seed
+# _generate_binding_data: uses pre-computed theta from library_prediction
 # ---------------------------------------------------------------------------
 
-def test_generate_binding_data_uses_seed_for_jax_key(tmp_path):
-    """_generate_binding_data must derive the JAX PRNGKey from seed,
-    not from a separate theta_rng_seed key."""
-    import jax
+def test_generate_binding_data_uses_precomputed_theta():
+    """_generate_binding_data must use theta_true from binding_theta_df,
+    not re-sample from the prior."""
     import numpy as np
-    from unittest.mock import patch, MagicMock
     from tfscreen.simulate.scripts.simulate_cli import _generate_binding_data
 
-    library_df = pd.DataFrame({"genotype": ["wt"]})
     binding_cfg = {
-        "genotypes": ["wt"],
+        "genotypes": ["wt", "M1A"],
         "titrant_name": "iptg",
         "titrant_conc": [0.0, 1.0],
         "noise": 0.0,
     }
-    cf = {"seed": 55, "theta_component": "mock", "thermo_data": None}
     rng = np.random.default_rng(0)
+    binding_theta_df = pd.DataFrame([
+        {"genotype": "wt",  "titrant_conc": 0.0, "theta_true": 0.1},
+        {"genotype": "wt",  "titrant_conc": 1.0, "theta_true": 0.9},
+        {"genotype": "M1A", "titrant_conc": 0.0, "theta_true": 0.2},
+        {"genotype": "M1A", "titrant_conc": 1.0, "theta_true": 0.8},
+    ])
 
-    with patch("tfscreen.simulate.scripts.simulate_cli.jax.random.PRNGKey",
-               return_value=MagicMock()) as mock_key, \
-         patch("tfscreen.simulate.scripts.simulate_cli.build_sim_data",
-               return_value=MagicMock()), \
-         patch("tfscreen.simulate.scripts.simulate_cli.sample_theta_prior",
-               return_value=(np.ones((1, 2)), MagicMock())), \
-         patch("tfscreen.simulate.scripts.simulate_cli.standardize_genotypes",
-               return_value=["wt"]):
-        _generate_binding_data(cf, library_df, binding_cfg, rng)
+    result = _generate_binding_data(binding_cfg, rng, binding_theta_df)
 
-    mock_key.assert_called_once_with(55)
+    assert set(result.columns) >= {"genotype", "titrant_name", "titrant_conc",
+                                   "theta_obs", "theta_std"}
+    wt_row = result[(result["genotype"] == "wt") & (result["titrant_conc"] == 1.0)]
+    assert float(wt_row["theta_obs"].iloc[0]) == pytest.approx(0.9)
+
+
+def test_generate_binding_data_missing_genotype_raises():
+    """Raises ValueError when a genotype/conc pair is absent from binding_theta_df."""
+    import numpy as np
+    from tfscreen.simulate.scripts.simulate_cli import _generate_binding_data
+
+    binding_cfg = {
+        "genotypes": ["wt", "A2V"],   # A2V is valid but not in binding_theta_df
+        "titrant_name": "iptg",
+        "titrant_conc": [1.0],
+        "noise": 0.0,
+    }
+    rng = np.random.default_rng(0)
+    binding_theta_df = pd.DataFrame([
+        {"genotype": "wt", "titrant_conc": 1.0, "theta_true": 0.5},
+    ])
+
+    with pytest.raises(ValueError, match="No pre-computed theta"):
+        _generate_binding_data(binding_cfg, rng, binding_theta_df)
 
 
 # ---------------------------------------------------------------------------
@@ -236,7 +253,7 @@ def test_writes_input_config_yaml(tmp_path):
 
     with patch("tfscreen.util.read_yaml", return_value={"seed": 5}), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
-               return_value=(lib_df, pheno_df, theta_df, params_df)), \
+               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
                return_value=(sample_df, counts_df)), \
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
@@ -258,7 +275,7 @@ def test_input_config_yaml_existence_check(tmp_path):
 
     with patch("tfscreen.util.read_yaml", return_value={"seed": 0}), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
-               return_value=(lib_df, pheno_df, theta_df, params_df)) as mock_lib:
+               return_value=(lib_df, pheno_df, theta_df, params_df, None)) as mock_lib:
         with pytest.raises(FileExistsError, match="input-config.yaml"):
             run_simulation_from_config("config.yaml", str(tmp_path))
 

@@ -126,7 +126,7 @@ def run_dir(tmp_path):
     binding_path = str(tmp_path / "binding.csv")
     _make_binding_csv(binding_path)
 
-    _make_pred_csv(str(tmp_path / "run_theta_pred.csv"))
+    _make_pred_csv(str(tmp_path / "run_pred_theta.csv"))
     _make_guesses_csv(str(tmp_path / "run_guesses.csv"), n_params=25)
     _make_losses_txt(str(tmp_path / "run_losses.txt"), final_loss=-4321.0)
     _make_config_yaml(
@@ -403,7 +403,7 @@ class TestSummarizeFitComplete:
             "genotype": ["wt"] * 6,
             "ln_cfu": np.linspace(8.0, 13.0, 6),
             "q0.5": np.linspace(8.1, 13.1, 6),
-        }).to_csv(os.path.join(run_dir, "tfs_growth_pred.csv"), index=False)
+        }).to_csv(os.path.join(run_dir, "tfs_pred_growth.csv"), index=False)
         summarize_fit(run_dir)
         with open(os.path.join(run_dir, "summary", "tfs_summarize_fit_summary.json")) as fh:
             data = json.load(fh)
@@ -419,7 +419,7 @@ class TestSummarizeFitComplete:
             "ln_cfu": [8.0, np.nan, 9.0, np.nan, 10.0, 11.0],
             "q0.5": np.linspace(8.1, 13.1, 6),
         })
-        df.to_csv(os.path.join(run_dir, "tfs_growth_pred.csv"), index=False)
+        df.to_csv(os.path.join(run_dir, "tfs_pred_growth.csv"), index=False)
         summarize_fit(run_dir)
         with open(os.path.join(run_dir, "summary", "tfs_summarize_fit_summary.json")) as fh:
             data = json.load(fh)
@@ -435,7 +435,7 @@ class TestSummarizeFitComplete:
             "genotype": ["wt"] * 6,
             "ln_cfu": np.linspace(8.0, 13.0, 6),
             "q0.5": np.linspace(8.1, 13.1, 6),
-        }).to_csv(os.path.join(run_dir, "tfs_growth_pred.csv"), index=False)
+        }).to_csv(os.path.join(run_dir, "tfs_pred_growth.csv"), index=False)
         summarize_fit(run_dir)
         assert os.path.exists(os.path.join(run_dir, "summary", "tfs_summarize_growth_corr.pdf"))
 
@@ -477,7 +477,7 @@ class TestSummarizeFitComplete:
         )
 
     def test_theta_corr_test_csv_written_with_ref_theta_file(self, run_dir, ref_theta_file):
-        pred_path = os.path.join(run_dir, "run_theta_pred.csv")
+        pred_path = os.path.join(run_dir, "run_pred_theta.csv")
         _make_pred_csv(pred_path, n_training=3, extra_genotypes=["E4F"])
         summarize_fit(run_dir, ref_theta_file=ref_theta_file)
         csv_path = os.path.join(run_dir, "summary", "tfs_summarize_theta_corr_test.csv")
@@ -488,7 +488,7 @@ class TestSummarizeFitComplete:
         assert len(df) == len(TITRANT_CONCS)
 
     def test_growth_corr_csv_written(self, run_dir):
-        growth_pred_path = os.path.join(run_dir, "tfs_growth_pred.csv")
+        growth_pred_path = os.path.join(run_dir, "tfs_pred_growth.csv")
         pd.DataFrame({
             "genotype": ["wt"] * 6,
             "ln_cfu": np.linspace(8.0, 13.0, 6),
@@ -512,7 +512,7 @@ class TestSummarizeFitComplete:
         )
 
     def test_growth_corr_csv_overwritten_on_rerun(self, run_dir):
-        growth_pred_path = os.path.join(run_dir, "tfs_growth_pred.csv")
+        growth_pred_path = os.path.join(run_dir, "tfs_pred_growth.csv")
         pd.DataFrame({
             "genotype": ["wt"] * 3,
             "ln_cfu": [8.0, 9.0, 10.0],
@@ -539,7 +539,7 @@ class TestSummarizeFitWithRefTheta:
 
     def test_theta_test_stats_populated(self, run_dir, ref_theta_file):
         # Add out-of-training genotype to pred CSV
-        pred_path = os.path.join(run_dir, "run_theta_pred.csv")
+        pred_path = os.path.join(run_dir, "run_pred_theta.csv")
         _make_pred_csv(pred_path, n_training=3, extra_genotypes=["E4F"])
 
         summarize_fit(run_dir, ref_theta_file=ref_theta_file)
@@ -549,7 +549,7 @@ class TestSummarizeFitWithRefTheta:
         assert data["metadata"]["n_theta_test_points"] == len(TITRANT_CONCS)
 
     def test_theta_test_pearson_r_reasonable(self, run_dir, ref_theta_file):
-        pred_path = os.path.join(run_dir, "run_theta_pred.csv")
+        pred_path = os.path.join(run_dir, "run_pred_theta.csv")
         _make_pred_csv(pred_path, n_training=3, extra_genotypes=["E4F"])
 
         summarize_fit(run_dir, ref_theta_file=ref_theta_file)
@@ -561,7 +561,7 @@ class TestSummarizeFitWithRefTheta:
 
     def test_theta_col_fallback_to_theta(self, run_dir, tmp_path):
         """Ref theta file with 'theta' column (no 'theta_obs') still works."""
-        pred_path = os.path.join(run_dir, "run_theta_pred.csv")
+        pred_path = os.path.join(run_dir, "run_pred_theta.csv")
         _make_pred_csv(pred_path, n_training=3, extra_genotypes=["E4F"])
 
         gt_path = str(tmp_path / "ref_theta_col.csv")
@@ -575,7 +575,7 @@ class TestSummarizeFitWithRefTheta:
 
     def test_missing_theta_col_warns_and_skips(self, run_dir, tmp_path):
         """Ref theta file with no theta column issues a warning and skips test stats."""
-        pred_path = os.path.join(run_dir, "run_theta_pred.csv")
+        pred_path = os.path.join(run_dir, "run_pred_theta.csv")
         _make_pred_csv(pred_path, n_training=3, extra_genotypes=["E4F"])
 
         gt_path = str(tmp_path / "ref_no_theta.csv")
@@ -598,7 +598,7 @@ class TestSummarizeFitWithRefTheta:
 
     def test_auto_discovers_sim_genotype_theta_in_run_dir(self, run_dir):
         """*_sim_genotype_theta.csv in run_dir is used automatically when no arg given."""
-        pred_path = os.path.join(run_dir, "run_theta_pred.csv")
+        pred_path = os.path.join(run_dir, "run_pred_theta.csv")
         _make_pred_csv(pred_path, n_training=3, extra_genotypes=["E4F"])
         _make_ref_theta_csv(
             os.path.join(run_dir, "tfs_sim_genotype_theta.csv"), theta_col="theta_obs"
@@ -613,7 +613,7 @@ class TestSummarizeFitWithRefTheta:
 
     def test_ref_theta_file_arg_overrides_auto_discovery(self, run_dir, tmp_path):
         """Explicit ref_theta_file takes precedence over auto-discovered file."""
-        pred_path = os.path.join(run_dir, "run_theta_pred.csv")
+        pred_path = os.path.join(run_dir, "run_pred_theta.csv")
         _make_pred_csv(pred_path, n_training=3, extra_genotypes=["E4F"])
 
         # Auto-discoverable file: has no matching genotypes → would give 0 test points
@@ -636,7 +636,7 @@ class TestSummarizeFitWithRefTheta:
 
     def test_metadata_ref_theta_file_recorded(self, run_dir, ref_theta_file):
         """ref_theta_file path is recorded in JSON metadata."""
-        pred_path = os.path.join(run_dir, "run_theta_pred.csv")
+        pred_path = os.path.join(run_dir, "run_pred_theta.csv")
         _make_pred_csv(pred_path, n_training=3, extra_genotypes=["E4F"])
 
         summarize_fit(run_dir, ref_theta_file=ref_theta_file)
@@ -659,7 +659,7 @@ class TestSummarizeFitWithRefTheta:
 class TestSummarizeFitGraceful:
 
     def test_missing_theta_pred_still_writes_json(self, run_dir):
-        os.remove(os.path.join(run_dir, "run_theta_pred.csv"))
+        os.remove(os.path.join(run_dir, "run_pred_theta.csv"))
         with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
             summarize_fit(run_dir)
@@ -946,7 +946,7 @@ class TestTryPlotThetaFits:
         assert mock_plot.call_count == 3
 
     def test_summarize_fit_skips_theta_fits_when_no_pred_csv(self, run_dir):
-        os.remove(os.path.join(run_dir, "run_theta_pred.csv"))
+        os.remove(os.path.join(run_dir, "run_pred_theta.csv"))
         with patch(_PATCH_PLOT_THETA_FITS) as mock_plot:
             with warnings.catch_warnings(record=True):
                 warnings.simplefilter("always")
@@ -1852,7 +1852,7 @@ class TestCalibrationIntegration:
     # ------------------------------------------------------------------
 
     def test_calibration_called_for_theta_training_with_quantile_cols(self, run_dir):
-        _make_pred_csv_with_quantiles(os.path.join(run_dir, "run_theta_pred.csv"))
+        _make_pred_csv_with_quantiles(os.path.join(run_dir, "run_pred_theta.csv"))
         with patch(_PATCH_CALIBRATION_SUMMARY) as mock_cal:
             summarize_fit(run_dir)
         prefixes = [call.kwargs["out_prefix"] for call in mock_cal.call_args_list]
@@ -1868,7 +1868,7 @@ class TestCalibrationIntegration:
                     "titrant_conc": tc, "q0.5": 0.5, "in_training_data": 1,
                 })
         pd.DataFrame(rows).to_csv(
-            os.path.join(run_dir, "run_theta_pred.csv"), index=False
+            os.path.join(run_dir, "run_pred_theta.csv"), index=False
         )
         with patch(_PATCH_CALIBRATION_SUMMARY) as mock_cal:
             summarize_fit(run_dir)
@@ -1883,7 +1883,7 @@ class TestCalibrationIntegration:
         self, run_dir, ref_theta_file
     ):
         _make_pred_csv_with_quantiles(
-            os.path.join(run_dir, "run_theta_pred.csv"),
+            os.path.join(run_dir, "run_pred_theta.csv"),
             n_training=3, extra_genotypes=["E4F"],
         )
         with patch(_PATCH_CALIBRATION_SUMMARY) as mock_cal:
@@ -1892,7 +1892,7 @@ class TestCalibrationIntegration:
         assert any("theta_test" in p for p in prefixes)
 
     def test_calibration_skipped_for_theta_test_when_no_ref_theta_file(self, run_dir):
-        _make_pred_csv_with_quantiles(os.path.join(run_dir, "run_theta_pred.csv"))
+        _make_pred_csv_with_quantiles(os.path.join(run_dir, "run_pred_theta.csv"))
         with patch(_PATCH_CALIBRATION_SUMMARY) as mock_cal:
             summarize_fit(run_dir)
         prefixes = [call.kwargs["out_prefix"] for call in mock_cal.call_args_list]
@@ -1909,7 +1909,7 @@ class TestCalibrationIntegration:
             "q0.025":   np.linspace(7.5, 12.5, 6),
             "q0.5":     np.linspace(8.0, 13.0, 6),
             "q0.975":   np.linspace(8.5, 13.5, 6),
-        }).to_csv(os.path.join(run_dir, "tfs_growth_pred.csv"), index=False)
+        }).to_csv(os.path.join(run_dir, "tfs_pred_growth.csv"), index=False)
         with patch(_PATCH_CALIBRATION_SUMMARY) as mock_cal:
             summarize_fit(run_dir)
         prefixes = [call.kwargs["out_prefix"] for call in mock_cal.call_args_list]
@@ -1922,7 +1922,7 @@ class TestCalibrationIntegration:
             "q0.025":   np.linspace(7.5, 12.5, 6),
             "q0.5":     np.linspace(8.0, 13.0, 6),
             "q0.975":   np.linspace(8.5, 13.5, 6),
-        }).to_csv(os.path.join(run_dir, "tfs_growth_pred.csv"), index=False)
+        }).to_csv(os.path.join(run_dir, "tfs_pred_growth.csv"), index=False)
         with patch(_PATCH_CALIBRATION_SUMMARY) as mock_cal:
             summarize_fit(run_dir)
         growth_calls = [c for c in mock_cal.call_args_list
@@ -1939,7 +1939,7 @@ class TestCalibrationIntegration:
             "genotype": ["wt"] * 6,
             "ln_cfu":   np.linspace(8.0, 13.0, 6),
             "q0.5":     np.linspace(8.0, 13.0, 6),
-        }).to_csv(os.path.join(run_dir, "tfs_growth_pred.csv"), index=False)
+        }).to_csv(os.path.join(run_dir, "tfs_pred_growth.csv"), index=False)
         with patch(_PATCH_CALIBRATION_SUMMARY) as mock_cal:
             summarize_fit(run_dir)
         prefixes = [call.kwargs["out_prefix"] for call in mock_cal.call_args_list]

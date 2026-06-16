@@ -11,7 +11,7 @@ from tfscreen.util.cli import generalized_main, read_lines
 
 def predict_theta(config_file,
                   param_file,
-                  out_prefix="tfs_theta_pred",
+                  out_prefix="tfs_pred_theta",
                   genotypes_file=None,
                   titrant_names_file=None,
                   titrant_concs_file=None,
@@ -60,7 +60,7 @@ def predict_theta(config_file,
         tfs-sample-posterior first.
     out_prefix : str, optional
         Prefix for the output CSV file. Written to {out_prefix}.csv.
-        Default 'tfs_theta_pred'.
+        Default 'tfs_pred_theta'.
     genotypes_file : str or None, optional
         Plain-text file with one genotype per line (slash-separated mutations,
         e.g. 'M42I/K84L', or 'wt'). These genotypes are unioned with all

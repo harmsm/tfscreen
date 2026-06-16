@@ -306,6 +306,7 @@ def thermo_to_growth(
     activity_component: str = "fixed",
     activity_priors_overrides: Optional[dict] = None,
     theta_rescale: str = "passthrough",
+    theta_gc_override: Optional[dict] = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Generate phenotypes from genotypes via prior-predictive theta sampling.
@@ -385,6 +386,13 @@ def thermo_to_growth(
         the logit scale ``log(θ/(1−θ))``.  The ``"theta"`` column in
         ``phenotype_df`` and ``genotype_theta_df`` always store the
         pre-rescale (0–1) value.
+    theta_gc_override : dict[str, np.ndarray] or None, default None
+        Per-genotype theta overrides.  Keys are genotype strings; values are
+        1-D arrays of theta at the growth concentrations (same sorted-unique
+        order as ``sample_df["titrant_conc"]``).  Overrides are applied after
+        prior-predictive sampling but before noise and all downstream
+        calculations.  Used by ``library_prediction`` to inject
+        stratified theta values for calibration genotypes.
 
     Returns
     -------
@@ -446,21 +454,28 @@ def thermo_to_growth(
 
     print("Done.", flush=True)
 
+    # ── Index lookups (shared by genotype_theta_df, phenotype_df, parameters_df) ─
+    # Computed here (before noise) so that theta_gc_override can be applied
+    # using the same index map.  Duplicates in library_df are handled by
+    # mapping each unique genotype to its last occurrence in sim_data order.
+
+    all_genotypes = list(genotypes)   # sim_data order (may have duplicates)
+    geno_to_sim_idx = {g: i for i, g in enumerate(all_genotypes)}
+    unique_sim_indices = np.array([geno_to_sim_idx[g] for g in unique_genotypes])
+
+    # ── Inject stratified theta for calibration genotypes ─────────────────────
+    if theta_gc_override:
+        theta_gc = np.array(theta_gc)  # ensure a mutable copy
+        for g, theta_row in theta_gc_override.items():
+            if g in geno_to_sim_idx:
+                theta_gc[geno_to_sim_idx[g], :] = theta_row
+
     # ── Apply logit-normal noise to theta ─────────────────────────────────────
     if theta_noise_sigma_logit > 0.0:
         theta_safe = np.clip(theta_gc, 1e-6, 1.0 - 1e-6)
         logit_theta = np.log(theta_safe / (1.0 - theta_safe))
         epsilon = rng.normal(0.0, theta_noise_sigma_logit, size=theta_gc.shape)
         theta_gc = 1.0 / (1.0 + np.exp(-(logit_theta + epsilon)))
-
-    # ── Index lookups (shared by genotype_theta_df, phenotype_df, parameters_df) ─
-    # Computed once here so that genotype_theta_df can be built from unique
-    # genotypes rather than the full sim_data order (which may contain duplicates
-    # when the same sequence appears in more than one sub-library).
-
-    all_genotypes = list(genotypes)   # sim_data order (may have duplicates)
-    geno_to_sim_idx = {g: i for i, g in enumerate(all_genotypes)}
-    unique_sim_indices = np.array([geno_to_sim_idx[g] for g in unique_genotypes])
 
     # ── Map sample_df concentrations to unique-concentration indices ──────────
     # sample_df may have duplicate concentrations across rows; each row maps to

@@ -199,7 +199,7 @@ def test_run_simulation_writes_presplit_csv(tmp_path):
 
     with patch("tfscreen.util.read_yaml", return_value=cf), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
-               return_value=(lib_df, pheno_df, theta_df, params_df)), \
+               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
                return_value=(sample_df, counts_df)), \
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
@@ -234,7 +234,7 @@ def test_run_simulation_no_presplit_without_config(tmp_path):
 
     with patch("tfscreen.util.read_yaml", return_value=cf), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
-               return_value=(lib_df, pheno_df, theta_df, params_df)), \
+               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
                return_value=(sample_df, counts_df)), \
          patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",

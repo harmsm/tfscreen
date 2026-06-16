@@ -524,7 +524,7 @@ def summarize_fit(run_dir,
     """
     Evaluate theta prediction quality for a tfs-fit-model run directory.
 
-    Scans run_dir for a *_config.yaml, *_theta_pred.csv, *_growth_pred.csv
+    Scans run_dir for a *_config.yaml, *_pred_theta.csv, *_pred_growth.csv
     (optional), and *_losses.txt (optional).  Computes prediction statistics
     and writes output files to the summary directory.
 
@@ -546,9 +546,9 @@ def summarize_fit(run_dir,
     - ``{out_prefix}_theta_corr.pdf`` — two-panel correlation plot for theta
       (training left, test right).
     - ``{out_prefix}_growth_corr.csv`` — relative symlink to the
-      *_growth_pred.csv in run_dir (only created when that file is present).
+      *_pred_growth.csv in run_dir (only created when that file is present).
     - ``{out_prefix}_growth_corr.pdf`` — correlation plot for ln_cfu (only
-      written when *_growth_pred.csv is present).
+      written when *_pred_growth.csv is present).
     - ``{out_prefix}_{genotype}_theta_fits.csv`` / ``.pdf`` — per-genotype
       joined observation + prediction data and fit plot (one pair per
       genotype present in both binding and prediction CSVs).
@@ -600,9 +600,9 @@ def summarize_fit(run_dir,
 
     # --- Locate files in run_dir ---
     config_file = _find_unique(run_dir, "_config.yaml", "config")
-    theta_pred_file = _find_unique(run_dir, "_theta_pred.csv", "theta predictions")
+    theta_pred_file = _find_unique(run_dir, "_pred_theta.csv", "theta predictions")
     losses_file = _find_unique(run_dir, "_losses.txt", "losses", warn_missing=False)
-    growth_pred_file = _find_unique(run_dir, "_growth_pred.csv", "growth predictions",
+    growth_pred_file = _find_unique(run_dir, "_pred_growth.csv", "growth predictions",
                                     warn_missing=False)
 
     # --- Parse YAML config once ---

@@ -54,7 +54,7 @@ def test_library_prediction_success(mocker, mock_config):
     mock_jax_key = mocker.patch("tfscreen.simulate.library_prediction.jax.random.PRNGKey",
                                 return_value="mock_key")
 
-    lib_df, pheno_df, theta_df, params_df = library_prediction(cf="config.yaml")
+    lib_df, pheno_df, theta_df, params_df, binding_df = library_prediction(cf="config.yaml")
 
     tfscreen.util.read_yaml.assert_called_once_with("config.yaml", override_keys=None)
     mock_lm_cls.assert_called_once_with(mock_config)
@@ -82,6 +82,7 @@ def test_library_prediction_success(mocker, mock_config):
     assert pheno_df.equals(mock_phenotype_df)
     assert theta_df.equals(mock_genotype_theta_df)
     assert params_df.equals(mock_parameters_df)
+    assert binding_df is None
 
 
 def test_library_prediction_config_error():

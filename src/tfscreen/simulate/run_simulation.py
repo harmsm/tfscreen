@@ -82,7 +82,7 @@ def run_simulation(cf: Union[Dict[str, Any], str, Path],
     file_dict = _setup_file_output(output_dir,output_prefix)
     
     # Build library and predict its phenotypes
-    library_df, phenotype_df, genotype_theta_df, parameters_df = library_prediction(cf)
+    library_df, phenotype_df, genotype_theta_df, parameters_df, _ = library_prediction(cf)
 
     # Perform selection experiment
     sample_df, counts_df = selection_experiment(cf,library_df,phenotype_df)

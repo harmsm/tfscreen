@@ -6,10 +6,13 @@ from tfscreen.simulate import (
     thermo_to_growth,
 )
 from tfscreen.simulate.sim_data_class import build_sim_data
+from tfscreen.simulate.sample_theta import sample_theta_stratified
 from tfscreen.genetics import library_manager
+from tfscreen.genetics import standardize_genotypes
 
 import jax
 import numpy as np
+import pandas as pd
 
 from typing import Any, Dict, Union
 from pathlib import Path
@@ -47,6 +50,13 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
         one row per unique genotype; columns ``dk_geno``, ``activity``, and
         any scalar per-genotype fields from the theta component (e.g.
         ``theta_low``, ``theta_high``, ``log_hill_K``, ``hill_n``)
+    binding_theta_df : pandas.DataFrame or None
+        Present when ``binding_data`` is in the config.  One row per
+        (genotype, titrant_conc) for the calibration genotypes listed in
+        ``binding_data.genotypes``, with columns ``genotype``,
+        ``titrant_name``, ``titrant_conc``, ``theta_true``.  Theta values
+        here are stratified (greedy maximin) across the binding concentrations
+        and are consistent with the growth phenotypes in ``phenotype_df``.
     """
 
     # -------------------------------------------------------------------------
@@ -91,7 +101,56 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
         dk_geno_hyper_scale = cf['dk_geno_hyper_scale']
         dk_geno_hyper_shift = cf['dk_geno_hyper_shift']
 
+    # -------------------------------------------------------------------------
+    # Stratified theta sampling for binding calibration genotypes
+
+    binding_cfg = cf.get('binding_data')
+    theta_gc_override = None
+    binding_theta_df = None
+
+    if binding_cfg is not None:
+        binding_genotypes = list(standardize_genotypes(binding_cfg['genotypes']))
+        binding_concs = binding_cfg['titrant_conc']
+        titrant_name = binding_cfg['titrant_name']
+
+        binding_sample_df = pd.DataFrame({"titrant_conc": binding_concs})
+
+        selected_binding_gc, selected_growth_gc = sample_theta_stratified(
+            component_name=cf['theta_component'],
+            binding_sample_df=binding_sample_df,
+            growth_sample_df=sample_df,
+            rng_key=theta_rng_key,
+            n_select=len(binding_genotypes),
+            thermo_data=cf.get('thermo_data'),
+            pool_size=cf.get('binding_stratify_pool_size', 500),
+            priors_overrides=cf.get('theta_priors'),
+            sim_priors_overrides=cf.get('theta_sim_priors'),
+        )
+
+        # Build override dict for thermo_to_growth (theta at growth concentrations)
+        theta_gc_override = {
+            g: selected_growth_gc[i]
+            for i, g in enumerate(binding_genotypes)
+        }
+
+        # Build binding_theta_df (theta at binding concentrations, pre-noise)
+        sorted_binding_concs = np.sort(np.unique(binding_concs))
+        conc_to_col = {float(c): j for j, c in enumerate(sorted_binding_concs)}
+        rows = []
+        for i, g in enumerate(binding_genotypes):
+            for conc in binding_concs:
+                col_idx = conc_to_col[float(conc)]
+                rows.append({
+                    "genotype": g,
+                    "titrant_name": titrant_name,
+                    "titrant_conc": float(conc),
+                    "theta_true": float(selected_binding_gc[i, col_idx]),
+                })
+        binding_theta_df = pd.DataFrame(rows)
+
+    # -------------------------------------------------------------------------
     # Calculate phenotype for each genotype across all conditions in sample_df
+
     phenotype_df, genotype_theta_df, parameters_df = thermo_to_growth(
         genotypes=library_df["genotype"],
         sim_data=sim_data,
@@ -111,6 +170,7 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
         activity_component=cf.get('activity_component', 'fixed'),
         activity_priors_overrides=cf.get('activity_priors'),
         theta_rescale=cf.get('theta_rescale', 'passthrough'),
+        theta_gc_override=theta_gc_override,
     )
 
-    return library_df, phenotype_df, genotype_theta_df, parameters_df
+    return library_df, phenotype_df, genotype_theta_df, parameters_df, binding_theta_df

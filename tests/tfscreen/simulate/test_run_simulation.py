@@ -74,7 +74,7 @@ def test_run_simulation_success(mocker, mock_config, mock_result_dfs):
     mocker.patch("tfscreen.util.read_yaml", return_value=mock_config)
     mock_lib_pred = mocker.patch(
         "tfscreen.simulate.run_simulation.library_prediction",
-        return_value=(lib_df, pheno_df, theta_df, params_df),
+        return_value=(lib_df, pheno_df, theta_df, params_df, None),
     )
     mock_sel_exp = mocker.patch("tfscreen.simulate.run_simulation.selection_experiment", return_value=(sample_df, counts_df))
 
@@ -104,7 +104,7 @@ def test_run_simulation_no_output(mocker, mock_config, mock_result_dfs):
     mocker.patch("tfscreen.util.read_yaml", return_value=mock_config)
     mocker.patch(
         "tfscreen.simulate.run_simulation.library_prediction",
-        return_value=(lib_df, pheno_df, theta_df, params_df),
+        return_value=(lib_df, pheno_df, theta_df, params_df, None),
     )
     mocker.patch("tfscreen.simulate.run_simulation.selection_experiment", return_value=(sample_df, counts_df))
     

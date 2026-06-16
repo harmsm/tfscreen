@@ -1,8 +1,9 @@
 import pytest
 import numpy as np
+import pandas as pd
 from unittest.mock import MagicMock, patch
 
-from tfscreen.simulate.sample_theta import sample_theta_prior, _EXCLUDED
+from tfscreen.simulate.sample_theta import sample_theta_prior, _EXCLUDED, _greedy_maximin, sample_theta_stratified
 
 
 # ----------------------------------------------------------------------------
@@ -170,3 +171,130 @@ def test_sim_priors_overrides_applied(mock_sim_data):
 
     call_kwargs = mock_module.SimPriors.call_args[1]
     assert call_kwargs["alpha"] == 9.9
+
+
+# ----------------------------------------------------------------------------
+# _greedy_maximin
+# ----------------------------------------------------------------------------
+
+def test_greedy_maximin_returns_correct_count():
+    rng = np.random.default_rng(0)
+    theta_gc = rng.uniform(0, 1, (20, 5))
+    selected = _greedy_maximin(theta_gc, 4)
+    assert len(selected) == 4
+
+
+def test_greedy_maximin_no_duplicates():
+    rng = np.random.default_rng(1)
+    theta_gc = rng.uniform(0, 1, (50, 8))
+    selected = _greedy_maximin(theta_gc, 10)
+    assert len(selected) == len(set(selected.tolist()))
+
+
+def test_greedy_maximin_selects_spread_curves():
+    """The selected set should span the theta space broadly."""
+    # 50 curves spread across [0,1]; 2 selected should have large distance between them
+    rng = np.random.default_rng(7)
+    theta_gc = rng.uniform(0, 1, (50, 4))
+    selected = _greedy_maximin(theta_gc, 2)
+    a, b = theta_gc[selected[0]], theta_gc[selected[1]]
+    dist = np.sqrt(np.sum((a - b) ** 2))
+    # Two randomly chosen points from 50 uniform in [0,1]^4 would average ~0.87
+    # in max-pairwise distance; our greedy selection should comfortably exceed 0.5
+    assert dist > 0.5
+
+
+def test_greedy_maximin_all_when_n_equals_pool():
+    theta_gc = np.eye(5)
+    selected = _greedy_maximin(theta_gc, 5)
+    assert set(selected.tolist()) == set(range(5))
+
+
+def test_greedy_maximin_all_when_n_exceeds_pool():
+    theta_gc = np.eye(3)
+    selected = _greedy_maximin(theta_gc, 10)
+    assert list(selected) == [0, 1, 2]
+
+
+# ----------------------------------------------------------------------------
+# sample_theta_stratified
+# ----------------------------------------------------------------------------
+
+def _make_stratified_mock_module(pool_size, n_binding_concs, n_growth_concs):
+    """
+    Return a mock theta module for sample_theta_stratified tests.
+
+    run_model is called twice (once for binding sim_data, once for growth
+    sim_data).  We return distinct matrices so tests can verify which call
+    produced which output.
+    """
+    mock_module = MagicMock()
+    mock_module.get_hyperparameters.return_value = {}
+    mock_module.ModelPriors.return_value = MagicMock()
+    mock_module.define_model.return_value = MagicMock(name="theta_param")
+
+    # Alternating call sides: binding first, then growth.
+    rng = np.random.default_rng(42)
+    binding_theta = rng.uniform(0, 1, (1, n_binding_concs, pool_size))
+    growth_theta  = rng.uniform(0, 1, (1, n_growth_concs,  pool_size))
+    mock_module.run_model.side_effect = [binding_theta, growth_theta]
+    mock_module._binding_theta = binding_theta
+    mock_module._growth_theta  = growth_theta
+    return mock_module
+
+
+def test_stratified_output_shapes():
+    pool_size, n_select, n_binding_concs, n_growth_concs = 30, 4, 6, 3
+    mock_module = _make_stratified_mock_module(pool_size, n_binding_concs, n_growth_concs)
+
+    binding_sample_df = pd.DataFrame({"titrant_conc": np.linspace(0, 1, n_binding_concs)})
+    growth_sample_df  = pd.DataFrame({"titrant_conc": np.linspace(0, 1, n_growth_concs)})
+
+    with patch("tfscreen.simulate.sample_theta.model_registry",
+               {"theta": {"hill_geno": mock_module}}), \
+         patch("tfscreen.simulate.sample_theta.handlers"), \
+         patch("tfscreen.simulate.sample_theta.build_sim_data", return_value=MagicMock(
+             num_genotype=pool_size, num_titrant_conc=n_binding_concs)):
+        binding_gc, growth_gc = sample_theta_stratified(
+            "hill_geno", binding_sample_df, growth_sample_df,
+            rng_key=0, n_select=n_select, pool_size=pool_size,
+        )
+
+    assert binding_gc.shape == (n_select, n_binding_concs)
+    assert growth_gc.shape  == (n_select, n_growth_concs)
+
+
+def test_stratified_raises_when_n_select_exceeds_pool():
+    binding_sample_df = pd.DataFrame({"titrant_conc": [0.0, 1.0]})
+    growth_sample_df  = pd.DataFrame({"titrant_conc": [0.5]})
+
+    with pytest.raises(ValueError, match="n_select"):
+        sample_theta_stratified(
+            "hill_geno", binding_sample_df, growth_sample_df,
+            rng_key=0, n_select=10, pool_size=5,
+        )
+
+
+def test_stratified_selected_rows_come_from_pool():
+    """Selected binding rows must be a subset of the pool's binding rows."""
+    pool_size, n_select, n_binding_concs, n_growth_concs = 20, 3, 4, 2
+    mock_module = _make_stratified_mock_module(pool_size, n_binding_concs, n_growth_concs)
+
+    binding_sample_df = pd.DataFrame({"titrant_conc": np.linspace(0, 1, n_binding_concs)})
+    growth_sample_df  = pd.DataFrame({"titrant_conc": [0.0, 1.0]})
+
+    with patch("tfscreen.simulate.sample_theta.model_registry",
+               {"theta": {"hill_geno": mock_module}}), \
+         patch("tfscreen.simulate.sample_theta.handlers"), \
+         patch("tfscreen.simulate.sample_theta.build_sim_data", return_value=MagicMock(
+             num_genotype=pool_size, num_titrant_conc=n_binding_concs)):
+        binding_gc, growth_gc = sample_theta_stratified(
+            "hill_geno", binding_sample_df, growth_sample_df,
+            rng_key=0, n_select=n_select, pool_size=pool_size,
+        )
+
+    # Each selected binding row must exist in the full pool binding matrix
+    pool_binding = mock_module._binding_theta[0].T   # (pool_size, n_binding_concs)
+    for row in binding_gc:
+        match = np.any(np.all(np.isclose(pool_binding, row[None, :]), axis=1))
+        assert match, "Selected binding row not found in pool"
