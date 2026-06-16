@@ -238,6 +238,7 @@ def plot_pit_histogram(pit_vals, ax=None, title=None, n_bins=10):
             color="steelblue", alpha=0.75, edgecolor="white")
     ax.axhline(1.0, color="firebrick", lw=1.5, ls="--", label="Uniform")
     ax.set_xlim(0, 1)
+    ax.set_ylim(0, 10)
     ax.set_xlabel("PIT value")
     ax.set_ylabel("Density")
     if title is not None:
@@ -278,14 +279,15 @@ def plot_calibration_curve(calibration_dict, ax=None, label=None):
     nominals = np.array(sorted(calibration_dict.keys()))
     empiricals = np.array([calibration_dict[k] for k in nominals])
 
-    ax.plot([0, 1], [0, 1], "k--", lw=1, label="Ideal")
+    ax.plot([-0.05, 1.05], [-0.05, 1.05], "k--", lw=1, label="Ideal")
     ax.plot(nominals, empiricals, "o-", color="steelblue",
             label=label or "Model")
-    ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1)
+    ax.set_xlim(-0.05, 1.05)
+    ax.set_ylim(-0.05, 1.05)
     ax.set_xlabel("Nominal coverage")
     ax.set_ylabel("Empirical coverage")
     ax.legend(fontsize=8)
+    ax.set_aspect("equal")
     return ax
 
 
