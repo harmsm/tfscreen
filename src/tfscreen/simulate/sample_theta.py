@@ -18,6 +18,8 @@ by chance.
 import inspect
 import numpy as np
 import pandas as pd
+import tqdm
+import jax
 from numpyro import handlers
 
 from tfscreen.tfmodel.generative.registry import model_registry
@@ -31,17 +33,23 @@ def sample_theta_prior(component_name,
                        sim_data,
                        rng_key,
                        priors_overrides=None,
-                       sim_priors_overrides=None):
+                       sim_priors_overrides=None,
+                       force_prior_predictive=False):
     """
     Draw one sample of theta from a registered theta component.
 
     If the component defines a ``simulate`` function (detected via
-    ``inspect.isfunction``), the perturbation-based path is used: wildtype
-    reference parameters are drawn from ``SimPriors`` built from
-    ``get_sim_hyperparameters()`` plus any ``sim_priors_overrides``.
+    ``inspect.isfunction``) and ``force_prior_predictive`` is False, the
+    perturbation-based path is used: wildtype reference parameters are drawn
+    from ``SimPriors`` built from ``get_sim_hyperparameters()`` plus any
+    ``sim_priors_overrides``.
 
     Otherwise the prior-predictive path is used: ``define_model`` is called
     inside a seeded NumPyro trace, and ``run_model`` produces ``theta_gc``.
+    Set ``force_prior_predictive=True`` to always use this path — this is
+    required for mutation-decomposed components (e.g. ``hill_mut``) when the
+    pool library has only the wt genotype and M=0 mutations, because the
+    perturbation path would produce zero deltas and a homogeneous pool.
 
     Parameters
     ----------
@@ -59,6 +67,9 @@ def sample_theta_prior(component_name,
     sim_priors_overrides : dict or None
         Overrides for ``SimPriors`` (perturbation path only).  Ignored when
         the component does not provide ``simulate``.
+    force_prior_predictive : bool, default False
+        When True, always use the prior-predictive path (``define_model`` +
+        ``handlers.seed``), even if the component provides ``simulate``.
 
     Returns
     -------
@@ -90,7 +101,7 @@ def sample_theta_prior(component_name,
     module = theta_registry[component_name]
 
     # Perturbation-based path: component defines a simulate() function.
-    if inspect.isfunction(getattr(module, "simulate", None)):
+    if not force_prior_predictive and inspect.isfunction(getattr(module, "simulate", None)):
         sim_params = module.get_sim_hyperparameters()
         if sim_priors_overrides:
             sim_params.update(sim_priors_overrides)
@@ -218,22 +229,46 @@ def sample_theta_stratified(component_name,
             f"Increase pool_size or reduce the number of binding genotypes."
         )
 
-    pool_library_df = pd.DataFrame({"genotype": ["wt"] * pool_size})
+    if isinstance(rng_key, int):
+        rng_key = jax.random.PRNGKey(rng_key)
 
-    binding_sim_data = build_sim_data(pool_library_df, binding_sample_df,
+    # Build sim_data for a single genotype at each concentration set.
+    # The pool is built by calling sample_theta_prior once per member with a
+    # unique key derived via fold_in.  This gives each member its own
+    # hyperprior draw (loc, scale, …) rather than sharing one draw across all
+    # pool members — which would concentrate the pool around a single binding
+    # regime regardless of pool_size.
+    single_library_df = pd.DataFrame({"genotype": ["wt"]})
+    binding_sim_data = build_sim_data(single_library_df, binding_sample_df,
                                       thermo_data=thermo_data, skip_pairs=True)
-    pool_binding_gc, _ = sample_theta_prior(component_name, binding_sim_data,
-                                            rng_key, priors_overrides,
-                                            sim_priors_overrides)
-    # pool_binding_gc: (pool_size, n_binding_concs)
+    growth_sim_data = build_sim_data(single_library_df, growth_sample_df,
+                                     thermo_data=thermo_data, skip_pairs=True)
+
+    # Always use the prior-predictive path for pool building.  The perturbation
+    # path (simulate()) requires mutations to generate diversity; with a wt-only
+    # single-genotype pool library (M=0), it produces zero deltas and an
+    # entirely homogeneous pool regardless of pool_size.  The prior-predictive
+    # path samples WT-level parameters (log_K_wt, logit_low_wt, …) from their
+    # broad Normal priors, giving real diversity across pool members.
+    print(f"Building stratified pool ({pool_size} candidates)... ",
+          end="", flush=True)
+    pool_binding_rows = []
+    pool_growth_rows = []
+    for i in tqdm.tqdm(range(pool_size)):
+        key_i = jax.random.fold_in(rng_key, i)
+        theta_b, _ = sample_theta_prior(component_name, binding_sim_data, key_i,
+                                        priors_overrides, sim_priors_overrides,
+                                        force_prior_predictive=True)
+        theta_g, _ = sample_theta_prior(component_name, growth_sim_data, key_i,
+                                        priors_overrides, sim_priors_overrides,
+                                        force_prior_predictive=True)
+        pool_binding_rows.append(theta_b[0])  # (C_b,) — single genotype
+        pool_growth_rows.append(theta_g[0])   # (C_g,)
+    print("Done.", flush=True)
+
+    pool_binding_gc = np.stack(pool_binding_rows)  # (pool_size, C_b)
+    pool_growth_gc  = np.stack(pool_growth_rows)   # (pool_size, C_g)
 
     selected_indices = _greedy_maximin(pool_binding_gc, n_select)
-
-    growth_sim_data = build_sim_data(pool_library_df, growth_sample_df,
-                                     thermo_data=thermo_data, skip_pairs=True)
-    pool_growth_gc, _ = sample_theta_prior(component_name, growth_sim_data,
-                                           rng_key, priors_overrides,
-                                           sim_priors_overrides)
-    # pool_growth_gc: (pool_size, n_growth_concs)
 
     return pool_binding_gc[selected_indices], pool_growth_gc[selected_indices]

@@ -4,8 +4,8 @@ A "simple" (always-pinned) theta component.
 This component is intended for the *calibration* / pre-fit pass of the
 two-stage hierarchical workflow.  It treats the per-condition fractional
 occupancy ``theta`` as a fully known, deterministic quantity supplied by
-the caller — typically computed from a thermodynamic model evaluated at
-the wildtype TF parameters.
+the caller — typically the per-genotype observed binding values from the
+calibration dataset.
 
 There are no sampled latent variables in this component:
 - ``define_model`` registers zero ``pyro.sample`` sites and only emits a
@@ -13,19 +13,26 @@ There are no sampled latent variables in this component:
 - ``guide`` is the same pure no-op (no ``pyro.param`` and no
   ``pyro.sample`` sites), keeping model/guide sample sets symmetric.
 
-Because ``theta`` is identical across all genotypes, the broadcast tensor
-returned in ``ThetaParam.theta`` has shape
-``(num_titrant_name, num_titrant_conc, num_genotype)`` but is constant
-along the genotype axis.
+``theta_values`` in ``ModelPriors`` may have one of two shapes:
 
-The population moments ``(mu, sigma)`` are derived from the supplied
-``theta_values``:
-- ``mu``  = ``logit(theta_values)``  (with eps clipping)
-- ``sigma`` = a small floor (``priors.sigma_floor``)
+* ``(num_titrant_name, num_titrant_conc)`` — a single shared curve
+  broadcast identically to every genotype.  Legacy / backward-compatible
+  path; rarely useful in practice.
 
-These match the contract used by downstream transformations (e.g.
-``transformation.logit_norm``) that need a population mean / scale even
-when theta is "known".
+* ``(num_titrant_name, num_titrant_conc, num_genotype)`` — per-genotype
+  theta values.  The calibration pre-fit uses this path so that each
+  genotype's observed binding curve is used independently rather than
+  being replaced by a population average.
+
+The population moments ``(mu, sigma)`` are derived from ``theta_values``:
+
+* 2-D input: ``mu = logit(theta_values)[..., None]``;
+  ``sigma = priors.sigma_floor`` (scalar floor broadcast).
+* 3-D input: ``mu = mean(logit(theta_values), axis=-1, keepdims=True)``;
+  ``sigma = max(std(logit(theta_values), axis=-1, keepdims=True), floor)``.
+
+Both variants return moments of shape ``(T, C, 1)`` to satisfy the
+contract used by downstream transformations (e.g. ``transformation.logit_norm``).
 """
 
 import jax.numpy as jnp
@@ -64,6 +71,8 @@ class ModelPriors:
 
     theta_values: jnp.ndarray
     sigma_floor: float = field(pytree_node=False, default=0.01)
+    # theta_values may be shape (T, C) or (T, C, G).
+    # See module docstring for semantics of each shape.
 
 
 @dataclass(frozen=True)
@@ -89,9 +98,9 @@ class ThetaParam:
         (passed through from ``data.titrant_conc``).
     """
 
-    theta: jnp.ndarray
-    mu: jnp.ndarray
-    sigma: jnp.ndarray
+    theta: jnp.ndarray          # (T, C, G) — per-genotype after construction
+    mu: jnp.ndarray             # (T, C, 1) — population mean of logit(theta)
+    sigma: jnp.ndarray          # (T, C, 1) — population scale of logit(theta)
     concentrations: jnp.ndarray
 
 
@@ -106,19 +115,30 @@ def _build_theta_param(name: str,
     difference is that ``define_model`` emits a ``pyro.deterministic``
     site for inspection, while ``guide`` does not (sites in a guide must
     not be observed).
+
+    Handles two ``priors.theta_values`` shapes:
+
+    * ``(T, C)``    — broadcast identically to all G genotypes.
+    * ``(T, C, G)`` — per-genotype; used as-is (no broadcast).
     """
+    theta_values = priors.theta_values
 
-    theta_values = priors.theta_values  # (num_titrant_name, num_titrant_conc)
-
-    # Broadcast across genotype axis -> (Name, Conc, Genotype).
-    theta = jnp.broadcast_to(
-        theta_values[..., None],
-        (data.num_titrant_name, data.num_titrant_conc, data.num_genotype),
-    )
-
-    # Population moments in logit-space, shape (Name, Conc, 1)
-    mu = _logit(theta_values)[..., None]
-    sigma = jnp.full_like(mu, priors.sigma_floor)
+    if theta_values.ndim == 2:
+        # Legacy / shared-curve path: broadcast (T, C) → (T, C, G).
+        theta = jnp.broadcast_to(
+            theta_values[..., None],
+            (data.num_titrant_name, data.num_titrant_conc, data.num_genotype),
+        )
+        # Population moments from the shared curve.
+        mu = _logit(theta_values)[..., None]        # (T, C, 1)
+        sigma = jnp.full_like(mu, priors.sigma_floor)
+    else:
+        # Per-genotype path: theta_values already (T, C, G).
+        theta = theta_values
+        logit_tv = _logit(theta_values)             # (T, C, G)
+        mu = jnp.mean(logit_tv, axis=-1, keepdims=True)   # (T, C, 1)
+        std = jnp.std(logit_tv, axis=-1, keepdims=True)   # (T, C, 1)
+        sigma = jnp.maximum(std, priors.sigma_floor)
 
     if register_deterministic:
         pyro.deterministic(f"{name}_theta", theta)

@@ -274,16 +274,23 @@ def define_model(name: str,
     # ------------------------------------------------------------------
     # Mutation delta offsets: shape (T, num_mutation)
     # ------------------------------------------------------------------
-    with pyro.plate(f"{name}_titrant_mut_outer_plate", T, dim=-2):
-        with pyro.plate(f"{name}_mutation_plate", num_mut, dim=-1):
-            d_low_off = pyro.sample(
-                f"{name}_d_logit_low_offset", dist.Normal(0.0, 1.0))
-            d_delta_off = pyro.sample(
-                f"{name}_d_logit_delta_offset", dist.Normal(0.0, 1.0))
-            d_K_off = pyro.sample(
-                f"{name}_d_log_hill_K_offset", dist.Normal(0.0, 1.0))
-            d_n_off = pyro.sample(
-                f"{name}_d_log_hill_n_offset", dist.Normal(0.0, 1.0))
+    if num_mut > 0:
+        with pyro.plate(f"{name}_titrant_mut_outer_plate", T, dim=-2):
+            with pyro.plate(f"{name}_mutation_plate", num_mut, dim=-1):
+                d_low_off = pyro.sample(
+                    f"{name}_d_logit_low_offset", dist.Normal(0.0, 1.0))
+                d_delta_off = pyro.sample(
+                    f"{name}_d_logit_delta_offset", dist.Normal(0.0, 1.0))
+                d_K_off = pyro.sample(
+                    f"{name}_d_log_hill_K_offset", dist.Normal(0.0, 1.0))
+                d_n_off = pyro.sample(
+                    f"{name}_d_log_hill_n_offset", dist.Normal(0.0, 1.0))
+    else:
+        # num_mut == 0 (wt-only library, e.g. stratified pool building):
+        # numpyro.plate requires size > 0, so skip the plate and return
+        # empty offset arrays.  apply_mut_matrix with empty COO indices
+        # produces zeros, so per-genotype params equal the WT values.
+        d_low_off = d_delta_off = d_K_off = d_n_off = jnp.zeros((T, 0))
 
     # ------------------------------------------------------------------
     # Optional epistasis: shape (T, num_pair)
@@ -802,16 +809,16 @@ def get_population_moments(theta_param: ThetaParam, data) -> tuple:
 
 def get_hyperparameters() -> Dict[str, Any]:
     p = {}
-    p["theta_logit_low_wt_loc"] = 2.0
+    p["theta_logit_low_wt_loc"] = 5.0
     p["theta_logit_low_wt_scale"] = 2.0
-    p["theta_logit_delta_wt_loc"] = -4.0
+    p["theta_logit_delta_wt_loc"] = -9.0
     p["theta_logit_delta_wt_scale"] = 2.0
     p["theta_log_hill_K_wt_loc"] = -4.1
     p["theta_log_hill_K_wt_scale"] = 2.0
     p["theta_log_hill_n_wt_loc"] = 0.7
     p["theta_log_hill_n_wt_scale"] = 0.3
-    p["theta_sigma_d_logit_low_scale"] = 1.0
-    p["theta_sigma_d_logit_delta_scale"] = 1.0
+    p["theta_sigma_d_logit_low_scale"] = 5.0
+    p["theta_sigma_d_logit_delta_scale"] = 5.0
     p["theta_sigma_d_log_hill_K_scale"] = 1.0
     p["theta_sigma_d_log_hill_n_scale"] = 0.5
     p["theta_epi_tau_scale"] = 0.1
@@ -852,12 +859,12 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, Any]:
     T = data.num_titrant_name
     M = data.num_mutation
     guesses = {}
-    guesses[f"{name}_logit_low_wt"] = jnp.full(T, 2.0)
-    guesses[f"{name}_logit_delta_wt"] = jnp.full(T, -4.0)
+    guesses[f"{name}_logit_low_wt"] = jnp.full(T, 5.0)
+    guesses[f"{name}_logit_delta_wt"] = jnp.full(T, -9.0)
     guesses[f"{name}_log_hill_K_wt"] = jnp.full(T, -4.1)
     guesses[f"{name}_log_hill_n_wt"] = jnp.full(T, 0.7)
     guesses[f"{name}_sigma_d_logit_low"] = jnp.full(T, 0.5)
-    guesses[f"{name}_sigma_d_logit_delta"] = jnp.full(T, 0.5)
+    guesses[f"{name}_sigma_d_logit_delta"] = jnp.full(T, 4.0)
     guesses[f"{name}_sigma_d_log_hill_K"] = jnp.full(T, 0.5)
     guesses[f"{name}_sigma_d_log_hill_n"] = jnp.full(T, 0.3)
     guesses[f"{name}_d_logit_low_offset"] = jnp.zeros((T, M))

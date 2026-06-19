@@ -36,7 +36,6 @@ def _generate_binding_data(binding_cfg, rng, binding_theta_df):
     pandas.DataFrame
         Columns: genotype, titrant_name, titrant_conc, theta_obs, theta_std
     """
-    genotypes = list(standardize_genotypes(binding_cfg["genotypes"]))
     titrant_name = binding_cfg["titrant_name"]
     titrant_conc = list(binding_cfg["titrant_conc"])
     noise = float(binding_cfg.get("noise", 0.0))
@@ -47,6 +46,13 @@ def _generate_binding_data(binding_cfg, rng, binding_theta_df):
         for _, row in binding_theta_df.iterrows()
     }
 
+    # Genotypes to output: explicit list from config, or every genotype in binding_theta_df.
+    raw_genotypes = binding_cfg.get("genotypes")
+    if raw_genotypes:
+        genotypes = list(standardize_genotypes(raw_genotypes))
+    else:
+        genotypes = list(binding_theta_df["genotype"].unique())
+
     rows = []
     for g in genotypes:
         for conc in titrant_conc:
@@ -54,7 +60,7 @@ def _generate_binding_data(binding_cfg, rng, binding_theta_df):
             if key not in theta_lookup:
                 raise ValueError(
                     f"No pre-computed theta for genotype '{g}' at conc {conc}. "
-                    f"Ensure binding_data.genotypes and titrant_conc match the config."
+                    f"Ensure binding_data genotypes and titrant_conc match the config."
                 )
             theta_true = float(theta_lookup[key])
             if noise > 0:

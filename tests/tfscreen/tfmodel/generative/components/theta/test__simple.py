@@ -54,12 +54,35 @@ def mock_data():
 def mock_priors():
     """
     A non-trivial theta_values tensor of shape (num_titrant_name=2,
-    num_titrant_conc=3) with two saturating Hill-like rows.
+    num_titrant_conc=3) with two saturating Hill-like rows.  2-D path.
     """
     theta_values = jnp.array([
         [0.10, 0.50, 0.90],
         [0.05, 0.20, 0.80],
     ])
+    return ModelPriors(theta_values=theta_values, sigma_floor=0.05)
+
+
+@pytest.fixture
+def mock_priors_3d(mock_data):
+    """
+    Per-genotype theta_values of shape (T=2, C=3, G=4).
+
+    Each genotype has a distinct sigmoid-like curve so we can verify that
+    values are NOT broadcast across the genotype axis.
+    Axis order: (titrant_name, titrant_conc, genotype).
+    """
+    # shape = (T=2, C=3, G=4): outer=titrant, middle=conc, inner=genotype.
+    theta_values = jnp.array([
+        # titrant 0 — shape (C=3, G=4)
+        [[0.90, 0.80, 0.70, 0.60],   # conc 0, genotypes 0-3
+         [0.50, 0.40, 0.30, 0.20],   # conc 1
+         [0.10, 0.05, 0.08, 0.03]],  # conc 2
+        # titrant 1
+        [[0.85, 0.75, 0.65, 0.55],
+         [0.45, 0.35, 0.25, 0.15],
+         [0.12, 0.07, 0.09, 0.04]],
+    ])  # shape (2, 3, 4) = (T, C, G)
     return ModelPriors(theta_values=theta_values, sigma_floor=0.05)
 
 
@@ -342,3 +365,115 @@ def test_extreme_theta_values_finite_mu(mock_data):
     assert jnp.isclose(theta_param.mu[0, 1, 0], 0.0)
     assert theta_param.mu[0, 0, 0] < -10.0
     assert theta_param.mu[0, 2, 0] > 10.0
+
+
+# ---------------------------------------------------------------------------
+# 3-D theta_values: per-genotype path
+# ---------------------------------------------------------------------------
+
+class TestPerGenotype:
+    """Tests for the (T, C, G) theta_values path introduced for calibration."""
+
+    def test_define_model_returns_per_genotype_theta(self, mock_data, mock_priors_3d):
+        """Each genotype should get its own theta column, not a broadcast copy."""
+        theta_param = define_model(name="pg", data=mock_data, priors=mock_priors_3d)
+        assert theta_param.theta.shape == (
+            mock_data.num_titrant_name,
+            mock_data.num_titrant_conc,
+            mock_data.num_genotype,
+        )
+        # The per-genotype theta must match the input exactly.
+        assert jnp.allclose(theta_param.theta, mock_priors_3d.theta_values)
+        # Genotypes must differ from each other — no broadcast collapse.
+        assert not jnp.allclose(theta_param.theta[..., 0], theta_param.theta[..., 1])
+
+    def test_define_model_3d_population_moment_shapes(self, mock_data, mock_priors_3d):
+        theta_param = define_model(name="pg", data=mock_data, priors=mock_priors_3d)
+        expected = (mock_data.num_titrant_name, mock_data.num_titrant_conc, 1)
+        assert theta_param.mu.shape == expected
+        assert theta_param.sigma.shape == expected
+
+    def test_define_model_3d_mu_is_mean_over_genotypes(self, mock_data, mock_priors_3d):
+        theta_param = define_model(name="pg", data=mock_data, priors=mock_priors_3d)
+        expected_mu = jnp.mean(
+            _logit(mock_priors_3d.theta_values), axis=-1, keepdims=True
+        )
+        assert jnp.allclose(theta_param.mu, expected_mu, atol=1e-5)
+
+    def test_define_model_3d_sigma_at_least_floor(self, mock_data, mock_priors_3d):
+        theta_param = define_model(name="pg", data=mock_data, priors=mock_priors_3d)
+        assert jnp.all(theta_param.sigma >= mock_priors_3d.sigma_floor)
+
+    def test_define_model_3d_sigma_is_floor_when_genotypes_identical(self, mock_data):
+        """When all genotypes share the same theta, sigma collapses to the floor."""
+        tv = jnp.broadcast_to(
+            jnp.array([[0.3, 0.5, 0.7], [0.2, 0.4, 0.6]])[..., None],
+            (2, 3, mock_data.num_genotype),
+        )
+        floor = 0.05
+        priors = ModelPriors(theta_values=tv, sigma_floor=floor)
+        theta_param = define_model(name="pg", data=mock_data, priors=priors)
+        assert jnp.allclose(theta_param.sigma, floor, atol=1e-5)
+
+    def test_define_model_3d_registers_no_sample_sites(self, mock_data, mock_priors_3d):
+        with seed(rng_seed=0):
+            tr = trace(define_model).get_trace(
+                name="pg", data=mock_data, priors=mock_priors_3d,
+            )
+        sample_sites = [n for n, s in tr.items() if s["type"] == "sample"]
+        assert sample_sites == []
+        assert "pg_theta" in tr
+
+    def test_guide_3d_matches_model(self, mock_data, mock_priors_3d):
+        model_param = define_model(name="pg", data=mock_data, priors=mock_priors_3d)
+        guide_param = guide(name="pg", data=mock_data, priors=mock_priors_3d)
+        assert jnp.allclose(model_param.theta, guide_param.theta)
+        assert jnp.allclose(model_param.mu, guide_param.mu)
+
+    def test_run_model_3d_slices_correct_genotypes(self, mock_data, mock_priors_3d):
+        """run_model must pick the right per-genotype curve using geno_theta_idx."""
+        theta_param = define_model(name="pg", data=mock_data, priors=mock_priors_3d)
+        out = run_model(theta_param, mock_data._replace(scatter_theta=0))
+
+        expected_shape = (
+            mock_data.num_titrant_name,
+            mock_data.num_titrant_conc,
+            mock_data.geno_theta_idx.shape[0],
+        )
+        assert out.shape == expected_shape
+        # Each output column must match the theta_values column for that genotype.
+        for col, geno_idx in enumerate(mock_data.geno_theta_idx.tolist()):
+            assert jnp.allclose(out[..., col],
+                                 mock_priors_3d.theta_values[..., geno_idx])
+
+    def test_run_model_3d_concentration_mapping(self, mock_data, mock_priors_3d):
+        """Concentration remapping must work correctly with per-genotype theta."""
+        theta_param = define_model(name="pg", data=mock_data, priors=mock_priors_3d)
+        # Request concentrations [1.0, 0.0] — subset + reorder of [0, 1, 10].
+        new_conc = jnp.array([1.0, 0.0])
+        out = run_model(
+            theta_param,
+            mock_data._replace(titrant_conc=new_conc, scatter_theta=0),
+        )
+        # Expected: columns [1, 0] from theta_values, then slice by geno_theta_idx.
+        expected = mock_priors_3d.theta_values[..., mock_data.geno_theta_idx][:, [1, 0], :]
+        assert jnp.allclose(out, expected)
+
+    def test_run_model_3d_scatter(self, mock_data, mock_priors_3d):
+        theta_param = define_model(name="pg", data=mock_data, priors=mock_priors_3d)
+        out = run_model(theta_param, mock_data)
+        expected_shape = (
+            1, 1, 1, 1,
+            mock_data.num_titrant_name,
+            mock_data.num_titrant_conc,
+            mock_data.geno_theta_idx.shape[0],
+        )
+        assert out.shape == expected_shape
+
+    def test_get_population_moments_3d(self, mock_data, mock_priors_3d):
+        theta_param = define_model(name="pg", data=mock_data, priors=mock_priors_3d)
+        mu, sigma = get_population_moments(theta_param, mock_data)
+        expected_shape = (mock_data.num_titrant_name, mock_data.num_titrant_conc, 1)
+        assert mu.shape == expected_shape
+        assert sigma.shape == expected_shape
+        assert jnp.all(sigma > 0)

@@ -1264,15 +1264,46 @@
 ./src/tfscreen/process_raw/scripts/process_fastq_cli.py:418:33: E231 missing whitespace after ','
 ./src/tfscreen/process_raw/scripts/process_fastq_cli.py:420:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/simulate/__init__.py:29:2: W292 no newline at end of file
+./src/tfscreen/simulate/binding_params.py:225:1: C901 'build_theta_gc_override_hill_mut' is too complex (15)
+./src/tfscreen/simulate/binding_params.py:289:17: E221 multiple spaces before operator
+./src/tfscreen/simulate/binding_params.py:290:18: E221 multiple spaces before operator
+./src/tfscreen/simulate/binding_params.py:292:13: E221 multiple spaces before operator
+./src/tfscreen/simulate/binding_params.py:293:13: E221 multiple spaces before operator
+./src/tfscreen/simulate/binding_params.py:296:16: E221 multiple spaces before operator
+./src/tfscreen/simulate/binding_params.py:298:12: E221 multiple spaces before operator
+./src/tfscreen/simulate/binding_params.py:299:12: E221 multiple spaces before operator
+./src/tfscreen/simulate/binding_params.py:317:20: E221 multiple spaces before operator
+./src/tfscreen/simulate/binding_params.py:318:21: E221 multiple spaces before operator
+./src/tfscreen/simulate/binding_params.py:321:27: E221 multiple spaces before operator
+./src/tfscreen/simulate/binding_params.py:321:43: E221 multiple spaces before operator
+./src/tfscreen/simulate/binding_params.py:323:23: E221 multiple spaces before operator
+./src/tfscreen/simulate/binding_params.py:324:23: E221 multiple spaces before operator
+./src/tfscreen/simulate/binding_params.py:330:32: E221 multiple spaces before operator
+./src/tfscreen/simulate/binding_params.py:332:28: E221 multiple spaces before operator
+./src/tfscreen/simulate/binding_params.py:333:28: E221 multiple spaces before operator
+./src/tfscreen/simulate/binding_params.py:336:16: E221 multiple spaces before operator
+./src/tfscreen/simulate/binding_params.py:350:14: E221 multiple spaces before operator
+./src/tfscreen/simulate/binding_params.py:350:31: E221 multiple spaces before operator
+./src/tfscreen/simulate/binding_params.py:352:10: E221 multiple spaces before operator
+./src/tfscreen/simulate/binding_params.py:352:27: E221 multiple spaces before operator
+./src/tfscreen/simulate/binding_params.py:353:10: E221 multiple spaces before operator
+./src/tfscreen/simulate/binding_params.py:353:27: E221 multiple spaces before operator
+./src/tfscreen/simulate/binding_params.py:383:22: E221 multiple spaces before operator
+./src/tfscreen/simulate/binding_params.py:385:18: E221 multiple spaces before operator
+./src/tfscreen/simulate/binding_params.py:386:18: E221 multiple spaces before operator
+./src/tfscreen/simulate/binding_params.py:389:18: E221 multiple spaces before operator
+./src/tfscreen/simulate/binding_params.py:391:15: E221 multiple spaces before operator
 ./src/tfscreen/simulate/build_sample_dataframes.py:4:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/simulate/build_sample_dataframes.py:56:1: W293 blank line contains whitespace
 ./src/tfscreen/simulate/build_sample_dataframes.py:68:1: W293 blank line contains whitespace
 ./src/tfscreen/simulate/build_sample_dataframes.py:83:1: W293 blank line contains whitespace
 ./src/tfscreen/simulate/build_sample_dataframes.py:87:1: W293 blank line contains whitespace
 ./src/tfscreen/simulate/build_sample_dataframes.py:95:21: W292 no newline at end of file
-./src/tfscreen/simulate/library_prediction.py:20:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/simulate/library_prediction.py:21:43: E252 missing whitespace around parameter equals
-./src/tfscreen/simulate/library_prediction.py:21:44: E252 missing whitespace around parameter equals
+./src/tfscreen/simulate/library_prediction.py:28:1: C901 'library_prediction' is too complex (14)
+./src/tfscreen/simulate/library_prediction.py:28:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/simulate/library_prediction.py:29:43: E252 missing whitespace around parameter equals
+./src/tfscreen/simulate/library_prediction.py:29:44: E252 missing whitespace around parameter equals
+./src/tfscreen/simulate/library_prediction.py:123:9: F841 local variable 'binding_noise' is assigned to but never used
 ./src/tfscreen/simulate/run_simulation.py:12:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/simulate/run_simulation.py:17:1: W293 blank line contains whitespace
 ./src/tfscreen/simulate/run_simulation.py:18:36: E231 missing whitespace after ','
@@ -1311,34 +1342,35 @@
 ./src/tfscreen/simulate/run_simulation.py:101:1: W293 blank line contains whitespace
 ./src/tfscreen/simulate/run_simulation.py:106:1: W293 blank line contains whitespace
 ./src/tfscreen/simulate/run_simulation.py:107:1: W391 blank line at end of file
-./src/tfscreen/simulate/sample_theta.py:159:30: E127 continuation line over-indented for visual indent
-./src/tfscreen/simulate/sample_theta.py:160:30: E127 continuation line over-indented for visual indent
-./src/tfscreen/simulate/sample_theta.py:161:30: E127 continuation line over-indented for visual indent
-./src/tfscreen/simulate/sample_theta.py:162:30: E127 continuation line over-indented for visual indent
-./src/tfscreen/simulate/sample_theta.py:163:30: E127 continuation line over-indented for visual indent
-./src/tfscreen/simulate/sample_theta.py:164:30: E127 continuation line over-indented for visual indent
-./src/tfscreen/simulate/sample_theta.py:165:30: E127 continuation line over-indented for visual indent
-./src/tfscreen/simulate/sample_theta.py:166:30: E127 continuation line over-indented for visual indent
+./src/tfscreen/simulate/sample_theta.py:170:30: E127 continuation line over-indented for visual indent
+./src/tfscreen/simulate/sample_theta.py:171:30: E127 continuation line over-indented for visual indent
+./src/tfscreen/simulate/sample_theta.py:172:30: E127 continuation line over-indented for visual indent
+./src/tfscreen/simulate/sample_theta.py:173:30: E127 continuation line over-indented for visual indent
+./src/tfscreen/simulate/sample_theta.py:174:30: E127 continuation line over-indented for visual indent
+./src/tfscreen/simulate/sample_theta.py:175:30: E127 continuation line over-indented for visual indent
+./src/tfscreen/simulate/sample_theta.py:176:30: E127 continuation line over-indented for visual indent
+./src/tfscreen/simulate/sample_theta.py:177:30: E127 continuation line over-indented for visual indent
+./src/tfscreen/simulate/sample_theta.py:270:19: E221 multiple spaces before operator
 ./src/tfscreen/simulate/scripts/setup_sim_grid_cli.py:101:1: C901 'setup_sim_grid' is too complex (17)
-./src/tfscreen/simulate/scripts/simulate_cli.py:113:15: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/simulate_cli.py:114:17: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/simulate_cli.py:115:16: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/simulate_cli.py:116:16: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/simulate_cli.py:120:20: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/simulate_cli.py:121:22: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/simulate_cli.py:122:21: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/simulate_cli.py:141:43: E127 continuation line over-indented for visual indent
-./src/tfscreen/simulate/scripts/simulate_cli.py:142:14: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/simulate_cli.py:143:16: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/simulate_cli.py:148:17: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/simulate_cli.py:161:19: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/simulate_cli.py:164:19: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/simulate_cli.py:165:17: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/simulate_cli.py:166:16: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/simulate_cli.py:169:17: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/simulate_cli.py:171:25: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/simulate_cli.py:173:19: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/simulate_cli.py:187:19: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/simulate_cli.py:119:15: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/simulate_cli.py:120:17: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/simulate_cli.py:121:16: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/simulate_cli.py:122:16: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/simulate_cli.py:126:20: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/simulate_cli.py:127:22: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/simulate_cli.py:128:21: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/simulate_cli.py:147:43: E127 continuation line over-indented for visual indent
+./src/tfscreen/simulate/scripts/simulate_cli.py:148:14: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/simulate_cli.py:149:16: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/simulate_cli.py:154:17: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/simulate_cli.py:167:19: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/simulate_cli.py:170:19: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/simulate_cli.py:171:17: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/simulate_cli.py:172:16: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/simulate_cli.py:175:17: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/simulate_cli.py:177:25: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/simulate_cli.py:179:19: E221 multiple spaces before operator
+./src/tfscreen/simulate/scripts/simulate_cli.py:193:19: E221 multiple spaces before operator
 ./src/tfscreen/simulate/selection_experiment.py:42:38: E231 missing whitespace after ':'
 ./src/tfscreen/simulate/selection_experiment.py:43:37: E231 missing whitespace after ':'
 ./src/tfscreen/simulate/selection_experiment.py:44:36: E231 missing whitespace after ':'
@@ -1479,8 +1511,8 @@
 ./src/tfscreen/simulate/sim_data_class.py:97:1: E303 too many blank lines (3)
 ./src/tfscreen/simulate/thermo_to_growth.py:102:36: E127 continuation line over-indented for visual indent
 ./src/tfscreen/simulate/thermo_to_growth.py:103:36: E127 continuation line over-indented for visual indent
-./src/tfscreen/simulate/thermo_to_growth.py:289:1: C901 'thermo_to_growth' is too complex (13)
-./src/tfscreen/simulate/thermo_to_growth.py:618:41: E127 continuation line over-indented for visual indent
+./src/tfscreen/simulate/thermo_to_growth.py:289:1: C901 'thermo_to_growth' is too complex (18)
+./src/tfscreen/simulate/thermo_to_growth.py:626:41: E127 continuation line over-indented for visual indent
 ./src/tfscreen/tfmodel/__init__.py:2:73: W291 trailing whitespace
 ./src/tfscreen/tfmodel/__init__.py:3:20: W291 trailing whitespace
 ./src/tfscreen/tfmodel/__init__.py:18:65: W291 trailing whitespace
@@ -2046,99 +2078,99 @@
 ./src/tfscreen/tfmodel/generative/components/theta/hill_geno.py:882:11: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/theta/hill_geno.py:885:14: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:193:76: E261 at least two spaces before inline comment
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:293:31: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:294:31: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:295:31: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:333:16: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:333:30: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:335:17: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:335:28: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:336:17: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:336:28: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:347:22: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:347:38: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:349:23: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:349:36: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:350:23: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:350:36: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:360:20: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:362:15: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:363:15: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:366:24: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:366:44: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:368:19: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:368:39: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:369:19: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:369:39: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:601:20: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:603:15: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:604:15: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:610:24: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:610:44: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:610:73: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:612:19: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:612:39: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:612:71: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:613:19: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:613:39: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:613:71: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:693:17: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:695:18: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:698:13: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:705:14: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:705:31: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:707:10: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:708:10: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:708:27: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:741:22: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:743:18: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:744:18: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:748:18: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:749:70: E261 at least two spaces before inline comment
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:750:15: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:754:13: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:757:18: E251 unexpected spaces around keyword / parameter equals
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:757:18: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:757:21: E251 unexpected spaces around keyword / parameter equals
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:758:19: E251 unexpected spaces around keyword / parameter equals
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:758:21: E251 unexpected spaces around keyword / parameter equals
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:759:19: E251 unexpected spaces around keyword / parameter equals
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:759:21: E251 unexpected spaces around keyword / parameter equals
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:760:15: E251 unexpected spaces around keyword / parameter equals
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:760:15: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:760:21: E251 unexpected spaces around keyword / parameter equals
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:761:11: E251 unexpected spaces around keyword / parameter equals
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:761:11: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:761:16: E251 unexpected spaces around keyword / parameter equals
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:762:14: E251 unexpected spaces around keyword / parameter equals
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:762:16: E251 unexpected spaces around keyword / parameter equals
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:839:20: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1006:17: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1008:13: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1009:13: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1010:10: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1011:12: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1012:8: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1013:8: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1016:14: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1016:43: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1018:10: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1018:39: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1019:10: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1019:39: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1022:16: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1024:14: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1025:14: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1026:18: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1028:14: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1029:14: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:300:31: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:301:31: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:302:31: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:340:16: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:340:30: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:342:17: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:342:28: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:343:17: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:343:28: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:354:22: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:354:38: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:356:23: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:356:36: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:357:23: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:357:36: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:367:20: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:369:15: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:370:15: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:373:24: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:373:44: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:375:19: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:375:39: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:376:19: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:376:39: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:608:20: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:610:15: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:611:15: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:617:24: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:617:44: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:617:73: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:619:19: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:619:39: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:619:71: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:620:19: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:620:39: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:620:71: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:700:17: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:702:18: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:705:13: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:712:14: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:712:31: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:714:10: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:715:10: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:715:27: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:748:22: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:750:18: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:751:18: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:755:18: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:756:70: E261 at least two spaces before inline comment
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:757:15: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:761:13: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:764:18: E251 unexpected spaces around keyword / parameter equals
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:764:18: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:764:21: E251 unexpected spaces around keyword / parameter equals
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:765:19: E251 unexpected spaces around keyword / parameter equals
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:765:21: E251 unexpected spaces around keyword / parameter equals
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:766:19: E251 unexpected spaces around keyword / parameter equals
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:766:21: E251 unexpected spaces around keyword / parameter equals
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:767:15: E251 unexpected spaces around keyword / parameter equals
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:767:15: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:767:21: E251 unexpected spaces around keyword / parameter equals
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:768:11: E251 unexpected spaces around keyword / parameter equals
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:768:11: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:768:16: E251 unexpected spaces around keyword / parameter equals
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:769:14: E251 unexpected spaces around keyword / parameter equals
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:769:16: E251 unexpected spaces around keyword / parameter equals
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:846:20: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1013:17: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1015:13: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1016:13: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1017:10: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1018:12: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1019:8: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1020:8: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1023:14: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1023:43: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1025:10: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1025:39: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1026:10: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1026:39: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1029:16: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1031:14: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1032:14: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1033:18: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1035:15: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1036:15: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1079:40: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1134:17: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1147:11: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1150:14: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1035:14: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1036:14: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1040:18: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1042:15: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1043:15: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1086:40: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1141:17: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1154:11: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/hill_mut.py:1157:14: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/PK.py:38:1: F401 'tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U0_a.thermo.run_model' imported but unused
 ./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/PK.py:38:1: F401 'tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U0_a.thermo.get_population_moments' imported but unused
 ./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/PK.py:171:6: E221 multiple spaces before operator
@@ -3667,14 +3699,17 @@
 ./src/tfscreen/tfmodel/scripts/fit_model_cli.py:522:74: E231 missing whitespace after ':'
 ./src/tfscreen/tfmodel/scripts/fit_model_cli.py:524:1: E305 expected 2 blank lines after class or function definition, found 1
 ./src/tfscreen/tfmodel/scripts/predict_theta_cli.py:12:1: C901 'predict_theta' is too complex (11)
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:245:24: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:246:24: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:247:24: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:250:1: C901 '_inject_calibration_priors' is too complex (21)
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:441:1: C901 '_build_csv_updates' is too complex (11)
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:535:1: C901 '_apply_guesses_updates' is too complex (12)
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:687:1: E303 too many blank lines (3)
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:691:1: E302 expected 2 blank lines, found 3
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:184:11: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:185:11: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:190:20: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:254:24: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:255:24: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:256:24: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:259:1: C901 '_inject_calibration_priors' is too complex (21)
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:450:1: C901 '_build_csv_updates' is too complex (11)
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:544:1: C901 '_apply_guesses_updates' is too complex (12)
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:696:1: E303 too many blank lines (3)
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:700:1: E302 expected 2 blank lines, found 3
 ./src/tfscreen/tfmodel/scripts/setup_grid_cli.py:160:1: C901 'setup_grid' is too complex (17)
 ./src/tfscreen/tfmodel/scripts/subset_genotypes_cli.py:40:1: C901 'subset_genotypes' is too complex (23)
 ./src/tfscreen/tfmodel/scripts/subset_genotypes_cli.py:93:5: F841 local variable 'all_genotypes' is assigned to but never used
@@ -5159,6 +5194,37 @@
 ./tests/tfscreen/simulate/growth/test_transition_linkage.py:566:14: E221 multiple spaces before operator
 ./tests/tfscreen/simulate/growth/test_transition_linkage.py:567:14: E221 multiple spaces before operator
 ./tests/tfscreen/simulate/growth/test_transition_linkage.py:568:14: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_binding_params.py:5:1: F401 'io' imported but unused
+./tests/tfscreen/simulate/test_binding_params.py:8:1: F401 'pandas as pd' imported but unused
+./tests/tfscreen/simulate/test_binding_params.py:11:1: F401 'tfscreen.simulate.binding_params._logit' imported but unused
+./tests/tfscreen/simulate/test_binding_params.py:83:20: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_binding_params.py:85:16: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_binding_params.py:86:17: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_binding_params.py:87:25: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_binding_params.py:89:21: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_binding_params.py:90:21: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_binding_params.py:91:21: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_binding_params.py:93:19: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_binding_params.py:203:22: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_binding_params.py:205:32: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_binding_params.py:215:35: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_binding_params.py:217:32: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_binding_params.py:229:35: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_binding_params.py:237:35: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_binding_params.py:302:38: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_binding_params.py:304:37: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_binding_params.py:313:5: F811 redefinition of unused 'pd' from line 8
+./tests/tfscreen/simulate/test_binding_params.py:316:15: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_binding_params.py:317:14: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_binding_params.py:422:43: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_binding_params.py:442:56: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_binding_params.py:443:56: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_binding_params.py:463:46: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_binding_params.py:484:38: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_binding_params.py:485:39: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_binding_params.py:487:37: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_binding_params.py:505:45: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_binding_params.py:584:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/simulate/test_build_sample_dataframes.py:9:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/simulate/test_build_sample_dataframes.py:33:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/simulate/test_build_sample_dataframes.py:52:1: W293 blank line contains whitespace
@@ -5198,6 +5264,7 @@
 ./tests/tfscreen/simulate/test_generate_presplit_data.py:229:33: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/simulate/test_library_prediction.py:47:41: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/simulate/test_library_prediction.py:290:5: F401 'numpy as np' imported but unused
+./tests/tfscreen/simulate/test_library_prediction.py:439:16: E272 multiple spaces before keyword
 ./tests/tfscreen/simulate/test_run_simulation.py:3:1: F401 'os' imported but unused
 ./tests/tfscreen/simulate/test_run_simulation.py:5:1: F401 'unittest.mock.MagicMock' imported but unused
 ./tests/tfscreen/simulate/test_run_simulation.py:7:1: F401 'tfscreen.util' imported but unused
@@ -5218,12 +5285,11 @@
 ./tests/tfscreen/simulate/test_run_simulation.py:113:1: W293 blank line contains whitespace
 ./tests/tfscreen/simulate/test_run_simulation.py:116:5: F841 local variable 'results' is assigned to but never used
 ./tests/tfscreen/simulate/test_run_simulation.py:117:1: W293 blank line contains whitespace
-./tests/tfscreen/simulate/test_sample_theta.py:239:17: E221 multiple spaces before operator
-./tests/tfscreen/simulate/test_sample_theta.py:242:30: E221 multiple spaces before operator
-./tests/tfscreen/simulate/test_sample_theta.py:251:21: E221 multiple spaces before operator
-./tests/tfscreen/simulate/test_sample_theta.py:264:27: E221 multiple spaces before operator
-./tests/tfscreen/simulate/test_sample_theta.py:269:21: E221 multiple spaces before operator
-./tests/tfscreen/simulate/test_sample_theta.py:284:21: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_sample_theta.py:260:21: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_sample_theta.py:277:27: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_sample_theta.py:282:21: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_sample_theta.py:297:21: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_sample_theta.py:338:21: E221 multiple spaces before operator
 ./tests/tfscreen/simulate/test_selection_experiment.py:4:1: F401 'numpy.ma' imported but unused
 ./tests/tfscreen/simulate/test_selection_experiment.py:6:1: F401 'scipy.stats.gmean' imported but unused
 ./tests/tfscreen/simulate/test_selection_experiment.py:9:1: F401 'unittest.mock.MagicMock' imported but unused
@@ -5387,8 +5453,8 @@
 ./tests/tfscreen/simulate/test_thermo_to_growth.py:195:14: E131 continuation line unaligned for hanging indent
 ./tests/tfscreen/simulate/test_thermo_to_growth.py:222:44: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/simulate/test_thermo_to_growth.py:229:35: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/test_thermo_to_growth.py:1163:1: E402 module level import not at top of file
-./tests/tfscreen/simulate/test_thermo_to_growth.py:1251:9: F841 local variable 'G_out' is assigned to but never used
+./tests/tfscreen/simulate/test_thermo_to_growth.py:1437:1: E402 module level import not at top of file
+./tests/tfscreen/simulate/test_thermo_to_growth.py:1525:9: F841 local variable 'G_out' is assigned to but never used
 ./tests/tfscreen/tfmodel/analysis/test_error_calibration.py:313:9: F401 'matplotlib.axes.Axes' imported but unused
 ./tests/tfscreen/tfmodel/analysis/test_error_calibration.py:355:9: F401 'matplotlib.axes.Axes' imported but unused
 ./tests/tfscreen/tfmodel/generative/components/activity/test_fixed.py:23:1: E302 expected 2 blank lines, found 1
@@ -5745,6 +5811,7 @@
 ./tests/tfscreen/tfmodel/generative/components/sample_offset/test_zero.py:2:1: F401 'jax.numpy as jnp' imported but unused
 ./tests/tfscreen/tfmodel/generative/components/test_pinning.py:4:1: F401 'numpyro as pyro' imported but unused
 ./tests/tfscreen/tfmodel/generative/components/theta/test__simple.py:6:1: F401 'tfscreen.tfmodel.generative.components.theta._simple._THETA_EPS' imported but unused
+./tests/tfscreen/tfmodel/generative/components/theta/test__simple.py:447:34: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/tfmodel/generative/components/theta/test_categorical_geno.py:5:1: F401 'numpyro.distributions as dist' imported but unused
 ./tests/tfscreen/tfmodel/generative/components/theta/test_categorical_geno.py:6:1: F401 'numpyro.handlers.trace' imported but unused
 ./tests/tfscreen/tfmodel/generative/components/theta/test_categorical_geno.py:10:1: F401 'tfscreen.tfmodel.generative.components.theta.categorical_geno.ThetaParam' imported but unused
@@ -5825,6 +5892,10 @@
 ./tests/tfscreen/tfmodel/generative/components/theta/test_hill_mut.py:528:21: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/generative/components/theta/test_hill_mut.py:530:32: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/generative/components/theta/test_hill_mut.py:530:52: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/test_hill_mut.py:719:34: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/test_hill_mut.py:722:31: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/test_hill_mut.py:730:36: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/test_hill_mut.py:730:70: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/generative/components/theta/test_predict_unmeasured.py:25:11: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/generative/components/theta/test_predict_unmeasured.py:30:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/tfmodel/generative/components/theta/test_predict_unmeasured.py:155:31: E221 multiple spaces before operator
@@ -6519,18 +6590,18 @@
 ./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:14:1: F401 'sys' imported but unused
 ./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:21:1: F401 'jax' imported but unused
 ./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:26:1: F401 'tfscreen.tfmodel.scripts.prefit_calibration_cli._identify_field_mapping' imported but unused
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:649:29: E128 continuation line under-indented for visual indent
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:650:29: E128 continuation line under-indented for visual indent
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:651:29: E128 continuation line under-indented for visual indent
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:652:29: E128 continuation line under-indented for visual indent
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:653:29: E128 continuation line under-indented for visual indent
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:654:29: E128 continuation line under-indented for visual indent
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:655:29: E128 continuation line under-indented for visual indent
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:656:29: E128 continuation line under-indented for visual indent
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:657:29: E128 continuation line under-indented for visual indent
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1009:14: E127 continuation line over-indented for visual indent
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1028:14: E127 continuation line over-indented for visual indent
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1043:14: E127 continuation line over-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:728:29: E128 continuation line under-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:729:29: E128 continuation line under-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:730:29: E128 continuation line under-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:731:29: E128 continuation line under-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:732:29: E128 continuation line under-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:733:29: E128 continuation line under-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:734:29: E128 continuation line under-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:735:29: E128 continuation line under-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:736:29: E128 continuation line under-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1089:14: E127 continuation line over-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1108:14: E127 continuation line over-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1123:14: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/tfmodel/scripts/test_sample_posterior_cli.py:5:1: F401 'unittest.mock.call' imported but unused
 ./tests/tfscreen/tfmodel/scripts/test_sample_prior_cli.py:3:1: F401 'pytest' imported but unused
 ./tests/tfscreen/tfmodel/scripts/test_subset_genotypes_cli.py:84:31: E741 ambiguous variable name 'l'
@@ -7666,7 +7737,7 @@
 ./tests/tfscreen/util/validation/test_check.py:8:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/validation/test_check.py:26:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/validation/test_check.py:75:70: W292 no newline at end of file
-48    C901 'cat_fit' is too complex (19)
+50    C901 'cat_fit' is too complex (19)
 15    E111 indentation is not a multiple of 4
 6     E114 indentation is not a multiple of 4 (comment)
 6     E116 unexpected indentation (comment)
@@ -7674,14 +7745,14 @@
 1     E122 continuation line missing indentation or outdented
 2     E124 closing bracket does not match visual indentation
 6     E125 continuation line with same indent as next logical line
-172   E127 continuation line over-indented for visual indent
+177   E127 continuation line over-indented for visual indent
 79    E128 continuation line under-indented for visual indent
 3     E131 continuation line unaligned for hanging indent
 43    E201 whitespace after '['
 28    E202 whitespace before ']'
 6     E203 whitespace before ','
 5     E211 whitespace before '('
-1772  E221 multiple spaces before operator
+1829  E221 multiple spaces before operator
 26    E222 multiple spaces after operator
 8     E225 missing whitespace around operator
 1115  E231 missing whitespace after ','
@@ -7691,9 +7762,9 @@
 1     E262 inline comment should start with '# '
 2     E265 block comment should start with '# '
 2     E266 too many leading '#' for block comment
-148   E272 multiple spaces before keyword
+149   E272 multiple spaces before keyword
 1     E301 expected 1 blank line, found 0
-800   E302 expected 2 blank lines, found 1
+801   E302 expected 2 blank lines, found 1
 50    E303 too many blank lines (2)
 16    E305 expected 2 blank lines after class or function definition, found 1
 29    E306 expected 1 blank line before a nested definition, found 0
@@ -7706,12 +7777,12 @@
 1     E722 do not use bare 'except'
 1     E731 do not assign a lambda expression, use a def
 20    E741 ambiguous variable name 'l'
-227   F401 'tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U0_a.thermo.run_model' imported but unused
+230   F401 'tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U0_a.thermo.run_model' imported but unused
 11    F541 f-string is missing placeholders
-3     F811 redefinition of unused 'np' from line 1
-40    F841 local variable 'e' is assigned to but never used
+4     F811 redefinition of unused 'np' from line 1
+41    F841 local variable 'e' is assigned to but never used
 669   W291 trailing whitespace
 86    W292 no newline at end of file
 1673  W293 blank line contains whitespace
 29    W391 blank line at end of file
-7668
+7739

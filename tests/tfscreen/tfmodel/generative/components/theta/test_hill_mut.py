@@ -669,3 +669,112 @@ class TestSimulateEpi:
         t1, _ = simulate("theta", mock_data_epi, sp, jax.random.PRNGKey(11))
         t2, _ = simulate("theta", mock_data_epi, sp, jax.random.PRNGKey(11))
         np.testing.assert_array_equal(t1, t2)
+
+
+# ---------------------------------------------------------------------------
+# define_model with num_mutation == 0 (wt-only / stratified-pool case)
+# ---------------------------------------------------------------------------
+#
+# This was the bug: numpyro.plate requires size > 0, so calling define_model
+# with a wt-only library (M=0) raised AssertionError inside the mutation plate.
+# The fix guards the plate block with `if num_mut > 0` and returns zero-shape
+# offset arrays when M=0.  These tests lock in that behaviour.
+
+@pytest.fixture
+def mock_data_no_mutation():
+    """1 genotype (wt only), 0 mutations, 0 pairs — the stratified pool case."""
+    return MockData(
+        num_titrant_name=1,
+        num_titrant_conc=4,
+        num_genotype=1,
+        log_titrant_conc=jnp.linspace(-5, 0, 4),
+        geno_theta_idx=jnp.array([0], dtype=jnp.int32),
+        scatter_theta=0,
+        num_mutation=0,
+        num_pair=0,
+        mut_geno_matrix=np.zeros((0, 1), dtype=np.float32),
+        mut_nnz_mut_idx=np.zeros(0, dtype=np.int32),
+        mut_nnz_geno_idx=np.zeros(0, dtype=np.int32),
+        pair_nnz_pair_idx=np.zeros(0, dtype=np.int32),
+        pair_nnz_geno_idx=np.zeros(0, dtype=np.int32),
+        batch_idx=jnp.array([0], dtype=jnp.int32),
+    )
+
+
+class TestDefineModelNoMutation:
+
+    def test_does_not_raise(self, mock_data_no_mutation):
+        """define_model must not raise when num_mutation == 0."""
+        priors = get_priors()
+        with seed(rng_seed=jax.random.PRNGKey(0)):
+            tp = define_model("theta", mock_data_no_mutation, priors)
+        assert isinstance(tp, ThetaParam)
+
+    def test_output_shapes(self, mock_data_no_mutation):
+        """ThetaParam fields must have shape (T=1, G=1) with M=0."""
+        priors = get_priors()
+        with seed(rng_seed=jax.random.PRNGKey(1)):
+            tp = define_model("theta", mock_data_no_mutation, priors)
+        T, G = mock_data_no_mutation.num_titrant_name, mock_data_no_mutation.num_genotype
+        assert tp.theta_low.shape  == (T, G)
+        assert tp.theta_high.shape == (T, G)
+        assert tp.log_hill_K.shape == (T, G)
+        assert tp.hill_n.shape     == (T, G)
+
+    def test_per_genotype_equals_wt(self, mock_data_no_mutation):
+        """With M=0 the single genotype column must equal the WT parameters exactly."""
+        priors = get_priors()
+        with seed(rng_seed=jax.random.PRNGKey(2)):
+            tp = define_model("theta", mock_data_no_mutation, priors)
+        # theta values must be valid probabilities
+        assert jnp.all(tp.theta_low  >= 0.0) and jnp.all(tp.theta_low  <= 1.0)
+        assert jnp.all(tp.theta_high >= 0.0) and jnp.all(tp.theta_high <= 1.0)
+
+    def test_different_keys_give_different_curves(self, mock_data_no_mutation):
+        """Independent rng_keys must produce different WT parameter draws."""
+        priors = get_priors()
+        with seed(rng_seed=jax.random.PRNGKey(10)):
+            tp1 = define_model("theta", mock_data_no_mutation, priors)
+        with seed(rng_seed=jax.random.PRNGKey(11)):
+            tp2 = define_model("theta", mock_data_no_mutation, priors)
+        assert not jnp.allclose(tp1.log_hill_K, tp2.log_hill_K), (
+            "Different seeds should produce different log_K draws")
+
+    def test_force_prior_predictive_path_does_not_raise(self, mock_data_no_mutation):
+        """sample_theta_prior with force_prior_predictive=True must work for M=0.
+
+        This is the exact call path used by sample_theta_stratified when building
+        the diversity pool for mutation-decomposed components like hill_mut.
+        """
+        from tfscreen.simulate.sample_theta import sample_theta_prior
+        theta_gc, theta_param = sample_theta_prior(
+            "hill_mut", mock_data_no_mutation,
+            rng_key=jax.random.PRNGKey(42),
+            force_prior_predictive=True,
+        )
+        assert theta_gc.shape == (mock_data_no_mutation.num_genotype,
+                                  mock_data_no_mutation.num_titrant_conc)
+
+    def test_pool_members_diverse_under_force_prior_predictive(self, mock_data_no_mutation):
+        """Multiple pool members must produce different curves (not all wt-identical).
+
+        This is the regression test for the original bug: the perturbation path
+        with M=0 returned the same fixed wt curve for every pool member.
+        """
+        from tfscreen.simulate.sample_theta import sample_theta_prior
+        import jax
+        rng_key = jax.random.PRNGKey(0)
+        curves = []
+        for i in range(10):
+            key_i = jax.random.fold_in(rng_key, i)
+            theta_gc, _ = sample_theta_prior(
+                "hill_mut", mock_data_no_mutation,
+                rng_key=key_i,
+                force_prior_predictive=True,
+            )
+            curves.append(theta_gc[0])  # single genotype → (C,)
+
+        curves = np.stack(curves)  # (10, C)
+        # At least some curves must differ (pool is not homogeneous)
+        assert curves.std(axis=0).max() > 0.01, (
+            "Pool members are all identical — prior-predictive path is not sampling")

@@ -238,7 +238,7 @@ def plot_pit_histogram(pit_vals, ax=None, title=None, n_bins=10):
             color="steelblue", alpha=0.75, edgecolor="white")
     ax.axhline(1.0, color="firebrick", lw=1.5, ls="--", label="Uniform")
     ax.set_xlim(0, 1)
-    ax.set_ylim(0, 10)
+    ax.set_ylim(0, n_bins)
     ax.set_xlabel("PIT value")
     ax.set_ylabel("Density")
     if title is not None:
@@ -364,7 +364,7 @@ def calibration_summary(true_vals, quantile_matrix, quantile_levels,
     # --- Two-panel PDF ---
     pdf_path = f"{out_prefix}_calibration.pdf"
     try:
-        fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+        fig, axes = plt.subplots(1, 2, figsize=(10, 5))
         hist_title = f"PIT histogram — {label}" if label else "PIT histogram"
         curve_title = f"Calibration curve — {label}" if label else "Calibration curve"
         plot_pit_histogram(pit_vals, ax=axes[0], title=hist_title)

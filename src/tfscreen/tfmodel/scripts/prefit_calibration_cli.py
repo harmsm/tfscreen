@@ -166,37 +166,46 @@ def _intersect_data(growth_df, binding_df):
 
 def _compute_theta_values(orchestrator_cal, binding_df_cal):
     """
-    Build a (num_titrant_name, num_titrant_conc) theta tensor for the
-    simple-theta component of the calibration model.
+    Build a per-genotype ``(T, C, G)`` theta tensor for the simple-theta
+    component of the calibration model.
 
-    Each cell is the inverse-variance weighted mean of ``theta_obs``
-    across the genotypes that contributed observations at that
-    (titrant_name, titrant_conc) cell.  Cells with no usable observations
-    fall back to a plain mean of ``theta_obs``; if that is also empty the
-    cell is set to 0.5 (uninformative midpoint).
+    Each cell ``[i, j, k]`` holds the inverse-variance weighted mean of
+    ``theta_obs`` for titrant_name ``i``, titrant_conc ``j``, and genotype
+    ``k``.  Cells with no usable observations fall back to a plain mean;
+    if that is also empty the cell is set to 0.5 (uninformative midpoint).
 
     The dimension ordering is taken from
     ``orchestrator_cal.binding_tm.tensor_dim_labels`` so the resulting array
-    matches the layout the simple-theta component expects.
+    matches the layout the simple-theta component expects.  The genotype
+    axis ordering mirrors the calibration model's internal genotype index so
+    that ``theta_values[:, :, k]`` is the correct curve for the k-th
+    calibration genotype.
     """
-    tn_idx = orchestrator_cal.binding_tm.tensor_dim_names.index("titrant_name")
-    tc_idx = orchestrator_cal.binding_tm.tensor_dim_names.index("titrant_conc")
+    tn_idx   = orchestrator_cal.binding_tm.tensor_dim_names.index("titrant_name")
+    tc_idx   = orchestrator_cal.binding_tm.tensor_dim_names.index("titrant_conc")
+    geno_idx = orchestrator_cal.binding_tm.tensor_dim_names.index("genotype")
+
     titrant_name_labels = list(orchestrator_cal.binding_tm.tensor_dim_labels[tn_idx])
     titrant_conc_labels = list(orchestrator_cal.binding_tm.tensor_dim_labels[tc_idx])
+    genotype_labels     = list(orchestrator_cal.binding_tm.tensor_dim_labels[geno_idx])
 
     n_name = len(titrant_name_labels)
     n_conc = len(titrant_conc_labels)
-    theta_values = np.full((n_name, n_conc), 0.5, dtype=float)
+    n_geno = len(genotype_labels)
+    theta_values = np.full((n_name, n_conc, n_geno), 0.5, dtype=float)
 
     name_to_i = {str(n): i for i, n in enumerate(titrant_name_labels)}
     conc_to_j = {float(c): j for j, c in enumerate(titrant_conc_labels)}
+    geno_to_k = {str(g): k for k, g in enumerate(genotype_labels)}
 
-    grouped = binding_df_cal.groupby(["titrant_name", "titrant_conc"],
-                                     observed=True)
-    for (tn, tc), grp in grouped:
+    grouped = binding_df_cal.groupby(
+        ["titrant_name", "titrant_conc", "genotype"], observed=True
+    )
+    for (tn, tc, geno), grp in grouped:
         i = name_to_i.get(str(tn))
         j = conc_to_j.get(float(tc))
-        if i is None or j is None:
+        k = geno_to_k.get(str(geno))
+        if i is None or j is None or k is None:
             continue
 
         theta_obs = grp["theta_obs"].to_numpy(dtype=float)
@@ -205,11 +214,11 @@ def _compute_theta_values(orchestrator_cal, binding_df_cal):
                  & (theta_std > 0))
         if valid.any():
             w = 1.0 / np.square(theta_std[valid])
-            theta_values[i, j] = float(np.sum(theta_obs[valid] * w) / np.sum(w))
+            theta_values[i, j, k] = float(np.sum(theta_obs[valid] * w) / np.sum(w))
         else:
             usable = np.isfinite(theta_obs)
             if usable.any():
-                theta_values[i, j] = float(np.mean(theta_obs[usable]))
+                theta_values[i, j, k] = float(np.mean(theta_obs[usable]))
 
     np.clip(theta_values, _THETA_EPS, 1.0 - _THETA_EPS, out=theta_values)
     return jnp.asarray(theta_values, dtype=jnp.float32)

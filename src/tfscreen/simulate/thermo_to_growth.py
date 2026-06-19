@@ -307,6 +307,7 @@ def thermo_to_growth(
     activity_priors_overrides: Optional[dict] = None,
     theta_rescale: str = "passthrough",
     theta_gc_override: Optional[dict] = None,
+    theta_params_override: Optional[dict] = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Generate phenotypes from genotypes via prior-predictive theta sampling.
@@ -393,6 +394,13 @@ def thermo_to_growth(
         prior-predictive sampling but before noise and all downstream
         calculations.  Used by ``library_prediction`` to inject
         stratified theta values for calibration genotypes.
+    theta_params_override : dict[str, dict[str, float]] or None, default None
+        Effective Hill parameters for each overridden genotype.  Keys are
+        genotype strings; values are dicts with keys ``theta_low``,
+        ``theta_high``, ``log_hill_K``, ``hill_n``.  When provided, the
+        corresponding rows in ``parameters_df`` are updated so that the
+        saved CSV reflects what was actually used in the simulation rather
+        than the prior-predictive sample.
 
     Returns
     -------
@@ -626,6 +634,18 @@ def thermo_to_growth(
     _other = [c for c in parameters_df.columns if c not in _front]
     parameters_df = parameters_df[_front + _other]
     parameters_df = set_categorical_genotype(parameters_df)
+
+    # Overwrite theta columns with the effective (post-override) Hill parameters
+    # so that parameters_df reflects what was actually simulated, not the
+    # prior-predictive sample that was later replaced.
+    if theta_params_override:
+        for g, effective in theta_params_override.items():
+            mask = parameters_df["genotype"] == g
+            if not mask.any():
+                continue
+            for col, val in effective.items():
+                if col in parameters_df.columns:
+                    parameters_df.loc[mask, col] = float(val)
 
     print("Done.", flush=True)
 

@@ -227,67 +227,146 @@ class TestIntersectData:
 
 class TestComputeThetaValues:
 
-    def _make_orchestrator_cal(self, titrant_names, titrant_concs):
+    def _make_orchestrator_cal(self, titrant_names, titrant_concs, genotypes):
         """Return a MagicMock with the binding_tm shape used by the helper."""
         orchestrator = MagicMock()
-        # Order matters; the helper reads names then concs by index lookup.
-        orchestrator.binding_tm.tensor_dim_names = ["titrant_name", "titrant_conc"]
-        orchestrator.binding_tm.tensor_dim_labels = [list(titrant_names),
-                                                     list(titrant_concs)]
+        # Order matters; the helper reads names, concs, and genotypes by index.
+        orchestrator.binding_tm.tensor_dim_names = [
+            "titrant_name", "titrant_conc", "genotype"
+        ]
+        orchestrator.binding_tm.tensor_dim_labels = [
+            list(titrant_names),
+            list(titrant_concs),
+            list(genotypes),
+        ]
         return orchestrator
 
-    def test_inverse_variance_weighted_mean(self):
-        orchestrator = self._make_orchestrator_cal(["IPTG"], [1.0])
-        # Two genotypes: theta=0.2 (sigma=0.1) and theta=0.8 (sigma=0.01)
-        # Inverse-variance weights heavily favor the second, so the
-        # consensus should be ~0.8 (not the unweighted 0.5).
+    def test_per_genotype_theta_extracted_correctly(self):
+        """Each genotype must get its own theta value, not the cross-genotype average."""
+        orchestrator = self._make_orchestrator_cal(["IPTG"], [1.0], ["wt", "mut"])
+        # wt has theta=0.8, mut has theta=0.2; output must preserve the distinction.
         binding_df = pd.DataFrame({
             "titrant_name": ["IPTG", "IPTG"],
             "titrant_conc": [1.0, 1.0],
+            "genotype": ["wt", "mut"],
+            "theta_obs": [0.8, 0.2],
+            "theta_std": [0.01, 0.01],
+        })
+        theta = np.asarray(_compute_theta_values(orchestrator, binding_df))
+        assert theta.shape == (1, 1, 2)
+        assert theta[0, 0, 0] > 0.75  # wt ≈ 0.8
+        assert theta[0, 0, 1] < 0.25  # mut ≈ 0.2
+
+    def test_inverse_variance_weighting_within_genotype(self):
+        """Multiple rows for the same genotype/cell must be IVW-averaged."""
+        orchestrator = self._make_orchestrator_cal(["IPTG"], [1.0], ["wt"])
+        # Two replicate measurements: theta=0.2 (noisy) and theta=0.8 (precise).
+        binding_df = pd.DataFrame({
+            "titrant_name": ["IPTG", "IPTG"],
+            "titrant_conc": [1.0, 1.0],
+            "genotype": ["wt", "wt"],
             "theta_obs": [0.2, 0.8],
             "theta_std": [0.1, 0.01],
         })
         theta = np.asarray(_compute_theta_values(orchestrator, binding_df))
-        assert theta.shape == (1, 1)
-        # Closer to 0.8 than to the midpoint 0.5
-        assert theta[0, 0] > 0.7
+        assert theta.shape == (1, 1, 1)
+        # Inverse-variance weighting heavily favours the precise observation.
+        assert theta[0, 0, 0] > 0.7
 
     def test_falls_back_to_plain_mean_when_all_stds_zero(self):
-        orchestrator = self._make_orchestrator_cal(["IPTG"], [1.0])
+        orchestrator = self._make_orchestrator_cal(["IPTG"], [1.0], ["wt"])
         binding_df = pd.DataFrame({
             "titrant_name": ["IPTG", "IPTG"],
             "titrant_conc": [1.0, 1.0],
+            "genotype": ["wt", "wt"],
             "theta_obs": [0.3, 0.7],
             "theta_std": [0.0, 0.0],  # invalid weights → fallback to mean
         })
         theta = np.asarray(_compute_theta_values(orchestrator, binding_df))
-        assert theta[0, 0] == pytest.approx(0.5)
+        assert theta[0, 0, 0] == pytest.approx(0.5)
 
-    def test_unobserved_cell_defaults_to_midpoint(self):
-        orchestrator = self._make_orchestrator_cal(["IPTG"], [0.0, 1.0])
-        # Only the IPTG=1.0 cell is observed.
+    def test_unobserved_genotype_cell_defaults_to_midpoint(self):
+        """A genotype present in labels but absent from binding_df gets 0.5."""
+        orchestrator = self._make_orchestrator_cal(["IPTG"], [1.0], ["wt", "missing"])
         binding_df = pd.DataFrame({
             "titrant_name": ["IPTG"],
             "titrant_conc": [1.0],
+            "genotype": ["wt"],
             "theta_obs": [0.9],
             "theta_std": [0.01],
         })
         theta = np.asarray(_compute_theta_values(orchestrator, binding_df))
-        assert theta[0, 0] == pytest.approx(0.5)
-        assert theta[0, 1] > 0.85
+        assert theta.shape == (1, 1, 2)
+        assert theta[0, 0, 0] > 0.85   # wt observed
+        assert theta[0, 0, 1] == pytest.approx(0.5)  # "missing" → midpoint
+
+    def test_unobserved_concentration_cell_defaults_to_midpoint(self):
+        """A concentration present in labels but absent from binding_df gets 0.5."""
+        orchestrator = self._make_orchestrator_cal(["IPTG"], [0.0, 1.0], ["wt"])
+        # Only the IPTG=1.0 cell is observed.
+        binding_df = pd.DataFrame({
+            "titrant_name": ["IPTG"],
+            "titrant_conc": [1.0],
+            "genotype": ["wt"],
+            "theta_obs": [0.9],
+            "theta_std": [0.01],
+        })
+        theta = np.asarray(_compute_theta_values(orchestrator, binding_df))
+        assert theta.shape == (1, 2, 1)
+        assert theta[0, 0, 0] == pytest.approx(0.5)  # conc=0.0 not observed
+        assert theta[0, 1, 0] > 0.85                 # conc=1.0 observed
+
+    def test_output_shape(self):
+        """Output shape must be (n_titrant_name, n_titrant_conc, n_genotype)."""
+        orchestrator = self._make_orchestrator_cal(
+            ["IPTG", "arabinose"], [0.0, 0.01, 1.0], ["wt", "A1T", "G2P"]
+        )
+        binding_df = pd.DataFrame({
+            "titrant_name": ["IPTG"] * 3,
+            "titrant_conc": [0.0, 0.01, 1.0],
+            "genotype": ["wt", "A1T", "G2P"],
+            "theta_obs": [0.9, 0.5, 0.1],
+            "theta_std": [0.01, 0.01, 0.01],
+        })
+        theta = np.asarray(_compute_theta_values(orchestrator, binding_df))
+        assert theta.shape == (2, 3, 3)
 
     def test_clip_to_open_interval(self):
-        orchestrator = self._make_orchestrator_cal(["IPTG"], [0.0, 1.0])
+        orchestrator = self._make_orchestrator_cal(["IPTG"], [0.0, 1.0], ["wt"])
         binding_df = pd.DataFrame({
             "titrant_name": ["IPTG", "IPTG"],
             "titrant_conc": [0.0, 1.0],
+            "genotype": ["wt", "wt"],
             "theta_obs": [0.0, 1.0],
             "theta_std": [0.01, 0.01],
         })
         theta = np.asarray(_compute_theta_values(orchestrator, binding_df))
+        assert theta.shape == (1, 2, 1)
         # Zero and one would blow up the downstream logit; expect clipping.
-        assert theta[0, 0] > 0.0
-        assert theta[0, 1] < 1.0
+        assert theta[0, 0, 0] > 0.0
+        assert theta[0, 1, 0] < 1.0
+
+    def test_genotype_ordering_matches_labels(self):
+        """Values must be placed at the index matching the genotype label order."""
+        orchestrator = self._make_orchestrator_cal(
+            ["IPTG"], [1.0], ["wt", "A1T", "G2P"]
+        )
+        binding_df = pd.DataFrame({
+            "titrant_name": ["IPTG", "IPTG", "IPTG"],
+            "titrant_conc": [1.0, 1.0, 1.0],
+            # Deliberately supply rows in a different order than the labels.
+            "genotype": ["G2P", "wt", "A1T"],
+            "theta_obs": [0.1, 0.9, 0.5],
+            "theta_std": [0.01, 0.01, 0.01],
+        })
+        theta = np.asarray(_compute_theta_values(orchestrator, binding_df))
+        assert theta.shape == (1, 1, 3)
+        # wt is index 0 in labels → theta ≈ 0.9
+        assert theta[0, 0, 0] > 0.85
+        # A1T is index 1 → theta ≈ 0.5
+        assert 0.45 < theta[0, 0, 1] < 0.55
+        # G2P is index 2 → theta ≈ 0.1
+        assert theta[0, 0, 2] < 0.15
 
 
 # ---------------------------------------------------------------------------
@@ -793,7 +872,8 @@ class TestInjectCalibrationPriors:
 
     def test_theta_values_are_set(self):
         orchestrator_cal, orchestrator_prod = self._make_models()
-        theta_values = np.array([[0.1, 0.9]])
+        # theta_values is now (T, C, G); _inject_calibration_priors is shape-agnostic.
+        theta_values = np.array([[[0.1, 0.9], [0.3, 0.7]]])  # shape (1, 2, 2)
         _inject_calibration_priors(orchestrator_cal, orchestrator_prod, theta_values)
         result = orchestrator_cal._priors.theta.theta_values
         assert np.allclose(np.asarray(result), theta_values)
@@ -842,7 +922,7 @@ class TestRunPrefitCalibrationOrchestration:
         mocker.patch(
             "tfscreen.tfmodel.scripts"
             ".prefit_calibration_cli._compute_theta_values",
-            return_value=np.array([[0.5]]),
+            return_value=np.array([[[0.5]]]),  # shape (T=1, C=1, G=1)
         )
         mocker.patch(
             "tfscreen.tfmodel.scripts"

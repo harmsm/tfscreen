@@ -534,6 +534,280 @@ def test_thermo_to_growth_dk_geno_zero_false_passes_none(
 
 
 # ============================================================================
+# test thermo_to_growth — theta_gc_override
+# ============================================================================
+
+class TestThetaGcOverride:
+    """theta_gc_override must replace theta rows for the named genotypes."""
+
+    def test_overridden_genotype_has_new_theta(
+        self, mocker, test_genotypes, test_sample_df, simple_growth_params
+    ):
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.zeros((3, 2))          # all-zero baseline
+        sim_data = _make_sim_data_mock(test_genotypes, concs)
+        _patch_thermo_deps(mocker, test_genotypes, test_sample_df, theta_gc)
+
+        override_values = np.array([0.8, 0.9])
+        _, genotype_theta_df, _ = thermo_to_growth(
+            genotypes=test_genotypes,
+            sim_data=sim_data,
+            sample_df=test_sample_df,
+            theta_component="mock",
+            theta_rng_key=0,
+            growth_params=simple_growth_params,
+            theta_gc_override={"A1B": override_values},
+        )
+
+        a1b_rows = genotype_theta_df[genotype_theta_df["genotype"] == "A1B"]
+        a1b_rows = a1b_rows.sort_values("titrant_conc").reset_index(drop=True)
+        np.testing.assert_allclose(a1b_rows["theta"].values, override_values)
+
+    def test_non_overridden_genotypes_unchanged(
+        self, mocker, test_genotypes, test_sample_df, simple_growth_params
+    ):
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.zeros((3, 2))
+        sim_data = _make_sim_data_mock(test_genotypes, concs)
+        _patch_thermo_deps(mocker, test_genotypes, test_sample_df, theta_gc)
+
+        _, genotype_theta_df, _ = thermo_to_growth(
+            genotypes=test_genotypes,
+            sim_data=sim_data,
+            sample_df=test_sample_df,
+            theta_component="mock",
+            theta_rng_key=0,
+            growth_params=simple_growth_params,
+            theta_gc_override={"A1B": np.array([0.8, 0.9])},
+        )
+
+        for geno in ("wt", "A1B/C2D"):
+            rows = genotype_theta_df[genotype_theta_df["genotype"] == geno]
+            np.testing.assert_array_equal(rows["theta"].values, 0.0)
+
+    def test_none_override_is_noop(
+        self, mocker, test_genotypes, test_sample_df, simple_growth_params
+    ):
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.full((3, 2), 0.3)
+        sim_data = _make_sim_data_mock(test_genotypes, concs)
+        _patch_thermo_deps(mocker, test_genotypes, test_sample_df, theta_gc)
+
+        _, genotype_theta_df, _ = thermo_to_growth(
+            genotypes=test_genotypes,
+            sim_data=sim_data,
+            sample_df=test_sample_df,
+            theta_component="mock",
+            theta_rng_key=0,
+            growth_params=simple_growth_params,
+            theta_gc_override=None,
+        )
+
+        np.testing.assert_array_equal(genotype_theta_df["theta"].values, 0.3)
+
+    def test_empty_override_is_noop(
+        self, mocker, test_genotypes, test_sample_df, simple_growth_params
+    ):
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.full((3, 2), 0.3)
+        sim_data = _make_sim_data_mock(test_genotypes, concs)
+        _patch_thermo_deps(mocker, test_genotypes, test_sample_df, theta_gc)
+
+        _, genotype_theta_df, _ = thermo_to_growth(
+            genotypes=test_genotypes,
+            sim_data=sim_data,
+            sample_df=test_sample_df,
+            theta_component="mock",
+            theta_rng_key=0,
+            growth_params=simple_growth_params,
+            theta_gc_override={},
+        )
+
+        np.testing.assert_array_equal(genotype_theta_df["theta"].values, 0.3)
+
+    def test_unknown_genotype_in_override_is_ignored(
+        self, mocker, test_genotypes, test_sample_df, simple_growth_params
+    ):
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.zeros((3, 2))
+        sim_data = _make_sim_data_mock(test_genotypes, concs)
+        _patch_thermo_deps(mocker, test_genotypes, test_sample_df, theta_gc)
+
+        _, genotype_theta_df, _ = thermo_to_growth(
+            genotypes=test_genotypes,
+            sim_data=sim_data,
+            sample_df=test_sample_df,
+            theta_component="mock",
+            theta_rng_key=0,
+            growth_params=simple_growth_params,
+            theta_gc_override={"NOTINGENO": np.array([0.99, 0.99])},
+        )
+
+        np.testing.assert_array_equal(genotype_theta_df["theta"].values, 0.0)
+
+
+# ============================================================================
+# test thermo_to_growth — theta_params_override
+# ============================================================================
+
+def _patch_thermo_deps_with_param(mocker, theta_gc, theta_param):
+    """Like _patch_thermo_deps but accepts a custom theta_param object."""
+    mocker.patch(
+        "tfscreen.simulate.thermo_to_growth.sample_theta_prior",
+        return_value=(theta_gc, theta_param),
+    )
+    mocker.patch(
+        "tfscreen.simulate.thermo_to_growth.set_categorical_genotype",
+        side_effect=lambda df: df,
+    )
+
+
+class TestThetaParamsOverride:
+    """theta_params_override must update Hill columns in parameters_df."""
+
+    def _make_hill_param(self, n_geno):
+        """Return a _MockThetaParam2D with shape (1, n_geno) and known values."""
+        rng = np.random.default_rng(5)
+        return _MockThetaParam2D(
+            theta_low=rng.random((1, n_geno)),
+            theta_high=rng.random((1, n_geno)),
+            log_hill_K=rng.standard_normal((1, n_geno)),
+            hill_n=np.abs(rng.standard_normal((1, n_geno))) + 0.5,
+        )
+
+    def test_overridden_genotype_columns_updated(
+        self, mocker, test_genotypes, test_sample_df, simple_growth_params
+    ):
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.full((3, 2), 0.5)
+        theta_param = self._make_hill_param(3)
+        _patch_thermo_deps_with_param(mocker, theta_gc, theta_param)
+        sim_data = _make_sim_data_mock(test_genotypes, concs)
+
+        override = {"A1B": {"theta_low": 0.99, "theta_high": 0.01,
+                            "log_hill_K": -4.0, "hill_n": 2.0}}
+        _, _, parameters_df = thermo_to_growth(
+            genotypes=test_genotypes,
+            sim_data=sim_data,
+            sample_df=test_sample_df,
+            theta_component="mock",
+            theta_rng_key=0,
+            growth_params=simple_growth_params,
+            theta_params_override=override,
+        )
+
+        row = parameters_df[parameters_df["genotype"] == "A1B"].iloc[0]
+        assert np.isclose(row["theta_low"],  0.99)
+        assert np.isclose(row["theta_high"], 0.01)
+        assert np.isclose(row["log_hill_K"], -4.0)
+        assert np.isclose(row["hill_n"],      2.0)
+
+    def test_non_overridden_genotypes_retain_original_values(
+        self, mocker, test_genotypes, test_sample_df, simple_growth_params
+    ):
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.full((3, 2), 0.5)
+        theta_param = self._make_hill_param(3)
+        sim_data = _make_sim_data_mock(test_genotypes, concs)
+
+        # First: baseline call with no override to get reference values
+        _patch_thermo_deps_with_param(mocker, theta_gc, theta_param)
+        _, _, baseline_df = thermo_to_growth(
+            genotypes=test_genotypes,
+            sim_data=sim_data,
+            sample_df=test_sample_df,
+            theta_component="mock",
+            theta_rng_key=0,
+            growth_params=simple_growth_params,
+        )
+        wt_theta_low_baseline = float(
+            baseline_df[baseline_df["genotype"] == "wt"]["theta_low"].iloc[0]
+        )
+        double_theta_low_baseline = float(
+            baseline_df[baseline_df["genotype"] == "A1B/C2D"]["theta_low"].iloc[0]
+        )
+
+        # Second: override call for A1B only
+        _patch_thermo_deps_with_param(mocker, theta_gc, theta_param)
+        _, _, parameters_df = thermo_to_growth(
+            genotypes=test_genotypes,
+            sim_data=sim_data,
+            sample_df=test_sample_df,
+            theta_component="mock",
+            theta_rng_key=0,
+            growth_params=simple_growth_params,
+            theta_params_override={"A1B": {"theta_low": 0.99}},
+        )
+
+        wt_row = parameters_df[parameters_df["genotype"] == "wt"].iloc[0]
+        assert np.isclose(wt_row["theta_low"], wt_theta_low_baseline)
+        double_row = parameters_df[parameters_df["genotype"] == "A1B/C2D"].iloc[0]
+        assert np.isclose(double_row["theta_low"], double_theta_low_baseline)
+
+    def test_none_override_is_noop(
+        self, mocker, test_genotypes, test_sample_df, simple_growth_params
+    ):
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.full((3, 2), 0.5)
+        theta_param = self._make_hill_param(3)
+        sim_data = _make_sim_data_mock(test_genotypes, concs)
+
+        _patch_thermo_deps_with_param(mocker, theta_gc, theta_param)
+        _, _, parameters_df_no_override = thermo_to_growth(
+            genotypes=test_genotypes,
+            sim_data=sim_data,
+            sample_df=test_sample_df,
+            theta_component="mock",
+            theta_rng_key=0,
+            growth_params=simple_growth_params,
+            rng=np.random.default_rng(0),
+            theta_params_override=None,
+        )
+
+        _patch_thermo_deps_with_param(mocker, theta_gc, theta_param)
+        _, _, parameters_df_empty = thermo_to_growth(
+            genotypes=test_genotypes,
+            sim_data=sim_data,
+            sample_df=test_sample_df,
+            theta_component="mock",
+            theta_rng_key=0,
+            growth_params=simple_growth_params,
+            rng=np.random.default_rng(0),
+            theta_params_override={},
+        )
+
+        pd.testing.assert_frame_equal(
+            parameters_df_no_override.reset_index(drop=True),
+            parameters_df_empty.reset_index(drop=True),
+        )
+
+    def test_unknown_column_in_override_is_silently_skipped(
+        self, mocker, test_genotypes, test_sample_df, simple_growth_params
+    ):
+        concs = np.array([10.0, 100.0])
+        theta_gc = np.full((3, 2), 0.5)
+        theta_param = self._make_hill_param(3)
+        _patch_thermo_deps_with_param(mocker, theta_gc, theta_param)
+        sim_data = _make_sim_data_mock(test_genotypes, concs)
+
+        # "nonexistent_col" is not in parameters_df; must not raise
+        _, _, parameters_df = thermo_to_growth(
+            genotypes=test_genotypes,
+            sim_data=sim_data,
+            sample_df=test_sample_df,
+            theta_component="mock",
+            theta_rng_key=0,
+            growth_params=simple_growth_params,
+            theta_params_override={"A1B": {"theta_low": 0.99,
+                                           "nonexistent_col": 42.0}},
+        )
+
+        assert "nonexistent_col" not in parameters_df.columns
+        row = parameters_df[parameters_df["genotype"] == "A1B"].iloc[0]
+        assert np.isclose(row["theta_low"], 0.99)
+
+
+# ============================================================================
 # test _sample_horseshoe_activity
 # ============================================================================
 

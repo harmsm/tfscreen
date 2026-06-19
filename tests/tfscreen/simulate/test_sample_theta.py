@@ -220,41 +220,54 @@ def test_greedy_maximin_all_when_n_exceeds_pool():
 # sample_theta_stratified
 # ----------------------------------------------------------------------------
 
-def _make_stratified_mock_module(pool_size, n_binding_concs, n_growth_concs):
+def _make_stratified_mock_module(n_binding_concs, n_growth_concs):
     """
     Return a mock theta module for sample_theta_stratified tests.
 
-    run_model is called twice (once for binding sim_data, once for growth
-    sim_data).  We return distinct matrices so tests can verify which call
-    produced which output.
+    sample_theta_stratified now calls sample_theta_prior 2*pool_size times:
+    pool_size calls at binding concentrations, then pool_size calls at growth
+    concentrations, alternating binding/growth per pool member.  Each call
+    returns a (1, C) array for the single-genotype sim_data.
     """
     mock_module = MagicMock()
     mock_module.get_hyperparameters.return_value = {}
     mock_module.ModelPriors.return_value = MagicMock()
     mock_module.define_model.return_value = MagicMock(name="theta_param")
 
-    # Alternating call sides: binding first, then growth.
     rng = np.random.default_rng(42)
-    binding_theta = rng.uniform(0, 1, (1, n_binding_concs, pool_size))
-    growth_theta  = rng.uniform(0, 1, (1, n_growth_concs,  pool_size))
-    mock_module.run_model.side_effect = [binding_theta, growth_theta]
-    mock_module._binding_theta = binding_theta
-    mock_module._growth_theta  = growth_theta
+
+    def run_model_side_effect(theta_param, sim_data):
+        # Detect which sim_data is being used by its concentration count
+        n_conc = sim_data.num_titrant_conc
+        return rng.uniform(0, 1, (1, n_conc, 1))
+
+    mock_module.run_model.side_effect = run_model_side_effect
     return mock_module
 
 
+def _make_stratified_sim_data(n_conc):
+    sd = MagicMock()
+    sd.num_genotype = 1
+    sd.num_titrant_conc = n_conc
+    return sd
+
+
 def test_stratified_output_shapes():
-    pool_size, n_select, n_binding_concs, n_growth_concs = 30, 4, 6, 3
-    mock_module = _make_stratified_mock_module(pool_size, n_binding_concs, n_growth_concs)
+    pool_size, n_select, n_binding_concs, n_growth_concs = 8, 3, 6, 3
+    mock_module = _make_stratified_mock_module(n_binding_concs, n_growth_concs)
 
     binding_sample_df = pd.DataFrame({"titrant_conc": np.linspace(0, 1, n_binding_concs)})
     growth_sample_df  = pd.DataFrame({"titrant_conc": np.linspace(0, 1, n_growth_concs)})
 
+    def build_sim_data_side(library_df, sample_df, thermo_data=None, skip_pairs=False):
+        n_conc = len(sample_df["titrant_conc"].unique())
+        return _make_stratified_sim_data(n_conc)
+
     with patch("tfscreen.simulate.sample_theta.model_registry",
                {"theta": {"hill_geno": mock_module}}), \
          patch("tfscreen.simulate.sample_theta.handlers"), \
-         patch("tfscreen.simulate.sample_theta.build_sim_data", return_value=MagicMock(
-             num_genotype=pool_size, num_titrant_conc=n_binding_concs)):
+         patch("tfscreen.simulate.sample_theta.build_sim_data",
+               side_effect=build_sim_data_side):
         binding_gc, growth_gc = sample_theta_stratified(
             "hill_geno", binding_sample_df, growth_sample_df,
             rng_key=0, n_select=n_select, pool_size=pool_size,
@@ -275,26 +288,67 @@ def test_stratified_raises_when_n_select_exceeds_pool():
         )
 
 
-def test_stratified_selected_rows_come_from_pool():
-    """Selected binding rows must be a subset of the pool's binding rows."""
-    pool_size, n_select, n_binding_concs, n_growth_concs = 20, 3, 4, 2
-    mock_module = _make_stratified_mock_module(pool_size, n_binding_concs, n_growth_concs)
+def test_stratified_pool_size_calls():
+    """sample_theta_prior must be called 2*pool_size times (once per member per conc set)."""
+    pool_size, n_binding_concs, n_growth_concs = 5, 4, 2
+    mock_module = _make_stratified_mock_module(n_binding_concs, n_growth_concs)
 
     binding_sample_df = pd.DataFrame({"titrant_conc": np.linspace(0, 1, n_binding_concs)})
     growth_sample_df  = pd.DataFrame({"titrant_conc": [0.0, 1.0]})
 
+    def build_sim_data_side(library_df, sample_df, thermo_data=None, skip_pairs=False):
+        return _make_stratified_sim_data(len(sample_df["titrant_conc"].unique()))
+
     with patch("tfscreen.simulate.sample_theta.model_registry",
                {"theta": {"hill_geno": mock_module}}), \
          patch("tfscreen.simulate.sample_theta.handlers"), \
-         patch("tfscreen.simulate.sample_theta.build_sim_data", return_value=MagicMock(
-             num_genotype=pool_size, num_titrant_conc=n_binding_concs)):
-        binding_gc, growth_gc = sample_theta_stratified(
+         patch("tfscreen.simulate.sample_theta.build_sim_data",
+               side_effect=build_sim_data_side):
+        sample_theta_stratified(
             "hill_geno", binding_sample_df, growth_sample_df,
-            rng_key=0, n_select=n_select, pool_size=pool_size,
+            rng_key=0, n_select=2, pool_size=pool_size,
         )
 
-    # Each selected binding row must exist in the full pool binding matrix
-    pool_binding = mock_module._binding_theta[0].T   # (pool_size, n_binding_concs)
-    for row in binding_gc:
-        match = np.any(np.all(np.isclose(pool_binding, row[None, :]), axis=1))
-        assert match, "Selected binding row not found in pool"
+    assert mock_module.run_model.call_count == 2 * pool_size
+
+
+def test_stratified_ignores_simulate_path():
+    """sample_theta_stratified must use prior-predictive even when simulate() is present.
+
+    Mutation-decomposed components (e.g. hill_mut) with a wt-only pool library
+    have M=0 mutations and their simulate() path produces zero deltas for every
+    pool member.  The prior-predictive path must be used instead so that WT-level
+    parameters are sampled independently per pool member.
+    """
+    pool_size, n_binding_concs, n_growth_concs = 4, 3, 2
+    mock_module = _make_stratified_mock_module(n_binding_concs, n_growth_concs)
+
+    # Add a real simulate() function — stratified path must NOT call it.
+    simulate_called = []
+
+    def fake_simulate(name, data, sim_priors, rng_key):
+        simulate_called.append(True)
+        return np.ones((data.num_genotype, data.num_titrant_conc)) * 0.5, MagicMock()
+
+    mock_module.simulate = fake_simulate
+    mock_module.get_sim_hyperparameters.return_value = {}
+    mock_module.SimPriors.return_value = MagicMock()
+
+    binding_sample_df = pd.DataFrame({"titrant_conc": np.linspace(0, 1, n_binding_concs)})
+    growth_sample_df  = pd.DataFrame({"titrant_conc": [0.0, 1.0]})
+
+    def build_sim_data_side(library_df, sample_df, thermo_data=None, skip_pairs=False):
+        return _make_stratified_sim_data(len(sample_df["titrant_conc"].unique()))
+
+    with patch("tfscreen.simulate.sample_theta.model_registry",
+               {"theta": {"hill_geno": mock_module}}), \
+         patch("tfscreen.simulate.sample_theta.handlers"), \
+         patch("tfscreen.simulate.sample_theta.build_sim_data",
+               side_effect=build_sim_data_side):
+        sample_theta_stratified(
+            "hill_geno", binding_sample_df, growth_sample_df,
+            rng_key=0, n_select=2, pool_size=pool_size,
+        )
+
+    assert not simulate_called, "simulate() must not be called from sample_theta_stratified"
+    assert mock_module.run_model.call_count == 2 * pool_size
