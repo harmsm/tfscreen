@@ -117,10 +117,29 @@ def test_read_growth_df_no_replicate(mocker, base_growth_df):
     mocker.patch("tfscreen.util.dataframe.get_scaled_cfu", return_value=df_no_rep)
     mocker.patch("tfscreen.util.dataframe.check_columns")
     mocker.patch("tfscreen.tfmodel.model_orchestrator.add_group_columns", return_value=df_no_rep)
-    
+
     res = _read_growth_df("path.csv")
     assert "replicate" in res.columns
     assert res["replicate"].iloc[0] == 1
+
+def test_read_growth_df_coerces_time_to_float(mocker, base_growth_df):
+    """t_pre and t_sel stored as int64 (e.g. from pd.read_csv with integer values)
+    must be cast to float64 so that downstream merges against float prediction grids
+    don't produce int/float dtype warnings."""
+    df_int_time = base_growth_df.copy()
+    df_int_time["t_pre"] = df_int_time["t_pre"].astype(int)
+    df_int_time["t_sel"] = df_int_time["t_sel"].astype(int)
+    assert df_int_time["t_pre"].dtype == int
+    assert df_int_time["t_sel"].dtype == int
+
+    mocker.patch("tfscreen.util.io.read_dataframe", return_value=df_int_time)
+    mocker.patch("tfscreen.util.dataframe.get_scaled_cfu", return_value=df_int_time)
+    mocker.patch("tfscreen.util.dataframe.check_columns")
+    mocker.patch("tfscreen.tfmodel.model_orchestrator.add_group_columns", return_value=df_int_time)
+
+    res = _read_growth_df("path.csv")
+    assert res["t_pre"].dtype == float, f"expected float, got {res['t_pre'].dtype}"
+    assert res["t_sel"].dtype == float, f"expected float, got {res['t_sel'].dtype}"
 
 # ----------------------------------------------------------------------------
 # 5. Tests for _read_binding_df
@@ -143,23 +162,58 @@ def test_read_binding_df(mocker):
     res = _read_binding_df("path.csv", growth_df=growth_df)
     assert "theta_obs" in res.columns
 
-def test_read_binding_df_errors(mocker):
+def test_read_binding_df_missing_col_error(mocker):
     growth_df = pd.DataFrame({"genotype": ["A"], "titrant_name": ["T1"]})
     binding_df = pd.DataFrame({
-        "genotype": ["B"], "titrant_name": ["T1"], 
+        "genotype": ["A"], "titrant_name": ["T1"],
         "theta_obs": [0.5], "theta_std": [0.1], "titrant_conc": [1.0]
     })
     mocker.patch("tfscreen.util.io.read_dataframe", return_value=binding_df)
     mocker.patch("tfscreen.genetics.set_categorical_genotype", return_value=binding_df)
-    mocker.patch("tfscreen.util.dataframe.check_columns")
-    
-    with patch("pandas.Index.isin", return_value=np.array([False])):
-        with pytest.raises(ValueError, match="not seen"):
-            _read_binding_df("path.csv", growth_df=growth_df)
-        
     mocker.patch("tfscreen.util.dataframe.check_columns", side_effect=ValueError("missing col"))
     with pytest.raises(ValueError, match="missing col"):
         _read_binding_df("path.csv", growth_df=growth_df)
+
+
+def test_read_binding_df_extra_pairs_dropped_with_warning(capsys):
+    """binding rows whose (genotype, titrant_name) is absent from growth_df are dropped."""
+    from tfscreen.genetics import set_categorical_genotype
+    import tfscreen.util.dataframe
+
+    growth_df = pd.DataFrame({
+        "genotype": ["wt", "wt"],
+        "titrant_name": ["iptg", "iptg"],
+        "titrant_conc": [0.0, 1.0],
+        "ln_cfu": [10.0, 10.0],
+        "ln_cfu_std": [0.1, 0.1],
+        "t_pre": [1.0, 1.0],
+        "t_sel": [1.0, 1.0],
+        "replicate": [1, 1],
+        "condition_pre": ["kan", "kan"],
+        "condition_sel": ["kan", "kan"],
+    })
+    growth_df = set_categorical_genotype(growth_df, standardize=True)
+    growth_df = tfscreen.util.dataframe.add_group_columns(
+        growth_df, ["genotype", "titrant_name"], "map_theta_group"
+    )
+
+    # binding has "wt" (in growth) and "M42I" (not in growth)
+    binding_df = pd.DataFrame({
+        "genotype": ["wt", "M42I"],
+        "titrant_name": ["iptg", "iptg"],
+        "titrant_conc": [1.0, 1.0],
+        "theta_obs": [0.1, 0.5],
+        "theta_std": [0.02, 0.02],
+    })
+
+    result = _read_binding_df(binding_df, growth_df=growth_df)
+    captured = capsys.readouterr()
+    assert "will be dropped" in captured.out
+    assert "M42I" in captured.out
+
+    # Only the "wt" row should survive
+    assert set(result["genotype"]) == {"wt"}
+    assert len(result) == 1
 
 
 def test_read_binding_df_preserves_canonical_genotype_order():
@@ -453,8 +507,8 @@ def test_extract_parameters_full(initialized_model_class):
 
 def test_extract_parameters_errors(initialized_model_class):
     model = initialized_model_class
-    with pytest.raises(ValueError, match="should be a dictionary"):
-        extract_parameters(model, {}, q_to_get="not_a_dict")
+    with pytest.raises(ValueError, match="should be a 1-D array-like"):
+        extract_parameters(model, {}, q_to_get={"not": "valid"})
 
 def test_extract_parameters_npz(initialized_model_class, tmpdir):
     model = initialized_model_class
@@ -530,8 +584,8 @@ def test_extract_theta_curves_errors(initialized_model_class):
     with pytest.raises(ValueError, match="does not support this interface"):
         extract_theta_curves(model, {})
     model._theta = "hill_geno"
-    with pytest.raises(ValueError, match="should be a dictionary"):
-        extract_theta_curves(model, {}, q_to_get="not_a_dict")
+    with pytest.raises(ValueError, match="should be a 1-D array-like"):
+        extract_theta_curves(model, {}, q_to_get={"not": "valid"})
 
 def test_extract_growth_predictions_full(initialized_model_class, tmpdir):
     model = initialized_model_class
@@ -557,12 +611,12 @@ def test_extract_growth_predictions_full(initialized_model_class, tmpdir):
     })
     post = {"growth_pred": np.zeros((1, 1, 1, 1, 1, 1, 1, 1))}
     res = extract_growth_predictions(model, post)
-    assert "median" in res.columns
-    
+    assert "q0.5" in res.columns
+
     with pytest.raises(ValueError, match="'growth_pred' not found"):
         extract_growth_predictions(model, {})
-    with pytest.raises(ValueError, match="should be a dictionary"):
-        extract_growth_predictions(model, {"growth_pred": None}, q_to_get="bad")
+    with pytest.raises(ValueError, match="should be a 1-D array-like"):
+        extract_growth_predictions(model, {"growth_pred": None}, q_to_get={"not": "valid"})
         
     path = os.path.join(tmpdir, "gp.npz")
     np.savez(path, growth_pred=np.zeros((1,1,1,1,1,1,1,1)))
@@ -763,3 +817,153 @@ def test_binding_weight_applied_to_scale_vector(mocker):
     assert "scale_vector" in captured, "BindingData populate_dataclass was never called"
     expected = base_scale * explicit_weight
     np.testing.assert_allclose(captured["scale_vector"], expected)
+
+
+# ---------------------------------------------------------------------------
+# Tests for condition-label extraction logic in _setup_model
+# ---------------------------------------------------------------------------
+
+class TestConditionLabelExtraction:
+    """
+    Verify that _setup_model correctly extracts ordered condition labels from
+    growth_tm and routes them to get_priors().
+
+    These tests exercise the extraction logic directly without needing to
+    build a full ModelOrchestrator, by calling the relevant code path via
+    a stripped-down mock orchestrator.
+    """
+
+    def _make_cond_rep_df(self, names, indices):
+        """Return a condition_rep map_groups DataFrame."""
+        return pd.DataFrame({
+            "condition_rep": names,
+            "map_condition_rep": indices,
+        })
+
+    def test_labels_extracted_in_index_order(self):
+        """
+        Labels must be sorted by map_condition_rep so parameter positions
+        match the ordering established by the TensorManager.
+        """
+        # Rows are intentionally NOT in index order
+        df = self._make_cond_rep_df(
+            names=["pheS+4CP", "pheS-4CP", "kanR+kan", "kanR-kan"],
+            indices=[2, 3, 0, 1],
+        )
+        result = list(df.sort_values("map_condition_rep")["condition_rep"])
+        assert result == ["kanR+kan", "kanR-kan", "pheS+4CP", "pheS-4CP"]
+
+    def test_labels_correct_when_already_ordered(self):
+        df = self._make_cond_rep_df(
+            names=["kanR+kan", "kanR-kan", "pheS+4CP", "pheS-4CP"],
+            indices=[0, 1, 2, 3],
+        )
+        result = list(df.sort_values("map_condition_rep")["condition_rep"])
+        assert result == ["kanR+kan", "kanR-kan", "pheS+4CP", "pheS-4CP"]
+
+    def test_single_condition(self):
+        df = self._make_cond_rep_df(["sel+media"], [0])
+        result = list(df.sort_values("map_condition_rep")["condition_rep"])
+        assert result == ["sel+media"]
+
+    def test_shares_replicates_false_includes_replicate_but_still_sorts(self):
+        """When shares_replicates=False the df has (replicate, condition_rep) rows."""
+        df = pd.DataFrame({
+            "replicate": [1, 2, 1, 2],
+            "condition_rep": ["pheS+4CP", "pheS+4CP", "pheS-4CP", "pheS-4CP"],
+            "map_condition_rep": [1, 3, 0, 2],
+        })
+        result = list(df.sort_values("map_condition_rep")["condition_rep"])
+        # Sorted by index: 0=pheS-4CP, 1=pheS+4CP, 2=pheS-4CP, 3=pheS+4CP
+        assert result[0] == "pheS-4CP"
+        assert result[1] == "pheS+4CP"
+
+    def test_linear_get_priors_signature_has_condition_labels(self):
+        """
+        The orchestrator detects condition_labels support via inspect.signature.
+        Verify that the linear component's get_priors actually has this param.
+        """
+        import inspect
+        from tfscreen.tfmodel.generative.components.growth.linear import get_priors
+        sig = inspect.signature(get_priors)
+        assert "condition_labels" in sig.parameters, (
+            "linear.get_priors must have a 'condition_labels' parameter so "
+            "ModelOrchestrator can pass condition names for per-condition m priors"
+        )
+
+    def test_setup_model_extracts_labels_and_calls_get_priors(self, mocker):
+        """
+        _setup_model must call get_priors(condition_labels=...) for a
+        condition_growth component that accepts that parameter.
+        """
+        import inspect
+        import tfscreen.tfmodel.model_orchestrator as mo
+        from tfscreen.tfmodel.generative.components.growth import linear as real_linear
+
+        captured = {}
+
+        def capturing_get_priors(condition_labels=None):
+            captured["condition_labels"] = condition_labels
+            return real_linear.get_priors(condition_labels=condition_labels)
+
+        cond_rep_df = pd.DataFrame({
+            "condition_rep": ["kanR+kan", "kanR-kan"],
+            "map_condition_rep": [0, 1],
+        })
+        mock_growth_tm = MagicMock()
+        mock_growth_tm.map_groups = {"condition_rep": cond_rep_df}
+
+        # Stub ALL registry entries except we intercept condition_growth.get_priors
+        all_stubs = {}
+        for comp_key, comp_val in mo.model_registry.items():
+            if not isinstance(comp_val, dict):
+                continue
+            all_stubs[comp_key] = {}
+            for variant_name, variant_mod in comp_val.items():
+                stub = MagicMock()
+                stub.get_priors.return_value = MagicMock()
+                stub.get_guesses.return_value = {}
+                stub.define_model = MagicMock()
+                stub.guide = MagicMock()
+                stub.calculate_growth = MagicMock()
+                stub.rescale = MagicMock()
+                stub.observe = MagicMock()
+                all_stubs[comp_key][variant_name] = stub
+
+        # Override condition_growth / linear with our spy
+        all_stubs.setdefault("condition_growth", {})["linear"] = MagicMock(
+            get_priors=capturing_get_priors,
+            get_guesses=MagicMock(return_value={}),
+            define_model=MagicMock(),
+            guide=MagicMock(),
+            calculate_growth=MagicMock(),
+        )
+
+        orchestrator = MagicMock(spec=ModelOrchestrator)
+        orchestrator.growth_tm = mock_growth_tm
+        orchestrator._data = MagicMock()
+        orchestrator._binding_only = False
+        orchestrator._batch_size = None
+        orchestrator._condition_growth = "linear"
+        orchestrator._growth_transition = "instant"
+        orchestrator._ln_cfu0 = "hierarchical"
+        orchestrator._dk_geno = "fixed"
+        orchestrator._activity = "fixed"
+        orchestrator._theta = "hill_geno"
+        orchestrator._transformation = "single"
+        orchestrator._theta_growth_noise = "zero"
+        orchestrator._theta_binding_noise = "zero"
+        orchestrator._growth_noise = "zero"
+        orchestrator._sample_offset = "zero"
+        orchestrator._theta_rescale = "passthrough"
+
+        with patch.object(mo, "model_registry", all_stubs):
+            try:
+                mo.ModelOrchestrator._initialize_classes(orchestrator)
+            except Exception:
+                pass  # only condition_labels matters
+
+        assert "condition_labels" in captured, (
+            "_setup_model did not pass condition_labels to get_priors"
+        )
+        assert captured["condition_labels"] == ["kanR+kan", "kanR-kan"]

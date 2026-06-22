@@ -2,7 +2,6 @@ import os
 import dill
 from tfscreen.tfmodel.configuration_io import read_configuration
 from tfscreen.tfmodel.inference.run_inference import RunInference
-from tfscreen.tfmodel.scripts.fit_model_cli import _run_svi
 from tfscreen.util.cli.generalized_main import generalized_main
 
 
@@ -23,8 +22,8 @@ def sample_posterior(config_file,
        writes posterior predictives.
     2. MAP checkpoint (AutoDelta guide): forms a Laplace (Gaussian) approximation
        via the Hessian of the log-joint at the MAP point, then draws samples.
-    3. SVI checkpoint (component guide): resumes the fitted guide with 0 additional
-       epochs and draws posterior samples directly.
+    3. SVI checkpoint (component guide): restores the fitted variational state
+       and draws posterior samples directly from the guide.
 
     The .h5 file written by this command can be passed directly to
     tfs-predict-growth, tfs-predict-theta, and tfs-extract-params to obtain
@@ -63,8 +62,8 @@ def sample_posterior(config_file,
             "Run tfs-fit-model first to produce a checkpoint."
         )
 
-    gm, init_params = read_configuration(config_file)
-    ri = RunInference(gm, seed)
+    orchestrator, init_params = read_configuration(config_file)
+    ri = RunInference(orchestrator, seed)
 
     with open(checkpoint_file, "rb") as f:
         chk_data = dill.load(f)
@@ -95,30 +94,18 @@ def sample_posterior(config_file,
                 hessian_chunk_size=hessian_chunk_size,
             )
         else:
-            # SVI checkpoint: resume with 0 epochs, draw samples directly.
+            # SVI checkpoint: rebuild the guide object then restore the saved
+            # variational state directly — no optimization loop needed.
             print("Detected SVI checkpoint. Drawing variational posterior samples...", flush=True)
-            _run_svi(ri,
-                     init_params=init_params,
-                     checkpoint_file=checkpoint_file,
-                     out_prefix=ri_prefix,
-                     max_num_epochs=0,
-                     num_posterior_samples=num_posterior_samples,
-                     sampling_batch_size=sampling_batch_size,
-                     forward_batch_size=forward_batch_size,
-                     always_get_posterior=True,
-                     # Convergence / optimizer kwargs are unused at 0 epochs but
-                     # required by _run_svi's signature; use neutral defaults.
-                     adam_step_size=1e-3,
-                     adam_final_step_size=1e-6,
-                     adam_clip_norm=1.0,
-                     elbo_num_particles=2,
-                     convergence_tolerance=1e-5,
-                     convergence_window=10,
-                     patience=10,
-                     convergence_check_interval=2,
-                     checkpoint_interval=10,
-                     init_param_jitter=0.0,
-                     epoch_checkpoint_interval=None)
+            svi_obj, svi_state = ri.restore_svi_from_checkpoint(
+                checkpoint_file, init_params=init_params
+            )
+            ri.get_posteriors(svi=svi_obj,
+                              svi_state=svi_state,
+                              out_prefix=ri_prefix,
+                              num_posterior_samples=num_posterior_samples,
+                              sampling_batch_size=sampling_batch_size,
+                              forward_batch_size=forward_batch_size)
 
     src = f"{ri_prefix}_posterior.h5"
     dst = f"{out_prefix}.h5"

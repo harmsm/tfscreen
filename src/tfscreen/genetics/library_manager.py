@@ -250,15 +250,15 @@ class LibraryManager:
         # -- Validate the sequence/library specification --
         
         # Load wildtype seq
-        wt_seq = str(run_config["wt_seq"]).strip()
+        wt_seq = "".join(str(run_config["wt_seq"]).split())
         _check_char(wt_seq,"wt_seq",self.standard_bases)
-        
+
         # Load degenerate sites
-        degen_sites = str(run_config["degen_sites"]).strip()
+        degen_sites = "".join(str(run_config["degen_sites"]).split())
         _check_char(degen_sites,"degen_sites",self.degen_plus_dot)
-        
+
         # Load sub-libraries
-        sub_libraries = str(run_config["sub_libraries"]).strip()
+        sub_libraries = "".join(str(run_config["sub_libraries"]).split())
         _check_contiguous_lib_blocks(sub_libraries)
         libraries_seen = set(list(sub_libraries)) - {"."}
         
@@ -420,7 +420,9 @@ class LibraryManager:
         end_idx = indexes[-1] + 1
     
         # Get the degenerate sites and wildtype sequences for this sub-library
-        lib_seq = "".join(self.degen_sites[start_idx:end_idx])
+        lib_seq = "".join(d if d != '.' else w
+                          for d, w in zip(self.degen_sites[start_idx:end_idx],
+                                          self.wt_seq[start_idx:end_idx]))
         wt_seq = "".join(self.wt_seq[start_idx:end_idx])
     
         # Extract the region of the library that encodes the degenerate library,
@@ -734,11 +736,14 @@ class LibraryManager:
 
         spiked_seqs = []
         for seq in list_of_seqs:
-            _check_char(seq,"spiked seq",self.standard_bases)
+            seq = "".join(str(seq).split())
+            _check_char(seq,"spiked seq",self.standard_plus_dot)
             if len(seq) != len(self.wt_seq):
                 raise ValueError(
                     f"spiked seq {seq} is not the same length as the library"
                 )
+            seq = "".join(w if s == "." else s
+                          for s, w in zip(seq, self.wt_seq))
             spiked_seqs.append(seq)
         
         spiked_aa = self._convert_to_aa(spiked_seqs)

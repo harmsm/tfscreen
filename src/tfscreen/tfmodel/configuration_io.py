@@ -5,6 +5,16 @@ import numpy as np
 import jax.numpy as jnp
 import warnings
 from tfscreen.__version__ import __version__
+from tfscreen.util.validation import check_unknown_keys
+
+# All recognized top-level keys for a tfmodel config file.
+TFMODEL_KNOWN_KEYS = frozenset({
+    "tfscreen_version",
+    "data",
+    "components",
+    "priors_file",
+    "guesses_file",
+})
 
 def _extract_scalars(obj, prefix=""):
     """Recursively extract scalar values from PriorsClass."""
@@ -103,16 +113,17 @@ def _update_dataclass(dc, prefix, flat_dict):
                 return dataclasses.replace(dc, **updates)
     return dc
 
-def write_configuration(gm,
+def write_configuration(orchestrator,
                         out_prefix,
                         growth_df_path=None,
-                        binding_df_path=None):
+                        binding_df_path=None,
+                        presplit_df_path=None):
     """
     Write model configuration and extracted priors/guesses to files.
 
     Parameters
     ----------
-    gm : ModelOrchestrator
+    orchestrator : ModelOrchestrator
         Initialized ModelOrchestrator object.
     out_prefix : str
         Root filename for output files.
@@ -126,12 +137,12 @@ def write_configuration(gm,
     guesses_list = []
 
     # Extract priors
-    priors_raw = _extract_scalars(gm.priors)
+    priors_raw = _extract_scalars(orchestrator.priors)
     for k, v in priors_raw.items():
         priors_list.append(pd.DataFrame({"parameter": [k], "value": [v]}))
 
     # Extract guesses
-    for k, v in gm.init_params.items():
+    for k, v in orchestrator.init_params.items():
         if not hasattr(v, 'shape') or len(v.shape) == 0:
             guesses_list.append(pd.DataFrame({"parameter": [k], "value": [v]}))
 
@@ -144,11 +155,13 @@ def write_configuration(gm,
         data_paths["growth"] = growth_df_path
     if binding_df_path is not None:
         data_paths["binding"] = binding_df_path
+    if presplit_df_path is not None:
+        data_paths["presplit"] = presplit_df_path
 
     config = {
         "tfscreen_version": __version__,
         "data": data_paths,
-        "components": gm.settings,
+        "components": orchestrator.settings,
         "priors_file": os.path.basename(priors_path),
         "guesses_file": os.path.basename(guesses_path)
     }
@@ -159,7 +172,7 @@ def write_configuration(gm,
     print(f"Wrote configuration to {yaml_path}")
 
     # Process array guesses and any others
-    tm = gm.growth_tm
+    tm = orchestrator.growth_tm
     if tm is not None:
         cond_rep_map = tm.map_groups.get("condition_rep", pd.DataFrame())
         geno_map = tm.map_groups.get("genotype", pd.DataFrame())
@@ -171,7 +184,7 @@ def write_configuration(gm,
         theta_map = pd.DataFrame()
         ln_cfu0_map = pd.DataFrame()
 
-    for k, v in gm.init_params.items():
+    for k, v in orchestrator.init_params.items():
         if not hasattr(v, 'shape') or len(v.shape) == 0:
             continue
             
@@ -248,7 +261,7 @@ def read_configuration(config_file):
 
     Returns
     -------
-    gm : ModelOrchestrator
+    orchestrator : ModelOrchestrator
         Initialized ModelOrchestrator object.
     init_params : dict
         Dictionary of initial parameters for the model.
@@ -260,10 +273,13 @@ def read_configuration(config_file):
     with open(config_file, "r") as f:
         config = yaml.safe_load(f)
 
+    check_unknown_keys(config, TFMODEL_KNOWN_KEYS, label="tfmodel config")
+
     # Check sanity of format and read in data paths and components
     if "data" in config and "components" in config:
         growth_df_path = config["data"].get("growth")
         binding_df_path = config["data"].get("binding")
+        presplit_df_path = config["data"].get("presplit")
         settings = config["components"]
     else:
         raise ValueError(f"Configuration file '{config_file}' has an unrecognized format.")
@@ -273,10 +289,14 @@ def read_configuration(config_file):
             warnings.warn(f"Configuration file version {config['tfscreen_version']} does not match current tfscreen version {__version__}")
 
     batch_size = settings.pop("batch_size", None)
+    # presplit_df is a data path, not a component setting; pop it if it
+    # ended up in settings (older configs that serialised it there).
+    settings.pop("presplit_df", None)
 
-    gm = ModelOrchestrator(growth_df_path,
+    orchestrator = ModelOrchestrator(growth_df_path,
                      binding_df_path,
                      batch_size=batch_size,
+                     presplit_df=presplit_df_path,
                      **settings)
 
     # Update Priors from CSV
@@ -296,8 +316,8 @@ def read_configuration(config_file):
         except (ValueError, TypeError):
             flat_priors[k] = v
     
-    new_priors = _update_dataclass(gm.priors, "", flat_priors)
-    gm._priors = new_priors
+    new_priors = _update_dataclass(orchestrator.priors, "", flat_priors)
+    orchestrator._priors = new_priors
 
     # Construct init_params from CSV
     guesses_file = config.get("guesses_file")
@@ -316,10 +336,19 @@ def read_configuration(config_file):
             sorted_group = df_group.sort_values("flat_index") if "flat_index" in df_group else df_group
             val_array = sorted_group["value"].values
             
-            if param_name in gm.init_params:
-                orig_val = gm.init_params[param_name]
+            if param_name in orchestrator.init_params:
+                orig_val = orchestrator.init_params[param_name]
                 if hasattr(orig_val, 'shape') and orig_val.shape != ():
                     orig_shape = orig_val.shape
+                    if val_array.size != np.prod(orig_shape):
+                        raise ValueError(
+                            f"Parameter '{param_name}' has {val_array.size} "
+                            f"{'value' if val_array.size == 1 else 'values'} in "
+                            f"'{guesses_file}' but the current model expects shape "
+                            f"{orig_shape} ({int(np.prod(orig_shape))} values).  "
+                            f"The guesses file is likely stale — regenerate it with "
+                            f"tfs-configure-model and re-run tfs-prefit-calibration."
+                        )
                     init_params[param_name] = jnp.array(val_array.reshape(orig_shape))
                 else:
                     init_params[param_name] = float(val_array[0])
@@ -327,11 +356,11 @@ def read_configuration(config_file):
             init_params[param_name] = float(df_group["value"].iloc[0])
 
     missing_params = []
-    for k in gm.init_params.keys():
+    for k in orchestrator.init_params.keys():
         if k not in init_params:
             missing_params.append(k)
 
     if len(missing_params) > 0:
         raise ValueError(f"Missing initial guesses for parameters: {missing_params}")
 
-    return gm, init_params
+    return orchestrator, init_params

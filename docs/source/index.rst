@@ -8,9 +8,11 @@ tfscreen
    :maxdepth: 2
    :caption: Contents:
 
+   quickstart
    simulation
    process-raw
    analysis
+   summarize-fit
    grid
    ligandmpnn-features
 
@@ -29,6 +31,12 @@ Experimentally, `tfscreen` uses a strategy combining commercial oligo pools with
 The thermodynamic observable is operator occupancy (*θ*), inferred from *E. coli* growth using a dual-marker selection scheme. The TF operator is placed upstream of two conditional markers with inverted logic: *kanR* confers kanamycin resistance, so growth is *enhanced* when it is expressed; *pheS** confers 4-chloro-L-phenylalanine sensitivity, so growth is *reduced* when it is expressed. A shift in occupancy therefore produces opposing shifts in growth rate for the two selection conditions. This signal is detected by growing a library of TF variants in different effector/selection combinations, then following variant frequency over time by direct sequencing.
 
 The model in ``tfscreen.tfmodel`` is designed to jointly capture high-throughput growth data and low-throughput binding data, learning the quantitative relationship between operator occupancy and growth rate in the process.
+
+Quick Start
+-----------
+New to ``tfscreen``?  The :doc:`quickstart` page walks through a complete
+simulate-and-analyze run using the bundled example in
+``examples/simulate-and-analyze/``.
 
 Simulation
 ----------

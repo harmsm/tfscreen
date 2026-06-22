@@ -48,6 +48,7 @@ def check_component_compatibility(condition_growth_model, theta_rescale_model):
 
 def configure_model(binding_df,
                     growth_df=None,
+                    presplit_df=None,
                     out_prefix="tfs_configure",
                     condition_growth_model="linear",
                     growth_transition_model="instant",
@@ -187,8 +188,9 @@ def configure_model(binding_df,
         check_component_compatibility(condition_growth_model, theta_rescale_model)
 
     # Initialize model to build mappings and get guesses
-    gm = ModelOrchestrator(growth_df,
+    orchestrator = ModelOrchestrator(growth_df,
                      binding_df,
+                     presplit_df=presplit_df,
                      binding_only=binding_only,
                      condition_growth=condition_growth_model,
                      growth_transition=growth_transition_model,
@@ -211,15 +213,18 @@ def configure_model(binding_df,
     # Write the model configuration to a file. This includes the model component
     # names, the data file paths, and the parameter guesses/priors.
     growth_path = None if binding_only else (growth_df if isinstance(growth_df, str) else "growth.csv")
-    write_configuration(gm=gm,
+    presplit_path = presplit_df if isinstance(presplit_df, str) else None
+    write_configuration(orchestrator=orchestrator,
                         out_prefix=out_prefix,
                         growth_df_path=growth_path,
-                        binding_df_path=binding_df if isinstance(binding_df, str) else "binding.csv")
+                        binding_df_path=binding_df if isinstance(binding_df, str) else "binding.csv",
+                        presplit_df_path=presplit_path)
 
 def main():
     return generalized_main(configure_model,
                             manual_arg_types={"binding_df":str,
                                               "growth_df":str,
+                                              "presplit_df":str,
                                               "spiked":list,
                                               "thermo_data":str,
                                               "batch_size":int,

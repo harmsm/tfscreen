@@ -1,5 +1,5 @@
 import pytest
-from tfscreen.util.validation.check import check_number
+from tfscreen.util.validation.check import check_number, check_unknown_keys
 
 # ----------------------------------------------------------------------------
 # test check_number
@@ -40,3 +40,36 @@ def test_check_number_failures(value, kwargs, error, match):
     """Tests that check_number correctly raises errors for invalid inputs."""
     with pytest.raises(error, match=match):
         check_number(value, **kwargs)
+
+
+# ----------------------------------------------------------------------------
+# test check_unknown_keys
+# ----------------------------------------------------------------------------
+
+ALLOWED = frozenset({"alpha", "beta", "gamma"})
+
+
+def test_check_unknown_keys_all_valid():
+    check_unknown_keys({"alpha": 1, "beta": 2}, ALLOWED)
+
+
+def test_check_unknown_keys_empty_config():
+    check_unknown_keys({}, ALLOWED)
+
+
+def test_check_unknown_keys_single_unknown():
+    with pytest.raises(ValueError, match="typo"):
+        check_unknown_keys({"alpha": 1, "typo": 99}, ALLOWED)
+
+
+def test_check_unknown_keys_multiple_unknown():
+    with pytest.raises(ValueError) as exc_info:
+        check_unknown_keys({"alpha": 1, "bad1": 2, "bad2": 3}, ALLOWED)
+    msg = str(exc_info.value)
+    assert "bad1" in msg
+    assert "bad2" in msg
+
+
+def test_check_unknown_keys_label_in_message():
+    with pytest.raises(ValueError, match="my_label"):
+        check_unknown_keys({"unknown": 1}, ALLOWED, label="my_label")

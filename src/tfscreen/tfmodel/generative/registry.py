@@ -21,6 +21,7 @@ from .components.activity import horseshoe_geno as activity_horseshoe
 from .components.activity import hierarchical_mut as activity_mut_decomp
 from .components.activity import horseshoe_mut as activity_horseshoe_mut
 
+from .components.theta import _simple as theta_simple
 from .components.theta import categorical_geno as theta_cat
 from .components.theta import hill_geno as theta_hill
 from .components.theta import hill_mut as theta_hill_mut
@@ -87,6 +88,7 @@ model_registry = {
         "logit": theta_rescale_logit,
     },
     "theta":{
+        "_simple":theta_simple,
         "categorical_geno":theta_cat,
         "hill_geno":theta_hill,
         "hill_mut":theta_hill_mut,

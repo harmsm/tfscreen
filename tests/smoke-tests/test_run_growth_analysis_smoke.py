@@ -7,11 +7,11 @@ from tfscreen.tfmodel.scripts.fit_model_cli import fit_model
 from tfscreen.tfmodel.scripts.sample_posterior_cli import sample_posterior
 
 
-def _build_config(gm, tmpdir, growth_smoke_csv, binding_smoke_csv):
-    """Write a config file for gm and return its path."""
+def _build_config(orchestrator, tmpdir, growth_smoke_csv, binding_smoke_csv):
+    """Write a config file for orchestrator and return its path."""
     config_root = os.path.join(tmpdir, "smoke")
     write_configuration(
-        gm=gm,
+        orchestrator=orchestrator,
         out_prefix=config_root,
         growth_df_path=str(growth_smoke_csv),
         binding_df_path=str(binding_smoke_csv),
@@ -26,7 +26,7 @@ def test_run_growth_analysis_smoke(growth_smoke_csv, binding_smoke_csv, tmpdir):
     out_prefix = os.path.join(tmpdir, "run_smoke")
     
     # 1. Initialize a model and write its configuration
-    gm = ModelOrchestrator(
+    orchestrator = ModelOrchestrator(
         growth_df=growth_smoke_csv,
         binding_df=binding_smoke_csv,
         condition_growth="linear",
@@ -37,7 +37,7 @@ def test_run_growth_analysis_smoke(growth_smoke_csv, binding_smoke_csv, tmpdir):
     
     config_root = os.path.join(tmpdir, "smoke")
     write_configuration(
-        gm=gm,
+        orchestrator=orchestrator,
         out_prefix=config_root,
         growth_df_path=str(growth_smoke_csv),
         binding_df_path=str(binding_smoke_csv)
@@ -54,16 +54,22 @@ def test_run_growth_analysis_smoke(growth_smoke_csv, binding_smoke_csv, tmpdir):
         analysis_method="svi",
         out_prefix=out_prefix,
         max_num_epochs=1,
+        forward_batch_size=10,
+    )
+
+    sample_posterior(
+        config_file=config_file,
+        checkpoint_file=f"{out_prefix}_checkpoint.pkl",
+        out_prefix=f"{out_prefix}_posterior",
         num_posterior_samples=5,
         sampling_batch_size=5,
         forward_batch_size=10,
-        always_get_posterior=True
     )
-    
+
     # 3. Verify outputs
     posterior_file = f"{out_prefix}_posterior.h5"
     assert os.path.exists(posterior_file)
-    
+
     # Load and check the saved file
     with h5py.File(posterior_file, 'r') as data:
         assert "growth_pred" in data
@@ -79,7 +85,7 @@ def test_run_growth_analysis_nuts_smoke(growth_smoke_csv, binding_smoke_csv, tmp
     - a posterior HDF5 is written with the expected keys
     - a checkpoint pkl is written containing 'mcmc_samples'
     """
-    gm = ModelOrchestrator(
+    orchestrator = ModelOrchestrator(
         growth_df=growth_smoke_csv,
         binding_df=binding_smoke_csv,
         condition_growth="linear",
@@ -87,7 +93,7 @@ def test_run_growth_analysis_nuts_smoke(growth_smoke_csv, binding_smoke_csv, tmp
         theta="hill_geno",
         batch_size=None,
     )
-    config_file = _build_config(gm, tmpdir, growth_smoke_csv, binding_smoke_csv)
+    config_file = _build_config(orchestrator, tmpdir, growth_smoke_csv, binding_smoke_csv)
     assert os.path.exists(config_file)
 
     out_prefix = os.path.join(tmpdir, "nuts_smoke")
@@ -134,7 +140,7 @@ def test_run_growth_analysis_nuts_posterior_smoke(growth_smoke_csv, binding_smok
     Runs a tiny NUTS chain, then re-generates posteriors from the checkpoint
     and verifies that the output HDF5 is recreated correctly.
     """
-    gm = ModelOrchestrator(
+    orchestrator = ModelOrchestrator(
         growth_df=growth_smoke_csv,
         binding_df=binding_smoke_csv,
         condition_growth="linear",
@@ -142,7 +148,7 @@ def test_run_growth_analysis_nuts_posterior_smoke(growth_smoke_csv, binding_smok
         theta="hill_geno",
         batch_size=None,
     )
-    config_file = _build_config(gm, tmpdir, growth_smoke_csv, binding_smoke_csv)
+    config_file = _build_config(orchestrator, tmpdir, growth_smoke_csv, binding_smoke_csv)
 
     # Step 1: run NUTS to produce a checkpoint
     nuts_root = os.path.join(tmpdir, "nuts_for_post")

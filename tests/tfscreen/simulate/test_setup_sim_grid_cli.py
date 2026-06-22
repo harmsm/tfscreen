@@ -24,7 +24,7 @@ def base_config(tmp_path):
         "reading_frame": 0,
         "observable_calculator": "lac",
         "tube_noise_sigma": 0.01,
-        "random_seed": None,
+        "seed": None,
     }
     p = tmp_path / "simulate_config.yaml"
     p.write_text(yaml.dump(cfg))
@@ -151,8 +151,8 @@ simulate:
 
   - name: seed
     variants:
-      - random_seed: 0
-      - random_seed: 42
+      - seed: 0
+      - seed: 42
 """
     grid_path = tmp_path / "grid.yaml"
     grid_path.write_text(grid)

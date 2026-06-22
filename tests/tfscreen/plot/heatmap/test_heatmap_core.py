@@ -641,10 +641,24 @@ class TestHeatmap:
             "format_axis": mocker.patch("tfscreen.plot.heatmap.heatmap_core._format_axis"),
             "colorbar": mocker.patch("matplotlib.figure.Figure.colorbar")
         }
-        # The collection needs to be a mock that can be added to an ax
+        # The collection needs to be a mock that can be added to an ax.
+        # get_transform().contains_branch_separately() must return a 2-tuple so
+        # matplotlib's _update_collection_limits can unpack (x_is_data, y_is_data).
+        # The method was misspelled in matplotlib <3.10 as "seperately"; cover both.
         mock_p_collection = MagicMock(spec=PatchCollection)
-        mock_p_collection.get_transform().contains_branch_seperately.return_value = (True, True)
-        mock_p_collection.get_offset_transform().contains_branch_seperately.return_value = (True, True)
+        mock_transform = MagicMock()
+        mock_transform.contains_branch_separately.return_value = (True, True)
+        mock_transform.contains_branch_seperately.return_value = (True, True)
+        mock_p_collection.get_transform.return_value = mock_transform
+        mock_p_collection.get_offset_transform.return_value = mock_transform
+        # _sticky_edges is an instance attribute (set in Artist.__init__) so it
+        # is absent from a class-spec'd mock; set it explicitly with the shape
+        # matplotlib expects: an object with .x and .y list attributes.
+        mock_sticky = MagicMock()
+        mock_sticky.x = []
+        mock_sticky.y = []
+        mock_p_collection._sticky_edges = mock_sticky
+        mock_p_collection.sticky_edges = mock_sticky
         mocks["build_heatmap_collection"].return_value = mock_p_collection
         return mocks
 

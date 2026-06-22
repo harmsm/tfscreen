@@ -53,8 +53,15 @@ conditions present in both the growth and binding data.
 
 After convergence the script updates the production ``{out_prefix}_priors.csv``
 and ``{out_prefix}_guesses.csv`` files in place (a ``.bak`` backup is written
-first), giving the full production fit a warm start. Diagnostic PDFs (one per
-genotype) and a ``{out_prefix}_calib_stats.json`` file are also written.
+first), giving the full production fit a warm start.
+
+Diagnostic artefacts from the calibration MAP run are also written (default
+prefix ``tfs_prefit``):
+
+* ``tfs_prefit_params.npz`` — MAP point estimates in constrained space.
+* ``tfs_prefit_checkpoint.pkl`` — optimizer checkpoint (can be passed to
+  ``--checkpoint_file`` to resume an interrupted calibration run).
+* ``tfs_prefit_losses.txt`` — per-epoch loss history.
 
 .. code-block:: bash
 
@@ -139,9 +146,32 @@ writes one CSV per parameter group.
 
 Outputs (default ``--out_prefix tfs_params``):
 
-* ``tfs_params_activity.csv`` — per-genotype TF activity *A* with posterior quantiles
-* ``tfs_params_theta.csv`` — inferred occupancy parameters (Hill *Kd*, *n*, etc.)
-* Additional CSVs depending on the components selected during configuration.
+* ``tfs_params_log_hill_K.csv`` — per-genotype log₁₀(*Kd*) with posterior quantiles.
+* ``tfs_params_theta_low.csv``, ``tfs_params_theta_high.csv`` — per-genotype
+  lower and upper occupancy plateaux.
+* ``tfs_params_dk_geno.csv`` — per-genotype pleiotropic growth effect.
+* Additional CSVs depending on the components selected during configuration
+  (e.g. ``tfs_params_d_log_hill_K.csv`` for per-mutation effects when using
+  ``hill_mut``; ``tfs_params_epi_*.csv`` for epistasis terms when
+  ``--epistasis`` is set).
+
+**Quantile columns**
+
+Each CSV contains metadata columns (typically ``genotype`` and
+``titrant_name``) followed by 17 quantile columns named ``q{level}``:
+
+.. code-block:: text
+
+    q0.001  q0.005  q0.01  q0.025  q0.05  q0.1  q0.159  q0.25
+    q0.5    q0.75   q0.841 q0.9    q0.95  q0.975 q0.99  q0.995  q0.999
+
+``q0.5`` is the posterior median (the recommended point estimate).  ``q0.025``
+and ``q0.975`` span the 95% credible interval; ``q0.159`` and ``q0.841``
+span the ±1 σ interval under a normal approximation.
+
+When ``tfs-extract-params`` is given a MAP checkpoint (``.pkl``) instead of
+a posterior file, only a single ``q0.5`` column is written (the MAP point
+estimate, not a true posterior quantile).
 
 Step 6: Predict Growth (``tfs-predict-growth``)
 ------------------------------------------------
@@ -205,6 +235,22 @@ Output (default ``--out_prefix tfs_cat_response``):
 
 * ``tfs_cat_response.csv`` — one row per (genotype, titrant_name) with
   ``best_model``, AIC weights, and fitted parameters for every model.
+
+Step 9: Summarise Fit (``tfs-summarize-fit``)
+----------------------------------------------
+
+Collects the outputs of the completed run, computes prediction quality
+statistics, and writes diagnostic plots and tables to a ``summary/``
+subdirectory.  It can be run after Steps 5–7 are complete and does not
+require the full posterior file to be retained.
+
+.. code-block:: bash
+
+    tfs-summarize-fit out/
+
+For a full guide to every output file — including how to read the theta
+correlation plots, calibration curves, and parameter-recovery scatter
+plots — see :doc:`summarize-fit`.
 
 ---
 

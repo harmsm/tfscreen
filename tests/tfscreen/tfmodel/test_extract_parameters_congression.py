@@ -59,18 +59,18 @@ def test_extract_parameters_congression(mock_model_congression, mock_posteriors_
     lam_df = params["lam"]
     assert len(lam_df) == 1
     assert lam_df.iloc[0]["parameter"] == "lam"
-    assert lam_df.iloc[0]["median"] == 1.2
+    assert lam_df.iloc[0]["q0.5"] == 1.2
     
     # Check mu
     mu_df = params["mu"]
     assert len(mu_df) == 2
     assert set(mu_df["titrant_conc"]) == {0.0, 1.0}
-    assert np.allclose(mu_df["median"], 0.5)
+    assert np.allclose(mu_df["q0.5"], 0.5)
     
     # Check sigma
     sigma_df = params["sigma"]
     assert len(sigma_df) == 2
-    assert np.allclose(sigma_df["median"], 0.1)
+    assert np.allclose(sigma_df["q0.5"], 0.1)
 
 def test_extract_parameters_no_congression(mock_model_congression):
     """Test that congression parameters are NOT extracted when transformation is none."""

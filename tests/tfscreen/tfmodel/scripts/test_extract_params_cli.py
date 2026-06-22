@@ -112,14 +112,15 @@ class TestExtractParamsCheckpoint:
         assert os.path.exists(f"{out_prefix}_activity.csv")
 
     def test_passes_point_est_q_to_get(self, tmp_path):
+        """q_to_get=[0.5] is passed to extract_parameters for MAP checkpoints."""
         model = ExtractModel(num_genotype=4)
         ckpt_path = _make_map_checkpoint(tmp_path, model, step=100)
         out_prefix = str(tmp_path / "out")
         captured = {}
 
-        def fake_extract(gm, posteriors, q_to_get=None):
+        def fake_extract(orchestrator, posteriors, q_to_get=None):
             captured["q_to_get"] = q_to_get
-            return {"activity": pd.DataFrame({"genotype": ["wt"], "point_est": [0.5]})}
+            return {"activity": pd.DataFrame({"genotype": ["wt"], "q0.5": [0.5]})}
 
         fake_gm = FakeTFModel(model)
         with patch(
@@ -133,14 +134,14 @@ class TestExtractParamsCheckpoint:
         ):
             extract_params("cfg.yaml", ckpt_path, out_prefix=out_prefix)
 
-        assert captured["q_to_get"] == {"point_est": 0.5}
+        assert captured["q_to_get"] == [0.5]
 
     def test_posteriors_have_leading_sample_dim(self, tmp_path):
         model = ExtractModel(num_genotype=4)
         ckpt_path = _make_map_checkpoint(tmp_path, model, step=100)
         captured = {}
 
-        def fake_extract(gm, posteriors, q_to_get=None):
+        def fake_extract(orchestrator, posteriors, q_to_get=None):
             captured["posteriors"] = posteriors
             return {"activity": pd.DataFrame({"genotype": ["wt"], "point_est": [0.5]})}
 
@@ -175,7 +176,7 @@ class TestExtractParamsPosterior:
         with h5py.File(posterior_file, "w") as f:
             f.create_dataset("dummy_param", data=np.ones((10, 4)))
 
-        def fake_extract(gm, posteriors, q_to_get=None):
+        def fake_extract(orchestrator, posteriors, q_to_get=None):
             captured["q_to_get"] = q_to_get
             return {"activity": pd.DataFrame({"genotype": ["wt"], "median": [0.5]})}
 

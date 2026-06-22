@@ -14,24 +14,25 @@ from tfscreen.tfmodel.scripts.configure_model_cli import (
 from tfscreen.tfmodel.scripts.fit_model_cli import fit_model
 from tfscreen.tfmodel.configuration_io import (
     read_configuration,
-    _update_dataclass
+    _update_dataclass,
+    TFMODEL_KNOWN_KEYS,
 )
 
 @pytest.fixture
-def mock_gm(mocker):
-    mock_gm_class = mocker.patch("tfscreen.tfmodel.scripts.configure_model_cli.ModelOrchestrator")
-    mock_gm_inst = mock_gm_class.return_value
+def mock_orchestrator(mocker):
+    mock_orchestrator_class = mocker.patch("tfscreen.tfmodel.scripts.configure_model_cli.ModelOrchestrator")
+    mock_orchestrator_inst = mock_orchestrator_class.return_value
     
     # Mock settings
-    mock_gm_inst.settings = {"batch_size": 128, "theta": "hill_geno"}
+    mock_orchestrator_inst.settings = {"batch_size": 128, "theta": "hill_geno"}
     
     # Mock priors
     mock_priors = MagicMock()
     mock_priors.val = 1.0
-    mock_gm_inst.priors = mock_priors
+    mock_orchestrator_inst.priors = mock_priors
     
     # Mock init_params
-    mock_gm_inst.init_params = {
+    mock_orchestrator_inst.init_params = {
         "scalar_p": 0.5,
         "arr_p": np.array([1.0, 2.0]),
         "cond_p": np.array([0.1]),
@@ -48,12 +49,12 @@ def mock_gm(mocker):
         "theta": pd.DataFrame({"titrant_name": ["T1"], "titrant_conc": [0.1], "genotype": ["G1"], "map_theta": [0]}),
         "ln_cfu0": pd.DataFrame({"replicate": ["R1"], "condition_pre": ["CP1"], "genotype": ["G1"], "map_ln_cfu0": [0]})
     }
-    mock_gm_inst.growth_tm = mock_tm
+    mock_orchestrator_inst.growth_tm = mock_tm
     
-    return mock_gm_class, mock_gm_inst
+    return mock_orchestrator_class, mock_orchestrator_inst
 
-def test_configure_growth_analysis_coverage(mock_gm, tmpdir):
-    _, mock_gm_inst = mock_gm
+def test_configure_growth_analysis_coverage(mock_orchestrator, tmpdir):
+    _, mock_orchestrator_inst = mock_orchestrator
     out_prefix = os.path.join(tmpdir, "test")
     
     # Mock priors with dict and dataclass members for coverage
@@ -65,10 +66,10 @@ def test_configure_growth_analysis_coverage(mock_gm, tmpdir):
     mock_priors.dc = mock_sub
     mock_priors.d = {"k": 2.0, "arr": np.zeros((2,))}
     mock_priors.scalar = 3.0
-    mock_gm_inst.priors = mock_priors
+    mock_orchestrator_inst.priors = mock_priors
     
     # Add some specific parameter names to trigger branch coverage
-    mock_gm_inst.init_params = {
+    mock_orchestrator_inst.init_params = {
         "scalar": 1.0,
         "condition_growth_offset": np.array([0.5]),
         "theta_logit_low": np.array([0.6]),
@@ -115,17 +116,17 @@ def test_read_configuration_logic(tmpdir, mocker):
         "flat_index": [0, 0, 0]
     }).to_csv(guesses_path, index=False)
     
-    mock_gm_class = mocker.patch("tfscreen.tfmodel.configuration_io.ModelOrchestrator")
-    mock_gm_inst = mock_gm_class.return_value
-    mock_gm_inst.init_params = {"param1": 0.0, "param2": jnp.zeros((1,)), "param3": 0.0}
+    mock_orchestrator_class = mocker.patch("tfscreen.tfmodel.configuration_io.ModelOrchestrator")
+    mock_orchestrator_inst = mock_orchestrator_class.return_value
+    mock_orchestrator_inst.init_params = {"param1": 0.0, "param2": jnp.zeros((1,)), "param3": 0.0}
     
     # Mock update_dataclass
     mocker.patch("tfscreen.tfmodel.configuration_io._update_dataclass"
 , return_value=MagicMock())
     
-    gm, init_params = read_configuration(config_path)
-    
-    assert gm == mock_gm_inst
+    orchestrator, init_params = read_configuration(config_path)
+
+    assert orchestrator == mock_orchestrator_inst
     assert init_params["param1"] == 0.5
     assert isinstance(init_params["param2"], jnp.ndarray)
 
@@ -163,9 +164,9 @@ def test_read_configuration_errors(tmpdir):
         with open(config_path, "w") as f:
              yaml.dump({"data":{"growth":"g", "binding":"b"}, "components":{}, "priors_file": "priors.csv", "guesses_file": "guesses.csv"}, f)
         
-        with patch("tfscreen.tfmodel.configuration_io.ModelOrchestrator") as mock_gm_class:
-            mock_gm_inst = mock_gm_class.return_value
-            mock_gm_inst.init_params = {"param1": 0, "param2": 0} # param2 missing in CSV
+        with patch("tfscreen.tfmodel.configuration_io.ModelOrchestrator") as mock_orchestrator_class:
+            mock_orchestrator_inst = mock_orchestrator_class.return_value
+            mock_orchestrator_inst.init_params = {"param1": 0, "param2": 0} # param2 missing in CSV
             with pytest.raises(ValueError, match="Missing initial guesses for parameters"):
                 read_configuration(config_path)
 
@@ -174,6 +175,64 @@ def test_read_configuration_errors(tmpdir):
              yaml.dump({"data":{"growth":"g", "binding":"b"}, "components":{}, "priors_file": "priors.csv", "guesses_file": "missing_guesses.csv"}, f)
         with pytest.raises(FileNotFoundError, match="Guesses file not found"):
             read_configuration(config_path)
+
+        # 7. Stale guesses file: array parameter has wrong number of values
+        guesses_path2 = os.path.join(tmpdir, "guesses_stale.csv")
+        pd.DataFrame({
+            "parameter": ["param_arr", "param_arr"],
+            "value": [1.0, 2.0],
+            "flat_index": [0, 1]
+        }).to_csv(guesses_path2, index=False)
+        with open(config_path, "w") as f:
+            yaml.dump({"data":{"growth":"g", "binding":"b"}, "components":{},
+                       "priors_file": "priors.csv", "guesses_file": "guesses_stale.csv"}, f)
+        with patch("tfscreen.tfmodel.configuration_io.ModelOrchestrator") as mock_orch_cls:
+            mock_orch_inst = mock_orch_cls.return_value
+            # Model expects shape (5,) but CSV only has 2 values
+            mock_orch_inst.init_params = {"param_arr": jnp.zeros((5,))}
+            with patch("tfscreen.tfmodel.configuration_io._update_dataclass",
+                       return_value=MagicMock()):
+                with pytest.raises(ValueError, match="stale"):
+                    read_configuration(config_path)
+
+
+# ----------------------------------------------------------------------------
+# test TFMODEL_KNOWN_KEYS / unknown-key validation in read_configuration
+# ----------------------------------------------------------------------------
+
+def test_tfmodel_known_keys_is_frozenset():
+    assert isinstance(TFMODEL_KNOWN_KEYS, frozenset)
+    assert "data" in TFMODEL_KNOWN_KEYS
+    assert "components" in TFMODEL_KNOWN_KEYS
+
+
+def test_read_configuration_unknown_key_raises(tmpdir):
+    config_path = os.path.join(tmpdir, "bad_config.yaml")
+    with open(config_path, "w") as f:
+        yaml.dump({
+            "data": {"growth": "g"},
+            "components": {},
+            "priors_file": "priors.csv",
+            "guesses_file": "guesses.csv",
+            "not_a_real_key": 42,
+        }, f)
+    with pytest.raises(ValueError, match="not_a_real_key"):
+        read_configuration(config_path)
+
+
+def test_read_configuration_unknown_key_error_mentions_label(tmpdir):
+    config_path = os.path.join(tmpdir, "bad_config.yaml")
+    with open(config_path, "w") as f:
+        yaml.dump({
+            "data": {"growth": "g"},
+            "components": {},
+            "priors_file": "priors.csv",
+            "guesses_file": "guesses.csv",
+            "typo_key": "oops",
+        }, f)
+    with pytest.raises(ValueError, match="tfmodel config"):
+        read_configuration(config_path)
+
 
 def test_configure_model_errors(tmpdir):
     # Missing binding_df
@@ -332,11 +391,11 @@ def test_fit_model_svi_full(tmpdir, mocker):
     with patch("os.path.exists", return_value=False):
         config_path = os.path.join(tmpdir, "config.yaml")
         # Minimal valid setup for read_configuration
-        mock_gm_run = MagicMock()
-        mock_gm_run.settings = {"batch_size": 256}
-        mock_gm_run._ln_cfu_df = "g.csv"
-        mock_gm_run._binding_df = "b.csv"
-        mocker.patch("tfscreen.tfmodel.scripts.fit_model_cli.read_configuration", return_value=(mock_gm_run, {"p":1.0}))
+        mock_orchestrator_run = MagicMock()
+        mock_orchestrator_run.settings = {"batch_size": 256}
+        mock_orchestrator_run._ln_cfu_df = "g.csv"
+        mock_orchestrator_run._binding_df = "b.csv"
+        mocker.patch("tfscreen.tfmodel.scripts.fit_model_cli.read_configuration", return_value=(mock_orchestrator_run, {"p":1.0}))
 
         # Mock write_configuration to avoid yaml problems with mocks
         mock_ri_class = mocker.patch("tfscreen.tfmodel.scripts.fit_model_cli.RunInference")
@@ -405,7 +464,7 @@ class TestCheckComponentCompatibility:
             assert isinstance(tr, str)
             assert isinstance(reason, str) and len(reason) > 0
 
-    def test_configure_model_raises_on_incompatible(self, mock_gm):
+    def test_configure_model_raises_on_incompatible(self, mock_orchestrator):
         """configure_model must call check_component_compatibility
         before building the model."""
         with pytest.raises(ValueError, match="Incompatible model components"):

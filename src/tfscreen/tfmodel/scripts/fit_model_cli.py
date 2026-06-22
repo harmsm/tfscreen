@@ -24,10 +24,6 @@ def _run_map(ri,
              convergence_check_interval=2,
              checkpoint_interval=10,
              max_num_epochs=100000,
-             num_posterior_samples=10000,
-             sampling_batch_size=100,
-             forward_batch_size=512,
-             always_get_posterior=False,
              init_param_jitter=0.0,
              epoch_checkpoint_interval=1000):
     """
@@ -76,6 +72,11 @@ def _run_map(ri,
         ``checkpoints/`` subdirectory (default 1000). Set to 0 or None to
         disable.
 
+    Notes
+    -----
+    Posterior sampling is not performed here. Call ``tfs-sample-posterior``
+    after fitting to draw posterior samples.
+
     Returns
     -------
     svi_state : Any
@@ -118,15 +119,6 @@ def _run_map(ri,
     # Write the current parameter values
     ri.write_params(params,out_prefix=out_prefix)
 
-    if always_get_posterior:
-
-        ri.get_posteriors(svi=map_obj,
-                          svi_state=svi_state,
-                          out_prefix=out_prefix,
-                          num_posterior_samples=num_posterior_samples,
-                          sampling_batch_size=sampling_batch_size,
-                          forward_batch_size=forward_batch_size)
-
     # Write convergence information to stdout
     if converged:
         print("MAP run converged.",flush=True)
@@ -149,10 +141,6 @@ def _run_svi(ri,
              convergence_check_interval=2,
              checkpoint_interval=10,
              max_num_epochs=100000,
-             num_posterior_samples=10000,
-             sampling_batch_size=100,
-             forward_batch_size=512,
-             always_get_posterior=False,
              init_param_jitter=0.1,
              epoch_checkpoint_interval=1000):
     """
@@ -194,16 +182,6 @@ def _run_svi(ri,
         Frequency (in epochs) between checkpoints (default 10).
     max_num_epochs : int, optional
         Maximum number of SVI optimization epochs (default 100000).
-    num_posterior_samples : int, optional
-        Number of posterior samples to draw after convergence (default 10000).
-    sampling_batch_size : int, optional
-        When getting posteriors, sample parameter posteriors in batches of this
-        size (default 100).
-    forward_batch_size : int, optional
-        when getting posteriors, calculate forward predictions in batches of
-        this size (default 512)
-    always_get_posterior : bool, optional
-        If True, always sample posteriors even if not converged (default False).
     init_param_jitter : float, optional
         Amount of jitter to add to init_params (default 0.1).
     epoch_checkpoint_interval : int or None, optional
@@ -211,8 +189,17 @@ def _run_svi(ri,
         ``checkpoints/`` subdirectory (default 1000). Set to 0 or None to
         disable.
 
+    Notes
+    -----
+    Posterior sampling is not performed here. Call ``tfs-sample-posterior``
+    after fitting to draw posterior samples.
+
     Returns
     -------
+    svi_obj : Any
+        The SVI optimizer object created by ``ri.setup_svi``.  Returned so
+        that callers (e.g. ``tfs-sample-posterior``) can pass it directly to
+        ``ri.get_posteriors`` without needing to re-create the guide.
     svi_state : Any
         Final optimizer state object from SVI.
     svi_params : dict
@@ -251,22 +238,15 @@ def _run_svi(ri,
         epoch_checkpoint_interval=epoch_checkpoint_interval
     )
 
-    if converged or always_get_posterior:
+    # Write convergence information to stdout (skip when restoring from
+    # checkpoint with no additional epochs — convergence is not meaningful).
+    if max_num_epochs > 0:
+        if converged:
+            print("SVI run converged.",flush=True)
+        else:
+            print("SVI run has not yet converged.",flush=True)
 
-        ri.get_posteriors(svi=svi_obj,
-                          svi_state=svi_state,
-                          out_prefix=out_prefix,
-                          num_posterior_samples=num_posterior_samples,
-                          sampling_batch_size=sampling_batch_size,
-                          forward_batch_size=forward_batch_size)
-
-    # Write convergence information to stdout
-    if converged:
-        print("SVI run converged.",flush=True)
-    else:
-        print("SVI run has not yet converged.",flush=True)
-
-    return svi_state, params, converged
+    return svi_obj, svi_state, params, converged
 
 def _run_nuts(ri,
               out_prefix="tfs",
@@ -340,10 +320,7 @@ def fit_model(config_file,
               convergence_check_interval=2,
               checkpoint_interval=10,
               max_num_epochs=100000,
-              num_posterior_samples=10000,
-              sampling_batch_size=100,
               forward_batch_size=512,
-              always_get_posterior=False,
               pre_map_num_epoch=1000,
               init_param_jitter=0.1,
               nuts_num_warmup=500,
@@ -368,7 +345,8 @@ def fit_model(config_file,
         Path to a checkpoint file to resume SVI from, or None to start fresh.
     analysis_method : str, optional
         Method for inference. Allowed values are 'svi' (default), 'map', or 'nuts'.
-        To draw posterior samples from an existing checkpoint, use tfs-sample-posterior.
+        Case-insensitive. Posterior sampling is not performed; call
+        ``tfs-sample-posterior`` after fitting.
     out_prefix : str, optional
         Prefix for all output files: checkpoints, parameter files, and the
         posterior HDF5 (default 'tfs_fit_model'). Files are named
@@ -394,17 +372,9 @@ def fit_model(config_file,
         Frequency (in epochs) between checkpoints (default 10).
     max_num_epochs : int, optional
         Maximum number of SVI optimization epochs (default 100000).
-    num_posterior_samples : int, optional
-        Number of posterior samples to draw after convergence (default 10000).
-    sampling_batch_size : int, optional
-        When getting posteriors, sample parameter posteriors in batches of this
-        size (default 100).
     forward_batch_size : int, optional
-        When getting posteriors, calculate forward predictions in batches of
-        this size (default 512).
-    always_get_posterior : bool, optional
-        If True, always generate and save posterior samples, even if the
-        optimization did not formally converge (default False).
+        When getting NUTS posteriors, calculate forward predictions in batches
+        of this size (default 512).
     pre_map_num_epoch : int, optional
         Number of MAP iterations to run prior to SVI (default 1000). Only used
         if analysis_method is 'svi'.
@@ -442,6 +412,8 @@ def fit_model(config_file,
     if seed is None and checkpoint_file is None:
         raise ValueError("seed must be provided unless loading from a checkpoint.")
 
+    analysis_method = analysis_method.lower()
+
     # Check for existing results to avoid overwriting unless resuming
     if checkpoint_file is None:
         checkpoint_path = f"{out_prefix}_checkpoint.pkl"
@@ -460,14 +432,14 @@ def fit_model(config_file,
                     "overwrite, delete the file or change out_prefix."
                 )
 
-    gm, init_params = read_configuration(config_file)
+    orchestrator, init_params = read_configuration(config_file)
 
     # For posterior mode the seed is optional: the checkpoint restores the PRNG
     # key for SVI checkpoints, and any valid key works for MAP/Laplace sampling.
     effective_seed = seed if seed is not None else 0
 
     # Run SVI / MAP
-    ri = RunInference(gm, effective_seed)
+    ri = RunInference(orchestrator, effective_seed)
 
     if analysis_method == "svi":
         if pre_map_num_epoch > 0 and checkpoint_file is None:
@@ -498,10 +470,6 @@ def fit_model(config_file,
                         convergence_check_interval=convergence_check_interval,
                         checkpoint_interval=checkpoint_interval,
                         max_num_epochs=max_num_epochs,
-                        num_posterior_samples=num_posterior_samples,
-                        sampling_batch_size=sampling_batch_size,
-                        forward_batch_size=forward_batch_size,
-                        always_get_posterior=always_get_posterior,
                         init_param_jitter=init_param_jitter,
                         epoch_checkpoint_interval=epoch_checkpoint_interval)
 
@@ -520,10 +488,6 @@ def fit_model(config_file,
                         convergence_check_interval=convergence_check_interval,
                         checkpoint_interval=checkpoint_interval,
                         max_num_epochs=max_num_epochs,
-                        num_posterior_samples=num_posterior_samples,
-                        sampling_batch_size=sampling_batch_size,
-                        forward_batch_size=forward_batch_size,
-                        always_get_posterior=always_get_posterior,
                         init_param_jitter=init_param_jitter,
                         epoch_checkpoint_interval=epoch_checkpoint_interval)
 

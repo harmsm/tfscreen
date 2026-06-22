@@ -14,10 +14,11 @@ def mock_config():
 def mock_result_dfs():
     lib_df = pd.DataFrame({"lib": [1]})
     pheno_df = pd.DataFrame({"pheno": [1]})
-    ddG_df = pd.DataFrame({"ddG": [1]})
+    theta_df = pd.DataFrame({"theta": [1]})
+    params_df = pd.DataFrame({"genotype": ["wt"], "dk_geno": [0.0], "activity": [1.0]})
     sample_df = pd.DataFrame({"sample": [1]})
     counts_df = pd.DataFrame({"counts": [1]})
-    return lib_df, pheno_df, ddG_df, sample_df, counts_df
+    return lib_df, pheno_df, theta_df, params_df, sample_df, counts_df
 
 # -----------------------------------------------------------------------------
 # Tests for _setup_file_output
@@ -67,17 +68,20 @@ def test_run_simulation_config_error():
         run_simulation("nonexistent_config.yaml", None)
 
 def test_run_simulation_success(mocker, mock_config, mock_result_dfs):
-    lib_df, pheno_df, ddG_df, sample_df, counts_df = mock_result_dfs
-    
+    lib_df, pheno_df, theta_df, params_df, sample_df, counts_df = mock_result_dfs
+
     # Mock dependencies
     mocker.patch("tfscreen.util.read_yaml", return_value=mock_config)
-    mock_lib_pred = mocker.patch("tfscreen.simulate.run_simulation.library_prediction", return_value=(lib_df, pheno_df, ddG_df))
+    mock_lib_pred = mocker.patch(
+        "tfscreen.simulate.run_simulation.library_prediction",
+        return_value=(lib_df, pheno_df, theta_df, params_df, None),
+    )
     mock_sel_exp = mocker.patch("tfscreen.simulate.run_simulation.selection_experiment", return_value=(sample_df, counts_df))
-    
-    # Mock file output setup
-    mock_file_dict = {"library": "lib.csv", "phenotype": "pheno.csv", "genotype_theta": "theta.csv", "sample": "sample.csv", "counts": "counts.csv"}
+
+    # Mock file output setup — phenotype removed, parameters added
+    mock_file_dict = {"library": "lib.csv", "parameters": "params.csv", "genotype_theta": "theta.csv", "sample": "sample.csv", "counts": "counts.csv"}
     mocker.patch("tfscreen.simulate.run_simulation._setup_file_output", return_value=mock_file_dict)
-    
+
     # Mock to_csv
     mocker.patch.object(pd.DataFrame, "to_csv")
 
@@ -86,19 +90,22 @@ def test_run_simulation_success(mocker, mock_config, mock_result_dfs):
     # Verify calls
     mock_lib_pred.assert_called_once_with(mock_config)
     mock_sel_exp.assert_called_once_with(mock_config, lib_df, pheno_df)
-    
+
     assert results["library"].equals(lib_df)
     assert results["counts"].equals(counts_df)
-    
-    # Verify file writing
-    assert pd.DataFrame.to_csv.call_count == 5 
-    # Logic for checking arguments could be added but call_count gives good confidence here given the simple loop logic
+    assert results["parameters"].equals(params_df)
+
+    # Verify file writing (5 files: library, parameters, genotype_theta, sample, counts)
+    assert pd.DataFrame.to_csv.call_count == 5
 
 def test_run_simulation_no_output(mocker, mock_config, mock_result_dfs):
-    lib_df, pheno_df, ddG_df, sample_df, counts_df = mock_result_dfs
-    
+    lib_df, pheno_df, theta_df, params_df, sample_df, counts_df = mock_result_dfs
+
     mocker.patch("tfscreen.util.read_yaml", return_value=mock_config)
-    mocker.patch("tfscreen.simulate.run_simulation.library_prediction", return_value=(lib_df, pheno_df, ddG_df))
+    mocker.patch(
+        "tfscreen.simulate.run_simulation.library_prediction",
+        return_value=(lib_df, pheno_df, theta_df, params_df, None),
+    )
     mocker.patch("tfscreen.simulate.run_simulation.selection_experiment", return_value=(sample_df, counts_df))
     
     # Explicitly check _setup_file_output is called with None

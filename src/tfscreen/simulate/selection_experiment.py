@@ -5,6 +5,7 @@ from tfscreen.util.io import (
     read_dataframe,
     read_yaml,
 )
+from tfscreen.util.validation import check_unknown_keys
 from tfscreen.simulate.growth.transition_linkage import get_transition_model
 from tfscreen.util.numerical import (
     vstack_padded,
@@ -43,6 +44,30 @@ MULTI_PLASMID_COMBINE_FCNS = {"gmean":gmean,
                               "min":ma.min,
                               "max":ma.max,
                               "sum":ma.sum}
+
+# All recognized top-level keys for a simulate config file.
+SIMULATE_KNOWN_KEYS = frozenset({
+    # Library genetics (passed to LibraryManager)
+    "reading_frame", "first_amplicon_residue", "wt_seq", "degen_sites",
+    "sub_libraries", "library_combos", "spiked_seqs", "expected_5p", "expected_3p",
+    # Phenotype / theta calculation
+    "theta_component", "thermo_data", "theta_priors", "theta_rescale",
+    "theta_sim_priors",
+    # Conditions and growth
+    "condition_blocks", "growth",
+    "dk_geno_hyper_loc", "dk_geno_hyper_scale", "dk_geno_hyper_shift", "dk_geno_zero",
+    "activity_wt", "activity_mut_scale", "activity_component", "activity_priors",
+    # Experimental simulation parameters
+    "transform_sizes", "library_mixture", "lib_assembly_skew_sigma",
+    "transformation_poisson_lambda", "multi_plasmid_combine_fcn", "cfu0",
+    "tube_noise_sigma", "growth_transition",
+    # Data collection
+    "total_num_reads", "prob_index_hop", "seed",
+    # Column selectors (rarely overridden)
+    "condition_selector", "library_selector",
+    # Optional output blocks
+    "binding_data", "presplit_data",
+})
   
 def _check_dict_number(
     key: str,
@@ -163,18 +188,16 @@ def _check_cf(
     # Load from YAML if a path is provided, otherwise assume it's a dict
     cf = read_yaml(cf)
 
-    if "final_cfu_pct_err" not in cf:
-        cf["final_cfu_pct_err"] = 0.05
+    check_unknown_keys(cf, SIMULATE_KNOWN_KEYS, label="simulate config")
 
     # --- Validate single numerical values ---
     cf = _check_dict_number("prob_index_hop", cf, min_allowed=0, max_allowed=1, allow_none=True)
     cf = _check_dict_number("lib_assembly_skew_sigma", cf, min_allowed=0, allow_none=True)
     cf = _check_dict_number("transformation_poisson_lambda", cf, min_allowed=0, allow_none=True)
     cf = _check_dict_number("tube_noise_sigma", cf, min_allowed=0, allow_none=True)
-    cf = _check_dict_number("random_seed", cf, cast_type=int, min_allowed=0, allow_none=True)
+    cf = _check_dict_number("seed", cf, cast_type=int, min_allowed=0, allow_none=True)
     cf = _check_dict_number("cfu0", cf, allow_none=False,min_allowed=0)
     cf = _check_dict_number("total_num_reads", cf, cast_type=int, min_allowed=0, inclusive_min=False)
-    cf = _check_dict_number("final_cfu_pct_err",cf,min_allowed=0,inclusive_min=False,allow_none=False)
 
     # --- Validate nested dictionaries ---
     for key in ["transform_sizes", "library_mixture"]:
@@ -981,8 +1004,7 @@ def _simulate_library_group(
     multi_plasmid_combine_fcn = cf["multi_plasmid_combine_fcn"]
     prob_index_hop = cf["prob_index_hop"]
     total_cfu0 = cf["cfu0"]
-    final_cfu_pct_err = cf["final_cfu_pct_err"]
-    
+
     num_genotypes = len(ordered_genotypes)
 
     # -- create output dataframes --
@@ -1084,7 +1106,7 @@ def _simulate_library_group(
     
     # Record cfu/mL over all conditions
     sample_df.loc[:,"sample_cfu"] = np.sum(trans_cfu,axis=0)
-    sample_df.loc[:,"sample_cfu_std"] = sample_df.loc[:,"sample_cfu"]*final_cfu_pct_err
+    sample_df.loc[:,"sample_cfu_std"] = 0.0
 
     # -- simulate sequencing -- 
     print("--> simulating sequencing",flush=True)
@@ -1196,7 +1218,7 @@ def selection_experiment(
     print("Setting up calculation.", flush=True)
 
     # Initialize random number generator
-    rng = np.random.default_rng(cf["random_seed"])
+    rng = np.random.default_rng(cf["seed"])
 
     # Expand the library_df so every genotype is seen in every library_origin 
     # to keep indexing consistent when we mix libraries. The .fillna(0) in this

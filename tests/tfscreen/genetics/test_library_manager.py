@@ -183,6 +183,18 @@ def test_parse_success(valid_config):
     assert lm.libraries_seen == {"2"}
     assert lm.degen_seq == "gattacnnncgattaca"
 
+def test_parse_whitespace_stripped(valid_config):
+    """
+    Whitespace (spaces, newlines) in wt_seq, degen_sites, and sub_libraries
+    is removed before validation, allowing YAML literal-block multiline values.
+    """
+    valid_config["wt_seq"]        = "gattac\nagtcgattaca"
+    valid_config["degen_sites"]   = "......\nnnn........"
+    valid_config["sub_libraries"] = "......\n222........"
+    lm = LibraryManager(valid_config)
+    assert lm.expected_length == 17
+    assert lm.wt_seq == "gattacagtcgattaca"
+
 def test_parse_missing_key(valid_config):
     """
     Tests that a ValueError is raised if a required key is missing.
@@ -676,6 +688,7 @@ def lm_for_spiked_seqs() -> LibraryManager:
     # Set attributes required by the method under test
     lm.wt_seq = "gattaca"
     lm.standard_bases = set('acgt')
+    lm.standard_plus_dot = set('acgt.')
     return lm
 
 def test_get_spiked_seqs_success(lm_for_spiked_seqs):
@@ -704,15 +717,42 @@ def test_get_spiked_seqs_success(lm_for_spiked_seqs):
         assert returned_seqs == valid_seqs
         assert returned_aa == ["", "Y3K"]
 
+def test_get_spiked_seqs_dot_expansion(lm_for_spiked_seqs):
+    """
+    Dots in spiked sequences are replaced by the corresponding wt_seq base.
+    """
+    # wt_seq = "gattaca"; "gat.acg" -> dot at pos 3 fills in wt 't'; 'g' at
+    # pos 6 is an explicit mutation (wt is 'a') -> "gattacg"
+    dot_seq = ["gat.acg"]
+
+    with patch.object(lm_for_spiked_seqs, '_convert_to_aa') as mock_convert:
+        mock_convert.return_value = ["A6G"]
+        returned_seqs, _ = lm_for_spiked_seqs._get_spiked_seqs(dot_seq)
+
+    assert returned_seqs == ["gattacg"]
+
+def test_get_spiked_seqs_whitespace_stripped(lm_for_spiked_seqs):
+    """
+    Whitespace (spaces, newlines) in spiked sequences is stripped before
+    validation, allowing YAML literal-block multiline entries.
+    """
+    # wt_seq = "gattaca"; "gat\ntaca" has an embedded newline that should be
+    # removed, yielding "gattaca" (7 chars, matches wt length)
+    with patch.object(lm_for_spiked_seqs, '_convert_to_aa') as mock_convert:
+        mock_convert.return_value = [""]
+        returned_seqs, _ = lm_for_spiked_seqs._get_spiked_seqs(["gat\ntaca"])
+
+    assert returned_seqs == ["gattaca"]
+
 def test_get_spiked_seqs_invalid_character(lm_for_spiked_seqs):
     """
     Tests that a ValueError is raised for a sequence with non-standard bases.
     """
     invalid_seqs = ["gattaca", "gattacx"] # Contains 'x'
-    
+
     with pytest.raises(ValueError) as excinfo:
         lm_for_spiked_seqs._get_spiked_seqs(invalid_seqs)
-    
+
     assert "Characters not recognized" in str(excinfo.value)
     assert "spiked seq" in str(excinfo.value)
 

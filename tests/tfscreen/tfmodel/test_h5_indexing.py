@@ -14,8 +14,8 @@ def test_predict_h5_indexing(tmp_path):
         "genotype": ["wt"],
         "titrant_name": ["tit1"],
         "titrant_conc": [0.0],
-        "condition_pre": ["pre1"],
-        "condition_sel": ["sel1"],
+        "condition_pre": ["pre-1"],
+        "condition_sel": ["sel+1"],
         "t_pre": [10.0],
         "t_sel": [0.0],
         "ln_cfu": [0.0],
@@ -29,7 +29,7 @@ def test_predict_h5_indexing(tmp_path):
         "theta_obs": [0.5],
         "theta_std": [0.01]
     })
-    mc = ModelOrchestrator(growth_df, binding_df)
+    orchestrator = ModelOrchestrator(growth_df, binding_df)
     
     # 2. Create an H5 file with some "posteriors"
     h5_path = tmp_path / "posteriors.h5"
@@ -61,7 +61,7 @@ def test_predict_h5_indexing(tmp_path):
         
         # This calls val = val[sample_indices] inside prediction.py
         try:
-            results = predict(mc, str(h5_path), num_samples=10)
+            results = predict(orchestrator, str(h5_path), num_samples=10)
         except TypeError as e:
             if "Indexing elements must be in increasing order" in str(e):
                 pytest.fail("H5 indexing failed: elements not in increasing order")

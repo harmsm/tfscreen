@@ -115,32 +115,33 @@ def plot_theta_fits(df,
                     color=colors[counter],zorder=0)
 
         # Central estimate (posterior median or MAP point estimate)
-        center_col = "median" if "median" in g_df.columns else "point_est"
+        center_col = "q0.5" if "q0.5" in g_df.columns else "point_est"
         ax.plot(g_df["titrant_conc"],
                 g_df[center_col],
                 lw=2,color=colors[counter])
 
-        # Standard error
-        if set(["lower_std","upper_std"]) <= set(g_df.columns):
-            
+        # ±1 SD credible band (q0.159 / q0.841)
+        if set(["q0.159","q0.841"]) <= set(g_df.columns):
+
             ax.fill_between(x=g_df["titrant_conc"],
-                            y1=g_df["lower_std"],
-                            y2=g_df["upper_std"],
+                            y1=g_df["q0.159"],
+                            y2=g_df["q0.841"],
                             color=colors[counter],
                             alpha=0.7,zorder=-10)
 
-        # 95% CI
-        if set(["lower_95","upper_95"]) <= set(g_df.columns):
-        
+        # 95% CI (q0.025 / q0.975)
+        if set(["q0.025","q0.975"]) <= set(g_df.columns):
+
             ax.fill_between(x=g_df["titrant_conc"],
-                            y1=g_df["lower_95"],
-                            y2=g_df["upper_95"],
+                            y1=g_df["q0.025"],
+                            y2=g_df["q0.975"],
                             color=colors[counter],
                             alpha=0.4,zorder=-20)
         counter += 1
     
     ax.set_xscale("log")
     ax.set_xlabel("titrant conc (mM)")
+    ax.set_ylim(-0.05,1.05)
     ax.set_ylabel("$\\theta$")
     ax.legend()
     ax.spines['top'].set_visible(False)

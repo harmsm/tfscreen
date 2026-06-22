@@ -32,10 +32,8 @@ import numpyro as pyro
 import numpyro.distributions as dist
 import pandas as pd
 from flax.struct import dataclass
-from typing import Dict, Any
-
+from typing import Dict, Any, Optional, Union
 from functools import partial
-from typing import Union
 from tfscreen.tfmodel.data_class import GrowthData, BindingData
 from tfscreen.genetics.build_mut_geno_matrix import apply_pair_matrix, apply_mut_matrix
 
@@ -78,8 +76,68 @@ class ThetaParam:
     theta_high: jnp.ndarray
     log_hill_K: jnp.ndarray
     hill_n: jnp.ndarray
-    mu: jnp.ndarray
-    sigma: jnp.ndarray
+    mu: Optional[jnp.ndarray]
+    sigma: Optional[jnp.ndarray]
+
+
+@dataclass(frozen=True)
+class SimPriors:
+    """
+    Parameters controlling perturbation-based theta simulation for hill_mut.
+
+    Mutations perturb each Hill parameter by additive Normal noise in
+    transformed space.  The wildtype genotype (no mutations) receives exactly
+    the reference curve.  Per-genotype values are assembled by summing per-mutation
+    deltas over each genotype's mutation set, optionally plus pairwise epistasis.
+
+    Attributes
+    ----------
+    wt_theta_low : float
+        Wildtype theta at zero ligand concentration.
+    wt_theta_high : float
+        Wildtype theta at saturating ligand concentration.
+    wt_log_K : float
+        Wildtype log(K_D); sets the Hill-curve midpoint.
+    wt_hill_n : float
+        Wildtype Hill coefficient (cooperativity).
+    sigma_d_logit_low : float
+        Std dev of per-mutation additive delta on logit(theta_low).
+    sigma_d_logit_delta : float
+        Std dev of per-mutation additive delta on logit_delta
+        (= logit_high - logit_low).
+    sigma_d_log_K : float
+        Std dev of per-mutation additive delta on log_K.  Primary binding-
+        affinity effect; typically the largest perturbation.
+    sigma_d_log_n : float
+        Std dev of per-mutation additive delta on log(hill_n).
+    epi_tau_scale : float
+        HalfCauchy scale for the global sparsity parameter τ of the
+        regularized horseshoe prior on pairwise epistasis.  Setting this to
+        ``0.0`` makes τ=0 exactly, disabling all epistasis.  Ignored when
+        ``data.num_pair == 0``.
+    epi_slab_scale : float
+        Typical magnitude of a large (non-shrunk) epistasis effect; sets the
+        scale of the InvGamma slab (c²).
+    epi_slab_df : float
+        Degrees of freedom for the InvGamma slab prior on c².  Usually 4.
+    """
+
+    wt_theta_low: float
+    wt_theta_high: float
+    wt_log_K: float
+    wt_hill_n: float
+
+    sigma_d_logit_low: float
+    sigma_d_logit_delta: float
+    sigma_d_log_K: float
+    sigma_d_log_n: float
+
+    # Regularized horseshoe prior parameters for pairwise epistasis.
+    # Used only when ``data.num_pair > 0``.
+    # Set ``epi_tau_scale=0.0`` to disable epistasis exactly (τ=0 → zero effects).
+    epi_tau_scale: float    # HalfCauchy scale for global τ
+    epi_slab_scale: float   # typical magnitude of a large epistasis effect
+    epi_slab_df: float      # InvGamma degrees of freedom (slab; usually 4)
 
 
 # ---------------------------------------------------------------------------
@@ -216,16 +274,23 @@ def define_model(name: str,
     # ------------------------------------------------------------------
     # Mutation delta offsets: shape (T, num_mutation)
     # ------------------------------------------------------------------
-    with pyro.plate(f"{name}_titrant_mut_outer_plate", T, dim=-2):
-        with pyro.plate(f"{name}_mutation_plate", num_mut, dim=-1):
-            d_low_off = pyro.sample(
-                f"{name}_d_logit_low_offset", dist.Normal(0.0, 1.0))
-            d_delta_off = pyro.sample(
-                f"{name}_d_logit_delta_offset", dist.Normal(0.0, 1.0))
-            d_K_off = pyro.sample(
-                f"{name}_d_log_hill_K_offset", dist.Normal(0.0, 1.0))
-            d_n_off = pyro.sample(
-                f"{name}_d_log_hill_n_offset", dist.Normal(0.0, 1.0))
+    if num_mut > 0:
+        with pyro.plate(f"{name}_titrant_mut_outer_plate", T, dim=-2):
+            with pyro.plate(f"{name}_mutation_plate", num_mut, dim=-1):
+                d_low_off = pyro.sample(
+                    f"{name}_d_logit_low_offset", dist.Normal(0.0, 1.0))
+                d_delta_off = pyro.sample(
+                    f"{name}_d_logit_delta_offset", dist.Normal(0.0, 1.0))
+                d_K_off = pyro.sample(
+                    f"{name}_d_log_hill_K_offset", dist.Normal(0.0, 1.0))
+                d_n_off = pyro.sample(
+                    f"{name}_d_log_hill_n_offset", dist.Normal(0.0, 1.0))
+    else:
+        # num_mut == 0 (wt-only library, e.g. stratified pool building):
+        # numpyro.plate requires size > 0, so skip the plate and return
+        # empty offset arrays.  apply_mut_matrix with empty COO indices
+        # produces zeros, so per-genotype params equal the WT values.
+        d_low_off = d_delta_off = d_K_off = d_n_off = jnp.zeros((T, 0))
 
     # ------------------------------------------------------------------
     # Optional epistasis: shape (T, num_pair)
@@ -572,6 +637,142 @@ def guide(name: str,
 
 
 # ---------------------------------------------------------------------------
+# Perturbation-based simulation
+# ---------------------------------------------------------------------------
+
+def simulate(name: str,
+             data,
+             sim_priors: SimPriors,
+             rng_key) -> tuple:
+    """
+    Perturbation-based theta simulation for hill_mut.
+
+    Generates per-genotype Hill curves by assigning a wildtype reference curve
+    and adding per-mutation additive deltas in transformed parameter space.
+    The wildtype genotype (no mutations present) receives the reference curve
+    exactly.  Pairwise epistasis is sampled and applied when ``data.num_pair > 0``.
+
+    Pairwise epistasis is sampled from a regularized horseshoe prior when
+    ``data.num_pair > 0``.  Setting ``sim_priors.epi_tau_scale=0.0`` makes
+    the global scale τ=0 exactly, which forces all epistasis effects to zero
+    (a clean "no epistasis" toggle).
+
+    The returned ``ThetaParam`` has ``mu=None`` and ``sigma=None``; downstream
+    ``run_model`` only reads the per-genotype fields.
+
+    Parameters
+    ----------
+    name : str
+        Unused; present for interface consistency with ``define_model``.
+    data : SimData or compatible
+        Must expose ``num_genotype``, ``num_mutation``, ``num_pair``,
+        ``log_titrant_conc``, ``mut_nnz_mut_idx``, ``mut_nnz_geno_idx``,
+        and (when ``num_pair > 0``) ``pair_nnz_pair_idx``,
+        ``pair_nnz_geno_idx``.
+    sim_priors : SimPriors
+        Wildtype reference and perturbation distributions.
+    rng_key : jax.random.PRNGKey
+        Seed for NumPy RNG (converted internally).
+
+    Returns
+    -------
+    theta_gc : np.ndarray, shape (num_genotype, num_titrant_conc)
+        Fractional occupancy for each genotype at each unique concentration.
+    theta_param : ThetaParam
+        Per-genotype fields shape ``(1, num_genotype)``; ``mu`` and ``sigma``
+        are ``None``.
+    """
+    _eps = 1e-6
+    seed = int(jax.random.randint(rng_key, shape=(), minval=0, maxval=2**30))
+    rng = np.random.default_rng(seed)
+
+    G = data.num_genotype
+    M = data.num_mutation
+    log_conc = np.array(data.log_titrant_conc)  # (C,)
+
+    # Scatter callables: accept (T, M) or (T, P), return (T, G)
+    mut_scatter = partial(apply_mut_matrix,
+                          mut_nnz_mut_idx=jnp.array(data.mut_nnz_mut_idx),
+                          mut_nnz_geno_idx=jnp.array(data.mut_nnz_geno_idx),
+                          num_genotype=G)
+
+    # Wildtype reference in logit space
+    wt_logit_low   = float(np.log(np.clip(sim_priors.wt_theta_low,  _eps, 1 - _eps)
+                                  / (1 - np.clip(sim_priors.wt_theta_low,  _eps, 1 - _eps))))
+    wt_logit_high  = float(np.log(np.clip(sim_priors.wt_theta_high, _eps, 1 - _eps)
+                                  / (1 - np.clip(sim_priors.wt_theta_high, _eps, 1 - _eps))))
+    wt_logit_delta = wt_logit_high - wt_logit_low
+    wt_log_n       = float(np.log(sim_priors.wt_hill_n))
+
+    def _scatter_mut(d_1d):
+        """Scatter (M,) deltas to (G,) via the mutation-genotype COO map."""
+        return np.array(mut_scatter(jnp.array(d_1d)[None, :]))[0]
+
+    # Sample per-mutation deltas and assemble per-genotype parameters: (G,)
+    logit_low   = wt_logit_low   + _scatter_mut(rng.normal(0.0, sim_priors.sigma_d_logit_low,   M))
+    logit_delta = wt_logit_delta + _scatter_mut(rng.normal(0.0, sim_priors.sigma_d_logit_delta, M))
+    log_K       = sim_priors.wt_log_K + _scatter_mut(rng.normal(0.0, sim_priors.sigma_d_log_K,  M))
+    log_n       = wt_log_n      + _scatter_mut(rng.normal(0.0, sim_priors.sigma_d_log_n,        M))
+
+    # Optional pairwise epistasis — regularized horseshoe prior
+    # epi_tau_scale=0.0 → tau=0 exactly → all epistasis effects are zero.
+    if data.num_pair > 0:
+        pair_scatter = partial(apply_pair_matrix,
+                               pair_nnz_pair_idx=jnp.array(data.pair_nnz_pair_idx),
+                               pair_nnz_geno_idx=jnp.array(data.pair_nnz_geno_idx),
+                               num_genotype=G)
+        P = data.num_pair
+
+        def _scatter_pair(e_1d):
+            """Scatter (P,) epistasis to (G,) via the pair-genotype COO map."""
+            return np.array(pair_scatter(jnp.array(e_1d)[None, :]))[0]
+
+        # Global sparsity scale τ ~ HalfCauchy(epi_tau_scale).
+        # When epi_tau_scale == 0.0, tau == 0 and all effects are exactly zero.
+        tau = float(np.abs(rng.standard_cauchy())) * sim_priors.epi_tau_scale
+
+        if tau > 0.0:
+            # Slab variance c² ~ InvGamma(slab_df/2, slab_df*slab_scale²/2).
+            # Sampled as 1/Gamma(α, scale=1/β) with α=slab_df/2, β=slab_df*slab_scale²/2.
+            c2 = 1.0 / rng.gamma(
+                shape=sim_priors.epi_slab_df / 2.0,
+                scale=2.0 / (sim_priors.epi_slab_df * sim_priors.epi_slab_scale ** 2))
+
+            def _horseshoe(size):
+                """Draw horseshoe-shrunk epistasis effects of shape (size,)."""
+                lam = np.abs(rng.standard_cauchy(size))           # per-pair local scale
+                lam_tilde = np.sqrt(c2 * lam**2
+                                    / (c2 + tau**2 * lam**2))     # slab-regularised scale
+                return rng.standard_normal(size) * tau * lam_tilde
+
+            logit_low   += _scatter_pair(_horseshoe(P))
+            logit_delta += _scatter_pair(_horseshoe(P))
+            log_K       += _scatter_pair(_horseshoe(P))
+            log_n       += _scatter_pair(_horseshoe(P))
+        # else: tau == 0.0 → all epistasis effects are exactly zero; nothing to add
+
+    # Convert to probability space
+    theta_low_arr  = 1.0 / (1.0 + np.exp(-logit_low))               # (G,)
+    theta_high_arr = 1.0 / (1.0 + np.exp(-(logit_low + logit_delta))) # (G,)
+    hill_n_arr     = np.exp(log_n)                                     # (G,)
+
+    # Compute theta: (G, C)
+    occupancy = 1.0 / (1.0 + np.exp(-hill_n_arr[:, None] * (log_conc[None, :] - log_K[:, None])))
+    theta_gc  = theta_low_arr[:, None] + (theta_high_arr - theta_low_arr)[:, None] * occupancy
+
+    theta_param = ThetaParam(
+        theta_low  = jnp.array(theta_low_arr)[None, :],    # (1, G)
+        theta_high = jnp.array(theta_high_arr)[None, :],
+        log_hill_K = jnp.array(log_K)[None, :],
+        hill_n     = jnp.array(hill_n_arr)[None, :],
+        mu    = None,
+        sigma = None,
+    )
+
+    return theta_gc, theta_param
+
+
+# ---------------------------------------------------------------------------
 # run_model – identical to hill.py
 # ---------------------------------------------------------------------------
 
@@ -608,16 +809,16 @@ def get_population_moments(theta_param: ThetaParam, data) -> tuple:
 
 def get_hyperparameters() -> Dict[str, Any]:
     p = {}
-    p["theta_logit_low_wt_loc"] = 2.0
+    p["theta_logit_low_wt_loc"] = 5.0
     p["theta_logit_low_wt_scale"] = 2.0
-    p["theta_logit_delta_wt_loc"] = -4.0
+    p["theta_logit_delta_wt_loc"] = -9.0
     p["theta_logit_delta_wt_scale"] = 2.0
     p["theta_log_hill_K_wt_loc"] = -4.1
     p["theta_log_hill_K_wt_scale"] = 2.0
     p["theta_log_hill_n_wt_loc"] = 0.7
     p["theta_log_hill_n_wt_scale"] = 0.3
-    p["theta_sigma_d_logit_low_scale"] = 1.0
-    p["theta_sigma_d_logit_delta_scale"] = 1.0
+    p["theta_sigma_d_logit_low_scale"] = 5.0
+    p["theta_sigma_d_logit_delta_scale"] = 5.0
     p["theta_sigma_d_log_hill_K_scale"] = 1.0
     p["theta_sigma_d_log_hill_n_scale"] = 0.5
     p["theta_epi_tau_scale"] = 0.1
@@ -626,16 +827,44 @@ def get_hyperparameters() -> Dict[str, Any]:
     return p
 
 
+def get_sim_hyperparameters() -> Dict[str, Any]:
+    """
+    Default hyperparameters for perturbation-based simulation (``SimPriors``).
+
+    The wildtype reference is a full-range decreasing Hill curve matching the
+    lac/IPTG system.  Per-mutation effects primarily shift K_D (``sigma_d_log_K``)
+    with smaller effects on cooperativity and the baseline/ceiling occupancy.
+    Epistasis is small by default.
+
+    Returns
+    -------
+    dict[str, Any]
+    """
+    return {
+        "wt_theta_low":  0.99,
+        "wt_theta_high": 0.01,
+        "wt_log_K":      -4.1,   # ln(0.017 mM) — lac/IPTG default
+        "wt_hill_n":     2.0,
+        "sigma_d_logit_low":   0.3,
+        "sigma_d_logit_delta": 0.5,
+        "sigma_d_log_K":       0.5,
+        "sigma_d_log_n":       0.3,
+        "epi_tau_scale":       0.1,   # matches theta_epi_tau_scale in get_hyperparameters()
+        "epi_slab_scale":      2.0,   # matches theta_epi_slab_scale
+        "epi_slab_df":         4.0,   # matches theta_epi_slab_df
+    }
+
+
 def get_guesses(name: str, data: GrowthData) -> Dict[str, Any]:
     T = data.num_titrant_name
     M = data.num_mutation
     guesses = {}
-    guesses[f"{name}_logit_low_wt"] = jnp.full(T, 2.0)
-    guesses[f"{name}_logit_delta_wt"] = jnp.full(T, -4.0)
+    guesses[f"{name}_logit_low_wt"] = jnp.full(T, 5.0)
+    guesses[f"{name}_logit_delta_wt"] = jnp.full(T, -9.0)
     guesses[f"{name}_log_hill_K_wt"] = jnp.full(T, -4.1)
     guesses[f"{name}_log_hill_n_wt"] = jnp.full(T, 0.7)
     guesses[f"{name}_sigma_d_logit_low"] = jnp.full(T, 0.5)
-    guesses[f"{name}_sigma_d_logit_delta"] = jnp.full(T, 0.5)
+    guesses[f"{name}_sigma_d_logit_delta"] = jnp.full(T, 4.0)
     guesses[f"{name}_sigma_d_log_hill_K"] = jnp.full(T, 0.5)
     guesses[f"{name}_sigma_d_log_hill_n"] = jnp.full(T, 0.3)
     guesses[f"{name}_d_logit_low_offset"] = jnp.zeros((T, M))

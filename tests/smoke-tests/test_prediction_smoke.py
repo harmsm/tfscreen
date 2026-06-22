@@ -68,9 +68,9 @@ def test_prediction_smoke(growth_smoke_csv,
     assert set(pred_df["titrant_conc"]) == set(new_titrant_conc)
     
     # Check for quantile columns (defaults from load_posteriors)
-    assert "median" in pred_df.columns
-    assert "lower_95" in pred_df.columns
-    assert "upper_95" in pred_df.columns
+    assert "q0.5" in pred_df.columns
+    assert "q0.025" in pred_df.columns
+    assert "q0.975" in pred_df.columns
 
     # 3. Test expansion restriction for plated dimensions
     # 'logit_norm' plates on titrant_conc, so expanding it should fail.

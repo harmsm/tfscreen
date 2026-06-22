@@ -462,7 +462,7 @@ def get_guesses(name,data):
     
     # Only add these if we are not in empirical mode. 
     # NOTE: get_guesses currently doesn't know the mode from the config easily 
-    # during initialization in model_class.py unless we pass it. 
+    # during initialization in model_orchestrator.py unless we pass it.
     # For now, we'll keep them as guesses; they just won't be used if not 
     # in the model/guide.
     guesses[f"{name}_mu"] = 0.0

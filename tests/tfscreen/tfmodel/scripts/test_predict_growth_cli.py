@@ -30,34 +30,34 @@ def _write_lines(path, lines):
 
 
 @pytest.fixture
-def mock_gm():
-    gm = MagicMock()
-    gm.growth_df = _make_growth_df(["wt", "A1B"], [0.0, 1.0])
-    return gm
+def mock_orchestrator():
+    orchestrator = MagicMock()
+    orchestrator.growth_df = _make_growth_df(["wt", "A1B"], [0.0, 1.0])
+    return orchestrator
 
 
 @pytest.fixture
-def mock_predict(mock_gm):
+def mock_predict(mock_orchestrator):
     """Patch read_configuration, resolve_param_file, and predict; return captured call kwargs."""
     calls = {}
 
     def fake_predict(**kwargs):
         calls.update(kwargs)
-        genotypes = kwargs.get("genotypes") or mock_gm.growth_df["genotype"].unique().tolist()
-        concs = kwargs.get("titrant_conc") or mock_gm.growth_df["titrant_conc"].unique().tolist()
+        genotypes = kwargs.get("genotypes") or mock_orchestrator.growth_df["genotype"].unique().tolist()
+        concs = kwargs.get("titrant_conc") or mock_orchestrator.growth_df["titrant_conc"].unique().tolist()
         rows = [{"genotype": g, "titrant_name": "IPTG", "titrant_conc": c,
-                 "median": 10.0}
+                 "q0.5": 10.0}
                 for g in genotypes for c in concs]
         return pd.DataFrame(rows)
 
     with patch(
         "tfscreen.tfmodel.scripts"
         ".predict_growth_cli.read_configuration",
-        return_value=(mock_gm, {}),
+        return_value=(mock_orchestrator, {}),
     ), patch(
         "tfscreen.tfmodel.scripts"
         ".predict_growth_cli.resolve_param_file",
-        side_effect=lambda pf, gm, op: pf,  # pass-through
+        side_effect=lambda pf, orchestrator, op: pf,  # pass-through
     ), patch(
         "tfscreen.tfmodel.scripts"
         ".predict_growth_cli.predict",
@@ -87,7 +87,7 @@ class TestPredictGrowthDefaults:
 
 class TestPredictGrowthUnion:
 
-    def test_genotypes_file_unions_with_training(self, mock_predict, mock_gm, tmp_path):
+    def test_genotypes_file_unions_with_training(self, mock_predict, mock_orchestrator, tmp_path):
         gf = str(tmp_path / "genos.txt")
         _write_lines(gf, ["C2D"])  # novel genotype
         predict_growth("cfg.yaml", "post.h5",
@@ -97,7 +97,7 @@ class TestPredictGrowthUnion:
         assert "A1B" in mock_predict["genotypes"]
         assert "C2D" in mock_predict["genotypes"]
 
-    def test_genotypes_file_union_preserves_order(self, mock_predict, mock_gm, tmp_path):
+    def test_genotypes_file_union_preserves_order(self, mock_predict, mock_orchestrator, tmp_path):
         gf = str(tmp_path / "genos.txt")
         _write_lines(gf, ["C2D"])
         predict_growth("cfg.yaml", "post.h5",
@@ -107,7 +107,7 @@ class TestPredictGrowthUnion:
         idx_c2d = mock_predict["genotypes"].index("C2D")
         assert idx_c2d > 0
 
-    def test_concs_file_unions_with_training(self, mock_predict, mock_gm, tmp_path):
+    def test_concs_file_unions_with_training(self, mock_predict, mock_orchestrator, tmp_path):
         cf = str(tmp_path / "concs.txt")
         _write_lines(cf, [5.0])  # novel concentration
         predict_growth("cfg.yaml", "post.h5",
@@ -117,7 +117,7 @@ class TestPredictGrowthUnion:
         assert 1.0 in mock_predict["titrant_conc"]
         assert 5.0 in mock_predict["titrant_conc"]
 
-    def test_duplicate_concs_not_repeated(self, mock_predict, mock_gm, tmp_path):
+    def test_duplicate_concs_not_repeated(self, mock_predict, mock_orchestrator, tmp_path):
         cf = str(tmp_path / "concs.txt")
         _write_lines(cf, [1.0])  # already in training
         predict_growth("cfg.yaml", "post.h5",
@@ -126,7 +126,7 @@ class TestPredictGrowthUnion:
         concs = mock_predict["titrant_conc"]
         assert concs.count(1.0) == 1
 
-    def test_duplicate_genotypes_not_repeated(self, mock_predict, mock_gm, tmp_path):
+    def test_duplicate_genotypes_not_repeated(self, mock_predict, mock_orchestrator, tmp_path):
         gf = str(tmp_path / "genos.txt")
         _write_lines(gf, ["wt"])  # already in training
         predict_growth("cfg.yaml", "post.h5",
@@ -176,7 +176,7 @@ class TestPredictGrowthOnlyFiles:
 
 class TestPredictGrowthTitrantNamesFilter:
 
-    def test_titrant_names_file_filters_output_rows(self, mock_predict, mock_gm, tmp_path):
+    def test_titrant_names_file_filters_output_rows(self, mock_predict, mock_orchestrator, tmp_path):
         nf = str(tmp_path / "names.txt")
         _write_lines(nf, ["IPTG"])
         out = str(tmp_path / "out")
@@ -203,13 +203,13 @@ class TestPredictGrowthTitrantNamesFilter:
 
 class TestPredictGrowthCheckpointInput:
 
-    def _make_fixtures(self, mock_gm, resolved_path="resolved.h5"):
+    def _make_fixtures(self, mock_orchestrator, resolved_path="resolved.h5"):
         """Return patch stack that intercepts resolve_param_file."""
         def fake_predict(**kwargs):
-            genotypes = kwargs.get("genotypes") or mock_gm.growth_df["genotype"].unique().tolist()
-            concs = kwargs.get("titrant_conc") or mock_gm.growth_df["titrant_conc"].unique().tolist()
+            genotypes = kwargs.get("genotypes") or mock_orchestrator.growth_df["genotype"].unique().tolist()
+            concs = kwargs.get("titrant_conc") or mock_orchestrator.growth_df["titrant_conc"].unique().tolist()
             rows = [{"genotype": g, "titrant_name": "IPTG", "titrant_conc": c,
-                     "median": 10.0}
+                     "q0.5": 10.0}
                     for g in genotypes for c in concs]
             return pd.DataFrame(rows)
 
@@ -217,7 +217,7 @@ class TestPredictGrowthCheckpointInput:
             patch(
                 "tfscreen.tfmodel.scripts"
                 ".predict_growth_cli.read_configuration",
-                return_value=(mock_gm, {}),
+                return_value=(mock_orchestrator, {}),
             ),
             patch(
                 "tfscreen.tfmodel.scripts"
@@ -226,15 +226,15 @@ class TestPredictGrowthCheckpointInput:
             ),
         ]
 
-    def test_pkl_param_file_calls_resolve(self, mock_gm, tmp_path):
+    def test_pkl_param_file_calls_resolve(self, mock_orchestrator, tmp_path):
         """resolve_param_file is called when param_file ends with .pkl."""
         resolve_calls = []
 
-        def fake_resolve(pf, gm, op):
+        def fake_resolve(pf, orchestrator, op):
             resolve_calls.append(pf)
             return "resolved.h5"
 
-        patches = self._make_fixtures(mock_gm)
+        patches = self._make_fixtures(mock_orchestrator)
         with patches[0], patches[1], patch(
             "tfscreen.tfmodel.scripts"
             ".predict_growth_cli.resolve_param_file",
@@ -245,15 +245,15 @@ class TestPredictGrowthCheckpointInput:
 
         assert resolve_calls == ["myrun_checkpoint.pkl"]
 
-    def test_h5_param_file_calls_resolve(self, mock_gm, tmp_path):
+    def test_h5_param_file_calls_resolve(self, mock_orchestrator, tmp_path):
         """resolve_param_file is called for .h5 files too (pass-through)."""
         resolve_calls = []
 
-        def fake_resolve(pf, gm, op):
+        def fake_resolve(pf, orchestrator, op):
             resolve_calls.append(pf)
             return pf
 
-        patches = self._make_fixtures(mock_gm)
+        patches = self._make_fixtures(mock_orchestrator)
         with patches[0], patches[1], patch(
             "tfscreen.tfmodel.scripts"
             ".predict_growth_cli.resolve_param_file",
@@ -264,16 +264,16 @@ class TestPredictGrowthCheckpointInput:
 
         assert resolve_calls == ["post.h5"]
 
-    def test_resolved_path_passed_to_predict(self, mock_gm, tmp_path):
+    def test_resolved_path_passed_to_predict(self, mock_orchestrator, tmp_path):
         """The path returned by resolve_param_file is what predict receives."""
         predict_calls = {}
 
         def fake_predict(**kwargs):
             predict_calls["param_posteriors"] = kwargs.get("param_posteriors")
             return pd.DataFrame({"genotype": ["wt"], "titrant_name": ["IPTG"],
-                                  "titrant_conc": [0.0], "median": [10.0]})
+                                  "titrant_conc": [0.0], "q0.5": [10.0]})
 
-        patches = self._make_fixtures(mock_gm)
+        patches = self._make_fixtures(mock_orchestrator)
         with patches[0], patch(
             "tfscreen.tfmodel.scripts"
             ".predict_growth_cli.predict",
@@ -288,16 +288,16 @@ class TestPredictGrowthCheckpointInput:
 
         assert predict_calls["param_posteriors"] == "resolved_map.h5"
 
-    def test_pkl_passes_point_est_q_to_get(self, mock_gm, tmp_path):
-        """q_to_get={"point_est": 0.5} is passed to predict when param_file is .pkl."""
+    def test_pkl_passes_point_est_q_to_get(self, mock_orchestrator, tmp_path):
+        """q_to_get=[0.5] is passed to predict when param_file is .pkl."""
         predict_calls = {}
 
         def fake_predict(**kwargs):
             predict_calls["q_to_get"] = kwargs.get("q_to_get")
             return pd.DataFrame({"genotype": ["wt"], "titrant_name": ["IPTG"],
-                                 "titrant_conc": [0.0], "point_est": [10.0]})
+                                 "titrant_conc": [0.0], "q0.5": [10.0]})
 
-        patches = self._make_fixtures(mock_gm)
+        patches = self._make_fixtures(mock_orchestrator)
         with patches[0], patch(
             "tfscreen.tfmodel.scripts"
             ".predict_growth_cli.predict",
@@ -310,18 +310,18 @@ class TestPredictGrowthCheckpointInput:
             predict_growth("cfg.yaml", "run_checkpoint.pkl",
                            out_prefix=str(tmp_path / "out"))
 
-        assert predict_calls["q_to_get"] == {"point_est": 0.5}
+        assert predict_calls["q_to_get"] == [0.5]
 
-    def test_h5_passes_none_q_to_get(self, mock_gm, tmp_path):
+    def test_h5_passes_none_q_to_get(self, mock_orchestrator, tmp_path):
         """q_to_get=None is passed to predict when param_file is .h5."""
         predict_calls = {}
 
         def fake_predict(**kwargs):
             predict_calls["q_to_get"] = kwargs.get("q_to_get")
             return pd.DataFrame({"genotype": ["wt"], "titrant_name": ["IPTG"],
-                                 "titrant_conc": [0.0], "median": [10.0]})
+                                 "titrant_conc": [0.0], "q0.5": [10.0]})
 
-        patches = self._make_fixtures(mock_gm)
+        patches = self._make_fixtures(mock_orchestrator)
         with patches[0], patch(
             "tfscreen.tfmodel.scripts"
             ".predict_growth_cli.predict",
@@ -329,7 +329,7 @@ class TestPredictGrowthCheckpointInput:
         ), patch(
             "tfscreen.tfmodel.scripts"
             ".predict_growth_cli.resolve_param_file",
-            side_effect=lambda pf, gm, op: pf,
+            side_effect=lambda pf, orchestrator, op: pf,
         ):
             predict_growth("cfg.yaml", "post.h5",
                            out_prefix=str(tmp_path / "out"))

@@ -128,9 +128,9 @@ def get_hyperparameters():
     Get default values for the model hyperparameters.
     """
     parameters = {}
-    parameters["min_loc"] = 0.025
+    parameters["min_loc"] = 0.020
     parameters["min_scale"] = 0.1
-    parameters["max_loc"] = 0.025
+    parameters["max_loc"] = 0.030
     parameters["max_scale"] = 0.1
 
     return parameters
@@ -144,9 +144,9 @@ def get_guesses(name, data):
     _DEFAULT_SCALE = 0.01
 
     guesses = {}
-    guesses[f"{name}_min_locs"] = jnp.full(num_cond_rep, 0.025, dtype=float)
+    guesses[f"{name}_min_locs"] = jnp.full(num_cond_rep, 0.020, dtype=float)
     guesses[f"{name}_min_scales"] = jnp.full(num_cond_rep, _DEFAULT_SCALE, dtype=float)
-    guesses[f"{name}_max_locs"] = jnp.full(num_cond_rep, 0.025, dtype=float)
+    guesses[f"{name}_max_locs"] = jnp.full(num_cond_rep, 0.030, dtype=float)
     guesses[f"{name}_max_scales"] = jnp.full(num_cond_rep, _DEFAULT_SCALE, dtype=float)
 
     return guesses
@@ -157,6 +157,8 @@ def get_priors():
 
 
 def get_extract_specs(ctx):
+    if "condition_rep" not in ctx.growth_tm.map_groups:
+        return []
     cond_rep_cols = (["condition_rep"] if ctx.growth_shares_replicates
                      else ["replicate", "condition_rep"])
     return [dict(

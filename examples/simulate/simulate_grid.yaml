@@ -17,7 +17,7 @@ base_config: simulate_config.yaml    # in the same examples/simulate/ directory
 # Directory name for each run.  Variables from both 'simulate' and 'template'
 # blocks are available.  The |basename filter strips directory paths from
 # file-valued variables.
-run_name: "{{ theta_component }}__noise{{ tube_noise_sigma }}__seed{{ random_seed }}"
+run_name: "{{ theta_component }}__noise{{ tube_noise_sigma }}__seed{{ seed }}"
 
 # Jinja2 template file (relative to this YAML) rendered into each subdir.
 output_file: run.sh    # in the same examples/simulate/ directory
@@ -65,8 +65,8 @@ simulate:
 
   - name: seed
     variants:
-      - random_seed: 0
-      - random_seed: 42
+      - seed: 0
+      - seed: 42
 
 
 # ---------------------------------------------------------------------------

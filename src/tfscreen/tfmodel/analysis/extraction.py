@@ -100,7 +100,7 @@ def _extract_param_est(input_df,
 
     return out_dfs
 
-def extract_parameters(model, posteriors, q_to_get=None):
+def extract_parameters(orchestrator, posteriors, q_to_get=None):
     """
     Extract parameter quantiles from posterior samples.
 
@@ -110,12 +110,12 @@ def extract_parameters(model, posteriors, q_to_get=None):
 
     Parameters
     ----------
-    model : ModelOrchestrator
+    orchestrator : ModelOrchestrator
         The model instance to extract parameters from.
     posteriors : dict or str
-        Assumes this is a dictionary of posteriors keying parameters to 
-        numpy arrays, a numpy.lib.npyio.NpzFile object, or a path to a 
-        .npz or .h5/.hdf5 file containing posterior samples for model 
+        Assumes this is a dictionary of posteriors keying parameters to
+        numpy arrays, a numpy.lib.npyio.NpzFile object, or a path to a
+        .npz or .h5/.hdf5 file containing posterior samples for model
         parameters.
     q_to_get : dict, optional
         Dictionary mapping output column names to quantile values (between 0 and 1)
@@ -138,20 +138,20 @@ def extract_parameters(model, posteriors, q_to_get=None):
     q_to_get, param_posteriors = load_posteriors(posteriors, q_to_get)
 
     ctx = ExtractionContext(
-        growth_tm=model.training_tm,
-        mut_labels=model.mut_labels,
-        pair_labels=model.pair_labels,
-        growth_shares_replicates=model._growth_shares_replicates,
+        growth_tm=orchestrator.training_tm,
+        mut_labels=orchestrator.mut_labels,
+        pair_labels=orchestrator.pair_labels,
+        growth_shares_replicates=orchestrator._growth_shares_replicates,
     )
 
     component_selections = [
-        ("condition_growth", model._condition_growth),
-        ("growth_transition", model._growth_transition),
+        ("condition_growth", orchestrator._condition_growth),
+        ("growth_transition", orchestrator._growth_transition),
         ("ln_cfu0", "hierarchical"),
-        ("dk_geno", model._dk_geno),
-        ("activity", model._activity),
-        ("theta", model._theta),
-        ("transformation", model._transformation),
+        ("dk_geno", orchestrator._dk_geno),
+        ("activity", orchestrator._activity),
+        ("theta", orchestrator._theta),
+        ("transformation", orchestrator._transformation),
     ]
 
     extract = []
@@ -179,7 +179,7 @@ def extract_parameters(model, posteriors, q_to_get=None):
 
     return params
 
-def extract_theta_curves(model, posteriors, q_to_get=None, manual_titrant_df=None,
+def extract_theta_curves(orchestrator, posteriors, q_to_get=None, manual_titrant_df=None,
                          num_samples=100):
     """
     Extract theta curves by sampling from the joint posterior distribution.
@@ -190,7 +190,7 @@ def extract_theta_curves(model, posteriors, q_to_get=None, manual_titrant_df=Non
 
     Parameters
     ----------
-    model : ModelOrchestrator
+    orchestrator : ModelOrchestrator
         The model instance to extract parameters from.
     posteriors : dict or str
         Assumes this is a dictionary of posteriors keying parameters to
@@ -206,7 +206,7 @@ def extract_theta_curves(model, posteriors, q_to_get=None, manual_titrant_df=Non
         at which to calculate theta. If provided, it overrides the default
         calculation at the concentrations present in the input data.
         If 'genotype' is present, it will be used; otherwise, the method
-        will calculate theta for all genotypes in the model.
+        will calculate theta for all genotypes in the orchestrator.
     num_samples : int or None, optional
         Randomly select this many joint posterior samples and return them as
         columns ``sample_0``, ``sample_1``, ... alongside the quantile
@@ -228,18 +228,18 @@ def extract_theta_curves(model, posteriors, q_to_get=None, manual_titrant_df=Non
         If `q_to_get` is not a dictionary.
         If `manual_titrant_df` is missing required columns.
     """
-    module = model_registry.get("theta", {}).get(model._theta)
+    module = model_registry.get("theta", {}).get(orchestrator._theta)
     if module is None or not (hasattr(module, "build_calc_df")
                               and hasattr(module, "compute_theta_samples")):
         raise ValueError(
             f"extract_theta_curves requires the theta component to implement "
             f"build_calc_df and compute_theta_samples. "
-            f"'{model._theta}' does not support this interface."
+            f"'{orchestrator._theta}' does not support this interface."
         )
 
     q_to_get, param_posteriors = load_posteriors(posteriors, q_to_get)
 
-    calc_df, internal_cols, extra_kwargs = module.build_calc_df(model, manual_titrant_df)
+    calc_df, internal_cols, extra_kwargs = module.build_calc_df(orchestrator, manual_titrant_df)
     theta_samples = module.compute_theta_samples(calc_df, param_posteriors, **extra_kwargs)
 
     for q_name, q_val in q_to_get.items():
@@ -257,7 +257,7 @@ def extract_theta_curves(model, posteriors, q_to_get=None, manual_titrant_df=Non
 
     return calc_df.drop(columns=internal_cols)
 
-def extract_theta_unmeasured(model, posteriors, target_genotypes,
+def extract_theta_unmeasured(orchestrator, posteriors, target_genotypes,
                             manual_titrant_df, q_to_get=None,
                             genotype_batch_size=2000):
     """
@@ -273,7 +273,7 @@ def extract_theta_unmeasured(model, posteriors, target_genotypes,
 
     Parameters
     ----------
-    model : ModelOrchestrator
+    orchestrator : ModelOrchestrator
         Fitted model instance (must carry ``mut_labels``, ``pair_labels``,
         ``growth_tm``, and ``priors``).
     posteriors : dict or str
@@ -284,7 +284,7 @@ def extract_theta_unmeasured(model, posteriors, target_genotypes,
     manual_titrant_df : pd.DataFrame
         Must have ``'titrant_name'`` and ``'titrant_conc'`` columns specifying
         the concentration grid.  All ``titrant_name`` values must be present in
-        the model.
+        the orchestrator.
     q_to_get : dict, optional
         Quantiles to extract.  Defaults to the standard set used by other
         extraction functions.
@@ -305,20 +305,20 @@ def extract_theta_unmeasured(model, posteriors, target_genotypes,
     ValueError
         If the active theta component does not implement ``predict_unmeasured``.
     """
-    module = model_registry.get("theta", {}).get(model._theta)
+    module = model_registry.get("theta", {}).get(orchestrator._theta)
     if module is None or not hasattr(module, "predict_unmeasured"):
         raise ValueError(
             f"extract_theta_unmeasured requires the theta component to implement "
-            f"predict_unmeasured.  '{model._theta}' does not support this interface."
+            f"predict_unmeasured.  '{orchestrator._theta}' does not support this interface."
         )
 
     q_to_get, param_posteriors = load_posteriors(posteriors, q_to_get)
 
-    titrant_dim   = model.training_tm.tensor_dim_names.index("titrant_name")
-    titrant_names = list(model.training_tm.tensor_dim_labels[titrant_dim])
+    titrant_dim   = orchestrator.training_tm.tensor_dim_names.index("titrant_name")
+    titrant_names = list(orchestrator.training_tm.tensor_dim_labels[titrant_dim])
 
     extra_kwargs = {}
-    theta_priors = model.priors.theta
+    theta_priors = orchestrator.priors.theta
     if hasattr(theta_priors, "theta_tf_total_M"):
         extra_kwargs["tf_total"] = float(theta_priors.theta_tf_total_M)
     if hasattr(theta_priors, "theta_op_total_M"):
@@ -334,8 +334,8 @@ def extract_theta_unmeasured(model, posteriors, target_genotypes,
             target_genotypes=target_genotypes,
             titrant_names=titrant_names,
             manual_titrant_df=manual_titrant_df,
-            mut_labels=model.mut_labels,
-            pair_labels=model.pair_labels,
+            mut_labels=orchestrator.mut_labels,
+            pair_labels=orchestrator.pair_labels,
             param_posteriors=param_posteriors,
             q_to_get=q_to_get,
             **extra_kwargs,
@@ -355,8 +355,8 @@ def extract_theta_unmeasured(model, posteriors, target_genotypes,
             target_genotypes=batch,
             titrant_names=titrant_names,
             manual_titrant_df=manual_titrant_df,
-            mut_labels=model.mut_labels,
-            pair_labels=model.pair_labels,
+            mut_labels=orchestrator.mut_labels,
+            pair_labels=orchestrator.pair_labels,
             param_posteriors=param_posteriors,
             q_to_get=q_to_get,
             **extra_kwargs,
@@ -366,7 +366,7 @@ def extract_theta_unmeasured(model, posteriors, target_genotypes,
     return pd.concat(result_dfs, ignore_index=True)
 
 
-def extract_growth_predictions(model,
+def extract_growth_predictions(orchestrator,
                                posteriors,
                                q_to_get=None,
                                num_samples=100):
@@ -374,11 +374,11 @@ def extract_growth_predictions(model,
     Extract predicted ln_cfu values matching the input growth data.
 
     This method pulls the 'growth_pred' values from the posterior samples
-    and maps them back to the original rows in `model.growth_df`.
+    and maps them back to the original rows in `orchestrator.growth_df`.
 
     Parameters
     ----------
-    model : ModelOrchestrator
+    orchestrator : ModelOrchestrator
         The model instance to extract parameters from.
     posteriors : dict or str
         Assumes this is a dictionary of posteriors keying parameters to
@@ -401,7 +401,7 @@ def extract_growth_predictions(model,
     Returns
     -------
     pd.DataFrame
-        A copy of `model.growth_df` with new columns for the requested
+        A copy of `orchestrator.growth_df` with new columns for the requested
         quantiles of 'ln_cfu_pred' and (unless ``num_samples`` is ``None``)
         ``sample_0`` … ``sample_{num_samples-1}``.
 
@@ -429,7 +429,7 @@ def extract_growth_predictions(model,
     group_cols = ["replicate_idx", "time_idx", "condition_pre_idx",
                   "condition_sel_idx", "titrant_name_idx", "titrant_conc_idx"]
 
-    out_df = model.growth_df.copy()
+    out_df = orchestrator.growth_df.copy()
     out_df = out_df.sort_values(by=group_cols + ["genotype_idx"])
 
     keep_columns = ["replicate", "genotype",

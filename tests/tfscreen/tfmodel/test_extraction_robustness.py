@@ -32,8 +32,8 @@ def mock_model():
         "titrant_conc": [1.0],
         "replicate": ["1"],
         "condition_rep": ["cond1"],
-        "condition_pre": ["pre1"],
-        "condition_sel": ["sel1"],
+        "condition_pre": ["pre-1"],
+        "condition_sel": ["sel+1"],
         "map_theta": [0],
         "map_theta_group": [0],
         "map_condition_rep": [0],
@@ -50,7 +50,7 @@ def mock_model():
         'condition_rep': pd.DataFrame({"replicate": ["1"], "condition_rep": ["cond1"], "map_condition_rep": [0]})
     }
     mock_tm.tensor_dim_names = ["replicate", "time", "condition_pre", "condition_sel", "titrant_name", "titrant_conc", "genotype"]
-    mock_tm.tensor_dim_labels = [["1"], ["1"], ["pre1"], ["sel1"], ["iptg"], [1.0], ["wt"]]
+    mock_tm.tensor_dim_labels = [["1"], ["1"], ["pre-1"], ["sel+1"], ["iptg"], [1.0], ["wt"]]
     model.growth_tm = mock_tm
     model.training_tm = mock_tm
     model.mut_labels = []
@@ -176,7 +176,7 @@ def test_extract_theta_curves_manual_genotype(mock_model):
         "theta_theta_low": np.random.rand(10, 1)
     }
     df = extract_theta_curves(mock_model, posteriors, manual_titrant_df=manual_df)
-    assert "median" in df.columns
+    assert "q0.5" in df.columns
     assert len(df) == 1
 
 def test_extract_theta_curves_broadcast(mock_model):
@@ -274,9 +274,10 @@ def test_extract_parameters_growth_transition_shares_replicates(
 
 
 def test_extract_parameters_errors(mock_model):
-    """Test error handling in extract_parameters."""
-    with pytest.raises(ValueError, match="q_to_get should be a dictionary"):
-        extract_parameters(mock_model, {}, q_to_get=[0.5])
+    """Test error handling in extract_parameters: dict is now invalid, list is valid."""
+    # A plain list is now the correct API; a dict should raise
+    with pytest.raises(ValueError):
+        extract_parameters(mock_model, {}, q_to_get={"point_est": 0.5})
 
 def test_extract_parameters_h5_file(mock_model, tmp_path):
     """Test extract_parameters loading from an HDF5 file path."""
@@ -310,7 +311,7 @@ def test_extract_theta_curves_hdf5_path(mock_model, tmp_path):
             f.create_dataset(k, data=v)
     
     df = extract_theta_curves(mock_model, h5_path)
-    assert "median" in df.columns
+    assert "q0.5" in df.columns
 
 def test_extract_growth_predictions_hdf5_basic(mock_model, tmp_path):
     """Test extract_growth_predictions reads correctly from HDF5."""
@@ -325,11 +326,11 @@ def test_extract_growth_predictions_hdf5_basic(mock_model, tmp_path):
     # Test reading from an open h5py.File
     with h5py.File(h5_path, "r") as f:
         df = extract_growth_predictions(mock_model, f)
-        assert "median" in df.columns
+        assert "q0.5" in df.columns
 
     # Test load from file path (.h5) to hit the File loading branch
     df_path = extract_growth_predictions(mock_model, h5_path)
-    assert "median" in df_path.columns
+    assert "q0.5" in df_path.columns
 
 def test_extract_growth_predictions_hdf5_multiple_groups(mock_model, tmp_path):
     """Test extract_growth_predictions with multiple (rep, time, condition) groups.
@@ -341,8 +342,8 @@ def test_extract_growth_predictions_hdf5_multiple_groups(mock_model, tmp_path):
     mock_model.growth_df = pd.DataFrame({
         "replicate": ["1", "2"],
         "genotype": ["wt", "wt"],
-        "condition_pre": ["pre1", "pre2"],
-        "condition_sel": ["sel1", "sel2"],
+        "condition_pre": ["pre-1", "pre-2"],
+        "condition_sel": ["sel+1", "sel+2"],
         "titrant_name": ["iptg", "iptg"],
         "titrant_conc": [1.0, 2.0],
         "t_pre": [0.0, 0.0],
@@ -368,14 +369,14 @@ def test_extract_growth_predictions_hdf5_multiple_groups(mock_model, tmp_path):
 
     with h5py.File(h5_path, "r") as f:
         df = extract_growth_predictions(mock_model, f)
-        assert "median" in df.columns
+        assert "q0.5" in df.columns
         assert len(df) == 2
 
 def test_extract_theta_curves_q_to_get_error(mock_model):
-    """Test extract_theta_curves with invalid q_to_get."""
+    """Test extract_theta_curves with invalid q_to_get: dict is now invalid."""
     mock_model._theta = "hill_geno"
-    with pytest.raises(ValueError, match="q_to_get should be a dictionary"):
-        extract_theta_curves(mock_model, {}, q_to_get=[0.5])
+    with pytest.raises(ValueError):
+        extract_theta_curves(mock_model, {}, q_to_get={"median": 0.5})
 
 def test_extract_growth_predictions_hdf5_is_h5_check(mock_model, tmp_path):
     """Explicitly check that we are hitting the is_h5 branch."""
@@ -390,4 +391,4 @@ def test_extract_growth_predictions_hdf5_is_h5_check(mock_model, tmp_path):
         ds = f["growth_pred"]
         # extract_growth_predictions takes param_posteriors which is the file/group
         df = extract_growth_predictions(mock_model, f)
-        assert "median" in df.columns
+        assert "q0.5" in df.columns

@@ -52,9 +52,9 @@ def _make_growth_csv(tmp_path, genotypes=_GENOTYPES):
                     "num_muts":          num_muts,
                     "counts":            1000,
                     "replicate":         rep,
-                    "condition_pre":     "pre",
+                    "condition_pre":     "pre-cond",
                     "t_pre":             24.0,
-                    "condition_sel":     "sel",
+                    "condition_sel":     "sel+cond",
                     "t_sel":             48.0,
                     "titrant_name":      "iptg",
                     "titrant_conc":      conc,
@@ -115,11 +115,11 @@ def test_needs_mut_growth_path(tmp_path, theta):
     growth_path  = _make_growth_csv(tmp_path)
     binding_path = _make_binding_csv(tmp_path)
 
-    mc = ModelOrchestrator(growth_path, binding_path, theta=theta)
+    orchestrator = ModelOrchestrator(growth_path, binding_path, theta=theta)
 
-    assert len(mc.mut_labels) > 0, \
+    assert len(orchestrator.mut_labels) > 0, \
         f"{theta} (growth): mut_labels is empty — _needs_mut did not fire"
-    assert mc.data.growth.num_mutation > 0, \
+    assert orchestrator.data.growth.num_mutation > 0, \
         f"{theta} (growth): num_mutation == 0 — mutation matrices not built"
 
 
@@ -141,11 +141,11 @@ def test_needs_mut_binding_only_path(tmp_path, theta):
 
     binding_path = _make_binding_csv(tmp_path)
 
-    mc = ModelOrchestrator(None, binding_path, binding_only=True, theta=theta)
+    orchestrator = ModelOrchestrator(None, binding_path, binding_only=True, theta=theta)
 
-    assert len(mc.mut_labels) > 0, \
+    assert len(orchestrator.mut_labels) > 0, \
         f"{theta} (binding_only): mut_labels is empty — _needs_mut did not fire"
-    assert mc.data.binding.num_mutation > 0, \
+    assert orchestrator.data.binding.num_mutation > 0, \
         f"{theta} (binding_only): num_mutation == 0 — mutation matrices not built"
 
 
@@ -165,13 +165,13 @@ def test_offset_guesses_have_correct_shape_binding_only(tmp_path, theta):
     from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
 
     binding_path = _make_binding_csv(tmp_path)
-    mc = ModelOrchestrator(None, binding_path, binding_only=True, theta=theta)
+    orchestrator = ModelOrchestrator(None, binding_path, binding_only=True, theta=theta)
 
-    M = mc.data.binding.num_mutation
+    M = orchestrator.data.binding.num_mutation
     assert M > 0
 
     # Every *_offset key in init_params must have length M (or M as a dimension)
-    for key, val in mc.init_params.items():
+    for key, val in orchestrator.init_params.items():
         if "offset" in key and hasattr(val, "shape") and val.shape != ():
             assert val.shape[0] == M or val.shape[-1] == M, \
                 f"{key} has shape {val.shape} but expected M={M} on at least one axis"

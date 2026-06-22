@@ -97,7 +97,7 @@ def _make_model(theta="none", dk_geno="none", activity="fixed",
     return model
 
 
-_Q = {"median": 0.5}   # single quantile to keep assertions simple
+_Q = [0.5]   # single quantile to keep assertions simple
 
 
 # ---------------------------------------------------------------------------
@@ -135,7 +135,7 @@ class TestExtractParametersHillMut:
         # 3 genotypes × 2 titrant names = 6 rows
         df = params["theta_low"]
         assert len(df) == 6
-        assert set(df.columns) >= {"genotype", "titrant_name", "median"}
+        assert set(df.columns) >= {"genotype", "titrant_name", "q0.5"}
 
     def test_mutation_output_shape_mutation_x_titrant(self):
         model = _make_model(theta="hill_mut")
@@ -143,7 +143,7 @@ class TestExtractParametersHillMut:
         # 2 mutations × 2 titrant names = 4 rows
         df = params["d_logit_low"]
         assert len(df) == 4
-        assert set(df.columns) >= {"mutation", "titrant_name", "median"}
+        assert set(df.columns) >= {"mutation", "titrant_name", "q0.5"}
 
     def test_compound_index_selects_correct_posterior(self):
         """Each row should use the posterior slice for its (titrant_name_idx, genotype_idx)."""
@@ -165,21 +165,21 @@ class TestExtractParametersHillMut:
 
         # --- assembled (T, G) indexing ---
         df = params["theta_low"].set_index(["titrant_name", "genotype"])
-        assert df.loc[("iptg", "wt"), "median"] == pytest.approx(0.0)
-        assert df.loc[("iptg", "B"),  "median"] == pytest.approx(2.0)
-        assert df.loc[("atc",  "A"),  "median"] == pytest.approx(4.0)
-        assert df.loc[("atc",  "B"),  "median"] == pytest.approx(5.0)
+        assert df.loc[("iptg", "wt"), "q0.5"] == pytest.approx(0.0)
+        assert df.loc[("iptg", "B"),  "q0.5"] == pytest.approx(2.0)
+        assert df.loc[("atc",  "A"),  "q0.5"] == pytest.approx(4.0)
+        assert df.loc[("atc",  "B"),  "q0.5"] == pytest.approx(5.0)
 
         # --- per-mutation (T, M) indexing: flat index = titrant_idx*M + mut_idx ---
         dd = params["d_logit_low"].set_index(["titrant_name", "mutation"])
         # (iptg=0, A=0) → flat 0*2+0=0 → value 0.0
-        assert dd.loc[("iptg", "A"), "median"] == pytest.approx(0.0)
+        assert dd.loc[("iptg", "A"), "q0.5"] == pytest.approx(0.0)
         # (iptg=0, B=1) → flat 0*2+1=1 → value 1.0
-        assert dd.loc[("iptg", "B"), "median"] == pytest.approx(1.0)
+        assert dd.loc[("iptg", "B"), "q0.5"] == pytest.approx(1.0)
         # (atc=1,  A=0) → flat 1*2+0=2 → value 2.0
-        assert dd.loc[("atc",  "A"), "median"] == pytest.approx(2.0)
+        assert dd.loc[("atc",  "A"), "q0.5"] == pytest.approx(2.0)
         # (atc=1,  B=1) → flat 1*2+1=3 → value 3.0
-        assert dd.loc[("atc",  "B"), "median"] == pytest.approx(3.0)
+        assert dd.loc[("atc",  "B"), "q0.5"] == pytest.approx(3.0)
 
 
 # ---------------------------------------------------------------------------
@@ -342,7 +342,7 @@ class TestExtractThetaCurvesHillMut:
         assert "genotype" in df.columns
         assert "titrant_name" in df.columns
         assert "titrant_conc" in df.columns
-        assert "median" in df.columns
+        assert "q0.5" in df.columns
 
     def test_index_columns_dropped_from_output(self, model):
         df = extract_theta_curves(model, self._flat_posteriors(),
@@ -373,7 +373,7 @@ class TestExtractThetaCurvesHillMut:
                                   q_to_get=_Q, manual_titrant_df=manual_df, num_samples=None)
         expected_occ = 1.0 / (1.0 + np.exp(-2.0 * (0.0 - (-1.0))))
         expected_theta = 0.1 + 0.8 * expected_occ
-        assert df["median"].iloc[0] == pytest.approx(expected_theta, rel=1e-5)
+        assert df["q0.5"].iloc[0] == pytest.approx(expected_theta, rel=1e-5)
 
     def test_different_indices_use_different_posteriors(self, model):
         """
@@ -400,11 +400,11 @@ class TestExtractThetaCurvesHillMut:
 
         # iptg(0)/A(1): theta_low=1.0, conc=1.0→log=0, log_K=0, n=1
         occ_iptg = 1.0 / (1.0 + np.exp(-1.0 * (np.log(1.0) - 0.0)))
-        assert row_iptg_A["median"].iloc[0] == pytest.approx(1.0 + 1.0 * occ_iptg, rel=1e-5)
+        assert row_iptg_A["q0.5"].iloc[0] == pytest.approx(1.0 + 1.0 * occ_iptg, rel=1e-5)
 
         # atc(1)/B(2): theta_low=5.0, conc=2.0→log=log(2), log_K=0, n=1
         occ_atc = 1.0 / (1.0 + np.exp(-1.0 * (np.log(2.0) - 0.0)))
-        assert row_atc_B["median"].iloc[0]  == pytest.approx(5.0 + 1.0 * occ_atc, rel=1e-5)
+        assert row_atc_B["q0.5"].iloc[0]  == pytest.approx(5.0 + 1.0 * occ_atc, rel=1e-5)
 
     def test_zero_concentration_handled(self, model):
         """Zero concentrations should not produce NaN (uses ZERO_CONC_VALUE)."""
@@ -415,7 +415,7 @@ class TestExtractThetaCurvesHillMut:
         })
         df = extract_theta_curves(model, self._flat_posteriors(),
                                   q_to_get=_Q, manual_titrant_df=manual_df, num_samples=None)
-        assert not df["median"].isna().any()
+        assert not df["q0.5"].isna().any()
 
     def test_broadcast_without_genotype(self, model):
         manual_df = pd.DataFrame({
@@ -444,7 +444,7 @@ class TestExtractThetaCurvesDispatcher:
         }
         df = extract_theta_curves(model, posteriors, q_to_get=_Q)
         assert "map_theta_group" not in df.columns
-        assert "median" in df.columns
+        assert "q0.5" in df.columns
 
     def test_dispatches_to_hill_mut(self):
         model = _make_model(theta="hill_mut")
@@ -456,7 +456,7 @@ class TestExtractThetaCurvesDispatcher:
         }
         df = extract_theta_curves(model, posteriors, q_to_get=_Q)
         assert "genotype_idx" not in df.columns
-        assert "median" in df.columns
+        assert "q0.5" in df.columns
 
     def test_raises_for_categorical(self):
         # categorical now supports the interface; use 'simple' to test the error path
@@ -519,5 +519,5 @@ class TestExtractThetaCurvesDispatcher:
         }
         df_mut = extract_theta_curves(model_mut, posteriors_mut, q_to_get=_Q)
 
-        assert df_hill["median"].iloc[0] == pytest.approx(
-            df_mut["median"].iloc[0], rel=1e-5)
+        assert df_hill["q0.5"].iloc[0] == pytest.approx(
+            df_mut["q0.5"].iloc[0], rel=1e-5)

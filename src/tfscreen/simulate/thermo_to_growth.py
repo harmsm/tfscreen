@@ -153,11 +153,74 @@ def _sample_hierarchical_activity(unique_genotypes,
 _ACTIVITY_COMPONENTS = {"fixed", "horseshoe_geno", "hierarchical_geno"}
 
 
+def _theta_param_to_df(theta_param, unique_genotypes, sim_indices):
+    """
+    Extract per-genotype scalar fields from a ThetaParam pytree.
+
+    Iterates over the dataclass fields of ``theta_param``.  Fields whose
+    array has exactly two dimensions (T × G_sim) are treated as
+    per-genotype parameters: columns are selected via ``sim_indices`` and
+    a leading titrant dimension of size 1 is squeezed away; when T > 1 each
+    titrant gets its own column suffixed ``_T{t}``.  Fields with any other
+    dimensionality (e.g. population moments ``mu``/``sigma`` with shape
+    T × C × 1) are silently skipped.
+
+    If ``theta_param`` is not a standard or Flax dataclass (e.g. a mock
+    during testing) the function returns a DataFrame containing only the
+    ``genotype`` column, to which ``dk_geno`` and ``activity`` are then
+    added by the caller.
+
+    Parameters
+    ----------
+    theta_param : pytree
+        Returned by ``sample_theta_prior``.  Per-genotype fields have shape
+        ``(num_titrant_name, num_genotype_sim)``.
+    unique_genotypes : array-like of str
+        Unique genotype strings in the desired output row order.
+    sim_indices : array-like of int
+        For each entry in ``unique_genotypes``, its column index in the
+        sim_data / ``library_df`` order stored in ``theta_param``.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per genotype.  Columns are the extracted ``theta_param``
+        field names (with a ``_T{t}`` suffix when ``num_titrant_name > 1``).
+        The ``genotype`` column is always present as the first column.
+    """
+    # Use the class-level __dataclass_fields__ so that MagicMock instances
+    # (which intercept instance-level attribute access) safely return an
+    # empty dict rather than triggering mock attribute creation.
+    field_names = list(
+        getattr(type(theta_param), "__dataclass_fields__", {}).keys()
+    )
+
+    col_data = {}
+    for fname in field_names:
+        try:
+            val = np.array(getattr(theta_param, fname))
+        except Exception:
+            continue
+        if val.ndim != 2:
+            continue  # skip mu, sigma (3-D) and any scalars
+        selected = val[:, np.asarray(sim_indices)]   # (T, n_unique)
+        if selected.shape[0] == 1:
+            col_data[fname] = selected[0]
+        else:
+            for t in range(selected.shape[0]):
+                col_data[f"{fname}_T{t}"] = selected[t]
+
+    df = pd.DataFrame(col_data)
+    df.insert(0, "genotype", list(unique_genotypes))
+    return df
+
+
 def _assign_dk_geno(unique_genotypes,
                     hyper_loc=-3.5,
                     hyper_scale=1.0,
                     hyper_shift=0.02,
-                    rng: Generator | None = None):
+                    rng: Generator | None = None,
+                    fixed_value: float | None = None):
     """
     Assign a pleiotropic growth-rate effect (dk_geno) to each genotype.
 
@@ -166,7 +229,13 @@ def _assign_dk_geno(unique_genotypes,
 
     Wild-type receives dk_geno = 0.  This matches the prior used in the
     hierarchical tfmodel inference component.
+
+    If fixed_value is not None, all genotypes (including wild-type) receive
+    that value and no stochastic sampling is performed.
     """
+    if fixed_value is not None:
+        return pd.Series({g: float(fixed_value) for g in unique_genotypes})
+
     if rng is None:
         rng = np.random.default_rng()
 
@@ -225,16 +294,20 @@ def thermo_to_growth(
     theta_rng_key,
     growth_params: dict,
     theta_priors_overrides: Optional[dict] = None,
+    theta_sim_priors_overrides: Optional[dict] = None,
     theta_noise_sigma_logit: float = 0.0,
     dk_geno_hyper_loc: float = -3.5,
     dk_geno_hyper_scale: float = 1.0,
     dk_geno_hyper_shift: float = 0.02,
+    dk_geno_zero: bool = False,
     activity_wt: float = 1.0,
     activity_mut_scale: float = 0.0,
     rng: Generator | None = None,
     activity_component: str = "fixed",
     activity_priors_overrides: Optional[dict] = None,
     theta_rescale: str = "passthrough",
+    theta_gc_override: Optional[dict] = None,
+    theta_params_override: Optional[dict] = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Generate phenotypes from genotypes via prior-predictive theta sampling.
@@ -255,7 +328,12 @@ def thermo_to_growth(
     growth_params : dict
         Per-condition growth model parameters keyed by condition string.
     theta_priors_overrides : dict or None
-        Overrides to the theta component's default hyperparameters.
+        Overrides to the theta component's default ``ModelPriors``
+        hyperparameters (prior-predictive path only; ignored when the
+        component defines ``simulate``).
+    theta_sim_priors_overrides : dict or None
+        Overrides to the theta component's ``SimPriors`` defaults
+        (perturbation path only; ignored for components without ``simulate``).
     theta_noise_sigma_logit : float, default 0.0
         Standard deviation of additive Normal noise applied on the logit
         scale after prior-predictive theta sampling, giving:
@@ -273,6 +351,11 @@ def thermo_to_growth(
     dk_geno_hyper_shift : float
         Shift applied after exponentiation: dk_geno = hyper_shift - exp(offset).
         Controls the maximum possible (beneficial) growth-rate effect.
+    dk_geno_zero : bool, default False
+        When True, assign dk_geno = 0 to every genotype and skip stochastic
+        sampling entirely.  The three ``dk_geno_hyper_*`` parameters are
+        ignored.  Useful for simulations where no pleiotropic growth effects
+        are desired.
     activity_wt : float
         TF activity of the wild-type genotype.  Used only when
         ``activity_component == "fixed"``.
@@ -304,17 +387,41 @@ def thermo_to_growth(
         the logit scale ``log(θ/(1−θ))``.  The ``"theta"`` column in
         ``phenotype_df`` and ``genotype_theta_df`` always store the
         pre-rescale (0–1) value.
+    theta_gc_override : dict[str, np.ndarray] or None, default None
+        Per-genotype theta overrides.  Keys are genotype strings; values are
+        1-D arrays of theta at the growth concentrations (same sorted-unique
+        order as ``sample_df["titrant_conc"]``).  Overrides are applied after
+        prior-predictive sampling but before noise and all downstream
+        calculations.  Used by ``library_prediction`` to inject
+        stratified theta values for calibration genotypes.
+    theta_params_override : dict[str, dict[str, float]] or None, default None
+        Effective Hill parameters for each overridden genotype.  Keys are
+        genotype strings; values are dicts with keys ``theta_low``,
+        ``theta_high``, ``log_hill_K``, ``hill_n``.  When provided, the
+        corresponding rows in ``parameters_df`` are updated so that the
+        saved CSV reflects what was actually used in the simulation rather
+        than the prior-predictive sample.
 
     Returns
     -------
     phenotype_df : pd.DataFrame
         Long-form dataframe with one row per (genotype, sample condition).
         Columns include ``theta``, ``dk_geno``, ``activity``, ``k_pre``,
-        ``k_sel``.
+        ``k_sel``.  ``dk_geno`` and ``activity`` are retained here so that
+        ``selection_experiment`` can use them downstream; they are also
+        collected in ``parameters_df`` for file output.
     genotype_theta_df : pd.DataFrame
-        Wide-form dataframe with one row per genotype and one column per
-        unique effector concentration, giving the ground-truth theta value.
+        Long-form dataframe with one row per (genotype, titrant_name,
+        titrant_conc) combination.  Columns: ``genotype``, ``titrant_name``,
+        ``titrant_conc``, ``theta``.  Sorted by (genotype, titrant_name,
+        titrant_conc); ``genotype`` is an ordered categorical.
         Use this to compare simulation inputs against fitted posteriors.
+    parameters_df : pd.DataFrame
+        One row per unique genotype.  Always contains ``genotype``,
+        ``dk_geno``, and ``activity``.  Also contains any scalar
+        per-genotype fields extracted from the ``theta_param`` pytree
+        (e.g. ``theta_low``, ``theta_high``, ``log_hill_K``, ``hill_n``
+        for ``hill_geno``).
     """
 
     print("Sampling theta from prior... ", end="", flush=True)
@@ -350,9 +457,26 @@ def thermo_to_growth(
         sim_data=sim_data,
         rng_key=theta_rng_key,
         priors_overrides=theta_priors_overrides,
+        sim_priors_overrides=theta_sim_priors_overrides,
     )
 
     print("Done.", flush=True)
+
+    # ── Index lookups (shared by genotype_theta_df, phenotype_df, parameters_df) ─
+    # Computed here (before noise) so that theta_gc_override can be applied
+    # using the same index map.  Duplicates in library_df are handled by
+    # mapping each unique genotype to its last occurrence in sim_data order.
+
+    all_genotypes = list(genotypes)   # sim_data order (may have duplicates)
+    geno_to_sim_idx = {g: i for i, g in enumerate(all_genotypes)}
+    unique_sim_indices = np.array([geno_to_sim_idx[g] for g in unique_genotypes])
+
+    # ── Inject stratified theta for calibration genotypes ─────────────────────
+    if theta_gc_override:
+        theta_gc = np.array(theta_gc)  # ensure a mutable copy
+        for g, theta_row in theta_gc_override.items():
+            if g in geno_to_sim_idx:
+                theta_gc[geno_to_sim_idx[g], :] = theta_row
 
     # ── Apply logit-normal noise to theta ─────────────────────────────────────
     if theta_noise_sigma_logit > 0.0:
@@ -361,29 +485,45 @@ def thermo_to_growth(
         epsilon = rng.normal(0.0, theta_noise_sigma_logit, size=theta_gc.shape)
         theta_gc = 1.0 / (1.0 + np.exp(-(logit_theta + epsilon)))
 
-    # ── Build genotype_theta_df (ground-truth parameters for comparison) ─────
-    # Wide form: rows = genotypes (in sim_data order), cols = concentrations.
-
-    all_genotypes = list(genotypes)   # sim_data order
-    conc_vals = np.array(sim_data.titrant_conc)
-    conc_col_names = [f"theta_at_{c:.6g}mM" for c in conc_vals]
-    genotype_theta_df = pd.DataFrame(
-        theta_gc,
-        index=all_genotypes,
-        columns=conc_col_names,
-    )
-    genotype_theta_df.index.name = "genotype"
-    genotype_theta_df = genotype_theta_df.reset_index()
-    genotype_theta_df = set_categorical_genotype(genotype_theta_df)
-
     # ── Map sample_df concentrations to unique-concentration indices ──────────
     # sample_df may have duplicate concentrations across rows; each row maps to
     # one column of theta_gc.
-    conc_to_col = {float(c): i for i, c in enumerate(conc_vals)}
-    sample_conc_idx = sample_df["titrant_conc"].map(conc_to_col).values
+    # Use float64 values from sample_df directly (same source as build_sim_data)
+    # rather than sim_data.titrant_conc, which is float32 from the JAX array and
+    # would cause dict-lookup misses due to float32→float64 precision loss.
+    sorted_concs_f64 = np.sort(sample_df["titrant_conc"].unique()).astype(float)
+    conc_to_col = {c: i for i, c in enumerate(sorted_concs_f64)}
+    sample_conc_idx = sample_df["titrant_conc"].map(conc_to_col).values.astype(int)
 
-    # ── Build genotype-index lookup into sim_data order ───────────────────────
-    geno_to_sim_idx = {g: i for i, g in enumerate(all_genotypes)}
+    # ── Build genotype_theta_df (ground-truth theta per unique genotype) ──────
+    # Long form: one row per (genotype, titrant_name, titrant_conc).
+    # unique_sim_indices maps each unique genotype to its representative row in
+    # theta_gc, eliminating duplicates from sub-libraries.
+    tn_conc_pairs = (
+        sample_df[["titrant_name", "titrant_conc"]]
+        .drop_duplicates()
+        .sort_values(["titrant_name", "titrant_conc"])
+        .reset_index(drop=True)
+    )
+    pair_col_indices = np.array(
+        [conc_to_col[float(c)] for c in tn_conc_pairs["titrant_conc"]]
+    )
+    # theta_vals shape: (n_unique_geno, n_pairs)
+    theta_vals = theta_gc[unique_sim_indices][:, pair_col_indices]
+
+    n_geno = len(unique_genotypes)
+    n_pairs = len(tn_conc_pairs)
+    genotype_theta_df = pd.DataFrame({
+        "genotype":     np.repeat(list(unique_genotypes), n_pairs),
+        "titrant_name": np.tile(tn_conc_pairs["titrant_name"].values, n_geno),
+        "titrant_conc": np.tile(tn_conc_pairs["titrant_conc"].values.astype(float),
+                                n_geno),
+        "theta":        theta_vals.ravel(),
+    })
+    genotype_theta_df = set_categorical_genotype(genotype_theta_df)
+    genotype_theta_df = genotype_theta_df.sort_values(
+        ["genotype", "titrant_name", "titrant_conc"]
+    ).reset_index(drop=True)
 
     print("Calculating growth rates and building phenotype dataframe... ",
           end="", flush=True)
@@ -396,7 +536,7 @@ def thermo_to_growth(
     n_samples = len(sample_df)
 
     # Theta matrix aligned to unique_genotypes order, shape (n_geno, n_samples)
-    unique_sim_indices = np.array([geno_to_sim_idx[g] for g in unique_genotypes])
+    # (unique_sim_indices already computed above)
     theta_ordered = theta_gc[unique_sim_indices]          # (n_geno, C)
     theta_for_samples = theta_ordered[:, sample_conc_idx]  # (n_geno, n_samples)
 
@@ -420,6 +560,7 @@ def thermo_to_growth(
     genotype_dk_geno_series = _assign_dk_geno(
         unique_genotypes, dk_geno_hyper_loc, dk_geno_hyper_scale,
         dk_geno_hyper_shift, rng,
+        fixed_value=0.0 if dk_geno_zero else None,
     )
     phenotype_df["dk_geno"] = phenotype_df["genotype"].map(genotype_dk_geno_series)
 
@@ -476,6 +617,36 @@ def thermo_to_growth(
     final_columns.append("theta")
     phenotype_df = phenotype_df.loc[:, final_columns]
 
+    # ── Build parameters_df (one row per unique genotype) ────────────────────
+    # Extracts per-genotype theta_param fields (e.g. theta_low, log_hill_K)
+    # and pairs them with the already-computed dk_geno and activity values.
+    # phenotype_df keeps dk_geno/activity so selection_experiment still works.
+
+    parameters_df = _theta_param_to_df(theta_param, unique_genotypes,
+                                        unique_sim_indices)
+    parameters_df["dk_geno"] = genotype_dk_geno_series.reindex(
+        list(unique_genotypes)
+    ).values
+    parameters_df["activity"] = genotype_activity_series.reindex(
+        list(unique_genotypes)
+    ).values
+    _front = ["genotype", "dk_geno", "activity"]
+    _other = [c for c in parameters_df.columns if c not in _front]
+    parameters_df = parameters_df[_front + _other]
+    parameters_df = set_categorical_genotype(parameters_df)
+
+    # Overwrite theta columns with the effective (post-override) Hill parameters
+    # so that parameters_df reflects what was actually simulated, not the
+    # prior-predictive sample that was later replaced.
+    if theta_params_override:
+        for g, effective in theta_params_override.items():
+            mask = parameters_df["genotype"] == g
+            if not mask.any():
+                continue
+            for col, val in effective.items():
+                if col in parameters_df.columns:
+                    parameters_df.loc[mask, col] = float(val)
+
     print("Done.", flush=True)
 
-    return phenotype_df, genotype_theta_df
+    return phenotype_df, genotype_theta_df, parameters_df

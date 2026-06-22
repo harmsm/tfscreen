@@ -23,7 +23,7 @@ from tfscreen.tfmodel.analysis.extraction import (
 # Shared helpers
 # ---------------------------------------------------------------------------
 
-_Q = {"median": 0.5}   # single quantile keeps assertions simple
+_Q = [0.5]   # single quantile keeps assertions simple
 
 
 def _hill_model():
@@ -158,7 +158,7 @@ class TestExtractThetaCurvesNumSamplesHill:
     def test_quantile_columns_still_present_alongside_samples(self):
         model = _hill_model()
         df = extract_theta_curves(model, _hill_posteriors(), q_to_get=_Q, num_samples=3)
-        assert "median" in df.columns
+        assert "q0.5" in df.columns
 
     def test_sample_values_within_posterior_range(self):
         """Sample columns must be actual draws, not summaries outside [min, max]."""
@@ -185,7 +185,7 @@ class TestExtractThetaCurvesNumSamplesHill:
         df = extract_theta_curves(model, _hill_posteriors(S=10), q_to_get=_Q, num_samples=4)
         for i in range(4):
             np.testing.assert_allclose(df[f"sample_{i}"].values,
-                                       df["median"].values,
+                                       df["q0.5"].values,
                                        rtol=1e-6)
 
     def test_num_samples_exceeds_posterior_size_uses_replacement(self):
@@ -233,7 +233,7 @@ class TestExtractThetaCurvesHillSampleVariance:
         sample_cols = [c for c in df.columns if c.startswith("sample_")]
         assert len(sample_cols) == 5
         # At least one sample column should differ from the median somewhere
-        diffs = [not np.allclose(df[c].values, df["median"].values) for c in sample_cols]
+        diffs = [not np.allclose(df[c].values, df["q0.5"].values) for c in sample_cols]
         assert any(diffs), "All sample columns equal the median — draws are not varying"
 
 
@@ -254,7 +254,7 @@ class TestExtractThetaCurvesNumSamplesHillMut:
         df = extract_theta_curves(model, _hill_mut_posteriors(S=8), q_to_get=_Q, num_samples=3)
         for i in range(3):
             np.testing.assert_allclose(df[f"sample_{i}"].values,
-                                       df["median"].values,
+                                       df["q0.5"].values,
                                        rtol=1e-6)
 
     def test_index_columns_dropped(self):
@@ -289,7 +289,7 @@ class TestExtractThetaCurvesNumSamplesLacDimerMut:
                                   num_samples=3)
         for i in range(3):
             np.testing.assert_allclose(df[f"sample_{i}"].values,
-                                       df["median"].values,
+                                       df["q0.5"].values,
                                        rtol=1e-5)
 
     def test_index_columns_dropped(self):
@@ -339,7 +339,7 @@ class TestExtractGrowthPredictionsNumSamples:
         model = _tf_model()
         df = extract_growth_predictions(model, _growth_posteriors(), q_to_get=_Q,
                                         num_samples=3)
-        assert "median" in df.columns
+        assert "q0.5" in df.columns
 
     def test_constant_posteriors_samples_equal_median(self):
         """When all posterior draws are the same value, samples == median."""
@@ -349,7 +349,7 @@ class TestExtractGrowthPredictionsNumSamples:
         df = extract_growth_predictions(model, posteriors, q_to_get=_Q, num_samples=4)
         for i in range(4):
             np.testing.assert_allclose(df[f"sample_{i}"].values,
-                                       df["median"].values,
+                                       df["q0.5"].values,
                                        rtol=1e-6)
 
     def test_sample_values_within_posterior_range(self):

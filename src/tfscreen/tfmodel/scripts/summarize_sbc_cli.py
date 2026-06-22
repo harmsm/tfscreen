@@ -6,7 +6,7 @@ by ``tfs-sample-prior`` and ``tfs-sample-posterior``, computes posterior rank
 statistics, and writes summary outputs.
 """
 
-from tfscreen.tfmodel.analysis.sbc import summarize_sbc
+from tfscreen.tfmodel.analysis.error_calibration import summarize_sbc
 from tfscreen.util.cli import generalized_main
 
 

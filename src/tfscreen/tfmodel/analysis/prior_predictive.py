@@ -6,7 +6,7 @@ from numpyro.infer import Predictive
 from tfscreen.tfmodel.analysis.prediction import predict
 
 
-def draw_prior(model_class, rng_key=0, num_draws=1):
+def draw_prior(orchestrator, rng_key=0, num_draws=1):
     """
     Draw samples from the model prior (no data conditioning).
 
@@ -17,7 +17,7 @@ def draw_prior(model_class, rng_key=0, num_draws=1):
 
     Parameters
     ----------
-    model_class : ModelOrchestrator
+    orchestrator : ModelOrchestrator
         Fully initialised model, as returned by ``read_configuration``.
     rng_key : int or jax.random.PRNGKey, optional
         Random seed.  An ``int`` is converted to a PRNGKey.  Default 0.
@@ -41,8 +41,8 @@ def draw_prior(model_class, rng_key=0, num_draws=1):
         rng_key = jax.random.PRNGKey(rng_key)
 
     # Trace the model once to classify all sites.
-    seeded = seed(model_class.jax_model, rng_seed=0)
-    tr = trace(seeded).get_trace(data=model_class.data, priors=model_class.priors)
+    seeded = seed(orchestrator.jax_model, rng_seed=0)
+    tr = trace(seeded).get_trace(data=orchestrator.data, priors=orchestrator.priors)
 
     observed = {
         name for name, site in tr.items()
@@ -56,12 +56,12 @@ def draw_prior(model_class, rng_key=0, num_draws=1):
     return_sites = sorted(set(tr.keys()) - observed)
 
     predictive = Predictive(
-        model_class.jax_model,
+        orchestrator.jax_model,
         posterior_samples=None,
         num_samples=num_draws,
         return_sites=return_sites,
     )
-    raw = predictive(rng_key, data=model_class.data, priors=model_class.priors)
+    raw = predictive(rng_key, data=orchestrator.data, priors=orchestrator.priors)
 
     predictions = {k: np.array(v) for k, v in raw.items() if k in deterministic}
     latent_params = {k: np.array(v) for k, v in raw.items() if k not in deterministic}
@@ -69,23 +69,23 @@ def draw_prior(model_class, rng_key=0, num_draws=1):
     return predictions, latent_params
 
 
-def growth_df_from_prior(model_class, latent_params, draw_idx=0, noise_rng=None):
+def growth_df_from_prior(orchestrator, latent_params, draw_idx=0, noise_rng=None):
     """
     Build a synthetic growth DataFrame from one prior draw.
 
     Maps ``latent_params`` through the forward model to obtain the
     deterministic ``growth_pred`` values, then writes them into a copy of
-    ``model_class.growth_df``.  The result has the same rows and structure
+    ``orchestrator.growth_df``.  The result has the same rows and structure
     as the original DataFrame and is ready for ``tfs-fit-model``.
 
-    Noise is added using ``model_class.growth_df['ln_cfu_std']`` as the
+    Noise is added using ``orchestrator.growth_df['ln_cfu_std']`` as the
     per-observation standard deviation.  This preserves the original
     measurement-error structure while replacing the signal with synthetic
     predictions.
 
     Parameters
     ----------
-    model_class : ModelOrchestrator
+    orchestrator : ModelOrchestrator
     latent_params : dict
         Output of ``draw_prior``.  Values have shape ``(num_draws, ...)``.
     draw_idx : int, optional
@@ -97,7 +97,7 @@ def growth_df_from_prior(model_class, latent_params, draw_idx=0, noise_rng=None)
     Returns
     -------
     pandas.DataFrame
-        Copy of ``model_class.growth_df`` with ``ln_cfu`` replaced by
+        Copy of ``orchestrator.growth_df`` with ``ln_cfu`` replaced by
         synthetic values.
     """
     # Slice to single draw so predict() treats it as one "posterior sample".
@@ -109,20 +109,20 @@ def growth_df_from_prior(model_class, latent_params, draw_idx=0, noise_rng=None)
     ]
 
     pred_df = predict(
-        model_class,
+        orchestrator,
         single_draw,
         predict_sites=["growth_pred"],
-        q_to_get={"_prior_ln_cfu": 0.5},
+        q_to_get=[0.5],
         num_samples=None,
     )
 
     # pred_df may contain extra rows (expanded grid); merge to keep original rows.
-    out_df = model_class.growth_df.drop(columns=["ln_cfu"]).merge(
-        pred_df[merge_keys + ["_prior_ln_cfu"]],
+    out_df = orchestrator.growth_df.drop(columns=["ln_cfu"]).merge(
+        pred_df[merge_keys + ["q0.5"]],
         on=merge_keys,
         how="left",
     )
-    out_df = out_df.rename(columns={"_prior_ln_cfu": "ln_cfu"})
+    out_df = out_df.rename(columns={"q0.5": "ln_cfu"})
 
     if noise_rng is not None:
         out_df["ln_cfu"] = (

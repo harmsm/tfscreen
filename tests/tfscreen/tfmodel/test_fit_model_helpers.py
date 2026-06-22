@@ -43,19 +43,15 @@ def test_run_svi_flow_converged(mock_run_inference):
     """Test standard SVI flow where convergence is reached."""
     _, ri = mock_run_inference
 
-    # Execute
-    state, params, converged = _run_svi(
+    svi_obj, state, params, converged = _run_svi(
         ri,
         init_params=None,
         out_prefix="test_root",
         max_num_epochs=500,
-        num_posterior_samples=100
     )
 
-    # 1. Setup SVI
     ri.setup_svi.assert_called_once()
 
-    # 2. Run Optimization
     ri.run_optimization.assert_called_once_with(
         "mock_svi_obj",
         init_params=None,
@@ -71,44 +67,23 @@ def test_run_svi_flow_converged(mock_run_inference):
         epoch_checkpoint_interval=ANY
     )
 
-    # 3. Get Posteriors (because converged=True)
-    ri.get_posteriors.assert_called_once_with(
-        svi="mock_svi_obj",
-        svi_state="final_state",
-        out_prefix="test_root",
-        num_posterior_samples=100,
-        sampling_batch_size=ANY,
-        forward_batch_size=ANY
-    )
+    # Posteriors are never sampled by _run_svi
+    ri.get_posteriors.assert_not_called()
 
+    # svi_obj is the object returned by ri.setup_svi
+    assert svi_obj == "mock_svi_obj"
     assert state == "final_state"
     assert converged is True
 
-def test_run_svi_flow_not_converged_no_posterior(mock_run_inference):
-    """Test SVI flow where it fails to converge and always_get_posterior is False."""
+def test_run_svi_flow_not_converged(mock_run_inference):
+    """Test SVI flow where it fails to converge."""
     _, ri = mock_run_inference
-    # Force non-convergence
     ri.run_optimization.return_value = ("state", {}, False)
 
-    state, params, converged = _run_svi(
-        ri,
-        init_params=None,
-        always_get_posterior=False
-    )
+    _, state, params, converged = _run_svi(ri, init_params=None)
 
-    # Should NOT get posteriors
     ri.get_posteriors.assert_not_called()
     assert converged is False
-
-def test_run_svi_flow_always_posterior(mock_run_inference):
-    """Test SVI flow where it fails to converge but posteriors are forced."""
-    _, ri = mock_run_inference
-    ri.run_optimization.return_value = ("state", {}, False)
-
-    _run_svi(ri, init_params=None, always_get_posterior=True)
-
-    # Should get posteriors despite no convergence
-    ri.get_posteriors.assert_called_once()
 
 def test_run_svi_not_converged_stdout(mock_run_inference, capsys):
     """Test SVI not converged message."""
@@ -131,7 +106,6 @@ def test_run_map_flow(mock_run_inference):
         init_params=init_params,
         out_prefix="test_map",
         max_num_epochs=1000,
-        num_posterior_samples=100
     )
 
     # 1. Setup MAP
@@ -153,17 +127,16 @@ def test_run_map_flow(mock_run_inference):
         epoch_checkpoint_interval=ANY
     )
 
-    # 3. Write Params
     ri.write_params.assert_called_once_with({"p": 1}, out_prefix="test_map")
 
-    # always_get_posterior=False is default
+    # Posteriors are never sampled by _run_map
     ri.get_posteriors.assert_not_called()
 
 def test_run_map_not_converged(mock_run_inference, capsys):
     """Test MAP not converged message."""
     _, ri = mock_run_inference
     ri.run_optimization.return_value = ("state", {"p": 1}, False)
-    _run_map(ri, init_params={"p": 1}, always_get_posterior=False)
+    _run_map(ri, init_params={"p": 1})
     captured = capsys.readouterr()
     assert "MAP run converged" not in captured.out
     assert "MAP run has not yet converged" in captured.out

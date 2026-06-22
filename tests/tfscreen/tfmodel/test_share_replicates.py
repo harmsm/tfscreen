@@ -10,8 +10,8 @@ def get_mock_df():
     
     # Let's say we have genotypes A, B
     for rep in [1, 2]:
-        for cond_pre in ['pre1', 'pre2']:
-            for cond_sel in ['sel1']:
+        for cond_pre in ['pre-1', 'pre-2']:
+            for cond_sel in ['sel+1']:
                 for tname in ['inducer']:
                     for tconc in [0.0, 1.0]:
                         for geno in ['wt', 'A1T']:
@@ -32,7 +32,7 @@ def get_mock_df():
                             
     df = pd.DataFrame(data)
     growth_df = df.copy()
-    binding_df = df[df['cond_pre'] == 'pre1'].copy() if False else df.copy() # Just pass identical df for mock
+    binding_df = df[df['cond_pre'] == 'pre-1'].copy() if False else df.copy() # Just pass identical df for mock
     return growth_df, binding_df
 
 
@@ -60,7 +60,7 @@ def test_growth_shares_replicates():
     df_mapped = model_shared.growth_tm.df
     
     # Find rows for rep 1 and rep 2 for the same condition
-    rep1_map = df_mapped[(df_mapped["replicate"] == 1) & (df_mapped["condition_pre"] == 'pre1')]["map_condition_pre"].iloc[0]
-    rep2_map = df_mapped[(df_mapped["replicate"] == 2) & (df_mapped["condition_pre"] == 'pre1')]["map_condition_pre"].iloc[0]
+    rep1_map = df_mapped[(df_mapped["replicate"] == 1) & (df_mapped["condition_pre"] == 'pre-1')]["map_condition_pre"].iloc[0]
+    rep2_map = df_mapped[(df_mapped["replicate"] == 2) & (df_mapped["condition_pre"] == 'pre-1')]["map_condition_pre"].iloc[0]
     
     assert rep1_map == rep2_map, "Replicates did not receive the same parameter mapping index!"

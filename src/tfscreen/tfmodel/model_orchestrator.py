@@ -12,6 +12,7 @@ from tfscreen.tfmodel.data_class import (
     DataClass,
     BindingData,
     GrowthData,
+    PreSplitData,
     PriorsClass,
     GrowthPriors,
     BindingPriors
@@ -80,6 +81,12 @@ def _read_growth_df(growth_df,
     # Read dataframe, validate or calculate ln_cfu and ln_cfu_std
     growth_df = tfscreen.util.io.read_dataframe(growth_df)
     growth_df = tfscreen.util.dataframe.get_scaled_cfu(growth_df,need_columns=["ln_cfu","ln_cfu_std"])
+
+    # Ensure time columns are float so that merge/concat with float prediction
+    # grids (e.g. linspace t_sel) doesn't produce int/float dtype warnings.
+    for _col in ("t_pre", "t_sel"):
+        if _col in growth_df.columns:
+            growth_df[_col] = growth_df[_col].astype(float)
 
     # make a replicate column if not defined
     if "replicate" not in growth_df.columns:
@@ -243,14 +250,24 @@ def _read_binding_df(binding_df,
         cols = ["genotype","titrant_name"]
         binding_seen = binding_df[cols].drop_duplicates().set_index(cols)
         growth_seen = growth_df[cols].drop_duplicates().set_index(cols)
-        is_subset = binding_seen.index.isin(growth_seen.index).all()
-        if not is_subset:
-            raise ValueError(
-                "binding_df contains genotype/titrant_name pairs that were not seen "
-                "in the growth_df."
+        extra = binding_seen.index[~binding_seen.index.isin(growth_seen.index)]
+        if len(extra) > 0:
+            by_titrant = {}
+            for geno, tname in extra:
+                by_titrant.setdefault(tname, []).append(geno)
+            detail = "\n".join(
+                f"  {tname}: {', '.join(sorted(genos))}"
+                for tname, genos in sorted(by_titrant.items())
+            )
+            print(
+                f"Syncing binding_df to growth_df: {len(extra)} "
+                f"genotype/titrant_name pair(s) not in growth_df will be dropped.\n"
+                + detail,
+                flush=True,
             )
         # Inherit map_theta_group indices from growth_df so parameter indexing
-        # stays consistent across the two datasets.
+        # stays consistent across the two datasets. Rows in binding_df with no
+        # match in growth_df are silently dropped by add_group_columns.
         binding_df = add_group_columns(binding_df, theta_group_cols,
                                        "map_theta_group", existing_df=growth_df)
     else:
@@ -313,6 +330,111 @@ def _build_binding_tm(binding_df):
     return binding_tm
 
 
+def _read_presplit_df(presplit_df, growth_df):
+    """
+    Read and validate the optional pre-split DataFrame.
+
+    Rows whose genotype does not appear in growth_df are silently dropped.
+    Genotypes present in growth_df but absent from presplit_df are kept; they
+    will produce NaN entries in the tensor (masked out by good_mask).
+
+    Parameters
+    ----------
+    presplit_df : pd.DataFrame or str
+        DataFrame or path to file with pre-split data.  Required columns:
+        ``replicate``, ``condition_pre``, ``genotype``, ``ln_cfu``,
+        ``ln_cfu_std``.
+    growth_df : pd.DataFrame
+        The already-processed growth DataFrame (growth_tm.df).  Used to
+        determine the valid set of genotypes, replicates, and condition_pre
+        values.
+
+    Returns
+    -------
+    pd.DataFrame
+        A copy of the processed pre-split DataFrame restricted to genotypes
+        present in growth_df.
+    """
+    presplit_df = tfscreen.util.io.read_dataframe(presplit_df)
+    presplit_df = tfscreen.genetics.set_categorical_genotype(presplit_df,
+                                                             standardize=True)
+    tfscreen.util.dataframe.check_columns(
+        presplit_df,
+        required_columns=["replicate", "condition_pre", "genotype",
+                          "ln_cfu", "ln_cfu_std"],
+    )
+
+    growth_genotypes = set(growth_df["genotype"])
+    mask = presplit_df["genotype"].isin(growth_genotypes)
+    dropped_genos = sorted(set(presplit_df.loc[~mask, "genotype"].astype(str)))
+    n_dropped = int((~mask).sum())
+    presplit_df = presplit_df[mask].copy()
+    if n_dropped > 0:
+        print(
+            f"Syncing presplit_df to growth_df: {n_dropped} row(s) for "
+            f"{len(dropped_genos)} genotype(s) not found in growth_df will be dropped.\n"
+            f"  Dropped genotypes: {', '.join(dropped_genos)}",
+            flush=True,
+        )
+
+    return presplit_df
+
+
+def _build_presplit_tm(presplit_df, growth_tm):
+    """
+    Build a TensorManager for the pre-split (t = -t_pre) data.
+
+    The output tensor has shape ``(num_replicate, num_condition_pre,
+    num_genotype)`` using the *same* categorical orderings as growth_tm so
+    that the genotype axis aligns with ``growth_tm.batch_idx``.  Entries
+    with no presplit observation are filled with 1.0 (masked out by
+    good_mask).
+
+    Parameters
+    ----------
+    presplit_df : pd.DataFrame
+        The processed pre-split DataFrame from ``_read_presplit_df``.
+    growth_tm : TensorManager
+        The fully-built growth TensorManager (after ``create_tensors()``).
+
+    Returns
+    -------
+    TensorManager
+        A fully-built TensorManager with tensors ``ln_cfu``, ``ln_cfu_std``,
+        and ``good_mask``.
+    """
+    # Inherit categorical orderings from growth_tm so indices match exactly.
+    dim_names = growth_tm.tensor_dim_names
+    rep_cats = growth_tm.tensor_dim_labels[dim_names.index("replicate")]
+    cp_cats  = growth_tm.tensor_dim_labels[dim_names.index("condition_pre")]
+    geno_cats = growth_tm.tensor_dim_labels[dim_names.index("genotype")]
+
+    presplit_df = presplit_df.copy()
+    presplit_df["replicate"] = pd.Categorical(
+        presplit_df["replicate"], categories=rep_cats
+    )
+    presplit_df["condition_pre"] = pd.Categorical(
+        presplit_df["condition_pre"], categories=cp_cats
+    )
+    presplit_df["genotype"] = pd.Categorical(
+        presplit_df["genotype"], categories=geno_cats
+    )
+
+    presplit_tm = TensorManager(presplit_df)
+    presplit_tm.add_pivot_index(tensor_dim_name="replicate",
+                                cat_column="replicate")
+    presplit_tm.add_pivot_index(tensor_dim_name="condition_pre",
+                                cat_column="condition_pre")
+    presplit_tm.add_pivot_index(tensor_dim_name="genotype",
+                                cat_column="genotype")
+
+    presplit_tm.add_data_tensor("ln_cfu",     dtype=FLOAT_DTYPE)
+    presplit_tm.add_data_tensor("ln_cfu_std", dtype=FLOAT_DTYPE)
+
+    presplit_tm.create_tensors()
+    return presplit_tm
+
+
 def _setup_batching(growth_genotypes,
                     binding_genotypes,
                     batch_size):
@@ -358,7 +480,7 @@ def _setup_batching(growth_genotypes,
     num_not_binding = len(not_binding_idx)
     not_binding_batch_size = batch_size - num_binding
 
-    # Build idx array. The first entries correspond to the binding data and are 
+    # Build idx array. The first entries correspond to the binding data and are
     # the same for all rounds
     idx = np.zeros(batch_size,dtype=int)
     idx[:num_binding] = binding_idx
@@ -464,10 +586,12 @@ class ModelOrchestrator:
                  growth_shares_replicates=False,
                  epistasis=False,
                  thermo_data=None,
-                 binding_weight=None):
+                 binding_weight=None,
+                 presplit_df=None):
 
         self._ln_cfu_df = growth_df
         self._binding_df = binding_df
+        self._presplit_df = presplit_df
 
         self._batch_size = batch_size
         self._binding_only = binding_only
@@ -805,13 +929,43 @@ class ModelOrchestrator:
         binding_dataclass = populate_dataclass(BindingData,
                                                sources=binding_data_sources)
 
+        # ---------------------------------------------------------------------
+        # presplit dataclass (optional)
+
+        if self._presplit_df is not None:
+            self.presplit_df = _read_presplit_df(self._presplit_df,
+                                                 self.growth_tm.df)
+            self.presplit_tm = _build_presplit_tm(self.presplit_df,
+                                                  self.growth_tm)
+            ps_tensors = {
+                "ln_cfu_t0":     self.presplit_tm.tensors["ln_cfu"],
+                "ln_cfu_t0_std": self.presplit_tm.tensors["ln_cfu_std"],
+                "good_mask":     self.presplit_tm.tensors["good_mask"],
+            }
+            ps_sizes = {
+                "num_replicate":     self.presplit_tm.tensor_shape[0],
+                "num_condition_pre": self.presplit_tm.tensor_shape[1],
+                "num_genotype":      self.presplit_tm.tensor_shape[2],
+            }
+            presplit_dataclass = populate_dataclass(PreSplitData,
+                                                    sources=[ps_tensors,
+                                                             ps_sizes])
+        else:
+            self.presplit_df = None
+            self.presplit_tm = None
+            presplit_dataclass = None
+
+        # ---------------------------------------------------------------------
+        # Populate DataClass
+
         source_data = [{"growth":growth_dataclass,
                         "binding":binding_dataclass,
+                        "presplit":presplit_dataclass,
                         "num_genotype":self.growth_tm.tensor_shape[-1]}]
         source_data.append(full_batch_data)
 
-        # Build the aggregated `DataClass` flax dataclass with the growth
-        # and binding dataclasses. Expose as a model attribute. 
+        # Build the aggregated `DataClass` flax dataclass with the growth,
+        # binding, and presplit dataclasses. Expose as a model attribute.
         self._data = populate_dataclass(DataClass,
                                         sources=source_data)
         
@@ -1045,11 +1199,20 @@ class ModelOrchestrator:
             else:
                 component_data = self._data.growth
 
-            # Record priors.  Components may optionally accept a `data`
-            # parameter to derive empirical prior values (e.g. fixed
-            # subgroup scales) from the observed data.
+            # Record priors.  Components may optionally accept special
+            # keyword arguments:
+            #   condition_labels — ordered condition names used by the
+            #       linear growth component to set per-condition m priors.
+            #   data — component data pytree for empirical prior values.
             priors_sig = inspect.signature(component_module.get_priors)
-            if "data" in priors_sig.parameters:
+            if "condition_labels" in priors_sig.parameters:
+                cond_rep_df = self.growth_tm.map_groups["condition_rep"]
+                condition_labels = list(
+                    cond_rep_df.sort_values("map_condition_rep")["condition_rep"]
+                )
+                priors_class_kwargs[prior_group][key] = \
+                    component_module.get_priors(condition_labels=condition_labels)
+            elif "data" in priors_sig.parameters:
                 priors_class_kwargs[prior_group][key] = \
                     component_module.get_priors(data=component_data)
             else:
@@ -1271,4 +1434,5 @@ class ModelOrchestrator:
             "epistasis": self._epistasis,
             "thermo_data": self._thermo_data,
             "binding_weight": self._binding_weight,
+            "presplit_df": getattr(self, "_presplit_df", None),
         }

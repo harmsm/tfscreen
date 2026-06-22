@@ -14,12 +14,13 @@ def extract_params(config_file, param_file, out_prefix="tfs_params"):
 
     If ``param_file`` ends with ``.pkl`` it is treated as a MAP (AutoDelta)
     checkpoint: parameters are converted to constrained space and written with
-    a single ``point_est`` column.
+    a single ``q0.5`` column.
 
     Otherwise it is treated as a posterior samples ``.h5`` or ``.npz`` file
-    produced by tfs-sample-posterior, and the default quantile set (min,
-    lower_95, lower_std, lower_quartile, median, upper_quartile, upper_std,
-    upper_95, max) is computed.
+    produced by tfs-sample-posterior, and 17 quantile columns are written:
+    ``q0.001``, ``q0.005``, ``q0.01``, ``q0.025``, ``q0.05``, ``q0.1``,
+    ``q0.159``, ``q0.25``, ``q0.5``, ``q0.75``, ``q0.841``, ``q0.9``,
+    ``q0.95``, ``q0.975``, ``q0.99``, ``q0.995``, ``q0.999``.
 
     Writes one CSV per parameter group named ``{out_prefix}_{param_name}.csv``
     (e.g. tfs_params_activity.csv, tfs_params_theta.csv).
@@ -34,15 +35,15 @@ def extract_params(config_file, param_file, out_prefix="tfs_params"):
     out_prefix : str, optional
         Prefix for output CSV files. Default ``'tfs_params'``.
     """
-    gm, _ = read_configuration(config_file)
+    orchestrator, _ = read_configuration(config_file)
 
     if param_file.endswith(".pkl"):
-        _extract_from_checkpoint(gm, param_file, out_prefix)
+        _extract_from_checkpoint(orchestrator, param_file, out_prefix)
     else:
-        _extract_from_posteriors(gm, param_file, out_prefix)
+        _extract_from_posteriors(orchestrator, param_file, out_prefix)
 
 
-def _extract_from_checkpoint(gm, ckpt_path, out_prefix):
+def _extract_from_checkpoint(orchestrator, ckpt_path, out_prefix):
     if not os.path.isfile(ckpt_path):
         raise FileNotFoundError(f"Checkpoint file not found: '{ckpt_path}'")
 
@@ -56,7 +57,7 @@ def _extract_from_checkpoint(gm, ckpt_path, out_prefix):
             "tfs-extract-params only supports MAP (AutoDelta) checkpoints."
         )
 
-    ri = RunInference(gm, seed=0)
+    ri = RunInference(orchestrator, seed=0)
     temp_svi = ri.setup_svi(guide_type="delta")
     map_params = temp_svi.optim.get_params(chk_data["svi_state"].optim_state)
 
@@ -70,7 +71,7 @@ def _extract_from_checkpoint(gm, ckpt_path, out_prefix):
     posteriors = {k: np.expand_dims(np.asarray(v), 0) for k, v in constrained.items()}
 
     print(f"Writing parameter CSVs to {out_prefix}_*.csv...", flush=True)
-    param_dfs = extract_parameters(gm, posteriors, q_to_get={"point_est": 0.5})
+    param_dfs = extract_parameters(orchestrator, posteriors, q_to_get=[0.5])
     for p_name, df in param_dfs.items():
         out_file = f"{out_prefix}_{p_name}.csv"
         df.to_csv(out_file, index=False)
@@ -78,7 +79,7 @@ def _extract_from_checkpoint(gm, ckpt_path, out_prefix):
     print("Done.", flush=True)
 
 
-def _extract_from_posteriors(gm, posterior_file, out_prefix):
+def _extract_from_posteriors(orchestrator, posterior_file, out_prefix):
     if not os.path.exists(posterior_file):
         if os.path.exists(f"{posterior_file}.h5"):
             posterior_file = f"{posterior_file}.h5"
@@ -103,7 +104,7 @@ def _extract_from_posteriors(gm, posterior_file, out_prefix):
                   "Extraction of natural parameters may fail.", flush=True)
 
         print(f"Extracting parameters to {out_prefix}_*.csv...", flush=True)
-        params = extract_parameters(gm, posteriors)
+        params = extract_parameters(orchestrator, posteriors)
         for p_name, p_df in params.items():
             p_df.to_csv(f"{out_prefix}_{p_name}.csv", index=False)
 

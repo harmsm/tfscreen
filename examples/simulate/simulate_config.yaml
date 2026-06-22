@@ -43,7 +43,29 @@ spiked_seqs:
 # ---------------------------------------------------------------------------
 
 # Registered theta component name.  Any key in model_registry["theta"] is
-# valid except "_simple" (calibration-only).  Examples: "hill_geno", "thermo.O2_C12_K5_U0_a.PK".
+# valid except "_simple" (calibration-only).
+#
+# Thermodynamic components (physics-based operator-occupancy model):
+#   "thermo.O2_C12_K5_U0_a.PK"   — dimer with operator architecture O2, 12-mer
+#                                   cooperative lattice, 5 binding sites, etc.
+#   (other thermo.* keys available — see model_registry)
+#
+# Perturbation-based components (wildtype reference + per-genotype perturbations):
+#   "hill_geno"   — per-genotype Hill equation; each genotype's (theta_low,
+#                   theta_high, K, n) drawn independently around a WT reference.
+#                   Supports four phenotype categories: normal, stuck-bound,
+#                   never-binds, inverted-logic.
+#   "hill_mut"    — mutation-decomposed Hill equation; per-mutation additive
+#                   deltas in transformed parameter space, assembled via
+#                   matrix multiplication.  Pairwise epistasis sampled from a
+#                   regularized horseshoe prior when the library includes
+#                   double mutants.  Wildtype genotype always receives the
+#                   exact reference curve.
+#
+# Perturbation-based components ignore theta_priors and instead use
+# theta_sim_priors (see below).  They do not call define_model; tfs-simulate
+# will fall back to prior-predictive sampling only for components that lack a
+# simulate() function.
 theta_component: "thermo.O2_C12_K5_U0_a.PK"
 
 # Optional: path to structural/thermodynamic data file required by PnnC and
@@ -52,14 +74,60 @@ theta_component: "thermo.O2_C12_K5_U0_a.PK"
 #   .csv         → per-mutation per-structure ddG prior means (PddG)
 # thermo_data: null
 
-# Optional: overrides for the theta component's default hyperparameters.
+# Optional: overrides for the theta component's default model hyperparameters.
 # Any key returned by the component's get_hyperparameters() can be overridden.
+# Used by thermodynamic/hierarchical components; ignored when theta_component
+# is "hill_geno" or "hill_mut" (those use theta_sim_priors instead).
 # Omit this block to use all component defaults.
 # theta_priors:
 #   theta_tf_total_M: 3.3e-7
 
-# Integer seed for the JAX RNG used when sampling theta from the prior.
-theta_rng_seed: 0
+# Optional: overrides for perturbation-based simulation priors (SimPriors).
+# Used only when theta_component is "hill_geno" or "hill_mut".
+# Any key returned by the component's get_sim_hyperparameters() can be overridden.
+# Omit this block to use all component defaults.
+#
+# --- hill_geno SimPriors keys ---
+# Wildtype reference curve (a full-range decreasing Hill curve by default):
+#   wt_theta_low:       0.99    # theta at zero ligand (near fully bound)
+#   wt_theta_high:      0.01    # theta at saturating ligand (near unbound)
+#   wt_log_K:          -4.1    # ln(K_D in mM); sets midpoint (lac/IPTG default)
+#   wt_hill_n:          2.0    # Hill coefficient (cooperativity)
+# Per-genotype Normal perturbation widths (in logit/log space):
+#   sigma_logit_low:    0.5    # spread on logit(theta_low)
+#   sigma_logit_delta:  0.5    # spread on logit_delta = logit_high − logit_low
+#   sigma_log_K:        0.5    # spread on log(K) — primary binding-affinity effect
+#   sigma_log_n:        0.3    # spread on log(hill_n)
+# Mixture fractions for special phenotype categories (must sum to < 1;
+# remainder is "normal"):
+#   p_stuck_bound:      0.05   # fraction whose theta ≈ 1 everywhere
+#   p_never_binds:      0.05   # fraction whose theta ≈ 0 everywhere
+#   p_inverted:         0.02   # fraction with inverted logic (theta rises with ligand)
+#
+# --- hill_mut SimPriors keys ---
+# Wildtype reference (shared with hill_geno defaults):
+#   wt_theta_low:         0.99
+#   wt_theta_high:        0.01
+#   wt_log_K:            -4.1
+#   wt_hill_n:            2.0
+# Per-mutation delta widths (additive in logit/log space):
+#   sigma_d_logit_low:    0.3
+#   sigma_d_logit_delta:  0.5
+#   sigma_d_log_K:        0.5    # largest effect — primarily shifts binding affinity
+#   sigma_d_log_n:        0.3
+# Pairwise epistasis (regularized horseshoe; used when library has doubles):
+#   epi_tau_scale:        0.1    # HalfCauchy scale for global sparsity τ
+#                                 # set to 0.0 for exactly no epistasis
+#   epi_slab_scale:       2.0    # typical large-epistasis effect size
+#   epi_slab_df:          4.0    # InvGamma slab degrees of freedom
+#
+# Example — stress-test epistasis recovery:
+# theta_sim_priors:
+#   epi_tau_scale: 1.0     # strong, dense epistasis
+#
+# Example — simulate with no epistasis at all:
+# theta_sim_priors:
+#   epi_tau_scale: 0.0
 
 # ---------------------------------------------------------------------------
 # Conditions
@@ -113,6 +181,9 @@ growth:
 dk_geno_hyper_loc: -3.5
 dk_geno_hyper_scale: 1.0
 dk_geno_hyper_shift: 0.02
+# Set dk_geno_zero: true to pin every genotype's dk_geno to 0, skipping the
+# stochastic draw above.  When set, the three dk_geno_hyper_* keys are optional.
+# dk_geno_zero: true
 
 # Per-genotype TF activity (A) — a scalar that multiplies the theta contribution
 # to growth: k = b + A * m * theta.  The wild-type is fixed at activity_wt=1.0
@@ -204,7 +275,7 @@ total_num_reads: 25_000_000
 prob_index_hop: 0.05
 
 # Random seed for reproducibility.  Set to null for a random seed each run.
-random_seed: null
+seed: null
 
 # ---------------------------------------------------------------------------
 # Binding data simulation (optional)
@@ -220,3 +291,34 @@ random_seed: null
 #   titrant_name: iptg
 #   titrant_conc: [0, 0.0001, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1.0]
 #   noise: 0.02
+
+# ---------------------------------------------------------------------------
+# Pre-split data simulation (optional)
+# ---------------------------------------------------------------------------
+
+# tfs-simulate writes a presplit CSV when a 'presplit_data' key is present
+# in this file.  To enable it, ADD the following lines (uncommented) anywhere
+# at the top level of this config — for example, right here:
+#
+#   presplit_data:
+#     noise: 0.0
+#
+# The 'noise' sub-key is optional; omitting it (or setting noise: 0.0) uses
+# sequencing-count uncertainty only.  The minimal activation is just:
+#
+#   presplit_data:
+#
+# ---- What the presplit CSV represents -------------------------------------
+# This simulates the sequencing aliquot taken at t = -t_pre, just before
+# the culture is split into titrant-concentration conditions.  Because it is
+# taken before any pre-selection growth, each ln_cfu value directly
+# constrains ln_cfu0 in the hierarchical model.
+#
+# Output columns: replicate, condition_pre, genotype, ln_cfu, ln_cfu_std,
+#                 ln_cfu_0_true (ground truth for validation).
+# One row per (replicate, condition_pre, genotype).
+#
+# Pass the resulting file to tfs-configure-model with --presplit_df.
+#
+# noise (float, default 0): extra Gaussian noise on the ln-scale, added on
+#   top of sequencing-count uncertainty.  Useful for benchmarking.
