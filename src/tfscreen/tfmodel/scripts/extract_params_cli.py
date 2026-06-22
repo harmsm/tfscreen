@@ -14,12 +14,13 @@ def extract_params(config_file, param_file, out_prefix="tfs_params"):
 
     If ``param_file`` ends with ``.pkl`` it is treated as a MAP (AutoDelta)
     checkpoint: parameters are converted to constrained space and written with
-    a single ``point_est`` column.
+    a single ``q0.5`` column.
 
     Otherwise it is treated as a posterior samples ``.h5`` or ``.npz`` file
-    produced by tfs-sample-posterior, and the default quantile set (min,
-    lower_95, lower_std, lower_quartile, median, upper_quartile, upper_std,
-    upper_95, max) is computed.
+    produced by tfs-sample-posterior, and 17 quantile columns are written:
+    ``q0.001``, ``q0.005``, ``q0.01``, ``q0.025``, ``q0.05``, ``q0.1``,
+    ``q0.159``, ``q0.25``, ``q0.5``, ``q0.75``, ``q0.841``, ``q0.9``,
+    ``q0.95``, ``q0.975``, ``q0.99``, ``q0.995``, ``q0.999``.
 
     Writes one CSV per parameter group named ``{out_prefix}_{param_name}.csv``
     (e.g. tfs_params_activity.csv, tfs_params_theta.csv).
