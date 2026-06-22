@@ -1815,19 +1815,21 @@
 ./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:374:1: W293 blank line contains whitespace
 ./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:374:5: W292 no newline at end of file
 ./src/tfscreen/tfmodel/generative/components/growth/linear.py:28:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/tfmodel/generative/components/growth/linear.py:179:10: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/growth/linear.py:193:16: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/growth/linear.py:199:10: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/growth/linear.py:201:10: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/growth/linear.py:202:10: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/growth/linear.py:203:10: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/growth/linear.py:204:11: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/growth/linear.py:205:11: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/growth/linear.py:206:11: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/growth/linear.py:207:11: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/growth/linear.py:208:11: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/growth/linear.py:209:10: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/growth/linear.py:232:12: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/growth/linear.py:92:13: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/growth/linear.py:237:40: E261 at least two spaces before inline comment
+./src/tfscreen/tfmodel/generative/components/growth/linear.py:260:10: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/growth/linear.py:274:16: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/growth/linear.py:280:10: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/growth/linear.py:282:10: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/growth/linear.py:283:10: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/growth/linear.py:284:10: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/growth/linear.py:285:11: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/growth/linear.py:286:11: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/growth/linear.py:287:11: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/growth/linear.py:288:11: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/growth/linear.py:289:11: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/growth/linear.py:290:10: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/growth/linear.py:313:12: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/growth/power.py:25:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/tfmodel/generative/components/growth/saturation.py:23:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/tfmodel/generative/components/growth_transition/baranyi.py:133:30: E261 at least two spaces before inline comment
@@ -3601,7 +3603,7 @@
 ./src/tfscreen/tfmodel/model_orchestrator.py:1049:25: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/model_orchestrator.py:1050:31: E127 continuation line over-indented for visual indent
 ./src/tfscreen/tfmodel/model_orchestrator.py:1052:31: E127 continuation line over-indented for visual indent
-./src/tfscreen/tfmodel/model_orchestrator.py:1125:5: C901 'ModelOrchestrator._initialize_classes' is too complex (15)
+./src/tfscreen/tfmodel/model_orchestrator.py:1125:5: C901 'ModelOrchestrator._initialize_classes' is too complex (16)
 ./src/tfscreen/tfmodel/model_orchestrator.py:1145:1: W293 blank line contains whitespace
 ./src/tfscreen/tfmodel/model_orchestrator.py:1147:67: W291 trailing whitespace
 ./src/tfscreen/tfmodel/model_orchestrator.py:1148:71: W291 trailing whitespace
@@ -3616,37 +3618,37 @@
 ./src/tfscreen/tfmodel/model_orchestrator.py:1172:53: E231 missing whitespace after ':'
 ./src/tfscreen/tfmodel/model_orchestrator.py:1172:56: E231 missing whitespace after ','
 ./src/tfscreen/tfmodel/model_orchestrator.py:1172:64: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1220:75: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1223:69: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1227:75: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1229:69: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1239:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1241:9: E303 too many blank lines (2)
-./src/tfscreen/tfmodel/model_orchestrator.py:1294:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1299:5: E303 too many blank lines (2)
-./src/tfscreen/tfmodel/model_orchestrator.py:1313:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1323:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1333:75: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1347:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1350:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1379:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1391:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1403:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1409:25: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1410:27: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1411:31: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1412:32: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1413:22: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1414:22: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1415:23: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1416:20: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1417:29: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1418:28: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1419:33: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1420:34: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1421:27: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1422:28: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1423:31: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1229:75: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1232:69: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1236:75: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1238:69: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1248:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1250:9: E303 too many blank lines (2)
+./src/tfscreen/tfmodel/model_orchestrator.py:1303:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1308:5: E303 too many blank lines (2)
+./src/tfscreen/tfmodel/model_orchestrator.py:1322:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1332:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1342:75: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1356:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1359:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1388:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1400:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1412:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1418:25: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1419:27: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1420:31: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1421:32: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1422:22: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1423:22: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1424:23: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1425:20: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1426:29: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1427:28: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1428:33: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1429:34: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1430:27: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1431:28: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1432:31: E231 missing whitespace after ':'
 ./src/tfscreen/tfmodel/scripts/configure_model_cli.py:192:22: E128 continuation line under-indented for visual indent
 ./src/tfscreen/tfmodel/scripts/configure_model_cli.py:193:22: E128 continuation line under-indented for visual indent
 ./src/tfscreen/tfmodel/scripts/configure_model_cli.py:194:22: E128 continuation line under-indented for visual indent
@@ -3699,17 +3701,21 @@
 ./src/tfscreen/tfmodel/scripts/fit_model_cli.py:522:74: E231 missing whitespace after ':'
 ./src/tfscreen/tfmodel/scripts/fit_model_cli.py:524:1: E305 expected 2 blank lines after class or function definition, found 1
 ./src/tfscreen/tfmodel/scripts/predict_theta_cli.py:12:1: C901 'predict_theta' is too complex (11)
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:184:11: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:185:11: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:190:20: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:254:24: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:255:24: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:256:24: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:259:1: C901 '_inject_calibration_priors' is too complex (21)
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:450:1: C901 '_build_csv_updates' is too complex (11)
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:544:1: C901 '_apply_guesses_updates' is too complex (12)
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:696:1: E303 too many blank lines (3)
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:700:1: E302 expected 2 blank lines, found 3
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:106:23: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:107:23: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:198:11: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:199:11: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:204:20: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:268:24: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:269:24: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:270:24: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:273:1: C901 '_inject_calibration_priors' is too complex (21)
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:464:1: C901 '_build_csv_updates' is too complex (11)
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:522:35: E127 continuation line over-indented for visual indent
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:523:35: E127 continuation line over-indented for visual indent
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:662:1: C901 '_apply_guesses_updates' is too complex (12)
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:814:1: E303 too many blank lines (3)
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:818:1: E302 expected 2 blank lines, found 3
 ./src/tfscreen/tfmodel/scripts/setup_grid_cli.py:160:1: C901 'setup_grid' is too complex (17)
 ./src/tfscreen/tfmodel/scripts/subset_genotypes_cli.py:40:1: C901 'subset_genotypes' is too complex (23)
 ./src/tfscreen/tfmodel/scripts/subset_genotypes_cli.py:93:5: F841 local variable 'all_genotypes' is assigned to but never used
@@ -5590,9 +5596,9 @@
 ./tests/tfscreen/tfmodel/generative/components/dk_geno/test_hierarchical_geno.py:415:21: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/generative/components/dk_geno/test_hierarchical_geno.py:426:9: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/generative/components/growth/test_linear.py:7:1: F401 'tfscreen.tfmodel.generative.components.growth.linear.LinearParams' imported but unused
-./tests/tfscreen/tfmodel/generative/components/growth/test_linear.py:55:10: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/growth/test_linear.py:132:28: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/growth/test_linear.py:134:28: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/growth/test_linear.py:56:10: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/growth/test_linear.py:138:28: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/growth/test_linear.py:140:28: E272 multiple spaces before keyword
 ./tests/tfscreen/tfmodel/generative/components/growth/test_power.py:3:1: F401 'numpyro.handlers.substitute' imported but unused
 ./tests/tfscreen/tfmodel/generative/components/growth/test_power.py:6:1: F401 'tfscreen.tfmodel.generative.components.growth.power.PowerParams' imported but unused
 ./tests/tfscreen/tfmodel/generative/components/growth/test_power.py:23:1: E302 expected 2 blank lines, found 1
@@ -6590,18 +6596,32 @@
 ./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:14:1: F401 'sys' imported but unused
 ./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:21:1: F401 'jax' imported but unused
 ./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:26:1: F401 'tfscreen.tfmodel.scripts.prefit_calibration_cli._identify_field_mapping' imported but unused
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:728:29: E128 continuation line under-indented for visual indent
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:729:29: E128 continuation line under-indented for visual indent
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:730:29: E128 continuation line under-indented for visual indent
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:731:29: E128 continuation line under-indented for visual indent
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:732:29: E128 continuation line under-indented for visual indent
 ./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:733:29: E128 continuation line under-indented for visual indent
 ./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:734:29: E128 continuation line under-indented for visual indent
 ./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:735:29: E128 continuation line under-indented for visual indent
 ./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:736:29: E128 continuation line under-indented for visual indent
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1089:14: E127 continuation line over-indented for visual indent
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1108:14: E127 continuation line over-indented for visual indent
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1123:14: E127 continuation line over-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:737:29: E128 continuation line under-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:738:29: E128 continuation line under-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:739:29: E128 continuation line under-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:740:29: E128 continuation line under-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:741:29: E128 continuation line under-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1117:128: E501 line too long (136 > 127 characters)
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1123:128: E501 line too long (136 > 127 characters)
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1129:128: E501 line too long (136 > 127 characters)
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1136:47: E127 continuation line over-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1144:128: E501 line too long (136 > 127 characters)
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1150:128: E501 line too long (136 > 127 characters)
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1158:128: E501 line too long (136 > 127 characters)
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1164:128: E501 line too long (136 > 127 characters)
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1170:128: E501 line too long (136 > 127 characters)
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1177:128: E501 line too long (136 > 127 characters)
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1184:128: E501 line too long (136 > 127 characters)
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1198:128: E501 line too long (136 > 127 characters)
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1212:128: E501 line too long (136 > 127 characters)
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1224:128: E501 line too long (136 > 127 characters)
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1309:14: E127 continuation line over-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1328:14: E127 continuation line over-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1343:14: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/tfmodel/scripts/test_sample_posterior_cli.py:5:1: F401 'unittest.mock.call' imported but unused
 ./tests/tfscreen/tfmodel/scripts/test_sample_prior_cli.py:3:1: F401 'pytest' imported but unused
 ./tests/tfscreen/tfmodel/scripts/test_subset_genotypes_cli.py:84:31: E741 ambiguous variable name 'l'
@@ -7170,7 +7190,8 @@
 ./tests/tfscreen/tfmodel/test_model_orchestrator.py:636:1: W293 blank line contains whitespace
 ./tests/tfscreen/tfmodel/test_model_orchestrator.py:639:1: W293 blank line contains whitespace
 ./tests/tfscreen/tfmodel/test_model_orchestrator.py:642:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:819:67: W292 no newline at end of file
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:899:9: F401 'inspect' imported but unused
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:969:72: W292 no newline at end of file
 ./tests/tfscreen/tfmodel/test_needs_mut_wiring.py:30:16: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/test_needs_mut_wiring.py:30:31: E272 multiple spaces before keyword
 ./tests/tfscreen/tfmodel/test_needs_mut_wiring.py:31:16: E221 multiple spaces before operator
@@ -7439,7 +7460,7 @@
 ./tests/tfscreen/tfmodel/test_share_replicates.py:7:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/tfmodel/test_share_replicates.py:10:1: W293 blank line contains whitespace
 ./tests/tfscreen/tfmodel/test_share_replicates.py:32:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/test_share_replicates.py:35:77: E261 at least two spaces before inline comment
+./tests/tfscreen/tfmodel/test_share_replicates.py:35:78: E261 at least two spaces before inline comment
 ./tests/tfscreen/tfmodel/test_share_replicates.py:40:1: W293 blank line contains whitespace
 ./tests/tfscreen/tfmodel/test_share_replicates.py:42:1: W293 blank line contains whitespace
 ./tests/tfscreen/tfmodel/test_share_replicates.py:45:1: W293 blank line contains whitespace
@@ -7745,20 +7766,20 @@
 1     E122 continuation line missing indentation or outdented
 2     E124 closing bracket does not match visual indentation
 6     E125 continuation line with same indent as next logical line
-177   E127 continuation line over-indented for visual indent
+180   E127 continuation line over-indented for visual indent
 79    E128 continuation line under-indented for visual indent
 3     E131 continuation line unaligned for hanging indent
 43    E201 whitespace after '['
 28    E202 whitespace before ']'
 6     E203 whitespace before ','
 5     E211 whitespace before '('
-1829  E221 multiple spaces before operator
+1832  E221 multiple spaces before operator
 26    E222 multiple spaces after operator
 8     E225 missing whitespace around operator
 1115  E231 missing whitespace after ','
 103   E251 unexpected spaces around keyword / parameter equals
 14    E252 missing whitespace around parameter equals
-228   E261 at least two spaces before inline comment
+229   E261 at least two spaces before inline comment
 1     E262 inline comment should start with '# '
 2     E265 block comment should start with '# '
 2     E266 too many leading '#' for block comment
@@ -7770,14 +7791,14 @@
 29    E306 expected 1 blank line before a nested definition, found 0
 1     E401 multiple imports on one line
 37    E402 module level import not at top of file
-71    E501 line too long (145 > 127 characters)
+84    E501 line too long (145 > 127 characters)
 46    E701 multiple statements on one line (colon)
 5     E712 comparison to True should be 'if cond is True:' or 'if cond:'
 2     E713 test for membership should be 'not in'
 1     E722 do not use bare 'except'
 1     E731 do not assign a lambda expression, use a def
 20    E741 ambiguous variable name 'l'
-230   F401 'tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U0_a.thermo.run_model' imported but unused
+231   F401 'tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U0_a.thermo.run_model' imported but unused
 11    F541 f-string is missing placeholders
 4     F811 redefinition of unused 'np' from line 1
 41    F841 local variable 'e' is assigned to but never used
@@ -7785,4 +7806,4 @@
 86    W292 no newline at end of file
 1673  W293 blank line contains whitespace
 29    W391 blank line at end of file
-7739
+7760

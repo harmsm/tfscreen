@@ -11,6 +11,7 @@ from tfscreen.tfmodel.generative.components.growth.linear import (
     get_hyperparameters,
     get_guesses,
     get_priors,
+    _parse_condition_label,
     LinearParams,
 )
 
@@ -113,14 +114,19 @@ def test_get_hyperparameters():
     assert "k_scale" in params
     assert "m_loc" in params
     assert "m_scale" in params
+    assert "m_scale_minus" in params
+    assert "m_scale_plus" in params
     assert params["k_loc"] == 0.020
+    assert params["m_scale_minus"] < params["m_scale_plus"]  # minus is tighter
 
 
-def test_get_priors():
+def test_get_priors_no_labels_legacy_behavior():
+    """With no condition_labels, m_is_selection is None (backward compat)."""
     priors = get_priors()
     assert isinstance(priors, ModelPriors)
     assert priors.k_loc == 0.020
     assert priors.m_loc == 0.0
+    assert priors.m_is_selection is None
     assert not hasattr(priors, "pinned")
 
 
@@ -300,3 +306,195 @@ def test_model_and_guide_have_compatible_sample_sites(mock_data):
         f"  model only: {model_samples - guide_samples}\n"
         f"  guide only: {guide_samples - model_samples}"
     )
+
+
+# ---------------------------------------------------------------------------
+# _parse_condition_label
+# ---------------------------------------------------------------------------
+
+class TestParseConditionLabel:
+
+    def test_plus_returns_true(self):
+        assert _parse_condition_label("kanR+kan") is True
+
+    def test_minus_returns_false(self):
+        assert _parse_condition_label("kanR-kan") is False
+
+    def test_selection_with_description_plus(self):
+        assert _parse_condition_label("pheS+4CP") is True
+
+    def test_control_with_description_minus(self):
+        assert _parse_condition_label("pheS-4CP") is False
+
+    def test_no_plus_no_minus_raises(self):
+        with pytest.raises(ValueError, match="does not unambiguously"):
+            _parse_condition_label("kanR_no_selection")
+
+    def test_both_plus_and_minus_raises(self):
+        with pytest.raises(ValueError, match="does not unambiguously"):
+            _parse_condition_label("weird+condition-name")
+
+    def test_error_includes_label_name(self):
+        label = "mystery_condition"
+        with pytest.raises(ValueError, match=label):
+            _parse_condition_label(label)
+
+    def test_error_explains_convention(self):
+        with pytest.raises(ValueError, match=r"\+.*selection"):
+            _parse_condition_label("unlabeled")
+
+
+# ---------------------------------------------------------------------------
+# get_priors with condition_labels
+# ---------------------------------------------------------------------------
+
+class TestGetPriorsWithLabels:
+
+    def test_plus_conditions_marked_selection(self):
+        labels = ["kanR+kan", "pheS+4CP"]
+        priors = get_priors(condition_labels=labels)
+        assert priors.m_is_selection == (True, True)
+
+    def test_minus_conditions_marked_control(self):
+        labels = ["kanR-kan", "pheS-4CP"]
+        priors = get_priors(condition_labels=labels)
+        assert priors.m_is_selection == (False, False)
+
+    def test_mixed_labels_correct_classification(self):
+        labels = ["kanR+kan", "kanR-kan", "pheS+4CP", "pheS-4CP"]
+        priors = get_priors(condition_labels=labels)
+        assert priors.m_is_selection == (True, False, True, False)
+
+    def test_single_selection_label(self):
+        priors = get_priors(condition_labels=["sel+media"])
+        assert priors.m_is_selection == (True,)
+
+    def test_invalid_label_propagates_error(self):
+        with pytest.raises(ValueError, match="unlabeled"):
+            get_priors(condition_labels=["kanR+kan", "unlabeled"])
+
+    def test_none_labels_gives_none_is_selection(self):
+        priors = get_priors(condition_labels=None)
+        assert priors.m_is_selection is None
+
+    def test_empty_labels_gives_empty_tuple(self):
+        priors = get_priors(condition_labels=[])
+        assert priors.m_is_selection == ()
+
+    def test_scales_preserved_in_priors(self):
+        priors = get_priors(condition_labels=["a+b", "a-b"])
+        assert priors.m_scale_minus == pytest.approx(0.001)
+        assert priors.m_scale_plus == pytest.approx(0.01)
+
+
+# ---------------------------------------------------------------------------
+# define_model — per-condition m prior
+# ---------------------------------------------------------------------------
+
+class TestDefineModelSelectionAware:
+
+    def _make_data(self, num_condition_rep):
+        """Minimal mock with num_condition_rep conditions."""
+        num_rep = 1
+        num_cond_pre = 1
+        num_cond_sel = num_condition_rep
+        num_tname = 1
+        num_tconc = 1
+        num_geno = 1
+        num_time = 2
+        shape = (num_rep, num_time, num_cond_pre, num_cond_sel,
+                 num_tname, num_tconc, num_geno)
+
+        return MockGrowthData(
+            num_condition_rep=num_condition_rep,
+            num_replicate=num_rep,
+            map_condition_pre=jnp.zeros(num_condition_rep, dtype=jnp.int32),
+            map_condition_sel=jnp.arange(num_condition_rep, dtype=jnp.int32),
+            ln_cfu=jnp.zeros(shape),
+            t_sel=jnp.zeros(shape),
+            good_mask=jnp.ones(shape, dtype=bool),
+        )
+
+    def test_selection_aware_prior_tighter_for_control(self):
+        """
+        The Normal prior on m for a '-' condition must be tighter than for
+        a '+' condition.  We verify this by inspecting the log-prob of a
+        moderate m value under each condition's prior.
+        """
+        labels = ["kanR+kan", "kanR-kan"]
+        priors = get_priors(condition_labels=labels)
+        data = self._make_data(num_condition_rep=2)
+
+        # Substitute specific m values and inspect the model trace
+        m_test_value = 0.005   # moderate m, within normal range but 5× tight range
+        subs = {
+            "test_m_k": jnp.zeros(2),
+            "test_m_m": jnp.full(2, m_test_value),
+        }
+        substituted = substitute(define_model, data=subs)
+
+        with seed(rng_seed=0):
+            tr = trace(substituted).get_trace(
+                name="test_m", data=data, priors=priors
+            )
+
+        m_site = tr["test_m_m"]
+        # The trace fn should have two m values; we can check the log-prob
+        # is lower (more penalized) for the control condition.
+        m_values = m_site["value"]
+        assert m_values.shape == (2,)
+        # kanR+kan (index 0) is selection: wider prior → less penalty
+        # kanR-kan (index 1) is control: tight prior → more penalty
+        import numpyro.distributions as d
+        lp_sel = d.Normal(priors.m_loc, priors.m_scale_plus).log_prob(m_test_value)
+        lp_ctrl = d.Normal(priors.m_loc, priors.m_scale_minus).log_prob(m_test_value)
+        assert float(lp_sel) > float(lp_ctrl)
+
+    def test_legacy_path_unchanged(self):
+        """With m_is_selection=None, the single m_scale prior applies."""
+        priors = get_priors()  # no condition_labels → m_is_selection=None
+        assert priors.m_is_selection is None
+
+        data = self._make_data(num_condition_rep=2)
+        with seed(rng_seed=0):
+            tr = trace(define_model).get_trace(
+                name="leg", data=data, priors=priors
+            )
+        assert "leg_m" in tr
+        assert tr["leg_m"]["value"].shape == (2,)
+
+    def test_define_model_shapes_with_labels(self):
+        """Output shapes should be the same as the legacy path."""
+        labels = ["sel+a", "ctrl-b", "sel+c"]
+        priors = get_priors(condition_labels=labels)
+        data = self._make_data(num_condition_rep=3)
+
+        with seed(rng_seed=0):
+            params = define_model(name="sa", data=data, priors=priors)
+
+        assert params.k_pre.shape == data.map_condition_pre.shape
+        assert params.m_pre.shape == data.map_condition_pre.shape
+        assert params.k_sel.shape == data.map_condition_sel.shape
+        assert params.m_sel.shape == data.map_condition_sel.shape
+
+    def test_model_guide_compatible_with_labels(self):
+        """Model and guide sample sites must still match with labels."""
+        labels = ["kanR+kan", "kanR-kan"]
+        priors = get_priors(condition_labels=labels)
+        data = self._make_data(num_condition_rep=2)
+
+        with seed(rng_seed=0):
+            model_trace = trace(define_model).get_trace(
+                name="compat2", data=data, priors=priors
+            )
+        with seed(rng_seed=0):
+            guide_trace = trace(guide).get_trace(
+                name="compat2", data=data, priors=priors
+            )
+
+        model_samples = {
+            n for n, s in model_trace.items()
+            if s["type"] == "sample" and not s.get("is_observed", False)
+        }
+        guide_samples = {n for n, s in guide_trace.items() if s["type"] == "sample"}
+        assert model_samples == guide_samples

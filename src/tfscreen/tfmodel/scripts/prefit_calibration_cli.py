@@ -98,6 +98,20 @@ _PINNED_COMPONENTS = {
 # downstream logit transform (in the simple-theta component) is finite.
 _THETA_EPS = 1e-6
 
+# Default floors for Hessian-derived prior scales.  These represent the
+# minimum plausible inter-experiment variability in growth-rate parameters
+# that the calibration MAP cannot see (e.g., inoculum variation, day-to-day
+# media differences).  For real data, calibrate these by running the prefit
+# on multiple independent replicates and examining the spread of MAP estimates.
+_DEFAULT_K_SCALE_FLOOR   = 0.002  # hr⁻¹ — baseline growth rate floor
+_DEFAULT_M_SCALE_FLOOR   = 0.001  # hr⁻¹ — theta-slope floor
+# Ceilings match the linear-component default prior scales so the prefit can
+# only TIGHTEN (never loosen) the production prior.  A degenerate Hessian
+# direction (e.g. b ↔ ln_cfu0 with fixed t_pre) can give sigma >> 10, which
+# without a ceiling would silently widen the prior far beyond the default.
+_DEFAULT_K_SCALE_CEILING = 0.1   # matches linear.get_hyperparameters() k_scale
+_DEFAULT_M_SCALE_CEILING = 0.01  # matches linear.get_hyperparameters() m_scale_plus
+
 
 # ---------------------------------------------------------------------------
 # Data filtering
@@ -504,6 +518,110 @@ def _build_csv_updates(field_mapping, params):
     return prior_updates, guess_updates
 
 
+def _build_hessian_scale_updates(field_mapping, hessian_results,
+                                  k_scale_floor, m_scale_floor,
+                                  k_scale_ceiling, m_scale_ceiling):
+    """
+    Build per-condition scale updates from Hessian-derived sigmas with floors
+    and ceilings.
+
+    For each array condition_growth site (``k`` and ``m``) that appears in
+    both ``field_mapping`` and ``hessian_results``, the per-element Hessian
+    sigma is clipped to ``[floor, ceiling]`` and returned in two dicts:
+
+    * **guess_updates** — per-condition sigma arrays keyed as
+      ``{site_name}_scales``.  Written to the guesses CSV to initialise the
+      variational posterior's uncertainty near the MAP calibration.
+
+    * **prior_updates** — scalar (max across conditions) written to the priors
+      CSV.  For ``k``, updates ``condition_growth.k_scale``; for ``m``,
+      updates ``condition_growth.m_scale_plus`` (selection conditions).  This
+      is the constraint that actually prevents the production SVI from drifting
+      away from the calibration.
+
+    **Why both floor and ceiling?**
+
+    The ceiling is essential.  The prefit calibration uses ``growth_noise:
+    "zero"`` and a fixed ``t_pre``, which creates a near-degenerate Hessian
+    direction (the baseline growth rate ``b`` and initial count ``ln_cfu0`` are
+    only weakly separated).  The clamping at 1e-3 inside
+    ``compute_hessian_sigmas`` then gives ``sigma ≈ 1/sqrt(1e-3) ≈ 31`` for
+    that direction — a huge value that would *loosen* the production prior far
+    beyond the original default.  The ceiling prevents this: if the Hessian
+    sigma exceeds the original production prior scale, the original scale is
+    kept.
+
+    The floor prevents over-constraining from the opposite direction: if the
+    calibration data is very informative and the Hessian gives
+    ``sigma ≈ 1e-5``, we still keep at least ``floor`` of freedom to represent
+    irreducible inter-experiment variability.
+
+    Parameters
+    ----------
+    field_mapping : dict
+        Output of :func:`_identify_field_mapping`.
+    hessian_results : dict
+        Output of ``RunInference.compute_hessian_sigmas``; maps site names to
+        ``{"map": array, "sigma": array}`` dicts.
+    k_scale_floor : float
+        Minimum prior scale for baseline growth-rate (k / b) parameters.
+    m_scale_floor : float
+        Minimum prior scale for theta-slope (m) parameters.
+    k_scale_ceiling : float
+        Maximum prior scale for k.  Hessian sigmas above this are capped so
+        the prefit never *loosens* the production k prior beyond its default.
+    m_scale_ceiling : float
+        Maximum prior scale for m_scale_plus.  Analogous to ``k_scale_ceiling``.
+
+    Returns
+    -------
+    guess_updates : dict[str, np.ndarray]
+        Per-condition clipped sigma arrays for the guesses CSV.
+    prior_updates : dict[str, float]
+        Scalar (max-across-conditions) prior scale updates for the priors CSV.
+    """
+    guess_updates = {}
+    prior_updates = {}
+
+    for site_name, info in field_mapping.items():
+        if not info.get("is_array", False):
+            continue
+        if site_name not in hessian_results:
+            continue
+
+        sigma = np.asarray(hessian_results[site_name]["sigma"])
+        loc_field = info.get("loc_field", "")
+        scale_field = info.get("scale_field")
+        component = info["component"]
+
+        if loc_field == "k_loc":
+            floor = k_scale_floor
+            ceiling = k_scale_ceiling
+            prior_field = scale_field          # "k_scale"
+        elif loc_field == "m_loc":
+            floor = m_scale_floor
+            ceiling = m_scale_ceiling
+            prior_field = "m_scale_plus"       # tighten the + condition prior
+        else:
+            continue
+
+        # Clip: floor prevents over-constraining; ceiling prevents loosening.
+        clipped_sigma = np.clip(sigma, floor, ceiling)
+
+        # Per-condition scales to guesses CSV (initialise variational uncertainty)
+        if scale_field is not None:
+            guess_updates[f"{site_name}_scales"] = clipped_sigma
+
+        # Scalar (max) to priors CSV — the actual model constraint.
+        # Taking the max rather than the min avoids over-constraining the
+        # condition with the largest legitimate uncertainty.
+        if prior_field is not None:
+            prior_key = _csv_row_name(component, prior_field)
+            prior_updates[prior_key] = float(np.max(clipped_sigma))
+
+    return guess_updates, prior_updates
+
+
 def _apply_priors_updates(priors_path, prior_updates):
     """
     Overwrite ``parameter == row_name`` rows of the production priors
@@ -712,7 +830,12 @@ def run_prefit_calibration(config_file,
                            checkpoint_interval=10,
                            max_num_epochs=100000,
                            init_param_jitter=0.0,
-                           epoch_checkpoint_interval=0):
+                           epoch_checkpoint_interval=0,
+                           k_scale_floor=_DEFAULT_K_SCALE_FLOOR,
+                           m_scale_floor=_DEFAULT_M_SCALE_FLOOR,
+                           k_scale_ceiling=_DEFAULT_K_SCALE_CEILING,
+                           m_scale_ceiling=_DEFAULT_M_SCALE_CEILING,
+                           hessian_chunk_size=64):
     """
     Run the calibration pre-fit and update the production priors / guesses
     CSVs in place.
@@ -779,6 +902,30 @@ def run_prefit_calibration(config_file,
         Frequency (in epochs) to write numbered epoch checkpoints to a
         ``checkpoints/`` subdirectory (default 0). Set to 0 or None to
         disable.
+    k_scale_floor : float, optional
+        Minimum prior scale applied to the baseline growth-rate (k/b)
+        parameters after Hessian estimation (default
+        ``_DEFAULT_K_SCALE_FLOOR = 0.002``).  Represents the irreducible
+        day-to-day variability in growth rates that the Hessian cannot capture.
+        For real data, estimate this by running the prefit on multiple
+        independent calibration replicates and measuring the spread of MAP
+        estimates.
+    m_scale_floor : float, optional
+        Minimum prior scale applied to the theta-slope (m) parameters after
+        Hessian estimation (default ``_DEFAULT_M_SCALE_FLOOR = 0.001``).
+    k_scale_ceiling : float, optional
+        Maximum prior scale for k after Hessian estimation (default
+        ``_DEFAULT_K_SCALE_CEILING = 0.1``, matching the linear component
+        default).  Prevents degenerate Hessian directions — which arise from
+        the ``b`` / ``ln_cfu0`` near-degeneracy in the prefit calibration —
+        from producing a scale larger than the original production prior and
+        thereby *loosening* the constraint.
+    m_scale_ceiling : float, optional
+        Maximum prior scale for m_scale_plus after Hessian estimation (default
+        ``_DEFAULT_M_SCALE_CEILING = 0.01``, matching the linear default).
+    hessian_chunk_size : int, optional
+        Number of Hessian rows computed per device batch (default 64).
+        Reduce if device runs out of memory during Hessian computation.
 
     Returns
     -------
@@ -834,9 +981,27 @@ def run_prefit_calibration(config_file,
         epoch_checkpoint_interval=epoch_checkpoint_interval
     )
 
-    # 5. Map sample sites → CSV fields and apply in-place updates.
+    # 5. Hessian-derived scale estimation.
+    #    Compute the diagonal of the inverse Hessian at the MAP to get per-
+    #    parameter uncertainty estimates.  These are floored and written as
+    #    per-condition scales (guesses) and scalar prior scales (priors) so the
+    #    production SVI cannot drift far from the calibrated growth parameters.
+    hessian_results = ri.compute_hessian_sigmas(
+        params, hessian_chunk_size=hessian_chunk_size
+    )
+
+    # 6. Map sample sites → CSV fields and apply in-place updates.
     field_mapping = _identify_field_mapping(orchestrator_cal)
     prior_updates, guess_updates = _build_csv_updates(field_mapping, params)
+
+    hessian_guess_updates, hessian_prior_updates = _build_hessian_scale_updates(
+        field_mapping, hessian_results,
+        k_scale_floor, m_scale_floor,
+        k_scale_ceiling, m_scale_ceiling,
+    )
+    guess_updates.update(hessian_guess_updates)
+    prior_updates.update(hessian_prior_updates)
+
     _apply_priors_updates(priors_path, prior_updates)
     _apply_guesses_updates(guesses_path, guess_updates)
 
@@ -849,7 +1014,12 @@ def main():
         manual_arg_types={"config_file": str,
                           "seed": int,
                           "checkpoint_file": str,
-                          "init_param_jitter": float},
+                          "init_param_jitter": float,
+                          "k_scale_floor": float,
+                          "m_scale_floor": float,
+                          "k_scale_ceiling": float,
+                          "m_scale_ceiling": float,
+                          "hessian_chunk_size": int},
     )
 
 

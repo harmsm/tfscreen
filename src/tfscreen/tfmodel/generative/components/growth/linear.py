@@ -2,8 +2,8 @@ import numpy as np
 import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
-from flax.struct import dataclass
-from typing import Tuple
+from flax.struct import dataclass, field
+from typing import List, Optional, Tuple
 
 from tfscreen.tfmodel.data_class import (
     GrowthData
@@ -39,12 +39,83 @@ class ModelPriors:
     m_loc : float
         Mean of the Normal prior on the per-condition occupancy slope m.
     m_scale : float
-        Standard deviation of the Normal prior on m.
+        Standard deviation of the Normal prior on m (used for all conditions
+        when ``m_is_selection`` is ``None``).
+    m_scale_minus : float
+        Prior scale on m for control ('-') conditions, where theta is not
+        expected to meaningfully affect growth.  Applied per-condition when
+        ``m_is_selection`` is provided.
+    m_scale_plus : float
+        Prior scale on m for selection ('+') conditions, where theta drives
+        differential growth.  Applied per-condition when ``m_is_selection``
+        is provided.
+    m_is_selection : tuple of bool or None
+        Length-``num_condition_rep`` tuple; ``True`` for selection ('+')
+        conditions, ``False`` for control ('-') conditions.  ``None``
+        disables the per-condition logic and uses ``m_scale`` for all
+        conditions (backward-compatible default).
     """
     k_loc: float
     k_scale: float
     m_loc: float
     m_scale: float
+    m_scale_minus: float
+    m_scale_plus: float
+    m_is_selection: tuple = field(pytree_node=False, default=None)
+
+
+# ---------------------------------------------------------------------------
+# Condition-label parsing
+# ---------------------------------------------------------------------------
+
+def _parse_condition_label(label: str) -> bool:
+    """
+    Classify one condition as selection ('+') or control ('-').
+
+    Parameters
+    ----------
+    label : str
+        Condition name as it appears in the growth DataFrame.
+
+    Returns
+    -------
+    bool
+        ``True`` if this is a selection ('+') condition,
+        ``False`` if it is a control ('-') condition.
+
+    Raises
+    ------
+    ValueError
+        If the label contains neither '+' nor '-', or contains both.
+        The error includes a detailed explanation of the naming convention.
+    """
+    has_plus  = '+' in label
+    has_minus = '-' in label
+
+    if has_plus and not has_minus:
+        return True
+    if has_minus and not has_plus:
+        return False
+
+    # Both or neither: ambiguous.
+    raise ValueError(
+        f"Condition name '{label}' does not unambiguously identify whether "
+        "it is a selection or control condition.\n\n"
+        "The linear growth component uses the presence of '+' or '-' in the "
+        "condition name to apply different priors on m (the theta-to-growth "
+        "slope):\n"
+        "  '+' conditions  — selection media (e.g. kanR+kan, pheS+4CP): theta "
+        "meaningfully suppresses or promotes growth, so m gets the full "
+        "Normal(0, m_scale_plus) prior.\n"
+        "  '-' conditions  — control/no-selection media (e.g. kanR-kan, "
+        "pheS-4CP): theta has negligible effect on growth, so m gets the tight "
+        "Normal(0, m_scale_minus) prior, preventing the optimizer from "
+        "incorrectly absorbing selection-phase theta signal into the control "
+        "condition.\n\n"
+        "Please rename your condition so that the name contains exactly one of "
+        "'+' or '-'.\n"
+        f"Got: '{label}'"
+    )
 
 
 def define_model(name: str,
@@ -70,9 +141,17 @@ def define_model(name: str,
     params : LinearParams
         A dataclass containing k_pre, m_pre, k_sel, and m_sel.
     """
-    with pyro.plate(f"{name}_condition_parameters", data.num_condition_rep):
+    if priors.m_is_selection is None:
+        m_scale_arr = jnp.full(data.num_condition_rep, priors.m_scale)
+    else:
+        m_scale_arr = jnp.array([
+            priors.m_scale_plus if sel else priors.m_scale_minus
+            for sel in priors.m_is_selection
+        ])
+
+    with pyro.plate(f"{name}_condition_parameters", data.num_condition_rep) as idx:
         growth_k = pyro.sample(f"{name}_k", dist.Normal(priors.k_loc, priors.k_scale))
-        growth_m = pyro.sample(f"{name}_m", dist.Normal(priors.m_loc, priors.m_scale))
+        growth_m = pyro.sample(f"{name}_m", dist.Normal(priors.m_loc, m_scale_arr[idx]))
 
     k_pre = growth_k[data.map_condition_pre]
     m_pre = growth_m[data.map_condition_pre]
@@ -154,7 +233,9 @@ def get_hyperparameters():
     parameters["k_loc"] = 0.020
     parameters["k_scale"] = 0.1
     parameters["m_loc"] = 0.0
-    parameters["m_scale"] = 0.01
+    parameters["m_scale"] = 0.01        # used when m_is_selection is None
+    parameters["m_scale_minus"] = 0.001 # tight prior for '-' control conditions
+    parameters["m_scale_plus"] = 0.01   # normal prior for '+' selection conditions
 
     return parameters
 
@@ -241,8 +322,38 @@ def get_guesses(name, data):
     return guesses
 
 
-def get_priors():
-    return ModelPriors(**get_hyperparameters())
+def get_priors(condition_labels: Optional[List[str]] = None) -> ModelPriors:
+    """
+    Build a :class:`ModelPriors` for the linear growth component.
+
+    When ``condition_labels`` is supplied (a list of condition names in the
+    same order as the model's ``num_condition_rep`` axis), each label is
+    parsed for '+' or '-' to set ``m_is_selection``.  This enables the
+    tighter ``m_scale_minus`` prior for control conditions and the normal
+    ``m_scale_plus`` prior for selection conditions, breaking the
+    optimization degeneracy that otherwise causes systematic theta
+    undershoot.
+
+    When ``condition_labels`` is ``None`` (the default), ``m_is_selection``
+    is left as ``None`` and ``m_scale`` is used for all conditions
+    (backward-compatible behaviour).
+
+    Parameters
+    ----------
+    condition_labels : list of str, optional
+        Ordered condition names, one per ``condition_rep`` index.
+        Each name must contain exactly one of '+' or '-'.
+
+    Returns
+    -------
+    ModelPriors
+    """
+    hypers = get_hyperparameters()
+    if condition_labels is not None:
+        hypers["m_is_selection"] = tuple(
+            _parse_condition_label(label) for label in condition_labels
+        )
+    return ModelPriors(**hypers)
 
 
 def get_extract_specs(ctx):

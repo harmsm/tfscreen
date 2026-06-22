@@ -28,6 +28,7 @@ from tfscreen.tfmodel.scripts.prefit_calibration_cli import (
     _apply_priors_updates,
     _build_calibration_model,
     _build_csv_updates,
+    _build_hessian_scale_updates,
     _compute_theta_values,
     _csv_row_name,
     _identify_field_mapping,
@@ -37,6 +38,10 @@ from tfscreen.tfmodel.scripts.prefit_calibration_cli import (
     main,
     run_prefit_calibration,
     _CALIBRATION_OVERRIDES,
+    _DEFAULT_K_SCALE_CEILING,
+    _DEFAULT_K_SCALE_FLOOR,
+    _DEFAULT_M_SCALE_CEILING,
+    _DEFAULT_M_SCALE_FLOOR,
     _PINNED_COMPONENTS,
 )
 
@@ -1064,12 +1069,227 @@ class TestRunPrefitCalibrationOrchestration:
         run_prefit_calibration(config_file=cfg, seed=1)
         assert mock_run_map.call_args.kwargs["init_param_jitter"] == 0.0
 
-    def test_hessian_not_called(self, tmp_path, mocker):
-        """compute_hessian_sigmas must not be called after the cleanup."""
+    def test_hessian_called_after_map(self, tmp_path, mocker):
+        """compute_hessian_sigmas must be called exactly once after MAP."""
         cfg, _, _ = self._write_yaml_and_csvs(tmp_path)
         mock_ri, _ = self._patch_pipeline(mocker)
         run_prefit_calibration(config_file=cfg, seed=1)
-        mock_ri.compute_hessian_sigmas.assert_not_called()
+        mock_ri.compute_hessian_sigmas.assert_called_once()
+
+    def test_hessian_chunk_size_forwarded(self, tmp_path, mocker):
+        """The hessian_chunk_size kwarg must be passed to compute_hessian_sigmas."""
+        cfg, _, _ = self._write_yaml_and_csvs(tmp_path)
+        mock_ri, _ = self._patch_pipeline(mocker)
+        run_prefit_calibration(config_file=cfg, seed=1, hessian_chunk_size=32)
+        call_kwargs = mock_ri.compute_hessian_sigmas.call_args.kwargs
+        assert call_kwargs.get("hessian_chunk_size") == 32
+
+
+# ---------------------------------------------------------------------------
+# _build_hessian_scale_updates
+# ---------------------------------------------------------------------------
+
+class TestBuildHessianScaleUpdates:
+    """Tests for the Hessian-with-floor scale update builder."""
+
+    def _make_field_mapping(self, sites):
+        """Build a minimal field_mapping for the given list of (site, loc_field) pairs."""
+        out = {}
+        for site_name, loc_field in sites:
+            suffix = loc_field.replace("_loc", "")
+            out[site_name] = {
+                "component": "condition_growth",
+                "dist_class": "Normal",
+                "loc_field": loc_field,
+                "scale_field": f"{suffix}_scale",
+                "is_array": True,
+            }
+        return out
+
+    def _make_hessian(self, site_name, sigmas):
+        return {site_name: {"map": np.zeros_like(sigmas), "sigma": np.array(sigmas)}}
+
+    # --- floor application ---
+
+    def test_k_sigma_above_floor_is_kept(self):
+        fm = self._make_field_mapping([("condition_growth_k", "k_loc")])
+        hr = self._make_hessian("condition_growth_k", [0.01, 0.02])
+        g, p = _build_hessian_scale_updates(fm, hr, k_scale_floor=0.002, m_scale_floor=0.001, k_scale_ceiling=0.1, m_scale_ceiling=0.01)
+        np.testing.assert_allclose(g["condition_growth_k_scales"], [0.01, 0.02])
+
+    def test_k_sigma_below_floor_is_floored(self):
+        fm = self._make_field_mapping([("condition_growth_k", "k_loc")])
+        hr = self._make_hessian("condition_growth_k", [0.0001, 0.0005])
+        g, _ = _build_hessian_scale_updates(fm, hr, k_scale_floor=0.002, m_scale_floor=0.001, k_scale_ceiling=0.1, m_scale_ceiling=0.01)
+        assert np.all(g["condition_growth_k_scales"] == pytest.approx(0.002))
+
+    def test_m_sigma_uses_m_floor_not_k_floor(self):
+        fm = self._make_field_mapping([("condition_growth_m", "m_loc")])
+        hr = self._make_hessian("condition_growth_m", [0.0003, 0.0008])
+        g, _ = _build_hessian_scale_updates(fm, hr, k_scale_floor=0.002, m_scale_floor=0.001, k_scale_ceiling=0.1, m_scale_ceiling=0.01)
+        np.testing.assert_allclose(g["condition_growth_m_scales"], [0.001, 0.001])
+
+    def test_floor_applied_elementwise(self):
+        fm = self._make_field_mapping([("condition_growth_k", "k_loc")])
+        hr = self._make_hessian("condition_growth_k", [0.001, 0.005])
+        g, _ = _build_hessian_scale_updates(fm, hr, k_scale_floor=0.003, m_scale_floor=0.001,
+                                              k_scale_ceiling=0.1, m_scale_ceiling=0.01)
+        np.testing.assert_allclose(g["condition_growth_k_scales"], [0.003, 0.005])
+
+    # --- guess output ---
+
+    def test_k_scales_in_guess_updates(self):
+        fm = self._make_field_mapping([("condition_growth_k", "k_loc")])
+        hr = self._make_hessian("condition_growth_k", [0.005, 0.007])
+        g, _ = _build_hessian_scale_updates(fm, hr, k_scale_floor=0.002, m_scale_floor=0.001, k_scale_ceiling=0.1, m_scale_ceiling=0.01)
+        assert "condition_growth_k_scales" in g
+
+    def test_m_scales_in_guess_updates(self):
+        fm = self._make_field_mapping([("condition_growth_m", "m_loc")])
+        hr = self._make_hessian("condition_growth_m", [0.003, 0.004])
+        g, _ = _build_hessian_scale_updates(fm, hr, k_scale_floor=0.002, m_scale_floor=0.001, k_scale_ceiling=0.1, m_scale_ceiling=0.01)
+        assert "condition_growth_m_scales" in g
+
+    # --- prior output ---
+
+    def test_k_prior_update_uses_max_across_conditions(self):
+        fm = self._make_field_mapping([("condition_growth_k", "k_loc")])
+        hr = self._make_hessian("condition_growth_k", [0.003, 0.007])
+        _, p = _build_hessian_scale_updates(fm, hr, k_scale_floor=0.002, m_scale_floor=0.001, k_scale_ceiling=0.1, m_scale_ceiling=0.01)
+        assert p["growth.condition_growth.k_scale"] == pytest.approx(0.007)
+
+    def test_k_prior_update_respects_floor(self):
+        fm = self._make_field_mapping([("condition_growth_k", "k_loc")])
+        hr = self._make_hessian("condition_growth_k", [0.0001, 0.0002])
+        _, p = _build_hessian_scale_updates(fm, hr, k_scale_floor=0.002, m_scale_floor=0.001, k_scale_ceiling=0.1, m_scale_ceiling=0.01)
+        assert p["growth.condition_growth.k_scale"] == pytest.approx(0.002)
+
+    def test_m_prior_goes_to_m_scale_plus_not_m_scale(self):
+        fm = self._make_field_mapping([("condition_growth_m", "m_loc")])
+        hr = self._make_hessian("condition_growth_m", [0.004, 0.006])
+        _, p = _build_hessian_scale_updates(fm, hr, k_scale_floor=0.002, m_scale_floor=0.001, k_scale_ceiling=0.1, m_scale_ceiling=0.01)
+        assert "growth.condition_growth.m_scale_plus" in p
+        assert "growth.condition_growth.m_scale" not in p
+
+    def test_m_scale_plus_is_max_floored(self):
+        fm = self._make_field_mapping([("condition_growth_m", "m_loc")])
+        hr = self._make_hessian("condition_growth_m", [0.009, 0.002])
+        _, p = _build_hessian_scale_updates(fm, hr, k_scale_floor=0.002, m_scale_floor=0.001, k_scale_ceiling=0.1, m_scale_ceiling=0.01)
+        assert p["growth.condition_growth.m_scale_plus"] == pytest.approx(0.009)
+
+    # --- edge cases ---
+
+    def test_site_missing_from_hessian_skipped(self):
+        fm = self._make_field_mapping([("condition_growth_k", "k_loc")])
+        g, p = _build_hessian_scale_updates(fm, {}, k_scale_floor=0.002, m_scale_floor=0.001, k_scale_ceiling=0.1, m_scale_ceiling=0.01)
+        assert g == {} and p == {}
+
+    def test_non_array_site_skipped(self):
+        fm = {
+            "condition_growth_k_hyper": {
+                "component": "condition_growth",
+                "dist_class": "Normal",
+                "loc_field": "k_hyper_loc",
+                "scale_field": "k_hyper_scale",
+                "is_array": False,
+            }
+        }
+        hr = {"condition_growth_k_hyper": {"map": np.array(0.02), "sigma": np.array(0.0001)}}
+        g, p = _build_hessian_scale_updates(fm, hr, k_scale_floor=0.002, m_scale_floor=0.001, k_scale_ceiling=0.1, m_scale_ceiling=0.01)
+        assert g == {} and p == {}
+
+    def test_unknown_loc_field_skipped(self):
+        fm = {
+            "condition_growth_tau": {
+                "component": "condition_growth",
+                "dist_class": "Normal",
+                "loc_field": "tau_loc",
+                "scale_field": "tau_scale",
+                "is_array": True,
+            }
+        }
+        hr = {"condition_growth_tau": {"map": np.zeros(2), "sigma": np.ones(2) * 0.1}}
+        g, p = _build_hessian_scale_updates(fm, hr, k_scale_floor=0.002, m_scale_floor=0.001, k_scale_ceiling=0.1, m_scale_ceiling=0.01)
+        assert g == {} and p == {}
+
+    def test_joint_k_and_m_both_updated(self):
+        fm = self._make_field_mapping([
+            ("condition_growth_k", "k_loc"),
+            ("condition_growth_m", "m_loc"),
+        ])
+        hr = {
+            "condition_growth_k": {"map": np.zeros(2), "sigma": np.array([0.005, 0.008])},
+            "condition_growth_m": {"map": np.zeros(2), "sigma": np.array([0.004, 0.002])},
+        }
+        g, p = _build_hessian_scale_updates(fm, hr, k_scale_floor=0.002, m_scale_floor=0.001, k_scale_ceiling=0.1, m_scale_ceiling=0.01)
+        assert "condition_growth_k_scales" in g
+        assert "condition_growth_m_scales" in g
+        assert "growth.condition_growth.k_scale" in p
+        assert "growth.condition_growth.m_scale_plus" in p
+
+    # --- ceiling application ---
+
+    def test_k_sigma_above_ceiling_is_capped(self):
+        """A degenerate Hessian giving sigma >> ceiling must not loosen the prior."""
+        fm = self._make_field_mapping([("condition_growth_k", "k_loc")])
+        hr = self._make_hessian("condition_growth_k", [23.5, 31.6])
+        g, p = _build_hessian_scale_updates(
+            fm, hr, k_scale_floor=0.002, m_scale_floor=0.001,
+            k_scale_ceiling=0.1, m_scale_ceiling=0.01,
+        )
+        assert np.all(g["condition_growth_k_scales"] == pytest.approx(0.1))
+        assert p["growth.condition_growth.k_scale"] == pytest.approx(0.1)
+
+    def test_m_sigma_above_ceiling_is_capped(self):
+        fm = self._make_field_mapping([("condition_growth_m", "m_loc")])
+        hr = self._make_hessian("condition_growth_m", [15.0, 22.0])
+        g, p = _build_hessian_scale_updates(
+            fm, hr, k_scale_floor=0.002, m_scale_floor=0.001,
+            k_scale_ceiling=0.1, m_scale_ceiling=0.01,
+        )
+        assert np.all(g["condition_growth_m_scales"] == pytest.approx(0.01))
+        assert p["growth.condition_growth.m_scale_plus"] == pytest.approx(0.01)
+
+    def test_sigma_between_floor_and_ceiling_is_unchanged(self):
+        fm = self._make_field_mapping([("condition_growth_k", "k_loc")])
+        hr = self._make_hessian("condition_growth_k", [0.004, 0.006])
+        g, p = _build_hessian_scale_updates(
+            fm, hr, k_scale_floor=0.002, m_scale_floor=0.001,
+            k_scale_ceiling=0.1, m_scale_ceiling=0.01,
+        )
+        np.testing.assert_allclose(g["condition_growth_k_scales"], [0.004, 0.006])
+        assert p["growth.condition_growth.k_scale"] == pytest.approx(0.006)
+
+    def test_ceiling_below_floor_raises_or_clips_to_ceiling(self):
+        """When ceiling < floor (degenerate config), clip still works (clip clamps to ceiling)."""
+        fm = self._make_field_mapping([("condition_growth_k", "k_loc")])
+        hr = self._make_hessian("condition_growth_k", [0.05])
+        g, _ = _build_hessian_scale_updates(
+            fm, hr, k_scale_floor=0.05, m_scale_floor=0.001,
+            k_scale_ceiling=0.05, m_scale_ceiling=0.01,
+        )
+        # floor == ceiling == 0.05 → result must be 0.05
+        assert g["condition_growth_k_scales"][0] == pytest.approx(0.05)
+
+    # --- default constant sanity ---
+
+    def test_default_floors_are_sensible_constants(self):
+        """Floor constants must be positive and k_floor >= m_floor."""
+        assert _DEFAULT_K_SCALE_FLOOR > 0
+        assert _DEFAULT_M_SCALE_FLOOR > 0
+        assert _DEFAULT_K_SCALE_FLOOR >= _DEFAULT_M_SCALE_FLOOR
+
+    def test_default_ceilings_above_floors(self):
+        """Ceilings must be strictly above floors so the valid range is non-empty."""
+        assert _DEFAULT_K_SCALE_CEILING > _DEFAULT_K_SCALE_FLOOR
+        assert _DEFAULT_M_SCALE_CEILING > _DEFAULT_M_SCALE_FLOOR
+
+    def test_default_ceilings_match_linear_defaults(self):
+        """Ceilings should match the linear component's default prior scales."""
+        from tfscreen.tfmodel.generative.components.growth.linear import get_hyperparameters
+        h = get_hyperparameters()
+        assert _DEFAULT_K_SCALE_CEILING == pytest.approx(h["k_scale"])
+        assert _DEFAULT_M_SCALE_CEILING == pytest.approx(h["m_scale_plus"])
 
 
 # ---------------------------------------------------------------------------

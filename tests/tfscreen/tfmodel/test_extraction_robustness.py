@@ -32,8 +32,8 @@ def mock_model():
         "titrant_conc": [1.0],
         "replicate": ["1"],
         "condition_rep": ["cond1"],
-        "condition_pre": ["pre1"],
-        "condition_sel": ["sel1"],
+        "condition_pre": ["pre-1"],
+        "condition_sel": ["sel+1"],
         "map_theta": [0],
         "map_theta_group": [0],
         "map_condition_rep": [0],
@@ -50,7 +50,7 @@ def mock_model():
         'condition_rep': pd.DataFrame({"replicate": ["1"], "condition_rep": ["cond1"], "map_condition_rep": [0]})
     }
     mock_tm.tensor_dim_names = ["replicate", "time", "condition_pre", "condition_sel", "titrant_name", "titrant_conc", "genotype"]
-    mock_tm.tensor_dim_labels = [["1"], ["1"], ["pre1"], ["sel1"], ["iptg"], [1.0], ["wt"]]
+    mock_tm.tensor_dim_labels = [["1"], ["1"], ["pre-1"], ["sel+1"], ["iptg"], [1.0], ["wt"]]
     model.growth_tm = mock_tm
     model.training_tm = mock_tm
     model.mut_labels = []
@@ -342,8 +342,8 @@ def test_extract_growth_predictions_hdf5_multiple_groups(mock_model, tmp_path):
     mock_model.growth_df = pd.DataFrame({
         "replicate": ["1", "2"],
         "genotype": ["wt", "wt"],
-        "condition_pre": ["pre1", "pre2"],
-        "condition_sel": ["sel1", "sel2"],
+        "condition_pre": ["pre-1", "pre-2"],
+        "condition_sel": ["sel+1", "sel+2"],
         "titrant_name": ["iptg", "iptg"],
         "titrant_conc": [1.0, 2.0],
         "t_pre": [0.0, 0.0],

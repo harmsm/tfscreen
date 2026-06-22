@@ -1199,11 +1199,20 @@ class ModelOrchestrator:
             else:
                 component_data = self._data.growth
 
-            # Record priors.  Components may optionally accept a `data`
-            # parameter to derive empirical prior values (e.g. fixed
-            # subgroup scales) from the observed data.
+            # Record priors.  Components may optionally accept special
+            # keyword arguments:
+            #   condition_labels — ordered condition names used by the
+            #       linear growth component to set per-condition m priors.
+            #   data — component data pytree for empirical prior values.
             priors_sig = inspect.signature(component_module.get_priors)
-            if "data" in priors_sig.parameters:
+            if "condition_labels" in priors_sig.parameters:
+                cond_rep_df = self.growth_tm.map_groups["condition_rep"]
+                condition_labels = list(
+                    cond_rep_df.sort_values("map_condition_rep")["condition_rep"]
+                )
+                priors_class_kwargs[prior_group][key] = \
+                    component_module.get_priors(condition_labels=condition_labels)
+            elif "data" in priors_sig.parameters:
                 priors_class_kwargs[prior_group][key] = \
                     component_module.get_priors(data=component_data)
             else:
