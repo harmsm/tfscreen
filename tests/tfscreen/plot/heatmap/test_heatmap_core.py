@@ -651,6 +651,14 @@ class TestHeatmap:
         mock_transform.contains_branch_seperately.return_value = (True, True)
         mock_p_collection.get_transform.return_value = mock_transform
         mock_p_collection.get_offset_transform.return_value = mock_transform
+        # _sticky_edges is an instance attribute (set in Artist.__init__) so it
+        # is absent from a class-spec'd mock; set it explicitly with the shape
+        # matplotlib expects: an object with .x and .y list attributes.
+        mock_sticky = MagicMock()
+        mock_sticky.x = []
+        mock_sticky.y = []
+        mock_p_collection._sticky_edges = mock_sticky
+        mock_p_collection.sticky_edges = mock_sticky
         mocks["build_heatmap_collection"].return_value = mock_p_collection
         return mocks
 
