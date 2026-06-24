@@ -1,5 +1,14 @@
 """
-K-assembly via additive mutation effects in ln-K space.
+PK — mutation effects on equilibrium constants inferred from growth/binding data.
+
+Each mutation shifts the three equilibrium constants (K_op, K_HL, K_E) by an
+independent Δln_K drawn from a hierarchical Normal prior with learned scale.
+No structural information is used; all mutation effects are inferred directly
+from the observations.  This is the simplest and most data-efficient K-assembly
+variant.  Registry name: ``theta_lac_dimer_lnK_mut``.
+
+Contrast with PddG (Δln_K derived from user-supplied structural ΔΔG predictions)
+and PnnC (Δln_K derived from NN-predicted structural ΔΔG).
 
 Mutation effects are additive in ln(K) space, with optional pairwise
 epistasis terms:

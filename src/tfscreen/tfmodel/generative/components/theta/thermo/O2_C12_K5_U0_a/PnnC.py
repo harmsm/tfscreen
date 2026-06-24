@@ -1,5 +1,14 @@
 """
-K-assembly via per-mutation per-structure ΔΔG with NN-predicted prior means.
+PnnC — mutation effects on equilibrium constants from NN-predicted ΔΔG prior means (MWC dimer).
+
+Identical to PddG, but prior means for the per-structure ΔΔG latent variables
+are predicted by per-structure two-layer MLPs trained on LigandMPNN structural
+features rather than read from a user-supplied CSV.  The MLPs are optimised
+jointly with the model (empirical Bayes).  Requires a structural ensemble HDF5
+file as input.  Registry name: ``theta_mwc_dimer_lnK_nn_prior``.
+
+Contrast with PK (Δln_K inferred from data alone, no structure) and PddG
+(ΔΔG prior means from a user-supplied CSV rather than a trained NN).
 
 Implements the full MWC two-state lac-dimer model (Sochor 2014) with five
 equilibrium constants, using six structural states as the free-energy basis:

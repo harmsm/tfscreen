@@ -1,5 +1,14 @@
 """
-K-assembly via per-mutation per-structure ΔΔG with user-supplied prior means.
+PddG — mutation effects on equilibrium constants from user-supplied ΔΔG prior means (MWC dimer).
+
+Each mutation's effect on the five equilibrium constants (K_h_l, K_h_o, K_l_o,
+K_h_e, K_l_e) is derived from per-structure ΔΔG latent variables whose prior
+means come from a user-supplied CSV file (columns: mut, H, HO, L, LO, HE2, LE2).
+A learned per-structure trust scale σ_s controls how far the posterior can deviate
+from the CSV values.  Registry name: ``theta_mwc_dimer_lnK_ddG_prior``.
+
+Contrast with PK (Δln_K inferred from data alone, no structure) and PnnC
+(ΔΔG prior means predicted by a per-structure MLP rather than supplied by the user).
 
 Implements the full MWC two-state lac-dimer model (Sochor 2014) with five
 equilibrium constants, using six structural states as the free-energy basis:

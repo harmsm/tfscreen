@@ -1,5 +1,14 @@
 """
-K-assembly via per-mutation per-structure ΔΔG with user-supplied prior means.
+PddG — mutation effects on equilibrium constants from user-supplied ΔΔG prior means (lac-dimer).
+
+Each mutation's effect on the three equilibrium constants (K_op, K_HL, K_E) is
+derived from per-structure ΔΔG latent variables whose prior means come from a
+user-supplied CSV file (columns: mut, H, HD, L, LE2).  A learned per-structure
+trust scale σ_s controls how far the posterior can deviate from the CSV values.
+Registry name: ``theta_lac_dimer_lnK_ddG_prior``.
+
+Contrast with PK (Δln_K inferred from data alone, no structure) and PnnC
+(ΔΔG prior means predicted by a per-structure MLP rather than supplied by the user).
 
 Implements the lac-dimer four-state partition function with three equilibrium
 constants, using four structural states as the free-energy basis:

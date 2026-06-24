@@ -1,5 +1,15 @@
 """
-K-assembly via additive mutation effects in ln-K space (lac-dimer-unfolded).
+PK — mutation effects on equilibrium constants inferred from data (lac-dimer-unfolded).
+
+Extends the lac-dimer PK model with a per-mutation unfolding shift (d_ln_K_U).
+All four equilibrium constants (K_op, K_HL, K_E, K_U) are shifted by Δln_K
+values inferred from the observations; no structural information is used.
+Use this when mutations may significantly destabilise the protein and a flat
+θ curve is observed.  Registry name: ``theta_lac_dimer_unfolded_lnK_mut``.
+
+Contrast with PddG (Δln_K derived from user-supplied structural ΔΔG) and PnnC
+(Δln_K derived from NN-predicted structural ΔΔG).  Note that PddG and PnnC in
+this family hold d_ln_K_U = 0 for all mutations by design.
 
 Identical to lac_dimer/lnK_mut.py with one additional scalar parameter:
 

@@ -1,5 +1,15 @@
 """
-K-assembly via NN-predicted per-structure ΔΔG priors (lac-dimer-unfolded).
+PnnC — mutation effects on equilibrium constants from NN-predicted ΔΔG prior means (lac-dimer-unfolded).
+
+Extends the lac-dimer PnnC model with a WT-level unfolding constant (ln_K_U_wt).
+Per-mutation effects on K_op, K_HL, and K_E use MLP-predicted ΔΔG prior means
+from LigandMPNN structural features; K_U is held at its WT value for all
+genotypes (d_ln_K_U = 0) because NN features describe local folded-state
+environments, not global stability.  Registry name:
+``theta_lac_dimer_unfolded_lnK_nn_prior``.
+
+Contrast with PK (all K shifts inferred from data, including K_U per mutation)
+and PddG (ΔΔG prior means from a user-supplied CSV rather than a trained NN).
 
 Identical to lac_dimer/lnK_nn_prior.py with one additional scalar parameter:
 

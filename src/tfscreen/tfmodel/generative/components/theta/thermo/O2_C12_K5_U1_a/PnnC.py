@@ -1,6 +1,15 @@
 """
-K-assembly via per-mutation per-structure ΔΔG with NN-predicted prior means,
-including a homogeneous WT-level unfolding constant.
+PnnC — mutation effects on equilibrium constants from NN-predicted ΔΔG prior means (MWC dimer unfolded).
+
+Extends the MWC dimer PnnC model with a WT-level unfolding constant (ln_K_u_wt).
+Per-mutation effects on the five folded-state K values use MLP-predicted ΔΔG
+prior means from LigandMPNN structural features; K_u is held at its WT value for
+all genotypes (d_ln_K_u = 0) because NN features describe local folded-state
+environments, not global stability.  Registry name:
+``theta_mwc_dimer_unfolded_lnK_nn_prior``.
+
+Contrast with PK (all K shifts inferred from data, including K_u per mutation)
+and PddG (ΔΔG prior means from a user-supplied CSV rather than a trained NN).
 
 Implements the full MWC two-state lac-dimer model (Sochor 2014) with five
 equilibrium constants plus a global unfolding equilibrium, using six structural
