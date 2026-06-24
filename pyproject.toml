@@ -72,6 +72,7 @@ docs = ["pydata-sphinx-theme"]
 [project.scripts]
 tfs-process-fastq = "tfscreen.process_raw.scripts.process_fastq_cli:main"
 tfs-process-counts = "tfscreen.process_raw.scripts.process_counts_cli:main"
+tfs-process-presplit = "tfscreen.process_raw.scripts.process_presplit_cli:main"
 tfs-configure-model = "tfscreen.tfmodel.scripts.configure_model_cli:main"
 tfs-prefit-calibration = "tfscreen.tfmodel.scripts.prefit_calibration_cli:main"
 tfs-fit-model = "tfscreen.tfmodel.scripts.fit_model_cli:main"

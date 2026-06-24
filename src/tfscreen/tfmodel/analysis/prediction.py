@@ -455,7 +455,7 @@ def predict(orchestrator,
     # Replace the dummy ln_cfu/ln_cfu_std zeros with observed values from the
     # original orchestrator.growth_df (NaN where there is no matching observation,
     # e.g. for expanded prediction grids).
-    merge_keys = ["replicate", "condition_pre", "condition_sel",
+    merge_keys = ["replicate", "library", "condition_pre", "condition_sel",
                   "titrant_name", "genotype", "t_pre", "t_sel", "titrant_conc"]
     obs_cols = merge_keys + ["ln_cfu", "ln_cfu_std"]
     orig_obs = orchestrator.growth_df[obs_cols].drop_duplicates(subset=merge_keys)

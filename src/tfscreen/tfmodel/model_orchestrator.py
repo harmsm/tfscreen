@@ -92,9 +92,10 @@ def _read_growth_df(growth_df,
     if "replicate" not in growth_df.columns:
         growth_df["replicate"] = 1
 
-    # make a library column if not defined (backward-compatible default)
     if "library" not in growth_df.columns:
-        growth_df["library"] = "default"
+        raise ValueError(
+            "growth_df is missing a required 'library' column."
+        )
 
     # check for all required columns
     required = theta_group_cols[:]
@@ -409,7 +410,7 @@ def _read_presplit_df(presplit_df, growth_df):
                                                              standardize=True)
     tfscreen.util.dataframe.check_columns(
         presplit_df,
-        required_columns=["replicate", "condition_pre", "genotype",
+        required_columns=["library", "replicate", "condition_pre", "genotype",
                           "ln_cfu", "ln_cfu_std"],
     )
 

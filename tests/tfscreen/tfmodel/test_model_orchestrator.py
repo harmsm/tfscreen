@@ -98,9 +98,12 @@ def test_setup_batching_logic():
 @pytest.fixture
 def base_growth_df():
     cols = ["ln_cfu", "ln_cfu_std", "replicate", "t_pre", "t_sel",
-            "genotype", "titrant_name", "condition_pre", "condition_sel", 
+            "genotype", "titrant_name", "condition_pre", "condition_sel",
             "titrant_conc"]
-    return pd.DataFrame({c: [1.0] for c in cols if c != "genotype"} | {"genotype": ["wt"]})
+    return pd.DataFrame(
+        {c: [1.0] for c in cols if c != "genotype"}
+        | {"genotype": ["wt"], "library": ["lib"]}
+    )
 
 def test_read_growth_df(mocker, base_growth_df):
     mocker.patch("tfscreen.util.io.read_dataframe", return_value=base_growth_df)
