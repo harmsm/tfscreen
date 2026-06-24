@@ -1372,3 +1372,187 @@ class TestIsSelectionInference:
                 f"Inference disagreed with legacy parser for '{cond}': "
                 f"inferred={is_sel}, legacy={legacy}"
             )
+
+
+# ---------------------------------------------------------------------------
+# Combined library/condition_pre key tests
+# ---------------------------------------------------------------------------
+
+class TestCombinedConditionPreKey:
+    """
+    Tests for the internal `_condition_pre_key` = library + "/" + condition_pre
+    column used inside _build_growth_tm and _build_presplit_tm.
+
+    The combined key ensures that two libraries sharing the same condition_pre
+    name get DISTINCT tensor slots, preventing silent cross-library pooling.
+    The '/' separator is never split on downstream — the key is opaque.
+    """
+
+    @staticmethod
+    def _growth_df(libraries_conditions):
+        """
+        Build a minimal growth_df.
+
+        Parameters
+        ----------
+        libraries_conditions : list of (library, condition_pre, condition_sel)
+        """
+        rows = []
+        for lib, cp, cs in libraries_conditions:
+            rows.append({
+                "library": lib, "replicate": 1,
+                "genotype": "wt", "titrant_name": "iptg", "titrant_conc": 0.0,
+                "condition_pre": cp, "condition_sel": cs,
+                "t_pre": 30.0, "t_sel": 100.0,
+                "ln_cfu": 10.0, "ln_cfu_std": 0.1,
+            })
+        return pd.DataFrame(rows)
+
+    def test_single_library_combined_key_formed(self):
+        """_condition_pre_key = library/condition_pre is added to growth_tm.df."""
+        df = self._growth_df([("kanR", "-kan", "+kan")])
+        growth_df = _read_growth_df(df)
+        tm = _build_growth_tm(growth_df)
+
+        assert "_condition_pre_key" in tm.df.columns
+        assert tm.df["_condition_pre_key"].iloc[0] == "kanR/-kan"
+
+    def test_single_library_num_condition_pre_unchanged(self):
+        """Single library with one condition_pre → num_condition_pre == 1."""
+        df = self._growth_df([("kanR", "-kan", "+kan")])
+        growth_df = _read_growth_df(df)
+        tm = _build_growth_tm(growth_df)
+
+        cp_dim = tm.tensor_dim_names.index("condition_pre")
+        assert len(tm.tensor_dim_labels[cp_dim]) == 1
+
+    def test_two_libraries_shared_condition_pre_distinct_tensor_slots(self):
+        """
+        Two libraries both using condition_pre='-kan' must occupy DIFFERENT
+        condition_pre tensor slots.  Before the combined key this collapsed
+        them into one slot, silently pooling unrelated data.
+        """
+        df = self._growth_df([
+            ("libA", "-kan", "+kan"),
+            ("libB", "-kan", "+kan"),   # same condition_pre, different library
+        ])
+        growth_df = _read_growth_df(df)
+        tm = _build_growth_tm(growth_df)
+
+        cp_dim = tm.tensor_dim_names.index("condition_pre")
+        assert len(tm.tensor_dim_labels[cp_dim]) == 2, (
+            "Two libraries sharing condition_pre='-kan' should produce "
+            "two distinct condition_pre tensor slots ('libA/-kan' and 'libB/-kan'), "
+            "not one collapsed slot."
+        )
+
+    def test_two_libraries_shared_condition_pre_labels_contain_library(self):
+        """Tensor condition_pre labels carry the library prefix."""
+        df = self._growth_df([
+            ("libA", "-kan", "+kan"),
+            ("libB", "-kan", "+kan"),
+        ])
+        growth_df = _read_growth_df(df)
+        tm = _build_growth_tm(growth_df)
+
+        cp_dim = tm.tensor_dim_names.index("condition_pre")
+        labels = set(tm.tensor_dim_labels[cp_dim])
+        assert "libA/-kan" in labels
+        assert "libB/-kan" in labels
+
+    def test_two_libraries_shared_condition_pre_data_not_pooled(self):
+        """
+        Data from two libraries sharing condition_pre must land in separate
+        tensor positions.  The condition_pre_idx in tm.df must differ between
+        the two libraries.
+        """
+        df = pd.DataFrame([
+            {"library": "libA", "replicate": 1, "genotype": "wt",
+             "titrant_name": "iptg", "titrant_conc": 0.0,
+             "condition_pre": "-kan", "condition_sel": "+kan",
+             "t_pre": 30.0, "t_sel": 100.0, "ln_cfu": 10.0, "ln_cfu_std": 0.1},
+            {"library": "libB", "replicate": 1, "genotype": "wt",
+             "titrant_name": "iptg", "titrant_conc": 0.0,
+             "condition_pre": "-kan", "condition_sel": "+kan",
+             "t_pre": 30.0, "t_sel": 100.0, "ln_cfu": 20.0, "ln_cfu_std": 0.1},
+        ])
+        growth_df = _read_growth_df(df)
+        tm = _build_growth_tm(growth_df)
+
+        idx_a = int(tm.df[tm.df["library"] == "libA"]["condition_pre_idx"].iloc[0])
+        idx_b = int(tm.df[tm.df["library"] == "libB"]["condition_pre_idx"].iloc[0])
+        assert idx_a != idx_b, (
+            f"libA and libB both got condition_pre_idx={idx_a} — "
+            "their data would overwrite each other in the tensor."
+        )
+
+    def test_distinct_condition_pre_names_not_affected(self):
+        """
+        Libraries with distinct condition_pre names keep num_condition_pre
+        equal to the number of unique (library, condition_pre) pairs —
+        same behaviour as before.
+        """
+        df = self._growth_df([
+            ("kanR", "-kan", "+kan"),
+            ("pheS", "-4CP", "+4CP"),  # different names — no collision risk
+        ])
+        growth_df = _read_growth_df(df)
+        tm = _build_growth_tm(growth_df)
+
+        cp_dim = tm.tensor_dim_names.index("condition_pre")
+        assert len(tm.tensor_dim_labels[cp_dim]) == 2
+
+    def test_slash_in_condition_name_is_safe(self):
+        """
+        A condition_pre name that itself contains '/' produces a valid combined
+        key without any parsing ambiguity — the key is treated as opaque.
+        """
+        df = self._growth_df([("lib", "no/sel", "+sel")])
+        growth_df = _read_growth_df(df)
+        tm = _build_growth_tm(growth_df)
+
+        cp_dim = tm.tensor_dim_names.index("condition_pre")
+        labels = list(tm.tensor_dim_labels[cp_dim])
+        assert labels == ["lib/no/sel"]
+
+    def test_presplit_combined_key_matches_growth_tm_categories(self):
+        """
+        _build_presplit_tm must use the same combined condition_pre categories
+        as growth_tm so that the presplit condition_pre_idx values are
+        consistent with those used in the growth tensor.
+        """
+        rows_growth = []
+        rows_presplit = []
+        for lib, cp, cs in [("libA", "-kan", "+kan"), ("libB", "-kan", "+kan")]:
+            for geno in ["wt", "A2G"]:
+                rows_growth.append({
+                    "library": lib, "replicate": 1, "genotype": geno,
+                    "titrant_name": "iptg", "titrant_conc": 0.0,
+                    "condition_pre": cp, "condition_sel": cs,
+                    "t_pre": 30.0, "t_sel": 100.0,
+                    "ln_cfu": 10.0, "ln_cfu_std": 0.1,
+                })
+                rows_presplit.append({
+                    "library": lib, "replicate": 1, "genotype": geno,
+                    "condition_pre": cp,
+                    "ln_cfu": 9.5, "ln_cfu_std": 0.1,
+                })
+
+        growth_df_raw = pd.DataFrame(rows_growth)
+        presplit_df_raw = pd.DataFrame(rows_presplit)
+
+        from tfscreen.tfmodel.model_orchestrator import _build_presplit_tm, _read_presplit_df
+        growth_df = _read_growth_df(growth_df_raw)
+        tm_growth = _build_growth_tm(growth_df)
+        presplit_df = _read_presplit_df(presplit_df_raw, growth_df)
+        tm_presplit = _build_presplit_tm(presplit_df, tm_growth)
+
+        # Both tensors must share the same condition_pre dimension labels
+        cp_growth   = list(tm_growth.tensor_dim_labels[
+            tm_growth.tensor_dim_names.index("condition_pre")])
+        cp_presplit = list(tm_presplit.tensor_dim_labels[
+            tm_presplit.tensor_dim_names.index("condition_pre")])
+        assert cp_growth == cp_presplit, (
+            f"growth condition_pre labels: {cp_growth}\n"
+            f"presplit condition_pre labels: {cp_presplit}"
+        )

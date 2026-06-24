@@ -196,15 +196,20 @@ def _build_growth_tm(growth_df, growth_shares_replicates=False):
     # Add pivot column so we can both use this as a pivot and value
     growth_df["pivot_titrant_conc"] = growth_df["titrant_conc"]
 
+    # Build a combined library/condition_pre key so that two libraries sharing
+    # the same condition_pre name get distinct tensor slots.  The '/' separator
+    # is chosen for readability; downstream code never splits on it.
+    growth_df["_condition_pre_key"] = growth_df["library"] + "/" + growth_df["condition_pre"]
+
     # Create tensor manager for construction of growth experiment tensors
     growth_tm = TensorManager(growth_df)
 
-    # Define that we want a 4D tensor (replicate,time,treatment,genotype)
+    # Define that we want a 7D tensor (replicate,time,condition_pre,condition_sel,titrant_name,titrant_conc,genotype)
     growth_tm.add_pivot_index(tensor_dim_name="replicate",cat_column="replicate")
     growth_tm.add_ranked_pivot_index(tensor_dim_name="time",
                                      rank_column="t_sel",
                                      select_cols=['replicate','genotype','treatment'])
-    growth_tm.add_pivot_index(tensor_dim_name="condition_pre",cat_column="condition_pre")
+    growth_tm.add_pivot_index(tensor_dim_name="condition_pre", cat_column="_condition_pre_key")
     growth_tm.add_pivot_index(tensor_dim_name="condition_sel",cat_column="condition_sel_reduced")
     growth_tm.add_pivot_index(tensor_dim_name="titrant_name",cat_column="titrant_name")
     growth_tm.add_pivot_index(tensor_dim_name="titrant_conc",cat_column="pivot_titrant_conc")
@@ -463,8 +468,13 @@ def _build_presplit_tm(presplit_df, growth_tm):
     presplit_df["replicate"] = pd.Categorical(
         presplit_df["replicate"], categories=rep_cats
     )
-    presplit_df["condition_pre"] = pd.Categorical(
-        presplit_df["condition_pre"], categories=cp_cats
+    # cp_cats contains combined keys (e.g. "kanR/-kan") from growth_tm; build
+    # the same key for presplit so the two tensors share identical categories.
+    presplit_df["_condition_pre_key"] = (
+        presplit_df["library"] + "/" + presplit_df["condition_pre"]
+    )
+    presplit_df["_condition_pre_key"] = pd.Categorical(
+        presplit_df["_condition_pre_key"], categories=cp_cats
     )
     presplit_df["genotype"] = pd.Categorical(
         presplit_df["genotype"], categories=geno_cats
@@ -474,7 +484,7 @@ def _build_presplit_tm(presplit_df, growth_tm):
     presplit_tm.add_pivot_index(tensor_dim_name="replicate",
                                 cat_column="replicate")
     presplit_tm.add_pivot_index(tensor_dim_name="condition_pre",
-                                cat_column="condition_pre")
+                                cat_column="_condition_pre_key")
     presplit_tm.add_pivot_index(tensor_dim_name="genotype",
                                 cat_column="genotype")
 
