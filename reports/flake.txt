@@ -1343,7 +1343,7 @@
 ./src/tfscreen/simulate/scripts/simulate_cli.py:126:20: E221 multiple spaces before operator
 ./src/tfscreen/simulate/scripts/simulate_cli.py:127:22: E221 multiple spaces before operator
 ./src/tfscreen/simulate/scripts/simulate_cli.py:128:21: E221 multiple spaces before operator
-./src/tfscreen/simulate/scripts/simulate_cli.py:147:43: E127 continuation line over-indented for visual indent
+./src/tfscreen/simulate/scripts/simulate_cli.py:147:48: E127 continuation line over-indented for visual indent
 ./src/tfscreen/simulate/scripts/simulate_cli.py:148:14: E221 multiple spaces before operator
 ./src/tfscreen/simulate/scripts/simulate_cli.py:149:16: E221 multiple spaces before operator
 ./src/tfscreen/simulate/scripts/simulate_cli.py:154:17: E221 multiple spaces before operator
@@ -5237,10 +5237,10 @@
 ./tests/tfscreen/simulate/test_generate_presplit_data.py:162:36: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/simulate/test_generate_presplit_data.py:173:11: E221 multiple spaces before operator
 ./tests/tfscreen/simulate/test_generate_presplit_data.py:177:32: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/test_generate_presplit_data.py:220:11: E221 multiple spaces before operator
-./tests/tfscreen/simulate/test_generate_presplit_data.py:225:33: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/test_generate_presplit_data.py:227:31: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/test_generate_presplit_data.py:229:33: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_generate_presplit_data.py:221:11: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_generate_presplit_data.py:226:33: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_generate_presplit_data.py:228:31: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_generate_presplit_data.py:230:33: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/simulate/test_library_prediction.py:47:41: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/simulate/test_library_prediction.py:290:5: F401 'numpy as np' imported but unused
 ./tests/tfscreen/simulate/test_library_prediction.py:439:16: E272 multiple spaces before keyword
