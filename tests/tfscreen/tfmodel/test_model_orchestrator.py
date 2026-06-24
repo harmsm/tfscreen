@@ -17,6 +17,7 @@ from tfscreen.tfmodel.model_orchestrator import (
     _setup_batching,
     get_batch
 )
+from tfscreen.tfmodel.generative.components.growth.linear import _parse_condition_label
 from tfscreen.tfmodel.tensors.tensor_manager import TensorManager
 from tfscreen.tfmodel.analysis.extraction import (
     _extract_param_est,
@@ -32,8 +33,9 @@ from tfscreen.tfmodel.analysis.extraction import (
 @pytest.fixture
 def dummy_growth_df():
     return pd.DataFrame({
-        "replicate": [1], 
-        "t_sel": [0.0], 
+        "replicate": [1],
+        "library": ["lib"],
+        "t_sel": [0.0],
         "t_pre": [0.0],
         "genotype": ["wt"],
         "condition_pre": ["A"],
@@ -878,23 +880,29 @@ class TestConditionLabelExtraction:
         assert result[0] == "pheS-4CP"
         assert result[1] == "pheS+4CP"
 
-    def test_linear_get_priors_signature_has_condition_labels(self):
+    def test_linear_get_priors_signature_has_is_selection(self):
         """
-        The orchestrator detects condition_labels support via inspect.signature.
-        Verify that the linear component's get_priors actually has this param.
+        The orchestrator detects is_selection support via inspect.signature.
+        Verify that the linear component's get_priors has this parameter
+        (preferred path) and still retains condition_labels for legacy compat.
         """
         import inspect
         from tfscreen.tfmodel.generative.components.growth.linear import get_priors
         sig = inspect.signature(get_priors)
+        assert "is_selection" in sig.parameters, (
+            "linear.get_priors must have an 'is_selection' parameter so "
+            "ModelOrchestrator can pass inferred selection flags directly"
+        )
         assert "condition_labels" in sig.parameters, (
-            "linear.get_priors must have a 'condition_labels' parameter so "
-            "ModelOrchestrator can pass condition names for per-condition m priors"
+            "linear.get_priors must retain 'condition_labels' for backward compat"
         )
 
-    def test_setup_model_extracts_labels_and_calls_get_priors(self, mocker):
+    def test_setup_model_extracts_is_selection_and_calls_get_priors(self, mocker):
         """
-        _setup_model must call get_priors(condition_labels=...) for a
-        condition_growth component that accepts that parameter.
+        _initialize_classes must call get_priors(is_selection=...) using
+        flags inferred from the data structure, not from parsing condition
+        name strings.  kanR+kan only in condition_sel → True; kanR-kan in
+        condition_pre → False.
         """
         import inspect
         import tfscreen.tfmodel.model_orchestrator as mo
@@ -902,16 +910,28 @@ class TestConditionLabelExtraction:
 
         captured = {}
 
-        def capturing_get_priors(condition_labels=None):
+        def capturing_get_priors(condition_labels=None, is_selection=None):
+            captured["is_selection"] = is_selection
             captured["condition_labels"] = condition_labels
-            return real_linear.get_priors(condition_labels=condition_labels)
+            return real_linear.get_priors(is_selection=is_selection,
+                                          condition_labels=condition_labels)
 
+        # cond_rep_df as produced after Phase 1 (library column present)
         cond_rep_df = pd.DataFrame({
+            "library": ["lib", "lib"],
             "condition_rep": ["kanR+kan", "kanR-kan"],
             "map_condition_rep": [0, 1],
         })
         mock_growth_tm = MagicMock()
         mock_growth_tm.map_groups = {"condition_rep": cond_rep_df}
+
+        # Minimal growth_df so _infer_is_selection can derive flags:
+        # kanR-kan in condition_pre → False; kanR+kan only in condition_sel → True
+        growth_df = pd.DataFrame({
+            "library": ["lib", "lib"],
+            "condition_pre": ["kanR-kan", "kanR-kan"],
+            "condition_sel": ["kanR+kan", "kanR-kan"],
+        })
 
         # Stub ALL registry entries except we intercept condition_growth.get_priors
         all_stubs = {}
@@ -941,6 +961,7 @@ class TestConditionLabelExtraction:
 
         orchestrator = MagicMock(spec=ModelOrchestrator)
         orchestrator.growth_tm = mock_growth_tm
+        orchestrator.growth_df = growth_df
         orchestrator._data = MagicMock()
         orchestrator._binding_only = False
         orchestrator._batch_size = None
@@ -961,9 +982,390 @@ class TestConditionLabelExtraction:
             try:
                 mo.ModelOrchestrator._initialize_classes(orchestrator)
             except Exception:
-                pass  # only condition_labels matters
+                pass  # only is_selection matters
 
-        assert "condition_labels" in captured, (
-            "_setup_model did not pass condition_labels to get_priors"
+        assert "is_selection" in captured, (
+            "_initialize_classes did not pass is_selection to get_priors"
         )
-        assert captured["condition_labels"] == ["kanR+kan", "kanR-kan"]
+        # kanR+kan at index 0 → selective (True); kanR-kan at index 1 → not selective (False)
+        assert captured["is_selection"] == [True, False], (
+            f"Expected [True, False], got {captured['is_selection']}"
+        )
+        assert captured["condition_labels"] is None
+
+
+# ---------------------------------------------------------------------------
+# Sentinel tests: genotype ordering must survive the data pipeline
+# ---------------------------------------------------------------------------
+
+class TestGenotypeOrderSentinel:
+    """
+    Sentinel tests verifying that genotype ordering is maintained as GENETIC
+    order (wt first, then by residue number) through the full data pipeline.
+
+    Uses a deliberately pathological genotype set where:
+      insertion order:    A10G, wt, A2G
+      alphabetical order: A10G, A2G, wt
+      genetic order:      wt, A2G, A10G   <- required
+
+    Any operation that loses the CategoricalDtype and re-creates it via
+    pd.Categorical() would produce alphabetical order instead, giving wrong
+    genotype_idx assignments and silently scrambling parameters.
+    """
+
+    @staticmethod
+    def _build_raw_df(libraries=("lib",), condition_blocks=(("no-kan", "kan"),)):
+        """Minimal growth_df with pathological genotype insertion order."""
+        rows = []
+        for lib in libraries:
+            for geno in ["A10G", "wt", "A2G"]:   # non-alpha, non-genetic order
+                for cp, cs in condition_blocks:
+                    rows.append({
+                        "genotype": geno,
+                        "library": lib,
+                        "replicate": 1,
+                        "titrant_name": "iptg",
+                        "titrant_conc": 0.0,
+                        "condition_pre": cp,
+                        "condition_sel": cs,
+                        "t_pre": 30.0,
+                        "t_sel": 100.0,
+                        "ln_cfu": 10.0,
+                        "ln_cfu_std": 0.1,
+                    })
+        return pd.DataFrame(rows)
+
+    def test_read_growth_df_produces_genetic_categorical_order(self):
+        """After _read_growth_df, genotype categories must be in genetic order."""
+        result = _read_growth_df(self._build_raw_df())
+        cats = list(result["genotype"].cat.categories)
+        assert cats == ["wt", "A2G", "A10G"], (
+            f"Expected ['wt','A2G','A10G'] (genetic), got {cats}. "
+            "Alphabetical would be ['A10G','A2G','wt'] — categorical dtype "
+            "was probably lost and re-created by pd.Categorical()."
+        )
+
+    def test_read_growth_df_genotype_stays_categorical(self):
+        """Categorical dtype on genotype must survive all ops in _read_growth_df."""
+        result = _read_growth_df(self._build_raw_df())
+        assert isinstance(result["genotype"].dtype, pd.CategoricalDtype), (
+            "genotype lost CategoricalDtype during _read_growth_df. "
+            "Any subsequent pd.Categorical() call produces alphabetical order."
+        )
+
+    def test_read_growth_df_row_order_unchanged(self):
+        """Row insertion order must not change inside _read_growth_df."""
+        df = self._build_raw_df()
+        expected = list(df["genotype"])
+        result = _read_growth_df(df)
+        assert list(result["genotype"]) == expected
+
+    def test_build_growth_tm_tensor_genotype_axis_genetic_order(self):
+        """
+        After _build_growth_tm the genotype tensor dimension must be in
+        genetic order, not alphabetical or insertion order.
+        """
+        df = self._build_raw_df()
+        growth_df = _read_growth_df(df)
+        tm = _build_growth_tm(growth_df)
+
+        geno_dim = tm.tensor_dim_names.index("genotype")
+        assert list(tm.tensor_dim_labels[geno_dim]) == ["wt", "A2G", "A10G"], (
+            f"Tensor genotype axis: {list(tm.tensor_dim_labels[geno_dim])}"
+        )
+
+    def test_genotype_idx_consistent_with_tensor_labels(self):
+        """
+        genotype_idx in the DataFrame must match each genotype's position
+        in the tensor genotype dimension.  Misalignment causes parameters
+        for genotype X to be silently applied to genotype Y's data.
+        """
+        df = self._build_raw_df()
+        growth_df = _read_growth_df(df)
+        tm = _build_growth_tm(growth_df)
+
+        geno_dim = tm.tensor_dim_names.index("genotype")
+        label_to_pos = {str(g): i for i, g in enumerate(tm.tensor_dim_labels[geno_dim])}
+
+        for _, row in tm.df.iterrows():
+            geno = str(row["genotype"])
+            idx = int(row["genotype_idx"])
+            expected = label_to_pos[geno]
+            assert idx == expected, (
+                f"Genotype '{geno}': genotype_idx={idx} but "
+                f"tensor label position={expected}."
+            )
+
+    def test_condition_sel_reduced_does_not_reorder_rows(self):
+        """
+        The condition_sel_reduced groupby in _read_growth_df adds a column
+        but must not change row order (which would shift genotype_idx assignments).
+        """
+        df = self._build_raw_df(
+            condition_blocks=[("no-kan", "kan"), ("no-kan", "no-kan")]
+        )
+        expected_genos = list(df["genotype"])
+        result = _read_growth_df(df)
+        assert list(result["genotype"]) == expected_genos, (
+            "Row order changed during condition_sel_reduced computation."
+        )
+
+    def test_genotype_categorical_survives_condition_sel_reduced(self):
+        """
+        CategoricalDtype must survive the condition_sel_reduced groupby/map.
+        If dropped and re-created, genetic order is replaced by alphabetical.
+        """
+        df = self._build_raw_df(
+            condition_blocks=[("no-kan", "kan"), ("no-kan", "no-kan")]
+        )
+        result = _read_growth_df(df)
+        assert isinstance(result["genotype"].dtype, pd.CategoricalDtype), (
+            "genotype lost CategoricalDtype after condition_sel_reduced was computed."
+        )
+
+
+# ---------------------------------------------------------------------------
+# Phase 1 tests: library as a proper grouping key
+# ---------------------------------------------------------------------------
+
+class TestLibraryGroupingPhase1:
+    """
+    Tests for Phase 1 of the library-column refactor.  Library must be added
+    to the condition_sel_reduced groupby and to the ln_cfu0 map tensor.
+
+    Tests marked xfail(strict=True) document the desired new behavior and
+    will fail until the refactor is implemented.  Remove the marker after
+    each test starts passing.
+
+    The regression guard (single-library unchanged) should pass now and
+    continue to pass after the refactor.
+    """
+
+    @staticmethod
+    def _two_library_df(shared_condition_sel="kan"):
+        """Two libraries with identical condition names but distinct ln_cfu."""
+        rows = []
+        for lib, base in [("libA", 10.0), ("libB", 20.0)]:
+            for geno in ["wt", "A2G"]:
+                rows.append({
+                    "genotype": geno,
+                    "library": lib,
+                    "replicate": 1,
+                    "titrant_name": "iptg",
+                    "titrant_conc": 0.0,
+                    "condition_pre": "no-kan",
+                    "condition_sel": shared_condition_sel,
+                    "t_pre": 30.0,
+                    "t_sel": 100.0,
+                    "ln_cfu": base,
+                    "ln_cfu_std": 0.1,
+                })
+        return pd.DataFrame(rows)
+
+    def test_single_library_regression(self):
+        """
+        Single-library behavior must be unchanged after Phase 1.
+        Genotype order must still be genetic.
+        """
+        df = TestGenotypeOrderSentinel._build_raw_df()
+        growth_df = _read_growth_df(df)
+        tm = _build_growth_tm(growth_df)
+
+        geno_dim = tm.tensor_dim_names.index("genotype")
+        assert list(tm.tensor_dim_labels[geno_dim]) == ["wt", "A2G", "A10G"]
+
+    def test_two_libraries_genotype_order_preserved(self):
+        """
+        Adding a second library must not change genotype ordering — both
+        libraries share the same genotype set and must be in genetic order.
+        """
+        df = self._two_library_df()
+        growth_df = _read_growth_df(df)
+        tm = _build_growth_tm(growth_df)
+
+        geno_dim = tm.tensor_dim_names.index("genotype")
+        assert list(tm.tensor_dim_labels[geno_dim]) == ["wt", "A2G"], (
+            f"Unexpected genotype order: {list(tm.tensor_dim_labels[geno_dim])}"
+        )
+
+    def test_two_libraries_have_distinct_ln_cfu0_slots(self):
+        """
+        Same genotype in two different libraries must have different ln_cfu0
+        parameter slots.  After Phase 1, 'library' is added to the ln_cfu0
+        map tensor so (libA, rep1, no-kan, wt) and (libB, rep1, no-kan, wt)
+        receive different indices.
+        """
+        df = self._two_library_df()
+        growth_df = _read_growth_df(df)
+        tm = _build_growth_tm(growth_df)
+
+        libA_wt = int(
+            tm.df[(tm.df["genotype"] == "wt") & (tm.df["library"] == "libA")]
+            ["map_ln_cfu0"].iloc[0]
+        )
+        libB_wt = int(
+            tm.df[(tm.df["genotype"] == "wt") & (tm.df["library"] == "libB")]
+            ["map_ln_cfu0"].iloc[0]
+        )
+        assert libA_wt != libB_wt, (
+            "libA/wt and libB/wt share ln_cfu0 slot — library is not yet "
+            "included in the ln_cfu0 map tensor."
+        )
+
+    def test_condition_sel_reduced_is_per_library(self):
+        """
+        condition_sel_reduced numbering must be computed within each
+        (library, condition_pre) group so that each library's first unique
+        condition_sel gets index 0.
+
+        Currently, the mapper is built globally per condition_pre, so a
+        condition that only appears in libB gets a non-zero index because
+        libA's conditions are numbered first.  After Phase 1, each
+        (library, condition_pre) group numbers independently from 0.
+        """
+        rows = []
+        # libA: two distinct condition_sel values under no-kan
+        for cs in ["sel-A", "ctrl"]:
+            rows.append({
+                "genotype": "wt", "library": "libA", "replicate": 1,
+                "titrant_name": "iptg", "titrant_conc": 0.0,
+                "condition_pre": "no-kan", "condition_sel": cs,
+                "t_pre": 30.0, "t_sel": 100.0, "ln_cfu": 10.0, "ln_cfu_std": 0.1,
+            })
+        # libB: one condition_sel unique to it (not in libA)
+        rows.append({
+            "genotype": "wt", "library": "libB", "replicate": 1,
+            "titrant_name": "iptg", "titrant_conc": 0.0,
+            "condition_pre": "no-kan", "condition_sel": "sel-B",
+            "t_pre": 30.0, "t_sel": 100.0, "ln_cfu": 10.0, "ln_cfu_std": 0.1,
+        })
+        df = pd.DataFrame(rows)
+        growth_df = _read_growth_df(df)
+
+        # Before Phase 1: global mapper gives "sel-B" index 2 (after sel-A=0, ctrl=1).
+        # After Phase 1: per-library mapper gives "sel-B" index 0 within its own group.
+        libB_sel_b_reduced = int(
+            growth_df[
+                (growth_df["library"] == "libB") & (growth_df["condition_sel"] == "sel-B")
+            ]["condition_sel_reduced"].iloc[0]
+        )
+        assert libB_sel_b_reduced == 0, (
+            f"libB/'sel-B' got condition_sel_reduced={libB_sel_b_reduced}, expected 0. "
+            "The global mapper assigns higher indices to conditions that appear "
+            "after other libraries' conditions — library is not yet in the groupby."
+        )
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 tests: is_selection inference from data structure
+# ---------------------------------------------------------------------------
+
+class TestIsSelectionInference:
+    """
+    Tests for Phase 2: inferring which conditions are selective based on
+    data structure.  The rule:
+      condition only in condition_sel (never in condition_pre) → selective
+      condition that appears in condition_pre → not selective
+
+    All tests are xfail until _infer_is_selection is implemented in
+    model_orchestrator.py.  The ImportError that results from the missing
+    function counts as the expected failure under xfail(strict=True).
+    Remove the marker once each test passes.
+    """
+
+    @staticmethod
+    def _build_df(blocks, library="lib"):
+        """Build a minimal growth_df from (condition_pre, condition_sel) pairs."""
+        rows = []
+        for cp, cs in blocks:
+            rows.append({
+                "genotype": "wt",
+                "library": library,
+                "replicate": 1,
+                "titrant_name": "iptg",
+                "titrant_conc": 0.0,
+                "condition_pre": cp,
+                "condition_sel": cs,
+                "t_pre": 30.0,
+                "t_sel": 100.0,
+                "ln_cfu": 10.0,
+                "ln_cfu_std": 0.1,
+            })
+        return pd.DataFrame(rows)
+
+    def test_standard_case(self):
+        """
+        Condition only in condition_pre → False.
+        Condition only in condition_sel → True.
+        """
+        from tfscreen.tfmodel.model_orchestrator import _infer_is_selection
+        df = self._build_df([
+            ("no-kan", "kan"),    # no-kan in pre → False; kan only in sel → True
+            ("no-kan", "no-kan"), # control arm: no-kan appears in pre → still False
+        ])
+        result = _infer_is_selection(df)
+        assert result["no-kan"] is False
+        assert result["kan"] is True
+
+    def test_control_arm_same_condition_in_pre_and_sel(self):
+        """condition_pre == condition_sel → that condition is non-selective."""
+        from tfscreen.tfmodel.model_orchestrator import _infer_is_selection
+        df = self._build_df([
+            ("LB", "sel"),
+            ("LB", "LB"),   # control arm
+        ])
+        result = _infer_is_selection(df)
+        assert result["LB"] is False
+        assert result["sel"] is True
+
+    def test_multiple_null_conditions_both_false(self):
+        """Two distinct non-selective conditions must independently get False."""
+        from tfscreen.tfmodel.model_orchestrator import _infer_is_selection
+        df = self._build_df([
+            ("LB", "kan"),
+            ("M9", "kan"),   # second distinct null medium
+        ])
+        result = _infer_is_selection(df)
+        assert result["LB"] is False
+        assert result["M9"] is False
+        assert result["kan"] is True
+
+    def test_per_library_same_name_different_role(self):
+        """
+        Same condition name appearing in condition_pre for libA but only in
+        condition_sel for libB gets different is_selection per library.
+        """
+        from tfscreen.tfmodel.model_orchestrator import _infer_is_selection
+        rows = []
+        # libA: "shared" is used as pre-growth (non-selective)
+        rows.append({"genotype": "wt", "library": "libA",
+                     "condition_pre": "shared", "condition_sel": "sel",
+                     "replicate": 1, "titrant_name": "iptg", "titrant_conc": 0.0,
+                     "t_pre": 30.0, "t_sel": 100.0, "ln_cfu": 10.0, "ln_cfu_std": 0.1})
+        # libB: "shared" only appears in condition_sel (selective)
+        rows.append({"genotype": "wt", "library": "libB",
+                     "condition_pre": "LB", "condition_sel": "shared",
+                     "replicate": 1, "titrant_name": "iptg", "titrant_conc": 0.0,
+                     "t_pre": 30.0, "t_sel": 100.0, "ln_cfu": 10.0, "ln_cfu_std": 0.1})
+        df = pd.DataFrame(rows)
+        result = _infer_is_selection(df, per_library=True)
+        assert result[("libA", "shared")] is False
+        assert result[("libB", "shared")] is True
+
+    def test_inferred_agrees_with_legacy_parse_for_plus_minus_names(self):
+        """
+        For condition names with standard +/- notation, the new inference rule
+        must agree with the legacy _parse_condition_label() parser.
+        """
+        from tfscreen.tfmodel.model_orchestrator import _infer_is_selection
+        df = self._build_df([
+            ("kanR-kan", "kanR+kan"),   # - in pre (control), + in sel (selection)
+            ("kanR-kan", "kanR-kan"),   # control arm
+        ])
+        result = _infer_is_selection(df)
+        for cond, is_sel in result.items():
+            legacy = _parse_condition_label(cond)
+            assert is_sel is legacy, (
+                f"Inference disagreed with legacy parser for '{cond}': "
+                f"inferred={is_sel}, legacy={legacy}"
+            )

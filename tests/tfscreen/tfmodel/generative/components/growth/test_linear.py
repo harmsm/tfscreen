@@ -388,6 +388,58 @@ class TestGetPriorsWithLabels:
 
 
 # ---------------------------------------------------------------------------
+# Phase 2 tests: get_priors with explicit is_selection flags
+# ---------------------------------------------------------------------------
+
+class TestGetPriorsIsSelectionPhase2:
+    """
+    Phase 2 tests: get_priors should accept an ``is_selection`` list of booleans
+    directly, so callers no longer need +/- in condition names.
+
+    All tests are xfail until a new ``is_selection`` parameter is added to
+    ``get_priors``.  Remove the xfail marker after each test passes.
+    """
+
+    def test_is_selection_sets_m_is_selection(self):
+        """get_priors(is_selection=[...]) directly sets m_is_selection."""
+        priors = get_priors(is_selection=[True, False, True])
+        assert priors.m_is_selection == (True, False, True)
+
+    def test_is_selection_requires_no_plus_minus_in_names(self):
+        """
+        When is_selection is provided, condition names without +/- must work.
+        Currently, callers must use condition_labels with +/- to get per-condition
+        m priors; Phase 2 removes that naming constraint.
+        """
+        # With the current API (condition_labels), these names would raise
+        # ValueError from _parse_condition_label.  With is_selection, they work.
+        priors = get_priors(is_selection=[False, True])
+        assert priors.m_is_selection == (False, True)
+
+    def test_is_selection_false_uses_tight_prior(self):
+        """is_selection=False conditions get m_scale_minus (tight prior)."""
+        hypers = get_hyperparameters()
+        priors = get_priors(is_selection=[False, True])
+        assert priors.m_is_selection is not None
+        scales = [
+            hypers["m_scale_plus"] if sel else hypers["m_scale_minus"]
+            for sel in priors.m_is_selection
+        ]
+        assert scales[0] == pytest.approx(hypers["m_scale_minus"])
+        assert scales[1] == pytest.approx(hypers["m_scale_plus"])
+
+    def test_is_selection_all_false(self):
+        """All non-selective conditions: m_is_selection all False."""
+        priors = get_priors(is_selection=[False, False])
+        assert priors.m_is_selection == (False, False)
+
+    def test_is_selection_and_condition_labels_mutually_exclusive(self):
+        """Passing both is_selection and condition_labels must raise ValueError."""
+        with pytest.raises(ValueError, match="is_selection"):
+            get_priors(condition_labels=["a+b"], is_selection=[True])
+
+
+# ---------------------------------------------------------------------------
 # define_model — per-condition m prior
 # ---------------------------------------------------------------------------
 

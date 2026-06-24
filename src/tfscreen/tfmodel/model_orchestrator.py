@@ -75,7 +75,7 @@ def _read_growth_df(growth_df,
 
     # Get default treatment columns
     if treatment_cols is None:
-        treatment_cols =  ["condition_pre","condition_sel",
+        treatment_cols =  ["library","condition_pre","condition_sel",
                            "titrant_name","titrant_conc"]
 
     # Read dataframe, validate or calculate ln_cfu and ln_cfu_std
@@ -91,7 +91,11 @@ def _read_growth_df(growth_df,
     # make a replicate column if not defined
     if "replicate" not in growth_df.columns:
         growth_df["replicate"] = 1
-    
+
+    # make a library column if not defined (backward-compatible default)
+    if "library" not in growth_df.columns:
+        growth_df["library"] = "default"
+
     # check for all required columns
     required = theta_group_cols[:]
     required.extend(treatment_cols)
@@ -106,9 +110,9 @@ def _read_growth_df(growth_df,
     growth_df = add_group_columns(target_df=growth_df,
                                   group_cols=theta_group_cols,
                                   group_name="map_theta_group")
-    
+
     mapper = {}
-    for _, sub_df in growth_df.groupby(["condition_pre"], observed=True):
+    for _, sub_df in growth_df.groupby(["library", "condition_pre"], observed=True):
         cond_sel = list(pd.unique(sub_df["condition_sel"]))
         mapper.update({c:i for i, c in enumerate(cond_sel)})
 
@@ -116,6 +120,49 @@ def _read_growth_df(growth_df,
 
         
     return growth_df
+
+def _infer_is_selection(growth_df, per_library=False):
+    """
+    Infer which growth conditions are selective from the data structure.
+
+    A condition is considered selective if it appears in ``condition_sel``
+    but never in ``condition_pre`` (within the relevant scope).  Conditions
+    that appear in ``condition_pre`` — including control arms where
+    ``condition_pre == condition_sel`` — are considered non-selective.
+
+    This replaces the legacy convention of encoding selection status via
+    '+' or '-' in condition name strings.
+
+    Parameters
+    ----------
+    growth_df : pd.DataFrame
+        Processed growth DataFrame with ``condition_pre``, ``condition_sel``,
+        and ``library`` columns.
+    per_library : bool, optional
+        If ``False`` (default), inference is global: a condition is
+        non-selective if it appears in ``condition_pre`` for *any* library.
+        If ``True``, inference is scoped per library so the same condition
+        name can be selective in one library and non-selective in another.
+
+    Returns
+    -------
+    dict
+        ``per_library=False``: ``{condition_name: bool}``
+        ``per_library=True``:  ``{(library, condition_name): bool}``
+    """
+    if per_library:
+        result = {}
+        for lib, lib_df in growth_df.groupby("library", observed=True):
+            pre_set = set(lib_df["condition_pre"].unique())
+            all_conds = pre_set | set(lib_df["condition_sel"].unique())
+            for cond in all_conds:
+                result[(lib, cond)] = bool(cond not in pre_set)
+        return result
+    else:
+        pre_set = set(growth_df["condition_pre"].unique())
+        all_conds = pre_set | set(growth_df["condition_sel"].unique())
+        return {cond: bool(cond not in pre_set) for cond in sorted(all_conds)}
+
 
 def _build_growth_tm(growth_df, growth_shares_replicates=False):
     """
@@ -172,19 +219,21 @@ def _build_growth_tm(growth_df, growth_shares_replicates=False):
     # conditions (pre and sel) for each element in the tensor. 
     # By calling with `select_pool_cols`, we pool names of conditions on 
     # condition_pre and condition_sel. Basically this does the operation 
-    # unique(replicate + condition_pre OR replicate + condition_sel). This
-    # will create map_condition_pre and map_condition_sel. 
-    # If growth_shares_replicates is True, we drop replicate from the 
-    # map tensor creation columns so that condition mapping is entirely 
-    # coordinate-agnostic across replicates.
-    select_cols = [] if growth_shares_replicates else ["replicate"]
+    # unique(replicate + library + condition_pre OR replicate + library + condition_sel).
+    # This will create map_condition_pre and map_condition_sel.
+    # If growth_shares_replicates is True, we drop replicate from the
+    # map tensor creation columns so that condition mapping is entirely
+    # coordinate-agnostic across replicates.  Library is always included so
+    # that conditions from different libraries remain distinct even when they
+    # share a name.
+    select_cols = ["library"] if growth_shares_replicates else ["replicate", "library"]
     growth_tm.add_map_tensor(select_cols=select_cols,
                              select_pool_cols=["condition_pre","condition_sel"],
                              name="condition_rep")
 
-    # These maps will allow us to extract parameter values from posterior 
-    # samples. 
-    growth_tm.add_map_tensor(["replicate","condition_pre","genotype"],
+    # These maps will allow us to extract parameter values from posterior
+    # samples.
+    growth_tm.add_map_tensor(["replicate","library","condition_pre","genotype"],
                             name="ln_cfu0")
     growth_tm.add_map_tensor("genotype",name="genotype")
     growth_tm.add_map_tensor(["titrant_name","titrant_conc","genotype"],name="theta")
@@ -1201,11 +1250,23 @@ class ModelOrchestrator:
 
             # Record priors.  Components may optionally accept special
             # keyword arguments:
-            #   condition_labels — ordered condition names used by the
-            #       linear growth component to set per-condition m priors.
+            #   is_selection — preferred: per-condition selection flags
+            #       inferred from data structure (no +/- in names required).
+            #   condition_labels — legacy: ordered condition names whose
+            #       '+'/'-' character encodes selection status.
             #   data — component data pytree for empirical prior values.
             priors_sig = inspect.signature(component_module.get_priors)
-            if "condition_labels" in priors_sig.parameters:
+            if "is_selection" in priors_sig.parameters:
+                cond_rep_df = self.growth_tm.map_groups["condition_rep"]
+                sorted_cond = cond_rep_df.sort_values("map_condition_rep")
+                is_sel_map = _infer_is_selection(self.growth_df, per_library=True)
+                is_selection = [
+                    is_sel_map.get((row["library"], row["condition_rep"]), False)
+                    for _, row in sorted_cond.iterrows()
+                ]
+                priors_class_kwargs[prior_group][key] = \
+                    component_module.get_priors(is_selection=is_selection)
+            elif "condition_labels" in priors_sig.parameters:
                 cond_rep_df = self.growth_tm.map_groups["condition_rep"]
                 condition_labels = list(
                     cond_rep_df.sort_values("map_condition_rep")["condition_rep"]

@@ -137,8 +137,10 @@ def copy_orchestrator(orchestrator,
     t_sel_list = _get_input(t_sel, "t_sel")
     titrant_conc_list = _get_input(titrant_conc, "titrant_conc")
 
-    # Get all unique categorical combinations
-    categorical_cols = ["replicate", "condition_pre", "condition_sel",
+    # Get all unique categorical combinations.  "library" must be included so
+    # that the new ModelOrchestrator produces the same condition_rep ordering
+    # as the fitted model (which groups conditions per library).
+    categorical_cols = ["replicate", "library", "condition_pre", "condition_sel",
                         "titrant_name", "genotype"]
     unique_cats = df[categorical_cols].drop_duplicates()
 
