@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-`tfscreen` is a Python library for simulating and analyzing high-throughput screens of transcription factor (TF) libraries. It models bacterial growth in plasmid-based libraries where TFs regulate selection markers (antibiotic resistance or pheS/4CP). The core analysis is a hierarchical Bayesian model (JAX/Numpyro) that infers per-genotype TF activity from growth data.
+`tfscreen` is a Python library for simulating and analyzing high-throughput screens of transcription factor (TF) libraries. It models bacterial growth in plasmid-based libraries where TFs regulate selection markers (antibiotic resistance or pheS/4CP). The core analysis is a hierarchical Bayesian model (JAX/Numpyro) that infers per-genotype TF operator occupancy from growth data.
 
 ## Commands
 
@@ -120,8 +120,6 @@ The hierarchical Bayesian inference engine. Key files:
 4. Add a test in `tests/tfscreen/tfmodel/components/<category>/`
 
 ### Key Abstractions
-
-**`FitManager`** (`mle/fit_manager.py`): General regression wrapper. Set parameter transformations, bounds, fixed vs. free parameters, and a model function via `set_model_func()`.
 
 **`TensorManager`** (`tfmodel/tensor_manager.py`): Handles ragged tensors. Genotypes have different numbers of observations; this class pads and indexes into JAX-compatible arrays.
 
@@ -275,11 +273,11 @@ Both grid CLIs import from `tfscreen.util.grid_utils` for run-name generation, J
 
 ### Terminology
 
-- **Condition**: unique growth setting (marker + selection + IPTG concentration) — same avg growth rate for same genotype
+- **Condition**: unique growth setting (marker + selection) — same avg growth rate for same genotype
 - **Sample**: one experimental tube (replicate + condition)
 - **Timepoint**: one aliquot (replicate + condition + time)
 - **theta (θ)**: operator occupancy — fraction of operators bound by TF
-- **A**: per-genotype TF activity (the primary output of inference)
+- **A**: per-genotype TF activity (multiplied by theta to scale occupancy)
 - **dk_geno**: pleiotropic growth effect of mutation independent of TF activity
 
 ### Testing Notes
