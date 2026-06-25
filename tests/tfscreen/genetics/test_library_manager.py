@@ -102,7 +102,7 @@ def test_check_contiguous_lib_blocks_failure(invalid_string, offending_char):
     with pytest.raises(ValueError) as excinfo:
         _check_contiguous_lib_blocks(invalid_string)
 
-    assert f"Sub-library '{offending_char}' is not in a contiguous block" in str(excinfo.value)
+    assert f"Tile '{offending_char}' is not in a contiguous block" in str(excinfo.value)
 
 
 # ----------------------------------------------------------------------------
@@ -131,17 +131,17 @@ def test_check_lib_key_success(seen_libs):
     ("", "Invalid command ''"),
 
     # Wrong number of parts for 'single'
-    ("single", "'single' keys must have one sub-library part"),
-    ("single-1-2", "'single' keys must have one sub-library part"),
+    ("single", "'single' keys must have one tile part"),
+    ("single-1-2", "'single' keys must have one tile part"),
 
     # Wrong number of parts for 'double'
-    ("double-1", "'double' keys must have two sub-library parts"),
-    ("double-1-2-3", "'double' keys must have two sub-library parts"),
+    ("double-1", "'double' keys must have two tile parts"),
+    ("double-1-2-3", "'double' keys must have two tile parts"),
 
-    # Unrecognized sub-libraries
-    ("single-3", "Unrecognized sub-library '3'"),
-    ("double-1-Z", "Unrecognized sub-library 'Z'"),
-    ("double-X-Y", "Unrecognized sub-library 'X'"), # Should catch the first one
+    # Unrecognized tiles
+    ("single-3", "Unrecognized tile '3'"),
+    ("double-1-Z", "Unrecognized tile 'Z'"),
+    ("double-X-Y", "Unrecognized tile 'X'"), # Should catch the first one
 ])
 def test_check_lib_key_failure(invalid_key, expected_msg_fragment, seen_libs):
     """
@@ -166,8 +166,8 @@ def valid_config() -> dict:
         "wt_seq":       "gattacagtcgattaca",
         # CORRECTED: Shifted block left by 1 to align with reading_frame 0
         "degen_sites":  "......nnn........",
-        "sub_libraries":"......222........",
-        "library_combos": ["single-2"]
+        "tiles":        "......222........",
+        "tile_combos":  ["single-2"]
     }
 
 def test_parse_success(valid_config):
@@ -185,12 +185,12 @@ def test_parse_success(valid_config):
 
 def test_parse_whitespace_stripped(valid_config):
     """
-    Whitespace (spaces, newlines) in wt_seq, degen_sites, and sub_libraries
+    Whitespace (spaces, newlines) in wt_seq, degen_sites, and tiles
     is removed before validation, allowing YAML literal-block multiline values.
     """
-    valid_config["wt_seq"]        = "gattac\nagtcgattaca"
-    valid_config["degen_sites"]   = "......\nnnn........"
-    valid_config["sub_libraries"] = "......\n222........"
+    valid_config["wt_seq"]      = "gattac\nagtcgattaca"
+    valid_config["degen_sites"] = "......\nnnn........"
+    valid_config["tiles"]       = "......\n222........"
     lm = LibraryManager(valid_config)
     assert lm.expected_length == 17
     assert lm.wt_seq == "gattacagtcgattaca"
@@ -214,9 +214,9 @@ def test_parse_mismatched_lengths(valid_config):
 
 def test_parse_non_contiguous_sublibs(valid_config):
     """
-    Tests that a ValueError is raised for non-contiguous sub-libraries.
+    Tests that a ValueError is raised for non-contiguous tiles.
     """
-    valid_config["sub_libraries"] = "..11..2.2..11...."
+    valid_config["tiles"] = "..11..2.2..11...."
     with pytest.raises(ValueError, match="is not in a contiguous block"):
         LibraryManager(valid_config)
 
@@ -235,11 +235,11 @@ def test_parse_misplaced_degen_base(valid_config):
 
 def test_parse_bad_lib_combo(valid_config):
     """
-    Tests that a ValueError is raised for an undefined sub-library in
-    library_combos.
+    Tests that a ValueError is raised for an undefined tile in
+    tile_combos.
     """
-    valid_config["library_combos"] = ["single-3"] # '3' is not defined
-    with pytest.raises(ValueError, match="Unrecognized sub-library '3'"):
+    valid_config["tile_combos"] = ["single-3"] # '3' is not defined
+    with pytest.raises(ValueError, match="Unrecognized tile '3'"):
         LibraryManager(valid_config)
 
 def test_parse_bad_reading_frame(valid_config):
@@ -270,7 +270,7 @@ def test_prepare_blocks_simple_case():
         # Create a bare instance and set only the necessary attributes
         lm = LibraryManager.__new__(LibraryManager)
         lm.wt_seq = "gattaca"
-        lm.sub_libraries = "..11..."
+        lm.tiles = "..11..."
 
         # Call the method under test
         lm._prepare_blocks()
@@ -297,7 +297,7 @@ def test_prepare_blocks_no_libraries():
     with patch.object(LibraryManager, '_prepare_indiv_lib_blocks') as mock_prepare:
         lm = LibraryManager.__new__(LibraryManager)
         lm.wt_seq = "acgt"
-        lm.sub_libraries = "...."
+        lm.tiles = "...."
 
         lm._prepare_blocks()
 
@@ -322,7 +322,7 @@ def test_prepare_blocks_multiple_libraries():
 
         lm = LibraryManager.__new__(LibraryManager)
         lm.wt_seq = "agattaca"
-        lm.sub_libraries = ".1.22..."
+        lm.tiles = ".1.22..."
 
         lm._prepare_blocks()
 
@@ -356,7 +356,7 @@ def bare_lm() -> LibraryManager:
 def test_pib_aligned_no_flanks(bare_lm):
     """Tests a sub-library perfectly aligned with the reading frame."""
     bare_lm.reading_frame = 0
-    bare_lm.sub_libraries = "...111..."
+    bare_lm.tiles = "...111..."
     bare_lm.degen_sites =   "...nnt..."
     bare_lm.wt_seq =        "...act..."
 
@@ -373,7 +373,7 @@ def test_pib_with_left_flank(bare_lm):
     bare_lm.reading_frame = 0
     # CORRECTED: Made all strings the same length and ensured the core
     # part of the library is a complete codon.
-    bare_lm.sub_libraries = ".11111"  # Starts at index 1, length 5
+    bare_lm.tiles = ".11111"  # Starts at index 1, length 5
     bare_lm.degen_sites =   ".acnnt"  # 'ac' is the flank, 'nnt' is the core
     bare_lm.wt_seq =        ".acact"
 
@@ -387,7 +387,7 @@ def test_pib_with_left_flank(bare_lm):
 def test_pib_with_right_flank(bare_lm):
     """Tests a sub-library that ends out of frame, creating a right flank."""
     bare_lm.reading_frame = 0
-    bare_lm.sub_libraries = "1111." # Starts at index 0 (frame 0), len 4 -> 1 trailing
+    bare_lm.tiles = "1111." # Starts at index 0 (frame 0), len 4 -> 1 trailing
     bare_lm.degen_sites =   "nntg."
     bare_lm.wt_seq =        "actg."
 
@@ -400,11 +400,11 @@ def test_pib_with_right_flank(bare_lm):
 def test_pib_with_both_flanks(bare_lm):
     """Tests a sub-library with both left and right flanks."""
     bare_lm.reading_frame = 1
-    bare_lm.sub_libraries = "..11111" # Starts at index 2 (frame 2), len 5
+    bare_lm.tiles = "..11111" # Starts at index 2 (frame 2), len 5
                                    # offset=(1-2)%3=2. core len=3. trailing=0. Mistake.
                                    # Let's fix. sub-lib len=6. Starts at index 2.
                                    # core_lib_seq len = 4. num_trailing = 1.
-    bare_lm.sub_libraries = "..111111" # len 6
+    bare_lm.tiles = "..111111" # len 6
     bare_lm.degen_sites =   "..acnntg"
     bare_lm.wt_seq =        "..acactg"
 
@@ -417,7 +417,7 @@ def test_pib_with_both_flanks(bare_lm):
 def test_pib_fails_degen_in_left_flank(bare_lm):
     """Tests that ValueError is raised for a degenerate base in a left flank."""
     bare_lm.reading_frame = 0
-    bare_lm.sub_libraries = ".1111"
+    bare_lm.tiles = ".1111"
     bare_lm.degen_sites =   ".ncnnt" # 'n' is in the flank
     bare_lm.wt_seq =        ".acact"
 
@@ -796,7 +796,7 @@ def test_get_libraries_dispatcher(mock_get_singles,
                                   mock_get_spiked):
     """
     Tests that get_libraries correctly dispatches to the appropriate
-    helper methods based on the library_combos.
+    helper methods based on the tile_combos.
     """
     # 1. Setup mock return values to be unique and trackable
     mock_get_singles.return_value = (['s_dna'], ['s_aa'])
@@ -806,7 +806,7 @@ def test_get_libraries_dispatcher(mock_get_singles,
 
     # 2. Setup a bare instance with a list of combos to test
     lm = LibraryManager.__new__(LibraryManager)
-    lm.library_combos = [
+    lm.tile_combos = [
         "single-1",
         "double-2-2", # Should call intra-doubles
         "double-1-2"  # Should call inter-doubles

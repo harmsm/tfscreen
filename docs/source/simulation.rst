@@ -19,7 +19,7 @@ is provided in ``examples/simulate/``. The top-level sections are:
 
 **Library genetics** — same keys as the ``run_config.yaml`` used by
 ``tfs-process-fastq`` (``reading_frame``, ``wt_seq``, ``degen_sites``,
-``sub_libraries``, ``expected_5p``, ``expected_3p``, ``library_combos``,
+``tiles``, ``expected_5p``, ``expected_3p``, ``tile_combos``,
 ``spiked_seqs``). This means a single config file can drive both simulation
 and raw-data processing.
 

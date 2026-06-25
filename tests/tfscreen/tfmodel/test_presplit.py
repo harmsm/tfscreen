@@ -39,6 +39,7 @@ def minimal_growth_df():
             for geno in ["wt", "A1V", "A2V"]:
                 for t_sel in [60.0, 90.0]:
                     rows.append({
+                        "library": "lib",
                         "replicate": rep,
                         "condition_pre": cp,
                         "condition_sel": cp,
@@ -67,6 +68,7 @@ def minimal_presplit_df():
         for cp in ["kanR-cond", "pheS-cond"]:
             for geno in ["wt", "A1V", "A2V"]:
                 rows.append({
+                    "library": "lib",
                     "replicate": rep,
                     "condition_pre": cp,
                     "genotype": geno,
@@ -154,8 +156,8 @@ def test_build_presplit_tm_genotype_alignment(minimal_presplit_df,
 def test_build_presplit_tm_partial_coverage(minimal_growth_df, growth_tm):
     """Genotypes absent from presplit_df get NaN (masked) in the tensor."""
     partial_df = pd.DataFrame([
-        {"replicate": 1, "condition_pre": "kanR-cond", "genotype": "wt",
-         "ln_cfu": 9.5, "ln_cfu_std": 0.4},
+        {"library": "lib", "replicate": 1, "condition_pre": "kanR-cond",
+         "genotype": "wt", "ln_cfu": 9.5, "ln_cfu_std": 0.4},
     ])
     gdf = _read_growth_df(minimal_growth_df.copy())
     psdf = _read_presplit_df(partial_df, gdf)

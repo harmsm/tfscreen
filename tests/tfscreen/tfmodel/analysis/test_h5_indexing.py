@@ -11,6 +11,7 @@ def test_predict_h5_indexing(tmp_path):
     
     # 1. Create dummy ModelOrchestrator
     growth_df = pd.DataFrame({
+        "library": ["lib"],
         "genotype": ["wt"],
         "titrant_name": ["tit1"],
         "titrant_conc": [0.0],

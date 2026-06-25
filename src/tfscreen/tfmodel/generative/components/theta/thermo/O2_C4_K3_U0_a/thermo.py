@@ -1,6 +1,12 @@
 """
 Shared thermodynamic functions for the lac-dimer partition-function θ model.
 
+The TF homodimer occupies two conformations: H (high operator affinity) and
+L (low operator affinity, high effector affinity).  Effector binding shifts
+population toward L, reducing operator occupancy (θ).  Used by
+``theta_lac_dimer_lnK_mut`` (PK), ``theta_lac_dimer_lnK_ddG_prior`` (PddG),
+and ``theta_lac_dimer_lnK_nn_prior`` (PnnC).
+
 Four-state partition function for the TF homodimer:
 
     State      Weight

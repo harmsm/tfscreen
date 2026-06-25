@@ -1,6 +1,14 @@
 """
 Shared thermodynamic functions for the MWC lac-dimer theta model.
 
+Full Monod-Wyman-Changeux (MWC) two-state model with five independent
+equilibrium constants (Sochor 2014).  Unlike the simplified lac-dimer model,
+this separately parameterises H- and L-state affinities for both operator
+(K_h_o, K_l_o) and effector (K_h_e, K_l_e), making it more expressive at the
+cost of identifiability with sparse data.  Used by
+``theta_mwc_dimer_lnK_mut`` (PK), ``theta_mwc_dimer_lnK_ddG_prior`` (PddG),
+and ``theta_mwc_dimer_lnK_nn_prior`` (PnnC).
+
 Full MWC two-state model (Sochor 2014, PeerJ 2:e498) with five equilibrium
 constants. **All concentrations and K values must be in Molar units.**
 

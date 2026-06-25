@@ -322,34 +322,48 @@ def get_guesses(name, data):
     return guesses
 
 
-def get_priors(condition_labels: Optional[List[str]] = None) -> ModelPriors:
+def get_priors(condition_labels: Optional[List[str]] = None,
+               is_selection: Optional[List[bool]] = None) -> ModelPriors:
     """
     Build a :class:`ModelPriors` for the linear growth component.
 
-    When ``condition_labels`` is supplied (a list of condition names in the
-    same order as the model's ``num_condition_rep`` axis), each label is
-    parsed for '+' or '-' to set ``m_is_selection``.  This enables the
-    tighter ``m_scale_minus`` prior for control conditions and the normal
-    ``m_scale_plus`` prior for selection conditions, breaking the
-    optimization degeneracy that otherwise causes systematic theta
-    undershoot.
+    Preferred: supply ``is_selection`` — a list of booleans (one per
+    ``condition_rep`` index) indicating whether each condition is a
+    selection condition.  This sets ``m_is_selection`` directly without
+    requiring '+' or '-' in condition names.
 
-    When ``condition_labels`` is ``None`` (the default), ``m_is_selection``
-    is left as ``None`` and ``m_scale`` is used for all conditions
-    (backward-compatible behaviour).
+    Legacy: supply ``condition_labels`` — a list of condition name strings
+    whose '+' or '-' character is parsed to derive ``m_is_selection``.
+
+    When neither is supplied, ``m_is_selection`` is left as ``None`` and
+    ``m_scale`` is used for all conditions (backward-compatible behaviour).
 
     Parameters
     ----------
     condition_labels : list of str, optional
         Ordered condition names, one per ``condition_rep`` index.
         Each name must contain exactly one of '+' or '-'.
+        Mutually exclusive with ``is_selection``.
+    is_selection : list of bool, optional
+        Ordered booleans, one per ``condition_rep`` index.
+        ``True`` → selection condition (normal ``m_scale_plus`` prior).
+        ``False`` → control condition (tight ``m_scale_minus`` prior).
+        Mutually exclusive with ``condition_labels``.
 
     Returns
     -------
     ModelPriors
     """
+    if condition_labels is not None and is_selection is not None:
+        raise ValueError(
+            "Specify either 'condition_labels' or 'is_selection', not both. "
+            "Use 'is_selection' (preferred) for the inference-based approach "
+            "or 'condition_labels' for the legacy string-parsing approach."
+        )
     hypers = get_hyperparameters()
-    if condition_labels is not None:
+    if is_selection is not None:
+        hypers["m_is_selection"] = tuple(bool(v) for v in is_selection)
+    elif condition_labels is not None:
         hypers["m_is_selection"] = tuple(
             _parse_condition_label(label) for label in condition_labels
         )

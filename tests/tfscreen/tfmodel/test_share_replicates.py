@@ -16,6 +16,7 @@ def get_mock_df():
                     for tconc in [0.0, 1.0]:
                         for geno in ['wt', 'A1T']:
                             data.append({
+                                "library": "lib",
                                 "genotype": geno,
                                 "condition_pre": cond_pre,
                                 "condition_sel": cond_sel,

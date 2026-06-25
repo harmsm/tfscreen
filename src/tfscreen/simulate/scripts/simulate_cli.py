@@ -110,7 +110,7 @@ def _generate_presplit_data(combined_sample_df, combined_counts_df, cf, rng):
     Returns
     -------
     pandas.DataFrame
-        Columns: ``replicate``, ``condition_pre``, ``genotype``,
+        Columns: ``library``, ``replicate``, ``condition_pre``, ``genotype``,
         ``ln_cfu``, ``ln_cfu_std``, ``ln_cfu_0_true``.
         ``ln_cfu_0_true`` records the simulation ground truth for validation.
         Rows with zero initial frequency (genotypes absent from the
@@ -127,24 +127,24 @@ def _generate_presplit_data(combined_sample_df, combined_counts_df, cf, rng):
     total_num_samples  = len(combined_sample_df)
     reads_per_sample   = max(1, int(round(total_num_reads / total_num_samples)))
 
-    # Attach condition_pre and replicate to each (genotype, sample) row so we
-    # can group by (replicate, condition_pre) below.
+    # Attach library, condition_pre, and replicate to each (genotype, sample)
+    # row so we can group by (replicate, library, condition_pre) below.
     sample_meta = (combined_sample_df
-                   .reset_index()[["sample", "replicate", "condition_pre"]]
+                   .reset_index()[["sample", "replicate", "library", "condition_pre"]]
                    .drop_duplicates("sample"))
     counts_meta = pd.merge(combined_counts_df, sample_meta, on="sample", how="left")
 
-    # One row per (replicate, condition_pre, genotype), keeping the first
-    # occurrence of ln_cfu_0 (same value for all selection samples within a
-    # library group).
+    # One row per (replicate, library, condition_pre, genotype), keeping the
+    # first occurrence of ln_cfu_0 (same value for all selection samples within
+    # a library group).
     source = (counts_meta
-              .groupby(["replicate", "condition_pre", "genotype"], observed=True)
+              .groupby(["replicate", "library", "condition_pre", "genotype"], observed=True)
               .first()
-              .reset_index()[["replicate", "condition_pre", "genotype", "ln_cfu_0"]])
+              .reset_index()[["replicate", "library", "condition_pre", "genotype", "ln_cfu_0"]])
 
     rows = []
-    for (rep, cp), grp in source.groupby(["replicate", "condition_pre"],
-                                          observed=True):
+    for (rep, lib, cp), grp in source.groupby(["replicate", "library", "condition_pre"],
+                                               observed=True):
         genos    = grp["genotype"].values
         ln_cfu0  = grp["ln_cfu_0"].values
 
@@ -195,6 +195,7 @@ def _generate_presplit_data(combined_sample_df, combined_counts_df, cf, rng):
 
         for i, geno in enumerate(genos):
             rows.append({
+                "library":       lib,
                 "replicate":     rep,
                 "condition_pre": cp,
                 "genotype":      geno,

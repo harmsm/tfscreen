@@ -1,5 +1,15 @@
 """
-K-assembly via per-mutation per-structure ΔΔG with user-supplied prior means (lac-dimer-unfolded).
+PddG — mutation effects on equilibrium constants from user-supplied ΔΔG prior means (lac-dimer-unfolded).
+
+Extends the lac-dimer PddG model with a WT-level unfolding constant (ln_K_U_wt).
+Per-mutation effects on K_op, K_HL, and K_E are derived from user-supplied
+structural ΔΔG (CSV: columns mut, H, HD, L, LE2); K_U is held at its WT value
+for all genotypes (d_ln_K_U = 0) because structure-based predictors describe
+folded-state environments, not global stability.  Registry name:
+``theta_lac_dimer_unfolded_lnK_ddG_prior``.
+
+Contrast with PK (all K shifts inferred from data, including K_U per mutation)
+and PnnC (ΔΔG prior means from a per-structure MLP rather than a user CSV).
 
 Identical to lac_dimer/lnK_ddG_prior.py with one additional scalar parameter:
 

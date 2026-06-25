@@ -14,6 +14,3 @@ from .fit_manager import (  # noqa: F401
     FitManager
 )
 
-from .parse_patsy import (  # noqa: F401
-    parse_patsy
-)

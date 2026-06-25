@@ -12,6 +12,7 @@ from tfscreen.tfmodel.analysis.prediction import copy_orchestrator, _convert_map
 def dummy_orchestrator():
     """Create a dummy ModelOrchestrator instance for testing."""
     growth_df = pd.DataFrame({
+        "library": ["lib"] * 4,
         "genotype": ["wt", "wt", "M42V", "M42V"],
         "titrant_name": ["tit1", "tit1", "tit1", "tit1"],
         "titrant_conc": [0.0, 1.0, 0.0, 1.0],
@@ -148,6 +149,7 @@ def test_copy_orchestrator_genotypes_tm_labels_differ_from_original(dummy_orches
 def spiked_orchestrator():
     """ModelOrchestrator with one spiked genotype (A1G) and two library genotypes."""
     growth_df = pd.DataFrame({
+        "library": ["lib"] * 6,
         "genotype": ["wt", "wt", "M42V", "M42V", "A1G", "A1G"],
         "titrant_name": ["tit1"] * 6,
         "titrant_conc": [0.0, 1.0] * 3,
@@ -185,6 +187,7 @@ def test_copy_orchestrator_spiked_partial_overlap():
     """Only spiked genotypes present in the subset survive."""
     # Build a fresh orchestrator with two spiked genotypes: A1G and S5T
     growth_df = pd.DataFrame({
+        "library": ["lib"] * 8,
         "genotype": ["wt", "wt", "M42V", "M42V", "A1G", "A1G", "S5T", "S5T"],
         "titrant_name": ["tit1"] * 8,
         "titrant_conc": [0.0, 1.0] * 4,

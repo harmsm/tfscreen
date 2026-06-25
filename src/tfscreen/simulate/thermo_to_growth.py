@@ -498,7 +498,7 @@ def thermo_to_growth(
     # ── Build genotype_theta_df (ground-truth theta per unique genotype) ──────
     # Long form: one row per (genotype, titrant_name, titrant_conc).
     # unique_sim_indices maps each unique genotype to its representative row in
-    # theta_gc, eliminating duplicates from sub-libraries.
+    # theta_gc, eliminating duplicates from tiles.
     tn_conc_pairs = (
         sample_df[["titrant_name", "titrant_conc"]]
         .drop_duplicates()

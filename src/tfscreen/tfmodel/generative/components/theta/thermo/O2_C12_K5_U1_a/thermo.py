@@ -1,6 +1,12 @@
 """
 Shared thermodynamic functions for the MWC lac-dimer-unfolded theta model.
 
+Extends the five-parameter MWC model with a globally unfolded state U.
+Destabilising mutations shift population into U, collapsing θ toward zero at
+all effector concentrations.  Used by ``theta_mwc_dimer_unfolded_lnK_mut``
+(PK), ``theta_mwc_dimer_unfolded_lnK_ddG_prior`` (PddG), and
+``theta_mwc_dimer_unfolded_lnK_nn_prior`` (PnnC).
+
 Extends the MWC two-state model (Sochor 2014, PeerJ 2:e498) with an explicit
 unfolded state U:
 

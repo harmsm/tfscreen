@@ -1,6 +1,16 @@
 """
-K-assembly via per-mutation per-structure ΔΔG with user-supplied prior means,
-including a homogeneous WT-level unfolding constant.
+PddG — mutation effects on equilibrium constants from user-supplied ΔΔG prior means (MWC dimer unfolded).
+
+Extends the MWC dimer PddG model with a WT-level unfolding constant (ln_K_u_wt).
+Per-mutation effects on the five folded-state K values (K_h_l, K_h_o, K_l_o,
+K_h_e, K_l_e) are derived from user-supplied structural ΔΔG (CSV: columns mut,
+H, HO, L, LO, HE2, LE2); K_u is held at its WT value for all genotypes
+(d_ln_K_u = 0) because structure-based predictors describe folded-state
+environments, not global stability.  Registry name:
+``theta_mwc_dimer_unfolded_lnK_ddG_prior``.
+
+Contrast with PK (all K shifts inferred from data, including K_u per mutation)
+and PnnC (ΔΔG prior means from a per-structure MLP rather than a user CSV).
 
 Implements the full MWC two-state lac-dimer model (Sochor 2014) with five
 equilibrium constants plus a global unfolding equilibrium, using six structural

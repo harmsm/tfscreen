@@ -1,5 +1,14 @@
 """
-K-assembly via additive mutation effects in ln-K space (MWC dimer unfolded).
+PK — mutation effects on equilibrium constants inferred from data (MWC dimer unfolded).
+
+Extends the MWC dimer PK model with a per-mutation unfolding shift (d_ln_K_u).
+All six equilibrium constants (K_h_l, K_h_o, K_l_o, K_h_e, K_l_e, K_u) are
+shifted by Δln_K values inferred from the observations; no structural information
+is used.  Registry name: ``theta_mwc_dimer_unfolded_lnK_mut``.
+
+Contrast with PddG (Δln_K derived from user-supplied structural ΔΔG) and PnnC
+(Δln_K derived from NN-predicted structural ΔΔG).  Note that PddG and PnnC in
+this family hold d_ln_K_u = 0 for all mutations by design.
 
 Identical to mwc_dimer/lnK_mut.py with one additional scalar parameter:
 

@@ -9,6 +9,7 @@ from tfscreen.tfmodel.analysis.prior_predictive import draw_prior, growth_df_fro
 @pytest.fixture
 def dummy_orchestrator():
     growth_df = pd.DataFrame({
+        "library":       ["lib", "lib", "lib", "lib"],
         "genotype":      ["wt", "wt", "M42V", "M42V"],
         "titrant_name":  ["tit1", "tit1", "tit1", "tit1"],
         "titrant_conc":  [0.0, 1.0, 0.0, 1.0],

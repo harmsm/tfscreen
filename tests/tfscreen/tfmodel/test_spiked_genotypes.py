@@ -13,6 +13,7 @@ def dummy_data():
     genotypes = ["wt", "A10G", "V20L"]
     for g in genotypes:
         rows.append({
+            "library": "lib",
             "replicate": 1,
             "time": 0.0,
             "genotype": g,

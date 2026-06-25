@@ -84,8 +84,8 @@ def _check_contiguous_lib_blocks(s: str) -> None:
         # then its occurrences are not contiguous.
         if char in seen_chars:
             raise ValueError(
-                f"Sub-library '{char}' is not in a contiguous block. Each sub-"
-                f"library must (except filler '.') must be contiguous. For "
+                f"Tile '{char}' is not in a contiguous block. Each tile "
+                f"(except filler '.') must be contiguous. For "
                 f"example, ..111..22.. is allowed but ..11.1..22.. is not."
             )
         
@@ -96,49 +96,49 @@ def _check_contiguous_lib_blocks(s: str) -> None:
 def _check_lib_key(lib_key: str,
                    libraries_seen: Set[str]) -> None:
     """
-    Validates the format of a library combination key.
+    Validates the format of a tile combination key.
 
     A valid key must be in the format 'single-x' or 'double-x-y', where
-    'x' and 'y' are characters representing sub-libraries that have been
+    'x' and 'y' are characters representing tiles that have been
     defined in the main configuration.
 
     Parameters
     ----------
     lib_key : str
-        The library combination key string to validate (e.g., 'single-1',
+        The tile combination key string to validate (e.g., 'single-1',
         'double-1-2').
     libraries_seen : set[str]
-        A set of all valid sub-library characters found in the
-        'sub_libraries' configuration string.
+        A set of all valid tile characters found in the
+        'tiles' configuration string.
 
     Raises
     ------
     ValueError
         If the key has an invalid format, specifies an unknown command, has
-        the wrong number of parts, or references a sub-library that does
+        the wrong number of parts, or references a tile that does
         not exist.
 
     """
     parts = lib_key.strip().split("-")
     command = parts[0]
-    
+
     # Generic help text for error messages
     help_text = (
         "Keys must be 'single-x' or 'double-x-y', where x and y are "
-        "defined sub-libraries."
+        "defined tiles."
     )
 
     if command == "single":
         if len(parts) != 2:
             raise ValueError(
                 f"Invalid key '{lib_key}'. 'single' keys must have one "
-                f"sub-library part. {help_text}"
+                f"tile part. {help_text}"
             )
     elif command == "double":
         if len(parts) != 3:
             raise ValueError(
                 f"Invalid key '{lib_key}'. 'double' keys must have two "
-                f"sub-library parts. {help_text}"
+                f"tile parts. {help_text}"
             )
     else:
         raise ValueError(
@@ -146,13 +146,13 @@ def _check_lib_key(lib_key: str,
             f"Command must be 'single' or 'double'."
         )
 
-    # Check if all specified sub-libraries are valid
+    # Check if all specified tiles are valid
     sub_libs = parts[1:]
     for lib_id in sub_libs:
         if lib_id not in libraries_seen:
             raise ValueError(
-                f"Unrecognized sub-library '{lib_id}' in key '{lib_key}'. "
-                f"Valid libraries are: {sorted(list(libraries_seen))}. "
+                f"Unrecognized tile '{lib_id}' in key '{lib_key}'. "
+                f"Valid tiles are: {sorted(list(libraries_seen))}. "
                 f"{help_text}"
             )
       
@@ -163,8 +163,8 @@ class LibraryManager:
                      "first_amplicon_residue",
                      "wt_seq",
                      "degen_sites",
-                     "sub_libraries",
-                     "library_combos"]
+                     "tiles",
+                     "tile_combos"]
 
     def __init__(self,run_config):
 
@@ -208,9 +208,9 @@ class LibraryManager:
         - `first_amplicon_residue`
         - `wt_seq`
         - `degen_sites`
-        - `sub_libraries`
+        - `tiles`
         - `libraries_seen`
-        - `library_combos`
+        - `tile_combos`
         - `expected_length`
         - `aa_seq`
         - `degen_seq`
@@ -257,55 +257,55 @@ class LibraryManager:
         degen_sites = "".join(str(run_config["degen_sites"]).split())
         _check_char(degen_sites,"degen_sites",self.degen_plus_dot)
 
-        # Load sub-libraries
-        sub_libraries = "".join(str(run_config["sub_libraries"]).split())
-        _check_contiguous_lib_blocks(sub_libraries)
-        libraries_seen = set(list(sub_libraries)) - {"."}
-        
+        # Load tiles
+        tiles = "".join(str(run_config["tiles"]).split())
+        _check_contiguous_lib_blocks(tiles)
+        libraries_seen = set(list(tiles)) - {"."}
+
         # Now do some cross-validation between seqs
-        if len(wt_seq) != len(degen_sites) or len(wt_seq) != len(sub_libraries):
-            raise ValueError("wt_seq, degen_sites, and sub_libraries must all be the same length")
-        
-        # Go through each column and makes sure that degenerate bases are only in 
-        # sub-libraries. Build the error message on the fly by putting "!" in every 
-        # problem column. 
+        if len(wt_seq) != len(degen_sites) or len(wt_seq) != len(tiles):
+            raise ValueError("wt_seq, degen_sites, and tiles must all be the same length")
+
+        # Go through each column and makes sure that degenerate bases are only in
+        # tiles. Build the error message on the fly by putting "!" in every
+        # problem column.
         status = []
         for i in range(len(list(wt_seq))):
-    
-            # degen_sites must be standard bases unless they are part of a sub_library
+
+            # degen_sites must be standard bases unless they are part of a tile
             if degen_sites[i] not in self.standard_plus_dot:
-                if sub_libraries[i] == ".":
+                if tiles[i] == ".":
                     status.append("!")
                     continue
             status.append(" ")
-    
-        # Problem. Build error message and return. 
+
+        # Problem. Build error message and return.
         if "!" in status:
-            err = "".join(["Degenerate bases are only allowed within sub_libraries.",
+            err = "".join(["Degenerate bases are only allowed within tiles.",
                            "The problematic columns are indicated with '!' below:\n"])
-            
+
             final_err = "\n".join([err,
-                                   "".join(status),wt_seq,degen_sites,sub_libraries,
+                                   "".join(status),wt_seq,degen_sites,tiles,
                                    "\n"])
             raise ValueError(final_err)
-    
+
         self.wt_seq = wt_seq
         self.degen_sites = degen_sites
-        self.sub_libraries = sub_libraries
+        self.tiles = tiles
         self.libraries_seen = libraries_seen
-    
-        # -- Deal with library specification  --
-    
-        # Check library combos
-        if isinstance(run_config["library_combos"],str) or not hasattr(run_config["library_combos"],"__iter__"):
+
+        # -- Deal with tile combination specification  --
+
+        # Check tile combos
+        if isinstance(run_config["tile_combos"],str) or not hasattr(run_config["tile_combos"],"__iter__"):
             raise ValueError(
-                f"library_combos should be a list of strings of library combinations. "
-                f"library_combos '{run_config['library_combos']}' is not valid."
+                f"tile_combos should be a list of strings of tile combinations. "
+                f"tile_combos '{run_config['tile_combos']}' is not valid."
             )
-        self.library_combos = []
-        for lib_key in run_config["library_combos"]:
+        self.tile_combos = []
+        for lib_key in run_config["tile_combos"]:
             _check_lib_key(lib_key,self.libraries_seen)
-            self.library_combos.append(lib_key)
+            self.tile_combos.append(lib_key)
     
         # -- Build sequences useful for later -- 
     
@@ -328,13 +328,13 @@ class LibraryManager:
         """
         Processes sequence definitions to create combinatorial blocks.
 
-        This method iterates through the `self.sub_libraries` string and
+        This method iterates through the `self.tiles` string and
         constructs three parallel lists that represent the entire sequence as a
         series of blocks. These blocks are the fundamental units used for
         combinatorially generating mutant libraries.
 
         For wild-type regions (marked with '.'), each base is treated as a
-        separate, single-character block. For sub-library regions (e.g., '111'),
+        separate, single-character block. For tile regions (e.g., '111'),
         the entire contiguous region is processed at once by a helper method
         to generate blocks corresponding to codons.
 
@@ -351,18 +351,18 @@ class LibraryManager:
             identical. For degenerate codon blocks, the inner list contains all
             possible codon sequences (e.g., `['gct', 'gcc', 'gca', 'gcg']`).
         self.lib_lookup : list[str]
-            A parallel list that maps each block index to its sub-library
+            A parallel list that maps each block index to its tile
             identifier (e.g., '.', '1', '2').
         """
-    
+
         wt_blocks = []
         mut_blocks = []
         lib_lookup = []
-        
+
         current_sub_lib = None
-        for i in range(len(self.sub_libraries)):
-        
-            sub_lib = self.sub_libraries[i]
+        for i in range(len(self.tiles)):
+
+            sub_lib = self.tiles[i]
             if sub_lib == ".":
                 wt_blocks.append([self.wt_seq[i]])
                 mut_blocks.append([self.wt_seq[i]])
@@ -385,9 +385,9 @@ class LibraryManager:
 
     def _prepare_indiv_lib_blocks(self, lib_to_get: str) -> Tuple[List[List[str]], List[List[str]]]:
         """
-        Generates wt and mut blocks for a single contiguous sub-library.
+        Generates wt and mut blocks for a single contiguous tile.
 
-        This method isolates a specific sub-library region (e.g., all '1's),
+        This method isolates a specific tile region (e.g., all '1's),
         aligns it to the instance's reading frame, and processes it into
         combinatorial blocks. It handles out-of-frame bases by separating them
         into non-combinatorial "flank" blocks and ensures these flanks do not
@@ -396,7 +396,7 @@ class LibraryManager:
         Parameters
         ----------
         lib_to_get : str
-            The character identifier for the sub-library to process (e.g., '1').
+            The character identifier for the tile to process (e.g., '1').
 
         Returns
         -------
@@ -413,13 +413,13 @@ class LibraryManager:
             not standard 'a', 'c', 'g', or 't' bases).
         """
     
-        # Get list indexes for the sub library
-        indexes = [i for i in range(len(self.sub_libraries))
-                   if self.sub_libraries[i] == lib_to_get]
+        # Get list indexes for the tile
+        indexes = [i for i in range(len(self.tiles))
+                   if self.tiles[i] == lib_to_get]
         start_idx = indexes[0]
         end_idx = indexes[-1] + 1
     
-        # Get the degenerate sites and wildtype sequences for this sub-library
+        # Get the degenerate sites and wildtype sequences for this tile
         lib_seq = "".join(d if d != '.' else w
                           for d, w in zip(self.degen_sites[start_idx:end_idx],
                                           self.wt_seq[start_idx:end_idx]))
@@ -459,7 +459,7 @@ class LibraryManager:
                 _check_char(flank, name, self.standard_bases)
             except ValueError as e:
                 raise ValueError(
-                    f"Degenerate bases must be within codons within a sub-library. "
+                    f"Degenerate bases must be within codons within a tile. "
                     f"Sequence '{flank}' is out of the main reading frame "
                     f"({self.reading_frame}) but has non-standard bases."
                 ) from e
@@ -507,8 +507,8 @@ class LibraryManager:
         attributes:
 
         self.indexers : dict[str, list[int]]
-            A dictionary mapping each sub-library identifier (e.g., '1') to a
-            list of the integer indices where that library's blocks appear in
+            A dictionary mapping each tile identifier (e.g., '1') to a
+            list of the integer indices where that tile's blocks appear in
             the main block lists (`wt_blocks`, `mut_blocks`).
         self.residues : list[str]
             A list of strings, where each string is the amino acid residue
@@ -570,17 +570,17 @@ class LibraryManager:
 
     def _get_singles(self, target_lib: str) -> Tuple[List[str], List[str]]:
         """
-        Generates all single mutants for a specific sub-library.
+        Generates all single mutants for a specific tile.
 
         This method iterates through each mutable block defined for the target
-        sub-library. For each block, it generates all possible full-length DNA
+        tile. For each block, it generates all possible full-length DNA
         sequences where only that single block is mutated. The results from
         all blocks are combined into a single list.
 
         Parameters
         ----------
         target_lib : str
-            The identifier of the sub-library (e.g., '1') for which to
+            The identifier of the tile (e.g., '1') for which to
             generate single mutants.
 
         Returns
@@ -597,7 +597,7 @@ class LibraryManager:
         `self.wt_blocks`, and `self.mut_blocks`. It calls the helper method
         `self._convert_to_aa` for the final translation step.
         The wild-type sequence will be present in the output list once for
-        each mutable position in the sub-library.
+        each mutable position in the tile.
 
         """
 
@@ -616,16 +616,16 @@ class LibraryManager:
     
     def _get_intra_doubles(self, target_lib: str) -> Tuple[List[str], List[str]]:
         """
-        Generates all double-mutant combinations within a single sub-library.
+        Generates all double-mutant combinations within a single tile.
 
         This method iterates through all unique pairs of mutable blocks within the
-        target sub-library. For each pair, it generates all possible full-length
+        target tile. For each pair, it generates all possible full-length
         DNA sequences.
 
         Parameters
         ----------
         target_lib : str
-            The identifier of the sub-library (e.g., '1') in which to
+            The identifier of the tile (e.g., '1') in which to
             generate double mutants.
 
         Returns
@@ -665,18 +665,18 @@ class LibraryManager:
     
     def _get_inter_doubles(self, target_lib_1: str, target_lib_2: str) -> Tuple[List[str], List[str]]:
         """
-        Generates all double-mutant combinations between two sub-libraries.
+        Generates all double-mutant combinations between two tiles.
 
         This method iterates through all pairs of mutable blocks where one block
-        is from the first sub-library and the other is from the second. For
+        is from the first tile and the other is from the second. For
         each pair, it generates all possible full-length DNA sequences.
 
         Parameters
         ----------
         target_lib_1 : str
-            The identifier of the first sub-library (e.g., '1').
+            The identifier of the first tile (e.g., '1').
         target_lib_2 : str
-            The identifier of the second sub-library (e.g., '2').
+            The identifier of the second tile (e.g., '2').
 
         Returns
         -------
@@ -755,9 +755,9 @@ class LibraryManager:
         Generates all libraries specified in the run configuration.
 
         This is the main method to generate the libraries after the class
-        has been initialized. It iterates through the `library_combos` list
+        has been initialized. It iterates through the `tile_combos` list
         from the configuration and calls the appropriate internal methods to
-        generate single, intra-library double, or inter-library double mutants.
+        generate single, intra-tile double, or inter-tile double mutants.
         It also grabs any spiked sequences defined in the input.
 
         Returns
@@ -774,8 +774,8 @@ class LibraryManager:
         all_lib_seqs = {}
         all_aa_muts = {}
     
-        # Go through every library combo (single-1, double-1-2, etc.)
-        for k in self.library_combos:
+        # Go through every tile combo (single-1, double-1-2, etc.)
+        for k in self.tile_combos:
 
             cols = k.split("-")
     

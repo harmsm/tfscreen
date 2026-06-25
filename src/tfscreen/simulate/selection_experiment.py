@@ -49,7 +49,7 @@ MULTI_PLASMID_COMBINE_FCNS = {"gmean":gmean,
 SIMULATE_KNOWN_KEYS = frozenset({
     # Library genetics (passed to LibraryManager)
     "reading_frame", "first_amplicon_residue", "wt_seq", "degen_sites",
-    "sub_libraries", "library_combos", "spiked_seqs", "expected_5p", "expected_3p",
+    "tiles", "tile_combos", "spiked_seqs", "expected_5p", "expected_3p",
     # Phenotype / theta calculation
     "theta_component", "thermo_data", "theta_priors", "theta_rescale",
     "theta_sim_priors",

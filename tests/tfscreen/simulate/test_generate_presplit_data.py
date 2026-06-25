@@ -36,7 +36,7 @@ def _make_inputs(
             # Two selection samples per (rep, cp) (different t_sel)
             for t_sel in (60.0, 90.0):
                 sample_rows.append(
-                    {"sample": sample_id, "replicate": rep,
+                    {"sample": sample_id, "replicate": rep, "library": "lib",
                      "condition_pre": cp, "t_sel": t_sel,
                      "sample_cfu": 1e8, "sample_cfu_std": 5e6}
                 )
@@ -72,8 +72,8 @@ def test_output_columns():
     sample_df, counts_df = _make_inputs()
     result = _generate_presplit_data(sample_df, counts_df, _minimal_cf(),
                                       np.random.default_rng(0))
-    for col in ["replicate", "condition_pre", "genotype", "ln_cfu", "ln_cfu_std",
-                "ln_cfu_0_true"]:
+    for col in ["library", "replicate", "condition_pre", "genotype",
+                "ln_cfu", "ln_cfu_std", "ln_cfu_0_true"]:
         assert col in result.columns, f"missing column: {col}"
 
 
@@ -180,7 +180,7 @@ def test_run_simulation_writes_presplit_csv(tmp_path):
     # Real _simulate_library_group returns sample_df with "sample" as a
     # regular column and an unnamed integer index.
     sample_df = pd.DataFrame([{
-        "sample": 0, "replicate": 1, "condition_pre": "kanR",
+        "sample": 0, "replicate": 1, "library": "lib", "condition_pre": "kanR",
         "t_sel": 60.0, "sample_cfu": 1e8, "sample_cfu_std": 5e6,
     }], index=[0])
     counts_df = pd.DataFrame([
@@ -209,7 +209,8 @@ def test_run_simulation_writes_presplit_csv(tmp_path):
     presplit_path = tmp_path / "tfs_sim_presplit.csv"
     assert presplit_path.exists(), "presplit CSV was not written"
     presplit_df = pd.read_csv(presplit_path)
-    for col in ["replicate", "condition_pre", "genotype", "ln_cfu", "ln_cfu_std"]:
+    for col in ["library", "replicate", "condition_pre", "genotype",
+                "ln_cfu", "ln_cfu_std"]:
         assert col in presplit_df.columns
 
 
@@ -221,7 +222,7 @@ def test_run_simulation_no_presplit_without_config(tmp_path):
     pheno_df = pd.DataFrame({"genotype": ["wt"]})
     theta_df = pd.DataFrame({"genotype": ["wt"]})
     params_df = pd.DataFrame({"genotype": ["wt"], "dk_geno": [0.0], "activity": [1.0]})
-    sample_df = pd.DataFrame([{"sample": 0, "replicate": 1,
+    sample_df = pd.DataFrame([{"sample": 0, "replicate": 1, "library": "lib",
                                 "condition_pre": "kanR", "t_sel": 60.0,
                                 "sample_cfu": 1e8, "sample_cfu_std": 5e6}],
                               index=[0])

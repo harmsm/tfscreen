@@ -1,6 +1,13 @@
 """
 Shared thermodynamic functions for the lac-dimer-unfolded partition-function θ model.
 
+Extends the four-state lac-dimer model with a globally unfolded state U.
+Destabilising mutations shift population into U, where neither operator nor
+effector can bind, collapsing θ toward zero at all effector concentrations.
+Used by ``theta_lac_dimer_unfolded_lnK_mut`` (PK),
+``theta_lac_dimer_unfolded_lnK_ddG_prior`` (PddG), and
+``theta_lac_dimer_unfolded_lnK_nn_prior`` (PnnC).
+
 Five-state partition function for the TF homodimer:
 
     State      Weight

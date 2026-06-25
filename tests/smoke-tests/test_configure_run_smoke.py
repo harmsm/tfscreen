@@ -69,6 +69,7 @@ def test_configure_run_pipeline_smoke(tmpdir):
     """
     # Create mock data
     growth_df = pd.DataFrame({
+        "library": ["lib", "lib"],
         "replicate": ["R1", "R1"],
         "condition_pre": ["C1-", "C1-"],
         "condition_sel": ["C2+", "C2+"],
@@ -154,6 +155,7 @@ def test_configure_run_binding_weight_smoke(tmpdir):
     """
     # Growth data: 20 rows  |  Binding data: 4 rows  →  expected auto-weight = 5.0
     growth_df = pd.DataFrame({
+        "library":       ["lib"] * 20,
         "replicate":     ["R1"] * 20,
         "condition_pre": ["C1-"] * 20,
         "condition_sel": ["C2+"] * 20,

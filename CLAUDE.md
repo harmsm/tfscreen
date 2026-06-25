@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-`tfscreen` is a Python library for simulating and analyzing high-throughput screens of transcription factor (TF) libraries. It models bacterial growth in plasmid-based libraries where TFs regulate selection markers (antibiotic resistance or pheS/4CP). The core analysis is a hierarchical Bayesian model (JAX/Numpyro) that infers per-genotype TF activity from growth data.
+`tfscreen` is a Python library for simulating and analyzing high-throughput screens of transcription factor (TF) libraries. It models bacterial growth in plasmid-based libraries where TFs regulate selection markers (antibiotic resistance or pheS/4CP). The core analysis is a hierarchical Bayesian model (JAX/Numpyro) that infers per-genotype TF operator occupancy from growth data.
 
 ## Commands
 
@@ -42,11 +42,12 @@ flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127
 ```
 tfs-process-fastq          # FASTQ → read counts
 tfs-process-counts         # counts → ln_cfu DataFrames
+tfs-process-presplit       # Process pre-split count files
 tfs-configure-model        # Generate YAML config template
 tfs-prefit-calibration     # Pre-fit linking function via MAP
 tfs-fit-model              # Main hierarchical Bayesian inference
 tfs-sample-posterior       # Draw posterior samples from fitted model
-tfs-param-quantiles        # Summarize posterior parameter quantiles
+tfs-sample-prior           # Draw prior predictive samples
 tfs-extract-params         # Extract parameters from checkpoint
 tfs-predict-growth         # Predict growth from fitted model
 tfs-predict-theta          # Predict operator occupancy
@@ -56,6 +57,8 @@ tfs-simulate               # Simulate a full experiment
 tfs-setup-sim-grid         # Set up grid of simulation runs
 tfs-setup-grid             # Set up grid of model configs
 tfs-summarize-grid         # Summarize grid results
+tfs-summarize-fit          # Summarize a fitted model
+tfs-summarize-sbc          # Summarize simulation-based calibration runs
 tfs-subset-genotypes       # Subset genotype data
 ```
 
@@ -65,10 +68,13 @@ tfs-subset-genotypes       # Subset genotype data
 ```
 FASTQ files
     → tfs-process-fastq → counts CSV
-    → tfs-process-counts → ln_cfu DataFrame
-    → tfs-fit-model (with run_config.yaml) → posteriors (HDF5 + pkl)
-    → tfs-summarize-posteriors → summary CSV
-    → tfs-predict → predictions CSV
+    → tfs-process-counts → ln_cfu DataFrame (CSV)
+    → tfs-fit-model (with config YAML) → checkpoint .pkl (MAP/SVI)
+    → tfs-sample-posterior → posterior samples .h5
+    → tfs-predict-growth → growth predictions CSV
+    → tfs-predict-theta  → theta predictions CSV
+    → tfs-extract-params → per-parameter CSVs
+    → tfs-summarize-fit  → summary plots/CSVs
 ```
 
 ### Source Layout (`src/tfscreen/`)
@@ -76,13 +82,17 @@ FASTQ files
 | Module | Responsibility |
 |--------|---------------|
 | `tfmodel/` | Core hierarchical Bayesian inference engine (the heart of the package) |
+| `tfmodel/generative/` | Numpyro model definition, component registry, pluggable components |
+| `tfmodel/inference/` | JAX/Numpyro sampling, MAP estimation, checkpoint I/O, posteriors |
+| `tfmodel/tensors/` | Ragged-tensor management, JAX array population |
+| `tfmodel/analysis/` | Prediction, parameter extraction, error calibration, prior predictive |
 | `process_raw/` | FASTQ parsing, count normalization, ln_cfu calculation |
 | `simulate/` | Full experiment simulation from thermodynamics to read counts |
-| `simulate/thermo/` | Thermodynamic models (lac, EEE) used by simulation |
-| `simulate/growth/` | In-progress growth/growth-transition models for simulation |
+| `simulate/growth/` | Growth/growth-transition linkage models for simulation |
 | `analysis/` | Downstream statistical analysis of inference outputs (cat_response, extract_epistasis) |
 | `mle/` | General-purpose MLE regression (FitManager, least squares, WLS, NLS) |
 | `mle/curve_models/` | Empirical curve-fitting functions and MODEL_LIBRARY used by cat_response |
+| `mle/fitters/` | Low-level fitter implementations (least_squares, matrix_nls, matrix_wls) |
 | `genetics/` | Genotype library management, mutation effect combination |
 | `plot/` | Visualization (heatmaps, corner plots, error plots) |
 | `util/` | Shared IO, DataFrame ops, numerical helpers, validation, CLI |
@@ -91,39 +101,42 @@ FASTQ files
 
 The hierarchical Bayesian inference engine. Key files:
 
-- **`model.py`** — Numpyro probabilistic model definition. The generative model is:
+- **`generative/model.py`** — Numpyro probabilistic model definition. The generative model is:
   `ln_cfu = ln_cfu0 + (k_pre + dk_geno + m_pre·A·θ)·t_pre + (k_sel + dk_geno + m_sel·A·θ)·t_sel`
   where θ = operator occupancy, A = per-genotype TF activity, dk_geno = pleiotropic growth effect.
 
-- **`model_class.py`** — `TFModel`: top-level class orchestrating data loading, inference, and prediction.
+- **`model_orchestrator.py`** — `ModelOrchestrator`: top-level class orchestrating data loading, inference, and prediction.
 
-- **`run_inference.py`** — `RunInference`: coordinates JAX/Numpyro sampling (NUTS) and MAP estimation (optax).
+- **`inference/run_inference.py`** — `RunInference`: coordinates JAX/Numpyro sampling (SVI or NUTS) and MAP estimation (optax).
 
-- **`tensor_manager.py`** — `TensorManager`: maps ragged per-genotype observations into JAX-compatible tensors.
+- **`tensors/tensor_manager.py`** — `TensorManager`: maps ragged per-genotype observations into JAX-compatible tensors.
 
-- **`registry.py`** — `model_registry` dict mapping component names to module implementations. This is where all swappable components are registered.
+- **`generative/registry.py`** — `model_registry` dict mapping component names to module implementations. This is where all swappable components are registered.
 
-- **`components/`** — Pluggable model components selected via YAML config:
-  - `activity/`: `fixed`, `hierarchical`, `horseshoe`
-  - `growth/`: `linear`, `linear_independent`, `linear_fixed`, `power`, `saturation`
-  - `growth_transition/`: `instant`, `memory`, `baranyi`
+- **`generative/components/`** — Pluggable model components selected via YAML config:
+  - `activity/`: `fixed`, `hierarchical_geno`, `hierarchical_mut`, `horseshoe_geno`, `horseshoe_mut`
+  - `growth/`: `linear`, `power`, `saturation`
+  - `growth_transition/`: `instant`, `memory`, `baranyi`, `baranyi_k`, `baranyi_tau`, `two_pop`
   - `transformation/`: `empirical`, `logit_norm`, `single`
-  - `theta/`: `categorical`, `hill`
-  - `dk_geno/`: `fixed`, `hierarchical`
-  - `noise/`: `zero`, `beta`
+  - `theta/`: `categorical_geno`, `hill_geno`, `hill_mut`; thermodynamic partition-function variants under `theta/thermo/` (lac dimer and MWC dimer, with/without unfolded state, PK/PnnC/PddG parameterizations)
+  - `theta_rescale/`: `passthrough`, `logit`
+  - `dk_geno/`: `fixed`, `hierarchical_geno`
+  - `noise/`: `zero`, `beta`, `logit_normal` (theta observation noise)
+  - `growth_noise/`: `zero`, `normal_kt`
+  - `ln_cfu0/`: `hierarchical`, `hierarchical_factored`
+  - `sample_offset/`: `zero`, `normal`
+  - `observe/`: `binding`, `growth` (observation likelihood layers)
 
 ### Adding a New Model Component
 
-1. Create `src/tfscreen/tfmodel/components/<category>/myname.py`
+1. Create `src/tfscreen/tfmodel/generative/components/<category>/myname.py`
 2. Implement the required interface (follow an existing component as reference)
-3. Register it in `registry.py` under the appropriate category key
+3. Register it in `tfmodel/generative/registry.py` under the appropriate category key
 4. Add a test in `tests/tfscreen/tfmodel/components/<category>/`
 
 ### Key Abstractions
 
-**`FitManager`** (`mle/fit_manager.py`): General regression wrapper. Set parameter transformations, bounds, fixed vs. free parameters, and a model function via `set_model_func()`.
-
-**`TensorManager`** (`tfmodel/tensor_manager.py`): Handles ragged tensors. Genotypes have different numbers of observations; this class pads and indexes into JAX-compatible arrays.
+**`TensorManager`** (`tfmodel/tensors/tensor_manager.py`): Handles ragged tensors. Genotypes have different numbers of observations; this class pads and indexes into JAX-compatible arrays.
 
 **`DataClass` / `PriorsClass`** (`tfmodel/data_class.py`): Flax pytree dataclasses holding structured experimental data and prior specifications for JAX compilation.
 
@@ -193,6 +206,9 @@ These two dicts are the mechanism by which binding data is "pinned" into the gro
 | `simulate/binding_params.py` | CSV reading (with theta clipping), per-component override builders, binding theta assemblers |
 | `simulate/sample_theta.py` | `sample_theta_prior` (prior-predictive) and `sample_theta_stratified` (greedy maximin) |
 | `simulate/sim_data_class.py` | `SimData` container and `build_sim_data` factory |
+| `simulate/build_sample_dataframes.py` | Constructs sample/timepoint DataFrames from simulation config |
+| `simulate/selection_experiment.py` | Models the selection experiment (growth + sequencing) |
+| `simulate/run_simulation.py` | End-to-end simulation runner called by `tfs-simulate` |
 
 ## YAML Standards
 
@@ -263,23 +279,26 @@ Both grid CLIs import from `tfscreen.util.grid_utils` for run-name generation, J
 | `simulate/simulate_config.yaml` | Canonical well-commented simulate config reference |
 | `simulate/simulate_grid.yaml` | Example simulate grid for `tfs-setup-sim-grid` |
 | `simulate/run.sh` | Jinja2 shell template rendered into each simulate grid run subdir |
+| `simulate-and-analyze/simulate_config.yaml` | Combined simulate + analyze workflow config |
+| `simulate-and-analyze/hill_params.csv` | Example Hill parameter CSV for binding data input |
+| `simulate-and-analyze/run.sh` | Jinja2 shell template for simulate-and-analyze runs |
 | `tfmodel/grid.yaml` | Example tfmodel grid for `tfs-setup-grid` |
 | `tfmodel/run.srun` | Jinja2 SLURM template rendered into each tfmodel grid run subdir |
 | `process_raw/library_config.yaml` | Minimal library genetics config for `tfs-process-fastq` |
 
 ### `process_raw` YAML
 
-`tfs-process-fastq` accepts a `run_config` argument that is passed to `LibraryManager`. It reads only the library genetics keys: `reading_frame`, `wt_seq`, `degen_sites`, `sub_libraries`, `expected_5p`, `expected_3p`, `library_combos`, `spiked_seqs`. All other keys are ignored.
+`tfs-process-fastq` accepts a `run_config` argument that is passed to `LibraryManager`. It reads only the library genetics keys: `reading_frame`, `wt_seq`, `degen_sites`, `tiles`, `expected_5p`, `expected_3p`, `tile_combos`, `spiked_seqs`. All other keys are ignored.
 
 **Recommended practice**: maintain one `run_config.yaml` per experiment and pass it to both `tfs-simulate` and `tfs-process-fastq` — no need for a separate file. Use `examples/process_raw/library_config.yaml` only when you need a minimal standalone library config (e.g. for processing real data without a matching simulation).
 
 ### Terminology
 
-- **Condition**: unique growth setting (marker + selection + IPTG concentration) — same avg growth rate for same genotype
+- **Condition**: unique growth setting (marker + selection) — same avg growth rate for same genotype
 - **Sample**: one experimental tube (replicate + condition)
 - **Timepoint**: one aliquot (replicate + condition + time)
 - **theta (θ)**: operator occupancy — fraction of operators bound by TF
-- **A**: per-genotype TF activity (the primary output of inference)
+- **A**: per-genotype TF activity (multiplied by theta to scale occupancy)
 - **dk_geno**: pleiotropic growth effect of mutation independent of TF activity
 
 ### Testing Notes
