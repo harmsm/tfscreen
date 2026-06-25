@@ -307,17 +307,9 @@ def _read_binding_df(binding_df,
         growth_seen = growth_df[cols].drop_duplicates().set_index(cols)
         extra = binding_seen.index[~binding_seen.index.isin(growth_seen.index)]
         if len(extra) > 0:
-            by_titrant = {}
-            for geno, tname in extra:
-                by_titrant.setdefault(tname, []).append(geno)
-            detail = "\n".join(
-                f"  {tname}: {', '.join(sorted(genos))}"
-                for tname, genos in sorted(by_titrant.items())
-            )
             print(
                 f"Syncing binding_df to growth_df: {len(extra)} "
-                f"genotype/titrant_name pair(s) not in growth_df will be dropped.\n"
-                + detail,
+                f"genotype/titrant_name pair(s) not in growth_df will be dropped.",
                 flush=True,
             )
         # Inherit map_theta_group indices from growth_df so parameter indexing
@@ -421,14 +413,13 @@ def _read_presplit_df(presplit_df, growth_df):
 
     growth_genotypes = set(growth_df["genotype"])
     mask = presplit_df["genotype"].isin(growth_genotypes)
-    dropped_genos = sorted(set(presplit_df.loc[~mask, "genotype"].astype(str)))
     n_dropped = int((~mask).sum())
+    n_dropped_genos = presplit_df.loc[~mask, "genotype"].nunique()
     presplit_df = presplit_df[mask].copy()
     if n_dropped > 0:
         print(
             f"Syncing presplit_df to growth_df: {n_dropped} row(s) for "
-            f"{len(dropped_genos)} genotype(s) not found in growth_df will be dropped.\n"
-            f"  Dropped genotypes: {', '.join(dropped_genos)}",
+            f"{n_dropped_genos} genotype(s) not found in growth_df will be dropped.",
             flush=True,
         )
 

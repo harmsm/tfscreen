@@ -1,3 +1,4 @@
+import pandas as pd
 from tfscreen.tfmodel.configuration_io import read_configuration
 from tfscreen.tfmodel.inference.checkpoint_io import resolve_param_file
 from tfscreen.tfmodel.analysis.prediction import predict
@@ -12,7 +13,8 @@ def predict_growth(config_file,
                    titrant_concs_file=None,
                    only_files=False,
                    num_samples=0,
-                   num_marginal_samples=None):
+                   num_marginal_samples=None,
+                   genotype_batch_size=None):
     """
     Predict growth signal (ln_cfu) from a fitted hierarchical model.
 
@@ -74,6 +76,12 @@ def predict_growth(config_file,
     num_marginal_samples : int or None, optional
         Number of posterior samples to run through the model when computing
         quantiles. If None, all available samples are used.
+    genotype_batch_size : int or None, optional
+        Maximum number of genotypes per predict() call. When set, the genotype
+        list is split into chunks of this size, each chunk is predicted
+        separately, and the results are concatenated. Reduces peak GPU memory
+        at the cost of one JAX re-compilation per batch. If None (default), all
+        genotypes are predicted in a single call.
     """
     file_genotypes = read_lines(genotypes_file) if genotypes_file else []
     titrant_names = read_lines(titrant_names_file) if titrant_names_file else None
@@ -100,16 +108,35 @@ def predict_growth(config_file,
         training_concs = list(orchestrator.growth_df["titrant_conc"].unique())
         titrant_concs = sorted(set(training_concs) | set(file_concs)) if file_concs else None
 
+    # When batching is requested and genotypes is still None (no file restriction),
+    # resolve the full list explicitly so it can be split into chunks.
+    if genotype_batch_size is not None and genotypes is None:
+        genotypes = list(orchestrator.growth_df["genotype"].unique())
+
     q_to_get = [0.5] if is_map else None
     print("Running growth predictions...", flush=True)
-    result_df = predict(orchestrator=orchestrator,
-                        param_posteriors=param_file,
-                        predict_sites=["growth_pred"],
-                        num_samples=num_samples,
-                        num_marginal_samples=num_marginal_samples,
-                        titrant_conc=titrant_concs,
-                        genotypes=genotypes,
-                        q_to_get=q_to_get)
+
+    predict_kwargs = dict(
+        orchestrator=orchestrator,
+        param_posteriors=param_file,
+        predict_sites=["growth_pred"],
+        num_samples=num_samples,
+        num_marginal_samples=num_marginal_samples,
+        titrant_conc=titrant_concs,
+        q_to_get=q_to_get,
+    )
+
+    if genotype_batch_size is not None and genotypes is not None and len(genotypes) > genotype_batch_size:
+        batches = [genotypes[i:i + genotype_batch_size]
+                   for i in range(0, len(genotypes), genotype_batch_size)]
+        n_batches = len(batches)
+        batch_dfs = []
+        for batch_idx, batch in enumerate(batches, 1):
+            print(f"  Batch {batch_idx}/{n_batches} ({len(batch)} genotypes)...", flush=True)
+            batch_dfs.append(predict(**predict_kwargs, genotypes=batch))
+        result_df = pd.concat(batch_dfs, ignore_index=True)
+    else:
+        result_df = predict(**predict_kwargs, genotypes=genotypes)
 
     # Apply titrant_name filter post-prediction.
     if titrant_names is not None:
@@ -132,6 +159,7 @@ def main():
                                        "titrant_names_file": str,
                                        "titrant_concs_file": str,
                                        "num_marginal_samples": int,
+                                       "genotype_batch_size": int,
                                        "only_files": bool})
 
 

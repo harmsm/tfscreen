@@ -335,3 +335,144 @@ class TestPredictGrowthCheckpointInput:
                            out_prefix=str(tmp_path / "out"))
 
         assert predict_calls["q_to_get"] is None
+
+
+# ---------------------------------------------------------------------------
+# Genotype batching
+# ---------------------------------------------------------------------------
+
+class TestPredictGrowthBatching:
+    """Tests for --genotype_batch_size batching logic."""
+
+    def _make_fake_predict(self, orchestrator):
+        """Return a fake predict that records every call and returns a DataFrame."""
+        all_calls = []
+
+        def fake_predict(**kwargs):
+            all_calls.append(dict(kwargs))
+            genotypes = kwargs.get("genotypes") or orchestrator.growth_df["genotype"].unique().tolist()
+            concs = kwargs.get("titrant_conc") or orchestrator.growth_df["titrant_conc"].unique().tolist()
+            rows = [{"genotype": g, "titrant_name": "IPTG", "titrant_conc": c,
+                     "q0.5": 10.0}
+                    for g in genotypes for c in concs]
+            return pd.DataFrame(rows)
+
+        return fake_predict, all_calls
+
+    def _patch_stack(self, mock_orchestrator, fake_predict):
+        return [
+            patch("tfscreen.tfmodel.scripts.predict_growth_cli.read_configuration",
+                  return_value=(mock_orchestrator, {})),
+            patch("tfscreen.tfmodel.scripts.predict_growth_cli.resolve_param_file",
+                  side_effect=lambda pf, orchestrator, op: pf),
+            patch("tfscreen.tfmodel.scripts.predict_growth_cli.predict",
+                  side_effect=fake_predict),
+        ]
+
+    def test_no_batching_when_batch_size_none(self, mock_orchestrator, tmp_path):
+        """genotype_batch_size=None → predict called exactly once."""
+        fake_predict, all_calls = self._make_fake_predict(mock_orchestrator)
+        patches = self._patch_stack(mock_orchestrator, fake_predict)
+        with patches[0], patches[1], patches[2]:
+            predict_growth("cfg.yaml", "post.h5",
+                           out_prefix=str(tmp_path / "out"),
+                           genotype_batch_size=None)
+        assert len(all_calls) == 1
+
+    def test_batch_size_larger_than_total_single_call(self, mock_orchestrator, tmp_path):
+        """genotype_batch_size > n_genotypes → still a single predict call."""
+        fake_predict, all_calls = self._make_fake_predict(mock_orchestrator)
+        patches = self._patch_stack(mock_orchestrator, fake_predict)
+        with patches[0], patches[1], patches[2]:
+            predict_growth("cfg.yaml", "post.h5",
+                           out_prefix=str(tmp_path / "out"),
+                           genotype_batch_size=1000)
+        assert len(all_calls) == 1
+
+    def test_batch_size_1_two_genotypes_two_calls(self, mock_orchestrator, tmp_path):
+        """genotype_batch_size=1 with 2 training genotypes → 2 predict calls."""
+        fake_predict, all_calls = self._make_fake_predict(mock_orchestrator)
+        patches = self._patch_stack(mock_orchestrator, fake_predict)
+        with patches[0], patches[1], patches[2]:
+            predict_growth("cfg.yaml", "post.h5",
+                           out_prefix=str(tmp_path / "out"),
+                           genotype_batch_size=1)
+        assert len(all_calls) == 2
+
+    def test_batch_each_call_gets_one_genotype(self, mock_orchestrator, tmp_path):
+        """With batch_size=1, each predict call receives exactly 1 genotype."""
+        fake_predict, all_calls = self._make_fake_predict(mock_orchestrator)
+        patches = self._patch_stack(mock_orchestrator, fake_predict)
+        with patches[0], patches[1], patches[2]:
+            predict_growth("cfg.yaml", "post.h5",
+                           out_prefix=str(tmp_path / "out"),
+                           genotype_batch_size=1)
+        for call in all_calls:
+            assert len(call["genotypes"]) == 1
+
+    def test_batch_covers_all_genotypes(self, mock_orchestrator, tmp_path):
+        """All training genotypes appear across the batched predict calls."""
+        fake_predict, all_calls = self._make_fake_predict(mock_orchestrator)
+        patches = self._patch_stack(mock_orchestrator, fake_predict)
+        with patches[0], patches[1], patches[2]:
+            predict_growth("cfg.yaml", "post.h5",
+                           out_prefix=str(tmp_path / "out"),
+                           genotype_batch_size=1)
+        seen = [call["genotypes"][0] for call in all_calls]
+        expected = mock_orchestrator.growth_df["genotype"].unique().tolist()
+        assert sorted(seen) == sorted(expected)
+
+    def test_batch_results_concatenated_in_csv(self, mock_orchestrator, tmp_path):
+        """Output CSV contains rows for every genotype across all batches."""
+        fake_predict, all_calls = self._make_fake_predict(mock_orchestrator)
+        patches = self._patch_stack(mock_orchestrator, fake_predict)
+        out = str(tmp_path / "out")
+        with patches[0], patches[1], patches[2]:
+            predict_growth("cfg.yaml", "post.h5",
+                           out_prefix=out,
+                           genotype_batch_size=1)
+        df = pd.read_csv(f"{out}.csv")
+        assert set(df["genotype"].unique()) == {"wt", "A1B"}
+
+    def test_batch_resolves_none_genotypes_from_orchestrator(self, mock_orchestrator, tmp_path):
+        """When genotypes would be None, batching resolves from orchestrator.growth_df."""
+        fake_predict, all_calls = self._make_fake_predict(mock_orchestrator)
+        patches = self._patch_stack(mock_orchestrator, fake_predict)
+        with patches[0], patches[1], patches[2]:
+            # No genotypes_file → genotypes=None without batching; with batching
+            # it must be resolved so the list can be split.
+            predict_growth("cfg.yaml", "post.h5",
+                           out_prefix=str(tmp_path / "out"),
+                           genotype_batch_size=1)
+        # Each call must have an explicit genotypes list, not None.
+        for call in all_calls:
+            assert call.get("genotypes") is not None
+
+    def test_batch_with_file_genotypes_splits_file_list(self, mock_orchestrator, tmp_path):
+        """When only_files=True and a genotypes file is given, batching splits the file list."""
+        gf = str(tmp_path / "genos.txt")
+        _write_lines(gf, ["wt", "A1B"])
+        fake_predict, all_calls = self._make_fake_predict(mock_orchestrator)
+        patches = self._patch_stack(mock_orchestrator, fake_predict)
+        with patches[0], patches[1], patches[2]:
+            predict_growth("cfg.yaml", "post.h5",
+                           genotypes_file=gf,
+                           only_files=True,
+                           out_prefix=str(tmp_path / "out"),
+                           genotype_batch_size=1)
+        assert len(all_calls) == 2
+        seen = [call["genotypes"][0] for call in all_calls]
+        assert sorted(seen) == ["A1B", "wt"]
+
+    def test_batch_in_training_data_correct_across_batches(self, mock_orchestrator, tmp_path):
+        """in_training_data column is correct for rows from all batches."""
+        fake_predict, _ = self._make_fake_predict(mock_orchestrator)
+        patches = self._patch_stack(mock_orchestrator, fake_predict)
+        out = str(tmp_path / "out")
+        with patches[0], patches[1], patches[2]:
+            predict_growth("cfg.yaml", "post.h5",
+                           out_prefix=out,
+                           genotype_batch_size=1)
+        df = pd.read_csv(f"{out}.csv")
+        # Both genotypes in training data → all rows should be in_training_data=1
+        assert (df["in_training_data"] == 1).all()

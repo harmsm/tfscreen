@@ -214,7 +214,6 @@ def test_read_binding_df_extra_pairs_dropped_with_warning(capsys):
     result = _read_binding_df(binding_df, growth_df=growth_df)
     captured = capsys.readouterr()
     assert "will be dropped" in captured.out
-    assert "M42I" in captured.out
 
     # Only the "wt" row should survive
     assert set(result["genotype"]) == {"wt"}
