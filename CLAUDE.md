@@ -267,7 +267,7 @@ Both grid CLIs import from `tfscreen.util.grid_utils` for run-name generation, J
 
 ### `process_raw` YAML
 
-`tfs-process-fastq` accepts a `run_config` argument that is passed to `LibraryManager`. It reads only the library genetics keys: `reading_frame`, `wt_seq`, `degen_sites`, `sub_libraries`, `expected_5p`, `expected_3p`, `library_combos`, `spiked_seqs`. All other keys are ignored.
+`tfs-process-fastq` accepts a `run_config` argument that is passed to `LibraryManager`. It reads only the library genetics keys: `reading_frame`, `wt_seq`, `degen_sites`, `tiles`, `expected_5p`, `expected_3p`, `tile_combos`, `spiked_seqs`. All other keys are ignored.
 
 **Recommended practice**: maintain one `run_config.yaml` per experiment and pass it to both `tfs-simulate` and `tfs-process-fastq` — no need for a separate file. Use `examples/process_raw/library_config.yaml` only when you need a minimal standalone library config (e.g. for processing real data without a matching simulation).
 

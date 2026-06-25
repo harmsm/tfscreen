@@ -20,10 +20,10 @@ degen_sites: |
 # ......nntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnnt......nntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnntnnt
 
 
-# sub_libraries groups contiguous degenerate positions that were cloned together.
-# '.' = wildtype; any other character defines a sub-library block.  Blocks must
+# tiles groups contiguous degenerate positions that were cloned together.
+# '.' = wildtype; any other character defines a tile block.  Blocks must
 # be contiguous (......111... ok; ....11.1... not ok).
-sub_libraries: |
+tiles: |
   ......111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111......222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222
 
 # Flanking sequences immediately upstream and downstream of the amplicon.
@@ -31,10 +31,10 @@ expected_5p: cgcgtggtgaaccag
 expected_3p: gtagaacgaagcggc
 
 # Which genotype classes to include in the library.  'single-x' = all
-# single-mutation variants in sub-library x.  'double-x-y' = all pairwise
-# combinations between sub-libraries x and y.  'double-x-x' = internal
-# doubles within sub-library x.
-library_combos: ["single-1", "single-2", "double-1-2"]
+# single-mutation variants in tile x.  'double-x-y' = all pairwise
+# combinations between tiles x and y.  'double-x-x' = internal
+# doubles within tile x.
+tile_combos: ["single-1", "single-2", "double-1-2"]
 
 # Control sequences (e.g. known variants) added as spikes.  Must be the same
 # length as wt_seq.
@@ -156,15 +156,15 @@ activity_mut_scale: 0.0
 # Experimental simulation parameters
 # ---------------------------------------------------------------------------
 
-# Number of transformants per sub-library.  Keys must match the characters in
-# library_combos (e.g. 'single-1', 'double-1-2') plus 'spiked'.
+# Number of transformants per tile combo.  Keys must match the entries in
+# tile_combos (e.g. 'single-1', 'double-1-2') plus 'spiked'.
 transform_sizes:
   single-1: 100_000
   single-2: 100_000
   double-1-2: 300_000
   spiked: 1000
 
-# Mixing ratio of sub-libraries in the pooled library.  Only the ratio matters.
+# Mixing ratio of tile combos in the pooled library.  Only the ratio matters.
 library_mixture:
   single-1: 100
   single-2: 100
@@ -234,7 +234,7 @@ seed: 12345
 # ---------------------------------------------------------------------------
 
 # If present, tfs-simulate also writes a binding CSV with per-genotype theta
-# curves.  titrant_name must match e_name in observable_calc_kwargs.
+# curves.  
 
 binding_data:
   genotype_params_file: hill_params.csv

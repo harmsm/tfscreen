@@ -8,7 +8,7 @@ will have simulated a synthetic high-throughput TF-library screen, fitted
 the hierarchical Bayesian model, and produced a full set of diagnostic
 plots and statistics.
 
-The example uses a small library (~600 genotypes across three sub-libraries)
+The example uses a small library (~600 genotypes across three tiles)
 so the full pipeline finishes in roughly 20–60 minutes on a laptop CPU or a
 few minutes on a GPU.
 

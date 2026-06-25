@@ -211,7 +211,7 @@ class FastqToCounts:
         self.expected_length = self._lm.expected_length
 
         # Get dna and amino acid sequences specified by library. These come out
-        # as dictionaries with sub-libraries as keys and sequences as values. 
+        # as dictionaries with tile combo keys and sequences as values.
         # dna_lib will look like:
         #    {"single-1":["atcga...","atccg...","atcgg...",...],...}. 
         # aa_lib will look like:

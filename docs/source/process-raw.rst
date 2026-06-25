@@ -29,7 +29,7 @@ Configuration File (run_config.yaml)
 
 ``tfs-process-fastq`` requires a ``run_config.yaml`` file describing the
 library of expected sequences. You can view or download an
-:download:`example run_config.yaml <run_config.yaml>` file. Expected fields:
+:download:`example run_config.yaml <../../examples/process_raw/library_config.yaml>` file. Expected fields:
 
 * ``reading_frame``: Amino acid reading frame offset (0, 1, or 2).
 * ``first_amplicon_residue``: Amino acid residue number for the first in-frame
@@ -37,15 +37,15 @@ library of expected sequences. You can view or download an
 * ``wt_seq``: The wildtype nucleic acid sequence.
 * ``degen_sites``: Degenerate codon pattern the same length as ``wt_seq``
   (e.g. ``NNT``, ``NNK``, or ``.`` for wildtype).
-* ``sub_libraries``: Contiguous blocks of library components cloned together.
+* ``tiles``: Contiguous blocks of library components cloned together.
   ``.`` indicates wildtype; each unique character besides ``.`` defines a
-  sub-library (blocks must be contiguous).
+  tile (blocks must be contiguous).
 * ``expected_5p`` / ``expected_3p``: Flanking sequences immediately upstream
   and downstream of the amplicon.
-* ``library_combos``: List of strings such as ``single-x`` or ``double-x-y``,
-  where ``x`` and ``y`` match characters in ``sub_libraries``. ``single-x``
-  specifies all single-mutation variants in sub-library ``x``; ``double-x-y``
-  specifies all pairwise combinations between sub-libraries ``x`` and ``y``.
+* ``tile_combos``: List of strings such as ``single-x`` or ``double-x-y``,
+  where ``x`` and ``y`` match characters in ``tiles``. ``single-x``
+  specifies all single-mutation variants in tile ``x``; ``double-x-y``
+  specifies all pairwise combinations between tiles ``x`` and ``y``.
 * ``spiked_seqs``: Specific nucleic acid sequences (not part of the combinatorial
   library) that should be identified as controls.
 
@@ -111,7 +111,7 @@ genotype across all samples, ready for hierarchical modelling.
 
   * ``sample`` *(index)* — unique identifier for each sequenced tube; used
     to match this row to a counts CSV file.
-  * ``library`` — name of the sub-library this sample belongs to. Genotypes
+  * ``library`` — name of the physical library this sample belongs to. Genotypes
     are filtered and frequency-normalised within each library.
   * ``sample_cfu`` — total colony-forming units (CFU) measured for this tube.
   * ``sample_cfu_std`` — standard deviation of ``sample_cfu``.
@@ -174,7 +174,7 @@ can be matched to the correct growth conditions.
 * ``sample_df``: Path to a CSV file describing the pre-split samples. Must
   contain a unique ``sample`` column plus:
 
-  * ``library`` — sub-library name (optional; defaults to ``default`` when
+  * ``library`` — physical library name (optional; defaults to ``default`` when
     absent, but must be consistent with the growth ``sample_df``).
   * ``replicate`` — replicate index; matched to the growth data.
   * ``condition_pre`` — pre-selection condition name; matched to the growth

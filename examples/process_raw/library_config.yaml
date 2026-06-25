@@ -25,18 +25,18 @@ wt_seq: gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatggcggagctgaattacattcccaac
 # Must be the same length as wt_seq.
 degen_sites: ......nntnnt.............................................................................................nntnnt.........................................................................................................
 
-# sub_libraries groups contiguous degenerate positions that were cloned together.
-# '.' = wildtype; any other character defines a sub-library block.  Blocks must
+# tiles groups contiguous degenerate positions that were cloned together.
+# '.' = wildtype; any other character defines a tile block.  Blocks must
 # be contiguous (......111... ok; ....11.1... not ok).
-sub_libraries: ......111111.............................................................................................222222.........................................................................................................
+tiles: ......111111.............................................................................................222222.........................................................................................................
 
 # Flanking sequences immediately upstream and downstream of the amplicon.
 expected_5p: cgcgtggtgaaccag
 expected_3p: gtagaacgaagcggc
 
 # Which genotype classes to include.  'single-x' = all single-mutation variants
-# in sub-library x.  'double-x-y' = all pairwise combinations between x and y.
-library_combos: ["single-1", "single-2", "double-1-2"]
+# in tile x.  'double-x-y' = all pairwise combinations between tiles x and y.
+tile_combos: ["single-1", "single-2", "double-1-2"]
 
 # Control sequences added as spikes.  Must be the same length as wt_seq.
 spiked_seqs:

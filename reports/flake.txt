@@ -234,7 +234,6 @@
 ./src/tfscreen/genetics/library_manager.py:82:1: W293 blank line contains whitespace
 ./src/tfscreen/genetics/library_manager.py:91:1: W293 blank line contains whitespace
 ./src/tfscreen/genetics/library_manager.py:94:1: W293 blank line contains whitespace
-./src/tfscreen/genetics/library_manager.py:124:1: W293 blank line contains whitespace
 ./src/tfscreen/genetics/library_manager.py:158:1: W293 blank line contains whitespace
 ./src/tfscreen/genetics/library_manager.py:159:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/genetics/library_manager.py:169:22: E231 missing whitespace after ','
@@ -250,23 +249,11 @@
 ./src/tfscreen/genetics/library_manager.py:254:36: E231 missing whitespace after ','
 ./src/tfscreen/genetics/library_manager.py:258:32: E231 missing whitespace after ','
 ./src/tfscreen/genetics/library_manager.py:258:46: E231 missing whitespace after ','
-./src/tfscreen/genetics/library_manager.py:264:1: W293 blank line contains whitespace
-./src/tfscreen/genetics/library_manager.py:268:1: W293 blank line contains whitespace
-./src/tfscreen/genetics/library_manager.py:269:82: W291 trailing whitespace
-./src/tfscreen/genetics/library_manager.py:270:84: W291 trailing whitespace
-./src/tfscreen/genetics/library_manager.py:271:26: W291 trailing whitespace
-./src/tfscreen/genetics/library_manager.py:274:1: W293 blank line contains whitespace
-./src/tfscreen/genetics/library_manager.py:281:1: W293 blank line contains whitespace
-./src/tfscreen/genetics/library_manager.py:282:51: W291 trailing whitespace
-./src/tfscreen/genetics/library_manager.py:286:1: W293 blank line contains whitespace
 ./src/tfscreen/genetics/library_manager.py:288:51: E231 missing whitespace after ','
 ./src/tfscreen/genetics/library_manager.py:288:58: E231 missing whitespace after ','
 ./src/tfscreen/genetics/library_manager.py:288:70: E231 missing whitespace after ','
-./src/tfscreen/genetics/library_manager.py:291:1: W293 blank line contains whitespace
-./src/tfscreen/genetics/library_manager.py:296:1: W293 blank line contains whitespace
-./src/tfscreen/genetics/library_manager.py:298:1: W293 blank line contains whitespace
-./src/tfscreen/genetics/library_manager.py:300:51: E231 missing whitespace after ','
-./src/tfscreen/genetics/library_manager.py:300:100: E231 missing whitespace after ','
+./src/tfscreen/genetics/library_manager.py:300:48: E231 missing whitespace after ','
+./src/tfscreen/genetics/library_manager.py:300:94: E231 missing whitespace after ','
 ./src/tfscreen/genetics/library_manager.py:307:35: E231 missing whitespace after ','
 ./src/tfscreen/genetics/library_manager.py:309:1: W293 blank line contains whitespace
 ./src/tfscreen/genetics/library_manager.py:310:49: W291 trailing whitespace
@@ -277,9 +264,6 @@
 ./src/tfscreen/genetics/library_manager.py:318:30: E701 multiple statements on one line (colon)
 ./src/tfscreen/genetics/library_manager.py:321:1: W293 blank line contains whitespace
 ./src/tfscreen/genetics/library_manager.py:324:18: E128 continuation line under-indented for visual indent
-./src/tfscreen/genetics/library_manager.py:357:1: W293 blank line contains whitespace
-./src/tfscreen/genetics/library_manager.py:361:1: W293 blank line contains whitespace
-./src/tfscreen/genetics/library_manager.py:364:1: W293 blank line contains whitespace
 ./src/tfscreen/genetics/library_manager.py:373:1: W293 blank line contains whitespace
 ./src/tfscreen/genetics/library_manager.py:378:1: W293 blank line contains whitespace
 ./src/tfscreen/genetics/library_manager.py:380:1: W293 blank line contains whitespace
@@ -1016,7 +1000,6 @@
 ./src/tfscreen/process_raw/fastq_to_counts.py:204:42: E127 continuation line over-indented for visual indent
 ./src/tfscreen/process_raw/fastq_to_counts.py:207:42: E127 continuation line over-indented for visual indent
 ./src/tfscreen/process_raw/fastq_to_counts.py:208:1: W293 blank line contains whitespace
-./src/tfscreen/process_raw/fastq_to_counts.py:214:78: W291 trailing whitespace
 ./src/tfscreen/process_raw/fastq_to_counts.py:216:70: W291 trailing whitespace
 ./src/tfscreen/process_raw/fastq_to_counts.py:219:76: W291 trailing whitespace
 ./src/tfscreen/process_raw/fastq_to_counts.py:220:40: W291 trailing whitespace
@@ -4394,13 +4377,12 @@
 ./tests/tfscreen/genetics/test_library_manager.py:117:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/genetics/test_library_manager.py:124:44: E261 at least two spaces before inline comment
 ./tests/tfscreen/genetics/test_library_manager.py:127:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/genetics/test_library_manager.py:144:52: E261 at least two spaces before inline comment
+./tests/tfscreen/genetics/test_library_manager.py:144:45: E261 at least two spaces before inline comment
 ./tests/tfscreen/genetics/test_library_manager.py:153:1: W293 blank line contains whitespace
-./tests/tfscreen/genetics/test_library_manager.py:169:24: E231 missing whitespace after ':'
 ./tests/tfscreen/genetics/test_library_manager.py:173:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/genetics/test_library_manager.py:186:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/genetics/test_library_manager.py:191:27: E221 multiple spaces before operator
-./tests/tfscreen/genetics/test_library_manager.py:192:32: E221 multiple spaces before operator
+./tests/tfscreen/genetics/test_library_manager.py:193:26: E221 multiple spaces before operator
 ./tests/tfscreen/genetics/test_library_manager.py:198:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/genetics/test_library_manager.py:206:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/genetics/test_library_manager.py:211:39: E261 at least two spaces before inline comment
@@ -4408,7 +4390,7 @@
 ./tests/tfscreen/genetics/test_library_manager.py:223:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/genetics/test_library_manager.py:231:1: W293 blank line contains whitespace
 ./tests/tfscreen/genetics/test_library_manager.py:236:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/genetics/test_library_manager.py:241:50: E261 at least two spaces before inline comment
+./tests/tfscreen/genetics/test_library_manager.py:241:47: E261 at least two spaces before inline comment
 ./tests/tfscreen/genetics/test_library_manager.py:245:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/genetics/test_library_manager.py:257:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/genetics/test_library_manager.py:293:1: E302 expected 2 blank lines, found 1
@@ -4429,18 +4411,18 @@
 ./tests/tfscreen/genetics/test_library_manager.py:384:35: E261 at least two spaces before inline comment
 ./tests/tfscreen/genetics/test_library_manager.py:385:36: E261 at least two spaces before inline comment
 ./tests/tfscreen/genetics/test_library_manager.py:387:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/genetics/test_library_manager.py:390:36: E261 at least two spaces before inline comment
+./tests/tfscreen/genetics/test_library_manager.py:390:28: E261 at least two spaces before inline comment
 ./tests/tfscreen/genetics/test_library_manager.py:391:26: E222 multiple spaces after operator
 ./tests/tfscreen/genetics/test_library_manager.py:392:21: E222 multiple spaces after operator
 ./tests/tfscreen/genetics/test_library_manager.py:400:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/genetics/test_library_manager.py:403:38: E261 at least two spaces before inline comment
+./tests/tfscreen/genetics/test_library_manager.py:403:30: E261 at least two spaces before inline comment
 ./tests/tfscreen/genetics/test_library_manager.py:404:36: E114 indentation is not a multiple of 4 (comment)
 ./tests/tfscreen/genetics/test_library_manager.py:404:36: E116 unexpected indentation (comment)
 ./tests/tfscreen/genetics/test_library_manager.py:405:36: E114 indentation is not a multiple of 4 (comment)
 ./tests/tfscreen/genetics/test_library_manager.py:405:36: E116 unexpected indentation (comment)
 ./tests/tfscreen/genetics/test_library_manager.py:406:36: E114 indentation is not a multiple of 4 (comment)
 ./tests/tfscreen/genetics/test_library_manager.py:406:36: E116 unexpected indentation (comment)
-./tests/tfscreen/genetics/test_library_manager.py:407:39: E261 at least two spaces before inline comment
+./tests/tfscreen/genetics/test_library_manager.py:407:31: E261 at least two spaces before inline comment
 ./tests/tfscreen/genetics/test_library_manager.py:408:26: E222 multiple spaces after operator
 ./tests/tfscreen/genetics/test_library_manager.py:409:21: E222 multiple spaces after operator
 ./tests/tfscreen/genetics/test_library_manager.py:417:1: E302 expected 2 blank lines, found 1
@@ -7695,7 +7677,7 @@
 1833  E221 multiple spaces before operator
 26    E222 multiple spaces after operator
 8     E225 missing whitespace around operator
-1103  E231 missing whitespace after ','
+1102  E231 missing whitespace after ','
 103   E251 unexpected spaces around keyword / parameter equals
 14    E252 missing whitespace around parameter equals
 225   E261 at least two spaces before inline comment
@@ -7721,8 +7703,8 @@
 11    F541 f-string is missing placeholders
 4     F811 redefinition of unused 'np' from line 1
 41    F841 local variable 'e' is assigned to but never used
-643   W291 trailing whitespace
+638   W291 trailing whitespace
 86    W292 no newline at end of file
-1642  W293 blank line contains whitespace
+1630  W293 blank line contains whitespace
 30    W391 blank line at end of file
-7679
+7661
