@@ -476,3 +476,139 @@ class TestPredictGrowthBatching:
         df = pd.read_csv(f"{out}.csv")
         # Both genotypes in training data → all rows should be in_training_data=1
         assert (df["in_training_data"] == 1).all()
+
+
+# ---------------------------------------------------------------------------
+# Spiked-genotype augmentation during batching
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def mock_orchestrator_binding():
+    """Orchestrator with 'wt' as the only binding genotype (has theta_obs data)."""
+    orchestrator = MagicMock()
+    orchestrator.growth_df = _make_growth_df(["wt", "A1B"], [0.0, 1.0])
+    orchestrator.binding_df = pd.DataFrame({
+        "genotype": ["wt", "wt"],
+        "titrant_name": ["IPTG", "IPTG"],
+        "titrant_conc": [0.0, 1.0],
+        "theta_obs": [0.1, 0.9],
+        "theta_std": [0.01, 0.01],
+    })
+    return orchestrator
+
+
+class TestPredictGrowthBatchingSpiked:
+    """Tests for binding-genotype augmentation when batching."""
+
+    def _make_fake_predict(self, orchestrator):
+        all_calls = []
+
+        def fake_predict(**kwargs):
+            all_calls.append(dict(kwargs))
+            genotypes = kwargs.get("genotypes") or orchestrator.growth_df["genotype"].unique().tolist()
+            concs = kwargs.get("titrant_conc") or orchestrator.growth_df["titrant_conc"].unique().tolist()
+            rows = [{"genotype": g, "titrant_name": "IPTG", "titrant_conc": c,
+                     "q0.5": 10.0}
+                    for g in genotypes for c in concs]
+            return pd.DataFrame(rows)
+
+        return fake_predict, all_calls
+
+    def _patch_stack(self, orchestrator, fake_predict):
+        return [
+            patch("tfscreen.tfmodel.scripts.predict_growth_cli.read_configuration",
+                  return_value=(orchestrator, {})),
+            patch("tfscreen.tfmodel.scripts.predict_growth_cli.resolve_param_file",
+                  side_effect=lambda pf, orch, op: pf),
+            patch("tfscreen.tfmodel.scripts.predict_growth_cli.predict",
+                  side_effect=fake_predict),
+        ]
+
+    def test_binding_geno_added_to_batch_missing_it(self, mock_orchestrator_binding, tmp_path):
+        """The batch that doesn't contain 'wt' (binding genotype) gets it prepended."""
+        fake_predict, all_calls = self._make_fake_predict(mock_orchestrator_binding)
+        patches = self._patch_stack(mock_orchestrator_binding, fake_predict)
+        with patches[0], patches[1], patches[2]:
+            # batch_size=1 → batch1=["wt"], batch2=["A1B"]; "wt" must appear in batch2 call
+            predict_growth("cfg.yaml", "post.h5",
+                           out_prefix=str(tmp_path / "out"),
+                           genotype_batch_size=1)
+        assert len(all_calls) == 2
+        # batch2 is the "A1B" batch; "wt" (binding genotype) must be included
+        a1b_call = next(c for c in all_calls if "A1B" in c["genotypes"])
+        assert "wt" in a1b_call["genotypes"]
+
+    def test_binding_geno_rows_stripped_from_non_native_batch(self, mock_orchestrator_binding, tmp_path):
+        """Rows for extra binding genotypes are removed from the batch result."""
+        fake_predict, _ = self._make_fake_predict(mock_orchestrator_binding)
+        patches = self._patch_stack(mock_orchestrator_binding, fake_predict)
+        out = str(tmp_path / "out")
+        with patches[0], patches[1], patches[2]:
+            predict_growth("cfg.yaml", "post.h5",
+                           out_prefix=out,
+                           genotype_batch_size=1)
+        df = pd.read_csv(f"{out}.csv")
+        # "wt" should appear once per titrant_conc, not twice (no duplication)
+        wt_rows = df[df["genotype"] == "wt"]
+        expected_wt_rows = len(mock_orchestrator_binding.growth_df[
+            mock_orchestrator_binding.growth_df["genotype"] == "wt"
+        ]["titrant_conc"].unique())
+        assert len(wt_rows) == expected_wt_rows
+
+    def test_binding_geno_appears_exactly_once_in_output(self, mock_orchestrator_binding, tmp_path):
+        """Binding genotype rows appear exactly once in the final CSV."""
+        fake_predict, _ = self._make_fake_predict(mock_orchestrator_binding)
+        patches = self._patch_stack(mock_orchestrator_binding, fake_predict)
+        out = str(tmp_path / "out")
+        with patches[0], patches[1], patches[2]:
+            predict_growth("cfg.yaml", "post.h5",
+                           out_prefix=out,
+                           genotype_batch_size=1)
+        df = pd.read_csv(f"{out}.csv")
+        wt_rows = df[df["genotype"] == "wt"]
+        assert len(wt_rows) == wt_rows.drop_duplicates(
+            subset=["genotype", "titrant_name", "titrant_conc"]
+        ).shape[0]
+
+    def test_all_genotypes_present_in_output_with_binding(self, mock_orchestrator_binding, tmp_path):
+        """Both binding and library genotypes appear in the output CSV."""
+        fake_predict, _ = self._make_fake_predict(mock_orchestrator_binding)
+        patches = self._patch_stack(mock_orchestrator_binding, fake_predict)
+        out = str(tmp_path / "out")
+        with patches[0], patches[1], patches[2]:
+            predict_growth("cfg.yaml", "post.h5",
+                           out_prefix=out,
+                           genotype_batch_size=1)
+        df = pd.read_csv(f"{out}.csv")
+        assert set(df["genotype"].unique()) == {"wt", "A1B"}
+
+    def test_no_augmentation_when_no_binding_df(self, mock_orchestrator, tmp_path):
+        """When binding_df is a MagicMock (no real data), no augmentation happens."""
+        fake_predict, all_calls = self._make_fake_predict(mock_orchestrator)
+        patches = self._patch_stack(mock_orchestrator, fake_predict)
+        with patches[0], patches[1], patches[2]:
+            predict_growth("cfg.yaml", "post.h5",
+                           out_prefix=str(tmp_path / "out"),
+                           genotype_batch_size=1)
+        # Each call should get exactly the original batch (1 genotype), no augmentation
+        for call in all_calls:
+            assert len(call["genotypes"]) == 1
+
+    def test_binding_geno_not_in_requested_genotypes_still_augments(
+            self, mock_orchestrator_binding, tmp_path):
+        """Binding genotypes are added even when not in the user-requested list."""
+        gf = str(tmp_path / "genos.txt")
+        _write_lines(gf, ["A1B"])  # only the non-binding genotype
+        fake_predict, all_calls = self._make_fake_predict(mock_orchestrator_binding)
+        patches = self._patch_stack(mock_orchestrator_binding, fake_predict)
+        with patches[0], patches[1], patches[2]:
+            predict_growth("cfg.yaml", "post.h5",
+                           genotypes_file=gf,
+                           only_files=True,
+                           out_prefix=str(tmp_path / "out"),
+                           genotype_batch_size=1)
+        # Only 1 genotype in list → single call (no batching), but even if
+        # batched, "wt" would be added and stripped.  The CSV should only
+        # contain A1B rows.
+        df = pd.read_csv(f"{tmp_path / 'out'}.csv")
+        assert set(df["genotype"].unique()) == {"A1B"}

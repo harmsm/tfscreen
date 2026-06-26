@@ -113,6 +113,14 @@ def predict_growth(config_file,
     if genotype_batch_size is not None and genotypes is None:
         genotypes = list(orchestrator.growth_df["genotype"].unique())
 
+    # Binding genotypes (those with direct theta_obs measurements) must appear
+    # in every batch so the binding TensorManager is never empty.
+    try:
+        binding_genos = [str(g) for g in orchestrator.binding_df["genotype"].unique()]
+    except Exception:
+        binding_genos = []
+    binding_set = set(binding_genos)
+
     q_to_get = [0.5] if is_map else None
     print("Running growth predictions...", flush=True)
 
@@ -133,7 +141,19 @@ def predict_growth(config_file,
         batch_dfs = []
         for batch_idx, batch in enumerate(batches, 1):
             print(f"  Batch {batch_idx}/{n_batches} ({len(batch)} genotypes)...", flush=True)
-            batch_dfs.append(predict(**predict_kwargs, genotypes=batch))
+            # Binding genotypes (those with direct theta_obs measurements) must
+            # appear in every predict() call so the binding TensorManager is
+            # never empty.  Prepend any that are missing from this chunk, then
+            # strip their rows from the result so each binding genotype appears
+            # only once — in the batch where it falls naturally.
+            batch_set = set(batch)
+            extra_binding = [g for g in binding_genos if g not in batch_set]
+            run_genotypes = extra_binding + list(batch) if extra_binding else list(batch)
+            batch_df = predict(**predict_kwargs, genotypes=run_genotypes)
+            if extra_binding:
+                extra_set = set(extra_binding)
+                batch_df = batch_df[~batch_df["genotype"].isin(extra_set)].reset_index(drop=True)
+            batch_dfs.append(batch_df)
         result_df = pd.concat(batch_dfs, ignore_index=True)
     else:
         result_df = predict(**predict_kwargs, genotypes=genotypes)
