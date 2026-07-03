@@ -24,6 +24,14 @@ guide = congression.guide
 # Bake the theta_dist for the update function
 update_thetas = partial(congression.update_thetas, theta_dist="empirical")
 
+# The empirical background CDF is estimated from raw per-genotype theta
+# samples (see _congression._empirical_cdf), so it is only well-calibrated
+# when built from the full genotype population rather than a training
+# minibatch or a handful of requested genotypes.  jax_model uses this flag to
+# decide whether to compute (or expect an externally supplied)
+# population-wide theta reference before calling update_thetas.
+NEEDS_FULL_POPULATION_THETA = True
+
 
 def get_extract_specs(ctx):
     lam_df = pd.DataFrame({"parameter": ["lam"], "map_all": [0]})

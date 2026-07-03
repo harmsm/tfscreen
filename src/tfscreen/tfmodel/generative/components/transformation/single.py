@@ -32,10 +32,15 @@ def guide(name: str,
 def update_thetas(theta, params, mask=None):
     """
     Pass-through update_thetas for single transformation.
-    
+
     Returns theta unchanged.
     """
     return theta
+
+
+# No congression correction is applied at all in single-plasmid mode, so
+# there is nothing that needs a population-wide theta reference.
+NEEDS_FULL_POPULATION_THETA = False
 
 def get_hyperparameters():
     """

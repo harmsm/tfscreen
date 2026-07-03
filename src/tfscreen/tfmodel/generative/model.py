@@ -78,7 +78,8 @@ def jax_model(data: DataClass,
     ln_cfu0_model = control["ln_cfu0"]
     activity_model = control["activity"]
     dk_geno_model = control["dk_geno"]
-    transformation_model, transformation_update = control["transformation"]
+    transformation_model, transformation_update, transformation_needs_population = \
+        control["transformation"]
     theta_growth_noise_model = control["theta_growth_noise"]
     theta_rescale = control["theta_rescale"]
     growth_transition_model = control["growth_transition"]
@@ -144,9 +145,45 @@ def jax_model(data: DataClass,
     # theta_growth shape: (..., titrant_name, titrant_conc, geno) or scattered
     # Result broadcasts to interaction of (rep, pre) and (titrant)
     # Parameters passed as tuple
-    corr_theta_growth = transformation_update(theta_growth,
-                                              params=trans_params,
-                                              mask=data.growth.congression_mask)
+    if transformation_needs_population:
+        # The congression correction's background CDF must be estimated from
+        # the full genotype population, not whatever subset of genotypes is
+        # active in this particular forward pass (a training minibatch, or a
+        # handful of genotypes requested at prediction time) — see
+        # transformation/_congression.py::update_thetas.  When the caller
+        # hasn't supplied one explicitly (data.growth.external_theta_population),
+        # compute it locally by re-running calc_theta over every genotype.
+        # This is only correct when data.growth already spans the full
+        # population, which holds during SVI training (genotype minibatching
+        # never shrinks data.growth.num_genotype — see tensors/batch.py) but
+        # NOT for prediction code paths that subset genotypes; those must
+        # supply external_theta_population themselves.
+        if data.growth.external_theta_population is not None:
+            population_theta_growth = data.growth.external_theta_population
+        else:
+            # Deliberately leave scatter_theta untouched (rather than forcing
+            # it to 0) so population_theta_growth's leading (non-genotype)
+            # dimensions match theta_growth's exactly -- update_thetas relies
+            # on that alignment when broadcasting the correction back onto
+            # theta_growth's shape.
+            num_genotype = data.growth.num_genotype
+            full_population_idx = jnp.arange(num_genotype)
+            full_population_data = data.growth.replace(
+                batch_idx=full_population_idx,
+                geno_theta_idx=full_population_idx,
+            )
+            population_theta_growth = calc_theta(theta, full_population_data)
+
+        corr_theta_growth = transformation_update(
+            theta_growth,
+            params=trans_params,
+            mask=data.growth.congression_mask,
+            population_theta=population_theta_growth,
+        )
+    else:
+        corr_theta_growth = transformation_update(theta_growth,
+                                                  params=trans_params,
+                                                  mask=data.growth.congression_mask)
 
     noisy_theta_growth = theta_growth_noise_model("theta_growth_noise",
                                                   corr_theta_growth,

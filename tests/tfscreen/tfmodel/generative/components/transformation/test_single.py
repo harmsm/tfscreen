@@ -44,3 +44,9 @@ def test_update_thetas():
     # With different params
     res2 = transformation_single.update_thetas(theta, params=(100.0, 5.0, 0.1))
     assert jnp.array_equal(res2, theta)
+
+
+def test_needs_full_population_theta_flag():
+    """Single-plasmid mode applies no congression correction at all, so it
+    must not request a population-wide theta reference."""
+    assert transformation_single.NEEDS_FULL_POPULATION_THETA is False

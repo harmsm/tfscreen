@@ -13,6 +13,12 @@ def test_get_hyperparameters_mode():
     assert params["mode"] == "logit_norm"
 
 
+def test_needs_full_population_theta_flag():
+    """logit_norm's background CDF is the smooth analytic (mu, sigma) family,
+    not raw samples, so it must not request a population-wide theta reference."""
+    assert logit_norm.NEEDS_FULL_POPULATION_THETA is False
+
+
 def test_get_priors_mode():
     priors = logit_norm.get_priors()
     assert isinstance(priors, congression.ModelPriors)

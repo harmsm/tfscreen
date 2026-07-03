@@ -3,10 +3,17 @@ import pandas as pd
 import numpy as np
 import jax.numpy as jnp
 import numpyro.distributions as dist
+import warnings
 from unittest.mock import MagicMock, patch
 
 from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
-from tfscreen.tfmodel.analysis.prediction import copy_orchestrator, _convert_map_params, _align_site_to_tm_dims, predict
+from tfscreen.tfmodel.analysis.prediction import (
+    copy_orchestrator,
+    _convert_map_params,
+    _align_site_to_tm_dims,
+    _build_population_theta_reference,
+    predict,
+)
 
 @pytest.fixture
 def dummy_orchestrator():
@@ -496,3 +503,184 @@ class TestPredictPriorsPropagate:
             "calibration model) will be randomly re-sampled from the "
             "default prior, producing wildly incorrect predictions."
         )
+
+
+# ---------------------------------------------------------------------------
+# _build_population_theta_reference
+# ---------------------------------------------------------------------------
+
+class TestBuildPopulationThetaReference:
+
+    def test_returns_none_and_warns_when_theta_growth_pred_missing(self):
+        """MAP checkpoints store guide params, not deterministic sites, so
+        theta_growth_pred won't be present -- must warn and return None
+        rather than raising, so predict() can still run (without the fix)."""
+        with pytest.warns(UserWarning, match="theta_growth_pred"):
+            result = _build_population_theta_reference({"some_other_param": np.zeros((5,))})
+        assert result is None
+
+    def test_reduces_across_sample_axis_via_median(self):
+        """With more samples than max_samples, the result must be the median
+        over only the first max_samples draws, with the sample axis removed."""
+        # Shape (10, 2, 3): 10 samples, 2x3 spatial.
+        rng = np.random.default_rng(0)
+        theta_growth_pred = rng.uniform(size=(10, 2, 3))
+        fake_posteriors = {"theta_growth_pred": theta_growth_pred}
+
+        result = _build_population_theta_reference(fake_posteriors, max_samples=4)
+
+        expected = np.median(theta_growth_pred[:4], axis=0)
+        assert result.shape == (2, 3)
+        assert jnp.allclose(result, expected)
+
+    def test_uses_all_samples_when_fewer_than_max(self):
+        theta_growth_pred = np.arange(2 * 4).reshape(2, 4).astype(float)  # (2 samples, 4 genotypes)
+        fake_posteriors = {"theta_growth_pred": theta_growth_pred}
+
+        result = _build_population_theta_reference(fake_posteriors, max_samples=20)
+
+        expected = np.median(theta_growth_pred, axis=0)
+        assert jnp.allclose(result, expected)
+
+
+# ---------------------------------------------------------------------------
+# predict() threading of the population reference through genotype subsets
+# ---------------------------------------------------------------------------
+
+class TestPredictPopulationReferenceThreading:
+    """
+    Verify predict() builds a full-population theta reference and threads it
+    into pred_data whenever the configured transformation needs one (see
+    generative/model.py / transformation/_congression.py), and that a
+    genotype-subset request still gets a reference sized to the *true* full
+    population, not the requested subset -- this is the core mechanism that
+    fixes the wt/congression bug (predict() previously only ever saw whatever
+    genotype subset was requested).
+    """
+
+    def _capture_pred_data(self, mocker):
+        """Patch Predictive to record the `data` kwarg passed to it, without
+        changing its behavior."""
+        captured = {}
+        real_predictive_class = __import__(
+            "numpyro.infer", fromlist=["Predictive"]
+        ).Predictive
+
+        class CapturingPredictive:
+            def __init__(self, *args, **kwargs):
+                self._inner = real_predictive_class(*args, **kwargs)
+
+            def __call__(self, rng_key, **kwargs):
+                captured["data"] = kwargs.get("data")
+                return self._inner(rng_key, **kwargs)
+
+        mocker.patch(
+            "tfscreen.tfmodel.analysis.prediction.Predictive",
+            CapturingPredictive,
+        )
+        return captured
+
+    def _fake_posteriors_with_theta_growth_pred(self, orchestrator):
+        """Build a 1-sample fake posterior dict covering every latent sample
+        site (as in TestPredictPriorsPropagate) plus the theta_growth_pred
+        deterministic site, so _build_population_theta_reference has
+        something to read."""
+        from numpyro.handlers import seed, trace as nptrace
+
+        seeded = seed(orchestrator.jax_model, rng_seed=0)
+        model_tr = nptrace(seeded).get_trace(
+            data=orchestrator.data,
+            priors=orchestrator.priors,
+        )
+        fake_posteriors = {
+            name: np.zeros((1,) + site["value"].shape)
+            for name, site in model_tr.items()
+            if site["type"] == "sample" and not site.get("is_observed", False)
+        }
+        fake_posteriors["theta_growth_pred"] = np.asarray(
+            model_tr["theta_growth_pred"]["value"]
+        )[np.newaxis, ...]
+        return fake_posteriors
+
+    def test_genotype_subset_still_gets_full_population_sized_reference(
+            self, dummy_orchestrator, mocker):
+        """dummy_orchestrator defaults to theta='hill_geno',
+        transformation='empirical' (NEEDS_FULL_POPULATION_THETA=True).
+        Requesting a single genotype must still populate
+        pred_data.growth.external_theta_population with the FULL genotype
+        count (2 in this fixture), not 1."""
+        fake_posteriors = self._fake_posteriors_with_theta_growth_pred(dummy_orchestrator)
+        captured = self._capture_pred_data(mocker)
+
+        predict(
+            dummy_orchestrator,
+            fake_posteriors,
+            predict_sites=["growth_pred"],
+            num_samples=None,
+            genotypes=["wt"],
+        )
+
+        pred_data = captured["data"]
+        assert pred_data is not None
+        population = pred_data.growth.external_theta_population
+        assert population is not None
+
+        true_num_genotype = dummy_orchestrator.data.growth.num_genotype
+        assert population.shape[-1] == true_num_genotype
+        assert true_num_genotype > 1, (
+            "fixture must have more than one genotype for this test to be meaningful"
+        )
+
+    def test_no_population_reference_when_transformation_does_not_need_one(
+            self, mocker):
+        """With transformation='single' (NEEDS_FULL_POPULATION_THETA=False),
+        predict() must not build or thread a population reference at all --
+        pred_data.growth.external_theta_population must stay None, and no
+        'theta_growth_pred not found' warning should fire even when it truly
+        isn't in the posterior dict."""
+        growth_df = pd.DataFrame({
+            "library": ["lib"] * 4,
+            "genotype": ["wt", "wt", "M42V", "M42V"],
+            "titrant_name": ["tit1", "tit1", "tit1", "tit1"],
+            "titrant_conc": [0.0, 1.0, 0.0, 1.0],
+            "condition_pre": ["pre-1", "pre-1", "pre-1", "pre-1"],
+            "condition_sel": ["sel+1", "sel+1", "sel+1", "sel+1"],
+            "t_pre": [10.0, 10.0, 10.0, 10.0],
+            "t_sel": [0.0, 20.0, 0.0, 20.0],
+            "ln_cfu": [0.0, 5.0, 0.0, 3.0],
+            "ln_cfu_std": [0.1, 0.1, 0.1, 0.1],
+            "replicate": [1, 1, 1, 1],
+        })
+        binding_df = pd.DataFrame({
+            "genotype": ["wt", "M42V"],
+            "titrant_name": ["tit1", "tit1"],
+            "titrant_conc": [0.5, 0.5],
+            "theta_obs": [0.5, 0.2],
+            "theta_std": [0.01, 0.01],
+        })
+        single_orchestrator = ModelOrchestrator(growth_df, binding_df, transformation="single")
+
+        from numpyro.handlers import seed, trace as nptrace
+        seeded = seed(single_orchestrator.jax_model, rng_seed=0)
+        model_tr = nptrace(seeded).get_trace(
+            data=single_orchestrator.data, priors=single_orchestrator.priors,
+        )
+        fake_posteriors = {
+            name: np.zeros((1,) + site["value"].shape)
+            for name, site in model_tr.items()
+            if site["type"] == "sample" and not site.get("is_observed", False)
+        }
+
+        captured = self._capture_pred_data(mocker)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            predict(
+                single_orchestrator,
+                fake_posteriors,
+                predict_sites=["growth_pred"],
+                num_samples=None,
+                genotypes=["wt"],
+            )
+
+        assert captured["data"].growth.external_theta_population is None

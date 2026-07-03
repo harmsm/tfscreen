@@ -12,6 +12,12 @@ def test_get_hyperparameters_mode():
     assert params["mode"] == "empirical"
 
 
+def test_needs_full_population_theta_flag():
+    """Empirical mode's background CDF is built from raw genotype samples, so
+    it must request a population-wide theta reference from jax_model."""
+    assert empirical.NEEDS_FULL_POPULATION_THETA is True
+
+
 def test_get_priors_mode():
     priors = empirical.get_priors()
     assert isinstance(priors, congression.ModelPriors)

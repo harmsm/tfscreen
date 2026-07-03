@@ -84,11 +84,17 @@ def test_prediction_smoke(growth_smoke_csv,
     with pytest.raises(ValueError, match="is plated on .* and cannot be expanded"):
         
         # 4. Test categorical theta restriction (as requested)
-        # Create model with categorical theta
+        # Create model with categorical theta. transformation must be
+        # something other than the default "empirical": categorical_geno
+        # cannot supply the full-population theta reference "empirical"
+        # needs (see model_orchestrator._check_theta_transformation_compatibility),
+        # and that's a separate concern from the conc-expansion restriction
+        # this block is testing.
         model_cat = ModelOrchestrator(
             growth_df=growth_smoke_csv,
             binding_df=binding_smoke_csv,
-            theta="categorical_geno"
+            theta="categorical_geno",
+            transformation="logit_norm"
         )
         
         # Generate a valid posterior file for model_cat

@@ -114,6 +114,82 @@ def test_update_thetas_empirical_values():
 
 
 # -------------------------------------------------------------------------
+# population_theta: population-wide background CDF for empirical mode
+# -------------------------------------------------------------------------
+
+def test_update_thetas_population_theta_defaults_to_theta():
+    """Omitting population_theta must reproduce the pre-existing behaviour of
+    building the background CDF from theta itself (backward compatibility)."""
+    theta = jnp.array([[0.1, 0.5, 0.9]])
+    lam = 1.0
+    params = (lam,)
+
+    res_default = transformation_congression.update_thetas(
+        theta, params=params, theta_dist="empirical")
+    res_explicit_none = transformation_congression.update_thetas(
+        theta, params=params, theta_dist="empirical", population_theta=None)
+
+    assert jnp.allclose(res_default, res_explicit_none)
+
+
+def test_update_thetas_population_theta_changes_correction():
+    """A population_theta that differs from theta must change the correction:
+    the empirical CDF (and hence the congression-corrected values) should
+    reflect where theta falls in the *population*, not in itself."""
+    theta = jnp.array([[0.5, 0.5, 0.5]])
+    lam = 1.0
+    params = (lam,)
+
+    # theta is smack in the middle of a population that is itself centered
+    # at 0.5 -> minimal correction expected either way, so use an asymmetric
+    # population instead: one where 0.5 sits near the *bottom* of the range.
+    low_population = jnp.array([[0.4, 0.45, 0.5, 0.9, 0.95]])
+    high_population = jnp.array([[0.05, 0.1, 0.5, 0.55, 0.6]])
+
+    res_low_pop = transformation_congression.update_thetas(
+        theta, params=params, theta_dist="empirical", population_theta=low_population)
+    res_high_pop = transformation_congression.update_thetas(
+        theta, params=params, theta_dist="empirical", population_theta=high_population)
+
+    # Same theta, different reference populations -> different corrections.
+    assert not jnp.allclose(res_low_pop, res_high_pop)
+
+
+def test_update_thetas_population_theta_uses_own_shape_for_lambda_broadcast():
+    """population_theta may have a different (larger) trailing genotype
+    dimension than theta; the correction must still broadcast to theta's
+    shape without error, using population_theta's leading dims for lambda."""
+    theta = jnp.array([[0.2, 0.8]])          # (1, 2) — the "batch" being corrected
+    population_theta = jnp.linspace(0.0, 1.0, 50).reshape(1, 50)  # (1, 50) — full population
+    lam = 1.0
+    params = (lam,)
+
+    res = transformation_congression.update_thetas(
+        theta, params=params, theta_dist="empirical", population_theta=population_theta)
+
+    assert res.shape == theta.shape
+    assert jnp.all(jnp.isfinite(res))
+
+
+def test_update_thetas_population_theta_ignored_for_logit_norm():
+    """population_theta must be a no-op for logit_norm mode, which uses the
+    smooth analytic (mu, sigma) CDF rather than raw samples."""
+    theta = jnp.array([[0.1, 0.5, 0.9]])
+    lam = 1.0
+    mu = jnp.array([[0.0]])
+    sigma = jnp.array([[1.0]])
+    params = (lam, mu, sigma)
+
+    res_without = transformation_congression.update_thetas(
+        theta, params=params, theta_dist="logit_norm")
+    res_with = transformation_congression.update_thetas(
+        theta, params=params, theta_dist="logit_norm",
+        population_theta=jnp.array([[0.99, 0.99, 0.99]]))
+
+    assert jnp.allclose(res_without, res_with)
+
+
+# -------------------------------------------------------------------------
 # Model Interface
 # -------------------------------------------------------------------------
 

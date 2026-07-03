@@ -553,7 +553,66 @@ def _setup_batching(growth_genotypes,
     return out
 
 
-    
+# Theta components that cannot yet supply a full-population theta reference
+# for the "empirical" transformation's congression correction.  Unlike
+# hill_mut/hill_geno/thermo.*, which already assemble per-genotype parameters
+# for the full library on every forward pass (batching only gathers a subset
+# of an already-full-size ThetaParam), categorical_geno only ever samples
+# batch_size-worth of per-genotype offsets per call.  Wiring it up to
+# "empirical" would silently reproduce the population-CDF bug the
+# NEEDS_FULL_POPULATION_THETA mechanism exists to fix (see
+# transformation/_congression.py and generative/model.py), rather than
+# raising — so it's blocked explicitly here until categorical_geno gets its
+# own full-population code path.
+_THETA_MODELS_INCOMPATIBLE_WITH_EMPIRICAL = frozenset({"categorical_geno"})
+
+
+def _check_theta_transformation_compatibility(theta, transformation, binding_only=False):
+    """
+    Raise a clear error for known theta/transformation combinations that
+    would silently produce incorrect results rather than failing loudly.
+
+    Parameters
+    ----------
+    theta : str
+        Name of the requested theta component (model_registry["theta"] key).
+    transformation : str
+        Name of the requested transformation component
+        (model_registry["transformation"] key).
+    binding_only : bool, optional
+        Whether the model is being built in binding-only mode. In that mode
+        jax_model returns before ever touching the transformation/congression
+        code path (see generative/model.py's early `if binding_only: ...
+        return`), so the transformation setting is inert and this check does
+        not apply. Default False.
+
+    Raises
+    ------
+    ValueError
+        If `transformation == "empirical"` and `theta` is a component that
+        cannot supply a full-population theta reference for the congression
+        correction, and the model is not binding-only.
+    """
+    if binding_only:
+        return
+
+    if (transformation == "empirical"
+            and theta in _THETA_MODELS_INCOMPATIBLE_WITH_EMPIRICAL):
+        raise ValueError(
+            f"theta='{theta}' is not compatible with transformation='empirical'. "
+            "The empirical congression correction requires a theta reference "
+            f"covering the full genotype population, but '{theta}' only ever "
+            "assembles theta for the genotypes in the current batch/request "
+            "(see categorical_geno.define_model's batch_size-scoped "
+            "logit_theta_offset plate). Using it with transformation='empirical' "
+            "would silently reproduce the population-CDF bug this check exists "
+            "to prevent, rather than raise. Use transformation='single' or "
+            "'logit_norm' with this theta model, or choose a theta component "
+            "that already assembles full-population parameters (hill_geno, "
+            "hill_mut, or a thermo.* component)."
+        )
+
+
 class ModelOrchestrator:
     """
     Manages the data wrangling and configuration for the JAX growth model.
@@ -664,6 +723,10 @@ class ModelOrchestrator:
         self._epistasis = epistasis
         self._thermo_data = thermo_data
         self._binding_weight = binding_weight
+
+        _check_theta_transformation_compatibility(
+            self._theta, self._transformation, binding_only=self._binding_only
+        )
 
         self._initialize_data()
         self._initialize_classes()
@@ -1296,10 +1359,15 @@ class ModelOrchestrator:
                                              component_module.run_model,
                                              component_module.get_population_moments)
             elif key == "transformation":
-                main_control_kwargs[key] = (component_module.define_model, 
-                                            component_module.update_thetas)
-                guide_control_kwargs[key] = (component_module.guide, 
-                                             component_module.update_thetas)
+                needs_full_population = getattr(
+                    component_module, "NEEDS_FULL_POPULATION_THETA", False
+                )
+                main_control_kwargs[key] = (component_module.define_model,
+                                            component_module.update_thetas,
+                                            needs_full_population)
+                guide_control_kwargs[key] = (component_module.guide,
+                                             component_module.update_thetas,
+                                             needs_full_population)
             elif key == "condition_growth":
                 main_control_kwargs[key] = component_module.define_model
                 guide_control_kwargs[key] = component_module.guide

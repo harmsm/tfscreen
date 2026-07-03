@@ -169,78 +169,258 @@ def test_run_optimization_nan_explosion(mocker):
     with pytest.raises(RuntimeError, match="model exploded"):
         ri.run_optimization(mock_svi, max_num_epochs=1, convergence_check_interval=1, checkpoint_interval=1)
 
-def test_get_posteriors(tmpdir, mocker):
-    model = MockModel()
-    ri = RunInference(model, seed=42)
-    out_prefix = os.path.join(tmpdir, "test")
-    
-    mock_svi = mocker.Mock()
-    mock_svi.guide = mocker.Mock()
-    mock_svi.get_params.return_value = {}
-    
-    # Mock Predictive
-    mock_predictive = mocker.patch("tfscreen.tfmodel.inference.run_inference.Predictive")
-    mock_latent_sampler = mock_predictive.return_value
-    mock_latent_sampler.return_value = {"param": jnp.zeros((10, 10))} # Batch size 10, 10 genotypes
-    
-    mocker.patch("jax.device_get", side_effect=lambda x: x)
-    
-    ri.get_posteriors(mock_svi, "state", out_prefix, num_posterior_samples=20, sampling_batch_size=10)
-    
+# =============================================================================
+# get_posteriors — real model + component guide, no Predictive mocking
+# =============================================================================
+#
+# get_posteriors now runs its genotype-batch forward pass as a single
+# compiled `lax.scan` (see `_build_genotype_chunk_scanner` /
+# `_merge_scan_chunks` / `_genotype_chunk_indices` in run_inference.py)
+# instead of a Python loop that rebuilt `Predictive` once per chunk. Mocking
+# `Predictive` with a fixed call-count `side_effect` list (the old test
+# strategy) no longer reflects how the code calls it, so these tests run a
+# real tiny numpyro model + component guide end-to-end and check actual
+# numeric/index correctness instead.
+
+def _component_jax_model(data, priors):
+    """One global + one per-genotype parameter, plus a deterministic site
+    that echoes the genotype index — used to catch any genotype-order
+    scrambling introduced by batching/stitching."""
+    global_p = numpyro.sample("global_p", dist.Normal(0., 1.))
+    with numpyro.plate("shared_genotype_plate", data.num_genotype, dim=-1):
+        numpyro.sample("geno_p", dist.Normal(global_p, 1.))
+        numpyro.deterministic("geno_idx_check", data.batch_idx.astype(jnp.float32))
+
+
+def _component_jax_model_guide(data, priors):
+    """Mean-field guide matching `_component_jax_model`."""
+    global_loc = numpyro.param("global_loc", 0.0)
+    global_scale = numpyro.param("global_scale", 1.0,
+                                 constraint=dist.constraints.positive)
+    numpyro.sample("global_p", dist.Normal(global_loc, global_scale))
+
+    with numpyro.plate("shared_genotype_plate", data.num_genotype, dim=-1):
+        geno_loc = numpyro.param("geno_loc", jnp.zeros(data.num_genotype))
+        geno_scale = numpyro.param("geno_scale", jnp.ones(data.num_genotype),
+                                   constraint=dist.constraints.positive)
+        numpyro.sample("geno_p", dist.Normal(geno_loc, geno_scale))
+
+
+class ComponentModel:
+    """Minimal RunInference-compatible model wrapper with both a generative
+    model and a component (mean-field) guide, for exercising get_posteriors
+    end-to-end."""
+
+    def __init__(self, num_genotype=10):
+        self.data = LaplaceData(num_genotype=num_genotype,
+                                batch_idx=jnp.arange(num_genotype))
+        self.priors = {}
+        self.jax_model = _component_jax_model
+        self.jax_model_guide = _component_jax_model_guide
+
+    def get_batch(self, data, indices):
+        return LaplaceData(num_genotype=len(indices), batch_idx=indices)
+
+    def get_random_idx(self, key=None, num_batches=1):
+        if num_batches == 1:
+            return np.array([0])
+        return np.zeros((num_batches, 1), dtype=int)
+
+
+def _component_svi(model, seed=0):
+    """Initialize (but don't train) a component-guide SVI for `model`."""
+    ri = RunInference(model, seed=seed)
+    svi = ri.setup_svi(guide_type="component")
+    svi_state = svi.init(ri.get_key(), priors=model.priors, data=model.data)
+    return ri, svi, svi_state
+
+
+def test_get_posteriors_creates_h5(tmpdir):
+    model = ComponentModel(num_genotype=5)
+    ri, svi, svi_state = _component_svi(model)
+    out_prefix = str(tmpdir.join("post_create"))
+
+    ri.get_posteriors(svi, svi_state, out_prefix,
+                      num_posterior_samples=4, sampling_batch_size=4)
+
     assert os.path.exists(f"{out_prefix}_posterior.h5")
 
-def test_get_posteriors_batching_logic(tmpdir, mocker):
-    model = MockModel()
-    ri = RunInference(model, seed=42)
-    out_prefix = os.path.join(tmpdir, "test_batching")
-    
-    mock_svi = mocker.Mock()
-    mock_svi.guide = mocker.Mock()
-    mock_svi.get_params.return_value = {}
-    
-    # Mock Predictive to return different sizes
-    mock_predictive = mocker.patch("tfscreen.tfmodel.inference.run_inference.Predictive")
-    mock_sampler = mock_predictive.return_value
-    # num_samples=25, sampling_batch_size=10 -> 3 batches (10, 10, 5)
-    # Each loop has 1 latent call and 1 forward call (forward_batch_size=512 > 5 genotypes)
-    # Total 6 calls.
-    mock_sampler.side_effect = [
-        {"p": jnp.zeros((10, 5))}, # latent 1
-        {"obs": jnp.zeros((10, 5))}, # forward 1
-        {"p": jnp.zeros((10, 5))}, # latent 2
-        {"obs": jnp.zeros((10, 5))}, # forward 2
-        {"p": jnp.zeros((5, 5))},  # latent 3
-        {"obs": jnp.zeros((5, 5))}   # forward 3
-    ]
-    
-    mocker.patch("jax.device_get", side_effect=lambda x: x)
-    
-    ri.get_posteriors(mock_svi, "state", out_prefix, num_posterior_samples=25, sampling_batch_size=10)
-    assert os.path.exists(f"{out_prefix}_posterior.h5")
 
-def test_get_posteriors_full_logic(tmpdir, mocker):
-    model = MockModel()
-    ri = RunInference(model, seed=42)
-    out_prefix = os.path.join(tmpdir, "test_full")
-    
-    mock_svi = mocker.Mock()
-    mock_svi.get_params.return_value = {}
-    
-    # 465-466: global parameter
-    # 479-480: concatenate multiple forward batches (5 genotypes each)
-    mock_predictive = mocker.patch("tfscreen.tfmodel.inference.run_inference.Predictive")
-    mock_sampler = mock_predictive.return_value
-    mock_sampler.side_effect = [
-        {"global_p": jnp.zeros((1, 1)), "geno_p": jnp.zeros((1, 10))}, # latent 
-        {"obs": jnp.zeros((1, 5))}, # forward 1
-        {"obs": jnp.zeros((1, 5))}, # forward 2
-    ]
-    
-    mocker.patch("jax.device_get", side_effect=lambda x: x)
-    
-    ri.get_posteriors(mock_svi, "state", out_prefix, num_posterior_samples=1, 
-                     sampling_batch_size=1, forward_batch_size=5)
-    assert os.path.exists(f"{out_prefix}_posterior.h5")
+def test_get_posteriors_output_shapes(tmpdir):
+    num_genotype = 6
+    num_samples = 10
+    model = ComponentModel(num_genotype=num_genotype)
+    ri, svi, svi_state = _component_svi(model)
+    out_prefix = str(tmpdir.join("post_shapes"))
+
+    ri.get_posteriors(svi, svi_state, out_prefix,
+                      num_posterior_samples=num_samples, sampling_batch_size=4,
+                      forward_batch_size=num_genotype)
+
+    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
+        assert hf["global_p"].shape == (num_samples,)
+        assert hf["geno_p"].shape == (num_samples, num_genotype)
+        assert hf.attrs["num_samples"] == num_samples
+
+
+def test_get_posteriors_sampling_batch_uneven(tmpdir):
+    """num_posterior_samples not evenly divisible by sampling_batch_size."""
+    num_genotype = 4
+    num_samples = 7  # 7 = 3 + 3 + 1
+    model = ComponentModel(num_genotype=num_genotype)
+    ri, svi, svi_state = _component_svi(model)
+    out_prefix = str(tmpdir.join("post_uneven"))
+
+    ri.get_posteriors(svi, svi_state, out_prefix,
+                      num_posterior_samples=num_samples, sampling_batch_size=3,
+                      forward_batch_size=num_genotype)
+
+    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
+        assert hf.attrs["num_samples"] == num_samples
+        assert hf["geno_p"].shape[0] == num_samples
+
+
+def test_get_posteriors_sites_to_save(tmpdir):
+    model = ComponentModel(num_genotype=5)
+    ri, svi, svi_state = _component_svi(model)
+    out_prefix = str(tmpdir.join("post_filtered"))
+
+    ri.get_posteriors(svi, svi_state, out_prefix,
+                      num_posterior_samples=3, sampling_batch_size=3,
+                      sites_to_save=["geno_p"])
+
+    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
+        assert "geno_p" in hf
+        assert "global_p" not in hf
+
+
+def test_get_posteriors_genotype_order_preserved_full_batch(tmpdir):
+    """forward_batch_size == num_genotype (single, unpadded chunk)."""
+    num_genotype = 7
+    model = ComponentModel(num_genotype=num_genotype)
+    ri, svi, svi_state = _component_svi(model)
+    out_prefix = str(tmpdir.join("post_full"))
+
+    ri.get_posteriors(svi, svi_state, out_prefix,
+                      num_posterior_samples=4, sampling_batch_size=4,
+                      forward_batch_size=num_genotype)
+
+    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
+        idx_check = hf["geno_idx_check"][:]
+
+    expected = np.tile(np.arange(num_genotype), (4, 1))
+    np.testing.assert_array_equal(idx_check, expected)
+
+
+def test_get_posteriors_genotype_order_preserved_ragged_batches(tmpdir):
+    """forward_batch_size that doesn't evenly divide num_genotype must still
+    produce correctly-ordered, unpadded output.
+
+    Regression test for past genotype-index scrambling bugs in the
+    batching/stitching logic: 7 genotypes with forward_batch_size=3 forces
+    chunks of (3, 3, 1), internally padded to (3, 3, 3) and trimmed back by
+    `_merge_scan_chunks`.
+    """
+    num_genotype = 7
+    model = ComponentModel(num_genotype=num_genotype)
+    ri, svi, svi_state = _component_svi(model)
+    out_prefix = str(tmpdir.join("post_ragged"))
+
+    ri.get_posteriors(svi, svi_state, out_prefix,
+                      num_posterior_samples=3, sampling_batch_size=3,
+                      forward_batch_size=3)
+
+    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
+        idx_check = hf["geno_idx_check"][:]
+        geno_p = hf["geno_p"][:]
+
+    expected = np.tile(np.arange(num_genotype), (3, 1))
+    np.testing.assert_array_equal(idx_check, expected)
+    assert geno_p.shape == (3, num_genotype)
+
+
+def test_get_posteriors_chunking_matches_unchunked_latents(tmpdir):
+    """Sampled latent values (geno_p, global_p) must be identical regardless
+    of forward_batch_size: latents are drawn once on the full dataset before
+    genotype chunking even starts, and (since RNG consumption inside
+    get_posteriors no longer depends on forward_batch_size) the two runs
+    draw from identical PRNG streams."""
+    num_genotype = 9
+
+    model_a = ComponentModel(num_genotype=num_genotype)
+    ri_a, svi_a, state_a = _component_svi(model_a, seed=11)
+    out_a = str(tmpdir.join("post_a"))
+    ri_a.get_posteriors(svi_a, state_a, out_a,
+                        num_posterior_samples=2, sampling_batch_size=2,
+                        forward_batch_size=num_genotype)
+
+    model_b = ComponentModel(num_genotype=num_genotype)
+    ri_b, svi_b, state_b = _component_svi(model_b, seed=11)
+    out_b = str(tmpdir.join("post_b"))
+    ri_b.get_posteriors(svi_b, state_b, out_b,
+                        num_posterior_samples=2, sampling_batch_size=2,
+                        forward_batch_size=4)  # ragged: chunks of 4, 4, 1
+
+    with h5py.File(f"{out_a}_posterior.h5", "r") as hf_a, \
+         h5py.File(f"{out_b}_posterior.h5", "r") as hf_b:
+        np.testing.assert_allclose(hf_a["geno_p"][:], hf_b["geno_p"][:], rtol=1e-5)
+        np.testing.assert_allclose(hf_a["global_p"][:], hf_b["global_p"][:], rtol=1e-5)
+
+
+# =============================================================================
+# _genotype_chunk_indices / _merge_scan_chunks — pure indexing-math tests
+# =============================================================================
+
+def test_genotype_chunk_indices_exact_divisor():
+    idx = np.asarray(RunInference._genotype_chunk_indices(6, 3))
+    np.testing.assert_array_equal(idx, [[0, 1, 2], [3, 4, 5]])
+
+
+def test_genotype_chunk_indices_padding_repeats_last_valid_index():
+    idx = np.asarray(RunInference._genotype_chunk_indices(7, 3))
+    np.testing.assert_array_equal(idx, [[0, 1, 2], [3, 4, 5], [6, 6, 6]])
+
+
+def test_genotype_chunk_indices_single_chunk_smaller_than_batch():
+    idx = np.asarray(RunInference._genotype_chunk_indices(2, 5))
+    np.testing.assert_array_equal(idx, [[0, 1, 1, 1, 1]])
+
+
+def test_merge_scan_chunks_positive_axis_no_padding():
+    # 2 chunks, per-chunk shape (samples=2, genotypes=3), genotype axis=1
+    chunk0 = jnp.array([[0., 1., 2.], [10., 11., 12.]])
+    chunk1 = jnp.array([[3., 4., 5.], [13., 14., 15.]])
+    stacked = jnp.stack([chunk0, chunk1], axis=0)  # (2, 2, 3)
+
+    merged = RunInference._merge_scan_chunks(stacked, axis=1, total_size=6)
+
+    expected = jnp.array([[0., 1., 2., 3., 4., 5.],
+                          [10., 11., 12., 13., 14., 15.]])
+    np.testing.assert_allclose(np.asarray(merged), np.asarray(expected))
+
+
+def test_merge_scan_chunks_trims_padding():
+    # total real genotypes = 5, forward_batch_size=3 -> chunks (0,1,2),(3,4,4)
+    chunk0 = jnp.array([[0., 1., 2.]])
+    chunk1 = jnp.array([[3., 4., 4.]])  # last entry is padding (duplicate of idx 4)
+    stacked = jnp.stack([chunk0, chunk1], axis=0)
+
+    merged = RunInference._merge_scan_chunks(stacked, axis=1, total_size=5)
+
+    expected = jnp.array([[0., 1., 2., 3., 4.]])
+    np.testing.assert_allclose(np.asarray(merged), np.asarray(expected))
+
+
+def test_merge_scan_chunks_negative_axis():
+    # genotype axis = -1 (last axis) of a per-chunk shape (samples, genotypes)
+    chunk0 = jnp.array([[0., 1.], [10., 11.]])
+    chunk1 = jnp.array([[2., 3.], [12., 13.]])
+    stacked = jnp.stack([chunk0, chunk1], axis=0)  # (2, 2, 2)
+
+    merged = RunInference._merge_scan_chunks(stacked, axis=-1, total_size=4)
+
+    expected = jnp.array([[0., 1., 2., 3.], [10., 11., 12., 13.]])
+    np.testing.assert_allclose(np.asarray(merged), np.asarray(expected))
 
 def test_run_optimization_restore(tmpdir, mocker):
     model = MockModel()
@@ -747,10 +927,16 @@ class LaplaceData:
 
 
 def _laplace_jax_model(data, priors):
-    """One global + one per-genotype parameter, no observations."""
+    """One global + one per-genotype parameter, no observations.
+
+    Also emits a deterministic site that echoes the genotype index, so
+    tests can directly verify genotype order survives forward-batching
+    (rather than just checking output shapes).
+    """
     global_p = numpyro.sample("global_p", dist.Normal(0., 1.))
     with numpyro.plate("shared_genotype_plate", data.num_genotype, dim=-1):
         numpyro.sample("geno_p", dist.Normal(global_p, 1.))
+        numpyro.deterministic("geno_idx_check", data.batch_idx.astype(jnp.float32))
 
 
 class LaplaceModel:
@@ -838,6 +1024,35 @@ def test_get_laplace_posteriors_forward_batching(tmpdir):
     with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
         assert hf["global_p"].shape == (num_samples,)
         assert hf["geno_p"].shape == (num_samples, num_genotype)
+
+
+def test_get_laplace_posteriors_genotype_order_preserved_ragged_batches(tmpdir):
+    """forward_batch_size that doesn't evenly divide num_genotype must still
+    produce correctly-ordered, unpadded output.
+
+    Regression test for the genotype-batch lax.scan stitching logic shared
+    with get_posteriors: 5 genotypes with forward_batch_size=2 forces chunks
+    of (2, 2, 1), internally padded to (2, 2, 2) and trimmed back.
+    """
+    num_genotype = 5
+    num_samples = 6
+    model = LaplaceModel(num_genotype=num_genotype)
+    ri, map_params = _laplace_map_params(model)
+
+    out_prefix = str(tmpdir.join("laplace_order"))
+    ri.get_laplace_posteriors(
+        map_params=map_params,
+        out_prefix=out_prefix,
+        num_posterior_samples=num_samples,
+        sampling_batch_size=num_samples,
+        forward_batch_size=2,
+    )
+
+    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
+        idx_check = hf["geno_idx_check"][:]
+
+    expected = np.tile(np.arange(num_genotype), (num_samples, 1))
+    np.testing.assert_array_equal(idx_check, expected)
 
 
 def test_get_laplace_posteriors_sampling_batching(tmpdir):
@@ -980,6 +1195,27 @@ def test_get_nuts_posteriors_forward_batching(tmpdir):
     with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
         assert hf["global_p"].shape == (num_samples,)
         assert hf["geno_p"].shape == (num_samples, num_genotype)
+
+
+def test_get_nuts_posteriors_genotype_order_preserved_ragged_batches(tmpdir):
+    """forward_batch_size that doesn't evenly divide num_genotype must still
+    produce correctly-ordered, unpadded output (same lax.scan stitching path
+    as get_posteriors / get_laplace_posteriors)."""
+    num_genotype = 7
+    num_samples = 5
+    model = LaplaceModel(num_genotype=num_genotype)
+    ri = RunInference(model, seed=0)
+    samples = _fake_mcmc_samples(num_samples, num_genotype)
+
+    out_prefix = str(tmpdir.join("nuts_order"))
+    ri.get_nuts_posteriors(samples, out_prefix=out_prefix,
+                           forward_batch_size=3)  # chunks of 3, 3, 1
+
+    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
+        idx_check = hf["geno_idx_check"][:]
+
+    expected = np.tile(np.arange(num_genotype), (num_samples, 1))
+    np.testing.assert_array_equal(idx_check, expected)
 
 
 def test_get_nuts_posteriors_num_samples_in_attrs(tmpdir):

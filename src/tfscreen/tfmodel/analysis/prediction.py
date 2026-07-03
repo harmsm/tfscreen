@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import itertools
+import warnings
 from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
 from tfscreen.tfmodel.inference.posteriors import load_posteriors, get_posterior_samples
 from tfscreen.tfmodel.tensors.batch import get_batch as _get_batch
@@ -241,6 +242,67 @@ def _convert_map_params(map_params, model_trace):
     return constrained
 
 
+def _build_population_theta_reference(param_posteriors, max_samples=20):
+    """
+    Build a single population-wide theta_growth reference for transformation
+    components whose congression correction needs one (see
+    transformation/_congression.py and generative/model.py).
+
+    Reads the ``theta_growth_pred`` deterministic site, which get_posteriors()
+    always stores at full genotype-population size regardless of any
+    genotype batching used during training or posterior sampling (unlike a
+    fresh forward pass through a genotype-subsetted orchestrator, which only
+    ever sees the requested subset -- see copy_orchestrator()).
+
+    Reduces across a small number of posterior draws (median) rather than
+    threading the full posterior sample axis through this call: the
+    population reference only needs to characterize the theta *distribution*
+    across genotypes for the congression correction, not track each specific
+    joint posterior draw, and this keeps the one-time cost independent of
+    both ``num_marginal_samples`` and the number of stored posterior draws.
+
+    Parameters
+    ----------
+    param_posteriors : dict-like
+        Full (not genotype-subsetted) posterior samples, as returned by
+        load_posteriors().
+    max_samples : int, optional
+        Maximum number of posterior draws to read when computing the
+        median. Default 20.
+
+    Returns
+    -------
+    jnp.ndarray or None
+        Shape matches theta_growth_pred's stored shape with the leading
+        sample axis reduced away (typically (num_titrant_name,
+        num_titrant_conc, num_genotype), possibly with extra broadcast dims
+        from scatter_theta=1). None if theta_growth_pred is not present in
+        param_posteriors (e.g. a raw MAP checkpoint, which stores guide
+        parameters rather than deterministic site values).
+    """
+    try:
+        theta_growth_pred = get_posterior_samples(param_posteriors, "theta_growth_pred")
+    except KeyError:
+        warnings.warn(
+            "The configured transformation component needs a population-wide "
+            "theta reference for its congression correction, but "
+            "'theta_growth_pred' was not found in param_posteriors (expected "
+            "for raw MAP checkpoints, which only store guide parameters, not "
+            "deterministic site values). Falling back to no population "
+            "reference; predictions may reproduce the population-CDF bug this "
+            "mechanism exists to avoid. Run tfs-sample-posterior to generate "
+            "a full posterior file instead.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return None
+
+    n_available = theta_growth_pred.shape[0]
+    n_use = min(max_samples, n_available)
+    theta_growth_pred = np.asarray(theta_growth_pred[:n_use])
+    return jnp.asarray(np.median(theta_growth_pred, axis=0))
+
+
 def predict(orchestrator,
             param_posteriors,
             predict_sites=None,
@@ -302,9 +364,25 @@ def predict(orchestrator,
 
     if predict_sites is None:
         predict_sites = ["growth_pred"]
-    
+
     if isinstance(predict_sites, str):
         predict_sites = [predict_sites]
+
+    # Some transformation components (currently just "empirical") correct
+    # theta using a background CDF that must be estimated from the *full*
+    # genotype population, not whatever subset of genotypes this call
+    # happens to request (see generative/model.py and
+    # transformation/_congression.py). Build that reference once, up front,
+    # from the full-population posterior -- never from new_orchestrator,
+    # which copy_orchestrator() below rebuilds scoped to just the requested
+    # genotypes.
+    transformation_control = orchestrator.main_control_kwargs.get("transformation")
+    transformation_needs_population = (
+        bool(transformation_control[2]) if transformation_control is not None else False
+    )
+    external_theta_population = None
+    if transformation_needs_population:
+        external_theta_population = _build_population_theta_reference(param_posteriors)
 
     # Create the expanded prediction model, subsetting genotypes if requested.
     # Passing genotypes to copy_orchestrator ensures the new orchestrator's TM
@@ -435,6 +513,13 @@ def predict(orchestrator,
     num_geno = new_orchestrator.data.growth.num_genotype
     all_indices = jnp.arange(num_geno, dtype=jnp.int32)
     pred_data = _get_batch(new_orchestrator.data, all_indices)
+
+    if external_theta_population is not None:
+        pred_data = pred_data.replace(
+            growth=pred_data.growth.replace(
+                external_theta_population=external_theta_population
+            )
+        )
 
     # Use the ORIGINAL orchestrator's priors so that any pinned hyperpriors
     # (e.g. activity_hyper_loc/activity_hyper_scale in the calibration model)

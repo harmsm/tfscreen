@@ -101,6 +101,18 @@ class GrowthData:
     struct_contact_pair_idx: Any = field(pytree_node=False, default=None)
     struct_contact_distances: Any = field(pytree_node=False, default=None)
 
+    # Precomputed theta at growth titrant concentrations for *every* genotype
+    # in the library (shape (num_titrant_name, num_titrant_conc, true_num_genotype)),
+    # used only by transformation components whose congression correction needs
+    # a population-wide reference distribution (see transformation/_congression.py).
+    # None (the default) tells `jax_model` to compute this locally from
+    # `data.growth` itself, which is only correct when `data.growth` already
+    # spans the full genotype population (true during SVI training, since
+    # genotype minibatching never shrinks `num_genotype`).  Prediction code
+    # paths that subset genotypes (e.g. `analysis.prediction.predict`) must
+    # supply this explicitly, computed against the true, unsubsetted library.
+    external_theta_population: Any = field(default=None)
+
 @dataclass(frozen=True)
 class BindingData:
 

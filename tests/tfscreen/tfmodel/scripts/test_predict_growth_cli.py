@@ -29,10 +29,19 @@ def _write_lines(path, lines):
         fh.write("\n".join(str(x) for x in lines) + "\n")
 
 
+def _fake_load_posteriors(param_file, q_to_get=None):
+    """Fake for load_posteriors: (q_dict, posteriors) with a known sample count."""
+    return {}, {"param1": np.zeros((10, 1))}
+
+
 @pytest.fixture
 def mock_orchestrator():
     orchestrator = MagicMock()
     orchestrator.growth_df = _make_growth_df(["wt", "A1B"], [0.0, 1.0])
+    # tensor_shape's last dim is genotype count (2); other axes product = 1.
+    # Needed by estimate_genotype_batch_size, which auto-sizing now calls
+    # whenever genotype_batch_size is left at its default of None.
+    orchestrator.growth_tm.tensor_shape = (1, 1, 1, 1, 1, 1, 2)
     return orchestrator
 
 
@@ -62,6 +71,10 @@ def mock_predict(mock_orchestrator):
         "tfscreen.tfmodel.scripts"
         ".predict_growth_cli.predict",
         side_effect=fake_predict,
+    ), patch(
+        "tfscreen.tfmodel.scripts"
+        ".predict_growth_cli.load_posteriors",
+        side_effect=_fake_load_posteriors,
     ):
         yield calls
 
@@ -73,8 +86,12 @@ def mock_predict(mock_orchestrator):
 class TestPredictGrowthDefaults:
 
     def test_no_files_passes_none_genotypes(self, mock_predict, tmp_path):
+        """genotypes is resolved to the full training list (not None), since
+        auto-sizing (the default when genotype_batch_size is unset) needs an
+        explicit list to size batches against. Functionally equivalent to the
+        old None sentinel, which predict() also interprets as "all genotypes"."""
         predict_growth("cfg.yaml", "post.h5", out_prefix=str(tmp_path / "out"))
-        assert mock_predict["genotypes"] is None
+        assert sorted(mock_predict["genotypes"]) == ["A1B", "wt"]
 
     def test_no_files_passes_none_concs(self, mock_predict, tmp_path):
         predict_growth("cfg.yaml", "post.h5", out_prefix=str(tmp_path / "out"))
@@ -163,10 +180,13 @@ class TestPredictGrowthOnlyFiles:
         assert 1.0 not in mock_predict["titrant_conc"]
 
     def test_only_files_no_file_falls_through_to_none(self, mock_predict, tmp_path):
+        """With no genotypes_file, genotypes falls through to all training
+        genotypes (resolved to an explicit list for auto-sizing), same as the
+        old None-sentinel behavior predict() would have used anyway."""
         predict_growth("cfg.yaml", "post.h5",
                        only_files=True,
                        out_prefix=str(tmp_path / "out"))
-        assert mock_predict["genotypes"] is None
+        assert sorted(mock_predict["genotypes"]) == ["A1B", "wt"]
         assert mock_predict["titrant_conc"] is None
 
 
@@ -193,7 +213,7 @@ class TestPredictGrowthTitrantNamesFilter:
                        titrant_names_file=nf,
                        out_prefix=str(tmp_path / "out"))
         # titrant_names_file must not influence genotypes or concs passed to predict
-        assert mock_predict["genotypes"] is None
+        assert sorted(mock_predict["genotypes"]) == ["A1B", "wt"]
         assert mock_predict["titrant_conc"] is None
 
 
@@ -224,6 +244,11 @@ class TestPredictGrowthCheckpointInput:
                 ".predict_growth_cli.predict",
                 side_effect=fake_predict,
             ),
+            patch(
+                "tfscreen.tfmodel.scripts"
+                ".predict_growth_cli.load_posteriors",
+                side_effect=_fake_load_posteriors,
+            ),
         ]
 
     def test_pkl_param_file_calls_resolve(self, mock_orchestrator, tmp_path):
@@ -235,7 +260,7 @@ class TestPredictGrowthCheckpointInput:
             return "resolved.h5"
 
         patches = self._make_fixtures(mock_orchestrator)
-        with patches[0], patches[1], patch(
+        with patches[0], patches[1], patches[2], patch(
             "tfscreen.tfmodel.scripts"
             ".predict_growth_cli.resolve_param_file",
             side_effect=fake_resolve,
@@ -254,7 +279,7 @@ class TestPredictGrowthCheckpointInput:
             return pf
 
         patches = self._make_fixtures(mock_orchestrator)
-        with patches[0], patches[1], patch(
+        with patches[0], patches[1], patches[2], patch(
             "tfscreen.tfmodel.scripts"
             ".predict_growth_cli.resolve_param_file",
             side_effect=fake_resolve,
@@ -274,7 +299,7 @@ class TestPredictGrowthCheckpointInput:
                                   "titrant_conc": [0.0], "q0.5": [10.0]})
 
         patches = self._make_fixtures(mock_orchestrator)
-        with patches[0], patch(
+        with patches[0], patches[2], patch(
             "tfscreen.tfmodel.scripts"
             ".predict_growth_cli.predict",
             side_effect=fake_predict,
@@ -298,7 +323,7 @@ class TestPredictGrowthCheckpointInput:
                                  "titrant_conc": [0.0], "q0.5": [10.0]})
 
         patches = self._make_fixtures(mock_orchestrator)
-        with patches[0], patch(
+        with patches[0], patches[2], patch(
             "tfscreen.tfmodel.scripts"
             ".predict_growth_cli.predict",
             side_effect=fake_predict,
@@ -322,7 +347,7 @@ class TestPredictGrowthCheckpointInput:
                                  "titrant_conc": [0.0], "q0.5": [10.0]})
 
         patches = self._make_fixtures(mock_orchestrator)
-        with patches[0], patch(
+        with patches[0], patches[2], patch(
             "tfscreen.tfmodel.scripts"
             ".predict_growth_cli.predict",
             side_effect=fake_predict,
@@ -367,13 +392,15 @@ class TestPredictGrowthBatching:
                   side_effect=lambda pf, orchestrator, op: pf),
             patch("tfscreen.tfmodel.scripts.predict_growth_cli.predict",
                   side_effect=fake_predict),
+            patch("tfscreen.tfmodel.scripts.predict_growth_cli.load_posteriors",
+                  side_effect=_fake_load_posteriors),
         ]
 
     def test_no_batching_when_batch_size_none(self, mock_orchestrator, tmp_path):
         """genotype_batch_size=None → predict called exactly once."""
         fake_predict, all_calls = self._make_fake_predict(mock_orchestrator)
         patches = self._patch_stack(mock_orchestrator, fake_predict)
-        with patches[0], patches[1], patches[2]:
+        with patches[0], patches[1], patches[2], patches[3]:
             predict_growth("cfg.yaml", "post.h5",
                            out_prefix=str(tmp_path / "out"),
                            genotype_batch_size=None)
@@ -383,7 +410,7 @@ class TestPredictGrowthBatching:
         """genotype_batch_size > n_genotypes → still a single predict call."""
         fake_predict, all_calls = self._make_fake_predict(mock_orchestrator)
         patches = self._patch_stack(mock_orchestrator, fake_predict)
-        with patches[0], patches[1], patches[2]:
+        with patches[0], patches[1], patches[2], patches[3]:
             predict_growth("cfg.yaml", "post.h5",
                            out_prefix=str(tmp_path / "out"),
                            genotype_batch_size=1000)
@@ -393,7 +420,7 @@ class TestPredictGrowthBatching:
         """genotype_batch_size=1 with 2 training genotypes → 2 predict calls."""
         fake_predict, all_calls = self._make_fake_predict(mock_orchestrator)
         patches = self._patch_stack(mock_orchestrator, fake_predict)
-        with patches[0], patches[1], patches[2]:
+        with patches[0], patches[1], patches[2], patches[3]:
             predict_growth("cfg.yaml", "post.h5",
                            out_prefix=str(tmp_path / "out"),
                            genotype_batch_size=1)
@@ -403,7 +430,7 @@ class TestPredictGrowthBatching:
         """With batch_size=1, each predict call receives exactly 1 genotype."""
         fake_predict, all_calls = self._make_fake_predict(mock_orchestrator)
         patches = self._patch_stack(mock_orchestrator, fake_predict)
-        with patches[0], patches[1], patches[2]:
+        with patches[0], patches[1], patches[2], patches[3]:
             predict_growth("cfg.yaml", "post.h5",
                            out_prefix=str(tmp_path / "out"),
                            genotype_batch_size=1)
@@ -414,7 +441,7 @@ class TestPredictGrowthBatching:
         """All training genotypes appear across the batched predict calls."""
         fake_predict, all_calls = self._make_fake_predict(mock_orchestrator)
         patches = self._patch_stack(mock_orchestrator, fake_predict)
-        with patches[0], patches[1], patches[2]:
+        with patches[0], patches[1], patches[2], patches[3]:
             predict_growth("cfg.yaml", "post.h5",
                            out_prefix=str(tmp_path / "out"),
                            genotype_batch_size=1)
@@ -427,7 +454,7 @@ class TestPredictGrowthBatching:
         fake_predict, all_calls = self._make_fake_predict(mock_orchestrator)
         patches = self._patch_stack(mock_orchestrator, fake_predict)
         out = str(tmp_path / "out")
-        with patches[0], patches[1], patches[2]:
+        with patches[0], patches[1], patches[2], patches[3]:
             predict_growth("cfg.yaml", "post.h5",
                            out_prefix=out,
                            genotype_batch_size=1)
@@ -438,7 +465,7 @@ class TestPredictGrowthBatching:
         """When genotypes would be None, batching resolves from orchestrator.growth_df."""
         fake_predict, all_calls = self._make_fake_predict(mock_orchestrator)
         patches = self._patch_stack(mock_orchestrator, fake_predict)
-        with patches[0], patches[1], patches[2]:
+        with patches[0], patches[1], patches[2], patches[3]:
             # No genotypes_file → genotypes=None without batching; with batching
             # it must be resolved so the list can be split.
             predict_growth("cfg.yaml", "post.h5",
@@ -454,7 +481,7 @@ class TestPredictGrowthBatching:
         _write_lines(gf, ["wt", "A1B"])
         fake_predict, all_calls = self._make_fake_predict(mock_orchestrator)
         patches = self._patch_stack(mock_orchestrator, fake_predict)
-        with patches[0], patches[1], patches[2]:
+        with patches[0], patches[1], patches[2], patches[3]:
             predict_growth("cfg.yaml", "post.h5",
                            genotypes_file=gf,
                            only_files=True,
@@ -469,7 +496,7 @@ class TestPredictGrowthBatching:
         fake_predict, _ = self._make_fake_predict(mock_orchestrator)
         patches = self._patch_stack(mock_orchestrator, fake_predict)
         out = str(tmp_path / "out")
-        with patches[0], patches[1], patches[2]:
+        with patches[0], patches[1], patches[2], patches[3]:
             predict_growth("cfg.yaml", "post.h5",
                            out_prefix=out,
                            genotype_batch_size=1)

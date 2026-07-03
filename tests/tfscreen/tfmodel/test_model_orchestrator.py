@@ -15,6 +15,7 @@ from tfscreen.tfmodel.model_orchestrator import (
     _build_growth_tm,
     _build_binding_tm,
     _setup_batching,
+    _check_theta_transformation_compatibility,
     get_batch
 )
 from tfscreen.tfmodel.generative.components.growth.linear import _parse_condition_label
@@ -428,6 +429,115 @@ def test_initialize_classes_logic(mocker):
 
         model = ModelOrchestrator("g.csv", "b.csv", theta="categorical_geno", transformation="logit_norm", condition_growth="independent", growth_transition="instant")
         assert model._theta == "categorical_geno"
+
+
+@pytest.mark.parametrize("transformation_key, expected_needs_population", [
+    ("single", False),
+    ("logit_norm", False),
+    ("empirical", True),
+])
+def test_transformation_control_kwargs_carry_needs_population_flag(
+        mocker, transformation_key, expected_needs_population):
+    """
+    main_control_kwargs["transformation"] must be a 3-tuple whose third
+    element reflects the *real* transformation component's
+    NEEDS_FULL_POPULATION_THETA flag (empirical=True; single/logit_norm=False)
+    — this is the wiring jax_model relies on to decide whether it needs a
+    population-wide theta reference for the congression correction.
+    """
+    import tfscreen.tfmodel.generative.components.transformation as transformation_pkg
+
+    mock_growth_tm = create_mock_tm(is_growth=True)
+    mock_binding_tm = create_mock_tm(is_growth=False)
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._read_growth_df")
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._build_growth_tm", return_value=mock_growth_tm)
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._read_binding_df")
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._build_binding_tm", return_value=mock_binding_tm)
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._setup_batching", return_value={"batch_idx": jnp.array([0]), "batch_size": 1, "scale_vector": jnp.array([1.0]), "num_binding": 0})
+    mocker.patch("tfscreen.tfmodel.model_orchestrator.populate_dataclass", return_value=MagicMock())
+
+    real_transformation_module = getattr(transformation_pkg, transformation_key)
+
+    with patch.dict("tfscreen.tfmodel.model_orchestrator.model_registry", {
+        "condition_growth": {"independent": MagicMock()},
+        "growth_transition": {"instant": MagicMock()},
+        "ln_cfu0": {"hierarchical": MagicMock()},
+        "dk_geno": {"hierarchical_geno": MagicMock()},
+        "activity": {"horseshoe_geno": MagicMock()},
+        # Use a mocked "hill_geno" stand-in (not "categorical_geno") so this
+        # wiring test doesn't trip the real theta/transformation compatibility
+        # check exercised separately below.
+        "theta": {"hill_geno": MagicMock()},
+        "transformation": {transformation_key: real_transformation_module},
+        "theta_rescale": {"passthrough": MagicMock()},
+        "theta_growth_noise": {"logit_normal": MagicMock()},
+        "theta_binding_noise": {"zero": MagicMock()},
+        "growth_noise": {"zero": MagicMock()},
+        "sample_offset": {"zero": MagicMock()},
+        "observe_binding": MagicMock(),
+        "observe_growth": MagicMock()
+    }, clear=True):
+        for k in ["condition_growth", "growth_transition", "ln_cfu0", "dk_geno",
+                  "activity", "theta", "theta_growth_noise", "theta_binding_noise",
+                  "growth_noise", "sample_offset"]:
+            for sub_k in tfscreen.tfmodel.model_orchestrator.model_registry[k]:
+                tfscreen.tfmodel.model_orchestrator.model_registry[k][sub_k].get_priors.return_value = {}
+                tfscreen.tfmodel.model_orchestrator.model_registry[k][sub_k].get_guesses.return_value = {}
+
+        model = ModelOrchestrator(
+            "g.csv", "b.csv",
+            theta="hill_geno",
+            transformation=transformation_key,
+            condition_growth="independent",
+            growth_transition="instant",
+        )
+
+        transformation_control = model.main_control_kwargs["transformation"]
+        assert len(transformation_control) == 3
+        assert transformation_control[2] is expected_needs_population
+
+
+# ---------------------------------------------------------------------------
+# _check_theta_transformation_compatibility
+# ---------------------------------------------------------------------------
+
+def test_check_theta_transformation_compatibility_rejects_categorical_geno_empirical():
+    """categorical_geno cannot supply a full-population theta reference, so
+    pairing it with transformation='empirical' must raise, not silently
+    reproduce the population-CDF bug."""
+    with pytest.raises(ValueError, match="categorical_geno.*empirical|empirical.*categorical_geno"):
+        _check_theta_transformation_compatibility("categorical_geno", "empirical")
+
+
+@pytest.mark.parametrize("transformation_key", ["single", "logit_norm"])
+def test_check_theta_transformation_compatibility_allows_categorical_geno_elsewhere(
+        transformation_key):
+    """categorical_geno is fine with transformation models that don't need a
+    population-wide theta reference."""
+    _check_theta_transformation_compatibility("categorical_geno", transformation_key)
+
+
+@pytest.mark.parametrize("theta_key", ["hill_geno", "hill_mut", "some_thermo_variant"])
+def test_check_theta_transformation_compatibility_allows_other_theta_with_empirical(
+        theta_key):
+    """Any theta component other than the known-incompatible ones must be
+    allowed with transformation='empirical' (including forward-compatibility
+    with theta components this check has never heard of)."""
+    _check_theta_transformation_compatibility(theta_key, "empirical")
+
+
+def test_model_orchestrator_rejects_categorical_geno_with_empirical():
+    """
+    End-to-end: constructing a ModelOrchestrator with the incompatible pair
+    must raise before any data loading happens (no growth_df/binding_df I/O
+    needed for this to fire — "g.csv"/"b.csv" are never touched).
+    """
+    with pytest.raises(ValueError, match="categorical_geno"):
+        ModelOrchestrator(
+            "g.csv", "b.csv",
+            theta="categorical_geno",
+            transformation="empirical",
+        )
 
 
 def test_model_class_properties(initialized_model_class):

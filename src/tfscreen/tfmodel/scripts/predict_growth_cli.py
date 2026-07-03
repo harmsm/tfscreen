@@ -1,7 +1,9 @@
 import pandas as pd
 from tfscreen.tfmodel.configuration_io import read_configuration
 from tfscreen.tfmodel.inference.checkpoint_io import resolve_param_file
+from tfscreen.tfmodel.inference.posteriors import load_posteriors
 from tfscreen.tfmodel.analysis.prediction import predict
+from tfscreen.tfmodel.analysis.batch_sizing import estimate_genotype_batch_size
 from tfscreen.util.cli import generalized_main, read_lines
 
 
@@ -77,11 +79,12 @@ def predict_growth(config_file,
         Number of posterior samples to run through the model when computing
         quantiles. If None, all available samples are used.
     genotype_batch_size : int or None, optional
-        Maximum number of genotypes per predict() call. When set, the genotype
-        list is split into chunks of this size, each chunk is predicted
-        separately, and the results are concatenated. Reduces peak GPU memory
-        at the cost of one JAX re-compilation per batch. If None (default), all
-        genotypes are predicted in a single call.
+        Maximum number of genotypes per predict() call. The genotype list is
+        split into chunks of this size, each chunk is predicted separately,
+        and the results are concatenated. Reduces peak memory at the cost of
+        one JAX re-compilation per batch. If None (default), a batch size is
+        estimated automatically from the available device memory and the
+        per-genotype tensor cost; pass an explicit value to override.
     """
     file_genotypes = read_lines(genotypes_file) if genotypes_file else []
     titrant_names = read_lines(titrant_names_file) if titrant_names_file else None
@@ -108,10 +111,24 @@ def predict_growth(config_file,
         training_concs = list(orchestrator.growth_df["titrant_conc"].unique())
         titrant_concs = sorted(set(training_concs) | set(file_concs)) if file_concs else None
 
-    # When batching is requested and genotypes is still None (no file restriction),
-    # resolve the full list explicitly so it can be split into chunks.
-    if genotype_batch_size is not None and genotypes is None:
+    # Batching (manual or auto-sized) requires an explicit genotype list to
+    # split into chunks; resolve it when no file restriction narrowed it.
+    if genotypes is None:
         genotypes = list(orchestrator.growth_df["genotype"].unique())
+
+    if genotype_batch_size is None:
+        _, resolved_posteriors = load_posteriors(param_file, q_to_get=None)
+        first_key = next(iter(resolved_posteriors.keys()))
+        total_available = resolved_posteriors[first_key].shape[0]
+        n_for_quantiles = (total_available if num_marginal_samples is None
+                          else min(num_marginal_samples, total_available))
+        genotype_batch_size = estimate_genotype_batch_size(
+            orchestrator,
+            predict_sites=["growth_pred"],
+            num_marginal_samples=n_for_quantiles,
+        )
+        print(f"Auto-sized genotype_batch_size to {genotype_batch_size} "
+              f"genotypes based on available memory.", flush=True)
 
     # Binding genotypes (those with direct theta_obs measurements) must appear
     # in every batch so the binding TensorManager is never empty.
