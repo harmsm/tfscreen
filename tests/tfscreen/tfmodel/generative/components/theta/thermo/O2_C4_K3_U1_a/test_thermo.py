@@ -21,6 +21,7 @@ MockData = namedtuple("MockData", [
     "num_titrant_conc",
     "num_genotype",
     "titrant_conc",
+    "batch_idx",
     "geno_theta_idx",
     "scatter_theta",
 ])
@@ -35,6 +36,7 @@ def mock_data():
         num_titrant_conc=3,
         num_genotype=4,
         titrant_conc=jnp.array(_CONC, dtype=jnp.float32),
+        batch_idx=jnp.arange(4, dtype=jnp.int32),
         geno_theta_idx=jnp.arange(4, dtype=jnp.int32),
         scatter_theta=0,
     )
@@ -314,11 +316,13 @@ class TestRunModel:
     def test_uses_data_titrant_conc(self, theta_param):
         """run_model recomputes theta from data.titrant_conc, not stored moments."""
         MockDataSmall = namedtuple("MockDataSmall",
-                                   ["titrant_conc", "geno_theta_idx", "scatter_theta"])
+                                   ["titrant_conc", "batch_idx", "geno_theta_idx", "scatter_theta"])
         G = 4
         data_low  = MockDataSmall(jnp.array([0.0, 10.0]),
+                                  jnp.arange(G, dtype=jnp.int32),
                                   jnp.arange(G, dtype=jnp.int32), 0)
         data_high = MockDataSmall(jnp.array([500.0, 1000.0]),
+                                  jnp.arange(G, dtype=jnp.int32),
                                   jnp.arange(G, dtype=jnp.int32), 0)
         res_low  = run_model(theta_param, data_low)
         res_high = run_model(theta_param, data_high)
@@ -343,6 +347,45 @@ class TestRunModel:
         res_small = run_model(tp_small_U, mock_data)
         res_large = run_model(tp_large_U, mock_data)
         assert jnp.all(res_large < res_small)
+
+    def test_nontrivial_batch_idx_selects_correct_genotypes(self, mock_data):
+        """
+        With genotype minibatching, ``geno_theta_idx`` is always a local
+        arange (per ``get_batch``), while ``batch_idx`` holds the actual
+        global genotype indices selected for the batch. run_model must
+        compose ``batch_idx[geno_theta_idx]`` to index into the
+        full-population theta array — indexing by ``geno_theta_idx`` alone
+        silently selects the wrong (first-N-prefix) genotypes.
+        """
+        G_full = 6
+        T, C = mock_data.num_titrant_name, mock_data.num_titrant_conc
+        ln_K_op = jnp.linspace(0.0, 5.0, G_full)
+        ln_K_HL = jnp.linspace(-12.0, -6.0, G_full)
+        ln_K_E  = jnp.full((T, G_full), -4.0)
+        ln_K_U  = jnp.linspace(-15.0, -9.0, G_full)
+        tp_full = ThetaParam(
+            ln_K_op=ln_K_op, ln_K_HL=ln_K_HL, ln_K_E=ln_K_E, ln_K_U=ln_K_U,
+            tf_total=650.0, op_total=25.0,
+            mu=jnp.zeros((T, C, 1)), sigma=jnp.ones((T, C, 1)),
+        )
+
+        batch_idx = jnp.array([5, 1, 3], dtype=jnp.int32)
+        batch_data = mock_data._replace(
+            batch_idx=batch_idx,
+            geno_theta_idx=jnp.arange(len(batch_idx), dtype=jnp.int32),
+        )
+
+        result = run_model(tp_full, batch_data)   # (T, C, 3)
+
+        theta_all = _compute_theta(
+            tp_full.ln_K_op, tp_full.ln_K_HL, tp_full.ln_K_E, tp_full.ln_K_U,
+            batch_data.titrant_conc, tp_full.tf_total, tp_full.op_total,
+        )   # (T, C, G_full)
+
+        for local_i, global_g in enumerate(batch_idx):
+            assert jnp.allclose(result[:, :, local_i], theta_all[:, :, global_g], atol=1e-6)
+
+        assert not jnp.allclose(result[:, :, 0], theta_all[:, :, 0], atol=1e-6)
 
 
 # ---------------------------------------------------------------------------
