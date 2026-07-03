@@ -540,6 +540,21 @@ def test_model_orchestrator_rejects_categorical_geno_with_empirical():
         )
 
 
+def test_check_theta_transformation_compatibility_binding_only_skips_check():
+    """
+    In binding-only mode jax_model returns before ever reaching the
+    transformation/congression code path (see generative/model.py's early
+    `if binding_only: ... return`), so the transformation setting is inert
+    and categorical_geno + empirical must be allowed.  Regression test for
+    the smoke-test failure where tfs-configure-model's binding-only pipeline
+    (theta="categorical_geno", transformation left at its "empirical"
+    default) was incorrectly rejected by this check.
+    """
+    _check_theta_transformation_compatibility(
+        "categorical_geno", "empirical", binding_only=True
+    )
+
+
 def test_model_class_properties(initialized_model_class):
     model = initialized_model_class
     model._jax_model = "jm"
