@@ -293,6 +293,37 @@ seed: null
 #   noise: 0.02
 
 # ---------------------------------------------------------------------------
+# Base growth-rate calibration data (optional)
+# ---------------------------------------------------------------------------
+
+# If present, tfs-simulate also writes a base_growth CSV: direct
+# reference-condition growth-rate "measurements" for a subset of genotypes,
+# tied to the per-genotype dk_geno already assigned above and a shared
+# reference rate k_ref. Feeds tfs-configure-model's --base_growth_df, which
+# anchors the hierarchical model's dk_geno/condition_growth identifiability
+# (see CLAUDE.md).
+#
+# k_ref (required): the reference (wt) growth rate, hr^-1.
+# genotypes (optional, default ["wt"]): genotypes to include. Every genotype
+#   listed must already be part of the simulated library (tile_combos);
+#   'wt' is always force-included even if omitted. dk_geno is looked up
+#   from the value already assigned to that genotype -- never redrawn.
+# rates (optional): per-genotype explicit true-rate override, bypassing the
+#   k_ref + dk_geno calculation for that genotype. Every key must also
+#   appear in genotypes.
+# noise (optional, default 0.0): sigma of Gaussian noise added to the true
+#   rate to produce the observed rate; also reported as rate_std.
+#
+# base_growth_data:
+#   k_ref: 0.025
+#   genotypes:
+#     - wt
+#     - A47V
+#   rates:
+#     A47V: 0.018
+#   noise: 0.001
+
+# ---------------------------------------------------------------------------
 # Pre-split data simulation (optional)
 # ---------------------------------------------------------------------------
 
