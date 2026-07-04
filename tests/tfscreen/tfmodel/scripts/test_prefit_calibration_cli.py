@@ -685,6 +685,9 @@ class TestBuildCalibrationModel:
         # Overrides applied
         for k, v in _CALIBRATION_OVERRIDES.items():
             assert kwargs[k] == v
+        # dk_geno is handled conditionally (not via _CALIBRATION_OVERRIDES):
+        # production wasn't "pinned", so it's forced to "fixed".
+        assert kwargs["dk_geno"] == "fixed"
         # Spiked genotypes dropped (calibration only sees the intersection)
         assert kwargs["spiked_genotypes"] is None
         # batch_size pulled out of settings and passed positionally
@@ -696,6 +699,75 @@ class TestBuildCalibrationModel:
         # calibration MAP learns the binding→growth linkage without the
         # production upweighting drowning the binding signal.
         assert kwargs["binding_weight"] == 1.0
+
+    def test_dk_geno_pinned_carried_through_from_production(self):
+        """
+        If the production config pins specific genotypes' dk_geno, the
+        calibration model must keep "pinned" (and its pins file) instead of
+        forcing "fixed" — otherwise the known-nonzero genotypes would be
+        zeroed out along with everything else, defeating the point of
+        pinning them.
+        """
+        orchestrator_prod = MagicMock()
+        orchestrator_prod.settings = {
+            "theta": "categorical_geno",
+            "activity": "horseshoe_geno",
+            "dk_geno": "pinned",
+            "dk_geno_pins_file": "dk_geno_pins.csv",
+            "ln_cfu0": "fixed",
+            "transformation": "logit_norm",
+            "theta_growth_noise": "beta",
+            "theta_binding_noise": "beta",
+            "condition_growth": "linear",
+            "growth_transition": "instant",
+            "batch_size": None,
+            "spiked_genotypes": None,
+        }
+
+        with patch(
+            "tfscreen.tfmodel.scripts"
+            ".prefit_calibration_cli.ModelOrchestrator"
+        ) as MockGM:
+            MockGM.return_value = MagicMock()
+            _build_calibration_model(orchestrator_prod, pd.DataFrame(), pd.DataFrame())
+
+        kwargs = MockGM.call_args.kwargs
+        assert kwargs["dk_geno"] == "pinned"
+        assert kwargs["dk_geno_pins_file"] == "dk_geno_pins.csv"
+
+    def test_dk_geno_pins_file_dropped_when_not_pinned(self):
+        """
+        A stray dk_geno_pins_file left in production settings (e.g. from an
+        earlier config edit) must not leak into the calibration model when
+        dk_geno isn't "pinned" — ModelOrchestrator raises if a pins file is
+        given without dk_geno='pinned'.
+        """
+        orchestrator_prod = MagicMock()
+        orchestrator_prod.settings = {
+            "theta": "categorical_geno",
+            "activity": "horseshoe_geno",
+            "dk_geno": "hierarchical_geno",
+            "dk_geno_pins_file": "stale_pins.csv",
+            "ln_cfu0": "fixed",
+            "transformation": "logit_norm",
+            "theta_growth_noise": "beta",
+            "theta_binding_noise": "beta",
+            "condition_growth": "linear",
+            "growth_transition": "instant",
+            "batch_size": None,
+            "spiked_genotypes": None,
+        }
+
+        with patch(
+            "tfscreen.tfmodel.scripts"
+            ".prefit_calibration_cli.ModelOrchestrator"
+        ) as MockGM:
+            MockGM.return_value = MagicMock()
+            _build_calibration_model(orchestrator_prod, pd.DataFrame(), pd.DataFrame())
+
+        kwargs = MockGM.call_args.kwargs
+        assert kwargs["dk_geno"] == "fixed"
+        assert "dk_geno_pins_file" not in kwargs
 
     def test_binding_weight_reset_from_large_production_value(self):
         # Reproduces the weighting bug: production YAML stores a large

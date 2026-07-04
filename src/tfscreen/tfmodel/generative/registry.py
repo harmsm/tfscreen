@@ -14,6 +14,7 @@ from .components.ln_cfu0 import hierarchical_factored as ln_cfu0_factored
 
 from .components.dk_geno import fixed as dk_geno_fixed
 from .components.dk_geno import hierarchical_geno as dk_geno_hierarchical
+from .components.dk_geno import pinned as dk_geno_pinned
 
 from .components.activity import fixed as activity_fixed
 from .components.activity import hierarchical_geno as activity_hierarchical
@@ -70,6 +71,7 @@ model_registry = {
     "dk_geno":{
         "fixed":dk_geno_fixed,
         "hierarchical_geno":dk_geno_hierarchical,
+        "pinned":dk_geno_pinned,
     },
     "activity":{
         "fixed":activity_fixed,

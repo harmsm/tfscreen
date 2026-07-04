@@ -6231,9 +6231,9 @@
 ./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/PnnC.py:781:1: F401 'tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U0_a.thermo.compute_theta_samples' imported but unused
 ./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/PnnC.py:781:1: E402 module level import not at top of file
 ./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/thermo.py:181:7: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/thermo.py:268:10: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/thermo.py:298:40: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/thermo.py:366:17: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/thermo.py:269:10: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/thermo.py:299:40: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/thermo.py:367:17: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/PK.py:37:1: F401 'tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U1_a.thermo.run_model' imported but unused
 ./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/PK.py:37:1: F401 'tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U1_a.thermo.get_population_moments' imported but unused
 ./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/PK.py:175:6: E221 multiple spaces before operator
@@ -6513,12 +6513,12 @@
 ./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/PnnC.py:786:1: E402 module level import not at top of file
 ./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/thermo.py:104:8: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/thermo.py:155:7: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/thermo.py:229:8: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/thermo.py:245:10: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/thermo.py:275:40: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/thermo.py:335:17: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/thermo.py:352:15: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/thermo.py:359:15: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/thermo.py:230:8: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/thermo.py:246:10: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/thermo.py:276:40: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/thermo.py:336:17: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/thermo.py:353:15: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/thermo.py:360:15: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/PK.py:43:1: F401 'tfscreen.tfmodel.generative.components.theta.thermo.O2_C4_K3_U0_a.thermo.run_model' imported but unused
 ./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/PK.py:43:1: F401 'tfscreen.tfmodel.generative.components.theta.thermo.O2_C4_K3_U0_a.thermo.get_population_moments' imported but unused
 ./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/PK.py:236:31: E128 continuation line under-indented for visual indent
@@ -6703,16 +6703,16 @@
 ./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/thermo.py:142:9: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/thermo.py:143:6: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/thermo.py:165:7: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/thermo.py:233:8: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/thermo.py:236:7: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/thermo.py:237:6: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/thermo.py:242:10: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/thermo.py:248:9: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/thermo.py:249:6: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/thermo.py:274:40: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/thermo.py:341:17: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/thermo.py:355:15: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/thermo.py:360:15: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/thermo.py:234:8: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/thermo.py:237:7: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/thermo.py:238:6: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/thermo.py:243:10: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/thermo.py:249:9: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/thermo.py:250:6: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/thermo.py:275:40: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/thermo.py:342:17: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/thermo.py:356:15: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/thermo.py:361:15: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/PK.py:38:1: F401 'tfscreen.tfmodel.generative.components.theta.thermo.O2_C4_K3_U1_a.thermo.run_model' imported but unused
 ./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/PK.py:38:1: F401 'tfscreen.tfmodel.generative.components.theta.thermo.O2_C4_K3_U1_a.thermo.get_population_moments' imported but unused
 ./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/PK.py:160:18: E221 multiple spaces before operator
@@ -6966,19 +6966,19 @@
 ./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/thermo.py:126:9: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/thermo.py:127:6: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/thermo.py:144:7: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/thermo.py:210:8: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/thermo.py:211:8: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/thermo.py:214:7: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/thermo.py:215:6: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/thermo.py:220:10: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/thermo.py:226:9: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/thermo.py:227:6: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/thermo.py:248:40: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/thermo.py:308:17: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/thermo.py:322:15: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/thermo.py:212:8: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/thermo.py:215:7: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/thermo.py:216:6: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/thermo.py:221:10: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/thermo.py:227:9: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/thermo.py:228:6: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/thermo.py:249:40: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/thermo.py:309:17: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/thermo.py:323:15: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/thermo.py:327:15: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/thermo.py:324:15: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/thermo.py:328:15: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/thermo.py:329:15: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/theta/thermo/features.py:99:13: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/theta/thermo/features.py:110:40: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/theta/thermo/features.py:111:48: E221 multiple spaces before operator
@@ -7098,65 +7098,66 @@
 ./src/tfscreen/tfmodel/generative/observe/growth.py:87:1: W293 blank line contains whitespace
 ./src/tfscreen/tfmodel/generative/observe/growth.py:95:5: F841 local variable 'nu' is assigned to but never used
 ./src/tfscreen/tfmodel/generative/observe/growth.py:97:11: W292 no newline at end of file
-./src/tfscreen/tfmodel/generative/registry.py:57:29: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/registry.py:58:28: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/registry.py:61:23: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:62:17: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:63:16: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:64:21: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:66:14: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:67:23: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:68:32: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:70:14: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:71:16: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:72:28: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:74:15: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:75:16: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:76:28: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:77:25: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:78:27: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:79:24: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:81:21: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:86:20: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:90:12: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:91:18: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:92:27: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:93:20: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:94:19: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:95:34: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:96:36: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:97:36: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:98:34: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:58:29: W291 trailing whitespace
+./src/tfscreen/tfmodel/generative/registry.py:59:28: W291 trailing whitespace
+./src/tfscreen/tfmodel/generative/registry.py:62:23: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:63:17: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:64:16: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:65:21: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:67:14: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:68:23: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:69:32: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:71:14: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:72:16: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:73:28: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:74:17: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:76:15: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:77:16: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:78:28: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:79:25: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:80:27: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:81:24: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:83:21: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:88:20: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:92:12: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:93:18: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:94:27: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:95:20: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:96:19: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:97:34: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:98:36: E231 missing whitespace after ':'
 ./src/tfscreen/tfmodel/generative/registry.py:99:36: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:100:36: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:101:35: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:102:37: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:103:37: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:104:35: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:100:34: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:101:36: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:102:36: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:103:35: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:104:37: E231 missing whitespace after ':'
 ./src/tfscreen/tfmodel/generative/registry.py:105:37: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:106:37: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:108:25: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:109:15: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:110:15: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:111:23: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:113:26: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:114:15: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:115:15: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:117:19: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:118:15: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:119:20: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:106:35: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:107:37: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:108:37: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:110:25: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:111:15: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:112:15: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:113:23: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:115:26: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:116:15: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:117:15: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:119:19: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:120:15: E231 missing whitespace after ':'
 ./src/tfscreen/tfmodel/generative/registry.py:121:20: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:122:15: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:123:17: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:125:24: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:126:18: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:127:17: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:123:20: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:124:15: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:125:17: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:127:24: E231 missing whitespace after ':'
 ./src/tfscreen/tfmodel/generative/registry.py:128:18: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:129:20: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:130:22: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:131:18: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:133:22: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/generative/registry.py:134:21: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:129:17: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:130:18: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:131:20: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:132:22: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:133:18: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:135:22: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/generative/registry.py:136:21: E231 missing whitespace after ':'
 ./src/tfscreen/tfmodel/inference/posteriors.py:72:1: C901 'load_posteriors' is too complex (12)
 ./src/tfscreen/tfmodel/inference/posteriors.py:72:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/tfmodel/inference/posteriors.py:117:17: F841 local variable 'e' is assigned to but never used
@@ -7315,126 +7316,127 @@
 ./src/tfscreen/tfmodel/model_orchestrator.py:641:87: W291 trailing whitespace
 ./src/tfscreen/tfmodel/model_orchestrator.py:644:84: W291 trailing whitespace
 ./src/tfscreen/tfmodel/model_orchestrator.py:649:79: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:735:5: C901 'ModelOrchestrator._initialize_data' is too complex (17)
-./src/tfscreen/tfmodel/model_orchestrator.py:735:5: E303 too many blank lines (2)
-./src/tfscreen/tfmodel/model_orchestrator.py:760:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:761:28: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:763:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:764:35: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:764:48: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:764:56: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:765:46: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:765:66: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:766:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:770:39: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:771:34: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:776:67: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:783:32: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:785:10: E114 indentation is not a multiple of 4 (comment)
-./src/tfscreen/tfmodel/model_orchestrator.py:785:10: E116 unexpected indentation (comment)
-./src/tfscreen/tfmodel/model_orchestrator.py:787:76: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:790:45: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:792:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:794:49: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:806:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:814:57: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:836:38: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:837:41: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:837:56: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:838:44: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:838:60: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:839:40: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:839:58: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:840:46: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:840:71: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:842:77: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:849:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:854:39: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:854:45: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:854:53: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:861:40: E127 continuation line over-indented for visual indent
-./src/tfscreen/tfmodel/model_orchestrator.py:907:25: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/model_orchestrator.py:908:32: E127 continuation line over-indented for visual indent
-./src/tfscreen/tfmodel/model_orchestrator.py:909:26: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/model_orchestrator.py:910:32: E127 continuation line over-indented for visual indent
-./src/tfscreen/tfmodel/model_orchestrator.py:950:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:953:78: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:954:32: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:955:60: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:959:36: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:960:36: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:961:32: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:962:38: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:964:77: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:975:56: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:975:62: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:978:74: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:979:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:984:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:985:77: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:986:58: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:988:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:993:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:997:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1001:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1004:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1010:86: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:1012:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1019:77: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:1075:33: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1076:34: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1077:35: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1078:39: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1085:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1086:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1087:5: E303 too many blank lines (2)
-./src/tfscreen/tfmodel/model_orchestrator.py:1163:25: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/model_orchestrator.py:1164:31: E127 continuation line over-indented for visual indent
-./src/tfscreen/tfmodel/model_orchestrator.py:1166:31: E127 continuation line over-indented for visual indent
-./src/tfscreen/tfmodel/model_orchestrator.py:1239:5: C901 'ModelOrchestrator._initialize_classes' is too complex (17)
-./src/tfscreen/tfmodel/model_orchestrator.py:1259:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1261:67: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1262:71: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1264:68: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1265:77: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1266:75: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1267:40: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1284:42: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1285:43: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1286:40: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1286:43: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:1286:53: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1286:56: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:1286:64: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1355:75: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1358:69: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1379:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1381:9: E303 too many blank lines (2)
-./src/tfscreen/tfmodel/model_orchestrator.py:1434:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1439:5: E303 too many blank lines (2)
-./src/tfscreen/tfmodel/model_orchestrator.py:1453:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1463:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1473:75: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1487:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1490:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1519:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1531:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1543:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1549:25: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1550:27: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1551:31: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1552:32: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1553:22: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1554:22: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1555:23: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1556:20: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1557:29: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1558:28: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1559:33: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1560:34: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1561:27: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1562:28: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1563:31: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:750:5: C901 'ModelOrchestrator._initialize_data' is too complex (18)
+./src/tfscreen/tfmodel/model_orchestrator.py:750:5: E303 too many blank lines (2)
+./src/tfscreen/tfmodel/model_orchestrator.py:775:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:776:28: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:778:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:779:35: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:779:48: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:779:56: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:780:46: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:780:66: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:781:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:785:39: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:786:34: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:791:67: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:798:32: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:800:10: E114 indentation is not a multiple of 4 (comment)
+./src/tfscreen/tfmodel/model_orchestrator.py:800:10: E116 unexpected indentation (comment)
+./src/tfscreen/tfmodel/model_orchestrator.py:802:76: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:805:45: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:807:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:809:49: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:821:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:829:57: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:851:38: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:852:41: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:852:56: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:853:44: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:853:60: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:854:40: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:854:58: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:855:46: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:855:71: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:857:77: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:864:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:884:39: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:884:45: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:884:53: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:891:40: E127 continuation line over-indented for visual indent
+./src/tfscreen/tfmodel/model_orchestrator.py:937:25: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/model_orchestrator.py:938:32: E127 continuation line over-indented for visual indent
+./src/tfscreen/tfmodel/model_orchestrator.py:939:26: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/model_orchestrator.py:940:32: E127 continuation line over-indented for visual indent
+./src/tfscreen/tfmodel/model_orchestrator.py:980:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:983:78: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:984:32: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:985:60: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:989:36: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:990:36: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:991:32: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:992:38: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:994:77: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1005:56: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:1005:62: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:1008:74: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1009:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1014:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1015:77: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1016:58: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1018:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1023:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1027:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1031:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1034:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1040:86: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:1042:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1049:77: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:1105:33: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1106:34: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1107:35: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1108:39: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1115:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1116:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1117:5: E303 too many blank lines (2)
+./src/tfscreen/tfmodel/model_orchestrator.py:1193:25: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/model_orchestrator.py:1194:31: E127 continuation line over-indented for visual indent
+./src/tfscreen/tfmodel/model_orchestrator.py:1196:31: E127 continuation line over-indented for visual indent
+./src/tfscreen/tfmodel/model_orchestrator.py:1269:5: C901 'ModelOrchestrator._initialize_classes' is too complex (18)
+./src/tfscreen/tfmodel/model_orchestrator.py:1289:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1291:67: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1292:71: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1294:68: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1295:77: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1296:75: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1297:40: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1314:42: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1315:43: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1316:40: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1316:43: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:1316:53: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1316:56: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:1316:64: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1388:75: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1391:69: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1412:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1414:9: E303 too many blank lines (2)
+./src/tfscreen/tfmodel/model_orchestrator.py:1467:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1472:5: E303 too many blank lines (2)
+./src/tfscreen/tfmodel/model_orchestrator.py:1486:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1496:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1506:75: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1520:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1523:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1552:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1564:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1576:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1582:25: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1583:27: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1584:31: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1585:32: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1586:22: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1587:22: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1588:32: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1589:23: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1590:20: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1591:29: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1592:28: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1593:33: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1594:34: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1595:27: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1596:28: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1597:31: E231 missing whitespace after ':'
 ./src/tfscreen/tfmodel/scripts/configure_model_cli.py:192:22: E128 continuation line under-indented for visual indent
 ./src/tfscreen/tfmodel/scripts/configure_model_cli.py:193:22: E128 continuation line under-indented for visual indent
 ./src/tfscreen/tfmodel/scripts/configure_model_cli.py:194:22: E128 continuation line under-indented for visual indent
@@ -7489,21 +7491,21 @@
 ./src/tfscreen/tfmodel/scripts/predict_growth_cli.py:124:27: E128 continuation line under-indented for visual indent
 ./src/tfscreen/tfmodel/scripts/predict_growth_cli.py:139:5: F841 local variable 'binding_set' is assigned to but never used
 ./src/tfscreen/tfmodel/scripts/predict_theta_cli.py:12:1: C901 'predict_theta' is too complex (11)
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:106:23: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:107:23: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:198:11: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:199:11: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:204:20: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:268:24: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:269:24: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:270:24: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:273:1: C901 '_inject_calibration_priors' is too complex (21)
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:464:1: C901 '_build_csv_updates' is too complex (11)
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:522:35: E127 continuation line over-indented for visual indent
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:523:35: E127 continuation line over-indented for visual indent
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:662:1: C901 '_apply_guesses_updates' is too complex (12)
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:814:1: E303 too many blank lines (3)
-./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:818:1: E302 expected 2 blank lines, found 3
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:112:23: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:113:23: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:204:11: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:205:11: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:210:20: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:287:24: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:288:24: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:289:24: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:292:1: C901 '_inject_calibration_priors' is too complex (21)
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:483:1: C901 '_build_csv_updates' is too complex (11)
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:541:35: E127 continuation line over-indented for visual indent
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:542:35: E127 continuation line over-indented for visual indent
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:681:1: C901 '_apply_guesses_updates' is too complex (12)
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:833:1: E303 too many blank lines (3)
+./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:837:1: E302 expected 2 blank lines, found 3
 ./src/tfscreen/tfmodel/scripts/setup_grid_cli.py:160:1: C901 'setup_grid' is too complex (17)
 ./src/tfscreen/tfmodel/scripts/subset_genotypes_cli.py:40:1: C901 'subset_genotypes' is too complex (23)
 ./src/tfscreen/tfmodel/scripts/subset_genotypes_cli.py:93:5: F841 local variable 'all_genotypes' is assigned to but never used
@@ -9740,7 +9742,6 @@
 ./tests/tfscreen/tfmodel/generative/components/theta/test_categorical_geno.py:200:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/tfmodel/generative/components/theta/test_categorical_geno.py:220:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/tfmodel/generative/components/theta/test_categorical_geno.py:379:44: W292 no newline at end of file
-./tests/tfscreen/tfmodel/generative/components/theta/test_full_population_contract.py:30:1: F401 'pytest' imported but unused
 ./tests/tfscreen/tfmodel/generative/components/theta/test_hill_geno.py:4:1: F401 'numpyro.distributions as dist' imported but unused
 ./tests/tfscreen/tfmodel/generative/components/theta/test_hill_geno.py:5:1: F401 'numpyro.handlers.trace' imported but unused
 ./tests/tfscreen/tfmodel/generative/components/theta/test_hill_geno.py:41:1: E302 expected 2 blank lines, found 1
@@ -9810,36 +9811,36 @@
 ./tests/tfscreen/tfmodel/generative/components/theta/test_predict_unmeasured.py:301:19: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:41:24: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:58:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:195:10: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:248:6: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:280:37: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:315:27: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:332:39: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:333:44: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:346:39: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:347:44: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:424:39: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:425:44: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:426:45: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:427:35: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:428:34: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:429:47: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:430:47: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:443:30: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:485:27: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:596:30: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:615:17: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:615:28: E701 multiple statements on one line (colon)
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:615:39: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:616:29: E701 multiple statements on one line (colon)
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:617:18: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:617:28: E701 multiple statements on one line (colon)
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:617:40: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:618:19: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:198:10: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:251:6: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:283:37: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:318:27: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:335:39: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:336:44: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:349:39: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:350:44: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:427:39: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:428:44: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:429:45: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:430:35: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:431:34: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:432:47: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:433:47: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:446:30: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:488:27: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:599:30: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:618:17: E272 multiple spaces before keyword
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:618:28: E701 multiple statements on one line (colon)
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:618:41: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:685:14: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:693:17: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:618:39: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:619:29: E701 multiple statements on one line (colon)
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:620:18: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:620:28: E701 multiple statements on one line (colon)
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:620:40: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:621:19: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:621:28: E701 multiple statements on one line (colon)
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:621:41: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:688:14: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PK.py:696:17: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PddG.py:43:24: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PddG.py:97:45: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_PddG.py:138:23: E221 multiple spaces before operator
@@ -9911,65 +9912,65 @@
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_predict_unmeasured.py:258:15: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_thermo.py:26:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_thermo.py:35:6: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_thermo.py:217:32: E127 continuation line over-indented for visual indent
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_thermo.py:217:33: E201 whitespace after '['
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_thermo.py:219:32: E127 continuation line over-indented for visual indent
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_thermo.py:219:33: E201 whitespace after '['
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U0_a/test_thermo.py:221:32: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:49:24: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:66:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:203:10: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:275:6: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:276:35: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:277:35: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:278:33: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:292:40: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:299:45: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:306:46: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:321:37: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:360:31: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:361:27: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:378:39: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:379:44: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:394:37: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:395:42: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:421:39: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:422:44: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:509:31: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:520:37: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:521:42: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:523:35: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:524:34: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:525:47: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:526:47: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:540:39: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:541:44: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:542:45: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:543:35: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:544:34: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:545:47: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:546:47: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:559:30: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:606:31: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:607:27: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:617:31: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:709:14: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:745:30: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:764:17: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:764:29: E701 multiple statements on one line (colon)
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:764:40: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:765:29: E701 multiple statements on one line (colon)
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:766:18: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:766:29: E701 multiple statements on one line (colon)
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:766:41: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:767:19: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:206:10: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:278:6: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:279:35: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:280:35: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:281:33: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:295:40: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:302:45: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:309:46: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:324:37: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:363:31: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:364:27: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:381:39: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:382:44: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:397:37: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:398:42: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:424:39: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:425:44: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:512:31: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:523:37: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:524:42: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:526:35: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:527:34: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:528:47: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:529:47: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:543:39: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:544:44: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:545:45: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:546:35: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:547:34: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:548:47: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:549:47: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:562:30: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:609:31: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:610:27: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:620:31: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:712:14: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:748:30: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:767:17: E272 multiple spaces before keyword
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:767:29: E701 multiple statements on one line (colon)
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:767:42: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:795:24: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:803:24: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:812:26: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:820:26: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:830:28: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:844:14: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:852:17: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:767:40: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:768:29: E701 multiple statements on one line (colon)
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:769:18: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:769:29: E701 multiple statements on one line (colon)
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:769:41: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:770:19: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:770:29: E701 multiple statements on one line (colon)
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:770:42: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:798:24: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:806:24: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:815:26: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:823:26: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:833:28: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:847:14: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PK.py:855:17: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PddG.py:53:24: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PddG.py:107:45: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_PddG.py:147:23: E221 multiple spaces before operator
@@ -10051,36 +10052,36 @@
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_thermo.py:28:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_thermo.py:39:6: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_thermo.py:43:8: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_thermo.py:310:32: E127 continuation line over-indented for visual indent
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_thermo.py:310:33: E201 whitespace after '['
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_thermo.py:312:32: E127 continuation line over-indented for visual indent
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_thermo.py:465:18: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_thermo.py:486:15: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_thermo.py:514:15: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_thermo.py:516:17: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:47:10: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:48:25: E127 continuation line over-indented for visual indent
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:54:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:61:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:68:1: E305 expected 2 blank lines after class or function definition, found 1
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:68:6: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:282:38: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:283:43: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:284:44: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:343:38: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:344:43: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:345:44: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:346:35: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:347:34: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:348:46: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:349:46: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:361:31: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:362:30: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:363:42: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:364:42: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:365:42: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:366:41: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:376:34: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_thermo.py:312:33: E201 whitespace after '['
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_thermo.py:314:32: E127 continuation line over-indented for visual indent
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_thermo.py:512:18: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_thermo.py:533:15: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_thermo.py:561:15: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C12_K5_U1_a/test_thermo.py:563:17: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:48:10: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:49:25: E127 continuation line over-indented for visual indent
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:55:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:62:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:69:1: E305 expected 2 blank lines after class or function definition, found 1
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:69:6: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:285:38: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:286:43: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:287:44: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:346:38: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:347:43: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:348:44: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:349:35: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:350:34: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:351:46: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:352:46: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:364:31: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:365:30: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:366:42: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:367:42: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:368:42: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:369:41: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PK.py:379:34: E272 multiple spaces before keyword
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PddG.py:47:24: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PddG.py:98:45: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_PddG.py:123:5: E306 expected 1 blank line before a nested definition, found 0
@@ -10146,60 +10147,61 @@
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_predict_unmeasured.py:78:33: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_predict_unmeasured.py:125:16: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_predict_unmeasured.py:244:15: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_thermo.py:66:10: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_thermo.py:73:10: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_thermo.py:82:10: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_thermo.py:89:10: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_thermo.py:98:14: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_thermo.py:101:19: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_thermo.py:259:17: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_thermo.py:263:16: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:47:10: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:48:25: E127 continuation line over-indented for visual indent
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:54:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:61:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:68:1: E305 expected 2 blank lines after class or function definition, found 1
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:68:6: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:313:38: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:314:43: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:315:44: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:326:37: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:327:42: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:328:43: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:348:34: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:349:34: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:350:33: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:351:33: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:353:39: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:354:39: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:400:38: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:401:43: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:402:44: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:403:35: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:404:34: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:405:46: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:406:46: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:417:37: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:418:42: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:419:43: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:431:31: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:432:30: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:433:42: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:434:42: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:435:42: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:436:41: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:438:41: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:448:34: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:450:34: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:506:33: E272 multiple spaces before keyword
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:549:46: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:550:45: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:551:40: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:554:48: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:555:47: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:556:42: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:558:14: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:564:17: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_thermo.py:68:10: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_thermo.py:75:10: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_thermo.py:84:10: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_thermo.py:91:10: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_thermo.py:100:14: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_thermo.py:103:19: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_thermo.py:261:17: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_thermo.py:267:16: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U0_a/test_thermo.py:284:15: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:48:10: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:49:25: E127 continuation line over-indented for visual indent
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:55:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:62:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:69:1: E305 expected 2 blank lines after class or function definition, found 1
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:69:6: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:316:38: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:317:43: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:318:44: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:329:37: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:330:42: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:331:43: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:351:34: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:352:34: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:353:33: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:354:33: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:356:39: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:357:39: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:403:38: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:404:43: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:405:44: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:406:35: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:407:34: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:408:46: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:409:46: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:420:37: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:421:42: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:422:43: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:434:31: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:435:30: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:436:42: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:437:42: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:438:42: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:439:41: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:441:41: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:451:34: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:453:34: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:509:33: E272 multiple spaces before keyword
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:552:46: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:553:45: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:554:40: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:557:48: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:558:47: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:559:42: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:561:14: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PK.py:567:17: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PddG.py:47:24: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PddG.py:100:45: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PddG.py:215:41: E221 multiple spaces before operator
@@ -10264,19 +10266,21 @@
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PnnC.py:582:26: E272 multiple spaces before keyword
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PnnC.py:594:28: E272 multiple spaces before keyword
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_PnnC.py:604:14: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_thermo.py:67:10: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_thermo.py:75:10: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_thermo.py:84:10: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_thermo.py:91:10: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_thermo.py:100:14: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_thermo.py:103:19: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_thermo.py:109:10: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_thermo.py:165:15: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_thermo.py:171:12: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_thermo.py:216:15: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_thermo.py:310:12: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_thermo.py:319:17: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_thermo.py:323:16: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_thermo.py:69:10: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_thermo.py:77:10: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_thermo.py:86:10: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_thermo.py:93:10: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_thermo.py:102:14: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_thermo.py:105:19: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_thermo.py:111:10: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_thermo.py:167:15: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_thermo.py:173:12: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_thermo.py:218:15: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_thermo.py:312:12: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_thermo.py:321:17: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_thermo.py:327:16: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_thermo.py:364:15: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/components/theta/thermo/O2_C4_K3_U1_a/test_thermo.py:365:15: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/test_features.py:62:22: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/test_features.py:63:22: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/generative/components/theta/thermo/test_features.py:150:19: E221 multiple spaces before operator
@@ -10953,32 +10957,32 @@
 ./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:14:1: F401 'sys' imported but unused
 ./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:21:1: F401 'jax' imported but unused
 ./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:26:1: F401 'tfscreen.tfmodel.scripts.prefit_calibration_cli._identify_field_mapping' imported but unused
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:733:29: E128 continuation line under-indented for visual indent
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:734:29: E128 continuation line under-indented for visual indent
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:735:29: E128 continuation line under-indented for visual indent
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:736:29: E128 continuation line under-indented for visual indent
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:737:29: E128 continuation line under-indented for visual indent
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:738:29: E128 continuation line under-indented for visual indent
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:739:29: E128 continuation line under-indented for visual indent
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:740:29: E128 continuation line under-indented for visual indent
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:741:29: E128 continuation line under-indented for visual indent
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1117:128: E501 line too long (136 > 127 characters)
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1123:128: E501 line too long (136 > 127 characters)
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1129:128: E501 line too long (136 > 127 characters)
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1136:47: E127 continuation line over-indented for visual indent
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1144:128: E501 line too long (136 > 127 characters)
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1150:128: E501 line too long (136 > 127 characters)
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1158:128: E501 line too long (136 > 127 characters)
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1164:128: E501 line too long (136 > 127 characters)
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1170:128: E501 line too long (136 > 127 characters)
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1177:128: E501 line too long (136 > 127 characters)
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1184:128: E501 line too long (136 > 127 characters)
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1198:128: E501 line too long (136 > 127 characters)
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1212:128: E501 line too long (136 > 127 characters)
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1224:128: E501 line too long (136 > 127 characters)
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1309:14: E127 continuation line over-indented for visual indent
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1328:14: E127 continuation line over-indented for visual indent
-./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1343:14: E127 continuation line over-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:805:29: E128 continuation line under-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:806:29: E128 continuation line under-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:807:29: E128 continuation line under-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:808:29: E128 continuation line under-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:809:29: E128 continuation line under-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:810:29: E128 continuation line under-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:811:29: E128 continuation line under-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:812:29: E128 continuation line under-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:813:29: E128 continuation line under-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1189:128: E501 line too long (136 > 127 characters)
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1195:128: E501 line too long (136 > 127 characters)
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1201:128: E501 line too long (136 > 127 characters)
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1208:47: E127 continuation line over-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1216:128: E501 line too long (136 > 127 characters)
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1222:128: E501 line too long (136 > 127 characters)
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1230:128: E501 line too long (136 > 127 characters)
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1236:128: E501 line too long (136 > 127 characters)
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1242:128: E501 line too long (136 > 127 characters)
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1249:128: E501 line too long (136 > 127 characters)
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1256:128: E501 line too long (136 > 127 characters)
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1270:128: E501 line too long (136 > 127 characters)
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1284:128: E501 line too long (136 > 127 characters)
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1296:128: E501 line too long (136 > 127 characters)
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1381:14: E127 continuation line over-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1400:14: E127 continuation line over-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_prefit_calibration_cli.py:1415:14: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/tfmodel/scripts/test_sample_posterior_cli.py:5:1: F401 'unittest.mock.call' imported but unused
 ./tests/tfscreen/tfmodel/scripts/test_sample_prior_cli.py:3:1: F401 'pytest' imported but unused
 ./tests/tfscreen/tfmodel/scripts/test_subset_genotypes_cli.py:84:31: E741 ambiguous variable name 'l'
@@ -11144,53 +11148,53 @@
 ./tests/tfscreen/tfmodel/test_model_orchestrator.py:406:128: E501 line too long (184 > 127 characters)
 ./tests/tfscreen/tfmodel/test_model_orchestrator.py:425:128: E501 line too long (198 > 127 characters)
 ./tests/tfscreen/tfmodel/test_model_orchestrator.py:430:128: E501 line too long (167 > 127 characters)
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:456:128: E501 line too long (184 > 127 characters)
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:602:79: E712 comparison to False should be 'if cond is False:' or 'if not cond:'
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:603:64: E712 comparison to True should be 'if cond is True:' or 'if cond:'
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:606:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:614:51: W291 trailing whitespace
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:620:77: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:620:98: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:620:125: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:620:128: E501 line too long (131 > 127 characters)
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:621:128: E501 line too long (138 > 127 characters)
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:623:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:625:86: W291 trailing whitespace
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:637:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:642:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:650:128: E501 line too long (129 > 127 characters)
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:658:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:669:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:672:128: E501 line too long (129 > 127 characters)
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:679:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:686:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:694:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:699:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:704:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:710:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:719:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:723:26: W291 trailing whitespace
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:733:30: W291 trailing whitespace
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:734:25: W291 trailing whitespace
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:736:34: W291 trailing whitespace
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:737:33: W291 trailing whitespace
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:749:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:751:43: E231 missing whitespace after ','
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:751:45: E231 missing whitespace after ','
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:751:47: E231 missing whitespace after ','
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:751:49: E231 missing whitespace after ','
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:751:51: E231 missing whitespace after ','
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:751:53: E231 missing whitespace after ','
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:751:55: E231 missing whitespace after ','
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:755:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:764:26: E261 at least two spaces before inline comment
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:765:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:768:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:771:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:1034:9: F401 'inspect' imported but unused
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:1431:34: E261 at least two spaces before inline comment
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:1675:18: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/test_model_orchestrator.py:1682:10: W292 no newline at end of file
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:582:128: E501 line too long (184 > 127 characters)
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:730:79: E712 comparison to False should be 'if cond is False:' or 'if not cond:'
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:731:64: E712 comparison to True should be 'if cond is True:' or 'if cond:'
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:734:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:742:51: W291 trailing whitespace
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:748:77: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:748:98: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:748:125: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:748:128: E501 line too long (131 > 127 characters)
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:749:128: E501 line too long (138 > 127 characters)
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:751:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:753:86: W291 trailing whitespace
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:765:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:770:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:778:128: E501 line too long (129 > 127 characters)
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:786:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:797:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:800:128: E501 line too long (129 > 127 characters)
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:807:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:814:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:822:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:827:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:832:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:838:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:847:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:851:26: W291 trailing whitespace
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:861:30: W291 trailing whitespace
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:862:25: W291 trailing whitespace
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:864:34: W291 trailing whitespace
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:865:33: W291 trailing whitespace
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:877:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:879:43: E231 missing whitespace after ','
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:879:45: E231 missing whitespace after ','
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:879:47: E231 missing whitespace after ','
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:879:49: E231 missing whitespace after ','
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:879:51: E231 missing whitespace after ','
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:879:53: E231 missing whitespace after ','
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:879:55: E231 missing whitespace after ','
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:883:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:892:26: E261 at least two spaces before inline comment
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:893:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:896:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:899:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:1162:9: F401 'inspect' imported but unused
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:1559:34: E261 at least two spaces before inline comment
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:1803:18: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/test_model_orchestrator.py:1810:10: W292 no newline at end of file
 ./tests/tfscreen/tfmodel/test_needs_mut_wiring.py:30:16: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/test_needs_mut_wiring.py:30:31: E272 multiple spaces before keyword
 ./tests/tfscreen/tfmodel/test_needs_mut_wiring.py:31:16: E221 multiple spaces before operator
@@ -11508,10 +11512,10 @@
 48    E202 whitespace before ']'
 10    E203 whitespace before ','
 8     E211 whitespace before '('
-3021  E221 multiple spaces before operator
+3024  E221 multiple spaces before operator
 27    E222 multiple spaces after operator
 16    E225 missing whitespace around operator
-1990  E231 missing whitespace after ','
+1992  E231 missing whitespace after ','
 127   E251 unexpected spaces around keyword / parameter equals
 28    E252 missing whitespace around parameter equals
 236   E261 at least two spaces before inline comment
@@ -11533,7 +11537,7 @@
 1     E722 do not use bare 'except'
 1     E731 do not assign a lambda expression, use a def
 27    E741 ambiguous variable name 'l'
-281   F401 'tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U0_a.thermo.run_model' imported but unused
+280   F401 'tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U0_a.thermo.run_model' imported but unused
 18    F541 f-string is missing placeholders
 5     F811 redefinition of unused 'np' from line 1
 56    F841 local variable 'e' is assigned to but never used
@@ -11541,4 +11545,4 @@
 134   W292 no newline at end of file
 2188  W293 blank line contains whitespace
 51    W391 blank line at end of file
-11495
+11499

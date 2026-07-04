@@ -431,6 +431,132 @@ def test_initialize_classes_logic(mocker):
         assert model._theta == "categorical_geno"
 
 
+# ---------------------------------------------------------------------------
+# dk_geno="pinned" wiring
+# ---------------------------------------------------------------------------
+
+def test_dk_geno_pinned_requires_pins_file():
+    """
+    dk_geno='pinned' without dk_geno_pins_file must raise before any data
+    I/O happens (mirrors
+    test_model_orchestrator_rejects_categorical_geno_with_empirical:
+    "g.csv"/"b.csv" are never touched).
+    """
+    with pytest.raises(ValueError, match="requires dk_geno_pins_file"):
+        ModelOrchestrator("g.csv", "b.csv", dk_geno="pinned")
+
+
+def test_dk_geno_pins_file_without_pinned_component_raises():
+    """A stray dk_geno_pins_file with any other dk_geno component must raise."""
+    with pytest.raises(ValueError, match="dk_geno != 'pinned'"):
+        ModelOrchestrator(
+            "g.csv", "b.csv",
+            dk_geno="hierarchical_geno",
+            dk_geno_pins_file="pins.csv",
+        )
+
+
+class _SpyPinnedModule:
+    """
+    Thin real-object wrapper around dk_geno.pinned.
+
+    inspect.signature(component_module.get_priors) must see the real
+    "dk_geno_values" parameter for _initialize_classes's branch selection to
+    fire (a bare MagicMock's signature is just (*args, **kwargs), which
+    would silently fall through to the wrong branch). Wrapping with an
+    explicit method of the same shape gets us a real signature while still
+    recording what was actually passed.
+    """
+
+    def __init__(self, real_module):
+        self._real_module = real_module
+        self.calls = []
+
+    def get_priors(self, dk_geno_values=None):
+        self.calls.append(dk_geno_values)
+        return self._real_module.get_priors(dk_geno_values=dk_geno_values)
+
+    def __getattr__(self, name):
+        return getattr(self._real_module, name)
+
+
+def test_dk_geno_pinned_builds_values_and_wires_into_priors(mocker, tmp_path):
+    """
+    End-to-end: a pinned dk_geno_pins_file is read, converted to a
+    (num_genotype,) array ordered by the growth genotype axis, and passed
+    into the "pinned" component's get_priors(dk_geno_values=...).
+    """
+    from tfscreen.tfmodel.generative.components.dk_geno import pinned as real_pinned
+
+    csv_path = tmp_path / "pins.csv"
+    csv_path.write_text("genotype,dk_geno\nm1,-0.02\nm3,0.01\n")
+
+    mock_growth_tm = create_mock_tm(is_growth=True)
+    mock_binding_tm = create_mock_tm(is_growth=False)
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._read_growth_df")
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._build_growth_tm", return_value=mock_growth_tm)
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._read_binding_df")
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._build_binding_tm", return_value=mock_binding_tm)
+    mocker.patch("tfscreen.tfmodel.model_orchestrator.populate_dataclass", return_value=MagicMock())
+    mocker.patch(
+        "tfscreen.tfmodel.model_orchestrator._setup_batching",
+        return_value={
+            "batch_idx": jnp.arange(7), "batch_size": 7,
+            "scale_vector": jnp.ones(7), "num_binding": 0,
+        },
+    )
+
+    spy = _SpyPinnedModule(real_pinned)
+
+    with patch.dict("tfscreen.tfmodel.model_orchestrator.model_registry", {
+        "condition_growth": {"hierarchical": MagicMock()},
+        "growth_transition": {"instant": MagicMock()},
+        "ln_cfu0": {"hierarchical": MagicMock()},
+        "dk_geno": {"pinned": spy},
+        "activity": {"hierarchical_geno": MagicMock()},
+        "theta": {"hill_geno": MagicMock()},
+        "transformation": {"single": MagicMock()},
+        "theta_rescale": {"passthrough": MagicMock()},
+        "theta_growth_noise": {"zero": MagicMock()},
+        "theta_binding_noise": {"zero": MagicMock()},
+        "growth_noise": {"zero": MagicMock()},
+        "sample_offset": {"zero": MagicMock()},
+        "observe_binding": MagicMock(),
+        "observe_growth": MagicMock(),
+    }, clear=True):
+        for k in ["condition_growth", "growth_transition", "ln_cfu0", "activity",
+                  "theta", "transformation", "theta_growth_noise",
+                  "theta_binding_noise", "growth_noise", "sample_offset"]:
+            for sub_k in tfscreen.tfmodel.model_orchestrator.model_registry[k]:
+                tfscreen.tfmodel.model_orchestrator.model_registry[k][sub_k].get_priors.return_value = {}
+                tfscreen.tfmodel.model_orchestrator.model_registry[k][sub_k].get_guesses.return_value = {}
+
+        model = ModelOrchestrator(
+            "g.csv", "b.csv",
+            dk_geno="pinned",
+            dk_geno_pins_file=str(csv_path),
+            condition_growth="hierarchical",
+            growth_transition="instant",
+            activity="hierarchical_geno",
+            theta="hill_geno",
+            transformation="single",
+            theta_growth_noise="zero",
+        )
+
+    expected = np.array([0.0, -0.02, 0.0, 0.01, 0.0, 0.0, 0.0])
+
+    # _dk_geno_values built during _initialize_data, ordered wt,m1..m6.
+    assert np.allclose(np.asarray(model._dk_geno_values), expected)
+
+    # The component received that exact array via get_priors(dk_geno_values=...).
+    assert len(spy.calls) == 1
+    assert np.allclose(np.asarray(spy.calls[0]), expected)
+
+    # Round-trips through the settings dict for YAML config serialisation.
+    assert model.settings["dk_geno_pins_file"] == str(csv_path)
+    assert model.settings["dk_geno"] == "pinned"
+
+
 @pytest.mark.parametrize("transformation_key, expected_needs_population", [
     ("single", False),
     ("logit_norm", False),
@@ -571,6 +697,7 @@ def test_model_class_properties(initialized_model_class):
     model._growth_transition = "gt"
     model._ln_cfu0 = "ln"
     model._dk_geno = "dk"
+    model._dk_geno_pins_file = None
     model._theta_growth_noise = "gn"
     model._theta_binding_noise = "bn"
     model._growth_noise = "grn"
@@ -595,6 +722,7 @@ def test_model_class_properties(initialized_model_class):
     assert ModelOrchestrator.settings.fget(model)["growth_transition"] == "gt"
     assert ModelOrchestrator.settings.fget(model)["ln_cfu0"] == "ln"
     assert ModelOrchestrator.settings.fget(model)["dk_geno"] == "dk"
+    assert ModelOrchestrator.settings.fget(model)["dk_geno_pins_file"] is None
     assert ModelOrchestrator.settings.fget(model)["theta_growth_noise"] == "gn"
     assert ModelOrchestrator.settings.fget(model)["theta_binding_noise"] == "bn"
     assert ModelOrchestrator.settings.fget(model)["growth_noise"] == "grn"

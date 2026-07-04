@@ -684,6 +684,7 @@ class ModelOrchestrator:
                  growth_transition="instant",
                  ln_cfu0="hierarchical",
                  dk_geno="hierarchical_geno",
+                 dk_geno_pins_file=None,
                  activity="horseshoe_geno",
                  theta="hill_geno",
                  transformation="empirical",
@@ -710,6 +711,8 @@ class ModelOrchestrator:
         self._growth_transition = growth_transition
         self._ln_cfu0 = ln_cfu0
         self._dk_geno = dk_geno
+        self._dk_geno_pins_file = dk_geno_pins_file
+        self._dk_geno_values = None
         self._activity = activity
         self._theta = theta
         self._transformation = transformation
@@ -727,6 +730,18 @@ class ModelOrchestrator:
         _check_theta_transformation_compatibility(
             self._theta, self._transformation, binding_only=self._binding_only
         )
+
+        if self._dk_geno == "pinned" and self._dk_geno_pins_file is None:
+            raise ValueError(
+                "dk_geno='pinned' requires dk_geno_pins_file (path to a "
+                "CSV with columns 'genotype' and 'dk_geno')."
+            )
+        if self._dk_geno != "pinned" and self._dk_geno_pins_file is not None:
+            raise ValueError(
+                f"dk_geno_pins_file was provided but dk_geno != 'pinned' "
+                f"(got dk_geno={self._dk_geno!r}). Set dk_geno='pinned' to "
+                f"use it."
+            )
 
         self._initialize_data()
         self._initialize_classes()
@@ -850,6 +865,21 @@ class ModelOrchestrator:
         other_data["titrant_conc"] = titrant_conc
         other_data["log_titrant_conc"] = log_titrant_conc
         other_data["growth_shares_replicates"] = bool(self._growth_shares_replicates)
+
+        # Resolve pinned dk_geno values (dk_geno == "pinned") from an
+        # optional per-genotype CSV. Building/validating the array here
+        # (rather than inside the component) lets construction fail fast
+        # with a clear error if the CSV references an unknown genotype or
+        # pins a nonzero value onto wildtype.
+        if self._dk_geno == "pinned":
+            from tfscreen.tfmodel.generative.components.dk_geno.pinned import (
+                read_dk_geno_pins,
+                build_dk_geno_values,
+            )
+            pins = read_dk_geno_pins(self._dk_geno_pins_file)
+            self._dk_geno_values = jnp.asarray(
+                build_dk_geno_values(pins, _genotype_names), dtype=FLOAT_DTYPE
+            )
 
         growth_data_sources = [tensors,sizes,wt_info,other_data]
 
@@ -1341,6 +1371,9 @@ class ModelOrchestrator:
             elif "data" in priors_sig.parameters:
                 priors_class_kwargs[prior_group][key] = \
                     component_module.get_priors(data=component_data)
+            elif "dk_geno_values" in priors_sig.parameters:
+                priors_class_kwargs[prior_group][key] = \
+                    component_module.get_priors(dk_geno_values=self._dk_geno_values)
             else:
                 priors_class_kwargs[prior_group][key] = \
                     component_module.get_priors()
@@ -1552,6 +1585,7 @@ class ModelOrchestrator:
             "growth_transition":self._growth_transition,
             "ln_cfu0":self._ln_cfu0,
             "dk_geno":self._dk_geno,
+            "dk_geno_pins_file":self._dk_geno_pins_file,
             "activity":self._activity,
             "theta":self._theta,
             "transformation":self._transformation,

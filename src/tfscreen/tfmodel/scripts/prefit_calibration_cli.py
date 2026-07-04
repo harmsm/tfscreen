@@ -13,7 +13,12 @@ linking-function MAP doesn't have to fight the full hierarchy:
                              prior locs (degenerate, no learning)
 - ``dk_geno``              → ``fixed`` (all zeros; eliminates the WT-anchor
                              bias that arises when mutants have non-zero mean
-                             pleiotropic effects)
+                             pleiotropic effects), *unless* the production
+                             config already selects ``dk_geno: "pinned"``, in
+                             which case the calibration model keeps
+                             ``"pinned"`` (and its pins file) so genotypes
+                             with independently known dk_geno retain their
+                             real value instead of being zeroed out too.
 - ``ln_cfu0``              → ``hierarchical`` with hyperparams *pinned*
 - ``transformation``       → ``single`` (no learning)
 - ``theta_*_noise``        → ``zero`` (no learning)
@@ -66,12 +71,13 @@ from tfscreen.tfmodel.configuration_io import (
 # These are the components that get *replaced* relative to the production
 # YAML.  ``condition_growth`` and ``growth_transition`` are intentionally
 # absent from this dict — their production choices flow through unchanged
-# so the calibration MAP can refine the production priors.
+# so the calibration MAP can refine the production priors.  ``dk_geno`` is
+# also absent — it needs conditional handling (see
+# ``_build_calibration_model``) rather than an unconditional override.
 # ---------------------------------------------------------------------------
 _CALIBRATION_OVERRIDES = {
     "theta": "_simple",
     "activity": "hierarchical_geno",
-    "dk_geno": "fixed",
     "ln_cfu0": "hierarchical",
     "transformation": "single",
     "theta_growth_noise": "zero",
@@ -262,6 +268,19 @@ def _build_calibration_model(orchestrator_prod, growth_df_cal, binding_df_cal):
     # (N_growth_prod / N_binding_prod, often >> 1) would drown the binding
     # signal, so we reset to 1.0 here.
     settings["binding_weight"] = 1.0
+
+    # dk_geno: the calibration MAP must not *learn* dk_geno from
+    # calibration-only data (that reintroduces the WT-anchor bias this
+    # pre-fit exists to avoid). Default: force to "fixed" (all zero), like
+    # every other overridden component. Exception: if the production config
+    # pins specific genotypes' dk_geno via "pinned", carry that choice (and
+    # its pins file) into the calibration model too, so those genotypes keep
+    # their real, independently-known dk_geno during the linking-function
+    # fit instead of being zeroed out along with everything else.
+    if settings.get("dk_geno") != "pinned":
+        settings["dk_geno"] = "fixed"
+        settings.pop("dk_geno_pins_file", None)
+
     batch_size = settings.pop("batch_size", None)
 
     return ModelOrchestrator(growth_df_cal,
