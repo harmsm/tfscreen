@@ -1350,6 +1350,9 @@ class ModelOrchestrator:
             #   condition_labels — legacy: ordered condition names whose
             #       '+'/'-' character encodes selection status.
             #   data — component data pytree for empirical prior values.
+            #   presplit — optional direct t=-t_pre measurement of ln_cfu0
+            #       (PreSplitData), forwarded alongside `data` only when the
+            #       component declares it (currently just ln_cfu0).
             priors_sig = inspect.signature(component_module.get_priors)
             if "is_selection" in priors_sig.parameters:
                 cond_rep_df = self.growth_tm.map_groups["condition_rep"]
@@ -1369,8 +1372,11 @@ class ModelOrchestrator:
                 priors_class_kwargs[prior_group][key] = \
                     component_module.get_priors(condition_labels=condition_labels)
             elif "data" in priors_sig.parameters:
+                prior_kwargs = {"data": component_data}
+                if "presplit" in priors_sig.parameters:
+                    prior_kwargs["presplit"] = self._data.presplit
                 priors_class_kwargs[prior_group][key] = \
-                    component_module.get_priors(data=component_data)
+                    component_module.get_priors(**prior_kwargs)
             elif "dk_geno_values" in priors_sig.parameters:
                 priors_class_kwargs[prior_group][key] = \
                     component_module.get_priors(dk_geno_values=self._dk_geno_values)
@@ -1379,8 +1385,11 @@ class ModelOrchestrator:
                     component_module.get_priors()
 
             # Record guesses
-            guesses = component_module.get_guesses(name=key,
-                                                   data=component_data)
+            guesses_sig = inspect.signature(component_module.get_guesses)
+            guesses_kwargs = {"name": key, "data": component_data}
+            if "presplit" in guesses_sig.parameters:
+                guesses_kwargs["presplit"] = self._data.presplit
+            guesses = component_module.get_guesses(**guesses_kwargs)
             init_params.update(guesses)
 
             # Record control parameters for the main and guide functions

@@ -432,6 +432,97 @@ def test_initialize_classes_logic(mocker):
 
 
 # ---------------------------------------------------------------------------
+# presplit forwarding to component get_priors/get_guesses
+# ---------------------------------------------------------------------------
+
+class _LnCfu0ModuleWithPresplit:
+    """
+    A minimal, real (non-Mock) component module whose get_priors/get_guesses
+    declare a `presplit` parameter, so inspect.signature can actually detect
+    it -- MagicMock's auto-generated (*args, **kwargs) signature can't be
+    used to exercise this branch (see test below).
+    """
+    recorded = {}
+
+    @staticmethod
+    def get_priors(data=None, presplit=None):
+        _LnCfu0ModuleWithPresplit.recorded["priors_data"] = data
+        _LnCfu0ModuleWithPresplit.recorded["priors_presplit"] = presplit
+        return {}
+
+    @staticmethod
+    def get_guesses(name, data, presplit=None):
+        _LnCfu0ModuleWithPresplit.recorded["guesses_data"] = data
+        _LnCfu0ModuleWithPresplit.recorded["guesses_presplit"] = presplit
+        return {}
+
+    define_model = MagicMock()
+    guide = MagicMock()
+
+
+def test_initialize_classes_forwards_presplit_to_declaring_component(mocker):
+    """
+    _initialize_classes must forward self._data.presplit to a component's
+    get_priors/get_guesses only when its signature declares a `presplit`
+    parameter -- currently just the ln_cfu0 component.  Components that
+    don't declare it (everything else, here plain MagicMocks) are
+    unaffected and keep working exactly as before.
+    """
+    mock_growth_tm = create_mock_tm(is_growth=True)
+    mock_binding_tm = create_mock_tm(is_growth=False)
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._read_growth_df")
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._build_growth_tm", return_value=mock_growth_tm)
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._read_binding_df")
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._build_binding_tm", return_value=mock_binding_tm)
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._setup_batching", return_value={"batch_idx": jnp.array([0]), "batch_size": 1, "scale_vector": jnp.array([1.0]), "num_binding": 0})
+
+    fake_data = MagicMock()
+    fake_data.presplit = "PRESPLIT_SENTINEL"
+    mocker.patch("tfscreen.tfmodel.model_orchestrator.populate_dataclass", return_value=fake_data)
+
+    _LnCfu0ModuleWithPresplit.recorded.clear()
+
+    with patch.dict("tfscreen.tfmodel.model_orchestrator.model_registry", {
+        "condition_growth": {"independent": MagicMock()},
+        "growth_transition": {"instant": MagicMock()},
+        "ln_cfu0": {"hierarchical": _LnCfu0ModuleWithPresplit},
+        "dk_geno": {"hierarchical_geno": MagicMock()},
+        "activity": {"hierarchical_geno": MagicMock()},
+        "theta": {"categorical_geno": MagicMock()},
+        "transformation": {"logit_norm": MagicMock()},
+        "theta_rescale": {"passthrough": MagicMock()},
+        "theta_growth_noise": {"zero": MagicMock()},
+        "theta_binding_noise": {"zero": MagicMock()},
+        "growth_noise": {"zero": MagicMock()},
+        "sample_offset": {"zero": MagicMock()},
+        "observe_binding": MagicMock(),
+        "observe_growth": MagicMock(),
+    }, clear=True):
+        for k in ["condition_growth", "growth_transition", "dk_geno", "activity",
+                 "theta", "transformation", "theta_growth_noise",
+                 "theta_binding_noise", "growth_noise", "sample_offset"]:
+            for sub_k in tfscreen.tfmodel.model_orchestrator.model_registry[k]:
+                mod = tfscreen.tfmodel.model_orchestrator.model_registry[k][sub_k]
+                mod.get_priors.return_value = {}
+                mod.get_guesses.return_value = {}
+
+        ModelOrchestrator(
+            "g.csv", "b.csv",
+            theta="categorical_geno", transformation="logit_norm",
+            condition_growth="independent", growth_transition="instant",
+            ln_cfu0="hierarchical", activity="hierarchical_geno",
+            theta_growth_noise="zero",
+        )
+
+    # presplit forwarded to the component that declares it...
+    assert _LnCfu0ModuleWithPresplit.recorded["priors_presplit"] == "PRESPLIT_SENTINEL"
+    assert _LnCfu0ModuleWithPresplit.recorded["guesses_presplit"] == "PRESPLIT_SENTINEL"
+    # ...alongside the usual `data` kwarg, unaffected by the new plumbing.
+    assert _LnCfu0ModuleWithPresplit.recorded["priors_data"] is fake_data.growth
+    assert _LnCfu0ModuleWithPresplit.recorded["guesses_data"] is fake_data.growth
+
+
+# ---------------------------------------------------------------------------
 # dk_geno="pinned" wiring
 # ---------------------------------------------------------------------------
 

@@ -52,6 +52,30 @@ def _all_library_masks(num_genotype):
     return jnp.ones((1, num_genotype), dtype=bool)
 
 
+MockPreSplitData = namedtuple("MockPreSplitData", [
+    "ln_cfu_t0", "ln_cfu_t0_std", "good_mask",
+])
+
+
+def _make_presplit(num_replicate, num_condition_pre, num_genotype,
+                   per_geno_values, valid_mask=None):
+    """Build a MockPreSplitData with shape (rep, cond_pre, geno), constant
+    per genotype.  ``valid_mask`` (shape (geno,)) marks covered genotypes."""
+    shape = (num_replicate, num_condition_pre, num_genotype)
+    ln_cfu_t0 = np.zeros(shape)
+    for g, v in enumerate(per_geno_values):
+        ln_cfu_t0[..., g] = v
+
+    if valid_mask is None:
+        valid_mask = np.ones(num_genotype, dtype=bool)
+    good_mask = np.zeros(shape, dtype=bool)
+    good_mask[..., valid_mask] = True
+
+    return MockPreSplitData(
+        ln_cfu_t0=ln_cfu_t0, ln_cfu_t0_std=np.ones(shape), good_mask=good_mask,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -183,12 +207,45 @@ def test_get_priors_accepts_data_keyword():
     assert sig.parameters["data"].default is None
 
 
+def test_get_priors_accepts_presplit_keyword():
+    """get_priors must accept an optional `presplit` keyword and forward it
+    to the shared empirical estimator (ModelOrchestrator detects this)."""
+    sig = inspect.signature(get_priors)
+    assert "presplit" in sig.parameters
+    assert sig.parameters["presplit"].default is None
+
+
 def test_get_priors_with_data_overrides_subgroup_scales(mock_data_varied):
     priors = get_priors(data=mock_data_varied)
     # wt: single value → floored; spiked: two values ±0.5 from median
     from tfscreen.tfmodel.generative.components.ln_cfu0.hierarchical import _SCALE_FLOOR
     assert priors.ln_cfu0_wt_scale == pytest.approx(_SCALE_FLOOR)
     assert priors.ln_cfu0_spiked_scale == pytest.approx(1.4826 * 0.5, rel=1e-4)
+
+
+def test_get_priors_with_presplit_overrides_wt_scale(mock_data_varied):
+    """
+    presplit is correctly forwarded through to the shared empirical
+    estimator: a wt presplit spread (rather than the degenerate single-value
+    ln_cfu spread) drives ln_cfu0_wt_scale.
+    """
+    R, C, G = mock_data_varied.num_replicate, mock_data_varied.num_condition_pre, \
+        mock_data_varied.num_genotype
+    presplit_vals = np.zeros((R, C, G))
+    presplit_vals[0, :, 0] = 10.0
+    presplit_vals[1, :, 0] = 14.0
+    presplit_good = np.zeros((R, C, G), dtype=bool)
+    presplit_good[:, :, 0] = True
+    presplit = MockPreSplitData(
+        ln_cfu_t0=presplit_vals, ln_cfu_t0_std=np.ones((R, C, G)),
+        good_mask=presplit_good,
+    )
+
+    priors = get_priors(data=mock_data_varied, presplit=presplit)
+    # loc = median(10,10,14,14) = 12; MAD=2; scale = 1.4826*2
+    from tfscreen.tfmodel.generative.components.ln_cfu0.hierarchical import _SCALE_FLOOR
+    assert priors.ln_cfu0_wt_scale == pytest.approx(1.4826 * 2.0, rel=1e-4)
+    assert priors.ln_cfu0_wt_scale != pytest.approx(_SCALE_FLOOR)
 
 
 # ---------------------------------------------------------------------------
@@ -243,6 +300,26 @@ def test_get_guesses_offset_geno_not_condition_pre_indexed(mock_data):
     R, G = mock_data.num_replicate, mock_data.num_genotype
     assert guesses["x_offset_geno"].shape == (R, G)
     assert guesses["x_offset_geno"].ndim == 2
+
+
+def test_get_guesses_accepts_presplit_keyword():
+    """get_guesses must accept an optional `presplit` keyword and forward it
+    to the shared empirical estimator (ModelOrchestrator detects this)."""
+    sig = inspect.signature(get_guesses)
+    assert "presplit" in sig.parameters
+    assert sig.parameters["presplit"].default is None
+
+
+def test_get_guesses_wt_loc_prefers_presplit(mock_data_varied):
+    """wt_loc guess uses the presplit-derived value instead of the ln_cfu
+    median when presplit covers the wt genotype."""
+    presplit = _make_presplit(
+        num_replicate=2, num_condition_pre=2, num_genotype=6,
+        per_geno_values=[20.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        valid_mask=np.array([True, False, False, False, False, False]),
+    )
+    guesses = get_guesses("x", mock_data_varied, presplit=presplit)
+    assert guesses["x_wt_loc"] == pytest.approx(20.0)
 
 
 # ---------------------------------------------------------------------------

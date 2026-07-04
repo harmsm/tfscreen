@@ -12,6 +12,7 @@ import dataclasses
 import os
 import shutil
 import sys
+from collections import namedtuple
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -20,6 +21,8 @@ import pytest
 import yaml
 import jax
 import jax.numpy as jnp
+import numpyro as pyro
+import numpyro.distributions as dist
 
 import flax.struct as fstruct
 
@@ -31,6 +34,7 @@ from tfscreen.tfmodel.scripts.prefit_calibration_cli import (
     _build_hessian_scale_updates,
     _compute_theta_values,
     _csv_row_name,
+    _drop_presplit_backed_ln_cfu0_sites,
     _identify_field_mapping,
     _inject_calibration_priors,
     _intersect_data,
@@ -372,6 +376,133 @@ class TestComputeThetaValues:
         assert 0.45 < theta[0, 0, 1] < 0.55
         # G2P is index 2 → theta ≈ 0.1
         assert theta[0, 0, 2] < 0.15
+
+
+# ---------------------------------------------------------------------------
+# _identify_field_mapping — ln_cfu0 wt_loc/spiked_loc recognition
+# ---------------------------------------------------------------------------
+
+class TestIdentifyFieldMappingLnCfu0:
+
+    def _fake_orchestrator(self, jax_model):
+        orchestrator_cal = MagicMock()
+        orchestrator_cal.jax_model = jax_model
+        orchestrator_cal.data = {}
+        orchestrator_cal.priors = {}
+        return orchestrator_cal
+
+    def test_recognizes_wt_and_spiked_loc_sites(self):
+        def fake_model(data, priors):
+            pyro.sample("ln_cfu0_wt_loc", dist.Normal(0.0, 1.0))
+            pyro.sample("ln_cfu0_spiked_loc", dist.Normal(0.0, 1.0))
+
+        mapping = _identify_field_mapping(self._fake_orchestrator(fake_model))
+
+        assert mapping["ln_cfu0_wt_loc"] == {
+            "component": "ln_cfu0",
+            "dist_class": "Normal",
+            "loc_field": "ln_cfu0_wt_loc_loc",
+            "scale_field": "ln_cfu0_wt_loc_scale",
+            "is_array": False,
+        }
+        assert mapping["ln_cfu0_spiked_loc"] == {
+            "component": "ln_cfu0",
+            "dist_class": "Normal",
+            "loc_field": "ln_cfu0_spiked_loc_loc",
+            "scale_field": "ln_cfu0_spiked_loc_scale",
+            "is_array": False,
+        }
+
+    def test_ignores_other_ln_cfu0_sites(self):
+        """
+        Only wt_loc/spiked_loc are ever surfaced -- the pinned library-class
+        hyperpriors (hyper_loc_i/hyper_scale_i) and per-genotype offsets are
+        not condition_growth/growth_transition/ln_cfu0-wt-spiked sites, so
+        they must not appear in the mapping.
+        """
+        def fake_model(data, priors):
+            pyro.sample("ln_cfu0_wt_loc", dist.Normal(0.0, 1.0))
+            pyro.sample("ln_cfu0_hyper_loc_0", dist.Normal(0.0, 1.0))
+            pyro.sample("ln_cfu0_offset", dist.Normal(0.0, 1.0))
+
+        mapping = _identify_field_mapping(self._fake_orchestrator(fake_model))
+
+        assert "ln_cfu0_wt_loc" in mapping
+        assert "ln_cfu0_hyper_loc_0" not in mapping
+        assert "ln_cfu0_offset" not in mapping
+
+    def test_still_recognizes_condition_growth_sites_alongside_ln_cfu0(self):
+        """The new ln_cfu0 branch doesn't interfere with the pre-existing
+        condition_growth/growth_transition suffix-based detection."""
+        def fake_model(data, priors):
+            pyro.sample("condition_growth_k", dist.Normal(0.0, 1.0))
+            pyro.sample("ln_cfu0_wt_loc", dist.Normal(0.0, 1.0))
+
+        mapping = _identify_field_mapping(self._fake_orchestrator(fake_model))
+
+        assert mapping["condition_growth_k"]["component"] == "condition_growth"
+        assert mapping["ln_cfu0_wt_loc"]["component"] == "ln_cfu0"
+
+
+# ---------------------------------------------------------------------------
+# _drop_presplit_backed_ln_cfu0_sites
+# ---------------------------------------------------------------------------
+
+class TestDropPresplitBackedLnCfu0Sites:
+
+    def _field_mapping(self):
+        return {
+            "condition_growth_k": {"component": "condition_growth"},
+            "ln_cfu0_wt_loc": {"component": "ln_cfu0"},
+            "ln_cfu0_spiked_loc": {"component": "ln_cfu0"},
+        }
+
+    def test_none_estimates_leaves_mapping_unchanged(self):
+        fm = self._field_mapping()
+        result = _drop_presplit_backed_ln_cfu0_sites(fm, None)
+        assert result == fm
+
+    def test_both_median_keeps_both_sites(self):
+        fm = self._field_mapping()
+        estimates = {"wt_source": "median", "spiked_source": "median"}
+        result = _drop_presplit_backed_ln_cfu0_sites(fm, estimates)
+        assert "ln_cfu0_wt_loc" in result
+        assert "ln_cfu0_spiked_loc" in result
+
+    def test_wt_presplit_drops_only_wt(self):
+        fm = self._field_mapping()
+        estimates = {"wt_source": "presplit", "spiked_source": "median"}
+        result = _drop_presplit_backed_ln_cfu0_sites(fm, estimates)
+        assert "ln_cfu0_wt_loc" not in result
+        assert "ln_cfu0_spiked_loc" in result
+
+    def test_spiked_presplit_drops_only_spiked(self):
+        fm = self._field_mapping()
+        estimates = {"wt_source": "median", "spiked_source": "presplit"}
+        result = _drop_presplit_backed_ln_cfu0_sites(fm, estimates)
+        assert "ln_cfu0_wt_loc" in result
+        assert "ln_cfu0_spiked_loc" not in result
+
+    def test_both_presplit_drops_both(self):
+        fm = self._field_mapping()
+        estimates = {"wt_source": "presplit", "spiked_source": "presplit"}
+        result = _drop_presplit_backed_ln_cfu0_sites(fm, estimates)
+        assert "ln_cfu0_wt_loc" not in result
+        assert "ln_cfu0_spiked_loc" not in result
+
+    def test_unrelated_sites_never_dropped(self):
+        fm = self._field_mapping()
+        estimates = {"wt_source": "presplit", "spiked_source": "presplit"}
+        result = _drop_presplit_backed_ln_cfu0_sites(fm, estimates)
+        assert "condition_growth_k" in result
+
+    def test_does_not_mutate_input_mapping(self):
+        fm = self._field_mapping()
+        original = dict(fm)
+        _drop_presplit_backed_ln_cfu0_sites(
+            fm, {"wt_source": "presplit", "spiked_source": "presplit"}
+        )
+        assert fm == original
 
 
 # ---------------------------------------------------------------------------
@@ -1155,6 +1286,148 @@ class TestRunPrefitCalibrationOrchestration:
         run_prefit_calibration(config_file=cfg, seed=1, hessian_chunk_size=32)
         call_kwargs = mock_ri.compute_hessian_sigmas.call_args.kwargs
         assert call_kwargs.get("hessian_chunk_size") == 32
+
+    # -----------------------------------------------------------------------
+    # ln_cfu0 wt/spiked_loc presplit gating (end to end)
+    # -----------------------------------------------------------------------
+
+    def _make_prod_data(self, wt_has_presplit, spiked_has_presplit):
+        """
+        Build a minimal but real production data object (not a MagicMock)
+        with one wt and one spiked genotype, so
+        _empirical_group_estimates can actually run against it and report
+        genuine wt_source/spiked_source values.
+        """
+        GrowthLike = namedtuple("GrowthLike", [
+            "ln_cfu", "good_mask", "ln_cfu0_spiked_mask", "ln_cfu0_wt_mask",
+        ])
+        PresplitLike = namedtuple("PresplitLike", ["ln_cfu_t0", "good_mask"])
+        DataLike = namedtuple("DataLike", ["growth", "presplit"])
+
+        # genotype 0 = wt, genotype 1 = spiked
+        shape7 = (1, 1, 1, 1, 1, 1, 2)
+        growth_like = GrowthLike(
+            ln_cfu=np.array([12.0, 10.0]).reshape(shape7),
+            good_mask=np.ones(shape7, dtype=bool),
+            ln_cfu0_spiked_mask=np.array([False, True]),
+            ln_cfu0_wt_mask=np.array([True, False]),
+        )
+        shape3 = (1, 1, 2)
+        presplit_good = np.zeros(shape3, dtype=bool)
+        presplit_good[..., 0] = wt_has_presplit
+        presplit_good[..., 1] = spiked_has_presplit
+        presplit_like = PresplitLike(
+            ln_cfu_t0=np.array([20.0, 30.0]).reshape(shape3),
+            good_mask=presplit_good,
+        )
+        return DataLike(growth=growth_like, presplit=presplit_like)
+
+    def test_wt_loc_override_skipped_when_production_has_presplit(self, tmp_path, mocker):
+        """
+        When the production data's own empirical estimate for wt already had
+        direct pre-split coverage, the calibration MAP's ln_cfu0_wt_loc must
+        NOT override the production prior/guess CSV rows.
+        """
+        cfg, priors, guesses = self._write_yaml_and_csvs(tmp_path)
+        pd.DataFrame({
+            "parameter": ["growth.ln_cfu0.ln_cfu0_wt_loc_loc"],
+            "value": [13.0],
+        }).to_csv(priors, index=False)
+        pd.DataFrame({
+            "parameter": ["ln_cfu0_wt_loc"],
+            "value": [13.0],
+            "flat_index": [float("nan")],
+        }).to_csv(guesses, index=False)
+
+        orchestrator_prod = MagicMock()
+        orchestrator_prod.data = self._make_prod_data(
+            wt_has_presplit=True, spiked_has_presplit=False
+        )
+        self._patch_pipeline(
+            mocker,
+            params={"ln_cfu0_wt_loc_auto_loc": np.float32(99.0)},
+            field_mapping={
+                "ln_cfu0_wt_loc": {
+                    "component": "ln_cfu0",
+                    "dist_class": "Normal",
+                    "loc_field": "ln_cfu0_wt_loc_loc",
+                    "scale_field": "ln_cfu0_wt_loc_scale",
+                    "is_array": False,
+                },
+            },
+        )
+        # _patch_pipeline patches read_configuration to a generic MagicMock;
+        # override it here (applied after, so it wins) with our data-bearing
+        # orchestrator_prod so the presplit gating has something real to
+        # inspect.
+        mocker.patch(
+            "tfscreen.tfmodel.scripts"
+            ".prefit_calibration_cli.read_configuration",
+            return_value=(orchestrator_prod, {}),
+        )
+
+        run_prefit_calibration(config_file=cfg, seed=1)
+
+        new_priors = pd.read_csv(priors).set_index("parameter")["value"]
+        new_guesses = pd.read_csv(guesses)
+        # Untouched: still the original value, not the calibration MAP's 99.0
+        assert new_priors["growth.ln_cfu0.ln_cfu0_wt_loc_loc"] == 13.0
+        assert new_guesses.iloc[0]["value"] == 13.0
+        assert not os.path.exists(priors + ".bak")
+        assert not os.path.exists(guesses + ".bak")
+
+    def test_wt_loc_override_applied_when_production_has_no_presplit(self, tmp_path, mocker):
+        """
+        When the production data's empirical estimate for wt had no
+        pre-split coverage (median fallback only), the calibration MAP's
+        ln_cfu0_wt_loc IS used to refine the production prior/guess.
+        """
+        cfg, priors, guesses = self._write_yaml_and_csvs(tmp_path)
+        pd.DataFrame({
+            "parameter": ["growth.ln_cfu0.ln_cfu0_wt_loc_loc"],
+            "value": [13.0],
+        }).to_csv(priors, index=False)
+        pd.DataFrame({
+            "parameter": ["ln_cfu0_wt_loc"],
+            "value": [13.0],
+            "flat_index": [float("nan")],
+        }).to_csv(guesses, index=False)
+
+        orchestrator_prod = MagicMock()
+        orchestrator_prod.data = self._make_prod_data(
+            wt_has_presplit=False, spiked_has_presplit=False
+        )
+        self._patch_pipeline(
+            mocker,
+            params={"ln_cfu0_wt_loc_auto_loc": np.float32(99.0)},
+            field_mapping={
+                "ln_cfu0_wt_loc": {
+                    "component": "ln_cfu0",
+                    "dist_class": "Normal",
+                    "loc_field": "ln_cfu0_wt_loc_loc",
+                    "scale_field": "ln_cfu0_wt_loc_scale",
+                    "is_array": False,
+                },
+            },
+        )
+        # _patch_pipeline patches read_configuration to a generic MagicMock;
+        # override it here (applied after, so it wins) with our data-bearing
+        # orchestrator_prod so the presplit gating has something real to
+        # inspect.
+        mocker.patch(
+            "tfscreen.tfmodel.scripts"
+            ".prefit_calibration_cli.read_configuration",
+            return_value=(orchestrator_prod, {}),
+        )
+
+        run_prefit_calibration(config_file=cfg, seed=1)
+
+        new_priors = pd.read_csv(priors).set_index("parameter")["value"]
+        new_guesses = pd.read_csv(guesses)
+        assert new_priors["growth.ln_cfu0.ln_cfu0_wt_loc_loc"] == pytest.approx(99.0)
+        assert new_guesses.iloc[0]["value"] == pytest.approx(99.0)
+        assert os.path.exists(priors + ".bak")
+        assert os.path.exists(guesses + ".bak")
 
 
 # ---------------------------------------------------------------------------

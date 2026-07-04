@@ -173,10 +173,10 @@ def test_run_optimization_nan_explosion(mocker):
 # get_posteriors — real model + component guide, no Predictive mocking
 # =============================================================================
 #
-# get_posteriors now runs its genotype-batch forward pass as a single
-# compiled `lax.scan` (see `_build_genotype_chunk_scanner` /
-# `_merge_scan_chunks` / `_genotype_chunk_indices` in run_inference.py)
-# instead of a Python loop that rebuilt `Predictive` once per chunk. Mocking
+# get_posteriors drives its genotype-batch forward pass with a JIT-compiled
+# per-chunk function (see `_build_genotype_chunk_scanner` /
+# `_genotype_chunk_indices` in run_inference.py) so that `Predictive` is
+# traced only once and GPU memory holds one chunk at a time.  Mocking
 # `Predictive` with a fixed call-count `side_effect` list (the old test
 # strategy) no longer reflects how the code calls it, so these tests run a
 # real tiny numpyro model + component guide end-to-end and check actual
@@ -368,7 +368,7 @@ def test_get_posteriors_chunking_matches_unchunked_latents(tmpdir):
 
 
 # =============================================================================
-# _genotype_chunk_indices / _merge_scan_chunks — pure indexing-math tests
+# _genotype_chunk_indices / _concat_genotype_chunks — pure indexing-math tests
 # =============================================================================
 
 def test_genotype_chunk_indices_exact_divisor():
@@ -386,41 +386,33 @@ def test_genotype_chunk_indices_single_chunk_smaller_than_batch():
     np.testing.assert_array_equal(idx, [[0, 1, 1, 1, 1]])
 
 
-def test_merge_scan_chunks_positive_axis_no_padding():
+def test_concat_genotype_chunks_positive_axis_no_padding():
     # 2 chunks, per-chunk shape (samples=2, genotypes=3), genotype axis=1
-    chunk0 = jnp.array([[0., 1., 2.], [10., 11., 12.]])
-    chunk1 = jnp.array([[3., 4., 5.], [13., 14., 15.]])
-    stacked = jnp.stack([chunk0, chunk1], axis=0)  # (2, 2, 3)
-
-    merged = RunInference._merge_scan_chunks(stacked, axis=1, total_size=6)
-
-    expected = jnp.array([[0., 1., 2., 3., 4., 5.],
-                          [10., 11., 12., 13., 14., 15.]])
-    np.testing.assert_allclose(np.asarray(merged), np.asarray(expected))
+    chunk0 = np.array([[0., 1., 2.], [10., 11., 12.]])
+    chunk1 = np.array([[3., 4., 5.], [13., 14., 15.]])
+    merged = RunInference._concat_genotype_chunks([chunk0, chunk1], axis=1, total_size=6)
+    expected = np.array([[0., 1., 2., 3., 4., 5.],
+                         [10., 11., 12., 13., 14., 15.]])
+    np.testing.assert_array_equal(merged, expected)
 
 
-def test_merge_scan_chunks_trims_padding():
+def test_concat_genotype_chunks_trims_padding():
     # total real genotypes = 5, forward_batch_size=3 -> chunks (0,1,2),(3,4,4)
-    chunk0 = jnp.array([[0., 1., 2.]])
-    chunk1 = jnp.array([[3., 4., 4.]])  # last entry is padding (duplicate of idx 4)
-    stacked = jnp.stack([chunk0, chunk1], axis=0)
-
-    merged = RunInference._merge_scan_chunks(stacked, axis=1, total_size=5)
-
-    expected = jnp.array([[0., 1., 2., 3., 4.]])
-    np.testing.assert_allclose(np.asarray(merged), np.asarray(expected))
+    chunk0 = np.array([[0., 1., 2.]])
+    chunk1 = np.array([[3., 4., 4.]])  # last entry is padding (duplicate of idx 4)
+    merged = RunInference._concat_genotype_chunks([chunk0, chunk1], axis=1, total_size=5)
+    expected = np.array([[0., 1., 2., 3., 4.]])
+    np.testing.assert_array_equal(merged, expected)
 
 
-def test_merge_scan_chunks_negative_axis():
+def test_concat_genotype_chunks_negative_axis():
     # genotype axis = -1 (last axis) of a per-chunk shape (samples, genotypes)
-    chunk0 = jnp.array([[0., 1.], [10., 11.]])
-    chunk1 = jnp.array([[2., 3.], [12., 13.]])
-    stacked = jnp.stack([chunk0, chunk1], axis=0)  # (2, 2, 2)
+    chunk0 = np.array([[0., 1.], [10., 11.]])
+    chunk1 = np.array([[2., 3.], [12., 13.]])
+    merged = RunInference._concat_genotype_chunks([chunk0, chunk1], axis=-1, total_size=4)
+    expected = np.array([[0., 1., 2., 3.], [10., 11., 12., 13.]])
+    np.testing.assert_array_equal(merged, expected)
 
-    merged = RunInference._merge_scan_chunks(stacked, axis=-1, total_size=4)
-
-    expected = jnp.array([[0., 1., 2., 3.], [10., 11., 12., 13.]])
-    np.testing.assert_allclose(np.asarray(merged), np.asarray(expected))
 
 def test_run_optimization_restore(tmpdir, mocker):
     model = MockModel()

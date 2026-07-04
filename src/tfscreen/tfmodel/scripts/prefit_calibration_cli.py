@@ -60,6 +60,9 @@ import tfscreen
 from tfscreen.util.cli.generalized_main import generalized_main
 from tfscreen.tfmodel.inference.run_inference import RunInference
 from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+from tfscreen.tfmodel.generative.components.ln_cfu0.hierarchical import (
+    _empirical_group_estimates,
+)
 from tfscreen.tfmodel.configuration_io import (
     read_configuration,
 )
@@ -395,8 +398,9 @@ def _inject_calibration_priors(orchestrator_cal, orchestrator_prod, theta_values
 
 def _identify_field_mapping(orchestrator_cal):
     """
-    Enumerate the ``condition_growth`` and ``growth_transition`` sample sites
-    and derive their ``ModelPriors`` field names.
+    Enumerate the ``condition_growth``, ``growth_transition``, and ln_cfu0
+    wt/spiked-location sample sites, and derive their ``ModelPriors`` field
+    names.
 
     Simple-prior components expose per-condition array sites following the
     convention:
@@ -412,6 +416,17 @@ def _identify_field_mapping(orchestrator_cal):
       ``loc_field = {x}_hyper_loc_loc``, ``scale_field = {x}_hyper_loc_scale``.
     - Site ``{component}_{x}_hyper_scale`` → HalfNormal;
       ``scale_field = {x}_hyper_scale_loc``.
+
+    The ln_cfu0 component's ``wt_loc``/``spiked_loc`` sites are always free
+    (never pinned during calibration — see ``_PINNED_COMPONENTS``), so they
+    are always picked up here.  Their ``ModelPriors`` fields are
+    self-prefixed (``ln_cfu0_wt_loc_loc``, not ``wt_loc_loc``), unlike the
+    condition_growth/growth_transition convention above, so they get their
+    own branch rather than falling through the shared suffix logic.  Whether
+    the caller actually *uses* these two sites to override the production
+    priors is decided later, in ``run_prefit_calibration``, based on
+    whether the production config's own empirical estimate already had
+    direct pre-split coverage for that class.
 
     Returns
     -------
@@ -433,6 +448,15 @@ def _identify_field_mapping(orchestrator_cal):
         elif site_name.startswith("growth_transition_"):
             component = "growth_transition"
             suffix = site_name[len("growth_transition_"):]
+        elif site_name in ("ln_cfu0_wt_loc", "ln_cfu0_spiked_loc"):
+            out[site_name] = {
+                "component": "ln_cfu0",
+                "dist_class": "Normal",
+                "loc_field": f"{site_name}_loc",
+                "scale_field": f"{site_name}_scale",
+                "is_array": False,
+            }
+            continue
         else:
             continue
 
@@ -469,6 +493,53 @@ def _identify_field_mapping(orchestrator_cal):
             }
 
     return out
+
+
+def _drop_presplit_backed_ln_cfu0_sites(field_mapping, ln_cfu0_estimates):
+    """
+    Remove ``ln_cfu0_wt_loc`` / ``ln_cfu0_spiked_loc`` from ``field_mapping``
+    for any class whose production empirical estimate was already backed by
+    direct pre-split data.
+
+    The calibration MAP's joint fit of ``ln_cfu0_wt_loc``/``spiked_loc``
+    alongside ``condition_growth``/``growth_transition`` is only worth
+    trusting *more* than a class's own direct measurement when that
+    measurement doesn't exist — pre-split data is a lower-variance,
+    growth-unconfounded read straight off the data, whereas the calibration
+    estimate is a noisier joint-optimization byproduct that can only match
+    it at best.  Library-class hyperpriors (``hyper_loc``/``hyper_scale``)
+    are never part of ``field_mapping`` in the first place (they stay pinned
+    throughout calibration; see ``_PINNED_COMPONENTS``), so this only ever
+    touches the two class-level ln_cfu0 sites.
+
+    Parameters
+    ----------
+    field_mapping : dict
+        Output of :func:`_identify_field_mapping`.
+    ln_cfu0_estimates : dict or None
+        Output of ``_empirical_group_estimates`` run on the *production*
+        data (i.e. ``orchestrator_prod.data.growth``/``.presplit``), or
+        ``None`` if it couldn't be computed (e.g. stub/mocked data) — in
+        that case nothing is dropped, matching prior behaviour.
+
+    Returns
+    -------
+    dict
+        ``field_mapping``, with any presplit-backed ln_cfu0 sites removed.
+    """
+    if ln_cfu0_estimates is None:
+        return field_mapping
+
+    drop = set()
+    if ln_cfu0_estimates.get("wt_source") == "presplit":
+        drop.add("ln_cfu0_wt_loc")
+    if ln_cfu0_estimates.get("spiked_source") == "presplit":
+        drop.add("ln_cfu0_spiked_loc")
+
+    if not drop:
+        return field_mapping
+
+    return {k: v for k, v in field_mapping.items() if k not in drop}
 
 
 # ---------------------------------------------------------------------------
@@ -1010,7 +1081,22 @@ def run_prefit_calibration(config_file,
     )
 
     # 6. Map sample sites → CSV fields and apply in-place updates.
+    #    ln_cfu0_wt_loc/spiked_loc are only let through when the production
+    #    config's own empirical estimate (get_priors' presplit-preferring
+    #    estimator) had no direct pre-split coverage for that class — when
+    #    it does, that direct read is already better than anything the
+    #    calibration's joint MAP can offer, so we leave it alone.
+    prod_growth_data = getattr(orchestrator_prod.data, "growth", None)
+    ln_cfu0_estimates = None
+    if prod_growth_data is not None:
+        ln_cfu0_estimates = _empirical_group_estimates(
+            prod_growth_data,
+            presplit=getattr(orchestrator_prod.data, "presplit", None),
+        )
     field_mapping = _identify_field_mapping(orchestrator_cal)
+    field_mapping = _drop_presplit_backed_ln_cfu0_sites(
+        field_mapping, ln_cfu0_estimates
+    )
     prior_updates, guess_updates = _build_csv_updates(field_mapping, params)
 
     hessian_guess_updates, hessian_prior_updates = _build_hessian_scale_updates(
