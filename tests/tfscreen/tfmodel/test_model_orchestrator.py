@@ -799,6 +799,7 @@ def test_model_class_properties(initialized_model_class):
     model._epistasis = True
     model._thermo_data = None
     model._binding_weight = 1.0
+    model._base_growth_df = "bg.csv"
 
     assert ModelOrchestrator.jax_model.fget(model) == "jm"
     assert ModelOrchestrator.jax_model_guide.fget(model) == "jmg"
@@ -820,6 +821,7 @@ def test_model_class_properties(initialized_model_class):
     assert ModelOrchestrator.settings.fget(model)["spiked_genotypes"] == ["s"]
     assert ModelOrchestrator.settings.fget(model)["growth_shares_replicates"] == False
     assert ModelOrchestrator.settings.fget(model)["epistasis"] == True
+    assert ModelOrchestrator.settings.fget(model)["base_growth_df"] == "bg.csv"
     assert ModelOrchestrator.get_batch.fget(model) == get_batch
 
 def test_extract_parameters_full(initialized_model_class):

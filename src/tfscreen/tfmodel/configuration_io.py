@@ -117,7 +117,8 @@ def write_configuration(orchestrator,
                         out_prefix,
                         growth_df_path=None,
                         binding_df_path=None,
-                        presplit_df_path=None):
+                        presplit_df_path=None,
+                        base_growth_df_path=None):
     """
     Write model configuration and extracted priors/guesses to files.
 
@@ -131,6 +132,11 @@ def write_configuration(orchestrator,
         Path to growth data CSV.
     binding_df_path : str
         Path to binding data CSV.
+    presplit_df_path : str, optional
+        Path to the pre-split observation CSV.
+    base_growth_df_path : str, optional
+        Path to the base_growth_df CSV (direct growth-rate measurements
+        anchoring the k_ref latent; see model_orchestrator._read_base_growth_df).
     """
     # Construct priors and guesses dataframes
     priors_list = []
@@ -157,6 +163,8 @@ def write_configuration(orchestrator,
         data_paths["binding"] = binding_df_path
     if presplit_df_path is not None:
         data_paths["presplit"] = presplit_df_path
+    if base_growth_df_path is not None:
+        data_paths["base_growth"] = base_growth_df_path
 
     config = {
         "tfscreen_version": __version__,
@@ -280,6 +288,7 @@ def read_configuration(config_file):
         growth_df_path = config["data"].get("growth")
         binding_df_path = config["data"].get("binding")
         presplit_df_path = config["data"].get("presplit")
+        base_growth_df_path = config["data"].get("base_growth")
         settings = config["components"]
     else:
         raise ValueError(f"Configuration file '{config_file}' has an unrecognized format.")
@@ -289,14 +298,18 @@ def read_configuration(config_file):
             warnings.warn(f"Configuration file version {config['tfscreen_version']} does not match current tfscreen version {__version__}")
 
     batch_size = settings.pop("batch_size", None)
-    # presplit_df is a data path, not a component setting; pop it if it
-    # ended up in settings (older configs that serialised it there).
+    # presplit_df / base_growth_df are data paths, not component settings;
+    # pop them since they're already passed explicitly below (they end up
+    # in settings because ModelOrchestrator.settings includes them for
+    # round-tripping the raw path the user originally supplied).
     settings.pop("presplit_df", None)
+    settings.pop("base_growth_df", None)
 
     orchestrator = ModelOrchestrator(growth_df_path,
                      binding_df_path,
                      batch_size=batch_size,
                      presplit_df=presplit_df_path,
+                     base_growth_df=base_growth_df_path,
                      **settings)
 
     # Update Priors from CSV

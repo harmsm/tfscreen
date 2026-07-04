@@ -49,6 +49,7 @@ def check_component_compatibility(condition_growth_model, theta_rescale_model):
 def configure_model(binding_df,
                     growth_df=None,
                     presplit_df=None,
+                    base_growth_df=None,
                     out_prefix="tfs_configure",
                     condition_growth_model="linear",
                     growth_transition_model="instant",
@@ -88,6 +89,19 @@ def configure_model(binding_df,
         Path to the growth data CSV file (ln_cfu measurements per genotype,
         replicate, and timepoint). When omitted, a binding-only model is
         configured.
+    presplit_df : str, optional
+        Path to the pre-split (t = -t_pre) sequencing-observation CSV file.
+        Provides a direct constraint on ln_cfu0 for genotypes it covers. See
+        data_class.PreSplitData.
+    base_growth_df : str, optional
+        Path to a CSV of direct, reference-condition growth-rate
+        measurements (columns: genotype, rate, rate_std) for a subset of
+        genotypes (wt at minimum). Anchors the new k_ref latent scalar to
+        dk_geno via ``rate_obs ~ Normal(k_ref + dk_geno, rate_std)``,
+        resolving an identifiability confound between condition_growth's
+        k/m and dk_geno's hierarchical hyperparameters. See
+        model_orchestrator._read_base_growth_df and generative/model.py's
+        base_growth_obs block.
     out_prefix : str, optional
         Prefix for the three output files ({out_prefix}_config.yaml,
         {out_prefix}_priors.csv, {out_prefix}_guesses.csv).
@@ -191,6 +205,7 @@ def configure_model(binding_df,
     orchestrator = ModelOrchestrator(growth_df,
                      binding_df,
                      presplit_df=presplit_df,
+                     base_growth_df=base_growth_df,
                      binding_only=binding_only,
                      condition_growth=condition_growth_model,
                      growth_transition=growth_transition_model,
@@ -214,17 +229,20 @@ def configure_model(binding_df,
     # names, the data file paths, and the parameter guesses/priors.
     growth_path = None if binding_only else (growth_df if isinstance(growth_df, str) else "growth.csv")
     presplit_path = presplit_df if isinstance(presplit_df, str) else None
+    base_growth_path = base_growth_df if isinstance(base_growth_df, str) else None
     write_configuration(orchestrator=orchestrator,
                         out_prefix=out_prefix,
                         growth_df_path=growth_path,
                         binding_df_path=binding_df if isinstance(binding_df, str) else "binding.csv",
-                        presplit_df_path=presplit_path)
+                        presplit_df_path=presplit_path,
+                        base_growth_df_path=base_growth_path)
 
 def main():
     return generalized_main(configure_model,
                             manual_arg_types={"binding_df":str,
                                               "growth_df":str,
                                               "presplit_df":str,
+                                              "base_growth_df":str,
                                               "spiked":list,
                                               "thermo_data":str,
                                               "batch_size":int,

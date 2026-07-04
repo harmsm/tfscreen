@@ -6,7 +6,11 @@ Coverage:
   - ModelOrchestrator: base_growth_df=None (no change), base_growth_df passed in
   - jax_model: base_growth_obs / base_growth_k_ref sites fire (model and guide)
     when data.base_growth is set, and are absent when it is not.
+  - Full tfs-configure-model / tfs-fit-model CLI round trip: base_growth_df
+    survives write_configuration -> YAML -> read_configuration.
 """
+
+import os
 
 import pytest
 import numpy as np
@@ -17,6 +21,8 @@ from numpyro.handlers import trace, seed
 
 from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
 from tfscreen.tfmodel.data_class import BaseGrowthData
+from tfscreen.tfmodel.scripts.configure_model_cli import configure_model
+from tfscreen.tfmodel.configuration_io import read_configuration
 
 
 # ---------------------------------------------------------------------------
@@ -163,3 +169,41 @@ def test_base_growth_obs_masks_genotypes_without_measurement(minimal_growth_df,
                      if str(genotype_labels[geno_idx]) == "A2V"]
     assert len(a2v_positions) > 0
     assert np.allclose(np.asarray(log_prob)[a2v_positions], 0.0)
+
+
+# ---------------------------------------------------------------------------
+# Full CLI round trip: tfs-configure-model -> tfs_configure_config.yaml ->
+# tfs-fit-model (via read_configuration)
+# ---------------------------------------------------------------------------
+
+def test_configure_model_to_read_configuration_round_trip(tmp_path,
+                                                           minimal_growth_df,
+                                                           minimal_binding_df,
+                                                           minimal_base_growth_df):
+    """base_growth_df must survive the real tfs-configure-model -> YAML ->
+    tfs-fit-model (read_configuration) round trip, ending up as a proper
+    BaseGrowthData on the orchestrator rebuilt from the config file."""
+    growth_path = os.path.join(tmp_path, "growth.csv")
+    binding_path = os.path.join(tmp_path, "binding.csv")
+    base_growth_path = os.path.join(tmp_path, "base_growth.csv")
+    minimal_growth_df.to_csv(growth_path, index=False)
+    minimal_binding_df.to_csv(binding_path, index=False)
+    minimal_base_growth_df.to_csv(base_growth_path, index=False)
+
+    out_prefix = os.path.join(tmp_path, "tfs_configure")
+    configure_model(binding_path, growth_df=growth_path,
+                    base_growth_df=base_growth_path,
+                    out_prefix=out_prefix,
+                    theta_growth_noise_model="zero")
+
+    config_path = f"{out_prefix}_config.yaml"
+    orchestrator, init_params = read_configuration(config_path)
+
+    bg = orchestrator.data.base_growth
+    assert bg is not None
+    assert isinstance(bg, BaseGrowthData)
+    assert bg.num_genotype == 3
+    assert bg.good_mask.sum() == 2
+    assert orchestrator.priors.growth.base_growth is not None
+    assert orchestrator.priors.growth.base_growth.k_ref_loc == pytest.approx(0.021)
+    assert "base_growth_k_ref" in init_params

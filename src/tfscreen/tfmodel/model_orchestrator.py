@@ -1795,4 +1795,5 @@ class ModelOrchestrator:
             "thermo_data": self._thermo_data,
             "binding_weight": self._binding_weight,
             "presplit_df": getattr(self, "_presplit_df", None),
+            "base_growth_df": getattr(self, "_base_growth_df", None),
         }
