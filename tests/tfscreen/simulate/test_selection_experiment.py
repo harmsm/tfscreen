@@ -1311,3 +1311,12 @@ def test_check_cf_multiple_unknown_keys(base_config: dict):
 def test_check_cf_all_known_keys_accepted(base_config: dict):
     # Every key in the fixture must already be a known key; no error should be raised.
     _check_cf(base_config)
+
+
+def test_check_cf_accepts_base_growth_data(base_config: dict):
+    """base_growth_data must be a recognized optional output block (it drives
+    tfs-simulate's simulated base_growth CSV -- see
+    simulate/base_growth_data.py and simulate/scripts/simulate_cli.py)."""
+    cf = dict(base_config)
+    cf["base_growth_data"] = {"k_ref": 0.025}
+    _check_cf(cf)

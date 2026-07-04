@@ -684,3 +684,119 @@ class TestPredictPopulationReferenceThreading:
             )
 
         assert captured["data"].growth.external_theta_population is None
+
+
+# ---------------------------------------------------------------------------
+# predict() output alignment for condition_rep-plated sites
+# ---------------------------------------------------------------------------
+
+class TestPredictConditionRepSites:
+    """
+    condition_growth_k/m (growth/linear.py) are plated on condition_rep -- a
+    TensorManager map_group that pools condition_pre and condition_sel
+    labels into one shared index space, never a tensor_dim_names pivot
+    axis. Verify predict() reports genuinely distinct per-condition values
+    for such sites instead of silently broadcasting the first
+    condition_rep's value to every row (the bug fixed by
+    _is_condition_rep_site / _condition_rep_output_df in prediction.py).
+    """
+
+    @pytest.fixture
+    def multi_condition_orchestrator(self):
+        """Two genotypes, both spanning two distinct condition_sel values
+        (same condition_pre throughout), giving num_condition_rep == 3
+        ('pre-1', 'sel+1', 'sel+2')."""
+        growth_df = pd.DataFrame({
+            "library": ["lib"] * 8,
+            "genotype": ["wt", "wt", "wt", "wt",
+                         "M42V", "M42V", "M42V", "M42V"],
+            "titrant_name": ["tit1"] * 8,
+            "titrant_conc": [0.0, 1.0, 0.0, 1.0] * 2,
+            "condition_pre": ["pre-1"] * 8,
+            "condition_sel": ["sel+1", "sel+1", "sel+2", "sel+2"] * 2,
+            "t_pre": [10.0] * 8,
+            "t_sel": [0.0, 20.0, 0.0, 20.0] * 2,
+            "ln_cfu": [0.0, 5.0, 0.0, 3.0] * 2,
+            "ln_cfu_std": [0.1] * 8,
+            "replicate": [1] * 8,
+        })
+        binding_df = pd.DataFrame({
+            "genotype": ["wt", "M42V"],
+            "titrant_name": ["tit1", "tit1"],
+            "titrant_conc": [0.5, 0.5],
+            "theta_obs": [0.5, 0.2],
+            "theta_std": [0.01, 0.01],
+        })
+        return ModelOrchestrator(growth_df, binding_df, transformation="single")
+
+    def _fake_posteriors(self, orchestrator, condition_growth_k_values):
+        from numpyro.handlers import seed, trace as nptrace
+
+        seeded = seed(orchestrator.jax_model, rng_seed=0)
+        model_tr = nptrace(seeded).get_trace(
+            data=orchestrator.data, priors=orchestrator.priors,
+        )
+        fake_posteriors = {
+            name: np.zeros((1,) + site["value"].shape)
+            for name, site in model_tr.items()
+            if site["type"] == "sample" and not site.get("is_observed", False)
+        }
+        assert fake_posteriors["condition_growth_k"].shape[1] == len(condition_growth_k_values)
+        fake_posteriors["condition_growth_k"] = np.asarray([condition_growth_k_values])
+        return fake_posteriors
+
+    def test_condition_growth_k_differs_by_condition_rep(
+            self, multi_condition_orchestrator):
+        # num_condition_rep == 3, sorted alphabetically: pre-1, sel+1, sel+2
+        true_values = [0.111, 0.222, 0.333]
+        fake_posteriors = self._fake_posteriors(
+            multi_condition_orchestrator, true_values
+        )
+
+        result = predict(
+            multi_condition_orchestrator,
+            fake_posteriors,
+            predict_sites=["condition_growth_k"],
+            num_samples=None,
+            num_marginal_samples=1,
+            genotypes=["wt"],
+        )
+
+        assert len(result) == 3
+        assert set(result["condition_rep"]) == {"pre-1", "sel+1", "sel+2"}
+
+        by_cond = result.set_index("condition_rep")["q0.5"]
+        assert np.isclose(by_cond["pre-1"], 0.111)
+        assert np.isclose(by_cond["sel+1"], 0.222)
+        assert np.isclose(by_cond["sel+2"], 0.333)
+
+        # The historical bug reported every row with the first
+        # condition_rep's value -- guard against regressing to that.
+        assert len(set(np.round(by_cond.values, 6))) == 3
+
+    def test_condition_growth_k_and_m_together(
+            self, multi_condition_orchestrator):
+        """Requesting condition_growth_k and condition_growth_m together
+        (as in the originally reported bug) must independently align each
+        site to its own condition_rep values."""
+        fake_posteriors = self._fake_posteriors(
+            multi_condition_orchestrator, [0.111, 0.222, 0.333]
+        )
+        fake_posteriors["condition_growth_m"] = np.asarray([[0.01, 0.02, 0.03]])
+
+        result = predict(
+            multi_condition_orchestrator,
+            fake_posteriors,
+            predict_sites=["condition_growth_k", "condition_growth_m"],
+            num_samples=None,
+            num_marginal_samples=1,
+            genotypes=["wt"],
+        )
+
+        k_df = result["condition_growth_k"].set_index("condition_rep")["q0.5"]
+        m_df = result["condition_growth_m"].set_index("condition_rep")["q0.5"]
+
+        assert np.isclose(k_df["sel+1"], 0.222)
+        assert np.isclose(k_df["sel+2"], 0.333)
+        assert np.isclose(m_df["sel+1"], 0.02)
+        assert np.isclose(m_df["sel+2"], 0.03)

@@ -66,7 +66,7 @@ SIMULATE_KNOWN_KEYS = frozenset({
     # Column selectors (rarely overridden)
     "condition_selector", "library_selector",
     # Optional output blocks
-    "binding_data", "presplit_data",
+    "binding_data", "presplit_data", "base_growth_data",
 })
   
 def _check_dict_number(

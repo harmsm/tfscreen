@@ -69,6 +69,99 @@ def _align_site_to_tm_dims(spatial_shape, tm_sizes):
     return result
 
 
+def _is_condition_rep_site(site_trace):
+    """
+    Detect whether a model trace entry is plated purely on condition_rep
+    (e.g. ``condition_growth_k``/``condition_growth_m`` from the
+    ``growth/linear.py``, ``power.py``, ``saturation.py`` components).
+
+    condition_rep is a TensorManager map_group (see
+    ``model_orchestrator._build_growth_tm``'s ``add_map_tensor(...,
+    name="condition_rep")`` call), not a pivot dimension of the 7-D growth
+    tensor, so it never appears in ``tensor_dim_names`` and can never be
+    aligned by ``_align_site_to_tm_dims``.
+
+    Parameters
+    ----------
+    site_trace : dict
+        A single entry from a NumPyro model trace (``model_trace[site]``).
+
+    Returns
+    -------
+    bool
+        True if the site's only plate is a ``"*_condition_parameters"``
+        plate (the naming convention shared by all condition_growth
+        components).
+    """
+    frames = site_trace.get("cond_indep_stack", [])
+    return (
+        len(frames) == 1
+        and frames[0].name.lower().endswith("_condition_parameters")
+    )
+
+
+def _condition_rep_output_df(growth_tm, site_samples, q_to_get, num_samples):
+    """
+    Build a predict() output DataFrame for a site plated on condition_rep.
+
+    condition_rep pools condition_pre and condition_sel labels into one
+    shared parameter index (see ``TensorManager.add_map_tensor`` and
+    ``model_orchestrator._build_growth_tm``), so a single growth_df row does
+    not correspond 1:1 to one condition_rep -- its pre-phase and sel-phase
+    conditions can resolve to different (or the same) condition_rep.
+    Forcing such a site onto the genotype/condition growth_df grid it does
+    not naturally belong to (as the generic TM-shape alignment used for
+    other sites would) silently mis-attributes values. Instead this reports
+    the site at its own natural grain -- one row per condition_rep --
+    mirroring the convention already used by each component's
+    ``get_extract_specs()`` (consumed by ``tfs-extract-params``).
+
+    Parameters
+    ----------
+    growth_tm : TensorManager
+        The (possibly genotype/condition-subsetted) growth TensorManager
+        whose ``map_groups["condition_rep"]`` gives the condition_rep
+        ordering that ``site_samples`` is already aligned to (see the
+        condition_rep reindexing added to the parameter-slicing loop in
+        ``predict()``).
+    site_samples : array-like
+        Shape ``(num_samples, num_condition_rep)``.
+    q_to_get : dict
+        Mapping of output column name to quantile value.
+    num_samples : int or None
+        Number of posterior draws to report as ``sample_0`` ... columns.
+
+    Returns
+    -------
+    pd.DataFrame
+        One row per condition_rep, with metadata columns from
+        ``map_groups["condition_rep"]`` (e.g. ``library``, ``condition_rep``,
+        and ``replicate`` unless ``growth_shares_replicates``) plus quantile
+        and (optionally) sample columns.
+    """
+    cond_rep_df = growth_tm.map_groups["condition_rep"]
+    df = (cond_rep_df
+          .sort_values("map_condition_rep")
+          .drop(columns=["map_condition_rep"])
+          .reset_index(drop=True))
+
+    for q_name, q_val in q_to_get.items():
+        df[q_name] = np.quantile(site_samples, q_val, axis=0)
+
+    if num_samples is not None and num_samples > 0:
+        site_samples_np = np.array(site_samples)
+        S = site_samples_np.shape[0]
+        chosen = np.random.choice(S, size=num_samples, replace=num_samples > S)
+        samples_df = pd.DataFrame(
+            site_samples_np[chosen].T,
+            columns=[f"sample_{i}" for i in range(num_samples)],
+            index=df.index,
+        )
+        df = pd.concat([df, samples_df], axis=1)
+
+    return df
+
+
 def copy_orchestrator(orchestrator,
                       t_pre=None,
                       t_sel=None,
@@ -457,19 +550,49 @@ def predict(orchestrator,
             
         val = val[sample_indices]
 
-        # Slice any plated dimension to match the new data labels. 
-        # This handles genotype subsetting and any other model plates (like 
+        # Slice any plated dimension to match the new data labels.
+        # This handles genotype subsetting and any other model plates (like
         # titrant_conc in congression/categorical models).
         for frame in site.get("cond_indep_stack", []):
             plate_name = frame.name.lower()
-            
+
+            # condition_rep (the "*_condition_parameters" plate used by the
+            # condition_growth components -- see growth/linear.py, power.py,
+            # saturation.py) is never a tensor_dim_names entry: it is a
+            # TensorManager map_group that pools condition_pre and
+            # condition_sel labels into one shared index space, not a pivot
+            # dimension of the 7-D growth tensor. The substring search below
+            # against tensor_dim_names can never match it, so it needs its
+            # own reindexing path keyed on the condition_rep map_group table
+            # instead of tensor_dim_labels.
+            if plate_name.endswith("_condition_parameters"):
+                old_cond_df = (orchestrator.growth_tm.map_groups["condition_rep"]
+                              .sort_values("map_condition_rep"))
+                new_cond_df = (new_orchestrator.growth_tm.map_groups["condition_rep"]
+                              .sort_values("map_condition_rep"))
+                key_cols = [c for c in old_cond_df.columns if c != "map_condition_rep"]
+                old_keys = list(old_cond_df[key_cols].itertuples(index=False, name=None))
+                new_keys = list(new_cond_df[key_cols].itertuples(index=False, name=None))
+
+                if old_keys != new_keys:
+                    try:
+                        indices = [old_keys.index(k) for k in new_keys]
+                    except ValueError:
+                        raise ValueError(
+                            f"Site '{site_name}' is plated on condition_rep "
+                            f"and cannot be expanded to new condition(s)."
+                        )
+                    val = jnp.take(val, jnp.array(indices), axis=frame.dim)
+
+                continue
+
             # Find the corresponding dimension in the TensorManager
             dim_idx = None
             for i, name in enumerate(orchestrator.growth_tm.tensor_dim_names):
                 if name.lower() in plate_name:
                     dim_idx = i
                     break
-            
+
             if dim_idx is not None:
                 old_labels = orchestrator.growth_tm.tensor_dim_labels[dim_idx]
                 new_labels = new_orchestrator.growth_tm.tensor_dim_labels[dim_idx]
@@ -557,6 +680,20 @@ def predict(orchestrator,
     all_dfs = {}
     for site in predict_sites:
         site_samples = predictions[site]  # shape: (num_samples, ...)
+
+        # condition_rep-plated sites (e.g. condition_growth_k/m) have no
+        # genotype/replicate/time/condition_pre/condition_sel/titrant axis at
+        # all -- their only dimension is condition_rep, which is a
+        # TensorManager map_group, not a tensor_dim_names pivot axis. The
+        # generic TM-shape alignment below has no way to represent that
+        # axis, so it would silently mis-align them (e.g. always reporting
+        # the first condition_rep's value). Report these at their own
+        # natural grain instead.
+        if _is_condition_rep_site(model_trace.get(site, {})):
+            all_dfs[site] = _condition_rep_output_df(
+                tm, site_samples, q_to_get, num_samples
+            )
+            continue
 
         # Map each axis of the site's spatial shape to the correct TM dimension.
         # Right-to-left alignment works for full-rank and tail-aligned sites;
