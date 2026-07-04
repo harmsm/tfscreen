@@ -126,6 +126,32 @@ def jax_model(data: DataClass,
                             data.growth,
                             priors.growth.dk_geno)
 
+    # Optional base_growth calibration: a shared k_ref scalar tying dk_geno
+    # to direct growth-rate measurements for a subset of genotypes (wt at
+    # minimum) -- see data_class.BaseGrowthData and
+    # model_orchestrator._read_base_growth_df. Sampled unconditionally (both
+    # is_guide branches) so the guide registers the site; the actual
+    # likelihood (base_growth_obs, below) only fires in the non-guide branch.
+    if getattr(data, "base_growth", None) is not None:
+        if is_guide:
+            k_ref_loc = pyro.param(
+                "base_growth_k_ref_loc",
+                jnp.array(priors.growth.base_growth.k_ref_loc),
+            )
+            k_ref_scale = pyro.param(
+                "base_growth_k_ref_scale",
+                jnp.array(priors.growth.base_growth.k_ref_scale),
+                constraint=dist.constraints.greater_than(1e-4),
+            )
+            k_ref = pyro.sample("base_growth_k_ref",
+                                dist.Normal(k_ref_loc, k_ref_scale))
+        else:
+            k_ref = pyro.sample(
+                "base_growth_k_ref",
+                dist.Normal(priors.growth.base_growth.k_ref_loc,
+                            priors.growth.base_growth.k_ref_scale),
+            )
+
     # activity
     activity = activity_model("activity",
                               data.growth,
@@ -246,6 +272,27 @@ def jax_model(data: DataClass,
                                     dist.Normal(ln_cfu0_3d, std_t0),
                                     obs=obs_t0,
                                 )
+
+        # Direct growth-rate measurements — anchors k_ref (and, via dk_geno's
+        # wt=0 pin, the shared k/m identifiability slack) to genotypes with
+        # a directly-measured reference-condition growth rate.
+        # dk_geno shape: (1,1,1,1,1,1,batch_size) -> flatten to (batch_size,).
+        if getattr(data, "base_growth", None) is not None:
+            bg = data.base_growth
+            bi = data.growth.batch_idx
+            rate_obs = bg.rate_obs[bi]
+            rate_std = bg.rate_std[bi]
+            mask = bg.good_mask[bi]
+            dk_geno_flat = dk_geno[0, 0, 0, 0, 0, 0, :]
+            with pyro.plate("shared_genotype_plate",
+                            size=data.growth.batch_size, dim=-1):
+                with pyro.handlers.scale(scale=data.growth.scale_vector):
+                    with pyro.handlers.mask(mask=mask):
+                        pyro.sample(
+                            "base_growth_obs",
+                            dist.Normal(k_ref + dk_geno_flat, rate_std),
+                            obs=rate_obs,
+                        )
 
         # calculate observable (all tensors have correct dimensions)
         g_pre, g_sel = calculate_growth(params=growth_params,

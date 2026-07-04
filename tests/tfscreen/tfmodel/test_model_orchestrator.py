@@ -1899,3 +1899,291 @@ class TestCombinedConditionPreKey:
             f"growth condition_pre labels: {cp_growth}\n"
             f"presplit condition_pre labels: {cp_presplit}"
         )
+
+# ---------------------------------------------------------------------------
+# base_growth_df: _read_base_growth_df / _build_base_growth_arrays /
+# _derive_k_ref_guess
+# ---------------------------------------------------------------------------
+
+class TestBaseGrowthDf:
+    """
+    Tests for the base_growth_df dk_geno-calibration input: a direct,
+    uncertainty-weighted observation of growth rate tied to a new k_ref
+    scalar plus the existing per-genotype dk_geno latent (see model.py's
+    base_growth_obs block).
+    """
+
+    @staticmethod
+    def _growth_df(genotypes=("wt", "A2G", "K3R")):
+        rows = []
+        for geno in genotypes:
+            rows.append({
+                "library": "kanR", "replicate": 1, "genotype": geno,
+                "titrant_name": "iptg", "titrant_conc": 0.0,
+                "condition_pre": "-kan", "condition_sel": "+kan",
+                "t_pre": 30.0, "t_sel": 100.0,
+                "ln_cfu": 10.0, "ln_cfu_std": 0.1,
+            })
+        return pd.DataFrame(rows)
+
+    def test_basic_construction(self):
+        from tfscreen.tfmodel.model_orchestrator import _read_base_growth_df
+
+        growth_df = _read_growth_df(self._growth_df())
+        base_growth_df_raw = pd.DataFrame({
+            "genotype": ["wt", "A2G"],
+            "rate": [0.02, 0.015],
+            "rate_std": [0.001, 0.002],
+        })
+
+        result = _read_base_growth_df(base_growth_df_raw, growth_df)
+        assert set(result["genotype"]) == {"wt", "A2G"}
+        assert len(result) == 2
+
+    def test_missing_required_column_raises(self):
+        from tfscreen.tfmodel.model_orchestrator import _read_base_growth_df
+
+        growth_df = _read_growth_df(self._growth_df())
+        bad_df = pd.DataFrame({"genotype": ["wt"], "rate": [0.02]})  # no rate_std
+
+        with pytest.raises(ValueError):
+            _read_base_growth_df(bad_df, growth_df)
+
+    def test_genotype_not_in_growth_df_is_dropped(self, capsys):
+        from tfscreen.tfmodel.model_orchestrator import _read_base_growth_df
+
+        growth_df = _read_growth_df(self._growth_df())
+        # A5T is validly-formatted but not one of the genotypes in growth_df.
+        base_growth_df_raw = pd.DataFrame({
+            "genotype": ["wt", "A5T"],
+            "rate": [0.02, 0.05],
+            "rate_std": [0.001, 0.001],
+        })
+
+        result = _read_base_growth_df(base_growth_df_raw, growth_df)
+        assert set(result["genotype"]) == {"wt"}
+        captured = capsys.readouterr()
+        assert "Syncing base_growth_df to growth_df" in captured.out
+
+    def test_missing_wt_after_filtering_raises(self):
+        from tfscreen.tfmodel.model_orchestrator import _read_base_growth_df
+
+        growth_df = _read_growth_df(self._growth_df())
+        # A2G is in growth_df, but wt is not present in base_growth_df at all.
+        base_growth_df_raw = pd.DataFrame({
+            "genotype": ["A2G"],
+            "rate": [0.015],
+            "rate_std": [0.002],
+        })
+
+        with pytest.raises(ValueError, match="wt"):
+            _read_base_growth_df(base_growth_df_raw, growth_df)
+
+    def test_wt_dropped_by_growth_df_filter_raises(self):
+        """wt present in base_growth_df but not in growth_df -- still an error,
+        since post-filtering wt is what's actually required."""
+        from tfscreen.tfmodel.model_orchestrator import _read_base_growth_df
+
+        growth_df = _read_growth_df(self._growth_df(genotypes=("A2G",)))  # no wt at all
+        base_growth_df_raw = pd.DataFrame({
+            "genotype": ["wt", "A2G"],
+            "rate": [0.02, 0.015],
+            "rate_std": [0.001, 0.002],
+        })
+
+        with pytest.raises(ValueError, match="wt"):
+            _read_base_growth_df(base_growth_df_raw, growth_df)
+
+    def test_multiple_rows_per_genotype_combined_by_inverse_variance(self):
+        from tfscreen.tfmodel.model_orchestrator import _read_base_growth_df
+
+        growth_df = _read_growth_df(self._growth_df())
+        # Two independent measurements of wt: precision-weighted mean.
+        base_growth_df_raw = pd.DataFrame({
+            "genotype": ["wt", "wt"],
+            "rate": [0.02, 0.03],
+            "rate_std": [0.01, 0.02],
+        })
+
+        result = _read_base_growth_df(base_growth_df_raw, growth_df)
+        assert len(result) == 1
+
+        precision = np.array([1 / 0.01**2, 1 / 0.02**2])
+        expected_rate = float(np.sum(np.array([0.02, 0.03]) * precision) / precision.sum())
+        expected_std = float(np.sqrt(1.0 / precision.sum()))
+
+        row = result.iloc[0]
+        assert row["genotype"] == "wt"
+        assert row["rate"] == pytest.approx(expected_rate)
+        assert row["rate_std"] == pytest.approx(expected_std)
+        # Combined precision must exceed either individual measurement's.
+        assert row["rate_std"] < 0.01
+
+    def test_build_base_growth_arrays_shapes_and_values(self):
+        from tfscreen.tfmodel.model_orchestrator import (
+            _read_base_growth_df,
+            _build_base_growth_arrays,
+        )
+
+        growth_df = _read_growth_df(self._growth_df())
+        tm = _build_growth_tm(growth_df)
+        genotype_labels = tm.tensor_dim_labels[tm.tensor_dim_names.index("genotype")]
+
+        base_growth_df_raw = pd.DataFrame({
+            "genotype": ["wt", "A2G"],
+            "rate": [0.02, 0.015],
+            "rate_std": [0.001, 0.002],
+        })
+        processed = _read_base_growth_df(base_growth_df_raw, growth_df)
+        arrays = _build_base_growth_arrays(processed, genotype_labels)
+
+        assert arrays["rate_obs"].shape == (len(genotype_labels),)
+        assert arrays["rate_std"].shape == (len(genotype_labels),)
+        assert arrays["good_mask"].shape == (len(genotype_labels),)
+
+        label_to_idx = {str(g): i for i, g in enumerate(genotype_labels)}
+        wt_idx = label_to_idx["wt"]
+        a2g_idx = label_to_idx["A2G"]
+        k3r_idx = label_to_idx["K3R"]  # not in base_growth_df_raw
+
+        assert arrays["good_mask"][wt_idx]
+        assert arrays["rate_obs"][wt_idx] == pytest.approx(0.02)
+        assert arrays["rate_std"][wt_idx] == pytest.approx(0.001)
+
+        assert arrays["good_mask"][a2g_idx]
+        assert arrays["rate_obs"][a2g_idx] == pytest.approx(0.015)
+
+        assert not arrays["good_mask"][k3r_idx]
+
+    def test_derive_k_ref_guess_returns_wt_rate(self):
+        from tfscreen.tfmodel.model_orchestrator import (
+            _read_base_growth_df,
+            _derive_k_ref_guess,
+        )
+
+        growth_df = _read_growth_df(self._growth_df())
+        base_growth_df_raw = pd.DataFrame({
+            "genotype": ["wt", "A2G"],
+            "rate": [0.021, 0.015],
+            "rate_std": [0.001, 0.002],
+        })
+        processed = _read_base_growth_df(base_growth_df_raw, growth_df)
+
+        guess = _derive_k_ref_guess(processed)
+        assert guess == pytest.approx(0.021)
+
+    def test_base_growth_df_wires_k_ref_into_growth_priors(self, mocker):
+        """
+        End-to-end: supplying base_growth_df must derive a k_ref guess from
+        wt's rate and thread it into growth_priors.base_growth as a
+        BaseGrowthPriors(k_ref_loc=guess, k_ref_scale=_K_REF_PRIOR_SCALE)
+        instance. Without base_growth_df, growth_priors.base_growth must
+        stay None (its dataclass default).
+        """
+        from tfscreen.tfmodel.model_orchestrator import _K_REF_PRIOR_SCALE
+        from tfscreen.tfmodel.tensors.populate_dataclass import (
+            populate_dataclass as real_populate_dataclass,
+        )
+        from tfscreen.tfmodel.data_class import DataClass, BaseGrowthPriors
+
+        mock_growth_tm = create_mock_tm(is_growth=True)
+        mock_binding_tm = create_mock_tm(is_growth=False)
+        mocker.patch("tfscreen.tfmodel.model_orchestrator._read_growth_df")
+        mocker.patch("tfscreen.tfmodel.model_orchestrator._build_growth_tm", return_value=mock_growth_tm)
+        mocker.patch("tfscreen.tfmodel.model_orchestrator._read_binding_df")
+        mocker.patch("tfscreen.tfmodel.model_orchestrator._build_binding_tm", return_value=mock_binding_tm)
+        mocker.patch(
+            "tfscreen.tfmodel.model_orchestrator._setup_batching",
+            return_value={
+                "batch_idx": jnp.arange(7), "batch_size": 7,
+                "scale_vector": jnp.ones(7), "num_binding": 0,
+            },
+        )
+        mocker.patch(
+            "tfscreen.tfmodel.model_orchestrator._read_base_growth_df",
+            return_value=pd.DataFrame({
+                "genotype": ["wt"], "rate": [0.0234], "rate_std": [0.001],
+            }),
+        )
+        mocker.patch(
+            "tfscreen.tfmodel.model_orchestrator._build_base_growth_arrays",
+            return_value={
+                "rate_obs": np.zeros(7), "rate_std": np.ones(7),
+                "good_mask": np.zeros(7, dtype=bool),
+            },
+        )
+
+        # Real populate_dataclass everywhere except DataClass, which would
+        # otherwise require a fully-realistic set of growth/binding tensors
+        # that this test has no need to build.
+        def _populate_side_effect(target_dataclass, sources):
+            if target_dataclass is DataClass:
+                return MagicMock()
+            return real_populate_dataclass(target_dataclass, sources)
+
+        mocker.patch(
+            "tfscreen.tfmodel.model_orchestrator.populate_dataclass",
+            side_effect=_populate_side_effect,
+        )
+
+        registry = {
+            "condition_growth": {"hierarchical": MagicMock()},
+            "growth_transition": {"instant": MagicMock()},
+            "ln_cfu0": {"hierarchical": MagicMock()},
+            "dk_geno": {"hierarchical_geno": MagicMock()},
+            "activity": {"hierarchical_geno": MagicMock()},
+            "theta": {"hill_geno": MagicMock()},
+            "transformation": {"single": MagicMock()},
+            "theta_rescale": {"passthrough": MagicMock()},
+            "theta_growth_noise": {"zero": MagicMock()},
+            "theta_binding_noise": {"zero": MagicMock()},
+            "growth_noise": {"zero": MagicMock()},
+            "sample_offset": {"zero": MagicMock()},
+            "observe_binding": MagicMock(),
+            "observe_growth": MagicMock(),
+        }
+        with patch.dict("tfscreen.tfmodel.model_orchestrator.model_registry", registry, clear=True):
+            for k in ["condition_growth", "growth_transition", "ln_cfu0", "dk_geno",
+                      "activity", "theta", "transformation", "theta_growth_noise",
+                      "theta_binding_noise", "growth_noise", "sample_offset"]:
+                for sub_k in tfscreen.tfmodel.model_orchestrator.model_registry[k]:
+                    mod = tfscreen.tfmodel.model_orchestrator.model_registry[k][sub_k]
+                    mod.get_priors.return_value = {}
+                    mod.get_guesses.return_value = {}
+
+            model = ModelOrchestrator(
+                "g.csv", "b.csv",
+                base_growth_df="base_growth.csv",
+                condition_growth="hierarchical",
+                growth_transition="instant",
+                activity="hierarchical_geno",
+                theta="hill_geno",
+                transformation="single",
+                theta_growth_noise="zero",
+            )
+
+        base_growth_priors = model._priors.growth.base_growth
+        assert isinstance(base_growth_priors, BaseGrowthPriors)
+        assert base_growth_priors.k_ref_loc == pytest.approx(0.0234)
+        assert base_growth_priors.k_ref_scale == _K_REF_PRIOR_SCALE
+
+        with patch.dict("tfscreen.tfmodel.model_orchestrator.model_registry", registry, clear=True):
+            for k in ["condition_growth", "growth_transition", "ln_cfu0", "dk_geno",
+                      "activity", "theta", "transformation", "theta_growth_noise",
+                      "theta_binding_noise", "growth_noise", "sample_offset"]:
+                for sub_k in tfscreen.tfmodel.model_orchestrator.model_registry[k]:
+                    mod = tfscreen.tfmodel.model_orchestrator.model_registry[k][sub_k]
+                    mod.get_priors.return_value = {}
+                    mod.get_guesses.return_value = {}
+
+            model_no_base_growth = ModelOrchestrator(
+                "g.csv", "b.csv",
+                condition_growth="hierarchical",
+                growth_transition="instant",
+                activity="hierarchical_geno",
+                theta="hill_geno",
+                transformation="single",
+                theta_growth_noise="zero",
+            )
+
+        assert model_no_base_growth._priors.growth.base_growth is None

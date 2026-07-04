@@ -6,6 +6,7 @@ import pandas as pd
 import tfscreen
 from tfscreen.simulate import library_prediction, selection_experiment
 from tfscreen.simulate.selection_experiment import _sim_index_hop
+from tfscreen.simulate.base_growth_data import generate_base_growth_df
 from tfscreen.genetics import standardize_genotypes
 from tfscreen.process_raw import counts_to_lncfu
 from tfscreen.util.cli.generalized_main import generalized_main
@@ -222,7 +223,9 @@ def run_simulation_from_config(
     selection_experiment. Writes library, parameters, genotype_theta (long-form:
     genotype/titrant_name/titrant_conc/theta), and analysis-ready growth CSV
     files. If the config contains a 'binding_data' block, also writes a
-    simulated binding curve CSV.
+    simulated binding curve CSV. If it contains a 'base_growth_data' block,
+    also writes a simulated direct growth-rate calibration CSV (see
+    tfscreen.simulate.base_growth_data.generate_base_growth_df).
 
     Parameters
     ----------
@@ -253,6 +256,8 @@ def run_simulation_from_config(
         output_names.append("binding")
     if "presplit_data" in cf:
         output_names.append("presplit")
+    if "base_growth_data" in cf:
+        output_names.append("base_growth")
 
     existing = [out_path(n) for n in output_names if os.path.exists(out_path(n))]
     if os.path.exists(config_out):
@@ -327,6 +332,11 @@ def run_simulation_from_config(
         binding_df = _generate_binding_data(cf["binding_data"], rng, binding_theta_df)
         binding_df.to_csv(out_path("binding"), index=False)
         print(f"Wrote: {out_path('binding')}")
+
+    if "base_growth_data" in cf:
+        base_growth_df = generate_base_growth_df(cf["base_growth_data"], parameters_df, rng)
+        base_growth_df.to_csv(out_path("base_growth"), index=False)
+        print(f"Wrote: {out_path('base_growth')}")
 
     if "presplit_data" in cf:
         print("\nGenerating presplit data...", flush=True)

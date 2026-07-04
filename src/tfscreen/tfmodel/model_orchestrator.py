@@ -13,8 +13,10 @@ from tfscreen.tfmodel.data_class import (
     BindingData,
     GrowthData,
     PreSplitData,
+    BaseGrowthData,
     PriorsClass,
     GrowthPriors,
+    BaseGrowthPriors,
     BindingPriors
 )
 
@@ -486,6 +488,157 @@ def _build_presplit_tm(presplit_df, growth_tm):
     return presplit_tm
 
 
+# Weakly-informative default scale for k_ref's prior -- centred on the
+# empirical guess (see _derive_k_ref_guess), wide enough that a handful of
+# base_growth_df measurements dominate it rather than the reverse.
+_K_REF_PRIOR_SCALE = 0.02
+
+
+def _read_base_growth_df(base_growth_df, growth_df):
+    """
+    Read and validate the optional base (reference-condition) growth-rate
+    DataFrame.
+
+    Rows whose genotype does not appear in growth_df are dropped -- mirrors
+    _read_presplit_df's sync/drop behaviour exactly (checked against
+    growth_df only, not binding_df). Multiple rows for the same genotype
+    are combined via inverse-variance weighting into a single (rate,
+    rate_std) per genotype, so downstream code always sees at most one row
+    per genotype.
+
+    wt must be present after filtering: dk_geno is fixed to 0 for wt by
+    every dk_geno component, which makes wt's own measurement a direct read
+    of the new k_ref parameter (see model.py's base_growth_obs block). Every
+    other genotype is optional -- base_growth_df may cover anywhere from
+    just wt up to the full library.
+
+    Parameters
+    ----------
+    base_growth_df : pd.DataFrame or str
+        DataFrame or path to file with base growth-rate data. Required
+        columns: ``genotype``, ``rate``, ``rate_std``.
+    growth_df : pd.DataFrame
+        The already-processed growth DataFrame (growth_tm.df). Used to
+        determine the valid set of genotypes.
+
+    Returns
+    -------
+    pd.DataFrame
+        One row per genotype, columns ``genotype``, ``rate``, ``rate_std``.
+
+    Raises
+    ------
+    ValueError
+        If required columns are missing, or if wt is not present after
+        filtering against growth_df.
+    """
+    base_growth_df = tfscreen.util.io.read_dataframe(base_growth_df)
+    base_growth_df = tfscreen.genetics.set_categorical_genotype(base_growth_df,
+                                                                 standardize=True)
+    tfscreen.util.dataframe.check_columns(
+        base_growth_df,
+        required_columns=["genotype", "rate", "rate_std"],
+    )
+
+    growth_genotypes = set(growth_df["genotype"])
+    mask = base_growth_df["genotype"].isin(growth_genotypes)
+    n_dropped = int((~mask).sum())
+    n_dropped_genos = base_growth_df.loc[~mask, "genotype"].nunique()
+    base_growth_df = base_growth_df[mask].copy()
+    if n_dropped > 0:
+        print(
+            f"Syncing base_growth_df to growth_df: {n_dropped} row(s) for "
+            f"{n_dropped_genos} genotype(s) not found in growth_df will be dropped.",
+            flush=True,
+        )
+
+    if "wt" not in set(base_growth_df["genotype"].astype(str)):
+        raise ValueError(
+            "base_growth_df must include a measurement for 'wt' (after "
+            "filtering against growth_df). wt anchors the new k_ref "
+            "parameter, since dk_geno is fixed to 0 for wt by every "
+            "dk_geno component."
+        )
+
+    rows = []
+    for genotype, group in base_growth_df.groupby("genotype", observed=True):
+        precision = 1.0 / (group["rate_std"].to_numpy(dtype=float) ** 2)
+        combined_precision = precision.sum()
+        combined_rate = float(
+            (group["rate"].to_numpy(dtype=float) * precision).sum() / combined_precision
+        )
+        combined_std = float(np.sqrt(1.0 / combined_precision))
+        rows.append({"genotype": str(genotype), "rate": combined_rate,
+                    "rate_std": combined_std})
+
+    return pd.DataFrame(rows)
+
+
+def _build_base_growth_arrays(base_growth_df, genotype_labels):
+    """
+    Build dense (num_genotype,) rate_obs/rate_std/good_mask arrays from the
+    processed base_growth_df, ordered to match genotype_labels (the growth
+    TensorManager's genotype axis) -- the same pattern
+    dk_geno.pinned.build_dk_geno_values uses.
+
+    Genotypes in genotype_labels with no base_growth_df entry get
+    good_mask=False and dummy (0.0, 1.0) rate/std values, which the
+    likelihood mask in model.py excludes.
+
+    Parameters
+    ----------
+    base_growth_df : pd.DataFrame
+        Output of _read_base_growth_df; at most one row per genotype.
+    genotype_labels : Sequence[str]
+        Genotype order used by the model's genotype axis (e.g.
+        growth_tm.tensor_dim_labels[-1]).
+
+    Returns
+    -------
+    dict
+        ``{"rate_obs": np.ndarray, "rate_std": np.ndarray, "good_mask": np.ndarray}``,
+        each shape ``(len(genotype_labels),)``.
+    """
+    label_to_idx = {str(g): i for i, g in enumerate(genotype_labels)}
+    num_genotype = len(genotype_labels)
+
+    rate_obs = np.zeros(num_genotype, dtype=float)
+    rate_std = np.ones(num_genotype, dtype=float)
+    good_mask = np.zeros(num_genotype, dtype=bool)
+
+    for _, row in base_growth_df.iterrows():
+        idx = label_to_idx[str(row["genotype"])]
+        rate_obs[idx] = row["rate"]
+        rate_std[idx] = row["rate_std"]
+        good_mask[idx] = True
+
+    return {"rate_obs": rate_obs, "rate_std": rate_std, "good_mask": good_mask}
+
+
+def _derive_k_ref_guess(base_growth_df):
+    """
+    Empirically derive k_ref's initial guess (and prior location) from wt's
+    measured rate in base_growth_df.
+
+    dk_geno is fixed to exactly 0 for wt by every dk_geno component, so wt's
+    own measurement is a direct, uncontaminated read of k_ref
+    (rate_obs_wt ~ Normal(k_ref + 0, rate_std_wt)).
+
+    Parameters
+    ----------
+    base_growth_df : pd.DataFrame
+        Output of _read_base_growth_df; must contain a 'wt' row (enforced
+        there).
+
+    Returns
+    -------
+    float
+        wt's measured rate.
+    """
+    wt_row = base_growth_df[base_growth_df["genotype"].astype(str) == "wt"]
+    return float(wt_row["rate"].iloc[0])
+
+
 def _setup_batching(growth_genotypes,
                     binding_genotypes,
                     batch_size):
@@ -698,11 +851,13 @@ class ModelOrchestrator:
                  epistasis=False,
                  thermo_data=None,
                  binding_weight=None,
-                 presplit_df=None):
+                 presplit_df=None,
+                 base_growth_df=None):
 
         self._ln_cfu_df = growth_df
         self._binding_df = binding_df
         self._presplit_df = presplit_df
+        self._base_growth_df = base_growth_df
 
         self._batch_size = batch_size
         self._binding_only = binding_only
@@ -1100,11 +1255,36 @@ class ModelOrchestrator:
             presplit_dataclass = None
 
         # ---------------------------------------------------------------------
+        # base_growth dataclass (optional) -- direct growth-rate measurements
+        # used to constrain dk_geno via a new k_ref scalar (see model.py's
+        # base_growth_obs block).
+
+        self._k_ref_guess = None
+        if self._base_growth_df is not None:
+            self.base_growth_df = _read_base_growth_df(self._base_growth_df,
+                                                        self.growth_tm.df)
+            genotype_labels = self.growth_tm.tensor_dim_labels[
+                self.growth_tm.tensor_dim_names.index("genotype")
+            ]
+            bg_arrays = _build_base_growth_arrays(self.base_growth_df,
+                                                  genotype_labels)
+            base_growth_dataclass = populate_dataclass(
+                BaseGrowthData,
+                sources=[bg_arrays,
+                        {"num_genotype": self.growth_tm.tensor_shape[-1]}],
+            )
+            self._k_ref_guess = _derive_k_ref_guess(self.base_growth_df)
+        else:
+            self.base_growth_df = None
+            base_growth_dataclass = None
+
+        # ---------------------------------------------------------------------
         # Populate DataClass
 
         source_data = [{"growth":growth_dataclass,
                         "binding":binding_dataclass,
                         "presplit":presplit_dataclass,
+                        "base_growth":base_growth_dataclass,
                         "num_genotype":self.growth_tm.tensor_shape[-1]}]
         source_data.append(full_batch_data)
 
@@ -1465,6 +1645,12 @@ class ModelOrchestrator:
                 sample_offset=None,
             )
         else:
+            if self._base_growth_df is not None:
+                priors_class_kwargs["growth"]["base_growth"] = BaseGrowthPriors(
+                    k_ref_loc=self._k_ref_guess,
+                    k_ref_scale=_K_REF_PRIOR_SCALE,
+                )
+                init_params["base_growth_k_ref"] = jnp.array(self._k_ref_guess)
             growth_priors = populate_dataclass(GrowthPriors,
                                                sources=priors_class_kwargs["growth"])
         binding_priors = populate_dataclass(BindingPriors,

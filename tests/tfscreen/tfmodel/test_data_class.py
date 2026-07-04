@@ -15,8 +15,10 @@ from tfscreen.tfmodel.data_class import (
     GrowthData,
     BindingData,
     PreSplitData,
+    BaseGrowthData,
     DataClass,
     GrowthPriors,
+    BaseGrowthPriors,
     BindingPriors,
     PriorsClass,
 )
@@ -215,6 +217,50 @@ class TestPreSplitData:
 
 
 # ---------------------------------------------------------------------------
+# BaseGrowthData
+# ---------------------------------------------------------------------------
+
+class TestBaseGrowthData:
+    def test_construction(self):
+        G = 3
+        bg = BaseGrowthData(
+            rate_obs=jnp.zeros(G),
+            rate_std=jnp.ones(G),
+            good_mask=jnp.ones(G, dtype=bool),
+            num_genotype=G,
+        )
+        assert bg.num_genotype == G
+        assert bg.rate_obs.shape == (G,)
+        assert bg.rate_std.shape == (G,)
+        assert bg.good_mask.shape == (G,)
+
+    def test_replace_works(self):
+        G = 3
+        bg = BaseGrowthData(
+            rate_obs=jnp.zeros(G),
+            rate_std=jnp.ones(G),
+            good_mask=jnp.ones(G, dtype=bool),
+            num_genotype=G,
+        )
+        bg2 = bg.replace(num_genotype=10)
+        assert bg2.num_genotype == 10
+        assert bg.num_genotype == G
+
+    def test_replace_updates_rate_obs(self):
+        G = 3
+        bg = BaseGrowthData(
+            rate_obs=jnp.zeros(G),
+            rate_std=jnp.ones(G),
+            good_mask=jnp.ones(G, dtype=bool),
+            num_genotype=G,
+        )
+        new_rate = jnp.array([0.01, 0.02, 0.03])
+        bg2 = bg.replace(rate_obs=new_rate)
+        assert jnp.array_equal(bg2.rate_obs, new_rate)
+        assert jnp.array_equal(bg.rate_obs, jnp.zeros(G))
+
+
+# ---------------------------------------------------------------------------
 # DataClass
 # ---------------------------------------------------------------------------
 
@@ -238,6 +284,7 @@ class TestDataClass:
         assert dc.growth is None
         assert dc.binding is None
         assert dc.presplit is None
+        assert dc.base_growth is None
 
     def test_replace_growth(self):
         dc = _make_data_class()
@@ -249,6 +296,18 @@ class TestDataClass:
     def test_batch_idx_shape(self):
         dc = _make_data_class(num_genotype=6)
         assert dc.batch_idx.shape == (6,)
+
+    def test_replace_base_growth(self):
+        dc = _make_data_class(num_genotype=4)
+        bg = BaseGrowthData(
+            rate_obs=jnp.zeros(4),
+            rate_std=jnp.ones(4),
+            good_mask=jnp.ones(4, dtype=bool),
+            num_genotype=4,
+        )
+        dc2 = dc.replace(base_growth=bg)
+        assert dc2.base_growth is bg
+        assert dc.base_growth is None
 
 
 # ---------------------------------------------------------------------------
@@ -274,3 +333,40 @@ class TestPriorsClass:
         assert pc.growth is gp
         assert pc.binding is bp
         assert pc.theta is bp
+
+    def test_growth_priors_base_growth_defaults_to_none(self):
+        mock_any = MagicMock()
+        gp = GrowthPriors(
+            condition_growth=mock_any,
+            growth_transition=mock_any,
+            ln_cfu0=mock_any,
+            dk_geno=mock_any,
+            activity=mock_any,
+            transformation=mock_any,
+            theta_growth_noise=mock_any,
+            growth_noise=mock_any,
+            sample_offset=mock_any,
+        )
+        assert gp.base_growth is None
+
+    def test_base_growth_priors_construction(self):
+        bgp = BaseGrowthPriors(k_ref_loc=0.02, k_ref_scale=0.02)
+        assert bgp.k_ref_loc == pytest.approx(0.02)
+        assert bgp.k_ref_scale == pytest.approx(0.02)
+
+    def test_growth_priors_with_base_growth_set(self):
+        mock_any = MagicMock()
+        bgp = BaseGrowthPriors(k_ref_loc=0.015, k_ref_scale=0.01)
+        gp = GrowthPriors(
+            condition_growth=mock_any,
+            growth_transition=mock_any,
+            ln_cfu0=mock_any,
+            dk_geno=mock_any,
+            activity=mock_any,
+            transformation=mock_any,
+            theta_growth_noise=mock_any,
+            growth_noise=mock_any,
+            sample_offset=mock_any,
+            base_growth=bgp,
+        )
+        assert gp.base_growth is bgp

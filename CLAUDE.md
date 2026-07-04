@@ -181,6 +181,15 @@ The optional `binding_data` YAML block configures calibration genotypes for whic
 - For `hill_mut`: the function `build_theta_gc_override_hill_mut` assembles theta for **all library genotypes** (not just the measured ones) by additively combining per-mutation logit-space deltas. The WT reference is taken from `SimPriors` defaults. Multi-mutant genotypes not directly measured in the CSV are assembled from single-mutant deltas; directly-measured multi-mutants use their CSV values directly.
 - Measured genotypes override any earlier simulated-path values in `theta_gc_override`.
 
+### Base growth-rate calibration data
+
+The optional `base_growth_data` YAML block generates a simulated `base_growth_df`: direct reference-condition growth-rate "measurements" for a subset of genotypes, mirroring the inference-side `base_growth_df` input (see `tfmodel/model_orchestrator.py::_read_base_growth_df` and `generative/model.py`'s `base_growth_obs` block, which anchor `condition_growth`'s k/m against dk_geno's hierarchical hyperparameters to resolve an identifiability confound).
+
+- Generation lives in `simulate/base_growth_data.py::generate_base_growth_df`, called from `simulate/scripts/simulate_cli.py` (not `library_prediction.py`) since it only needs `parameters_df`, not the theta/growth machinery.
+- Config: `k_ref` (required, the reference wt growth rate) plus optional `genotypes` (default `["wt"]`), `rates` (per-genotype true-rate override), and `noise`.
+- Every requested genotype must already exist in `parameters_df` — `dk_geno` is looked up from the value already assigned during the normal per-library draw (`_assign_dk_geno` in `thermo_to_growth.py`), never redrawn. This mirrors the inference-side requirement that `base_growth_df` genotypes already exist in `growth_df`.
+- `rate_true = k_ref + dk_geno[genotype]` unless overridden via `rates`; the observed `rate` adds Gaussian noise (sigma = `noise`), and `rate_std` is reported as that same flat `noise` value for every row (matching the `binding_data.noise` → `theta_std` convention).
+
 ### theta_gc_override and theta_params_override
 
 These two dicts are the mechanism by which binding data is "pinned" into the growth simulation.
@@ -204,11 +213,13 @@ These two dicts are the mechanism by which binding data is "pinned" into the gro
 | `simulate/library_prediction.py` | Top-level orchestrator; assembles override dicts and calls `thermo_to_growth` |
 | `simulate/thermo_to_growth.py` | Prior-predictive sampling, theta injection, growth calculation, parameters_df assembly |
 | `simulate/binding_params.py` | CSV reading (with theta clipping), per-component override builders, binding theta assemblers |
+| `simulate/base_growth_data.py` | Generates simulated direct growth-rate calibration data (`base_growth_data` YAML block) |
 | `simulate/sample_theta.py` | `sample_theta_prior` (prior-predictive) and `sample_theta_stratified` (greedy maximin) |
 | `simulate/sim_data_class.py` | `SimData` container and `build_sim_data` factory |
 | `simulate/build_sample_dataframes.py` | Constructs sample/timepoint DataFrames from simulation config |
 | `simulate/selection_experiment.py` | Models the selection experiment (growth + sequencing) |
-| `simulate/run_simulation.py` | End-to-end simulation runner called by `tfs-simulate` |
+| `simulate/scripts/simulate_cli.py` | `tfs-simulate` CLI entry point; runs `library_prediction` + `selection_experiment` across replicates and writes all output CSVs, including the optional `binding_data`/`presplit_data`/`base_growth_data` blocks |
+| `simulate/run_simulation.py` | Simpler, non-CLI orchestrator (`run_simulation`); does not support `binding_data`/`presplit_data`/`base_growth_data` |
 
 ## YAML Standards
 

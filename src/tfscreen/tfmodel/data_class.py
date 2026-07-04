@@ -189,6 +189,38 @@ class PreSplitData:
 
 
 @dataclass(frozen=True)
+class BaseGrowthData:
+    """
+    Holds the optional base (reference-condition) growth-rate observations
+    used to directly constrain dk_geno for a subset of genotypes.
+
+    Unlike growth/binding, this measurement is taken independent of the
+    titrant/selection system entirely -- it is a direct read of "how fast
+    does this genotype grow" in whatever reference condition/medium the
+    measurement was made in, used to anchor a new global scalar (k_ref) and
+    tie it, via the existing per-genotype dk_geno latent, to genotypes with
+    directly-measured growth rates. See generative/model.py's
+    base_growth_obs block.
+
+    Tensors are shaped ``(num_genotype,)`` using the same genotype ordering
+    as the companion GrowthData, so that slicing with
+    ``data.growth.batch_idx`` aligns the genotype axis -- the same pattern
+    PreSplitData uses. Genotypes with no measurement (or multiple raw
+    measurements collapsed via inverse-variance weighting during
+    construction -- see model_orchestrator._read_base_growth_df) have
+    good_mask == False and are excluded from the likelihood.
+    """
+
+    # Data tensors
+    rate_obs: jnp.ndarray
+    rate_std: jnp.ndarray
+    good_mask: jnp.ndarray
+
+    # Tensor dimension (aligned with GrowthData)
+    num_genotype: int = field(pytree_node=False)
+
+
+@dataclass(frozen=True)
 class DataClass:
     """
     A container holding data needed to specify tfmodel, treated as a JAX
@@ -209,6 +241,8 @@ class DataClass:
     binding: BindingData = field(default=None)
     # Optional pre-split observations (t = -t_pre aliquot before condition split).
     presplit: Any = field(default=None)
+    # Optional direct growth-rate measurements used to constrain dk_geno.
+    base_growth: Any = field(default=None)
 
 
 @dataclass(frozen=True)
@@ -222,6 +256,21 @@ class GrowthPriors:
     theta_growth_noise: Any
     growth_noise: Any
     sample_offset: Any
+    # Prior (loc, scale) for the optional base_growth k_ref scalar; None when
+    # base_growth_df was not supplied (see BaseGrowthPriors).
+    base_growth: Any = field(default=None)
+
+
+@dataclass(frozen=True)
+class BaseGrowthPriors:
+    """
+    Prior for the optional k_ref scalar (see BaseGrowthData / model.py's
+    base_growth_obs block). k_ref_loc is derived empirically from wt's row
+    in base_growth_df (dk_geno_wt == 0 makes wt's own measurement a direct
+    read of k_ref) -- see model_orchestrator._derive_k_ref_guess.
+    """
+    k_ref_loc: float
+    k_ref_scale: float
 
 @dataclass(frozen=True)
 class BindingPriors:

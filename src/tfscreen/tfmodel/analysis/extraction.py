@@ -160,6 +160,20 @@ def extract_parameters(orchestrator, posteriors, q_to_get=None):
         if module is not None and hasattr(module, "get_extract_specs"):
             extract.extend(module.get_extract_specs(ctx))
 
+    # base_growth is not a swappable registry component (see
+    # model_orchestrator._read_base_growth_df / generative/model.py's
+    # base_growth_obs block), so its single global k_ref scalar is extracted
+    # here directly rather than via a component's get_extract_specs.
+    if getattr(orchestrator, "_base_growth_df", None) is not None:
+        k_ref_df = pd.DataFrame({"parameter": ["k_ref"], "map_all": [0]})
+        extract.append(dict(
+            input_df=k_ref_df,
+            params_to_get=["k_ref"],
+            map_column="map_all",
+            get_columns=["parameter"],
+            in_run_prefix="base_growth_",
+        ))
+
     params = {}
     for kwargs in extract:
         try:
