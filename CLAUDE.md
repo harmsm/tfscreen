@@ -115,7 +115,7 @@ The hierarchical Bayesian inference engine. Key files:
 
 - **`generative/components/`** — Pluggable model components selected via the YAML config's `components:` section (registry key noted in parens where it differs from the directory name):
   - `activity/`: `fixed`, `hierarchical_geno`, `hierarchical_mut`, `horseshoe_geno`, `horseshoe_mut`
-  - `growth/` (registry key `condition_growth`): `linear`, `power`, `saturation`
+  - `growth/` (registry key `condition_growth`): `linear`, `power`, `saturation`. Their per-condition prior loc/scale fields accept a scalar (broadcast to all conditions) **or** a per-condition array; the pre-fit calibration writes per-condition arrays to pin the baselines (see **Per-condition growth priors** below). Each declares `get_scale_bounds()`.
   - `growth_transition/`: `instant`, `memory`, `baranyi`, `baranyi_k`, `baranyi_tau`, `two_pop`
   - `transformation/`: `empirical`, `logit_norm`, `single`
   - `theta/`: `categorical_geno`, `hill_geno`, `hill_mut`; thermodynamic partition-function variants under `theta/thermo/` (lac dimer and MWC dimer, with/without unfolded state, PK/PnnC/PddG parameterizations)
@@ -134,8 +134,21 @@ The hierarchical Bayesian inference engine. Key files:
 2. Implement the required interface (follow an existing component as reference)
 3. Register it in `tfmodel/generative/registry.py` under the appropriate category key
 4. Add a test in `tests/tfscreen/tfmodel/components/<category>/`
+5. For a new `condition_growth` component: make its per-condition prior loc/scale fields accept scalar-or-array (broadcast-then-index by the condition plate) and implement `get_scale_bounds()` so the pre-fit can pin its per-condition baselines — see **Per-condition growth priors** above.
 
 (This applies to `components/` categories. `generative/observe/` is not a `<category>/<variant>` registry entry — see above.)
+
+### Per-condition growth priors
+
+The `condition_growth` components (`linear`/`power`/`saturation`) carry a per-condition **additive baseline** (`k` for linear/power, `min` for saturation) that is only jointly identified with the shared per-genotype `dk_geno`: the growth likelihood `g = k_condition + dk_geno + A·m·θ` is invariant to `k += C, dk_geno −= C`. With only weak/rare anchors (wt's pinned `dk_geno=0`, `base_growth`) the whole system slides by a global constant `C`, inflating all condition baselines and `k_ref` and making genotypes with constrained `dk_geno` (notably wt) badly mis-fit their `ln_cfu`. The fix is to pin each condition baseline with a per-condition prior — a prior on the 4 baseline params acts at full strength, unlike the abundance-diluted genotype anchors.
+
+Mechanism, spanning three files:
+
+- **Components** (`generative/components/growth/*.py`): `ModelPriors` loc/scale fields accept a scalar (broadcast, the default/back-compat) or a length-`num_condition_rep` array; `define_model`/`guide` broadcast-then-index by the condition plate. Each component declares `get_scale_bounds() → {suffix: {floor, ceiling, scale_field}}`, giving the pre-fit per-parameter scale floors (tight for the baseline term, looser for e.g. `power`'s log-exponent `n`).
+- **CSV (de)serialization** (`configuration_io.py`): the priors CSV supports per-condition **indexed rows** (`flat_index` + `condition_rep`/`replicate` label columns) alongside scalar rows. On load, indexed rows are **name-joined** to the model's `map_condition_rep` order (`_read_priors_flat`/`_assemble_condition_array`) and **fail fast** on an unknown or missing condition. A fresh `tfs-configure-model` still writes scalar rows (2-column CSV, legacy path).
+- **Pre-fit** (`prefit_calibration_cli.py`): after the MAP calibration, `_build_csv_updates` writes each `condition_growth` site's per-condition MAP **loc** array into the priors CSV (the baseline pin), and `_build_hessian_scale_updates` writes a tight **scalar** scale (floored via `get_scale_bounds()`). `_apply_priors_updates` expands a scalar prior row into per-condition indexed rows tagged with `condition_rep`. `growth_transition` sites keep warm-start-only behavior.
+
+Net flow: `configure` (scalar) → `prefit` (per-condition `k_loc` indexed rows + tight scalar `k_scale`) → `fit` (loads per-condition priors that hold the baselines, closing the slide). This is the primary mechanism; the `base_growth_data`/`k_ref` anchor (below) is complementary but insufficient alone because `k_ref` is itself free to slide.
 
 ### Key Abstractions
 

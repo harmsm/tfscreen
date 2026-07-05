@@ -198,6 +198,59 @@ def test_read_configuration_logic(tmpdir, mocker):
     assert isinstance(init_params["param2"], jnp.ndarray)
 
 
+def test_read_configuration_assembles_per_condition_priors(tmpdir, mocker):
+    """Indexed prior rows are name-joined to the model's condition order,
+    independent of CSV row/flat_index order (Phase 2)."""
+    config_path = os.path.join(tmpdir, "config.yaml")
+    priors_path = os.path.join(tmpdir, "priors.csv")
+    guesses_path = os.path.join(tmpdir, "guesses.csv")
+
+    config = {
+        "data": {"growth": "g.csv", "binding": "b.csv"},
+        "components": {"batch_size": 256},
+        "priors_file": "priors.csv",
+        "guesses_file": "guesses.csv",
+    }
+    with open(config_path, "w") as f:
+        yaml.dump(config, f)
+
+    # Indexed rows in a deliberately shuffled order.
+    pd.DataFrame({
+        "parameter": ["growth.condition_growth.k_loc"] * 3,
+        "value": [0.029, 0.011, 0.021],
+        "flat_index": [2, 0, 1],
+        "condition_rep": ["pheS+4CP", "kanR+kan", "kanR-kan"],
+    }).to_csv(priors_path, index=False)
+    pd.DataFrame({"parameter": ["param1"], "value": [0.5],
+                  "flat_index": [0]}).to_csv(guesses_path, index=False)
+
+    mock_orchestrator_class = mocker.patch(
+        "tfscreen.tfmodel.configuration_io.ModelOrchestrator")
+    inst = mock_orchestrator_class.return_value
+    inst.init_params = {"param1": 0.0}
+    inst.growth_tm.map_groups = {
+        "condition_rep": pd.DataFrame({
+            "map_condition_rep": [0, 1, 2],
+            "condition_rep": ["kanR+kan", "kanR-kan", "pheS+4CP"],
+        })
+    }
+
+    captured = {}
+
+    def _capture(dc, prefix, flat):
+        captured["flat"] = flat
+        return MagicMock()
+
+    mocker.patch("tfscreen.tfmodel.configuration_io._update_dataclass",
+                 side_effect=_capture)
+
+    read_configuration(config_path)
+
+    arr = np.asarray(captured["flat"]["growth.condition_growth.k_loc"])
+    # map order is [kanR+kan, kanR-kan, pheS+4CP] -> [0.011, 0.021, 0.029]
+    assert np.allclose(arr, [0.011, 0.021, 0.029])
+
+
 def test_read_configuration_passes_base_growth_df_path(tmpdir, mocker):
     """data.base_growth must reach ModelOrchestrator as base_growth_df, and
     any stray 'base_growth_df' left in components (round-tripped via

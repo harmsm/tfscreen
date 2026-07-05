@@ -66,6 +66,7 @@ from tfscreen.tfmodel.generative.components.ln_cfu0.hierarchical import (
 from tfscreen.tfmodel.configuration_io import (
     read_configuration,
 )
+from tfscreen.tfmodel.generative.registry import model_registry
 
 
 # ---------------------------------------------------------------------------
@@ -558,10 +559,14 @@ def _build_csv_updates(field_mapping, params):
 
     Returns
     -------
-    prior_updates : dict[str, float]
+    prior_updates : dict[str, float | np.ndarray]
         ``{csv_row_name → new_value}`` for the priors CSV.
-        Scalar Normal/HalfNormal sites write the MAP value to their
-        ``loc_field`` / ``scale_field`` respectively.
+        Scalar Normal/HalfNormal sites write the MAP value (a float) to their
+        ``loc_field`` / ``scale_field`` respectively.  Per-condition
+        ``condition_growth`` array sites write the full MAP array to their
+        ``loc_field`` — this is the per-condition baseline *pin* that closes
+        the k/dk_geno additive slide.  ``_apply_priors_updates`` expands array
+        values into indexed rows keyed by ``condition_rep``.
     guess_updates : dict[str, np.ndarray | float]
         ``{site_name → MAP value}`` for the guesses CSV.
         Array sites write per-condition MAP arrays (keyed as
@@ -583,10 +588,17 @@ def _build_csv_updates(field_mapping, params):
         is_array = info.get("is_array", False)
 
         if is_array:
-            # Simple-prior per-condition array site: write MAP array to guesses
-            # so the production SVI starts from the calibration fit.
+            # Simple-prior per-condition array site: write the MAP array to
+            # guesses so the production SVI starts from the calibration fit.
             if loc_field is not None:
                 guess_updates[f"{site_name}_locs"] = map_val_arr
+                # For condition_growth, also pin the per-condition prior LOC.
+                # A warm start alone leaves the baselines free to slide back
+                # down the k/dk_geno flat direction; the per-condition prior
+                # loc is what actually holds them.  (growth_transition keeps
+                # its warm-start-only behaviour.)
+                if component == "condition_growth":
+                    prior_updates[_csv_row_name(component, loc_field)] = map_val_arr
         else:
             # Scalar site (legacy hierarchical components).
             if map_val_arr.shape != ():
@@ -610,13 +622,23 @@ def _build_csv_updates(field_mapping, params):
 
 def _build_hessian_scale_updates(field_mapping, hessian_results,
                                   k_scale_floor, m_scale_floor,
-                                  k_scale_ceiling, m_scale_ceiling):
+                                  k_scale_ceiling, m_scale_ceiling,
+                                  scale_bounds=None):
     """
     Build per-condition scale updates from Hessian-derived sigmas with floors
     and ceilings.
 
-    For each array condition_growth site (``k`` and ``m``) that appears in
-    both ``field_mapping`` and ``hessian_results``, the per-element Hessian
+    When ``scale_bounds`` is given (a ``{suffix: {floor, ceiling,
+    scale_field}}`` map from the growth component's ``get_scale_bounds()``),
+    every per-condition site the component declares is handled generically —
+    so ``power``'s ``n`` and ``saturation``'s ``min``/``max`` get tight scales
+    the same way ``linear``'s ``k`` does, without hard-coding parameter names
+    here.  When ``scale_bounds`` is ``None`` the legacy ``k``/``m`` hard-code
+    is used (the ``k_scale_floor``/``m_scale_floor``/ceiling args), preserving
+    older callers.
+
+    For each array condition_growth site that appears in both
+    ``field_mapping`` and ``hessian_results``, the per-element Hessian
     sigma is clipped to ``[floor, ceiling]`` and returned in two dicts:
 
     * **guess_updates** — per-condition sigma arrays keyed as
@@ -684,7 +706,18 @@ def _build_hessian_scale_updates(field_mapping, hessian_results,
         scale_field = info.get("scale_field")
         component = info["component"]
 
-        if loc_field == "k_loc":
+        if scale_bounds is not None:
+            # Generic path: look up the per-condition site by its suffix
+            # (the "{param}" in loc_field="{param}_loc") in the component's
+            # declared scale bounds.
+            suffix = loc_field[:-len("_loc")] if loc_field.endswith("_loc") else loc_field
+            spec = scale_bounds.get(suffix)
+            if spec is None:
+                continue
+            floor = spec["floor"]
+            ceiling = spec["ceiling"]
+            prior_field = spec["scale_field"]
+        elif loc_field == "k_loc":
             floor = k_scale_floor
             ceiling = k_scale_ceiling
             prior_field = scale_field          # "k_scale"
@@ -712,13 +745,87 @@ def _build_hessian_scale_updates(field_mapping, hessian_results,
     return guess_updates, prior_updates
 
 
-def _apply_priors_updates(priors_path, prior_updates):
+def _resolve_scale_bounds(condition_growth_choice,
+                          k_scale_floor, m_scale_floor,
+                          k_scale_ceiling, m_scale_ceiling):
     """
-    Overwrite ``parameter == row_name`` rows of the production priors
-    CSV with the new values.  Writes a ``.bak`` copy first.  Rows whose
-    ``parameter`` is not present in ``prior_updates`` are preserved
-    unchanged.  Logs a warning for any update key that has no matching
-    row.
+    Build the per-suffix scale-bounds map for the active condition_growth
+    component, applying the CLI floor/ceiling arguments as backward-compatible
+    overrides for the ``k`` and ``m`` suffixes.
+
+    Returns ``{}`` when the component declares no ``get_scale_bounds`` (in
+    which case the caller falls back to the legacy k/m hard-code path).
+    """
+    module = model_registry["condition_growth"].get(condition_growth_choice)
+    get_bounds = getattr(module, "get_scale_bounds", None)
+    if get_bounds is None:
+        return {}
+
+    bounds = {suffix: dict(spec) for suffix, spec in get_bounds().items()}
+
+    cli_overrides = {
+        "k": (k_scale_floor, k_scale_ceiling),
+        "m": (m_scale_floor, m_scale_ceiling),
+    }
+    for suffix, (floor, ceiling) in cli_overrides.items():
+        if suffix not in bounds:
+            continue
+        if floor is not None:
+            bounds[suffix]["floor"] = floor
+        if ceiling is not None:
+            bounds[suffix]["ceiling"] = ceiling
+
+    return bounds
+
+
+def _condition_rep_labels(orchestrator):
+    """
+    Per-condition label frame (``condition_rep`` and, when present,
+    ``replicate``) ordered by ``map_condition_rep`` — i.e. the same order as
+    the per-condition MAP arrays.  Returns ``None`` when no condition_rep map
+    is available.  Used to tag per-condition prior rows so the loader can
+    name-join them back to the production condition order.
+    """
+    growth_tm = getattr(orchestrator, "growth_tm", None)
+    if growth_tm is None:
+        return None
+    crm = growth_tm.map_groups.get("condition_rep")
+    if crm is None or getattr(crm, "empty", True):
+        return None
+    sorted_map = crm.sort_values("map_condition_rep").reset_index(drop=True)
+    cols = [c for c in ("replicate", "condition_rep") if c in sorted_map.columns]
+    if not cols:
+        return None
+    return sorted_map[cols].reset_index(drop=True)
+
+
+def _apply_priors_updates(priors_path, prior_updates, cond_rep_labels=None):
+    """
+    Apply prior updates to the production priors CSV.  Writes a ``.bak`` copy
+    first.  Rows whose ``parameter`` is not in ``prior_updates`` are preserved.
+
+    Two kinds of update value are supported:
+
+    * **scalar** (float) — overwrites the ``value`` of the matching
+      ``parameter`` row in place (unchanged behaviour).  A warning is logged
+      if no row matches.
+    * **array** (1-D ``np.ndarray``) — a per-condition prior (e.g.
+      ``condition_growth.k_loc``).  Any existing rows for that parameter are
+      dropped and replaced with one indexed row per condition, tagged with the
+      ``condition_rep`` (and ``replicate``) labels from ``cond_rep_labels`` so
+      the loader can name-join them back to the model's condition order.
+
+    Parameters
+    ----------
+    priors_path : str
+        Path to the production priors CSV.
+    prior_updates : dict[str, float | np.ndarray]
+        Update values keyed by dotted parameter name.
+    cond_rep_labels : pandas.DataFrame or None
+        Per-condition label columns (``condition_rep`` and, when present,
+        ``replicate``) ordered by ``map_condition_rep`` — i.e. matching the
+        order of the per-condition MAP arrays.  Required to label array
+        updates; when absent, array rows carry only ``flat_index``.
     """
     if not prior_updates:
         return
@@ -729,20 +836,49 @@ def _apply_priors_updates(priors_path, prior_updates):
             "'value' columns."
         )
 
-    matched = set()
+    scalar_updates = {}
+    array_updates = {}
     for row_name, new_val in prior_updates.items():
+        arr = np.asarray(new_val)
+        if arr.ndim == 0:
+            scalar_updates[row_name] = float(arr)
+        else:
+            array_updates[row_name] = arr
+
+    matched = set()
+
+    # Scalar overwrites (in place).
+    for row_name, new_val in scalar_updates.items():
         mask = df["parameter"] == row_name
         if mask.any():
             df.loc[mask, "value"] = new_val
             matched.add(row_name)
 
-    missing = sorted(set(prior_updates) - matched)
+    missing = sorted(set(scalar_updates) - matched)
     if missing:
         print(
             f"  warning: {len(missing)} prior update(s) had no matching row "
             f"in {priors_path}: {missing}",
             file=sys.stderr,
         )
+
+    # Array updates: drop existing rows for the parameter, append indexed rows.
+    if array_updates:
+        new_frames = []
+        for row_name, arr in array_updates.items():
+            flat_val = np.asarray(arr).flatten()
+            df = df[df["parameter"] != row_name]
+            row_df = pd.DataFrame({"parameter": row_name,
+                                   "value": flat_val,
+                                   "flat_index": range(len(flat_val))})
+            if (cond_rep_labels is not None
+                    and len(cond_rep_labels) == len(flat_val)):
+                for col in ("replicate", "condition_rep"):
+                    if col in cond_rep_labels.columns:
+                        row_df[col] = cond_rep_labels[col].to_numpy()
+            new_frames.append(row_df)
+            matched.add(row_name)
+        df = pd.concat([df] + new_frames, ignore_index=True)
 
     shutil.copy2(priors_path, priors_path + ".bak")
     df.to_csv(priors_path, index=False)
@@ -1099,15 +1235,26 @@ def run_prefit_calibration(config_file,
     )
     prior_updates, guess_updates = _build_csv_updates(field_mapping, params)
 
+    # Per-suffix scale bounds declared by the active condition_growth component
+    # (generalises the old k/m hard-code to n / min / max), with the CLI
+    # floor/ceiling args applied as overrides for backward compatibility.
+    scale_bounds = _resolve_scale_bounds(
+        orchestrator_prod.settings.get("condition_growth"),
+        k_scale_floor, m_scale_floor, k_scale_ceiling, m_scale_ceiling,
+    )
     hessian_guess_updates, hessian_prior_updates = _build_hessian_scale_updates(
         field_mapping, hessian_results,
         k_scale_floor, m_scale_floor,
         k_scale_ceiling, m_scale_ceiling,
+        scale_bounds=(scale_bounds or None),
     )
     guess_updates.update(hessian_guess_updates)
     prior_updates.update(hessian_prior_updates)
 
-    _apply_priors_updates(priors_path, prior_updates)
+    # Labels ordered as the per-condition MAP arrays, so the per-condition
+    # prior loc rows can be name-joined back to the production condition order.
+    cond_rep_labels = _condition_rep_labels(orchestrator_cal)
+    _apply_priors_updates(priors_path, prior_updates, cond_rep_labels=cond_rep_labels)
     _apply_guesses_updates(guesses_path, guess_updates)
 
     return svi_state, params, converged

@@ -39,6 +39,8 @@ from tfscreen.tfmodel.scripts.prefit_calibration_cli import (
     _inject_calibration_priors,
     _intersect_data,
     _resolve_csv_paths,
+    _resolve_scale_bounds,
+    _condition_rep_labels,
     main,
     run_prefit_calibration,
     _CALIBRATION_OVERRIDES,
@@ -568,8 +570,9 @@ class TestBuildCsvUpdates:
         assert prior_updates == {}
         assert guess_updates == {}
 
-    def test_array_site_writes_locs_to_guesses(self):
-        """Simple-prior array sites write per-condition MAP values to guesses."""
+    def test_array_site_writes_locs_to_guesses_and_priors(self):
+        """condition_growth array sites warm-start guesses AND pin the
+        per-condition prior loc (the baseline pin that closes the slide)."""
         field_mapping = {
             "condition_growth_k": {
                 "component": "condition_growth",
@@ -581,12 +584,30 @@ class TestBuildCsvUpdates:
         }
         params = {"condition_growth_k_auto_loc": np.array([1.0, 2.0, 3.0])}
         prior_updates, guess_updates = _build_csv_updates(field_mapping, params)
-        # Array sites do NOT update priors
-        assert prior_updates == {}
-        # Guess locs get the per-condition MAP array
+        # Guess locs get the per-condition MAP array (warm start)
         assert "condition_growth_k_locs" in guess_updates
         assert np.allclose(guess_updates["condition_growth_k_locs"],
                            [1.0, 2.0, 3.0])
+        # Priors get the per-condition loc array (the pin)
+        assert "growth.condition_growth.k_loc" in prior_updates
+        assert np.allclose(prior_updates["growth.condition_growth.k_loc"],
+                           [1.0, 2.0, 3.0])
+
+    def test_growth_transition_array_site_does_not_pin_priors(self):
+        """growth_transition array sites keep warm-start-only behaviour."""
+        field_mapping = {
+            "growth_transition_tau0": {
+                "component": "growth_transition",
+                "dist_class": "Normal",
+                "loc_field": "tau0_loc",
+                "scale_field": "tau0_scale",
+                "is_array": True,
+            },
+        }
+        params = {"growth_transition_tau0_auto_loc": np.array([1.0, 2.0, 3.0])}
+        prior_updates, guess_updates = _build_csv_updates(field_mapping, params)
+        assert "growth_transition_tau0_locs" in guess_updates
+        assert prior_updates == {}
 
 
 # ---------------------------------------------------------------------------
@@ -644,6 +665,47 @@ class TestApplyPriorsUpdates:
         pd.DataFrame({"foo": [1, 2]}).to_csv(bad, index=False)
         with pytest.raises(ValueError, match="missing required"):
             _apply_priors_updates(str(bad), {"x": 1.0})
+
+    def test_array_update_expands_to_labeled_indexed_rows(self, tmp_path):
+        """A per-condition array prior replaces the scalar row with one
+        indexed, condition_rep-labeled row per condition."""
+        path = self._write_csv(tmp_path, [
+            {"parameter": "growth.condition_growth.k_loc", "value": 0.02},
+            {"parameter": "growth.condition_growth.k_scale", "value": 0.1},
+        ])
+        labels = pd.DataFrame({
+            "condition_rep": ["kanR+kan", "kanR-kan", "pheS+4CP"],
+        })
+        updates = {"growth.condition_growth.k_loc": np.array([0.011, 0.021, 0.029])}
+        _apply_priors_updates(path, updates, cond_rep_labels=labels)
+
+        new = pd.read_csv(path)
+        k_rows = new[new["parameter"] == "growth.condition_growth.k_loc"]
+        # One row per condition, replacing the single scalar row
+        assert len(k_rows) == 3
+        assert "flat_index" in k_rows.columns
+        assert "condition_rep" in k_rows.columns
+        by_cond = dict(zip(k_rows["condition_rep"], k_rows["value"]))
+        assert by_cond["kanR+kan"] == pytest.approx(0.011)
+        assert by_cond["pheS+4CP"] == pytest.approx(0.029)
+        # A scalar row alongside is preserved
+        assert (new["parameter"] == "growth.condition_growth.k_scale").sum() == 1
+
+    def test_array_and_scalar_updates_together(self, tmp_path):
+        path = self._write_csv(tmp_path, [
+            {"parameter": "growth.condition_growth.k_loc", "value": 0.02},
+            {"parameter": "growth.condition_growth.k_scale", "value": 0.1},
+        ])
+        labels = pd.DataFrame({"condition_rep": ["a+x", "b-y"]})
+        updates = {
+            "growth.condition_growth.k_loc": np.array([0.011, 0.021]),
+            "growth.condition_growth.k_scale": 0.002,
+        }
+        _apply_priors_updates(path, updates, cond_rep_labels=labels)
+        new = pd.read_csv(path).set_index("parameter")
+        assert new.loc["growth.condition_growth.k_scale", "value"] == pytest.approx(0.002)
+        assert (pd.read_csv(path)["parameter"]
+                == "growth.condition_growth.k_loc").sum() == 2
 
 
 class TestApplyGuessesUpdates:
@@ -1635,6 +1697,104 @@ class TestBuildHessianScaleUpdates:
         h = get_hyperparameters()
         assert _DEFAULT_K_SCALE_CEILING == pytest.approx(h["k_scale"])
         assert _DEFAULT_M_SCALE_CEILING == pytest.approx(h["m_scale_plus"])
+
+
+class TestBuildHessianScaleBoundsPath:
+    """The generic scale_bounds path generalises beyond hard-coded k/m."""
+
+    def _fm(self, sites):
+        out = {}
+        for site_name, loc_field in sites:
+            suffix = loc_field.replace("_loc", "")
+            out[site_name] = {
+                "component": "condition_growth",
+                "dist_class": "Normal",
+                "loc_field": loc_field,
+                "scale_field": f"{suffix}_scale",
+                "is_array": True,
+            }
+        return out
+
+    def _hr(self, site_name, sigmas):
+        return {site_name: {"map": np.zeros_like(sigmas), "sigma": np.array(sigmas)}}
+
+    def test_saturation_min_baseline_gets_tight_scale(self):
+        """saturation 'min' (the baseline) is handled via bounds, not the
+        k/m hard-code, and floored tight."""
+        fm = self._fm([("condition_growth_min", "min_loc")])
+        hr = self._hr("condition_growth_min", [1e-5, 1e-5])
+        bounds = {"min": {"floor": 0.002, "ceiling": 0.1, "scale_field": "min_scale"}}
+        g, p = _build_hessian_scale_updates(
+            fm, hr, 0.002, 0.001, 0.1, 0.01, scale_bounds=bounds)
+        assert np.all(g["condition_growth_min_scales"] == pytest.approx(0.002))
+        assert p["growth.condition_growth.min_scale"] == pytest.approx(0.002)
+
+    def test_power_n_uses_its_own_scale_field(self):
+        fm = self._fm([("condition_growth_n", "n_loc")])
+        hr = self._hr("condition_growth_n", [0.2, 0.3])
+        bounds = {"n": {"floor": 0.05, "ceiling": 0.5, "scale_field": "n_scale"}}
+        g, p = _build_hessian_scale_updates(
+            fm, hr, 0.002, 0.001, 0.1, 0.01, scale_bounds=bounds)
+        assert "growth.condition_growth.n_scale" in p
+
+    def test_suffix_absent_from_bounds_skipped(self):
+        fm = self._fm([("condition_growth_k", "k_loc")])
+        hr = self._hr("condition_growth_k", [0.01])
+        g, p = _build_hessian_scale_updates(
+            fm, hr, 0.002, 0.001, 0.1, 0.01, scale_bounds={"m": {}})
+        assert g == {} and p == {}
+
+    def test_linear_m_scale_field_from_bounds(self):
+        """With bounds, m routes to its declared scale_field (m_scale_plus)."""
+        fm = self._fm([("condition_growth_m", "m_loc")])
+        hr = self._hr("condition_growth_m", [0.02, 0.03])
+        bounds = {"m": {"floor": 0.001, "ceiling": 0.01, "scale_field": "m_scale_plus"}}
+        _, p = _build_hessian_scale_updates(
+            fm, hr, 0.002, 0.001, 0.1, 0.01, scale_bounds=bounds)
+        assert "growth.condition_growth.m_scale_plus" in p
+
+
+class TestResolveScaleBounds:
+
+    def test_linear_bounds_have_k_and_m(self):
+        bounds = _resolve_scale_bounds("linear", 0.002, 0.001, 0.1, 0.01)
+        assert set(bounds) == {"k", "m"}
+        assert bounds["k"]["scale_field"] == "k_scale"
+        assert bounds["m"]["scale_field"] == "m_scale_plus"
+
+    def test_saturation_bounds_have_min_max(self):
+        bounds = _resolve_scale_bounds("saturation", 0.002, 0.001, 0.1, 0.01)
+        assert set(bounds) == {"min", "max"}
+
+    def test_cli_floor_overrides_component_floor(self):
+        bounds = _resolve_scale_bounds("linear", 0.005, 0.001, 0.1, 0.01)
+        assert bounds["k"]["floor"] == pytest.approx(0.005)
+
+    def test_unknown_component_returns_empty(self):
+        assert _resolve_scale_bounds("does_not_exist", 0.002, 0.001, 0.1, 0.01) == {}
+
+
+class TestConditionRepLabels:
+
+    def test_labels_ordered_by_map_condition_rep(self):
+        class _TM:
+            map_groups = {
+                "condition_rep": pd.DataFrame({
+                    "map_condition_rep": [2, 0, 1],
+                    "condition_rep": ["pheS+4CP", "kanR+kan", "kanR-kan"],
+                })
+            }
+
+        class _Orch:
+            growth_tm = _TM()
+
+        labels = _condition_rep_labels(_Orch())
+        assert list(labels["condition_rep"]) == ["kanR+kan", "kanR-kan", "pheS+4CP"]
+
+    def test_none_when_no_growth_tm(self):
+        class _Orch:
+            growth_tm = None
+        assert _condition_rep_labels(_Orch()) is None
 
 
 # ---------------------------------------------------------------------------

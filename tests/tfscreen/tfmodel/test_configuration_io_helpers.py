@@ -9,10 +9,42 @@ import dataclasses
 import numpy as np
 import pytest
 
+import pandas as pd
+import jax.numpy as jnp
+
 from tfscreen.tfmodel.configuration_io import (
     _extract_scalars,
     _gather_dict_field,
+    _extract_prior_arrays,
+    _assemble_condition_array,
+    _read_priors_flat,
 )
+
+
+# Minimal dataclasses mirroring the growth.condition_growth prior nesting so
+# _extract_prior_arrays produces the real dotted keys the loader expects.
+@dataclasses.dataclass
+class _CondGrowthPriors:
+    k_loc: object = dataclasses.field(default_factory=lambda: np.array([0.011, 0.021, 0.029]))
+    k_scale: float = 0.1
+    m_is_selection: tuple = (True, False, True)  # static bool tuple: must be ignored
+
+
+@dataclasses.dataclass
+class _GrowthPriors:
+    condition_growth: _CondGrowthPriors = dataclasses.field(default_factory=_CondGrowthPriors)
+
+
+@dataclasses.dataclass
+class _RootPriors:
+    growth: _GrowthPriors = dataclasses.field(default_factory=_GrowthPriors)
+
+
+def _cond_rep_map():
+    return pd.DataFrame({
+        "map_condition_rep": [0, 1, 2],
+        "condition_rep": ["kanR+kan", "kanR-kan", "pheS+4CP"],
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -191,3 +223,137 @@ class TestGatherDictField:
         assert len(result) == 5
         for i in range(5):
             assert result[f"k{i}"] == pytest.approx(float(i))
+
+
+# ---------------------------------------------------------------------------
+# _extract_prior_arrays
+# ---------------------------------------------------------------------------
+
+class TestExtractPriorArrays:
+
+    def test_float_array_extracted_with_dotted_key(self):
+        out = _extract_prior_arrays(_RootPriors())
+        assert "growth.condition_growth.k_loc" in out
+        assert np.allclose(out["growth.condition_growth.k_loc"],
+                           [0.011, 0.021, 0.029])
+
+    def test_scalar_field_not_extracted(self):
+        out = _extract_prior_arrays(_RootPriors())
+        assert "growth.condition_growth.k_scale" not in out
+
+    def test_bool_tuple_not_extracted(self):
+        """Static config tuples (m_is_selection) must never look like a prior."""
+        out = _extract_prior_arrays(_RootPriors())
+        assert "growth.condition_growth.m_is_selection" not in out
+
+
+# ---------------------------------------------------------------------------
+# _assemble_condition_array — name-join + fail-fast
+# ---------------------------------------------------------------------------
+
+class TestAssembleConditionArray:
+
+    def _grp(self, rows):
+        return pd.DataFrame(rows)
+
+    def test_name_join_orders_by_map_not_row_order(self):
+        # Rows deliberately shuffled; flat_index does NOT match map order.
+        grp = self._grp([
+            {"value": 0.029, "flat_index": 0, "condition_rep": "pheS+4CP"},
+            {"value": 0.011, "flat_index": 1, "condition_rep": "kanR+kan"},
+            {"value": 0.021, "flat_index": 2, "condition_rep": "kanR-kan"},
+        ])
+        arr = _assemble_condition_array("k_loc", grp, _cond_rep_map())
+        assert np.allclose(arr, [0.011, 0.021, 0.029])
+
+    def test_unknown_condition_raises(self):
+        grp = self._grp([
+            {"value": 0.011, "flat_index": 0, "condition_rep": "kanR+kan"},
+            {"value": 0.021, "flat_index": 1, "condition_rep": "kanR-kan"},
+            {"value": 0.029, "flat_index": 2, "condition_rep": "MYSTERY"},
+        ])
+        with pytest.raises(ValueError, match="not one of the model's conditions"):
+            _assemble_condition_array("k_loc", grp, _cond_rep_map())
+
+    def test_missing_condition_raises(self):
+        grp = self._grp([
+            {"value": 0.011, "flat_index": 0, "condition_rep": "kanR+kan"},
+            {"value": 0.021, "flat_index": 1, "condition_rep": "kanR-kan"},
+        ])
+        with pytest.raises(ValueError, match="missing per-condition"):
+            _assemble_condition_array("k_loc", grp, _cond_rep_map())
+
+    def test_fallback_to_flat_index_without_map(self):
+        grp = self._grp([
+            {"value": 0.029, "flat_index": 2},
+            {"value": 0.011, "flat_index": 0},
+            {"value": 0.021, "flat_index": 1},
+        ])
+        arr = _assemble_condition_array("k_loc", grp, None)
+        assert np.allclose(arr, [0.011, 0.021, 0.029])
+
+
+# ---------------------------------------------------------------------------
+# _read_priors_flat — scalar / mixed / legacy
+# ---------------------------------------------------------------------------
+
+class TestReadPriorsFlat:
+
+    def test_legacy_two_column_scalar_only(self):
+        df = pd.DataFrame({
+            "parameter": ["growth.condition_growth.k_scale", "growth.x.y"],
+            "value": [0.1, 2.0],
+        })
+        flat = _read_priors_flat(df, _cond_rep_map())
+        assert flat["growth.condition_growth.k_scale"] == pytest.approx(0.1)
+        assert flat["growth.x.y"] == pytest.approx(2.0)
+
+    def test_mixed_scalar_and_indexed(self):
+        df = pd.DataFrame([
+            {"parameter": "growth.condition_growth.m_scale_plus",
+             "value": 0.01, "flat_index": np.nan, "condition_rep": np.nan},
+            {"parameter": "growth.condition_growth.k_loc",
+             "value": 0.021, "flat_index": 1, "condition_rep": "kanR-kan"},
+            {"parameter": "growth.condition_growth.k_loc",
+             "value": 0.011, "flat_index": 0, "condition_rep": "kanR+kan"},
+            {"parameter": "growth.condition_growth.k_loc",
+             "value": 0.029, "flat_index": 2, "condition_rep": "pheS+4CP"},
+        ])
+        flat = _read_priors_flat(df, _cond_rep_map())
+        assert flat["growth.condition_growth.m_scale_plus"] == pytest.approx(0.01)
+        assert np.allclose(np.asarray(flat["growth.condition_growth.k_loc"]),
+                           [0.011, 0.021, 0.029])
+
+    def test_indexed_array_is_jax(self):
+        df = pd.DataFrame([
+            {"parameter": "growth.condition_growth.k_loc",
+             "value": v, "flat_index": i, "condition_rep": c}
+            for i, (v, c) in enumerate([(0.011, "kanR+kan"),
+                                        (0.021, "kanR-kan"),
+                                        (0.029, "pheS+4CP")])
+        ])
+        flat = _read_priors_flat(df, _cond_rep_map())
+        assert isinstance(flat["growth.condition_growth.k_loc"], jnp.ndarray)
+
+
+# ---------------------------------------------------------------------------
+# write→read round trip at the helper level (no orchestrator)
+# ---------------------------------------------------------------------------
+
+class TestPriorArrayRoundTrip:
+
+    def test_extract_then_read_preserves_array(self):
+        # Emulate write_configuration's per-condition prior emission.
+        arrays = _extract_prior_arrays(_RootPriors())
+        key = "growth.condition_growth.k_loc"
+        arr = arrays[key]
+        cond_rep_map = _cond_rep_map()
+        sorted_map = cond_rep_map.sort_values("map_condition_rep").reset_index(drop=True)
+        df = pd.DataFrame({
+            "parameter": key,
+            "value": np.asarray(arr).flatten(),
+            "flat_index": range(len(arr)),
+            "condition_rep": sorted_map["condition_rep"].values,
+        })
+        flat = _read_priors_flat(df, cond_rep_map)
+        assert np.allclose(np.asarray(flat[key]), [0.011, 0.021, 0.029])

@@ -11,9 +11,23 @@ from tfscreen.tfmodel.generative.components.growth.linear import (
     get_hyperparameters,
     get_guesses,
     get_priors,
+    get_scale_bounds,
     _parse_condition_label,
     LinearParams,
 )
+
+
+def _site_loc(site):
+    """Drill to the innermost Normal .loc, unwrapping plate/expand wrappers."""
+    fn = site["fn"]
+    for _ in range(5):
+        if hasattr(fn, "loc"):
+            return np.asarray(fn.loc)
+        if hasattr(fn, "base_dist"):
+            fn = fn.base_dist
+        else:
+            break
+    raise AssertionError("could not find .loc on site distribution")
 
 # --- Mock Data Fixtures ---
 
@@ -550,3 +564,72 @@ class TestDefineModelSelectionAware:
         }
         guide_samples = {n for n, s in guide_trace.items() if s["type"] == "sample"}
         assert model_samples == guide_samples
+
+
+# ---------------------------------------------------------------------------
+# Phase 1: per-condition (array) priors on k / m
+# ---------------------------------------------------------------------------
+
+class TestPerConditionPriors:
+
+    def test_scalar_prior_broadcasts(self, mock_data):
+        """A scalar k_loc broadcasts to every condition (legacy behaviour)."""
+        name = "sc"
+        priors = get_priors()  # scalar k_loc = 0.020
+        with seed(rng_seed=0):
+            tr = trace(define_model).get_trace(name=name, data=mock_data, priors=priors)
+        loc = _site_loc(tr[f"{name}_k"])
+        assert loc.shape == (mock_data.num_condition_rep,)
+        assert np.allclose(loc, 0.020)
+
+    def test_array_k_loc_is_per_condition(self, mock_data):
+        """A per-condition k_loc array flows through to the k sample site."""
+        name = "arr"
+        per_cond = jnp.array([0.011, 0.021, 0.029])
+        priors = get_priors().replace(k_loc=per_cond, k_scale=jnp.full(3, 0.002))
+        with seed(rng_seed=0):
+            tr = trace(define_model).get_trace(name=name, data=mock_data, priors=priors)
+        loc = _site_loc(tr[f"{name}_k"])
+        assert np.allclose(loc, np.array([0.011, 0.021, 0.029]))
+
+    def test_array_prior_initializes_guide_params(self, mock_data):
+        """The guide's k_locs param initialises from a per-condition array prior."""
+        name = "gp"
+        per_cond = jnp.array([0.011, 0.021, 0.029])
+        priors = get_priors().replace(k_loc=per_cond)
+        with seed(rng_seed=0):
+            gtr = trace(guide).get_trace(name=name, data=mock_data, priors=priors)
+        k_locs = np.asarray(gtr[f"{name}_k_locs"]["value"])
+        assert np.allclose(k_locs, np.array([0.011, 0.021, 0.029]))
+
+    def test_array_and_scalar_give_same_sites(self, mock_data):
+        """Model/guide site sets are identical whether priors are scalar or array."""
+        name = "ss"
+        priors = get_priors().replace(k_loc=jnp.array([0.011, 0.021, 0.029]))
+        with seed(rng_seed=0):
+            mtr = trace(define_model).get_trace(name=name, data=mock_data, priors=priors)
+        with seed(rng_seed=0):
+            gtr = trace(guide).get_trace(name=name, data=mock_data, priors=priors)
+        model_samples = {
+            n for n, s in mtr.items()
+            if s["type"] == "sample" and not s.get("is_observed", False)
+        }
+        guide_samples = {n for n, s in gtr.items() if s["type"] == "sample"}
+        assert model_samples == guide_samples
+
+
+class TestGetScaleBounds:
+
+    def test_structure(self):
+        bounds = get_scale_bounds()
+        assert set(bounds) == {"k", "m"}
+        for suffix, spec in bounds.items():
+            assert set(spec) == {"floor", "ceiling", "scale_field"}
+            assert spec["floor"] < spec["ceiling"]
+
+    def test_baseline_floor_tight(self):
+        """The baseline term k must get a tight floor to be pinnable."""
+        bounds = get_scale_bounds()
+        assert bounds["k"]["floor"] <= 0.002
+        assert bounds["k"]["scale_field"] == "k_scale"
+        assert bounds["m"]["scale_field"] == "m_scale_plus"

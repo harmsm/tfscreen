@@ -32,12 +32,17 @@ class ModelPriors:
 
     Attributes
     ----------
-    k_loc : float
+    k_loc : float or array
         Mean of the Normal prior on the per-condition baseline growth rate k.
-    k_scale : float
-        Standard deviation of the Normal prior on k.
-    m_loc : float
+        May be a scalar (broadcast to every condition) or a length-
+        ``num_condition_rep`` array of per-condition locs (written by the
+        pre-fit calibration; see prefit_calibration_cli).
+    k_scale : float or array
+        Standard deviation of the Normal prior on k.  Scalar or per-condition
+        array, mirroring ``k_loc``.
+    m_loc : float or array
         Mean of the Normal prior on the per-condition occupancy slope m.
+        Scalar or per-condition array.
     m_scale : float
         Standard deviation of the Normal prior on m (used for all conditions
         when ``m_is_selection`` is ``None``).
@@ -141,17 +146,28 @@ def define_model(name: str,
     params : LinearParams
         A dataclass containing k_pre, m_pre, k_sel, and m_sel.
     """
+    num_cr = data.num_condition_rep
+
     if priors.m_is_selection is None:
-        m_scale_arr = jnp.full(data.num_condition_rep, priors.m_scale)
+        m_scale_arr = jnp.full(num_cr, priors.m_scale)
     else:
         m_scale_arr = jnp.array([
             priors.m_scale_plus if sel else priors.m_scale_minus
             for sel in priors.m_is_selection
         ])
 
-    with pyro.plate(f"{name}_condition_parameters", data.num_condition_rep) as idx:
-        growth_k = pyro.sample(f"{name}_k", dist.Normal(priors.k_loc, priors.k_scale))
-        growth_m = pyro.sample(f"{name}_m", dist.Normal(priors.m_loc, m_scale_arr[idx]))
+    # Broadcast scalar-or-array priors to a per-condition array so k, m can be
+    # pinned condition-by-condition (see prefit calibration).  A scalar prior
+    # broadcasts to every condition, preserving the previous behaviour.
+    k_loc_arr = jnp.broadcast_to(jnp.asarray(priors.k_loc, dtype=float), (num_cr,))
+    k_scale_arr = jnp.broadcast_to(jnp.asarray(priors.k_scale, dtype=float), (num_cr,))
+    m_loc_arr = jnp.broadcast_to(jnp.asarray(priors.m_loc, dtype=float), (num_cr,))
+
+    with pyro.plate(f"{name}_condition_parameters", num_cr) as idx:
+        growth_k = pyro.sample(f"{name}_k",
+                               dist.Normal(k_loc_arr[idx], k_scale_arr[idx]))
+        growth_m = pyro.sample(f"{name}_m",
+                               dist.Normal(m_loc_arr[idx], m_scale_arr[idx]))
 
     k_pre = growth_k[data.map_condition_pre]
     m_pre = growth_m[data.map_condition_pre]
@@ -169,15 +185,16 @@ def guide(name: str,
 
     Maintains per-condition variational parameters for k and m.
     """
+    num_cr = data.num_condition_rep
     k_locs = pyro.param(f"{name}_k_locs",
-                        jnp.full(data.num_condition_rep, priors.k_loc, dtype=float))
+                        jnp.broadcast_to(jnp.asarray(priors.k_loc, dtype=float), (num_cr,)))
     k_scales = pyro.param(f"{name}_k_scales",
-                          jnp.full(data.num_condition_rep, priors.k_scale, dtype=float),
+                          jnp.broadcast_to(jnp.asarray(priors.k_scale, dtype=float), (num_cr,)),
                           constraint=dist.constraints.positive)
     m_locs = pyro.param(f"{name}_m_locs",
-                        jnp.full(data.num_condition_rep, priors.m_loc, dtype=float))
+                        jnp.broadcast_to(jnp.asarray(priors.m_loc, dtype=float), (num_cr,)))
     m_scales = pyro.param(f"{name}_m_scales",
-                          jnp.full(data.num_condition_rep, priors.m_scale, dtype=float),
+                          jnp.broadcast_to(jnp.asarray(priors.m_scale, dtype=float), (num_cr,)),
                           constraint=dist.constraints.positive)
 
     with pyro.plate(f"{name}_condition_parameters", data.num_condition_rep) as idx:
@@ -368,6 +385,28 @@ def get_priors(condition_labels: Optional[List[str]] = None,
             _parse_condition_label(label) for label in condition_labels
         )
     return ModelPriors(**hypers)
+
+
+def get_scale_bounds():
+    """
+    Per-condition prior-scale bounds for the pre-fit calibration.
+
+    Maps each per-condition sample-site suffix (the ``{param}`` in the
+    ``{name}_{param}`` site name) to the floor/ceiling applied to its
+    Hessian-derived prior scale, and the ``ModelPriors`` field the scalar
+    fallback is written to.  ``k`` (the theta-independent baseline that trades
+    off against ``dk_geno``) gets a tight floor so calibration can pin it hard;
+    ``m`` inherits the selection-condition scale field.
+
+    Returns
+    -------
+    dict
+        ``{suffix: {"floor": float, "ceiling": float, "scale_field": str}}``.
+    """
+    return {
+        "k": {"floor": 0.002, "ceiling": 0.1,  "scale_field": "k_scale"},
+        "m": {"floor": 0.001, "ceiling": 0.01, "scale_field": "m_scale_plus"},
+    }
 
 
 def get_extract_specs(ctx):

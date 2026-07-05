@@ -29,13 +29,17 @@ class ModelPriors:
 
     Attributes
     ----------
-    k_loc, k_scale : float
+    k_loc, k_scale : float or array
         Normal prior parameters for per-condition baseline growth rate k.
-    m_loc, m_scale : float
+        Scalar (broadcast to every condition) or a length-``num_condition_rep``
+        array of per-condition values (written by the pre-fit calibration).
+    m_loc, m_scale : float or array
         Normal prior parameters for per-condition occupancy slope m.
-    n_loc, n_scale : float
+        Scalar or per-condition array.
+    n_loc, n_scale : float or array
         Normal prior parameters for log(n), the power-law exponent.
         The actual exponent n = exp(sample), so n > 0 always.
+        Scalar or per-condition array.
     """
     k_loc: float
     k_scale: float
@@ -68,14 +72,29 @@ def define_model(name: str,
     params : PowerParams
         A dataclass containing k, m, and n for pre and sel.
     """
-    with pyro.plate(f"{name}_k_condition_parameters", data.num_condition_rep):
-        k_per_condition = pyro.sample(f"{name}_k", dist.Normal(priors.k_loc, priors.k_scale))
+    num_cr = data.num_condition_rep
 
-    with pyro.plate(f"{name}_m_condition_parameters", data.num_condition_rep):
-        m_per_condition = pyro.sample(f"{name}_m", dist.Normal(priors.m_loc, priors.m_scale))
+    # Broadcast scalar-or-array priors to per-condition arrays so each
+    # parameter can be pinned condition-by-condition (see prefit calibration).
+    # A scalar prior broadcasts to every condition (previous behaviour).
+    k_loc_arr = jnp.broadcast_to(jnp.asarray(priors.k_loc, dtype=float), (num_cr,))
+    k_scale_arr = jnp.broadcast_to(jnp.asarray(priors.k_scale, dtype=float), (num_cr,))
+    m_loc_arr = jnp.broadcast_to(jnp.asarray(priors.m_loc, dtype=float), (num_cr,))
+    m_scale_arr = jnp.broadcast_to(jnp.asarray(priors.m_scale, dtype=float), (num_cr,))
+    n_loc_arr = jnp.broadcast_to(jnp.asarray(priors.n_loc, dtype=float), (num_cr,))
+    n_scale_arr = jnp.broadcast_to(jnp.asarray(priors.n_scale, dtype=float), (num_cr,))
 
-    with pyro.plate(f"{name}_n_condition_parameters", data.num_condition_rep):
-        ln_n = pyro.sample(f"{name}_n", dist.Normal(priors.n_loc, priors.n_scale))
+    with pyro.plate(f"{name}_k_condition_parameters", num_cr) as idx:
+        k_per_condition = pyro.sample(f"{name}_k",
+                                      dist.Normal(k_loc_arr[idx], k_scale_arr[idx]))
+
+    with pyro.plate(f"{name}_m_condition_parameters", num_cr) as idx:
+        m_per_condition = pyro.sample(f"{name}_m",
+                                      dist.Normal(m_loc_arr[idx], m_scale_arr[idx]))
+
+    with pyro.plate(f"{name}_n_condition_parameters", num_cr) as idx:
+        ln_n = pyro.sample(f"{name}_n",
+                           dist.Normal(n_loc_arr[idx], n_scale_arr[idx]))
     n_per_condition = jnp.exp(ln_n)
 
     k_pre = k_per_condition[data.map_condition_pre]
@@ -96,20 +115,21 @@ def guide(name: str,
     """
     Guide for the power growth model with simple Normal priors.
     """
+    num_cr = data.num_condition_rep
     k_locs = pyro.param(f"{name}_k_locs",
-                        jnp.full(data.num_condition_rep, priors.k_loc, dtype=float))
+                        jnp.broadcast_to(jnp.asarray(priors.k_loc, dtype=float), (num_cr,)))
     k_scales = pyro.param(f"{name}_k_scales",
-                          jnp.full(data.num_condition_rep, priors.k_scale, dtype=float),
+                          jnp.broadcast_to(jnp.asarray(priors.k_scale, dtype=float), (num_cr,)),
                           constraint=dist.constraints.positive)
     m_locs = pyro.param(f"{name}_m_locs",
-                        jnp.full(data.num_condition_rep, priors.m_loc, dtype=float))
+                        jnp.broadcast_to(jnp.asarray(priors.m_loc, dtype=float), (num_cr,)))
     m_scales = pyro.param(f"{name}_m_scales",
-                          jnp.full(data.num_condition_rep, priors.m_scale, dtype=float),
+                          jnp.broadcast_to(jnp.asarray(priors.m_scale, dtype=float), (num_cr,)),
                           constraint=dist.constraints.positive)
     n_locs = pyro.param(f"{name}_n_locs",
-                        jnp.full(data.num_condition_rep, priors.n_loc, dtype=float))
+                        jnp.broadcast_to(jnp.asarray(priors.n_loc, dtype=float), (num_cr,)))
     n_scales = pyro.param(f"{name}_n_scales",
-                          jnp.full(data.num_condition_rep, priors.n_scale, dtype=float),
+                          jnp.broadcast_to(jnp.asarray(priors.n_scale, dtype=float), (num_cr,)),
                           constraint=dist.constraints.positive)
 
     with pyro.plate(f"{name}_k_condition_parameters", data.num_condition_rep) as idx:
@@ -186,6 +206,26 @@ def get_guesses(name, data):
 
 def get_priors():
     return ModelPriors(**get_hyperparameters())
+
+
+def get_scale_bounds():
+    """
+    Per-condition prior-scale bounds for the pre-fit calibration.
+
+    See ``linear.get_scale_bounds`` for the contract.  ``k`` is the
+    theta-independent baseline (tight floor); ``n`` is a log-space exponent,
+    so its bounds are looser than the rate parameters.
+
+    Returns
+    -------
+    dict
+        ``{suffix: {"floor": float, "ceiling": float, "scale_field": str}}``.
+    """
+    return {
+        "k": {"floor": 0.002, "ceiling": 0.1,  "scale_field": "k_scale"},
+        "m": {"floor": 0.001, "ceiling": 0.01, "scale_field": "m_scale"},
+        "n": {"floor": 0.05,  "ceiling": 0.5,  "scale_field": "n_scale"},
+    }
 
 
 def get_extract_specs(ctx):
