@@ -26,7 +26,10 @@ model components, and writes three configuration files:
 * ``{out_prefix}_guesses.csv`` — initial-value guesses for array parameters
 
 ``binding_df`` (direct binding measurements) is the only required argument.
-``growth_df`` is optional; omitting it configures a binding-only model.
+``growth_df`` is optional; omitting it configures a binding-only model. See
+:doc:`model-inputs` for what each input contributes to the fit, how much
+data is useful, and the exact file format for ``binding_df``, ``growth_df``,
+``base_growth_df``, ``presplit_df``, and ``transformation_lambda``.
 
 .. code-block:: bash
 
