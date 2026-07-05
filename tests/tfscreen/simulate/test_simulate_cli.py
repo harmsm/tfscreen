@@ -70,7 +70,7 @@ def patched_simulation(tmp_path):
     """Patch all I/O so run_simulation_from_config can run without real data."""
     lib_df, pheno_df, theta_df, params_df, sample_df, counts_df, growth_df = _make_mock_dfs()
 
-    with patch("tfscreen.util.read_yaml", return_value={"seed": 99}) as mock_yaml, \
+    with patch("tfscreen.util.read_yaml", return_value={"seed": 99, "growth": {}}) as mock_yaml, \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
                return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
@@ -116,7 +116,7 @@ def test_writes_parameters_not_phenotype(tmp_path):
     def capture_csv(self_df, path, **kwargs):
         written_paths.append(str(path))
 
-    with patch("tfscreen.util.read_yaml", return_value={"seed": 0}), \
+    with patch("tfscreen.util.read_yaml", return_value={"seed": 0, "growth": {}}), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
                return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
@@ -140,7 +140,7 @@ def test_output_file_names_include_expected_stems(tmp_path):
     def capture_csv(self_df, path, **kwargs):
         written_paths.append(str(path))
 
-    with patch("tfscreen.util.read_yaml", return_value={"seed": 0}), \
+    with patch("tfscreen.util.read_yaml", return_value={"seed": 0, "growth": {}}), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
                return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
@@ -156,6 +156,63 @@ def test_output_file_names_include_expected_stems(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# growth_parameters: always written, from cf['growth']
+# ---------------------------------------------------------------------------
+
+def test_growth_parameters_csv_always_written(tmp_path):
+    """growth_parameters CSV is written unconditionally (cf['growth'] is
+    always required, unlike the optional *_data blocks)."""
+    lib_df, pheno_df, theta_df, params_df, sample_df, counts_df, growth_df = _make_mock_dfs()
+
+    written = {}
+
+    def capture_csv(self_df, path, **kwargs):
+        written[str(path)] = self_df.copy()
+
+    cfg = {"seed": 0, "growth": {"kanR+kan": {"model": "linear", "b": 0.005, "m": -0.01}}}
+
+    with patch("tfscreen.util.read_yaml", return_value=cfg), \
+         patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
+               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
+               return_value=(sample_df, counts_df)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
+               return_value=growth_df), \
+         patch.object(pd.DataFrame, "to_csv", capture_csv):
+        run_simulation_from_config("config.yaml", str(tmp_path))
+
+    matches = [p for p in written if "growth_parameters" in os.path.basename(p)]
+    assert len(matches) == 1
+    result = written[matches[0]]
+    assert result.loc[0, "condition_rep"] == "kanR+kan"
+    assert result.loc[0, "growth_k"] == pytest.approx(0.005)
+    assert result.loc[0, "growth_m"] == pytest.approx(-0.01)
+
+
+def test_growth_parameters_csv_written_for_real(tmp_path):
+    """Real (unmocked) to_csv write produces a readable growth_parameters.csv."""
+    lib_df, pheno_df, theta_df, params_df, sample_df, counts_df, growth_df = _make_mock_dfs()
+
+    cfg = {"seed": 0, "growth": {"M9+kan": {"model": "saturation", "kmin": 0.001, "kmax": 0.04}}}
+
+    with patch("tfscreen.util.read_yaml", return_value=cfg), \
+         patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
+               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
+               return_value=(sample_df, counts_df)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
+               return_value=growth_df):
+        run_simulation_from_config("config.yaml", str(tmp_path))
+
+    growth_params_path = tmp_path / "tfs_sim_growth_parameters.csv"
+    assert growth_params_path.exists()
+    df = pd.read_csv(growth_params_path)
+    assert df.loc[0, "condition_rep"] == "M9+kan"
+    assert df.loc[0, "growth_min"] == pytest.approx(0.001)
+    assert df.loc[0, "growth_max"] == pytest.approx(0.04)
+
+
+# ---------------------------------------------------------------------------
 # base_growth_data: written only when configured, using parameters_df's dk_geno
 # ---------------------------------------------------------------------------
 
@@ -168,7 +225,7 @@ def test_base_growth_not_written_without_config(tmp_path):
     def capture_csv(self_df, path, **kwargs):
         written_paths.append(str(path))
 
-    with patch("tfscreen.util.read_yaml", return_value={"seed": 0}), \
+    with patch("tfscreen.util.read_yaml", return_value={"seed": 0, "growth": {}}), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
                return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
@@ -192,7 +249,7 @@ def test_base_growth_written_when_configured(tmp_path):
     def capture_csv(self_df, path, **kwargs):
         written[str(path)] = self_df.copy()
 
-    cfg = {"seed": 0, "base_growth_data": {"k_ref": 0.025}}
+    cfg = {"seed": 0, "growth": {}, "base_growth_data": {"k_ref": 0.025}}
 
     with patch("tfscreen.util.read_yaml", return_value=cfg), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
@@ -209,6 +266,62 @@ def test_base_growth_written_when_configured(tmp_path):
     result = written[base_growth_paths[0]]
     assert set(result["genotype"]) == {"wt"}
     assert float(result.loc[result["genotype"] == "wt", "rate"].iloc[0]) == pytest.approx(0.025)
+
+
+# ---------------------------------------------------------------------------
+# k_ref: written only alongside base_growth_data, echoing its k_ref value
+# ---------------------------------------------------------------------------
+
+def test_k_ref_not_written_without_base_growth_config(tmp_path):
+    """No k_ref CSV is written when 'base_growth_data' is absent."""
+    lib_df, pheno_df, theta_df, params_df, sample_df, counts_df, growth_df = _make_mock_dfs()
+
+    written_paths = []
+
+    def capture_csv(self_df, path, **kwargs):
+        written_paths.append(str(path))
+
+    with patch("tfscreen.util.read_yaml", return_value={"seed": 0, "growth": {}}), \
+         patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
+               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
+               return_value=(sample_df, counts_df)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
+               return_value=growth_df), \
+         patch.object(pd.DataFrame, "to_csv", capture_csv):
+        run_simulation_from_config("config.yaml", str(tmp_path))
+
+    basenames = "\n".join(os.path.basename(p) for p in written_paths)
+    assert "k_ref" not in basenames
+
+
+def test_k_ref_written_when_base_growth_configured(tmp_path):
+    """A 'base_growth_data' block also produces a single-row k_ref CSV
+    echoing the configured k_ref value."""
+    lib_df, pheno_df, theta_df, params_df, sample_df, counts_df, growth_df = _make_mock_dfs()
+
+    written = {}
+
+    def capture_csv(self_df, path, **kwargs):
+        written[str(path)] = self_df.copy()
+
+    cfg = {"seed": 0, "growth": {}, "base_growth_data": {"k_ref": 0.031}}
+
+    with patch("tfscreen.util.read_yaml", return_value=cfg), \
+         patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
+               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
+               return_value=(sample_df, counts_df)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
+               return_value=growth_df), \
+         patch.object(pd.DataFrame, "to_csv", capture_csv):
+        run_simulation_from_config("config.yaml", str(tmp_path))
+
+    k_ref_paths = [p for p in written if "k_ref" in os.path.basename(p)]
+    assert len(k_ref_paths) == 1
+    result = written[k_ref_paths[0]]
+    assert result.loc[0, "parameter"] == "k_ref"
+    assert result.loc[0, "ref"] == pytest.approx(0.031)
 
 
 # ---------------------------------------------------------------------------
@@ -238,6 +351,7 @@ def test_run_simulation_writes_presplit_csv(tmp_path):
 
     cf = {
         "seed": 1,
+        "growth": {},
         "cfu0": 1e8,
         "total_num_reads": 10_000_000,
         "prob_index_hop": None,
@@ -275,7 +389,7 @@ def test_run_simulation_no_presplit_without_config(tmp_path):
                                 "counts": 1000, "ln_cfu_0": 10.0}])
     growth_df = pd.DataFrame({"genotype": ["wt"], "ln_cfu": [10.0]})
 
-    cf = {"seed": 1, "cfu0": 1e8, "total_num_reads": 1_000_000,
+    cf = {"seed": 1, "growth": {}, "cfu0": 1e8, "total_num_reads": 1_000_000,
           "prob_index_hop": None}
 
     with patch("tfscreen.util.read_yaml", return_value=cf), \
@@ -335,7 +449,7 @@ def test_writes_input_config_yaml(tmp_path):
     def capture_dump(data, fh, **kwargs):
         dumped["data"] = data
 
-    with patch("tfscreen.util.read_yaml", return_value={"seed": 5}), \
+    with patch("tfscreen.util.read_yaml", return_value={"seed": 5, "growth": {}}), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
                return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
@@ -357,7 +471,7 @@ def test_input_config_yaml_existence_check(tmp_path):
     existing_yaml = tmp_path / "tfs_sim_input-config.yaml"
     existing_yaml.write_text("seed: 0\n")
 
-    with patch("tfscreen.util.read_yaml", return_value={"seed": 0}), \
+    with patch("tfscreen.util.read_yaml", return_value={"seed": 0, "growth": {}}), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
                return_value=(lib_df, pheno_df, theta_df, params_df, None)) as mock_lib:
         with pytest.raises(FileExistsError, match="input-config.yaml"):

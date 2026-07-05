@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from tfscreen.simulate.base_growth_data import generate_base_growth_df
+from tfscreen.simulate.base_growth_data import generate_base_growth_df, generate_k_ref_df
 
 
 def _params_df():
@@ -117,3 +117,34 @@ def test_output_columns():
     rng = np.random.default_rng(0)
     result = generate_base_growth_df(cfg, _params_df(), rng)
     assert set(result.columns) >= {"genotype", "rate", "rate_std", "rate_true"}
+
+
+# ---------------------------------------------------------------------------
+# generate_k_ref_df
+# ---------------------------------------------------------------------------
+
+def test_k_ref_df_single_row_with_configured_value():
+    cfg = {"k_ref": 0.025}
+    result = generate_k_ref_df(cfg)
+    assert len(result) == 1
+    assert result.loc[0, "parameter"] == "k_ref"
+    assert result.loc[0, "ref"] == pytest.approx(0.025)
+
+
+def test_k_ref_df_columns():
+    cfg = {"k_ref": 0.03, "genotypes": ["wt", "A47V"]}
+    result = generate_k_ref_df(cfg)
+    assert set(result.columns) == {"parameter", "ref"}
+
+
+def test_k_ref_df_missing_k_ref_raises():
+    cfg = {"genotypes": ["wt"]}
+    with pytest.raises(ValueError, match="k_ref"):
+        generate_k_ref_df(cfg)
+
+
+def test_k_ref_df_coerces_to_float():
+    cfg = {"k_ref": "0.04"}
+    result = generate_k_ref_df(cfg)
+    assert result.loc[0, "ref"] == pytest.approx(0.04)
+    assert isinstance(result.loc[0, "ref"], float)

@@ -7,7 +7,8 @@ import tfscreen
 from tfscreen.simulate import library_prediction, selection_experiment
 from tfscreen.simulate.binding_data import generate_binding_df
 from tfscreen.simulate.presplit_data import generate_presplit_df
-from tfscreen.simulate.base_growth_data import generate_base_growth_df
+from tfscreen.simulate.base_growth_data import generate_base_growth_df, generate_k_ref_df
+from tfscreen.simulate.growth_parameters_output import generate_growth_parameters_df
 from tfscreen.process_raw import counts_to_lncfu
 from tfscreen.util.cli.generalized_main import generalized_main
 
@@ -25,15 +26,18 @@ def run_simulation_from_config(
     Runs library_prediction once to establish ground-truth phenotypes, then
     simulates num_replicates independent experimental replicates using
     selection_experiment. Writes library, parameters, genotype_theta (long-form:
-    genotype/titrant_name/titrant_conc/theta), and analysis-ready growth CSV
-    files. If the config contains a 'binding_data' block, also writes a
+    genotype/titrant_name/titrant_conc/theta), growth, and growth_parameters
+    (per-condition condition_growth ground truth; see
+    tfscreen.simulate.growth_parameters_output.generate_growth_parameters_df)
+    CSV files. If the config contains a 'binding_data' block, also writes a
     simulated binding curve CSV (see
     tfscreen.simulate.binding_data.generate_binding_df). If it contains a
     'base_growth_data' block, also writes a simulated direct growth-rate
-    calibration CSV (see
-    tfscreen.simulate.base_growth_data.generate_base_growth_df). If it
-    contains a 'presplit_data' block, also writes a simulated presplit CSV
-    (see tfscreen.simulate.presplit_data.generate_presplit_df).
+    calibration CSV and a single-row k_ref ground-truth CSV (see
+    tfscreen.simulate.base_growth_data.generate_base_growth_df and
+    .generate_k_ref_df). If it contains a 'presplit_data' block, also writes
+    a simulated presplit CSV (see
+    tfscreen.simulate.presplit_data.generate_presplit_df).
 
     Parameters
     ----------
@@ -59,13 +63,15 @@ def run_simulation_from_config(
 
     config_out = os.path.join(output_dir, f"{output_prefix}input-config.yaml")
 
-    output_names = ["library", "parameters", "genotype_theta", "growth"]
+    output_names = ["library", "parameters", "genotype_theta", "growth",
+                    "growth_parameters"]
     if "binding_data" in cf:
         output_names.append("binding")
     if "presplit_data" in cf:
         output_names.append("presplit")
     if "base_growth_data" in cf:
         output_names.append("base_growth")
+        output_names.append("k_ref")
 
     existing = [out_path(n) for n in output_names if os.path.exists(out_path(n))]
     if os.path.exists(config_out):
@@ -85,6 +91,7 @@ def run_simulation_from_config(
     # Ground-truth library and phenotypes (deterministic given the config)
 
     library_df, phenotype_df, genotype_theta_df, parameters_df, binding_theta_df = library_prediction(cf)
+    growth_parameters_df = generate_growth_parameters_df(cf["growth"])
 
     # -------------------------------------------------------------------------
     # Simulate independent replicates
@@ -134,7 +141,8 @@ def run_simulation_from_config(
     parameters_df.to_csv(out_path("parameters"), index=False)
     genotype_theta_df.to_csv(out_path("genotype_theta"), index=False)
     growth_df.to_csv(out_path("growth"), index=False)
-    print(f"\nWrote: {', '.join(out_path(n) for n in ['library', 'parameters', 'genotype_theta', 'growth'])}")
+    growth_parameters_df.to_csv(out_path("growth_parameters"), index=False)
+    print(f"\nWrote: {', '.join(out_path(n) for n in ['library', 'parameters', 'genotype_theta', 'growth', 'growth_parameters'])}")
 
     if "binding_data" in cf:
         binding_df = generate_binding_df(cf["binding_data"], rng, binding_theta_df)
@@ -145,6 +153,10 @@ def run_simulation_from_config(
         base_growth_df = generate_base_growth_df(cf["base_growth_data"], parameters_df, rng)
         base_growth_df.to_csv(out_path("base_growth"), index=False)
         print(f"Wrote: {out_path('base_growth')}")
+
+        k_ref_df = generate_k_ref_df(cf["base_growth_data"])
+        k_ref_df.to_csv(out_path("k_ref"), index=False)
+        print(f"Wrote: {out_path('k_ref')}")
 
     if "presplit_data" in cf:
         print("\nGenerating presplit data...", flush=True)

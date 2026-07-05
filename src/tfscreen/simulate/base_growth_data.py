@@ -131,3 +131,41 @@ def generate_base_growth_df(base_growth_cfg, parameters_df, rng):
         })
 
     return pd.DataFrame(rows)
+
+
+def generate_k_ref_df(base_growth_cfg):
+    """
+    Generate a one-row ground-truth DataFrame for the global k_ref scalar.
+
+    k_ref is a single global scalar, not genotype- or condition-indexed
+    like the values in tfs_sim_parameters.csv or
+    tfs_sim_growth_parameters.csv, so it gets its own single-row summary
+    file (tfs_sim_k_ref.csv) rather than being folded into either of those.
+
+    Parameters
+    ----------
+    base_growth_cfg : dict
+        The 'base_growth_data' sub-dict from the config. Must contain:
+          k_ref : float
+              Reference (wt) growth rate, hr^-1.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Single row with columns 'parameter' ("k_ref") and 'ref' (the
+        configured value).
+
+    Raises
+    ------
+    ValueError
+        If 'k_ref' is missing from base_growth_cfg.
+    """
+    if "k_ref" not in base_growth_cfg:
+        raise ValueError(
+            "base_growth_data config must specify 'k_ref' (the reference "
+            "wt growth rate, hr^-1)."
+        )
+    return pd.DataFrame({
+        "parameter": ["k_ref"],
+        "ref": [float(base_growth_cfg["k_ref"])],
+    })
