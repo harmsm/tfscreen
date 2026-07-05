@@ -2,19 +2,31 @@ from functools import partial
 import pandas as pd
 from . import _congression as congression
 
-def get_hyperparameters():
+def get_hyperparameters(lam_mean=None, lam_std=None):
     """
     Gets default values for the model hyperparameters, forced to empirical mode.
+
+    Parameters
+    ----------
+    lam_mean, lam_std : float, optional
+        Experimentally measured mean/std of lambda (linear space). See
+        ``_congression.get_hyperparameters``.
     """
-    parameters = congression.get_hyperparameters()
+    parameters = congression.get_hyperparameters(lam_mean=lam_mean, lam_std=lam_std)
     parameters["mode"] = "empirical"
     return parameters
 
-def get_priors():
+def get_priors(lam_mean=None, lam_std=None):
     """
     Gets model priors initialized to empirical mode.
+
+    Parameters
+    ----------
+    lam_mean, lam_std : float, optional
+        Experimentally measured mean/std of lambda (linear space). See
+        ``_congression.get_hyperparameters``.
     """
-    return congression.ModelPriors(**get_hyperparameters())
+    return congression.ModelPriors(**get_hyperparameters(lam_mean=lam_mean, lam_std=lam_std))
 
 # These are mode-agnostic or depend on priors.mode
 get_guesses = congression.get_guesses

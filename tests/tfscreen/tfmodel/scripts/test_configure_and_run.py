@@ -113,6 +113,40 @@ def test_configure_model_passes_base_growth_df_to_orchestrator_and_config(mock_o
     assert written_config["data"]["base_growth"] == "bg.csv"
 
 
+def test_configure_model_requires_transform_lam_for_empirical(mock_orchestrator, tmpdir):
+    """transformation_model='empirical' (or 'logit_norm') without transform_lam
+    must raise before ModelOrchestrator is even constructed."""
+    out_prefix = os.path.join(tmpdir, "test")
+    with pytest.raises(ValueError, match="transform_lam"):
+        configure_model(
+            "b.csv", growth_df="g.csv",
+            transformation_model="empirical",
+            out_prefix=out_prefix,
+        )
+
+
+def test_configure_model_allows_single_without_transform_lam(mock_orchestrator, tmpdir):
+    """transformation_model='single' (the default) never requires transform_lam."""
+    out_prefix = os.path.join(tmpdir, "test")
+    configure_model("b.csv", growth_df="g.csv", out_prefix=out_prefix)
+    assert os.path.exists(f"{out_prefix}_config.yaml")
+
+
+def test_configure_model_forwards_transform_lam_to_orchestrator(mock_orchestrator, tmpdir):
+    mock_orchestrator_class, mock_orchestrator_inst = mock_orchestrator
+    out_prefix = os.path.join(tmpdir, "test")
+
+    configure_model(
+        "b.csv", growth_df="g.csv",
+        transformation_model="empirical",
+        transform_lam=(0.3572, 0.13),
+        out_prefix=out_prefix,
+    )
+
+    assert mock_orchestrator_class.call_args.kwargs["transform_lam"] == (0.3572, 0.13)
+    assert mock_orchestrator_class.call_args.kwargs["transformation"] == "empirical"
+
+
 def test_configure_model_omits_base_growth_when_not_given(mock_orchestrator, tmpdir):
     """Without base_growth_df, no 'base_growth' key is written under data."""
     mock_orchestrator_class, mock_orchestrator_inst = mock_orchestrator

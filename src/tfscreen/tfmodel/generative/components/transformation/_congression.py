@@ -1,3 +1,5 @@
+import math
+
 import jax
 import jax.numpy as jnp
 import numpyro as pyro
@@ -427,34 +429,71 @@ def guide(name: str,
     raise ValueError(f"Unsupported mode: {priors.mode}")
 
 
-def get_hyperparameters():
+def get_hyperparameters(lam_mean=None, lam_std=None):
     """
     Gets default values for the model hyperparameters.
+
+    Parameters
+    ----------
+    lam_mean : float, optional
+        Experimentally measured mean of the congression Poisson rate
+        lambda, in linear (arithmetic) space. Must be provided together
+        with ``lam_std``.
+    lam_std : float, optional
+        Experimentally measured standard deviation of lambda, in linear
+        (arithmetic) space. Must be provided together with ``lam_mean``.
 
     Returns
     -------
     dict
         A dictionary of hyperparameter names and their default values.
+
+    Raises
+    ------
+    ValueError
+        If exactly one of ``lam_mean``/``lam_std`` is given, or either is
+        not strictly positive.
     """
 
+    if (lam_mean is None) != (lam_std is None):
+        raise ValueError(
+            "lam_mean and lam_std must be provided together (or neither)."
+        )
+
     parameters = {}
-    
-    # Lambda prior: experimentally measured lambda = 0.3572, 95% CI [0.1559, 0.6743]
-    # lam_loc = log(0.3572); lam_scale from CI width in log-space: (log(0.6743)-log(0.1559))/(2*1.96)
-    parameters["lam_loc"] = -1.029
-    parameters["lam_scale"] = 0.37
-    
+
+    if lam_mean is not None:
+        if lam_mean <= 0:
+            raise ValueError(f"lam_mean must be > 0; got {lam_mean}")
+        if lam_std <= 0:
+            raise ValueError(f"lam_std must be > 0; got {lam_std}")
+
+        # Moment-match the experimentally measured (mean, std) -- in linear
+        # space, as an experimentalist would report them -- onto the
+        # LogNormal prior's underlying-Normal parameters.
+        sigma2 = math.log(1.0 + (lam_std / lam_mean) ** 2)
+        parameters["lam_loc"] = math.log(lam_mean) - sigma2 / 2.0
+        parameters["lam_scale"] = math.sqrt(sigma2)
+    else:
+        # Placeholder only -- never used by tfs-configure-model /
+        # tfs-fit-model, which require an experimentally measured lam_mean/
+        # lam_std for this component (see ModelOrchestrator/configure_model).
+        # Exists so this module stays independently constructible/testable,
+        # mirroring dk_geno.pinned's placeholder convention.
+        parameters["lam_loc"] = 0.0
+        parameters["lam_scale"] = 1.0
+
     # Anchoring scales (tightening this makes the background track the prior more closely)
     parameters["mu_anchoring_scale"] = 0.5
     parameters["sigma_anchoring_scale"] = 0.2
-    
+
     # Background model mode: 'logit_normal' (default) or 'empirical'
     parameters["mode"] = "logit_norm"
-               
-    return parameters
-    
 
-def get_guesses(name,data):
+    return parameters
+
+
+def get_guesses(name, data, lam_mean=None):
     """
     Gets initial guess values for model parameters.
 
@@ -468,6 +507,10 @@ def get_guesses(name,data):
     data : DataClass
         A data object containing metadata, primarily:
         - ``data.num_genotype`` : (int) number of non-wt genotypes
+    lam_mean : float, optional
+        Experimentally measured mean of lambda (linear space); used
+        directly as the initial guess. If omitted, a placeholder guess is
+        used (see ``get_hyperparameters``).
 
     Returns
     -------
@@ -478,25 +521,34 @@ def get_guesses(name,data):
 
 
     guesses = {}
-    guesses[f"{name}_lam"] = 0.3572  # experimentally measured value
-    
-    # Only add these if we are not in empirical mode. 
-    # NOTE: get_guesses currently doesn't know the mode from the config easily 
+    guesses[f"{name}_lam"] = lam_mean if lam_mean is not None else 1.0
+
+    # Only add these if we are not in empirical mode.
+    # NOTE: get_guesses currently doesn't know the mode from the config easily
     # during initialization in model_orchestrator.py unless we pass it.
-    # For now, we'll keep them as guesses; they just won't be used if not 
+    # For now, we'll keep them as guesses; they just won't be used if not
     # in the model/guide.
     guesses[f"{name}_mu"] = 0.0
     guesses[f"{name}_sigma"] = 1.0
-    
+
     return guesses
 
-def get_priors():
+def get_priors(lam_mean=None, lam_std=None):
     """
     Utility function to create a populated ModelPriors object.
+
+    Parameters
+    ----------
+    lam_mean : float, optional
+        Experimentally measured mean of lambda (linear space). See
+        ``get_hyperparameters``.
+    lam_std : float, optional
+        Experimentally measured standard deviation of lambda (linear
+        space). See ``get_hyperparameters``.
 
     Returns
     -------
     ModelPriors
         A populated Pytree (Flax dataclass) of hyperparameters.
     """
-    return ModelPriors(**get_hyperparameters())
+    return ModelPriors(**get_hyperparameters(lam_mean=lam_mean, lam_std=lam_std))

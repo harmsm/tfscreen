@@ -199,14 +199,82 @@ def test_getters():
     assert "lam_loc" in params
     assert "mu_anchoring_scale" in params
     assert "sigma_anchoring_scale" in params
-    
+
     guesses = transformation_congression.get_guesses("test", MagicMock())
     assert "test_lam" in guesses
     assert "test_mu" in guesses
     assert "test_sigma" in guesses
-    
+
     priors = transformation_congression.get_priors()
     assert isinstance(priors, transformation_congression.ModelPriors)
+
+
+# -------------------------------------------------------------------------
+# lam_mean/lam_std -- experimentally measured lambda moment-matching
+# -------------------------------------------------------------------------
+
+def test_get_hyperparameters_placeholder_default():
+    """With no lam_mean/lam_std, a weakly-informative placeholder is used --
+    never a specific 'real' experimental value (that would be misleading
+    now that the real value must be supplied explicitly by the caller)."""
+    params = transformation_congression.get_hyperparameters()
+    assert params["lam_loc"] == 0.0
+    assert params["lam_scale"] == 1.0
+
+
+def test_get_hyperparameters_moment_matching():
+    """lam_mean/lam_std (linear space) must moment-match onto the
+    LogNormal's underlying-Normal parameters, i.e. the resulting
+    LogNormal(lam_loc, lam_scale) has the requested arithmetic mean/std."""
+    lam_mean, lam_std = 0.3572, 0.13
+    params = transformation_congression.get_hyperparameters(
+        lam_mean=lam_mean, lam_std=lam_std)
+
+    lam_loc = params["lam_loc"]
+    lam_scale = params["lam_scale"]
+
+    # Analytic mean/variance of a LogNormal(loc, scale).
+    implied_mean = np.exp(lam_loc + lam_scale**2 / 2.0)
+    implied_var = (np.exp(lam_scale**2) - 1.0) * np.exp(2 * lam_loc + lam_scale**2)
+
+    assert np.isclose(implied_mean, lam_mean)
+    assert np.isclose(implied_var, lam_std**2)
+
+
+def test_get_hyperparameters_requires_both_lam_mean_and_lam_std():
+    """A lone lam_mean or lam_std (without its partner) is ambiguous and
+    must raise rather than silently guessing the other."""
+    with pytest.raises(ValueError, match="together"):
+        transformation_congression.get_hyperparameters(lam_mean=0.36)
+    with pytest.raises(ValueError, match="together"):
+        transformation_congression.get_hyperparameters(lam_std=0.05)
+
+
+@pytest.mark.parametrize("lam_mean,lam_std", [(0.0, 0.1), (-0.1, 0.1), (0.36, 0.0), (0.36, -0.1)])
+def test_get_hyperparameters_rejects_nonpositive_lam(lam_mean, lam_std):
+    """lam_mean and lam_std must both be strictly positive (LogNormal support)."""
+    with pytest.raises(ValueError):
+        transformation_congression.get_hyperparameters(lam_mean=lam_mean, lam_std=lam_std)
+
+
+def test_get_guesses_uses_lam_mean_as_guess():
+    """When lam_mean is supplied, it becomes the initial guess directly
+    (rather than the old hardcoded 0.3572)."""
+    guesses = transformation_congression.get_guesses("test", MagicMock(), lam_mean=0.5)
+    assert guesses["test_lam"] == 0.5
+
+
+def test_get_guesses_placeholder_without_lam_mean():
+    guesses = transformation_congression.get_guesses("test", MagicMock())
+    assert guesses["test_lam"] == 1.0
+
+
+def test_get_priors_forwards_lam_mean_std():
+    priors = transformation_congression.get_priors(lam_mean=0.3572, lam_std=0.13)
+    assert isinstance(priors, transformation_congression.ModelPriors)
+    expected = transformation_congression.get_hyperparameters(lam_mean=0.3572, lam_std=0.13)
+    assert priors.lam_loc == expected["lam_loc"]
+    assert priors.lam_scale == expected["lam_scale"]
 
 def test_define_model():
     """Test Numpyro model definition with plates."""

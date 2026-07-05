@@ -40,7 +40,13 @@ def dummy_orchestrator():
         "theta_std": [0.01, 0.01]
     })
 
-    return ModelOrchestrator(growth_df, binding_df)
+    # transformation='empirical' (rather than the 'single' default) is load-
+    # bearing for TestGenotypeSubsetPopulationReference below, which relies
+    # on NEEDS_FULL_POPULATION_THETA=True.
+    return ModelOrchestrator(
+        growth_df, binding_df,
+        transformation="empirical", transform_lam=(0.36, 0.05),
+    )
 
 def test_copy_orchestrator_defaults(dummy_orchestrator):
     """Test copy_orchestrator with all None inputs."""
@@ -604,7 +610,7 @@ class TestPredictPopulationReferenceThreading:
 
     def test_genotype_subset_still_gets_full_population_sized_reference(
             self, dummy_orchestrator, mocker):
-        """dummy_orchestrator defaults to theta='hill_geno',
+        """dummy_orchestrator uses theta='hill_geno',
         transformation='empirical' (NEEDS_FULL_POPULATION_THETA=True).
         Requesting a single genotype must still populate
         pred_data.growth.external_theta_population with the FULL genotype

@@ -24,6 +24,22 @@ def test_get_priors_mode():
     assert priors.mode == "empirical"
 
 
+def test_get_hyperparameters_forwards_lam_mean_std():
+    params = empirical.get_hyperparameters(lam_mean=0.3572, lam_std=0.13)
+    expected = congression.get_hyperparameters(lam_mean=0.3572, lam_std=0.13)
+    assert params["lam_loc"] == expected["lam_loc"]
+    assert params["lam_scale"] == expected["lam_scale"]
+    assert params["mode"] == "empirical"
+
+
+def test_get_priors_forwards_lam_mean_std():
+    priors = empirical.get_priors(lam_mean=0.3572, lam_std=0.13)
+    assert priors.mode == "empirical"
+    expected = congression.get_hyperparameters(lam_mean=0.3572, lam_std=0.13)
+    assert priors.lam_loc == expected["lam_loc"]
+    assert priors.lam_scale == expected["lam_scale"]
+
+
 def test_update_thetas_bound_with_empirical():
     """Pre-bound update_thetas should invoke empirical path taking only (lam,)."""
     theta = jnp.array([[0.1, 0.5, 0.9]])

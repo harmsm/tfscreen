@@ -648,6 +648,137 @@ def test_dk_geno_pinned_builds_values_and_wires_into_priors(mocker, tmp_path):
     assert model.settings["dk_geno"] == "pinned"
 
 
+# ---------------------------------------------------------------------------
+# transform_lam wiring
+# ---------------------------------------------------------------------------
+
+def test_transform_lam_forbidden_with_single_transformation():
+    """transformation='single' has no lambda parameter to anchor transform_lam
+    to, so supplying it must raise before any data I/O happens."""
+    with pytest.raises(ValueError, match="transformation == 'single'"):
+        ModelOrchestrator(
+            "g.csv", "b.csv",
+            transformation="single",
+            transform_lam=(0.36, 0.05),
+        )
+
+
+def test_transform_lam_wrong_length_raises():
+    with pytest.raises(ValueError, match="mean, std"):
+        ModelOrchestrator(
+            "g.csv", "b.csv",
+            transformation="empirical",
+            transform_lam=(0.36,),
+        )
+
+
+class _SpyTransformationModule:
+    """
+    Thin real-object wrapper around a transformation component (logit_norm/
+    empirical), recording what get_priors/get_guesses were actually called
+    with.
+
+    inspect.signature(component_module.get_priors) must see the real
+    lam_mean/lam_std parameters for _initialize_classes's branch selection
+    to fire -- a bare MagicMock's signature is just (*args, **kwargs),
+    which would silently fall through to the wrong branch (mirrors
+    _SpyPinnedModule above).
+    """
+
+    def __init__(self, real_module):
+        self._real_module = real_module
+        self.priors_calls = []
+        self.guesses_calls = []
+
+    def get_priors(self, lam_mean=None, lam_std=None):
+        self.priors_calls.append((lam_mean, lam_std))
+        return self._real_module.get_priors(lam_mean=lam_mean, lam_std=lam_std)
+
+    def get_guesses(self, name, data, lam_mean=None):
+        self.guesses_calls.append(lam_mean)
+        return self._real_module.get_guesses(name, data, lam_mean=lam_mean)
+
+    def __getattr__(self, name):
+        return getattr(self._real_module, name)
+
+
+def _build_orchestrator_with_transformation_spy(mocker, spy, transform_lam):
+    mock_growth_tm = create_mock_tm(is_growth=True)
+    mock_binding_tm = create_mock_tm(is_growth=False)
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._read_growth_df")
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._build_growth_tm", return_value=mock_growth_tm)
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._read_binding_df")
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._build_binding_tm", return_value=mock_binding_tm)
+    mocker.patch("tfscreen.tfmodel.model_orchestrator.populate_dataclass", return_value=MagicMock())
+    mocker.patch(
+        "tfscreen.tfmodel.model_orchestrator._setup_batching",
+        return_value={"batch_idx": jnp.array([0]), "batch_size": 1,
+                      "scale_vector": jnp.array([1.0]), "num_binding": 0},
+    )
+
+    with patch.dict("tfscreen.tfmodel.model_orchestrator.model_registry", {
+        "condition_growth": {"independent": MagicMock()},
+        "growth_transition": {"instant": MagicMock()},
+        "ln_cfu0": {"hierarchical": MagicMock()},
+        "dk_geno": {"hierarchical_geno": MagicMock()},
+        "activity": {"hierarchical_geno": MagicMock()},
+        "theta": {"hill_geno": MagicMock()},
+        "transformation": {"logit_norm": spy},
+        "theta_rescale": {"passthrough": MagicMock()},
+        "theta_growth_noise": {"zero": MagicMock()},
+        "theta_binding_noise": {"zero": MagicMock()},
+        "growth_noise": {"zero": MagicMock()},
+        "sample_offset": {"zero": MagicMock()},
+        "observe_binding": MagicMock(),
+        "observe_growth": MagicMock(),
+    }, clear=True):
+        for k in ["condition_growth", "growth_transition", "ln_cfu0", "dk_geno",
+                  "activity", "theta", "theta_growth_noise",
+                  "theta_binding_noise", "growth_noise", "sample_offset"]:
+            for sub_k in tfscreen.tfmodel.model_orchestrator.model_registry[k]:
+                tfscreen.tfmodel.model_orchestrator.model_registry[k][sub_k].get_priors.return_value = {}
+                tfscreen.tfmodel.model_orchestrator.model_registry[k][sub_k].get_guesses.return_value = {}
+
+        return ModelOrchestrator(
+            "g.csv", "b.csv",
+            theta="hill_geno", transformation="logit_norm",
+            transform_lam=transform_lam,
+            condition_growth="independent", growth_transition="instant",
+            activity="hierarchical_geno", theta_growth_noise="zero",
+        )
+
+
+def test_transform_lam_wired_into_component_priors_and_guesses(mocker):
+    """End-to-end: transform_lam=(mean, std) must reach the real component's
+    get_priors(lam_mean=..., lam_std=...) and get_guesses(..., lam_mean=...)
+    via signature-based dispatch in _initialize_classes."""
+    from tfscreen.tfmodel.generative.components.transformation import logit_norm as real_logit_norm
+
+    spy = _SpyTransformationModule(real_logit_norm)
+    model = _build_orchestrator_with_transformation_spy(mocker, spy, (0.3572, 0.13))
+
+    assert spy.priors_calls == [(0.3572, 0.13)]
+    assert spy.guesses_calls == [0.3572]
+
+    # Round-trips through the settings dict for YAML config serialisation.
+    assert model.settings["transform_lam"] == (0.3572, 0.13)
+
+
+def test_transform_lam_omitted_falls_back_to_placeholder(mocker):
+    """Without transform_lam, the component still gets called (with
+    lam_mean=lam_std=None) rather than being skipped -- it falls back to
+    its own placeholder prior rather than ModelOrchestrator refusing to
+    build the model."""
+    from tfscreen.tfmodel.generative.components.transformation import logit_norm as real_logit_norm
+
+    spy = _SpyTransformationModule(real_logit_norm)
+    model = _build_orchestrator_with_transformation_spy(mocker, spy, None)
+
+    assert spy.priors_calls == [(None, None)]
+    assert spy.guesses_calls == [None]
+    assert model.settings["transform_lam"] is None
+
+
 @pytest.mark.parametrize("transformation_key, expected_needs_population", [
     ("single", False),
     ("logit_norm", False),
@@ -783,6 +914,7 @@ def test_model_class_properties(initialized_model_class):
     model._activity = "a"
     model._theta = "t"
     model._transformation = "tr"
+    model._transform_lam = None
     model._theta_rescale = "rs"
     model._condition_growth = "cg"
     model._growth_transition = "gt"
@@ -809,6 +941,7 @@ def test_model_class_properties(initialized_model_class):
     assert ModelOrchestrator.settings.fget(model)["activity"] == "a"
     assert ModelOrchestrator.settings.fget(model)["theta"] == "t"
     assert ModelOrchestrator.settings.fget(model)["transformation"] == "tr"
+    assert ModelOrchestrator.settings.fget(model)["transform_lam"] is None
     assert ModelOrchestrator.settings.fget(model)["theta_rescale"] == "rs"
     assert ModelOrchestrator.settings.fget(model)["condition_growth"] == "cg"
     assert ModelOrchestrator.settings.fget(model)["growth_transition"] == "gt"

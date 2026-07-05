@@ -57,7 +57,8 @@ def configure_model(binding_df,
                     dk_geno_model="hierarchical_geno",
                     activity_model="horseshoe_geno",
                     theta_model="hill_geno",
-                    transformation_model="empirical",
+                    transformation_model="single",
+                    transform_lam=None,
                     theta_rescale_model="passthrough",
                     theta_growth_noise_model="zero",
                     theta_binding_noise_model="zero",
@@ -137,8 +138,15 @@ def configure_model(binding_df,
         'thermo.O2_C12_K5_U0_a.PnnC', 'thermo.O2_C12_K5_U0_a.PddG', and
         their O2_C4_K3_U1_a / O2_C12_K5_U1_a unfolded equivalents).
     transformation_model : str, optional
-        Model for transformation correction. Allowed values are 'single',
-        'empirical', or 'logit_norm'. Default 'empirical'.
+        Model for transformation correction. Allowed values are 'single'
+        (default), 'empirical', or 'logit_norm'.
+    transform_lam : list or tuple, optional
+        ``(mean, std)`` -- the experimentally measured congression lambda,
+        in linear space (e.g. ``(0.36, 0.05)``). Required when
+        ``transformation_model`` is 'empirical' or 'logit_norm'; forbidden
+        when it is 'single'. Used to moment-match a LogNormal prior for the
+        transformation's lambda parameter, replacing the manual step of
+        hand-editing the priors/guesses CSVs with rescaled log-space values.
     theta_rescale_model : str, optional
         Rescaling applied to theta before it enters the growth model. Allowed
         values are 'passthrough' (default, identity) or 'logit' (maps theta to
@@ -201,6 +209,14 @@ def configure_model(binding_df,
     if not binding_only:
         check_component_compatibility(condition_growth_model, theta_rescale_model)
 
+    if transformation_model != "single" and transform_lam is None:
+        raise ValueError(
+            f"transformation_model='{transformation_model}' requires "
+            f"transform_lam (mean, std) -- the experimentally measured "
+            f"congression lambda in linear space, e.g. "
+            f"transform_lam=(0.36, 0.05)."
+        )
+
     # Initialize model to build mappings and get guesses
     orchestrator = ModelOrchestrator(growth_df,
                      binding_df,
@@ -214,6 +230,7 @@ def configure_model(binding_df,
                      activity=activity_model,
                      theta=theta_model,
                      transformation=transformation_model,
+                     transform_lam=transform_lam,
                      theta_rescale=theta_rescale_model,
                      theta_growth_noise=theta_growth_noise_model,
                      theta_binding_noise=theta_binding_noise_model,
@@ -246,8 +263,10 @@ def main():
                                               "spiked":list,
                                               "thermo_data":str,
                                               "batch_size":int,
-                                              "binding_weight":float},
-                            manual_arg_nargs={"spiked":"+"})
+                                              "binding_weight":float,
+                                              "transform_lam":float},
+                            manual_arg_nargs={"spiked":"+",
+                                              "transform_lam":2})
 
 if __name__ == "__main__":
     main()

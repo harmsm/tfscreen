@@ -25,6 +25,22 @@ def test_get_priors_mode():
     assert priors.mode == "logit_norm"
 
 
+def test_get_hyperparameters_forwards_lam_mean_std():
+    params = logit_norm.get_hyperparameters(lam_mean=0.3572, lam_std=0.13)
+    expected = congression.get_hyperparameters(lam_mean=0.3572, lam_std=0.13)
+    assert params["lam_loc"] == expected["lam_loc"]
+    assert params["lam_scale"] == expected["lam_scale"]
+    assert params["mode"] == "logit_norm"
+
+
+def test_get_priors_forwards_lam_mean_std():
+    priors = logit_norm.get_priors(lam_mean=0.3572, lam_std=0.13)
+    assert priors.mode == "logit_norm"
+    expected = congression.get_hyperparameters(lam_mean=0.3572, lam_std=0.13)
+    assert priors.lam_loc == expected["lam_loc"]
+    assert priors.lam_scale == expected["lam_scale"]
+
+
 def test_update_thetas_bound_with_logit_norm():
     """Pre-bound update_thetas should invoke logit_norm path without theta_dist arg."""
     theta = jnp.array([[0.2, 0.5, 0.8]])
