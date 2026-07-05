@@ -16,8 +16,6 @@ from tfscreen.tfmodel.data_class import (
     BaseGrowthData,
     PriorsClass,
     GrowthPriors,
-    GrowthObsPriors,
-    BaseGrowthPriors,
     BindingPriors
 )
 
@@ -489,17 +487,6 @@ def _build_presplit_tm(presplit_df, growth_tm):
     return presplit_tm
 
 
-# Weakly-informative default scale for k_ref's prior -- centred on the
-# empirical guess (see _derive_k_ref_guess), wide enough that a handful of
-# base_growth_df measurements dominate it rather than the reverse.
-_K_REF_PRIOR_SCALE = 0.02
-
-# Default Gamma(concentration, rate) prior for the growth observer's StudentT
-# degrees-of-freedom latent `nu` (see observe/growth.py). Mean = 2.0/0.1 = 20.0.
-_NU_PRIOR_CONCENTRATION = 2.0
-_NU_PRIOR_RATE = 0.1
-
-
 def _read_base_growth_df(base_growth_df, growth_df):
     """
     Read and validate the optional base (reference-condition) growth-rate
@@ -634,30 +621,6 @@ def _build_base_growth_arrays(base_growth_df, genotype_labels):
         good_mask[idx] = True
 
     return {"rate_obs": rate_obs, "rate_std": rate_std, "good_mask": good_mask}
-
-
-def _derive_k_ref_guess(base_growth_df):
-    """
-    Empirically derive k_ref's initial guess (and prior location) from wt's
-    measured rate in base_growth_df.
-
-    dk_geno is fixed to exactly 0 for wt by every dk_geno component, so wt's
-    own measurement is a direct, uncontaminated read of k_ref
-    (rate_obs_wt ~ Normal(k_ref + 0, rate_std_wt)).
-
-    Parameters
-    ----------
-    base_growth_df : pd.DataFrame
-        Output of _read_base_growth_df; must contain a 'wt' row (enforced
-        there).
-
-    Returns
-    -------
-    float
-        wt's measured rate.
-    """
-    wt_row = base_growth_df[base_growth_df["genotype"].astype(str) == "wt"]
-    return float(wt_row["rate"].iloc[0])
 
 
 def _setup_batching(growth_genotypes,
@@ -1318,7 +1281,9 @@ class ModelOrchestrator:
                 sources=[bg_arrays,
                         {"num_genotype": self.growth_tm.tensor_shape[-1]}],
             )
-            self._k_ref_guess = _derive_k_ref_guess(self.base_growth_df)
+            self._k_ref_guess = model_registry["observe_base_growth"].derive_k_ref_guess(
+                self.base_growth_df
+            )
         else:
             self.base_growth_df = None
             base_growth_dataclass = None
@@ -1717,16 +1682,18 @@ class ModelOrchestrator:
                 growth_obs=None,
             )
         else:
-            priors_class_kwargs["growth"]["growth_obs"] = GrowthObsPriors(
-                nu_concentration=_NU_PRIOR_CONCENTRATION,
-                nu_rate=_NU_PRIOR_RATE,
-            )
+            priors_class_kwargs["growth"]["growth_obs"] = \
+                model_registry["observe_growth"].get_priors()
             if self._base_growth_df is not None:
-                priors_class_kwargs["growth"]["base_growth"] = BaseGrowthPriors(
-                    k_ref_loc=self._k_ref_guess,
-                    k_ref_scale=_K_REF_PRIOR_SCALE,
+                priors_class_kwargs["growth"]["base_growth"] = \
+                    model_registry["observe_base_growth"].get_priors(
+                        k_ref_loc=self._k_ref_guess
+                    )
+                init_params.update(
+                    model_registry["observe_base_growth"].get_guesses(
+                        "base_growth", self._k_ref_guess
+                    )
                 )
-                init_params["base_growth_k_ref"] = jnp.array(self._k_ref_guess)
             growth_priors = populate_dataclass(GrowthPriors,
                                                sources=priors_class_kwargs["growth"])
         binding_priors = populate_dataclass(BindingPriors,

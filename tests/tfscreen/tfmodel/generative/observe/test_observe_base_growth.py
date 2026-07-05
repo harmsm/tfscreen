@@ -5,8 +5,18 @@ import numpyro.distributions as dist
 from numpyro.handlers import trace, seed, substitute
 from collections import namedtuple
 
+import pandas as pd
+
 # --- Import Module Under Test (MUT) ---
-from tfscreen.tfmodel.generative.observe.base_growth import observe, guide
+from tfscreen.tfmodel.generative.observe.base_growth import (
+    observe,
+    guide,
+    get_hyperparameters,
+    derive_k_ref_guess,
+    get_priors,
+    get_guesses,
+)
+from tfscreen.tfmodel.data_class import BaseGrowthPriors
 
 # --- Mock Data Fixtures ---
 
@@ -192,3 +202,30 @@ def test_guide_registers_k_ref(mock_data, full_growth, priors):
     constraint = scale_site["kwargs"]["constraint"]
     assert isinstance(constraint, dist.constraints._GreaterThan)
     assert constraint.lower_bound == pytest.approx(1e-4)
+
+
+def test_get_hyperparameters_default_scale():
+    hypers = get_hyperparameters()
+    assert hypers == {"k_ref_scale": 0.02}
+
+
+def test_derive_k_ref_guess_returns_wt_rate():
+    base_growth_df = pd.DataFrame({
+        "genotype": ["wt", "A2G"],
+        "rate": [0.021, 0.015],
+        "rate_std": [0.001, 0.002],
+    })
+    assert derive_k_ref_guess(base_growth_df) == pytest.approx(0.021)
+
+
+def test_get_priors_uses_loc_and_default_scale():
+    priors = get_priors(k_ref_loc=0.0234)
+    assert isinstance(priors, BaseGrowthPriors)
+    assert priors.k_ref_loc == pytest.approx(0.0234)
+    assert priors.k_ref_scale == pytest.approx(get_hyperparameters()["k_ref_scale"])
+
+
+def test_get_guesses_keys_by_name():
+    guesses = get_guesses("base_growth", 0.0234)
+    assert set(guesses.keys()) == {"base_growth_k_ref"}
+    assert jnp.allclose(guesses["base_growth_k_ref"], 0.0234)

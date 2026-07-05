@@ -104,3 +104,20 @@ def guide(name: str,
     nu = pyro.sample(f"{name}_nu", dist.LogNormal(nu_loc, nu_scale))
 
     return
+
+
+def get_hyperparameters():
+    """
+    Default Gamma(concentration, rate) hyperparameters for the growth
+    observer's StudentT degrees-of-freedom latent ``nu``. Mean =
+    concentration/rate = 2.0/0.1 = 20.0.
+    """
+    return {"nu_concentration": 2.0, "nu_rate": 0.1}
+
+
+def get_priors():
+    """
+    Build the GrowthObsPriors dataclass from get_hyperparameters()'s
+    defaults.
+    """
+    return GrowthObsPriors(**get_hyperparameters())

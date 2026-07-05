@@ -109,3 +109,54 @@ def guide(name: str,
     pyro.sample(f"{name}_k_ref", dist.Normal(k_ref_loc, k_ref_scale))
 
     return
+
+
+def get_hyperparameters():
+    """
+    Default hyperparameter for the k_ref prior's scale -- weakly-informative,
+    centred on the empirical guess (see derive_k_ref_guess), wide enough that
+    a handful of base_growth_df measurements dominate it rather than the
+    reverse.
+    """
+    return {"k_ref_scale": 0.02}
+
+
+def derive_k_ref_guess(base_growth_df):
+    """
+    Empirically derive k_ref's initial guess (and prior location) from wt's
+    measured rate in base_growth_df.
+
+    dk_geno is fixed to exactly 0 for wt by every dk_geno component, so wt's
+    own measurement is a direct, uncontaminated read of k_ref
+    (rate_obs_wt ~ Normal(k_ref + 0, rate_std_wt)).
+
+    Parameters
+    ----------
+    base_growth_df : pd.DataFrame
+        Output of model_orchestrator._read_base_growth_df; must contain a
+        'wt' row (enforced there).
+
+    Returns
+    -------
+    float
+        wt's measured rate.
+    """
+    wt_row = base_growth_df[base_growth_df["genotype"].astype(str) == "wt"]
+    return float(wt_row["rate"].iloc[0])
+
+
+def get_priors(k_ref_loc):
+    """
+    Build the BaseGrowthPriors dataclass from an empirically-derived
+    ``k_ref_loc`` (see derive_k_ref_guess) plus the default scale from
+    get_hyperparameters().
+    """
+    return BaseGrowthPriors(k_ref_loc=k_ref_loc, **get_hyperparameters())
+
+
+def get_guesses(name, k_ref_loc):
+    """
+    Initial optimizer guess for the k_ref latent -- the same value used as
+    the prior's loc (see get_priors/derive_k_ref_guess).
+    """
+    return {f"{name}_k_ref": jnp.array(k_ref_loc)}

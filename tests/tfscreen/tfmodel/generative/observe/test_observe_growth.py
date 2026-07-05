@@ -6,7 +6,12 @@ from numpyro.handlers import trace, seed, substitute
 from collections import namedtuple
 
 # --- Import Module Under Test (MUT) ---
-from tfscreen.tfmodel.generative.observe.growth import observe, guide
+from tfscreen.tfmodel.generative.observe.growth import (
+    observe,
+    guide,
+    get_hyperparameters,
+    get_priors,
+)
 from tfscreen.tfmodel.data_class import GrowthObsPriors
 
 # --- Mock Data Fixture ---
@@ -273,3 +278,20 @@ def test_sigma_k_quadrature_formula(mock_data, mock_priors):
     base = tr[f"{name}_obs"]["fn"].base_dist
     expected = jnp.sqrt(ln_cfu_std ** 2 + sigma_k ** 2)
     assert jnp.allclose(base.scale, expected, rtol=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# Tests for default-hyperparameter ownership (get_hyperparameters/get_priors)
+# ---------------------------------------------------------------------------
+
+def test_get_hyperparameters_default_nu_prior():
+    hypers = get_hyperparameters()
+    assert hypers == {"nu_concentration": 2.0, "nu_rate": 0.1}
+
+
+def test_get_priors_builds_growth_obs_priors_from_defaults():
+    priors = get_priors()
+    assert isinstance(priors, GrowthObsPriors)
+    hypers = get_hyperparameters()
+    assert priors.nu_concentration == pytest.approx(hypers["nu_concentration"])
+    assert priors.nu_rate == pytest.approx(hypers["nu_rate"])

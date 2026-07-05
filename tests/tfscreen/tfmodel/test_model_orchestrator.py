@@ -2222,9 +2222,9 @@ class TestBaseGrowthDf:
         assert not arrays["good_mask"][k3r_idx]
 
     def test_derive_k_ref_guess_returns_wt_rate(self):
-        from tfscreen.tfmodel.model_orchestrator import (
-            _read_base_growth_df,
-            _derive_k_ref_guess,
+        from tfscreen.tfmodel.model_orchestrator import _read_base_growth_df
+        from tfscreen.tfmodel.generative.observe.base_growth import (
+            derive_k_ref_guess,
         )
 
         growth_df = _read_growth_df(self._growth_df())
@@ -2235,18 +2235,24 @@ class TestBaseGrowthDf:
         })
         processed = _read_base_growth_df(base_growth_df_raw, growth_df)
 
-        guess = _derive_k_ref_guess(processed)
+        guess = derive_k_ref_guess(processed)
         assert guess == pytest.approx(0.021)
 
     def test_base_growth_df_wires_k_ref_into_growth_priors(self, mocker):
         """
         End-to-end: supplying base_growth_df must derive a k_ref guess from
         wt's rate and thread it into growth_priors.base_growth as a
-        BaseGrowthPriors(k_ref_loc=guess, k_ref_scale=_K_REF_PRIOR_SCALE)
-        instance. Without base_growth_df, growth_priors.base_growth must
-        stay None (its dataclass default).
+        BaseGrowthPriors(k_ref_loc=guess, k_ref_scale=<observe.base_growth's
+        default>) instance, built via observe.base_growth.get_priors (which
+        now owns the k_ref prior's default hyperparameters -- see
+        observe.base_growth.get_hyperparameters). Without base_growth_df,
+        growth_priors.base_growth must stay None (its dataclass default).
         """
-        from tfscreen.tfmodel.model_orchestrator import _K_REF_PRIOR_SCALE
+        from tfscreen.tfmodel.generative.observe import (
+            growth as observe_growth,
+            base_growth as observe_base_growth,
+        )
+        _K_REF_PRIOR_SCALE = observe_base_growth.get_hyperparameters()["k_ref_scale"]
         from tfscreen.tfmodel.tensors.populate_dataclass import (
             populate_dataclass as real_populate_dataclass,
         )
@@ -2306,8 +2312,8 @@ class TestBaseGrowthDf:
             "growth_noise": {"zero": MagicMock()},
             "sample_offset": {"zero": MagicMock()},
             "observe_binding": MagicMock(),
-            "observe_growth": MagicMock(),
-            "observe_base_growth": MagicMock(),
+            "observe_growth": observe_growth,
+            "observe_base_growth": observe_base_growth,
         }
         with patch.dict("tfscreen.tfmodel.model_orchestrator.model_registry", registry, clear=True):
             for k in ["condition_growth", "growth_transition", "ln_cfu0", "dk_geno",

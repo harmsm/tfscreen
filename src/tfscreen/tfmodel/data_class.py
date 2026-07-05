@@ -282,7 +282,8 @@ class BaseGrowthPriors:
     Prior for the optional k_ref scalar (see BaseGrowthData / model.py's
     base_growth_obs block). k_ref_loc is derived empirically from wt's row
     in base_growth_df (dk_geno_wt == 0 makes wt's own measurement a direct
-    read of k_ref) -- see model_orchestrator._derive_k_ref_guess.
+    read of k_ref) -- see
+    generative.observe.base_growth.derive_k_ref_guess/get_priors.
     """
     k_ref_loc: float
     k_ref_scale: float
