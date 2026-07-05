@@ -122,7 +122,8 @@ def configure_model(binding_df,
     dk_geno_model : str, optional
         Model to use to describe dk_geno, the pleiotropic effect of a genotype
         on growth, independent of occupancy. Allowed values are
-        'hierarchical_geno' (default) or 'fixed'.
+        'hierarchical_geno' (default), 'fixed', or 'pinned' (dk_geno fixed to
+        externally supplied per-genotype values for a subset of genotypes).
     activity_model : str, optional
         Model to use to describe activity, a scalar multiplied against
         occupancy that defines how strongly a genotype alters transcription
@@ -178,11 +179,13 @@ def configure_model(binding_df,
     thermo_data : str, optional
         Path to the structural/thermodynamic data file.  Required when
         ``theta_model`` is a thermo-based model; ignored otherwise.  For
-        ``*_lnK_nn_prior`` models this must be the HDF5 file produced by
-        ``scripts/generate_struct_ensemble.py``.  For ``*_lnK_ddG_prior``
-        models this must be a CSV file with a ``mut`` column and one column per
-        structure (``H``, ``HO``, ``L``, ``LO``, ``HE2``, ``LE2``) containing
-        pre-computed ΔΔG prior means.
+        ``PnnC`` models this must be the HDF5 file produced by
+        ``scripts/generate_struct_ensemble.py``.  For ``PddG`` models this
+        must be a CSV file with a ``mut`` column and one column per
+        structure containing pre-computed ΔΔG prior means; the required
+        structure columns depend on the topology -- ``O2_C4_*`` models use
+        (``H``, ``HD``, ``L``, ``LE2``) while ``O2_C12_*`` models use
+        (``H``, ``HO``, ``L``, ``LO``, ``HE2``, ``LE2``).
     batch_size : int, optional
         Mini-batch size for SVI. Defaults to 1024. Set to None to use the full
         dataset as a single batch.

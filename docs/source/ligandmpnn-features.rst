@@ -2,11 +2,14 @@
 LigandMPNN Features
 ===================
 
-Some tfscreen theta components (e.g. ``thermo.O2_C4_K3_U0_a.PnnC``) use per-position
+Some tfscreen theta components (the ``PnnC`` prior variants, e.g.
+``thermo.O2_C4_K3_U0_a.PnnC``, ``thermo.O2_C4_K3_U1_a.PnnC``,
+``thermo.O2_C12_K5_U0_a.PnnC``, ``thermo.O2_C12_K5_U1_a.PnnC``) use per-residue
 log-probability features from `LigandMPNN
-<https://github.com/dauparas/LigandMPNN>`_ as structural inputs. These
+<https://github.com/dauparas/LigandMPNN>`_, together with a Cα contact-distance
+map, as structural inputs to a neural-network-informed ΔΔG prior. These
 features are computed once — outside the main tfscreen environment — and
-stored in an NPZ file that is read at analysis time.
+stored in an HDF5 file that is read at analysis time.
 
 .. warning::
 
@@ -23,12 +26,12 @@ Overview
 
 The feature generation pipeline is a two-step, two-environment workflow:
 
-1. **LigandMPNN environment** — run ``tfs-generate-ligandmpnn-features`` to
-   score each PDB structure and write an NPZ feature file.
-2. **tfscreen environment** — run the hierarchical model as usual; point the
-   relevant theta component at the NPZ file via the run config YAML.
+1. **LigandMPNN environment** — run ``scripts/generate_struct_ensemble.py`` to
+   score each PDB structure and write an HDF5 feature file.
+2. **tfscreen environment** — run the hierarchical model as usual, pointing
+   ``--thermo_data`` at the HDF5 file.
 
-The NPZ file is a permanent, reusable artifact.  You only need to regenerate
+The HDF5 file is a permanent, reusable artifact.  You only need to regenerate
 it if you change the input PDB files or the LigandMPNN model weights.
 
 Installation
@@ -40,13 +43,12 @@ environment (LigandMPNN requires Python 3.11 and specific PyTorch pinning).
 **Do not install tfscreen** in that environment — the two packages have
 incompatible NumPy and JAX dependencies.
 
-The feature generator is a standalone script that requires only ``numpy`` and
-``PyYAML``, both of which are already available in any environment that can
-run LigandMPNN.  Copy or clone the tfscreen repository and run the script
-directly::
+The feature generator additionally requires ``h5py``, ``PyYAML``, and
+``scipy`` on top of what LigandMPNN itself needs. Copy or clone the tfscreen
+repository and run the script directly::
 
     conda activate ligandmpnn_env
-    python /path/to/tfscreen/scripts/generate_ligandmpnn_features.py ...
+    python /path/to/tfscreen/scripts/generate_struct_ensemble.py ...
 
 Preparing Inputs
 ----------------
@@ -54,22 +56,28 @@ Preparing Inputs
 structures YAML
 ^^^^^^^^^^^^^^^
 
-Create a YAML file that maps short structure names to PDB file paths.  The
-names must match what the downstream theta component expects.  For
-``lac_dimer_nn_mut`` the required keys are ``H``, ``HD``, ``L``, and ``LE2``,
-representing the four thermodynamic states:
+Create a YAML file with a top-level ``structures:`` mapping from short
+structure names to PDB file paths, plus ``n_chains_bearing_mut`` (the number
+of chains that carry each mutation: ``1`` for a monomer, ``2`` for a
+homodimer). The structure names must match what the downstream theta
+component expects. For the four-state (``O2_C4_*``) topologies the required
+keys are ``H``, ``HD``, ``L``, and ``LE2``, representing the four
+thermodynamic states:
 
 .. code-block:: yaml
 
-    H:   /path/to/H_apo.pdb
-    HD:  /path/to/HD_dna_bound.pdb
-    L:   /path/to/L_allosteric.pdb
-    LE2: /path/to/LE2_iptg_bound.pdb
+    n_chains_bearing_mut: 2
+    structures:
+      H:   /path/to/H_apo.pdb
+      HD:  /path/to/HD_dna_bound.pdb
+      L:   /path/to/L_allosteric.pdb
+      LE2: /path/to/LE2_iptg_bound.pdb
 
 Each PDB must contain the full protein chain(s) in the conformation
 appropriate for that state.  LigandMPNN scores every amino acid position
 in the PDB, so make sure the chain contains only the residues you intend
-to score.
+to score. All chains across all PDB files must share the same residue
+numbering scheme (the script does not verify this).
 
 PDB residue numbering
 ^^^^^^^^^^^^^^^^^^^^^
@@ -77,16 +85,15 @@ PDB residue numbering
 Mutation labels used by the theta component follow the convention
 ``{wt_aa}{PDB_resnum}{mut_aa}`` (e.g. ``A42G``).  The residue numbers must
 match the ``ATOM`` record numbers in the PDB files — not a zero-based index.
-Verify that your PDB files use consistent numbering across all four
-structures.
+Verify that your PDB files use consistent numbering across all structures.
 
 Running the Feature Generator
------------------------------
+------------------------------
 
 Activate the LigandMPNN environment, then run::
 
-    python /path/to/tfscreen/scripts/generate_ligandmpnn_features.py structures.yaml \
-        --out features.npz \
+    python /path/to/tfscreen/scripts/generate_struct_ensemble.py structures.yaml \
+        --out ensemble.h5 \
         --ligandmpnn_dir /path/to/LigandMPNN \
         [--model_type ligand_mpnn] \
         [--checkpoint /path/to/weights.pt] \
@@ -96,11 +103,11 @@ Activate the LigandMPNN environment, then run::
 **Required arguments**
 
 ``structures.yaml``
-    Path to the YAML file mapping structure names to PDB paths (see above).
+    Path to the YAML file mapping structure names to PDB paths, plus
+    ``n_chains_bearing_mut`` (see above).
 
-``--out features.npz``
-    Output file.  A single NPZ is written containing one array per structure
-    name and one residue-number index array per structure.
+``--out ensemble.h5``
+    Output HDF5 file.
 
 ``--ligandmpnn_dir``
     Path to the root of the LigandMPNN repository (the directory that
@@ -125,25 +132,52 @@ Activate the LigandMPNN environment, then run::
 ``--seed``
     Random seed passed to LigandMPNN.  Default: ``42``.
 
-NPZ file contents
-^^^^^^^^^^^^^^^^^
+A companion provenance YAML (recording the input structures, LigandMPNN
+settings, and generation timestamp) is written alongside the HDF5 file.
 
-For each structure name ``{name}`` the NPZ contains:
+HDF5 file contents
+^^^^^^^^^^^^^^^^^^^
 
-``{name}``
+``structure_names``
+    Dataset of structure names, in the order they appear in the input YAML.
+
+For each structure name ``{name}`` the file contains a group with:
+
+``{name}/logP``
     ``float32`` array of shape ``(L, 20)``: mean log P(AA | structure,
-    context) averaged over all decoding-order batches.  Columns follow the
-    LigandMPNN / ProteinMPNN alphabet ``ACDEFGHIKLMNPQRSTVWY`` (indices 0–19).
+    context), averaged across chains and over all decoding-order batches.
+    Columns follow the LigandMPNN / ProteinMPNN alphabet
+    ``ACDEFGHIKLMNPQRSTVWY`` (indices 0–19).
 
-``{name}_residue_nums``
-    ``int32`` array of shape ``(L,)``: PDB residue numbers for each row,
-    used to look up positions by mutation label.
+``{name}/residue_nums``
+    ``int32`` array of shape ``(L,)``: PDB residue numbers for each row
+    (sorted, unique), used to look up positions by mutation label.
 
-Using the NPZ in a Run Config
------------------------------
+``{name}/dist_matrix``
+    ``float32`` array of shape ``(L, L)``: minimum Cα–Cα distance in Å
+    across all chain-pair combinations, indexed the same way as
+    ``residue_nums``. Used to build distance-dependent contact features for
+    pairwise epistasis terms.
 
-Point the ``ligandmpnn_features`` field in your run config YAML at the NPZ
-file.  The exact field name depends on the theta component; for
-``lac_dimer_nn_mut`` it is typically set under the theta component block.
-Refer to the component's ``get_hyperparameters()`` for the full list of
-required config keys.
+``{name}/n_chains_bearing_mut``
+    ``int32`` scalar: the ``n_chains_bearing_mut`` value from the input YAML.
+
+Using the HDF5 File in a Run Config
+------------------------------------
+
+Pass the HDF5 file to ``tfs-configure-model`` via ``--thermo_data`` when
+selecting a ``PnnC`` theta component:
+
+.. code-block:: bash
+
+    tfs-configure-model binding.csv --growth_df growth.csv \
+        --theta_model thermo.O2_C4_K3_U0_a.PnnC \
+        --thermo_data ensemble.h5
+
+The path is saved into ``tfs_configure_config.yaml`` as the top-level
+``thermo_data`` key and read by ``tfscreen.tfmodel.generative.components.theta.thermo.io.load_struct_ensemble``
+at model-build time; you do not need to edit the config by hand. See
+``configure_model_cli.py``'s ``thermo_data`` docstring for the full set of
+registry keys and their structure-name requirements (``PddG`` models instead
+take a hand-supplied ΔΔG CSV via the same flag — see
+``load_ddG_prior_csv``).
