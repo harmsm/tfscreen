@@ -540,6 +540,21 @@ def _read_base_growth_df(base_growth_df, growth_df):
         required_columns=["genotype", "rate", "rate_std"],
     )
 
+    non_positive = base_growth_df["rate_std"].to_numpy(dtype=float) <= 0
+    if non_positive.any():
+        bad_genotypes = sorted(
+            base_growth_df.loc[non_positive, "genotype"].astype(str).unique()
+        )
+        raise ValueError(
+            f"base_growth_df has non-positive rate_std for genotype(s) "
+            f"{bad_genotypes}. rate_std is used as a Normal likelihood's "
+            f"scale (both for combining multiple rows per genotype via "
+            f"inverse-variance weighting, and for the base_growth_obs "
+            f"likelihood itself) and must be strictly positive. If this "
+            f"file came from tfs-simulate's base_growth_data block, set "
+            f"'noise' to a positive value there."
+        )
+
     growth_genotypes = set(growth_df["genotype"])
     mask = base_growth_df["genotype"].isin(growth_genotypes)
     n_dropped = int((~mask).sum())
@@ -1619,6 +1634,24 @@ class ModelOrchestrator:
         if not self._binding_only:
             main_control_kwargs["observe_growth"] = model_registry["observe_growth"].observe
             guide_control_kwargs["observe_growth"] = model_registry["observe_growth"].guide
+
+            # Optional side-channel observers -- wired only when their data was
+            # supplied. Both borrow growth's genotype batch state and a latent
+            # from the growth model (ln_cfu0 for presplit, dk_geno for
+            # base_growth); base_growth additionally owns the k_ref latent.
+            # Gate on the raw source flags (mirroring the base_growth priors
+            # block below), not on self._data, which the corresponding
+            # DataClass fields also reflect.
+            if self._presplit_df is not None:
+                main_control_kwargs["observe_presplit"] = \
+                    model_registry["observe_presplit"].observe
+                guide_control_kwargs["observe_presplit"] = \
+                    model_registry["observe_presplit"].guide
+            if self._base_growth_df is not None:
+                main_control_kwargs["observe_base_growth"] = \
+                    model_registry["observe_base_growth"].observe
+                guide_control_kwargs["observe_base_growth"] = \
+                    model_registry["observe_base_growth"].guide
 
         if self._binding_only:
             main_control_kwargs["binding_only"] = True

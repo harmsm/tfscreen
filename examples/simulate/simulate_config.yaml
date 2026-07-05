@@ -312,7 +312,12 @@ seed: null
 #   k_ref + dk_geno calculation for that genotype. Every key must also
 #   appear in genotypes.
 # noise (optional, default 0.0): sigma of Gaussian noise added to the true
-#   rate to produce the observed rate; also reported as rate_std.
+#   rate to produce the observed rate; also reported as rate_std. IMPORTANT:
+#   noise must be a strictly positive number if this CSV will be fed to
+#   tfs-configure-model --base_growth_df -- rate_std is used directly as a
+#   Normal likelihood scale, and rate_std == 0.0 (the default) will make
+#   tfs-prefit-calibration / tfs-fit-model crash with an invalid-distribution
+#   error the first time the model is traced.
 #
 # base_growth_data:
 #   k_ref: 0.025

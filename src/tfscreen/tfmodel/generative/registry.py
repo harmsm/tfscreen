@@ -55,8 +55,10 @@ from .components.growth_noise import normal_kt as growth_noise_normal_kt
 from .components.sample_offset import zero as sample_offset_zero
 from .components.sample_offset import normal as sample_offset_normal
 
-from .observe import binding 
-from .observe import growth 
+from .observe import binding
+from .observe import growth
+from .observe import presplit
+from .observe import base_growth
 
 model_registry = {
     "condition_growth":{
@@ -134,4 +136,6 @@ model_registry = {
     },
     "observe_binding":binding,
     "observe_growth":growth,
+    "observe_presplit":presplit,
+    "observe_base_growth":base_growth,
 }

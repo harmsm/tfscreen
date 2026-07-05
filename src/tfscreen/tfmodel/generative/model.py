@@ -7,7 +7,6 @@ from tfscreen.tfmodel.data_class import (
 
 import jax.numpy as jnp
 import numpyro as pyro
-import numpyro.distributions as dist
 
 def jax_model(data: DataClass,
               priors: PriorsClass,
@@ -37,11 +36,13 @@ def jax_model(data: DataClass,
         - calculate_growth
         - theta_binding_noise
         - theta_growth_noise
-        - binding_observer
-        - growth_observer
+        - observe_binding
+        - observe_growth
         - is_guide
-        The dictionary can also optionally have `batch_idx` (which overrides
-        whatever is in `batch_size`) or `batch_size`. 
+        The dictionary can also optionally have `observe_presplit` and/or
+        `observe_base_growth` (the side-channel observers, present only when
+        their data was supplied), plus `batch_idx` (which overrides whatever
+        is in `batch_size`) or `batch_size`.
     """
     
     # -------------------------------------------------------------------------
@@ -88,6 +89,13 @@ def jax_model(data: DataClass,
     calculate_growth = control["calculate_growth"]
     growth_observer = control["observe_growth"]
 
+    # Optional side-channel observers. Present in `control` only when their
+    # data was supplied (see model_orchestrator._initialize_classes). Each is
+    # the .observe function in the main model and the .guide function in the
+    # guide, exactly like binding_observer/growth_observer.
+    presplit_observer = control.get("observe_presplit")
+    base_growth_observer = control.get("observe_base_growth")
+
     # -------------------------------------------------------------------------
     # Calculate theta
 
@@ -125,32 +133,6 @@ def jax_model(data: DataClass,
     dk_geno = dk_geno_model("dk_geno",
                             data.growth,
                             priors.growth.dk_geno)
-
-    # Optional base_growth calibration: a shared k_ref scalar tying dk_geno
-    # to direct growth-rate measurements for a subset of genotypes (wt at
-    # minimum) -- see data_class.BaseGrowthData and
-    # model_orchestrator._read_base_growth_df. Sampled unconditionally (both
-    # is_guide branches) so the guide registers the site; the actual
-    # likelihood (base_growth_obs, below) only fires in the non-guide branch.
-    if getattr(data, "base_growth", None) is not None:
-        if is_guide:
-            k_ref_loc = pyro.param(
-                "base_growth_k_ref_loc",
-                jnp.array(priors.growth.base_growth.k_ref_loc),
-            )
-            k_ref_scale = pyro.param(
-                "base_growth_k_ref_scale",
-                jnp.array(priors.growth.base_growth.k_ref_scale),
-                constraint=dist.constraints.greater_than(1e-4),
-            )
-            k_ref = pyro.sample("base_growth_k_ref",
-                                dist.Normal(k_ref_loc, k_ref_scale))
-        else:
-            k_ref = pyro.sample(
-                "base_growth_k_ref",
-                dist.Normal(priors.growth.base_growth.k_ref_loc,
-                            priors.growth.base_growth.k_ref_scale),
-            )
 
     # activity
     activity = activity_model("activity",
@@ -245,54 +227,32 @@ def jax_model(data: DataClass,
         growth_observer("final_binding_obs", data.growth, None)
         binding_observer("final_growth_obs", data.binding, None)
 
+        # Register side-channel guide sites. presplit.guide is a no-op (it
+        # introduces no latents); base_growth.guide registers the k_ref
+        # variational site so the guide matches the model.
+        if presplit_observer is not None:
+            presplit_observer("presplit", data.presplit, ln_cfu0,
+                              growth=data.growth)
+        if base_growth_observer is not None:
+            base_growth_observer("base_growth", data.base_growth, dk_geno,
+                                 growth=data.growth,
+                                 priors=priors.growth.base_growth)
+
     # real calculation
     else:
 
         # Pre-split (t = -t_pre) observations — direct constraint on ln_cfu0.
-        # ln_cfu0 shape: (num_rep, 1, num_cp, 1, 1, 1, batch_size)
-        # Squeeze broadcast dims to get (num_rep, num_cp, batch_size).
-        if getattr(data, "presplit", None) is not None:
-            ln_cfu0_3d = ln_cfu0[:, 0, :, 0, 0, 0, :]
-            ps = data.presplit
-            bi = data.growth.batch_idx
-            obs_t0  = ps.ln_cfu_t0[:, :, bi]
-            std_t0  = ps.ln_cfu_t0_std[:, :, bi]
-            mask_t0 = ps.good_mask[:, :, bi]
-            with pyro.plate("presplit_replicate",
-                            size=ps.num_replicate, dim=-3):
-                with pyro.plate("presplit_condition_pre",
-                                size=ps.num_condition_pre, dim=-2):
-                    with pyro.plate("shared_genotype_plate",
-                                    size=data.growth.batch_size, dim=-1):
-                        with pyro.handlers.scale(
-                                scale=data.growth.scale_vector):
-                            with pyro.handlers.mask(mask=mask_t0):
-                                pyro.sample(
-                                    "presplit_obs",
-                                    dist.Normal(ln_cfu0_3d, std_t0),
-                                    obs=obs_t0,
-                                )
+        if presplit_observer is not None:
+            presplit_observer("presplit", data.presplit, ln_cfu0,
+                              growth=data.growth)
 
         # Direct growth-rate measurements — anchors k_ref (and, via dk_geno's
         # wt=0 pin, the shared k/m identifiability slack) to genotypes with
         # a directly-measured reference-condition growth rate.
-        # dk_geno shape: (1,1,1,1,1,1,batch_size) -> flatten to (batch_size,).
-        if getattr(data, "base_growth", None) is not None:
-            bg = data.base_growth
-            bi = data.growth.batch_idx
-            rate_obs = bg.rate_obs[bi]
-            rate_std = bg.rate_std[bi]
-            mask = bg.good_mask[bi]
-            dk_geno_flat = dk_geno[0, 0, 0, 0, 0, 0, :]
-            with pyro.plate("shared_genotype_plate",
-                            size=data.growth.batch_size, dim=-1):
-                with pyro.handlers.scale(scale=data.growth.scale_vector):
-                    with pyro.handlers.mask(mask=mask):
-                        pyro.sample(
-                            "base_growth_obs",
-                            dist.Normal(k_ref + dk_geno_flat, rate_std),
-                            obs=rate_obs,
-                        )
+        if base_growth_observer is not None:
+            base_growth_observer("base_growth", data.base_growth, dk_geno,
+                                 growth=data.growth,
+                                 priors=priors.growth.base_growth)
 
         # calculate observable (all tensors have correct dimensions)
         g_pre, g_sel = calculate_growth(params=growth_params,

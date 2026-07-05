@@ -104,6 +104,20 @@ def test_model_orchestrator_with_base_growth(minimal_growth_df,
     assert base_growth_priors.k_ref_loc == pytest.approx(0.021)
 
 
+def test_model_orchestrator_rejects_zero_rate_std(minimal_growth_df,
+                                                   minimal_binding_df):
+    """A base_growth_df with rate_std == 0.0 (e.g. an un-noised tfs-simulate
+    base_growth_data output) must be rejected at construction time with a
+    clear error, not silently produce a NaN k_ref prior that only surfaces
+    much later as a numpyro 'invalid loc parameter' crash during tracing."""
+    bad_base_growth_df = pd.DataFrame({
+        "genotype": ["wt"], "rate": [0.021], "rate_std": [0.0],
+    })
+    with pytest.raises(ValueError, match="non-positive rate_std"):
+        ModelOrchestrator(minimal_growth_df, minimal_binding_df,
+                         base_growth_df=bad_base_growth_df)
+
+
 # ---------------------------------------------------------------------------
 # jax_model: base_growth_obs / base_growth_k_ref sites fire
 # ---------------------------------------------------------------------------

@@ -31,7 +31,8 @@ COMPONENT_CATEGORIES = {
     "growth_transition",
 }
 
-OBSERVE_KEYS = {"observe_binding", "observe_growth"}
+OBSERVE_KEYS = {"observe_binding", "observe_growth",
+                "observe_presplit", "observe_base_growth"}
 
 # Attributes that non-rescale component modules should expose
 STANDARD_COMPONENT_ATTRS = {"get_priors", "define_model", "guide", "get_guesses"}

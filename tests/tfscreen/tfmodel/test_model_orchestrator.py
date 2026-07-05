@@ -1942,6 +1942,37 @@ class TestBaseGrowthDf:
         assert set(result["genotype"]) == {"wt", "A2G"}
         assert len(result) == 2
 
+    def test_zero_rate_std_raises(self):
+        """rate_std == 0.0 (e.g. from tfs-simulate's base_growth_data with
+        noise omitted/0.0) must be rejected here -- otherwise 1/rate_std**2
+        divides by zero, producing a NaN combined rate that only surfaces
+        much later as an inscrutable numpyro 'invalid loc parameter' crash
+        when the model is first traced."""
+        from tfscreen.tfmodel.model_orchestrator import _read_base_growth_df
+
+        growth_df = _read_growth_df(self._growth_df())
+        base_growth_df_raw = pd.DataFrame({
+            "genotype": ["wt"],
+            "rate": [0.02],
+            "rate_std": [0.0],
+        })
+
+        with pytest.raises(ValueError, match="non-positive rate_std"):
+            _read_base_growth_df(base_growth_df_raw, growth_df)
+
+    def test_negative_rate_std_raises(self):
+        from tfscreen.tfmodel.model_orchestrator import _read_base_growth_df
+
+        growth_df = _read_growth_df(self._growth_df())
+        base_growth_df_raw = pd.DataFrame({
+            "genotype": ["wt", "A2G"],
+            "rate": [0.02, 0.015],
+            "rate_std": [0.001, -0.002],
+        })
+
+        with pytest.raises(ValueError, match=r"non-positive rate_std for genotype\(s\) \['A2G'\]"):
+            _read_base_growth_df(base_growth_df_raw, growth_df)
+
     def test_missing_required_column_raises(self):
         from tfscreen.tfmodel.model_orchestrator import _read_base_growth_df
 
@@ -2143,6 +2174,7 @@ class TestBaseGrowthDf:
             "sample_offset": {"zero": MagicMock()},
             "observe_binding": MagicMock(),
             "observe_growth": MagicMock(),
+            "observe_base_growth": MagicMock(),
         }
         with patch.dict("tfscreen.tfmodel.model_orchestrator.model_registry", registry, clear=True):
             for k in ["condition_growth", "growth_transition", "ln_cfu0", "dk_geno",
