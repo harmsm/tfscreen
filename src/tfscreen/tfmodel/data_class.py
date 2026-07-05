@@ -256,9 +256,24 @@ class GrowthPriors:
     theta_growth_noise: Any
     growth_noise: Any
     sample_offset: Any
+    # Prior (concentration, rate) for the growth observer's StudentT degrees
+    # of freedom (see GrowthObsPriors).
+    growth_obs: Any
     # Prior (loc, scale) for the optional base_growth k_ref scalar; None when
     # base_growth_df was not supplied (see BaseGrowthPriors).
     base_growth: Any = field(default=None)
+
+
+@dataclass(frozen=True)
+class GrowthObsPriors:
+    """
+    Prior (concentration, rate) for the growth observer's StudentT
+    degrees-of-freedom latent ``nu`` (see observe/growth.py). Gamma's mean is
+    concentration/rate; the default concentration=2.0, rate=0.1 gives a mean
+    of 20.0, matching the value previously hardcoded in observe/growth.py.
+    """
+    nu_concentration: float
+    nu_rate: float
 
 
 @dataclass(frozen=True)

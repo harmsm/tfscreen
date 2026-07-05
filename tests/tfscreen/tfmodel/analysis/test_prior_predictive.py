@@ -61,9 +61,9 @@ def test_draw_prior_latent_params_shape(dummy_orchestrator):
 
 def test_draw_prior_no_observed_in_latent(dummy_orchestrator):
     # Observed sites (obs= in model) should not appear in latent_params.
-    # The growth observation site is named 'final_binding_obs_growth_obs'.
+    # The growth observation site is named 'growth_obs'.
     _, latent_params = draw_prior(dummy_orchestrator, rng_key=0, num_draws=1)
-    assert "final_binding_obs_growth_obs" not in latent_params
+    assert "growth_obs" not in latent_params
 
 
 def test_draw_prior_reproducible(dummy_orchestrator):

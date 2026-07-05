@@ -66,10 +66,10 @@ def jax_model(data: DataClass,
                                                  theta_binding,
                                                  priors.binding.theta_binding_noise)
         if is_guide:
-            binding_observer("final_growth_obs", data.binding, None)
+            binding_observer("binding", data.binding, None)
         else:
             pyro.deterministic("binding_pred", binding_pred)
-            binding_observer("final_growth_obs", data.binding, binding_pred)
+            binding_observer("binding", data.binding, binding_pred)
         return
 
     # -------------------------------------------------------------------------
@@ -224,8 +224,9 @@ def jax_model(data: DataClass,
                             data.growth,
                             priors.growth.sample_offset)
 
-        growth_observer("final_binding_obs", data.growth, None)
-        binding_observer("final_growth_obs", data.binding, None)
+        growth_observer("growth", data.growth, None,
+                        priors=priors.growth.growth_obs)
+        binding_observer("binding", data.binding, None)
 
         # Register side-channel guide sites. presplit.guide is a no-op (it
         # introduces no latents); base_growth.guide registers the k_ref
@@ -284,7 +285,8 @@ def jax_model(data: DataClass,
         pyro.deterministic(f"growth_pred", ln_cfu_pred)
 
         # Calculate likelihood
-        growth_observer("final_binding_obs", data.growth, ln_cfu_pred, sigma_k=sigma_k)
-        binding_observer("final_growth_obs", data.binding, binding_pred)
+        growth_observer("growth", data.growth, ln_cfu_pred, sigma_k=sigma_k,
+                        priors=priors.growth.growth_obs)
+        binding_observer("binding", data.binding, binding_pred)
 
 

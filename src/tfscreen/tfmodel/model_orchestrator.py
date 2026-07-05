@@ -16,6 +16,7 @@ from tfscreen.tfmodel.data_class import (
     BaseGrowthData,
     PriorsClass,
     GrowthPriors,
+    GrowthObsPriors,
     BaseGrowthPriors,
     BindingPriors
 )
@@ -492,6 +493,11 @@ def _build_presplit_tm(presplit_df, growth_tm):
 # empirical guess (see _derive_k_ref_guess), wide enough that a handful of
 # base_growth_df measurements dominate it rather than the reverse.
 _K_REF_PRIOR_SCALE = 0.02
+
+# Default Gamma(concentration, rate) prior for the growth observer's StudentT
+# degrees-of-freedom latent `nu` (see observe/growth.py). Mean = 2.0/0.1 = 20.0.
+_NU_PRIOR_CONCENTRATION = 2.0
+_NU_PRIOR_RATE = 0.1
 
 
 def _read_base_growth_df(base_growth_df, growth_df):
@@ -1676,8 +1682,13 @@ class ModelOrchestrator:
                 theta_growth_noise=None,
                 growth_noise=None,
                 sample_offset=None,
+                growth_obs=None,
             )
         else:
+            priors_class_kwargs["growth"]["growth_obs"] = GrowthObsPriors(
+                nu_concentration=_NU_PRIOR_CONCENTRATION,
+                nu_rate=_NU_PRIOR_RATE,
+            )
             if self._base_growth_df is not None:
                 priors_class_kwargs["growth"]["base_growth"] = BaseGrowthPriors(
                     k_ref_loc=self._k_ref_guess,

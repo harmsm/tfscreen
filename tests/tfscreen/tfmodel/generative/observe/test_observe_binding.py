@@ -68,7 +68,7 @@ def test_observe_binding_site(mock_data):
     )
     
     # --- 1. Check for the Observation Site ---
-    obs_site_name = f"{name}_binding_obs"
+    obs_site_name = f"{name}_obs"
     assert obs_site_name in model_trace
     
     site = model_trace[obs_site_name]

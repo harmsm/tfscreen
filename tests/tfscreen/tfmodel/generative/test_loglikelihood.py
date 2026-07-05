@@ -21,6 +21,10 @@ from collections import namedtuple
 from numpyro.handlers import trace, substitute, seed
 import numpyro.distributions as dist
 
+from tfscreen.tfmodel.data_class import GrowthObsPriors
+
+_GROWTH_OBS_PRIORS = GrowthObsPriors(nu_concentration=2.0, nu_rate=0.1)
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Helper: sum unmasked log-probs from a trace
@@ -107,9 +111,9 @@ class TestGrowthObserveLogLikelihood:
         def run(pred):
             m = substitute(observe, data={
                 "growth_nu":         jnp.array(nu_val),
-                "growth_growth_obs": data.ln_cfu,
+                "growth_obs": data.ln_cfu,
             })
-            t = trace(m).get_trace("growth", data, pred)
+            t = trace(m).get_trace("growth", data, pred, priors=_GROWTH_OBS_PRIORS)
             return _sum_log_prob(t)
 
         assert run(data.ln_cfu) > run(data.ln_cfu + 1.0)
@@ -131,9 +135,9 @@ class TestGrowthObserveLogLikelihood:
 
         m = substitute(observe, data={
             "growth_nu":         jnp.array(nu_val),
-            "growth_growth_obs": data.ln_cfu,
+            "growth_obs": data.ln_cfu,
         })
-        t  = trace(m).get_trace("growth", data, pred)
+        t  = trace(m).get_trace("growth", data, pred, priors=_GROWTH_OBS_PRIORS)
         lp = _sum_log_prob(t)
 
         # Reference: StudentT(20, 10.0, 0.5).log_prob(10.0)
@@ -154,9 +158,9 @@ class TestGrowthObserveLogLikelihood:
         def run(delta):
             m = substitute(observe, data={
                 "growth_nu":         jnp.array(nu_val),
-                "growth_growth_obs": data.ln_cfu,
+                "growth_obs": data.ln_cfu,
             })
-            t = trace(m).get_trace("growth", data, data.ln_cfu + delta)
+            t = trace(m).get_trace("growth", data, data.ln_cfu + delta, priors=_GROWTH_OBS_PRIORS)
             return _sum_log_prob(t)
 
         lp0 = run(0.0)
@@ -183,9 +187,9 @@ class TestGrowthObserveLogLikelihood:
         def run(data):
             m = substitute(observe, data={
                 "growth_nu":         jnp.array(nu_val),
-                "growth_growth_obs": data.ln_cfu,
+                "growth_obs": data.ln_cfu,
             })
-            return trace(m).get_trace("growth", data, pred)
+            return trace(m).get_trace("growth", data, pred, priors=_GROWTH_OBS_PRIORS)
 
         t_good   = run(data_good)
         t_masked = run(data_masked)
@@ -193,8 +197,8 @@ class TestGrowthObserveLogLikelihood:
         # The site fn.log_prob is the same (same distribution, same value).
         # The difference in ELBO is due to masking, not the raw log_prob.
         # Verify that the observation site exists in both traces.
-        assert "growth_growth_obs" in t_good
-        assert "growth_growth_obs" in t_masked
+        assert "growth_obs" in t_good
+        assert "growth_obs" in t_masked
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -212,7 +216,7 @@ class TestBindingObserveLogLikelihood:
         data    = _make_binding_data()
 
         def run(pred):
-            m = substitute(observe, data={"binding_binding_obs": data.theta_obs})
+            m = substitute(observe, data={"binding_obs": data.theta_obs})
             t = trace(m).get_trace("binding", data, pred)
             return _sum_log_prob(t)
 
@@ -227,7 +231,7 @@ class TestBindingObserveLogLikelihood:
         data    = _make_binding_data(n_tname=1, n_tconc=3, n_geno=3)
         pred    = data.theta_obs  # perfect match
 
-        m  = substitute(observe, data={"binding_binding_obs": data.theta_obs})
+        m  = substitute(observe, data={"binding_obs": data.theta_obs})
         t  = trace(m).get_trace("binding", data, pred)
         lp = _sum_log_prob(t)
 
@@ -240,7 +244,7 @@ class TestBindingObserveLogLikelihood:
         data    = _make_binding_data(n_tname=1, n_tconc=2, n_geno=2)
 
         def run(delta):
-            m = substitute(observe, data={"binding_binding_obs": data.theta_obs})
+            m = substitute(observe, data={"binding_obs": data.theta_obs})
             t = trace(m).get_trace("binding", data, data.theta_obs + delta)
             return _sum_log_prob(t)
 

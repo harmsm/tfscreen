@@ -5415,9 +5415,9 @@
 ./src/tfscreen/tfmodel/data_class.py:116:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/tfmodel/data_class.py:133:49: W291 trailing whitespace
 ./src/tfscreen/tfmodel/data_class.py:135:76: W291 trailing whitespace
-./src/tfscreen/tfmodel/data_class.py:275:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/tfmodel/data_class.py:282:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/data_class.py:283:5: E266 too many leading '#' for block comment
+./src/tfscreen/tfmodel/data_class.py:290:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/tfmodel/data_class.py:297:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/data_class.py:298:5: E266 too many leading '#' for block comment
 ./src/tfscreen/tfmodel/generative/components/__init__.py:3:4: W292 no newline at end of file
 ./src/tfscreen/tfmodel/generative/components/activity/fixed.py:8:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/tfmodel/generative/components/activity/fixed.py:16:1: E302 expected 2 blank lines, found 1
@@ -7090,27 +7090,24 @@
 ./src/tfscreen/tfmodel/generative/model.py:143:36: E231 missing whitespace after ','
 ./src/tfscreen/tfmodel/generative/model.py:144:24: F541 f-string is missing placeholders
 ./src/tfscreen/tfmodel/generative/model.py:144:44: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/model.py:283:28: F541 f-string is missing placeholders
 ./src/tfscreen/tfmodel/generative/model.py:284:28: F541 f-string is missing placeholders
-./src/tfscreen/tfmodel/generative/model.py:290:1: W391 blank line at end of file
+./src/tfscreen/tfmodel/generative/model.py:285:28: F541 f-string is missing placeholders
+./src/tfscreen/tfmodel/generative/model.py:292:1: W391 blank line at end of file
 ./src/tfscreen/tfmodel/generative/observe/binding.py:9:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/tfmodel/generative/observe/binding.py:42:79: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/observe/binding.py:43:83: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/observe/binding.py:44:61: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/observe/binding.py:44:82: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/observe/binding.py:45:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/observe/binding.py:51:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/observe/binding.py:42:71: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/observe/binding.py:43:75: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/observe/binding.py:44:53: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/observe/binding.py:44:74: E231 missing whitespace after ','
 ./src/tfscreen/tfmodel/generative/observe/binding.py:56:1: W293 blank line contains whitespace
 ./src/tfscreen/tfmodel/generative/observe/binding.py:57:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/tfmodel/generative/observe/binding.py:67:11: W292 no newline at end of file
 ./src/tfscreen/tfmodel/generative/observe/growth.py:8:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/tfmodel/generative/observe/growth.py:60:68: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/observe/growth.py:60:89: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/observe/growth.py:67:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/observe/growth.py:73:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/tfmodel/generative/observe/growth.py:87:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/observe/growth.py:95:5: F841 local variable 'nu' is assigned to but never used
-./src/tfscreen/tfmodel/generative/observe/growth.py:97:11: W292 no newline at end of file
+./src/tfscreen/tfmodel/generative/observe/growth.py:66:68: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/observe/growth.py:66:89: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/observe/growth.py:73:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/observe/growth.py:79:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/tfmodel/generative/observe/growth.py:104:5: F841 local variable 'nu' is assigned to but never used
+./src/tfscreen/tfmodel/generative/observe/growth.py:106:11: W292 no newline at end of file
 ./src/tfscreen/tfmodel/generative/registry.py:64:23: E231 missing whitespace after ':'
 ./src/tfscreen/tfmodel/generative/registry.py:65:17: E231 missing whitespace after ':'
 ./src/tfscreen/tfmodel/generative/registry.py:66:16: E231 missing whitespace after ':'
@@ -7262,198 +7259,198 @@
 ./src/tfscreen/tfmodel/inference/run_inference.py:1362:1: W293 blank line contains whitespace
 ./src/tfscreen/tfmodel/inference/run_inference.py:1366:1: W293 blank line contains whitespace
 ./src/tfscreen/tfmodel/inference/run_inference.py:1372:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:39:1: E303 too many blank lines (3)
-./src/tfscreen/tfmodel/model_orchestrator.py:73:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:76:39: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:80:25: E222 multiple spaces after operator
-./src/tfscreen/tfmodel/model_orchestrator.py:80:37: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:80:53: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:81:42: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:85:65: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:85:88: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:105:30: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:105:43: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:105:55: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:105:63: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:106:52: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:120:25: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:124:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:125:5: E303 too many blank lines (2)
-./src/tfscreen/tfmodel/model_orchestrator.py:127:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/tfmodel/model_orchestrator.py:210:58: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:213:62: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:213:73: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:215:62: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:216:61: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:40:1: E303 too many blank lines (3)
+./src/tfscreen/tfmodel/model_orchestrator.py:74:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:77:39: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:81:25: E222 multiple spaces after operator
+./src/tfscreen/tfmodel/model_orchestrator.py:81:37: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:81:53: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:82:42: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:86:65: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:86:88: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:106:30: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:106:43: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:106:55: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:106:63: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:107:52: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:121:25: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:125:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:126:5: E303 too many blank lines (2)
+./src/tfscreen/tfmodel/model_orchestrator.py:128:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/tfmodel/model_orchestrator.py:211:58: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:214:62: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:214:73: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:216:62: E231 missing whitespace after ','
 ./src/tfscreen/tfmodel/model_orchestrator.py:217:61: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:218:57: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:219:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:221:39: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:222:43: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:223:38: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:218:61: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:219:57: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:220:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:222:39: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:223:43: E231 missing whitespace after ','
 ./src/tfscreen/tfmodel/model_orchestrator.py:224:38: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:227:63: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:228:73: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:225:38: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:228:63: W291 trailing whitespace
 ./src/tfscreen/tfmodel/model_orchestrator.py:229:73: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:239:63: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:244:42: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:244:52: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:244:68: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:245:29: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/model_orchestrator.py:246:40: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:247:45: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:247:60: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:247:72: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:288:39: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:297:33: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:297:45: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:298:53: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:301:5: E303 too many blank lines (2)
-./src/tfscreen/tfmodel/model_orchestrator.py:307:27: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:336:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/tfmodel/model_orchestrator.py:368:62: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:230:73: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:240:63: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:245:42: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:245:52: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:245:68: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:246:29: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/model_orchestrator.py:247:40: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:248:45: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:248:60: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:248:72: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:289:39: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:298:33: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:298:45: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:299:53: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:302:5: E303 too many blank lines (2)
+./src/tfscreen/tfmodel/model_orchestrator.py:308:27: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:337:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/tfmodel/model_orchestrator.py:369:62: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:370:58: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:372:23: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:373:43: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:370:62: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:371:58: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:373:23: W291 trailing whitespace
 ./src/tfscreen/tfmodel/model_orchestrator.py:374:43: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:378:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:457:12: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/model_orchestrator.py:537:66: E127 continuation line over-indented for visual indent
-./src/tfscreen/tfmodel/model_orchestrator.py:688:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:691:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:696:52: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:697:57: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:704:30: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:708:38: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:804:82: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:809:87: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:812:84: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:817:79: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:920:5: C901 'ModelOrchestrator._initialize_data' is too complex (19)
-./src/tfscreen/tfmodel/model_orchestrator.py:920:5: E303 too many blank lines (2)
-./src/tfscreen/tfmodel/model_orchestrator.py:945:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:946:28: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:948:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:949:35: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:949:48: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:949:56: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:950:46: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:950:66: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:375:43: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:379:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:458:12: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/model_orchestrator.py:543:66: E127 continuation line over-indented for visual indent
+./src/tfscreen/tfmodel/model_orchestrator.py:694:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:697:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:702:52: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:703:57: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:710:30: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:714:38: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:810:82: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:815:87: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:818:84: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:823:79: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:926:5: C901 'ModelOrchestrator._initialize_data' is too complex (19)
+./src/tfscreen/tfmodel/model_orchestrator.py:926:5: E303 too many blank lines (2)
 ./src/tfscreen/tfmodel/model_orchestrator.py:951:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:955:39: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:956:34: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:961:67: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:968:32: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:970:10: E114 indentation is not a multiple of 4 (comment)
-./src/tfscreen/tfmodel/model_orchestrator.py:970:10: E116 unexpected indentation (comment)
-./src/tfscreen/tfmodel/model_orchestrator.py:972:76: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:975:45: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:977:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:979:49: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:991:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:999:57: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:1021:38: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1022:41: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1022:56: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:1023:44: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1023:60: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:1024:40: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1024:58: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:1025:46: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1025:71: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:1027:77: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1034:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1054:39: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:1054:45: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:1054:53: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:1061:40: E127 continuation line over-indented for visual indent
-./src/tfscreen/tfmodel/model_orchestrator.py:1107:25: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/model_orchestrator.py:1108:32: E127 continuation line over-indented for visual indent
-./src/tfscreen/tfmodel/model_orchestrator.py:1109:26: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/model_orchestrator.py:1110:32: E127 continuation line over-indented for visual indent
-./src/tfscreen/tfmodel/model_orchestrator.py:1150:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1153:78: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1154:32: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1155:60: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:1159:36: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1160:36: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1161:32: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1162:38: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1164:77: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1175:56: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:1175:62: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:1178:74: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1179:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1184:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1185:77: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1186:58: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1188:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1193:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1197:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1201:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1204:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1210:86: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:1212:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1219:77: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:1280:57: E127 continuation line over-indented for visual indent
-./src/tfscreen/tfmodel/model_orchestrator.py:1289:25: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/model_orchestrator.py:1299:33: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1300:34: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1301:35: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1302:38: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1303:39: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1310:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1311:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1312:5: E303 too many blank lines (2)
-./src/tfscreen/tfmodel/model_orchestrator.py:1388:25: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/model_orchestrator.py:1389:31: E127 continuation line over-indented for visual indent
-./src/tfscreen/tfmodel/model_orchestrator.py:1391:31: E127 continuation line over-indented for visual indent
-./src/tfscreen/tfmodel/model_orchestrator.py:1464:5: C901 'ModelOrchestrator._initialize_classes' is too complex (23)
-./src/tfscreen/tfmodel/model_orchestrator.py:1484:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1486:67: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1487:71: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1489:68: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1490:77: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1491:75: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1492:40: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1509:42: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1510:43: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1511:40: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1511:43: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:1511:53: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1511:56: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/model_orchestrator.py:1511:64: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1592:75: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1595:69: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1616:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1618:9: E303 too many blank lines (2)
-./src/tfscreen/tfmodel/model_orchestrator.py:1695:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1700:5: E303 too many blank lines (2)
-./src/tfscreen/tfmodel/model_orchestrator.py:1714:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1724:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1734:75: W291 trailing whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1748:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1751:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1780:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1792:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1804:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/model_orchestrator.py:1810:25: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1811:27: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1812:31: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1813:32: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1814:22: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1815:22: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1816:32: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1817:23: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1818:20: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1819:29: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1820:28: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1821:33: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1822:34: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1823:27: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1824:28: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/model_orchestrator.py:1825:31: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:952:28: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:954:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:955:35: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:955:48: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:955:56: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:956:46: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:956:66: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:957:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:961:39: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:962:34: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:967:67: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:974:32: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:976:10: E114 indentation is not a multiple of 4 (comment)
+./src/tfscreen/tfmodel/model_orchestrator.py:976:10: E116 unexpected indentation (comment)
+./src/tfscreen/tfmodel/model_orchestrator.py:978:76: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:981:45: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:983:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:985:49: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:997:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1005:57: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:1027:38: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1028:41: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1028:56: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:1029:44: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1029:60: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:1030:40: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1030:58: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:1031:46: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1031:71: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:1033:77: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1040:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1060:39: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:1060:45: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:1060:53: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:1067:40: E127 continuation line over-indented for visual indent
+./src/tfscreen/tfmodel/model_orchestrator.py:1113:25: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/model_orchestrator.py:1114:32: E127 continuation line over-indented for visual indent
+./src/tfscreen/tfmodel/model_orchestrator.py:1115:26: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/model_orchestrator.py:1116:32: E127 continuation line over-indented for visual indent
+./src/tfscreen/tfmodel/model_orchestrator.py:1156:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1159:78: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1160:32: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1161:60: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:1165:36: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1166:36: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1167:32: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1168:38: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1170:77: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1181:56: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:1181:62: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:1184:74: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1185:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1190:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1191:77: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1192:58: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1194:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1199:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1203:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1207:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1210:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1216:86: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:1218:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1225:77: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:1286:57: E127 continuation line over-indented for visual indent
+./src/tfscreen/tfmodel/model_orchestrator.py:1295:25: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/model_orchestrator.py:1305:33: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1306:34: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1307:35: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1308:38: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1309:39: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1316:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1317:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1318:5: E303 too many blank lines (2)
+./src/tfscreen/tfmodel/model_orchestrator.py:1394:25: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/model_orchestrator.py:1395:31: E127 continuation line over-indented for visual indent
+./src/tfscreen/tfmodel/model_orchestrator.py:1397:31: E127 continuation line over-indented for visual indent
+./src/tfscreen/tfmodel/model_orchestrator.py:1470:5: C901 'ModelOrchestrator._initialize_classes' is too complex (23)
+./src/tfscreen/tfmodel/model_orchestrator.py:1490:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1492:67: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1493:71: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1495:68: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1496:77: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1497:75: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1498:40: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1515:42: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1516:43: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1517:40: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1517:43: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:1517:53: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1517:56: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/model_orchestrator.py:1517:64: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1598:75: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1601:69: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1622:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1624:9: E303 too many blank lines (2)
+./src/tfscreen/tfmodel/model_orchestrator.py:1706:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1711:5: E303 too many blank lines (2)
+./src/tfscreen/tfmodel/model_orchestrator.py:1725:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1735:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1745:75: W291 trailing whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1759:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1762:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1791:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1803:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1815:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/model_orchestrator.py:1821:25: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1822:27: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1823:31: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1824:32: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1825:22: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1826:22: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1827:32: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1828:23: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1829:20: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1830:29: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1831:28: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1832:33: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1833:34: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1834:27: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1835:28: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/model_orchestrator.py:1836:31: E231 missing whitespace after ':'
 ./src/tfscreen/tfmodel/scripts/configure_model_cli.py:206:22: E128 continuation line under-indented for visual indent
 ./src/tfscreen/tfmodel/scripts/configure_model_cli.py:207:22: E128 continuation line under-indented for visual indent
 ./src/tfscreen/tfmodel/scripts/configure_model_cli.py:208:22: E128 continuation line under-indented for visual indent
@@ -10449,107 +10446,101 @@
 ./tests/tfscreen/tfmodel/generative/observe/test_observe_binding.py:108:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/tfmodel/generative/observe/test_observe_binding.py:115:1: W293 blank line contains whitespace
 ./tests/tfscreen/tfmodel/generative/observe/test_observe_binding.py:117:41: W292 no newline at end of file
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:22:20: W291 trailing whitespace
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:28:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:32:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:42:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:45:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:47:76: W291 trailing whitespace
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:49:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:52:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:55:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:58:31: E231 missing whitespace after ','
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:58:33: E231 missing whitespace after ','
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:58:35: E231 missing whitespace after ','
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:58:37: E231 missing whitespace after ','
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:58:39: E231 missing whitespace after ','
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:58:41: E231 missing whitespace after ','
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:59:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:75:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:99:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:107:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:112:56: E261 at least two spaces before inline comment
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:113:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:118:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:125:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:127:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:23:20: W291 trailing whitespace
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:29:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:33:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:43:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:46:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:48:76: W291 trailing whitespace
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:50:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:53:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:56:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:59:31: E231 missing whitespace after ','
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:59:33: E231 missing whitespace after ','
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:59:35: E231 missing whitespace after ','
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:59:37: E231 missing whitespace after ','
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:59:39: E231 missing whitespace after ','
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:59:41: E231 missing whitespace after ','
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:60:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:76:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:81:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:106:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:114:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:119:56: E261 at least two spaces before inline comment
 ./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:133:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:137:24: W291 trailing whitespace
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:138:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:146:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:151:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:154:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:156:35: E231 missing whitespace after ','
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:156:37: E231 missing whitespace after ','
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:156:39: E231 missing whitespace after ','
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:156:41: E231 missing whitespace after ','
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:156:43: E231 missing whitespace after ','
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:156:45: E231 missing whitespace after ','
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:162:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:168:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:171:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:173:23: E231 missing whitespace after ','
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:173:25: E231 missing whitespace after ','
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:173:27: E231 missing whitespace after ','
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:173:29: E231 missing whitespace after ','
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:173:31: E231 missing whitespace after ','
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:173:33: E231 missing whitespace after ','
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:174:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:176:23: E231 missing whitespace after ','
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:176:25: E231 missing whitespace after ','
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:176:27: E231 missing whitespace after ','
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:176:29: E231 missing whitespace after ','
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:176:31: E231 missing whitespace after ','
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:176:33: E231 missing whitespace after ','
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:178:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:184:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:192:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:197:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:259:57: W292 no newline at end of file
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:135:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:141:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:145:24: W291 trailing whitespace
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:146:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:154:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:164:35: E231 missing whitespace after ','
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:164:37: E231 missing whitespace after ','
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:164:39: E231 missing whitespace after ','
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:164:41: E231 missing whitespace after ','
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:164:43: E231 missing whitespace after ','
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:164:45: E231 missing whitespace after ','
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:177:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:180:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:182:23: E231 missing whitespace after ','
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:182:25: E231 missing whitespace after ','
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:182:27: E231 missing whitespace after ','
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:182:29: E231 missing whitespace after ','
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:182:31: E231 missing whitespace after ','
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:182:33: E231 missing whitespace after ','
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:183:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:185:23: E231 missing whitespace after ','
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:185:25: E231 missing whitespace after ','
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:185:27: E231 missing whitespace after ','
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:185:29: E231 missing whitespace after ','
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:185:31: E231 missing whitespace after ','
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:185:33: E231 missing whitespace after ','
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:187:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:210:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/observe/test_observe_growth.py:275:57: W292 no newline at end of file
 ./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:16:1: F401 'numpy as np' imported but unused
 ./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:18:1: F401 'pytest' imported but unused
 ./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:21:1: F401 'numpyro.handlers.seed' imported but unused
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:54:10: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:61:15: E251 unexpected spaces around keyword / parameter equals
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:61:15: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:61:22: E251 unexpected spaces around keyword / parameter equals
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:62:19: E251 unexpected spaces around keyword / parameter equals
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:62:19: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:62:22: E251 unexpected spaces around keyword / parameter equals
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:63:18: E251 unexpected spaces around keyword / parameter equals
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:63:18: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:63:22: E251 unexpected spaces around keyword / parameter equals
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:64:22: E251 unexpected spaces around keyword / parameter equals
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:76:10: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:81:18: E251 unexpected spaces around keyword / parameter equals
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:81:18: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:81:22: E251 unexpected spaces around keyword / parameter equals
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:82:18: E251 unexpected spaces around keyword / parameter equals
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:82:18: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:82:22: E251 unexpected spaces around keyword / parameter equals
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:83:18: E251 unexpected spaces around keyword / parameter equals
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:83:18: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:83:22: E251 unexpected spaces around keyword / parameter equals
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:84:22: E251 unexpected spaces around keyword / parameter equals
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:104:15: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:105:13: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:127:15: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:128:13: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:130:13: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:136:10: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:141:14: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:150:15: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:151:13: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:178:15: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:179:18: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:190:15: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:212:13: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:227:13: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:228:13: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:230:10: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:231:10: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:235:14: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:240:13: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:58:10: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:65:15: E251 unexpected spaces around keyword / parameter equals
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:65:15: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:65:22: E251 unexpected spaces around keyword / parameter equals
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:66:19: E251 unexpected spaces around keyword / parameter equals
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:66:19: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:66:22: E251 unexpected spaces around keyword / parameter equals
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:67:18: E251 unexpected spaces around keyword / parameter equals
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:67:18: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:67:22: E251 unexpected spaces around keyword / parameter equals
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:68:22: E251 unexpected spaces around keyword / parameter equals
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:80:10: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:85:18: E251 unexpected spaces around keyword / parameter equals
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:85:18: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:85:22: E251 unexpected spaces around keyword / parameter equals
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:86:18: E251 unexpected spaces around keyword / parameter equals
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:86:18: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:86:22: E251 unexpected spaces around keyword / parameter equals
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:87:18: E251 unexpected spaces around keyword / parameter equals
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:87:18: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:87:22: E251 unexpected spaces around keyword / parameter equals
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:88:22: E251 unexpected spaces around keyword / parameter equals
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:108:15: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:109:13: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:131:15: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:132:13: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:134:13: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:140:10: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:145:14: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:154:15: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:155:13: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:182:15: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:183:18: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:194:15: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:216:13: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:231:13: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:232:13: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:234:10: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:235:10: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:239:14: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/generative/test_loglikelihood.py:244:13: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/generative/test_model.py:4:1: F401 'numpyro.handlers.seed' imported but unused
 ./tests/tfscreen/tfmodel/generative/test_model.py:10:1: F401 'tfscreen.tfmodel.data_class.DataClass' imported but unused
 ./tests/tfscreen/tfmodel/generative/test_model.py:10:1: F401 'tfscreen.tfmodel.data_class.PriorsClass' imported but unused
@@ -10562,47 +10553,46 @@
 ./tests/tfscreen/tfmodel/generative/test_model.py:39:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/tfmodel/generative/test_model.py:46:1: W293 blank line contains whitespace
 ./tests/tfscreen/tfmodel/generative/test_model.py:60:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/tfmodel/generative/test_model.py:77:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/tfmodel/generative/test_model.py:84:47: E261 at least two spaces before inline comment
-./tests/tfscreen/tfmodel/generative/test_model.py:85:61: E261 at least two spaces before inline comment
-./tests/tfscreen/tfmodel/generative/test_model.py:86:53: E261 at least two spaces before inline comment
-./tests/tfscreen/tfmodel/generative/test_model.py:87:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/test_model.py:92:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/test_model.py:95:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/test_model.py:98:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/test_model.py:99:61: E261 at least two spaces before inline comment
-./tests/tfscreen/tfmodel/generative/test_model.py:100:49: E261 at least two spaces before inline comment
-./tests/tfscreen/tfmodel/generative/test_model.py:101:48: E261 at least two spaces before inline comment
-./tests/tfscreen/tfmodel/generative/test_model.py:102:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/test_model.py:103:67: E261 at least two spaces before inline comment
-./tests/tfscreen/tfmodel/generative/test_model.py:107:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/test_model.py:138:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/tfmodel/generative/test_model.py:151:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/test_model.py:158:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/test_model.py:162:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/test_model.py:165:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/test_model.py:168:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/test_model.py:173:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/test_model.py:176:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/test_model.py:179:76: W291 trailing whitespace
-./tests/tfscreen/tfmodel/generative/test_model.py:182:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/test_model.py:187:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/test_model.py:193:25: E261 at least two spaces before inline comment
-./tests/tfscreen/tfmodel/generative/test_model.py:197:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/test_model.py:203:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/test_model.py:205:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/test_model.py:207:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/test_model.py:210:42: E261 at least two spaces before inline comment
-./tests/tfscreen/tfmodel/generative/test_model.py:219:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/test_model.py:222:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/tfmodel/generative/test_model.py:231:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/test_model.py:234:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/test_model.py:240:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/test_model.py:245:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/generative/test_model.py:329:61: W292 no newline at end of file
+./tests/tfscreen/tfmodel/generative/test_model.py:78:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/tfmodel/generative/test_model.py:85:47: E261 at least two spaces before inline comment
+./tests/tfscreen/tfmodel/generative/test_model.py:86:61: E261 at least two spaces before inline comment
+./tests/tfscreen/tfmodel/generative/test_model.py:87:53: E261 at least two spaces before inline comment
+./tests/tfscreen/tfmodel/generative/test_model.py:88:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/test_model.py:93:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/test_model.py:96:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/test_model.py:99:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/test_model.py:100:61: E261 at least two spaces before inline comment
+./tests/tfscreen/tfmodel/generative/test_model.py:101:49: E261 at least two spaces before inline comment
+./tests/tfscreen/tfmodel/generative/test_model.py:102:48: E261 at least two spaces before inline comment
+./tests/tfscreen/tfmodel/generative/test_model.py:103:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/test_model.py:104:67: E261 at least two spaces before inline comment
+./tests/tfscreen/tfmodel/generative/test_model.py:108:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/test_model.py:139:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/tfmodel/generative/test_model.py:152:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/test_model.py:159:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/test_model.py:163:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/test_model.py:166:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/test_model.py:169:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/test_model.py:174:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/test_model.py:177:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/test_model.py:180:76: W291 trailing whitespace
+./tests/tfscreen/tfmodel/generative/test_model.py:183:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/test_model.py:188:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/test_model.py:194:25: E261 at least two spaces before inline comment
+./tests/tfscreen/tfmodel/generative/test_model.py:198:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/test_model.py:204:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/test_model.py:206:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/test_model.py:208:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/test_model.py:211:31: E261 at least two spaces before inline comment
+./tests/tfscreen/tfmodel/generative/test_model.py:221:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/test_model.py:224:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/tfmodel/generative/test_model.py:233:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/test_model.py:236:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/test_model.py:242:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/generative/test_model.py:332:61: W292 no newline at end of file
 ./tests/tfscreen/tfmodel/generative/test_model_math.py:16:1: F401 'numpyro.handlers.seed' imported but unused
-./tests/tfscreen/tfmodel/generative/test_model_math.py:128:27: E128 continuation line under-indented for visual indent
-./tests/tfscreen/tfmodel/generative/test_model_math.py:129:27: E128 continuation line under-indented for visual indent
+./tests/tfscreen/tfmodel/generative/test_model_math.py:130:27: E128 continuation line under-indented for visual indent
+./tests/tfscreen/tfmodel/generative/test_model_math.py:131:27: E128 continuation line under-indented for visual indent
 ./tests/tfscreen/tfmodel/generative/test_reference_math.py:29:11: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/generative/test_reference_math.py:32:9: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/generative/test_reference_math.py:75:14: E221 multiple spaces before operator
@@ -11556,7 +11546,7 @@
 3     E266 too many leading '#' for block comment
 149   E272 multiple spaces before keyword
 2     E301 expected 1 blank line, found 0
-950   E302 expected 2 blank lines, found 1
+951   E302 expected 2 blank lines, found 1
 90    E303 too many blank lines (2)
 24    E305 expected 2 blank lines after class or function definition, found 1
 29    E306 expected 1 blank line before a nested definition, found 0
@@ -11575,6 +11565,6 @@
 56    F841 local variable 'e' is assigned to but never used
 1067  W291 trailing whitespace
 133   W292 no newline at end of file
-2178  W293 blank line contains whitespace
+2167  W293 blank line contains whitespace
 51    W391 blank line at end of file
-11531
+11521

@@ -31,7 +31,7 @@ MockData = namedtuple("MockData", ["growth", "binding"])
 
 MockGrowthPriors = namedtuple("MockGrowthPriors", [
     "theta_growth_noise", "condition_growth", "growth_transition", "ln_cfu0", "dk_geno", "activity", "transformation",
-    "growth_noise", "sample_offset"
+    "growth_noise", "sample_offset", "growth_obs"
 ])
 MockBindingPriors = namedtuple("MockBindingPriors", ["theta_binding_noise"])
 MockPriors = namedtuple("MockPriors", ["theta", "growth", "binding"])
@@ -70,6 +70,7 @@ def mock_priors():
         transformation="prior_trans",
         growth_noise="prior_grn",
         sample_offset="prior_so",
+        growth_obs="prior_growth_obs",
     )
     binding = MockBindingPriors(theta_binding_noise="prior_bn")
     return MockPriors(theta="prior_theta", growth=growth, binding=binding)
@@ -206,10 +207,11 @@ def test_jax_model_execution_flow(mock_data, mock_priors, mock_control):
     expected_pred = 110.0
     
     # Check that the observer received this prediction
-    args, _ = mock_control["observe_growth"].call_args
-    assert args[0] == "final_binding_obs" # Name check (note: code uses confusing name here?)
+    args, kwargs = mock_control["observe_growth"].call_args
+    assert args[0] == "growth" # Name check
     assert args[1] is mock_data.growth
     assert jnp.isclose(args[2], expected_pred)
+    assert kwargs["priors"] == "prior_growth_obs"
 
     # --- 3. Verify Deterministic Sites ---
     assert "theta_binding_pred" in model_trace
@@ -239,10 +241,11 @@ def test_jax_model_guide_flow(mock_data, mock_priors, mock_control):
     mock_control["transformation"][0].assert_called_once()
     
     # --- Verify Observers called with None ---
-    # growth_observer("final_binding_obs", data.growth, None)
-    args_growth, _ = mock_control["observe_growth"].call_args
+    # growth_observer("growth", data.growth, None, priors=priors.growth.growth_obs)
+    args_growth, kwargs_growth = mock_control["observe_growth"].call_args
     assert args_growth[2] is None
-    
+    assert kwargs_growth["priors"] == "prior_growth_obs"
+
     args_binding, _ = mock_control["observe_binding"].call_args
     assert args_binding[2] is None
 

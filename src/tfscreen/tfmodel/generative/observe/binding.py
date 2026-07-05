@@ -39,18 +39,18 @@ def observe(name: str,
     """
 
     # Binding observation
-    with pyro.plate(f"{name}_binding_titrant_name", size=data.num_titrant_name,dim=-3):
-        with pyro.plate(f"{name}_binding_titrant_conc", size=data.num_titrant_conc,dim=-2):
-            with pyro.plate(f"{name}_binding_genotype_plate",size=data.batch_size,dim=-1):
-                
+    with pyro.plate(f"{name}_titrant_name", size=data.num_titrant_name,dim=-3):
+        with pyro.plate(f"{name}_titrant_conc", size=data.num_titrant_conc,dim=-2):
+            with pyro.plate(f"{name}_genotype_plate",size=data.batch_size,dim=-1):
+
                 # Scale data for sub-sampling
                 with pyro.handlers.scale(scale=data.scale_vector):
 
                     # Apply mask for good observations
                     with pyro.handlers.mask(mask=data.good_mask):
-                        
+
                         # Define the observation site
-                        pyro.sample(f"{name}_binding_obs",
+                        pyro.sample(f"{name}_obs",
                                     dist.Normal(binding_pred, data.theta_std),
                                     obs=data.theta_obs)
                         

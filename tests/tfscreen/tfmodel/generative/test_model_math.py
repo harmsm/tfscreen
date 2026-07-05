@@ -48,7 +48,8 @@ _MockData = namedtuple("_MockData", ["growth", "binding"])
 _MockGrowthPriors = namedtuple(
     "_MockGrowthPriors",
     ["condition_growth", "ln_cfu0", "dk_geno", "activity", "transformation",
-     "theta_growth_noise", "growth_transition", "growth_noise", "sample_offset"],
+     "theta_growth_noise", "growth_transition", "growth_noise", "sample_offset",
+     "growth_obs"],
 )
 _MockBindingPriors = namedtuple("_MockBindingPriors", ["theta_binding_noise"])
 _MockPriors = namedtuple("_MockPriors", ["theta", "growth", "binding"])
@@ -86,6 +87,7 @@ def real_priors():
         growth_transition=growth_transition_instant.get_priors(),
         growth_noise=growth_noise_zero.get_priors(),
         sample_offset=sample_offset_zero.get_priors(),
+        growth_obs=MagicMock(),  # passed to mocked observe_growth
     )
     binding = _MockBindingPriors(theta_binding_noise=noise_zero.get_priors())
     return _MockPriors(theta=MagicMock(), growth=growth, binding=binding)

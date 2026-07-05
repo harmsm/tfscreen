@@ -3,12 +3,14 @@ import numpyro as pyro
 
 import numpyro.distributions as dist
 
-from tfscreen.tfmodel.data_class import GrowthData
+from tfscreen.tfmodel.data_class import GrowthData, GrowthObsPriors
 
 def observe(name: str,
             data: GrowthData,
             ln_cfu_pred: jnp.ndarray,
-            sigma_k: jnp.ndarray = 0.0):
+            sigma_k: jnp.ndarray = 0.0,
+            *,
+            priors: GrowthObsPriors):
     """
     Defines the observation site for the growth (ln_CFU) data.
 
@@ -45,9 +47,13 @@ def observe(name: str,
         with ``data.ln_cfu_std`` to give the effective observation scale:
         ``effective_scale = sqrt(ln_cfu_std² + sigma_k²)``.
         Defaults to 0.0 (no extra noise).
+    priors : GrowthObsPriors
+        Prior (concentration, rate) for the StudentT degrees-of-freedom
+        latent ``nu``.
     """
 
-    nu = pyro.sample(f"{name}_nu", dist.Gamma(2.0, 0.1))
+    nu = pyro.sample(f"{name}_nu",
+                     dist.Gamma(priors.nu_concentration, priors.nu_rate))
     effective_scale = jnp.sqrt(data.ln_cfu_std ** 2 + sigma_k ** 2)
 
     # Growth observation
@@ -66,14 +72,16 @@ def observe(name: str,
                                     with pyro.handlers.mask(mask=data.good_mask):
                                         
                                         # Define the observation site
-                                        pyro.sample(f"{name}_growth_obs",
+                                        pyro.sample(f"{name}_obs",
                                                     dist.StudentT(df=nu, loc=ln_cfu_pred, scale=effective_scale),
                                                     obs=data.ln_cfu)
 
 def guide(name: str,
           data: GrowthData,
           ln_cfu_pred: jnp.ndarray,
-          sigma_k: jnp.ndarray = 0.0):
+          sigma_k: jnp.ndarray = 0.0,
+          *,
+          priors: GrowthObsPriors):
     """
     Guide corresponding to the observation function.
 
@@ -84,11 +92,12 @@ def guide(name: str,
     It deliberately excludes the `pyro.plate` context and the `growth_obs`
     sample site because those are observed data, not latent variables.
     """
-    
-    # The prior is Gamma(2.0, 0.1), which has a mean of 20.0.
-    # We use a LogNormal guide to ensure positive support.
-    # Initialize loc at log(20) ≈ 3.0 to start the optimization near the prior mean.
-    nu_loc = pyro.param(f"{name}_nu_loc", jnp.array(3.0))
+
+    # We use a LogNormal guide to ensure positive support. Initialize loc at
+    # the log of the prior's mean (concentration/rate) so optimization starts
+    # near the prior mean.
+    nu_loc = pyro.param(f"{name}_nu_loc",
+                        jnp.log(priors.nu_concentration / priors.nu_rate))
     nu_scale = pyro.param(f"{name}_nu_scale", jnp.array(0.1),
                           constraint=dist.constraints.positive)
 

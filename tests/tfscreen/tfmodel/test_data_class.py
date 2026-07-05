@@ -18,6 +18,7 @@ from tfscreen.tfmodel.data_class import (
     BaseGrowthData,
     DataClass,
     GrowthPriors,
+    GrowthObsPriors,
     BaseGrowthPriors,
     BindingPriors,
     PriorsClass,
@@ -327,6 +328,7 @@ class TestPriorsClass:
             theta_growth_noise=mock_any,
             growth_noise=mock_any,
             sample_offset=mock_any,
+            growth_obs=mock_any,
         )
         bp = BindingPriors(theta_binding_noise=mock_any)
         pc = PriorsClass(theta=bp, growth=gp, binding=bp)
@@ -346,6 +348,7 @@ class TestPriorsClass:
             theta_growth_noise=mock_any,
             growth_noise=mock_any,
             sample_offset=mock_any,
+            growth_obs=mock_any,
         )
         assert gp.base_growth is None
 
@@ -353,6 +356,11 @@ class TestPriorsClass:
         bgp = BaseGrowthPriors(k_ref_loc=0.02, k_ref_scale=0.02)
         assert bgp.k_ref_loc == pytest.approx(0.02)
         assert bgp.k_ref_scale == pytest.approx(0.02)
+
+    def test_growth_obs_priors_construction(self):
+        gop = GrowthObsPriors(nu_concentration=2.0, nu_rate=0.1)
+        assert gop.nu_concentration == pytest.approx(2.0)
+        assert gop.nu_rate == pytest.approx(0.1)
 
     def test_growth_priors_with_base_growth_set(self):
         mock_any = MagicMock()
@@ -367,6 +375,7 @@ class TestPriorsClass:
             theta_growth_noise=mock_any,
             growth_noise=mock_any,
             sample_offset=mock_any,
+            growth_obs=mock_any,
             base_growth=bgp,
         )
         assert gp.base_growth is bgp
