@@ -217,12 +217,14 @@ These two dicts are the mechanism by which binding data is "pinned" into the gro
 | `simulate/library_prediction.py` | Top-level orchestrator; assembles override dicts and calls `thermo_to_growth` |
 | `simulate/thermo_to_growth.py` | Prior-predictive sampling, theta injection, growth calculation, parameters_df assembly |
 | `simulate/binding_params.py` | CSV reading (with theta clipping), per-component override builders, binding theta assemblers |
+| `simulate/binding_data.py` | Generates simulated observed binding curve data (`binding_data.genotypes` path; `generate_binding_df`) |
 | `simulate/base_growth_data.py` | Generates simulated direct growth-rate calibration data (`base_growth_data` YAML block) |
+| `simulate/presplit_data.py` | Generates simulated pre-split (t = -t_pre) data (`presplit_data` YAML block; `generate_presplit_df`) |
 | `simulate/sample_theta.py` | `sample_theta_prior` (prior-predictive) and `sample_theta_stratified` (greedy maximin) |
 | `simulate/sim_data_class.py` | `SimData` container and `build_sim_data` factory |
 | `simulate/build_sample_dataframes.py` | Constructs sample/timepoint DataFrames from simulation config |
 | `simulate/selection_experiment.py` | Models the selection experiment (growth + sequencing) |
-| `simulate/scripts/simulate_cli.py` | `tfs-simulate` CLI entry point; runs `library_prediction` + `selection_experiment` across replicates and writes all output CSVs, including the optional `binding_data`/`presplit_data`/`base_growth_data` blocks |
+| `simulate/scripts/simulate_cli.py` | `tfs-simulate` CLI entry point; runs `library_prediction` + `selection_experiment` across replicates and writes all output CSVs, delegating the optional `binding_data`/`presplit_data`/`base_growth_data` blocks to their respective generator modules above |
 | `simulate/run_simulation.py` | Simpler, non-CLI orchestrator (`run_simulation`); does not support `binding_data`/`presplit_data`/`base_growth_data` |
 
 ## YAML Standards

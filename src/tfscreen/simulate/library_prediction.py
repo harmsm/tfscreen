@@ -237,8 +237,9 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
             theta_params_override.update(measured_params)
 
             # Accumulate binding rows for measured genotypes (overrides simulated rows)
-            # Store noise-free theta_true; noise is applied later by simulate_cli
-            # _generate_binding_data, consistent with the simulated-genotypes path.
+            # Store noise-free theta_true; noise is applied later by
+            # binding_data.generate_binding_df, consistent with the
+            # simulated-genotypes path.
             measured_binding_df = build_binding_theta_from_params(
                 params_dict=params_dict,
                 binding_concs=binding_concs,

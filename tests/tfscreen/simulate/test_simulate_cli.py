@@ -212,55 +212,83 @@ def test_base_growth_written_when_configured(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# _generate_binding_data: uses pre-computed theta from library_prediction
+# presplit_data: written only when configured
 # ---------------------------------------------------------------------------
 
-def test_generate_binding_data_uses_precomputed_theta():
-    """_generate_binding_data must use theta_true from binding_theta_df,
-    not re-sample from the prior."""
-    import numpy as np
-    from tfscreen.simulate.scripts.simulate_cli import _generate_binding_data
+def test_run_simulation_writes_presplit_csv(tmp_path):
+    """presplit CSV is written when presplit_data block is in the config."""
+    lib_df   = pd.DataFrame({"genotype": ["wt", "A1V"]})
+    pheno_df = pd.DataFrame({"genotype": ["wt", "A1V"]})
+    theta_df = pd.DataFrame({"genotype": ["wt", "A1V"]})
+    params_df = pd.DataFrame({"genotype": ["wt", "A1V"],
+                               "dk_geno": [0.0, 0.0], "activity": [1.0, 1.0]})
 
-    binding_cfg = {
-        "genotypes": ["wt", "M1A"],
-        "titrant_name": "iptg",
-        "titrant_conc": [0.0, 1.0],
-        "noise": 0.0,
-    }
-    rng = np.random.default_rng(0)
-    binding_theta_df = pd.DataFrame([
-        {"genotype": "wt",  "titrant_conc": 0.0, "theta_true": 0.1},
-        {"genotype": "wt",  "titrant_conc": 1.0, "theta_true": 0.9},
-        {"genotype": "M1A", "titrant_conc": 0.0, "theta_true": 0.2},
-        {"genotype": "M1A", "titrant_conc": 1.0, "theta_true": 0.8},
+    # Sample/counts for one (replicate, condition_pre, t_sel) combo
+    # Real _simulate_library_group returns sample_df with "sample" as a
+    # regular column and an unnamed integer index.
+    sample_df = pd.DataFrame([{
+        "sample": 0, "replicate": 1, "library": "lib", "condition_pre": "kanR",
+        "t_sel": 60.0, "sample_cfu": 1e8, "sample_cfu_std": 5e6,
+    }], index=[0])
+    counts_df = pd.DataFrame([
+        {"sample": 0, "genotype": "wt",  "counts": 500, "ln_cfu_0": 10.0},
+        {"sample": 0, "genotype": "A1V", "counts": 500, "ln_cfu_0": 10.0},
     ])
+    growth_df = pd.DataFrame({"genotype": ["wt", "A1V"], "ln_cfu": [10.0, 9.9]})
 
-    result = _generate_binding_data(binding_cfg, rng, binding_theta_df)
-
-    assert set(result.columns) >= {"genotype", "titrant_name", "titrant_conc",
-                                   "theta_obs", "theta_std"}
-    wt_row = result[(result["genotype"] == "wt") & (result["titrant_conc"] == 1.0)]
-    assert float(wt_row["theta_obs"].iloc[0]) == pytest.approx(0.9)
-
-
-def test_generate_binding_data_missing_genotype_raises():
-    """Raises ValueError when a genotype/conc pair is absent from binding_theta_df."""
-    import numpy as np
-    from tfscreen.simulate.scripts.simulate_cli import _generate_binding_data
-
-    binding_cfg = {
-        "genotypes": ["wt", "A2V"],   # A2V is valid but not in binding_theta_df
-        "titrant_name": "iptg",
-        "titrant_conc": [1.0],
-        "noise": 0.0,
+    cf = {
+        "seed": 1,
+        "cfu0": 1e8,
+        "total_num_reads": 10_000_000,
+        "prob_index_hop": None,
+        "presplit_data": {"noise": 0.0},
     }
-    rng = np.random.default_rng(0)
-    binding_theta_df = pd.DataFrame([
-        {"genotype": "wt", "titrant_conc": 1.0, "theta_true": 0.5},
-    ])
 
-    with pytest.raises(ValueError, match="No pre-computed theta"):
-        _generate_binding_data(binding_cfg, rng, binding_theta_df)
+    with patch("tfscreen.util.read_yaml", return_value=cf), \
+         patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
+               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
+               return_value=(sample_df, counts_df)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
+               return_value=growth_df):
+        run_simulation_from_config("fake_config.yaml", str(tmp_path))
+
+    presplit_path = tmp_path / "tfs_sim_presplit.csv"
+    assert presplit_path.exists(), "presplit CSV was not written"
+    presplit_df = pd.read_csv(presplit_path)
+    for col in ["library", "replicate", "condition_pre", "genotype",
+                "ln_cfu", "ln_cfu_std"]:
+        assert col in presplit_df.columns
+
+
+def test_run_simulation_no_presplit_without_config(tmp_path):
+    """presplit CSV is NOT written when presplit_data is absent from config."""
+    lib_df   = pd.DataFrame({"genotype": ["wt"]})
+    pheno_df = pd.DataFrame({"genotype": ["wt"]})
+    theta_df = pd.DataFrame({"genotype": ["wt"]})
+    params_df = pd.DataFrame({"genotype": ["wt"], "dk_geno": [0.0], "activity": [1.0]})
+    sample_df = pd.DataFrame([{"sample": 0, "replicate": 1, "library": "lib",
+                                "condition_pre": "kanR", "t_sel": 60.0,
+                                "sample_cfu": 1e8, "sample_cfu_std": 5e6}],
+                              index=[0])
+    counts_df = pd.DataFrame([{"sample": 0, "genotype": "wt",
+                                "counts": 1000, "ln_cfu_0": 10.0}])
+    growth_df = pd.DataFrame({"genotype": ["wt"], "ln_cfu": [10.0]})
+
+    cf = {"seed": 1, "cfu0": 1e8, "total_num_reads": 1_000_000,
+          "prob_index_hop": None}
+
+    with patch("tfscreen.util.read_yaml", return_value=cf), \
+         patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
+               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
+               return_value=(sample_df, counts_df)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
+               return_value=growth_df):
+        run_simulation_from_config("fake_config.yaml", str(tmp_path))
+
+    presplit_path = tmp_path / "tfs_sim_presplit.csv"
+    assert not presplit_path.exists(), "presplit CSV should not be written without config block"
 
 
 # ---------------------------------------------------------------------------

@@ -5,207 +5,11 @@ import pandas as pd
 
 import tfscreen
 from tfscreen.simulate import library_prediction, selection_experiment
-from tfscreen.simulate.selection_experiment import _sim_index_hop
+from tfscreen.simulate.binding_data import generate_binding_df
+from tfscreen.simulate.presplit_data import generate_presplit_df
 from tfscreen.simulate.base_growth_data import generate_base_growth_df
-from tfscreen.genetics import standardize_genotypes
 from tfscreen.process_raw import counts_to_lncfu
 from tfscreen.util.cli.generalized_main import generalized_main
-
-
-def _generate_binding_data(binding_cfg, rng, binding_theta_df):
-    """
-    Generate simulated binding curve data for specific genotypes.
-
-    Uses pre-computed (stratified) theta values from library_prediction and
-    adds Gaussian noise to produce observed theta values.
-
-    Parameters
-    ----------
-    binding_cfg : dict
-        The 'binding_data' sub-dict from the config. Must contain:
-          genotypes   : list of genotype strings
-          titrant_name: str, name of the titrant (e.g. 'iptg')
-          titrant_conc: list of concentrations (mM)
-          noise       : float, sigma for Gaussian noise on theta_obs
-    rng : numpy.random.Generator
-    binding_theta_df : pandas.DataFrame
-        Pre-computed binding theta from library_prediction.  Must contain
-        columns ``genotype``, ``titrant_conc``, ``theta_true``.
-
-    Returns
-    -------
-    pandas.DataFrame
-        Columns: genotype, titrant_name, titrant_conc, theta_obs, theta_std
-    """
-    titrant_name = binding_cfg["titrant_name"]
-    titrant_conc = list(binding_cfg["titrant_conc"])
-    noise = float(binding_cfg.get("noise", 0.0))
-
-    # Build lookup: (genotype, conc) → theta_true
-    theta_lookup = {
-        (row["genotype"], float(row["titrant_conc"])): row["theta_true"]
-        for _, row in binding_theta_df.iterrows()
-    }
-
-    # Genotypes to output: explicit list from config, or every genotype in binding_theta_df.
-    raw_genotypes = binding_cfg.get("genotypes")
-    if raw_genotypes:
-        genotypes = list(standardize_genotypes(raw_genotypes))
-    else:
-        genotypes = list(binding_theta_df["genotype"].unique())
-
-    rows = []
-    for g in genotypes:
-        for conc in titrant_conc:
-            key = (g, float(conc))
-            if key not in theta_lookup:
-                raise ValueError(
-                    f"No pre-computed theta for genotype '{g}' at conc {conc}. "
-                    f"Ensure binding_data genotypes and titrant_conc match the config."
-                )
-            theta_true = float(theta_lookup[key])
-            if noise > 0:
-                theta_obs = float(np.clip(theta_true + rng.normal(0, noise), 0, 1))
-            else:
-                theta_obs = theta_true
-            rows.append({
-                "genotype": g,
-                "titrant_name": titrant_name,
-                "titrant_conc": conc,
-                "theta_obs": theta_obs,
-                "theta_std": noise,
-            })
-
-    return pd.DataFrame(rows)
-
-
-def _generate_presplit_data(combined_sample_df, combined_counts_df, cf, rng):
-    """
-    Generate simulated pre-split (t = -t_pre) data from selection-experiment
-    outputs.
-
-    For each unique ``(replicate, condition_pre)`` pair, this function draws a
-    synthetic sequencing sample from the initial library-frequency distribution
-    (encoded as ``ln_cfu_0`` in ``combined_counts_df``).  The resulting counts
-    are converted to ``ln_cfu`` and ``ln_cfu_std`` using the same
-    variance-propagation formula as ``counts_to_lncfu``, yielding a DataFrame
-    that can be passed directly to ``tfs-configure-model --presplit_df``.
-
-    Parameters
-    ----------
-    combined_sample_df : pandas.DataFrame
-        Concatenated sample metadata across all replicates (index = sample ID).
-        Must contain columns ``replicate`` and ``condition_pre``.
-    combined_counts_df : pandas.DataFrame
-        Concatenated genotype counts across all replicates.  Must contain
-        columns ``sample``, ``genotype``, and ``ln_cfu_0`` (the ground-truth
-        initial log-CFU per genotype computed by the simulation).
-    cf : dict
-        Full run configuration (already read from YAML).  Used keys:
-        ``cfu0``, ``total_num_reads``, ``prob_index_hop``.  The optional ``presplit_data`` sub-dict may
-        contain a scalar ``noise`` key (default 0) to add extra Gaussian noise
-        to ``ln_cfu`` on the log scale.
-    rng : numpy.random.Generator
-        Seeded random-number generator shared with the rest of the simulation.
-
-    Returns
-    -------
-    pandas.DataFrame
-        Columns: ``library``, ``replicate``, ``condition_pre``, ``genotype``,
-        ``ln_cfu``, ``ln_cfu_std``, ``ln_cfu_0_true``.
-        ``ln_cfu_0_true`` records the simulation ground truth for validation.
-        Rows with zero initial frequency (genotypes absent from the
-        transformation pool) receive ``ln_cfu = NaN``.
-    """
-    total_cfu0        = float(cf["cfu0"])
-    presplit_cfg      = cf.get("presplit_data", {})
-    extra_noise       = float(presplit_cfg.get("noise", 0.0)) if presplit_cfg else 0.0
-    pseudocount       = 1
-
-    # Reads per presplit sample: use the same budget as the main experiment
-    # (total reads / total selection samples).
-    total_num_reads    = int(cf["total_num_reads"])
-    total_num_samples  = len(combined_sample_df)
-    reads_per_sample   = max(1, int(round(total_num_reads / total_num_samples)))
-
-    # Attach library, condition_pre, and replicate to each (genotype, sample)
-    # row so we can group by (replicate, library, condition_pre) below.
-    sample_meta = (combined_sample_df
-                   .reset_index()[["sample", "replicate", "library", "condition_pre"]]
-                   .drop_duplicates("sample"))
-    counts_meta = pd.merge(combined_counts_df, sample_meta, on="sample", how="left")
-
-    # One row per (replicate, library, condition_pre, genotype), keeping the
-    # first occurrence of ln_cfu_0 (same value for all selection samples within
-    # a library group).
-    source = (counts_meta
-              .groupby(["replicate", "library", "condition_pre", "genotype"], observed=True)
-              .first()
-              .reset_index()[["replicate", "library", "condition_pre", "genotype", "ln_cfu_0"]])
-
-    rows = []
-    for (rep, lib, cp), grp in source.groupby(["replicate", "library", "condition_pre"],
-                                               observed=True):
-        genos    = grp["genotype"].values
-        ln_cfu0  = grp["ln_cfu_0"].values
-
-        # Convert ground-truth ln_cfu_0 to initial frequencies.
-        # Genotypes with ln_cfu_0 = -inf (absent from transformation pool)
-        # get frequency 0.
-        cfu0_raw  = np.where(np.isfinite(ln_cfu0), np.exp(ln_cfu0), 0.0)
-        total_cfu_group = cfu0_raw.sum()
-        if total_cfu_group == 0:
-            continue
-        freqs = cfu0_raw / total_cfu_group
-
-        # Simulate multinomial sequencing draw from the initial distribution.
-        counts = rng.multinomial(reads_per_sample, freqs)
-
-        # Optionally apply index hopping (same as the selection samples).
-        counts = _sim_index_hop(counts, cf.get("prob_index_hop"), rng)
-
-        # ---------- counts → ln_cfu (mirrors counts_to_lncfu logic) ----------
-        sample_cfu     = total_cfu0
-
-        total_adjusted = counts.sum() + len(counts) * pseudocount
-        adj_counts     = counts + pseudocount
-        freq_est       = adj_counts / total_adjusted
-        cfu_est        = freq_est * sample_cfu
-
-        # Variance from binomial frequency uncertainty only
-        var_freq      = freq_est * (1.0 - freq_est) / total_adjusted
-        with np.errstate(divide="ignore", invalid="ignore"):
-            rel_var_freq  = np.where(freq_est > 0,
-                                     var_freq / (freq_est ** 2), 0.0)
-        ln_cfu_var        = rel_var_freq
-
-        # Optional additional noise on the log scale
-        if extra_noise > 0.0:
-            ln_cfu_var = ln_cfu_var + extra_noise ** 2
-            ln_cfu_shift = rng.normal(0.0, extra_noise, size=len(genos))
-        else:
-            ln_cfu_shift = np.zeros(len(genos))
-
-        with np.errstate(divide="ignore"):
-            ln_cfu_vals = np.log(cfu_est) + ln_cfu_shift
-
-        # Zero-count entries become NaN
-        ln_cfu_vals = np.where(cfu_est > 0, ln_cfu_vals, np.nan)
-        ln_cfu_var  = np.where(cfu_est > 0, ln_cfu_var,  np.nan)
-        ln_cfu_std_vals = np.sqrt(ln_cfu_var)
-
-        for i, geno in enumerate(genos):
-            rows.append({
-                "library":       lib,
-                "replicate":     rep,
-                "condition_pre": cp,
-                "genotype":      geno,
-                "ln_cfu":        float(ln_cfu_vals[i]),
-                "ln_cfu_std":    float(ln_cfu_std_vals[i]),
-                "ln_cfu_0_true": float(ln_cfu0[i]),
-            })
-
-    return pd.DataFrame(rows)
 
 
 def run_simulation_from_config(
@@ -223,9 +27,13 @@ def run_simulation_from_config(
     selection_experiment. Writes library, parameters, genotype_theta (long-form:
     genotype/titrant_name/titrant_conc/theta), and analysis-ready growth CSV
     files. If the config contains a 'binding_data' block, also writes a
-    simulated binding curve CSV. If it contains a 'base_growth_data' block,
-    also writes a simulated direct growth-rate calibration CSV (see
-    tfscreen.simulate.base_growth_data.generate_base_growth_df).
+    simulated binding curve CSV (see
+    tfscreen.simulate.binding_data.generate_binding_df). If it contains a
+    'base_growth_data' block, also writes a simulated direct growth-rate
+    calibration CSV (see
+    tfscreen.simulate.base_growth_data.generate_base_growth_df). If it
+    contains a 'presplit_data' block, also writes a simulated presplit CSV
+    (see tfscreen.simulate.presplit_data.generate_presplit_df).
 
     Parameters
     ----------
@@ -329,7 +137,7 @@ def run_simulation_from_config(
     print(f"\nWrote: {', '.join(out_path(n) for n in ['library', 'parameters', 'genotype_theta', 'growth'])}")
 
     if "binding_data" in cf:
-        binding_df = _generate_binding_data(cf["binding_data"], rng, binding_theta_df)
+        binding_df = generate_binding_df(cf["binding_data"], rng, binding_theta_df)
         binding_df.to_csv(out_path("binding"), index=False)
         print(f"Wrote: {out_path('binding')}")
 
@@ -340,9 +148,9 @@ def run_simulation_from_config(
 
     if "presplit_data" in cf:
         print("\nGenerating presplit data...", flush=True)
-        presplit_df = _generate_presplit_data(combined_sample_df,
-                                              combined_counts_df,
-                                              cf, rng)
+        presplit_df = generate_presplit_df(combined_sample_df,
+                                           combined_counts_df,
+                                           cf, rng)
         presplit_df.to_csv(out_path("presplit"), index=False)
         print(f"Wrote: {out_path('presplit')}")
 
