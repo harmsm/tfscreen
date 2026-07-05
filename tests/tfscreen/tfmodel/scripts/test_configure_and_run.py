@@ -113,11 +113,11 @@ def test_configure_model_passes_base_growth_df_to_orchestrator_and_config(mock_o
     assert written_config["data"]["base_growth"] == "bg.csv"
 
 
-def test_configure_model_requires_transform_lam_for_empirical(mock_orchestrator, tmpdir):
-    """transformation_model='empirical' (or 'logit_norm') without transform_lam
+def test_configure_model_requires_transformation_lambda_for_empirical(mock_orchestrator, tmpdir):
+    """transformation_model='empirical' (or 'logit_norm') without transformation_lambda
     must raise before ModelOrchestrator is even constructed."""
     out_prefix = os.path.join(tmpdir, "test")
-    with pytest.raises(ValueError, match="transform_lam"):
+    with pytest.raises(ValueError, match="transformation_lambda"):
         configure_model(
             "b.csv", growth_df="g.csv",
             transformation_model="empirical",
@@ -125,25 +125,25 @@ def test_configure_model_requires_transform_lam_for_empirical(mock_orchestrator,
         )
 
 
-def test_configure_model_allows_single_without_transform_lam(mock_orchestrator, tmpdir):
-    """transformation_model='single' (the default) never requires transform_lam."""
+def test_configure_model_allows_single_without_transformation_lambda(mock_orchestrator, tmpdir):
+    """transformation_model='single' (the default) never requires transformation_lambda."""
     out_prefix = os.path.join(tmpdir, "test")
     configure_model("b.csv", growth_df="g.csv", out_prefix=out_prefix)
     assert os.path.exists(f"{out_prefix}_config.yaml")
 
 
-def test_configure_model_forwards_transform_lam_to_orchestrator(mock_orchestrator, tmpdir):
+def test_configure_model_forwards_transformation_lambda_to_orchestrator(mock_orchestrator, tmpdir):
     mock_orchestrator_class, mock_orchestrator_inst = mock_orchestrator
     out_prefix = os.path.join(tmpdir, "test")
 
     configure_model(
         "b.csv", growth_df="g.csv",
         transformation_model="empirical",
-        transform_lam=(0.3572, 0.13),
+        transformation_lambda=(0.3572, 0.13),
         out_prefix=out_prefix,
     )
 
-    assert mock_orchestrator_class.call_args.kwargs["transform_lam"] == (0.3572, 0.13)
+    assert mock_orchestrator_class.call_args.kwargs["transformation_lambda"] == (0.3572, 0.13)
     assert mock_orchestrator_class.call_args.kwargs["transformation"] == "empirical"
 
 

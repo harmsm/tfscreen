@@ -45,7 +45,7 @@ def dummy_orchestrator():
     # on NEEDS_FULL_POPULATION_THETA=True.
     return ModelOrchestrator(
         growth_df, binding_df,
-        transformation="empirical", transform_lam=(0.36, 0.05),
+        transformation="empirical", transformation_lambda=(0.36, 0.05),
     )
 
 def test_copy_orchestrator_defaults(dummy_orchestrator):

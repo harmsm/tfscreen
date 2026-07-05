@@ -822,7 +822,7 @@ class ModelOrchestrator:
     transformation : str, optional
         Model name for transformation correction. Allowed values are 'single'
         (default), 'empirical', or 'logit_norm'.
-    transform_lam : tuple, optional
+    transformation_lambda : tuple, optional
         ``(mean, std)`` -- the experimentally measured congression lambda,
         in linear space -- used to anchor the ``transformation`` prior when
         it is 'empirical' or 'logit_norm'. Forbidden when
@@ -873,7 +873,7 @@ class ModelOrchestrator:
                  activity="horseshoe_geno",
                  theta="hill_geno",
                  transformation="single",
-                 transform_lam=None,
+                 transformation_lambda=None,
                  theta_rescale="passthrough",
                  theta_growth_noise="logit_normal",
                  theta_binding_noise="zero",
@@ -904,7 +904,7 @@ class ModelOrchestrator:
         self._activity = activity
         self._theta = theta
         self._transformation = transformation
-        self._transform_lam = transform_lam
+        self._transformation_lambda = transformation_lambda
         self._theta_rescale = theta_rescale
         self._theta_growth_noise = theta_growth_noise
         self._theta_binding_noise = theta_binding_noise
@@ -932,15 +932,15 @@ class ModelOrchestrator:
                 f"use it."
             )
 
-        if self._transformation == "single" and self._transform_lam is not None:
+        if self._transformation == "single" and self._transformation_lambda is not None:
             raise ValueError(
-                "transform_lam was provided but transformation == 'single', "
+                "transformation_lambda was provided but transformation == 'single', "
                 "which has no lambda parameter to anchor it to."
             )
-        if self._transform_lam is not None and len(self._transform_lam) != 2:
+        if self._transformation_lambda is not None and len(self._transformation_lambda) != 2:
             raise ValueError(
-                f"transform_lam must be a (mean, std) pair; got "
-                f"{self._transform_lam!r}."
+                f"transformation_lambda must be a (mean, std) pair; got "
+                f"{self._transformation_lambda!r}."
             )
 
         self._initialize_data()
@@ -1607,7 +1607,7 @@ class ModelOrchestrator:
                     component_module.get_priors(dk_geno_values=self._dk_geno_values)
             elif "lam_mean" in priors_sig.parameters:
                 lam_mean, lam_std = (
-                    (None, None) if self._transform_lam is None else self._transform_lam
+                    (None, None) if self._transformation_lambda is None else self._transformation_lambda
                 )
                 priors_class_kwargs[prior_group][key] = \
                     component_module.get_priors(lam_mean=lam_mean, lam_std=lam_std)
@@ -1620,8 +1620,8 @@ class ModelOrchestrator:
             guesses_kwargs = {"name": key, "data": component_data}
             if "presplit" in guesses_sig.parameters:
                 guesses_kwargs["presplit"] = self._data.presplit
-            if "lam_mean" in guesses_sig.parameters and self._transform_lam is not None:
-                guesses_kwargs["lam_mean"] = self._transform_lam[0]
+            if "lam_mean" in guesses_sig.parameters and self._transformation_lambda is not None:
+                guesses_kwargs["lam_mean"] = self._transformation_lambda[0]
             guesses = component_module.get_guesses(**guesses_kwargs)
             init_params.update(guesses)
 
@@ -1860,7 +1860,7 @@ class ModelOrchestrator:
             "activity":self._activity,
             "theta":self._theta,
             "transformation":self._transformation,
-            "transform_lam":self._transform_lam,
+            "transformation_lambda":self._transformation_lambda,
             "theta_rescale":self._theta_rescale,
             "theta_growth_noise":self._theta_growth_noise,
             "theta_binding_noise":self._theta_binding_noise,

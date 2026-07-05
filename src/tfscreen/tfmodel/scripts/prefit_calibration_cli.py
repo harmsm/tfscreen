@@ -266,6 +266,11 @@ def _build_calibration_model(orchestrator_prod, growth_df_cal, binding_df_cal):
     settings = dict(orchestrator_prod.settings)
     for k, v in _CALIBRATION_OVERRIDES.items():
         settings[k] = v
+    # transformation is forced to "single" above, which carries no lambda
+    # parameter; drop any production transformation_lambda (set when the production
+    # transformation is "empirical"/"logit_norm") so it doesn't get passed
+    # through to a "single" calibration model.
+    settings["transformation_lambda"] = None
     settings["spiked_genotypes"] = None
     # Equal weighting: the calibration MAP must learn the binding→growth
     # linkage from both data sources together.  The production binding_weight

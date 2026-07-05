@@ -649,26 +649,26 @@ def test_dk_geno_pinned_builds_values_and_wires_into_priors(mocker, tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# transform_lam wiring
+# transformation_lambda wiring
 # ---------------------------------------------------------------------------
 
-def test_transform_lam_forbidden_with_single_transformation():
-    """transformation='single' has no lambda parameter to anchor transform_lam
+def test_transformation_lambda_forbidden_with_single_transformation():
+    """transformation='single' has no lambda parameter to anchor transformation_lambda
     to, so supplying it must raise before any data I/O happens."""
     with pytest.raises(ValueError, match="transformation == 'single'"):
         ModelOrchestrator(
             "g.csv", "b.csv",
             transformation="single",
-            transform_lam=(0.36, 0.05),
+            transformation_lambda=(0.36, 0.05),
         )
 
 
-def test_transform_lam_wrong_length_raises():
+def test_transformation_lambda_wrong_length_raises():
     with pytest.raises(ValueError, match="mean, std"):
         ModelOrchestrator(
             "g.csv", "b.csv",
             transformation="empirical",
-            transform_lam=(0.36,),
+            transformation_lambda=(0.36,),
         )
 
 
@@ -702,7 +702,7 @@ class _SpyTransformationModule:
         return getattr(self._real_module, name)
 
 
-def _build_orchestrator_with_transformation_spy(mocker, spy, transform_lam):
+def _build_orchestrator_with_transformation_spy(mocker, spy, transformation_lambda):
     mock_growth_tm = create_mock_tm(is_growth=True)
     mock_binding_tm = create_mock_tm(is_growth=False)
     mocker.patch("tfscreen.tfmodel.model_orchestrator._read_growth_df")
@@ -742,14 +742,14 @@ def _build_orchestrator_with_transformation_spy(mocker, spy, transform_lam):
         return ModelOrchestrator(
             "g.csv", "b.csv",
             theta="hill_geno", transformation="logit_norm",
-            transform_lam=transform_lam,
+            transformation_lambda=transformation_lambda,
             condition_growth="independent", growth_transition="instant",
             activity="hierarchical_geno", theta_growth_noise="zero",
         )
 
 
-def test_transform_lam_wired_into_component_priors_and_guesses(mocker):
-    """End-to-end: transform_lam=(mean, std) must reach the real component's
+def test_transformation_lambda_wired_into_component_priors_and_guesses(mocker):
+    """End-to-end: transformation_lambda=(mean, std) must reach the real component's
     get_priors(lam_mean=..., lam_std=...) and get_guesses(..., lam_mean=...)
     via signature-based dispatch in _initialize_classes."""
     from tfscreen.tfmodel.generative.components.transformation import logit_norm as real_logit_norm
@@ -761,11 +761,11 @@ def test_transform_lam_wired_into_component_priors_and_guesses(mocker):
     assert spy.guesses_calls == [0.3572]
 
     # Round-trips through the settings dict for YAML config serialisation.
-    assert model.settings["transform_lam"] == (0.3572, 0.13)
+    assert model.settings["transformation_lambda"] == (0.3572, 0.13)
 
 
-def test_transform_lam_omitted_falls_back_to_placeholder(mocker):
-    """Without transform_lam, the component still gets called (with
+def test_transformation_lambda_omitted_falls_back_to_placeholder(mocker):
+    """Without transformation_lambda, the component still gets called (with
     lam_mean=lam_std=None) rather than being skipped -- it falls back to
     its own placeholder prior rather than ModelOrchestrator refusing to
     build the model."""
@@ -776,7 +776,7 @@ def test_transform_lam_omitted_falls_back_to_placeholder(mocker):
 
     assert spy.priors_calls == [(None, None)]
     assert spy.guesses_calls == [None]
-    assert model.settings["transform_lam"] is None
+    assert model.settings["transformation_lambda"] is None
 
 
 @pytest.mark.parametrize("transformation_key, expected_needs_population", [
@@ -914,7 +914,7 @@ def test_model_class_properties(initialized_model_class):
     model._activity = "a"
     model._theta = "t"
     model._transformation = "tr"
-    model._transform_lam = None
+    model._transformation_lambda = None
     model._theta_rescale = "rs"
     model._condition_growth = "cg"
     model._growth_transition = "gt"
@@ -941,7 +941,7 @@ def test_model_class_properties(initialized_model_class):
     assert ModelOrchestrator.settings.fget(model)["activity"] == "a"
     assert ModelOrchestrator.settings.fget(model)["theta"] == "t"
     assert ModelOrchestrator.settings.fget(model)["transformation"] == "tr"
-    assert ModelOrchestrator.settings.fget(model)["transform_lam"] is None
+    assert ModelOrchestrator.settings.fget(model)["transformation_lambda"] is None
     assert ModelOrchestrator.settings.fget(model)["theta_rescale"] == "rs"
     assert ModelOrchestrator.settings.fget(model)["condition_growth"] == "cg"
     assert ModelOrchestrator.settings.fget(model)["growth_transition"] == "gt"

@@ -58,7 +58,7 @@ def configure_model(binding_df,
                     activity_model="horseshoe_geno",
                     theta_model="hill_geno",
                     transformation_model="single",
-                    transform_lam=None,
+                    transformation_lambda=None,
                     theta_rescale_model="passthrough",
                     theta_growth_noise_model="zero",
                     theta_binding_noise_model="zero",
@@ -140,7 +140,7 @@ def configure_model(binding_df,
     transformation_model : str, optional
         Model for transformation correction. Allowed values are 'single'
         (default), 'empirical', or 'logit_norm'.
-    transform_lam : list or tuple, optional
+    transformation_lambda : list or tuple, optional
         ``(mean, std)`` -- the experimentally measured congression lambda,
         in linear space (e.g. ``(0.36, 0.05)``). Required when
         ``transformation_model`` is 'empirical' or 'logit_norm'; forbidden
@@ -209,12 +209,12 @@ def configure_model(binding_df,
     if not binding_only:
         check_component_compatibility(condition_growth_model, theta_rescale_model)
 
-    if transformation_model != "single" and transform_lam is None:
+    if transformation_model != "single" and transformation_lambda is None:
         raise ValueError(
             f"transformation_model='{transformation_model}' requires "
-            f"transform_lam (mean, std) -- the experimentally measured "
+            f"transformation_lambda (mean, std) -- the experimentally measured "
             f"congression lambda in linear space, e.g. "
-            f"transform_lam=(0.36, 0.05)."
+            f"transformation_lambda=(0.36, 0.05)."
         )
 
     # Initialize model to build mappings and get guesses
@@ -230,7 +230,7 @@ def configure_model(binding_df,
                      activity=activity_model,
                      theta=theta_model,
                      transformation=transformation_model,
-                     transform_lam=transform_lam,
+                     transformation_lambda=transformation_lambda,
                      theta_rescale=theta_rescale_model,
                      theta_growth_noise=theta_growth_noise_model,
                      theta_binding_noise=theta_binding_noise_model,
@@ -264,9 +264,9 @@ def main():
                                               "thermo_data":str,
                                               "batch_size":int,
                                               "binding_weight":float,
-                                              "transform_lam":float},
+                                              "transformation_lambda":float},
                             manual_arg_nargs={"spiked":"+",
-                                              "transform_lam":2})
+                                              "transformation_lambda":2})
 
 if __name__ == "__main__":
     main()

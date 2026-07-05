@@ -962,6 +962,41 @@ class TestBuildCalibrationModel:
         assert kwargs["dk_geno"] == "fixed"
         assert "dk_geno_pins_file" not in kwargs
 
+    def test_transformation_lambda_dropped_when_forced_to_single(self):
+        """
+        Production transformation="empirical" carries a transformation_lambda
+        (mean, std) pair anchoring its lambda parameter. The calibration
+        model always overrides transformation to "single", which has no
+        lambda parameter -- ModelOrchestrator raises if transformation_lambda is
+        still set in that case, so it must be cleared here too.
+        """
+        orchestrator_prod = MagicMock()
+        orchestrator_prod.settings = {
+            "theta": "categorical_geno",
+            "activity": "horseshoe_geno",
+            "dk_geno": "fixed",
+            "ln_cfu0": "fixed",
+            "transformation": "empirical",
+            "transformation_lambda": (0.3572, 0.2592),
+            "theta_growth_noise": "beta",
+            "theta_binding_noise": "beta",
+            "condition_growth": "linear",
+            "growth_transition": "instant",
+            "batch_size": None,
+            "spiked_genotypes": None,
+        }
+
+        with patch(
+            "tfscreen.tfmodel.scripts"
+            ".prefit_calibration_cli.ModelOrchestrator"
+        ) as MockGM:
+            MockGM.return_value = MagicMock()
+            _build_calibration_model(orchestrator_prod, pd.DataFrame(), pd.DataFrame())
+
+        kwargs = MockGM.call_args.kwargs
+        assert kwargs["transformation"] == "single"
+        assert kwargs["transformation_lambda"] is None
+
     def test_binding_weight_reset_from_large_production_value(self):
         # Reproduces the weighting bug: production YAML stores a large
         # binding_weight (N_growth / N_binding); the calibration model

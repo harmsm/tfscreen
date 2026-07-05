@@ -43,9 +43,9 @@ configure_model:
         transformation: empirical
         # (mean, std) of the experimentally measured congression lambda, in
         # linear space -- required whenever transformation is 'empirical'
-        # or 'logit_norm' (transformation and transform_lam always travel
+        # or 'logit_norm' (transformation and transformation_lambda always travel
         # together, hence the joint variant here).
-        transform_lam: [0.3572, 0.13]
+        transformation_lambda: [0.3572, 0.13]
         theta_rescale: passthrough
 
   # --- Auto: enumerate every registered component for an axis --------------
