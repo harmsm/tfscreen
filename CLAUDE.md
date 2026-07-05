@@ -113,19 +113,20 @@ The hierarchical Bayesian inference engine. Key files:
 
 - **`generative/registry.py`** — `model_registry` dict mapping component names to module implementations. This is where all swappable components are registered.
 
-- **`generative/components/`** — Pluggable model components selected via YAML config:
+- **`generative/components/`** — Pluggable model components selected via the YAML config's `components:` section (registry key noted in parens where it differs from the directory name):
   - `activity/`: `fixed`, `hierarchical_geno`, `hierarchical_mut`, `horseshoe_geno`, `horseshoe_mut`
-  - `growth/`: `linear`, `power`, `saturation`
+  - `growth/` (registry key `condition_growth`): `linear`, `power`, `saturation`
   - `growth_transition/`: `instant`, `memory`, `baranyi`, `baranyi_k`, `baranyi_tau`, `two_pop`
   - `transformation/`: `empirical`, `logit_norm`, `single`
   - `theta/`: `categorical_geno`, `hill_geno`, `hill_mut`; thermodynamic partition-function variants under `theta/thermo/` (lac dimer and MWC dimer, with/without unfolded state, PK/PnnC/PddG parameterizations)
   - `theta_rescale/`: `passthrough`, `logit`
-  - `dk_geno/`: `fixed`, `hierarchical_geno`
-  - `noise/`: `zero`, `beta`, `logit_normal` (theta observation noise)
+  - `dk_geno/`: `fixed`, `hierarchical_geno`, `pinned`
+  - `noise/` (theta observation noise; registry keys `theta_growth_noise`: `zero`/`beta`/`logit_normal`, `theta_binding_noise`: `zero`/`beta`)
   - `growth_noise/`: `zero`, `normal_kt`
   - `ln_cfu0/`: `hierarchical`, `hierarchical_factored`
   - `sample_offset/`: `zero`, `normal`
-  - `observe/`: `binding`, `growth` (observation likelihood layers)
+
+- **`generative/observe/`** — *not* under `components/`, and not swappable via YAML. Holds the four observation-likelihood layers (`binding`, `growth`, `presplit`, `base_growth`), registered under flat `model_registry` keys `observe_binding`/`observe_growth`/`observe_presplit`/`observe_base_growth`. `ModelOrchestrator` wires in `observe_binding` and (unless `binding_only`) `observe_growth` unconditionally, plus `observe_presplit`/`observe_base_growth` only when the corresponding data (`presplit_df`/`base_growth_df`) was supplied — these are parallel, independently-gated observers, not alternative choices for one axis.
 
 ### Adding a New Model Component
 
@@ -133,6 +134,8 @@ The hierarchical Bayesian inference engine. Key files:
 2. Implement the required interface (follow an existing component as reference)
 3. Register it in `tfmodel/generative/registry.py` under the appropriate category key
 4. Add a test in `tests/tfscreen/tfmodel/components/<category>/`
+
+(This applies to `components/` categories. `generative/observe/` is not a `<category>/<variant>` registry entry — see above.)
 
 ### Key Abstractions
 
