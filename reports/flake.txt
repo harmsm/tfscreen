@@ -5160,6 +5160,8 @@
 ./tests/tfscreen/simulate/test_presplit_data.py:155:32: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/simulate/test_presplit_data.py:157:32: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/simulate/test_presplit_data.py:159:36: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_report_cfu0_cli.py:5:1: F401 'pytest' imported but unused
+./tests/tfscreen/simulate/test_report_cfu0_cli.py:131:26: E741 ambiguous variable name 'l'
 ./tests/tfscreen/simulate/test_run_simulation.py:3:1: F401 'os' imported but unused
 ./tests/tfscreen/simulate/test_run_simulation.py:5:1: F401 'unittest.mock.MagicMock' imported but unused
 ./tests/tfscreen/simulate/test_run_simulation.py:7:1: F401 'tfscreen.util' imported but unused
@@ -7677,8 +7679,8 @@
 2     E713 test for membership should be 'not in'
 1     E722 do not use bare 'except'
 1     E731 do not assign a lambda expression, use a def
-20    E741 ambiguous variable name 'l'
-229   F401 'tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U0_a.thermo.run_model' imported but unused
+21    E741 ambiguous variable name 'l'
+230   F401 'tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U0_a.thermo.run_model' imported but unused
 11    F541 f-string is missing placeholders
 4     F811 redefinition of unused 'np' from line 1
 42    F841 local variable 'e' is assigned to but never used
@@ -7686,4 +7688,4 @@
 85    W292 no newline at end of file
 1583  W293 blank line contains whitespace
 30    W391 blank line at end of file
-7640
+7642

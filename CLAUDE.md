@@ -54,6 +54,7 @@ tfs-predict-theta          # Predict operator occupancy
 tfs-cat-response           # Fit categorical response curves
 tfs-diagnose-nan           # Diagnose NaN issues in inference
 tfs-simulate               # Simulate a full experiment
+tfs-report-cfu0            # Report average ln_cfu0 by genotype class from a simulate config
 tfs-setup-sim-grid         # Set up grid of simulation runs
 tfs-setup-grid             # Set up grid of model configs
 tfs-summarize-grid         # Summarize grid results
@@ -249,6 +250,7 @@ These two dicts are the mechanism by which binding data is "pinned" into the gro
 | `simulate/build_sample_dataframes.py` | Constructs sample/timepoint DataFrames from simulation config |
 | `simulate/selection_experiment.py` | Models the selection experiment (growth + sequencing) |
 | `simulate/scripts/simulate_cli.py` | `tfs-simulate` CLI entry point; runs `library_prediction` + `selection_experiment` across replicates and writes all output CSVs, delegating the optional `binding_data`/`presplit_data`/`base_growth_data` blocks to their respective generator modules above |
+| `simulate/scripts/report_cfu0_cli.py` | `tfs-report-cfu0` CLI entry point; reuses `library_prediction` + `selection_experiment` (same pattern as `simulate_cli.py`) across `num_replicates` to report mean `ln_cfu_0` and surviving-genotype counts by class (`wt`/`spiked`/`single`/`double`), for tuning `transform_sizes`/`library_mixture`/`cfu0` against observed real-library values |
 | `simulate/run_simulation.py` | Simpler, non-CLI orchestrator (`run_simulation`); does not support `binding_data`/`presplit_data`/`base_growth_data` |
 
 ## YAML Standards
