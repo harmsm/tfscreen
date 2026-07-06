@@ -3641,7 +3641,7 @@
 ./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:893:1: C901 '_apply_guesses_updates' is too complex (12)
 ./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:1045:1: E303 too many blank lines (3)
 ./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:1049:1: E302 expected 2 blank lines, found 3
-./src/tfscreen/tfmodel/scripts/setup_grid_cli.py:160:1: C901 'setup_grid' is too complex (17)
+./src/tfscreen/tfmodel/scripts/setup_grid_cli.py:163:1: C901 'setup_grid' is too complex (17)
 ./src/tfscreen/tfmodel/scripts/subset_genotypes_cli.py:40:1: C901 'subset_genotypes' is too complex (23)
 ./src/tfscreen/tfmodel/scripts/subset_genotypes_cli.py:93:5: F841 local variable 'all_genotypes' is assigned to but never used
 ./src/tfscreen/tfmodel/scripts/summarize_fit_cli.py:154:1: C901 '_read_all_losses' is too complex (11)
@@ -3649,7 +3649,7 @@
 ./src/tfscreen/tfmodel/scripts/summarize_fit_cli.py:528:1: C901 '_summarize_condition_growth_params' is too complex (14)
 ./src/tfscreen/tfmodel/scripts/summarize_fit_cli.py:723:1: C901 'summarize_fit' is too complex (59)
 ./src/tfscreen/tfmodel/scripts/summarize_grid_cli.py:47:30: E127 continuation line over-indented for visual indent
-./src/tfscreen/tfmodel/scripts/summarize_grid_cli.py:76:1: C901 'summarize_grid' is too complex (14)
+./src/tfscreen/tfmodel/scripts/summarize_grid_cli.py:57:1: C901 'summarize_grid' is too complex (11)
 ./src/tfscreen/tfmodel/tensors/batch.py:5:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/tfmodel/tensors/batch.py:44:59: E231 missing whitespace after ','
 ./src/tfscreen/tfmodel/tensors/batch.py:46:47: E231 missing whitespace after ','
@@ -7122,8 +7122,8 @@
 ./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:1419:14: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:1681:1: E402 module level import not at top of file
 ./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:2061:21: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/scripts/test_summarize_grid_cli.py:79:9: F841 local variable 'data' is assigned to but never used
-./tests/tfscreen/tfmodel/scripts/test_summarize_grid_cli.py:183:91: E712 comparison to True should be 'if cond is True:' or 'if cond:'
+./tests/tfscreen/tfmodel/scripts/test_summarize_grid_cli.py:78:9: F841 local variable 'data' is assigned to but never used
+./tests/tfscreen/tfmodel/scripts/test_summarize_grid_cli.py:182:91: E712 comparison to True should be 'if cond is True:' or 'if cond:'
 ./tests/tfscreen/tfmodel/tensors/test_batch.py:3:1: F401 'numpy as np' imported but unused
 ./tests/tfscreen/tfmodel/tensors/test_batch.py:4:1: F401 'collections.namedtuple' imported but unused
 ./tests/tfscreen/tfmodel/tensors/test_batch.py:14:1: E302 expected 2 blank lines, found 1

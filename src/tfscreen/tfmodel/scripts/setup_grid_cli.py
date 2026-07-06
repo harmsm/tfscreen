@@ -24,7 +24,7 @@ GRID YAML FORMAT
         variants:
           - theta_model: hill_mut
             epistasis: true
-          - theta_model: hill
+          - theta_model: hill_geno
             epistasis: false
 
     template:                # variables injected into the Jinja2 template only
@@ -81,10 +81,13 @@ _COMPONENT_AXES = frozenset({
     "theta_rescale",
     "theta_growth_noise",
     "theta_binding_noise",
+    "growth_noise",
 })
 
 # configure_model arguments that are file paths and need abs→rel rewriting.
-_PATH_KEYS = frozenset({"binding_df", "growth_df", "thermo_data"})
+_PATH_KEYS = frozenset({
+    "binding_df", "growth_df", "presplit_df", "base_growth_df", "thermo_data",
+})
 
 # Fixed output prefix used inside every per-combination run.
 _CONFIGURE_OUT_PREFIX = "tfs_configure"
