@@ -1682,6 +1682,7 @@ from tfscreen.tfmodel.scripts.summarize_fit_cli import (
     _summarize_condition_growth_params,
     _summarize_growth_params,
     _summarize_k_ref,
+    _summarize_transformation_lam,
 )
 
 
@@ -1876,6 +1877,76 @@ class TestSummarizeKRef:
             _summarize_k_ref(str(tmp_path), out_prefix)
         assert any("ref" in str(x.message).lower() for x in w)
         assert not os.path.exists(out_prefix + "_params_k_ref.csv")
+
+
+class TestSummarizeTransformationLam:
+
+    def test_no_output_when_sim_transformation_lam_absent(self, tmp_path):
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        _summarize_transformation_lam(str(tmp_path), out_prefix)
+        assert not os.path.exists(out_prefix + "_params_lam.csv")
+
+    def test_lam_csv_written_with_ref(self, tmp_path):
+        pd.DataFrame({"parameter": ["lam"], "ref": [1.5]}).to_csv(
+            str(tmp_path / "run_sim_transformation_lam.csv"), index=False
+        )
+        pd.DataFrame({"parameter": ["lam"], "q0.5": [1.48]}).to_csv(
+            str(tmp_path / "run_params_lam.csv"), index=False
+        )
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            _summarize_transformation_lam(str(tmp_path), out_prefix)
+        out_path = out_prefix + "_params_lam.csv"
+        assert os.path.exists(out_path)
+        df = pd.read_csv(out_path)
+        assert df.loc[0, "ref"] == pytest.approx(1.5)
+        assert df.loc[0, "q0.5"] == pytest.approx(1.48)
+
+    def test_no_pdf_written_for_transformation_lam(self, tmp_path):
+        """A single point can't usefully be plotted; no correlation PDF."""
+        pd.DataFrame({"parameter": ["lam"], "ref": [1.5]}).to_csv(
+            str(tmp_path / "run_sim_transformation_lam.csv"), index=False
+        )
+        pd.DataFrame({"parameter": ["lam"], "q0.5": [1.48]}).to_csv(
+            str(tmp_path / "run_params_lam.csv"), index=False
+        )
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            _summarize_transformation_lam(str(tmp_path), out_prefix)
+        assert not os.path.exists(out_prefix + "_params_lam.pdf")
+
+    def test_warns_when_params_lam_missing(self, tmp_path):
+        """Sim ground truth exists but the fit config's transformation
+        component didn't extract a 'lam' (e.g. transformation: single)."""
+        pd.DataFrame({"parameter": ["lam"], "ref": [1.5]}).to_csv(
+            str(tmp_path / "run_sim_transformation_lam.csv"), index=False
+        )
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _summarize_transformation_lam(str(tmp_path), out_prefix)
+        assert any("lam" in str(x.message) for x in w)
+
+    def test_missing_ref_column_in_sim_file_warns(self, tmp_path):
+        pd.DataFrame({"parameter": ["lam"], "value": [1.5]}).to_csv(
+            str(tmp_path / "run_sim_transformation_lam.csv"), index=False
+        )
+        pd.DataFrame({"parameter": ["lam"], "q0.5": [1.48]}).to_csv(
+            str(tmp_path / "run_params_lam.csv"), index=False
+        )
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _summarize_transformation_lam(str(tmp_path), out_prefix)
+        assert any("ref" in str(x.message).lower() for x in w)
+        assert not os.path.exists(out_prefix + "_params_lam.csv")
 
 
 class TestSummarizeGrowthParamsIntegration:

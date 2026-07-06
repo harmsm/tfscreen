@@ -651,6 +651,55 @@ def _summarize_k_ref(run_dir, out_prefix):
     _try_calibration(merged, "ref", out_name[:-4], "k_ref")
 
 
+def _summarize_transformation_lam(run_dir, out_prefix):
+    """Annotate *_params_lam.csv with ground truth from tfs_sim_transformation_lam.csv.
+
+    lam is a single global scalar (the transformation component's congression
+    Poisson-rate parameter), not genotype- or condition-indexed, so both the
+    ground-truth file and the fit's extracted file have exactly one row.
+    Silently skips when the ground-truth file is absent (real-data runs).
+    Warns (but does not raise) when the ground-truth file exists but the fit
+    config's transformation component didn't extract a 'lam' (e.g.
+    transformation: single, which has no such site). No correlation plot is
+    produced since a single point can't usefully be plotted; only the
+    annotated CSV (and a best-effort calibration check) is written.
+    """
+    sim_path = _find_unique(run_dir, "_sim_transformation_lam.csv",
+                            "sim transformation lam", warn_missing=False)
+    if sim_path is None:
+        return
+
+    param_file = _find_unique(run_dir, "_params_lam.csv", "transformation lam params",
+                              warn_missing=False)
+    if param_file is None:
+        warnings.warn(f"Expected *_params_lam.csv in {run_dir} but none found")
+        return
+
+    try:
+        ref_df = pd.read_csv(sim_path)
+        params_df = pd.read_csv(param_file)
+    except Exception as exc:
+        warnings.warn(f"Could not read transformation lam files: {exc}")
+        return
+
+    if "ref" not in ref_df.columns or len(ref_df) == 0:
+        warnings.warn(f"{sim_path} has no usable 'ref' value; skipping transformation lam summary")
+        return
+
+    merged = params_df.copy()
+    merged["ref"] = float(ref_df["ref"].iloc[0])
+
+    out_name = f"{out_prefix}_params_lam.csv"
+    try:
+        merged.to_csv(out_name, index=False)
+        print(f"Wrote parameter summary to {out_name}")
+    except Exception as exc:
+        warnings.warn(f"Could not write {out_name}: {exc}")
+        return
+
+    _try_calibration(merged, "ref", out_name[:-4], "transformation_lam")
+
+
 def _summarize_growth_params(run_dir, out_prefix):
     """Annotate growth-model parameter files with simulated ground truth.
 
@@ -1031,6 +1080,7 @@ def summarize_fit(run_dir,
     # --- Sim-parameter correlation CSVs ---
     _summarize_params(run_dir, out_prefix)
     _summarize_growth_params(run_dir, out_prefix)
+    _summarize_transformation_lam(run_dir, out_prefix)
 
     return results
 

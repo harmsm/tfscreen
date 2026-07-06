@@ -9,6 +9,7 @@ from tfscreen.simulate.binding_data import generate_binding_df
 from tfscreen.simulate.presplit_data import generate_presplit_df
 from tfscreen.simulate.base_growth_data import generate_base_growth_df, generate_k_ref_df
 from tfscreen.simulate.growth_parameters_output import generate_growth_parameters_df
+from tfscreen.simulate.transformation_lam_output import generate_transformation_lam_df
 from tfscreen.process_raw import counts_to_lncfu
 from tfscreen.util.cli.generalized_main import generalized_main
 
@@ -26,9 +27,11 @@ def run_simulation_from_config(
     Runs library_prediction once to establish ground-truth phenotypes, then
     simulates num_replicates independent experimental replicates using
     selection_experiment. Writes library, parameters, genotype_theta (long-form:
-    genotype/titrant_name/titrant_conc/theta), growth, and growth_parameters
+    genotype/titrant_name/titrant_conc/theta), growth, growth_parameters
     (per-condition condition_growth ground truth; see
-    tfscreen.simulate.growth_parameters_output.generate_growth_parameters_df)
+    tfscreen.simulate.growth_parameters_output.generate_growth_parameters_df),
+    and transformation_lam (single-row congression Poisson-rate ground truth;
+    see tfscreen.simulate.transformation_lam_output.generate_transformation_lam_df)
     CSV files. If the config contains a 'binding_data' block, also writes a
     simulated binding curve CSV (see
     tfscreen.simulate.binding_data.generate_binding_df). If it contains a
@@ -64,7 +67,7 @@ def run_simulation_from_config(
     config_out = os.path.join(output_dir, f"{output_prefix}input-config.yaml")
 
     output_names = ["library", "parameters", "genotype_theta", "growth",
-                    "growth_parameters"]
+                    "growth_parameters", "transformation_lam"]
     if "binding_data" in cf:
         output_names.append("binding")
     if "presplit_data" in cf:
@@ -92,6 +95,7 @@ def run_simulation_from_config(
 
     library_df, phenotype_df, genotype_theta_df, parameters_df, binding_theta_df = library_prediction(cf)
     growth_parameters_df = generate_growth_parameters_df(cf["growth"])
+    transformation_lam_df = generate_transformation_lam_df(cf)
 
     # -------------------------------------------------------------------------
     # Simulate independent replicates
@@ -142,7 +146,8 @@ def run_simulation_from_config(
     genotype_theta_df.to_csv(out_path("genotype_theta"), index=False)
     growth_df.to_csv(out_path("growth"), index=False)
     growth_parameters_df.to_csv(out_path("growth_parameters"), index=False)
-    print(f"\nWrote: {', '.join(out_path(n) for n in ['library', 'parameters', 'genotype_theta', 'growth', 'growth_parameters'])}")
+    transformation_lam_df.to_csv(out_path("transformation_lam"), index=False)
+    print(f"\nWrote: {', '.join(out_path(n) for n in ['library', 'parameters', 'genotype_theta', 'growth', 'growth_parameters', 'transformation_lam'])}")
 
     if "binding_data" in cf:
         binding_df = generate_binding_df(cf["binding_data"], rng, binding_theta_df)

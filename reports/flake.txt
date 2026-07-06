@@ -1309,8 +1309,8 @@
 ./src/tfscreen/simulate/sample_theta.py:177:30: E127 continuation line over-indented for visual indent
 ./src/tfscreen/simulate/sample_theta.py:270:19: E221 multiple spaces before operator
 ./src/tfscreen/simulate/scripts/setup_sim_grid_cli.py:101:1: C901 'setup_sim_grid' is too complex (17)
-./src/tfscreen/simulate/scripts/simulate_cli.py:16:1: C901 'run_simulation_from_config' is too complex (12)
-./src/tfscreen/simulate/scripts/simulate_cli.py:145:128: E501 line too long (131 > 127 characters)
+./src/tfscreen/simulate/scripts/simulate_cli.py:17:1: C901 'run_simulation_from_config' is too complex (12)
+./src/tfscreen/simulate/scripts/simulate_cli.py:150:128: E501 line too long (153 > 127 characters)
 ./src/tfscreen/simulate/selection_experiment.py:42:38: E231 missing whitespace after ':'
 ./src/tfscreen/simulate/selection_experiment.py:43:37: E231 missing whitespace after ':'
 ./src/tfscreen/simulate/selection_experiment.py:44:36: E231 missing whitespace after ':'
@@ -3647,7 +3647,7 @@
 ./src/tfscreen/tfmodel/scripts/summarize_fit_cli.py:154:1: C901 '_read_all_losses' is too complex (11)
 ./src/tfscreen/tfmodel/scripts/summarize_fit_cli.py:413:1: C901 '_summarize_params' is too complex (23)
 ./src/tfscreen/tfmodel/scripts/summarize_fit_cli.py:528:1: C901 '_summarize_condition_growth_params' is too complex (14)
-./src/tfscreen/tfmodel/scripts/summarize_fit_cli.py:674:1: C901 'summarize_fit' is too complex (59)
+./src/tfscreen/tfmodel/scripts/summarize_fit_cli.py:723:1: C901 'summarize_fit' is too complex (59)
 ./src/tfscreen/tfmodel/scripts/summarize_grid_cli.py:47:30: E127 continuation line over-indented for visual indent
 ./src/tfscreen/tfmodel/scripts/summarize_grid_cli.py:76:1: C901 'summarize_grid' is too complex (14)
 ./src/tfscreen/tfmodel/tensors/batch.py:5:1: E302 expected 2 blank lines, found 1
@@ -5337,13 +5337,13 @@
 ./tests/tfscreen/simulate/test_selection_experiment.py:1300:1: W293 blank line contains whitespace
 ./tests/tfscreen/simulate/test_selection_experiment.py:1303:1: W293 blank line contains whitespace
 ./tests/tfscreen/simulate/test_selection_experiment.py:1353:18: W292 no newline at end of file
-./tests/tfscreen/simulate/test_simulate_cli.py:333:11: E221 multiple spaces before operator
-./tests/tfscreen/simulate/test_simulate_cli.py:337:32: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/test_simulate_cli.py:380:11: E221 multiple spaces before operator
-./tests/tfscreen/simulate/test_simulate_cli.py:385:33: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/test_simulate_cli.py:387:31: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/test_simulate_cli.py:389:33: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/test_simulate_cli.py:445:5: F401 'tfscreen.simulate.scripts.simulate_cli as cli_mod' imported but unused
+./tests/tfscreen/simulate/test_simulate_cli.py:401:11: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_simulate_cli.py:405:32: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_simulate_cli.py:448:11: E221 multiple spaces before operator
+./tests/tfscreen/simulate/test_simulate_cli.py:453:33: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_simulate_cli.py:455:31: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_simulate_cli.py:457:33: E127 continuation line over-indented for visual indent
+./tests/tfscreen/simulate/test_simulate_cli.py:513:5: F401 'tfscreen.simulate.scripts.simulate_cli as cli_mod' imported but unused
 ./tests/tfscreen/simulate/test_thermo_to_growth.py:28:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/simulate/test_thermo_to_growth.py:32:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/simulate/test_thermo_to_growth.py:41:1: E302 expected 2 blank lines, found 1
@@ -7121,7 +7121,7 @@
 ./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:1237:1: E402 module level import not at top of file
 ./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:1419:14: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:1681:1: E402 module level import not at top of file
-./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:1990:21: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:2061:21: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/scripts/test_summarize_grid_cli.py:79:9: F841 local variable 'data' is assigned to but never used
 ./tests/tfscreen/tfmodel/scripts/test_summarize_grid_cli.py:183:91: E712 comparison to True should be 'if cond is True:' or 'if cond:'
 ./tests/tfscreen/tfmodel/tensors/test_batch.py:3:1: F401 'numpy as np' imported but unused
@@ -7672,7 +7672,7 @@
 29    E306 expected 1 blank line before a nested definition, found 0
 1     E401 multiple imports on one line
 38    E402 module level import not at top of file
-87    E501 line too long (131 > 127 characters)
+87    E501 line too long (153 > 127 characters)
 46    E701 multiple statements on one line (colon)
 5     E712 comparison to True should be 'if cond is True:' or 'if cond:'
 2     E713 test for membership should be 'not in'

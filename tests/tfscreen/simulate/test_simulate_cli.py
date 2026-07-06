@@ -213,6 +213,74 @@ def test_growth_parameters_csv_written_for_real(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# transformation_lam: always written, from cf['transformation_poisson_lambda']
+# ---------------------------------------------------------------------------
+
+def test_transformation_lam_csv_always_written(tmp_path):
+    """transformation_lam CSV is written unconditionally, mirroring
+    growth_parameters (transformation_poisson_lambda is a top-level,
+    always-present-but-possibly-None config key, not an optional *_data
+    block)."""
+    lib_df, pheno_df, theta_df, params_df, sample_df, counts_df, growth_df = _make_mock_dfs()
+
+    written = {}
+
+    def capture_csv(self_df, path, **kwargs):
+        written[str(path)] = self_df.copy()
+
+    cfg = {"seed": 0, "growth": {}, "transformation_poisson_lambda": 1.5}
+
+    with patch("tfscreen.util.read_yaml", return_value=cfg), \
+         patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
+               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
+               return_value=(sample_df, counts_df)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
+               return_value=growth_df), \
+         patch.object(pd.DataFrame, "to_csv", capture_csv):
+        run_simulation_from_config("config.yaml", str(tmp_path))
+
+    matches = [p for p in written if "transformation_lam" in os.path.basename(p)]
+    assert len(matches) == 1
+    result = written[matches[0]]
+    assert result.loc[0, "parameter"] == "lam"
+    assert result.loc[0, "ref"] == pytest.approx(1.5)
+
+
+def test_transformation_lam_csv_written_for_real(tmp_path):
+    """Real (unmocked) to_csv write produces a readable transformation_lam.csv."""
+    lib_df, pheno_df, theta_df, params_df, sample_df, counts_df, growth_df = _make_mock_dfs()
+
+    cfg = {"seed": 0, "growth": {}, "transformation_poisson_lambda": None}
+
+    with patch("tfscreen.util.read_yaml", return_value=cfg), \
+         patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
+               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
+               return_value=(sample_df, counts_df)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
+               return_value=growth_df):
+        run_simulation_from_config("config.yaml", str(tmp_path))
+
+    lam_path = tmp_path / "tfs_sim_transformation_lam.csv"
+    assert lam_path.exists()
+    df = pd.read_csv(lam_path)
+    assert df.loc[0, "parameter"] == "lam"
+    assert df.loc[0, "ref"] == pytest.approx(0.0)
+
+
+def test_transformation_lam_participates_in_existence_guard(tmp_path):
+    """Pre-existing transformation_lam CSV triggers the same FileExistsError
+    guard as the other always-written outputs."""
+    (tmp_path / "tfs_sim_transformation_lam.csv").write_text("parameter,ref\nlam,1.5\n")
+
+    cfg = {"seed": 0, "growth": {}, "transformation_poisson_lambda": 1.5}
+    with patch("tfscreen.util.read_yaml", return_value=cfg):
+        with pytest.raises(FileExistsError, match="transformation_lam"):
+            run_simulation_from_config("config.yaml", str(tmp_path))
+
+
+# ---------------------------------------------------------------------------
 # base_growth_data: written only when configured, using parameters_df's dk_geno
 # ---------------------------------------------------------------------------
 
