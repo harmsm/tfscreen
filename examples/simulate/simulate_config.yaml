@@ -201,21 +201,22 @@ activity_mut_scale: 0.0
 # Number of transformants per tile combo.  Keys must match the entries in
 # tile_combos (e.g. 'single-1', 'double-1-2') plus 'spiked'.
 transform_sizes:
-  single-1: 100_000
-  single-2: 100_000
-  double-1-2: 300_000
-  spiked: 1_000
+  single-1: 10_000
+  single-2: 10_000
+  double-1-2: 1_000_000
+  spiked: 1000
 
 # Mixing ratio of tile combos in the pooled library.  Only the ratio matters.
 library_mixture:
   single-1: 100
   single-2: 100
-  double-1-2: 1000
-  spiked: 1
+  double-1-2: 5
+  spiked: 4
 
 # Sigma of the log-normal used to draw initial genotype frequencies.  0 = flat
 # distribution; 1–2 is realistic for a typical transformation.
-lib_assembly_skew_sigma: 1.5
+lib_assembly_skew_sigma: 1.25
+
 
 # Each bacterium receives a number of plasmids drawn from a zero-truncated
 # Poisson with this lambda.  Set to 0 or null for exactly one plasmid per cell.

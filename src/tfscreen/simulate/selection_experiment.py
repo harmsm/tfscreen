@@ -674,8 +674,15 @@ def _sim_transform_and_mix(
         all_trans.append(trans)
         all_trans_mask.append(tr_mask)
 
-        w = library_mixture[lib_key]
-        all_weights.append(np.full(trans.shape[0],w,dtype=float))
+        # Normalize by the number of transformants drawn for this origin so
+        # that its total contribution to the pooled library is exactly
+        # library_mixture[lib_key], independent of transform_sizes[lib_key].
+        # Without this, an origin's pool share becomes
+        # library_mixture[lib_key] * transform_sizes[lib_key], entangling the
+        # two config values.
+        n_cells = trans.shape[0]
+        w = library_mixture[lib_key] / n_cells if n_cells > 0 else 0.0
+        all_weights.append(np.full(n_cells,w,dtype=float))
 
     # This is vstack that accounts for the fact that these transformations 
     # might have different numbers of plasmids

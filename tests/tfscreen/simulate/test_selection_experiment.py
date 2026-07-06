@@ -526,12 +526,43 @@ def test_sim_transform_and_mix(mocker, base_library_df: pd.DataFrame,
     assert transformants == "mocked_array"
     assert mask == "mocked_array"
     
-    weights_libA = np.full(2, 0.6)
-    weights_libB = np.full(3, 0.4)
+    # Each origin's total weight must equal library_mixture[origin],
+    # independent of how many cells (transform_sizes) it was split across.
+    weights_libA = np.full(2, 0.6 / 2)
+    weights_libB = np.full(3, 0.4 / 3)
     expected_weights = np.concatenate([weights_libA, weights_libB])
     expected_probs = expected_weights / np.sum(expected_weights)
-    
+
     np.testing.assert_allclose(probs, expected_probs)
+
+
+def test_sim_transform_and_mix_invariant_to_transform_sizes(rng: Generator):
+    """
+    An origin's total contribution to the pooled library must depend only on
+    library_mixture, not on transform_sizes -- regression test for a bug
+    where per-cell weights weren't normalized by the number of transformants
+    drawn, letting transform_sizes leak into the mixing ratio.
+    """
+    df = pd.DataFrame({
+        "library_origin": ["A"] * 5 + ["B"] * 5,
+        "genotype": [f"A{i}" for i in range(5)] + [f"B{i}" for i in range(5)],
+    })
+    df["probs"] = 0.2
+    lib_origin_dict = dict(list(df.groupby("library_origin")))
+
+    library_mixture = {"A": 1.0, "B": 1.0}
+
+    for transform_sizes in (
+        {"A": 1000, "B": 1000},
+        {"A": 1000, "B": 10000},
+        {"A": 1000, "B": 100000},
+    ):
+        _, _, probs = _sim_transform_and_mix(
+            lib_origin_dict, transform_sizes, library_mixture, None, rng
+        )
+        n_a = transform_sizes["A"]
+        np.testing.assert_allclose(probs[:n_a].sum(), 0.5, atol=1e-9)
+        np.testing.assert_allclose(probs[n_a:].sum(), 0.5, atol=1e-9)
 
 
 # ----------------------------------------------------------------------------

@@ -21,7 +21,7 @@ _DEFAULT_OVERHEAD_MULTIPLIER = 8.0
 # Fraction of total device memory to treat as usable budget, leaving
 # headroom for the host process, other tensors already resident, and the
 # unmodeled overhead above.
-_DEFAULT_SAFETY_FRACTION = 0.7
+_DEFAULT_SAFETY_FRACTION = 0.6
 
 
 def _dtype_itemsize():
