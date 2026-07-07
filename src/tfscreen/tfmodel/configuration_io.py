@@ -100,6 +100,13 @@ def _update_dataclass(dc, prefix, flat_dict):
                     merged = dict(attr_val)
                     merged.update(sub)
                     updates[field_name] = merged
+            elif isinstance(attr_val, tuple):
+                # Static structural tuples (e.g. condition_growth.m_is_selection)
+                # are re-derived at construction and serialised by
+                # _extract_scalars as a *string* (e.g. "(True, False)").  Never
+                # overwrite the correctly-typed tuple with that string — keep
+                # the freshly-built value.
+                continue
             elif full_key in flat_dict:
                 new_val = flat_dict[full_key]
                 if isinstance(attr_val, int) and not isinstance(attr_val, bool):

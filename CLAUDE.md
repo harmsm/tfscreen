@@ -151,6 +151,8 @@ Mechanism, spanning three files:
 
 Net flow: `configure` (scalar) → `prefit` (per-condition `k_loc` indexed rows + tight scalar `k_scale`) → `fit` (loads per-condition priors that hold the baselines, closing the slide). This is the primary mechanism; the `base_growth_data`/`k_ref` anchor (below) is complementary but insufficient alone because `k_ref` is itself free to slide.
 
+**Hard clamp on `m` (`tfs-prefit-calibration --pin_m`).** A soft Normal prior on the slope `m` — however tight — is only a KL penalty in SVI, and the growth likelihood over many observations can override it (empirically m walked ~5σ off even a 0.0005-scale pin). `linear`'s `ModelPriors.m_pinned` (bool, static) makes `m` a `deterministic` site clamped to its per-condition `m_loc` instead of a sampled site (guide drops the `m` variational params); `--pin_m` sets `condition_growth.m_pinned=1` in the priors CSV. `m` is safe to clamp because its calibration MAP loc is unbiased (dk_geno is uncorrelated with θ). **`k` is intentionally never clamped this way**: it carries real per-experiment tube-noise variance (`tube_noise_sigma`; mirrored by `k_scale_floor`) and sits in the additive k/dk_geno slide, so it keeps a floored soft prior — pin its loc, not its scale.
+
 ### Key Abstractions
 
 **`TensorManager`** (`tfmodel/tensors/tensor_manager.py`): Handles ragged tensors. Genotypes have different numbers of observations; this class pads and indexes into JAX-compatible arrays.

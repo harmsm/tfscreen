@@ -34,6 +34,7 @@ from tfscreen.tfmodel.scripts.prefit_calibration_cli import (
     _build_hessian_scale_updates,
     _compute_theta_values,
     _csv_row_name,
+    _dk_geno_pins_from_base_growth,
     _drop_presplit_backed_ln_cfu0_sites,
     _identify_field_mapping,
     _inject_calibration_priors,
@@ -1049,6 +1050,193 @@ class TestBuildCalibrationModel:
             _build_calibration_model(orchestrator_prod, pd.DataFrame(), pd.DataFrame())
 
         assert orchestrator_prod.settings == original_settings
+
+    def _base_growth_settings(self):
+        return {
+            "theta": "categorical_geno",
+            "activity": "horseshoe_geno",
+            "dk_geno": "hierarchical_geno",  # production value; not "pinned"
+            "ln_cfu0": "fixed",
+            "transformation": "logit_norm",
+            "theta_growth_noise": "beta",
+            "theta_binding_noise": "beta",
+            "condition_growth": "linear",
+            "growth_transition": "instant",
+            "batch_size": None,
+            "spiked_genotypes": None,
+            "base_growth_df": pd.DataFrame({
+                "genotype": ["wt", "M42I", "H74A", "K84L"],
+                "rate": [0.0107, 0.0087, 0.0072, 0.0090],
+                "rate_std": [0.0005, 0.0005, 0.0005, 0.0005],
+            }),
+        }
+
+    def _cal_growth_df(self):
+        # Every base_growth genotype must appear in the calibration growth df,
+        # or _read_base_growth_df would drop it (wt must survive).
+        return pd.DataFrame({
+            "genotype": ["wt", "M42I", "H74A", "K84L"],
+            "titrant_name": ["IPTG"] * 4,
+            "titrant_conc": [0.0] * 4,
+            "ln_cfu": [1.0, 2.0, 3.0, 4.0],
+        })
+
+    def test_base_growth_present_pins_dk_geno_from_rate_minus_wt(self):
+        """
+        When a base_growth_df is available (and production isn't already
+        "pinned"), the calibration model must use dk_geno="pinned" with pins
+        equal to rate_g - rate_wt, instead of zeroing dk_geno via "fixed".
+        """
+        orchestrator_prod = MagicMock()
+        orchestrator_prod.settings = self._base_growth_settings()
+
+        captured = {}
+
+        def _fake_gm(*args, **kwargs):
+            captured["kwargs"] = kwargs
+            pins_path = kwargs.get("dk_geno_pins_file")
+            # Read the pins file while it still exists (deleted after ctor).
+            if pins_path and os.path.exists(pins_path):
+                captured["pins_df"] = pd.read_csv(pins_path)
+            return MagicMock()
+
+        with patch(
+            "tfscreen.tfmodel.scripts"
+            ".prefit_calibration_cli.ModelOrchestrator",
+            side_effect=_fake_gm,
+        ):
+            _build_calibration_model(
+                orchestrator_prod, self._cal_growth_df(), pd.DataFrame()
+            )
+
+        kwargs = captured["kwargs"]
+        assert kwargs["dk_geno"] == "pinned"
+        pins_path = kwargs["dk_geno_pins_file"]
+        assert pins_path is not None
+
+        pins_df = captured["pins_df"]
+        pins = dict(zip(pins_df["genotype"].astype(str),
+                        pins_df["dk_geno"].astype(float)))
+        assert pins["wt"] == pytest.approx(0.0)
+        assert pins["M42I"] == pytest.approx(0.0087 - 0.0107)
+        assert pins["H74A"] == pytest.approx(0.0072 - 0.0107)
+        assert pins["K84L"] == pytest.approx(0.0090 - 0.0107)
+
+    def test_temp_pins_file_removed_after_construction(self):
+        """The temporary pins CSV must not linger after the ctor consumes it."""
+        orchestrator_prod = MagicMock()
+        orchestrator_prod.settings = self._base_growth_settings()
+
+        seen = {}
+
+        def _fake_gm(*args, **kwargs):
+            seen["path"] = kwargs.get("dk_geno_pins_file")
+            return MagicMock()
+
+        with patch(
+            "tfscreen.tfmodel.scripts"
+            ".prefit_calibration_cli.ModelOrchestrator",
+            side_effect=_fake_gm,
+        ):
+            _build_calibration_model(
+                orchestrator_prod, self._cal_growth_df(), pd.DataFrame()
+            )
+
+        assert seen["path"] is not None
+        assert not os.path.exists(seen["path"])
+
+    def test_production_pinned_takes_precedence_over_base_growth(self):
+        """
+        If production already pins dk_geno, that carries through unchanged even
+        when a base_growth_df is present -- the explicit pins file wins.
+        """
+        orchestrator_prod = MagicMock()
+        settings = self._base_growth_settings()
+        settings["dk_geno"] = "pinned"
+        settings["dk_geno_pins_file"] = "explicit_pins.csv"
+        orchestrator_prod.settings = settings
+
+        with patch(
+            "tfscreen.tfmodel.scripts"
+            ".prefit_calibration_cli.ModelOrchestrator"
+        ) as MockGM:
+            MockGM.return_value = MagicMock()
+            _build_calibration_model(
+                orchestrator_prod, self._cal_growth_df(), pd.DataFrame()
+            )
+
+        kwargs = MockGM.call_args.kwargs
+        assert kwargs["dk_geno"] == "pinned"
+        assert kwargs["dk_geno_pins_file"] == "explicit_pins.csv"
+
+    def test_no_base_growth_still_forces_fixed(self):
+        """Absent base_growth_df (and not production-pinned) → fixed(0)."""
+        orchestrator_prod = MagicMock()
+        settings = self._base_growth_settings()
+        settings["base_growth_df"] = None
+        orchestrator_prod.settings = settings
+
+        with patch(
+            "tfscreen.tfmodel.scripts"
+            ".prefit_calibration_cli.ModelOrchestrator"
+        ) as MockGM:
+            MockGM.return_value = MagicMock()
+            _build_calibration_model(
+                orchestrator_prod, self._cal_growth_df(), pd.DataFrame()
+            )
+
+        kwargs = MockGM.call_args.kwargs
+        assert kwargs["dk_geno"] == "fixed"
+        assert "dk_geno_pins_file" not in kwargs
+
+
+# ---------------------------------------------------------------------------
+# _dk_geno_pins_from_base_growth
+# ---------------------------------------------------------------------------
+
+class TestDkGenoPinsFromBaseGrowth:
+
+    def _growth_df(self):
+        return pd.DataFrame({
+            "genotype": ["wt", "M42I", "H74A", "K84L"],
+            "titrant_name": ["IPTG"] * 4,
+            "titrant_conc": [0.0] * 4,
+            "ln_cfu": [1.0, 2.0, 3.0, 4.0],
+        })
+
+    def test_pins_are_rate_minus_wt(self):
+        base_growth_df = pd.DataFrame({
+            "genotype": ["wt", "M42I", "H74A", "K84L"],
+            "rate": [0.0107, 0.0087, 0.0072, 0.0090],
+            "rate_std": [0.0005, 0.0005, 0.0005, 0.0005],
+        })
+        pins = _dk_geno_pins_from_base_growth(base_growth_df, self._growth_df())
+        assert pins["wt"] == pytest.approx(0.0)
+        assert pins["M42I"] == pytest.approx(0.0087 - 0.0107)
+        assert pins["H74A"] == pytest.approx(0.0072 - 0.0107)
+        assert pins["K84L"] == pytest.approx(0.0090 - 0.0107)
+
+    def test_wt_pin_is_exactly_zero(self):
+        base_growth_df = pd.DataFrame({
+            "genotype": ["wt", "M42I"],
+            "rate": [0.0107, 0.0087],
+            "rate_std": [0.0005, 0.0005],
+        })
+        pins = _dk_geno_pins_from_base_growth(base_growth_df, self._growth_df())
+        assert pins["wt"] == 0.0
+
+    def test_inverse_variance_weighting_multiple_rows(self):
+        # Two wt rows (combine to ~0.0107) and one M42I row.  The tighter-std
+        # wt row dominates the inverse-variance-weighted combination.
+        base_growth_df = pd.DataFrame({
+            "genotype": ["wt", "wt", "M42I"],
+            "rate": [0.0100, 0.0108, 0.0087],
+            "rate_std": [0.01, 0.0005, 0.0005],
+        })
+        pins = _dk_geno_pins_from_base_growth(base_growth_df, self._growth_df())
+        # Combined wt rate is very close to the tight 0.0108 measurement.
+        assert pins["wt"] == 0.0
+        assert pins["M42I"] == pytest.approx(0.0087 - 0.0108, abs=1e-4)
 
 
 # ---------------------------------------------------------------------------

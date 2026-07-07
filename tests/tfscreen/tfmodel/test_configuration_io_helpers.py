@@ -18,6 +18,10 @@ from tfscreen.tfmodel.configuration_io import (
     _extract_prior_arrays,
     _assemble_condition_array,
     _read_priors_flat,
+    _update_dataclass,
+)
+from tfscreen.tfmodel.generative.components.growth.linear import (
+    get_priors as _linear_get_priors,
 )
 
 
@@ -357,3 +361,29 @@ class TestPriorArrayRoundTrip:
         })
         flat = _read_priors_flat(df, cond_rep_map)
         assert np.allclose(np.asarray(flat[key]), [0.011, 0.021, 0.029])
+
+
+class TestUpdateDataclassStaticFields:
+    """_update_dataclass must not corrupt static tuple fields, and must apply
+    scalar (incl. bool-as-float) overrides."""
+
+    def test_tuple_field_not_overwritten_by_csv_string(self):
+        # m_is_selection is serialised by _extract_scalars as a string; the
+        # freshly-derived tuple must survive the round-trip unchanged.
+        priors = _linear_get_priors(is_selection=[True, False, True])
+        assert priors.m_is_selection == (True, False, True)
+
+        flat = {
+            "m_is_selection": "(True, False, True)",  # the corrupting string
+            "m_scale_plus": 0.5,                        # a real scalar override
+        }
+        updated = _update_dataclass(priors, "", flat)
+
+        assert updated.m_is_selection == (True, False, True)  # tuple preserved
+        assert updated.m_scale_plus == 0.5                     # scalar applied
+
+    def test_m_pinned_bool_roundtrips_truthy(self):
+        priors = _linear_get_priors()
+        assert not priors.m_pinned
+        updated = _update_dataclass(priors, "", {"m_pinned": 1.0})
+        assert bool(updated.m_pinned)

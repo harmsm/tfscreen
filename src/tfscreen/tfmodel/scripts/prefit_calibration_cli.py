@@ -13,12 +13,24 @@ linking-function MAP doesn't have to fight the full hierarchy:
                              prior locs (degenerate, no learning)
 - ``dk_geno``              → ``fixed`` (all zeros; eliminates the WT-anchor
                              bias that arises when mutants have non-zero mean
-                             pleiotropic effects), *unless* the production
-                             config already selects ``dk_geno: "pinned"``, in
-                             which case the calibration model keeps
-                             ``"pinned"`` (and its pins file) so genotypes
-                             with independently known dk_geno retain their
-                             real value instead of being zeroed out too.
+                             pleiotropic effects), *unless* either:
+                             (a) the production config already selects
+                             ``dk_geno: "pinned"``, in which case the
+                             calibration model keeps ``"pinned"`` (and its
+                             pins file) so genotypes with independently known
+                             dk_geno retain their real value; or
+                             (b) a ``base_growth_df`` is available, in which
+                             case its measured reference-condition growth
+                             rates are turned into per-genotype dk_geno pins
+                             (``dk_geno_g = rate_g - rate_wt``) and the
+                             calibration model uses ``"pinned"`` with those
+                             values.  This feeds the MAP the *real* dk_geno
+                             for the calibration mutants instead of a
+                             known-false 0 -- strictly more correct, though
+                             empirically it does not by itself move the
+                             per-condition ``k_loc`` (wt, with dk_geno=0 in
+                             every dk_geno component, already anchors the
+                             shared ``k``).
 - ``ln_cfu0``              → ``hierarchical`` with hyperparams *pinned*
 - ``transformation``       → ``single`` (no learning)
 - ``theta_*_noise``        → ``zero`` (no learning)
@@ -46,6 +58,7 @@ import dataclasses
 import os
 import shutil
 import sys
+import tempfile
 
 import numpy as np
 import pandas as pd
@@ -252,6 +265,66 @@ def _compute_theta_values(orchestrator_cal, binding_df_cal):
 # Calibration model construction
 # ---------------------------------------------------------------------------
 
+def _dk_geno_pins_from_base_growth(base_growth_df, growth_df):
+    """
+    Derive per-genotype dk_geno pins from measured reference-condition
+    growth rates.
+
+    ``base_growth_df`` holds direct growth-rate measurements ``rate`` for wt
+    plus the calibration genotypes, where ``rate = k_ref + dk_geno`` (dk_geno
+    is 0 for wt by convention).  Subtracting wt's rate cancels the shared
+    ``k_ref`` and yields each genotype's real pleiotropic effect::
+
+        dk_geno_g = rate_g - rate_wt
+
+    Multiple rows per genotype are inverse-variance combined first, via
+    ``model_orchestrator._read_base_growth_df`` (mirroring the inference
+    side), so each genotype contributes a single ``rate``.  That helper also
+    validates required columns and guarantees a wt row is present.
+
+    Parameters
+    ----------
+    base_growth_df : pd.DataFrame or str
+        Base growth-rate data (or a path to it); columns ``genotype``,
+        ``rate``, ``rate_std``.
+    growth_df : pd.DataFrame
+        The calibration growth DataFrame; used to determine the valid set of
+        genotypes (rows for genotypes absent here are dropped).
+
+    Returns
+    -------
+    dict[str, float]
+        ``{genotype: dk_geno}``; wt maps to exactly 0.0.
+    """
+    from tfscreen.tfmodel.model_orchestrator import _read_base_growth_df
+
+    combined = _read_base_growth_df(base_growth_df, growth_df)
+    rate_by_geno = dict(zip(combined["genotype"].astype(str),
+                            combined["rate"].astype(float)))
+    rate_wt = rate_by_geno["wt"]
+    return {g: (0.0 if g == "wt" else r - rate_wt)
+            for g, r in rate_by_geno.items()}
+
+
+def _write_dk_geno_pins_file(pins):
+    """
+    Write a ``{genotype: dk_geno}`` mapping to a temporary CSV in the shape
+    ``dk_geno.pinned.read_dk_geno_pins`` /
+    ``ModelOrchestrator(dk_geno_pins_file=...)`` expect (columns ``genotype``,
+    ``dk_geno``), returning its path.
+
+    The caller is responsible for deleting the file once the calibration
+    ``ModelOrchestrator`` has consumed it (the pins are read into
+    ``_dk_geno_values`` at construction time, so the file is not needed
+    afterwards).
+    """
+    fd, path = tempfile.mkstemp(prefix="tfs_prefit_", suffix="_dk_geno_pins.csv")
+    os.close(fd)
+    pd.DataFrame({"genotype": list(pins.keys()),
+                  "dk_geno": list(pins.values())}).to_csv(path, index=False)
+    return path
+
+
 def _build_calibration_model(orchestrator_prod, growth_df_cal, binding_df_cal):
     """
     Construct the calibration ``ModelOrchestrator`` with hardcoded calibration
@@ -280,22 +353,53 @@ def _build_calibration_model(orchestrator_prod, growth_df_cal, binding_df_cal):
 
     # dk_geno: the calibration MAP must not *learn* dk_geno from
     # calibration-only data (that reintroduces the WT-anchor bias this
-    # pre-fit exists to avoid). Default: force to "fixed" (all zero), like
-    # every other overridden component. Exception: if the production config
-    # pins specific genotypes' dk_geno via "pinned", carry that choice (and
-    # its pins file) into the calibration model too, so those genotypes keep
-    # their real, independently-known dk_geno during the linking-function
-    # fit instead of being zeroed out along with everything else.
-    if settings.get("dk_geno") != "pinned":
+    # pre-fit exists to avoid).  But zeroing dk_geno for calibration mutants
+    # that genuinely have a non-zero pleiotropic effect is also wrong -- it
+    # feeds the MAP a known-false value.  When base_growth measures those
+    # mutants' reference-condition growth we can supply the *real* dk_geno
+    # instead of a false 0.
+    #
+    #  - Production already "pinned": carry that choice (and its pins file)
+    #    through unchanged; those genotypes keep their independently-known
+    #    dk_geno.
+    #  - base_growth_df available: convert its measured reference-condition
+    #    growth rates into KNOWN dk_geno pins (rate_g - rate_wt) and pin them.
+    #  - Otherwise: force "fixed" (all zero), like every other overridden
+    #    component.
+    #
+    # NOTE: empirically this does *not* by itself de-bias the per-condition
+    # k_loc on the sims tested so far (out11) -- wt, whose dk_geno is 0 in
+    # every dk_geno component, already anchors the shared per-condition k, so
+    # the mutants' dk value has no leverage on it.  The pin is kept because it
+    # is strictly more correct (real dk_geno vs a false 0) and harmless (no k
+    # regression), not because it moves k_loc.
+    temp_pins_path = None
+    if settings.get("dk_geno") == "pinned":
+        pass
+    elif settings.get("base_growth_df") is not None:
+        pins = _dk_geno_pins_from_base_growth(settings["base_growth_df"],
+                                              growth_df_cal)
+        temp_pins_path = _write_dk_geno_pins_file(pins)
+        settings["dk_geno"] = "pinned"
+        settings["dk_geno_pins_file"] = temp_pins_path
+    else:
         settings["dk_geno"] = "fixed"
         settings.pop("dk_geno_pins_file", None)
 
     batch_size = settings.pop("batch_size", None)
 
-    return ModelOrchestrator(growth_df_cal,
-                       binding_df_cal,
-                       batch_size=batch_size,
-                       **settings)
+    try:
+        orchestrator_cal = ModelOrchestrator(growth_df_cal,
+                                             binding_df_cal,
+                                             batch_size=batch_size,
+                                             **settings)
+    finally:
+        # The pins file is consumed at construction (baked into
+        # _dk_geno_values); remove the temporary now so it doesn't linger.
+        if temp_pins_path is not None and os.path.exists(temp_pins_path):
+            os.remove(temp_pins_path)
+
+    return orchestrator_cal
 
 
 def _inject_calibration_priors(orchestrator_cal, orchestrator_prod, theta_values):
@@ -1066,7 +1170,8 @@ def run_prefit_calibration(config_file,
                            m_scale_floor=_DEFAULT_M_SCALE_FLOOR,
                            k_scale_ceiling=_DEFAULT_K_SCALE_CEILING,
                            m_scale_ceiling=_DEFAULT_M_SCALE_CEILING,
-                           hessian_chunk_size=64):
+                           hessian_chunk_size=64,
+                           pin_m=False):
     """
     Run the calibration pre-fit and update the production priors / guesses
     CSVs in place.
@@ -1157,6 +1262,13 @@ def run_prefit_calibration(config_file,
     hessian_chunk_size : int, optional
         Number of Hessian rows computed per device batch (default 64).
         Reduce if device runs out of memory during Hessian computation.
+    pin_m : bool, optional
+        When set, hard-clamp the production model's per-condition slope m to
+        its calibration MAP loc by writing ``condition_growth.m_pinned`` into
+        the priors CSV (default False).  Use this instead of an ultra-tight
+        m_scale when you want m held exactly at the calibration value — a soft
+        prior can be overridden by the growth likelihood.  Only affects m; k
+        keeps its floored soft prior.
 
     Returns
     -------
@@ -1255,6 +1367,15 @@ def run_prefit_calibration(config_file,
     )
     guess_updates.update(hessian_guess_updates)
     prior_updates.update(hessian_prior_updates)
+
+    # Hard-clamp m: with pin_m, condition_growth's slope m is held at its
+    # per-condition MAP loc (a deterministic site) instead of sampled with a
+    # soft prior.  A soft Normal prior — even at a tiny scale — is only a KL
+    # penalty in SVI and the growth likelihood can override it (see linear.py
+    # ModelPriors.m_pinned).  k is intentionally NOT clamped (tube-noise
+    # variance + the additive k/dk_geno slide), so this only sets m_pinned.
+    if pin_m:
+        prior_updates[_csv_row_name("condition_growth", "m_pinned")] = 1.0
 
     # Labels ordered as the per-condition MAP arrays, so the per-condition
     # prior loc rows can be name-joined back to the production condition order.
