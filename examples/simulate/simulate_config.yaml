@@ -286,12 +286,19 @@ seed: null
 # curves.  titrant_name must match e_name in observable_calc_kwargs.
 #
 # binding_data:
-#   genotypes:
-#     - wt
-#     - A47V
 #   titrant_name: iptg
 #   titrant_conc: [0, 0.0001, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1.0]
 #   noise: 0.02
+#   # Clean, monoclonal controls (pool = spiked_seqs).
+#   #   choose_by: <params file> | stratified | random ; num optional (no file)
+#   spiked_binding:
+#     choose_by: stratified
+#     num: 4
+#   # In-library controls from the bulk (congression-affected). Pool = non-spiked.
+#   #   choose_by: stratified | random | <params file> ; num required (no file)
+#   library_binding:
+#     num: 20
+#     choose_by: stratified
 
 # ---------------------------------------------------------------------------
 # Base growth-rate calibration data (optional)

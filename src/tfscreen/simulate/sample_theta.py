@@ -174,7 +174,8 @@ def sample_theta_stratified(component_name,
                              thermo_data=None,
                              pool_size=500,
                              priors_overrides=None,
-                             sim_priors_overrides=None):
+                             sim_priors_overrides=None,
+                             select_mode="stratified"):
     """
     Sample a pool of theta curves from the prior and select n_select that
     maximally span the theta-curve space (greedy maximin on binding concentrations).
@@ -269,6 +270,16 @@ def sample_theta_stratified(component_name,
     pool_binding_gc = np.stack(pool_binding_rows)  # (pool_size, C_b)
     pool_growth_gc  = np.stack(pool_growth_rows)   # (pool_size, C_g)
 
-    selected_indices = _greedy_maximin(pool_binding_gc, n_select)
+    if select_mode == "stratified":
+        selected_indices = _greedy_maximin(pool_binding_gc, n_select)
+    elif select_mode == "random":
+        # random draw from the prior pool (no maximin spread)
+        rng = np.random.default_rng(int(jax.random.randint(
+            rng_key, (), 0, 2**31 - 1)))
+        selected_indices = rng.choice(pool_size, size=n_select, replace=False)
+    else:
+        raise ValueError(
+            f"Unknown select_mode '{select_mode}' (expected 'stratified' or 'random')."
+        )
 
     return pool_binding_gc[selected_indices], pool_growth_gc[selected_indices]

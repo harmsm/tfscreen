@@ -25,6 +25,147 @@ import pandas as pd
 from typing import Any, Dict, Union
 from pathlib import Path
 
+
+def _is_file_choice(choose_by):
+    """A ``choose_by`` value is a params file when it is not a builtin keyword."""
+    return choose_by not in ("stratified", "random")
+
+
+def _validate_binding_config(binding_cfg, spiked_names, theta_component):
+    """Fail-fast validation of the binding_data spiked_binding/library_binding blocks."""
+    spiked_set = set(spiked_names)
+    for block, must_be_spiked in (("spiked_binding", True),
+                                  ("library_binding", False)):
+        cfg = binding_cfg.get(block)
+        if cfg is None:
+            continue
+        choose_by = cfg.get("choose_by")
+        if choose_by is None:
+            raise ValueError(f"binding_data.{block} requires a 'choose_by' key.")
+        if _is_file_choice(choose_by):
+            if "num" in cfg:
+                raise ValueError(
+                    f"binding_data.{block}: 'num' is incompatible with a choose_by "
+                    f"file ('{choose_by}') -- the file defines the genotype set.")
+            if theta_component not in _BINDING_PARAMS_SUPPORTED:
+                raise ValueError(
+                    f"binding_data.{block}: a choose_by file requires a Hill theta "
+                    f"component {sorted(_BINDING_PARAMS_SUPPORTED)}; got "
+                    f"'{theta_component}'.")
+            file_genos = set(standardize_genotypes(
+                list(read_binding_genotype_params(choose_by).keys())))
+            if must_be_spiked:
+                bad = file_genos - spiked_set
+                if bad:
+                    raise ValueError(
+                        f"binding_data.spiked_binding genotypes must be spiked (in "
+                        f"spiked_seqs); not spiked: {sorted(bad)}")
+            else:
+                bad = file_genos & spiked_set
+                if bad:
+                    raise ValueError(
+                        f"binding_data.library_binding genotypes must NOT be spiked "
+                        f"(they must carry congression); spiked: {sorted(bad)}")
+        elif block == "spiked_binding":
+            num = cfg.get("num")
+            if num is not None and not (1 <= int(num) <= len(spiked_names)):
+                raise ValueError(
+                    f"binding_data.spiked_binding.num must be in "
+                    f"[1, {len(spiked_names)}]; got {num}.")
+        else:  # library_binding stratified/random
+            if cfg.get("num") is None:
+                raise ValueError(
+                    f"binding_data.library_binding requires 'num' for choose_by "
+                    f"'{choose_by}'.")
+
+
+def _measured_params_override(params_file, cf, sim_data, library_df, rng,
+                              binding_concs, titrant_name):
+    """Build theta overrides + noise-free binding rows from a measured Hill-params file.
+
+    Returns ``(theta_gc_override, theta_params_override, binding_rows)``.  Shared
+    by spiked_binding (file) and library_binding (file); callers that measure the
+    binding post-sim simply ignore ``binding_rows``.
+    """
+    theta_component = cf['theta_component']
+    from tfscreen.tfmodel.generative.registry import model_registry
+    theta_module = model_registry["theta"][theta_component]
+    sim_params = theta_module.get_sim_hyperparameters()
+    if cf.get('theta_sim_priors'):
+        sim_params.update(cf['theta_sim_priors'])
+    sim_priors = theta_module.SimPriors(**sim_params)
+    wt_params = _wt_params_from_sim_priors(sim_priors)
+
+    params_dict = read_binding_genotype_params(params_file)
+    log_conc_growth = np.array(sim_data.log_titrant_conc)
+
+    if theta_component == "hill_geno":
+        gc_over, p_over = build_theta_gc_override_hill_geno(
+            params_dict, log_conc_growth, wt_params)
+    else:  # hill_mut
+        gc_over, p_over = build_theta_gc_override_hill_mut(
+            params_dict=params_dict,
+            library_genotypes=library_df["genotype"].tolist(),
+            sim_data=sim_data, sim_priors=sim_priors,
+            log_conc=log_conc_growth, rng=rng)
+
+    measured_binding_df = build_binding_theta_from_params(
+        params_dict=params_dict, binding_concs=binding_concs,
+        titrant_name=titrant_name, noise=0.0, rng=rng, wt_params=wt_params)
+    return gc_over, p_over, measured_binding_df.to_dict("records")
+
+
+def _spiked_stratified_binding(binding_genotypes, cf, sample_df, binding_sample_df,
+                               theta_rng_key, conc_to_col, binding_concs,
+                               titrant_name, select_mode):
+    """Assign stratified/random synthetic theta curves to spiked binding genotypes.
+
+    wt (if present) keeps its natural reference curve.  Returns
+    ``(theta_gc_override, binding_rows)``.
+    """
+    binding_genotypes = list(standardize_genotypes(binding_genotypes))
+    non_wt = [g for g in binding_genotypes if g != "wt"]
+    override = {}
+    rows = []
+
+    wt_binding_gc = None
+    if "wt" in binding_genotypes:
+        single_wt_df = pd.DataFrame({"genotype": ["wt"]})
+        binding_wt_sim = build_sim_data(single_wt_df, binding_sample_df,
+                                        thermo_data=cf.get('thermo_data'),
+                                        skip_pairs=True)
+        wt_binding_gc, _ = sample_theta_prior(
+            cf['theta_component'], binding_wt_sim, theta_rng_key,
+            sim_priors_overrides=cf.get('theta_sim_priors'))
+
+    selected_binding_gc = None
+    if non_wt:
+        selected_binding_gc, selected_growth_gc = sample_theta_stratified(
+            component_name=cf['theta_component'],
+            binding_sample_df=binding_sample_df,
+            growth_sample_df=sample_df,
+            rng_key=theta_rng_key,
+            n_select=len(non_wt),
+            thermo_data=cf.get('thermo_data'),
+            pool_size=cf.get('binding_stratify_pool_size', 500),
+            priors_overrides=cf.get('theta_priors'),
+            sim_priors_overrides=cf.get('theta_sim_priors'),
+            select_mode=select_mode)
+        override.update({g: selected_growth_gc[i] for i, g in enumerate(non_wt)})
+
+    if "wt" in binding_genotypes and wt_binding_gc is not None:
+        for conc in binding_concs:
+            rows.append({"genotype": "wt", "titrant_name": titrant_name,
+                         "titrant_conc": float(conc),
+                         "theta_true": float(wt_binding_gc[0, conc_to_col[float(conc)]])})
+    for i, g in enumerate(non_wt):
+        for conc in binding_concs:
+            rows.append({"genotype": g, "titrant_name": titrant_name,
+                         "titrant_conc": float(conc),
+                         "theta_true": float(selected_binding_gc[i, conc_to_col[float(conc)]])})
+    return override, rows
+
+
 def library_prediction(cf: Union[Dict[str, Any], str, Path],
                        override_keys: dict=None):
     """
@@ -110,7 +251,11 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
         dk_geno_hyper_shift = cf['dk_geno_hyper_shift']
 
     # -------------------------------------------------------------------------
-    # Stratified theta sampling for binding calibration genotypes
+    # Binding-calibration genotypes: spiked (clean, congression-free) plus
+    # in-library FILE injection.  Stratified/random in-library selection and all
+    # in-library binding *measurements* happen post-growth-sim (see
+    # simulate/library_binding_data.py); only the phenotype-setting parts live
+    # here so the growth simulation reflects them.
 
     binding_cfg = cf.get('binding_data')
     theta_gc_override = {}
@@ -120,138 +265,47 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
     if binding_cfg is not None:
         binding_concs = binding_cfg['titrant_conc']
         titrant_name = binding_cfg['titrant_name']
-        binding_noise = binding_cfg.get('noise', 0.0)
+        theta_component = cf['theta_component']
 
         binding_sample_df = pd.DataFrame({"titrant_conc": binding_concs})
         sorted_binding_concs = np.sort(np.unique(binding_concs))
         conc_to_col = {float(c): j for j, c in enumerate(sorted_binding_concs)}
+        rows = []
 
-        rows = []  # accumulated rows for binding_theta_df
+        spiked_names = list(pd.unique(
+            library_df.loc[library_df["library_origin"] == "spiked", "genotype"]))
 
-        # --- Section 1: Simulated genotypes (existing 'genotypes' key) ---
-        binding_genotypes = list(standardize_genotypes(binding_cfg.get('genotypes', [])))
+        _validate_binding_config(binding_cfg, spiked_names, theta_component)
 
-        # wt gets its natural unperturbed reference parameters — not a random
-        # draw from the pool.  Only non-wt binding genotypes are stratified.
-        non_wt_genotypes = [g for g in binding_genotypes if g != "wt"]
+        # ---------- spiked_binding (clean, monoclonal) ----------
+        sb = binding_cfg.get("spiked_binding")
+        if sb is not None:
+            choose_by = sb["choose_by"]
+            if _is_file_choice(choose_by):
+                gc_over, p_over, spiked_rows = _measured_params_override(
+                    choose_by, cf, sim_data, library_df, rng,
+                    binding_concs, titrant_name)
+                theta_gc_override.update(gc_over)
+                theta_params_override.update(p_over)
+                rows.extend(spiked_rows)
+            else:
+                num = sb.get("num")
+                sel = spiked_names if num is None else spiked_names[:int(num)]
+                s_over, s_rows = _spiked_stratified_binding(
+                    sel, cf, sample_df, binding_sample_df, theta_rng_key,
+                    conc_to_col, binding_concs, titrant_name,
+                    select_mode=choose_by)
+                theta_gc_override.update(s_over)
+                rows.extend(s_rows)
 
-        # wt reference curve (if wt is a simulated binding genotype)
-        wt_binding_gc = None
-        if "wt" in binding_genotypes:
-            single_wt_df = pd.DataFrame({"genotype": ["wt"]})
-            binding_wt_sim = build_sim_data(single_wt_df, binding_sample_df,
-                                            thermo_data=cf.get('thermo_data'),
-                                            skip_pairs=True)
-            # Perturbation path for wt (M=0): always returns the fixed sim-priors
-            # reference curve regardless of rng_key, so the binding data matches
-            # the growth simulation exactly.
-            wt_binding_gc, _ = sample_theta_prior(
-                cf['theta_component'], binding_wt_sim, theta_rng_key,
-                sim_priors_overrides=cf.get('theta_sim_priors'),
-            )
-
-        # Stratified curves for non-wt simulated binding genotypes
-        selected_binding_gc = None
-        selected_growth_gc = None
-        if non_wt_genotypes:
-            selected_binding_gc, selected_growth_gc = sample_theta_stratified(
-                component_name=cf['theta_component'],
-                binding_sample_df=binding_sample_df,
-                growth_sample_df=sample_df,
-                rng_key=theta_rng_key,
-                n_select=len(non_wt_genotypes),
-                thermo_data=cf.get('thermo_data'),
-                pool_size=cf.get('binding_stratify_pool_size', 500),
-                priors_overrides=cf.get('theta_priors'),
-                sim_priors_overrides=cf.get('theta_sim_priors'),
-            )
-
-        # Override theta at growth concentrations for non-wt binding genotypes only.
-        # wt is deliberately excluded so thermo_to_growth uses its natural curve.
-        if non_wt_genotypes and selected_growth_gc is not None:
-            theta_gc_override.update({
-                g: selected_growth_gc[i]
-                for i, g in enumerate(non_wt_genotypes)
-            })
-
-        # Accumulate binding rows for simulated genotypes
-        if "wt" in binding_genotypes and wt_binding_gc is not None:
-            for conc in binding_concs:
-                rows.append({
-                    "genotype": "wt",
-                    "titrant_name": titrant_name,
-                    "titrant_conc": float(conc),
-                    "theta_true": float(wt_binding_gc[0, conc_to_col[float(conc)]]),
-                })
-        for i, g in enumerate(non_wt_genotypes):
-            for conc in binding_concs:
-                rows.append({
-                    "genotype": g,
-                    "titrant_name": titrant_name,
-                    "titrant_conc": float(conc),
-                    "theta_true": float(selected_binding_gc[i, conc_to_col[float(conc)]]),
-                })
-
-        # --- Section 2: Measured genotype params from CSV ---
-        params_file = binding_cfg.get('genotype_params_file')
-        if params_file is not None:
-            theta_component = cf['theta_component']
-            if theta_component not in _BINDING_PARAMS_SUPPORTED:
-                raise ValueError(
-                    f"genotype_params_file is only supported with Hill-based theta "
-                    f"components: {sorted(_BINDING_PARAMS_SUPPORTED)}. "
-                    f"Got: '{theta_component}'."
-                )
-
-            # Build sim_priors for WT reference / NaN filling
-            from tfscreen.tfmodel.generative.registry import model_registry
-            theta_module = model_registry["theta"][theta_component]
-            sim_params = theta_module.get_sim_hyperparameters()
-            if cf.get('theta_sim_priors'):
-                sim_params.update(cf['theta_sim_priors'])
-            sim_priors = theta_module.SimPriors(**sim_params)
-
-            wt_params = _wt_params_from_sim_priors(sim_priors)
-
-            params_dict = read_binding_genotype_params(params_file)
-
-            # Compute theta overrides for measured genotypes
-            log_conc_growth = np.array(sim_data.log_titrant_conc)
-
-            if theta_component == "hill_geno":
-                measured_override, measured_params = build_theta_gc_override_hill_geno(
-                    params_dict, log_conc_growth, wt_params
-                )
-            else:  # hill_mut
-                measured_override, measured_params = build_theta_gc_override_hill_mut(
-                    params_dict=params_dict,
-                    library_genotypes=library_df["genotype"].tolist(),
-                    sim_data=sim_data,
-                    sim_priors=sim_priors,
-                    log_conc=log_conc_growth,
-                    rng=rng,
-                )
-
-            # Measured data takes precedence over stratified simulated data
-            theta_gc_override.update(measured_override)
-            theta_params_override.update(measured_params)
-
-            # Accumulate binding rows for measured genotypes (overrides simulated rows)
-            # Store noise-free theta_true; noise is applied later by
-            # binding_data.generate_binding_df, consistent with the
-            # simulated-genotypes path.
-            measured_binding_df = build_binding_theta_from_params(
-                params_dict=params_dict,
-                binding_concs=binding_concs,
-                titrant_name=titrant_name,
-                noise=0.0,
-                rng=rng,
-                wt_params=wt_params,
-            )
-            # Remove any existing rows for genotypes now covered by measured data
-            measured_genotypes = set(params_dict.keys())
-            rows = [r for r in rows if r["genotype"] not in measured_genotypes]
-            rows.extend(measured_binding_df.to_dict("records"))
+        # ---------- library_binding: FILE injection only (pre-sim) ----------
+        lb = binding_cfg.get("library_binding")
+        if lb is not None and _is_file_choice(lb["choose_by"]):
+            gc_over, p_over, _ = _measured_params_override(
+                lb["choose_by"], cf, sim_data, library_df, rng,
+                binding_concs, titrant_name)
+            theta_gc_override.update(gc_over)
+            theta_params_override.update(p_over)
 
         binding_theta_df = pd.DataFrame(rows) if rows else None
 

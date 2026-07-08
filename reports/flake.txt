@@ -1237,11 +1237,9 @@
 ./src/tfscreen/simulate/build_sample_dataframes.py:83:1: W293 blank line contains whitespace
 ./src/tfscreen/simulate/build_sample_dataframes.py:87:1: W293 blank line contains whitespace
 ./src/tfscreen/simulate/build_sample_dataframes.py:95:21: W292 no newline at end of file
-./src/tfscreen/simulate/library_prediction.py:28:1: C901 'library_prediction' is too complex (14)
-./src/tfscreen/simulate/library_prediction.py:28:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/simulate/library_prediction.py:29:43: E252 missing whitespace around parameter equals
-./src/tfscreen/simulate/library_prediction.py:29:44: E252 missing whitespace around parameter equals
-./src/tfscreen/simulate/library_prediction.py:123:9: F841 local variable 'binding_noise' is assigned to but never used
+./src/tfscreen/simulate/library_prediction.py:34:1: C901 '_validate_binding_config' is too complex (13)
+./src/tfscreen/simulate/library_prediction.py:170:43: E252 missing whitespace around parameter equals
+./src/tfscreen/simulate/library_prediction.py:170:44: E252 missing whitespace around parameter equals
 ./src/tfscreen/simulate/presplit_data.py:55:15: E221 multiple spaces before operator
 ./src/tfscreen/simulate/presplit_data.py:56:17: E221 multiple spaces before operator
 ./src/tfscreen/simulate/presplit_data.py:57:16: E221 multiple spaces before operator
@@ -1307,10 +1305,11 @@
 ./src/tfscreen/simulate/sample_theta.py:175:30: E127 continuation line over-indented for visual indent
 ./src/tfscreen/simulate/sample_theta.py:176:30: E127 continuation line over-indented for visual indent
 ./src/tfscreen/simulate/sample_theta.py:177:30: E127 continuation line over-indented for visual indent
-./src/tfscreen/simulate/sample_theta.py:270:19: E221 multiple spaces before operator
+./src/tfscreen/simulate/sample_theta.py:178:30: E127 continuation line over-indented for visual indent
+./src/tfscreen/simulate/sample_theta.py:271:19: E221 multiple spaces before operator
 ./src/tfscreen/simulate/scripts/setup_sim_grid_cli.py:101:1: C901 'setup_sim_grid' is too complex (17)
-./src/tfscreen/simulate/scripts/simulate_cli.py:17:1: C901 'run_simulation_from_config' is too complex (12)
-./src/tfscreen/simulate/scripts/simulate_cli.py:150:128: E501 line too long (153 > 127 characters)
+./src/tfscreen/simulate/scripts/simulate_cli.py:18:1: C901 'run_simulation_from_config' is too complex (15)
+./src/tfscreen/simulate/scripts/simulate_cli.py:153:128: E501 line too long (153 > 127 characters)
 ./src/tfscreen/simulate/selection_experiment.py:42:38: E231 missing whitespace after ':'
 ./src/tfscreen/simulate/selection_experiment.py:43:37: E231 missing whitespace after ':'
 ./src/tfscreen/simulate/selection_experiment.py:44:36: E231 missing whitespace after ':'
@@ -5140,8 +5139,8 @@
 ./tests/tfscreen/simulate/test_build_sample_dataframes.py:128:55: W292 no newline at end of file
 ./tests/tfscreen/simulate/test_growth_parameters_output.py:4:1: F401 'pandas as pd' imported but unused
 ./tests/tfscreen/simulate/test_library_prediction.py:47:41: E127 continuation line over-indented for visual indent
-./tests/tfscreen/simulate/test_library_prediction.py:290:5: F401 'numpy as np' imported but unused
-./tests/tfscreen/simulate/test_library_prediction.py:439:16: E272 multiple spaces before keyword
+./tests/tfscreen/simulate/test_library_prediction.py:293:5: F401 'numpy as np' imported but unused
+./tests/tfscreen/simulate/test_library_prediction.py:441:16: E272 multiple spaces before keyword
 ./tests/tfscreen/simulate/test_presplit_data.py:71:36: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/simulate/test_presplit_data.py:83:42: E127 continuation line over-indented for visual indent
 ./tests/tfscreen/simulate/test_presplit_data.py:84:42: E127 continuation line over-indented for visual indent
@@ -7645,7 +7644,7 @@
 1     E122 continuation line missing indentation or outdented
 2     E124 closing bracket does not match visual indentation
 6     E125 continuation line with same indent as next logical line
-210   E127 continuation line over-indented for visual indent
+211   E127 continuation line over-indented for visual indent
 91    E128 continuation line under-indented for visual indent
 3     E131 continuation line unaligned for hanging indent
 43    E201 whitespace after '['
@@ -7664,7 +7663,7 @@
 2     E266 too many leading '#' for block comment
 149   E272 multiple spaces before keyword
 1     E301 expected 1 blank line, found 0
-781   E302 expected 2 blank lines, found 1
+780   E302 expected 2 blank lines, found 1
 50    E303 too many blank lines (2)
 19    E305 expected 2 blank lines after class or function definition, found 1
 29    E306 expected 1 blank line before a nested definition, found 0
@@ -7680,9 +7679,9 @@
 230   F401 'tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U0_a.thermo.run_model' imported but unused
 11    F541 f-string is missing placeholders
 4     F811 redefinition of unused 'np' from line 1
-42    F841 local variable 'e' is assigned to but never used
+41    F841 local variable 'e' is assigned to but never used
 620   W291 trailing whitespace
 85    W292 no newline at end of file
 1582  W293 blank line contains whitespace
 30    W391 blank line at end of file
-7639
+7638

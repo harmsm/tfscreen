@@ -186,18 +186,23 @@ The core calculation happens in `thermo_to_growth` (`simulate/thermo_to_growth.p
 
 ### Binding data and calibration genotypes
 
-The optional `binding_data` YAML block configures calibration genotypes for which measured binding curves are available. It has two sub-paths that can coexist:
+The optional `binding_data` YAML block configures calibration genotypes for which measured binding curves are available. Top-level keys `titrant_name`, `titrant_conc`, `noise` describe the (shared) binding assay. Two sub-blocks select which genotypes are measured, each with a `choose_by` (`stratified` | `random` | *params-file path*) and, for non-file modes, a `num`:
 
-**Path 1: Simulated genotypes** (`binding_data.genotypes` list)
-- `wt` gets its natural unperturbed prior-predictive reference curve.
-- Non-wt entries are drawn via a stratified (greedy maximin) algorithm across binding concentrations, ensuring diverse coverage.
-- The selected theta values at *growth* concentrations are injected via `theta_gc_override` so that the simulated growth data is consistent with the binding data.
+**`spiked_binding`** — clean, monoclonal (congression-free) controls; **pool = `spiked_seqs`**.
+- `choose_by: <file>` — the named genotypes get the file's Hill params as their true phenotype (see the measured-params bullets below). `num` is forbidden with a file.
+- `choose_by: stratified|random` — assign diverse (greedy-maximin) / random prior-predictive theta curves to `num` spiked genotypes (default all); `wt` keeps its natural reference. Their theta at *growth* concentrations is injected via `theta_gc_override` so growth matches binding.
 
-**Path 2: Measured Hill parameters** (`binding_data.genotype_params_file`)
+**`library_binding`** — in-library controls drawn from the **bulk** (congression-affected growth); **pool = library genotypes NOT in `spiked_seqs`**. Omit to disable.
+- These are regime-matched to the bulk: on the fit side they are simply extra `binding_df` rows and, because they are *not* in `--spiked`, they get `congression_mask=True` automatically. No fit-side change.
+- **Pre/post-sim split** (`simulate/library_binding_data.py::generate_library_binding_df`): the `file` path injects the genotypes' phenotype *pre-sim* (in `library_prediction`, via the same override machinery), but the binding *measurement* — and, for `stratified`/`random`, the *selection* — happen **post-growth-sim** so selection is restricted to genotypes that actually survived with growth data (guaranteeing `num` usable anchors). `file`-specified genotypes that don't survive are **warned** and dropped. `simulate_cli.py` writes the selected set to `tfs_sim_library_binding.csv`.
+
+**Validation** (`library_prediction._validate_binding_config`, fail-fast): `spiked_binding` file genotypes must be ⊆ `spiked_seqs`; `library_binding` file genotypes must be disjoint from `spiked_seqs`; `num` + a file is an error; a file requires a Hill theta component; `spiked_binding.num` ∈ `[1, num_spiked]`; `library_binding` stratified/random requires `num`.
+
+**Measured Hill parameters** (a `choose_by` *params file*, either block):
 - Reads a CSV with columns `genotype, theta_low, theta_high, log_hill_K, hill_n`.
 - Only supported for Hill-based theta components (`hill_geno`, `hill_mut`).
 - **`theta_low` and `theta_high` are clamped to `[1e-4, 1-1e-4]` at read time** with a `UserWarning`. This is critical: a value of e.g. `1.000004` (a common float-rounding artefact) maps to `logit ≈ +16`, making all per-mutation deltas ~13–15 σ under the `HalfNormal(1)` prior on delta scales and preventing inference from recovering reasonable theta values.
-- For `hill_mut`: the function `build_theta_gc_override_hill_mut` assembles theta for **all library genotypes** (not just the measured ones) by additively combining per-mutation logit-space deltas. The WT reference is taken from `SimPriors` defaults. Multi-mutant genotypes not directly measured in the CSV are assembled from single-mutant deltas; directly-measured multi-mutants use their CSV values directly.
+- For `hill_mut`: `build_theta_gc_override_hill_mut` assembles theta for **all library genotypes** (not just the measured ones) by additively combining per-mutation logit-space deltas. The WT reference is taken from `SimPriors` defaults. Multi-mutant genotypes not directly measured in the CSV are assembled from single-mutant deltas; directly-measured multi-mutants use their CSV values directly.
 - Measured genotypes override any earlier simulated-path values in `theta_gc_override`.
 
 ### Base growth-rate calibration data
@@ -243,7 +248,8 @@ These two dicts are the mechanism by which binding data is "pinned" into the gro
 | `simulate/library_prediction.py` | Top-level orchestrator; assembles override dicts and calls `thermo_to_growth` |
 | `simulate/thermo_to_growth.py` | Prior-predictive sampling, theta injection, growth calculation, parameters_df assembly |
 | `simulate/binding_params.py` | CSV reading (with theta clipping), per-component override builders, binding theta assemblers |
-| `simulate/binding_data.py` | Generates simulated observed binding curve data (`binding_data.genotypes` path; `generate_binding_df`) |
+| `simulate/binding_data.py` | Noise-injects the pre-sim `binding_theta_df` (spiked binding genotypes) into an observed binding CSV; `generate_binding_df` |
+| `simulate/library_binding_data.py` | Post-sim generator for `binding_data.library_binding` (in-library, congression-affected binding genotypes; survivor-restricted selection); `generate_library_binding_df` |
 | `simulate/base_growth_data.py` | Generates simulated direct growth-rate calibration data (`base_growth_data` YAML block) and the single-row `k_ref` ground-truth echo |
 | `simulate/growth_parameters_output.py` | Generates per-condition `condition_growth` ground truth (`tfs_sim_growth_parameters.csv`) from the `growth` YAML block |
 | `simulate/presplit_data.py` | Generates simulated pre-split (t = -t_pre) data (`presplit_data` YAML block; `generate_presplit_df`) |

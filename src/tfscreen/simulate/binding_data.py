@@ -1,10 +1,15 @@
 """
-Generate simulated observed binding curve data (binding_data.genotypes path).
+Generate simulated observed binding curve data for the SPIKED binding genotypes.
 
-Uses pre-computed (stratified) theta values from library_prediction and adds
-Gaussian noise to produce observed theta values for a "measured" binding
-curve CSV -- the mirror image of generate_base_growth_df, which does the same
-noise-injection for direct growth-rate calibration data.
+Noise-injects the pre-computed ``binding_theta_df`` that ``library_prediction``
+builds for the ``binding_data.spiked_binding`` block (clean, monoclonal,
+congression-free controls) into a "measured" binding curve CSV -- the mirror
+image of generate_base_growth_df, which does the same noise-injection for direct
+growth-rate calibration data.
+
+The IN-LIBRARY (congression-affected) binding genotypes are handled separately,
+post-growth-sim, by ``library_binding_data.generate_library_binding_df``; the
+two results are concatenated in ``simulate/scripts/simulate_cli.py``.
 """
 
 import numpy as np
@@ -15,19 +20,22 @@ from tfscreen.genetics import standardize_genotypes
 
 def generate_binding_df(binding_cfg, rng, binding_theta_df):
     """
-    Generate simulated binding curve data for specific genotypes.
+    Generate simulated binding curve data for the spiked binding genotypes.
 
-    Uses pre-computed (stratified) theta values from library_prediction and
-    adds Gaussian noise to produce observed theta values.
+    Uses the pre-computed theta values ``library_prediction`` built for the
+    ``spiked_binding`` block and adds Gaussian noise to produce observed theta.
 
     Parameters
     ----------
     binding_cfg : dict
-        The 'binding_data' sub-dict from the config. Must contain:
-          genotypes   : list of genotype strings
+        The ``binding_data`` config dict.  Reads the top-level (assay-wide)
+        keys:
           titrant_name: str, name of the titrant (e.g. 'iptg')
           titrant_conc: list of concentrations (mM)
-          noise       : float, sigma for Gaussian noise on theta_obs
+          noise       : float, sigma for Gaussian noise on theta_obs (default 0)
+        An optional ``genotypes`` list restricts the output to those genotypes;
+        when absent (the normal case under the spiked_binding schema) every
+        genotype in ``binding_theta_df`` is emitted.
     rng : numpy.random.Generator
     binding_theta_df : pandas.DataFrame
         Pre-computed binding theta from library_prediction.  Must contain

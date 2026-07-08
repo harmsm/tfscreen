@@ -6,6 +6,7 @@ import pandas as pd
 import tfscreen
 from tfscreen.simulate import library_prediction, selection_experiment
 from tfscreen.simulate.binding_data import generate_binding_df
+from tfscreen.simulate.library_binding_data import generate_library_binding_df
 from tfscreen.simulate.presplit_data import generate_presplit_df
 from tfscreen.simulate.base_growth_data import generate_base_growth_df, generate_k_ref_df
 from tfscreen.simulate.growth_parameters_output import generate_growth_parameters_df
@@ -70,6 +71,8 @@ def run_simulation_from_config(
                     "growth_parameters", "transformation_lam"]
     if "binding_data" in cf:
         output_names.append("binding")
+        if cf["binding_data"].get("library_binding") is not None:
+            output_names.append("library_binding")
     if "presplit_data" in cf:
         output_names.append("presplit")
     if "base_growth_data" in cf:
@@ -150,7 +153,31 @@ def run_simulation_from_config(
     print(f"\nWrote: {', '.join(out_path(n) for n in ['library', 'parameters', 'genotype_theta', 'growth', 'growth_parameters', 'transformation_lam'])}")
 
     if "binding_data" in cf:
-        binding_df = generate_binding_df(cf["binding_data"], rng, binding_theta_df)
+        binding_cfg = cf["binding_data"]
+        # Spiked (clean) binding measurements from the pre-sim binding_theta_df.
+        if binding_theta_df is not None:
+            binding_df = generate_binding_df(binding_cfg, rng, binding_theta_df)
+        else:
+            binding_df = pd.DataFrame(columns=["genotype", "titrant_name",
+                                               "titrant_conc", "theta_obs", "theta_std"])
+        # In-library binding measurements (post-sim: selection from survivors).
+        lb = binding_cfg.get("library_binding")
+        if lb is not None:
+            spiked_names = list(pd.unique(
+                library_df.loc[library_df["library_origin"] == "spiked", "genotype"]))
+            lib_binding_df, lib_manifest = generate_library_binding_df(
+                lb,
+                binding_cfg["titrant_name"],
+                binding_cfg["titrant_conc"],
+                binding_cfg.get("noise", 0.0),
+                parameters_df,
+                growth_df,
+                spiked_genotypes=spiked_names,
+                rng=rng,
+            )
+            binding_df = pd.concat([binding_df, lib_binding_df], ignore_index=True)
+            lib_manifest.to_csv(out_path("library_binding"), index=False)
+            print(f"Wrote: {out_path('library_binding')}")
         binding_df.to_csv(out_path("binding"), index=False)
         print(f"Wrote: {out_path('binding')}")
 
