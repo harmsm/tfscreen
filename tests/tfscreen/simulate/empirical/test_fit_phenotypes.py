@@ -139,6 +139,18 @@ def test_fit_phenotypes_accepts_ln_cfu_var_only():
         TRUTH["wt"]["theta_low"], abs=1e-3)
 
 
+def test_parallel_matches_serial():
+    """num_workers>1 (process pool) must give the same fits as serial."""
+    df = _build_growth_df(noise_sd=0.02, seed=5)
+    res_serial, _ = fit_phenotypes(df, CALIB, dk_geno_prior=None,
+                                   progress=False, num_workers=1)
+    res_par, _ = fit_phenotypes(df, CALIB, dk_geno_prior=None,
+                                progress=False, num_workers=2)
+    pd.testing.assert_frame_equal(
+        res_serial.set_index("genotype").sort_index(),
+        res_par.set_index("genotype").sort_index())
+
+
 def test_noiseless_roundtrip_recovers_truth():
     """With no observation noise the fit should recover the true params."""
     df = _build_growth_df(noise_sd=0.0)

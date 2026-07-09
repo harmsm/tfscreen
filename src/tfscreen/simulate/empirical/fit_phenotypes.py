@@ -59,8 +59,10 @@ import numpy as np
 import pandas as pd
 from scipy.special import expit, logit
 import tqdm
+import os
 import warnings
 from collections import namedtuple
+from concurrent.futures import ProcessPoolExecutor
 
 from tfscreen.util.io import read_dataframe
 from tfscreen.util.dataframe import check_columns, get_scaled_cfu
@@ -417,12 +419,40 @@ def _natural_from_transformed(est_t, pheno_slice):
     }
 
 
+# Read-only per-worker state for the process pool, populated once per worker by
+# ``_init_worker`` so the (small) calibration maps are not re-pickled per task.
+_WORKER_STATE = {}
+
+
+def _init_worker(k_map, m_map, intercept_cols, dk_geno_prior):
+    _WORKER_STATE.update(k_map=k_map, m_map=m_map,
+                         intercept_cols=intercept_cols,
+                         dk_geno_prior=dk_geno_prior)
+
+
+def _fit_one_task(sub):
+    """Pool worker: fit one genotype group using the shared worker state."""
+    return fit_one_genotype(sub, _WORKER_STATE["k_map"], _WORKER_STATE["m_map"],
+                            _WORKER_STATE["intercept_cols"],
+                            dk_geno_prior=_WORKER_STATE["dk_geno_prior"])
+
+
+def _resolve_workers(num_workers):
+    """joblib-style worker count: 1 -> serial, -1 -> cpu_count-1, N -> N."""
+    if num_workers is None or int(num_workers) == 1:
+        return 1
+    if int(num_workers) < 0:
+        return max(1, (os.cpu_count() or 2) - 1)
+    return int(num_workers)
+
+
 def fit_phenotypes(growth_df,
                    calib,
                    intercept_cols=("replicate",),
                    dk_geno_prior=(0.0, 1.0),
                    min_obs=None,
-                   progress=True):
+                   progress=True,
+                   num_workers=1):
     """Fit the growth model to every genotype in a real ``ln_cfu`` DataFrame.
 
     Parameters
@@ -445,6 +475,10 @@ def fit_phenotypes(growth_df,
         Skip genotype groups with fewer than this many usable observations.
     progress : bool
         Show a tqdm progress bar.
+    num_workers : int
+        Per-genotype fits are independent, so they can run in parallel over a
+        process pool.  ``1`` (default) fits serially; ``-1`` uses
+        ``os.cpu_count() - 1`` workers; ``N`` uses ``N`` workers.
 
     Returns
     -------
@@ -470,21 +504,45 @@ def fit_phenotypes(growth_df,
 
     k_map, m_map = _build_calib_lookup(calib)
 
-    groups = list(growth_df.groupby(["genotype", "titrant_name"],
-                                    observed=True, sort=False))
-    if progress:
-        groups = tqdm.tqdm(groups, desc="fitting genotypes")
+    workers = _resolve_workers(num_workers)
+
+    # For the parallel path, drop the genotype Categorical: it carries the full
+    # category list on every group, so pickling each sub-frame to a worker would
+    # be O(num_genotype) per task (O(N^2) overall).  Plain strings pickle in
+    # O(rows).  fit_one_genotype reads the genotype via ``.iloc[0]``, so a str
+    # column behaves identically.
+    if workers != 1 and str(growth_df["genotype"].dtype) == "category":
+        growth_df = growth_df.copy()
+        growth_df["genotype"] = growth_df["genotype"].astype(str)
+
+    # Collect the per-genotype work items (each is an independent fit).
+    keys, subs = [], []
+    for key, sub in growth_df.groupby(["genotype", "titrant_name"],
+                                      observed=True, sort=False):
+        if min_obs is not None and len(sub) < min_obs:
+            continue
+        keys.append(key)
+        subs.append(sub)
+
+    if workers == 1:
+        it = tqdm.tqdm(subs, desc="fitting genotypes") if progress else subs
+        gfs = [fit_one_genotype(sub, k_map, m_map, intercept_cols,
+                                dk_geno_prior=dk_geno_prior) for sub in it]
+    else:
+        chunksize = max(1, len(subs) // (workers * 8)) if subs else 1
+        with ProcessPoolExecutor(
+                max_workers=workers, initializer=_init_worker,
+                initargs=(k_map, m_map, intercept_cols, dk_geno_prior)) as ex:
+            mapped = ex.map(_fit_one_task, subs, chunksize=chunksize)
+            if progress:
+                mapped = tqdm.tqdm(mapped, total=len(subs),
+                                   desc=f"fitting genotypes ({workers} workers)")
+            gfs = list(mapped)
 
     rows = []
     fits = {}
-    for (geno, titr), sub in groups:
-        if min_obs is not None and len(sub) < min_obs:
-            continue
-
-        gf = fit_one_genotype(sub, k_map, m_map, intercept_cols,
-                              dk_geno_prior=dk_geno_prior)
+    for (geno, titr), gf in zip(keys, gfs):
         fits[(geno, titr)] = gf
-
         natural = _natural_from_transformed(gf.est_t, gf.pheno_slice)
         std_t = np.sqrt(np.diag(gf.cov_t))[gf.pheno_slice]
         row = {"genotype": geno, "titrant_name": titr,

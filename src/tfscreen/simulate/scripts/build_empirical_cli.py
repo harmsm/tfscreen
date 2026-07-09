@@ -27,7 +27,9 @@ iterate on the fast Stage-1/2 knobs.
 import os
 import warnings
 
-from tfscreen.simulate.empirical.fit_phenotypes import fit_phenotypes
+from tfscreen.simulate.empirical.fit_phenotypes import (
+    fit_phenotypes, _natural_from_transformed,
+)
 from tfscreen.simulate.empirical.population import fit_population
 from tfscreen.util.io import read_dataframe
 from tfscreen.util.cli import read_lines
@@ -36,7 +38,7 @@ from tfscreen.util.cli.generalized_main import generalized_main
 _WT_REF_COLS = ["theta_low", "theta_high", "log_hill_K", "hill_n"]
 
 
-def _run_configure_and_prefit(growth_file, binding_file, spiked_file,
+def _run_configure_and_prefit(growth_file, binding_file, spiked,
                               base_growth_file, thermo_data, out_prefix, seed):
     """Configure a linear/hill_geno model and MAP-calibrate k/m.
 
@@ -53,7 +55,6 @@ def _run_configure_and_prefit(growth_file, binding_file, spiked_file,
         run_prefit_calibration,
     )
 
-    spiked = read_lines(spiked_file) if spiked_file else None
     configure_prefix = f"{out_prefix}_configure"
 
     print("Configuring model (linear growth, hill_geno theta)...", flush=True)
@@ -85,10 +86,12 @@ def build_empirical(growth_file,
                     spiked_file=None,
                     base_growth_file=None,
                     thermo_data=None,
+                    congression_lambda=None,
                     intercept_cols="replicate",
                     dk_geno_prior_sd=1.0,
                     min_obs=None,
-                    drop_railed=True):
+                    drop_railed=True,
+                    num_workers=1):
     """
     Fit real screen data to an empirical phenotype generating distribution.
 
@@ -118,6 +121,12 @@ def build_empirical(growth_file,
     thermo_data : str, optional
         Thermodynamic data path forwarded to ``configure_model`` (unused by
         the default hill_geno theta).
+    congression_lambda : float, optional
+        Zero-truncated Poisson congression rate (the same lambda as the
+        simulator's ``transformation_poisson_lambda``).  When given, run Stage
+        1.5: de-attenuate the bulk theta curves for co-transformation before
+        building the distribution (spiked genotypes are congression-free and
+        left alone).  Omit for no correction.
     intercept_cols : str
         Comma-separated columns whose unique combinations each get a nuisance
         ``ln_cfu0`` (default ``"replicate"``; empty string -> single intercept).
@@ -127,8 +136,13 @@ def build_empirical(growth_file,
         Skip genotypes with fewer than this many usable observations.
     drop_railed : bool
         Drop theta-logit-railed Stage-1 fits before the Stage-2 fit.
+    num_workers : int
+        Parallelize the Stage-1 per-genotype fits over a process pool: ``1``
+        (default) serial; ``-1`` uses ``os.cpu_count() - 1``; ``N`` uses ``N``.
+        Recommended for large libraries (the fits are embarrassingly parallel).
     """
     growth_df = read_dataframe(growth_file)
+    spiked = read_lines(spiked_file) if spiked_file else None
 
     icols = [c.strip() for c in str(intercept_cols).split(",") if c.strip()]
 
@@ -139,7 +153,7 @@ def build_empirical(growth_file,
     # Calibration: reuse a supplied one, or configure+prefit to produce it.
     if calibration_file is None:
         calibration_file = _run_configure_and_prefit(
-            growth_file, binding_file, spiked_file, base_growth_file,
+            growth_file, binding_file, spiked, base_growth_file,
             thermo_data, out_prefix, seed)
     else:
         print(f"Using supplied calibration: {calibration_file}", flush=True)
@@ -149,7 +163,15 @@ def build_empirical(growth_file,
     print("Stage 1: fitting each measured genotype independently...", flush=True)
     results_df, fits = fit_phenotypes(
         growth_df, calibration_file, intercept_cols=icols,
-        dk_geno_prior=dk_prior, min_obs=min_obs)
+        dk_geno_prior=dk_prior, min_obs=min_obs, num_workers=num_workers)
+
+    # Stage 1.5 (optional): de-attenuate the bulk theta curves for congression.
+    if congression_lambda is not None and float(congression_lambda) > 0:
+        from tfscreen.simulate.empirical.congression import deattenuate_congression
+        print(f"Stage 1.5: de-attenuating congression "
+              f"(lambda={float(congression_lambda):g})...", flush=True)
+        fits = deattenuate_congression(
+            fits, growth_df, float(congression_lambda), spiked=spiked)
 
     # Stage 2: turn the per-genotype fits into ONE generating distribution
     # (deconvolving estimation noise).  This distribution is the deliverable.
@@ -157,12 +179,13 @@ def build_empirical(growth_file,
           f"{len(fits)} per-genotype fits...", flush=True)
     model = fit_population(fits, drop_railed=drop_railed)
 
-    # Embed wt's actual Stage-1 phenotype so the simulation pins wt to its real
-    # value rather than a resampled/mean draw.
-    wt_rows = results_df[results_df["genotype"] == "wt"]
-    if len(wt_rows):
-        r = wt_rows.iloc[0]
-        model.wt_ref = {c: float(r[c]) for c in _WT_REF_COLS}
+    # Embed wt's actual (congression-corrected, if applied) phenotype so the
+    # simulation pins wt to its real value rather than a resampled/mean draw.
+    wt_keys = [k for k in fits if k[0] == "wt"]
+    if wt_keys:
+        nat = _natural_from_transformed(fits[wt_keys[0]].est_t,
+                                        fits[wt_keys[0]].pheno_slice)
+        model.wt_ref = {c: float(nat[c]) for c in _WT_REF_COLS}
     else:
         warnings.warn(
             "no 'wt' genotype in the Stage-1 fits; wt_ref not set (the "
@@ -194,4 +217,5 @@ def main():
         build_empirical,
         manual_arg_types={"binding_file": str, "calibration_file": str,
                           "spiked_file": str, "base_growth_file": str,
-                          "thermo_data": str, "seed": int, "min_obs": int})
+                          "thermo_data": str, "seed": int, "min_obs": int,
+                          "congression_lambda": float, "num_workers": int})
