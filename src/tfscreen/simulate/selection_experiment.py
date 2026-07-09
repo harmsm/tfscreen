@@ -53,6 +53,8 @@ SIMULATE_KNOWN_KEYS = frozenset({
     # Phenotype / theta calculation
     "theta_component", "thermo_data", "theta_priors", "theta_rescale",
     "theta_sim_priors",
+    # Empirical phenotype source (resample from a fitted PopulationModel)
+    "phenotype_source", "empirical",
     # Conditions and growth
     "condition_blocks", "growth",
     "dk_geno_hyper_loc", "dk_geno_hyper_scale", "dk_geno_hyper_shift", "dk_geno_zero",

@@ -15,6 +15,12 @@ from tfscreen.simulate.binding_params import (
     build_binding_theta_from_params,
     _wt_params_from_sim_priors,
 )
+from tfscreen.simulate.empirical.resample import (
+    make_empirical_overrides,
+    build_empirical_binding_theta,
+)
+from tfscreen.simulate.empirical.population import PopulationModel
+
 from tfscreen.genetics import library_manager
 from tfscreen.genetics import standardize_genotypes
 
@@ -22,6 +28,8 @@ import jax
 import numpy as np
 import pandas as pd
 
+import os
+import warnings
 from typing import Any, Dict, Union
 from pathlib import Path
 
@@ -29,6 +37,40 @@ from pathlib import Path
 def _is_file_choice(choose_by):
     """A ``choose_by`` value is a params file when it is not a builtin keyword."""
     return choose_by not in ("stratified", "random")
+
+
+def _resolve_phenotype_model_path(path):
+    """Resolve a ``phenotype_model`` value to the saved model JSON file.
+
+    ``tfs-build-empirical`` writes the model as a single self-contained
+    ``<out_prefix>_phenotype_model.json`` (and prints its absolute path).  This
+    accepts that path with or without the ``.json`` extension, and — as a
+    convenience if you point at the bare pipeline ``<out_prefix>`` — appends
+    ``_phenotype_model.json``.  Returns a path that exists.
+    """
+    path = str(path)
+    candidates = [path, f"{path}.json", f"{path}_phenotype_model.json"]
+    for cand in candidates:
+        if os.path.exists(cand):
+            return cand
+    raise FileNotFoundError(
+        f"No phenotype model file found for phenotype_model='{path}'. Looked "
+        f"for: {candidates}. tfs-build-empirical prints the exact path "
+        f"to use at the end of its run (a '<out_prefix>_phenotype_model.json' "
+        f"file); use that -- an absolute path resolves from any working "
+        f"directory, so you never need to copy the file.")
+
+
+def _load_phenotype_model(cf):
+    """Load the saved Stage-2 PopulationModel for ``phenotype_source: empirical``."""
+    emp = cf.get("empirical")
+    if not emp or not emp.get("phenotype_model"):
+        raise ValueError(
+            "phenotype_source: empirical requires an 'empirical' block with a "
+            "'phenotype_model' path (a saved PopulationModel from "
+            "tfs-build-empirical).")
+    return PopulationModel.load(
+        _resolve_phenotype_model_path(emp["phenotype_model"]))
 
 
 def _validate_binding_config(binding_cfg, spiked_names, theta_component):
@@ -258,11 +300,29 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
     # here so the growth simulation reflects them.
 
     binding_cfg = cf.get('binding_data')
+    phenotype_source = cf.get('phenotype_source', 'prior')
     theta_gc_override = {}
     theta_params_override = {}
+    dk_geno_override = None
     binding_theta_df = None
 
-    if binding_cfg is not None:
+    if phenotype_source == 'empirical':
+        # Empirical phenotypes: resample every library genotype from the
+        # fitted generating distribution and inject as overrides.  Binding
+        # data (if configured) is regenerated from the same resampled params.
+        model = _load_phenotype_model(cf)
+        log_conc_growth = np.array(sim_data.log_titrant_conc)
+        pheno_df, theta_gc_override, theta_params_override, dk_geno_override = \
+            make_empirical_overrides(
+                model, list(library_df["genotype"]), log_conc_growth,
+                rng=rng, wt_ref=model.wt_ref)
+        if binding_cfg is not None:
+            spiked_names = list(pd.unique(library_df.loc[
+                library_df["library_origin"] == "spiked", "genotype"]))
+            binding_theta_df = build_empirical_binding_theta(
+                pheno_df, binding_cfg, spiked_names, rng)
+
+    elif binding_cfg is not None:
         binding_concs = binding_cfg['titrant_conc']
         titrant_name = binding_cfg['titrant_name']
         theta_component = cf['theta_component']
@@ -312,27 +372,55 @@ def library_prediction(cf: Union[Dict[str, Any], str, Path],
     # -------------------------------------------------------------------------
     # Calculate phenotype for each genotype across all conditions in sample_df
 
+    # In empirical mode the resampled phenotypes fully replace the prior draw,
+    # and are hill_geno-structured (marginal per-genotype).  So force hill_geno
+    # for the (discarded) baseline draw — this both matches the parameters_df
+    # schema the overrides patch and avoids running/overflowing an expensive
+    # e.g. hill_mut prior draw that would be thrown away — drop the (ignored)
+    # theta prior overrides, and force unit activity (A absorbed into theta).
+    if phenotype_source == 'empirical':
+        configured = cf.get('theta_component', 'hill_geno')
+        if configured != 'hill_geno':
+            warnings.warn(
+                f"phenotype_source: empirical forces theta_component=hill_geno "
+                f"(config has '{configured}', which is ignored): the resampled "
+                f"phenotypes are per-genotype Hill curves.")
+        theta_component = 'hill_geno'
+        theta_priors_overrides = None
+        theta_sim_priors_overrides = None
+        activity_component = 'fixed'
+        activity_wt = 1.0
+        activity_mut_scale = 0.0
+    else:
+        theta_component = cf['theta_component']
+        theta_priors_overrides = cf.get('theta_priors')
+        theta_sim_priors_overrides = cf.get('theta_sim_priors')
+        activity_component = cf.get('activity_component', 'fixed')
+        activity_wt = cf.get('activity_wt', 1.0)
+        activity_mut_scale = cf.get('activity_mut_scale', 0.0)
+
     phenotype_df, genotype_theta_df, parameters_df = thermo_to_growth(
         genotypes=library_df["genotype"],
         sim_data=sim_data,
         sample_df=sample_df,
-        theta_component=cf['theta_component'],
+        theta_component=theta_component,
         theta_rng_key=theta_rng_key,
         growth_params=cf['growth'],
-        theta_priors_overrides=cf.get('theta_priors'),
-        theta_sim_priors_overrides=cf.get('theta_sim_priors'),
+        theta_priors_overrides=theta_priors_overrides,
+        theta_sim_priors_overrides=theta_sim_priors_overrides,
         dk_geno_hyper_loc=dk_geno_hyper_loc,
         dk_geno_hyper_scale=dk_geno_hyper_scale,
         dk_geno_hyper_shift=dk_geno_hyper_shift,
         dk_geno_zero=dk_geno_zero,
-        activity_wt=cf.get('activity_wt', 1.0),
-        activity_mut_scale=cf.get('activity_mut_scale', 0.0),
+        activity_wt=activity_wt,
+        activity_mut_scale=activity_mut_scale,
         rng=rng,
-        activity_component=cf.get('activity_component', 'fixed'),
+        activity_component=activity_component,
         activity_priors_overrides=cf.get('activity_priors'),
         theta_rescale=cf.get('theta_rescale', 'passthrough'),
         theta_gc_override=theta_gc_override,
         theta_params_override=theta_params_override or None,
+        dk_geno_override=dk_geno_override,
     )
 
     return library_df, phenotype_df, genotype_theta_df, parameters_df, binding_theta_df

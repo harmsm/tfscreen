@@ -308,6 +308,7 @@ def thermo_to_growth(
     theta_rescale: str = "passthrough",
     theta_gc_override: Optional[dict] = None,
     theta_params_override: Optional[dict] = None,
+    dk_geno_override: Optional[dict] = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Generate phenotypes from genotypes via prior-predictive theta sampling.
@@ -401,6 +402,14 @@ def thermo_to_growth(
         corresponding rows in ``parameters_df`` are updated so that the
         saved CSV reflects what was actually used in the simulation rather
         than the prior-predictive sample.
+    dk_geno_override : dict[str, float] or None, default None
+        Per-genotype pleiotropic growth effect overrides.  Keys are genotype
+        strings; values replace the stochastically drawn ``dk_geno`` for that
+        genotype (applied before it is written into both ``phenotype_df`` and
+        ``parameters_df``).  Used by the empirical-phenotype pipeline to inject
+        resampled ``dk_geno`` values alongside ``theta_gc_override`` /
+        ``theta_params_override``; genotypes absent from the dict keep their
+        drawn (or wt-pinned) value.
 
     Returns
     -------
@@ -562,6 +571,15 @@ def thermo_to_growth(
         dk_geno_hyper_shift, rng,
         fixed_value=0.0 if dk_geno_zero else None,
     )
+
+    # Inject resampled dk_geno for the empirical-phenotype pipeline.  Applied
+    # to the per-genotype series so both phenotype_df and parameters_df below
+    # pick up the override.
+    if dk_geno_override:
+        for g, val in dk_geno_override.items():
+            if g in genotype_dk_geno_series.index:
+                genotype_dk_geno_series[g] = float(val)
+
     phenotype_df["dk_geno"] = phenotype_df["genotype"].map(genotype_dk_geno_series)
 
     if activity_component not in _ACTIVITY_COMPONENTS:
