@@ -3,19 +3,31 @@ import numpy as np
 import pandas as pd
 from . import _congression as congression
 
-def get_hyperparameters():
+def get_hyperparameters(lam_mean=None, lam_std=None):
     """
     Gets default values for the model hyperparameters, forced to logit_norm mode.
+
+    Parameters
+    ----------
+    lam_mean, lam_std : float, optional
+        Experimentally measured mean/std of lambda (linear space). See
+        ``_congression.get_hyperparameters``.
     """
-    parameters = congression.get_hyperparameters()
+    parameters = congression.get_hyperparameters(lam_mean=lam_mean, lam_std=lam_std)
     parameters["mode"] = "logit_norm"
     return parameters
 
-def get_priors():
+def get_priors(lam_mean=None, lam_std=None):
     """
     Gets model priors initialized to logit_norm mode.
+
+    Parameters
+    ----------
+    lam_mean, lam_std : float, optional
+        Experimentally measured mean/std of lambda (linear space). See
+        ``_congression.get_hyperparameters``.
     """
-    return congression.ModelPriors(**get_hyperparameters())
+    return congression.ModelPriors(**get_hyperparameters(lam_mean=lam_mean, lam_std=lam_std))
 
 # These are mode-agnostic or depend on priors.mode
 get_guesses = congression.get_guesses
@@ -24,6 +36,12 @@ guide = congression.guide
 
 # Bake the theta_dist for the update function
 update_thetas = partial(congression.update_thetas, theta_dist="logit_norm")
+
+# logit_norm's background CDF is the smooth analytic Logit-Normal(mu, sigma),
+# not a raw-sample empirical CDF, so it needs no population-wide theta
+# reference — mu/sigma already update smoothly with SVI regardless of which
+# genotypes are in the current batch. See empirical.py for the contrasting case.
+NEEDS_FULL_POPULATION_THETA = False
 
 
 def get_extract_specs(ctx):

@@ -134,7 +134,8 @@ def test_library_prediction_dk_geno_zero_makes_hyper_params_optional(mocker):
     mocker.patch("tfscreen.util.read_yaml", return_value=config)
     mocker.patch(
         "tfscreen.simulate.library_prediction.library_manager.LibraryManager"
-    ).return_value.build_library_df.return_value = pd.DataFrame({"genotype": ["wt"]})
+    ).return_value.build_library_df.return_value = pd.DataFrame(
+        {"genotype": ["wt"], "library_origin": ["spiked"]})
     mocker.patch(
         "tfscreen.simulate.library_prediction.build_sample_dataframes",
         return_value=pd.DataFrame({"titrant_conc": [0.0]}),
@@ -168,7 +169,8 @@ def test_library_prediction_missing_hyper_params_raises_without_dk_geno_zero(moc
     mocker.patch("tfscreen.util.read_yaml", return_value=config)
     mocker.patch(
         "tfscreen.simulate.library_prediction.library_manager.LibraryManager"
-    ).return_value.build_library_df.return_value = pd.DataFrame({"genotype": ["wt"]})
+    ).return_value.build_library_df.return_value = pd.DataFrame(
+        {"genotype": ["wt"], "library_origin": ["spiked"]})
     mocker.patch(
         "tfscreen.simulate.library_prediction.build_sample_dataframes",
         return_value=pd.DataFrame({"titrant_conc": [0.0]}),
@@ -196,7 +198,8 @@ def _patch_library_deps(mocker, config):
     mocker.patch("tfscreen.util.read_yaml", return_value=config)
     mocker.patch(
         "tfscreen.simulate.library_prediction.library_manager.LibraryManager"
-    ).return_value.build_library_df.return_value = pd.DataFrame({"genotype": ["wt"]})
+    ).return_value.build_library_df.return_value = pd.DataFrame(
+        {"genotype": ["wt"], "library_origin": ["spiked"]})
     mocker.patch(
         "tfscreen.simulate.library_prediction.build_sample_dataframes",
         return_value=pd.DataFrame({"titrant_conc": [0.0]}),
@@ -330,15 +333,13 @@ def _make_params_csv(tmp_path, content):
     return str(p)
 
 
-def _base_config_with_binding(params_path, genotypes=None):
+def _base_config_with_binding(params_path):
     binding = {
         "titrant_name": "iptg",
         "titrant_conc": [0.0, 0.001, 0.01],
         "noise": 0.0,
-        "genotype_params_file": params_path,
+        "spiked_binding": {"choose_by": params_path},
     }
-    if genotypes is not None:
-        binding["genotypes"] = genotypes
     return {
         "condition_blocks": [{"some": "block"}],
         "theta_component": "hill_geno",
@@ -357,7 +358,8 @@ def _patch_for_params_file(mocker, config):
     """Patch all heavy deps; returns (mock_thermo, mock_sim_data)."""
     mocker.patch("tfscreen.util.read_yaml", return_value=config)
 
-    mock_library_df = pd.DataFrame({"genotype": ["wt", "A47V"]})
+    mock_library_df = pd.DataFrame({"genotype": ["wt", "A47V"],
+                                    "library_origin": ["spiked", "spiked"]})
     mocker.patch(
         "tfscreen.simulate.library_prediction.library_manager.LibraryManager"
     ).return_value.build_library_df.return_value = mock_library_df
@@ -452,7 +454,8 @@ def test_unsupported_theta_component_raises(mocker, tmp_path):
     mocker.patch("tfscreen.util.read_yaml", return_value=config)
     mocker.patch(
         "tfscreen.simulate.library_prediction.library_manager.LibraryManager"
-    ).return_value.build_library_df.return_value = pd.DataFrame({"genotype": ["wt"]})
+    ).return_value.build_library_df.return_value = pd.DataFrame(
+        {"genotype": ["wt"], "library_origin": ["spiked"]})
     mocker.patch(
         "tfscreen.simulate.library_prediction.build_sample_dataframes",
         return_value=pd.DataFrame({"titrant_conc": [0.0]}),
@@ -462,31 +465,3 @@ def test_unsupported_theta_component_raises(mocker, tmp_path):
 
     with pytest.raises(ValueError, match="hill"):
         library_prediction(cf="config.yaml")
-
-
-def test_params_file_and_genotypes_coexist(mocker, tmp_path):
-    """genotype_params_file and genotypes can coexist; both appear in binding_df."""
-    csv = _make_params_csv(
-        tmp_path,
-        "genotype,theta_low,theta_high,log_hill_K,hill_n\n"
-        "A47V,0.97,0.03,-3.8,1.8\n",
-    )
-    config = _base_config_with_binding(csv, genotypes=["wt"])
-    mock_thermo, mock_sim_data = _patch_for_params_file(mocker, config)
-
-    # Patch sample_theta_prior (called for simulated WT in the 'genotypes' path)
-    import numpy as np
-    mock_wt_gc = np.array([[0.99, 0.50, 0.01]])   # shape (1, 3): 1 genotype × 3 concs
-    mock_theta_param = MagicMock()
-    mocker.patch(
-        "tfscreen.simulate.library_prediction.sample_theta_prior",
-        return_value=(mock_wt_gc, mock_theta_param),
-    )
-
-    _, _, _, _, binding_df = library_prediction(cf="config.yaml")
-
-    assert binding_df is not None
-    genos = set(binding_df["genotype"].unique())
-    # WT from simulated path + A47V from params file
-    assert "A47V" in genos
-    assert "wt" in genos

@@ -134,11 +134,14 @@ class TestReadBindingGenotypeParams:
         with pytest.raises(ValueError, match="parameter column"):
             read_binding_genotype_params(str(p))
 
-    def test_raises_unknown_columns(self, tmp_path):
-        p = tmp_path / "bad.csv"
-        p.write_text("genotype,theta_low,extra_col\nwt,0.99,foo\n")
-        with pytest.raises(ValueError, match="Unrecognised"):
-            read_binding_genotype_params(str(p))
+    def test_ignores_extra_columns(self, tmp_path):
+        """Extra columns (e.g. a stage1_fits.csv) are ignored, not rejected."""
+        p = tmp_path / "extra.csv"
+        p.write_text("genotype,theta_low,theta_high,log_hill_K,hill_n,"
+                     "dk_geno,n_obs\nwt,0.99,0.01,-4.1,2.0,0.003,120\n")
+        d = read_binding_genotype_params(str(p))
+        assert set(d["wt"]) == {"theta_low", "theta_high", "log_hill_K", "hill_n"}
+        assert d["wt"]["theta_low"] == pytest.approx(0.99)
 
     def test_clips_theta_above_one(self, tmp_path):
         """theta_low > 1 (float rounding) must be clipped and trigger a warning."""

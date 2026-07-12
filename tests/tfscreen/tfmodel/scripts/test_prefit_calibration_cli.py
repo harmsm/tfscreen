@@ -12,6 +12,7 @@ import dataclasses
 import os
 import shutil
 import sys
+from collections import namedtuple
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -20,6 +21,8 @@ import pytest
 import yaml
 import jax
 import jax.numpy as jnp
+import numpyro as pyro
+import numpyro.distributions as dist
 
 import flax.struct as fstruct
 
@@ -31,10 +34,14 @@ from tfscreen.tfmodel.scripts.prefit_calibration_cli import (
     _build_hessian_scale_updates,
     _compute_theta_values,
     _csv_row_name,
+    _dk_geno_pins_from_base_growth,
+    _drop_presplit_backed_ln_cfu0_sites,
     _identify_field_mapping,
     _inject_calibration_priors,
     _intersect_data,
     _resolve_csv_paths,
+    _resolve_scale_bounds,
+    _condition_rep_labels,
     main,
     run_prefit_calibration,
     _CALIBRATION_OVERRIDES,
@@ -375,6 +382,133 @@ class TestComputeThetaValues:
 
 
 # ---------------------------------------------------------------------------
+# _identify_field_mapping — ln_cfu0 wt_loc/spiked_loc recognition
+# ---------------------------------------------------------------------------
+
+class TestIdentifyFieldMappingLnCfu0:
+
+    def _fake_orchestrator(self, jax_model):
+        orchestrator_cal = MagicMock()
+        orchestrator_cal.jax_model = jax_model
+        orchestrator_cal.data = {}
+        orchestrator_cal.priors = {}
+        return orchestrator_cal
+
+    def test_recognizes_wt_and_spiked_loc_sites(self):
+        def fake_model(data, priors):
+            pyro.sample("ln_cfu0_wt_loc", dist.Normal(0.0, 1.0))
+            pyro.sample("ln_cfu0_spiked_loc", dist.Normal(0.0, 1.0))
+
+        mapping = _identify_field_mapping(self._fake_orchestrator(fake_model))
+
+        assert mapping["ln_cfu0_wt_loc"] == {
+            "component": "ln_cfu0",
+            "dist_class": "Normal",
+            "loc_field": "ln_cfu0_wt_loc_loc",
+            "scale_field": "ln_cfu0_wt_loc_scale",
+            "is_array": False,
+        }
+        assert mapping["ln_cfu0_spiked_loc"] == {
+            "component": "ln_cfu0",
+            "dist_class": "Normal",
+            "loc_field": "ln_cfu0_spiked_loc_loc",
+            "scale_field": "ln_cfu0_spiked_loc_scale",
+            "is_array": False,
+        }
+
+    def test_ignores_other_ln_cfu0_sites(self):
+        """
+        Only wt_loc/spiked_loc are ever surfaced -- the pinned library-class
+        hyperpriors (hyper_loc_i/hyper_scale_i) and per-genotype offsets are
+        not condition_growth/growth_transition/ln_cfu0-wt-spiked sites, so
+        they must not appear in the mapping.
+        """
+        def fake_model(data, priors):
+            pyro.sample("ln_cfu0_wt_loc", dist.Normal(0.0, 1.0))
+            pyro.sample("ln_cfu0_hyper_loc_0", dist.Normal(0.0, 1.0))
+            pyro.sample("ln_cfu0_offset", dist.Normal(0.0, 1.0))
+
+        mapping = _identify_field_mapping(self._fake_orchestrator(fake_model))
+
+        assert "ln_cfu0_wt_loc" in mapping
+        assert "ln_cfu0_hyper_loc_0" not in mapping
+        assert "ln_cfu0_offset" not in mapping
+
+    def test_still_recognizes_condition_growth_sites_alongside_ln_cfu0(self):
+        """The new ln_cfu0 branch doesn't interfere with the pre-existing
+        condition_growth/growth_transition suffix-based detection."""
+        def fake_model(data, priors):
+            pyro.sample("condition_growth_k", dist.Normal(0.0, 1.0))
+            pyro.sample("ln_cfu0_wt_loc", dist.Normal(0.0, 1.0))
+
+        mapping = _identify_field_mapping(self._fake_orchestrator(fake_model))
+
+        assert mapping["condition_growth_k"]["component"] == "condition_growth"
+        assert mapping["ln_cfu0_wt_loc"]["component"] == "ln_cfu0"
+
+
+# ---------------------------------------------------------------------------
+# _drop_presplit_backed_ln_cfu0_sites
+# ---------------------------------------------------------------------------
+
+class TestDropPresplitBackedLnCfu0Sites:
+
+    def _field_mapping(self):
+        return {
+            "condition_growth_k": {"component": "condition_growth"},
+            "ln_cfu0_wt_loc": {"component": "ln_cfu0"},
+            "ln_cfu0_spiked_loc": {"component": "ln_cfu0"},
+        }
+
+    def test_none_estimates_leaves_mapping_unchanged(self):
+        fm = self._field_mapping()
+        result = _drop_presplit_backed_ln_cfu0_sites(fm, None)
+        assert result == fm
+
+    def test_both_median_keeps_both_sites(self):
+        fm = self._field_mapping()
+        estimates = {"wt_source": "median", "spiked_source": "median"}
+        result = _drop_presplit_backed_ln_cfu0_sites(fm, estimates)
+        assert "ln_cfu0_wt_loc" in result
+        assert "ln_cfu0_spiked_loc" in result
+
+    def test_wt_presplit_drops_only_wt(self):
+        fm = self._field_mapping()
+        estimates = {"wt_source": "presplit", "spiked_source": "median"}
+        result = _drop_presplit_backed_ln_cfu0_sites(fm, estimates)
+        assert "ln_cfu0_wt_loc" not in result
+        assert "ln_cfu0_spiked_loc" in result
+
+    def test_spiked_presplit_drops_only_spiked(self):
+        fm = self._field_mapping()
+        estimates = {"wt_source": "median", "spiked_source": "presplit"}
+        result = _drop_presplit_backed_ln_cfu0_sites(fm, estimates)
+        assert "ln_cfu0_wt_loc" in result
+        assert "ln_cfu0_spiked_loc" not in result
+
+    def test_both_presplit_drops_both(self):
+        fm = self._field_mapping()
+        estimates = {"wt_source": "presplit", "spiked_source": "presplit"}
+        result = _drop_presplit_backed_ln_cfu0_sites(fm, estimates)
+        assert "ln_cfu0_wt_loc" not in result
+        assert "ln_cfu0_spiked_loc" not in result
+
+    def test_unrelated_sites_never_dropped(self):
+        fm = self._field_mapping()
+        estimates = {"wt_source": "presplit", "spiked_source": "presplit"}
+        result = _drop_presplit_backed_ln_cfu0_sites(fm, estimates)
+        assert "condition_growth_k" in result
+
+    def test_does_not_mutate_input_mapping(self):
+        fm = self._field_mapping()
+        original = dict(fm)
+        _drop_presplit_backed_ln_cfu0_sites(
+            fm, {"wt_source": "presplit", "spiked_source": "presplit"}
+        )
+        assert fm == original
+
+
+# ---------------------------------------------------------------------------
 # _csv_row_name / _build_csv_updates
 # ---------------------------------------------------------------------------
 
@@ -437,8 +571,9 @@ class TestBuildCsvUpdates:
         assert prior_updates == {}
         assert guess_updates == {}
 
-    def test_array_site_writes_locs_to_guesses(self):
-        """Simple-prior array sites write per-condition MAP values to guesses."""
+    def test_array_site_writes_locs_to_guesses_and_priors(self):
+        """condition_growth array sites warm-start guesses AND pin the
+        per-condition prior loc (the baseline pin that closes the slide)."""
         field_mapping = {
             "condition_growth_k": {
                 "component": "condition_growth",
@@ -450,12 +585,30 @@ class TestBuildCsvUpdates:
         }
         params = {"condition_growth_k_auto_loc": np.array([1.0, 2.0, 3.0])}
         prior_updates, guess_updates = _build_csv_updates(field_mapping, params)
-        # Array sites do NOT update priors
-        assert prior_updates == {}
-        # Guess locs get the per-condition MAP array
+        # Guess locs get the per-condition MAP array (warm start)
         assert "condition_growth_k_locs" in guess_updates
         assert np.allclose(guess_updates["condition_growth_k_locs"],
                            [1.0, 2.0, 3.0])
+        # Priors get the per-condition loc array (the pin)
+        assert "growth.condition_growth.k_loc" in prior_updates
+        assert np.allclose(prior_updates["growth.condition_growth.k_loc"],
+                           [1.0, 2.0, 3.0])
+
+    def test_growth_transition_array_site_does_not_pin_priors(self):
+        """growth_transition array sites keep warm-start-only behaviour."""
+        field_mapping = {
+            "growth_transition_tau0": {
+                "component": "growth_transition",
+                "dist_class": "Normal",
+                "loc_field": "tau0_loc",
+                "scale_field": "tau0_scale",
+                "is_array": True,
+            },
+        }
+        params = {"growth_transition_tau0_auto_loc": np.array([1.0, 2.0, 3.0])}
+        prior_updates, guess_updates = _build_csv_updates(field_mapping, params)
+        assert "growth_transition_tau0_locs" in guess_updates
+        assert prior_updates == {}
 
 
 # ---------------------------------------------------------------------------
@@ -513,6 +666,47 @@ class TestApplyPriorsUpdates:
         pd.DataFrame({"foo": [1, 2]}).to_csv(bad, index=False)
         with pytest.raises(ValueError, match="missing required"):
             _apply_priors_updates(str(bad), {"x": 1.0})
+
+    def test_array_update_expands_to_labeled_indexed_rows(self, tmp_path):
+        """A per-condition array prior replaces the scalar row with one
+        indexed, condition_rep-labeled row per condition."""
+        path = self._write_csv(tmp_path, [
+            {"parameter": "growth.condition_growth.k_loc", "value": 0.02},
+            {"parameter": "growth.condition_growth.k_scale", "value": 0.1},
+        ])
+        labels = pd.DataFrame({
+            "condition_rep": ["kanR+kan", "kanR-kan", "pheS+4CP"],
+        })
+        updates = {"growth.condition_growth.k_loc": np.array([0.011, 0.021, 0.029])}
+        _apply_priors_updates(path, updates, cond_rep_labels=labels)
+
+        new = pd.read_csv(path)
+        k_rows = new[new["parameter"] == "growth.condition_growth.k_loc"]
+        # One row per condition, replacing the single scalar row
+        assert len(k_rows) == 3
+        assert "flat_index" in k_rows.columns
+        assert "condition_rep" in k_rows.columns
+        by_cond = dict(zip(k_rows["condition_rep"], k_rows["value"]))
+        assert by_cond["kanR+kan"] == pytest.approx(0.011)
+        assert by_cond["pheS+4CP"] == pytest.approx(0.029)
+        # A scalar row alongside is preserved
+        assert (new["parameter"] == "growth.condition_growth.k_scale").sum() == 1
+
+    def test_array_and_scalar_updates_together(self, tmp_path):
+        path = self._write_csv(tmp_path, [
+            {"parameter": "growth.condition_growth.k_loc", "value": 0.02},
+            {"parameter": "growth.condition_growth.k_scale", "value": 0.1},
+        ])
+        labels = pd.DataFrame({"condition_rep": ["a+x", "b-y"]})
+        updates = {
+            "growth.condition_growth.k_loc": np.array([0.011, 0.021]),
+            "growth.condition_growth.k_scale": 0.002,
+        }
+        _apply_priors_updates(path, updates, cond_rep_labels=labels)
+        new = pd.read_csv(path).set_index("parameter")
+        assert new.loc["growth.condition_growth.k_scale", "value"] == pytest.approx(0.002)
+        assert (pd.read_csv(path)["parameter"]
+                == "growth.condition_growth.k_loc").sum() == 2
 
 
 class TestApplyGuessesUpdates:
@@ -685,6 +879,9 @@ class TestBuildCalibrationModel:
         # Overrides applied
         for k, v in _CALIBRATION_OVERRIDES.items():
             assert kwargs[k] == v
+        # dk_geno is handled conditionally (not via _CALIBRATION_OVERRIDES):
+        # production wasn't "pinned", so it's forced to "fixed".
+        assert kwargs["dk_geno"] == "fixed"
         # Spiked genotypes dropped (calibration only sees the intersection)
         assert kwargs["spiked_genotypes"] is None
         # batch_size pulled out of settings and passed positionally
@@ -696,6 +893,110 @@ class TestBuildCalibrationModel:
         # calibration MAP learns the binding→growth linkage without the
         # production upweighting drowning the binding signal.
         assert kwargs["binding_weight"] == 1.0
+
+    def test_dk_geno_pinned_carried_through_from_production(self):
+        """
+        If the production config pins specific genotypes' dk_geno, the
+        calibration model must keep "pinned" (and its pins file) instead of
+        forcing "fixed" — otherwise the known-nonzero genotypes would be
+        zeroed out along with everything else, defeating the point of
+        pinning them.
+        """
+        orchestrator_prod = MagicMock()
+        orchestrator_prod.settings = {
+            "theta": "categorical_geno",
+            "activity": "horseshoe_geno",
+            "dk_geno": "pinned",
+            "dk_geno_pins_file": "dk_geno_pins.csv",
+            "ln_cfu0": "fixed",
+            "transformation": "logit_norm",
+            "theta_growth_noise": "beta",
+            "theta_binding_noise": "beta",
+            "condition_growth": "linear",
+            "growth_transition": "instant",
+            "batch_size": None,
+            "spiked_genotypes": None,
+        }
+
+        with patch(
+            "tfscreen.tfmodel.scripts"
+            ".prefit_calibration_cli.ModelOrchestrator"
+        ) as MockGM:
+            MockGM.return_value = MagicMock()
+            _build_calibration_model(orchestrator_prod, pd.DataFrame(), pd.DataFrame())
+
+        kwargs = MockGM.call_args.kwargs
+        assert kwargs["dk_geno"] == "pinned"
+        assert kwargs["dk_geno_pins_file"] == "dk_geno_pins.csv"
+
+    def test_dk_geno_pins_file_dropped_when_not_pinned(self):
+        """
+        A stray dk_geno_pins_file left in production settings (e.g. from an
+        earlier config edit) must not leak into the calibration model when
+        dk_geno isn't "pinned" — ModelOrchestrator raises if a pins file is
+        given without dk_geno='pinned'.
+        """
+        orchestrator_prod = MagicMock()
+        orchestrator_prod.settings = {
+            "theta": "categorical_geno",
+            "activity": "horseshoe_geno",
+            "dk_geno": "hierarchical_geno",
+            "dk_geno_pins_file": "stale_pins.csv",
+            "ln_cfu0": "fixed",
+            "transformation": "logit_norm",
+            "theta_growth_noise": "beta",
+            "theta_binding_noise": "beta",
+            "condition_growth": "linear",
+            "growth_transition": "instant",
+            "batch_size": None,
+            "spiked_genotypes": None,
+        }
+
+        with patch(
+            "tfscreen.tfmodel.scripts"
+            ".prefit_calibration_cli.ModelOrchestrator"
+        ) as MockGM:
+            MockGM.return_value = MagicMock()
+            _build_calibration_model(orchestrator_prod, pd.DataFrame(), pd.DataFrame())
+
+        kwargs = MockGM.call_args.kwargs
+        assert kwargs["dk_geno"] == "fixed"
+        assert "dk_geno_pins_file" not in kwargs
+
+    def test_transformation_lambda_dropped_when_forced_to_single(self):
+        """
+        Production transformation="empirical" carries a transformation_lambda
+        (mean, std) pair anchoring its lambda parameter. The calibration
+        model always overrides transformation to "single", which has no
+        lambda parameter -- ModelOrchestrator raises if transformation_lambda is
+        still set in that case, so it must be cleared here too.
+        """
+        orchestrator_prod = MagicMock()
+        orchestrator_prod.settings = {
+            "theta": "categorical_geno",
+            "activity": "horseshoe_geno",
+            "dk_geno": "fixed",
+            "ln_cfu0": "fixed",
+            "transformation": "empirical",
+            "transformation_lambda": (0.3572, 0.2592),
+            "theta_growth_noise": "beta",
+            "theta_binding_noise": "beta",
+            "condition_growth": "linear",
+            "growth_transition": "instant",
+            "batch_size": None,
+            "spiked_genotypes": None,
+        }
+
+        with patch(
+            "tfscreen.tfmodel.scripts"
+            ".prefit_calibration_cli.ModelOrchestrator"
+        ) as MockGM:
+            MockGM.return_value = MagicMock()
+            _build_calibration_model(orchestrator_prod, pd.DataFrame(), pd.DataFrame())
+
+        kwargs = MockGM.call_args.kwargs
+        assert kwargs["transformation"] == "single"
+        assert kwargs["transformation_lambda"] is None
 
     def test_binding_weight_reset_from_large_production_value(self):
         # Reproduces the weighting bug: production YAML stores a large
@@ -749,6 +1050,193 @@ class TestBuildCalibrationModel:
             _build_calibration_model(orchestrator_prod, pd.DataFrame(), pd.DataFrame())
 
         assert orchestrator_prod.settings == original_settings
+
+    def _base_growth_settings(self):
+        return {
+            "theta": "categorical_geno",
+            "activity": "horseshoe_geno",
+            "dk_geno": "hierarchical_geno",  # production value; not "pinned"
+            "ln_cfu0": "fixed",
+            "transformation": "logit_norm",
+            "theta_growth_noise": "beta",
+            "theta_binding_noise": "beta",
+            "condition_growth": "linear",
+            "growth_transition": "instant",
+            "batch_size": None,
+            "spiked_genotypes": None,
+            "base_growth_df": pd.DataFrame({
+                "genotype": ["wt", "M42I", "H74A", "K84L"],
+                "rate": [0.0107, 0.0087, 0.0072, 0.0090],
+                "rate_std": [0.0005, 0.0005, 0.0005, 0.0005],
+            }),
+        }
+
+    def _cal_growth_df(self):
+        # Every base_growth genotype must appear in the calibration growth df,
+        # or _read_base_growth_df would drop it (wt must survive).
+        return pd.DataFrame({
+            "genotype": ["wt", "M42I", "H74A", "K84L"],
+            "titrant_name": ["IPTG"] * 4,
+            "titrant_conc": [0.0] * 4,
+            "ln_cfu": [1.0, 2.0, 3.0, 4.0],
+        })
+
+    def test_base_growth_present_pins_dk_geno_from_rate_minus_wt(self):
+        """
+        When a base_growth_df is available (and production isn't already
+        "pinned"), the calibration model must use dk_geno="pinned" with pins
+        equal to rate_g - rate_wt, instead of zeroing dk_geno via "fixed".
+        """
+        orchestrator_prod = MagicMock()
+        orchestrator_prod.settings = self._base_growth_settings()
+
+        captured = {}
+
+        def _fake_gm(*args, **kwargs):
+            captured["kwargs"] = kwargs
+            pins_path = kwargs.get("dk_geno_pins_file")
+            # Read the pins file while it still exists (deleted after ctor).
+            if pins_path and os.path.exists(pins_path):
+                captured["pins_df"] = pd.read_csv(pins_path)
+            return MagicMock()
+
+        with patch(
+            "tfscreen.tfmodel.scripts"
+            ".prefit_calibration_cli.ModelOrchestrator",
+            side_effect=_fake_gm,
+        ):
+            _build_calibration_model(
+                orchestrator_prod, self._cal_growth_df(), pd.DataFrame()
+            )
+
+        kwargs = captured["kwargs"]
+        assert kwargs["dk_geno"] == "pinned"
+        pins_path = kwargs["dk_geno_pins_file"]
+        assert pins_path is not None
+
+        pins_df = captured["pins_df"]
+        pins = dict(zip(pins_df["genotype"].astype(str),
+                        pins_df["dk_geno"].astype(float)))
+        assert pins["wt"] == pytest.approx(0.0)
+        assert pins["M42I"] == pytest.approx(0.0087 - 0.0107)
+        assert pins["H74A"] == pytest.approx(0.0072 - 0.0107)
+        assert pins["K84L"] == pytest.approx(0.0090 - 0.0107)
+
+    def test_temp_pins_file_removed_after_construction(self):
+        """The temporary pins CSV must not linger after the ctor consumes it."""
+        orchestrator_prod = MagicMock()
+        orchestrator_prod.settings = self._base_growth_settings()
+
+        seen = {}
+
+        def _fake_gm(*args, **kwargs):
+            seen["path"] = kwargs.get("dk_geno_pins_file")
+            return MagicMock()
+
+        with patch(
+            "tfscreen.tfmodel.scripts"
+            ".prefit_calibration_cli.ModelOrchestrator",
+            side_effect=_fake_gm,
+        ):
+            _build_calibration_model(
+                orchestrator_prod, self._cal_growth_df(), pd.DataFrame()
+            )
+
+        assert seen["path"] is not None
+        assert not os.path.exists(seen["path"])
+
+    def test_production_pinned_takes_precedence_over_base_growth(self):
+        """
+        If production already pins dk_geno, that carries through unchanged even
+        when a base_growth_df is present -- the explicit pins file wins.
+        """
+        orchestrator_prod = MagicMock()
+        settings = self._base_growth_settings()
+        settings["dk_geno"] = "pinned"
+        settings["dk_geno_pins_file"] = "explicit_pins.csv"
+        orchestrator_prod.settings = settings
+
+        with patch(
+            "tfscreen.tfmodel.scripts"
+            ".prefit_calibration_cli.ModelOrchestrator"
+        ) as MockGM:
+            MockGM.return_value = MagicMock()
+            _build_calibration_model(
+                orchestrator_prod, self._cal_growth_df(), pd.DataFrame()
+            )
+
+        kwargs = MockGM.call_args.kwargs
+        assert kwargs["dk_geno"] == "pinned"
+        assert kwargs["dk_geno_pins_file"] == "explicit_pins.csv"
+
+    def test_no_base_growth_still_forces_fixed(self):
+        """Absent base_growth_df (and not production-pinned) → fixed(0)."""
+        orchestrator_prod = MagicMock()
+        settings = self._base_growth_settings()
+        settings["base_growth_df"] = None
+        orchestrator_prod.settings = settings
+
+        with patch(
+            "tfscreen.tfmodel.scripts"
+            ".prefit_calibration_cli.ModelOrchestrator"
+        ) as MockGM:
+            MockGM.return_value = MagicMock()
+            _build_calibration_model(
+                orchestrator_prod, self._cal_growth_df(), pd.DataFrame()
+            )
+
+        kwargs = MockGM.call_args.kwargs
+        assert kwargs["dk_geno"] == "fixed"
+        assert "dk_geno_pins_file" not in kwargs
+
+
+# ---------------------------------------------------------------------------
+# _dk_geno_pins_from_base_growth
+# ---------------------------------------------------------------------------
+
+class TestDkGenoPinsFromBaseGrowth:
+
+    def _growth_df(self):
+        return pd.DataFrame({
+            "genotype": ["wt", "M42I", "H74A", "K84L"],
+            "titrant_name": ["IPTG"] * 4,
+            "titrant_conc": [0.0] * 4,
+            "ln_cfu": [1.0, 2.0, 3.0, 4.0],
+        })
+
+    def test_pins_are_rate_minus_wt(self):
+        base_growth_df = pd.DataFrame({
+            "genotype": ["wt", "M42I", "H74A", "K84L"],
+            "rate": [0.0107, 0.0087, 0.0072, 0.0090],
+            "rate_std": [0.0005, 0.0005, 0.0005, 0.0005],
+        })
+        pins = _dk_geno_pins_from_base_growth(base_growth_df, self._growth_df())
+        assert pins["wt"] == pytest.approx(0.0)
+        assert pins["M42I"] == pytest.approx(0.0087 - 0.0107)
+        assert pins["H74A"] == pytest.approx(0.0072 - 0.0107)
+        assert pins["K84L"] == pytest.approx(0.0090 - 0.0107)
+
+    def test_wt_pin_is_exactly_zero(self):
+        base_growth_df = pd.DataFrame({
+            "genotype": ["wt", "M42I"],
+            "rate": [0.0107, 0.0087],
+            "rate_std": [0.0005, 0.0005],
+        })
+        pins = _dk_geno_pins_from_base_growth(base_growth_df, self._growth_df())
+        assert pins["wt"] == 0.0
+
+    def test_inverse_variance_weighting_multiple_rows(self):
+        # Two wt rows (combine to ~0.0107) and one M42I row.  The tighter-std
+        # wt row dominates the inverse-variance-weighted combination.
+        base_growth_df = pd.DataFrame({
+            "genotype": ["wt", "wt", "M42I"],
+            "rate": [0.0100, 0.0108, 0.0087],
+            "rate_std": [0.01, 0.0005, 0.0005],
+        })
+        pins = _dk_geno_pins_from_base_growth(base_growth_df, self._growth_df())
+        # Combined wt rate is very close to the tight 0.0108 measurement.
+        assert pins["wt"] == 0.0
+        assert pins["M42I"] == pytest.approx(0.0087 - 0.0108, abs=1e-4)
 
 
 # ---------------------------------------------------------------------------
@@ -1084,6 +1572,148 @@ class TestRunPrefitCalibrationOrchestration:
         call_kwargs = mock_ri.compute_hessian_sigmas.call_args.kwargs
         assert call_kwargs.get("hessian_chunk_size") == 32
 
+    # -----------------------------------------------------------------------
+    # ln_cfu0 wt/spiked_loc presplit gating (end to end)
+    # -----------------------------------------------------------------------
+
+    def _make_prod_data(self, wt_has_presplit, spiked_has_presplit):
+        """
+        Build a minimal but real production data object (not a MagicMock)
+        with one wt and one spiked genotype, so
+        _empirical_group_estimates can actually run against it and report
+        genuine wt_source/spiked_source values.
+        """
+        GrowthLike = namedtuple("GrowthLike", [
+            "ln_cfu", "good_mask", "ln_cfu0_spiked_mask", "ln_cfu0_wt_mask",
+        ])
+        PresplitLike = namedtuple("PresplitLike", ["ln_cfu_t0", "good_mask"])
+        DataLike = namedtuple("DataLike", ["growth", "presplit"])
+
+        # genotype 0 = wt, genotype 1 = spiked
+        shape7 = (1, 1, 1, 1, 1, 1, 2)
+        growth_like = GrowthLike(
+            ln_cfu=np.array([12.0, 10.0]).reshape(shape7),
+            good_mask=np.ones(shape7, dtype=bool),
+            ln_cfu0_spiked_mask=np.array([False, True]),
+            ln_cfu0_wt_mask=np.array([True, False]),
+        )
+        shape3 = (1, 1, 2)
+        presplit_good = np.zeros(shape3, dtype=bool)
+        presplit_good[..., 0] = wt_has_presplit
+        presplit_good[..., 1] = spiked_has_presplit
+        presplit_like = PresplitLike(
+            ln_cfu_t0=np.array([20.0, 30.0]).reshape(shape3),
+            good_mask=presplit_good,
+        )
+        return DataLike(growth=growth_like, presplit=presplit_like)
+
+    def test_wt_loc_override_skipped_when_production_has_presplit(self, tmp_path, mocker):
+        """
+        When the production data's own empirical estimate for wt already had
+        direct pre-split coverage, the calibration MAP's ln_cfu0_wt_loc must
+        NOT override the production prior/guess CSV rows.
+        """
+        cfg, priors, guesses = self._write_yaml_and_csvs(tmp_path)
+        pd.DataFrame({
+            "parameter": ["growth.ln_cfu0.ln_cfu0_wt_loc_loc"],
+            "value": [13.0],
+        }).to_csv(priors, index=False)
+        pd.DataFrame({
+            "parameter": ["ln_cfu0_wt_loc"],
+            "value": [13.0],
+            "flat_index": [float("nan")],
+        }).to_csv(guesses, index=False)
+
+        orchestrator_prod = MagicMock()
+        orchestrator_prod.data = self._make_prod_data(
+            wt_has_presplit=True, spiked_has_presplit=False
+        )
+        self._patch_pipeline(
+            mocker,
+            params={"ln_cfu0_wt_loc_auto_loc": np.float32(99.0)},
+            field_mapping={
+                "ln_cfu0_wt_loc": {
+                    "component": "ln_cfu0",
+                    "dist_class": "Normal",
+                    "loc_field": "ln_cfu0_wt_loc_loc",
+                    "scale_field": "ln_cfu0_wt_loc_scale",
+                    "is_array": False,
+                },
+            },
+        )
+        # _patch_pipeline patches read_configuration to a generic MagicMock;
+        # override it here (applied after, so it wins) with our data-bearing
+        # orchestrator_prod so the presplit gating has something real to
+        # inspect.
+        mocker.patch(
+            "tfscreen.tfmodel.scripts"
+            ".prefit_calibration_cli.read_configuration",
+            return_value=(orchestrator_prod, {}),
+        )
+
+        run_prefit_calibration(config_file=cfg, seed=1)
+
+        new_priors = pd.read_csv(priors).set_index("parameter")["value"]
+        new_guesses = pd.read_csv(guesses)
+        # Untouched: still the original value, not the calibration MAP's 99.0
+        assert new_priors["growth.ln_cfu0.ln_cfu0_wt_loc_loc"] == 13.0
+        assert new_guesses.iloc[0]["value"] == 13.0
+        assert not os.path.exists(priors + ".bak")
+        assert not os.path.exists(guesses + ".bak")
+
+    def test_wt_loc_override_applied_when_production_has_no_presplit(self, tmp_path, mocker):
+        """
+        When the production data's empirical estimate for wt had no
+        pre-split coverage (median fallback only), the calibration MAP's
+        ln_cfu0_wt_loc IS used to refine the production prior/guess.
+        """
+        cfg, priors, guesses = self._write_yaml_and_csvs(tmp_path)
+        pd.DataFrame({
+            "parameter": ["growth.ln_cfu0.ln_cfu0_wt_loc_loc"],
+            "value": [13.0],
+        }).to_csv(priors, index=False)
+        pd.DataFrame({
+            "parameter": ["ln_cfu0_wt_loc"],
+            "value": [13.0],
+            "flat_index": [float("nan")],
+        }).to_csv(guesses, index=False)
+
+        orchestrator_prod = MagicMock()
+        orchestrator_prod.data = self._make_prod_data(
+            wt_has_presplit=False, spiked_has_presplit=False
+        )
+        self._patch_pipeline(
+            mocker,
+            params={"ln_cfu0_wt_loc_auto_loc": np.float32(99.0)},
+            field_mapping={
+                "ln_cfu0_wt_loc": {
+                    "component": "ln_cfu0",
+                    "dist_class": "Normal",
+                    "loc_field": "ln_cfu0_wt_loc_loc",
+                    "scale_field": "ln_cfu0_wt_loc_scale",
+                    "is_array": False,
+                },
+            },
+        )
+        # _patch_pipeline patches read_configuration to a generic MagicMock;
+        # override it here (applied after, so it wins) with our data-bearing
+        # orchestrator_prod so the presplit gating has something real to
+        # inspect.
+        mocker.patch(
+            "tfscreen.tfmodel.scripts"
+            ".prefit_calibration_cli.read_configuration",
+            return_value=(orchestrator_prod, {}),
+        )
+
+        run_prefit_calibration(config_file=cfg, seed=1)
+
+        new_priors = pd.read_csv(priors).set_index("parameter")["value"]
+        new_guesses = pd.read_csv(guesses)
+        assert new_priors["growth.ln_cfu0.ln_cfu0_wt_loc_loc"] == pytest.approx(99.0)
+        assert new_guesses.iloc[0]["value"] == pytest.approx(99.0)
+        assert os.path.exists(priors + ".bak")
+        assert os.path.exists(guesses + ".bak")
+
 
 # ---------------------------------------------------------------------------
 # _build_hessian_scale_updates
@@ -1290,6 +1920,104 @@ class TestBuildHessianScaleUpdates:
         h = get_hyperparameters()
         assert _DEFAULT_K_SCALE_CEILING == pytest.approx(h["k_scale"])
         assert _DEFAULT_M_SCALE_CEILING == pytest.approx(h["m_scale_plus"])
+
+
+class TestBuildHessianScaleBoundsPath:
+    """The generic scale_bounds path generalises beyond hard-coded k/m."""
+
+    def _fm(self, sites):
+        out = {}
+        for site_name, loc_field in sites:
+            suffix = loc_field.replace("_loc", "")
+            out[site_name] = {
+                "component": "condition_growth",
+                "dist_class": "Normal",
+                "loc_field": loc_field,
+                "scale_field": f"{suffix}_scale",
+                "is_array": True,
+            }
+        return out
+
+    def _hr(self, site_name, sigmas):
+        return {site_name: {"map": np.zeros_like(sigmas), "sigma": np.array(sigmas)}}
+
+    def test_saturation_min_baseline_gets_tight_scale(self):
+        """saturation 'min' (the baseline) is handled via bounds, not the
+        k/m hard-code, and floored tight."""
+        fm = self._fm([("condition_growth_min", "min_loc")])
+        hr = self._hr("condition_growth_min", [1e-5, 1e-5])
+        bounds = {"min": {"floor": 0.002, "ceiling": 0.1, "scale_field": "min_scale"}}
+        g, p = _build_hessian_scale_updates(
+            fm, hr, 0.002, 0.001, 0.1, 0.01, scale_bounds=bounds)
+        assert np.all(g["condition_growth_min_scales"] == pytest.approx(0.002))
+        assert p["growth.condition_growth.min_scale"] == pytest.approx(0.002)
+
+    def test_power_n_uses_its_own_scale_field(self):
+        fm = self._fm([("condition_growth_n", "n_loc")])
+        hr = self._hr("condition_growth_n", [0.2, 0.3])
+        bounds = {"n": {"floor": 0.05, "ceiling": 0.5, "scale_field": "n_scale"}}
+        g, p = _build_hessian_scale_updates(
+            fm, hr, 0.002, 0.001, 0.1, 0.01, scale_bounds=bounds)
+        assert "growth.condition_growth.n_scale" in p
+
+    def test_suffix_absent_from_bounds_skipped(self):
+        fm = self._fm([("condition_growth_k", "k_loc")])
+        hr = self._hr("condition_growth_k", [0.01])
+        g, p = _build_hessian_scale_updates(
+            fm, hr, 0.002, 0.001, 0.1, 0.01, scale_bounds={"m": {}})
+        assert g == {} and p == {}
+
+    def test_linear_m_scale_field_from_bounds(self):
+        """With bounds, m routes to its declared scale_field (m_scale_plus)."""
+        fm = self._fm([("condition_growth_m", "m_loc")])
+        hr = self._hr("condition_growth_m", [0.02, 0.03])
+        bounds = {"m": {"floor": 0.001, "ceiling": 0.01, "scale_field": "m_scale_plus"}}
+        _, p = _build_hessian_scale_updates(
+            fm, hr, 0.002, 0.001, 0.1, 0.01, scale_bounds=bounds)
+        assert "growth.condition_growth.m_scale_plus" in p
+
+
+class TestResolveScaleBounds:
+
+    def test_linear_bounds_have_k_and_m(self):
+        bounds = _resolve_scale_bounds("linear", 0.002, 0.001, 0.1, 0.01)
+        assert set(bounds) == {"k", "m"}
+        assert bounds["k"]["scale_field"] == "k_scale"
+        assert bounds["m"]["scale_field"] == "m_scale_plus"
+
+    def test_saturation_bounds_have_min_max(self):
+        bounds = _resolve_scale_bounds("saturation", 0.002, 0.001, 0.1, 0.01)
+        assert set(bounds) == {"min", "max"}
+
+    def test_cli_floor_overrides_component_floor(self):
+        bounds = _resolve_scale_bounds("linear", 0.005, 0.001, 0.1, 0.01)
+        assert bounds["k"]["floor"] == pytest.approx(0.005)
+
+    def test_unknown_component_returns_empty(self):
+        assert _resolve_scale_bounds("does_not_exist", 0.002, 0.001, 0.1, 0.01) == {}
+
+
+class TestConditionRepLabels:
+
+    def test_labels_ordered_by_map_condition_rep(self):
+        class _TM:
+            map_groups = {
+                "condition_rep": pd.DataFrame({
+                    "map_condition_rep": [2, 0, 1],
+                    "condition_rep": ["pheS+4CP", "kanR+kan", "kanR-kan"],
+                })
+            }
+
+        class _Orch:
+            growth_tm = _TM()
+
+        labels = _condition_rep_labels(_Orch())
+        assert list(labels["condition_rep"]) == ["kanR+kan", "kanR-kan", "pheS+4CP"]
+
+    def test_none_when_no_growth_tm(self):
+        class _Orch:
+            growth_tm = None
+        assert _condition_rep_labels(_Orch()) is None
 
 
 # ---------------------------------------------------------------------------

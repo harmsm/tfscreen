@@ -94,6 +94,73 @@ def test_configure_growth_analysis_coverage(mock_orchestrator, tmpdir):
     assert "genotype" in guesses_df.columns # genotype mapping
     assert "dim_0" in guesses_df.columns # fallback mapping
 
+
+def test_configure_model_passes_base_growth_df_to_orchestrator_and_config(mock_orchestrator, tmpdir):
+    """base_growth_df must reach ModelOrchestrator and be recorded under
+    config['data']['base_growth'] in the written YAML."""
+    mock_orchestrator_class, mock_orchestrator_inst = mock_orchestrator
+    mock_orchestrator_inst.settings = {"batch_size": 128, "theta": "hill_geno",
+                                       "base_growth_df": "bg.csv"}
+    out_prefix = os.path.join(tmpdir, "test")
+
+    configure_model("b.csv", growth_df="g.csv", base_growth_df="bg.csv",
+                    out_prefix=out_prefix)
+
+    assert mock_orchestrator_class.call_args.kwargs["base_growth_df"] == "bg.csv"
+
+    with open(f"{out_prefix}_config.yaml") as f:
+        written_config = yaml.safe_load(f)
+    assert written_config["data"]["base_growth"] == "bg.csv"
+
+
+def test_configure_model_requires_transformation_lambda_for_empirical(mock_orchestrator, tmpdir):
+    """transformation_model='empirical' (or 'logit_norm') without transformation_lambda
+    must raise before ModelOrchestrator is even constructed."""
+    out_prefix = os.path.join(tmpdir, "test")
+    with pytest.raises(ValueError, match="transformation_lambda"):
+        configure_model(
+            "b.csv", growth_df="g.csv",
+            transformation_model="empirical",
+            out_prefix=out_prefix,
+        )
+
+
+def test_configure_model_allows_single_without_transformation_lambda(mock_orchestrator, tmpdir):
+    """transformation_model='single' (the default) never requires transformation_lambda."""
+    out_prefix = os.path.join(tmpdir, "test")
+    configure_model("b.csv", growth_df="g.csv", out_prefix=out_prefix)
+    assert os.path.exists(f"{out_prefix}_config.yaml")
+
+
+def test_configure_model_forwards_transformation_lambda_to_orchestrator(mock_orchestrator, tmpdir):
+    mock_orchestrator_class, mock_orchestrator_inst = mock_orchestrator
+    out_prefix = os.path.join(tmpdir, "test")
+
+    configure_model(
+        "b.csv", growth_df="g.csv",
+        transformation_model="empirical",
+        transformation_lambda=(0.3572, 0.13),
+        out_prefix=out_prefix,
+    )
+
+    assert mock_orchestrator_class.call_args.kwargs["transformation_lambda"] == (0.3572, 0.13)
+    assert mock_orchestrator_class.call_args.kwargs["transformation"] == "empirical"
+
+
+def test_configure_model_omits_base_growth_when_not_given(mock_orchestrator, tmpdir):
+    """Without base_growth_df, no 'base_growth' key is written under data."""
+    mock_orchestrator_class, mock_orchestrator_inst = mock_orchestrator
+    out_prefix = os.path.join(tmpdir, "test")
+
+    configure_model("b.csv", growth_df="g.csv", out_prefix=out_prefix)
+
+    assert mock_orchestrator_class.call_args.kwargs["base_growth_df"] is None
+
+    with open(f"{out_prefix}_config.yaml") as f:
+        written_config = yaml.safe_load(f)
+    assert "base_growth" not in written_config["data"]
+
+
 def test_read_configuration_logic(tmpdir, mocker):
     config_path = os.path.join(tmpdir, "config.yaml")
     priors_path = os.path.join(tmpdir, "priors.csv")
@@ -129,6 +196,96 @@ def test_read_configuration_logic(tmpdir, mocker):
     assert orchestrator == mock_orchestrator_inst
     assert init_params["param1"] == 0.5
     assert isinstance(init_params["param2"], jnp.ndarray)
+
+
+def test_read_configuration_assembles_per_condition_priors(tmpdir, mocker):
+    """Indexed prior rows are name-joined to the model's condition order,
+    independent of CSV row/flat_index order (Phase 2)."""
+    config_path = os.path.join(tmpdir, "config.yaml")
+    priors_path = os.path.join(tmpdir, "priors.csv")
+    guesses_path = os.path.join(tmpdir, "guesses.csv")
+
+    config = {
+        "data": {"growth": "g.csv", "binding": "b.csv"},
+        "components": {"batch_size": 256},
+        "priors_file": "priors.csv",
+        "guesses_file": "guesses.csv",
+    }
+    with open(config_path, "w") as f:
+        yaml.dump(config, f)
+
+    # Indexed rows in a deliberately shuffled order.
+    pd.DataFrame({
+        "parameter": ["growth.condition_growth.k_loc"] * 3,
+        "value": [0.029, 0.011, 0.021],
+        "flat_index": [2, 0, 1],
+        "condition_rep": ["pheS+4CP", "kanR+kan", "kanR-kan"],
+    }).to_csv(priors_path, index=False)
+    pd.DataFrame({"parameter": ["param1"], "value": [0.5],
+                  "flat_index": [0]}).to_csv(guesses_path, index=False)
+
+    mock_orchestrator_class = mocker.patch(
+        "tfscreen.tfmodel.configuration_io.ModelOrchestrator")
+    inst = mock_orchestrator_class.return_value
+    inst.init_params = {"param1": 0.0}
+    inst.growth_tm.map_groups = {
+        "condition_rep": pd.DataFrame({
+            "map_condition_rep": [0, 1, 2],
+            "condition_rep": ["kanR+kan", "kanR-kan", "pheS+4CP"],
+        })
+    }
+
+    captured = {}
+
+    def _capture(dc, prefix, flat):
+        captured["flat"] = flat
+        return MagicMock()
+
+    mocker.patch("tfscreen.tfmodel.configuration_io._update_dataclass",
+                 side_effect=_capture)
+
+    read_configuration(config_path)
+
+    arr = np.asarray(captured["flat"]["growth.condition_growth.k_loc"])
+    # map order is [kanR+kan, kanR-kan, pheS+4CP] -> [0.011, 0.021, 0.029]
+    assert np.allclose(arr, [0.011, 0.021, 0.029])
+
+
+def test_read_configuration_passes_base_growth_df_path(tmpdir, mocker):
+    """data.base_growth must reach ModelOrchestrator as base_growth_df, and
+    any stray 'base_growth_df' left in components (round-tripped via
+    ModelOrchestrator.settings) must be popped rather than passed twice."""
+    config_path = os.path.join(tmpdir, "config.yaml")
+    priors_path = os.path.join(tmpdir, "priors.csv")
+    guesses_path = os.path.join(tmpdir, "guesses.csv")
+
+    config = {
+        "data": {"growth": "g.csv", "binding": "b.csv", "base_growth": "bg.csv"},
+        "components": {"batch_size": 256, "base_growth_df": "bg.csv"},
+        "priors_file": "priors.csv",
+        "guesses_file": "guesses.csv"
+    }
+    with open(config_path, "w") as f:
+        yaml.dump(config, f)
+
+    pd.DataFrame({"parameter": ["p1"], "value": [1.0]}).to_csv(priors_path, index=False)
+    pd.DataFrame({"parameter": ["param1"], "value": [0.5]}).to_csv(guesses_path, index=False)
+
+    mock_orchestrator_class = mocker.patch("tfscreen.tfmodel.configuration_io.ModelOrchestrator")
+    mock_orchestrator_inst = mock_orchestrator_class.return_value
+    mock_orchestrator_inst.init_params = {"param1": 0.0}
+
+    mocker.patch("tfscreen.tfmodel.configuration_io._update_dataclass",
+                return_value=MagicMock())
+
+    # If 'base_growth_df' weren't popped from settings before being passed
+    # explicitly, this call would raise TypeError ("got multiple values for
+    # keyword argument 'base_growth_df'") before even reaching the mock.
+    read_configuration(config_path)
+
+    call_kwargs = mock_orchestrator_class.call_args.kwargs
+    assert call_kwargs["base_growth_df"] == "bg.csv"
+
 
 def test_read_configuration_errors(tmpdir):
     config_path = os.path.join(tmpdir, "bad_config.yaml")

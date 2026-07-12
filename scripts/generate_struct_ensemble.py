@@ -35,7 +35,7 @@ structures:
 Usage
 -----
 python generate_struct_ensemble.py structures.yaml \\
-    --out ensemble.npz \\
+    --out ensemble.h5 \\
     --ligandmpnn_dir /path/to/LigandMPNN \\
     [--model_type ligand_mpnn] \\
     [--checkpoint /path/to/weights.pt] \\

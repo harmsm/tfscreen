@@ -14,6 +14,7 @@ from .components.ln_cfu0 import hierarchical_factored as ln_cfu0_factored
 
 from .components.dk_geno import fixed as dk_geno_fixed
 from .components.dk_geno import hierarchical_geno as dk_geno_hierarchical
+from .components.dk_geno import pinned as dk_geno_pinned
 
 from .components.activity import fixed as activity_fixed
 from .components.activity import hierarchical_geno as activity_hierarchical
@@ -54,8 +55,10 @@ from .components.growth_noise import normal_kt as growth_noise_normal_kt
 from .components.sample_offset import zero as sample_offset_zero
 from .components.sample_offset import normal as sample_offset_normal
 
-from .observe import binding 
-from .observe import growth 
+from .observe import binding
+from .observe import growth
+from .observe import presplit
+from .observe import base_growth
 
 model_registry = {
     "condition_growth":{
@@ -70,6 +73,7 @@ model_registry = {
     "dk_geno":{
         "fixed":dk_geno_fixed,
         "hierarchical_geno":dk_geno_hierarchical,
+        "pinned":dk_geno_pinned,
     },
     "activity":{
         "fixed":activity_fixed,
@@ -132,4 +136,6 @@ model_registry = {
     },
     "observe_binding":binding,
     "observe_growth":growth,
+    "observe_presplit":presplit,
+    "observe_base_growth":base_growth,
 }

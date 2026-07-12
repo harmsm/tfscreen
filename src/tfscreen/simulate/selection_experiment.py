@@ -53,6 +53,8 @@ SIMULATE_KNOWN_KEYS = frozenset({
     # Phenotype / theta calculation
     "theta_component", "thermo_data", "theta_priors", "theta_rescale",
     "theta_sim_priors",
+    # Empirical phenotype source (resample from a fitted PopulationModel)
+    "phenotype_source", "empirical",
     # Conditions and growth
     "condition_blocks", "growth",
     "dk_geno_hyper_loc", "dk_geno_hyper_scale", "dk_geno_hyper_shift", "dk_geno_zero",
@@ -66,7 +68,7 @@ SIMULATE_KNOWN_KEYS = frozenset({
     # Column selectors (rarely overridden)
     "condition_selector", "library_selector",
     # Optional output blocks
-    "binding_data", "presplit_data",
+    "binding_data", "presplit_data", "base_growth_data",
 })
   
 def _check_dict_number(
@@ -674,8 +676,15 @@ def _sim_transform_and_mix(
         all_trans.append(trans)
         all_trans_mask.append(tr_mask)
 
-        w = library_mixture[lib_key]
-        all_weights.append(np.full(trans.shape[0],w,dtype=float))
+        # Normalize by the number of transformants drawn for this origin so
+        # that its total contribution to the pooled library is exactly
+        # library_mixture[lib_key], independent of transform_sizes[lib_key].
+        # Without this, an origin's pool share becomes
+        # library_mixture[lib_key] * transform_sizes[lib_key], entangling the
+        # two config values.
+        n_cells = trans.shape[0]
+        w = library_mixture[lib_key] / n_cells if n_cells > 0 else 0.0
+        all_weights.append(np.full(n_cells,w,dtype=float))
 
     # This is vstack that accounts for the fact that these transformations 
     # might have different numbers of plasmids

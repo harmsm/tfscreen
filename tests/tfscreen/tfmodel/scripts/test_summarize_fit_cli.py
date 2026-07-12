@@ -1675,6 +1675,316 @@ class TestSummarizeParams:
 
 
 # ---------------------------------------------------------------------------
+# _summarize_condition_growth_params / _summarize_k_ref / _summarize_growth_params
+# ---------------------------------------------------------------------------
+
+from tfscreen.tfmodel.scripts.summarize_fit_cli import (
+    _summarize_condition_growth_params,
+    _summarize_growth_params,
+    _summarize_k_ref,
+    _summarize_transformation_lam,
+)
+
+
+class TestSummarizeConditionGrowthParams:
+
+    def _write_sim_growth_params(self, path):
+        pd.DataFrame({
+            "condition_rep": ["kanR+kan", "kanR-kan"],
+            "growth_k": [0.005, 0.02],
+            "growth_m": [-0.01, 0.001],
+        }).to_csv(path, index=False)
+
+    def test_no_output_when_sim_growth_params_absent(self, tmp_path):
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        _summarize_condition_growth_params(str(tmp_path), out_prefix)
+        assert not any(f.name.startswith("tfs_summarize_params")
+                       for f in (tmp_path / "summary").iterdir())
+
+    def test_growth_k_csv_written_with_ref(self, tmp_path):
+        self._write_sim_growth_params(str(tmp_path / "run_sim_growth_parameters.csv"))
+        pd.DataFrame({
+            "condition_rep": ["kanR+kan", "kanR-kan"],
+            "q0.5": [0.0048, 0.021],
+        }).to_csv(str(tmp_path / "run_params_growth_k.csv"), index=False)
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            _summarize_condition_growth_params(str(tmp_path), out_prefix)
+        out_path = out_prefix + "_params_growth_k.csv"
+        assert os.path.exists(out_path)
+        df = pd.read_csv(out_path).set_index("condition_rep")
+        assert df.loc["kanR+kan", "ref"] == pytest.approx(0.005)
+        assert df.loc["kanR-kan", "ref"] == pytest.approx(0.02)
+
+    def test_growth_m_csv_also_written(self, tmp_path):
+        self._write_sim_growth_params(str(tmp_path / "run_sim_growth_parameters.csv"))
+        pd.DataFrame({
+            "condition_rep": ["kanR+kan", "kanR-kan"],
+            "q0.5": [-0.009, 0.0012],
+        }).to_csv(str(tmp_path / "run_params_growth_m.csv"), index=False)
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            _summarize_condition_growth_params(str(tmp_path), out_prefix)
+        out_path = out_prefix + "_params_growth_m.csv"
+        assert os.path.exists(out_path)
+        df = pd.read_csv(out_path).set_index("condition_rep")
+        assert df.loc["kanR+kan", "ref"] == pytest.approx(-0.01)
+
+    def test_replicate_column_preserved_and_broadcast(self, tmp_path):
+        """When condition growth params are per-replicate, the same ref
+        broadcasts to every replicate sharing a condition_rep."""
+        self._write_sim_growth_params(str(tmp_path / "run_sim_growth_parameters.csv"))
+        pd.DataFrame({
+            "condition_rep": ["kanR+kan", "kanR+kan"],
+            "replicate": [1, 2],
+            "q0.5": [0.0048, 0.0051],
+        }).to_csv(str(tmp_path / "run_params_growth_k.csv"), index=False)
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            _summarize_condition_growth_params(str(tmp_path), out_prefix)
+        df = pd.read_csv(out_prefix + "_params_growth_k.csv")
+        assert list(df["ref"]) == pytest.approx([0.005, 0.005])
+        assert "replicate" in df.columns
+
+    def test_warns_when_expected_param_file_missing(self, tmp_path):
+        self._write_sim_growth_params(str(tmp_path / "run_sim_growth_parameters.csv"))
+        # deliberately omit *_params_growth_k.csv and *_params_growth_m.csv
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _summarize_condition_growth_params(str(tmp_path), out_prefix)
+        assert any("growth_k" in str(x.message) for x in w)
+        assert any("growth_m" in str(x.message) for x in w)
+
+    def test_only_present_columns_processed(self, tmp_path):
+        """A sim file with only growth_min/growth_max (saturation model)
+        does not look for growth_k/growth_m files."""
+        pd.DataFrame({
+            "condition_rep": ["M9+kan"],
+            "growth_min": [0.001],
+            "growth_max": [0.04],
+        }).to_csv(str(tmp_path / "run_sim_growth_parameters.csv"), index=False)
+        pd.DataFrame({
+            "condition_rep": ["M9+kan"],
+            "q0.5": [0.0011],
+        }).to_csv(str(tmp_path / "run_params_growth_min.csv"), index=False)
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _summarize_condition_growth_params(str(tmp_path), out_prefix)
+        assert not any("growth_k" in str(x.message) for x in w)
+        assert os.path.exists(out_prefix + "_params_growth_min.csv")
+
+    def test_pdf_written_alongside_csv(self, tmp_path):
+        self._write_sim_growth_params(str(tmp_path / "run_sim_growth_parameters.csv"))
+        pd.DataFrame({
+            "condition_rep": ["kanR+kan", "kanR-kan"],
+            "q0.5": [0.0048, 0.021],
+        }).to_csv(str(tmp_path / "run_params_growth_k.csv"), index=False)
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            _summarize_condition_growth_params(str(tmp_path), out_prefix)
+        assert os.path.exists(out_prefix + "_params_growth_k.pdf")
+
+    def test_missing_condition_rep_column_in_params_file_warns(self, tmp_path):
+        self._write_sim_growth_params(str(tmp_path / "run_sim_growth_parameters.csv"))
+        pd.DataFrame({"genotype": ["wt"], "q0.5": [0.005]}).to_csv(
+            str(tmp_path / "run_params_growth_k.csv"), index=False
+        )
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _summarize_condition_growth_params(str(tmp_path), out_prefix)
+        assert any("condition_rep" in str(x.message) for x in w)
+        assert not os.path.exists(out_prefix + "_params_growth_k.csv")
+
+
+class TestSummarizeKRef:
+
+    def test_no_output_when_sim_k_ref_absent(self, tmp_path):
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        _summarize_k_ref(str(tmp_path), out_prefix)
+        assert not os.path.exists(out_prefix + "_params_k_ref.csv")
+
+    def test_k_ref_csv_written_with_ref(self, tmp_path):
+        pd.DataFrame({"parameter": ["k_ref"], "ref": [0.025]}).to_csv(
+            str(tmp_path / "run_sim_k_ref.csv"), index=False
+        )
+        pd.DataFrame({"parameter": ["k_ref"], "q0.5": [0.0248]}).to_csv(
+            str(tmp_path / "run_params_k_ref.csv"), index=False
+        )
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            _summarize_k_ref(str(tmp_path), out_prefix)
+        out_path = out_prefix + "_params_k_ref.csv"
+        assert os.path.exists(out_path)
+        df = pd.read_csv(out_path)
+        assert df.loc[0, "ref"] == pytest.approx(0.025)
+        assert df.loc[0, "q0.5"] == pytest.approx(0.0248)
+
+    def test_no_pdf_written_for_k_ref(self, tmp_path):
+        """A single point can't usefully be plotted; no correlation PDF."""
+        pd.DataFrame({"parameter": ["k_ref"], "ref": [0.025]}).to_csv(
+            str(tmp_path / "run_sim_k_ref.csv"), index=False
+        )
+        pd.DataFrame({"parameter": ["k_ref"], "q0.5": [0.0248]}).to_csv(
+            str(tmp_path / "run_params_k_ref.csv"), index=False
+        )
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            _summarize_k_ref(str(tmp_path), out_prefix)
+        assert not os.path.exists(out_prefix + "_params_k_ref.pdf")
+
+    def test_warns_when_params_k_ref_missing(self, tmp_path):
+        pd.DataFrame({"parameter": ["k_ref"], "ref": [0.025]}).to_csv(
+            str(tmp_path / "run_sim_k_ref.csv"), index=False
+        )
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _summarize_k_ref(str(tmp_path), out_prefix)
+        assert any("k_ref" in str(x.message) for x in w)
+
+    def test_missing_ref_column_in_sim_file_warns(self, tmp_path):
+        pd.DataFrame({"parameter": ["k_ref"], "value": [0.025]}).to_csv(
+            str(tmp_path / "run_sim_k_ref.csv"), index=False
+        )
+        pd.DataFrame({"parameter": ["k_ref"], "q0.5": [0.0248]}).to_csv(
+            str(tmp_path / "run_params_k_ref.csv"), index=False
+        )
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _summarize_k_ref(str(tmp_path), out_prefix)
+        assert any("ref" in str(x.message).lower() for x in w)
+        assert not os.path.exists(out_prefix + "_params_k_ref.csv")
+
+
+class TestSummarizeTransformationLam:
+
+    def test_no_output_when_sim_transformation_lam_absent(self, tmp_path):
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        _summarize_transformation_lam(str(tmp_path), out_prefix)
+        assert not os.path.exists(out_prefix + "_params_lam.csv")
+
+    def test_lam_csv_written_with_ref(self, tmp_path):
+        pd.DataFrame({"parameter": ["lam"], "ref": [1.5]}).to_csv(
+            str(tmp_path / "run_sim_transformation_lam.csv"), index=False
+        )
+        pd.DataFrame({"parameter": ["lam"], "q0.5": [1.48]}).to_csv(
+            str(tmp_path / "run_params_lam.csv"), index=False
+        )
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            _summarize_transformation_lam(str(tmp_path), out_prefix)
+        out_path = out_prefix + "_params_lam.csv"
+        assert os.path.exists(out_path)
+        df = pd.read_csv(out_path)
+        assert df.loc[0, "ref"] == pytest.approx(1.5)
+        assert df.loc[0, "q0.5"] == pytest.approx(1.48)
+
+    def test_no_pdf_written_for_transformation_lam(self, tmp_path):
+        """A single point can't usefully be plotted; no correlation PDF."""
+        pd.DataFrame({"parameter": ["lam"], "ref": [1.5]}).to_csv(
+            str(tmp_path / "run_sim_transformation_lam.csv"), index=False
+        )
+        pd.DataFrame({"parameter": ["lam"], "q0.5": [1.48]}).to_csv(
+            str(tmp_path / "run_params_lam.csv"), index=False
+        )
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            _summarize_transformation_lam(str(tmp_path), out_prefix)
+        assert not os.path.exists(out_prefix + "_params_lam.pdf")
+
+    def test_warns_when_params_lam_missing(self, tmp_path):
+        """Sim ground truth exists but the fit config's transformation
+        component didn't extract a 'lam' (e.g. transformation: single)."""
+        pd.DataFrame({"parameter": ["lam"], "ref": [1.5]}).to_csv(
+            str(tmp_path / "run_sim_transformation_lam.csv"), index=False
+        )
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _summarize_transformation_lam(str(tmp_path), out_prefix)
+        assert any("lam" in str(x.message) for x in w)
+
+    def test_missing_ref_column_in_sim_file_warns(self, tmp_path):
+        pd.DataFrame({"parameter": ["lam"], "value": [1.5]}).to_csv(
+            str(tmp_path / "run_sim_transformation_lam.csv"), index=False
+        )
+        pd.DataFrame({"parameter": ["lam"], "q0.5": [1.48]}).to_csv(
+            str(tmp_path / "run_params_lam.csv"), index=False
+        )
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _summarize_transformation_lam(str(tmp_path), out_prefix)
+        assert any("ref" in str(x.message).lower() for x in w)
+        assert not os.path.exists(out_prefix + "_params_lam.csv")
+
+
+class TestSummarizeGrowthParamsIntegration:
+
+    def test_summarize_fit_calls_both_condition_and_k_ref(self, run_dir):
+        """summarize_fit invokes both growth-param summary paths end-to-end."""
+        pd.DataFrame({
+            "condition_rep": ["kanR+kan"],
+            "growth_k": [0.005],
+        }).to_csv(os.path.join(run_dir, "tfs_sim_growth_parameters.csv"), index=False)
+        pd.DataFrame({
+            "condition_rep": ["kanR+kan"],
+            "q0.5": [0.0049],
+        }).to_csv(os.path.join(run_dir, "tfs_params_growth_k.csv"), index=False)
+
+        pd.DataFrame({"parameter": ["k_ref"], "ref": [0.03]}).to_csv(
+            os.path.join(run_dir, "tfs_sim_k_ref.csv"), index=False
+        )
+        pd.DataFrame({"parameter": ["k_ref"], "q0.5": [0.0298]}).to_csv(
+            os.path.join(run_dir, "tfs_params_k_ref.csv"), index=False
+        )
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            summarize_fit(run_dir)
+
+        growth_k_csv = os.path.join(run_dir, "summary", "tfs_summarize_params_growth_k.csv")
+        k_ref_csv = os.path.join(run_dir, "summary", "tfs_summarize_params_k_ref.csv")
+        assert os.path.exists(growth_k_csv)
+        assert os.path.exists(k_ref_csv)
+
+    def test_summarize_growth_params_no_crash_when_both_absent(self, tmp_path):
+        out_prefix = str(tmp_path / "summary" / "tfs_summarize")
+        os.makedirs(os.path.dirname(out_prefix), exist_ok=True)
+        _summarize_growth_params(str(tmp_path), out_prefix)  # must not raise
+
+
+# ---------------------------------------------------------------------------
 # _extract_quantile_data
 # ---------------------------------------------------------------------------
 

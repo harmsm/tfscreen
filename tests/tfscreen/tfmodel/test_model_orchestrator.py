@@ -15,6 +15,7 @@ from tfscreen.tfmodel.model_orchestrator import (
     _build_growth_tm,
     _build_binding_tm,
     _setup_batching,
+    _check_theta_transformation_compatibility,
     get_batch
 )
 from tfscreen.tfmodel.generative.components.growth.linear import _parse_condition_label
@@ -214,7 +215,6 @@ def test_read_binding_df_extra_pairs_dropped_with_warning(capsys):
     result = _read_binding_df(binding_df, growth_df=growth_df)
     captured = capsys.readouterr()
     assert "will be dropped" in captured.out
-    assert "M42I" in captured.out
 
     # Only the "wt" row should survive
     assert set(result["genotype"]) == {"wt"}
@@ -431,6 +431,478 @@ def test_initialize_classes_logic(mocker):
         assert model._theta == "categorical_geno"
 
 
+# ---------------------------------------------------------------------------
+# presplit forwarding to component get_priors/get_guesses
+# ---------------------------------------------------------------------------
+
+class _LnCfu0ModuleWithPresplit:
+    """
+    A minimal, real (non-Mock) component module whose get_priors/get_guesses
+    declare a `presplit` parameter, so inspect.signature can actually detect
+    it -- MagicMock's auto-generated (*args, **kwargs) signature can't be
+    used to exercise this branch (see test below).
+    """
+    recorded = {}
+
+    @staticmethod
+    def get_priors(data=None, presplit=None):
+        _LnCfu0ModuleWithPresplit.recorded["priors_data"] = data
+        _LnCfu0ModuleWithPresplit.recorded["priors_presplit"] = presplit
+        return {}
+
+    @staticmethod
+    def get_guesses(name, data, presplit=None):
+        _LnCfu0ModuleWithPresplit.recorded["guesses_data"] = data
+        _LnCfu0ModuleWithPresplit.recorded["guesses_presplit"] = presplit
+        return {}
+
+    define_model = MagicMock()
+    guide = MagicMock()
+
+
+def test_initialize_classes_forwards_presplit_to_declaring_component(mocker):
+    """
+    _initialize_classes must forward self._data.presplit to a component's
+    get_priors/get_guesses only when its signature declares a `presplit`
+    parameter -- currently just the ln_cfu0 component.  Components that
+    don't declare it (everything else, here plain MagicMocks) are
+    unaffected and keep working exactly as before.
+    """
+    mock_growth_tm = create_mock_tm(is_growth=True)
+    mock_binding_tm = create_mock_tm(is_growth=False)
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._read_growth_df")
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._build_growth_tm", return_value=mock_growth_tm)
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._read_binding_df")
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._build_binding_tm", return_value=mock_binding_tm)
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._setup_batching", return_value={"batch_idx": jnp.array([0]), "batch_size": 1, "scale_vector": jnp.array([1.0]), "num_binding": 0})
+
+    fake_data = MagicMock()
+    fake_data.presplit = "PRESPLIT_SENTINEL"
+    mocker.patch("tfscreen.tfmodel.model_orchestrator.populate_dataclass", return_value=fake_data)
+
+    _LnCfu0ModuleWithPresplit.recorded.clear()
+
+    with patch.dict("tfscreen.tfmodel.model_orchestrator.model_registry", {
+        "condition_growth": {"independent": MagicMock()},
+        "growth_transition": {"instant": MagicMock()},
+        "ln_cfu0": {"hierarchical": _LnCfu0ModuleWithPresplit},
+        "dk_geno": {"hierarchical_geno": MagicMock()},
+        "activity": {"hierarchical_geno": MagicMock()},
+        "theta": {"categorical_geno": MagicMock()},
+        "transformation": {"logit_norm": MagicMock()},
+        "theta_rescale": {"passthrough": MagicMock()},
+        "theta_growth_noise": {"zero": MagicMock()},
+        "theta_binding_noise": {"zero": MagicMock()},
+        "growth_noise": {"zero": MagicMock()},
+        "sample_offset": {"zero": MagicMock()},
+        "observe_binding": MagicMock(),
+        "observe_growth": MagicMock(),
+    }, clear=True):
+        for k in ["condition_growth", "growth_transition", "dk_geno", "activity",
+                 "theta", "transformation", "theta_growth_noise",
+                 "theta_binding_noise", "growth_noise", "sample_offset"]:
+            for sub_k in tfscreen.tfmodel.model_orchestrator.model_registry[k]:
+                mod = tfscreen.tfmodel.model_orchestrator.model_registry[k][sub_k]
+                mod.get_priors.return_value = {}
+                mod.get_guesses.return_value = {}
+
+        ModelOrchestrator(
+            "g.csv", "b.csv",
+            theta="categorical_geno", transformation="logit_norm",
+            condition_growth="independent", growth_transition="instant",
+            ln_cfu0="hierarchical", activity="hierarchical_geno",
+            theta_growth_noise="zero",
+        )
+
+    # presplit forwarded to the component that declares it...
+    assert _LnCfu0ModuleWithPresplit.recorded["priors_presplit"] == "PRESPLIT_SENTINEL"
+    assert _LnCfu0ModuleWithPresplit.recorded["guesses_presplit"] == "PRESPLIT_SENTINEL"
+    # ...alongside the usual `data` kwarg, unaffected by the new plumbing.
+    assert _LnCfu0ModuleWithPresplit.recorded["priors_data"] is fake_data.growth
+    assert _LnCfu0ModuleWithPresplit.recorded["guesses_data"] is fake_data.growth
+
+
+# ---------------------------------------------------------------------------
+# dk_geno="pinned" wiring
+# ---------------------------------------------------------------------------
+
+def test_dk_geno_pinned_requires_pins_file():
+    """
+    dk_geno='pinned' without dk_geno_pins_file must raise before any data
+    I/O happens (mirrors
+    test_model_orchestrator_rejects_categorical_geno_with_empirical:
+    "g.csv"/"b.csv" are never touched).
+    """
+    with pytest.raises(ValueError, match="requires dk_geno_pins_file"):
+        ModelOrchestrator("g.csv", "b.csv", dk_geno="pinned")
+
+
+def test_dk_geno_pins_file_without_pinned_component_raises():
+    """A stray dk_geno_pins_file with any other dk_geno component must raise."""
+    with pytest.raises(ValueError, match="dk_geno != 'pinned'"):
+        ModelOrchestrator(
+            "g.csv", "b.csv",
+            dk_geno="hierarchical_geno",
+            dk_geno_pins_file="pins.csv",
+        )
+
+
+class _SpyPinnedModule:
+    """
+    Thin real-object wrapper around dk_geno.pinned.
+
+    inspect.signature(component_module.get_priors) must see the real
+    "dk_geno_values" parameter for _initialize_classes's branch selection to
+    fire (a bare MagicMock's signature is just (*args, **kwargs), which
+    would silently fall through to the wrong branch). Wrapping with an
+    explicit method of the same shape gets us a real signature while still
+    recording what was actually passed.
+    """
+
+    def __init__(self, real_module):
+        self._real_module = real_module
+        self.calls = []
+
+    def get_priors(self, dk_geno_values=None):
+        self.calls.append(dk_geno_values)
+        return self._real_module.get_priors(dk_geno_values=dk_geno_values)
+
+    def __getattr__(self, name):
+        return getattr(self._real_module, name)
+
+
+def test_dk_geno_pinned_builds_values_and_wires_into_priors(mocker, tmp_path):
+    """
+    End-to-end: a pinned dk_geno_pins_file is read, converted to a
+    (num_genotype,) array ordered by the growth genotype axis, and passed
+    into the "pinned" component's get_priors(dk_geno_values=...).
+    """
+    from tfscreen.tfmodel.generative.components.dk_geno import pinned as real_pinned
+
+    csv_path = tmp_path / "pins.csv"
+    csv_path.write_text("genotype,dk_geno\nm1,-0.02\nm3,0.01\n")
+
+    mock_growth_tm = create_mock_tm(is_growth=True)
+    mock_binding_tm = create_mock_tm(is_growth=False)
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._read_growth_df")
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._build_growth_tm", return_value=mock_growth_tm)
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._read_binding_df")
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._build_binding_tm", return_value=mock_binding_tm)
+    mocker.patch("tfscreen.tfmodel.model_orchestrator.populate_dataclass", return_value=MagicMock())
+    mocker.patch(
+        "tfscreen.tfmodel.model_orchestrator._setup_batching",
+        return_value={
+            "batch_idx": jnp.arange(7), "batch_size": 7,
+            "scale_vector": jnp.ones(7), "num_binding": 0,
+        },
+    )
+
+    spy = _SpyPinnedModule(real_pinned)
+
+    with patch.dict("tfscreen.tfmodel.model_orchestrator.model_registry", {
+        "condition_growth": {"hierarchical": MagicMock()},
+        "growth_transition": {"instant": MagicMock()},
+        "ln_cfu0": {"hierarchical": MagicMock()},
+        "dk_geno": {"pinned": spy},
+        "activity": {"hierarchical_geno": MagicMock()},
+        "theta": {"hill_geno": MagicMock()},
+        "transformation": {"single": MagicMock()},
+        "theta_rescale": {"passthrough": MagicMock()},
+        "theta_growth_noise": {"zero": MagicMock()},
+        "theta_binding_noise": {"zero": MagicMock()},
+        "growth_noise": {"zero": MagicMock()},
+        "sample_offset": {"zero": MagicMock()},
+        "observe_binding": MagicMock(),
+        "observe_growth": MagicMock(),
+    }, clear=True):
+        for k in ["condition_growth", "growth_transition", "ln_cfu0", "activity",
+                  "theta", "transformation", "theta_growth_noise",
+                  "theta_binding_noise", "growth_noise", "sample_offset"]:
+            for sub_k in tfscreen.tfmodel.model_orchestrator.model_registry[k]:
+                tfscreen.tfmodel.model_orchestrator.model_registry[k][sub_k].get_priors.return_value = {}
+                tfscreen.tfmodel.model_orchestrator.model_registry[k][sub_k].get_guesses.return_value = {}
+
+        model = ModelOrchestrator(
+            "g.csv", "b.csv",
+            dk_geno="pinned",
+            dk_geno_pins_file=str(csv_path),
+            condition_growth="hierarchical",
+            growth_transition="instant",
+            activity="hierarchical_geno",
+            theta="hill_geno",
+            transformation="single",
+            theta_growth_noise="zero",
+        )
+
+    expected = np.array([0.0, -0.02, 0.0, 0.01, 0.0, 0.0, 0.0])
+
+    # _dk_geno_values built during _initialize_data, ordered wt,m1..m6.
+    assert np.allclose(np.asarray(model._dk_geno_values), expected)
+
+    # The component received that exact array via get_priors(dk_geno_values=...).
+    assert len(spy.calls) == 1
+    assert np.allclose(np.asarray(spy.calls[0]), expected)
+
+    # Round-trips through the settings dict for YAML config serialisation.
+    assert model.settings["dk_geno_pins_file"] == str(csv_path)
+    assert model.settings["dk_geno"] == "pinned"
+
+
+# ---------------------------------------------------------------------------
+# transformation_lambda wiring
+# ---------------------------------------------------------------------------
+
+def test_transformation_lambda_forbidden_with_single_transformation():
+    """transformation='single' has no lambda parameter to anchor transformation_lambda
+    to, so supplying it must raise before any data I/O happens."""
+    with pytest.raises(ValueError, match="transformation == 'single'"):
+        ModelOrchestrator(
+            "g.csv", "b.csv",
+            transformation="single",
+            transformation_lambda=(0.36, 0.05),
+        )
+
+
+def test_transformation_lambda_wrong_length_raises():
+    with pytest.raises(ValueError, match="mean, std"):
+        ModelOrchestrator(
+            "g.csv", "b.csv",
+            transformation="empirical",
+            transformation_lambda=(0.36,),
+        )
+
+
+class _SpyTransformationModule:
+    """
+    Thin real-object wrapper around a transformation component (logit_norm/
+    empirical), recording what get_priors/get_guesses were actually called
+    with.
+
+    inspect.signature(component_module.get_priors) must see the real
+    lam_mean/lam_std parameters for _initialize_classes's branch selection
+    to fire -- a bare MagicMock's signature is just (*args, **kwargs),
+    which would silently fall through to the wrong branch (mirrors
+    _SpyPinnedModule above).
+    """
+
+    def __init__(self, real_module):
+        self._real_module = real_module
+        self.priors_calls = []
+        self.guesses_calls = []
+
+    def get_priors(self, lam_mean=None, lam_std=None):
+        self.priors_calls.append((lam_mean, lam_std))
+        return self._real_module.get_priors(lam_mean=lam_mean, lam_std=lam_std)
+
+    def get_guesses(self, name, data, lam_mean=None):
+        self.guesses_calls.append(lam_mean)
+        return self._real_module.get_guesses(name, data, lam_mean=lam_mean)
+
+    def __getattr__(self, name):
+        return getattr(self._real_module, name)
+
+
+def _build_orchestrator_with_transformation_spy(mocker, spy, transformation_lambda):
+    mock_growth_tm = create_mock_tm(is_growth=True)
+    mock_binding_tm = create_mock_tm(is_growth=False)
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._read_growth_df")
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._build_growth_tm", return_value=mock_growth_tm)
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._read_binding_df")
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._build_binding_tm", return_value=mock_binding_tm)
+    mocker.patch("tfscreen.tfmodel.model_orchestrator.populate_dataclass", return_value=MagicMock())
+    mocker.patch(
+        "tfscreen.tfmodel.model_orchestrator._setup_batching",
+        return_value={"batch_idx": jnp.array([0]), "batch_size": 1,
+                      "scale_vector": jnp.array([1.0]), "num_binding": 0},
+    )
+
+    with patch.dict("tfscreen.tfmodel.model_orchestrator.model_registry", {
+        "condition_growth": {"independent": MagicMock()},
+        "growth_transition": {"instant": MagicMock()},
+        "ln_cfu0": {"hierarchical": MagicMock()},
+        "dk_geno": {"hierarchical_geno": MagicMock()},
+        "activity": {"hierarchical_geno": MagicMock()},
+        "theta": {"hill_geno": MagicMock()},
+        "transformation": {"logit_norm": spy},
+        "theta_rescale": {"passthrough": MagicMock()},
+        "theta_growth_noise": {"zero": MagicMock()},
+        "theta_binding_noise": {"zero": MagicMock()},
+        "growth_noise": {"zero": MagicMock()},
+        "sample_offset": {"zero": MagicMock()},
+        "observe_binding": MagicMock(),
+        "observe_growth": MagicMock(),
+    }, clear=True):
+        for k in ["condition_growth", "growth_transition", "ln_cfu0", "dk_geno",
+                  "activity", "theta", "theta_growth_noise",
+                  "theta_binding_noise", "growth_noise", "sample_offset"]:
+            for sub_k in tfscreen.tfmodel.model_orchestrator.model_registry[k]:
+                tfscreen.tfmodel.model_orchestrator.model_registry[k][sub_k].get_priors.return_value = {}
+                tfscreen.tfmodel.model_orchestrator.model_registry[k][sub_k].get_guesses.return_value = {}
+
+        return ModelOrchestrator(
+            "g.csv", "b.csv",
+            theta="hill_geno", transformation="logit_norm",
+            transformation_lambda=transformation_lambda,
+            condition_growth="independent", growth_transition="instant",
+            activity="hierarchical_geno", theta_growth_noise="zero",
+        )
+
+
+def test_transformation_lambda_wired_into_component_priors_and_guesses(mocker):
+    """End-to-end: transformation_lambda=(mean, std) must reach the real component's
+    get_priors(lam_mean=..., lam_std=...) and get_guesses(..., lam_mean=...)
+    via signature-based dispatch in _initialize_classes."""
+    from tfscreen.tfmodel.generative.components.transformation import logit_norm as real_logit_norm
+
+    spy = _SpyTransformationModule(real_logit_norm)
+    model = _build_orchestrator_with_transformation_spy(mocker, spy, (0.3572, 0.13))
+
+    assert spy.priors_calls == [(0.3572, 0.13)]
+    assert spy.guesses_calls == [0.3572]
+
+    # Round-trips through the settings dict for YAML config serialisation.
+    assert model.settings["transformation_lambda"] == (0.3572, 0.13)
+
+
+def test_transformation_lambda_omitted_falls_back_to_placeholder(mocker):
+    """Without transformation_lambda, the component still gets called (with
+    lam_mean=lam_std=None) rather than being skipped -- it falls back to
+    its own placeholder prior rather than ModelOrchestrator refusing to
+    build the model."""
+    from tfscreen.tfmodel.generative.components.transformation import logit_norm as real_logit_norm
+
+    spy = _SpyTransformationModule(real_logit_norm)
+    model = _build_orchestrator_with_transformation_spy(mocker, spy, None)
+
+    assert spy.priors_calls == [(None, None)]
+    assert spy.guesses_calls == [None]
+    assert model.settings["transformation_lambda"] is None
+
+
+@pytest.mark.parametrize("transformation_key, expected_needs_population", [
+    ("single", False),
+    ("logit_norm", False),
+    ("empirical", True),
+])
+def test_transformation_control_kwargs_carry_needs_population_flag(
+        mocker, transformation_key, expected_needs_population):
+    """
+    main_control_kwargs["transformation"] must be a 3-tuple whose third
+    element reflects the *real* transformation component's
+    NEEDS_FULL_POPULATION_THETA flag (empirical=True; single/logit_norm=False)
+    — this is the wiring jax_model relies on to decide whether it needs a
+    population-wide theta reference for the congression correction.
+    """
+    import tfscreen.tfmodel.generative.components.transformation as transformation_pkg
+
+    mock_growth_tm = create_mock_tm(is_growth=True)
+    mock_binding_tm = create_mock_tm(is_growth=False)
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._read_growth_df")
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._build_growth_tm", return_value=mock_growth_tm)
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._read_binding_df")
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._build_binding_tm", return_value=mock_binding_tm)
+    mocker.patch("tfscreen.tfmodel.model_orchestrator._setup_batching", return_value={"batch_idx": jnp.array([0]), "batch_size": 1, "scale_vector": jnp.array([1.0]), "num_binding": 0})
+    mocker.patch("tfscreen.tfmodel.model_orchestrator.populate_dataclass", return_value=MagicMock())
+
+    real_transformation_module = getattr(transformation_pkg, transformation_key)
+
+    with patch.dict("tfscreen.tfmodel.model_orchestrator.model_registry", {
+        "condition_growth": {"independent": MagicMock()},
+        "growth_transition": {"instant": MagicMock()},
+        "ln_cfu0": {"hierarchical": MagicMock()},
+        "dk_geno": {"hierarchical_geno": MagicMock()},
+        "activity": {"horseshoe_geno": MagicMock()},
+        # Use a mocked "hill_geno" stand-in (not "categorical_geno") so this
+        # wiring test doesn't trip the real theta/transformation compatibility
+        # check exercised separately below.
+        "theta": {"hill_geno": MagicMock()},
+        "transformation": {transformation_key: real_transformation_module},
+        "theta_rescale": {"passthrough": MagicMock()},
+        "theta_growth_noise": {"logit_normal": MagicMock()},
+        "theta_binding_noise": {"zero": MagicMock()},
+        "growth_noise": {"zero": MagicMock()},
+        "sample_offset": {"zero": MagicMock()},
+        "observe_binding": MagicMock(),
+        "observe_growth": MagicMock()
+    }, clear=True):
+        for k in ["condition_growth", "growth_transition", "ln_cfu0", "dk_geno",
+                  "activity", "theta", "theta_growth_noise", "theta_binding_noise",
+                  "growth_noise", "sample_offset"]:
+            for sub_k in tfscreen.tfmodel.model_orchestrator.model_registry[k]:
+                tfscreen.tfmodel.model_orchestrator.model_registry[k][sub_k].get_priors.return_value = {}
+                tfscreen.tfmodel.model_orchestrator.model_registry[k][sub_k].get_guesses.return_value = {}
+
+        model = ModelOrchestrator(
+            "g.csv", "b.csv",
+            theta="hill_geno",
+            transformation=transformation_key,
+            condition_growth="independent",
+            growth_transition="instant",
+        )
+
+        transformation_control = model.main_control_kwargs["transformation"]
+        assert len(transformation_control) == 3
+        assert transformation_control[2] is expected_needs_population
+
+
+# ---------------------------------------------------------------------------
+# _check_theta_transformation_compatibility
+# ---------------------------------------------------------------------------
+
+def test_check_theta_transformation_compatibility_rejects_categorical_geno_empirical():
+    """categorical_geno cannot supply a full-population theta reference, so
+    pairing it with transformation='empirical' must raise, not silently
+    reproduce the population-CDF bug."""
+    with pytest.raises(ValueError, match="categorical_geno.*empirical|empirical.*categorical_geno"):
+        _check_theta_transformation_compatibility("categorical_geno", "empirical")
+
+
+@pytest.mark.parametrize("transformation_key", ["single", "logit_norm"])
+def test_check_theta_transformation_compatibility_allows_categorical_geno_elsewhere(
+        transformation_key):
+    """categorical_geno is fine with transformation models that don't need a
+    population-wide theta reference."""
+    _check_theta_transformation_compatibility("categorical_geno", transformation_key)
+
+
+@pytest.mark.parametrize("theta_key", ["hill_geno", "hill_mut", "some_thermo_variant"])
+def test_check_theta_transformation_compatibility_allows_other_theta_with_empirical(
+        theta_key):
+    """Any theta component other than the known-incompatible ones must be
+    allowed with transformation='empirical' (including forward-compatibility
+    with theta components this check has never heard of)."""
+    _check_theta_transformation_compatibility(theta_key, "empirical")
+
+
+def test_model_orchestrator_rejects_categorical_geno_with_empirical():
+    """
+    End-to-end: constructing a ModelOrchestrator with the incompatible pair
+    must raise before any data loading happens (no growth_df/binding_df I/O
+    needed for this to fire — "g.csv"/"b.csv" are never touched).
+    """
+    with pytest.raises(ValueError, match="categorical_geno"):
+        ModelOrchestrator(
+            "g.csv", "b.csv",
+            theta="categorical_geno",
+            transformation="empirical",
+        )
+
+
+def test_check_theta_transformation_compatibility_binding_only_skips_check():
+    """
+    In binding-only mode jax_model returns before ever reaching the
+    transformation/congression code path (see generative/model.py's early
+    `if binding_only: ... return`), so the transformation setting is inert
+    and categorical_geno + empirical must be allowed.  Regression test for
+    the smoke-test failure where tfs-configure-model's binding-only pipeline
+    (theta="categorical_geno", transformation left at its "empirical"
+    default) was incorrectly rejected by this check.
+    """
+    _check_theta_transformation_compatibility(
+        "categorical_geno", "empirical", binding_only=True
+    )
+
+
 def test_model_class_properties(initialized_model_class):
     model = initialized_model_class
     model._jax_model = "jm"
@@ -442,11 +914,13 @@ def test_model_class_properties(initialized_model_class):
     model._activity = "a"
     model._theta = "t"
     model._transformation = "tr"
+    model._transformation_lambda = None
     model._theta_rescale = "rs"
     model._condition_growth = "cg"
     model._growth_transition = "gt"
     model._ln_cfu0 = "ln"
     model._dk_geno = "dk"
+    model._dk_geno_pins_file = None
     model._theta_growth_noise = "gn"
     model._theta_binding_noise = "bn"
     model._growth_noise = "grn"
@@ -457,6 +931,7 @@ def test_model_class_properties(initialized_model_class):
     model._epistasis = True
     model._thermo_data = None
     model._binding_weight = 1.0
+    model._base_growth_df = "bg.csv"
 
     assert ModelOrchestrator.jax_model.fget(model) == "jm"
     assert ModelOrchestrator.jax_model_guide.fget(model) == "jmg"
@@ -466,17 +941,20 @@ def test_model_class_properties(initialized_model_class):
     assert ModelOrchestrator.settings.fget(model)["activity"] == "a"
     assert ModelOrchestrator.settings.fget(model)["theta"] == "t"
     assert ModelOrchestrator.settings.fget(model)["transformation"] == "tr"
+    assert ModelOrchestrator.settings.fget(model)["transformation_lambda"] is None
     assert ModelOrchestrator.settings.fget(model)["theta_rescale"] == "rs"
     assert ModelOrchestrator.settings.fget(model)["condition_growth"] == "cg"
     assert ModelOrchestrator.settings.fget(model)["growth_transition"] == "gt"
     assert ModelOrchestrator.settings.fget(model)["ln_cfu0"] == "ln"
     assert ModelOrchestrator.settings.fget(model)["dk_geno"] == "dk"
+    assert ModelOrchestrator.settings.fget(model)["dk_geno_pins_file"] is None
     assert ModelOrchestrator.settings.fget(model)["theta_growth_noise"] == "gn"
     assert ModelOrchestrator.settings.fget(model)["theta_binding_noise"] == "bn"
     assert ModelOrchestrator.settings.fget(model)["growth_noise"] == "grn"
     assert ModelOrchestrator.settings.fget(model)["spiked_genotypes"] == ["s"]
     assert ModelOrchestrator.settings.fget(model)["growth_shares_replicates"] == False
     assert ModelOrchestrator.settings.fget(model)["epistasis"] == True
+    assert ModelOrchestrator.settings.fget(model)["base_growth_df"] == "bg.csv"
     assert ModelOrchestrator.get_batch.fget(model) == get_batch
 
 def test_extract_parameters_full(initialized_model_class):
@@ -1556,3 +2034,329 @@ class TestCombinedConditionPreKey:
             f"growth condition_pre labels: {cp_growth}\n"
             f"presplit condition_pre labels: {cp_presplit}"
         )
+
+# ---------------------------------------------------------------------------
+# base_growth_df: _read_base_growth_df / _build_base_growth_arrays /
+# _derive_k_ref_guess
+# ---------------------------------------------------------------------------
+
+class TestBaseGrowthDf:
+    """
+    Tests for the base_growth_df dk_geno-calibration input: a direct,
+    uncertainty-weighted observation of growth rate tied to a new k_ref
+    scalar plus the existing per-genotype dk_geno latent (see model.py's
+    base_growth_obs block).
+    """
+
+    @staticmethod
+    def _growth_df(genotypes=("wt", "A2G", "K3R")):
+        rows = []
+        for geno in genotypes:
+            rows.append({
+                "library": "kanR", "replicate": 1, "genotype": geno,
+                "titrant_name": "iptg", "titrant_conc": 0.0,
+                "condition_pre": "-kan", "condition_sel": "+kan",
+                "t_pre": 30.0, "t_sel": 100.0,
+                "ln_cfu": 10.0, "ln_cfu_std": 0.1,
+            })
+        return pd.DataFrame(rows)
+
+    def test_basic_construction(self):
+        from tfscreen.tfmodel.model_orchestrator import _read_base_growth_df
+
+        growth_df = _read_growth_df(self._growth_df())
+        base_growth_df_raw = pd.DataFrame({
+            "genotype": ["wt", "A2G"],
+            "rate": [0.02, 0.015],
+            "rate_std": [0.001, 0.002],
+        })
+
+        result = _read_base_growth_df(base_growth_df_raw, growth_df)
+        assert set(result["genotype"]) == {"wt", "A2G"}
+        assert len(result) == 2
+
+    def test_zero_rate_std_raises(self):
+        """rate_std == 0.0 (e.g. from tfs-simulate's base_growth_data with
+        noise omitted/0.0) must be rejected here -- otherwise 1/rate_std**2
+        divides by zero, producing a NaN combined rate that only surfaces
+        much later as an inscrutable numpyro 'invalid loc parameter' crash
+        when the model is first traced."""
+        from tfscreen.tfmodel.model_orchestrator import _read_base_growth_df
+
+        growth_df = _read_growth_df(self._growth_df())
+        base_growth_df_raw = pd.DataFrame({
+            "genotype": ["wt"],
+            "rate": [0.02],
+            "rate_std": [0.0],
+        })
+
+        with pytest.raises(ValueError, match="non-positive rate_std"):
+            _read_base_growth_df(base_growth_df_raw, growth_df)
+
+    def test_negative_rate_std_raises(self):
+        from tfscreen.tfmodel.model_orchestrator import _read_base_growth_df
+
+        growth_df = _read_growth_df(self._growth_df())
+        base_growth_df_raw = pd.DataFrame({
+            "genotype": ["wt", "A2G"],
+            "rate": [0.02, 0.015],
+            "rate_std": [0.001, -0.002],
+        })
+
+        with pytest.raises(ValueError, match=r"non-positive rate_std for genotype\(s\) \['A2G'\]"):
+            _read_base_growth_df(base_growth_df_raw, growth_df)
+
+    def test_missing_required_column_raises(self):
+        from tfscreen.tfmodel.model_orchestrator import _read_base_growth_df
+
+        growth_df = _read_growth_df(self._growth_df())
+        bad_df = pd.DataFrame({"genotype": ["wt"], "rate": [0.02]})  # no rate_std
+
+        with pytest.raises(ValueError):
+            _read_base_growth_df(bad_df, growth_df)
+
+    def test_genotype_not_in_growth_df_is_dropped(self, capsys):
+        from tfscreen.tfmodel.model_orchestrator import _read_base_growth_df
+
+        growth_df = _read_growth_df(self._growth_df())
+        # A5T is validly-formatted but not one of the genotypes in growth_df.
+        base_growth_df_raw = pd.DataFrame({
+            "genotype": ["wt", "A5T"],
+            "rate": [0.02, 0.05],
+            "rate_std": [0.001, 0.001],
+        })
+
+        result = _read_base_growth_df(base_growth_df_raw, growth_df)
+        assert set(result["genotype"]) == {"wt"}
+        captured = capsys.readouterr()
+        assert "Syncing base_growth_df to growth_df" in captured.out
+
+    def test_missing_wt_after_filtering_raises(self):
+        from tfscreen.tfmodel.model_orchestrator import _read_base_growth_df
+
+        growth_df = _read_growth_df(self._growth_df())
+        # A2G is in growth_df, but wt is not present in base_growth_df at all.
+        base_growth_df_raw = pd.DataFrame({
+            "genotype": ["A2G"],
+            "rate": [0.015],
+            "rate_std": [0.002],
+        })
+
+        with pytest.raises(ValueError, match="wt"):
+            _read_base_growth_df(base_growth_df_raw, growth_df)
+
+    def test_wt_dropped_by_growth_df_filter_raises(self):
+        """wt present in base_growth_df but not in growth_df -- still an error,
+        since post-filtering wt is what's actually required."""
+        from tfscreen.tfmodel.model_orchestrator import _read_base_growth_df
+
+        growth_df = _read_growth_df(self._growth_df(genotypes=("A2G",)))  # no wt at all
+        base_growth_df_raw = pd.DataFrame({
+            "genotype": ["wt", "A2G"],
+            "rate": [0.02, 0.015],
+            "rate_std": [0.001, 0.002],
+        })
+
+        with pytest.raises(ValueError, match="wt"):
+            _read_base_growth_df(base_growth_df_raw, growth_df)
+
+    def test_multiple_rows_per_genotype_combined_by_inverse_variance(self):
+        from tfscreen.tfmodel.model_orchestrator import _read_base_growth_df
+
+        growth_df = _read_growth_df(self._growth_df())
+        # Two independent measurements of wt: precision-weighted mean.
+        base_growth_df_raw = pd.DataFrame({
+            "genotype": ["wt", "wt"],
+            "rate": [0.02, 0.03],
+            "rate_std": [0.01, 0.02],
+        })
+
+        result = _read_base_growth_df(base_growth_df_raw, growth_df)
+        assert len(result) == 1
+
+        precision = np.array([1 / 0.01**2, 1 / 0.02**2])
+        expected_rate = float(np.sum(np.array([0.02, 0.03]) * precision) / precision.sum())
+        expected_std = float(np.sqrt(1.0 / precision.sum()))
+
+        row = result.iloc[0]
+        assert row["genotype"] == "wt"
+        assert row["rate"] == pytest.approx(expected_rate)
+        assert row["rate_std"] == pytest.approx(expected_std)
+        # Combined precision must exceed either individual measurement's.
+        assert row["rate_std"] < 0.01
+
+    def test_build_base_growth_arrays_shapes_and_values(self):
+        from tfscreen.tfmodel.model_orchestrator import (
+            _read_base_growth_df,
+            _build_base_growth_arrays,
+        )
+
+        growth_df = _read_growth_df(self._growth_df())
+        tm = _build_growth_tm(growth_df)
+        genotype_labels = tm.tensor_dim_labels[tm.tensor_dim_names.index("genotype")]
+
+        base_growth_df_raw = pd.DataFrame({
+            "genotype": ["wt", "A2G"],
+            "rate": [0.02, 0.015],
+            "rate_std": [0.001, 0.002],
+        })
+        processed = _read_base_growth_df(base_growth_df_raw, growth_df)
+        arrays = _build_base_growth_arrays(processed, genotype_labels)
+
+        assert arrays["rate_obs"].shape == (len(genotype_labels),)
+        assert arrays["rate_std"].shape == (len(genotype_labels),)
+        assert arrays["good_mask"].shape == (len(genotype_labels),)
+
+        label_to_idx = {str(g): i for i, g in enumerate(genotype_labels)}
+        wt_idx = label_to_idx["wt"]
+        a2g_idx = label_to_idx["A2G"]
+        k3r_idx = label_to_idx["K3R"]  # not in base_growth_df_raw
+
+        assert arrays["good_mask"][wt_idx]
+        assert arrays["rate_obs"][wt_idx] == pytest.approx(0.02)
+        assert arrays["rate_std"][wt_idx] == pytest.approx(0.001)
+
+        assert arrays["good_mask"][a2g_idx]
+        assert arrays["rate_obs"][a2g_idx] == pytest.approx(0.015)
+
+        assert not arrays["good_mask"][k3r_idx]
+
+    def test_derive_k_ref_guess_returns_wt_rate(self):
+        from tfscreen.tfmodel.model_orchestrator import _read_base_growth_df
+        from tfscreen.tfmodel.generative.observe.base_growth import (
+            derive_k_ref_guess,
+        )
+
+        growth_df = _read_growth_df(self._growth_df())
+        base_growth_df_raw = pd.DataFrame({
+            "genotype": ["wt", "A2G"],
+            "rate": [0.021, 0.015],
+            "rate_std": [0.001, 0.002],
+        })
+        processed = _read_base_growth_df(base_growth_df_raw, growth_df)
+
+        guess = derive_k_ref_guess(processed)
+        assert guess == pytest.approx(0.021)
+
+    def test_base_growth_df_wires_k_ref_into_growth_priors(self, mocker):
+        """
+        End-to-end: supplying base_growth_df must derive a k_ref guess from
+        wt's rate and thread it into growth_priors.base_growth as a
+        BaseGrowthPriors(k_ref_loc=guess, k_ref_scale=<observe.base_growth's
+        default>) instance, built via observe.base_growth.get_priors (which
+        now owns the k_ref prior's default hyperparameters -- see
+        observe.base_growth.get_hyperparameters). Without base_growth_df,
+        growth_priors.base_growth must stay None (its dataclass default).
+        """
+        from tfscreen.tfmodel.generative.observe import (
+            growth as observe_growth,
+            base_growth as observe_base_growth,
+        )
+        _K_REF_PRIOR_SCALE = observe_base_growth.get_hyperparameters()["k_ref_scale"]
+        from tfscreen.tfmodel.tensors.populate_dataclass import (
+            populate_dataclass as real_populate_dataclass,
+        )
+        from tfscreen.tfmodel.data_class import DataClass, BaseGrowthPriors
+
+        mock_growth_tm = create_mock_tm(is_growth=True)
+        mock_binding_tm = create_mock_tm(is_growth=False)
+        mocker.patch("tfscreen.tfmodel.model_orchestrator._read_growth_df")
+        mocker.patch("tfscreen.tfmodel.model_orchestrator._build_growth_tm", return_value=mock_growth_tm)
+        mocker.patch("tfscreen.tfmodel.model_orchestrator._read_binding_df")
+        mocker.patch("tfscreen.tfmodel.model_orchestrator._build_binding_tm", return_value=mock_binding_tm)
+        mocker.patch(
+            "tfscreen.tfmodel.model_orchestrator._setup_batching",
+            return_value={
+                "batch_idx": jnp.arange(7), "batch_size": 7,
+                "scale_vector": jnp.ones(7), "num_binding": 0,
+            },
+        )
+        mocker.patch(
+            "tfscreen.tfmodel.model_orchestrator._read_base_growth_df",
+            return_value=pd.DataFrame({
+                "genotype": ["wt"], "rate": [0.0234], "rate_std": [0.001],
+            }),
+        )
+        mocker.patch(
+            "tfscreen.tfmodel.model_orchestrator._build_base_growth_arrays",
+            return_value={
+                "rate_obs": np.zeros(7), "rate_std": np.ones(7),
+                "good_mask": np.zeros(7, dtype=bool),
+            },
+        )
+
+        # Real populate_dataclass everywhere except DataClass, which would
+        # otherwise require a fully-realistic set of growth/binding tensors
+        # that this test has no need to build.
+        def _populate_side_effect(target_dataclass, sources):
+            if target_dataclass is DataClass:
+                return MagicMock()
+            return real_populate_dataclass(target_dataclass, sources)
+
+        mocker.patch(
+            "tfscreen.tfmodel.model_orchestrator.populate_dataclass",
+            side_effect=_populate_side_effect,
+        )
+
+        registry = {
+            "condition_growth": {"hierarchical": MagicMock()},
+            "growth_transition": {"instant": MagicMock()},
+            "ln_cfu0": {"hierarchical": MagicMock()},
+            "dk_geno": {"hierarchical_geno": MagicMock()},
+            "activity": {"hierarchical_geno": MagicMock()},
+            "theta": {"hill_geno": MagicMock()},
+            "transformation": {"single": MagicMock()},
+            "theta_rescale": {"passthrough": MagicMock()},
+            "theta_growth_noise": {"zero": MagicMock()},
+            "theta_binding_noise": {"zero": MagicMock()},
+            "growth_noise": {"zero": MagicMock()},
+            "sample_offset": {"zero": MagicMock()},
+            "observe_binding": MagicMock(),
+            "observe_growth": observe_growth,
+            "observe_base_growth": observe_base_growth,
+        }
+        with patch.dict("tfscreen.tfmodel.model_orchestrator.model_registry", registry, clear=True):
+            for k in ["condition_growth", "growth_transition", "ln_cfu0", "dk_geno",
+                      "activity", "theta", "transformation", "theta_growth_noise",
+                      "theta_binding_noise", "growth_noise", "sample_offset"]:
+                for sub_k in tfscreen.tfmodel.model_orchestrator.model_registry[k]:
+                    mod = tfscreen.tfmodel.model_orchestrator.model_registry[k][sub_k]
+                    mod.get_priors.return_value = {}
+                    mod.get_guesses.return_value = {}
+
+            model = ModelOrchestrator(
+                "g.csv", "b.csv",
+                base_growth_df="base_growth.csv",
+                condition_growth="hierarchical",
+                growth_transition="instant",
+                activity="hierarchical_geno",
+                theta="hill_geno",
+                transformation="single",
+                theta_growth_noise="zero",
+            )
+
+        base_growth_priors = model._priors.growth.base_growth
+        assert isinstance(base_growth_priors, BaseGrowthPriors)
+        assert base_growth_priors.k_ref_loc == pytest.approx(0.0234)
+        assert base_growth_priors.k_ref_scale == _K_REF_PRIOR_SCALE
+
+        with patch.dict("tfscreen.tfmodel.model_orchestrator.model_registry", registry, clear=True):
+            for k in ["condition_growth", "growth_transition", "ln_cfu0", "dk_geno",
+                      "activity", "theta", "transformation", "theta_growth_noise",
+                      "theta_binding_noise", "growth_noise", "sample_offset"]:
+                for sub_k in tfscreen.tfmodel.model_orchestrator.model_registry[k]:
+                    mod = tfscreen.tfmodel.model_orchestrator.model_registry[k][sub_k]
+                    mod.get_priors.return_value = {}
+                    mod.get_guesses.return_value = {}
+
+            model_no_base_growth = ModelOrchestrator(
+                "g.csv", "b.csv",
+                condition_growth="hierarchical",
+                growth_transition="instant",
+                activity="hierarchical_geno",
+                theta="hill_geno",
+                transformation="single",
+                theta_growth_noise="zero",
+            )
+
+        assert model_no_base_growth._priors.growth.base_growth is None

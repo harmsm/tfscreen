@@ -49,6 +49,7 @@ def check_component_compatibility(condition_growth_model, theta_rescale_model):
 def configure_model(binding_df,
                     growth_df=None,
                     presplit_df=None,
+                    base_growth_df=None,
                     out_prefix="tfs_configure",
                     condition_growth_model="linear",
                     growth_transition_model="instant",
@@ -56,7 +57,8 @@ def configure_model(binding_df,
                     dk_geno_model="hierarchical_geno",
                     activity_model="horseshoe_geno",
                     theta_model="hill_geno",
-                    transformation_model="empirical",
+                    transformation_model="single",
+                    transformation_lambda=None,
                     theta_rescale_model="passthrough",
                     theta_growth_noise_model="zero",
                     theta_binding_noise_model="zero",
@@ -88,6 +90,19 @@ def configure_model(binding_df,
         Path to the growth data CSV file (ln_cfu measurements per genotype,
         replicate, and timepoint). When omitted, a binding-only model is
         configured.
+    presplit_df : str, optional
+        Path to the pre-split (t = -t_pre) sequencing-observation CSV file.
+        Provides a direct constraint on ln_cfu0 for genotypes it covers. See
+        data_class.PreSplitData.
+    base_growth_df : str, optional
+        Path to a CSV of direct, reference-condition growth-rate
+        measurements (columns: genotype, rate, rate_std) for a subset of
+        genotypes (wt at minimum). Anchors the new k_ref latent scalar to
+        dk_geno via ``rate_obs ~ Normal(k_ref + dk_geno, rate_std)``,
+        resolving an identifiability confound between condition_growth's
+        k/m and dk_geno's hierarchical hyperparameters. See
+        model_orchestrator._read_base_growth_df and generative/model.py's
+        base_growth_obs block.
     out_prefix : str, optional
         Prefix for the three output files ({out_prefix}_config.yaml,
         {out_prefix}_priors.csv, {out_prefix}_guesses.csv).
@@ -107,7 +122,8 @@ def configure_model(binding_df,
     dk_geno_model : str, optional
         Model to use to describe dk_geno, the pleiotropic effect of a genotype
         on growth, independent of occupancy. Allowed values are
-        'hierarchical_geno' (default) or 'fixed'.
+        'hierarchical_geno' (default), 'fixed', or 'pinned' (dk_geno fixed to
+        externally supplied per-genotype values for a subset of genotypes).
     activity_model : str, optional
         Model to use to describe activity, a scalar multiplied against
         occupancy that defines how strongly a genotype alters transcription
@@ -123,8 +139,15 @@ def configure_model(binding_df,
         'thermo.O2_C12_K5_U0_a.PnnC', 'thermo.O2_C12_K5_U0_a.PddG', and
         their O2_C4_K3_U1_a / O2_C12_K5_U1_a unfolded equivalents).
     transformation_model : str, optional
-        Model for transformation correction. Allowed values are 'single',
-        'empirical', or 'logit_norm'. Default 'empirical'.
+        Model for transformation correction. Allowed values are 'single'
+        (default), 'empirical', or 'logit_norm'.
+    transformation_lambda : list or tuple, optional
+        ``(mean, std)`` -- the experimentally measured congression lambda,
+        in linear space (e.g. ``(0.36, 0.05)``). Required when
+        ``transformation_model`` is 'empirical' or 'logit_norm'; forbidden
+        when it is 'single'. Used to moment-match a LogNormal prior for the
+        transformation's lambda parameter, replacing the manual step of
+        hand-editing the priors/guesses CSVs with rescaled log-space values.
     theta_rescale_model : str, optional
         Rescaling applied to theta before it enters the growth model. Allowed
         values are 'passthrough' (default, identity) or 'logit' (maps theta to
@@ -156,11 +179,13 @@ def configure_model(binding_df,
     thermo_data : str, optional
         Path to the structural/thermodynamic data file.  Required when
         ``theta_model`` is a thermo-based model; ignored otherwise.  For
-        ``*_lnK_nn_prior`` models this must be the HDF5 file produced by
-        ``scripts/generate_struct_ensemble.py``.  For ``*_lnK_ddG_prior``
-        models this must be a CSV file with a ``mut`` column and one column per
-        structure (``H``, ``HO``, ``L``, ``LO``, ``HE2``, ``LE2``) containing
-        pre-computed ΔΔG prior means.
+        ``PnnC`` models this must be the HDF5 file produced by
+        ``scripts/generate_struct_ensemble.py``.  For ``PddG`` models this
+        must be a CSV file with a ``mut`` column and one column per
+        structure containing pre-computed ΔΔG prior means; the required
+        structure columns depend on the topology -- ``O2_C4_*`` models use
+        (``H``, ``HD``, ``L``, ``LE2``) while ``O2_C12_*`` models use
+        (``H``, ``HO``, ``L``, ``LO``, ``HE2``, ``LE2``).
     batch_size : int, optional
         Mini-batch size for SVI. Defaults to 1024. Set to None to use the full
         dataset as a single batch.
@@ -187,10 +212,19 @@ def configure_model(binding_df,
     if not binding_only:
         check_component_compatibility(condition_growth_model, theta_rescale_model)
 
+    if transformation_model != "single" and transformation_lambda is None:
+        raise ValueError(
+            f"transformation_model='{transformation_model}' requires "
+            f"transformation_lambda (mean, std) -- the experimentally measured "
+            f"congression lambda in linear space, e.g. "
+            f"transformation_lambda=(0.36, 0.05)."
+        )
+
     # Initialize model to build mappings and get guesses
     orchestrator = ModelOrchestrator(growth_df,
                      binding_df,
                      presplit_df=presplit_df,
+                     base_growth_df=base_growth_df,
                      binding_only=binding_only,
                      condition_growth=condition_growth_model,
                      growth_transition=growth_transition_model,
@@ -199,6 +233,7 @@ def configure_model(binding_df,
                      activity=activity_model,
                      theta=theta_model,
                      transformation=transformation_model,
+                     transformation_lambda=transformation_lambda,
                      theta_rescale=theta_rescale_model,
                      theta_growth_noise=theta_growth_noise_model,
                      theta_binding_noise=theta_binding_noise_model,
@@ -214,22 +249,27 @@ def configure_model(binding_df,
     # names, the data file paths, and the parameter guesses/priors.
     growth_path = None if binding_only else (growth_df if isinstance(growth_df, str) else "growth.csv")
     presplit_path = presplit_df if isinstance(presplit_df, str) else None
+    base_growth_path = base_growth_df if isinstance(base_growth_df, str) else None
     write_configuration(orchestrator=orchestrator,
                         out_prefix=out_prefix,
                         growth_df_path=growth_path,
                         binding_df_path=binding_df if isinstance(binding_df, str) else "binding.csv",
-                        presplit_df_path=presplit_path)
+                        presplit_df_path=presplit_path,
+                        base_growth_df_path=base_growth_path)
 
 def main():
     return generalized_main(configure_model,
                             manual_arg_types={"binding_df":str,
                                               "growth_df":str,
                                               "presplit_df":str,
+                                              "base_growth_df":str,
                                               "spiked":list,
                                               "thermo_data":str,
                                               "batch_size":int,
-                                              "binding_weight":float},
-                            manual_arg_nargs={"spiked":"+"})
+                                              "binding_weight":float,
+                                              "transformation_lambda":float},
+                            manual_arg_nargs={"spiked":"+",
+                                              "transformation_lambda":2})
 
 if __name__ == "__main__":
     main()

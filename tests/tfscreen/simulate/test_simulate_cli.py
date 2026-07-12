@@ -70,7 +70,7 @@ def patched_simulation(tmp_path):
     """Patch all I/O so run_simulation_from_config can run without real data."""
     lib_df, pheno_df, theta_df, params_df, sample_df, counts_df, growth_df = _make_mock_dfs()
 
-    with patch("tfscreen.util.read_yaml", return_value={"seed": 99}) as mock_yaml, \
+    with patch("tfscreen.util.read_yaml", return_value={"seed": 99, "growth": {}}) as mock_yaml, \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
                return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
@@ -116,7 +116,7 @@ def test_writes_parameters_not_phenotype(tmp_path):
     def capture_csv(self_df, path, **kwargs):
         written_paths.append(str(path))
 
-    with patch("tfscreen.util.read_yaml", return_value={"seed": 0}), \
+    with patch("tfscreen.util.read_yaml", return_value={"seed": 0, "growth": {}}), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
                return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
@@ -140,7 +140,7 @@ def test_output_file_names_include_expected_stems(tmp_path):
     def capture_csv(self_df, path, **kwargs):
         written_paths.append(str(path))
 
-    with patch("tfscreen.util.read_yaml", return_value={"seed": 0}), \
+    with patch("tfscreen.util.read_yaml", return_value={"seed": 0, "growth": {}}), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
                return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
@@ -156,55 +156,321 @@ def test_output_file_names_include_expected_stems(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# _generate_binding_data: uses pre-computed theta from library_prediction
+# growth_parameters: always written, from cf['growth']
 # ---------------------------------------------------------------------------
 
-def test_generate_binding_data_uses_precomputed_theta():
-    """_generate_binding_data must use theta_true from binding_theta_df,
-    not re-sample from the prior."""
-    import numpy as np
-    from tfscreen.simulate.scripts.simulate_cli import _generate_binding_data
+def test_growth_parameters_csv_always_written(tmp_path):
+    """growth_parameters CSV is written unconditionally (cf['growth'] is
+    always required, unlike the optional *_data blocks)."""
+    lib_df, pheno_df, theta_df, params_df, sample_df, counts_df, growth_df = _make_mock_dfs()
 
-    binding_cfg = {
-        "genotypes": ["wt", "M1A"],
-        "titrant_name": "iptg",
-        "titrant_conc": [0.0, 1.0],
-        "noise": 0.0,
-    }
-    rng = np.random.default_rng(0)
-    binding_theta_df = pd.DataFrame([
-        {"genotype": "wt",  "titrant_conc": 0.0, "theta_true": 0.1},
-        {"genotype": "wt",  "titrant_conc": 1.0, "theta_true": 0.9},
-        {"genotype": "M1A", "titrant_conc": 0.0, "theta_true": 0.2},
-        {"genotype": "M1A", "titrant_conc": 1.0, "theta_true": 0.8},
+    written = {}
+
+    def capture_csv(self_df, path, **kwargs):
+        written[str(path)] = self_df.copy()
+
+    cfg = {"seed": 0, "growth": {"kanR+kan": {"model": "linear", "b": 0.005, "m": -0.01}}}
+
+    with patch("tfscreen.util.read_yaml", return_value=cfg), \
+         patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
+               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
+               return_value=(sample_df, counts_df)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
+               return_value=growth_df), \
+         patch.object(pd.DataFrame, "to_csv", capture_csv):
+        run_simulation_from_config("config.yaml", str(tmp_path))
+
+    matches = [p for p in written if "growth_parameters" in os.path.basename(p)]
+    assert len(matches) == 1
+    result = written[matches[0]]
+    assert result.loc[0, "condition_rep"] == "kanR+kan"
+    assert result.loc[0, "growth_k"] == pytest.approx(0.005)
+    assert result.loc[0, "growth_m"] == pytest.approx(-0.01)
+
+
+def test_growth_parameters_csv_written_for_real(tmp_path):
+    """Real (unmocked) to_csv write produces a readable growth_parameters.csv."""
+    lib_df, pheno_df, theta_df, params_df, sample_df, counts_df, growth_df = _make_mock_dfs()
+
+    cfg = {"seed": 0, "growth": {"M9+kan": {"model": "saturation", "kmin": 0.001, "kmax": 0.04}}}
+
+    with patch("tfscreen.util.read_yaml", return_value=cfg), \
+         patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
+               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
+               return_value=(sample_df, counts_df)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
+               return_value=growth_df):
+        run_simulation_from_config("config.yaml", str(tmp_path))
+
+    growth_params_path = tmp_path / "tfs_sim_growth_parameters.csv"
+    assert growth_params_path.exists()
+    df = pd.read_csv(growth_params_path)
+    assert df.loc[0, "condition_rep"] == "M9+kan"
+    assert df.loc[0, "growth_min"] == pytest.approx(0.001)
+    assert df.loc[0, "growth_max"] == pytest.approx(0.04)
+
+
+# ---------------------------------------------------------------------------
+# transformation_lam: always written, from cf['transformation_poisson_lambda']
+# ---------------------------------------------------------------------------
+
+def test_transformation_lam_csv_always_written(tmp_path):
+    """transformation_lam CSV is written unconditionally, mirroring
+    growth_parameters (transformation_poisson_lambda is a top-level,
+    always-present-but-possibly-None config key, not an optional *_data
+    block)."""
+    lib_df, pheno_df, theta_df, params_df, sample_df, counts_df, growth_df = _make_mock_dfs()
+
+    written = {}
+
+    def capture_csv(self_df, path, **kwargs):
+        written[str(path)] = self_df.copy()
+
+    cfg = {"seed": 0, "growth": {}, "transformation_poisson_lambda": 1.5}
+
+    with patch("tfscreen.util.read_yaml", return_value=cfg), \
+         patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
+               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
+               return_value=(sample_df, counts_df)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
+               return_value=growth_df), \
+         patch.object(pd.DataFrame, "to_csv", capture_csv):
+        run_simulation_from_config("config.yaml", str(tmp_path))
+
+    matches = [p for p in written if "transformation_lam" in os.path.basename(p)]
+    assert len(matches) == 1
+    result = written[matches[0]]
+    assert result.loc[0, "parameter"] == "lam"
+    assert result.loc[0, "ref"] == pytest.approx(1.5)
+
+
+def test_transformation_lam_csv_written_for_real(tmp_path):
+    """Real (unmocked) to_csv write produces a readable transformation_lam.csv."""
+    lib_df, pheno_df, theta_df, params_df, sample_df, counts_df, growth_df = _make_mock_dfs()
+
+    cfg = {"seed": 0, "growth": {}, "transformation_poisson_lambda": None}
+
+    with patch("tfscreen.util.read_yaml", return_value=cfg), \
+         patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
+               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
+               return_value=(sample_df, counts_df)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
+               return_value=growth_df):
+        run_simulation_from_config("config.yaml", str(tmp_path))
+
+    lam_path = tmp_path / "tfs_sim_transformation_lam.csv"
+    assert lam_path.exists()
+    df = pd.read_csv(lam_path)
+    assert df.loc[0, "parameter"] == "lam"
+    assert df.loc[0, "ref"] == pytest.approx(0.0)
+
+
+def test_transformation_lam_participates_in_existence_guard(tmp_path):
+    """Pre-existing transformation_lam CSV triggers the same FileExistsError
+    guard as the other always-written outputs."""
+    (tmp_path / "tfs_sim_transformation_lam.csv").write_text("parameter,ref\nlam,1.5\n")
+
+    cfg = {"seed": 0, "growth": {}, "transformation_poisson_lambda": 1.5}
+    with patch("tfscreen.util.read_yaml", return_value=cfg):
+        with pytest.raises(FileExistsError, match="transformation_lam"):
+            run_simulation_from_config("config.yaml", str(tmp_path))
+
+
+# ---------------------------------------------------------------------------
+# base_growth_data: written only when configured, using parameters_df's dk_geno
+# ---------------------------------------------------------------------------
+
+def test_base_growth_not_written_without_config(tmp_path):
+    """No base_growth CSV is written when 'base_growth_data' is absent."""
+    lib_df, pheno_df, theta_df, params_df, sample_df, counts_df, growth_df = _make_mock_dfs()
+
+    written_paths = []
+
+    def capture_csv(self_df, path, **kwargs):
+        written_paths.append(str(path))
+
+    with patch("tfscreen.util.read_yaml", return_value={"seed": 0, "growth": {}}), \
+         patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
+               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
+               return_value=(sample_df, counts_df)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
+               return_value=growth_df), \
+         patch.object(pd.DataFrame, "to_csv", capture_csv):
+        run_simulation_from_config("config.yaml", str(tmp_path))
+
+    basenames = "\n".join(os.path.basename(p) for p in written_paths)
+    assert "base_growth" not in basenames
+
+
+def test_base_growth_written_when_configured(tmp_path):
+    """A 'base_growth_data' block produces a base_growth CSV computed from
+    parameters_df's dk_geno column."""
+    lib_df, pheno_df, theta_df, params_df, sample_df, counts_df, growth_df = _make_mock_dfs()
+
+    written = {}
+
+    def capture_csv(self_df, path, **kwargs):
+        written[str(path)] = self_df.copy()
+
+    cfg = {"seed": 0, "growth": {}, "base_growth_data": {"k_ref": 0.025}}
+
+    with patch("tfscreen.util.read_yaml", return_value=cfg), \
+         patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
+               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
+               return_value=(sample_df, counts_df)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
+               return_value=growth_df), \
+         patch.object(pd.DataFrame, "to_csv", capture_csv):
+        run_simulation_from_config("config.yaml", str(tmp_path))
+
+    base_growth_paths = [p for p in written if "base_growth" in os.path.basename(p)]
+    assert len(base_growth_paths) == 1
+    result = written[base_growth_paths[0]]
+    assert set(result["genotype"]) == {"wt"}
+    assert float(result.loc[result["genotype"] == "wt", "rate"].iloc[0]) == pytest.approx(0.025)
+
+
+# ---------------------------------------------------------------------------
+# k_ref: written only alongside base_growth_data, echoing its k_ref value
+# ---------------------------------------------------------------------------
+
+def test_k_ref_not_written_without_base_growth_config(tmp_path):
+    """No k_ref CSV is written when 'base_growth_data' is absent."""
+    lib_df, pheno_df, theta_df, params_df, sample_df, counts_df, growth_df = _make_mock_dfs()
+
+    written_paths = []
+
+    def capture_csv(self_df, path, **kwargs):
+        written_paths.append(str(path))
+
+    with patch("tfscreen.util.read_yaml", return_value={"seed": 0, "growth": {}}), \
+         patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
+               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
+               return_value=(sample_df, counts_df)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
+               return_value=growth_df), \
+         patch.object(pd.DataFrame, "to_csv", capture_csv):
+        run_simulation_from_config("config.yaml", str(tmp_path))
+
+    basenames = "\n".join(os.path.basename(p) for p in written_paths)
+    assert "k_ref" not in basenames
+
+
+def test_k_ref_written_when_base_growth_configured(tmp_path):
+    """A 'base_growth_data' block also produces a single-row k_ref CSV
+    echoing the configured k_ref value."""
+    lib_df, pheno_df, theta_df, params_df, sample_df, counts_df, growth_df = _make_mock_dfs()
+
+    written = {}
+
+    def capture_csv(self_df, path, **kwargs):
+        written[str(path)] = self_df.copy()
+
+    cfg = {"seed": 0, "growth": {}, "base_growth_data": {"k_ref": 0.031}}
+
+    with patch("tfscreen.util.read_yaml", return_value=cfg), \
+         patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
+               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
+               return_value=(sample_df, counts_df)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
+               return_value=growth_df), \
+         patch.object(pd.DataFrame, "to_csv", capture_csv):
+        run_simulation_from_config("config.yaml", str(tmp_path))
+
+    k_ref_paths = [p for p in written if "k_ref" in os.path.basename(p)]
+    assert len(k_ref_paths) == 1
+    result = written[k_ref_paths[0]]
+    assert result.loc[0, "parameter"] == "k_ref"
+    assert result.loc[0, "ref"] == pytest.approx(0.031)
+
+
+# ---------------------------------------------------------------------------
+# presplit_data: written only when configured
+# ---------------------------------------------------------------------------
+
+def test_run_simulation_writes_presplit_csv(tmp_path):
+    """presplit CSV is written when presplit_data block is in the config."""
+    lib_df   = pd.DataFrame({"genotype": ["wt", "A1V"]})
+    pheno_df = pd.DataFrame({"genotype": ["wt", "A1V"]})
+    theta_df = pd.DataFrame({"genotype": ["wt", "A1V"]})
+    params_df = pd.DataFrame({"genotype": ["wt", "A1V"],
+                               "dk_geno": [0.0, 0.0], "activity": [1.0, 1.0]})
+
+    # Sample/counts for one (replicate, condition_pre, t_sel) combo
+    # Real _simulate_library_group returns sample_df with "sample" as a
+    # regular column and an unnamed integer index.
+    sample_df = pd.DataFrame([{
+        "sample": 0, "replicate": 1, "library": "lib", "condition_pre": "kanR",
+        "t_sel": 60.0, "sample_cfu": 1e8, "sample_cfu_std": 5e6,
+    }], index=[0])
+    counts_df = pd.DataFrame([
+        {"sample": 0, "genotype": "wt",  "counts": 500, "ln_cfu_0": 10.0},
+        {"sample": 0, "genotype": "A1V", "counts": 500, "ln_cfu_0": 10.0},
     ])
+    growth_df = pd.DataFrame({"genotype": ["wt", "A1V"], "ln_cfu": [10.0, 9.9]})
 
-    result = _generate_binding_data(binding_cfg, rng, binding_theta_df)
-
-    assert set(result.columns) >= {"genotype", "titrant_name", "titrant_conc",
-                                   "theta_obs", "theta_std"}
-    wt_row = result[(result["genotype"] == "wt") & (result["titrant_conc"] == 1.0)]
-    assert float(wt_row["theta_obs"].iloc[0]) == pytest.approx(0.9)
-
-
-def test_generate_binding_data_missing_genotype_raises():
-    """Raises ValueError when a genotype/conc pair is absent from binding_theta_df."""
-    import numpy as np
-    from tfscreen.simulate.scripts.simulate_cli import _generate_binding_data
-
-    binding_cfg = {
-        "genotypes": ["wt", "A2V"],   # A2V is valid but not in binding_theta_df
-        "titrant_name": "iptg",
-        "titrant_conc": [1.0],
-        "noise": 0.0,
+    cf = {
+        "seed": 1,
+        "growth": {},
+        "cfu0": 1e8,
+        "total_num_reads": 10_000_000,
+        "prob_index_hop": None,
+        "presplit_data": {"noise": 0.0},
     }
-    rng = np.random.default_rng(0)
-    binding_theta_df = pd.DataFrame([
-        {"genotype": "wt", "titrant_conc": 1.0, "theta_true": 0.5},
-    ])
 
-    with pytest.raises(ValueError, match="No pre-computed theta"):
-        _generate_binding_data(binding_cfg, rng, binding_theta_df)
+    with patch("tfscreen.util.read_yaml", return_value=cf), \
+         patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
+               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
+               return_value=(sample_df, counts_df)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
+               return_value=growth_df):
+        run_simulation_from_config("fake_config.yaml", str(tmp_path))
+
+    presplit_path = tmp_path / "tfs_sim_presplit.csv"
+    assert presplit_path.exists(), "presplit CSV was not written"
+    presplit_df = pd.read_csv(presplit_path)
+    for col in ["library", "replicate", "condition_pre", "genotype",
+                "ln_cfu", "ln_cfu_std"]:
+        assert col in presplit_df.columns
+
+
+def test_run_simulation_no_presplit_without_config(tmp_path):
+    """presplit CSV is NOT written when presplit_data is absent from config."""
+    lib_df   = pd.DataFrame({"genotype": ["wt"]})
+    pheno_df = pd.DataFrame({"genotype": ["wt"]})
+    theta_df = pd.DataFrame({"genotype": ["wt"]})
+    params_df = pd.DataFrame({"genotype": ["wt"], "dk_geno": [0.0], "activity": [1.0]})
+    sample_df = pd.DataFrame([{"sample": 0, "replicate": 1, "library": "lib",
+                                "condition_pre": "kanR", "t_sel": 60.0,
+                                "sample_cfu": 1e8, "sample_cfu_std": 5e6}],
+                              index=[0])
+    counts_df = pd.DataFrame([{"sample": 0, "genotype": "wt",
+                                "counts": 1000, "ln_cfu_0": 10.0}])
+    growth_df = pd.DataFrame({"genotype": ["wt"], "ln_cfu": [10.0]})
+
+    cf = {"seed": 1, "growth": {}, "cfu0": 1e8, "total_num_reads": 1_000_000,
+          "prob_index_hop": None}
+
+    with patch("tfscreen.util.read_yaml", return_value=cf), \
+         patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
+               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
+               return_value=(sample_df, counts_df)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
+               return_value=growth_df):
+        run_simulation_from_config("fake_config.yaml", str(tmp_path))
+
+    presplit_path = tmp_path / "tfs_sim_presplit.csv"
+    assert not presplit_path.exists(), "presplit CSV should not be written without config block"
 
 
 # ---------------------------------------------------------------------------
@@ -251,7 +517,7 @@ def test_writes_input_config_yaml(tmp_path):
     def capture_dump(data, fh, **kwargs):
         dumped["data"] = data
 
-    with patch("tfscreen.util.read_yaml", return_value={"seed": 5}), \
+    with patch("tfscreen.util.read_yaml", return_value={"seed": 5, "growth": {}}), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
                return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
          patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
@@ -273,7 +539,7 @@ def test_input_config_yaml_existence_check(tmp_path):
     existing_yaml = tmp_path / "tfs_sim_input-config.yaml"
     existing_yaml.write_text("seed: 0\n")
 
-    with patch("tfscreen.util.read_yaml", return_value={"seed": 0}), \
+    with patch("tfscreen.util.read_yaml", return_value={"seed": 0, "growth": {}}), \
          patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
                return_value=(lib_df, pheno_df, theta_df, params_df, None)) as mock_lib:
         with pytest.raises(FileExistsError, match="input-config.yaml"):

@@ -13,7 +13,24 @@ linking-function MAP doesn't have to fight the full hierarchy:
                              prior locs (degenerate, no learning)
 - ``dk_geno``              → ``fixed`` (all zeros; eliminates the WT-anchor
                              bias that arises when mutants have non-zero mean
-                             pleiotropic effects)
+                             pleiotropic effects), *unless* either:
+                             (a) the production config already selects
+                             ``dk_geno: "pinned"``, in which case the
+                             calibration model keeps ``"pinned"`` (and its
+                             pins file) so genotypes with independently known
+                             dk_geno retain their real value; or
+                             (b) a ``base_growth_df`` is available, in which
+                             case its measured reference-condition growth
+                             rates are turned into per-genotype dk_geno pins
+                             (``dk_geno_g = rate_g - rate_wt``) and the
+                             calibration model uses ``"pinned"`` with those
+                             values.  This feeds the MAP the *real* dk_geno
+                             for the calibration mutants instead of a
+                             known-false 0 -- strictly more correct, though
+                             empirically it does not by itself move the
+                             per-condition ``k_loc`` (wt, with dk_geno=0 in
+                             every dk_geno component, already anchors the
+                             shared ``k``).
 - ``ln_cfu0``              → ``hierarchical`` with hyperparams *pinned*
 - ``transformation``       → ``single`` (no learning)
 - ``theta_*_noise``        → ``zero`` (no learning)
@@ -41,6 +58,7 @@ import dataclasses
 import os
 import shutil
 import sys
+import tempfile
 
 import numpy as np
 import pandas as pd
@@ -55,9 +73,13 @@ import tfscreen
 from tfscreen.util.cli.generalized_main import generalized_main
 from tfscreen.tfmodel.inference.run_inference import RunInference
 from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+from tfscreen.tfmodel.generative.components.ln_cfu0.hierarchical import (
+    _empirical_group_estimates,
+)
 from tfscreen.tfmodel.configuration_io import (
     read_configuration,
 )
+from tfscreen.tfmodel.generative.registry import model_registry
 
 
 # ---------------------------------------------------------------------------
@@ -66,12 +88,13 @@ from tfscreen.tfmodel.configuration_io import (
 # These are the components that get *replaced* relative to the production
 # YAML.  ``condition_growth`` and ``growth_transition`` are intentionally
 # absent from this dict — their production choices flow through unchanged
-# so the calibration MAP can refine the production priors.
+# so the calibration MAP can refine the production priors.  ``dk_geno`` is
+# also absent — it needs conditional handling (see
+# ``_build_calibration_model``) rather than an unconditional override.
 # ---------------------------------------------------------------------------
 _CALIBRATION_OVERRIDES = {
     "theta": "_simple",
     "activity": "hierarchical_geno",
-    "dk_geno": "fixed",
     "ln_cfu0": "hierarchical",
     "transformation": "single",
     "theta_growth_noise": "zero",
@@ -242,6 +265,66 @@ def _compute_theta_values(orchestrator_cal, binding_df_cal):
 # Calibration model construction
 # ---------------------------------------------------------------------------
 
+def _dk_geno_pins_from_base_growth(base_growth_df, growth_df):
+    """
+    Derive per-genotype dk_geno pins from measured reference-condition
+    growth rates.
+
+    ``base_growth_df`` holds direct growth-rate measurements ``rate`` for wt
+    plus the calibration genotypes, where ``rate = k_ref + dk_geno`` (dk_geno
+    is 0 for wt by convention).  Subtracting wt's rate cancels the shared
+    ``k_ref`` and yields each genotype's real pleiotropic effect::
+
+        dk_geno_g = rate_g - rate_wt
+
+    Multiple rows per genotype are inverse-variance combined first, via
+    ``model_orchestrator._read_base_growth_df`` (mirroring the inference
+    side), so each genotype contributes a single ``rate``.  That helper also
+    validates required columns and guarantees a wt row is present.
+
+    Parameters
+    ----------
+    base_growth_df : pd.DataFrame or str
+        Base growth-rate data (or a path to it); columns ``genotype``,
+        ``rate``, ``rate_std``.
+    growth_df : pd.DataFrame
+        The calibration growth DataFrame; used to determine the valid set of
+        genotypes (rows for genotypes absent here are dropped).
+
+    Returns
+    -------
+    dict[str, float]
+        ``{genotype: dk_geno}``; wt maps to exactly 0.0.
+    """
+    from tfscreen.tfmodel.model_orchestrator import _read_base_growth_df
+
+    combined = _read_base_growth_df(base_growth_df, growth_df)
+    rate_by_geno = dict(zip(combined["genotype"].astype(str),
+                            combined["rate"].astype(float)))
+    rate_wt = rate_by_geno["wt"]
+    return {g: (0.0 if g == "wt" else r - rate_wt)
+            for g, r in rate_by_geno.items()}
+
+
+def _write_dk_geno_pins_file(pins):
+    """
+    Write a ``{genotype: dk_geno}`` mapping to a temporary CSV in the shape
+    ``dk_geno.pinned.read_dk_geno_pins`` /
+    ``ModelOrchestrator(dk_geno_pins_file=...)`` expect (columns ``genotype``,
+    ``dk_geno``), returning its path.
+
+    The caller is responsible for deleting the file once the calibration
+    ``ModelOrchestrator`` has consumed it (the pins are read into
+    ``_dk_geno_values`` at construction time, so the file is not needed
+    afterwards).
+    """
+    fd, path = tempfile.mkstemp(prefix="tfs_prefit_", suffix="_dk_geno_pins.csv")
+    os.close(fd)
+    pd.DataFrame({"genotype": list(pins.keys()),
+                  "dk_geno": list(pins.values())}).to_csv(path, index=False)
+    return path
+
+
 def _build_calibration_model(orchestrator_prod, growth_df_cal, binding_df_cal):
     """
     Construct the calibration ``ModelOrchestrator`` with hardcoded calibration
@@ -256,18 +339,67 @@ def _build_calibration_model(orchestrator_prod, growth_df_cal, binding_df_cal):
     settings = dict(orchestrator_prod.settings)
     for k, v in _CALIBRATION_OVERRIDES.items():
         settings[k] = v
+    # transformation is forced to "single" above, which carries no lambda
+    # parameter; drop any production transformation_lambda (set when the production
+    # transformation is "empirical"/"logit_norm") so it doesn't get passed
+    # through to a "single" calibration model.
+    settings["transformation_lambda"] = None
     settings["spiked_genotypes"] = None
     # Equal weighting: the calibration MAP must learn the binding→growth
     # linkage from both data sources together.  The production binding_weight
     # (N_growth_prod / N_binding_prod, often >> 1) would drown the binding
     # signal, so we reset to 1.0 here.
     settings["binding_weight"] = 1.0
+
+    # dk_geno: the calibration MAP must not *learn* dk_geno from
+    # calibration-only data (that reintroduces the WT-anchor bias this
+    # pre-fit exists to avoid).  But zeroing dk_geno for calibration mutants
+    # that genuinely have a non-zero pleiotropic effect is also wrong -- it
+    # feeds the MAP a known-false value.  When base_growth measures those
+    # mutants' reference-condition growth we can supply the *real* dk_geno
+    # instead of a false 0.
+    #
+    #  - Production already "pinned": carry that choice (and its pins file)
+    #    through unchanged; those genotypes keep their independently-known
+    #    dk_geno.
+    #  - base_growth_df available: convert its measured reference-condition
+    #    growth rates into KNOWN dk_geno pins (rate_g - rate_wt) and pin them.
+    #  - Otherwise: force "fixed" (all zero), like every other overridden
+    #    component.
+    #
+    # NOTE: empirically this does *not* by itself de-bias the per-condition
+    # k_loc on the sims tested so far (out11) -- wt, whose dk_geno is 0 in
+    # every dk_geno component, already anchors the shared per-condition k, so
+    # the mutants' dk value has no leverage on it.  The pin is kept because it
+    # is strictly more correct (real dk_geno vs a false 0) and harmless (no k
+    # regression), not because it moves k_loc.
+    temp_pins_path = None
+    if settings.get("dk_geno") == "pinned":
+        pass
+    elif settings.get("base_growth_df") is not None:
+        pins = _dk_geno_pins_from_base_growth(settings["base_growth_df"],
+                                              growth_df_cal)
+        temp_pins_path = _write_dk_geno_pins_file(pins)
+        settings["dk_geno"] = "pinned"
+        settings["dk_geno_pins_file"] = temp_pins_path
+    else:
+        settings["dk_geno"] = "fixed"
+        settings.pop("dk_geno_pins_file", None)
+
     batch_size = settings.pop("batch_size", None)
 
-    return ModelOrchestrator(growth_df_cal,
-                       binding_df_cal,
-                       batch_size=batch_size,
-                       **settings)
+    try:
+        orchestrator_cal = ModelOrchestrator(growth_df_cal,
+                                             binding_df_cal,
+                                             batch_size=batch_size,
+                                             **settings)
+    finally:
+        # The pins file is consumed at construction (baked into
+        # _dk_geno_values); remove the temporary now so it doesn't linger.
+        if temp_pins_path is not None and os.path.exists(temp_pins_path):
+            os.remove(temp_pins_path)
+
+    return orchestrator_cal
 
 
 def _inject_calibration_priors(orchestrator_cal, orchestrator_prod, theta_values):
@@ -376,8 +508,9 @@ def _inject_calibration_priors(orchestrator_cal, orchestrator_prod, theta_values
 
 def _identify_field_mapping(orchestrator_cal):
     """
-    Enumerate the ``condition_growth`` and ``growth_transition`` sample sites
-    and derive their ``ModelPriors`` field names.
+    Enumerate the ``condition_growth``, ``growth_transition``, and ln_cfu0
+    wt/spiked-location sample sites, and derive their ``ModelPriors`` field
+    names.
 
     Simple-prior components expose per-condition array sites following the
     convention:
@@ -393,6 +526,17 @@ def _identify_field_mapping(orchestrator_cal):
       ``loc_field = {x}_hyper_loc_loc``, ``scale_field = {x}_hyper_loc_scale``.
     - Site ``{component}_{x}_hyper_scale`` → HalfNormal;
       ``scale_field = {x}_hyper_scale_loc``.
+
+    The ln_cfu0 component's ``wt_loc``/``spiked_loc`` sites are always free
+    (never pinned during calibration — see ``_PINNED_COMPONENTS``), so they
+    are always picked up here.  Their ``ModelPriors`` fields are
+    self-prefixed (``ln_cfu0_wt_loc_loc``, not ``wt_loc_loc``), unlike the
+    condition_growth/growth_transition convention above, so they get their
+    own branch rather than falling through the shared suffix logic.  Whether
+    the caller actually *uses* these two sites to override the production
+    priors is decided later, in ``run_prefit_calibration``, based on
+    whether the production config's own empirical estimate already had
+    direct pre-split coverage for that class.
 
     Returns
     -------
@@ -414,6 +558,15 @@ def _identify_field_mapping(orchestrator_cal):
         elif site_name.startswith("growth_transition_"):
             component = "growth_transition"
             suffix = site_name[len("growth_transition_"):]
+        elif site_name in ("ln_cfu0_wt_loc", "ln_cfu0_spiked_loc"):
+            out[site_name] = {
+                "component": "ln_cfu0",
+                "dist_class": "Normal",
+                "loc_field": f"{site_name}_loc",
+                "scale_field": f"{site_name}_scale",
+                "is_array": False,
+            }
+            continue
         else:
             continue
 
@@ -452,6 +605,53 @@ def _identify_field_mapping(orchestrator_cal):
     return out
 
 
+def _drop_presplit_backed_ln_cfu0_sites(field_mapping, ln_cfu0_estimates):
+    """
+    Remove ``ln_cfu0_wt_loc`` / ``ln_cfu0_spiked_loc`` from ``field_mapping``
+    for any class whose production empirical estimate was already backed by
+    direct pre-split data.
+
+    The calibration MAP's joint fit of ``ln_cfu0_wt_loc``/``spiked_loc``
+    alongside ``condition_growth``/``growth_transition`` is only worth
+    trusting *more* than a class's own direct measurement when that
+    measurement doesn't exist — pre-split data is a lower-variance,
+    growth-unconfounded read straight off the data, whereas the calibration
+    estimate is a noisier joint-optimization byproduct that can only match
+    it at best.  Library-class hyperpriors (``hyper_loc``/``hyper_scale``)
+    are never part of ``field_mapping`` in the first place (they stay pinned
+    throughout calibration; see ``_PINNED_COMPONENTS``), so this only ever
+    touches the two class-level ln_cfu0 sites.
+
+    Parameters
+    ----------
+    field_mapping : dict
+        Output of :func:`_identify_field_mapping`.
+    ln_cfu0_estimates : dict or None
+        Output of ``_empirical_group_estimates`` run on the *production*
+        data (i.e. ``orchestrator_prod.data.growth``/``.presplit``), or
+        ``None`` if it couldn't be computed (e.g. stub/mocked data) — in
+        that case nothing is dropped, matching prior behaviour.
+
+    Returns
+    -------
+    dict
+        ``field_mapping``, with any presplit-backed ln_cfu0 sites removed.
+    """
+    if ln_cfu0_estimates is None:
+        return field_mapping
+
+    drop = set()
+    if ln_cfu0_estimates.get("wt_source") == "presplit":
+        drop.add("ln_cfu0_wt_loc")
+    if ln_cfu0_estimates.get("spiked_source") == "presplit":
+        drop.add("ln_cfu0_spiked_loc")
+
+    if not drop:
+        return field_mapping
+
+    return {k: v for k, v in field_mapping.items() if k not in drop}
+
+
 # ---------------------------------------------------------------------------
 # CSV update logic
 # ---------------------------------------------------------------------------
@@ -468,10 +668,14 @@ def _build_csv_updates(field_mapping, params):
 
     Returns
     -------
-    prior_updates : dict[str, float]
+    prior_updates : dict[str, float | np.ndarray]
         ``{csv_row_name → new_value}`` for the priors CSV.
-        Scalar Normal/HalfNormal sites write the MAP value to their
-        ``loc_field`` / ``scale_field`` respectively.
+        Scalar Normal/HalfNormal sites write the MAP value (a float) to their
+        ``loc_field`` / ``scale_field`` respectively.  Per-condition
+        ``condition_growth`` array sites write the full MAP array to their
+        ``loc_field`` — this is the per-condition baseline *pin* that closes
+        the k/dk_geno additive slide.  ``_apply_priors_updates`` expands array
+        values into indexed rows keyed by ``condition_rep``.
     guess_updates : dict[str, np.ndarray | float]
         ``{site_name → MAP value}`` for the guesses CSV.
         Array sites write per-condition MAP arrays (keyed as
@@ -493,10 +697,17 @@ def _build_csv_updates(field_mapping, params):
         is_array = info.get("is_array", False)
 
         if is_array:
-            # Simple-prior per-condition array site: write MAP array to guesses
-            # so the production SVI starts from the calibration fit.
+            # Simple-prior per-condition array site: write the MAP array to
+            # guesses so the production SVI starts from the calibration fit.
             if loc_field is not None:
                 guess_updates[f"{site_name}_locs"] = map_val_arr
+                # For condition_growth, also pin the per-condition prior LOC.
+                # A warm start alone leaves the baselines free to slide back
+                # down the k/dk_geno flat direction; the per-condition prior
+                # loc is what actually holds them.  (growth_transition keeps
+                # its warm-start-only behaviour.)
+                if component == "condition_growth":
+                    prior_updates[_csv_row_name(component, loc_field)] = map_val_arr
         else:
             # Scalar site (legacy hierarchical components).
             if map_val_arr.shape != ():
@@ -520,13 +731,23 @@ def _build_csv_updates(field_mapping, params):
 
 def _build_hessian_scale_updates(field_mapping, hessian_results,
                                   k_scale_floor, m_scale_floor,
-                                  k_scale_ceiling, m_scale_ceiling):
+                                  k_scale_ceiling, m_scale_ceiling,
+                                  scale_bounds=None):
     """
     Build per-condition scale updates from Hessian-derived sigmas with floors
     and ceilings.
 
-    For each array condition_growth site (``k`` and ``m``) that appears in
-    both ``field_mapping`` and ``hessian_results``, the per-element Hessian
+    When ``scale_bounds`` is given (a ``{suffix: {floor, ceiling,
+    scale_field}}`` map from the growth component's ``get_scale_bounds()``),
+    every per-condition site the component declares is handled generically —
+    so ``power``'s ``n`` and ``saturation``'s ``min``/``max`` get tight scales
+    the same way ``linear``'s ``k`` does, without hard-coding parameter names
+    here.  When ``scale_bounds`` is ``None`` the legacy ``k``/``m`` hard-code
+    is used (the ``k_scale_floor``/``m_scale_floor``/ceiling args), preserving
+    older callers.
+
+    For each array condition_growth site that appears in both
+    ``field_mapping`` and ``hessian_results``, the per-element Hessian
     sigma is clipped to ``[floor, ceiling]`` and returned in two dicts:
 
     * **guess_updates** — per-condition sigma arrays keyed as
@@ -594,7 +815,18 @@ def _build_hessian_scale_updates(field_mapping, hessian_results,
         scale_field = info.get("scale_field")
         component = info["component"]
 
-        if loc_field == "k_loc":
+        if scale_bounds is not None:
+            # Generic path: look up the per-condition site by its suffix
+            # (the "{param}" in loc_field="{param}_loc") in the component's
+            # declared scale bounds.
+            suffix = loc_field[:-len("_loc")] if loc_field.endswith("_loc") else loc_field
+            spec = scale_bounds.get(suffix)
+            if spec is None:
+                continue
+            floor = spec["floor"]
+            ceiling = spec["ceiling"]
+            prior_field = spec["scale_field"]
+        elif loc_field == "k_loc":
             floor = k_scale_floor
             ceiling = k_scale_ceiling
             prior_field = scale_field          # "k_scale"
@@ -622,13 +854,87 @@ def _build_hessian_scale_updates(field_mapping, hessian_results,
     return guess_updates, prior_updates
 
 
-def _apply_priors_updates(priors_path, prior_updates):
+def _resolve_scale_bounds(condition_growth_choice,
+                          k_scale_floor, m_scale_floor,
+                          k_scale_ceiling, m_scale_ceiling):
     """
-    Overwrite ``parameter == row_name`` rows of the production priors
-    CSV with the new values.  Writes a ``.bak`` copy first.  Rows whose
-    ``parameter`` is not present in ``prior_updates`` are preserved
-    unchanged.  Logs a warning for any update key that has no matching
-    row.
+    Build the per-suffix scale-bounds map for the active condition_growth
+    component, applying the CLI floor/ceiling arguments as backward-compatible
+    overrides for the ``k`` and ``m`` suffixes.
+
+    Returns ``{}`` when the component declares no ``get_scale_bounds`` (in
+    which case the caller falls back to the legacy k/m hard-code path).
+    """
+    module = model_registry["condition_growth"].get(condition_growth_choice)
+    get_bounds = getattr(module, "get_scale_bounds", None)
+    if get_bounds is None:
+        return {}
+
+    bounds = {suffix: dict(spec) for suffix, spec in get_bounds().items()}
+
+    cli_overrides = {
+        "k": (k_scale_floor, k_scale_ceiling),
+        "m": (m_scale_floor, m_scale_ceiling),
+    }
+    for suffix, (floor, ceiling) in cli_overrides.items():
+        if suffix not in bounds:
+            continue
+        if floor is not None:
+            bounds[suffix]["floor"] = floor
+        if ceiling is not None:
+            bounds[suffix]["ceiling"] = ceiling
+
+    return bounds
+
+
+def _condition_rep_labels(orchestrator):
+    """
+    Per-condition label frame (``condition_rep`` and, when present,
+    ``replicate``) ordered by ``map_condition_rep`` — i.e. the same order as
+    the per-condition MAP arrays.  Returns ``None`` when no condition_rep map
+    is available.  Used to tag per-condition prior rows so the loader can
+    name-join them back to the production condition order.
+    """
+    growth_tm = getattr(orchestrator, "growth_tm", None)
+    if growth_tm is None:
+        return None
+    crm = growth_tm.map_groups.get("condition_rep")
+    if crm is None or getattr(crm, "empty", True):
+        return None
+    sorted_map = crm.sort_values("map_condition_rep").reset_index(drop=True)
+    cols = [c for c in ("replicate", "condition_rep") if c in sorted_map.columns]
+    if not cols:
+        return None
+    return sorted_map[cols].reset_index(drop=True)
+
+
+def _apply_priors_updates(priors_path, prior_updates, cond_rep_labels=None):
+    """
+    Apply prior updates to the production priors CSV.  Writes a ``.bak`` copy
+    first.  Rows whose ``parameter`` is not in ``prior_updates`` are preserved.
+
+    Two kinds of update value are supported:
+
+    * **scalar** (float) — overwrites the ``value`` of the matching
+      ``parameter`` row in place (unchanged behaviour).  A warning is logged
+      if no row matches.
+    * **array** (1-D ``np.ndarray``) — a per-condition prior (e.g.
+      ``condition_growth.k_loc``).  Any existing rows for that parameter are
+      dropped and replaced with one indexed row per condition, tagged with the
+      ``condition_rep`` (and ``replicate``) labels from ``cond_rep_labels`` so
+      the loader can name-join them back to the model's condition order.
+
+    Parameters
+    ----------
+    priors_path : str
+        Path to the production priors CSV.
+    prior_updates : dict[str, float | np.ndarray]
+        Update values keyed by dotted parameter name.
+    cond_rep_labels : pandas.DataFrame or None
+        Per-condition label columns (``condition_rep`` and, when present,
+        ``replicate``) ordered by ``map_condition_rep`` — i.e. matching the
+        order of the per-condition MAP arrays.  Required to label array
+        updates; when absent, array rows carry only ``flat_index``.
     """
     if not prior_updates:
         return
@@ -639,20 +945,49 @@ def _apply_priors_updates(priors_path, prior_updates):
             "'value' columns."
         )
 
-    matched = set()
+    scalar_updates = {}
+    array_updates = {}
     for row_name, new_val in prior_updates.items():
+        arr = np.asarray(new_val)
+        if arr.ndim == 0:
+            scalar_updates[row_name] = float(arr)
+        else:
+            array_updates[row_name] = arr
+
+    matched = set()
+
+    # Scalar overwrites (in place).
+    for row_name, new_val in scalar_updates.items():
         mask = df["parameter"] == row_name
         if mask.any():
             df.loc[mask, "value"] = new_val
             matched.add(row_name)
 
-    missing = sorted(set(prior_updates) - matched)
+    missing = sorted(set(scalar_updates) - matched)
     if missing:
         print(
             f"  warning: {len(missing)} prior update(s) had no matching row "
             f"in {priors_path}: {missing}",
             file=sys.stderr,
         )
+
+    # Array updates: drop existing rows for the parameter, append indexed rows.
+    if array_updates:
+        new_frames = []
+        for row_name, arr in array_updates.items():
+            flat_val = np.asarray(arr).flatten()
+            df = df[df["parameter"] != row_name]
+            row_df = pd.DataFrame({"parameter": row_name,
+                                   "value": flat_val,
+                                   "flat_index": range(len(flat_val))})
+            if (cond_rep_labels is not None
+                    and len(cond_rep_labels) == len(flat_val)):
+                for col in ("replicate", "condition_rep"):
+                    if col in cond_rep_labels.columns:
+                        row_df[col] = cond_rep_labels[col].to_numpy()
+            new_frames.append(row_df)
+            matched.add(row_name)
+        df = pd.concat([df] + new_frames, ignore_index=True)
 
     shutil.copy2(priors_path, priors_path + ".bak")
     df.to_csv(priors_path, index=False)
@@ -835,7 +1170,8 @@ def run_prefit_calibration(config_file,
                            m_scale_floor=_DEFAULT_M_SCALE_FLOOR,
                            k_scale_ceiling=_DEFAULT_K_SCALE_CEILING,
                            m_scale_ceiling=_DEFAULT_M_SCALE_CEILING,
-                           hessian_chunk_size=64):
+                           hessian_chunk_size=64,
+                           pin_m=False):
     """
     Run the calibration pre-fit and update the production priors / guesses
     CSVs in place.
@@ -926,6 +1262,13 @@ def run_prefit_calibration(config_file,
     hessian_chunk_size : int, optional
         Number of Hessian rows computed per device batch (default 64).
         Reduce if device runs out of memory during Hessian computation.
+    pin_m : bool, optional
+        When set, hard-clamp the production model's per-condition slope m to
+        its calibration MAP loc by writing ``condition_growth.m_pinned`` into
+        the priors CSV (default False).  Use this instead of an ultra-tight
+        m_scale when you want m held exactly at the calibration value — a soft
+        prior can be overridden by the growth likelihood.  Only affects m; k
+        keeps its floored soft prior.
 
     Returns
     -------
@@ -991,18 +1334,53 @@ def run_prefit_calibration(config_file,
     )
 
     # 6. Map sample sites → CSV fields and apply in-place updates.
+    #    ln_cfu0_wt_loc/spiked_loc are only let through when the production
+    #    config's own empirical estimate (get_priors' presplit-preferring
+    #    estimator) had no direct pre-split coverage for that class — when
+    #    it does, that direct read is already better than anything the
+    #    calibration's joint MAP can offer, so we leave it alone.
+    prod_growth_data = getattr(orchestrator_prod.data, "growth", None)
+    ln_cfu0_estimates = None
+    if prod_growth_data is not None:
+        ln_cfu0_estimates = _empirical_group_estimates(
+            prod_growth_data,
+            presplit=getattr(orchestrator_prod.data, "presplit", None),
+        )
     field_mapping = _identify_field_mapping(orchestrator_cal)
+    field_mapping = _drop_presplit_backed_ln_cfu0_sites(
+        field_mapping, ln_cfu0_estimates
+    )
     prior_updates, guess_updates = _build_csv_updates(field_mapping, params)
 
+    # Per-suffix scale bounds declared by the active condition_growth component
+    # (generalises the old k/m hard-code to n / min / max), with the CLI
+    # floor/ceiling args applied as overrides for backward compatibility.
+    scale_bounds = _resolve_scale_bounds(
+        orchestrator_prod.settings.get("condition_growth"),
+        k_scale_floor, m_scale_floor, k_scale_ceiling, m_scale_ceiling,
+    )
     hessian_guess_updates, hessian_prior_updates = _build_hessian_scale_updates(
         field_mapping, hessian_results,
         k_scale_floor, m_scale_floor,
         k_scale_ceiling, m_scale_ceiling,
+        scale_bounds=(scale_bounds or None),
     )
     guess_updates.update(hessian_guess_updates)
     prior_updates.update(hessian_prior_updates)
 
-    _apply_priors_updates(priors_path, prior_updates)
+    # Hard-clamp m: with pin_m, condition_growth's slope m is held at its
+    # per-condition MAP loc (a deterministic site) instead of sampled with a
+    # soft prior.  A soft Normal prior — even at a tiny scale — is only a KL
+    # penalty in SVI and the growth likelihood can override it (see linear.py
+    # ModelPriors.m_pinned).  k is intentionally NOT clamped (tube-noise
+    # variance + the additive k/dk_geno slide), so this only sets m_pinned.
+    if pin_m:
+        prior_updates[_csv_row_name("condition_growth", "m_pinned")] = 1.0
+
+    # Labels ordered as the per-condition MAP arrays, so the per-condition
+    # prior loc rows can be name-joined back to the production condition order.
+    cond_rep_labels = _condition_rep_labels(orchestrator_cal)
+    _apply_priors_updates(priors_path, prior_updates, cond_rep_labels=cond_rep_labels)
     _apply_guesses_updates(guesses_path, guess_updates)
 
     return svi_state, params, converged

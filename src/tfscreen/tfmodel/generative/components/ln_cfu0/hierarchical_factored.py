@@ -327,19 +327,23 @@ def get_hyperparameters(num_classes: int = 1) -> Dict[str, Any]:
     return params
 
 
-def get_priors(data: Optional[GrowthData] = None) -> ModelPriors:
+def get_priors(data: Optional[GrowthData] = None,
+              presplit: Optional[Any] = None) -> ModelPriors:
     """
     Build a ModelPriors instance, optionally informed by empirical data.
 
     The per-class hyper-loc priors and wt/spiked scales are derived from
     data when available, using the same MAD-based estimator as the
-    ``hierarchical`` component.
+    ``hierarchical`` component.  If ``presplit`` is also provided, its
+    direct t=-t_pre measurements are preferred over the ln_cfu median
+    wherever available (see
+    :func:`~tfscreen.tfmodel.generative.components.ln_cfu0.hierarchical._empirical_group_estimates`).
     """
     num_classes = getattr(data, "num_ln_cfu0_library_classes", 1) if data is not None else 1
     params = get_hyperparameters(num_classes=num_classes)
 
     if data is not None:
-        estimates = _empirical_group_estimates(data)
+        estimates = _empirical_group_estimates(data, presplit=presplit)
         if estimates is not None:
             params["ln_cfu0_wt_scale"]       = float(estimates["wt_scale"])
             params["ln_cfu0_spiked_scale"]   = float(estimates["spiked_scale"])
@@ -348,20 +352,31 @@ def get_priors(data: Optional[GrowthData] = None) -> ModelPriors:
     return ModelPriors(**params)
 
 
-def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
+def get_guesses(name: str, data: GrowthData,
+               presplit: Optional[Any] = None) -> Dict[str, jnp.ndarray]:
     """
     Empirically derived initial values for all model sample sites.
 
     The genotype baseline is estimated as the per-(replicate, genotype)
-    median across condition_pre.  The tube offset is the per-(replicate,
-    condition_pre) median residual after subtracting that baseline.  The
-    tube scale is estimated from the MAD of the tube offsets.
+    median across condition_pre, unless a direct pre-split measurement is
+    available (see ``presplit``), in which case it is preferred wherever
+    valid.  The tube offset is the per-(replicate, condition_pre) median
+    residual after subtracting that baseline.  The tube scale is estimated
+    from the MAD of the tube offsets.
 
     Falls back to hard-coded defaults for any group or dimension with no
     valid observations.
+
+    Parameters
+    ----------
+    name : str
+    data : GrowthData
+    presplit : PreSplitData, optional
+        Optional direct t=-t_pre measurement of ln_cfu0; see
+        :func:`~tfscreen.tfmodel.generative.components.ln_cfu0.hierarchical._empirical_group_estimates`.
     """
 
-    estimates = _empirical_group_estimates(data)
+    estimates = _empirical_group_estimates(data, presplit=presplit)
     num_classes = getattr(data, "num_ln_cfu0_library_classes", 1)
 
     if estimates is None:

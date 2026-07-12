@@ -101,6 +101,18 @@ class GrowthData:
     struct_contact_pair_idx: Any = field(pytree_node=False, default=None)
     struct_contact_distances: Any = field(pytree_node=False, default=None)
 
+    # Precomputed theta at growth titrant concentrations for *every* genotype
+    # in the library (shape (num_titrant_name, num_titrant_conc, true_num_genotype)),
+    # used only by transformation components whose congression correction needs
+    # a population-wide reference distribution (see transformation/_congression.py).
+    # None (the default) tells `jax_model` to compute this locally from
+    # `data.growth` itself, which is only correct when `data.growth` already
+    # spans the full genotype population (true during SVI training, since
+    # genotype minibatching never shrinks `num_genotype`).  Prediction code
+    # paths that subset genotypes (e.g. `analysis.prediction.predict`) must
+    # supply this explicitly, computed against the true, unsubsetted library.
+    external_theta_population: Any = field(default=None)
+
 @dataclass(frozen=True)
 class BindingData:
 
@@ -177,6 +189,38 @@ class PreSplitData:
 
 
 @dataclass(frozen=True)
+class BaseGrowthData:
+    """
+    Holds the optional base (reference-condition) growth-rate observations
+    used to directly constrain dk_geno for a subset of genotypes.
+
+    Unlike growth/binding, this measurement is taken independent of the
+    titrant/selection system entirely -- it is a direct read of "how fast
+    does this genotype grow" in whatever reference condition/medium the
+    measurement was made in, used to anchor a new global scalar (k_ref) and
+    tie it, via the existing per-genotype dk_geno latent, to genotypes with
+    directly-measured growth rates. See generative/model.py's
+    base_growth_obs block.
+
+    Tensors are shaped ``(num_genotype,)`` using the same genotype ordering
+    as the companion GrowthData, so that slicing with
+    ``data.growth.batch_idx`` aligns the genotype axis -- the same pattern
+    PreSplitData uses. Genotypes with no measurement (or multiple raw
+    measurements collapsed via inverse-variance weighting during
+    construction -- see model_orchestrator._read_base_growth_df) have
+    good_mask == False and are excluded from the likelihood.
+    """
+
+    # Data tensors
+    rate_obs: jnp.ndarray
+    rate_std: jnp.ndarray
+    good_mask: jnp.ndarray
+
+    # Tensor dimension (aligned with GrowthData)
+    num_genotype: int = field(pytree_node=False)
+
+
+@dataclass(frozen=True)
 class DataClass:
     """
     A container holding data needed to specify tfmodel, treated as a JAX
@@ -197,6 +241,8 @@ class DataClass:
     binding: BindingData = field(default=None)
     # Optional pre-split observations (t = -t_pre aliquot before condition split).
     presplit: Any = field(default=None)
+    # Optional direct growth-rate measurements used to constrain dk_geno.
+    base_growth: Any = field(default=None)
 
 
 @dataclass(frozen=True)
@@ -210,6 +256,37 @@ class GrowthPriors:
     theta_growth_noise: Any
     growth_noise: Any
     sample_offset: Any
+    # Prior (concentration, rate) for the growth observer's StudentT degrees
+    # of freedom (see GrowthObsPriors).
+    growth_obs: Any
+    # Prior (loc, scale) for the optional base_growth k_ref scalar; None when
+    # base_growth_df was not supplied (see BaseGrowthPriors).
+    base_growth: Any = field(default=None)
+
+
+@dataclass(frozen=True)
+class GrowthObsPriors:
+    """
+    Prior (concentration, rate) for the growth observer's StudentT
+    degrees-of-freedom latent ``nu`` (see observe/growth.py). Gamma's mean is
+    concentration/rate; the default concentration=2.0, rate=0.1 gives a mean
+    of 20.0, matching the value previously hardcoded in observe/growth.py.
+    """
+    nu_concentration: float
+    nu_rate: float
+
+
+@dataclass(frozen=True)
+class BaseGrowthPriors:
+    """
+    Prior for the optional k_ref scalar (see BaseGrowthData / model.py's
+    base_growth_obs block). k_ref_loc is derived empirically from wt's row
+    in base_growth_df (dk_geno_wt == 0 makes wt's own measurement a direct
+    read of k_ref) -- see
+    generative.observe.base_growth.derive_k_ref_guess/get_priors.
+    """
+    k_ref_loc: float
+    k_ref_scale: float
 
 @dataclass(frozen=True)
 class BindingPriors:

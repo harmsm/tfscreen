@@ -430,19 +430,32 @@ def get_hyperparameters(num_classes: int = 1) -> Dict[str, Any]:
     return parameters
 
 
-def _empirical_group_estimates(data: GrowthData):
+def _empirical_group_estimates(data: GrowthData, presplit: Optional[Any] = None):
     """
     Compute per-group and per-class empirical (loc, scale) estimates and the
-    per-(rep, cond_pre, geno) median tensor.
+    per-(rep, cond_pre, geno) tensor used to derive them.
+
+    When ``presplit`` is supplied (a ``PreSplitData``-like object exposing
+    ``ln_cfu_t0``, ``ln_cfu_t0_std``, and ``good_mask`` tensors shaped
+    ``(num_replicate, num_condition_pre, num_genotype)``), it holds a direct
+    t=-t_pre measurement of ln_cfu0 that is *not* confounded by subsequent
+    growth, unlike the across-timepoint ``ln_cfu`` median.  Its value is
+    preferred, cell by cell, over the ln_cfu-derived median for any
+    (replicate, condition_pre, genotype) with a valid reading; cells without
+    presplit coverage fall back to the ln_cfu median exactly as before.  Each
+    class records which source actually backed its estimate via the
+    ``*_source`` keys (``"presplit"`` or ``"median"``) so callers — notably
+    the pre-fit calibration script — can decide whether a further,
+    growth-model-based refinement is worth attempting for that class.
 
     Returns ``None`` if ``data.ln_cfu`` is not the expected 7-D tensor (e.g.
     in mocked tests or when called with a stub data object).  Otherwise
     returns a dict with keys:
-      - ``per_rep_cond_geno`` : (rep, cond_pre, geno) ndarray of medians
-      - ``hyper_locs``, ``hyper_scales`` : lists of floats, one per class
+      - ``per_rep_cond_geno`` : (rep, cond_pre, geno) ndarray of estimates
+      - ``hyper_locs``, ``hyper_scales``, ``hyper_sources`` : lists, one per class
       - ``hyper_loc``, ``hyper_scale``   : class-0 aliases (backward compat)
-      - ``spiked_loc``, ``spiked_scale``
-      - ``wt_loc``, ``wt_scale``
+      - ``spiked_loc``, ``spiked_scale``, ``spiked_source``
+      - ``wt_loc``, ``wt_scale``, ``wt_source``
       - ``library_mask``, ``spiked_mask``, ``wt_mask`` : (geno,) bool ndarrays
     """
 
@@ -464,7 +477,30 @@ def _empirical_group_estimates(data: GrowthData):
     # np.errstate does not cover this — nanmedian emits via warnings.warn.
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", "All-NaN slice encountered", RuntimeWarning)
-        per_rep_cond_geno = np.nanmedian(ln_cfu_valid, axis=(1, 3, 4, 5))
+        median_per_rep_cond_geno = np.nanmedian(ln_cfu_valid, axis=(1, 3, 4, 5))
+
+    # Direct pre-split measurement, preferred cell-by-cell over the median
+    # wherever a valid reading exists.  Only used when its shape actually
+    # aligns with the ln_cfu-derived tensor (same categorical orderings are
+    # guaranteed by construction, but stub/mocked data in tests may not
+    # satisfy this).
+    presplit_valid = None
+    if presplit is not None:
+        ps_ln_cfu = getattr(presplit, "ln_cfu_t0", None)
+        ps_mask   = getattr(presplit, "good_mask", None)
+        if ps_ln_cfu is not None and ps_mask is not None:
+            ps_ln_cfu = np.asarray(ps_ln_cfu)
+            ps_mask   = np.asarray(ps_mask)
+            if ps_ln_cfu.shape == median_per_rep_cond_geno.shape:
+                presplit_valid = np.where(ps_mask, ps_ln_cfu, np.nan)
+
+    if presplit_valid is not None:
+        has_presplit = ~np.isnan(presplit_valid)
+        per_rep_cond_geno = np.where(has_presplit, presplit_valid,
+                                     median_per_rep_cond_geno)
+    else:
+        has_presplit = np.zeros_like(median_per_rep_cond_geno, dtype=bool)
+        per_rep_cond_geno = median_per_rep_cond_geno
 
     library_mask = ~spiked_mask & ~wt_mask
 
@@ -484,11 +520,19 @@ def _empirical_group_estimates(data: GrowthData):
         deviations = (vals - group_loc).flatten()
         return _mad_scale(deviations, fallback_scale)
 
+    def _group_source(mask):
+        if not mask.any():
+            return "median"
+        return "presplit" if has_presplit[:, :, mask].any() else "median"
+
     spiked_loc = _group_loc(spiked_mask, _FALLBACK_SPIKED_LOC)
     wt_loc     = _group_loc(wt_mask,     _FALLBACK_WT_LOC)
 
     spiked_scale = _group_scale(spiked_mask, spiked_loc, _FALLBACK_GROUP_SCALE)
     wt_scale     = _group_scale(wt_mask,     wt_loc,     _FALLBACK_GROUP_SCALE)
+
+    spiked_source = _group_source(spiked_mask)
+    wt_source     = _group_source(wt_mask)
 
     # Per-class library estimates
     num_classes = getattr(data, "num_ln_cfu0_library_classes", 1)
@@ -502,50 +546,68 @@ def _empirical_group_estimates(data: GrowthData):
     else:
         all_class_masks = [library_mask]
 
-    hyper_locs   = []
-    hyper_scales = []
+    hyper_locs    = []
+    hyper_scales  = []
+    hyper_sources = []
     for class_mask in all_class_masks:
-        loc   = _group_loc(class_mask, _FALLBACK_HYPER_LOC)
-        scale = _group_scale(class_mask, loc, _FALLBACK_GROUP_SCALE)
+        loc    = _group_loc(class_mask, _FALLBACK_HYPER_LOC)
+        scale  = _group_scale(class_mask, loc, _FALLBACK_GROUP_SCALE)
+        source = _group_source(class_mask)
         hyper_locs.append(loc)
         hyper_scales.append(scale)
+        hyper_sources.append(source)
 
     return {
         "per_rep_cond_geno": per_rep_cond_geno,
         "hyper_locs":        hyper_locs,
         "hyper_scales":      hyper_scales,
+        "hyper_sources":     hyper_sources,
         "hyper_loc":         hyper_locs[0],   # class-0 alias
         "hyper_scale":       hyper_scales[0], # class-0 alias
         "spiked_loc":        spiked_loc,
         "spiked_scale":      spiked_scale,
+        "spiked_source":     spiked_source,
         "wt_loc":            wt_loc,
         "wt_scale":          wt_scale,
+        "wt_source":         wt_source,
         "library_mask":      library_mask,
         "spiked_mask":       spiked_mask,
         "wt_mask":           wt_mask,
     }
 
 
-def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
+def get_guesses(name: str, data: GrowthData,
+               presplit: Optional[Any] = None) -> Dict[str, jnp.ndarray]:
     """
     Get initial guess values derived empirically from observed ln_cfu data.
 
     For each (replicate, condition_pre, genotype), the median ln_cfu across
     all valid observations (masked by ``data.good_mask``) is used as an
-    estimate of the starting cell density.  Group-level medians over spiked,
-    wildtype, and each library class provide estimates for ``spiked_loc``,
-    ``wt_loc``, and ``hyper_loc_{i}`` respectively.  Per-genotype offsets are
-    derived by centring on the matching group-level estimate and dividing by
-    the group-level MAD-based scale.
+    estimate of the starting cell density, unless a direct pre-split
+    measurement is available for that cell (see ``presplit`` and
+    :func:`_empirical_group_estimates`), in which case the pre-split value is
+    used instead.  Group-level medians over spiked, wildtype, and each
+    library class provide estimates for ``spiked_loc``, ``wt_loc``, and
+    ``hyper_loc_{i}`` respectively.  Per-genotype offsets are derived by
+    centring on the matching group-level estimate and dividing by the
+    group-level MAD-based scale.
 
     Sample-site keys for library hyper-parameters follow the naming
     ``{name}_hyper_loc_{i}`` and ``{name}_hyper_scale_{i}``.
 
     Falls back to hard-coded defaults for any group that has no valid
     observations.
+
+    Parameters
+    ----------
+    name : str
+    data : GrowthData
+    presplit : PreSplitData, optional
+        Optional direct t=-t_pre measurement of ln_cfu0; see
+        :func:`_empirical_group_estimates`.
     """
 
-    estimates = _empirical_group_estimates(data)
+    estimates = _empirical_group_estimates(data, presplit=presplit)
 
     num_classes = getattr(data, "num_ln_cfu0_library_classes", 1)
 
@@ -612,7 +674,8 @@ def get_guesses(name: str, data: GrowthData) -> Dict[str, jnp.ndarray]:
     return guesses
 
 
-def get_priors(data: Optional[GrowthData] = None) -> ModelPriors:
+def get_priors(data: Optional[GrowthData] = None,
+              presplit: Optional[Any] = None) -> ModelPriors:
     """
     Utility function to create a populated ModelPriors object.
 
@@ -624,6 +687,10 @@ def get_priors(data: Optional[GrowthData] = None) -> ModelPriors:
       (``ln_cfu0_hyper_loc_locs``) are centred on empirical class medians.
     - The number of classes is read from ``data.num_ln_cfu0_library_classes``
       (defaults to 1 when the attribute is absent).
+    - If ``presplit`` is also provided, its direct t=-t_pre measurements are
+      preferred over the ln_cfu median wherever available (see
+      :func:`_empirical_group_estimates`), giving a growth-unconfounded
+      estimate of the scales/locations above.
 
     Without data, every value is a single-class default.
 
@@ -631,6 +698,9 @@ def get_priors(data: Optional[GrowthData] = None) -> ModelPriors:
     ----------
     data : GrowthData, optional
         Experimental data pytree.
+    presplit : PreSplitData, optional
+        Optional direct t=-t_pre measurement of ln_cfu0; see
+        :func:`_empirical_group_estimates`.
 
     Returns
     -------
@@ -641,7 +711,7 @@ def get_priors(data: Optional[GrowthData] = None) -> ModelPriors:
     params = get_hyperparameters(num_classes=num_classes)
 
     if data is not None:
-        estimates = _empirical_group_estimates(data)
+        estimates = _empirical_group_estimates(data, presplit=presplit)
         if estimates is not None:
             params["ln_cfu0_wt_scale"]     = float(estimates["wt_scale"])
             params["ln_cfu0_spiked_scale"] = float(estimates["spiked_scale"])

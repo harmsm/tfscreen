@@ -54,6 +54,8 @@ tfs-predict-theta          # Predict operator occupancy
 tfs-cat-response           # Fit categorical response curves
 tfs-diagnose-nan           # Diagnose NaN issues in inference
 tfs-simulate               # Simulate a full experiment
+tfs-report-cfu0            # Report average ln_cfu0 by genotype class from a simulate config
+tfs-build-empirical # Fit real data → empirical phenotype-generating distribution (Stages 1-2)
 tfs-setup-sim-grid         # Set up grid of simulation runs
 tfs-setup-grid             # Set up grid of model configs
 tfs-summarize-grid         # Summarize grid results
@@ -113,19 +115,20 @@ The hierarchical Bayesian inference engine. Key files:
 
 - **`generative/registry.py`** — `model_registry` dict mapping component names to module implementations. This is where all swappable components are registered.
 
-- **`generative/components/`** — Pluggable model components selected via YAML config:
+- **`generative/components/`** — Pluggable model components selected via the YAML config's `components:` section (registry key noted in parens where it differs from the directory name):
   - `activity/`: `fixed`, `hierarchical_geno`, `hierarchical_mut`, `horseshoe_geno`, `horseshoe_mut`
-  - `growth/`: `linear`, `power`, `saturation`
+  - `growth/` (registry key `condition_growth`): `linear`, `power`, `saturation`. Their per-condition prior loc/scale fields accept a scalar (broadcast to all conditions) **or** a per-condition array; the pre-fit calibration writes per-condition arrays to pin the baselines (see **Per-condition growth priors** below). Each declares `get_scale_bounds()`.
   - `growth_transition/`: `instant`, `memory`, `baranyi`, `baranyi_k`, `baranyi_tau`, `two_pop`
   - `transformation/`: `empirical`, `logit_norm`, `single`
   - `theta/`: `categorical_geno`, `hill_geno`, `hill_mut`; thermodynamic partition-function variants under `theta/thermo/` (lac dimer and MWC dimer, with/without unfolded state, PK/PnnC/PddG parameterizations)
   - `theta_rescale/`: `passthrough`, `logit`
-  - `dk_geno/`: `fixed`, `hierarchical_geno`
-  - `noise/`: `zero`, `beta`, `logit_normal` (theta observation noise)
+  - `dk_geno/`: `fixed`, `hierarchical_geno`, `pinned`
+  - `noise/` (theta observation noise; registry keys `theta_growth_noise`: `zero`/`beta`/`logit_normal`, `theta_binding_noise`: `zero`/`beta`)
   - `growth_noise/`: `zero`, `normal_kt`
   - `ln_cfu0/`: `hierarchical`, `hierarchical_factored`
   - `sample_offset/`: `zero`, `normal`
-  - `observe/`: `binding`, `growth` (observation likelihood layers)
+
+- **`generative/observe/`** — *not* under `components/`, and not swappable via YAML. Holds the four observation-likelihood layers (`binding`, `growth`, `presplit`, `base_growth`), registered under flat `model_registry` keys `observe_binding`/`observe_growth`/`observe_presplit`/`observe_base_growth`. `ModelOrchestrator` wires in `observe_binding` and (unless `binding_only`) `observe_growth` unconditionally, plus `observe_presplit`/`observe_base_growth` only when the corresponding data (`presplit_df`/`base_growth_df`) was supplied — these are parallel, independently-gated observers, not alternative choices for one axis.
 
 ### Adding a New Model Component
 
@@ -133,6 +136,23 @@ The hierarchical Bayesian inference engine. Key files:
 2. Implement the required interface (follow an existing component as reference)
 3. Register it in `tfmodel/generative/registry.py` under the appropriate category key
 4. Add a test in `tests/tfscreen/tfmodel/components/<category>/`
+5. For a new `condition_growth` component: make its per-condition prior loc/scale fields accept scalar-or-array (broadcast-then-index by the condition plate) and implement `get_scale_bounds()` so the pre-fit can pin its per-condition baselines — see **Per-condition growth priors** above.
+
+(This applies to `components/` categories. `generative/observe/` is not a `<category>/<variant>` registry entry — see above.)
+
+### Per-condition growth priors
+
+The `condition_growth` components (`linear`/`power`/`saturation`) carry a per-condition **additive baseline** (`k` for linear/power, `min` for saturation) that is only jointly identified with the shared per-genotype `dk_geno`: the growth likelihood `g = k_condition + dk_geno + A·m·θ` is invariant to `k += C, dk_geno −= C`. With only weak/rare anchors (wt's pinned `dk_geno=0`, `base_growth`) the whole system slides by a global constant `C`, inflating all condition baselines and `k_ref` and making genotypes with constrained `dk_geno` (notably wt) badly mis-fit their `ln_cfu`. The fix is to pin each condition baseline with a per-condition prior — a prior on the 4 baseline params acts at full strength, unlike the abundance-diluted genotype anchors.
+
+Mechanism, spanning three files:
+
+- **Components** (`generative/components/growth/*.py`): `ModelPriors` loc/scale fields accept a scalar (broadcast, the default/back-compat) or a length-`num_condition_rep` array; `define_model`/`guide` broadcast-then-index by the condition plate. Each component declares `get_scale_bounds() → {suffix: {floor, ceiling, scale_field}}`, giving the pre-fit per-parameter scale floors (tight for the baseline term, looser for e.g. `power`'s log-exponent `n`).
+- **CSV (de)serialization** (`configuration_io.py`): the priors CSV supports per-condition **indexed rows** (`flat_index` + `condition_rep`/`replicate` label columns) alongside scalar rows. On load, indexed rows are **name-joined** to the model's `map_condition_rep` order (`_read_priors_flat`/`_assemble_condition_array`) and **fail fast** on an unknown or missing condition. A fresh `tfs-configure-model` still writes scalar rows (2-column CSV, legacy path).
+- **Pre-fit** (`prefit_calibration_cli.py`): after the MAP calibration, `_build_csv_updates` writes each `condition_growth` site's per-condition MAP **loc** array into the priors CSV (the baseline pin), and `_build_hessian_scale_updates` writes a tight **scalar** scale (floored via `get_scale_bounds()`). `_apply_priors_updates` expands a scalar prior row into per-condition indexed rows tagged with `condition_rep`. `growth_transition` sites keep warm-start-only behavior.
+
+Net flow: `configure` (scalar) → `prefit` (per-condition `k_loc` indexed rows + tight scalar `k_scale`) → `fit` (loads per-condition priors that hold the baselines, closing the slide). This is the primary mechanism; the `base_growth_data`/`k_ref` anchor (below) is complementary but insufficient alone because `k_ref` is itself free to slide.
+
+**Hard clamp on `m` (`tfs-prefit-calibration --pin_m`).** A soft Normal prior on the slope `m` — however tight — is only a KL penalty in SVI, and the growth likelihood over many observations can override it (empirically m walked ~5σ off even a 0.0005-scale pin). `linear`'s `ModelPriors.m_pinned` (bool, static) makes `m` a `deterministic` site clamped to its per-condition `m_loc` instead of a sampled site (guide drops the `m` variational params); `--pin_m` sets `condition_growth.m_pinned=1` in the priors CSV. `m` is safe to clamp because its calibration MAP loc is unbiased (dk_geno is uncorrelated with θ). **`k` is intentionally never clamped this way**: it carries real per-experiment tube-noise variance (`tube_noise_sigma`; mirrored by `k_scale_floor`) and sits in the additive k/dk_geno slide, so it keeps a floored soft prior — pin its loc, not its scale.
 
 ### Key Abstractions
 
@@ -167,19 +187,44 @@ The core calculation happens in `thermo_to_growth` (`simulate/thermo_to_growth.p
 
 ### Binding data and calibration genotypes
 
-The optional `binding_data` YAML block configures calibration genotypes for which measured binding curves are available. It has two sub-paths that can coexist:
+The optional `binding_data` YAML block configures calibration genotypes for which measured binding curves are available. Top-level keys `titrant_name`, `titrant_conc`, `noise` describe the (shared) binding assay. Two sub-blocks select which genotypes are measured, each with a `choose_by` (`stratified` | `random` | *params-file path*) and, for non-file modes, a `num`:
 
-**Path 1: Simulated genotypes** (`binding_data.genotypes` list)
-- `wt` gets its natural unperturbed prior-predictive reference curve.
-- Non-wt entries are drawn via a stratified (greedy maximin) algorithm across binding concentrations, ensuring diverse coverage.
-- The selected theta values at *growth* concentrations are injected via `theta_gc_override` so that the simulated growth data is consistent with the binding data.
+**`spiked_binding`** — clean, monoclonal (congression-free) controls; **pool = `spiked_seqs`**.
+- `choose_by: <file>` — the named genotypes get the file's Hill params as their true phenotype (see the measured-params bullets below). `num` is forbidden with a file.
+- `choose_by: stratified|random` — assign diverse (greedy-maximin) / random prior-predictive theta curves to `num` spiked genotypes (default all); `wt` keeps its natural reference. Their theta at *growth* concentrations is injected via `theta_gc_override` so growth matches binding.
 
-**Path 2: Measured Hill parameters** (`binding_data.genotype_params_file`)
+**`library_binding`** — in-library controls drawn from the **bulk** (congression-affected growth); **pool = library genotypes NOT in `spiked_seqs`**. Omit to disable.
+- These are regime-matched to the bulk: on the fit side they are simply extra `binding_df` rows and, because they are *not* in `--spiked`, they get `congression_mask=True` automatically. No fit-side change.
+- **Pre/post-sim split** (`simulate/library_binding_data.py::generate_library_binding_df`): the `file` path injects the genotypes' phenotype *pre-sim* (in `library_prediction`, via the same override machinery), but the binding *measurement* — and, for `stratified`/`random`, the *selection* — happen **post-growth-sim** so selection is restricted to genotypes that actually survived with growth data (guaranteeing `num` usable anchors). `file`-specified genotypes that don't survive are **warned** and dropped. `simulate_cli.py` writes the selected set to `tfs_sim_library_binding.csv`.
+
+**Validation** (`library_prediction._validate_binding_config`, fail-fast): `spiked_binding` file genotypes must be ⊆ `spiked_seqs`; `library_binding` file genotypes must be disjoint from `spiked_seqs`; `num` + a file is an error; a file requires a Hill theta component; `spiked_binding.num` ∈ `[1, num_spiked]`; `library_binding` stratified/random requires `num`.
+
+**Measured Hill parameters** (a `choose_by` *params file*, either block):
 - Reads a CSV with columns `genotype, theta_low, theta_high, log_hill_K, hill_n`.
 - Only supported for Hill-based theta components (`hill_geno`, `hill_mut`).
 - **`theta_low` and `theta_high` are clamped to `[1e-4, 1-1e-4]` at read time** with a `UserWarning`. This is critical: a value of e.g. `1.000004` (a common float-rounding artefact) maps to `logit ≈ +16`, making all per-mutation deltas ~13–15 σ under the `HalfNormal(1)` prior on delta scales and preventing inference from recovering reasonable theta values.
-- For `hill_mut`: the function `build_theta_gc_override_hill_mut` assembles theta for **all library genotypes** (not just the measured ones) by additively combining per-mutation logit-space deltas. The WT reference is taken from `SimPriors` defaults. Multi-mutant genotypes not directly measured in the CSV are assembled from single-mutant deltas; directly-measured multi-mutants use their CSV values directly.
+- For `hill_mut`: `build_theta_gc_override_hill_mut` assembles theta for **all library genotypes** (not just the measured ones) by additively combining per-mutation logit-space deltas. The WT reference is taken from `SimPriors` defaults. Multi-mutant genotypes not directly measured in the CSV are assembled from single-mutant deltas; directly-measured multi-mutants use their CSV values directly.
 - Measured genotypes override any earlier simulated-path values in `theta_gc_override`.
+
+### Base growth-rate calibration data
+
+The optional `base_growth_data` YAML block generates a simulated `base_growth_df`: direct reference-condition growth-rate "measurements" for a subset of genotypes, mirroring the inference-side `base_growth_df` input (see `tfmodel/model_orchestrator.py::_read_base_growth_df` and `generative/model.py`'s `base_growth_obs` block, which anchor `condition_growth`'s k/m against dk_geno's hierarchical hyperparameters to resolve an identifiability confound).
+
+- Generation lives in `simulate/base_growth_data.py::generate_base_growth_df`, called from `simulate/scripts/simulate_cli.py` (not `library_prediction.py`) since it only needs `parameters_df`, not the theta/growth machinery.
+- Config: `k_ref` (required, the reference wt growth rate) plus optional `genotypes` (default `["wt"]`), `rates` (per-genotype true-rate override), and `noise`.
+- Every requested genotype must already exist in `parameters_df` — `dk_geno` is looked up from the value already assigned during the normal per-library draw (`_assign_dk_geno` in `thermo_to_growth.py`), never redrawn. This mirrors the inference-side requirement that `base_growth_df` genotypes already exist in `growth_df`.
+- `rate_true = k_ref + dk_geno[genotype]` unless overridden via `rates`; the observed `rate` adds Gaussian noise (sigma = `noise`), and `rate_std` is reported as that same flat `noise` value for every row (matching the `binding_data.noise` → `theta_std` convention).
+- **`noise` must be strictly positive if the CSV is fed to `tfs-configure-model --base_growth_df`.** `rate_std` is used directly as a Normal likelihood scale — both when `_read_base_growth_df` inverse-variance-combines multiple rows per genotype, and in the `base_growth_obs` likelihood itself. `rate_std == 0.0` (the default when `noise` is omitted) causes a division-by-zero (`1/rate_std**2`) that produces a NaN `k_ref` prior location, surfacing as a numpyro "invalid loc parameter" crash the first time the model is traced (`tfs-prefit-calibration` or `tfs-fit-model`) — not at `tfs-simulate` or `tfs-configure-model` time, which makes it confusing to diagnose. `_read_base_growth_df` raises a clear `ValueError` naming the offending genotypes if any `rate_std <= 0` is present.
+- `simulate/base_growth_data.py::generate_k_ref_df` writes a single-row `tfs_sim_k_ref.csv` (`parameter="k_ref"`, `ref=<configured value>`) alongside `base_growth_df`, purely as an echo of the configured `k_ref` — the ground-truth counterpart to the fit's single global `*_params_k_ref.csv` (see `tfmodel/analysis/extraction.py`'s `k_ref` block). It is kept out of `tfs_sim_parameters.csv`/`tfs_sim_growth_parameters.csv` because it is neither genotype- nor condition-indexed.
+
+### Growth parameter ground-truth output (`tfs_sim_growth_parameters.csv`)
+
+`tfs-simulate` writes `tfs_sim_growth_parameters.csv`, the per-condition ground-truth counterpart to the fit's `condition_growth` component outputs (`*_params_growth_k.csv`, `*_params_growth_m.csv`, `*_params_growth_n.csv`, `*_params_growth_min.csv`, `*_params_growth_max.csv` — see `generative/components/growth/*.py`'s `get_extract_specs`). It is always written (the top-level `growth` config block is required, unlike the optional `*_data` blocks).
+
+- Generation lives in `simulate/growth_parameters_output.py::generate_growth_parameters_df`, called from `simulate/scripts/simulate_cli.py` right after `library_prediction`, since it only needs `cf['growth']`.
+- One row per condition, keyed by `condition_rep` — the same raw condition string used as `growth`'s dict keys (`{"kanR+kan": {...}}`) *is* the fit side's `condition_rep` value (see `model_orchestrator._build_growth_tm`, which pools `condition_pre`/`condition_sel` directly into a column literally named `condition_rep`), so no name-mapping step is needed to join this file against a fit's extracted params.
+- Each growth model uses different YAML parameter names than the fit's extract names, and the module hand-maintains the mapping (`b,m` → `growth_k,growth_m` for `linear`; `b,a,n` → `growth_k,growth_m,growth_n` for `power`; `kmin,kmax` → `growth_min,growth_max` for `saturation`) by comparing `simulate/growth/growth_linkage.py`'s numpy formulas against the corresponding JAX formulas in `generative/components/growth/*.py`. If a new `condition_growth` component is added, this mapping must be extended too, or its parameters won't get ground-truth comparison in `tfs-summarize-fit`.
+- On the `tfmodel` side, `tfmodel/scripts/summarize_fit_cli.py::_summarize_condition_growth_params` and `_summarize_k_ref` join these two files against the fit's extracted params (on `condition_rep`, and trivially for the single-row `k_ref`, respectively) to annotate them with a `ref` column, mirroring `_summarize_params`'s genotype-keyed comparison but for growth's condition-keyed/global-scalar parameters.
 
 ### theta_gc_override and theta_params_override
 
@@ -204,11 +249,29 @@ These two dicts are the mechanism by which binding data is "pinned" into the gro
 | `simulate/library_prediction.py` | Top-level orchestrator; assembles override dicts and calls `thermo_to_growth` |
 | `simulate/thermo_to_growth.py` | Prior-predictive sampling, theta injection, growth calculation, parameters_df assembly |
 | `simulate/binding_params.py` | CSV reading (with theta clipping), per-component override builders, binding theta assemblers |
+| `simulate/binding_data.py` | Noise-injects the pre-sim `binding_theta_df` (spiked binding genotypes) into an observed binding CSV; `generate_binding_df` |
+| `simulate/library_binding_data.py` | Post-sim generator for `binding_data.library_binding` (in-library, congression-affected binding genotypes; survivor-restricted selection); `generate_library_binding_df` |
+| `simulate/base_growth_data.py` | Generates simulated direct growth-rate calibration data (`base_growth_data` YAML block) and the single-row `k_ref` ground-truth echo |
+| `simulate/growth_parameters_output.py` | Generates per-condition `condition_growth` ground truth (`tfs_sim_growth_parameters.csv`) from the `growth` YAML block |
+| `simulate/presplit_data.py` | Generates simulated pre-split (t = -t_pre) data (`presplit_data` YAML block; `generate_presplit_df`) |
 | `simulate/sample_theta.py` | `sample_theta_prior` (prior-predictive) and `sample_theta_stratified` (greedy maximin) |
 | `simulate/sim_data_class.py` | `SimData` container and `build_sim_data` factory |
 | `simulate/build_sample_dataframes.py` | Constructs sample/timepoint DataFrames from simulation config |
 | `simulate/selection_experiment.py` | Models the selection experiment (growth + sequencing) |
-| `simulate/run_simulation.py` | End-to-end simulation runner called by `tfs-simulate` |
+| `simulate/scripts/simulate_cli.py` | `tfs-simulate` CLI entry point; runs `library_prediction` + `selection_experiment` across replicates and writes all output CSVs, delegating the optional `binding_data`/`presplit_data`/`base_growth_data` blocks to their respective generator modules above |
+| `simulate/scripts/report_cfu0_cli.py` | `tfs-report-cfu0` CLI entry point; reuses `library_prediction` + `selection_experiment` (same pattern as `simulate_cli.py`) across `num_replicates` to report mean `ln_cfu_0` and surviving-genotype counts by class (`wt`/`spiked`/`single`/`double`), for tuning `transform_sizes`/`library_mixture`/`cfu0` against observed real-library values |
+| `simulate/run_simulation.py` | Simpler, non-CLI orchestrator (`run_simulation`); does not support `binding_data`/`presplit_data`/`base_growth_data` |
+
+### Empirical phenotype pipeline (`simulate/empirical/`)
+
+An alternative to prior-predictive phenotype sampling: instead of drawing theta from made-up priors, fit **real** screen data to an empirical phenotype-generating distribution and resample from it, so the simulated library's phenotype *distribution* matches reality while ground truth stays known. Targets `hill_geno` + linear growth; asserts `A ≡ 1` (repressor: blocks or not, leaky binding absorbed into `theta_low`). Three stages:
+
+- **Stage 1** (`fit_phenotypes.py`): per-genotype MLE of the growth model on a real `ln_cfu` DataFrame (derives `ln_cfu_std` from the processed `ln_cfu_var` via `get_scaled_cfu`, like `model_orchestrator`), calibration (`growth_k`/`growth_m` per `condition_rep`) frozen. Fits `(dk_geno, theta_low, theta_high, log_hill_K, hill_n)` in transformed coords (logit theta bounds, log n) so `run_least_squares` returns covariance in the space Stage 2 needs. Per-genotype independent (no cross-genotype coupling); weak `dk_geno` Tikhonov prior; ±16 logit clamp. Returns `GenotypeFit(estimate, covariance)` per genotype. The fits are embarrassingly parallel — `num_workers` (`-1` = `cpu_count-1`) runs them over a `ProcessPoolExecutor`; the parallel path strips the genotype `Categorical` first (it carries all categories on every group → O(N²) pickling). Worker startup pays a ~2s JAX import, so parallelism is a wash for tiny/fast runs and near-linear for large real libraries. `_hill_theta` is numerically identical to `hill_geno.run_model` and `binding_params._hill_theta` (verified — same `_ZERO_CONC_SENTINEL`).
+- **Stage 2** (`population.py`): measurement-error EM (`z_i~N(mu,Σ)`, `y_i~N(z_i,S_i)`) that **deconvolves estimation noise** (`Cov(y)=Σ+mean(S_i)`), so it recovers a narrower population than a naive KDE on the point estimates. `fit_population()` → `PopulationModel` (single MV-Normal in transformed space; `wt_ref` field holds wt's actual Stage-1 fit; `.sample(n)` → natural-space DataFrame; `.save()`/`.load()`).
+- **Stage 1.5** (`congression.py`, optional; between Stage 1 and Stage 2, gated by `--congression_lambda`): de-attenuates the **bulk** genotypes' theta curves for co-transformation. Reuses the inference's own θ-level operator `transformation._congression.update_thetas` (the `E[max(x,M)]` **dominant-max occupancy** map — the tightest-bound operator sets effective θ, so `E[max]` only, never the min variant — with an empirical background CDF). `correct_theta_matrix` is the fixed point: `θ_true ← θ_obs`; iterate `θ_true += gain·(θ_obs − update_thetas(θ_true; background=θ_true))` per-concentration until converged (the background *is* the corrected population, hence the iteration). `deattenuate_congression` evaluates each bulk genotype's Stage-1 Hill at the growth `titrant_conc` grid, corrects, and refits Hill (dk_geno and the Stage-1 covariance are left untouched — a deliberate bias-only correction; Stage 2's estimation-noise deconvolution still runs after). λ passes straight through **unconverted**: a focal barcode is size-biased into its cell, so co-residents are Poisson(λ) at the *same* zero-truncated `transformation_poisson_lambda` (`_sim_transform` uses `zero_truncated_poisson` + i.i.d. plasmid draws). Spiked genotypes are congression-free → excluded from correction and the background CDF, and pass through unchanged. This is the θ-level analogue of the simulator's growth-level congression (agree to first order, exact at λ→0); spiked-only vs bulk distribution is the external check.
+- **Stage 3** (`resample.py`): `resample_phenotypes` draws one i.i.d. phenotype per genotype (wt pinned to `dk_geno=0` + `wt_ref` Hill); `make_empirical_overrides` reuses `build_theta_gc_override_hill_geno` → `(theta_gc_override, theta_params_override, dk_geno_override)`. `thermo_to_growth` gained a `dk_geno_override` param (the one growth-path change; `theta_params_override` only patches θ columns). `build_empirical_binding_theta` rebuilds spiked `binding_theta_df` from resampled params (selection from the `binding_data` config; θ from resampled Hill, not `sample_theta_stratified`).
+
+Integration: `library_prediction` gains a `phenotype_source: empirical` branch (needs an `empirical: {phenotype_model: <path>}` block pointing at the single self-contained `<out_prefix>_phenotype_model.json`; `_resolve_phenotype_model_path` accepts that path with/without `.json` or the bare `<out_prefix>`, and the fit prints the absolute path — use it so no file-copying is needed) that resamples all genotypes, injects the overrides, forces `theta_component=hill_geno` (warns + ignores any other value; the resampled phenotypes are per-genotype Hill curves and the discarded prior draw must match the `parameters_df` schema — this also avoids running/overflowing an e.g. `hill_mut` draw), drops the ignored `theta_priors`/`theta_sim_priors`, and forces `activity=fixed/1`. `phenotype_source`/`empirical` are in `selection_experiment.SIMULATE_KNOWN_KEYS`. Resampled ground truth flows into `parameters_df`/`genotype_theta_df` automatically (no new return value); `library_binding` regenerates for free (reads `parameters_df`). `tfs-build-empirical` (`simulate/scripts/build_empirical_cli.py`) is a **one-command orchestrator**: given the experimental inputs (`growth_file` and `seed` positional; `--binding_file` required; optional `--spiked_file`/`--base_growth_file`/`--thermo_data`/`--congression_lambda`/`--num_workers`) it internally calls `configure_model` (linear + hill_geno defaults — no model choices exposed, since here they'd only be wrong) then `run_prefit_calibration` (MAP-calibrates per-condition k/m), then Stages 1-2 (plus optional Stage 1.5 congression de-attenuation when `--congression_lambda` is given), saving the deliverable `<prefix>_phenotype_model.json` (one self-contained, human-readable file = the generating distribution; `PopulationModel.save`/`.load`) + the diagnostic `<prefix>_stage1_fits.csv`, plus the `<prefix>_configure_*`/`<prefix>_prefit_*` intermediates. The configure/prefit imports are lazy (the heavy JAX stack loads only on this path). The MAP prefit is the slow step, so `--calibration_file` skips configure+prefit and reuses a calibration for fast Stage-1/2 iteration — either a prefit **priors CSV** (read via `fit_phenotypes.read_calibration`, which pivots the `growth.condition_growth.k_loc`/`growth.condition_growth.m_loc` per-`condition_rep` rows — prefit writes these via `_csv_row_name` = `growth.{component}.{field}` — to wide k/m) or a wide `(condition_rep, growth_k, growth_m)` CSV. This **complements** the fully-synthetic prior path (the *accuracy* benchmark) as a *realism* benchmark.
 
 ## YAML Standards
 
@@ -280,6 +343,7 @@ Both grid CLIs import from `tfscreen.util.grid_utils` for run-name generation, J
 | `simulate/simulate_grid.yaml` | Example simulate grid for `tfs-setup-sim-grid` |
 | `simulate/run.sh` | Jinja2 shell template rendered into each simulate grid run subdir |
 | `simulate-and-analyze/simulate_config.yaml` | Combined simulate + analyze workflow config |
+| `simulate-empirical/simulate_config.yaml` | Simulate config that resamples phenotypes from a `tfs-build-empirical` model (`phenotype_source: empirical`) |
 | `simulate-and-analyze/hill_params.csv` | Example Hill parameter CSV for binding data input |
 | `simulate-and-analyze/run.sh` | Jinja2 shell template for simulate-and-analyze runs |
 | `tfmodel/grid.yaml` | Example tfmodel grid for `tfs-setup-grid` |

@@ -4,11 +4,20 @@ import os
 
 import yaml
 
+import inspect
+
 from tfscreen.util.grid_utils import (
     relativize_config_paths as _relativize_config_paths,
     relativize_node as _relativize_node,
     relativize_template_vars as _relativize_template_vars,
 )
+from tfscreen.tfmodel.scripts.setup_grid_cli import (
+    _cm_kwargs,
+    _resolve_cm_paths,
+    _COMPONENT_AXES,
+    _PATH_KEYS,
+)
+from tfscreen.tfmodel.scripts.configure_model_cli import configure_model
 
 
 # ---------------------------------------------------------------------------
@@ -198,3 +207,79 @@ def test_relativize_template_vars_non_string_passthrough(tmp_path):
     tmpl_vars = {"seed": 0, "flag": True, "ratio": 1.5, "none_val": None}
     result = _relativize_template_vars(tmpl_vars, grid_yaml_dir, subdir)
     assert result == tmpl_vars
+
+
+# ---------------------------------------------------------------------------
+# _cm_kwargs — component-axis → configure_model parameter translation
+# ---------------------------------------------------------------------------
+
+def test_cm_kwargs_adds_model_suffix_to_axes():
+    """Registry-axis keys gain a ``_model`` suffix; other keys pass through."""
+    out = _cm_kwargs({
+        "condition_growth": "linear",
+        "growth_noise": "normal_kt",   # regression: was missing from _COMPONENT_AXES
+        "epistasis": True,             # non-axis: forwarded unchanged
+        "binding_df": "b.csv",         # non-axis: forwarded unchanged
+    })
+    assert out == {
+        "condition_growth_model": "linear",
+        "growth_noise_model": "normal_kt",
+        "epistasis": True,
+        "binding_df": "b.csv",
+    }
+
+
+# ---------------------------------------------------------------------------
+# _resolve_cm_paths — relative path resolution for file-path arguments
+# ---------------------------------------------------------------------------
+
+def test_resolve_cm_paths_resolves_all_df_args(tmp_path):
+    """presplit_df/base_growth_df (regression) and the other df args resolve to abs."""
+    base = str(tmp_path)
+    cm_vars = {
+        "binding_df": "b.csv",
+        "growth_df": "g.csv",
+        "presplit_df": "p.csv",
+        "base_growth_df": "bg.csv",
+        "theta_model": "hill_mut",     # not a path: untouched
+    }
+    out = _resolve_cm_paths(cm_vars, base)
+    for key in ("binding_df", "growth_df", "presplit_df", "base_growth_df"):
+        assert out[key] == os.path.normpath(os.path.join(base, cm_vars[key]))
+        assert os.path.isabs(out[key])
+    assert out["theta_model"] == "hill_mut"
+
+
+def test_resolve_cm_paths_leaves_absolute_unchanged(tmp_path):
+    """An already-absolute path argument is not rewritten."""
+    abs_p = os.path.join(str(tmp_path), "b.csv")
+    out = _resolve_cm_paths({"base_growth_df": abs_p}, "/some/other/dir")
+    assert out["base_growth_df"] == abs_p
+
+
+# ---------------------------------------------------------------------------
+# Drift guards against the configure_model signature
+# ---------------------------------------------------------------------------
+
+def test_component_axes_cover_all_model_params():
+    """Every ``*_model`` param of configure_model must have a _COMPONENT_AXES entry.
+
+    Guards against adding a new swappable component to configure_model without
+    teaching tfs-setup-grid how to forward it (the ``growth_noise`` drift).
+    """
+    params = inspect.signature(configure_model).parameters
+    model_axes = {p[:-len("_model")] for p in params if p.endswith("_model")}
+    missing = model_axes - _COMPONENT_AXES
+    assert not missing, f"_COMPONENT_AXES missing configure_model axes: {sorted(missing)}"
+
+
+def test_path_keys_cover_all_df_params():
+    """Every ``*_df`` path param of configure_model must be in _PATH_KEYS.
+
+    Guards against adding a new data-file argument (e.g. presplit_df,
+    base_growth_df) without wiring its relative-path resolution.
+    """
+    params = inspect.signature(configure_model).parameters
+    df_params = {p for p in params if p.endswith("_df")}
+    missing = df_params - _PATH_KEYS
+    assert not missing, f"_PATH_KEYS missing configure_model df args: {sorted(missing)}"

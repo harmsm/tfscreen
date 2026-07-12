@@ -159,21 +159,21 @@ activity_mut_scale: 0.0
 # Number of transformants per tile combo.  Keys must match the entries in
 # tile_combos (e.g. 'single-1', 'double-1-2') plus 'spiked'.
 transform_sizes:
-  single-1: 100_000
-  single-2: 100_000
-  double-1-2: 300_000
+  single-1: 10_000
+  single-2: 10_000
+  double-1-2: 1_000_000
   spiked: 1000
 
 # Mixing ratio of tile combos in the pooled library.  Only the ratio matters.
 library_mixture:
   single-1: 100
   single-2: 100
-  double-1-2: 1000
-  spiked: 100
+  double-1-2: 5
+  spiked: 4
 
 # Sigma of the log-normal used to draw initial genotype frequencies.  0 = flat
 # distribution; 1–2 is realistic for a typical transformation.
-lib_assembly_skew_sigma: 1.5
+lib_assembly_skew_sigma: 1.25
 
 # Each bacterium receives a number of plasmids drawn from a zero-truncated
 # Poisson with this lambda.  Set to 0 or null for exactly one plasmid per cell.
@@ -237,10 +237,24 @@ seed: 12345
 # curves.  
 
 binding_data:
-  genotype_params_file: hill_params.csv
+  # The binding assay (shared by both genotype sets).
   titrant_name: iptg
   titrant_conc: [0, 0.0001, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1.0]
   noise: 0.001
+
+  # Clean, monoclonal (congression-free) controls. Pool = spiked_seqs.
+  #   choose_by: <params file> | stratified | random
+  #   num: optional [1, num_spiked], default all (forbidden with a file)
+  spiked_binding:
+    choose_by: hill_params.csv
+
+  # In-library controls, drawn from the bulk (congression-affected growth).
+  # Pool = library genotypes NOT in spiked_seqs. Omit to disable.
+  #   choose_by: stratified | random | <params file>
+  #   num: required for stratified/random (forbidden with a file)
+  # library_binding:
+  #   num: 20
+  #   choose_by: stratified
 
 presplit_data: 
   noise: 0.00

@@ -409,10 +409,16 @@ class RunInference:
             if site["type"] not in ["sample", "deterministic"]:
                 continue
 
-            # Check plate stack first (most robust)
+            # Check plate stack first (most robust).  Require the plate size to
+            # match the main genotype count (probe_size or full num_genotype) so
+            # that subset plates — e.g. the binding-observer's genotype plate,
+            # which covers only calibration genotypes — are not mistaken for the
+            # main genotype plate.
+            num_genotype = self.model.data.num_genotype
             in_plate = False
             for frame in site.get("cond_indep_stack", []):
-                if "genotype" in frame.name.lower():
+                if ("genotype" in frame.name.lower()
+                        and frame.size in (probe_size, num_genotype)):
                     dim_map[name] = frame.dim
                     in_plate = True
                     break
@@ -442,6 +448,109 @@ class RunInference:
 
         return dim_map
 
+    @staticmethod
+    def _genotype_chunk_indices(total_num_genotypes, forward_batch_size):
+        """
+        Build a (num_chunks, forward_batch_size) array of genotype indices
+        covering ``total_num_genotypes``, padding the final chunk (if
+        ``total_num_genotypes`` is not evenly divisible) by repeating the
+        last valid genotype index. Padding is trimmed back off after the
+        forward pass by :meth:`_concat_genotype_chunks`, so the duplicated
+        rows never reach the caller.
+
+        Returns
+        -------
+        jnp.ndarray, shape (num_chunks, forward_batch_size)
+        """
+        num_chunks = -(-total_num_genotypes // forward_batch_size)
+        padded_total = num_chunks * forward_batch_size
+        idx = jnp.arange(total_num_genotypes)
+        pad = padded_total - total_num_genotypes
+        if pad > 0:
+            pad_idx = jnp.full((pad,), total_num_genotypes - 1, dtype=idx.dtype)
+            idx = jnp.concatenate([idx, pad_idx])
+        return idx.reshape(num_chunks, forward_batch_size)
+
+    @staticmethod
+    def _concat_genotype_chunks(chunk_list, axis, total_size):
+        """
+        Concatenate per-chunk numpy arrays along ``axis`` and trim padding.
+
+        Parameters
+        ----------
+        chunk_list : list of np.ndarray
+            Per-chunk arrays in index order (each has ``forward_batch_size``
+            elements along ``axis``; the last chunk may be padded).
+        axis : int
+            Genotype axis (from ``dim_map``; may be negative).
+        total_size : int
+            True (unpadded) genotype count to trim to.
+
+        Returns
+        -------
+        np.ndarray
+        """
+        merged = np.concatenate(chunk_list, axis=axis)
+        pos = axis if axis >= 0 else merged.ndim + axis
+        slices = [slice(None)] * merged.ndim
+        slices[pos] = slice(0, total_size)
+        return merged[tuple(slices)]
+
+    def _build_genotype_chunk_scanner(self, dim_map, sites_to_save):
+        """
+        Build a JIT-compiled forward-pass function for a single genotype chunk.
+
+        Returns a function ``chunk_fn(data, latents, key, batch_indices)``
+        that runs the model forward pass for the genotype batch given by
+        ``batch_indices`` and returns ``(new_key, result_dict)``.
+
+        The function is compiled once by ``jax.jit`` on first call and
+        reused across all chunks and all outer sampling-batch iterations,
+        eliminating per-chunk re-tracing overhead while keeping GPU memory
+        usage to a single chunk at a time.  (A ``lax.scan`` over all chunks
+        would pre-allocate all chunk outputs simultaneously on device,
+        causing OOM on large datasets.)
+
+        Parameters
+        ----------
+        dim_map : dict
+            Site name -> genotype-axis index, as returned by
+            `_get_genotype_dim_map`.
+        sites_to_save : list of str or None
+            If given, restricts the per-chunk output to these sites.
+
+        Returns
+        -------
+        callable
+            ``chunk_fn(data, latents, key, batch_indices)
+            -> (new_key, chunk_dict)``
+        """
+        model_fn = self.model.jax_model
+        get_batch = self.model.get_batch
+        priors = self.model.priors
+
+        @jax.jit
+        def chunk_fn(data, latents, key, batch_indices):
+            batch_latents = {
+                k: jnp.take(v, batch_indices, axis=dim_map[k]) if k in dim_map else v
+                for k, v in latents.items()
+            }
+            batch_data = get_batch(data, batch_indices)
+
+            key, subkey = jax.random.split(key)
+            forward_sampler = Predictive(model_fn, posterior_samples=batch_latents)
+            batch_pred = forward_sampler(subkey, priors=priors, data=batch_data)
+
+            # Predictions take precedence over latents of the same name.
+            merged = dict(batch_latents)
+            merged.update(batch_pred)
+            if sites_to_save is not None:
+                merged = {k: v for k, v in merged.items() if k in sites_to_save}
+
+            return key, merged
+
+        return chunk_fn
+
     def get_posteriors(self,
                        svi,
                        svi_state,
@@ -455,7 +564,11 @@ class RunInference:
 
         Uses `numpyro.infer.Predictive` to sample from the posterior
         distribution defined by the guide and parameters. Handles large
-        datasets by batching predictions and writing to disk (HDF5).
+        datasets by batching predictions and writing to disk (HDF5). The
+        forward pass over genotype batches uses a JIT-compiled per-chunk
+        function (see `_build_genotype_chunk_scanner`) so that `Predictive`
+        is traced only once regardless of the number of chunks, and GPU
+        memory holds at most one chunk at a time.
 
         Parameters
         ----------
@@ -485,7 +598,7 @@ class RunInference:
         # Get the mapping of site names to genotype dimension
         dim_map = self._get_genotype_dim_map()
 
-        total_num_genotypes = self.model.data.num_genotype 
+        total_num_genotypes = self.model.data.num_genotype
 
         # Adjust sampling_batch_size if smaller than num_posterior_samples
         sampling_batch_size = min(sampling_batch_size, num_posterior_samples)
@@ -499,9 +612,15 @@ class RunInference:
                                     params=params,
                                     num_samples=sampling_batch_size)
 
+        # Build the genotype-chunk index blocks and the compiled forward
+        # scanner once; both are reused, unchanged, across every posterior
+        # sampling batch below.
+        indices_2d = self._genotype_chunk_indices(total_num_genotypes, forward_batch_size)
+        chunk_fn = self._build_genotype_chunk_scanner(dim_map, sites_to_save)
+
         # Prepare HDF5 file
         h5_file = f"{out_prefix}_posterior.h5"
-        
+
         samples_written = 0
         with h5py.File(h5_file, 'w') as hf:
 
@@ -513,70 +632,41 @@ class RunInference:
                                                 priors=self.model.priors,
                                                 data=full_data)
 
-                # Sample batches of genotypes
-                batch_collector = {}
-                for start_idx in range(0, total_num_genotypes, forward_batch_size):
-                    
-                    end_idx = min(start_idx + forward_batch_size, total_num_genotypes)
-                    batch_indices = jnp.arange(start_idx, end_idx)
+                # Forward pass: iterate over genotype chunks with the JIT-compiled
+                # chunk_fn.  Each chunk is computed, transferred to CPU, and
+                # discarded from GPU before the next chunk runs, keeping GPU
+                # memory usage to a single chunk at a time.
+                forward_key = self.get_key()
+                chunk_outputs = {}
+                for chunk_indices in indices_2d:
+                    forward_key, chunk_result = chunk_fn(
+                        data_on_gpu, latent_samples, forward_key, chunk_indices
+                    )
+                    for k, v in chunk_result.items():
+                        chunk_outputs.setdefault(k, []).append(np.asarray(v))
 
-                    # Slice latent samples using the dim_map
-                    batch_latents = {}
-                    for k, v in latent_samples.items():
-                        if k in dim_map:
-                            batch_latents[k] = jnp.take(v, jnp.arange(start_idx, end_idx), axis=dim_map[k])
-                        else:
-                            batch_latents[k] = v
-
-                    # Get a batch of data
-                    batch_data = self.model.get_batch(data_on_gpu, batch_indices)
-                    
-                    # Forward pass for this batch
-                    forward_sampler = Predictive(self.model.jax_model, 
-                                                 posterior_samples=batch_latents)
-                    sample_key = self.get_key()
-                    batch_pred = forward_sampler(sample_key,
-                                                 priors=self.model.priors,
-                                                 data=batch_data)
-
-                    # Collect all samples (latents + predictions) for this batch
-                    # Predictions from forward pass
-                    for k, v in batch_pred.items():
-                        if sites_to_save is not None and k not in sites_to_save:
-                            continue
-                        if k not in batch_collector:
-                            batch_collector[k] = []
-                        batch_collector[k].append(jax.device_get(v))
-
-                    # Latents that weren't in predictions (e.g. guide-only parameters)
-                    for k, v in batch_latents.items():
-                        if k in batch_pred:
-                            continue
-                        if sites_to_save is not None and k not in sites_to_save:
-                            continue
-
-                        if k not in batch_collector:
-                            batch_collector[k] = []
-
-                        # If global (not in dim_map), only add on first genotype batch
-                        if k not in dim_map:
-                            if start_idx == 0:
-                                batch_collector[k].append(jax.device_get(v))
-                        else:
-                            # Geno-specific, always add
-                            batch_collector[k].append(jax.device_get(v))
-
-                # Concatenate genotype batches for this latent batch
+                # Concatenate chunks along the genotype axis; global (non-dim_map)
+                # sites are identical across chunks so take the first chunk only.
                 this_batch_results = {}
-                for k, v_list in batch_collector.items():
+                for k, chunks in chunk_outputs.items():
                     if k in dim_map:
-                        # Concatenate along the genotype dimension (same as originally traced)
-                        axis = dim_map[k]
-                        this_batch_results[k] = np.concatenate(v_list, axis=axis)
+                        this_batch_results[k] = self._concat_genotype_chunks(
+                            chunks, dim_map[k], total_num_genotypes
+                        )
                     else:
-                        # Global parameter, just take the first (and only) entry
-                        this_batch_results[k] = v_list[0]
-                
+                        this_batch_results[k] = chunks[0]
+
+                # latent_sampler always draws a full sampling_batch_size of
+                # samples (fixed at construction); trim the final batch down
+                # to the number of samples actually still needed when
+                # num_posterior_samples isn't evenly divisible by
+                # sampling_batch_size.
+                this_batch_size = min(sampling_batch_size,
+                                      num_posterior_samples - samples_written)
+                this_batch_results = {
+                    k: v[:this_batch_size] for k, v in this_batch_results.items()
+                }
+
                 # Write to file
                 batch_size_actual = next(iter(this_batch_results.values())).shape[0]
                 for k, v in this_batch_results.items():
@@ -594,7 +684,7 @@ class RunInference:
 
             # Add metadata to HDF5 file
             hf.attrs["num_samples"] = samples_written
-            
+
             # Force flush to disk to avoid read issues on cluster file systems
             hf.flush()
 
@@ -1404,6 +1494,10 @@ class RunInference:
         sampling_batch_size = min(sampling_batch_size, num_posterior_samples)
         num_latent_batches = -(-num_posterior_samples // sampling_batch_size)
 
+        # Build the per-chunk function once; reused across all sampling batches.
+        indices_2d = self._genotype_chunk_indices(total_num_genotypes, forward_batch_size)
+        chunk_fn = self._build_genotype_chunk_scanner(dim_map, sites_to_save)
+
         h5_file = f"{out_prefix}_posterior.h5"
         samples_written = 0
 
@@ -1431,50 +1525,24 @@ class RunInference:
                     for k, v in batch_unconstrained.items()
                 }
 
-                # Forward pass in genotype batches, mirroring get_posteriors
-                batch_collector = {}
-                for start_idx in range(0, total_num_genotypes, forward_batch_size):
+                # Forward pass over genotype chunks; one chunk at a time on GPU.
+                forward_key = self.get_key()
+                chunk_outputs = {}
+                for chunk_indices in indices_2d:
+                    forward_key, chunk_result = chunk_fn(
+                        data_on_gpu, latent_samples, forward_key, chunk_indices
+                    )
+                    for k, v in chunk_result.items():
+                        chunk_outputs.setdefault(k, []).append(np.asarray(v))
 
-                    end_idx = min(start_idx + forward_batch_size, total_num_genotypes)
-                    batch_indices = jnp.arange(start_idx, end_idx)
-
-                    batch_latents = {
-                        k: jnp.take(v, batch_indices, axis=dim_map[k])
-                        if k in dim_map else v
-                        for k, v in latent_samples.items()
-                    }
-
-                    batch_data = self.model.get_batch(data_on_gpu, batch_indices)
-                    forward_sampler = Predictive(self.model.jax_model,
-                                                 posterior_samples=batch_latents)
-                    pred_key = self.get_key()
-                    batch_pred = forward_sampler(pred_key,
-                                                 priors=self.model.priors,
-                                                 data=batch_data)
-
-                    for k, v in batch_pred.items():
-                        if sites_to_save is not None and k not in sites_to_save:
-                            continue
-                        batch_collector.setdefault(k, []).append(jax.device_get(v))
-
-                    for k, v in batch_latents.items():
-                        if k in batch_pred:
-                            continue
-                        if sites_to_save is not None and k not in sites_to_save:
-                            continue
-                        if k not in dim_map:
-                            if start_idx == 0:
-                                batch_collector.setdefault(k, []).append(jax.device_get(v))
-                        else:
-                            batch_collector.setdefault(k, []).append(jax.device_get(v))
-
-                # Concatenate genotype batches
                 this_batch = {}
-                for k, v_list in batch_collector.items():
+                for k, chunks in chunk_outputs.items():
                     if k in dim_map:
-                        this_batch[k] = np.concatenate(v_list, axis=dim_map[k])
+                        this_batch[k] = self._concat_genotype_chunks(
+                            chunks, dim_map[k], total_num_genotypes
+                        )
                     else:
-                        this_batch[k] = v_list[0]
+                        this_batch[k] = chunks[0]
 
                 # Write to HDF5
                 batch_size_actual = next(iter(this_batch.values())).shape[0]
@@ -1529,51 +1597,27 @@ class RunInference:
 
         h5_file = f"{out_prefix}_posterior.h5"
 
-        # Forward pass in genotype batches (all MCMC samples at once)
-        batch_collector = {}
-        for start_idx in tqdm(range(0, total_num_genotypes, forward_batch_size),
-                              desc="computing posteriors"):
+        # Forward pass over genotype chunks using the JIT-compiled per-chunk
+        # function so Predictive is traced only once (not per chunk).
+        indices_2d = self._genotype_chunk_indices(total_num_genotypes, forward_batch_size)
+        chunk_fn = self._build_genotype_chunk_scanner(dim_map, sites_to_save)
+        forward_key = self.get_key()
+        chunk_outputs = {}
+        for chunk_indices in indices_2d:
+            forward_key, chunk_result = chunk_fn(
+                data_on_gpu, mcmc_samples, forward_key, chunk_indices
+            )
+            for k, v in chunk_result.items():
+                chunk_outputs.setdefault(k, []).append(np.asarray(v))
 
-            end_idx = min(start_idx + forward_batch_size, total_num_genotypes)
-            batch_indices = jnp.arange(start_idx, end_idx)
-
-            batch_latents = {
-                k: jnp.take(v, batch_indices, axis=dim_map[k])
-                if k in dim_map else v
-                for k, v in mcmc_samples.items()
-            }
-
-            batch_data = self.model.get_batch(data_on_gpu, batch_indices)
-            forward_sampler = Predictive(self.model.jax_model,
-                                         posterior_samples=batch_latents)
-            pred_key = self.get_key()
-            batch_pred = forward_sampler(pred_key,
-                                         priors=self.model.priors,
-                                         data=batch_data)
-
-            for k, v in batch_pred.items():
-                if sites_to_save is not None and k not in sites_to_save:
-                    continue
-                batch_collector.setdefault(k, []).append(jax.device_get(v))
-
-            for k, v in batch_latents.items():
-                if k in batch_pred:
-                    continue
-                if sites_to_save is not None and k not in sites_to_save:
-                    continue
-                if k not in dim_map:
-                    if start_idx == 0:
-                        batch_collector.setdefault(k, []).append(jax.device_get(v))
-                else:
-                    batch_collector.setdefault(k, []).append(jax.device_get(v))
-
-        # Concatenate genotype batches
         results = {}
-        for k, v_list in batch_collector.items():
+        for k, chunks in chunk_outputs.items():
             if k in dim_map:
-                results[k] = np.concatenate(v_list, axis=dim_map[k])
+                results[k] = self._concat_genotype_chunks(
+                    chunks, dim_map[k], total_num_genotypes
+                )
             else:
-                results[k] = v_list[0]
+                results[k] = chunks[0]
 
         with h5py.File(h5_file, "w") as hf:
             for k, v in results.items():

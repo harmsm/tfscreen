@@ -6,7 +6,13 @@ from numpyro.handlers import trace, seed, substitute
 from collections import namedtuple
 
 # --- Import Module Under Test (MUT) ---
-from tfscreen.tfmodel.generative.observe.growth import observe, guide
+from tfscreen.tfmodel.generative.observe.growth import (
+    observe,
+    guide,
+    get_hyperparameters,
+    get_priors,
+)
+from tfscreen.tfmodel.data_class import GrowthObsPriors
 
 # --- Mock Data Fixture ---
 
@@ -72,7 +78,12 @@ def mock_data():
         good_mask=good_mask
     )
 
-def test_observe_structure_and_distribution(mock_data):
+@pytest.fixture
+def mock_priors():
+    """Gamma(2.0, 0.1) prior on nu, matching the previous hardcoded default."""
+    return GrowthObsPriors(nu_concentration=2.0, nu_rate=0.1)
+
+def test_observe_structure_and_distribution(mock_data, mock_priors):
     """
     Verifies the site names, distribution types, and shapes.
     """
@@ -84,7 +95,8 @@ def test_observe_structure_and_distribution(mock_data):
     model_trace = trace(seed(observe, rng_key)).get_trace(
         name=name,
         data=mock_data,
-        ln_cfu_pred=ln_cfu_pred
+        ln_cfu_pred=ln_cfu_pred,
+        priors=mock_priors
     )
 
     # 1. Check 'nu' parameter
@@ -93,7 +105,7 @@ def test_observe_structure_and_distribution(mock_data):
     assert isinstance(model_trace[nu_name]["fn"], dist.Gamma)
 
     # 2. Check Observation Site
-    obs_name = f"{name}_growth_obs"
+    obs_name = f"{name}_obs"
     assert obs_name in model_trace
     site = model_trace[obs_name]
     
@@ -104,26 +116,27 @@ def test_observe_structure_and_distribution(mock_data):
     # 3. Check shapes match input
     assert site["value"].shape == mock_data.ln_cfu.shape
 
-def test_observe_subsampling_scaling(mock_data):
+def test_observe_subsampling_scaling(mock_data, mock_priors):
     """
     CRITICAL: Verifies that the log_prob is correctly scaled.
     """
     name = "test"
     ln_cfu_pred = jnp.ones_like(mock_data.ln_cfu) * 5.0 # Pred = Obs
-    
+
     # Fix 'nu'
     fixed_nu = 10.0
     conditioned_model = substitute(observe, data={f"{name}_nu": fixed_nu})
     rng_key = jax.random.PRNGKey(1)
-    
+
     # Trace
     model_trace = trace(seed(conditioned_model, rng_key)).get_trace(
         name=name,
         data=mock_data,
-        ln_cfu_pred=ln_cfu_pred
+        ln_cfu_pred=ln_cfu_pred,
+        priors=mock_priors
     )
     
-    site = model_trace[f"{name}_growth_obs"]
+    site = model_trace[f"{name}_obs"]
     
     # 1. Calculate Expected Unscaled Log Prob (manual)
     base_dist = dist.StudentT(df=fixed_nu, loc=ln_cfu_pred, scale=mock_data.ln_cfu_std)
@@ -143,15 +156,15 @@ def test_observe_subsampling_scaling(mock_data):
     trace_log_prob = site["fn"].log_prob(site["value"])
     assert jnp.allclose(jnp.sum(trace_log_prob), sum_log_prob_batch)
 
-def test_observe_masking_logic(mock_data):
+def test_observe_masking_logic(mock_data, mock_priors):
     """
     Verifies that masked data points do not contribute to the likelihood.
     """
     name = "test"
-    
+
     # Create a prediction that is WAY OFF for the masked point.
     ln_cfu_pred = jnp.ones_like(mock_data.ln_cfu) * 5.0
-    
+
     # Masked point is at (0,0,0,0,0,0,0)
     ln_cfu_pred = ln_cfu_pred.at[0,0,0,0,0,0,0].set(1000.0)
 
@@ -159,14 +172,15 @@ def test_observe_masking_logic(mock_data):
     fixed_nu = 30.0
     conditioned_model = substitute(observe, data={f"{name}_nu": fixed_nu})
     rng_key = jax.random.PRNGKey(2)
-    
+
     model_trace = trace(seed(conditioned_model, rng_key)).get_trace(
         name=name,
         data=mock_data,
-        ln_cfu_pred=ln_cfu_pred
+        ln_cfu_pred=ln_cfu_pred,
+        priors=mock_priors
     )
     
-    site = model_trace[f"{name}_growth_obs"]
+    site = model_trace[f"{name}_obs"]
     log_probs = site["fn"].log_prob(site["value"])
     
     # Check the specific index (masked) -> 0.0
@@ -175,21 +189,25 @@ def test_observe_masking_logic(mock_data):
     # Check a valid index -> non-zero
     assert log_probs[0,0,0,0,0,0,1] != 0.0
 
-def test_guide_structure(mock_data):
+def test_guide_structure(mock_data, mock_priors):
     """
     Tests that the guide creates the correct parameter site for 'nu'.
     """
     name = "test_guide"
     ln_cfu_pred = jnp.ones_like(mock_data.ln_cfu) * 5.0
-    
+
     # Trace the guide
     rng_key = jax.random.PRNGKey(3)
     guide_trace = trace(seed(guide, rng_key)).get_trace(
         name=name,
         data=mock_data,
-        ln_cfu_pred=ln_cfu_pred
+        ln_cfu_pred=ln_cfu_pred,
+        priors=mock_priors
     )
-    
+
+    # nu_loc should initialize at log(prior mean) = log(2.0/0.1) = log(20)
+    assert jnp.allclose(guide_trace[f"{name}_nu_loc"]["value"], jnp.log(20.0))
+
     # Check for 'nu' parameter and sample
     assert f"{name}_nu_loc" in guide_trace
     assert f"{name}_nu_scale" in guide_trace
@@ -203,7 +221,7 @@ def test_guide_structure(mock_data):
 # Tests for sigma_k growth-rate noise integration
 # ---------------------------------------------------------------------------
 
-def test_sigma_k_zero_preserves_original_scale(mock_data):
+def test_sigma_k_zero_preserves_original_scale(mock_data, mock_priors):
     """sigma_k=0.0 (default) gives effective_scale == ln_cfu_std."""
     name = "test_sigma_k_zero"
     ln_cfu_pred = jnp.ones_like(mock_data.ln_cfu) * 5.0
@@ -212,9 +230,10 @@ def test_sigma_k_zero_preserves_original_scale(mock_data):
     rng_key = jax.random.PRNGKey(10)
 
     tr_no_noise = trace(seed(conditioned, rng_key)).get_trace(
-        name=name, data=mock_data, ln_cfu_pred=ln_cfu_pred, sigma_k=0.0
+        name=name, data=mock_data, ln_cfu_pred=ln_cfu_pred, sigma_k=0.0,
+        priors=mock_priors
     )
-    site = tr_no_noise[f"{name}_growth_obs"]
+    site = tr_no_noise[f"{name}_obs"]
 
     # Effective scale should equal ln_cfu_std (sqrt(std^2 + 0^2))
     base = site["fn"].base_dist
@@ -222,7 +241,7 @@ def test_sigma_k_zero_preserves_original_scale(mock_data):
     assert jnp.allclose(base.scale, expected_scale)
 
 
-def test_sigma_k_inflates_scale(mock_data):
+def test_sigma_k_inflates_scale(mock_data, mock_priors):
     """sigma_k > 0 inflates effective_scale beyond ln_cfu_std."""
     name = "test_sigma_k_pos"
     ln_cfu_pred = jnp.ones_like(mock_data.ln_cfu) * 5.0
@@ -232,16 +251,17 @@ def test_sigma_k_inflates_scale(mock_data):
     rng_key = jax.random.PRNGKey(11)
 
     tr_with_noise = trace(seed(conditioned, rng_key)).get_trace(
-        name=name, data=mock_data, ln_cfu_pred=ln_cfu_pred, sigma_k=sigma_k
+        name=name, data=mock_data, ln_cfu_pred=ln_cfu_pred, sigma_k=sigma_k,
+        priors=mock_priors
     )
-    site = tr_with_noise[f"{name}_growth_obs"]
+    site = tr_with_noise[f"{name}_obs"]
 
     base = site["fn"].base_dist
     expected_scale = jnp.sqrt(mock_data.ln_cfu_std ** 2 + sigma_k ** 2)
     assert jnp.allclose(base.scale, expected_scale)
 
 
-def test_sigma_k_quadrature_formula(mock_data):
+def test_sigma_k_quadrature_formula(mock_data, mock_priors):
     """effective_scale = sqrt(ln_cfu_std^2 + sigma_k^2) exactly."""
     name = "test_quad"
     ln_cfu_pred = jnp.ones_like(mock_data.ln_cfu) * 5.0
@@ -252,8 +272,26 @@ def test_sigma_k_quadrature_formula(mock_data):
     rng_key = jax.random.PRNGKey(12)
 
     tr = trace(seed(conditioned, rng_key)).get_trace(
-        name=name, data=mock_data, ln_cfu_pred=ln_cfu_pred, sigma_k=sigma_k
+        name=name, data=mock_data, ln_cfu_pred=ln_cfu_pred, sigma_k=sigma_k,
+        priors=mock_priors
     )
-    base = tr[f"{name}_growth_obs"]["fn"].base_dist
+    base = tr[f"{name}_obs"]["fn"].base_dist
     expected = jnp.sqrt(ln_cfu_std ** 2 + sigma_k ** 2)
     assert jnp.allclose(base.scale, expected, rtol=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# Tests for default-hyperparameter ownership (get_hyperparameters/get_priors)
+# ---------------------------------------------------------------------------
+
+def test_get_hyperparameters_default_nu_prior():
+    hypers = get_hyperparameters()
+    assert hypers == {"nu_concentration": 2.0, "nu_rate": 0.1}
+
+
+def test_get_priors_builds_growth_obs_priors_from_defaults():
+    priors = get_priors()
+    assert isinstance(priors, GrowthObsPriors)
+    hypers = get_hyperparameters()
+    assert priors.nu_concentration == pytest.approx(hypers["nu_concentration"])
+    assert priors.nu_rate == pytest.approx(hypers["nu_rate"])

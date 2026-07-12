@@ -201,21 +201,22 @@ activity_mut_scale: 0.0
 # Number of transformants per tile combo.  Keys must match the entries in
 # tile_combos (e.g. 'single-1', 'double-1-2') plus 'spiked'.
 transform_sizes:
-  single-1: 100_000
-  single-2: 100_000
-  double-1-2: 300_000
-  spiked: 1_000
+  single-1: 10_000
+  single-2: 10_000
+  double-1-2: 1_000_000
+  spiked: 1000
 
 # Mixing ratio of tile combos in the pooled library.  Only the ratio matters.
 library_mixture:
   single-1: 100
   single-2: 100
-  double-1-2: 1000
-  spiked: 1
+  double-1-2: 5
+  spiked: 4
 
 # Sigma of the log-normal used to draw initial genotype frequencies.  0 = flat
 # distribution; 1–2 is realistic for a typical transformation.
-lib_assembly_skew_sigma: 1.5
+lib_assembly_skew_sigma: 1.25
+
 
 # Each bacterium receives a number of plasmids drawn from a zero-truncated
 # Poisson with this lambda.  Set to 0 or null for exactly one plasmid per cell.
@@ -285,12 +286,55 @@ seed: null
 # curves.  titrant_name must match e_name in observable_calc_kwargs.
 #
 # binding_data:
-#   genotypes:
-#     - wt
-#     - A47V
 #   titrant_name: iptg
 #   titrant_conc: [0, 0.0001, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1.0]
 #   noise: 0.02
+#   # Clean, monoclonal controls (pool = spiked_seqs).
+#   #   choose_by: <params file> | stratified | random ; num optional (no file)
+#   spiked_binding:
+#     choose_by: stratified
+#     num: 4
+#   # In-library controls from the bulk (congression-affected). Pool = non-spiked.
+#   #   choose_by: stratified | random | <params file> ; num required (no file)
+#   library_binding:
+#     num: 20
+#     choose_by: stratified
+
+# ---------------------------------------------------------------------------
+# Base growth-rate calibration data (optional)
+# ---------------------------------------------------------------------------
+
+# If present, tfs-simulate also writes a base_growth CSV: direct
+# reference-condition growth-rate "measurements" for a subset of genotypes,
+# tied to the per-genotype dk_geno already assigned above and a shared
+# reference rate k_ref. Feeds tfs-configure-model's --base_growth_df, which
+# anchors the hierarchical model's dk_geno/condition_growth identifiability
+# (see CLAUDE.md).
+#
+# k_ref (required): the reference (wt) growth rate, hr^-1.
+# genotypes (optional, default ["wt"]): genotypes to include. Every genotype
+#   listed must already be part of the simulated library (tile_combos);
+#   'wt' is always force-included even if omitted. dk_geno is looked up
+#   from the value already assigned to that genotype -- never redrawn.
+# rates (optional): per-genotype explicit true-rate override, bypassing the
+#   k_ref + dk_geno calculation for that genotype. Every key must also
+#   appear in genotypes.
+# noise (optional, default 0.0): sigma of Gaussian noise added to the true
+#   rate to produce the observed rate; also reported as rate_std. IMPORTANT:
+#   noise must be a strictly positive number if this CSV will be fed to
+#   tfs-configure-model --base_growth_df -- rate_std is used directly as a
+#   Normal likelihood scale, and rate_std == 0.0 (the default) will make
+#   tfs-prefit-calibration / tfs-fit-model crash with an invalid-distribution
+#   error the first time the model is traced.
+#
+# base_growth_data:
+#   k_ref: 0.025
+#   genotypes:
+#     - wt
+#     - A47V
+#   rates:
+#     A47V: 0.018
+#   noise: 0.001
 
 # ---------------------------------------------------------------------------
 # Pre-split data simulation (optional)

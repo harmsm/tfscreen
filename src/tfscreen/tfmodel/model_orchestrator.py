@@ -13,6 +13,7 @@ from tfscreen.tfmodel.data_class import (
     BindingData,
     GrowthData,
     PreSplitData,
+    BaseGrowthData,
     PriorsClass,
     GrowthPriors,
     BindingPriors
@@ -307,17 +308,9 @@ def _read_binding_df(binding_df,
         growth_seen = growth_df[cols].drop_duplicates().set_index(cols)
         extra = binding_seen.index[~binding_seen.index.isin(growth_seen.index)]
         if len(extra) > 0:
-            by_titrant = {}
-            for geno, tname in extra:
-                by_titrant.setdefault(tname, []).append(geno)
-            detail = "\n".join(
-                f"  {tname}: {', '.join(sorted(genos))}"
-                for tname, genos in sorted(by_titrant.items())
-            )
             print(
                 f"Syncing binding_df to growth_df: {len(extra)} "
-                f"genotype/titrant_name pair(s) not in growth_df will be dropped.\n"
-                + detail,
+                f"genotype/titrant_name pair(s) not in growth_df will be dropped.",
                 flush=True,
             )
         # Inherit map_theta_group indices from growth_df so parameter indexing
@@ -421,14 +414,13 @@ def _read_presplit_df(presplit_df, growth_df):
 
     growth_genotypes = set(growth_df["genotype"])
     mask = presplit_df["genotype"].isin(growth_genotypes)
-    dropped_genos = sorted(set(presplit_df.loc[~mask, "genotype"].astype(str)))
     n_dropped = int((~mask).sum())
+    n_dropped_genos = presplit_df.loc[~mask, "genotype"].nunique()
     presplit_df = presplit_df[mask].copy()
     if n_dropped > 0:
         print(
             f"Syncing presplit_df to growth_df: {n_dropped} row(s) for "
-            f"{len(dropped_genos)} genotype(s) not found in growth_df will be dropped.\n"
-            f"  Dropped genotypes: {', '.join(dropped_genos)}",
+            f"{n_dropped_genos} genotype(s) not found in growth_df will be dropped.",
             flush=True,
         )
 
@@ -493,6 +485,142 @@ def _build_presplit_tm(presplit_df, growth_tm):
 
     presplit_tm.create_tensors()
     return presplit_tm
+
+
+def _read_base_growth_df(base_growth_df, growth_df):
+    """
+    Read and validate the optional base (reference-condition) growth-rate
+    DataFrame.
+
+    Rows whose genotype does not appear in growth_df are dropped -- mirrors
+    _read_presplit_df's sync/drop behaviour exactly (checked against
+    growth_df only, not binding_df). Multiple rows for the same genotype
+    are combined via inverse-variance weighting into a single (rate,
+    rate_std) per genotype, so downstream code always sees at most one row
+    per genotype.
+
+    wt must be present after filtering: dk_geno is fixed to 0 for wt by
+    every dk_geno component, which makes wt's own measurement a direct read
+    of the new k_ref parameter (see model.py's base_growth_obs block). Every
+    other genotype is optional -- base_growth_df may cover anywhere from
+    just wt up to the full library.
+
+    Parameters
+    ----------
+    base_growth_df : pd.DataFrame or str
+        DataFrame or path to file with base growth-rate data. Required
+        columns: ``genotype``, ``rate``, ``rate_std``.
+    growth_df : pd.DataFrame
+        The already-processed growth DataFrame (growth_tm.df). Used to
+        determine the valid set of genotypes.
+
+    Returns
+    -------
+    pd.DataFrame
+        One row per genotype, columns ``genotype``, ``rate``, ``rate_std``.
+
+    Raises
+    ------
+    ValueError
+        If required columns are missing, or if wt is not present after
+        filtering against growth_df.
+    """
+    base_growth_df = tfscreen.util.io.read_dataframe(base_growth_df)
+    base_growth_df = tfscreen.genetics.set_categorical_genotype(base_growth_df,
+                                                                 standardize=True)
+    tfscreen.util.dataframe.check_columns(
+        base_growth_df,
+        required_columns=["genotype", "rate", "rate_std"],
+    )
+
+    non_positive = base_growth_df["rate_std"].to_numpy(dtype=float) <= 0
+    if non_positive.any():
+        bad_genotypes = sorted(
+            base_growth_df.loc[non_positive, "genotype"].astype(str).unique()
+        )
+        raise ValueError(
+            f"base_growth_df has non-positive rate_std for genotype(s) "
+            f"{bad_genotypes}. rate_std is used as a Normal likelihood's "
+            f"scale (both for combining multiple rows per genotype via "
+            f"inverse-variance weighting, and for the base_growth_obs "
+            f"likelihood itself) and must be strictly positive. If this "
+            f"file came from tfs-simulate's base_growth_data block, set "
+            f"'noise' to a positive value there."
+        )
+
+    growth_genotypes = set(growth_df["genotype"])
+    mask = base_growth_df["genotype"].isin(growth_genotypes)
+    n_dropped = int((~mask).sum())
+    n_dropped_genos = base_growth_df.loc[~mask, "genotype"].nunique()
+    base_growth_df = base_growth_df[mask].copy()
+    if n_dropped > 0:
+        print(
+            f"Syncing base_growth_df to growth_df: {n_dropped} row(s) for "
+            f"{n_dropped_genos} genotype(s) not found in growth_df will be dropped.",
+            flush=True,
+        )
+
+    if "wt" not in set(base_growth_df["genotype"].astype(str)):
+        raise ValueError(
+            "base_growth_df must include a measurement for 'wt' (after "
+            "filtering against growth_df). wt anchors the new k_ref "
+            "parameter, since dk_geno is fixed to 0 for wt by every "
+            "dk_geno component."
+        )
+
+    rows = []
+    for genotype, group in base_growth_df.groupby("genotype", observed=True):
+        precision = 1.0 / (group["rate_std"].to_numpy(dtype=float) ** 2)
+        combined_precision = precision.sum()
+        combined_rate = float(
+            (group["rate"].to_numpy(dtype=float) * precision).sum() / combined_precision
+        )
+        combined_std = float(np.sqrt(1.0 / combined_precision))
+        rows.append({"genotype": str(genotype), "rate": combined_rate,
+                    "rate_std": combined_std})
+
+    return pd.DataFrame(rows)
+
+
+def _build_base_growth_arrays(base_growth_df, genotype_labels):
+    """
+    Build dense (num_genotype,) rate_obs/rate_std/good_mask arrays from the
+    processed base_growth_df, ordered to match genotype_labels (the growth
+    TensorManager's genotype axis) -- the same pattern
+    dk_geno.pinned.build_dk_geno_values uses.
+
+    Genotypes in genotype_labels with no base_growth_df entry get
+    good_mask=False and dummy (0.0, 1.0) rate/std values, which the
+    likelihood mask in model.py excludes.
+
+    Parameters
+    ----------
+    base_growth_df : pd.DataFrame
+        Output of _read_base_growth_df; at most one row per genotype.
+    genotype_labels : Sequence[str]
+        Genotype order used by the model's genotype axis (e.g.
+        growth_tm.tensor_dim_labels[-1]).
+
+    Returns
+    -------
+    dict
+        ``{"rate_obs": np.ndarray, "rate_std": np.ndarray, "good_mask": np.ndarray}``,
+        each shape ``(len(genotype_labels),)``.
+    """
+    label_to_idx = {str(g): i for i, g in enumerate(genotype_labels)}
+    num_genotype = len(genotype_labels)
+
+    rate_obs = np.zeros(num_genotype, dtype=float)
+    rate_std = np.ones(num_genotype, dtype=float)
+    good_mask = np.zeros(num_genotype, dtype=bool)
+
+    for _, row in base_growth_df.iterrows():
+        idx = label_to_idx[str(row["genotype"])]
+        rate_obs[idx] = row["rate"]
+        rate_std[idx] = row["rate_std"]
+        good_mask[idx] = True
+
+    return {"rate_obs": rate_obs, "rate_std": rate_std, "good_mask": good_mask}
 
 
 def _setup_batching(growth_genotypes,
@@ -562,7 +690,66 @@ def _setup_batching(growth_genotypes,
     return out
 
 
-    
+# Theta components that cannot yet supply a full-population theta reference
+# for the "empirical" transformation's congression correction.  Unlike
+# hill_mut/hill_geno/thermo.*, which already assemble per-genotype parameters
+# for the full library on every forward pass (batching only gathers a subset
+# of an already-full-size ThetaParam), categorical_geno only ever samples
+# batch_size-worth of per-genotype offsets per call.  Wiring it up to
+# "empirical" would silently reproduce the population-CDF bug the
+# NEEDS_FULL_POPULATION_THETA mechanism exists to fix (see
+# transformation/_congression.py and generative/model.py), rather than
+# raising — so it's blocked explicitly here until categorical_geno gets its
+# own full-population code path.
+_THETA_MODELS_INCOMPATIBLE_WITH_EMPIRICAL = frozenset({"categorical_geno"})
+
+
+def _check_theta_transformation_compatibility(theta, transformation, binding_only=False):
+    """
+    Raise a clear error for known theta/transformation combinations that
+    would silently produce incorrect results rather than failing loudly.
+
+    Parameters
+    ----------
+    theta : str
+        Name of the requested theta component (model_registry["theta"] key).
+    transformation : str
+        Name of the requested transformation component
+        (model_registry["transformation"] key).
+    binding_only : bool, optional
+        Whether the model is being built in binding-only mode. In that mode
+        jax_model returns before ever touching the transformation/congression
+        code path (see generative/model.py's early `if binding_only: ...
+        return`), so the transformation setting is inert and this check does
+        not apply. Default False.
+
+    Raises
+    ------
+    ValueError
+        If `transformation == "empirical"` and `theta` is a component that
+        cannot supply a full-population theta reference for the congression
+        correction, and the model is not binding-only.
+    """
+    if binding_only:
+        return
+
+    if (transformation == "empirical"
+            and theta in _THETA_MODELS_INCOMPATIBLE_WITH_EMPIRICAL):
+        raise ValueError(
+            f"theta='{theta}' is not compatible with transformation='empirical'. "
+            "The empirical congression correction requires a theta reference "
+            f"covering the full genotype population, but '{theta}' only ever "
+            "assembles theta for the genotypes in the current batch/request "
+            "(see categorical_geno.define_model's batch_size-scoped "
+            "logit_theta_offset plate). Using it with transformation='empirical' "
+            "would silently reproduce the population-CDF bug this check exists "
+            "to prevent, rather than raise. Use transformation='single' or "
+            "'logit_norm' with this theta model, or choose a theta component "
+            "that already assembles full-population parameters (hill_geno, "
+            "hill_mut, or a thermo.* component)."
+        )
+
+
 class ModelOrchestrator:
     """
     Manages the data wrangling and configuration for the JAX growth model.
@@ -596,8 +783,19 @@ class ModelOrchestrator:
     theta : str, optional
         Model name for theta calculation (e.g., "hill").
     transformation : str, optional
-        Model name for transformation correction. Allowed values are 'single', 
-        'empirical', or 'logit_norm'. Default 'empirical'
+        Model name for transformation correction. Allowed values are 'single'
+        (default), 'empirical', or 'logit_norm'.
+    transformation_lambda : tuple, optional
+        ``(mean, std)`` -- the experimentally measured congression lambda,
+        in linear space -- used to anchor the ``transformation`` prior when
+        it is 'empirical' or 'logit_norm'. Forbidden when
+        ``transformation == 'single'`` (which has no lambda parameter). If
+        omitted for 'empirical'/'logit_norm', a weakly-informative
+        placeholder prior is used (see
+        ``generative/components/transformation/_congression.get_hyperparameters``);
+        ``configure_model`` (the ``tfs-configure-model`` entry point)
+        requires it explicitly rather than silently falling back to the
+        placeholder.
     theta_growth_noise : str, optional
         Model name for noise on theta in the growth model ('zero', 'beta',
         or 'logit_normal'). Default 'logit_normal'.
@@ -634,9 +832,11 @@ class ModelOrchestrator:
                  growth_transition="instant",
                  ln_cfu0="hierarchical",
                  dk_geno="hierarchical_geno",
+                 dk_geno_pins_file=None,
                  activity="horseshoe_geno",
                  theta="hill_geno",
-                 transformation="empirical",
+                 transformation="single",
+                 transformation_lambda=None,
                  theta_rescale="passthrough",
                  theta_growth_noise="logit_normal",
                  theta_binding_noise="zero",
@@ -647,11 +847,13 @@ class ModelOrchestrator:
                  epistasis=False,
                  thermo_data=None,
                  binding_weight=None,
-                 presplit_df=None):
+                 presplit_df=None,
+                 base_growth_df=None):
 
         self._ln_cfu_df = growth_df
         self._binding_df = binding_df
         self._presplit_df = presplit_df
+        self._base_growth_df = base_growth_df
 
         self._batch_size = batch_size
         self._binding_only = binding_only
@@ -660,9 +862,12 @@ class ModelOrchestrator:
         self._growth_transition = growth_transition
         self._ln_cfu0 = ln_cfu0
         self._dk_geno = dk_geno
+        self._dk_geno_pins_file = dk_geno_pins_file
+        self._dk_geno_values = None
         self._activity = activity
         self._theta = theta
         self._transformation = transformation
+        self._transformation_lambda = transformation_lambda
         self._theta_rescale = theta_rescale
         self._theta_growth_noise = theta_growth_noise
         self._theta_binding_noise = theta_binding_noise
@@ -673,6 +878,33 @@ class ModelOrchestrator:
         self._epistasis = epistasis
         self._thermo_data = thermo_data
         self._binding_weight = binding_weight
+
+        _check_theta_transformation_compatibility(
+            self._theta, self._transformation, binding_only=self._binding_only
+        )
+
+        if self._dk_geno == "pinned" and self._dk_geno_pins_file is None:
+            raise ValueError(
+                "dk_geno='pinned' requires dk_geno_pins_file (path to a "
+                "CSV with columns 'genotype' and 'dk_geno')."
+            )
+        if self._dk_geno != "pinned" and self._dk_geno_pins_file is not None:
+            raise ValueError(
+                f"dk_geno_pins_file was provided but dk_geno != 'pinned' "
+                f"(got dk_geno={self._dk_geno!r}). Set dk_geno='pinned' to "
+                f"use it."
+            )
+
+        if self._transformation == "single" and self._transformation_lambda is not None:
+            raise ValueError(
+                "transformation_lambda was provided but transformation == 'single', "
+                "which has no lambda parameter to anchor it to."
+            )
+        if self._transformation_lambda is not None and len(self._transformation_lambda) != 2:
+            raise ValueError(
+                f"transformation_lambda must be a (mean, std) pair; got "
+                f"{self._transformation_lambda!r}."
+            )
 
         self._initialize_data()
         self._initialize_classes()
@@ -796,6 +1028,21 @@ class ModelOrchestrator:
         other_data["titrant_conc"] = titrant_conc
         other_data["log_titrant_conc"] = log_titrant_conc
         other_data["growth_shares_replicates"] = bool(self._growth_shares_replicates)
+
+        # Resolve pinned dk_geno values (dk_geno == "pinned") from an
+        # optional per-genotype CSV. Building/validating the array here
+        # (rather than inside the component) lets construction fail fast
+        # with a clear error if the CSV references an unknown genotype or
+        # pins a nonzero value onto wildtype.
+        if self._dk_geno == "pinned":
+            from tfscreen.tfmodel.generative.components.dk_geno.pinned import (
+                read_dk_geno_pins,
+                build_dk_geno_values,
+            )
+            pins = read_dk_geno_pins(self._dk_geno_pins_file)
+            self._dk_geno_values = jnp.asarray(
+                build_dk_geno_values(pins, _genotype_names), dtype=FLOAT_DTYPE
+            )
 
         growth_data_sources = [tensors,sizes,wt_info,other_data]
 
@@ -1016,11 +1263,38 @@ class ModelOrchestrator:
             presplit_dataclass = None
 
         # ---------------------------------------------------------------------
+        # base_growth dataclass (optional) -- direct growth-rate measurements
+        # used to constrain dk_geno via a new k_ref scalar (see model.py's
+        # base_growth_obs block).
+
+        self._k_ref_guess = None
+        if self._base_growth_df is not None:
+            self.base_growth_df = _read_base_growth_df(self._base_growth_df,
+                                                        self.growth_tm.df)
+            genotype_labels = self.growth_tm.tensor_dim_labels[
+                self.growth_tm.tensor_dim_names.index("genotype")
+            ]
+            bg_arrays = _build_base_growth_arrays(self.base_growth_df,
+                                                  genotype_labels)
+            base_growth_dataclass = populate_dataclass(
+                BaseGrowthData,
+                sources=[bg_arrays,
+                        {"num_genotype": self.growth_tm.tensor_shape[-1]}],
+            )
+            self._k_ref_guess = model_registry["observe_base_growth"].derive_k_ref_guess(
+                self.base_growth_df
+            )
+        else:
+            self.base_growth_df = None
+            base_growth_dataclass = None
+
+        # ---------------------------------------------------------------------
         # Populate DataClass
 
         source_data = [{"growth":growth_dataclass,
                         "binding":binding_dataclass,
                         "presplit":presplit_dataclass,
+                        "base_growth":base_growth_dataclass,
                         "num_genotype":self.growth_tm.tensor_shape[-1]}]
         source_data.append(full_batch_data)
 
@@ -1266,6 +1540,9 @@ class ModelOrchestrator:
             #   condition_labels — legacy: ordered condition names whose
             #       '+'/'-' character encodes selection status.
             #   data — component data pytree for empirical prior values.
+            #   presplit — optional direct t=-t_pre measurement of ln_cfu0
+            #       (PreSplitData), forwarded alongside `data` only when the
+            #       component declares it (currently just ln_cfu0).
             priors_sig = inspect.signature(component_module.get_priors)
             if "is_selection" in priors_sig.parameters:
                 cond_rep_df = self.growth_tm.map_groups["condition_rep"]
@@ -1285,15 +1562,32 @@ class ModelOrchestrator:
                 priors_class_kwargs[prior_group][key] = \
                     component_module.get_priors(condition_labels=condition_labels)
             elif "data" in priors_sig.parameters:
+                prior_kwargs = {"data": component_data}
+                if "presplit" in priors_sig.parameters:
+                    prior_kwargs["presplit"] = self._data.presplit
                 priors_class_kwargs[prior_group][key] = \
-                    component_module.get_priors(data=component_data)
+                    component_module.get_priors(**prior_kwargs)
+            elif "dk_geno_values" in priors_sig.parameters:
+                priors_class_kwargs[prior_group][key] = \
+                    component_module.get_priors(dk_geno_values=self._dk_geno_values)
+            elif "lam_mean" in priors_sig.parameters:
+                lam_mean, lam_std = (
+                    (None, None) if self._transformation_lambda is None else self._transformation_lambda
+                )
+                priors_class_kwargs[prior_group][key] = \
+                    component_module.get_priors(lam_mean=lam_mean, lam_std=lam_std)
             else:
                 priors_class_kwargs[prior_group][key] = \
                     component_module.get_priors()
 
             # Record guesses
-            guesses = component_module.get_guesses(name=key,
-                                                   data=component_data)
+            guesses_sig = inspect.signature(component_module.get_guesses)
+            guesses_kwargs = {"name": key, "data": component_data}
+            if "presplit" in guesses_sig.parameters:
+                guesses_kwargs["presplit"] = self._data.presplit
+            if "lam_mean" in guesses_sig.parameters and self._transformation_lambda is not None:
+                guesses_kwargs["lam_mean"] = self._transformation_lambda[0]
+            guesses = component_module.get_guesses(**guesses_kwargs)
             init_params.update(guesses)
 
             # Record control parameters for the main and guide functions
@@ -1305,10 +1599,15 @@ class ModelOrchestrator:
                                              component_module.run_model,
                                              component_module.get_population_moments)
             elif key == "transformation":
-                main_control_kwargs[key] = (component_module.define_model, 
-                                            component_module.update_thetas)
-                guide_control_kwargs[key] = (component_module.guide, 
-                                             component_module.update_thetas)
+                needs_full_population = getattr(
+                    component_module, "NEEDS_FULL_POPULATION_THETA", False
+                )
+                main_control_kwargs[key] = (component_module.define_model,
+                                            component_module.update_thetas,
+                                            needs_full_population)
+                guide_control_kwargs[key] = (component_module.guide,
+                                             component_module.update_thetas,
+                                             needs_full_population)
             elif key == "condition_growth":
                 main_control_kwargs[key] = component_module.define_model
                 guide_control_kwargs[key] = component_module.guide
@@ -1339,6 +1638,24 @@ class ModelOrchestrator:
             main_control_kwargs["observe_growth"] = model_registry["observe_growth"].observe
             guide_control_kwargs["observe_growth"] = model_registry["observe_growth"].guide
 
+            # Optional side-channel observers -- wired only when their data was
+            # supplied. Both borrow growth's genotype batch state and a latent
+            # from the growth model (ln_cfu0 for presplit, dk_geno for
+            # base_growth); base_growth additionally owns the k_ref latent.
+            # Gate on the raw source flags (mirroring the base_growth priors
+            # block below), not on self._data, which the corresponding
+            # DataClass fields also reflect.
+            if self._presplit_df is not None:
+                main_control_kwargs["observe_presplit"] = \
+                    model_registry["observe_presplit"].observe
+                guide_control_kwargs["observe_presplit"] = \
+                    model_registry["observe_presplit"].guide
+            if self._base_growth_df is not None:
+                main_control_kwargs["observe_base_growth"] = \
+                    model_registry["observe_base_growth"].observe
+                guide_control_kwargs["observe_base_growth"] = \
+                    model_registry["observe_base_growth"].guide
+
         if self._binding_only:
             main_control_kwargs["binding_only"] = True
             guide_control_kwargs["binding_only"] = True
@@ -1362,8 +1679,21 @@ class ModelOrchestrator:
                 theta_growth_noise=None,
                 growth_noise=None,
                 sample_offset=None,
+                growth_obs=None,
             )
         else:
+            priors_class_kwargs["growth"]["growth_obs"] = \
+                model_registry["observe_growth"].get_priors()
+            if self._base_growth_df is not None:
+                priors_class_kwargs["growth"]["base_growth"] = \
+                    model_registry["observe_base_growth"].get_priors(
+                        k_ref_loc=self._k_ref_guess
+                    )
+                init_params.update(
+                    model_registry["observe_base_growth"].get_guesses(
+                        "base_growth", self._k_ref_guess
+                    )
+                )
             growth_priors = populate_dataclass(GrowthPriors,
                                                sources=priors_class_kwargs["growth"])
         binding_priors = populate_dataclass(BindingPriors,
@@ -1493,9 +1823,11 @@ class ModelOrchestrator:
             "growth_transition":self._growth_transition,
             "ln_cfu0":self._ln_cfu0,
             "dk_geno":self._dk_geno,
+            "dk_geno_pins_file":self._dk_geno_pins_file,
             "activity":self._activity,
             "theta":self._theta,
             "transformation":self._transformation,
+            "transformation_lambda":self._transformation_lambda,
             "theta_rescale":self._theta_rescale,
             "theta_growth_noise":self._theta_growth_noise,
             "theta_binding_noise":self._theta_binding_noise,
@@ -1507,4 +1839,5 @@ class ModelOrchestrator:
             "thermo_data": self._thermo_data,
             "binding_weight": self._binding_weight,
             "presplit_df": getattr(self, "_presplit_df", None),
+            "base_growth_df": getattr(self, "_base_growth_df", None),
         }

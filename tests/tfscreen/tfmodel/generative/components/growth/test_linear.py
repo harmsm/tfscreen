@@ -11,9 +11,23 @@ from tfscreen.tfmodel.generative.components.growth.linear import (
     get_hyperparameters,
     get_guesses,
     get_priors,
+    get_scale_bounds,
     _parse_condition_label,
     LinearParams,
 )
+
+
+def _site_loc(site):
+    """Drill to the innermost Normal .loc, unwrapping plate/expand wrappers."""
+    fn = site["fn"]
+    for _ in range(5):
+        if hasattr(fn, "loc"):
+            return np.asarray(fn.loc)
+        if hasattr(fn, "base_dist"):
+            fn = fn.base_dist
+        else:
+            break
+    raise AssertionError("could not find .loc on site distribution")
 
 # --- Mock Data Fixtures ---
 
@@ -308,6 +322,74 @@ def test_model_and_guide_have_compatible_sample_sites(mock_data):
     )
 
 
+# --- m_pinned (hard clamp) tests ---
+
+def test_define_model_m_pinned_clamps_to_m_loc(mock_data):
+    """With m_pinned, m is a deterministic site equal to m_loc; k still sampled."""
+    name = "pin"
+    m_loc = jnp.array([0.1, 0.2, 0.3])
+    priors = get_priors().replace(m_loc=m_loc, m_pinned=True)
+
+    with seed(rng_seed=0):
+        model_trace = trace(define_model).get_trace(
+            name=name, data=mock_data, priors=priors
+        )
+
+    assert model_trace[f"{name}_m"]["type"] == "deterministic"
+    assert model_trace[f"{name}_k"]["type"] == "sample"
+    np.testing.assert_allclose(
+        np.asarray(model_trace[f"{name}_m"]["value"]), np.asarray(m_loc)
+    )
+
+    # The clamped value propagates through the condition mapping.
+    with seed(rng_seed=0):
+        params = define_model(name=name, data=mock_data, priors=priors)
+    np.testing.assert_allclose(
+        np.asarray(params.m_sel), np.asarray(m_loc[mock_data.map_condition_sel])
+    )
+
+
+def test_guide_m_pinned_registers_no_m_params(mock_data):
+    """With m_pinned, the guide drops m's variational params and sample site."""
+    name = "pin"
+    priors = get_priors().replace(m_loc=jnp.array([0.1, 0.2, 0.3]), m_pinned=True)
+
+    with seed(rng_seed=0):
+        guide_trace = trace(guide).get_trace(
+            name=name, data=mock_data, priors=priors
+        )
+
+    assert f"{name}_k_locs" in guide_trace       # k still variational
+    assert f"{name}_m_locs" not in guide_trace
+    assert f"{name}_m_scales" not in guide_trace
+    assert f"{name}_m" not in guide_trace
+
+
+def test_model_guide_compatible_when_m_pinned(mock_data):
+    """Model and guide must still agree on sample sites when m is clamped."""
+    name = "pin"
+    priors = get_priors().replace(m_loc=jnp.array([0.1, 0.2, 0.3]), m_pinned=True)
+
+    with seed(rng_seed=0):
+        model_trace = trace(define_model).get_trace(
+            name=name, data=mock_data, priors=priors
+        )
+    with seed(rng_seed=0):
+        guide_trace = trace(guide).get_trace(
+            name=name, data=mock_data, priors=priors
+        )
+
+    model_samples = {
+        n for n, s in model_trace.items()
+        if s["type"] == "sample" and not s.get("is_observed", False)
+    }
+    guide_samples = {n for n, s in guide_trace.items() if s["type"] == "sample"}
+
+    assert model_samples == guide_samples
+    assert f"{name}_m" not in model_samples  # m is no longer sampled
+    assert f"{name}_k" in model_samples      # k still is
+
+
 # ---------------------------------------------------------------------------
 # _parse_condition_label
 # ---------------------------------------------------------------------------
@@ -550,3 +632,72 @@ class TestDefineModelSelectionAware:
         }
         guide_samples = {n for n, s in guide_trace.items() if s["type"] == "sample"}
         assert model_samples == guide_samples
+
+
+# ---------------------------------------------------------------------------
+# Phase 1: per-condition (array) priors on k / m
+# ---------------------------------------------------------------------------
+
+class TestPerConditionPriors:
+
+    def test_scalar_prior_broadcasts(self, mock_data):
+        """A scalar k_loc broadcasts to every condition (legacy behaviour)."""
+        name = "sc"
+        priors = get_priors()  # scalar k_loc = 0.020
+        with seed(rng_seed=0):
+            tr = trace(define_model).get_trace(name=name, data=mock_data, priors=priors)
+        loc = _site_loc(tr[f"{name}_k"])
+        assert loc.shape == (mock_data.num_condition_rep,)
+        assert np.allclose(loc, 0.020)
+
+    def test_array_k_loc_is_per_condition(self, mock_data):
+        """A per-condition k_loc array flows through to the k sample site."""
+        name = "arr"
+        per_cond = jnp.array([0.011, 0.021, 0.029])
+        priors = get_priors().replace(k_loc=per_cond, k_scale=jnp.full(3, 0.002))
+        with seed(rng_seed=0):
+            tr = trace(define_model).get_trace(name=name, data=mock_data, priors=priors)
+        loc = _site_loc(tr[f"{name}_k"])
+        assert np.allclose(loc, np.array([0.011, 0.021, 0.029]))
+
+    def test_array_prior_initializes_guide_params(self, mock_data):
+        """The guide's k_locs param initialises from a per-condition array prior."""
+        name = "gp"
+        per_cond = jnp.array([0.011, 0.021, 0.029])
+        priors = get_priors().replace(k_loc=per_cond)
+        with seed(rng_seed=0):
+            gtr = trace(guide).get_trace(name=name, data=mock_data, priors=priors)
+        k_locs = np.asarray(gtr[f"{name}_k_locs"]["value"])
+        assert np.allclose(k_locs, np.array([0.011, 0.021, 0.029]))
+
+    def test_array_and_scalar_give_same_sites(self, mock_data):
+        """Model/guide site sets are identical whether priors are scalar or array."""
+        name = "ss"
+        priors = get_priors().replace(k_loc=jnp.array([0.011, 0.021, 0.029]))
+        with seed(rng_seed=0):
+            mtr = trace(define_model).get_trace(name=name, data=mock_data, priors=priors)
+        with seed(rng_seed=0):
+            gtr = trace(guide).get_trace(name=name, data=mock_data, priors=priors)
+        model_samples = {
+            n for n, s in mtr.items()
+            if s["type"] == "sample" and not s.get("is_observed", False)
+        }
+        guide_samples = {n for n, s in gtr.items() if s["type"] == "sample"}
+        assert model_samples == guide_samples
+
+
+class TestGetScaleBounds:
+
+    def test_structure(self):
+        bounds = get_scale_bounds()
+        assert set(bounds) == {"k", "m"}
+        for suffix, spec in bounds.items():
+            assert set(spec) == {"floor", "ceiling", "scale_field"}
+            assert spec["floor"] < spec["ceiling"]
+
+    def test_baseline_floor_tight(self):
+        """The baseline term k must get a tight floor to be pinnable."""
+        bounds = get_scale_bounds()
+        assert bounds["k"]["floor"] <= 0.002
+        assert bounds["k"]["scale_field"] == "k_scale"
+        assert bounds["m"]["scale_field"] == "m_scale_plus"

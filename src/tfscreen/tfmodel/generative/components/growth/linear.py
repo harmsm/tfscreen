@@ -32,12 +32,17 @@ class ModelPriors:
 
     Attributes
     ----------
-    k_loc : float
+    k_loc : float or array
         Mean of the Normal prior on the per-condition baseline growth rate k.
-    k_scale : float
-        Standard deviation of the Normal prior on k.
-    m_loc : float
+        May be a scalar (broadcast to every condition) or a length-
+        ``num_condition_rep`` array of per-condition locs (written by the
+        pre-fit calibration; see prefit_calibration_cli).
+    k_scale : float or array
+        Standard deviation of the Normal prior on k.  Scalar or per-condition
+        array, mirroring ``k_loc``.
+    m_loc : float or array
         Mean of the Normal prior on the per-condition occupancy slope m.
+        Scalar or per-condition array.
     m_scale : float
         Standard deviation of the Normal prior on m (used for all conditions
         when ``m_is_selection`` is ``None``).
@@ -54,6 +59,15 @@ class ModelPriors:
         conditions, ``False`` for control ('-') conditions.  ``None``
         disables the per-condition logic and uses ``m_scale`` for all
         conditions (backward-compatible default).
+    m_pinned : bool
+        When ``True``, the per-condition slope m is *clamped* to ``m_loc``
+        (a ``deterministic`` site) instead of sampled, so the growth
+        likelihood cannot inflate it away from the calibration-pinned value.
+        A soft Normal prior — however tight — is only a KL penalty in SVI and
+        the likelihood over many observations can override it; this is a hard
+        clamp.  ``k`` is intentionally never clamped this way: it carries real
+        per-experiment (tube-noise) variance and sits in the additive
+        k/dk_geno slide, so it keeps a floored soft prior.  Default ``False``.
     """
     k_loc: float
     k_scale: float
@@ -62,6 +76,7 @@ class ModelPriors:
     m_scale_minus: float
     m_scale_plus: float
     m_is_selection: tuple = field(pytree_node=False, default=None)
+    m_pinned: bool = field(pytree_node=False, default=False)
 
 
 # ---------------------------------------------------------------------------
@@ -141,17 +156,37 @@ def define_model(name: str,
     params : LinearParams
         A dataclass containing k_pre, m_pre, k_sel, and m_sel.
     """
+    num_cr = data.num_condition_rep
+
     if priors.m_is_selection is None:
-        m_scale_arr = jnp.full(data.num_condition_rep, priors.m_scale)
+        m_scale_arr = jnp.full(num_cr, priors.m_scale)
     else:
         m_scale_arr = jnp.array([
             priors.m_scale_plus if sel else priors.m_scale_minus
             for sel in priors.m_is_selection
         ])
 
-    with pyro.plate(f"{name}_condition_parameters", data.num_condition_rep) as idx:
-        growth_k = pyro.sample(f"{name}_k", dist.Normal(priors.k_loc, priors.k_scale))
-        growth_m = pyro.sample(f"{name}_m", dist.Normal(priors.m_loc, m_scale_arr[idx]))
+    # Broadcast scalar-or-array priors to a per-condition array so k, m can be
+    # pinned condition-by-condition (see prefit calibration).  A scalar prior
+    # broadcasts to every condition, preserving the previous behaviour.
+    k_loc_arr = jnp.broadcast_to(jnp.asarray(priors.k_loc, dtype=float), (num_cr,))
+    k_scale_arr = jnp.broadcast_to(jnp.asarray(priors.k_scale, dtype=float), (num_cr,))
+    m_loc_arr = jnp.broadcast_to(jnp.asarray(priors.m_loc, dtype=float), (num_cr,))
+
+    m_pinned = bool(priors.m_pinned)
+
+    with pyro.plate(f"{name}_condition_parameters", num_cr) as idx:
+        growth_k = pyro.sample(f"{name}_k",
+                               dist.Normal(k_loc_arr[idx], k_scale_arr[idx]))
+        if not m_pinned:
+            growth_m = pyro.sample(f"{name}_m",
+                                   dist.Normal(m_loc_arr[idx], m_scale_arr[idx]))
+
+    if m_pinned:
+        # Hard clamp: hold m at its per-condition loc (deterministic) rather
+        # than sampling it.  Registered as a site so extraction / posterior
+        # sampling still find "{name}_m".
+        growth_m = pyro.deterministic(f"{name}_m", m_loc_arr)
 
     k_pre = growth_k[data.map_condition_pre]
     m_pre = growth_m[data.map_condition_pre]
@@ -169,22 +204,30 @@ def guide(name: str,
 
     Maintains per-condition variational parameters for k and m.
     """
+    num_cr = data.num_condition_rep
+    m_pinned = bool(priors.m_pinned)
     k_locs = pyro.param(f"{name}_k_locs",
-                        jnp.full(data.num_condition_rep, priors.k_loc, dtype=float))
+                        jnp.broadcast_to(jnp.asarray(priors.k_loc, dtype=float), (num_cr,)))
     k_scales = pyro.param(f"{name}_k_scales",
-                          jnp.full(data.num_condition_rep, priors.k_scale, dtype=float),
+                          jnp.broadcast_to(jnp.asarray(priors.k_scale, dtype=float), (num_cr,)),
                           constraint=dist.constraints.positive)
-    m_locs = pyro.param(f"{name}_m_locs",
-                        jnp.full(data.num_condition_rep, priors.m_loc, dtype=float))
-    m_scales = pyro.param(f"{name}_m_scales",
-                          jnp.full(data.num_condition_rep, priors.m_scale, dtype=float),
-                          constraint=dist.constraints.positive)
+    if not m_pinned:
+        m_locs = pyro.param(f"{name}_m_locs",
+                            jnp.broadcast_to(jnp.asarray(priors.m_loc, dtype=float), (num_cr,)))
+        m_scales = pyro.param(f"{name}_m_scales",
+                              jnp.broadcast_to(jnp.asarray(priors.m_scale, dtype=float), (num_cr,)),
+                              constraint=dist.constraints.positive)
 
     with pyro.plate(f"{name}_condition_parameters", data.num_condition_rep) as idx:
         growth_k = pyro.sample(f"{name}_k",
                                dist.Normal(k_locs[..., idx], k_scales[..., idx]))
-        growth_m = pyro.sample(f"{name}_m",
-                               dist.Normal(m_locs[..., idx], m_scales[..., idx]))
+        if not m_pinned:
+            growth_m = pyro.sample(f"{name}_m",
+                                   dist.Normal(m_locs[..., idx], m_scales[..., idx]))
+
+    if m_pinned:
+        # Clamped in the model (deterministic); no variational site here.
+        growth_m = jnp.broadcast_to(jnp.asarray(priors.m_loc, dtype=float), (num_cr,))
 
     k_pre = growth_k[data.map_condition_pre]
     m_pre = growth_m[data.map_condition_pre]
@@ -236,6 +279,7 @@ def get_hyperparameters():
     parameters["m_scale"] = 0.01        # used when m_is_selection is None
     parameters["m_scale_minus"] = 0.001 # tight prior for '-' control conditions
     parameters["m_scale_plus"] = 0.01   # normal prior for '+' selection conditions
+    parameters["m_pinned"] = False      # hard-clamp m to m_loc when True
 
     return parameters
 
@@ -368,6 +412,28 @@ def get_priors(condition_labels: Optional[List[str]] = None,
             _parse_condition_label(label) for label in condition_labels
         )
     return ModelPriors(**hypers)
+
+
+def get_scale_bounds():
+    """
+    Per-condition prior-scale bounds for the pre-fit calibration.
+
+    Maps each per-condition sample-site suffix (the ``{param}`` in the
+    ``{name}_{param}`` site name) to the floor/ceiling applied to its
+    Hessian-derived prior scale, and the ``ModelPriors`` field the scalar
+    fallback is written to.  ``k`` (the theta-independent baseline that trades
+    off against ``dk_geno``) gets a tight floor so calibration can pin it hard;
+    ``m`` inherits the selection-condition scale field.
+
+    Returns
+    -------
+    dict
+        ``{suffix: {"floor": float, "ceiling": float, "scale_field": str}}``.
+    """
+    return {
+        "k": {"floor": 0.002, "ceiling": 0.1,  "scale_field": "k_scale"},
+        "m": {"floor": 0.001, "ceiling": 0.01, "scale_field": "m_scale_plus"},
+    }
 
 
 def get_extract_specs(ctx):

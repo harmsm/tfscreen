@@ -7,7 +7,6 @@ from tfscreen.tfmodel.data_class import (
 
 import jax.numpy as jnp
 import numpyro as pyro
-import numpyro.distributions as dist
 
 def jax_model(data: DataClass,
               priors: PriorsClass,
@@ -37,11 +36,13 @@ def jax_model(data: DataClass,
         - calculate_growth
         - theta_binding_noise
         - theta_growth_noise
-        - binding_observer
-        - growth_observer
+        - observe_binding
+        - observe_growth
         - is_guide
-        The dictionary can also optionally have `batch_idx` (which overrides
-        whatever is in `batch_size`) or `batch_size`. 
+        The dictionary can also optionally have `observe_presplit` and/or
+        `observe_base_growth` (the side-channel observers, present only when
+        their data was supplied), plus `batch_idx` (which overrides whatever
+        is in `batch_size`) or `batch_size`.
     """
     
     # -------------------------------------------------------------------------
@@ -65,10 +66,10 @@ def jax_model(data: DataClass,
                                                  theta_binding,
                                                  priors.binding.theta_binding_noise)
         if is_guide:
-            binding_observer("final_growth_obs", data.binding, None)
+            binding_observer("binding", data.binding, None)
         else:
             pyro.deterministic("binding_pred", binding_pred)
-            binding_observer("final_growth_obs", data.binding, binding_pred)
+            binding_observer("binding", data.binding, binding_pred)
         return
 
     # -------------------------------------------------------------------------
@@ -78,7 +79,8 @@ def jax_model(data: DataClass,
     ln_cfu0_model = control["ln_cfu0"]
     activity_model = control["activity"]
     dk_geno_model = control["dk_geno"]
-    transformation_model, transformation_update = control["transformation"]
+    transformation_model, transformation_update, transformation_needs_population = \
+        control["transformation"]
     theta_growth_noise_model = control["theta_growth_noise"]
     theta_rescale = control["theta_rescale"]
     growth_transition_model = control["growth_transition"]
@@ -86,6 +88,13 @@ def jax_model(data: DataClass,
     sample_offset_model = control["sample_offset"]
     calculate_growth = control["calculate_growth"]
     growth_observer = control["observe_growth"]
+
+    # Optional side-channel observers. Present in `control` only when their
+    # data was supplied (see model_orchestrator._initialize_classes). Each is
+    # the .observe function in the main model and the .guide function in the
+    # guide, exactly like binding_observer/growth_observer.
+    presplit_observer = control.get("observe_presplit")
+    base_growth_observer = control.get("observe_base_growth")
 
     # -------------------------------------------------------------------------
     # Calculate theta
@@ -144,9 +153,45 @@ def jax_model(data: DataClass,
     # theta_growth shape: (..., titrant_name, titrant_conc, geno) or scattered
     # Result broadcasts to interaction of (rep, pre) and (titrant)
     # Parameters passed as tuple
-    corr_theta_growth = transformation_update(theta_growth,
-                                              params=trans_params,
-                                              mask=data.growth.congression_mask)
+    if transformation_needs_population:
+        # The congression correction's background CDF must be estimated from
+        # the full genotype population, not whatever subset of genotypes is
+        # active in this particular forward pass (a training minibatch, or a
+        # handful of genotypes requested at prediction time) — see
+        # transformation/_congression.py::update_thetas.  When the caller
+        # hasn't supplied one explicitly (data.growth.external_theta_population),
+        # compute it locally by re-running calc_theta over every genotype.
+        # This is only correct when data.growth already spans the full
+        # population, which holds during SVI training (genotype minibatching
+        # never shrinks data.growth.num_genotype — see tensors/batch.py) but
+        # NOT for prediction code paths that subset genotypes; those must
+        # supply external_theta_population themselves.
+        if data.growth.external_theta_population is not None:
+            population_theta_growth = data.growth.external_theta_population
+        else:
+            # Deliberately leave scatter_theta untouched (rather than forcing
+            # it to 0) so population_theta_growth's leading (non-genotype)
+            # dimensions match theta_growth's exactly -- update_thetas relies
+            # on that alignment when broadcasting the correction back onto
+            # theta_growth's shape.
+            num_genotype = data.growth.num_genotype
+            full_population_idx = jnp.arange(num_genotype)
+            full_population_data = data.growth.replace(
+                batch_idx=full_population_idx,
+                geno_theta_idx=full_population_idx,
+            )
+            population_theta_growth = calc_theta(theta, full_population_data)
+
+        corr_theta_growth = transformation_update(
+            theta_growth,
+            params=trans_params,
+            mask=data.growth.congression_mask,
+            population_theta=population_theta_growth,
+        )
+    else:
+        corr_theta_growth = transformation_update(theta_growth,
+                                                  params=trans_params,
+                                                  mask=data.growth.congression_mask)
 
     noisy_theta_growth = theta_growth_noise_model("theta_growth_noise",
                                                   corr_theta_growth,
@@ -179,36 +224,36 @@ def jax_model(data: DataClass,
                             data.growth,
                             priors.growth.sample_offset)
 
-        growth_observer("final_binding_obs", data.growth, None)
-        binding_observer("final_growth_obs", data.binding, None)
+        growth_observer("growth", data.growth, None,
+                        priors=priors.growth.growth_obs)
+        binding_observer("binding", data.binding, None)
+
+        # Register side-channel guide sites. presplit.guide is a no-op (it
+        # introduces no latents); base_growth.guide registers the k_ref
+        # variational site so the guide matches the model.
+        if presplit_observer is not None:
+            presplit_observer("presplit", data.presplit, ln_cfu0,
+                              growth=data.growth)
+        if base_growth_observer is not None:
+            base_growth_observer("base_growth", data.base_growth, dk_geno,
+                                 growth=data.growth,
+                                 priors=priors.growth.base_growth)
 
     # real calculation
     else:
 
         # Pre-split (t = -t_pre) observations — direct constraint on ln_cfu0.
-        # ln_cfu0 shape: (num_rep, 1, num_cp, 1, 1, 1, batch_size)
-        # Squeeze broadcast dims to get (num_rep, num_cp, batch_size).
-        if getattr(data, "presplit", None) is not None:
-            ln_cfu0_3d = ln_cfu0[:, 0, :, 0, 0, 0, :]
-            ps = data.presplit
-            bi = data.growth.batch_idx
-            obs_t0  = ps.ln_cfu_t0[:, :, bi]
-            std_t0  = ps.ln_cfu_t0_std[:, :, bi]
-            mask_t0 = ps.good_mask[:, :, bi]
-            with pyro.plate("presplit_replicate",
-                            size=ps.num_replicate, dim=-3):
-                with pyro.plate("presplit_condition_pre",
-                                size=ps.num_condition_pre, dim=-2):
-                    with pyro.plate("shared_genotype_plate",
-                                    size=data.growth.batch_size, dim=-1):
-                        with pyro.handlers.scale(
-                                scale=data.growth.scale_vector):
-                            with pyro.handlers.mask(mask=mask_t0):
-                                pyro.sample(
-                                    "presplit_obs",
-                                    dist.Normal(ln_cfu0_3d, std_t0),
-                                    obs=obs_t0,
-                                )
+        if presplit_observer is not None:
+            presplit_observer("presplit", data.presplit, ln_cfu0,
+                              growth=data.growth)
+
+        # Direct growth-rate measurements — anchors k_ref (and, via dk_geno's
+        # wt=0 pin, the shared k/m identifiability slack) to genotypes with
+        # a directly-measured reference-condition growth rate.
+        if base_growth_observer is not None:
+            base_growth_observer("base_growth", data.base_growth, dk_geno,
+                                 growth=data.growth,
+                                 priors=priors.growth.base_growth)
 
         # calculate observable (all tensors have correct dimensions)
         g_pre, g_sel = calculate_growth(params=growth_params,
@@ -240,7 +285,8 @@ def jax_model(data: DataClass,
         pyro.deterministic(f"growth_pred", ln_cfu_pred)
 
         # Calculate likelihood
-        growth_observer("final_binding_obs", data.growth, ln_cfu_pred, sigma_k=sigma_k)
-        binding_observer("final_growth_obs", data.binding, binding_pred)
+        growth_observer("growth", data.growth, ln_cfu_pred, sigma_k=sigma_k,
+                        priors=priors.growth.growth_obs)
+        binding_observer("binding", data.binding, binding_pred)
 
 

@@ -27,10 +27,13 @@ class ModelPriors:
 
     Attributes
     ----------
-    min_loc, min_scale : float
+    min_loc, min_scale : float or array
         Normal prior parameters for per-condition minimum growth rate.
-    max_loc, max_scale : float
+        Scalar (broadcast to every condition) or a length-``num_condition_rep``
+        array of per-condition values (written by the pre-fit calibration).
+    max_loc, max_scale : float or array
         Normal prior parameters for per-condition maximum growth rate.
+        Scalar or per-condition array.
     """
     min_loc: float
     min_scale: float
@@ -58,13 +61,23 @@ def define_model(name: str,
     params : SaturationParams
         A dataclass containing min and max for pre and sel.
     """
-    with pyro.plate(f"{name}_min_condition_parameters", data.num_condition_rep):
-        min_per_condition = pyro.sample(f"{name}_min",
-                                        dist.Normal(priors.min_loc, priors.min_scale))
+    num_cr = data.num_condition_rep
 
-    with pyro.plate(f"{name}_max_condition_parameters", data.num_condition_rep):
+    # Broadcast scalar-or-array priors to per-condition arrays so min, max can
+    # be pinned condition-by-condition (see prefit calibration).  A scalar
+    # prior broadcasts to every condition (previous behaviour).
+    min_loc_arr = jnp.broadcast_to(jnp.asarray(priors.min_loc, dtype=float), (num_cr,))
+    min_scale_arr = jnp.broadcast_to(jnp.asarray(priors.min_scale, dtype=float), (num_cr,))
+    max_loc_arr = jnp.broadcast_to(jnp.asarray(priors.max_loc, dtype=float), (num_cr,))
+    max_scale_arr = jnp.broadcast_to(jnp.asarray(priors.max_scale, dtype=float), (num_cr,))
+
+    with pyro.plate(f"{name}_min_condition_parameters", num_cr) as idx:
+        min_per_condition = pyro.sample(f"{name}_min",
+                                        dist.Normal(min_loc_arr[idx], min_scale_arr[idx]))
+
+    with pyro.plate(f"{name}_max_condition_parameters", num_cr) as idx:
         max_per_condition = pyro.sample(f"{name}_max",
-                                        dist.Normal(priors.max_loc, priors.max_scale))
+                                        dist.Normal(max_loc_arr[idx], max_scale_arr[idx]))
 
     min_pre = min_per_condition[data.map_condition_pre]
     max_pre = max_per_condition[data.map_condition_pre]
@@ -81,15 +94,16 @@ def guide(name: str,
     """
     Guide for the saturation growth model with simple Normal priors.
     """
+    num_cr = data.num_condition_rep
     min_locs = pyro.param(f"{name}_min_locs",
-                          jnp.full(data.num_condition_rep, priors.min_loc, dtype=float))
+                          jnp.broadcast_to(jnp.asarray(priors.min_loc, dtype=float), (num_cr,)))
     min_scales = pyro.param(f"{name}_min_scales",
-                            jnp.full(data.num_condition_rep, priors.min_scale, dtype=float),
+                            jnp.broadcast_to(jnp.asarray(priors.min_scale, dtype=float), (num_cr,)),
                             constraint=dist.constraints.positive)
     max_locs = pyro.param(f"{name}_max_locs",
-                          jnp.full(data.num_condition_rep, priors.max_loc, dtype=float))
+                          jnp.broadcast_to(jnp.asarray(priors.max_loc, dtype=float), (num_cr,)))
     max_scales = pyro.param(f"{name}_max_scales",
-                            jnp.full(data.num_condition_rep, priors.max_scale, dtype=float),
+                            jnp.broadcast_to(jnp.asarray(priors.max_scale, dtype=float), (num_cr,)),
                             constraint=dist.constraints.positive)
 
     with pyro.plate(f"{name}_min_condition_parameters", data.num_condition_rep) as idx:
@@ -154,6 +168,25 @@ def get_guesses(name, data):
 
 def get_priors():
     return ModelPriors(**get_hyperparameters())
+
+
+def get_scale_bounds():
+    """
+    Per-condition prior-scale bounds for the pre-fit calibration.
+
+    See ``linear.get_scale_bounds`` for the contract.  ``min`` is the
+    theta-independent baseline that trades off against ``dk_geno`` (tight
+    floor); ``max`` is a rate too and gets the same bounds.
+
+    Returns
+    -------
+    dict
+        ``{suffix: {"floor": float, "ceiling": float, "scale_field": str}}``.
+    """
+    return {
+        "min": {"floor": 0.002, "ceiling": 0.1, "scale_field": "min_scale"},
+        "max": {"floor": 0.002, "ceiling": 0.1, "scale_field": "max_scale"},
+    }
 
 
 def get_extract_specs(ctx):

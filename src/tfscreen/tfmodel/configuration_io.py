@@ -100,6 +100,13 @@ def _update_dataclass(dc, prefix, flat_dict):
                     merged = dict(attr_val)
                     merged.update(sub)
                     updates[field_name] = merged
+            elif isinstance(attr_val, tuple):
+                # Static structural tuples (e.g. condition_growth.m_is_selection)
+                # are re-derived at construction and serialised by
+                # _extract_scalars as a *string* (e.g. "(True, False)").  Never
+                # overwrite the correctly-typed tuple with that string — keep
+                # the freshly-built value.
+                continue
             elif full_key in flat_dict:
                 new_val = flat_dict[full_key]
                 if isinstance(attr_val, int) and not isinstance(attr_val, bool):
@@ -113,11 +120,141 @@ def _update_dataclass(dc, prefix, flat_dict):
                 return dataclasses.replace(dc, **updates)
     return dc
 
+def _extract_prior_arrays(obj, prefix=""):
+    """
+    Recursively collect 1-D *floating-point* array leaves from a PriorsClass,
+    keyed by dotted path.
+
+    Companion to :func:`_extract_scalars`, which emits only scalar leaves and
+    silently skips arrays.  Per-condition priors (e.g. ``condition_growth``'s
+    ``k_loc`` after the pre-fit calibration writes per-condition values) live in
+    array leaves, so they need their own extraction to reach the priors CSV.
+
+    Only floating arrays are returned: static config tuples such as
+    ``m_is_selection`` (a tuple of bools) must never be mistaken for a
+    per-condition prior.
+    """
+    out = {}
+    for k in dir(obj):
+        if k.startswith("_") or k in ['replace', 'asdict', '__class__',
+                                      'tree_flatten', 'tree_unflatten']:
+            continue
+        v = getattr(obj, k)
+        if hasattr(v, '__dataclass_fields__'):
+            out.update(_extract_prior_arrays(v, prefix + k + "."))
+        elif isinstance(v, dict) or not hasattr(v, 'shape'):
+            # dicts (e.g. `pinned`) and non-array leaves (scalars, static
+            # tuples like m_is_selection) are not per-condition arrays.
+            continue
+        else:
+            try:
+                arr = np.asarray(v)
+            except (ValueError, TypeError):
+                continue
+            if arr.ndim >= 1 and arr.size > 0 and arr.dtype.kind == "f":
+                out[f"{prefix}{k}"] = arr
+    return out
+
+
+def _assemble_condition_array(param, grp, cond_rep_map):
+    """
+    Assemble one per-condition prior array from its indexed CSV rows.
+
+    The rows are joined to the model's condition order by ``condition_rep``
+    *name* (and ``replicate`` when present), not by raw integer index, so a
+    priors CSV stays correct even if conditions are reordered.  Fails fast if
+    the CSV references an unknown condition or is missing any condition — a
+    stale priors file should error, not silently mis-map (see the fail-fast
+    config-validation convention).
+
+    Falls back to ``flat_index`` ordering when no ``condition_rep`` map or
+    label columns are available (e.g. non-growth arrays).
+    """
+    if cond_rep_map is None or getattr(cond_rep_map, "empty", True):
+        ordered = grp.sort_values("flat_index") if "flat_index" in grp else grp
+        return jnp.asarray(ordered["value"].to_numpy(dtype=float))
+
+    sorted_map = cond_rep_map.sort_values("map_condition_rep").reset_index(drop=True)
+    label_cols = [c for c in ("replicate", "condition_rep")
+                  if c in sorted_map.columns and c in grp.columns]
+
+    if not label_cols:
+        ordered = grp.sort_values("flat_index") if "flat_index" in grp else grp
+        arr = ordered["value"].to_numpy(dtype=float)
+        if len(arr) != len(sorted_map):
+            raise ValueError(
+                f"Prior '{param}' has {len(arr)} indexed row(s) in the priors "
+                f"CSV but the model has {len(sorted_map)} condition(s), and no "
+                f"condition_rep labels are present to join on. Regenerate the "
+                f"priors file with tfs-configure-model."
+            )
+        return jnp.asarray(arr)
+
+    key_to_pos = {
+        tuple(str(sorted_map.loc[i, c]) for c in label_cols): i
+        for i in range(len(sorted_map))
+    }
+
+    arr = np.full(len(sorted_map), np.nan, dtype=float)
+    for _, r in grp.iterrows():
+        key = tuple(str(r[c]) for c in label_cols)
+        pos = key_to_pos.get(key)
+        if pos is None:
+            raise ValueError(
+                f"Prior '{param}' references condition {key} (columns "
+                f"{label_cols}) in the priors CSV, which is not one of the "
+                f"model's conditions {sorted(key_to_pos)}. The priors file is "
+                f"likely stale — regenerate it with tfs-configure-model."
+            )
+        arr[pos] = float(r["value"])
+
+    missing = [k for k, i in key_to_pos.items() if np.isnan(arr[i])]
+    if missing:
+        raise ValueError(
+            f"Prior '{param}' is missing per-condition row(s) for {missing} in "
+            f"the priors CSV; every condition_rep must have a row. Regenerate "
+            f"with tfs-configure-model / tfs-prefit-calibration."
+        )
+    return jnp.asarray(arr)
+
+
+def _read_priors_flat(priors_df, cond_rep_map):
+    """
+    Build the flat prior dict from a priors CSV.
+
+    Scalar rows (no ``flat_index``, or ``flat_index`` NaN) are read as scalars
+    exactly as before.  Rows carrying a ``flat_index`` are grouped by parameter
+    and assembled into per-condition arrays via
+    :func:`_assemble_condition_array`.  A legacy 2-column CSV (no ``flat_index``)
+    takes the pure-scalar path untouched.
+    """
+    def _coerce(v):
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return v
+
+    if "flat_index" not in priors_df.columns:
+        return {k: _coerce(v)
+                for k, v in zip(priors_df["parameter"], priors_df["value"])}
+
+    scalar_mask = priors_df["flat_index"].isna()
+    flat = {row["parameter"]: _coerce(row["value"])
+            for _, row in priors_df[scalar_mask].iterrows()}
+
+    indexed = priors_df[~scalar_mask]
+    for param, grp in indexed.groupby("parameter", observed=True):
+        flat[param] = _assemble_condition_array(param, grp, cond_rep_map)
+
+    return flat
+
+
 def write_configuration(orchestrator,
                         out_prefix,
                         growth_df_path=None,
                         binding_df_path=None,
-                        presplit_df_path=None):
+                        presplit_df_path=None,
+                        base_growth_df_path=None):
     """
     Write model configuration and extracted priors/guesses to files.
 
@@ -131,6 +268,11 @@ def write_configuration(orchestrator,
         Path to growth data CSV.
     binding_df_path : str
         Path to binding data CSV.
+    presplit_df_path : str, optional
+        Path to the pre-split observation CSV.
+    base_growth_df_path : str, optional
+        Path to the base_growth_df CSV (direct growth-rate measurements
+        anchoring the k_ref latent; see model_orchestrator._read_base_growth_df).
     """
     # Construct priors and guesses dataframes
     priors_list = []
@@ -157,6 +299,8 @@ def write_configuration(orchestrator,
         data_paths["binding"] = binding_df_path
     if presplit_df_path is not None:
         data_paths["presplit"] = presplit_df_path
+    if base_growth_df_path is not None:
+        data_paths["base_growth"] = base_growth_df_path
 
     config = {
         "tfscreen_version": __version__,
@@ -237,6 +381,28 @@ def write_configuration(orchestrator,
                 
         guesses_list.append(df)
 
+    # Per-condition array priors (e.g. condition_growth k_loc/k_scale once the
+    # pre-fit calibration has written per-condition values).  _extract_scalars
+    # skips array leaves, so emit them here as indexed rows tagged with
+    # condition_rep labels, mirroring the per-condition guesses rows.  Restricted
+    # to the growth linking-function components so other components' internal
+    # arrays are untouched.  On a fresh configure these fields are still scalar,
+    # so nothing is emitted here and the priors CSV stays 2-column (legacy).
+    for dotted_key, arr in _extract_prior_arrays(orchestrator.priors).items():
+        if ("condition_growth" not in dotted_key
+                and "growth_transition" not in dotted_key):
+            continue
+        flat_val = np.asarray(arr).flatten()
+        df = pd.DataFrame({"parameter": dotted_key,
+                           "value": flat_val,
+                           "flat_index": range(len(flat_val))})
+        if (not cond_rep_map.empty) and len(flat_val) == len(cond_rep_map):
+            sorted_map = cond_rep_map.sort_values("map_condition_rep").reset_index(drop=True)
+            for col in ("replicate", "condition_rep"):
+                if col in sorted_map.columns:
+                    df[col] = sorted_map[col].values
+        priors_list.append(df)
+
     if len(priors_list) > 0:
         final_priors = pd.concat(priors_list, ignore_index=True)
         final_priors.to_csv(priors_path, index=False)
@@ -280,6 +446,7 @@ def read_configuration(config_file):
         growth_df_path = config["data"].get("growth")
         binding_df_path = config["data"].get("binding")
         presplit_df_path = config["data"].get("presplit")
+        base_growth_df_path = config["data"].get("base_growth")
         settings = config["components"]
     else:
         raise ValueError(f"Configuration file '{config_file}' has an unrecognized format.")
@@ -289,14 +456,18 @@ def read_configuration(config_file):
             warnings.warn(f"Configuration file version {config['tfscreen_version']} does not match current tfscreen version {__version__}")
 
     batch_size = settings.pop("batch_size", None)
-    # presplit_df is a data path, not a component setting; pop it if it
-    # ended up in settings (older configs that serialised it there).
+    # presplit_df / base_growth_df are data paths, not component settings;
+    # pop them since they're already passed explicitly below (they end up
+    # in settings because ModelOrchestrator.settings includes them for
+    # round-tripping the raw path the user originally supplied).
     settings.pop("presplit_df", None)
+    settings.pop("base_growth_df", None)
 
     orchestrator = ModelOrchestrator(growth_df_path,
                      binding_df_path,
                      batch_size=batch_size,
                      presplit_df=presplit_df_path,
+                     base_growth_df=base_growth_df_path,
                      **settings)
 
     # Update Priors from CSV
@@ -309,13 +480,11 @@ def read_configuration(config_file):
         raise FileNotFoundError(f"Priors file not found: {priors_path}")
 
     priors_df = pd.read_csv(priors_path)
-    flat_priors = {}
-    for k, v in zip(priors_df["parameter"], priors_df["value"]):
-        try:
-            flat_priors[k] = float(v)
-        except (ValueError, TypeError):
-            flat_priors[k] = v
-    
+    cond_rep_map = None
+    if orchestrator.growth_tm is not None:
+        cond_rep_map = orchestrator.growth_tm.map_groups.get("condition_rep")
+    flat_priors = _read_priors_flat(priors_df, cond_rep_map)
+
     new_priors = _update_dataclass(orchestrator.priors, "", flat_priors)
     orchestrator._priors = new_priors
 

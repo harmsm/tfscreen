@@ -12,10 +12,32 @@ def test_get_hyperparameters_mode():
     assert params["mode"] == "empirical"
 
 
+def test_needs_full_population_theta_flag():
+    """Empirical mode's background CDF is built from raw genotype samples, so
+    it must request a population-wide theta reference from jax_model."""
+    assert empirical.NEEDS_FULL_POPULATION_THETA is True
+
+
 def test_get_priors_mode():
     priors = empirical.get_priors()
     assert isinstance(priors, congression.ModelPriors)
     assert priors.mode == "empirical"
+
+
+def test_get_hyperparameters_forwards_lam_mean_std():
+    params = empirical.get_hyperparameters(lam_mean=0.3572, lam_std=0.13)
+    expected = congression.get_hyperparameters(lam_mean=0.3572, lam_std=0.13)
+    assert params["lam_loc"] == expected["lam_loc"]
+    assert params["lam_scale"] == expected["lam_scale"]
+    assert params["mode"] == "empirical"
+
+
+def test_get_priors_forwards_lam_mean_std():
+    priors = empirical.get_priors(lam_mean=0.3572, lam_std=0.13)
+    assert priors.mode == "empirical"
+    expected = congression.get_hyperparameters(lam_mean=0.3572, lam_std=0.13)
+    assert priors.lam_loc == expected["lam_loc"]
+    assert priors.lam_scale == expected["lam_scale"]
 
 
 def test_update_thetas_bound_with_empirical():

@@ -50,6 +50,7 @@ MockData = namedtuple("MockData", [
     "num_titrant_conc",
     "num_genotype",
     "titrant_conc",
+    "batch_idx",
     "geno_theta_idx",
     "scatter_theta",
 ])
@@ -65,6 +66,7 @@ def mock_data():
         num_titrant_conc=len(_CONC),
         num_genotype=G,
         titrant_conc=jnp.array(_CONC, dtype=jnp.float32),
+        batch_idx=jnp.arange(G, dtype=jnp.int32),
         geno_theta_idx=jnp.arange(G, dtype=jnp.int32),
         scatter_theta=0,
     )
@@ -345,9 +347,11 @@ class TestRunModel:
             mu=jnp.zeros((T, C, 1)), sigma=jnp.ones((T, C, 1)),
             conc_unit_scale=1.0,
         )
-        # Select genotypes [3, 0] (reversed)
-        MockSmall = namedtuple("MockSmall", ["titrant_conc", "geno_theta_idx", "scatter_theta"])
-        data = MockSmall(jnp.array([0.0, 1e-4]), jnp.array([3, 0], dtype=jnp.int32), 0)
+        # Select genotypes [3, 0] (reversed); batch_idx is identity (no
+        # minibatching), so geno_theta_idx indexes G directly.
+        MockSmall = namedtuple("MockSmall", ["titrant_conc", "batch_idx", "geno_theta_idx", "scatter_theta"])
+        data = MockSmall(jnp.array([0.0, 1e-4]), jnp.arange(G, dtype=jnp.int32),
+                         jnp.array([3, 0], dtype=jnp.int32), 0)
         result = run_model(tp, data)              # (T, C, 2)
         # Compute all-genotype theta for reference
         theta_all = _compute_theta(
@@ -357,6 +361,46 @@ class TestRunModel:
         )                                          # (T, C, G)
         assert jnp.allclose(result[:, :, 0], theta_all[:, :, 3], atol=1e-6)
         assert jnp.allclose(result[:, :, 1], theta_all[:, :, 0], atol=1e-6)
+
+    def test_nontrivial_batch_idx_selects_correct_genotypes(self):
+        """
+        With genotype minibatching, ``geno_theta_idx`` is always a local
+        arange (per ``get_batch``), while ``batch_idx`` holds the actual
+        global genotype indices selected for the batch. run_model must
+        compose ``batch_idx[geno_theta_idx]`` to index into the
+        full-population theta array — indexing by ``geno_theta_idx`` alone
+        silently selects the wrong (first-N-prefix) genotypes.
+        """
+        G = 6
+        T, C = 1, 2
+        ln_K_h_o = jnp.linspace(18.0, 24.0, G)
+        tp = ThetaParam(
+            ln_K_h_l=jnp.full(G, -7.4),
+            ln_K_h_o=ln_K_h_o,
+            ln_K_h_e=jnp.full((T, G), 11.5),
+            ln_K_l_o=jnp.full(G, 13.8),
+            ln_K_l_e=jnp.full((T, G), 15.0),
+            tf_total=6.5e-7, op_total=2.5e-8,
+            mu=jnp.zeros((T, C, 1)), sigma=jnp.ones((T, C, 1)),
+            conc_unit_scale=1.0,
+        )
+
+        batch_idx = jnp.array([5, 1, 3], dtype=jnp.int32)
+        MockSmall = namedtuple("MockSmall", ["titrant_conc", "batch_idx", "geno_theta_idx", "scatter_theta"])
+        data = MockSmall(jnp.array([0.0, 1e-4]), batch_idx,
+                         jnp.arange(len(batch_idx), dtype=jnp.int32), 0)
+        result = run_model(tp, data)   # (T, C, 3)
+
+        theta_all = _compute_theta(
+            tp.ln_K_h_l, tp.ln_K_h_o, tp.ln_K_h_e,
+            tp.ln_K_l_o, tp.ln_K_l_e,
+            data.titrant_conc, tp.tf_total, tp.op_total,
+        )   # (T, C, G)
+
+        for local_i, global_g in enumerate(batch_idx):
+            assert jnp.allclose(result[:, :, local_i], theta_all[:, :, global_g], atol=1e-6)
+
+        assert not jnp.allclose(result[:, :, 0], theta_all[:, :, 0], atol=1e-6)
 
     def test_apo_matches_analytic_formula(self):
         """run_model at e=0 matches the closed-form apo theta."""
@@ -373,8 +417,9 @@ class TestRunModel:
             mu=jnp.zeros((1, 2, 1)), sigma=jnp.ones((1, 2, 1)),
             conc_unit_scale=1.0,
         )
-        MockSmall = namedtuple("MockSmall", ["titrant_conc", "geno_theta_idx", "scatter_theta"])
-        data = MockSmall(jnp.array([0.0, 1e-8]), jnp.array([0], dtype=jnp.int32), 0)
+        MockSmall = namedtuple("MockSmall", ["titrant_conc", "batch_idx", "geno_theta_idx", "scatter_theta"])
+        data = MockSmall(jnp.array([0.0, 1e-8]), jnp.arange(G, dtype=jnp.int32),
+                         jnp.array([0], dtype=jnp.int32), 0)
         result = run_model(tp, data)    # (1, 2, 1)
 
         expected = _apo_theta(ln_K_h_l_val, ln_K_h_o_val, ln_K_l_o_val, tf_total)

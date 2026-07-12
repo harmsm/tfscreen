@@ -1,3 +1,5 @@
+import math
+
 import jax
 import jax.numpy as jnp
 import numpyro as pyro
@@ -61,15 +63,16 @@ def _empirical_cdf(theta, t_grid):
     return flat_cdf.reshape(shape + (len(t_grid),))
 
 
-def update_thetas(theta, params, theta_dist=None, mask=None, n_grid=256):
+def update_thetas(theta, params, theta_dist=None, mask=None, n_grid=256,
+                  population_theta=None):
     """
-    Corrects theta values for co-transformation using the method of 
+    Corrects theta values for co-transformation using the method of
     re-sampling from the background distribution.
 
     Parameters
     ----------
     theta : jnp.array
-        Array of theta values. 
+        Array of theta values to correct.
         Expected shape: (..., num_genotype)
     params : tuple
         Tuple of parameters defining the background distribution.
@@ -79,11 +82,23 @@ def update_thetas(theta, params, theta_dist=None, mask=None, n_grid=256):
         One of "logit_norm" or "empirical".
         If None, the distribution is inferred from the length of params.
     mask : jnp.array, optional
-        Boolean array of shape (num_genotype,) where True indicates the 
+        Boolean array of shape (num_genotype,) where True indicates the
         genotype should be corrected for congression. If None, all genotypes
         are corrected.
     n_grid : int, optional
         Number of points for grid-based numerical integration (default 256).
+    population_theta : jnp.array, optional
+        Array of theta values used to build the background (empirical) CDF,
+        expected shape (..., num_population_genotype), broadcastable against
+        ``theta`` on every axis except the last.  Only consulted when
+        ``theta_dist == "empirical"``.  If None (default), ``theta`` itself is
+        used as the population sample, which is only statistically valid when
+        ``theta`` already spans the full genotype population — callers that
+        only ever see a genotype subset or minibatch (e.g. batched training or
+        single-genotype prediction) must pass the true population sample here
+        or the empirical CDF silently degenerates to whatever subset is
+        present, biasing the correction. Ignored for "logit_norm", which uses
+        the smooth analytic CDF in ``params`` instead of raw samples.
 
     Returns
     -------
@@ -117,16 +132,23 @@ def update_thetas(theta, params, theta_dist=None, mask=None, n_grid=256):
         Ft_grid = jax.vmap(lambda m, s: _logit_normal_cdf(t_grid, m, s))(flat_params[1], flat_params[2])
         
     elif theta_dist == "empirical":
-        Ft_grid_raw = _empirical_cdf(theta, t_grid)
+        # Build the background CDF from population_theta when supplied (the
+        # full genotype population) rather than theta itself (which may only
+        # cover a training minibatch or a handful of requested genotypes).
+        # See the population_theta docstring above.
+        pop_theta = theta if population_theta is None else population_theta
+
+        Ft_grid_raw = _empirical_cdf(pop_theta, t_grid)
         num_p_batches = Ft_grid_raw.reshape(-1, n_grid).shape[0]
-        
-        # Broadcast lambda to match theta's batch dimension
-        lam_b = jnp.broadcast_to(lam, theta.shape[:-1])
+
+        # Broadcast lambda to match the population's leading (non-genotype)
+        # dimensions, which must agree with theta's leading dimensions.
+        lam_b = jnp.broadcast_to(lam, pop_theta.shape[:-1])
         flat_lam = lam_b.reshape(-1)
-        
+
         Ft_grid = Ft_grid_raw.reshape(-1, n_grid)
-        integration_shape = theta.shape[:-1]
-        
+        integration_shape = pop_theta.shape[:-1]
+
     else:
         raise ValueError(f"Unsupported theta_dist: {theta_dist}")
 
@@ -407,34 +429,71 @@ def guide(name: str,
     raise ValueError(f"Unsupported mode: {priors.mode}")
 
 
-def get_hyperparameters():
+def get_hyperparameters(lam_mean=None, lam_std=None):
     """
     Gets default values for the model hyperparameters.
+
+    Parameters
+    ----------
+    lam_mean : float, optional
+        Experimentally measured mean of the congression Poisson rate
+        lambda, in linear (arithmetic) space. Must be provided together
+        with ``lam_std``.
+    lam_std : float, optional
+        Experimentally measured standard deviation of lambda, in linear
+        (arithmetic) space. Must be provided together with ``lam_mean``.
 
     Returns
     -------
     dict
         A dictionary of hyperparameter names and their default values.
+
+    Raises
+    ------
+    ValueError
+        If exactly one of ``lam_mean``/``lam_std`` is given, or either is
+        not strictly positive.
     """
 
+    if (lam_mean is None) != (lam_std is None):
+        raise ValueError(
+            "lam_mean and lam_std must be provided together (or neither)."
+        )
+
     parameters = {}
-    
-    # Lambda prior: experimentally measured lambda = 0.3572, 95% CI [0.1559, 0.6743]
-    # lam_loc = log(0.3572); lam_scale from CI width in log-space: (log(0.6743)-log(0.1559))/(2*1.96)
-    parameters["lam_loc"] = -1.029
-    parameters["lam_scale"] = 0.37
-    
+
+    if lam_mean is not None:
+        if lam_mean <= 0:
+            raise ValueError(f"lam_mean must be > 0; got {lam_mean}")
+        if lam_std <= 0:
+            raise ValueError(f"lam_std must be > 0; got {lam_std}")
+
+        # Moment-match the experimentally measured (mean, std) -- in linear
+        # space, as an experimentalist would report them -- onto the
+        # LogNormal prior's underlying-Normal parameters.
+        sigma2 = math.log(1.0 + (lam_std / lam_mean) ** 2)
+        parameters["lam_loc"] = math.log(lam_mean) - sigma2 / 2.0
+        parameters["lam_scale"] = math.sqrt(sigma2)
+    else:
+        # Placeholder only -- never used by tfs-configure-model /
+        # tfs-fit-model, which require an experimentally measured lam_mean/
+        # lam_std for this component (see ModelOrchestrator/configure_model).
+        # Exists so this module stays independently constructible/testable,
+        # mirroring dk_geno.pinned's placeholder convention.
+        parameters["lam_loc"] = 0.0
+        parameters["lam_scale"] = 1.0
+
     # Anchoring scales (tightening this makes the background track the prior more closely)
     parameters["mu_anchoring_scale"] = 0.5
     parameters["sigma_anchoring_scale"] = 0.2
-    
+
     # Background model mode: 'logit_normal' (default) or 'empirical'
     parameters["mode"] = "logit_norm"
-               
-    return parameters
-    
 
-def get_guesses(name,data):
+    return parameters
+
+
+def get_guesses(name, data, lam_mean=None):
     """
     Gets initial guess values for model parameters.
 
@@ -448,6 +507,10 @@ def get_guesses(name,data):
     data : DataClass
         A data object containing metadata, primarily:
         - ``data.num_genotype`` : (int) number of non-wt genotypes
+    lam_mean : float, optional
+        Experimentally measured mean of lambda (linear space); used
+        directly as the initial guess. If omitted, a placeholder guess is
+        used (see ``get_hyperparameters``).
 
     Returns
     -------
@@ -458,25 +521,34 @@ def get_guesses(name,data):
 
 
     guesses = {}
-    guesses[f"{name}_lam"] = 0.3572  # experimentally measured value
-    
-    # Only add these if we are not in empirical mode. 
-    # NOTE: get_guesses currently doesn't know the mode from the config easily 
+    guesses[f"{name}_lam"] = lam_mean if lam_mean is not None else 1.0
+
+    # Only add these if we are not in empirical mode.
+    # NOTE: get_guesses currently doesn't know the mode from the config easily
     # during initialization in model_orchestrator.py unless we pass it.
-    # For now, we'll keep them as guesses; they just won't be used if not 
+    # For now, we'll keep them as guesses; they just won't be used if not
     # in the model/guide.
     guesses[f"{name}_mu"] = 0.0
     guesses[f"{name}_sigma"] = 1.0
-    
+
     return guesses
 
-def get_priors():
+def get_priors(lam_mean=None, lam_std=None):
     """
     Utility function to create a populated ModelPriors object.
+
+    Parameters
+    ----------
+    lam_mean : float, optional
+        Experimentally measured mean of lambda (linear space). See
+        ``get_hyperparameters``.
+    lam_std : float, optional
+        Experimentally measured standard deviation of lambda (linear
+        space). See ``get_hyperparameters``.
 
     Returns
     -------
     ModelPriors
         A populated Pytree (Flax dataclass) of hyperparameters.
     """
-    return ModelPriors(**get_hyperparameters())
+    return ModelPriors(**get_hyperparameters(lam_mean=lam_mean, lam_std=lam_std))

@@ -71,8 +71,9 @@ def read_binding_genotype_params(csv_path: Union[str, Path]) -> dict:
     Raises
     ------
     ValueError
-        If the CSV lacks a ``genotype`` column, has no recognised parameter
-        columns, or contains unrecognised column names.
+        If the CSV lacks a ``genotype`` column or has no recognised parameter
+        columns.  Extra columns (e.g. the diagnostic columns in a
+        ``*_stage1_fits.csv``) are ignored.
     """
     df = pd.read_csv(csv_path)
 
@@ -88,13 +89,9 @@ def read_binding_genotype_params(csv_path: Union[str, Path]) -> dict:
             f"{sorted(HILL_PARAM_COLS)}"
         )
 
-    unknown = set(df.columns) - {"genotype"} - HILL_PARAM_COLS
-    if unknown:
-        raise ValueError(
-            f"Unrecognised columns in '{csv_path}': {sorted(unknown)}. "
-            f"Expected: genotype + subset of {sorted(HILL_PARAM_COLS)}"
-        )
-
+    # Any columns beyond genotype + the recognised Hill params are ignored,
+    # so a stage1_fits.csv (which also carries dk_geno, *_t, n_obs, ...) can be
+    # used directly as a binding genotype-params file.
     result = {}
     for _, row in df.iterrows():
         g = str(row["genotype"])

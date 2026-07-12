@@ -103,7 +103,6 @@ def test_read_presplit_df_drops_unknown_genotypes(minimal_presplit_df,
     result = _read_presplit_df(df_extra, gdf)
     captured = capsys.readouterr()
     assert "will be dropped" in captured.out
-    assert "A99V" in captured.out
 
     assert "A99V" not in result["genotype"].values
     assert len(result) == len(minimal_presplit_df)

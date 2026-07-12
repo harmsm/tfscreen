@@ -60,6 +60,37 @@ def _all_library_masks(num_genotype):
     return jnp.ones((1, num_genotype), dtype=bool)
 
 
+MockPreSplitData = namedtuple("MockPreSplitData", [
+    "ln_cfu_t0",       # (rep, cond_pre, geno)
+    "ln_cfu_t0_std",   # (rep, cond_pre, geno)
+    "good_mask",       # (rep, cond_pre, geno) bool
+])
+
+
+def _make_presplit(num_replicate, num_condition_pre, num_genotype,
+                   per_geno_values, valid_mask=None):
+    """
+    Build a MockPreSplitData with shape (rep, cond_pre, geno), constant per
+    genotype.  ``valid_mask`` (shape (geno,), default all True) marks which
+    genotypes have any pre-split coverage at all.
+    """
+    shape = (num_replicate, num_condition_pre, num_genotype)
+    ln_cfu_t0 = np.zeros(shape)
+    for g, v in enumerate(per_geno_values):
+        ln_cfu_t0[..., g] = v
+
+    if valid_mask is None:
+        valid_mask = np.ones(num_genotype, dtype=bool)
+    good_mask = np.zeros(shape, dtype=bool)
+    good_mask[..., valid_mask] = True
+
+    return MockPreSplitData(
+        ln_cfu_t0=ln_cfu_t0,
+        ln_cfu_t0_std=np.ones(shape),
+        good_mask=good_mask,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -331,6 +362,14 @@ def test_get_priors_accepts_data_keyword():
     assert sig.parameters["data"].default is None
 
 
+def test_get_priors_accepts_presplit_keyword():
+    """get_priors must accept an optional `presplit` keyword (ModelOrchestrator
+    detects this and forwards data.presplit only when it's present)."""
+    sig = inspect.signature(get_priors)
+    assert "presplit" in sig.parameters
+    assert sig.parameters["presplit"].default is None
+
+
 def test_get_priors_with_data_overrides_subgroup_scales(mock_data_empirical):
     """
     When data is supplied, ln_cfu0_wt_scale and ln_cfu0_spiked_scale are
@@ -372,6 +411,32 @@ def test_get_priors_two_classes_separate_locs(mock_data_two_classes):
     assert float(priors.ln_cfu0_hyper_loc_locs[0]) == pytest.approx(8.0)
     # Class 1 (doubles 11,13) → median 12.0
     assert float(priors.ln_cfu0_hyper_loc_locs[1]) == pytest.approx(12.0)
+
+
+def test_get_priors_with_presplit_uses_direct_scale(mock_data_empirical):
+    """
+    When presplit data covers the wt class, ln_cfu0_wt_scale is derived from
+    the presplit spread instead of the (degenerate, single-genotype) ln_cfu
+    spread.
+    """
+    # Two distinct wt presplit readings (10.0, 14.0) give a real spread,
+    # unlike the single constant ln_cfu=12.0 value which floors to
+    # _SCALE_FLOOR.
+    presplit_vals = np.zeros((2, 2, 6))
+    presplit_vals[0, :, 0] = 10.0
+    presplit_vals[1, :, 0] = 14.0
+    presplit_good = np.zeros((2, 2, 6), dtype=bool)
+    presplit_good[:, :, 0] = True
+    presplit = MockPreSplitData(
+        ln_cfu_t0=presplit_vals, ln_cfu_t0_std=np.ones((2, 2, 6)),
+        good_mask=presplit_good,
+    )
+
+    priors = get_priors(data=mock_data_empirical, presplit=presplit)
+    # loc = median(10,10,14,14) = 12; deviations = [-2,-2,2,2]; MAD=2;
+    # scale = 1.4826*2 = 2.9652
+    assert priors.ln_cfu0_wt_scale == pytest.approx(1.4826 * 2.0, rel=1e-4)
+    assert priors.ln_cfu0_wt_scale != pytest.approx(_SCALE_FLOOR)
 
 
 def test_get_priors_with_unparseable_data_falls_back_to_defaults():
@@ -447,6 +512,114 @@ def test_empirical_group_estimates_two_classes(mock_data_two_classes):
 
 
 # ---------------------------------------------------------------------------
+# Tests: _empirical_group_estimates – presplit-aware source selection
+# ---------------------------------------------------------------------------
+
+def test_empirical_group_estimates_no_presplit_all_sources_are_median(mock_data_empirical):
+    """With no presplit argument, every class's source is 'median' (the
+    pre-existing, growth-confounded estimator) — exact backward compatibility."""
+    est = _empirical_group_estimates(mock_data_empirical)
+    assert est["wt_source"] == "median"
+    assert est["spiked_source"] == "median"
+    assert est["hyper_sources"] == ["median"]
+
+
+def test_empirical_group_estimates_prefers_presplit_when_covered(mock_data_empirical):
+    """
+    A class with full pre-split coverage uses the direct measurement instead
+    of the ln_cfu median, and reports source == 'presplit'.  Classes without
+    presplit coverage are untouched and still report 'median'.
+    """
+    # mock_data_empirical: index 0 = wt (ln_cfu=12), 1,2 = spiked (10, 11),
+    # 3,4,5 = library (8, 7, 9).  Give only wt a presplit reading, and make
+    # it clearly different (20.0) from the ln_cfu-derived value (12.0) so we
+    # can tell which source won.
+    presplit = _make_presplit(
+        num_replicate=2, num_condition_pre=2, num_genotype=6,
+        per_geno_values=[20.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        valid_mask=np.array([True, False, False, False, False, False]),
+    )
+    est = _empirical_group_estimates(mock_data_empirical, presplit=presplit)
+
+    assert est["wt_loc"] == pytest.approx(20.0)
+    assert est["wt_source"] == "presplit"
+
+    # Spiked and library classes had no presplit coverage -> unchanged from
+    # the no-presplit baseline.
+    assert est["spiked_loc"] == pytest.approx(10.5)
+    assert est["spiked_source"] == "median"
+    assert est["hyper_loc"] == pytest.approx(8.0)
+    assert est["hyper_sources"] == ["median"]
+
+
+def test_empirical_group_estimates_partial_presplit_coverage_mixes_per_cell(mock_data_empirical):
+    """
+    When only some (replicate, condition_pre) cells of a class have a valid
+    presplit reading, those specific cells use the presplit value and the
+    remaining cells fall back to the ln_cfu value — but the class as a whole
+    is still reported as 'presplit'-sourced since at least one cell used it.
+    """
+    presplit_vals = np.zeros((2, 2, 6))
+    presplit_vals[..., 0] = 20.0  # wt presplit value, differs from ln_cfu=12
+    presplit_good = np.zeros((2, 2, 6), dtype=bool)
+    # Only replicate 0's cells are valid for wt; replicate 1 has no reading.
+    presplit_good[0, :, 0] = True
+
+    presplit = MockPreSplitData(
+        ln_cfu_t0=presplit_vals,
+        ln_cfu_t0_std=np.ones((2, 2, 6)),
+        good_mask=presplit_good,
+    )
+
+    est = _empirical_group_estimates(mock_data_empirical, presplit=presplit)
+
+    # wt combined values: replicate 0 -> 20.0 (presplit), replicate 1 -> 12.0
+    # (ln_cfu fallback).  Median of [20, 20, 12, 12] = 16.0.
+    assert est["wt_loc"] == pytest.approx(16.0)
+    assert est["wt_source"] == "presplit"
+
+
+def test_empirical_group_estimates_presplit_shape_mismatch_is_ignored(mock_data_empirical):
+    """A presplit tensor whose shape doesn't match (rep, cond_pre, geno) is
+    silently ignored rather than raising or corrupting the estimate."""
+    bad_presplit = MockPreSplitData(
+        ln_cfu_t0=np.zeros((99, 99)),
+        ln_cfu_t0_std=np.ones((99, 99)),
+        good_mask=np.ones((99, 99), dtype=bool),
+    )
+    est = _empirical_group_estimates(mock_data_empirical, presplit=bad_presplit)
+    assert est["wt_loc"] == pytest.approx(12.0)
+    assert est["wt_source"] == "median"
+
+
+def test_empirical_group_estimates_presplit_missing_attributes_is_ignored(mock_data_empirical):
+    """A presplit-like object lacking ln_cfu_t0/good_mask attributes falls
+    back to the ln_cfu-median estimator rather than raising."""
+    Empty = namedtuple("Empty", ["irrelevant"])
+    est = _empirical_group_estimates(mock_data_empirical, presplit=Empty(irrelevant=1))
+    assert est["wt_loc"] == pytest.approx(12.0)
+    assert est["wt_source"] == "median"
+
+
+def test_empirical_group_estimates_presplit_covers_library_classes_too(mock_data_two_classes):
+    """Presplit preference applies independently to each library class, not
+    just wt/spiked."""
+    # mock_data_two_classes: idx0=wt(12), idx1=spiked(10), idx2-4=singles(8,7,9),
+    # idx5-6=doubles(11,13).  Give doubles a presplit reading of 99.0.
+    presplit = _make_presplit(
+        num_replicate=2, num_condition_pre=2, num_genotype=7,
+        per_geno_values=[0, 0, 0, 0, 0, 99.0, 99.0],
+        valid_mask=np.array([False, False, False, False, False, True, True]),
+    )
+    est = _empirical_group_estimates(mock_data_two_classes, presplit=presplit)
+
+    assert est["hyper_locs"][0] == pytest.approx(8.0)     # singles: unchanged
+    assert est["hyper_sources"][0] == "median"
+    assert est["hyper_locs"][1] == pytest.approx(99.0)    # doubles: presplit
+    assert est["hyper_sources"][1] == "presplit"
+
+
+# ---------------------------------------------------------------------------
 # Tests: get_guesses – structure
 # ---------------------------------------------------------------------------
 
@@ -473,6 +646,54 @@ def test_get_guesses_two_classes_keys(mock_data_two_classes):
     for i in range(2):
         assert f"{name}_hyper_loc_{i}" in guesses
         assert f"{name}_hyper_scale_{i}" in guesses
+
+
+def test_get_guesses_accepts_presplit_keyword():
+    """get_guesses must accept an optional `presplit` keyword (ModelOrchestrator
+    detects this and forwards data.presplit only when it's present)."""
+    sig = inspect.signature(get_guesses)
+    assert "presplit" in sig.parameters
+    assert sig.parameters["presplit"].default is None
+
+
+# ---------------------------------------------------------------------------
+# Tests: get_guesses – presplit-preferred values
+# ---------------------------------------------------------------------------
+
+def test_get_guesses_wt_loc_prefers_presplit(mock_data_empirical):
+    """wt_loc guess uses the presplit-derived value when presplit covers wt,
+    instead of the ln_cfu median."""
+    presplit = _make_presplit(
+        num_replicate=2, num_condition_pre=2, num_genotype=6,
+        per_geno_values=[20.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        valid_mask=np.array([True, False, False, False, False, False]),
+    )
+    guesses = get_guesses("x", mock_data_empirical, presplit=presplit)
+    assert guesses["x_wt_loc"] == pytest.approx(20.0)
+    # Untouched classes keep their ln_cfu-median guesses.
+    assert guesses["x_spiked_loc"] == pytest.approx(10.5)
+    assert guesses["x_hyper_loc_0"] == pytest.approx(8.0)
+
+
+def test_get_guesses_offset_uses_presplit_value_per_cell(mock_data_empirical):
+    """
+    Per-genotype offsets are computed from the presplit-preferred combined
+    tensor, not the raw ln_cfu value, wherever presplit coverage exists —
+    keeping the offset numerator consistent with whatever basis the class
+    loc/scale used, so a genotype exactly at its (presplit-derived) group
+    loc still gets an offset of 0.
+    """
+    # Give wt a presplit reading (20.0) equal to a new group loc so the
+    # offset should be exactly 0, even though the raw ln_cfu value (12.0)
+    # differs substantially.
+    presplit = _make_presplit(
+        num_replicate=2, num_condition_pre=2, num_genotype=6,
+        per_geno_values=[20.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        valid_mask=np.array([True, False, False, False, False, False]),
+    )
+    guesses = get_guesses("x", mock_data_empirical, presplit=presplit)
+    offsets = np.array(guesses["x_offset"])
+    assert offsets[..., 0] == pytest.approx(0.0, abs=1e-6)
 
 
 # ---------------------------------------------------------------------------

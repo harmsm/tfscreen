@@ -161,6 +161,32 @@ def test_extract_parameters_all_models(mock_model):
     params = extract_parameters(mock_model, posteriors)
     assert "hill_n" in params
 
+
+def test_extract_parameters_base_growth_k_ref(mock_model):
+    """
+    base_growth's k_ref is a single global scalar, not a swappable registry
+    component, so it's extracted directly in extract_parameters (gated on
+    orchestrator._base_growth_df) rather than via get_extract_specs.
+    """
+    mock_model._base_growth_df = pd.DataFrame({
+        "genotype": ["wt"], "rate": [0.02], "rate_std": [0.001],
+    })
+    posteriors = {"base_growth_k_ref": np.random.rand(10, 1)}
+    params = extract_parameters(mock_model, posteriors)
+    assert "k_ref" in params
+    assert len(params["k_ref"]) == 1
+
+
+def test_extract_parameters_no_base_growth_skips_k_ref(mock_model):
+    """Without base_growth_df, no k_ref extraction is attempted (and the
+    posterior file need not contain it)."""
+    mock_model._base_growth_df = None
+    posteriors = {"theta_theta": np.random.rand(10, 1)}
+    mock_model._theta = "categorical_geno"
+    params = extract_parameters(mock_model, posteriors)
+    assert "k_ref" not in params
+
+
 def test_extract_theta_curves_manual_genotype(mock_model):
     """Test extract_theta_curves with manual_titrant_df including genotype."""
     mock_model._theta = "hill_geno"

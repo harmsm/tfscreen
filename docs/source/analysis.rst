@@ -26,7 +26,10 @@ model components, and writes three configuration files:
 * ``{out_prefix}_guesses.csv`` — initial-value guesses for array parameters
 
 ``binding_df`` (direct binding measurements) is the only required argument.
-``growth_df`` is optional; omitting it configures a binding-only model.
+``growth_df`` is optional; omitting it configures a binding-only model. See
+:doc:`model-inputs` for what each input contributes to the fit, how much
+data is useful, and the exact file format for ``binding_df``, ``growth_df``,
+``base_growth_df``, ``presplit_df``, and ``transformation_lambda``.
 
 .. code-block:: bash
 
@@ -41,7 +44,7 @@ Key component flags (see :ref:`model-components` for the full list):
 * ``--activity_model`` — per-genotype TF activity prior (default: ``horseshoe_geno``)
 * ``--theta_model`` — operator occupancy parameterisation (default: ``hill_geno``)
 * ``--dk_geno_model`` — pleiotropic growth-effect prior (default: ``hierarchical_geno``)
-* ``--transformation_model`` — multi-plasmid congression correction (default: ``empirical``)
+* ``--transformation_model`` — multi-plasmid congression correction (default: ``single``, i.e. no correction)
 
 Step 2: Pre-fit Calibration (``tfs-prefit-calibration``)
 ---------------------------------------------------------
@@ -299,6 +302,7 @@ occupancy (*dk_geno*).
 
 * **hierarchical_geno** (default) — per-genotype effects drawn from a global prior
 * **fixed** — no genotype-specific pleiotropic effects
+* **pinned** — genotype-specific effects pinned to externally supplied values
 
 Activity (``--activity_model``)
 ---------------------------------

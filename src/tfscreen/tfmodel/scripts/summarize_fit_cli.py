@@ -518,6 +518,208 @@ def _summarize_params(run_dir, out_prefix):
         _try_calibration(out_df, "ref", out_name[:-4], plot_label)
 
 
+# Fit-side extract names for the condition_growth component (see
+# generative/components/growth/{linear,power,saturation}.py's
+# get_extract_specs and simulate/growth_parameters_output.py, which writes
+# the matching ground-truth columns).
+_GROWTH_PARAM_NAMES = ["growth_k", "growth_m", "growth_n", "growth_min", "growth_max"]
+
+
+def _summarize_condition_growth_params(run_dir, out_prefix):
+    """Annotate *_params_growth_{name}.csv with ground-truth ref from tfs_sim_growth_parameters.csv.
+
+    Scans run_dir for a ``*_sim_growth_parameters.csv`` file (written by
+    tfs-simulate; see tfscreen.simulate.growth_parameters_output).  If
+    absent the function returns silently (real-data runs have no ground
+    truth).
+
+    For each condition_growth parameter name present as a column in that
+    file (growth_k, growth_m, growth_n, growth_min, growth_max -- whichever
+    the configured growth model produces), the function looks for a
+    matching ``*_params_{name}.csv`` file, warns if it is absent, and
+    otherwise joins the two on ``condition_rep`` and writes the annotated
+    result to ``{out_prefix}_params_{name}.csv``.
+    """
+    sim_path = _find_unique(run_dir, "_sim_growth_parameters.csv",
+                            "sim growth parameters", warn_missing=False)
+    if sim_path is None:
+        return
+
+    try:
+        growth_ref_df = pd.read_csv(sim_path)
+    except Exception as exc:
+        warnings.warn(f"Could not load growth parameters from {sim_path}: {exc}")
+        return
+
+    if "condition_rep" not in growth_ref_df.columns:
+        warnings.warn(
+            f"Growth parameters file {sim_path} has no 'condition_rep' "
+            "column; skipping growth param summaries"
+        )
+        return
+
+    present_param_names = [c for c in _GROWTH_PARAM_NAMES if c in growth_ref_df.columns]
+
+    for param_name in present_param_names:
+        if not glob.glob(os.path.join(run_dir, f"*_params_{param_name}.csv")):
+            warnings.warn(f"Expected *_params_{param_name}.csv in {run_dir} but none found")
+
+    for param_name in present_param_names:
+        param_file = _find_unique(run_dir, f"_params_{param_name}.csv",
+                                  f"{param_name} params", warn_missing=False)
+        if param_file is None:
+            continue
+
+        try:
+            params_df = pd.read_csv(param_file)
+        except Exception as exc:
+            warnings.warn(f"Could not read {param_file}: {exc}")
+            continue
+
+        if "condition_rep" not in params_df.columns:
+            warnings.warn(
+                f"{os.path.basename(param_file)} has no 'condition_rep' "
+                "column; skipping"
+            )
+            continue
+
+        merged = params_df.merge(
+            growth_ref_df[["condition_rep", param_name]].rename(
+                columns={param_name: "ref"}
+            ),
+            on="condition_rep",
+            how="left",
+        )
+
+        out_name = f"{out_prefix}_params_{param_name}.csv"
+        try:
+            merged.to_csv(out_name, index=False)
+            print(f"Wrote parameter summary to {out_name}")
+        except Exception as exc:
+            warnings.warn(f"Could not write {out_name}: {exc}")
+            continue
+
+        pdf_name = out_name.replace(".csv", ".pdf")
+        _try_plot_params_corr(merged, param_name, pdf_name)
+        _try_calibration(merged, "ref", out_name[:-4], param_name)
+
+
+def _summarize_k_ref(run_dir, out_prefix):
+    """Annotate *_params_k_ref.csv with ground truth from tfs_sim_k_ref.csv.
+
+    k_ref is a single global scalar (from base_growth_data calibration), not
+    genotype- or condition-indexed, so both the ground-truth file and the
+    fit's extracted file have exactly one row.  Silently skips when the
+    ground-truth file is absent (real-data runs, or runs without
+    base_growth_data).  No correlation plot is produced since a single point
+    can't usefully be plotted; only the annotated CSV (and a best-effort
+    calibration check) is written.
+    """
+    sim_path = _find_unique(run_dir, "_sim_k_ref.csv", "sim k_ref",
+                            warn_missing=False)
+    if sim_path is None:
+        return
+
+    param_file = _find_unique(run_dir, "_params_k_ref.csv", "k_ref params",
+                              warn_missing=False)
+    if param_file is None:
+        warnings.warn(f"Expected *_params_k_ref.csv in {run_dir} but none found")
+        return
+
+    try:
+        ref_df = pd.read_csv(sim_path)
+        params_df = pd.read_csv(param_file)
+    except Exception as exc:
+        warnings.warn(f"Could not read k_ref files: {exc}")
+        return
+
+    if "ref" not in ref_df.columns or len(ref_df) == 0:
+        warnings.warn(f"{sim_path} has no usable 'ref' value; skipping k_ref summary")
+        return
+
+    merged = params_df.copy()
+    merged["ref"] = float(ref_df["ref"].iloc[0])
+
+    out_name = f"{out_prefix}_params_k_ref.csv"
+    try:
+        merged.to_csv(out_name, index=False)
+        print(f"Wrote parameter summary to {out_name}")
+    except Exception as exc:
+        warnings.warn(f"Could not write {out_name}: {exc}")
+        return
+
+    _try_calibration(merged, "ref", out_name[:-4], "k_ref")
+
+
+def _summarize_transformation_lam(run_dir, out_prefix):
+    """Annotate *_params_lam.csv with ground truth from tfs_sim_transformation_lam.csv.
+
+    lam is a single global scalar (the transformation component's congression
+    Poisson-rate parameter), not genotype- or condition-indexed, so both the
+    ground-truth file and the fit's extracted file have exactly one row.
+    Silently skips when the ground-truth file is absent (real-data runs).
+    Warns (but does not raise) when the ground-truth file exists but the fit
+    config's transformation component didn't extract a 'lam' (e.g.
+    transformation: single, which has no such site). No correlation plot is
+    produced since a single point can't usefully be plotted; only the
+    annotated CSV (and a best-effort calibration check) is written.
+    """
+    sim_path = _find_unique(run_dir, "_sim_transformation_lam.csv",
+                            "sim transformation lam", warn_missing=False)
+    if sim_path is None:
+        return
+
+    param_file = _find_unique(run_dir, "_params_lam.csv", "transformation lam params",
+                              warn_missing=False)
+    if param_file is None:
+        warnings.warn(f"Expected *_params_lam.csv in {run_dir} but none found")
+        return
+
+    try:
+        ref_df = pd.read_csv(sim_path)
+        params_df = pd.read_csv(param_file)
+    except Exception as exc:
+        warnings.warn(f"Could not read transformation lam files: {exc}")
+        return
+
+    if "ref" not in ref_df.columns or len(ref_df) == 0:
+        warnings.warn(f"{sim_path} has no usable 'ref' value; skipping transformation lam summary")
+        return
+
+    merged = params_df.copy()
+    merged["ref"] = float(ref_df["ref"].iloc[0])
+
+    out_name = f"{out_prefix}_params_lam.csv"
+    try:
+        merged.to_csv(out_name, index=False)
+        print(f"Wrote parameter summary to {out_name}")
+    except Exception as exc:
+        warnings.warn(f"Could not write {out_name}: {exc}")
+        return
+
+    _try_calibration(merged, "ref", out_name[:-4], "transformation_lam")
+
+
+def _summarize_growth_params(run_dir, out_prefix):
+    """Annotate growth-model parameter files with simulated ground truth.
+
+    Handles two independent, optionally-present ground-truth sources
+    written by tfs-simulate:
+
+    - ``*_sim_growth_parameters.csv``: per-condition growth_k/growth_m/
+      growth_n/growth_min/growth_max truth, joined against the matching
+      ``*_params_growth_{name}.csv`` on ``condition_rep``.
+    - ``*_sim_k_ref.csv``: the single global base_growth_data k_ref truth,
+      joined against ``*_params_k_ref.csv``.
+
+    Either or both sources may be absent (real-data runs, or runs without
+    base_growth_data); each is silently skipped when its sim-side file
+    isn't found.
+    """
+    _summarize_condition_growth_params(run_dir, out_prefix)
+    _summarize_k_ref(run_dir, out_prefix)
+
+
 def summarize_fit(run_dir,
                   ref_theta_file=None,
                   out_prefix=None):
@@ -877,6 +1079,8 @@ def summarize_fit(run_dir,
 
     # --- Sim-parameter correlation CSVs ---
     _summarize_params(run_dir, out_prefix)
+    _summarize_growth_params(run_dir, out_prefix)
+    _summarize_transformation_lam(run_dir, out_prefix)
 
     return results
 

@@ -11,6 +11,7 @@ tfscreen
    quickstart
    simulation
    process-raw
+   model-inputs
    analysis
    summarize-fit
    grid
@@ -45,6 +46,10 @@ Simulation
 Raw Data Processing
 -------------------
 `tfscreen` includes utilities to convert raw sequencing data into quantitative inputs for analysis. See the :doc:`process-raw` page for more details.
+
+Model Input Data
+-----------------
+The hierarchical model accepts binding, growth, base-growth, pre-split, and congression-calibration data. See the :doc:`model-inputs` page for what each contributes, how much is useful, and how to pass it in.
 
 Analysis
 --------
