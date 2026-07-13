@@ -13,6 +13,7 @@ from tfscreen.simulate.empirical.population import (
     fit_population,
     PopulationModel,
     _collect_estimates,
+    _batched_inv,
 )
 
 D = 5
@@ -146,6 +147,47 @@ def test_save_load_roundtrip(tmp_path):
     assert np.allclose(loaded.cov, model.cov)
     assert loaded.param_names_natural == model.param_names_natural
     assert loaded.n_used == model.n_used
+
+
+def test_batched_inv_handles_singular_and_ill_conditioned():
+    """_batched_inv must not raise on singular / ill-conditioned matrices."""
+    rng = np.random.default_rng(0)
+
+    # A well-conditioned PSD matrix: robust inverse ~ true inverse.
+    A = _random_psd(rng)
+    inv = _batched_inv(A)
+    assert np.allclose(inv @ A, np.eye(D), atol=1e-6)
+
+    # A stack containing a genuinely singular matrix (a rank-1 outer product)
+    # and a wildly ill-conditioned one (eigenvalues spanning 1e12 .. 1e-8, the
+    # case that makes np.linalg.inv report "Singular matrix"). The robust
+    # inverse must produce a finite result rather than raising.
+    v = rng.normal(size=D)
+    singular = np.outer(v, v)                      # rank 1
+
+    Q, _ = np.linalg.qr(rng.normal(size=(D, D)))
+    eigs = np.array([1e12, 1e6, 1.0, 1e-4, 1e-8])
+    ill = (Q * eigs) @ Q.T
+
+    out = _batched_inv(np.stack([singular, ill]))  # robust inv copes
+    assert np.all(np.isfinite(out))
+    # Precision is bounded by the eigenvalue floor (1 / 1e-8 = 1e8).
+    assert np.max(np.abs(out)) <= 1e8 * (1 + 1e-6)
+
+
+def test_fit_population_survives_singular_covariance():
+    """A single unidentified (huge-variance) genotype must not crash the EM."""
+    fits, _, _ = _make_population(300, _MU, _SIGMA, meas_scale=0.2, seed=9)
+
+    # Inject a genotype whose Stage-1 covariance is effectively singular: one
+    # parameter is unconstrained (variance 1e12), mirroring a real failed fit.
+    bad_S = 0.1 * np.eye(D)
+    bad_S[0, 0] = 1e12
+    fits[("unidentified", "iptg")] = _make_fit(_MU, bad_S)
+
+    model = fit_population(fits, drop_railed=False)   # must not raise
+    assert np.all(np.isfinite(model.mu))
+    assert np.all(np.isfinite(model.cov))
 
 
 def test_wt_ref_roundtrip(tmp_path):

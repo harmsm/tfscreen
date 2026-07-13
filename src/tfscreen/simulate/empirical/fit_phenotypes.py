@@ -544,7 +544,12 @@ def fit_phenotypes(growth_df,
     for (geno, titr), gf in zip(keys, gfs):
         fits[(geno, titr)] = gf
         natural = _natural_from_transformed(gf.est_t, gf.pheno_slice)
-        std_t = np.sqrt(np.diag(gf.cov_t))[gf.pheno_slice]
+        # A near-singular least-squares fit can return a covariance with tiny
+        # negative diagonal entries (non-PSD); clamp at 0 before sqrt so the
+        # diagnostic std is 0 rather than NaN and no RuntimeWarning is raised.
+        # Stage-2 repairs these covariances properly via _nearest_psd.
+        var_t = np.clip(np.diag(gf.cov_t)[gf.pheno_slice], 0.0, None)
+        std_t = np.sqrt(var_t)
         row = {"genotype": geno, "titrant_name": titr,
                "n_obs": gf.n_obs, "converged": gf.converged}
         row.update(natural)
