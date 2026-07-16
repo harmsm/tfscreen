@@ -16,7 +16,7 @@ from tfscreen.tfmodel.model_orchestrator import FLOAT_DTYPE
 # was ~6.5x the raw formula; this is rounded up for headroom, since GPU-side
 # overhead (not measurable on this CPU-only calibration) is expected to be
 # higher. Lower this if a genotype_batch_size sized with it still OOMs on GPU.
-_DEFAULT_OVERHEAD_MULTIPLIER = 8.0
+_DEFAULT_OVERHEAD_MULTIPLIER = 6.5
 
 # Fraction of total device memory to treat as usable budget, leaving
 # headroom for the host process, other tensors already resident, and the
