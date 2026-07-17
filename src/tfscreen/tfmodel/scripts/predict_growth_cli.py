@@ -8,6 +8,60 @@ from tfscreen.tfmodel.analysis.batch_sizing import estimate_genotype_batch_size
 from tfscreen.util.cli import generalized_main, read_lines
 
 
+def _is_oom_error(exc):
+    """True if an exception looks like a GPU/TPU out-of-memory error.
+
+    JAX surfaces device OOM as a ``JaxRuntimeError`` whose message contains
+    ``RESOURCE_EXHAUSTED``; match on the message so we don't need to import the
+    specific error type (which varies across JAX versions).
+    """
+    msg = str(exc)
+    return ("RESOURCE_EXHAUSTED" in msg
+            or "Out of memory" in msg
+            or "out of memory" in msg)
+
+
+def _predict_subset_with_backoff(predict_kwargs, keep, extra):
+    """Run predict() on ``keep + extra`` genotypes, halving ``extra`` on OOM.
+
+    The mandatory ``keep`` genotypes (binding/spiked/file) are always retained;
+    only the randomly-sampled ``extra`` genotypes are dropped when the device
+    runs out of memory. This makes subset mode robust to an over-optimistic
+    genotype_batch_size estimate: the memory-fit block is a sample already, so
+    shrinking it on OOM still yields a valid input/output correlation check.
+    Re-raises any non-OOM error, or an OOM that persists once ``extra`` is
+    empty (the mandatory anchors alone don't fit).
+
+    Parameters
+    ----------
+    predict_kwargs : dict
+        Keyword arguments forwarded to predict() (without ``genotypes``).
+    keep : list of str
+        Mandatory genotypes, always predicted.
+    extra : list of str
+        Optional genotypes, shrunk by half on each OOM retry.
+
+    Returns
+    -------
+    pandas.DataFrame
+        The predict() result for the largest block that fit.
+    """
+    keep = list(keep)
+    extra = list(extra)
+    while True:
+        genotypes = keep + extra
+        try:
+            return predict(**predict_kwargs, genotypes=genotypes)
+        except Exception as exc:
+            if not _is_oom_error(exc) or len(extra) == 0:
+                raise
+            new_n = len(extra) // 2
+            print(f"  GPU out of memory at {len(genotypes)} genotypes; "
+                  f"retrying with {len(keep) + new_n} "
+                  f"({new_n} sampled + {len(keep)} mandatory)...", flush=True)
+            extra = extra[:new_n]
+
+
 def predict_growth(config_file,
                    param_file,
                    out_prefix="tfs_pred_growth",
@@ -191,9 +245,6 @@ def predict_growth(config_file,
               f"({len(keep)} mandatory + {len(sampled)} random) in a single "
               f"block.", flush=True)
 
-        # Force a single predict() call: the subset is already one block.
-        genotype_batch_size = None
-
     q_to_get = [0.5] if is_map else None
     print("Running growth predictions...", flush=True)
 
@@ -207,7 +258,12 @@ def predict_growth(config_file,
         q_to_get=q_to_get,
     )
 
-    if genotype_batch_size is not None and genotypes is not None and len(genotypes) > genotype_batch_size:
+    if subset_genotypes:
+        # Subset mode is always a single block; retry with fewer sampled
+        # genotypes if the device runs out of memory (the estimate is only a
+        # guess and can overshoot on GPU).
+        result_df = _predict_subset_with_backoff(predict_kwargs, keep, sampled)
+    elif genotype_batch_size is not None and genotypes is not None and len(genotypes) > genotype_batch_size:
         batches = [genotypes[i:i + genotype_batch_size]
                    for i in range(0, len(genotypes), genotype_batch_size)]
         n_batches = len(batches)

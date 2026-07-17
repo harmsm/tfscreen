@@ -842,3 +842,119 @@ class TestPredictGrowthSubset:
         df = pd.read_csv(f"{out}.csv")
         assert set(df["genotype"].unique()) == set(
             mock_orchestrator_subset.growth_df["genotype"].unique())
+
+
+# ---------------------------------------------------------------------------
+# --subset_genotypes: OOM back-off (shrink sampled block, keep mandatory)
+# ---------------------------------------------------------------------------
+
+class _OOMError(RuntimeError):
+    """Stand-in for jax.errors.JaxRuntimeError; message matches _is_oom_error."""
+    def __init__(self):
+        super().__init__("RESOURCE_EXHAUSTED: Out of memory while trying to "
+                         "allocate 3446432000 bytes.")
+
+
+class TestPredictGrowthSubsetBackoff:
+    """Tests for the OOM back-off in subset mode."""
+
+    def _make_oom_then_ok_predict(self, orchestrator, max_ok):
+        """Fake predict that OOMs while len(genotypes) > max_ok, else succeeds."""
+        all_calls = []
+
+        def fake_predict(**kwargs):
+            all_calls.append(dict(kwargs))
+            genotypes = kwargs.get("genotypes")
+            if genotypes is not None and len(genotypes) > max_ok:
+                raise _OOMError()
+            concs = kwargs.get("titrant_conc") or orchestrator.growth_df["titrant_conc"].unique().tolist()
+            rows = [{"genotype": g, "titrant_name": "IPTG", "titrant_conc": c,
+                     "q0.5": 10.0}
+                    for g in genotypes for c in concs]
+            return pd.DataFrame(rows)
+
+        return fake_predict, all_calls
+
+    def _patch_stack(self, orchestrator, fake_predict):
+        return [
+            patch("tfscreen.tfmodel.scripts.predict_growth_cli.read_configuration",
+                  return_value=(orchestrator, {})),
+            patch("tfscreen.tfmodel.scripts.predict_growth_cli.resolve_param_file",
+                  side_effect=lambda pf, orch, op: pf),
+            patch("tfscreen.tfmodel.scripts.predict_growth_cli.predict",
+                  side_effect=fake_predict),
+            patch("tfscreen.tfmodel.scripts.predict_growth_cli.load_posteriors",
+                  side_effect=_fake_load_posteriors),
+        ]
+
+    def test_backoff_shrinks_until_it_fits(self, mock_orchestrator_subset, tmp_path):
+        """A block that OOMs is retried with fewer genotypes until it fits."""
+        # keep = {wt, A1B} (2); OOM whenever > 3 genotypes are requested.
+        fake_predict, all_calls = self._make_oom_then_ok_predict(
+            mock_orchestrator_subset, max_ok=3)
+        patches = self._patch_stack(mock_orchestrator_subset, fake_predict)
+        out = str(tmp_path / "out")
+        with patches[0], patches[1], patches[2], patches[3]:
+            predict_growth("cfg.yaml", "post.h5",
+                           out_prefix=out,
+                           subset_genotypes=True,
+                           genotype_batch_size=6,
+                           subset_seed=0)
+        # More than one attempt was made, and the final (successful) call fit.
+        assert len(all_calls) > 1
+        assert len(all_calls[-1]["genotypes"]) <= 3
+        df = pd.read_csv(f"{out}.csv")
+        assert len(df) > 0
+
+    def test_backoff_retains_mandatory_genotypes(self, mock_orchestrator_subset, tmp_path):
+        """Binding/spiked genotypes survive every back-off step."""
+        fake_predict, all_calls = self._make_oom_then_ok_predict(
+            mock_orchestrator_subset, max_ok=2)
+        patches = self._patch_stack(mock_orchestrator_subset, fake_predict)
+        out = str(tmp_path / "out")
+        with patches[0], patches[1], patches[2], patches[3]:
+            predict_growth("cfg.yaml", "post.h5",
+                           out_prefix=out,
+                           subset_genotypes=True,
+                           genotype_batch_size=6,
+                           subset_seed=0)
+        # Every attempted call must contain the mandatory anchors.
+        for call in all_calls:
+            assert "wt" in call["genotypes"]
+            assert "A1B" in call["genotypes"]
+        df = pd.read_csv(f"{out}.csv")
+        assert {"wt", "A1B"} <= set(df["genotype"].unique())
+
+    def test_backoff_reraises_when_mandatory_alone_ooms(self, mock_orchestrator_subset, tmp_path):
+        """If even the mandatory anchors OOM, the error propagates."""
+        # max_ok=1 → keep of 2 never fits; back-off exhausts extra then re-raises.
+        fake_predict, all_calls = self._make_oom_then_ok_predict(
+            mock_orchestrator_subset, max_ok=1)
+        patches = self._patch_stack(mock_orchestrator_subset, fake_predict)
+        with patches[0], patches[1], patches[2], patches[3]:
+            with pytest.raises(_OOMError):
+                predict_growth("cfg.yaml", "post.h5",
+                               out_prefix=str(tmp_path / "out"),
+                               subset_genotypes=True,
+                               genotype_batch_size=6,
+                               subset_seed=0)
+        # Last attempt was the mandatory-only block (extra exhausted).
+        assert len(all_calls[-1]["genotypes"]) == 2
+
+    def test_non_oom_error_is_not_swallowed(self, mock_orchestrator_subset, tmp_path):
+        """A non-OOM error from predict() propagates immediately (no retry)."""
+        all_calls = []
+
+        def fake_predict(**kwargs):
+            all_calls.append(dict(kwargs))
+            raise ValueError("something else went wrong")
+
+        patches = self._patch_stack(mock_orchestrator_subset, fake_predict)
+        with patches[0], patches[1], patches[2], patches[3]:
+            with pytest.raises(ValueError, match="something else"):
+                predict_growth("cfg.yaml", "post.h5",
+                               out_prefix=str(tmp_path / "out"),
+                               subset_genotypes=True,
+                               genotype_batch_size=6,
+                               subset_seed=0)
+        assert len(all_calls) == 1  # no retries on a non-OOM error
