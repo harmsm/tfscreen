@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 from tfscreen.tfmodel.configuration_io import read_configuration
 from tfscreen.tfmodel.inference.checkpoint_io import resolve_param_file
@@ -16,7 +17,9 @@ def predict_growth(config_file,
                    only_files=False,
                    num_samples=0,
                    num_marginal_samples=None,
-                   genotype_batch_size=None):
+                   genotype_batch_size=None,
+                   subset_genotypes=False,
+                   subset_seed=None):
     """
     Predict growth signal (ln_cfu) from a fitted hierarchical model.
 
@@ -85,6 +88,18 @@ def predict_growth(config_file,
         one JAX re-compilation per batch. If None (default), a batch size is
         estimated automatically from the available device memory and the
         per-genotype tensor cost; pass an explicit value to override.
+    subset_genotypes : bool, optional
+        If True, predict only a single memory-fit block of genotypes instead
+        of every genotype. The block size is the auto-sized (or explicit)
+        genotype_batch_size; the block always includes the binding genotypes,
+        the spiked genotypes, and any genotypes supplied via genotypes_file,
+        with the remainder of the block filled by a random sample of the other
+        genotypes. Intended for quickly assessing the input/output ln_cfu
+        correlation without paying for a full prediction sweep. Default False.
+    subset_seed : int or None, optional
+        Seed for the random draw used by subset_genotypes, making the sampled
+        block reproducible. Ignored unless subset_genotypes is True. Default
+        None (non-deterministic draw).
     """
     file_genotypes = read_lines(genotypes_file) if genotypes_file else []
     titrant_names = read_lines(titrant_names_file) if titrant_names_file else None
@@ -137,6 +152,47 @@ def predict_growth(config_file,
     except Exception:
         binding_genos = []
     binding_set = set(binding_genos)
+
+    # Subset mode: predict a single memory-fit block of genotypes rather than
+    # every genotype, for a fast input/output ln_cfu correlation check. The
+    # block always keeps the binding, spiked, and file-specified genotypes;
+    # the rest of the block is a random sample of the remaining genotypes.
+    if subset_genotypes:
+        try:
+            spiked_list = orchestrator.settings.get("spiked_genotypes") or []
+            spiked_set = set(str(g) for g in spiked_list)
+        except Exception:
+            spiked_set = set()
+
+        universe = list(genotypes)
+        universe_set = set(universe)
+        # Mandatory-keep genotypes, restricted to those actually in the
+        # universe (file genotypes may be novel/absent under some paths).
+        keep_set = (binding_set | spiked_set | set(file_genotypes)) & universe_set
+        keep = [g for g in universe if g in keep_set]          # preserve order
+        remaining = [g for g in universe if g not in keep_set]
+
+        block = genotype_batch_size
+        n_random = max(0, block - len(keep))
+        rng = np.random.default_rng(subset_seed)
+        if n_random < len(remaining):
+            idx = rng.choice(len(remaining), size=n_random, replace=False)
+            sampled = [remaining[i] for i in sorted(idx)]
+        else:
+            sampled = remaining
+
+        genotypes = keep + sampled
+
+        if len(keep) > block:
+            print(f"WARNING: {len(keep)} mandatory (binding/spiked/file) "
+                  f"genotypes exceed the auto-sized block of {block}; "
+                  f"predicting all of them in one call anyway.", flush=True)
+        print(f"Subset mode: predicting {len(genotypes)} genotypes "
+              f"({len(keep)} mandatory + {len(sampled)} random) in a single "
+              f"block.", flush=True)
+
+        # Force a single predict() call: the subset is already one block.
+        genotype_batch_size = None
 
     q_to_get = [0.5] if is_map else None
     print("Running growth predictions...", flush=True)
@@ -197,7 +253,9 @@ def main():
                                        "titrant_concs_file": str,
                                        "num_marginal_samples": int,
                                        "genotype_batch_size": int,
-                                       "only_files": bool})
+                                       "subset_seed": int,
+                                       "only_files": bool,
+                                       "subset_genotypes": bool})
 
 
 if __name__ == "__main__":

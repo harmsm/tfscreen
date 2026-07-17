@@ -3621,8 +3621,8 @@
 ./src/tfscreen/tfmodel/scripts/fit_model_cli.py:524:72: E231 missing whitespace after ':'
 ./src/tfscreen/tfmodel/scripts/fit_model_cli.py:525:74: E231 missing whitespace after ':'
 ./src/tfscreen/tfmodel/scripts/fit_model_cli.py:527:1: E305 expected 2 blank lines after class or function definition, found 1
-./src/tfscreen/tfmodel/scripts/predict_growth_cli.py:124:27: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/scripts/predict_growth_cli.py:139:5: F841 local variable 'binding_set' is assigned to but never used
+./src/tfscreen/tfmodel/scripts/predict_growth_cli.py:11:1: C901 'predict_growth' is too complex (15)
+./src/tfscreen/tfmodel/scripts/predict_growth_cli.py:139:27: E128 continuation line under-indented for visual indent
 ./src/tfscreen/tfmodel/scripts/predict_theta_cli.py:12:1: C901 'predict_theta' is too complex (11)
 ./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:129:23: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:130:23: E221 multiple spaces before operator
@@ -7643,7 +7643,7 @@
 ./tests/tfscreen/util/validation/test_check.py:8:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/validation/test_check.py:26:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/validation/test_check.py:75:70: W292 no newline at end of file
-51    C901 'cat_fit' is too complex (19)
+52    C901 'cat_fit' is too complex (19)
 15    E111 indentation is not a multiple of 4
 6     E114 indentation is not a multiple of 4 (comment)
 6     E116 unexpected indentation (comment)
@@ -7686,7 +7686,7 @@
 232   F401 'tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U0_a.thermo.run_model' imported but unused
 11    F541 f-string is missing placeholders
 4     F811 redefinition of unused 'np' from line 1
-41    F841 local variable 'e' is assigned to but never used
+40    F841 local variable 'e' is assigned to but never used
 620   W291 trailing whitespace
 85    W292 no newline at end of file
 1582  W293 blank line contains whitespace
