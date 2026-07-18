@@ -10,6 +10,85 @@ from tfscreen.analysis.extract_epistasis import (
 from tfscreen.util.cli import generalized_main
 
 
+def _diagnose_empty_output(df, condition_selector, exclude=()):
+    """
+    Explain why no mutant cycles were found and, when possible, suggest a fix.
+
+    The most common cause is a table with one row per genotype *per condition*
+    (e.g. per titrant_conc) run without ``--condition_selector``. In that case
+    every genotype is non-unique within the single implicit group, so
+    ``mutant_cycle_pivot`` drops all rows as duplicates and returns nothing. This
+    inspects the input and, if that is what happened, names the column(s) that
+    would resolve it.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        The raw input table (with a 'genotype' column).
+    condition_selector : list of str or None
+        The condition columns that were used, if any.
+    exclude : iterable of str, optional
+        Columns that must never be suggested as condition selectors -- namely the
+        observable and its error column, whose values legitimately vary within a
+        genotype and would otherwise be flagged as spurious candidates.
+
+    Returns
+    -------
+    str or None
+        A hint to print, or None if no specific cause could be identified.
+    """
+    if "genotype" not in df.columns:
+        return None
+
+    used = list(condition_selector) if condition_selector is not None else []
+    exclude = set(exclude)
+
+    # Recreate the grouping the pivot used, and check for non-unique genotypes
+    # within any group -- that is the duplicate-drop trap.
+    if used:
+        groups = (g for _, g in df.groupby(used))
+    else:
+        groups = (df,)
+    has_dupes = any(not g["genotype"].is_unique for g in groups)
+    if not has_dupes:
+        return None
+
+    # Candidate condition columns: those whose value varies within a genotype
+    # (and that are not already being used as selectors).
+    candidates = [
+        c for c in df.columns
+        if c != "genotype" and c not in used and c not in exclude
+        and (df.groupby("genotype")[c].nunique(dropna=False) > 1).any()
+    ]
+
+    lines = [
+        "Every genotype appears more than once within a condition group, so all "
+        "rows were dropped as duplicates before any cycle could be built."
+    ]
+    if candidates:
+        # Prefer a single column that alone makes genotypes unique; otherwise
+        # fall back to suggesting the full set.
+        single = [
+            c for c in candidates
+            if not df.duplicated(subset=["genotype", c]).any()
+        ]
+        hint_cols = single if single else candidates
+        lines.append(
+            "This usually means the table has one row per genotype *per "
+            "condition*, and the condition column was not passed."
+        )
+        lines.append(f"  Columns that vary within a genotype: {candidates}")
+        lines.append(
+            f"  Try: --condition_selector {' '.join(hint_cols)}"
+        )
+    else:
+        lines.append(
+            "Check the input for genuinely duplicated genotype rows within a "
+            "condition."
+        )
+    return "\n".join(lines)
+
+
 def extract_epistasis(data_file,
                       y_obs,
                       out_prefix="tfs_epistasis",
@@ -81,6 +160,10 @@ def extract_epistasis(data_file,
     if result.empty:
         print("Warning: no valid mutant cycles found; writing empty output.",
               flush=True)
+        exclude = [c for c in (y_obs, y_std) if c is not None]
+        hint = _diagnose_empty_output(df, condition_selector, exclude=exclude)
+        if hint is not None:
+            print(hint, flush=True)
 
     result.to_csv(out_file, index=False)
     print(f"Wrote {len(result)} rows to {out_file}", flush=True)

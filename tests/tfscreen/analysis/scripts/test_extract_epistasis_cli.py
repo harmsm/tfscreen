@@ -138,6 +138,43 @@ class TestEmptyResult:
         assert "no valid mutant cycles" in captured
         assert "Wrote 0 rows" in captured
 
+    def test_forgot_condition_selector_hints_column(self, tmp_path, capsys):
+        # One row per genotype *per condition* (like titrant_conc), run without
+        # --condition_selector: every genotype is non-unique -> all dropped.
+        rows = []
+        for conc in [0.0, 0.1, 1.0]:
+            for r in _single_cycle_rows():
+                rows.append({**r, "titrant_conc": conc})
+        data = _write_csv(tmp_path, rows)
+        out_prefix = str(tmp_path / "out")
+
+        extract_epistasis(data, y_obs="y", out_prefix=out_prefix)
+
+        captured = capsys.readouterr().out
+        assert "dropped as duplicates" in captured
+        assert "--condition_selector titrant_conc" in captured
+        # With the suggested selector it succeeds.
+        extract_epistasis(data, y_obs="y",
+                          condition_selector=["titrant_conc"],
+                          out_prefix=out_prefix)
+        out = pd.read_csv(f"{out_prefix}.csv")
+        assert len(out) == 3
+
+    def test_no_cycles_does_not_hint_condition(self, tmp_path, capsys):
+        # Genotypes already unique -> the empty result is not a duplicate issue,
+        # so we must not emit a spurious condition-column hint.
+        rows = [
+            {"genotype": "wt", "y": 1.0},
+            {"genotype": "A15G", "y": 2.0},
+        ]
+        data = _write_csv(tmp_path, rows)
+        out_prefix = str(tmp_path / "out")
+
+        extract_epistasis(data, y_obs="y", out_prefix=out_prefix)
+
+        captured = capsys.readouterr().out
+        assert "--condition_selector" not in captured
+
 
 class TestArgWiring:
 

@@ -156,7 +156,8 @@ def cat_response(theta_file,
 
 def main():
     generalized_main(cat_response,
-                     manual_arg_types={"sigma_col": str,
+                     manual_arg_types={"theta_col": str,
+                                       "sigma_col": str,
                                        "models": str},
                      manual_arg_nargs={"models": "+"})
 
