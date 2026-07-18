@@ -227,3 +227,22 @@ class TestExtractEpistasis:
         # keep_extra = False (default) should drop 'extra_col'
         result_false = extract_epistasis(base_df_for_epistasis, "fitness",condition_selector="condition")
         assert "extra_col" not in result_false.columns
+
+    def test_returns_empty_when_no_valid_cycles(self):
+        """No double mutant -> empty result rather than a KeyError.
+
+        Regression: with keep_extra=False the column selection ran even when the
+        pivot returned an empty (column-less) frame, raising a KeyError.
+        """
+        df = pd.DataFrame({
+            "genotype": ["wt", "A10G"],
+            "fitness":  [1.0, 0.8],
+            "error":    [0.05, 0.04],
+        })
+        result = extract_epistasis(df, "fitness", y_std="error")
+        assert result.empty
+
+    def test_returns_empty_for_empty_input(self):
+        """An empty input frame returns an empty frame (no KeyError)."""
+        result = extract_epistasis(pd.DataFrame({"genotype": []}), "fitness")
+        assert result.empty

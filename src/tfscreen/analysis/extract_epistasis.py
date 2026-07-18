@@ -194,6 +194,13 @@ def extract_epistasis(
     cycles = mutant_cycle_pivot(df,
                                 extract_columns=extract_columns,
                                 condition_selector=condition_selector)
+
+    # No valid mutant cycles were found (e.g. no double mutants, or no wt). The
+    # pivot returns an empty frame with no cycle columns, so short-circuit before
+    # attempting to select/compute on columns that do not exist.
+    if cycles.empty:
+        return cycles
+
     # Drop extra columns
     if not keep_extra:
 

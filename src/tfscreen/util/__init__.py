@@ -16,6 +16,10 @@ from .numerical import (  # noqa: F401
     broadcast_args
 )
 
+from .parallel import (  # noqa: F401
+    resolve_workers
+)
+
 from .dataframe import (  # noqa: F401
     check_columns
 )

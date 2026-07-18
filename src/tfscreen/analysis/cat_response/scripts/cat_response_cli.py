@@ -3,19 +3,36 @@ CLI for fitting cat_response models to theta-vs-titrant data per genotype.
 """
 
 import pandas as pd
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor
 
 from tfscreen.analysis.cat_response.cat_fit import cat_fit
 from tfscreen.mle.curve_models import MODEL_LIBRARY
+from tfscreen.util import resolve_workers
 from tfscreen.util.cli.generalized_main import generalized_main
 
-def _fit_one(args):
-    """Worker: run cat_fit for one (genotype, titrant_name) pair."""
-    genotype, titrant_name, x, y, y_std, models_to_run = args
+# Number of (genotype, titrant_name) pairs bundled into each worker task. Larger
+# chunks amortize the per-task pickle/IPC overhead of ProcessPoolExecutor, which
+# matters a lot when there are hundreds of thousands of pairs.
+_CHUNK_SIZE = 200
+
+
+def _fit_one(genotype, titrant_name, x, y, y_std, models_to_run):
+    """Run cat_fit for one (genotype, titrant_name) pair."""
     flat_out, _ = cat_fit(x, y, y_std, models_to_run=models_to_run)
     flat_out["genotype"] = genotype
     flat_out["titrant_name"] = titrant_name
     return flat_out
+
+
+def _fit_chunk(chunk):
+    """Worker: run cat_fit for a list of work items, preserving order."""
+    return [_fit_one(*item) for item in chunk]
+
+
+def _iter_chunks(work_items, chunk_size):
+    """Yield successive length-``chunk_size`` slices of ``work_items``."""
+    for start in range(0, len(work_items), chunk_size):
+        yield work_items[start:start + chunk_size]
 
 
 def cat_response(theta_file,
@@ -23,7 +40,7 @@ def cat_response(theta_file,
                  theta_col=None,
                  sigma_col=None,
                  models=None,
-                 workers=1):
+                 num_workers=-1):
     """
     Classify each genotype's theta-vs-titrant curve using categorical response models.
 
@@ -51,8 +68,11 @@ def cat_response(theta_file,
         upper_std and lower_std columns to be present.
     models : list of str or None, optional
         Response models to fit. Defaults to all models in MODEL_LIBRARY.
-    workers : int, optional
-        Number of parallel worker processes (default 1).
+    num_workers : int, optional
+        Number of parallel worker processes. ``1`` runs serially in-process;
+        ``-1`` (the default) uses ``os.cpu_count() - 1``; ``N`` uses ``N``
+        processes. The per-pair fits are embarrassingly parallel, so this scales
+        nearly linearly on large libraries.
     """
     if models is None:
         models = list(MODEL_LIBRARY.keys())
@@ -95,21 +115,33 @@ def cat_response(theta_file,
         work_items.append((genotype, titrant_name, x, y, y_std, models))
 
     n_total = len(work_items)
-    results = [None] * n_total
-    idx_map = {id(item): i for i, item in enumerate(work_items)}
+    workers = resolve_workers(num_workers)
+    chunks = list(_iter_chunks(work_items, _CHUNK_SIZE))
 
     print(f"  Fitting {n_total} (genotype, titrant_name) pairs "
           f"with {workers} worker(s)...", flush=True)
 
-    with ProcessPoolExecutor(max_workers=workers) as executor:
-        futures = {executor.submit(_fit_one, item): idx_map[id(item)]
-                   for item in work_items}
-        n_done = 0
-        for future in as_completed(futures):
-            results[futures[future]] = future.result()
-            n_done += 1
-            if n_done % 5000 == 0 or n_done == n_total:
-                print(f"  {n_done}/{n_total} fits complete", flush=True)
+    results = []
+    n_done = 0
+
+    def _report(n_done):
+        if n_done % 5000 < _CHUNK_SIZE or n_done == n_total:
+            print(f"  {n_done}/{n_total} fits complete", flush=True)
+
+    if workers == 1:
+        # Serial fast-path: run in-process, no pickling/IPC overhead.
+        for chunk in chunks:
+            results.extend(_fit_chunk(chunk))
+            n_done += len(chunk)
+            _report(n_done)
+    else:
+        # executor.map preserves input order, so results stay aligned with
+        # work_items without an explicit index map.
+        with ProcessPoolExecutor(max_workers=workers) as executor:
+            for chunk_result in executor.map(_fit_chunk, chunks):
+                results.extend(chunk_result)
+                n_done += len(chunk_result)
+                _report(n_done)
 
     out_df = pd.DataFrame(results)
     id_cols = ["genotype", "titrant_name"]

@@ -61,13 +61,13 @@ import numpy as np
 import pandas as pd
 from scipy.special import expit, logit
 import tqdm
-import os
 import warnings
 from collections import namedtuple
 from concurrent.futures import ProcessPoolExecutor
 
 from tfscreen.util.io import read_dataframe
 from tfscreen.util.dataframe import check_columns, get_scaled_cfu
+from tfscreen.util import resolve_workers as _resolve_workers
 from tfscreen.mle.fitters.least_squares import run_least_squares
 
 # Numerical guards, matched to tfscreen.mle.curve_models.models so the fitted
@@ -534,15 +534,6 @@ def _fit_one_task(sub):
     return fit_one_genotype(sub, _WORKER_STATE["k_map"], _WORKER_STATE["m_map"],
                             _WORKER_STATE["intercept_cols"],
                             dk_geno_prior=_WORKER_STATE["dk_geno_prior"])
-
-
-def _resolve_workers(num_workers):
-    """joblib-style worker count: 1 -> serial, -1 -> cpu_count-1, N -> N."""
-    if num_workers is None or int(num_workers) == 1:
-        return 1
-    if int(num_workers) < 0:
-        return max(1, (os.cpu_count() or 2) - 1)
-    return int(num_workers)
 
 
 def fit_phenotypes(growth_df,

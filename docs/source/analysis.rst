@@ -232,7 +232,11 @@ Fits categorical response curve models to the *θ*-vs-titrant output of
 
     tfs-cat-response \
         tfs_theta_pred.csv \
-        --workers 8
+        --num_workers -1
+
+The per-pair fits are embarrassingly parallel. ``--num_workers`` defaults to
+``-1`` (use ``os.cpu_count() - 1`` processes); pass ``1`` to run serially or a
+positive integer to pin the worker count.
 
 Output (default ``--out_prefix tfs_cat_response``):
 

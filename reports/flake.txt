@@ -70,9 +70,8 @@
 ./src/tfscreen/analysis/cat_response/cat_response.py:134:34: E231 missing whitespace after ','
 ./src/tfscreen/analysis/cat_response/cat_response.py:138:42: E231 missing whitespace after ','
 ./src/tfscreen/analysis/cat_response/cat_response.py:141:56: W292 no newline at end of file
-./src/tfscreen/analysis/cat_response/scripts/cat_response_cli.py:12:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/analysis/cat_response/scripts/cat_response_cli.py:21:1: C901 'cat_response' is too complex (11)
-./src/tfscreen/analysis/cat_response/scripts/cat_response_cli.py:91:56: E127 continuation line over-indented for visual indent
+./src/tfscreen/analysis/cat_response/scripts/cat_response_cli.py:38:1: C901 'cat_response' is too complex (14)
+./src/tfscreen/analysis/cat_response/scripts/cat_response_cli.py:111:56: E127 continuation line over-indented for visual indent
 ./src/tfscreen/analysis/extract_epistasis.py:8:1: C901 'mutant_cycle_pivot' is too complex (11)
 ./src/tfscreen/analysis/extract_epistasis.py:8:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/extract_epistasis.py:33:77: W291 trailing whitespace
@@ -83,7 +82,7 @@
 ./src/tfscreen/analysis/extract_epistasis.py:100:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/extract_epistasis.py:113:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/extract_epistasis.py:125:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:129:1: C901 'extract_epistasis' is too complex (12)
+./src/tfscreen/analysis/extract_epistasis.py:129:1: C901 'extract_epistasis' is too complex (13)
 ./src/tfscreen/analysis/extract_epistasis.py:133:47: E252 missing whitespace around parameter equals
 ./src/tfscreen/analysis/extract_epistasis.py:133:48: E252 missing whitespace around parameter equals
 ./src/tfscreen/analysis/extract_epistasis.py:159:75: W291 trailing whitespace
@@ -91,16 +90,16 @@
 ./src/tfscreen/analysis/extract_epistasis.py:184:27: E231 missing whitespace after ','
 ./src/tfscreen/analysis/extract_epistasis.py:187:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/extract_epistasis.py:192:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:201:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:208:55: E231 missing whitespace after ','
-./src/tfscreen/analysis/extract_epistasis.py:208:60: E231 missing whitespace after ','
-./src/tfscreen/analysis/extract_epistasis.py:208:65: E231 missing whitespace after ','
-./src/tfscreen/analysis/extract_epistasis.py:210:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:216:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/extract_epistasis.py:208:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/extract_epistasis.py:215:55: E231 missing whitespace after ','
+./src/tfscreen/analysis/extract_epistasis.py:215:60: E231 missing whitespace after ','
+./src/tfscreen/analysis/extract_epistasis.py:215:65: E231 missing whitespace after ','
+./src/tfscreen/analysis/extract_epistasis.py:217:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/extract_epistasis.py:223:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:229:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:231:10: W291 trailing whitespace
-./src/tfscreen/analysis/extract_epistasis.py:233:30: W291 trailing whitespace
+./src/tfscreen/analysis/extract_epistasis.py:230:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/extract_epistasis.py:236:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/extract_epistasis.py:238:10: W291 trailing whitespace
+./src/tfscreen/analysis/extract_epistasis.py:240:30: W291 trailing whitespace
 ./src/tfscreen/analysis/stats_test_suite.py:8:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/stats_test_suite.py:8:31: E231 missing whitespace after ','
 ./src/tfscreen/analysis/stats_test_suite.py:8:42: E231 missing whitespace after ','
@@ -3621,8 +3620,8 @@
 ./src/tfscreen/tfmodel/scripts/fit_model_cli.py:524:72: E231 missing whitespace after ':'
 ./src/tfscreen/tfmodel/scripts/fit_model_cli.py:525:74: E231 missing whitespace after ':'
 ./src/tfscreen/tfmodel/scripts/fit_model_cli.py:527:1: E305 expected 2 blank lines after class or function definition, found 1
-./src/tfscreen/tfmodel/scripts/predict_growth_cli.py:11:1: C901 'predict_growth' is too complex (15)
-./src/tfscreen/tfmodel/scripts/predict_growth_cli.py:139:27: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/scripts/predict_growth_cli.py:65:1: C901 'predict_growth' is too complex (16)
+./src/tfscreen/tfmodel/scripts/predict_growth_cli.py:193:27: E128 continuation line under-indented for visual indent
 ./src/tfscreen/tfmodel/scripts/predict_theta_cli.py:12:1: C901 'predict_theta' is too complex (11)
 ./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:129:23: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:130:23: E221 multiple spaces before operator
@@ -3729,7 +3728,7 @@
 ./src/tfscreen/tfmodel/tensors/tensor_manager.py:512:1: W293 blank line contains whitespace
 ./src/tfscreen/tfmodel/tensors/tensor_manager.py:517:1: W293 blank line contains whitespace
 ./src/tfscreen/tfmodel/tensors/tensor_manager.py:528:1: W391 blank line at end of file
-./src/tfscreen/util/__init__.py:71:2: W292 no newline at end of file
+./src/tfscreen/util/__init__.py:75:2: W292 no newline at end of file
 ./src/tfscreen/util/cli/__init__.py:16:1: W391 blank line at end of file
 ./src/tfscreen/util/cli/generalized_main.py:1:11: W291 trailing whitespace
 ./src/tfscreen/util/cli/generalized_main.py:5:1: C901 'generalized_main' is too complex (15)
@@ -4066,9 +4065,6 @@
 ./tests/smoke-tests/test_run_growth_analysis_smoke.py:37:1: W293 blank line contains whitespace
 ./tests/smoke-tests/test_run_growth_analysis_smoke.py:45:1: W293 blank line contains whitespace
 ./tests/smoke-tests/test_run_growth_analysis_smoke.py:48:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/scripts/test_cat_response_cli.py:14:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/cat_response/scripts/test_cat_response_cli.py:19:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/cat_response/scripts/test_cat_response_cli.py:24:1: E305 expected 2 blank lines after class or function definition, found 1
 ./tests/tfscreen/analysis/cat_response/test_cat_fit.py:4:1: F401 'pandas as pd' imported but unused
 ./tests/tfscreen/analysis/cat_response/test_cat_fit.py:10:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/analysis/cat_response/test_cat_fit.py:17:1: E302 expected 2 blank lines, found 1
@@ -4217,7 +4213,7 @@
 ./tests/tfscreen/analysis/test_extract_epistasis.py:220:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/test_extract_epistasis.py:226:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/test_extract_epistasis.py:228:74: E231 missing whitespace after ','
-./tests/tfscreen/analysis/test_extract_epistasis.py:229:55: W292 no newline at end of file
+./tests/tfscreen/analysis/test_extract_epistasis.py:248:28: W292 no newline at end of file
 ./tests/tfscreen/analysis/test_stats_test_suite.py:6:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/analysis/test_stats_test_suite.py:9:52: E261 at least two spaces before inline comment
 ./tests/tfscreen/analysis/test_stats_test_suite.py:10:1: W293 blank line contains whitespace
@@ -7670,9 +7666,9 @@
 2     E266 too many leading '#' for block comment
 149   E272 multiple spaces before keyword
 1     E301 expected 1 blank line, found 0
-780   E302 expected 2 blank lines, found 1
+777   E302 expected 2 blank lines, found 1
 50    E303 too many blank lines (2)
-20    E305 expected 2 blank lines after class or function definition, found 1
+19    E305 expected 2 blank lines after class or function definition, found 1
 29    E306 expected 1 blank line before a nested definition, found 0
 1     E401 multiple imports on one line
 38    E402 module level import not at top of file
@@ -7691,4 +7687,4 @@
 85    W292 no newline at end of file
 1582  W293 blank line contains whitespace
 30    W391 blank line at end of file
-7645
+7641
