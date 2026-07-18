@@ -50,6 +50,7 @@
 ./src/tfscreen/analysis/cat_response/cat_fit.py:211:5: E303 too many blank lines (2)
 ./src/tfscreen/analysis/cat_response/cat_fit.py:211:32: W292 no newline at end of file
 ./src/tfscreen/analysis/cat_response/cat_response.py:49:1: C901 'cat_response' is too complex (12)
+./src/tfscreen/analysis/compare_theta.py:200:1: C901 'compare_theta' is too complex (12)
 ./src/tfscreen/analysis/extract_epistasis.py:8:1: C901 'mutant_cycle_pivot' is too complex (11)
 ./src/tfscreen/analysis/extract_epistasis.py:8:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/extract_epistasis.py:78:25: E231 missing whitespace after ','
@@ -7578,7 +7579,7 @@
 ./tests/tfscreen/util/validation/test_check.py:8:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/validation/test_check.py:26:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/validation/test_check.py:75:70: W292 no newline at end of file
-52    C901 'cat_fit' is too complex (19)
+53    C901 'cat_fit' is too complex (19)
 15    E111 indentation is not a multiple of 4
 6     E114 indentation is not a multiple of 4 (comment)
 6     E116 unexpected indentation (comment)
@@ -7625,4 +7626,4 @@
 84    W292 no newline at end of file
 1558  W293 blank line contains whitespace
 29    W391 blank line at end of file
-7580
+7581

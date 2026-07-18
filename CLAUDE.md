@@ -54,6 +54,7 @@ tfs-predict-growth         # Predict growth from fitted model
 tfs-predict-theta          # Predict operator occupancy
 tfs-cat-response           # Fit categorical response curves
 tfs-extract-epistasis      # Calculate second-order epistasis from a long-form observable table
+tfs-compare-theta          # Grade per-genotype theta stability across N estimate runs (seeds / k-fold dropouts)
 tfs-diagnose-nan           # Diagnose NaN issues in inference
 tfs-simulate               # Simulate a full experiment
 tfs-report-cfu0            # Report average ln_cfu0 by genotype class from a simulate config
@@ -93,7 +94,7 @@ FASTQ files
 | `process_raw/` | FASTQ parsing, count normalization, ln_cfu calculation |
 | `simulate/` | Full experiment simulation from thermodynamics to read counts |
 | `simulate/growth/` | Growth/growth-transition linkage models for simulation |
-| `analysis/` | Downstream statistical analysis of inference outputs (cat_response, extract_epistasis) |
+| `analysis/` | Downstream statistical analysis of inference outputs (cat_response, extract_epistasis, compare_theta) |
 | `mle/` | General-purpose MLE regression (FitManager, least squares, WLS, NLS) |
 | `mle/curve_models/` | Empirical curve-fitting functions and MODEL_LIBRARY used by cat_response |
 | `mle/fitters/` | Low-level fitter implementations (least_squares, matrix_nls, matrix_wls) |
