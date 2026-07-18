@@ -8,7 +8,7 @@ from typing import List, Optional
 def mutant_cycle_pivot(
     df: pd.DataFrame,
     extract_columns: List[str],
-    condition_selector: List[str] | str | None = None,
+    group_by: List[str] | str | None = None,
     verbose: bool = False,
 ) -> pd.DataFrame:
     """
@@ -28,10 +28,10 @@ def mutant_cycle_pivot(
     extract_columns : list[str],
         A list of column names whose values will be extracted and placed into
         the new wide-format columns (e.g., 'fitness', 'expression').
-    condition_selector : list[str] or str or None, optional
+    group_by : list[str] or str or None, optional
         Column name(s) to group the DataFrame by. The analysis is performed
-        independently on each group. If None, treat the whole dataframe in a 
-        single analysis. 
+        independently on each group. If None, treat the whole dataframe in a
+        single analysis.
     verbose : bool, default False
         If True, print status messages about skipped groups or dropped data.
 
@@ -74,10 +74,10 @@ def mutant_cycle_pivot(
     else:
         df_proc["m1"] = None
 
-    if condition_selector is None:
+    if group_by is None:
         grouper = [(None,df_proc)]
     else:
-        grouper = df_proc.groupby(condition_selector)
+        grouper = df_proc.groupby(group_by)
 
     result_dfs = []
     for group, sub_df in grouper:
@@ -130,7 +130,7 @@ def extract_epistasis(
     df: pd.DataFrame,
     y_obs: str,
     y_std: Optional[str] = None,
-    condition_selector: List[str] | str | None=None,
+    group_by: List[str] | str | None=None,
     scale: str = "add",
     keep_extra: bool = False
 ) -> pd.DataFrame:
@@ -154,9 +154,9 @@ def extract_epistasis(
     y_std : str, optional
         The name of the column containing the standard error for `y_obs`.
         If provided, the error on the epistasis (`ep_std`) will be calculated.
-    condition_selector : list[str] or str or None
+    group_by : list[str] or str or None
         Column name(s) that define a unique experimental condition. Epistasis
-        is calculated independently for each condition. If None, treat all 
+        is calculated independently for each condition. If None, treat all
         conditions at once
     scale : {"add", "mult"}, default "add"
         The scale for calculating epistasis.
@@ -193,7 +193,7 @@ def extract_epistasis(
     # Build a dataframe with mutant cycles
     cycles = mutant_cycle_pivot(df,
                                 extract_columns=extract_columns,
-                                condition_selector=condition_selector)
+                                group_by=group_by)
 
     # No valid mutant cycles were found (e.g. no double mutants, or no wt). The
     # pivot returns an empty frame with no cycle columns, so short-circuit before
@@ -205,11 +205,11 @@ def extract_epistasis(
     if not keep_extra:
 
         keep = ["genotype"]
-        
-        if condition_selector is not None:
-            if isinstance(condition_selector, str):
-                condition_selector = [condition_selector]
-            keep.extend(condition_selector)
+
+        if group_by is not None:
+            if isinstance(group_by, str):
+                group_by = [group_by]
+            keep.extend(group_by)
 
         for c in extract_columns:
             keep.extend([f"{mut}_{c}" for mut in ["00","01","10","11"]])

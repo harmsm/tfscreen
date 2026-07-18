@@ -10,12 +10,12 @@ from tfscreen.analysis.extract_epistasis import (
 from tfscreen.util.cli import generalized_main
 
 
-def _diagnose_empty_output(df, condition_selector, exclude=()):
+def _diagnose_empty_output(df, group_by, exclude=()):
     """
     Explain why no mutant cycles were found and, when possible, suggest a fix.
 
     The most common cause is a table with one row per genotype *per condition*
-    (e.g. per titrant_conc) run without ``--condition_selector``. In that case
+    (e.g. per titrant_conc) run without ``--group_by``. In that case
     every genotype is non-unique within the single implicit group, so
     ``mutant_cycle_pivot`` drops all rows as duplicates and returns nothing. This
     inspects the input and, if that is what happened, names the column(s) that
@@ -25,8 +25,8 @@ def _diagnose_empty_output(df, condition_selector, exclude=()):
     ----------
     df : pandas.DataFrame
         The raw input table (with a 'genotype' column).
-    condition_selector : list of str or None
-        The condition columns that were used, if any.
+    group_by : list of str or None
+        The grouping columns that were used, if any.
     exclude : iterable of str, optional
         Columns that must never be suggested as condition selectors -- namely the
         observable and its error column, whose values legitimately vary within a
@@ -40,7 +40,7 @@ def _diagnose_empty_output(df, condition_selector, exclude=()):
     if "genotype" not in df.columns:
         return None
 
-    used = list(condition_selector) if condition_selector is not None else []
+    used = list(group_by) if group_by is not None else []
     exclude = set(exclude)
 
     # Recreate the grouping the pivot used, and check for non-unique genotypes
@@ -79,7 +79,7 @@ def _diagnose_empty_output(df, condition_selector, exclude=()):
         )
         lines.append(f"  Columns that vary within a genotype: {candidates}")
         lines.append(
-            f"  Try: --condition_selector {' '.join(hint_cols)}"
+            f"  Try: --group_by {' '.join(hint_cols)}"
         )
     else:
         lines.append(
@@ -93,7 +93,7 @@ def extract_epistasis(data_file,
                       y_obs,
                       out_prefix="tfs_epistasis",
                       y_std=None,
-                      condition_selector=None,
+                      group_by=None,
                       scale="add",
                       keep_extra=False):
     """
@@ -110,7 +110,7 @@ def extract_epistasis(data_file,
     data_file : str
         Path to the input CSV. Must contain a 'genotype' column, the column
         named by y_obs, and (if given) the columns named by y_std and
-        condition_selector.
+        group_by.
     y_obs : str
         Name of the column holding the observable for which epistasis is
         calculated (e.g. 'fitness', 'dG').
@@ -120,7 +120,7 @@ def extract_epistasis(data_file,
     y_std : str or None, optional
         Name of the column holding the standard error of y_obs. If given, the
         epistasis error (ep_std) is propagated and written.
-    condition_selector : list of str or None, optional
+    group_by : list of str or None, optional
         One or more column names that define a unique experimental condition.
         Epistasis is calculated independently within each condition. If omitted,
         the whole table is treated as a single condition.
@@ -139,8 +139,8 @@ def extract_epistasis(data_file,
     required = ["genotype", y_obs]
     if y_std is not None:
         required.append(y_std)
-    if condition_selector is not None:
-        required.extend(condition_selector)
+    if group_by is not None:
+        required.extend(group_by)
 
     missing = [c for c in required if c not in df.columns]
     if missing:
@@ -152,7 +152,7 @@ def extract_epistasis(data_file,
     result = _extract_epistasis(df,
                                 y_obs=y_obs,
                                 y_std=y_std,
-                                condition_selector=condition_selector,
+                                group_by=group_by,
                                 scale=scale,
                                 keep_extra=keep_extra)
 
@@ -161,7 +161,7 @@ def extract_epistasis(data_file,
         print("Warning: no valid mutant cycles found; writing empty output.",
               flush=True)
         exclude = [c for c in (y_obs, y_std) if c is not None]
-        hint = _diagnose_empty_output(df, condition_selector, exclude=exclude)
+        hint = _diagnose_empty_output(df, group_by, exclude=exclude)
         if hint is not None:
             print(hint, flush=True)
 
@@ -172,9 +172,9 @@ def extract_epistasis(data_file,
 def main():
     generalized_main(extract_epistasis,
                      manual_arg_types={"y_std": str,
-                                       "condition_selector": str,
+                                       "group_by": str,
                                        "scale": str},
-                     manual_arg_nargs={"condition_selector": "+"})
+                     manual_arg_nargs={"group_by": "+"})
 
 
 if __name__ == "__main__":

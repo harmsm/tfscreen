@@ -66,7 +66,7 @@ class TestHappyPath:
         # (5/3) / (2/1) = 0.83333...
         assert out["ep_obs"].iloc[0] == pytest.approx((5.0 / 3.0) / (2.0 / 1.0))
 
-    def test_condition_selector_groups_independently(self, tmp_path):
+    def test_group_by_groups_independently(self, tmp_path):
         rows = _single_cycle_rows(condition="c1") + _single_cycle_rows(condition="c2")
         # Make c2's double mutant produce a different epistasis (ep = 0.0).
         for r in rows:
@@ -76,7 +76,7 @@ class TestHappyPath:
         out_prefix = str(tmp_path / "out")
 
         extract_epistasis(data, y_obs="y",
-                          condition_selector=["condition"],
+                          group_by=["condition"],
                           out_prefix=out_prefix)
 
         out = pd.read_csv(f"{out_prefix}.csv").sort_values("condition")
@@ -112,10 +112,10 @@ class TestValidation:
             extract_epistasis(data, y_obs="y", y_std="nope",
                               out_prefix=str(tmp_path / "out"))
 
-    def test_missing_condition_selector_raises(self, tmp_path):
+    def test_missing_group_by_raises(self, tmp_path):
         data = _write_csv(tmp_path, _single_cycle_rows())
         with pytest.raises(ValueError, match="missing required column"):
-            extract_epistasis(data, y_obs="y", condition_selector=["nope"],
+            extract_epistasis(data, y_obs="y", group_by=["nope"],
                               out_prefix=str(tmp_path / "out"))
 
 
@@ -138,9 +138,9 @@ class TestEmptyResult:
         assert "no valid mutant cycles" in captured
         assert "Wrote 0 rows" in captured
 
-    def test_forgot_condition_selector_hints_column(self, tmp_path, capsys):
+    def test_forgot_group_by_hints_column(self, tmp_path, capsys):
         # One row per genotype *per condition* (like titrant_conc), run without
-        # --condition_selector: every genotype is non-unique -> all dropped.
+        # --group_by: every genotype is non-unique -> all dropped.
         rows = []
         for conc in [0.0, 0.1, 1.0]:
             for r in _single_cycle_rows():
@@ -152,10 +152,10 @@ class TestEmptyResult:
 
         captured = capsys.readouterr().out
         assert "dropped as duplicates" in captured
-        assert "--condition_selector titrant_conc" in captured
+        assert "--group_by titrant_conc" in captured
         # With the suggested selector it succeeds.
         extract_epistasis(data, y_obs="y",
-                          condition_selector=["titrant_conc"],
+                          group_by=["titrant_conc"],
                           out_prefix=out_prefix)
         out = pd.read_csv(f"{out_prefix}.csv")
         assert len(out) == 3
@@ -173,7 +173,7 @@ class TestEmptyResult:
         extract_epistasis(data, y_obs="y", out_prefix=out_prefix)
 
         captured = capsys.readouterr().out
-        assert "--condition_selector" not in captured
+        assert "--group_by" not in captured
 
 
 class TestArgWiring:
@@ -187,7 +187,7 @@ class TestArgWiring:
         argv = ["extract_epistasis", data, "y",
                 "--out_prefix", out_prefix,
                 "--y_std", "y_err",
-                "--condition_selector", "condition",
+                "--group_by", "condition",
                 "--scale", "add",
                 "--keep_extra"]
         monkeypatch.setattr(sys, "argv", argv)

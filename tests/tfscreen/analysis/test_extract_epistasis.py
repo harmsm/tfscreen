@@ -188,7 +188,7 @@ class TestExtractEpistasis:
         # E_std uses relative error propagation
         
         # ACT
-        result = extract_epistasis(base_df_for_epistasis, "fitness", "error", condition_selector= "condition",scale="mult")
+        result = extract_epistasis(base_df_for_epistasis, "fitness", "error", group_by= "condition",scale="mult")
         
         # ASSERT
         cycle_1 = result[result["condition"] == 1].iloc[0]
@@ -201,13 +201,13 @@ class TestExtractEpistasis:
 
     def test_without_std_dev(self, base_df_for_epistasis):
         """Tests that the function runs without a y_std column."""
-        result = extract_epistasis(base_df_for_epistasis, "fitness", condition_selector="condition") 
+        result = extract_epistasis(base_df_for_epistasis, "fitness", group_by="condition") 
         assert "ep_std" not in result.columns
         assert np.isclose(result[result["condition"] == 1].iloc[0]["ep_obs"], 0.0)
 
     def test_propagates_nan_from_missing_mutant(self, base_df_for_epistasis):
         """Tests that if a cycle is incomplete, ep_obs and ep_std are NaN."""
-        result = extract_epistasis(base_df_for_epistasis, "fitness", "error",condition_selector="condition")
+        result = extract_epistasis(base_df_for_epistasis, "fitness", "error",group_by="condition")
         cycle_2 = result[result["condition"] == 2].iloc[0] # The V30A/M40T cycle
         
         assert pd.isna(cycle_2["ep_obs"])
@@ -216,16 +216,16 @@ class TestExtractEpistasis:
     def test_raises_on_invalid_scale(self, base_df_for_epistasis):
         """Tests that an invalid `scale` argument raises a ValueError."""
         with pytest.raises(ValueError, match="scale should be"):
-            extract_epistasis(base_df_for_epistasis, "fitness", condition_selector="condition",scale="invalid")
+            extract_epistasis(base_df_for_epistasis, "fitness", group_by="condition",scale="invalid")
             
     def test_keep_extra_columns(self, base_df_for_epistasis):
         """Tests the `keep_extra` flag."""
         # keep_extra = True should preserve 'extra_col'
-        result_true = extract_epistasis(base_df_for_epistasis, "fitness", condition_selector="condition", keep_extra=True)
+        result_true = extract_epistasis(base_df_for_epistasis, "fitness", group_by="condition", keep_extra=True)
         assert "extra_col" in result_true.columns
         
         # keep_extra = False (default) should drop 'extra_col'
-        result_false = extract_epistasis(base_df_for_epistasis, "fitness",condition_selector="condition")
+        result_false = extract_epistasis(base_df_for_epistasis, "fitness",group_by="condition")
         assert "extra_col" not in result_false.columns
 
     def test_returns_empty_when_no_valid_cycles(self):

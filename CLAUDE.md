@@ -394,7 +394,8 @@ All scripts use `generalized_main` from `tfscreen.util.cli.generalized_main`. Th
 Positional argument order (use only what the script needs):
 1. `config_file` — path to YAML config
 2. `posterior_file` — path to posteriors `.h5`/`.npz`
-3. `theta_file` — path to theta CSV (for `tfs-cat-response`)
+3. `data_file` — path to a long-form observable CSV (e.g. `tfs-cat-response`
+   takes `data_file x_obs y_obs`; `tfs-extract-epistasis` takes `data_file y_obs`)
 
 ### Output flag
 
@@ -410,4 +411,4 @@ When a list of genotypes, titrant names, or concentrations is needed, the `_cli`
 
 ### Registered entry points
 
-All scripts under `tfmodel/scripts/` and `analysis/cat_response/` follow the `_cli.py` naming convention and are registered in `pyproject.toml`.
+All scripts under `tfmodel/scripts/` and `analysis/scripts/` follow the `_cli.py` naming convention and are registered in `pyproject.toml`.
