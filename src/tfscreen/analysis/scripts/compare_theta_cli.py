@@ -6,6 +6,7 @@ import pandas as pd
 
 from tfscreen.analysis.compare_theta import (
     compare_theta as _compare_theta,
+    aggregate_theta,
     stability_crosstabs,
 )
 from tfscreen.util.cli import generalized_main, read_lines
@@ -25,7 +26,8 @@ def compare_theta(estimates_file,
                   out_prefix="tfs_compare_theta",
                   reference=None,
                   min_coverage=0.5,
-                  overdispersion_threshold=2.0):
+                  overdispersion_threshold=2.0,
+                  write_aggregate=False):
     """
     Grade per-genotype theta stability across N independent estimate runs.
 
@@ -56,6 +58,13 @@ def compare_theta(estimates_file,
     overdispersion_threshold : float, optional
         Overdispersion above this sets the 'overdispersed' flag and the
         'overconfident' crosstab column. Default 2.0.
+    write_aggregate : bool, optional
+        If set, also write {out_prefix}_aggregate.csv: a long-form aggregate
+        theta-vs-condition table combining the N estimate runs as an equal-weight
+        mixture of their per-run posteriors (quantiles reconstructed and mixed).
+        The aggregate error folds in both per-run posterior width and run-to-run
+        spread and does not shrink with N. Only the N estimate runs are mixed --
+        a reference run (if any) is never included. Default False.
     """
     paths = read_lines(estimates_file)
     if not paths:
@@ -94,6 +103,14 @@ def compare_theta(estimates_file,
     with open(crosstab_file, "w") as fh:
         fh.write(_format_crosstabs(crosstabs))
     print(f"Wrote interpretation crosstabs to {crosstab_file}", flush=True)
+
+    if write_aggregate:
+        print("Building aggregate theta-vs-condition table...", flush=True)
+        aggregate = aggregate_theta(estimate_dfs)
+        aggregate_file = f"{out_prefix}_aggregate.csv"
+        aggregate.to_csv(aggregate_file, index=False)
+        print(f"Wrote {len(aggregate)} aggregate rows to {aggregate_file}",
+              flush=True)
 
 
 def main():

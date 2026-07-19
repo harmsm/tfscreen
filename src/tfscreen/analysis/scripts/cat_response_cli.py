@@ -61,20 +61,30 @@ def cat_response(data_file,
                  y_std=None,
                  group_by=None,
                  models=None,
+                 alpha=0.05,
+                 delta=None,
+                 delta_c=2.0,
+                 write_all_predictions=False,
                  num_workers=-1):
     """
     Classify each group's response curve using categorical response models.
 
     Reads a long-form CSV and fits one or more response models to every group.
     Groups are defined by the 'genotype' column plus any --group_by columns. For
-    each group the best-fitting model is selected by AIC weight.
+    each group the best-fitting model is selected by AICc weight, then graded
+    against zero (per-point sig_nonzero / equiv_zero tests + a per-curve omnibus
+    chi-square with a Benjamini-Hochberg FDR correction).
 
     Writes:
       - {out_prefix}.csv             one row per group; all models' weights and
-                                     parameter estimates.
+                                     parameter estimates, plus the assessment
+                                     rollups (omnibus_p/q, n_nonzero,
+                                     all_equiv_zero, response_class).
       - {out_prefix}_{model}.csv     one file per model; that model's parameter
                                      table and per-group fit statistics.
-      - {out_prefix}_predictions.csv predicted curves for every group and model.
+      - {out_prefix}_predictions.csv best-model predicted curves (all models
+                                     when --write_all_predictions).
+      - {out_prefix}_assessment.csv  per (group, x) best-model assessment.
 
     Parameters
     ----------
@@ -96,6 +106,18 @@ def cat_response(data_file,
         omitted, groups are defined by 'genotype' alone.
     models : list of str or None, optional
         Response models to fit. Defaults to all models in MODEL_LIBRARY.
+    alpha : float, optional
+        Significance level for the per-point tests and the omnibus q-value
+        threshold used to call a curve 'real'. Default 0.05.
+    delta : float or None, optional
+        Region-of-practical-equivalence half-width around zero. If None
+        (default), derived globally as ``delta_c * median(predicted y_std)``.
+        Pass a value for a fixed, biologically-meaningful region.
+    delta_c : float, optional
+        Multiplier used when ``delta`` is auto-derived. Default 2.0.
+    write_all_predictions : bool, optional
+        If True, write every fit model's predicted curve rather than only the
+        best model's. Default False.
     num_workers : int, optional
         Number of parallel worker processes. ``1`` runs serially; ``-1`` (the
         default) uses ``os.cpu_count() - 1``; ``N`` uses ``N`` processes.
@@ -136,13 +158,22 @@ def cat_response(data_file,
     print(f"  Fitting groups defined by {group_cols} "
           f"with {num_workers} worker(s)...", flush=True)
 
-    results_df, predictions_df = _cat_response(df,
-                                               x_obs=x_obs,
-                                               y_obs=y_obs,
-                                               y_std=y_std,
-                                               group_by=group_by,
-                                               models_to_run=models,
-                                               num_workers=num_workers)
+    results_df, predictions_df, assessment_df, resolved_delta = _cat_response(
+        df,
+        x_obs=x_obs,
+        y_obs=y_obs,
+        y_std=y_std,
+        group_by=group_by,
+        models_to_run=models,
+        best_only=(not write_all_predictions),
+        alpha=alpha,
+        delta=delta,
+        delta_c=delta_c,
+        num_workers=num_workers,
+    )
+
+    print(f"  Using equivalence half-width delta = {resolved_delta:.6g}",
+          flush=True)
 
     # Main table: flat, one row per group, with clean column names.
     main_df = results_df.copy()
@@ -160,6 +191,11 @@ def cat_response(data_file,
     pred_file = f"{out_prefix}_predictions.csv"
     predictions_df.to_csv(pred_file, index=False)
     print(f"Wrote {len(predictions_df)} rows to {pred_file}", flush=True)
+
+    # Per-point best-model assessment.
+    assess_file = f"{out_prefix}_assessment.csv"
+    assessment_df.to_csv(assess_file, index=False)
+    print(f"Wrote {len(assessment_df)} rows to {assess_file}", flush=True)
 
 
 def main():

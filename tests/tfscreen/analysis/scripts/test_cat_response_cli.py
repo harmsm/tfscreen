@@ -68,6 +68,26 @@ class TestOutputFiles:
         preds = pd.read_csv(f"{out_prefix}_predictions.csv")
         assert "genotype" in preds.columns
         assert {"model", "x", "y", "is_best_model"}.issubset(preds.columns)
+        # best_only default: predictions restricted to each group's best model.
+        assert preds["is_best_model"].all()
+
+        assess = pd.read_csv(f"{out_prefix}_assessment.csv")
+        assert "genotype" in assess.columns
+        assert {"x", "y_est", "y_std", "z", "sig_nonzero", "direction",
+                "equiv_zero"}.issubset(assess.columns)
+        # Rollups landed on the main table.
+        assert {"omnibus_p", "omnibus_q", "n_nonzero",
+                "response_class"}.issubset(main.columns)
+
+    def test_write_all_predictions_flag(self, tmp_path):
+        data = _write(tmp_path, _theta_df())
+        out_prefix = str(tmp_path / "out")
+        cat_response(data, x_obs="titrant_conc", y_obs="q0.5",
+                     out_prefix=out_prefix, models=["flat", "linear"],
+                     write_all_predictions=True, num_workers=1)
+        preds = pd.read_csv(f"{out_prefix}_predictions.csv")
+        # Both models present when all predictions are written.
+        assert set(preds["model"].unique()) == {"flat", "linear"}
 
 
 class TestSigmaFallback:
@@ -79,7 +99,8 @@ class TestSigmaFallback:
             captured["y_std"] = kwargs["y_std"]
             captured["sigma_vals"] = list(df[kwargs["y_std"]])
             empty = pd.DataFrame({"genotype": [], "best_model": []})
-            return empty, pd.DataFrame({"genotype": []})
+            return empty, pd.DataFrame({"genotype": []}), \
+                pd.DataFrame({"genotype": []}), 0.1
 
         data = _write(tmp_path, _theta_df(with_quantiles=True))
         with patch.object(cat_response_cli, "_cat_response",
@@ -98,7 +119,8 @@ class TestSigmaFallback:
         def fake_core(df, **kwargs):
             captured["y_std"] = kwargs["y_std"]
             empty = pd.DataFrame({"genotype": [], "best_model": []})
-            return empty, pd.DataFrame({"genotype": []})
+            return empty, pd.DataFrame({"genotype": []}), \
+                pd.DataFrame({"genotype": []}), 0.1
 
         data = _write(tmp_path, _theta_df(with_std=True, with_quantiles=True))
         with patch.object(cat_response_cli, "_cat_response",

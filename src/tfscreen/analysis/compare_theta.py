@@ -244,6 +244,19 @@ def compare_theta(estimate_dfs,
         ``mean_reported_sigma``, ``spread_estimator``, and one ``sd[...]``
         column per condition-grid point.
 
+        The ``tier`` is the graded Axis-1 label. When the result is passed to
+        :func:`stability_crosstabs`, the tiers collapse onto the crosstab rows
+        as follows:
+
+          * ``A`` and ``B``  -> ``reproducible``
+          * ``C`` and ``D``  -> ``unstable``
+          * ``low_coverage`` -> dropped (never graded, so not in any crosstab)
+
+        The crosstab *columns* come from the other two per-genotype fields, not
+        from the tier: ``overdispersed`` (``overconfident`` vs ``consistent``)
+        for ``tier_vs_overdispersion``, and ``dynamic_range`` (``informative``
+        vs ``flat``) for ``tier_vs_dynamic_range``.
+
     Raises
     ------
     ValueError
@@ -524,3 +537,200 @@ def stability_crosstabs(result,
         "tier_vs_overdispersion": tier_vs_over,
         "tier_vs_dynamic_range": tier_vs_range,
     }
+
+
+def _parse_quantile_columns(df):
+    """
+    Return ``{level: column_name}`` for columns named ``q<level>`` with a level
+    strictly inside (0, 1) (e.g. ``'q0.159' -> 0.159``).
+    """
+    out = {}
+    for c in df.columns:
+        if not (isinstance(c, str) and c.startswith("q")):
+            continue
+        try:
+            lvl = float(c[1:])
+        except ValueError:
+            continue
+        if 0.0 < lvl < 1.0:
+            out[lvl] = c
+    return out
+
+
+def _monotone_knots(values, probs):
+    """
+    Collapse a (non-decreasing) quantile ladder to strictly increasing knots.
+
+    Ties in ``values`` (a flat region of the quantile function, i.e. a point
+    mass) are merged, keeping the highest cumulative probability at that value
+    -- the CDF value just above the mass.
+
+    Returns
+    -------
+    (numpy.ndarray, numpy.ndarray)
+        Strictly increasing ``values`` and their (non-decreasing) ``probs``.
+    """
+    keep_v = []
+    keep_p = []
+    for x, p in zip(values, probs):
+        if keep_v and x <= keep_v[-1]:
+            keep_p[-1] = p  # probs are ascending, so this keeps the max
+        else:
+            keep_v.append(x)
+            keep_p.append(p)
+    return np.asarray(keep_v, dtype=float), np.asarray(keep_p, dtype=float)
+
+
+def _mixture_quantiles(value_matrix, probs):
+    """
+    Quantiles of the equal-weight mixture of N per-run marginal posteriors.
+
+    Each run contributes a marginal distribution described by its quantile
+    ladder (``probs`` -> ``value_matrix[i]``). The mixture "pick a run at random,
+    then draw from its posterior" has CDF ``F_mix = mean_i F_i``; its variance is
+    the within-run variance plus the between-run spread of the point estimates
+    (law of total variance). This reads the mixture's quantiles at the same
+    ``probs`` levels by averaging the per-run CDFs on the pooled support grid and
+    inverting.
+
+    Parameters
+    ----------
+    value_matrix : numpy.ndarray, shape (n_present, K)
+        Each row is one run's non-decreasing quantile values at ``probs``.
+    probs : numpy.ndarray, shape (K,)
+        Ascending probability levels in (0, 1), shared across runs.
+
+    Returns
+    -------
+    numpy.ndarray, shape (K,)
+        Mixture quantile values at ``probs``.
+    """
+    n = value_matrix.shape[0]
+    grid = np.unique(value_matrix)
+    if grid.size == 1:
+        # Every run is a point mass at the same value -> mixture is that mass.
+        return np.full(probs.shape, grid[0], dtype=float)
+
+    # Average the per-run CDFs on the pooled support grid.
+    f_sum = np.zeros(grid.size)
+    for i in range(n):
+        xs, ps = _monotone_knots(value_matrix[i], probs)
+        if xs.size == 1:
+            # Point-mass run: step from 0 to 1 at its single value.
+            f_i = np.where(grid < xs[0], 0.0, 1.0)
+        else:
+            f_i = np.interp(grid, xs, ps, left=0.0, right=1.0)
+        f_sum += f_i
+    f_mix = f_sum / n
+
+    # Invert F_mix. Collapse ties (flat CDF = zero-density gaps) keeping the
+    # smallest theta for each CDF level, matching the standard quantile def.
+    uf, idx = np.unique(f_mix, return_index=True)
+    return np.interp(probs, uf, grid[idx])
+
+
+def aggregate_theta(estimate_dfs, *, progress_every=200_000):
+    """
+    Combine N theta estimates into one aggregate theta-vs-condition table.
+
+    For every ``(genotype, [titrant_name,] titrant_conc)`` the N runs present are
+    combined as an **equal-weight mixture** of their per-run marginal posteriors
+    (reconstructed from the stored quantile ladder). The aggregate error thus
+    folds in both each run's own posterior width *and* the run-to-run spread of
+    the point estimates (law of total variance), and does **not** shrink with N
+    -- appropriate because different-seed runs are not independent replicates.
+    A bias shared by all N runs is invisible to this (only sampled variation --
+    seed or training-data dropout -- is captured).
+
+    In reference mode on the CLI side, only the N estimate runs are mixed; a
+    reference run is never folded in (it is a comparison target, not a sample).
+
+    Parameters
+    ----------
+    estimate_dfs : list of pandas.DataFrame
+        The N estimate tables. Each must share the same key columns and carry a
+        quantile ladder (``q<level>`` columns). The mixture is taken over the
+        probability levels present in *all* runs.
+    progress_every : int, optional
+        Print a progress line every this many genotype-condition groups. Default
+        200000.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Long-form, one row per ``(genotype, [titrant_name,] titrant_conc)``, with
+        the shared ``q<level>`` columns holding the mixture quantiles and an
+        ``n_present`` column (how many runs contributed). Sorted by the keys.
+
+    Raises
+    ------
+    ValueError
+        If fewer than two runs are supplied, the key sets disagree, or the runs
+        share fewer than two quantile levels.
+    """
+    if not isinstance(estimate_dfs, (list, tuple)):
+        raise ValueError(
+            "estimate_dfs must be a list of DataFrames, "
+            f"not {type(estimate_dfs).__name__}."
+        )
+    if len(estimate_dfs) < 2:
+        raise ValueError(
+            f"aggregate_theta requires at least 2 estimate tables; "
+            f"got {len(estimate_dfs)}."
+        )
+
+    keys = _detect_keys(estimate_dfs[0])
+
+    # Intersect the quantile levels across runs; keep run 0's column names.
+    levels = None
+    qmap0 = _parse_quantile_columns(estimate_dfs[0])
+    for i, df in enumerate(estimate_dfs):
+        if _detect_keys(df) != keys:
+            raise ValueError(
+                f"Estimate run {i} has key columns {_detect_keys(df)}, "
+                f"which differ from run 0's {keys}."
+            )
+        lv = set(_parse_quantile_columns(df))
+        levels = lv if levels is None else (levels & lv)
+    levels = sorted(levels)
+    if len(levels) < 2:
+        raise ValueError(
+            "Estimate tables share fewer than 2 quantile (q<level>) columns; "
+            "cannot reconstruct per-run distributions to mix."
+        )
+    probs = np.asarray(levels, dtype=float)
+    out_cols = [qmap0[lvl] for lvl in levels]
+
+    # Stack keys and the aligned value matrix across all runs.
+    key_frames = []
+    value_blocks = []
+    for df in estimate_dfs:
+        qmap = _parse_quantile_columns(df)
+        key_frames.append(df.loc[:, keys])
+        value_blocks.append(
+            df.loc[:, [qmap[lvl] for lvl in levels]].to_numpy(dtype=float)
+        )
+    long_keys = pd.concat(key_frames, ignore_index=True)
+    values = np.vstack(value_blocks)
+
+    groups = long_keys.groupby(keys, sort=False).indices
+    group_keys = list(groups.keys())
+    n_groups = len(group_keys)
+
+    out_values = np.empty((n_groups, len(levels)), dtype=float)
+    n_present = np.empty(n_groups, dtype=int)
+    for gi, gkey in enumerate(group_keys):
+        pos = groups[gkey]
+        n_present[gi] = pos.size
+        out_values[gi] = _mixture_quantiles(values[pos], probs)
+        if progress_every and (gi + 1) % progress_every == 0:
+            print(f"  aggregated {gi + 1}/{n_groups} groups...", flush=True)
+
+    if len(keys) == 1:
+        out = pd.DataFrame({keys[0]: group_keys})
+    else:
+        out = pd.DataFrame(group_keys, columns=keys)
+    for j, col in enumerate(out_cols):
+        out[col] = out_values[:, j]
+    out["n_present"] = n_present
+    return out.sort_values(keys).reset_index(drop=True)

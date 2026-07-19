@@ -1,252 +1,180 @@
-
-import pytest
+"""
+Tests for cat_fit: AICc/weighted-R2 selection, best_only predictions, the
+per-point assessment/omnibus rollup, and the insufficient-data path. Uses the
+real MODEL_LIBRARY (fits are deterministic) rather than mocks.
+"""
 import numpy as np
-import pandas as pd
-from unittest.mock import MagicMock, patch
+import pytest
 
 from tfscreen.analysis.cat_response.cat_fit import cat_fit
+from tfscreen.mle.curve_models import MODEL_LIBRARY
 
-# Mock data for testing
-@pytest.fixture
-def mock_data():
-    x = np.array([1.0, 2.0, 3.0, 4.0])
-    y = np.array([2.0, 4.0, 6.0, 8.0])
-    y_std = np.array([0.1, 0.1, 0.1, 0.1])
-    return x, y, y_std
 
-@pytest.fixture
-def mock_predict_side_effect():
-    def side_effect(model_func, params, cov, args=None):
-        if args and len(args) > 0:
-            x_pred = args[0]
-            return np.zeros(len(x_pred)), np.zeros(len(x_pred))
-        return np.array([]), np.array([])
-    return side_effect
+# A titration-like grid with enough points that low-parameter models are usable.
+X = np.array([0.0, 1.0, 3.0, 10.0, 30.0, 100.0])
+
+# Small deterministic +/- scatter. Keeps residuals (and therefore the fitted
+# covariance) nonzero -- run_matrix_wls scales covariance by the reduced
+# chi-square, so a *perfect* fit would collapse it to zero.
+_WOBBLE = np.array([1.0, -1.0, 1.0, -1.0, 1.0, -1.0])
+
+
+def _hill_data(baseline=0.1, amplitude=0.7, logK=np.log(10.0), n=1.0,
+               std=0.02):
+    from tfscreen.mle.curve_models.models import model_hill_4p
+    y = model_hill_4p([baseline, amplitude, logK, n], X)
+    y = y + 0.2 * std * _WOBBLE   # tiny wobble -> finite covariance
+    return X, y, np.full_like(X, std)
+
+
+def _flat_data(c=5.0, std=0.1):
+    # Symmetric about c -> fitted baseline is exactly c, residuals nonzero.
+    return X, c + std * 0.5 * _WOBBLE, np.full_like(X, std)
+
+
+def _zero_data(std=0.1):
+    # Symmetric about 0 -> fitted baseline exactly 0, residuals nonzero.
+    return X, std * 0.5 * _WOBBLE, np.full_like(X, std)
+
+
+# --- return shape ------------------------------------------------------------
+
+def test_returns_three_tuple():
+    x, y, ys = _hill_data()
+    out = cat_fit(x, y, ys, models_to_run=["flat", "hill_inducer"])
+    assert len(out) == 3
+    flat_output, pred_df, assess_df = out
+    assert isinstance(flat_output, dict)
+
+
+# --- selection ---------------------------------------------------------------
+
+def test_structured_selected_for_sigmoid_data():
+    x, y, ys = _hill_data()
+    flat_output, _, _ = cat_fit(x, y, ys,
+                                models_to_run=["flat", "hill_inducer"])
+    assert flat_output["best_model"] == "hill_inducer"
+    # Weighted R2 near 1 for a (near) perfect fit.
+    assert flat_output["R2|hill_inducer"] > 0.99
+    assert flat_output["status"] == "success"
+
+
+def test_flat_selected_for_flat_data():
+    x, y, ys = _flat_data()
+    flat_output, _, _ = cat_fit(x, y, ys,
+                                models_to_run=["flat", "hill_inducer"])
+    # AICc prefers the cheaper (1-param) flat model over a 4-param hill that
+    # buys no fit improvement.
+    assert flat_output["best_model"] == "flat"
+
+
+def test_aicc_excludes_overparameterized_models():
+    """With few points a 4-param model has n-k-1<=0 -> can't win, params kept."""
+    # 4 points, hill_inducer has k=4 -> denom = 4-4-1 = -1 -> AICc = inf.
+    x = np.array([0.0, 1.0, 10.0, 100.0])
+    y = np.array([0.1, 0.3, 0.6, 0.8])
+    ys = np.full_like(x, 0.05)
+    flat_output, _, _ = cat_fit(x, y, ys,
+                                models_to_run=["flat", "hill_inducer"])
+
+    assert flat_output["best_model"] == "flat"
+    assert flat_output["AIC_weight|hill_inducer"] == 0.0
+    # Params are still reported (not selected != not fit).
+    for p in MODEL_LIBRARY["hill_inducer"]["param_names"]:
+        assert f"hill_inducer|{p}|est" in flat_output
+
+
+# --- predictions -------------------------------------------------------------
+
+def test_best_only_predicts_single_model():
+    x, y, ys = _hill_data()
+    _, pred_df, _ = cat_fit(x, y, ys, models_to_run=["flat", "hill_inducer"],
+                            best_only=True)
+    assert set(pred_df["model"].unique()) == {"hill_inducer"}
+    assert pred_df["is_best_model"].all()
+
+
+def test_write_all_predicts_every_model():
+    x, y, ys = _hill_data()
+    _, pred_df, _ = cat_fit(x, y, ys, models_to_run=["flat", "hill_inducer"],
+                            best_only=False)
+    assert set(pred_df["model"].unique()) == {"flat", "hill_inducer"}
+    # is_best_model marks only the selected model.
+    assert set(pred_df.loc[pred_df["is_best_model"], "model"].unique()) == \
+        {"hill_inducer"}
+
+
+# --- assessment --------------------------------------------------------------
+
+def test_assessment_rollup_and_frame():
+    # A clearly-nonzero (constant ~5) curve: every point differs from zero.
+    x, y, ys = _flat_data(c=5.0)
+    flat_output, _, assess_df = cat_fit(x, y, ys,
+                                        models_to_run=["flat", "hill_inducer"])
+    for key in ["omnibus_W", "omnibus_df", "omnibus_p", "n_nonzero",
+                "any_nonzero"]:
+        assert key in flat_output
+    assert list(assess_df.columns) == ["x", "y_est", "y_std", "z",
+                                       "sig_nonzero", "direction"]
+    # One row per unique observed x.
+    assert len(assess_df) == len(np.unique(x))
+    # Curve sits far from zero -> every point significant, tiny omnibus p.
+    assert flat_output["n_nonzero"] == len(np.unique(x))
+    assert flat_output["any_nonzero"] is True
+    assert flat_output["omnibus_p"] < 0.05
+
+
+def test_assessment_zero_curve_not_significant():
+    x, y, ys = _zero_data()
+    flat_output, _, _ = cat_fit(x, y, ys,
+                                models_to_run=["flat", "hill_inducer"])
+    # A curve sitting on zero (fitted baseline exactly 0) is not distinguishable.
+    assert flat_output["n_nonzero"] == 0
+    assert flat_output["omnibus_p"] > 0.05
+
+
+# --- insufficient data -------------------------------------------------------
 
 def test_insufficient_data():
-    """Test behavior when insufficient data is provided."""
     x = np.array([1.0])
     y = np.array([2.0])
-    y_std = np.array([0.1])
-    
-    # We pass x_pred explicit to avoid needing xfill mock just for this
-    flat_output, pred_df = cat_fit(x, y, y_std, x_pred=np.array([1.0, 2.0]), models_to_run=["linear"])
-    
-    assert flat_output['status'] == "missing"
-    assert flat_output['best_model'] == "None"
-    assert np.isnan(flat_output['best_model_R2'])
-    
-    # Check that model entries exist and serve nans
-    assert "R2|linear" in flat_output
+    ys = np.array([0.1])
+    flat_output, pred_df, assess_df = cat_fit(
+        x, y, ys, x_pred=np.array([1.0, 2.0]), models_to_run=["linear"]
+    )
+    assert flat_output["status"] == "missing"
+    assert flat_output["best_model"] == "None"
     assert np.isnan(flat_output["R2|linear"])
-    
-    # Check pred_df
-    assert len(pred_df) == 2 # 2 points in x_pred * 1 model
-    assert np.all(np.isnan(pred_df['y']))
+    assert np.isnan(flat_output["omnibus_p"])
+    # Best-only predictions: nothing to predict, empty frames.
+    assert len(pred_df) == 0
+    assert list(pred_df.columns) == ["model", "x", "y", "y_std",
+                                     "is_best_model"]
+    assert len(assess_df) == 0
 
-@patch("tfscreen.analysis.cat_response.cat_fit.MODEL_LIBRARY")
-@patch("tfscreen.analysis.cat_response.cat_fit.run_least_squares")
-@patch("tfscreen.analysis.cat_response.cat_fit.predict_with_error")
-def test_fit_linear_success(mock_predict, mock_run_ls, mock_library, mock_data, mock_predict_side_effect):
-    """Test successful fit for a linear model."""
-    x, y, y_std = mock_data
-    mock_predict.side_effect = mock_predict_side_effect
-    
-    # Setup Mock Model
-    # Use imperfect fit so ss_res > 0 and AIC is finite
-    mock_model_func = MagicMock(return_value=y + 0.001) 
-    mock_guess_func = MagicMock(return_value=np.array([1.0, 0.0]))
-    
-    mock_library.__getitem__.return_value = {
-        "model_func": mock_model_func,
-        "guess_func": mock_guess_func,
-        "param_names": ["m", "b"],
-        "bounds": ([-np.inf, -np.inf], [np.inf, np.inf])
-    }
-    mock_library.keys.return_value = ["test_model"]
-    
-    # Setup run_least_squares return
-    fit_obj = MagicMock()
-    fit_obj.success = True
-    mock_run_ls.return_value = (np.array([2.0, 0.0]), np.array([0.1, 0.1]), np.eye(2), fit_obj)
-    
-    x_pred = np.array([1.0, 2.0, 3.0, 4.0])
-    flat_output, pred_df = cat_fit(x, y, y_std, x_pred=x_pred, models_to_run=["test_model"])
-    
-    assert flat_output['status'] == "success"
-    assert flat_output['best_model'] == "test_model"
-    # R2 logic: 1 - ss_res/ss_tot. ss_res > 0 now. R2 should be close to 1 but not 1.0 (maybe)
-    # y=[2,4,6,8], mean=5. ss_tot = 9+1+1+9 = 20.
-    # ss_res = sum(0.001^2) = 4*1e-6. small.
-    # R2 approx 1.
-    assert flat_output['R2|test_model'] > 0.99 
-    assert flat_output['AIC_weight|test_model'] == 1.0 
-    
-    # Check pred len
-    assert len(pred_df) == 4
 
-@patch("tfscreen.analysis.cat_response.cat_fit.MODEL_LIBRARY")
-@patch("tfscreen.analysis.cat_response.cat_fit.run_matrix_wls")
-@patch("tfscreen.analysis.cat_response.cat_fit.predict_with_error")
-def test_fit_matrix_wls_success(mock_predict, mock_run_wls, mock_library, mock_data, mock_predict_side_effect):
-    """Test successful fit for a model using matrix WLS path."""
-    x, y, y_std = mock_data
-    mock_predict.side_effect = mock_predict_side_effect
-    
-    mock_model_func = MagicMock(return_value=y)
-    # 2D return for guess func
-    mock_guess_func = MagicMock(return_value=np.zeros((len(x), 2))) 
-    
-    mock_library.__getitem__.return_value = {
-        "model_func": mock_model_func,
-        "guess_func": mock_guess_func,
-        "param_names": ["p1", "p2"],
-        "bounds": ([-np.inf], [np.inf])
-    }
-    
-    mock_run_wls.return_value = (np.array([1.0, 1.0]), np.array([0.1, 0.1]), np.eye(2), None)
-    
-    x_pred = np.array([1.0]) # tiny pred
-    flat_output, pred_df = cat_fit(x, y, y_std, x_pred=x_pred, models_to_run=["test_matrix_model"])
-    
-    assert flat_output['status'] == "success"
-    mock_run_wls.assert_called_once()
-    assert len(pred_df) == 1
+def test_all_models_fail_returns_none():
+    """If every model fails, status=failure, empty pred/assess, nan rollups."""
+    # Two points but ask only for a 4-param model: too few for a fit to
+    # converge meaningfully, but more directly, force failure via degenerate y.
+    x = np.array([1.0, 2.0])
+    y = np.array([np.nan, np.nan])   # all filtered -> insufficient
+    ys = np.array([0.1, 0.1])
+    flat_output, pred_df, assess_df = cat_fit(x, y, ys,
+                                              models_to_run=["linear"])
+    # All-NaN y -> filtered to zero points -> missing path.
+    assert flat_output["status"] == "missing"
+    assert len(assess_df) == 0
 
-@patch("tfscreen.analysis.cat_response.cat_fit.MODEL_LIBRARY")
-@patch("tfscreen.analysis.cat_response.cat_fit.run_least_squares")
-def test_fit_failure(mock_run_ls, mock_library, mock_data):
-    """Test handling of fit failure."""
-    x, y, y_std = mock_data
-    
-    mock_guess_func = MagicMock(return_value=np.array([1.0]))
-    mock_library.__getitem__.return_value = {
-        "model_func": MagicMock(),
-        "guess_func": mock_guess_func,
-        "param_names": ["p1"],
-        "bounds": ([-np.inf], [np.inf])
-    }
-    
-    fit_obj = MagicMock()
-    fit_obj.success = False
-    fit_obj.message = "Failed"
-    mock_run_ls.return_value = (None, None, None, fit_obj)
-    
-    flat_output, pred_df = cat_fit(x, y, y_std, x_pred=x, models_to_run=["test_fail_model"], verbose=True)
-    
-    assert flat_output['status'] == "failure"
-    assert flat_output['best_model'] == "None" 
-    assert np.isnan(flat_output['R2|test_fail_model'])
 
-@patch("tfscreen.analysis.cat_response.cat_fit.MODEL_LIBRARY")
-@patch("tfscreen.analysis.cat_response.cat_fit.run_least_squares")
-@patch("tfscreen.analysis.cat_response.cat_fit.predict_with_error")
-def test_multiple_models_selection(mock_predict, mock_run_ls, mock_library, mock_data, mock_predict_side_effect):
-    """Test running multiple models and selecting the best one."""
-    x, y, y_std = mock_data
-    mock_predict.side_effect = mock_predict_side_effect
-    
-    # Model A: Good fit
-    mock_func_A = MagicMock(return_value=y + 0.001)
-    # Model B: Bad fit
-    mock_func_B = MagicMock(return_value=y + 10) 
-    
-    mock_guess = MagicMock(return_value=np.array([1.0]))
-    
-    library_dict = {
-        "model_A": {
-            "model_func": mock_func_A,
-            "guess_func": mock_guess,
-            "param_names": ["pA"],
-            "bounds": ([-np.inf], [np.inf])
-        },
-        "model_B": {
-            "model_func": mock_func_B,
-            "guess_func": mock_guess,
-            "param_names": ["pB"],
-            "bounds": ([-np.inf], [np.inf])
-        }
-    }
-    mock_library.__getitem__.side_effect = lambda k: library_dict[k]
-    
-    fit_obj = MagicMock()
-    fit_obj.success = True
-    mock_run_ls.return_value = (np.array([1.0]), np.array([0.1]), np.eye(1), fit_obj)
-    
-    flat_output, pred_df = cat_fit(x, y, y_std, x_pred=x, models_to_run=["model_A", "model_B"])
-    
-    assert flat_output['best_model'] == "model_A"
-    assert flat_output['AIC_weight|model_A'] > flat_output['AIC_weight|model_B']
+# --- input sanitizing --------------------------------------------------------
 
-def test_x_pred_none(mock_data):
-    """Test x_pred default generation behavior (using xfill)."""
-    x, y, y_std = mock_data
-    
-    with patch("tfscreen.analysis.cat_response.cat_fit.xfill") as mock_xfill:
-        with patch("tfscreen.analysis.cat_response.cat_fit.MODEL_LIBRARY") as mock_lib:
-            # We need to run at least one model to avoid empty summary_df issues 
-            # (though strictly user shouldn't pass empty model list, test handles typical case)
-            # Actually if models_to_run is [], code does not crash, just returns empty/nan stuff?
-            # Let's check code: 
-            # if models_to_run is None -> keys(). If keys empty -> empty list.
-            # loop doesn't run. summary_results empty.
-            # valid_aics empty.
-            # code handles valid_aics.empty.
-            # BUT: summary_df['success'] accessed below.
-            # summary_df = pd.DataFrame(summary_results).
-            # If summary_results [], summary_df empty. summary_df['success'] raises KeyError?
-            # YES.
-            # So models_to_run cannot be empty if we want success.
-            # Wait, `predict_with_error` usually mocked.
-            
-            # Update: let's mock xfill to return something usable, and run a dummy model.
-            mock_xfill.return_value = x # simple return
-            
-            mock_guess = MagicMock(return_value=np.array([1.0]))
-            mock_lib.__getitem__.return_value = {
-                "model_func": MagicMock(return_value=y),
-                "guess_func": mock_guess,
-                "param_names": ["p"],
-                "bounds": ([-np.inf], [np.inf])
-            }
-            mock_lib.keys.return_value = ["test"]
-            
-            with patch("tfscreen.analysis.cat_response.cat_fit.run_least_squares") as mock_ls:
-                 mock_ls.return_value = (np.array([1.]), np.array([1.]), np.eye(1), MagicMock(success=True))
-                 with patch("tfscreen.analysis.cat_response.cat_fit.predict_with_error") as mock_pred:
-                     mock_pred.return_value = (x, x)
-                     
-                     cat_fit(x, y, y_std, x_pred=None, models_to_run=["test"])
-                     
-                     mock_xfill.assert_called_once()
-
-@patch("tfscreen.analysis.cat_response.cat_fit.MODEL_LIBRARY")
-@patch("tfscreen.analysis.cat_response.cat_fit.run_least_squares")
-@patch("tfscreen.analysis.cat_response.cat_fit.predict_with_error")
-def test_sanitize_inputs(mock_predict, mock_ls, mock_lib, mock_predict_side_effect):
-    """Test that NaNs/Infs are filtered out."""
-    x = np.array([1.0, 2.0, np.nan, 4.0])
-    y = np.array([1.0, 2.0, 3.0, np.inf])
-    y_std = np.array([0.1, 0.1, 0.1, 0.1])
-    
-    mock_predict.side_effect = mock_predict_side_effect
-    
-    mock_guess = MagicMock(return_value=np.array([1.0]))
-    mock_lib.__getitem__.return_value = {
-        "model_func": MagicMock(return_value=np.array([0.,0.])), # match filtered size 2
-        "guess_func": mock_guess,
-        "param_names": ["p"],
-        "bounds": ([-np.inf], [np.inf])
-    }
-    
-    mock_ls.return_value = (np.array([1.]), np.array([0.1]), np.eye(1), MagicMock(success=True))
-    
-    # x_pred passed explicit to avoid issues
-    cat_fit(x, y, y_std, x_pred=np.array([1.0]), models_to_run=["test"])
-    
-    # Check call args to guess_func
-    args, _ = mock_guess.call_args
-    x_filtered, y_filtered = args
-    
-    assert len(x_filtered) == 2
-    assert np.allclose(x_filtered, [1.0, 2.0])
+def test_sanitize_filters_nonfinite():
+    x = np.array([0.0, 1.0, np.nan, 10.0, 30.0, 100.0])
+    y = np.array([1.0, 3.0, 5.0, 21.0, np.inf, 201.0])
+    ys = np.full_like(x, 0.05)
+    # Two points dropped (nan x, inf y) -> 4 usable, linear still fittable.
+    flat_output, _, assess_df = cat_fit(x, y, ys,
+                                        models_to_run=["flat", "linear"])
+    assert flat_output["status"] in ("success", "partial")
+    assert len(assess_df) == 4

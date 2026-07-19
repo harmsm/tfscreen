@@ -38,8 +38,17 @@ def guess_linear(x, y):
     -------
     np.ndarray
         design matrix for polynomial wls
+
+    Notes
+    -----
+    Columns are ``[x, 1]`` (not reversed), so the weighted-least-squares
+    solution comes back in the order ``[m, b]`` (slope, intercept). This
+    matches ``model_linear`` (``params[0]*x + params[1]``) and the ``['m', 'b']``
+    ``param_names`` for the "linear" model. This is the deliberate exception to
+    the ``guess_poly_*`` functions, which reverse to ascending ``[c0, c1, ...]``
+    order to match ``model_poly``.
     """
-    X = np.vander(x,2)[:,::-1]
+    X = np.vander(x,2)
     return X
 
 def guess_repressor(x, y):

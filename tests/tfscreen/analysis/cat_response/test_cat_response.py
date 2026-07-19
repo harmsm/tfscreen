@@ -1,6 +1,7 @@
 """
 Tests for the generic cat_response core: grouping, column selection, validation,
-prediction tagging, and serial/parallel equivalence.
+prediction tagging, the post-hoc assessment pass, and serial/parallel
+equivalence.
 """
 import numpy as np
 import pandas as pd
@@ -24,9 +25,12 @@ cat_response_mod = importlib.import_module(
 
 # --- helpers -----------------------------------------------------------------
 
-def _flat(best="flat"):
-    """A minimal flat cat_fit result dict."""
-    return {"status": "success", "best_model": best}
+def _flat(best="flat", **extra):
+    """A minimal flat cat_fit result dict with the assessment rollups."""
+    d = {"status": "success", "best_model": best,
+         "omnibus_p": 0.5, "n_nonzero": 0, "any_nonzero": False}
+    d.update(extra)
+    return d
 
 
 def _pred(n=2):
@@ -40,11 +44,25 @@ def _pred(n=2):
     })
 
 
-def _capturing_fit(store):
+def _assess(n=2, y_est=0.0, y_std=0.1):
+    """A minimal cat_fit per-point assessment frame."""
+    return pd.DataFrame({
+        "x": np.arange(n, dtype=float),
+        "y_est": np.full(n, y_est, dtype=float),
+        "y_std": np.full(n, y_std, dtype=float),
+        "z": np.full(n, y_est / y_std if y_std else 0.0),
+        "sig_nonzero": np.zeros(n, dtype=bool),
+        "direction": np.zeros(n, dtype=int),
+    })
+
+
+def _capturing_fit(store, **fit_kwargs):
     """A fake cat_fit that records the (x, y, y_std) it was handed per call."""
-    def fake_fit(x, y, y_std, x_pred=None, models_to_run=None, verbose=False):
-        store.append({"x": list(x), "y": list(y), "y_std": list(y_std)})
-        return _flat(), _pred(len(x))
+    def fake_fit(x, y, y_std, x_pred=None, models_to_run=None,
+                 best_only=True, alpha=0.05, verbose=False):
+        store.append({"x": list(x), "y": list(y), "y_std": list(y_std),
+                      "best_only": best_only, "alpha": alpha})
+        return _flat(**fit_kwargs), _pred(len(x)), _assess(len(np.unique(x)))
     return fake_fit
 
 
@@ -68,8 +86,8 @@ class TestGrouping:
         store = []
         with patch.object(cat_response_mod, "cat_fit",
                           side_effect=_capturing_fit(store)):
-            results, _ = cat_response(_basic_df(), x_obs="titrant_conc",
-                                      y_obs="theta", y_std="theta_std")
+            results, _, _, _ = cat_response(_basic_df(), x_obs="titrant_conc",
+                                            y_obs="theta", y_std="theta_std")
         # 2 genotypes -> 2 groups (titrant_name is ignored without group_by).
         assert len(results) == 2
         assert set(results["genotype"]) == {"wt", "m1"}
@@ -79,9 +97,9 @@ class TestGrouping:
         store = []
         with patch.object(cat_response_mod, "cat_fit",
                           side_effect=_capturing_fit(store)):
-            results, _ = cat_response(_basic_df(), x_obs="titrant_conc",
-                                      y_obs="theta", y_std="theta_std",
-                                      group_by=["titrant_name"])
+            results, _, _, _ = cat_response(_basic_df(), x_obs="titrant_conc",
+                                            y_obs="theta", y_std="theta_std",
+                                            group_by=["titrant_name"])
         # 2 genotypes x 2 titrants -> 4 groups.
         assert len(results) == 4
         assert set(results.columns[:2]) == {"genotype", "titrant_name"}
@@ -95,8 +113,8 @@ class TestGrouping:
         store = []
         with patch.object(cat_response_mod, "cat_fit",
                           side_effect=_capturing_fit(store)):
-            results, _ = cat_response(df, x_obs="titrant_conc",
-                                      y_obs="theta", y_std="theta_std")
+            results, _, _, _ = cat_response(df, x_obs="titrant_conc",
+                                            y_obs="theta", y_std="theta_std")
         assert len(results) == 2
         assert set(results["genotype"]) == {"wt", "m1"}
 
@@ -127,6 +145,16 @@ class TestColumnSelection:
         # Uniform weights: every y_std handed to cat_fit is 1.0.
         assert all(all(s == 1.0 for s in call["y_std"]) for call in store)
 
+    def test_best_only_and_alpha_threaded_to_fitter(self):
+        store = []
+        df = _basic_df()
+        with patch.object(cat_response_mod, "cat_fit",
+                          side_effect=_capturing_fit(store)):
+            cat_response(df, x_obs="titrant_conc", y_obs="theta",
+                         y_std="theta_std", best_only=False, alpha=0.01)
+        assert all(call["best_only"] is False for call in store)
+        assert all(call["alpha"] == 0.01 for call in store)
+
 
 # --- validation --------------------------------------------------------------
 
@@ -154,15 +182,89 @@ class TestPredictions:
     def test_predictions_tagged_with_group_keys(self):
         with patch.object(cat_response_mod, "cat_fit",
                           side_effect=_capturing_fit([])):
-            _, preds = cat_response(_basic_df(), x_obs="titrant_conc",
-                                    y_obs="theta", y_std="theta_std",
-                                    group_by=["titrant_name"])
+            _, preds, _, _ = cat_response(_basic_df(), x_obs="titrant_conc",
+                                          y_obs="theta", y_std="theta_std",
+                                          group_by=["titrant_name"])
         # Group keys come first, then the cat_fit prediction columns.
         assert list(preds.columns[:2]) == ["genotype", "titrant_name"]
         for col in ["model", "x", "y", "y_std", "is_best_model"]:
             assert col in preds.columns
         # Every prediction row carries a real group key.
         assert not preds["genotype"].isna().any()
+
+
+# --- post-hoc assessment pass ------------------------------------------------
+
+class TestAssessmentPass:
+
+    def test_assessment_tagged_and_has_equiv_zero(self):
+        with patch.object(cat_response_mod, "cat_fit",
+                          side_effect=_capturing_fit([])):
+            _, _, assess, delta = cat_response(
+                _basic_df(), x_obs="titrant_conc", y_obs="theta",
+                y_std="theta_std", group_by=["titrant_name"])
+        assert list(assess.columns[:2]) == ["genotype", "titrant_name"]
+        assert "equiv_zero" in assess.columns
+        assert np.isfinite(delta)
+
+    def test_delta_defaults_to_median_times_c(self):
+        # Fake assessment always reports y_std=0.1 -> median=0.1 -> delta=0.2.
+        with patch.object(cat_response_mod, "cat_fit",
+                          side_effect=_capturing_fit([])):
+            _, _, _, delta = cat_response(
+                _basic_df(), x_obs="titrant_conc", y_obs="theta",
+                y_std="theta_std", delta_c=2.0)
+        assert delta == pytest.approx(0.2)
+
+    def test_explicit_delta_is_used(self):
+        with patch.object(cat_response_mod, "cat_fit",
+                          side_effect=_capturing_fit([])):
+            _, _, _, delta = cat_response(
+                _basic_df(), x_obs="titrant_conc", y_obs="theta",
+                y_std="theta_std", delta=0.75)
+        assert delta == 0.75
+
+    def test_response_class_confident_zero(self):
+        # y_est=0, y_std tiny -> CI well inside delta -> all_equiv_zero -> and
+        # omnibus_p high (0.5) -> confident_zero.
+        fit = _capturing_fit([])
+
+        def fake(*a, **k):
+            flat, pred, _ = fit(*a, **k)
+            x = a[0]
+            return flat, pred, _assess(len(np.unique(x)), y_est=0.0,
+                                       y_std=1e-4)
+        with patch.object(cat_response_mod, "cat_fit", side_effect=fake):
+            results, _, _, _ = cat_response(
+                _basic_df(), x_obs="titrant_conc", y_obs="theta",
+                y_std="theta_std", delta=0.5)
+        assert set(results["response_class"]) == {"confident_zero"}
+
+    def test_equivalence_wins_over_significance(self):
+        # Significant omnibus (tiny p) but every point inside the ROPE
+        # (y_est=0, tiny std) -> practically zero should win -> confident_zero.
+        fit = _capturing_fit([])
+
+        def fake(*a, **k):
+            flat, pred, _ = fit(*a, **k)
+            flat["omnibus_p"] = 1e-9
+            x = a[0]
+            return flat, pred, _assess(len(np.unique(x)), y_est=0.0,
+                                       y_std=1e-4)
+        with patch.object(cat_response_mod, "cat_fit", side_effect=fake):
+            results, _, _, _ = cat_response(
+                _basic_df(), x_obs="titrant_conc", y_obs="theta",
+                y_std="theta_std", delta=0.5)
+        assert set(results["response_class"]) == {"confident_zero"}
+
+    def test_response_class_real_from_low_q(self):
+        with patch.object(cat_response_mod, "cat_fit",
+                          side_effect=_capturing_fit([], omnibus_p=1e-8)):
+            results, _, _, _ = cat_response(
+                _basic_df(), x_obs="titrant_conc", y_obs="theta",
+                y_std="theta_std", delta=1e-6)
+        assert set(results["response_class"]) == {"real"}
+        assert (results["omnibus_q"] < 0.05).all()
 
 
 # --- chunk helper ------------------------------------------------------------
@@ -196,13 +298,15 @@ class TestDispatchEquivalence:
     def test_parallel_matches_serial(self):
         df = self._many_genotype_df(7)
         with patch.object(cat_response_mod, "_CHUNK_SIZE", 2):
-            serial, serial_pred = cat_response(
+            serial, serial_pred, serial_assess, serial_delta = cat_response(
                 df, x_obs="titrant_conc", y_obs="theta",
                 y_std="theta_std", num_workers=1)
-            parallel, parallel_pred = cat_response(
-                df, x_obs="titrant_conc", y_obs="theta",
-                y_std="theta_std", num_workers=2)
+            parallel, parallel_pred, parallel_assess, parallel_delta = \
+                cat_response(df, x_obs="titrant_conc", y_obs="theta",
+                             y_std="theta_std", num_workers=2)
 
         assert list(serial["genotype"]) == [f"g{i}" for i in range(7)]
+        assert serial_delta == pytest.approx(parallel_delta)
         pd.testing.assert_frame_equal(serial, parallel)
         pd.testing.assert_frame_equal(serial_pred, parallel_pred)
+        pd.testing.assert_frame_equal(serial_assess, parallel_assess)
