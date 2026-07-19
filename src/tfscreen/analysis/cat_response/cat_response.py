@@ -133,12 +133,14 @@ def cat_response(df,
         Column names keep the ``|`` delimiter; presentation is left to callers.
     predictions_df : pandas.DataFrame
         Predicted curves, concatenated across groups. Columns are the group-key
-        columns followed by ``model``, ``x``, ``y``, ``y_std``, ``is_best_model``.
-        Restricted to the best model per group unless ``best_only`` is False.
+        columns followed by ``model``, ``x``, ``y_model``, ``y_model_std``,
+        ``is_best_model``. Restricted to the best model per group unless
+        ``best_only`` is False.
     assessment_df : pandas.DataFrame
-        Per-point best-model assessment at the observed (unique) x. Group-key
-        columns followed by ``x``, ``y_est``, ``y_std``, ``z``, ``sig_nonzero``,
-        ``direction``, ``equiv_zero``.
+        Self-contained per-point best-model assessment at the observed (unique)
+        x. Group-key columns followed by ``model``, ``x``, ``y_obs``, ``y_std``,
+        ``y_model``, ``y_model_std``, ``z``, ``sig_nonzero``, ``direction``,
+        ``equiv_zero``.
     delta : float
         The equivalence half-width actually used (resolved from ``delta`` /
         ``delta_c`` if not supplied).
@@ -227,12 +229,14 @@ def cat_response(df,
     # --- Post-hoc pass: global delta, equivalence, FDR, response class -------
     resolved_delta = delta
     if resolved_delta is None:
-        resolved_delta = compute_delta(assessment_df.get("y_std", []), delta_c)
+        resolved_delta = compute_delta(
+            assessment_df.get("y_model_std", []), delta_c
+        )
 
     if len(assessment_df):
         assessment_df["equiv_zero"] = classify_equiv(
-            assessment_df["y_est"].to_numpy(dtype=float),
-            assessment_df["y_std"].to_numpy(dtype=float),
+            assessment_df["y_model"].to_numpy(dtype=float),
+            assessment_df["y_model_std"].to_numpy(dtype=float),
             resolved_delta,
             alpha=alpha,
         )

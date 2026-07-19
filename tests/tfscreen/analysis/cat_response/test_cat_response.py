@@ -38,19 +38,22 @@ def _pred(n=2):
     return pd.DataFrame({
         "model": ["flat"] * n,
         "x": np.arange(n, dtype=float),
-        "y": np.zeros(n),
-        "y_std": np.zeros(n),
+        "y_model": np.zeros(n),
+        "y_model_std": np.zeros(n),
         "is_best_model": [True] * n,
     })
 
 
-def _assess(n=2, y_est=0.0, y_std=0.1):
+def _assess(n=2, y_model=0.0, y_model_std=0.1):
     """A minimal cat_fit per-point assessment frame."""
     return pd.DataFrame({
+        "model": ["flat"] * n,
         "x": np.arange(n, dtype=float),
-        "y_est": np.full(n, y_est, dtype=float),
-        "y_std": np.full(n, y_std, dtype=float),
-        "z": np.full(n, y_est / y_std if y_std else 0.0),
+        "y_obs": np.full(n, y_model, dtype=float),
+        "y_std": np.full(n, y_model_std, dtype=float),
+        "y_model": np.full(n, y_model, dtype=float),
+        "y_model_std": np.full(n, y_model_std, dtype=float),
+        "z": np.full(n, y_model / y_model_std if y_model_std else 0.0),
         "sig_nonzero": np.zeros(n, dtype=bool),
         "direction": np.zeros(n, dtype=int),
     })
@@ -187,7 +190,7 @@ class TestPredictions:
                                           group_by=["titrant_name"])
         # Group keys come first, then the cat_fit prediction columns.
         assert list(preds.columns[:2]) == ["genotype", "titrant_name"]
-        for col in ["model", "x", "y", "y_std", "is_best_model"]:
+        for col in ["model", "x", "y_model", "y_model_std", "is_best_model"]:
             assert col in preds.columns
         # Every prediction row carries a real group key.
         assert not preds["genotype"].isna().any()
@@ -225,15 +228,15 @@ class TestAssessmentPass:
         assert delta == 0.75
 
     def test_response_class_confident_zero(self):
-        # y_est=0, y_std tiny -> CI well inside delta -> all_equiv_zero -> and
-        # omnibus_p high (0.5) -> confident_zero.
+        # y_model=0, y_model_std tiny -> CI well inside delta -> all_equiv_zero
+        # -> and omnibus_p high (0.5) -> confident_zero.
         fit = _capturing_fit([])
 
         def fake(*a, **k):
             flat, pred, _ = fit(*a, **k)
             x = a[0]
-            return flat, pred, _assess(len(np.unique(x)), y_est=0.0,
-                                       y_std=1e-4)
+            return flat, pred, _assess(len(np.unique(x)), y_model=0.0,
+                                       y_model_std=1e-4)
         with patch.object(cat_response_mod, "cat_fit", side_effect=fake):
             results, _, _, _ = cat_response(
                 _basic_df(), x_obs="titrant_conc", y_obs="theta",
@@ -242,15 +245,15 @@ class TestAssessmentPass:
 
     def test_equivalence_wins_over_significance(self):
         # Significant omnibus (tiny p) but every point inside the ROPE
-        # (y_est=0, tiny std) -> practically zero should win -> confident_zero.
+        # (y_model=0, tiny std) -> practically zero should win -> confident_zero.
         fit = _capturing_fit([])
 
         def fake(*a, **k):
             flat, pred, _ = fit(*a, **k)
             flat["omnibus_p"] = 1e-9
             x = a[0]
-            return flat, pred, _assess(len(np.unique(x)), y_est=0.0,
-                                       y_std=1e-4)
+            return flat, pred, _assess(len(np.unique(x)), y_model=0.0,
+                                       y_model_std=1e-4)
         with patch.object(cat_response_mod, "cat_fit", side_effect=fake):
             results, _, _, _ = cat_response(
                 _basic_df(), x_obs="titrant_conc", y_obs="theta",

@@ -247,4 +247,12 @@ def extract_epistasis(
     if y_std is not None:
         cycles["ep_std"] = ep_std
 
+    # Sort by (genotype, group_by) for stable, readable output
+    sort_cols = ["genotype"]
+    if group_by is not None:
+        if isinstance(group_by, str):
+            group_by = [group_by]
+        sort_cols.extend(group_by)
+    cycles = cycles.sort_values(sort_cols).reset_index(drop=True)
+
     return cycles

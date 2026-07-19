@@ -7,6 +7,7 @@ import pandas as pd
 from tfscreen.analysis.extract_epistasis import (
     extract_epistasis as _extract_epistasis,
 )
+from tfscreen.util import resolve_obs_columns
 from tfscreen.util.cli import generalized_main
 
 
@@ -90,7 +91,7 @@ def _diagnose_empty_output(df, group_by, exclude=()):
 
 
 def extract_epistasis(data_file,
-                      y_obs,
+                      y_obs=None,
                       out_prefix="tfs_epistasis",
                       y_std=None,
                       group_by=None,
@@ -111,15 +112,18 @@ def extract_epistasis(data_file,
         Path to the input CSV. Must contain a 'genotype' column, the column
         named by y_obs, and (if given) the columns named by y_std and
         group_by.
-    y_obs : str
+    y_obs : str or None, optional
         Name of the column holding the observable for which epistasis is
-        calculated (e.g. 'fitness', 'dG').
+        calculated (e.g. 'fitness', 'dG'). If None (default) and the input has a
+        'q0.5' column (as written by tfs-predict-theta), 'q0.5' is used.
     out_prefix : str, optional
         Prefix for the output CSV file, written to {out_prefix}.csv.
         Default 'tfs_epistasis'.
     y_std : str or None, optional
         Name of the column holding the standard error of y_obs. If given, the
-        epistasis error (ep_std) is propagated and written.
+        epistasis error (ep_std) is propagated and written. If None (default)
+        and both 'q0.841' and 'q0.159' are present, the standard error is taken
+        as (q0.841 - q0.159) / 2.
     group_by : list of str or None, optional
         One or more column names that define a unique experimental condition.
         Epistasis is calculated independently within each condition. If omitted,
@@ -134,6 +138,10 @@ def extract_epistasis(data_file,
     """
     print(f"Reading {data_file}...", flush=True)
     df = pd.read_csv(data_file)
+
+    # Fill in y_obs/y_std defaults from quantile columns (q0.5 for the point
+    # estimate, (q0.841 - q0.159)/2 for the std) when not given explicitly.
+    df, y_obs, y_std = resolve_obs_columns(df, y_obs=y_obs, y_std=y_std)
 
     # Fail fast on missing columns rather than deep inside the pivot.
     required = ["genotype", y_obs]
@@ -171,7 +179,8 @@ def extract_epistasis(data_file,
 
 def main():
     generalized_main(extract_epistasis,
-                     manual_arg_types={"y_std": str,
+                     manual_arg_types={"y_obs": str,
+                                       "y_std": str,
                                        "group_by": str,
                                        "scale": str},
                      manual_arg_nargs={"group_by": "+"})

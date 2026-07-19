@@ -67,14 +67,16 @@ class TestOutputFiles:
 
         preds = pd.read_csv(f"{out_prefix}_predictions.csv")
         assert "genotype" in preds.columns
-        assert {"model", "x", "y", "is_best_model"}.issubset(preds.columns)
+        assert {"model", "x", "y_model", "y_model_std",
+                "is_best_model"}.issubset(preds.columns)
         # best_only default: predictions restricted to each group's best model.
         assert preds["is_best_model"].all()
 
         assess = pd.read_csv(f"{out_prefix}_assessment.csv")
         assert "genotype" in assess.columns
-        assert {"x", "y_est", "y_std", "z", "sig_nonzero", "direction",
-                "equiv_zero"}.issubset(assess.columns)
+        assert {"model", "x", "y_obs", "y_std", "y_model", "y_model_std", "z",
+                "sig_nonzero", "direction", "equiv_zero"}.issubset(
+                    assess.columns)
         # Rollups landed on the main table.
         assert {"omnibus_p", "omnibus_q", "n_nonzero",
                 "response_class"}.issubset(main.columns)
@@ -112,6 +114,27 @@ class TestSigmaFallback:
         assert captured["y_std"] == "_sigma"
         # (q0.841 - q0.159)/2 = 0.05 for every row.
         assert captured["sigma_vals"] == pytest.approx([0.05] * 8)
+
+    def test_y_obs_defaults_to_q05(self, tmp_path):
+        captured = {}
+
+        def fake_core(df, **kwargs):
+            captured["y_obs"] = kwargs["y_obs"]
+            captured["y_std"] = kwargs["y_std"]
+            empty = pd.DataFrame({"genotype": [], "best_model": []})
+            return empty, pd.DataFrame({"genotype": []}), \
+                pd.DataFrame({"genotype": []}), 0.1
+
+        data = _write(tmp_path, _theta_df(with_quantiles=True))
+        with patch.object(cat_response_cli, "_cat_response",
+                          side_effect=fake_core), \
+             patch.object(cat_response_cli, "_write_per_model"):
+            # Neither y_obs nor y_std given -> both resolved from quantiles.
+            cat_response(data, x_obs="titrant_conc",
+                         out_prefix=str(tmp_path / "out"))
+
+        assert captured["y_obs"] == "q0.5"
+        assert captured["y_std"] == "_sigma"
 
     def test_explicit_y_std_takes_precedence(self, tmp_path):
         captured = {}
@@ -179,7 +202,8 @@ class TestArgWiring:
     def test_main_parses_positionals_and_flags(self, tmp_path, monkeypatch):
         data = _write(tmp_path, _theta_df())
         out_prefix = str(tmp_path / "out")
-        argv = ["cat_response", data, "titrant_conc", "q0.5",
+        argv = ["cat_response", data, "titrant_conc",
+                "--y_obs", "q0.5",
                 "--out_prefix", out_prefix,
                 "--group_by", "titrant_name",
                 "--models", "flat", "linear",

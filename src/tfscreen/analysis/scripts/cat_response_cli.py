@@ -8,6 +8,7 @@ from tfscreen.analysis.cat_response.cat_response import (
     cat_response as _cat_response,
 )
 from tfscreen.mle.curve_models import MODEL_LIBRARY
+from tfscreen.util import resolve_obs_columns
 from tfscreen.util.cli import generalized_main
 
 
@@ -56,7 +57,7 @@ def _write_per_model(results_df, models, group_cols, out_prefix):
 
 def cat_response(data_file,
                  x_obs,
-                 y_obs,
+                 y_obs=None,
                  out_prefix="tfs_cat_response",
                  y_std=None,
                  group_by=None,
@@ -93,8 +94,10 @@ def cat_response(data_file,
         ``y_obs``, and (if given) ``y_std`` and every column in ``group_by``.
     x_obs : str
         Name of the column holding the independent variable (e.g. 'titrant_conc').
-    y_obs : str
-        Name of the column holding the observable (e.g. 'q0.5', 'point_est').
+    y_obs : str or None, optional
+        Name of the column holding the observable (e.g. 'q0.5', 'point_est'). If
+        None (default) and the input has a 'q0.5' column (as written by
+        tfs-predict-theta), 'q0.5' is used.
     out_prefix : str, optional
         Prefix for the output CSV files. Default 'tfs_cat_response'.
     y_std : str or None, optional
@@ -134,12 +137,9 @@ def cat_response(data_file,
 
     group_cols = ["genotype"] + (list(group_by) if group_by else [])
 
-    # Sigma fallback: symmetric quantile half-width when no explicit column and
-    # tfs-predict-theta's quantile columns are present.
-    if y_std is None and "q0.841" in df.columns and "q0.159" in df.columns:
-        df = df.copy()
-        df["_sigma"] = (df["q0.841"] - df["q0.159"]) / 2
-        y_std = "_sigma"
+    # Fill in y_obs/y_std defaults from quantile columns (q0.5 for the point
+    # estimate, (q0.841 - q0.159)/2 for the std) when not given explicitly.
+    df, y_obs, y_std = resolve_obs_columns(df, y_obs=y_obs, y_std=y_std)
 
     # Fail fast on missing columns rather than deep inside the group loop.
     required = list(dict.fromkeys(group_cols + [x_obs, y_obs]
@@ -200,9 +200,11 @@ def cat_response(data_file,
 
 def main():
     generalized_main(cat_response,
-                     manual_arg_types={"y_std": str,
+                     manual_arg_types={"y_obs": str,
+                                       "y_std": str,
                                        "group_by": str,
-                                       "models": str},
+                                       "models": str,
+                                       "delta": float},
                      manual_arg_nargs={"group_by": "+",
                                        "models": "+"})
 

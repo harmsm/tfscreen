@@ -119,6 +119,44 @@ class TestValidation:
                               out_prefix=str(tmp_path / "out"))
 
 
+class TestQuantileDefaults:
+
+    def _quantile_cycle_rows(self):
+        """Same additive cycle (ep = 1.0) stored as quantile columns."""
+        rows = _single_cycle_rows()
+        out = []
+        for r in rows:
+            y = r["y"]
+            out.append({
+                "genotype": r["genotype"],
+                "q0.159": y - 0.1,
+                "q0.5": y,
+                "q0.841": y + 0.1,
+            })
+        return out
+
+    def test_y_obs_defaults_to_q05(self, tmp_path):
+        data = _write_csv(tmp_path, self._quantile_cycle_rows())
+        out_prefix = str(tmp_path / "out")
+
+        # No y_obs / y_std given -> q0.5 for the point estimate, quantile
+        # half-width for the std.
+        extract_epistasis(data, out_prefix=out_prefix)
+
+        out = pd.read_csv(f"{out_prefix}.csv")
+        assert len(out) == 1
+        assert out["ep_obs"].iloc[0] == pytest.approx(1.0)
+        # Symmetric half-width is 0.1 for every state -> sqrt(4*0.1**2) = 0.2.
+        assert out["ep_std"].iloc[0] == pytest.approx(0.2)
+
+    def test_missing_q05_raises(self, tmp_path):
+        rows = [{"genotype": r["genotype"], "value": r["y"]}
+                for r in _single_cycle_rows()]
+        data = _write_csv(tmp_path, rows)
+        with pytest.raises(ValueError, match="No 'y_obs' column"):
+            extract_epistasis(data, out_prefix=str(tmp_path / "out"))
+
+
 class TestEmptyResult:
 
     def test_no_cycles_writes_empty(self, tmp_path, capsys):
@@ -184,7 +222,8 @@ class TestArgWiring:
                           + _single_cycle_rows(condition="c2"))
         out_prefix = str(tmp_path / "out")
 
-        argv = ["extract_epistasis", data, "y",
+        argv = ["extract_epistasis", data,
+                "--y_obs", "y",
                 "--out_prefix", out_prefix,
                 "--y_std", "y_err",
                 "--group_by", "condition",

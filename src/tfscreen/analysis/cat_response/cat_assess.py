@@ -56,8 +56,9 @@ def assess_best_model(model_func, params, cov_matrix, x, alpha=0.05):
     Returns
     -------
     per_point : dict
-        Arrays of length ``len(x)``: ``x``, ``y_est``, ``y_std``, ``z``,
-        ``sig_nonzero`` (bool), ``direction`` (-1/0/+1).
+        Arrays of length ``len(x)``: ``x``, ``y_model`` (best-fit curve value),
+        ``y_model_std`` (propagated fit uncertainty), ``z``, ``sig_nonzero``
+        (bool), ``direction`` (-1/0/+1).
     rollup : dict
         Scalars: ``omnibus_W``, ``omnibus_df``, ``omnibus_p``, ``n_nonzero``,
         ``any_nonzero``.
@@ -80,8 +81,8 @@ def assess_best_model(model_func, params, cov_matrix, x, alpha=0.05):
 
     per_point = {
         "x": x,
-        "y_est": y_est,
-        "y_std": y_std,
+        "y_model": y_est,
+        "y_model_std": y_std,
         "z": z,
         "sig_nonzero": sig_nonzero,
         "direction": direction,

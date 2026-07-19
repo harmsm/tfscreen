@@ -12,8 +12,8 @@ def test_cat_fits_basic():
     
     pred_df = pd.DataFrame({
         'x': np.tile(x, 2),
-        'y': np.concatenate([y, y*0.9]),
-        'y_std': np.tile(y_std, 2),
+        'y_model': np.concatenate([y, y*0.9]),
+        'y_model_std': np.tile(y_std, 2),
         'model': ['Model A']*4 + ['Model B']*4,
         'is_best_model': [True]*4 + [False]*4
     })
@@ -46,8 +46,8 @@ def test_cat_fits_custom_ax():
     
     pred_df = pd.DataFrame({
         'x': [1],
-        'y': [1],
-        'y_std': [0.1],
+        'y_model': [1],
+        'y_model_std': [0.1],
         'model': ['Model A'],
         'is_best_model': [True]
     })
@@ -65,8 +65,8 @@ def test_cat_fits_nan_handling():
     # Pred df
     pred_df = pd.DataFrame({
         'x': [1],
-        'y': [1],
-        'y_std': [0.1],
+        'y_model': [1],
+        'y_model_std': [0.1],
         'model': ['Model A'],
         'is_best_model': [True]
     })
@@ -82,8 +82,8 @@ def test_cat_fits_log_scale():
     
     pred_df = pd.DataFrame({
         'x': x,
-        'y': y,
-        'y_std': y_std,
+        'y_model': y,
+        'y_model_std': y_std,
         'model': ['Model A']*2,
         'is_best_model': [True]*2
     })

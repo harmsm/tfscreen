@@ -114,10 +114,14 @@ def test_assessment_rollup_and_frame():
     for key in ["omnibus_W", "omnibus_df", "omnibus_p", "n_nonzero",
                 "any_nonzero"]:
         assert key in flat_output
-    assert list(assess_df.columns) == ["x", "y_est", "y_std", "z",
+    assert list(assess_df.columns) == ["model", "x", "y_obs", "y_std",
+                                       "y_model", "y_model_std", "z",
                                        "sig_nonzero", "direction"]
     # One row per unique observed x.
     assert len(assess_df) == len(np.unique(x))
+    # Model name recorded; observed data carried through alongside the fit.
+    assert (assess_df["model"] == "flat").all()
+    assert assess_df["y_obs"].to_numpy() == pytest.approx(y)
     # Curve sits far from zero -> every point significant, tiny omnibus p.
     assert flat_output["n_nonzero"] == len(np.unique(x))
     assert flat_output["any_nonzero"] is True
@@ -148,7 +152,7 @@ def test_insufficient_data():
     assert np.isnan(flat_output["omnibus_p"])
     # Best-only predictions: nothing to predict, empty frames.
     assert len(pred_df) == 0
-    assert list(pred_df.columns) == ["model", "x", "y", "y_std",
+    assert list(pred_df.columns) == ["model", "x", "y_model", "y_model_std",
                                      "is_best_model"]
     assert len(assess_df) == 0
 

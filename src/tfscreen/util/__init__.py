@@ -73,3 +73,7 @@ from .cli import (  # noqa: F401
 from .dataframe import (  # noqa: F401
     add_group_columns
 )
+
+from .dataframe import (  # noqa: F401
+    resolve_obs_columns
+)

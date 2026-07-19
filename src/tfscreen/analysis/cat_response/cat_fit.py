@@ -12,9 +12,20 @@ from .cat_assess import assess_best_model
 import numpy as np
 import pandas as pd
 
+# Keys returned by assess_best_model's per-point dict (the model curve + tests).
+_PER_POINT_COLS = ["x", "y_model", "y_model_std", "z", "sig_nonzero",
+                   "direction"]
+
 # Columns of the per-point assessment frame, in order. Kept as a module
-# constant so empty-result paths emit an identically-shaped (empty) frame.
-_ASSESS_COLS = ["x", "y_est", "y_std", "z", "sig_nonzero", "direction"]
+# constant so empty-result paths emit an identically-shaped (empty) frame. This
+# is the self-contained record: the best model's name, the observed data
+# (``y_obs`` and its input error ``y_std``), the fitted curve at the observed x
+# (``y_model`` and its propagated error ``y_model_std``), and the zero tests.
+_ASSESS_COLS = ["model", "x", "y_obs", "y_std", "y_model", "y_model_std",
+                "z", "sig_nonzero", "direction"]
+
+# Non-float dtypes for the empty-frame path.
+_ASSESS_DTYPES = {"model": object, "sig_nonzero": bool, "direction": int}
 
 # Rollup keys added to flat_output by the post-hoc assessment. Listed here so
 # the insufficient-data / all-fail paths can emit them as NaN.
@@ -23,7 +34,9 @@ _ROLLUP_KEYS = ["omnibus_W", "omnibus_df", "omnibus_p", "n_nonzero",
 
 
 def _empty_assess_df():
-    return pd.DataFrame({c: pd.Series(dtype=float) for c in _ASSESS_COLS})
+    return pd.DataFrame({
+        c: pd.Series(dtype=_ASSESS_DTYPES.get(c, float)) for c in _ASSESS_COLS
+    })
 
 
 def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
@@ -68,12 +81,14 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
         errors for all tested models, and the best-model omnibus rollup
         (``omnibus_W/df/p``, ``n_nonzero``, ``any_nonzero``).
     pd.DataFrame
-        Model predictions with columns ``model``, ``x``, ``y``, ``y_std``,
-        ``is_best_model``. Restricted to the best model unless ``best_only`` is
-        False.
+        Model predictions with columns ``model``, ``x``, ``y_model``,
+        ``y_model_std``, ``is_best_model``. Restricted to the best model unless
+        ``best_only`` is False.
     pd.DataFrame
-        Per-point assessment of the best model at the observed (unique) x, with
-        columns ``x``, ``y_est``, ``y_std``, ``z``, ``sig_nonzero``,
+        Self-contained per-point assessment of the best model at the observed
+        (unique) x, with columns ``model``, ``x``, ``y_obs`` (observed value),
+        ``y_std`` (observed input error), ``y_model`` (fitted curve),
+        ``y_model_std`` (propagated fit error), ``z``, ``sig_nonzero``,
         ``direction``. Empty if no model could be fit. (``equiv_zero`` is added
         downstream in ``cat_response`` once the global delta is known.)
     """
@@ -115,8 +130,8 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
 
         pred_df = pd.DataFrame({"model": pd.Series(dtype=object),
                                 "x": pd.Series(dtype=float),
-                                "y": pd.Series(dtype=float),
-                                "y_std": pd.Series(dtype=float),
+                                "y_model": pd.Series(dtype=float),
+                                "y_model_std": pd.Series(dtype=float),
                                 "is_best_model": pd.Series(dtype=bool)})
         return flat_output, pred_df, _empty_assess_df()
 
@@ -260,8 +275,8 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
         pred_rows.append(pd.DataFrame({
             "model": name,
             "x": x_pred,
-            "y": y_pred,
-            "y_std": y_pred_std,
+            "y_model": y_pred,
+            "y_model_std": y_pred_std,
         }))
 
     if pred_rows:
@@ -269,8 +284,8 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
     else:
         pred_df = pd.DataFrame({"model": pd.Series(dtype=object),
                                 "x": pd.Series(dtype=float),
-                                "y": pd.Series(dtype=float),
-                                "y_std": pd.Series(dtype=float)})
+                                "y_model": pd.Series(dtype=float),
+                                "y_model_std": pd.Series(dtype=float)})
     pred_df["is_best_model"] = pred_df["model"] == flat_output["best_model"]
 
     # Per-point assessment + omnibus rollup for the best model.
@@ -280,7 +295,18 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
             p_res['model_func'], p_res['params'], p_res['cov'], x_assess,
             alpha=alpha
         )
-        assess_df = pd.DataFrame({c: per_point[c] for c in _ASSESS_COLS})
+        assess_df = pd.DataFrame({c: per_point[c] for c in _PER_POINT_COLS})
+
+        # Attach the observed data aggregated to the assessment grid. With one
+        # observation per concentration (the shared-grid assumption) this is a
+        # straight alignment; replicate concentrations are mean-collapsed.
+        obs = (pd.DataFrame({"x": x, "y_obs": y, "y_std": y_std})
+               .groupby("x", sort=True).mean().reindex(x_assess))
+        assess_df["y_obs"] = obs["y_obs"].to_numpy()
+        assess_df["y_std"] = obs["y_std"].to_numpy()
+        assess_df["model"] = best_model
+        assess_df = assess_df[_ASSESS_COLS]
+
         for key in _ROLLUP_KEYS:
             flat_output[key] = rollup[key]
     else:

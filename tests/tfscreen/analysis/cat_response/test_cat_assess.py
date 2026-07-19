@@ -48,13 +48,13 @@ class TestOmnibus:
         assert np.isnan(W) and df == 0 and np.isnan(p)
 
     def test_assess_best_model_flags_and_rollup(self):
-        # y = 1*x + 0 at x=[1,2,3] -> y_est = [1,2,3], all clearly nonzero.
+        # y = 1*x + 0 at x=[1,2,3] -> y_model = [1,2,3], all clearly nonzero.
         x = np.array([1.0, 2.0, 3.0])
         params = np.array([1.0, 0.0])
         cov = np.diag([1e-4, 1e-4])   # tiny -> small pred se -> significant
         per_point, rollup = assess_best_model(_linear, params, cov, x)
 
-        assert per_point["y_est"] == pytest.approx([1.0, 2.0, 3.0])
+        assert per_point["y_model"] == pytest.approx([1.0, 2.0, 3.0])
         assert np.all(per_point["sig_nonzero"])
         assert np.all(per_point["direction"] == 1)
         assert rollup["n_nonzero"] == 3
