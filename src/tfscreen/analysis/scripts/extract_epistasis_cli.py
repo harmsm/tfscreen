@@ -96,7 +96,8 @@ def extract_epistasis(data_file,
                       y_std=None,
                       group_by=None,
                       scale="add",
-                      keep_extra=False):
+                      keep_extra=False,
+                      logit_eps=1e-9):
     """
     Calculate second-order epistasis for pairs of mutations.
 
@@ -128,13 +129,17 @@ def extract_epistasis(data_file,
         One or more column names that define a unique experimental condition.
         Epistasis is calculated independently within each condition. If omitted,
         the whole table is treated as a single condition.
-    scale : {"add", "mult"}, optional
+    scale : {"add", "mult", "logit"}, optional
         Epistatic scale. "add" (default): (Y11 - Y10) - (Y01 - Y00).
-        "mult": (Y11 / Y10) / (Y01 / Y00).
+        "mult": (Y11 / Y10) / (Y01 / Y00). "logit": additive epistasis of
+        logit(Y) — requires an observable in (0, 1), such as theta/occupancy.
     keep_extra : bool, optional
         If True, retain all columns from the input CSV in the output. If False
         (default), keep only the identifier columns and the calculated epistasis
         values.
+    logit_eps : float, optional
+        Only used when scale="logit". Observations are clamped to
+        [logit_eps, 1 - logit_eps] before the transform. Default 1e-9.
     """
     print(f"Reading {data_file}...", flush=True)
     df = pd.read_csv(data_file)
@@ -162,7 +167,8 @@ def extract_epistasis(data_file,
                                 y_std=y_std,
                                 group_by=group_by,
                                 scale=scale,
-                                keep_extra=keep_extra)
+                                keep_extra=keep_extra,
+                                logit_eps=logit_eps)
 
     out_file = f"{out_prefix}.csv"
     if result.empty:

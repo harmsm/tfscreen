@@ -246,3 +246,89 @@ class TestExtractEpistasis:
         """An empty input frame returns an empty frame (no KeyError)."""
         result = extract_epistasis(pd.DataFrame({"genotype": []}), "fitness")
         assert result.empty
+
+
+# --- logit-scale epistasis ----------------------------------------------------
+
+def _logit(y):
+    return np.log(y / (1.0 - y))
+
+
+@pytest.fixture
+def theta_cycle_df():
+    """One complete mutant cycle with a fractional (in (0,1)) observable."""
+    return pd.DataFrame({
+        "genotype":  ["wt", "A10G", "P25L", "A10G/P25L"],
+        "theta":     [0.9, 0.8, 0.5, 0.3],
+        "theta_std": [0.05, 0.05, 0.05, 0.05],
+    })
+
+
+class TestLogitEpistasis:
+    def test_logit_ep_obs(self, theta_cycle_df):
+        """ep_obs is the difference-of-differences of logit(theta)."""
+        result = extract_epistasis(theta_cycle_df, "theta", scale="logit")
+        row = result.iloc[0]
+        expected = (_logit(0.3) - _logit(0.5)) - (_logit(0.8) - _logit(0.9))
+        assert np.isclose(row["ep_obs"], expected)
+
+    def test_logit_ep_std_delta_method(self, theta_cycle_df):
+        """ep_std propagates via the logit delta method, s / (y(1-y))."""
+        result = extract_epistasis(theta_cycle_df, "theta", y_std="theta_std",
+                                   scale="logit")
+        row = result.iloc[0]
+        t = [0.05 / (y * (1.0 - y)) for y in (0.9, 0.8, 0.5, 0.3)]
+        expected = np.sqrt(sum(s**2 for s in t))
+        assert np.isclose(row["ep_std"], expected)
+
+    def test_logit_removes_pure_scale_epistasis(self):
+        """logit-additive thetas -> ~0 logit epistasis but nonzero on 'add'."""
+        # logit values chosen additive: L11 = L01 + L10 - L00 -> logit ep == 0
+        sig = lambda x: 1.0 / (1.0 + np.exp(-x))
+        L = {"00": 0.0, "01": 0.8, "10": -1.2}
+        L["11"] = L["01"] + L["10"] - L["00"]
+        df = pd.DataFrame({
+            "genotype": ["wt", "A10G", "P25L", "A10G/P25L"],
+            "theta":    [sig(L["00"]), sig(L["01"]), sig(L["10"]), sig(L["11"])],
+        })
+        logit_ep = extract_epistasis(df, "theta", scale="logit").iloc[0]["ep_obs"]
+        add_ep = extract_epistasis(df, "theta", scale="add").iloc[0]["ep_obs"]
+        assert np.isclose(logit_ep, 0.0, atol=1e-9)
+        assert abs(add_ep) > 1e-3
+
+    def test_logit_without_std(self, theta_cycle_df):
+        """No y_std -> no ep_std column, ep_obs still computed."""
+        result = extract_epistasis(theta_cycle_df, "theta", scale="logit")
+        assert "ep_std" not in result.columns
+        assert np.isfinite(result.iloc[0]["ep_obs"])
+
+    def test_logit_clamps_bounds_finite(self):
+        """theta at exactly 0/1 is clamped so logit stays finite (no warning)."""
+        df = pd.DataFrame({
+            "genotype": ["wt", "A10G", "P25L", "A10G/P25L"],
+            "theta":    [1.0, 0.8, 0.5, 0.0],
+        })
+        result = extract_epistasis(df, "theta", scale="logit")
+        assert np.isfinite(result.iloc[0]["ep_obs"])
+
+    def test_logit_warns_on_out_of_range(self):
+        """Values outside [0, 1] trigger a warning and are clamped."""
+        df = pd.DataFrame({
+            "genotype": ["wt", "A10G", "P25L", "A10G/P25L"],
+            "theta":    [0.9, 1.5, 0.5, 0.3],     # 1.5 is out of range
+        })
+        with pytest.warns(UserWarning, match="expects an observable in"):
+            result = extract_epistasis(df, "theta", scale="logit")
+        assert np.isfinite(result.iloc[0]["ep_obs"])
+
+    def test_logit_custom_eps(self):
+        """logit_eps controls the clamp applied at the bounds."""
+        df = pd.DataFrame({
+            "genotype": ["wt", "A10G", "P25L", "A10G/P25L"],
+            "theta":    [1.0, 0.8, 0.5, 0.3],
+        })
+        eps = 1e-3
+        result = extract_epistasis(df, "theta", scale="logit", logit_eps=eps)
+        # wt (00) clamped to 1 - eps; recompute the expected diff-of-diffs
+        expected = (_logit(0.3) - _logit(0.5)) - (_logit(0.8) - _logit(1.0 - eps))
+        assert np.isclose(result.iloc[0]["ep_obs"], expected)

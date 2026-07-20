@@ -3,6 +3,7 @@ import tfscreen
 import pandas as pd
 import numpy as np
 
+import warnings
 from typing import List, Optional
 
 def mutant_cycle_pivot(
@@ -132,7 +133,8 @@ def extract_epistasis(
     y_std: Optional[str] = None,
     group_by: List[str] | str | None=None,
     scale: str = "add",
-    keep_extra: bool = False
+    keep_extra: bool = False,
+    logit_eps: float = 1e-9,
 ) -> pd.DataFrame:
     """
     Calculate epistasis between pairs of mutations for a given observable.
@@ -158,14 +160,24 @@ def extract_epistasis(
         Column name(s) that define a unique experimental condition. Epistasis
         is calculated independently for each condition. If None, treat all
         conditions at once
-    scale : {"add", "mult"}, default "add"
-        The scale for calculating epistasis.
+    scale : {"add", "mult", "logit"}, default "add"
+        The scale for calculating epistasis. Each name selects a transform of
+        the observable; epistasis is the difference-of-differences of the
+        transformed values (reported in ratio form for "mult").
         - "add": epsilon = (Y_{11} - Y_{10}) - (Y_{01} - Y_{00})
         - "mult": epsilon = (Y_{11} / Y_{10}) / (Y_{01} / Y_{00})
+        - "logit": epsilon = (L_{11} - L_{10}) - (L_{01} - L_{00}), where
+          L = logit(Y). Requires an observable in (0, 1) (e.g. theta/occupancy);
+          removes a saturating measurement scale so genuine (within-state)
+          interactions are not masked by the nonlinearity of a bounded readout.
     keep_extra : bool, default False
         If True, all columns from the original DataFrame are kept in the
         output. If False, only key identifiers and the calculated epistasis
         values are returned.
+    logit_eps : float, default 1e-9
+        Only used when scale="logit". Observations are clamped to
+        [logit_eps, 1 - logit_eps] before the logit transform to keep values at
+        the 0/1 bounds finite. Inputs outside [0, 1] are clamped with a warning.
 
     Returns
     -------
@@ -180,9 +192,10 @@ def extract_epistasis(
         If `scale` is not one of "add" or "mult".
     """
 
-    # Determine the epistatic scale 
-    if scale not in ["add","mult"]:
-        err = "scale should be either 'add' (additive) or 'mult' (multiplicative)\n"
+    # Determine the epistatic scale
+    if scale not in ["add","mult","logit"]:
+        err = ("scale should be 'add' (additive), 'mult' (multiplicative), or "
+               "'logit' (additive on the logit scale)\n")
         raise ValueError(err)
     
     # Figure out what columns to extract
@@ -233,11 +246,35 @@ def extract_epistasis(
         ep_obs = (obs_11 - obs_10) - (obs_01 - obs_00)
         if y_std is not None:
             ep_std = np.sqrt(std_11**2 + std_10**2 + std_01**2 + std_00**2)
-    
+
+    # Logit scale: additive epistasis of logit(Y). Removes a saturating [0, 1]
+    # measurement scale so within-state interactions are not masked by it.
+    elif scale == "logit":
+        raw = [obs_00, obs_10, obs_01, obs_11]
+
+        # logit is only defined on (0, 1); warn if the observable is not a
+        # fraction (a common sign of pointing y_obs at fitness/dG), then clamp.
+        if any(((o < 0.0) | (o > 1.0)).any() for o in raw):
+            warnings.warn(
+                "scale='logit' expects an observable in [0, 1]; values outside "
+                "this range were found and clamped. Check that y_obs is a "
+                "fraction/occupancy (e.g. theta), not fitness or dG.",
+                stacklevel=2,
+            )
+
+        clip = [o.clip(logit_eps, 1.0 - logit_eps) for o in raw]
+        t_00, t_10, t_01, t_11 = (np.log(c / (1.0 - c)) for c in clip)
+        ep_obs = (t_11 - t_10) - (t_01 - t_00)
+        if y_std is not None:
+            # delta method: d/dy logit(y) = 1 / (y (1 - y))
+            raw_std = [std_00, std_10, std_01, std_11]
+            t_std = [s / (c * (1.0 - c)) for s, c in zip(raw_std, clip)]
+            ep_std = np.sqrt(sum(s**2 for s in t_std))
+
     # Multiplicative scale
-    else: 
+    else:
         ep_obs = (obs_11 / obs_10) / (obs_01 / obs_00)
-        if y_std is not None:    
+        if y_std is not None:
             rel_err_sq = ((std_11 / obs_11)**2 + (std_10 / obs_10)**2 +
                           (std_01 / obs_01)**2 + (std_00 / obs_00)**2)
             ep_std = np.abs(ep_obs) * np.sqrt(rel_err_sq)

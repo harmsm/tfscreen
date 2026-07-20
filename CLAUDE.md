@@ -53,7 +53,7 @@ tfs-extract-params         # Extract parameters from checkpoint
 tfs-predict-growth         # Predict growth from fitted model
 tfs-predict-theta          # Predict operator occupancy
 tfs-cat-response           # Fit categorical response curves
-tfs-extract-epistasis      # Calculate second-order epistasis from a long-form observable table
+tfs-extract-epistasis      # Calculate second-order epistasis from a long-form observable table (--scale add|mult|logit)
 tfs-compare-theta          # Grade per-genotype theta stability across N estimate runs (seeds / k-fold dropouts)
 tfs-diagnose-nan           # Diagnose NaN issues in inference
 tfs-simulate               # Simulate a full experiment
