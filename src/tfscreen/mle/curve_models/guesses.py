@@ -8,6 +8,8 @@ functions in cat_library.py. Each function adheres to the signature:
 
 import numpy as np
 
+from .models import _to_log10_x
+
 def guess_flat(x, y):
     """
     Generates a guess for the flat model.
@@ -49,6 +51,26 @@ def guess_linear(x, y):
     order to match ``model_poly``.
     """
     X = np.vander(x,2)
+    return X
+
+def guess_linear_logx(x, y):
+    """
+    Generates guesses for the log-concentration linear model.
+
+    Parameters
+    ----------
+    x, y : np.ndarray
+        Input data arrays (``x`` is raw concentration).
+
+    Returns
+    -------
+    np.ndarray
+        Design matrix for polynomial WLS with columns ``[log10(x), 1]`` (not
+        reversed), so the solution comes back as ``[m, b]`` to match
+        ``model_linear_logx``. Mirrors ``guess_linear`` but on the log10-x axis.
+    """
+    z = _to_log10_x(x)
+    X = np.vander(z, 2)
     return X
 
 def guess_repressor(x, y):
@@ -201,6 +223,66 @@ def guess_bell_dip(x, y):
     ln_width = np.log(width)
 
     return np.array([baseline, amplitude, ln_x0, ln_width])
+
+def guess_bell_peak_logx(x, y):
+    """
+    Generates guesses for the log-concentration bell-shaped peak model.
+
+    Parameters
+    ----------
+    x, y : np.ndarray
+        Input data arrays (``x`` is raw concentration).
+
+    Returns
+    -------
+    np.ndarray
+        Guesses for parameters [baseline, amplitude, center, ln_width], where
+        ``center`` is the peak location on the ``log10(x)`` axis.
+    """
+    z = _to_log10_x(x)
+
+    # Baseline is the minimum observed value.
+    baseline = np.min(y)
+
+    # Find the location and amplitude of the peak (center in log10-x space).
+    peak_idx = np.argmax(y)
+    amplitude = y[peak_idx] - baseline
+    center = z[peak_idx]
+
+    # Guess the width is a fraction of the total log10-x range.
+    width = max((np.max(z) - np.min(z)) / 4.0, 1e-9)
+
+    return np.array([baseline, amplitude, center, np.log(width)])
+
+def guess_bell_dip_logx(x, y):
+    """
+    Generates guesses for the log-concentration bell-shaped dip model.
+
+    Parameters
+    ----------
+    x, y : np.ndarray
+        Input data arrays (``x`` is raw concentration).
+
+    Returns
+    -------
+    np.ndarray
+        Guesses for parameters [baseline, amplitude, center, ln_width], where
+        ``center`` is the dip location on the ``log10(x)`` axis.
+    """
+    z = _to_log10_x(x)
+
+    # Baseline is the maximum observed value.
+    baseline = np.max(y)
+
+    # Find the location and amplitude of the dip (center in log10-x space).
+    dip_idx = np.argmin(y)
+    amplitude = y[dip_idx] - baseline
+    center = z[dip_idx]
+
+    # Guess the width is a fraction of the total log10-x range.
+    width = max((np.max(z) - np.min(z)) / 4.0, 1e-9)
+
+    return np.array([baseline, amplitude, center, np.log(width)])
 
 def guess_biphasic_peak(x, y):
     """

@@ -107,3 +107,25 @@ def test_xfill_log_fallback_not_enough_points():
     # min 0, max 100. span 100. pad 10. range -10 to 110.
     assert np.isclose(result[0], -10.0)
     assert np.isclose(result[-1], 110.0)
+def test_xfill_min_value_clamps_lower_bound():
+    """min_value floors the padded lower bound (no negative pad)."""
+    x = np.array([0., 1., 3., 10., 30., 100.])
+    # Without a floor, the 10% pad drops the lower bound to -10.
+    unclamped = xfill(x, num_points=100, use_log=False)
+    assert unclamped.min() < 0
+
+    # With min_value=0 the lower bound is clamped to 0; observed points kept.
+    clamped = xfill(x, num_points=100, use_log=False, min_value=0.0)
+    assert clamped.min() == 0.0
+    assert (clamped >= 0).all()
+    assert np.isin(x, clamped).all()
+    # Upper bound is unaffected by the lower clamp.
+    assert np.isclose(clamped.max(), 110.0)
+
+def test_xfill_min_value_noop_when_above_floor():
+    """min_value has no effect when the padded lower bound is already above it."""
+    x = np.array([10., 20., 50.])
+    a = xfill(x, num_points=10, use_log=False, pad_by=0.1)
+    b = xfill(x, num_points=10, use_log=False, pad_by=0.1, min_value=0.0)
+    assert np.allclose(a, b)
+    assert np.isclose(b.min(), 6.0)

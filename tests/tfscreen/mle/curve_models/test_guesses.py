@@ -3,8 +3,13 @@ import pytest
 import numpy as np
 
 from tfscreen.mle.curve_models import guesses
-from tfscreen.mle.curve_models.models import model_linear
-from tfscreen.mle import run_matrix_wls
+from tfscreen.mle.curve_models.models import (
+    model_linear,
+    model_linear_logx,
+    model_bell_logx,
+    _to_log10_x,
+)
+from tfscreen.mle import run_matrix_wls, run_least_squares
 
 @pytest.mark.parametrize("guess_func, expected_cols", [
     (guesses.guess_flat, 1),
@@ -130,3 +135,68 @@ def test_peak_and_dip_guesses():
     # Biphasic dip
     guess = guesses.guess_biphasic_dip(x, y_dip)
     assert len(guess) == 4
+
+
+# --- log-concentration guesses -----------------------------------------------
+
+def test_guess_linear_logx_column_order():
+    """
+    guess_linear_logx returns columns [log10(x), 1] (not reversed), so the WLS
+    solution comes back as [m, b] to match model_linear_logx and its ['m', 'b']
+    param_names.
+    """
+    x = np.array([1e-3, 1e-2, 1e-1, 1.0])
+    y = np.ones_like(x)
+    X = guesses.guess_linear_logx(x, y)
+    assert X.shape == (4, 2)
+    assert np.allclose(X[:, 0], _to_log10_x(x))
+    assert np.all(X[:, 1] == 1)
+
+
+def test_linear_logx_fit_recovers_slope_intercept():
+    """End-to-end: fitting y = m*log10(x) + b recovers [m, b] with R2 = 1."""
+    m_true, b_true = -1.5, 0.4
+    x = np.geomspace(1e-4, 1.0, 25)
+    y = m_true * np.log10(x) + b_true
+    y_std = np.ones_like(y)
+
+    X = guesses.guess_linear_logx(x, y)
+    params, _, _, _ = run_matrix_wls(X, y, 1.0 / y_std)
+    assert np.isclose(params[0], m_true)
+    assert np.isclose(params[1], b_true)
+    assert np.allclose(model_linear_logx(params, x), y)
+
+
+def test_guess_bell_logx_centers_in_log_space():
+    # Peak concentration 1e-3 -> center guess near log10(1e-3) = -3.
+    x = np.geomspace(1e-6, 1.0, 25)
+    z = _to_log10_x(x)
+    y_peak = np.exp(-0.5 * ((z + 3.0) / 0.5) ** 2)
+    g = guesses.guess_bell_peak_logx(x, y_peak)
+    assert len(g) == 4
+    assert np.isclose(g[2], -3.0, atol=1.0)   # center near -3 in log space
+    assert g[1] > 0                            # positive amplitude (peak)
+
+    # Dip version.
+    g_dip = guesses.guess_bell_dip_logx(x, 1.0 - y_peak)
+    assert np.isclose(g_dip[2], -3.0, atol=1.0)
+    assert g_dip[1] < 0                         # negative amplitude (dip)
+
+
+def test_bell_logx_fit_recovers_curve():
+    """End-to-end NLS fit of a log-conc bell peak recovers the true center."""
+    x = np.geomspace(1e-6, 1.0, 30)
+    z = _to_log10_x(x)
+    true = [0.1, 0.8, -3.0, np.log(0.7)]
+    y = true[0] + true[1] * np.exp(-0.5 * ((z - true[2]) / 0.7) ** 2)
+    y_std = np.full_like(y, 0.01)
+
+    g = guesses.guess_bell_peak_logx(x, y)
+    lower = [-np.inf, 0.0, -np.inf, -np.inf]
+    upper = [np.inf, np.inf, np.inf, np.inf]
+    params, _, _, fit_obj = run_least_squares(
+        model_bell_logx, y, y_std, g, lower, upper, args=(x,)
+    )
+    assert fit_obj.success
+    assert np.isclose(params[2], -3.0, atol=0.05)   # recovered center
+    assert np.allclose(model_bell_logx(params, x), y, atol=1e-2)

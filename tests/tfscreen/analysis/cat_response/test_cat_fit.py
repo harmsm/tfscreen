@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from tfscreen.analysis.cat_response.cat_fit import cat_fit
-from tfscreen.mle.curve_models import MODEL_LIBRARY
+from tfscreen.mle.curve_models import MODEL_LIBRARY, DEFAULT_MODELS
 
 
 # A titration-like grid with enough points that low-parameter models are usable.
@@ -182,3 +182,72 @@ def test_sanitize_filters_nonfinite():
                                         models_to_run=["flat", "linear"])
     assert flat_output["status"] in ("success", "partial")
     assert len(assess_df) == 4
+
+
+def test_default_models_are_the_curated_set():
+    """With models_to_run=None, cat_fit fits exactly DEFAULT_MODELS (not all)."""
+    x, y, y_std = _hill_data()
+    flat, _, _ = cat_fit(x, y, y_std)  # models_to_run defaults to None
+    fit_models = {k.split("|", 1)[1] for k in flat if k.startswith("AIC_weight|")}
+    assert fit_models == set(DEFAULT_MODELS)
+    # The log-conc variants are in; the raw-x duplicates and biphasic are out.
+    assert "bell_peak_log" in fit_models
+    assert "biphasic_peak" not in fit_models
+    assert "bell_peak" not in fit_models
+
+
+# --- degenerate-covariance guard ---------------------------------------------
+
+def _singular_bell_data():
+    """Constant y -> bell amplitude ~ 0 -> center/width unidentified.
+
+    scipy converges (fit.success is True) but the Jacobian is rank-deficient, so
+    get_cov returns an all-NaN covariance. This is the reachable case where a
+    model would otherwise be selected with a NaN covariance.
+    """
+    x = np.array([0.0, 1.0, 3.0, 10.0, 30.0, 100.0])
+    y = np.full_like(x, 0.5)
+    ys = np.full_like(x, 0.05)
+    return x, y, ys
+
+
+def test_singular_covariance_model_excluded_from_selection():
+    # bell_peak is the only candidate and it fits with a NaN covariance.
+    x, y, ys = _singular_bell_data()
+    flat, _, assess = cat_fit(x, y, ys, models_to_run=["bell_peak"])
+
+    # Not selectable -> no best model, and (crucially) no NaN-poisoned
+    # assessment rows to leak into the global delta.
+    assert flat["best_model"] == "None"
+    assert len(assess) == 0
+    # Point estimates are still reported (not selected != not fit).
+    assert "bell_peak|amplitude|est" in flat
+    assert np.isfinite(flat["bell_peak|amplitude|est"])
+
+
+def test_singular_covariance_loses_to_usable_model():
+    """A NaN-covariance model gets zero weight; a usable competitor wins."""
+    x, y, ys = _singular_bell_data()
+    # flat also fits this constant data (with a finite covariance) and wins.
+    flat, _, assess = cat_fit(x, y, ys, models_to_run=["flat", "bell_peak"])
+
+    assert flat["best_model"] == "flat"
+    assert flat["AIC_weight|bell_peak"] == 0.0
+    # The selected model's assessment errors are all finite (delta stays clean).
+    assert np.all(np.isfinite(assess["y_model_std"].to_numpy()))
+
+
+# --- prediction grid domain --------------------------------------------------
+
+def test_prediction_grid_is_non_negative():
+    """The predicted curve grid must not include negative concentrations.
+
+    The concentration-parameterized models take log(x); a negative x_pred would
+    make them emit NaN (and a RuntimeWarning). The xfill min_value=0 floor
+    prevents that.
+    """
+    x, y, ys = _hill_data()   # X spans [0, 100]; linear pad would go negative
+    _, pred_df, _ = cat_fit(x, y, ys, models_to_run=["flat", "hill_inducer"])
+    assert (pred_df["x"].to_numpy() >= 0).all()
+    # And the predicted curve has no NaN (Hill no longer evaluated at x < 0).
+    assert not pred_df["y_model"].isna().any()

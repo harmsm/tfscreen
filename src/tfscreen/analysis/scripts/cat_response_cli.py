@@ -7,7 +7,7 @@ import pandas as pd
 from tfscreen.analysis.cat_response.cat_response import (
     cat_response as _cat_response,
 )
-from tfscreen.mle.curve_models import MODEL_LIBRARY
+from tfscreen.mle.curve_models import MODEL_LIBRARY, DEFAULT_MODELS
 from tfscreen.util import resolve_obs_columns
 from tfscreen.util.cli import generalized_main
 
@@ -108,7 +108,10 @@ def cat_response(data_file,
         Additional column(s) that, together with 'genotype', define a group. If
         omitted, groups are defined by 'genotype' alone.
     models : list of str or None, optional
-        Response models to fit. Defaults to all models in MODEL_LIBRARY.
+        Response models to fit. If None (default), the curated ``DEFAULT_MODELS``
+        set is used (flat, linear_log, repressor, inducer, bell_peak_log,
+        bell_dip_log). Pass explicit names to reach any model in MODEL_LIBRARY,
+        including the raw-x and biphasic variants.
     alpha : float, optional
         Significance level for the per-point tests and the omnibus q-value
         threshold used to call a curve 'real'. Default 0.05.
@@ -126,7 +129,7 @@ def cat_response(data_file,
         default) uses ``os.cpu_count() - 1``; ``N`` uses ``N`` processes.
     """
     if models is None:
-        models = list(MODEL_LIBRARY.keys())
+        models = list(DEFAULT_MODELS)
 
     bad = [m for m in models if m not in MODEL_LIBRARY]
     if bad:

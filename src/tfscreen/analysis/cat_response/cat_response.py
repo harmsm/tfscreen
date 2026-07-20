@@ -20,7 +20,7 @@ import tqdm
 
 from .cat_fit import cat_fit
 from .cat_assess import compute_delta, classify_equiv, benjamini_hochberg
-from tfscreen.mle.curve_models import MODEL_LIBRARY
+from tfscreen.mle.curve_models import MODEL_LIBRARY, DEFAULT_MODELS
 from tfscreen.util import resolve_workers
 from tfscreen.util.numerical import xfill
 
@@ -96,7 +96,8 @@ def cat_response(df,
         curve is fit per group. If None (default), groups are defined by
         'genotype' alone.
     models_to_run : list of str or None, optional
-        Model names to test. If None (default), all models in MODEL_LIBRARY.
+        Model names to test. If None (default), the curated ``DEFAULT_MODELS``
+        set (see ``tfscreen.mle.curve_models``).
     best_only : bool, optional
         If True (default), the returned prediction frame holds only each group's
         best-model curve. If False, it holds every fit model's curve.
@@ -146,7 +147,7 @@ def cat_response(df,
         ``delta_c`` if not supplied).
     """
     if models_to_run is None:
-        models_to_run = list(MODEL_LIBRARY.keys())
+        models_to_run = list(DEFAULT_MODELS)
 
     bad = [m for m in models_to_run if m not in MODEL_LIBRARY]
     if bad:
@@ -164,8 +165,10 @@ def cat_response(df,
         )
 
     # A shared prediction grid spanning all observed x-values, so every group's
-    # predicted curve is evaluated on the same axis.
-    x_pred = xfill(pd.unique(df[x_obs]), num_points=100)
+    # predicted curve is evaluated on the same axis. min_value=0 keeps the pad
+    # from producing negative concentrations (the concentration-parameterized
+    # models take log(x) and would NaN on negative x).
+    x_pred = xfill(pd.unique(df[x_obs]), num_points=100, min_value=0.0)
 
     # observed=True so unused categorical combinations do not create empty groups.
     work_items = []

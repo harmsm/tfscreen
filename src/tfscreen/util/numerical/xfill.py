@@ -3,7 +3,8 @@ import numpy as np
 def xfill(x,
           num_points=100,
           use_log=None,
-          pad_by=0.1):
+          pad_by=0.1,
+          min_value=None):
     """
     Smoothly fill points between minimum and maximum values in x.
 
@@ -11,7 +12,7 @@ def xfill(x,
     (even if this means the spacing is not perfectly smooth). This allows
     one-to-one comparisons between measured values and a model calculated
     using the filled-in x values.
-    
+
     Parameters
     ----------
     x : np.ndarray
@@ -23,7 +24,13 @@ def xfill(x,
         on the data's dynamic range.
     pad_by : float, optional
         Expand the range beyond the min/max of x by this factor, by default 0.1.
-    
+    min_value : float, optional
+        Floor for the (linear-scale) lower bound. When set, the padded lower
+        bound is clamped to be no smaller than ``min_value``. Use ``0.0`` for
+        domains where negative values are meaningless (e.g. concentration), so
+        that the padding below the minimum does not produce negative x. Ignored
+        on the log scale (already strictly positive). Default None (no clamp).
+
     Returns
     -------
     np.ndarray
@@ -69,6 +76,8 @@ def xfill(x,
         pad = span * pad_by if span > 0 else 0
         x_min = np.min(x_finite) - pad
         x_max = np.max(x_finite) + pad
+        if min_value is not None:
+            x_min = max(x_min, min_value)
         x_filled = np.linspace(x_min, x_max, num_points)
 
     # Re-insert original points into the filled array at the closest positions.

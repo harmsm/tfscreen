@@ -1,4 +1,4 @@
-from tfscreen.mle.curve_models import MODEL_LIBRARY
+from tfscreen.mle.curve_models import MODEL_LIBRARY, DEFAULT_MODELS
 
 from tfscreen.mle import (
     run_least_squares,
@@ -60,8 +60,8 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
         array at which to predict x after fitting each model. If not specified,
         fill in values within x.
     models_to_run : list of str, optional
-        A list of model names to test. If None (default), all models in the
-        global MODEL_LIBRARY will be tested.
+        A list of model names to test. If None (default), the curated
+        ``DEFAULT_MODELS`` set is used.
     best_only : bool, optional
         If True (default), only the selected best model's predicted curve is
         emitted in the returned prediction frame. If False, every successfully
@@ -94,7 +94,7 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
     """
 
     if models_to_run is None:
-        models_to_run = list(MODEL_LIBRARY.keys())
+        models_to_run = list(DEFAULT_MODELS)
 
     flat_output = {}
 
@@ -105,7 +105,9 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
     y_std = y_std[finite_mask]
 
     if x_pred is None:
-        x_pred = xfill(x)
+        # min_value=0 avoids negative concentrations in the pad (the
+        # concentration-parameterized models take log(x) and NaN on negative x).
+        x_pred = xfill(x, min_value=0.0)
 
     # Assessment / omnibus grid: the unique observed concentrations (the shared
     # titration series), one row per concentration.
@@ -160,8 +162,12 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
                 params, std_err, cov_matrix, fit_obj = run_least_squares(
                     model_func, y, y_std, guesses, bounds[0], bounds[1], args=(x,)
                 )
-                if not fit_obj.success:
-                    raise RuntimeError(f"Fit failed: {fit_obj.message}")
+                # On "SVD did not converge" run_least_squares returns the
+                # exception (not an OptimizeResult) as fit_obj, so guard the
+                # attribute access -- treat a missing .success as a failed fit.
+                if not getattr(fit_obj, "success", False):
+                    msg = getattr(fit_obj, "message", fit_obj)
+                    raise RuntimeError(f"Fit failed: {msg}")
 
             # If this is a 2D array of values, this is a full design matrix.
             # Solve by weighted least squares.
@@ -188,6 +194,21 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
             aic = 2 * k + chi2
             denom = n - k - 1
             aicc = aic + (2 * k * (k + 1) / denom) if denom > 0 else np.inf
+
+            # A converged fit can still have a singular Jacobian, in which case
+            # get_cov returns an all-NaN covariance (and NaN std errors) even
+            # though fit.success is True. Such a model has finite params/chi2 and
+            # would otherwise be selectable, but its prediction/assessment errors
+            # would be NaN -- and if it won it would poison the global delta.
+            # Treat it as unusable for selection: force aicc = inf (zero weight,
+            # can't win) and drop the covariance, while still reporting the point
+            # estimates. This reuses the same path as the n - k - 1 <= 0 case.
+            cov_usable = (cov_matrix is not None
+                          and np.all(np.isfinite(cov_matrix))
+                          and np.all(np.isfinite(std_err)))
+            if not cov_usable:
+                aicc = np.inf
+                cov_matrix = None
 
             summary_results.append({"model": name, "R2": r2, "chi2": chi2,
                                     "AIC": aic, "AICc": aicc, "success": True})
