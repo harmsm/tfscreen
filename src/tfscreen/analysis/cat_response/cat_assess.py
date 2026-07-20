@@ -36,9 +36,20 @@ from tfscreen.mle import predict_with_error
 _MIN_RUNS_N = 4
 
 
-def assess_best_model(model_func, params, cov_matrix, x, alpha=0.05):
+def assess_best_model(model_func, params, cov_matrix, x, y_obs, y_std,
+                      alpha=0.05):
     """
-    Evaluate the best-fit model at the observed x and test it against zero.
+    Grade the best-fit curve against zero -- data-driven, with the model test
+    reported alongside.
+
+    The "distinguishable from zero" decision uses the **observed** points
+    (``y_obs`` +/- ``y_std``), not the fitted curve: a flexible model fit to
+    noisy data reports an overconfident curve, so its propagated error can call a
+    curve "nonzero" even when every observed error bar overlaps zero. The
+    per-point z-test, the ``nonzero`` portmanteau chi-square, and the equivalence
+    test all read the observed errors. The fitted curve (``y_model`` /
+    ``y_model_std``) is still returned for plotting, and the model-based omnibus
+    (``omnibus_*``) is still computed but is reported-only (it gates nothing).
 
     Parameters
     ----------
@@ -47,12 +58,13 @@ def assess_best_model(model_func, params, cov_matrix, x, alpha=0.05):
     params : np.ndarray
         Best-fit parameters.
     cov_matrix : np.ndarray
-        Covariance matrix of the fitted parameters. May contain NaN (e.g. when
-        the fit failed); in that case per-point errors and the omnibus test are
-        returned as NaN.
+        Covariance matrix of the fitted parameters. May contain NaN (failed
+        fit); the fitted curve and model omnibus are then NaN, but the
+        data-based tests still run on ``y_obs``/``y_std``.
     x : np.ndarray
-        The observed independent-variable values (typically the ~8 titrant
-        concentrations). Predictions and per-point tests are evaluated here.
+        Assessment grid (the unique observed x).
+    y_obs, y_std : np.ndarray
+        Observed values and their standard errors on the ``x`` grid.
     alpha : float, optional
         Two-sided significance level for the per-point ``sig_nonzero`` flag.
         Default 0.05.
@@ -60,41 +72,50 @@ def assess_best_model(model_func, params, cov_matrix, x, alpha=0.05):
     Returns
     -------
     per_point : dict
-        Arrays of length ``len(x)``: ``x``, ``y_model`` (best-fit curve value),
-        ``y_model_std`` (propagated fit uncertainty), ``z``, ``sig_nonzero``
-        (bool), ``direction`` (-1/0/+1).
+        Arrays of length ``len(x)``: ``x``, ``y_model`` (fitted curve value),
+        ``y_model_std`` (propagated fit uncertainty), ``z`` (= y_obs/y_std),
+        ``sig_nonzero`` (bool), ``direction`` (-1/0/+1).
     rollup : dict
-        Scalars: ``omnibus_W``, ``omnibus_df``, ``omnibus_p``, ``n_nonzero``,
-        ``any_nonzero``.
+        Scalars: data-based ``nonzero_chi2``/``nonzero_df``/``nonzero_p``,
+        model-based ``omnibus_W``/``omnibus_df``/``omnibus_p`` (reported-only),
+        ``n_nonzero``, ``any_nonzero``.
     """
     x = np.asarray(x, dtype=float)
-
-    y_est, y_std, y_cov = predict_with_error(
-        model_func, params, cov_matrix, args=[x], full_cov=True
-    )
-    y_est = np.asarray(y_est, dtype=float)
+    y_obs = np.asarray(y_obs, dtype=float)
     y_std = np.asarray(y_std, dtype=float)
 
-    # Two-sided per-point z-test against zero. z_crit turns alpha into a
-    # threshold on |z| (and, below, on the equivalence CI half-width).
+    # Fitted curve (for plotting) + its full covariance (for the model omnibus).
+    y_model, y_model_std, y_cov = predict_with_error(
+        model_func, params, cov_matrix, args=[x], full_cov=True
+    )
+    y_model = np.asarray(y_model, dtype=float)
+    y_model_std = np.asarray(y_model_std, dtype=float)
+
+    # Per-point z-test against zero on the OBSERVED data.
     z_crit = norm.ppf(1.0 - alpha / 2.0)
     with np.errstate(divide="ignore", invalid="ignore"):
-        z = y_est / y_std
+        z = y_obs / y_std
     sig_nonzero = np.isfinite(z) & (np.abs(z) > z_crit)
-    direction = np.where(sig_nonzero, np.sign(y_est), 0).astype(int)
+    direction = np.where(sig_nonzero, np.sign(y_obs), 0).astype(int)
 
     per_point = {
         "x": x,
-        "y_model": y_est,
-        "y_model_std": y_std,
+        "y_model": y_model,
+        "y_model_std": y_model_std,
         "z": z,
         "sig_nonzero": sig_nonzero,
         "direction": direction,
     }
 
-    omnibus_W, omnibus_df, omnibus_p = _omnibus_chi2(y_est, y_cov)
+    # Data-based portmanteau chi-square vs the zero line (drives response_class).
+    nonzero_chi2, nonzero_df, nonzero_p = _nonzero_chi2(y_obs, y_std)
+    # Model-based omnibus on the fitted curve (reported only).
+    omnibus_W, omnibus_df, omnibus_p = _omnibus_chi2(y_model, y_cov)
 
     rollup = {
+        "nonzero_chi2": nonzero_chi2,
+        "nonzero_df": nonzero_df,
+        "nonzero_p": nonzero_p,
         "omnibus_W": omnibus_W,
         "omnibus_df": omnibus_df,
         "omnibus_p": omnibus_p,
@@ -132,6 +153,26 @@ def _omnibus_chi2(y_est, y_cov):
 
     p = float(chi2.sf(W, df))
     return W, df, p
+
+
+def _nonzero_chi2(y_obs, y_std):
+    """
+    Model-free test that the observed curve differs from the zero line.
+
+    Weighted portmanteau ``chi2 = sum((y_obs / y_std) ** 2) ~ chi2(n)`` under the
+    null that every point is zero. Uses the *observed* error bars, so a curve
+    whose CIs all overlap zero is not called nonzero no matter how confidently a
+    flexible model fits it. Returns ``(chi2, df, p)``; ``(nan, 0, nan)`` when no
+    point has a finite value and positive std.
+    """
+    y_obs = np.asarray(y_obs, dtype=float)
+    y_std = np.asarray(y_std, dtype=float)
+    m = np.isfinite(y_obs) & np.isfinite(y_std) & (y_std > 0)
+    df = int(np.count_nonzero(m))
+    if df == 0:
+        return np.nan, 0, np.nan
+    stat = float(np.sum((y_obs[m] / y_std[m]) ** 2))
+    return stat, df, float(chi2.sf(stat, df))
 
 
 def residual_runs_p(resid):

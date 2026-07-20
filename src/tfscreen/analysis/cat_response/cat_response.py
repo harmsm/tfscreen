@@ -151,7 +151,9 @@ def cat_response(df,
         ``shape_status``, ``best_model_gof_p`` / ``best_model_runs_p``, per-model
         ``AIC_weight|*`` / ``R2|*`` / ``gof_p|*`` / ``runs_p|*``, and
         ``<model>|<param>|est`` / ``std`` columns), then the assessment rollups
-        (``omnibus_W``, ``omnibus_df``, ``omnibus_p``, ``omnibus_q``,
+        (data-based ``nonzero_chi2`` / ``nonzero_df`` / ``nonzero_p`` /
+        ``nonzero_q`` which drive the zero call, reported-only model
+        ``omnibus_W`` / ``omnibus_df`` / ``omnibus_p`` / ``omnibus_q``,
         ``n_nonzero``, ``any_nonzero``, ``all_equiv_zero``, ``response_class``).
         ``best_model`` follows ``select_by`` (default lowest-AICc; see
         :func:`cat_fit`), ``shape`` is its qualitative form
@@ -263,16 +265,18 @@ def cat_response(df,
     assessment_df = pd.concat(assess_list, ignore_index=True)
 
     # --- Post-hoc pass: global delta, equivalence, FDR, response class -------
+    # The zero axis is data-driven: delta and the equivalence test read the
+    # observed y_obs/y_std, not the (overconfident) fitted-curve error.
     resolved_delta = delta
     if resolved_delta is None:
         resolved_delta = compute_delta(
-            assessment_df.get("y_model_std", []), delta_c
+            assessment_df.get("y_std", []), delta_c
         )
 
     if len(assessment_df):
         assessment_df["equiv_zero"] = classify_equiv(
-            assessment_df["y_model"].to_numpy(dtype=float),
-            assessment_df["y_model_std"].to_numpy(dtype=float),
+            assessment_df["y_obs"].to_numpy(dtype=float),
+            assessment_df["y_std"].to_numpy(dtype=float),
             resolved_delta,
             alpha=alpha,
         )
@@ -292,7 +296,11 @@ def cat_response(df,
     else:
         results_df["all_equiv_zero"] = pd.Series(dtype=bool)
 
-    # FDR across curves on the omnibus p-values.
+    # FDR across curves. nonzero_q (data-based) drives response_class; omnibus_q
+    # (model-based) is kept for reference only.
+    results_df["nonzero_q"] = benjamini_hochberg(
+        results_df.get("nonzero_p", pd.Series(np.nan, index=results_df.index))
+    )
     results_df["omnibus_q"] = benjamini_hochberg(
         results_df.get("omnibus_p", pd.Series(np.nan, index=results_df.index))
     )
@@ -312,28 +320,31 @@ def cat_response(df,
 
 def _response_class(results_df, alpha):
     """
-    Assign each curve to confident_zero / real / indeterminate.
+    Assign each curve to real / confident_zero / indeterminate (data-driven).
 
-    Equivalence takes precedence over significance: a curve whose every point
-    sits inside the region of practical equivalence is ``confident_zero`` even
-    if the omnibus test finds a statistically significant but practically
-    negligible offset (tiny error bars make a hair-off-zero baseline
-    "significant"). The ROPE is what makes "real" mean *meaningfully* nonzero.
+    "Distinguishable from zero" is checked first, on the observed error bars
+    (``nonzero_q``, the BH-adjusted data-based portmanteau test), so a real
+    signal wins even if it happens to fall inside the equivalence region. When a
+    curve is *not* distinguishable from zero, the ROPE separates the two
+    non-signal cases: tight error bars -> confidently flat at zero; wide error
+    bars -> too noisy to tell.
 
-    - ``confident_zero``: every point's CI lies within [-delta, delta].
-    - ``real``: not confident_zero, and omnibus q-value < alpha (distinguishable
-      from zero by more than the equivalence margin somewhere on the curve).
-    - ``indeterminate``: neither (too noisy to call, or unassessable).
+    - ``real``: ``nonzero_q < alpha`` -- the observed points collectively clear
+      the zero line.
+    - ``confident_zero``: not real, and every observed point's CI lies within
+      [-delta, delta] (confidently flat at zero).
+    - ``indeterminate``: not real and not tightly bounded (too noisy to call).
     """
-    q = results_df.get("omnibus_q",
+    q = results_df.get("nonzero_q",
                        pd.Series(np.nan, index=results_df.index)).to_numpy()
     all_equiv = results_df.get(
         "all_equiv_zero", pd.Series(False, index=results_df.index)
     ).fillna(False).to_numpy(dtype=bool)
 
     out = np.full(len(results_df), "indeterminate", dtype=object)
+    # Not distinguishable from zero but tightly bounded -> confident_zero.
+    out[all_equiv] = "confident_zero"
+    # Distinguishable from zero wins (real-first precedence).
     real = np.isfinite(q) & (q < alpha)
     out[real] = "real"
-    # Equivalence wins over a barely-significant offset.
-    out[all_equiv] = "confident_zero"
     return out

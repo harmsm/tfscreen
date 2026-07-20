@@ -28,7 +28,8 @@ cat_response_mod = importlib.import_module(
 def _flat(best="flat", **extra):
     """A minimal flat cat_fit result dict with the assessment rollups."""
     d = {"status": "success", "best_model": best,
-         "omnibus_p": 0.5, "n_nonzero": 0, "any_nonzero": False}
+         "nonzero_p": 0.5, "omnibus_p": 0.5,
+         "n_nonzero": 0, "any_nonzero": False}
     d.update(extra)
     return d
 
@@ -277,8 +278,8 @@ class TestAssessmentPass:
         assert delta == 0.75
 
     def test_response_class_confident_zero(self):
-        # y_model=0, y_model_std tiny -> CI well inside delta -> all_equiv_zero
-        # -> and omnibus_p high (0.5) -> confident_zero.
+        # Observed y=0 with tiny error -> CI well inside delta -> all_equiv_zero,
+        # and nonzero_p high (0.5) -> not distinguishable -> confident_zero.
         fit = _capturing_fit([])
 
         def fake(*a, **k):
@@ -292,14 +293,14 @@ class TestAssessmentPass:
                 y_std="theta_std", delta=0.5)
         assert set(results["response_class"]) == {"confident_zero"}
 
-    def test_equivalence_wins_over_significance(self):
-        # Significant omnibus (tiny p) but every point inside the ROPE
-        # (y_model=0, tiny std) -> practically zero should win -> confident_zero.
+    def test_real_wins_over_equivalence(self):
+        # Real-first precedence: distinguishable from zero (nonzero_p tiny) wins
+        # even when every observed point sits inside the ROPE.
         fit = _capturing_fit([])
 
         def fake(*a, **k):
             flat, pred, _ = fit(*a, **k)
-            flat["omnibus_p"] = 1e-9
+            flat["nonzero_p"] = 1e-9
             x = a[0]
             return flat, pred, _assess(len(np.unique(x)), y_model=0.0,
                                        y_model_std=1e-4)
@@ -307,16 +308,32 @@ class TestAssessmentPass:
             results, _, _, _ = cat_response(
                 _basic_df(), x_obs="titrant_conc", y_obs="theta",
                 y_std="theta_std", delta=0.5)
-        assert set(results["response_class"]) == {"confident_zero"}
+        assert set(results["response_class"]) == {"real"}
+
+    def test_indeterminate_when_noisy_and_not_equiv(self):
+        # Not distinguishable from zero (nonzero_p high) and error bars too wide
+        # for the ROPE -> indeterminate (can't tell).
+        fit = _capturing_fit([])
+
+        def fake(*a, **k):
+            flat, pred, _ = fit(*a, **k)
+            x = a[0]
+            return flat, pred, _assess(len(np.unique(x)), y_model=0.0,
+                                       y_model_std=5.0)   # huge observed std
+        with patch.object(cat_response_mod, "cat_fit", side_effect=fake):
+            results, _, _, _ = cat_response(
+                _basic_df(), x_obs="titrant_conc", y_obs="theta",
+                y_std="theta_std", delta=0.5)
+        assert set(results["response_class"]) == {"indeterminate"}
 
     def test_response_class_real_from_low_q(self):
         with patch.object(cat_response_mod, "cat_fit",
-                          side_effect=_capturing_fit([], omnibus_p=1e-8)):
+                          side_effect=_capturing_fit([], nonzero_p=1e-8)):
             results, _, _, _ = cat_response(
                 _basic_df(), x_obs="titrant_conc", y_obs="theta",
                 y_std="theta_std", delta=1e-6)
         assert set(results["response_class"]) == {"real"}
-        assert (results["omnibus_q"] < 0.05).all()
+        assert (results["nonzero_q"] < 0.05).all()
 
 
 # --- chunk helper ------------------------------------------------------------

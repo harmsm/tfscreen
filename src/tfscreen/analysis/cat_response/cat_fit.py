@@ -161,7 +161,8 @@ _ASSESS_DTYPES = {"model": object, "sig_nonzero": bool, "direction": int}
 
 # Rollup keys added to flat_output by the post-hoc assessment. Listed here so
 # the insufficient-data / all-fail paths can emit them as NaN.
-_ROLLUP_KEYS = ["omnibus_W", "omnibus_df", "omnibus_p", "n_nonzero",
+_ROLLUP_KEYS = ["nonzero_chi2", "nonzero_df", "nonzero_p",
+                "omnibus_W", "omnibus_df", "omnibus_p", "n_nonzero",
                 "any_nonzero"]
 
 
@@ -258,8 +259,9 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
     dict
         A single, flat dictionary containing the best model summary, AICc
         weights for all tested models, all parameter estimates and standard
-        errors for all tested models, and the best-model omnibus rollup
-        (``omnibus_W/df/p``, ``n_nonzero``, ``any_nonzero``).
+        errors for all tested models, and the best-model zero-assessment rollup
+        (data-based ``nonzero_chi2/df/p``, reported-only model ``omnibus_W/df/p``,
+        ``n_nonzero``, ``any_nonzero``).
     pd.DataFrame
         Model predictions with columns ``model``, ``x``, ``y_model``,
         ``y_model_std``, ``is_best_model``. Restricted to the best model unless
@@ -535,22 +537,25 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
                                 "y_model_std": pd.Series(dtype=float)})
     pred_df["is_best_model"] = pred_df["model"] == flat_output["best_model"]
 
-    # Per-point assessment + omnibus rollup for the best model.
+    # Per-point assessment + rollup for the best model. The zero tests are
+    # data-driven, so aggregate the observed data to the assessment grid first
+    # and hand it to assess_best_model. With one observation per concentration
+    # (the shared-grid assumption) this is a straight alignment; replicate
+    # concentrations are mean-collapsed.
     if best_model is not None:
         p_res = param_results[best_model]
-        per_point, rollup = assess_best_model(
-            p_res['model_func'], p_res['params'], p_res['cov'], x_assess,
-            alpha=alpha
-        )
-        assess_df = pd.DataFrame({c: per_point[c] for c in _PER_POINT_COLS})
-
-        # Attach the observed data aggregated to the assessment grid. With one
-        # observation per concentration (the shared-grid assumption) this is a
-        # straight alignment; replicate concentrations are mean-collapsed.
         obs = (pd.DataFrame({"x": x, "y_obs": y, "y_std": y_std})
                .groupby("x", sort=True).mean().reindex(x_assess))
-        assess_df["y_obs"] = obs["y_obs"].to_numpy()
-        assess_df["y_std"] = obs["y_std"].to_numpy()
+        y_obs_a = obs["y_obs"].to_numpy()
+        y_std_a = obs["y_std"].to_numpy()
+
+        per_point, rollup = assess_best_model(
+            p_res['model_func'], p_res['params'], p_res['cov'], x_assess,
+            y_obs_a, y_std_a, alpha=alpha
+        )
+        assess_df = pd.DataFrame({c: per_point[c] for c in _PER_POINT_COLS})
+        assess_df["y_obs"] = y_obs_a
+        assess_df["y_std"] = y_std_a
         assess_df["model"] = best_model
         assess_df = assess_df[_ASSESS_COLS]
 

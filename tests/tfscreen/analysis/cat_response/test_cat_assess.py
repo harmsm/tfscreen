@@ -15,7 +15,30 @@ from tfscreen.analysis.cat_response.cat_assess import (
     residual_autocorr,
     goodness_of_fit_p,
     _omnibus_chi2,
+    _nonzero_chi2,
 )
+
+
+class TestNonzeroChi2:
+    def test_signal_is_significant(self):
+        stat, df, p = _nonzero_chi2(np.array([1.0, 2.0, 3.0]),
+                                    np.array([0.1, 0.1, 0.1]))
+        assert df == 3 and stat > 100 and p < 1e-6
+
+    def test_consistent_with_zero(self):
+        stat, df, p = _nonzero_chi2(np.array([0.1, -0.2, 0.05]),
+                                    np.array([2.0, 3.0, 1.0]))
+        assert df == 3 and p > 0.5
+
+    def test_drops_bad_points(self):
+        stat, df, p = _nonzero_chi2(np.array([1.0, np.nan, 3.0]),
+                                    np.array([0.1, 0.1, 0.0]))
+        assert df == 1                       # only the first point is usable
+
+    def test_no_usable_points_is_nan(self):
+        stat, df, p = _nonzero_chi2(np.array([1.0, 2.0]),
+                                    np.array([0.0, -1.0]))
+        assert df == 0 and np.isnan(stat) and np.isnan(p)
 
 
 # --- residual autocorrelation (shape gate) -----------------------------------
@@ -120,27 +143,56 @@ class TestOmnibus:
         assert np.isnan(W) and df == 0 and np.isnan(p)
 
     def test_assess_best_model_flags_and_rollup(self):
-        # y = 1*x + 0 at x=[1,2,3] -> y_model = [1,2,3], all clearly nonzero.
+        # Observed points [1,2,3] with tight errors -> all clearly nonzero, and
+        # the data-based nonzero test is significant. The fitted line also gives
+        # a (reported) model omnibus.
         x = np.array([1.0, 2.0, 3.0])
         params = np.array([1.0, 0.0])
-        cov = np.diag([1e-4, 1e-4])   # tiny -> small pred se -> significant
-        per_point, rollup = assess_best_model(_linear, params, cov, x)
+        cov = np.diag([1e-4, 1e-4])
+        y_obs = np.array([1.0, 2.0, 3.0])
+        y_std = np.array([0.01, 0.01, 0.01])
+        per_point, rollup = assess_best_model(_linear, params, cov, x,
+                                              y_obs, y_std)
 
         assert per_point["y_model"] == pytest.approx([1.0, 2.0, 3.0])
+        # Per-point z-test now reads the observed data.
+        assert per_point["z"] == pytest.approx(y_obs / y_std)
         assert np.all(per_point["sig_nonzero"])
         assert np.all(per_point["direction"] == 1)
         assert rollup["n_nonzero"] == 3
         assert rollup["any_nonzero"] is True
-        assert rollup["omnibus_df"] == 2          # two free params
+        assert rollup["nonzero_df"] == 3          # data test: one df per point
+        assert rollup["nonzero_p"] < 1e-6
+        assert rollup["omnibus_df"] == 2          # model test: two free params
         assert rollup["omnibus_p"] < 1e-6
 
-    def test_assess_best_model_nan_cov(self):
+    def test_assess_best_model_data_beats_overconfident_model(self):
+        # The reported failure mode: observed error bars overlap zero, but the
+        # fitted curve is confident. The DATA test must not call it nonzero.
         x = np.array([1.0, 2.0, 3.0])
+        params = np.array([1.0, 0.0])
+        cov = np.diag([1e-6, 1e-6])          # overconfident fit
+        y_obs = np.array([1.0, 2.0, 3.0])
+        y_std = np.array([50.0, 50.0, 50.0])  # huge observed errors
+        per_point, rollup = assess_best_model(_linear, params, cov, x,
+                                              y_obs, y_std)
+        assert rollup["n_nonzero"] == 0            # no observed point clears 0
+        assert rollup["nonzero_p"] > 0.5           # data: consistent with zero
+        assert rollup["omnibus_p"] < 1e-6          # model: overconfident nonzero
+
+    def test_assess_best_model_nan_cov(self):
+        # NaN fit covariance -> model omnibus NaN, but the data-based tests still
+        # run on the observed points.
+        x = np.array([1.0, 2.0, 3.0])
+        y_obs = np.array([0.0, 0.0, 0.0])
+        y_std = np.array([0.1, 0.1, 0.1])
         per_point, rollup = assess_best_model(
-            _linear, np.array([1.0, 0.0]), np.full((2, 2), np.nan), x
+            _linear, np.array([1.0, 0.0]), np.full((2, 2), np.nan), x,
+            y_obs, y_std
         )
         assert np.all(~per_point["sig_nonzero"])
         assert np.isnan(rollup["omnibus_p"])
+        assert np.isfinite(rollup["nonzero_p"])
         assert rollup["n_nonzero"] == 0
 
 
