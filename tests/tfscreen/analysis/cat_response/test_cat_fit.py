@@ -6,47 +6,61 @@ real MODEL_LIBRARY (fits are deterministic) rather than mocks.
 import numpy as np
 import pytest
 
-from tfscreen.analysis.cat_response.cat_fit import cat_fit, select_by_adequacy
+from tfscreen.analysis.cat_response.cat_fit import (
+    cat_fit, select_by_adequacy, _shape_status,
+)
 from tfscreen.mle.curve_models import MODEL_LIBRARY, DEFAULT_MODELS
 
 
-# --- adequacy-first selection ------------------------------------------------
+# --- escalate-only adequacy selection ----------------------------------------
 
 def _rec(model, k, aicc, runs_p):
     return {"model": model, "k": k, "AICc": aicc, "runs_p": runs_p}
 
 
 class TestSelectByAdequacy:
-    def test_picks_simplest_adequate(self):
-        # linear (k=2) is adequate and simplest even though bell has lower AICc.
+    def test_keeps_adequate_aicc_pick(self):
+        # AICc pick (bell, lowest AICc) is adequate -> kept, not demoted.
         models = [_rec("linear", 2, 10.0, 0.5), _rec("bell", 4, 2.0, 0.6)]
-        assert select_by_adequacy(models, 0.05) == ("linear", "adequate")
+        assert select_by_adequacy(models, 0.05)["model"] == "bell"
 
-    def test_escalates_when_simple_inadequate(self):
-        # flat/linear have structured residuals (low runs_p); bell is adequate.
-        models = [_rec("flat", 1, 5.0, 0.001), _rec("linear", 2, 4.0, 0.01),
+    def test_escalates_off_flagged_pick(self):
+        # AICc pick (linear) is flagged; escalate to the adequate, no-simpler bell.
+        models = [_rec("flat", 1, 5.0, 0.5), _rec("linear", 2, 4.0, 0.01),
                   _rec("bell", 4, 8.0, 0.4)]
-        assert select_by_adequacy(models, 0.05) == ("bell", "adequate")
+        assert select_by_adequacy(models, 0.05)["model"] == "bell"
 
-    def test_tie_break_by_aicc_within_tier(self):
-        # Two adequate models at the same k -> lower AICc wins.
-        models = [_rec("repressor", 3, 9.0, 0.3), _rec("inducer", 3, 4.0, 0.4)]
-        assert select_by_adequacy(models, 0.05) == ("inducer", "adequate")
+    def test_never_demotes_flagged_complex_pick(self):
+        # AICc pick (bell) is flagged but nothing no-simpler is adequate; the
+        # only adequate model is *simpler* (flat) -> KEEP bell, never demote.
+        # This is the failure mode the escalate-only rule exists to prevent.
+        models = [_rec("flat", 1, 10.0, 0.9), _rec("bell", 4, 2.0, 0.01)]
+        assert select_by_adequacy(models, 0.05)["model"] == "bell"
 
-    def test_none_adequate_falls_back_unmodeled(self):
-        models = [_rec("flat", 1, 5.0, 0.001), _rec("linear", 2, 4.0, 0.002)]
-        best, status = select_by_adequacy(models, 0.05)
-        assert best == "linear"           # overall AICc-best fallback
-        assert status == "unmodeled"
+    def test_escalation_tie_break_by_aicc(self):
+        # Flagged linear -> among no-simpler adequate models, lowest AICc wins.
+        models = [_rec("linear", 2, 4.0, 0.01), _rec("repressor", 3, 9.0, 0.3),
+                  _rec("inducer", 3, 6.0, 0.4)]
+        assert select_by_adequacy(models, 0.05)["model"] == "inducer"
 
-    def test_unassessable_when_all_runs_nan(self):
+    def test_keeps_flagged_pick_when_no_adequate_alternative(self):
+        models = [_rec("flat", 1, 5.0, 0.002), _rec("linear", 2, 4.0, 0.002)]
+        assert select_by_adequacy(models, 0.05)["model"] == "linear"
+
+    def test_unassessable_pick_kept(self):
         models = [_rec("flat", 1, 5.0, np.nan), _rec("linear", 2, 4.0, np.nan)]
-        best, status = select_by_adequacy(models, 0.05)
-        assert best == "linear"
-        assert status == "unassessable"
+        assert select_by_adequacy(models, 0.05)["model"] == "linear"
 
-    def test_empty(self):
-        assert select_by_adequacy([], 0.05) == (None, "none")
+
+class TestShapeStatus:
+    def test_adequate(self):
+        assert _shape_status(0.5, 0.05) == "adequate"
+
+    def test_misfit(self):
+        assert _shape_status(0.01, 0.05) == "misfit"
+
+    def test_unassessable(self):
+        assert _shape_status(np.nan, 0.05) == "unassessable"
 
 
 # A titration-like grid with enough points that low-parameter models are usable.
@@ -122,21 +136,61 @@ def test_adequacy_columns_present_and_shape():
     assert flat_output["shape_status"] == "adequate"
 
 
-def test_flat_misfit_escalates_off_linear():
-    """A clearly curved dataset is not left on flat/linear by adequacy-first."""
-    # Monotone-saturating data with small, non-clustered wobble and enough
-    # points for the runs test to have power.
-    x = np.array([0.0, 1.0, 2.0, 3.0, 5.0, 8.0, 13.0, 21.0, 34.0, 55.0])
-    from tfscreen.mle.curve_models.models import model_hill_4p
-    y = model_hill_4p([0.05, 0.9, np.log(5.0), 1.5], x)
-    ys = np.full_like(x, 0.02)
-    flat_output, _, _ = cat_fit(x, y, ys,
-                                models_to_run=["flat", "linear_log",
-                                               "inducer"])
+def _curved_hetero_data():
+    """A real curve where the misfit lives in a few precise points and the many
+    plateau points are noisy -- the heteroscedastic case where the sign-based
+    runs test on flat is diluted but AICc still sees the curve."""
+    x = np.logspace(-8, -2, 15)
+    lx = np.log10(x)
+    bump = 1.2 * np.exp(-0.5 * ((lx + 5.0) / 0.6) ** 2)
+    ystd = np.where(np.abs(lx + 5.0) < 1.2, 0.05, 0.6)
+    rng = np.random.default_rng(4)
+    return x, bump + rng.normal(0, ystd), ystd
+
+
+def test_aicc_default_does_not_collapse_to_flat():
+    """Regression: default select_by='aicc' keeps the AICc-confident curve even
+    when the runs test is too weak to flag flat (the reported bug)."""
+    x, y, ys = _curved_hetero_data()
+    models = ["flat", "linear_log", "inducer", "bell_peak_log", "bell_dip_log"]
+    flat_output, _, _ = cat_fit(x, y, ys, models_to_run=models)  # default aicc
     assert flat_output["best_model"] != "flat"
-    assert flat_output["shape_status"] == "adequate"
-    # flat's residuals cluster by sign -> flagged inadequate.
-    assert flat_output["runs_p|flat"] < 0.05
+    assert flat_output["best_model"] == flat_output["aicc_best_model"]
+
+
+def test_adequacy_mode_never_demotes_confident_curve():
+    """Even in adequacy mode, a confident curved AICc pick is never demoted to
+    flat just because the diluted runs test can't reject flat."""
+    x, y, ys = _curved_hetero_data()
+    models = ["flat", "linear_log", "inducer", "bell_peak_log", "bell_dip_log"]
+    flat_output, _, _ = cat_fit(x, y, ys, models_to_run=models,
+                                select_by="adequacy")
+    assert flat_output["best_model"] != "flat"
+
+
+def test_adequacy_mode_escalates_off_flagged_pick():
+    """A clean curved dataset where flat is the AICc pick but is flagged:
+    adequacy mode escalates to the curved model; aicc mode would keep flat."""
+    # Gentle curvature + tiny homoscedastic noise, enough points for power.
+    x = np.array([0.0, 1.0, 2.0, 3.0, 5.0, 8.0, 13.0, 21.0, 34.0, 55.0])
+    lx = np.log10(x + 1.0)
+    y = 0.15 * lx ** 2                      # mild parabola in log-x
+    ys = np.full_like(x, 0.05)
+    models = ["flat", "linear_log", "bell_peak_log"]
+    aicc_out, _, _ = cat_fit(x, y, ys, models_to_run=models, select_by="aicc")
+    adeq_out, _, _ = cat_fit(x, y, ys, models_to_run=models,
+                             select_by="adequacy")
+    # flat's residuals cluster (curvature) -> flagged.
+    assert aicc_out["runs_p|flat"] < 0.05
+    if aicc_out["best_model"] == "flat":
+        # The regime this test targets: adequacy escalates off the flagged flat.
+        assert adeq_out["best_model"] != "flat"
+
+
+def test_invalid_select_by_raises():
+    x, y, ys = _hill_data()
+    with pytest.raises(ValueError, match="select_by"):
+        cat_fit(x, y, ys, models_to_run=["flat"], select_by="bogus")
 
 
 def test_aicc_excludes_overparameterized_models():

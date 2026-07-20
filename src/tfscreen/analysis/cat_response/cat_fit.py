@@ -26,51 +26,57 @@ _SHAPE_BY_MODEL = {
 }
 
 
+def _shape_status(runs_p, adequacy_alpha):
+    """Diagnostic label for the selected model from its runs-test p-value."""
+    if not np.isfinite(runs_p):
+        return "unassessable"
+    return "adequate" if runs_p >= adequacy_alpha else "misfit"
+
+
 def select_by_adequacy(models, adequacy_alpha):
     """
-    Pick the simplest *adequate* model; AICc breaks ties within a complexity tier.
+    Escalate-only refinement of the AICc pick (the ``select_by="adequacy"`` mode).
 
-    AICc alone selects the least-bad candidate but never asks whether the winner
-    actually fits, so at small n its parsimony penalty can crown a simple model
-    whose residuals are clearly systematic. Here a model is *adequate* when the
-    residual runs test does not reject randomness (``runs_p >= adequacy_alpha``).
-    Walking complexity (number of parameters ``k``) from low to high, the winner
-    is the lowest-AICc adequate model in the first tier that has one.
+    Selection starts from the lowest-AICc model. If its residuals are
+    systematically structured (the one-sided runs test rejects,
+    ``runs_p < adequacy_alpha``), escalate to the lowest-AICc *adequate* model
+    that is **no simpler** (``k >= `` the AICc pick's ``k``); otherwise keep the
+    AICc pick. Selection is never moved to a *simpler* model, so a low-power runs
+    test -- e.g. on noisy, heteroscedastic (logit) data where the many
+    near-baseline points wash out the residual sign pattern -- can only leave the
+    AICc pick unchanged. It can never demote a confident curved fit down to flat
+    (the failure mode of the earlier "simplest adequate" rule).
 
     Parameters
     ----------
     models : list of dict
         One dict per selectable fit, with keys ``model``, ``k``, ``AICc``,
         ``runs_p`` (already filtered to successful fits with a usable covariance
-        and finite AICc).
+        and finite AICc). Non-empty.
     adequacy_alpha : float
-        Runs-test significance threshold. ``runs_p`` below this flags
-        systematic residuals (inadequate shape).
+        Runs-test threshold. ``runs_p`` below this flags systematic residuals.
 
     Returns
     -------
-    best_model : str or None
-        Selected model name (None if ``models`` is empty).
-    shape_status : str
-        ``"adequate"`` if an adequate model was found; otherwise the fallback is
-        the overall lowest-AICc model, tagged ``"unmodeled"`` (some fit could be
-        assessed but none passed) or ``"unassessable"`` (no fit had a computable
-        runs test), or ``"none"`` when there are no models.
+    dict
+        The selected model's record (an element of ``models``).
     """
-    if not models:
-        return None, "none"
+    aicc_best = min(models, key=lambda m: m["AICc"])
 
-    aicc_best = min(models, key=lambda m: m["AICc"])["model"]
+    rp = aicc_best["runs_p"]
+    if (not np.isfinite(rp)) or rp >= adequacy_alpha:
+        # AICc pick is adequate (or unassessable): keep it, never escalate off.
+        return aicc_best
 
-    adequate = [m for m in models
-                if np.isfinite(m["runs_p"]) and m["runs_p"] >= adequacy_alpha]
-    if adequate:
-        min_k = min(m["k"] for m in adequate)
-        tier = [m for m in adequate if m["k"] == min_k]
-        return min(tier, key=lambda m: m["AICc"])["model"], "adequate"
-
-    assessable = any(np.isfinite(m["runs_p"]) for m in models)
-    return aicc_best, ("unmodeled" if assessable else "unassessable")
+    # AICc pick is flagged: escalate to the lowest-AICc adequate model that is
+    # no simpler. If there is none, keep the (flagged) AICc pick.
+    k0 = aicc_best["k"]
+    cands = [m for m in models
+             if m["k"] >= k0 and np.isfinite(m["runs_p"])
+             and m["runs_p"] >= adequacy_alpha]
+    if cands:
+        return min(cands, key=lambda m: m["AICc"])
+    return aicc_best
 
 # Keys returned by assess_best_model's per-point dict (the model curve + tests).
 _PER_POINT_COLS = ["x", "y_model", "y_model_std", "z", "sig_nonzero",
@@ -112,21 +118,28 @@ def _empty_assess_df():
 
 
 def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
-            alpha=0.05, adequacy_alpha=0.05, verbose=False):
+            alpha=0.05, select_by="aicc", adequacy_alpha=0.05, verbose=False):
     """
     Fits multiple models to a single dataset and returns a flat dictionary
     of all results, suitable for aggregation.
 
-    Model selection is *adequacy-first*: each model's AICc (the small-sample-
-    corrected AIC on the weighted residuals) is still reported, but the selected
-    ``best_model`` is the **simplest model whose residuals are not systematically
-    structured** -- judged by a Wald-Wolfowitz runs test (``runs_p >=
-    adequacy_alpha``) -- with AICc breaking ties within a complexity tier (see
-    :func:`select_by_adequacy`). This avoids AICc's small-sample tendency to
-    crown a simple model (e.g. linear) that clearly misfits. A weighted-chi2
-    goodness-of-fit p-value is also reported per model (``gof_p|*``) but does not
-    gate selection. After selection, the best model is evaluated at the observed
-    x and tested against zero (see :mod:`cat_assess`).
+    Model selection (``select_by``):
+
+    - ``"aicc"`` (default): ``best_model`` is the lowest-AICc model (the small-
+      sample-corrected AIC on the weighted residuals). This is the robust default
+      -- the weighted chi2 correctly weights the informative points, which the
+      sign-based runs test does not.
+    - ``"adequacy"``: escalate-only refinement of the AICc pick -- keep it unless
+      its residuals are systematically structured, in which case move to a
+      no-simpler adequate model (see :func:`select_by_adequacy`). Never demotes,
+      so it cannot collapse a confident curved fit to flat.
+
+    Either way, per-model diagnostics are reported but do **not** gate the default
+    selection: the runs-test p (``runs_p|*``; one-sided, sign-based, robust to
+    ``y_std`` scale) and the weighted-chi2 goodness-of-fit p (``gof_p|*``). The
+    selected model's ``shape``/``shape_status`` summarize its form and whether its
+    residuals look adequate. After selection, the best model is evaluated at the
+    observed x and tested against zero (see :mod:`cat_assess`).
 
     Parameters
     ----------
@@ -146,11 +159,15 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
     alpha : float, optional
         Two-sided significance level for the per-point ``sig_nonzero`` test.
         Default 0.05.
+    select_by : {"aicc", "adequacy"}, optional
+        Model-selection strategy. ``"aicc"`` (default) picks the lowest-AICc
+        model. ``"adequacy"`` starts from the AICc pick and escalates to a
+        no-simpler adequate model only if the AICc pick's residuals are flagged
+        as structured (never demotes). Default ``"aicc"``.
     adequacy_alpha : float, optional
-        Runs-test threshold for the adequacy-first selection. A model whose
-        ``runs_p`` falls below this is treated as having systematic (structured)
-        residuals and is not selected unless no adequate model exists. Default
-        0.05.
+        Runs-test threshold used for the ``shape_status`` diagnostic and (when
+        ``select_by="adequacy"``) for escalation. ``runs_p`` below this flags
+        systematic residuals. Default 0.05.
     verbose : bool, optional
         If True, prints warnings to the console when a model fails to fit.
         Defaults to False.
@@ -177,6 +194,11 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
 
     if models_to_run is None:
         models_to_run = list(DEFAULT_MODELS)
+
+    if select_by not in ("aicc", "adequacy"):
+        raise ValueError(
+            f"select_by must be 'aicc' or 'adequacy', got {select_by!r}"
+        )
 
     flat_output = {}
 
@@ -361,14 +383,17 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
         flat_output['status'] = "partial"
 
     if not valid.empty:
-        # AICc still ranks the models (summary_df is sorted by it), but the
-        # selected best_model is the simplest *adequate* one; AICc only breaks
-        # ties within a complexity tier. aicc_best_model records what AICc alone
-        # would have chosen, for transparency when the two diverge.
+        # summary_df is sorted by AICc, so iloc[0] is the AICc pick. select_by
+        # decides whether to keep it ("aicc") or apply the escalate-only
+        # adequacy refinement ("adequacy"). aicc_best_model records the AICc pick
+        # for transparency when the two diverge.
         aicc_best_model = summary_df.iloc[0]['model']
         model_records = valid[['model', 'k', 'AICc', 'runs_p']].to_dict('records')
-        best_model, shape_status = select_by_adequacy(model_records,
-                                                      adequacy_alpha)
+        if select_by == "adequacy":
+            chosen = select_by_adequacy(model_records, adequacy_alpha)
+        else:
+            chosen = min(model_records, key=lambda m: m["AICc"])
+        best_model = chosen["model"]
 
         best_row = summary_df.set_index('model').loc[best_model]
         flat_output['best_model'] = best_model
@@ -378,7 +403,8 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
         flat_output['best_model_gof_p'] = best_row['gof_p']
         flat_output['best_model_runs_p'] = best_row['runs_p']
         flat_output['shape'] = _SHAPE_BY_MODEL.get(best_model, "other")
-        flat_output['shape_status'] = shape_status
+        flat_output['shape_status'] = _shape_status(best_row['runs_p'],
+                                                    adequacy_alpha)
     else:
         best_model = None
         _set_no_best_model(flat_output)

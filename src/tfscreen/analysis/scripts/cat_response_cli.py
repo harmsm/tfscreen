@@ -63,6 +63,7 @@ def cat_response(data_file,
                  group_by=None,
                  models=None,
                  alpha=0.05,
+                 select_by="aicc",
                  adequacy_alpha=0.05,
                  delta=None,
                  delta_c=2.0,
@@ -116,11 +117,14 @@ def cat_response(data_file,
     alpha : float, optional
         Significance level for the per-point tests and the omnibus q-value
         threshold used to call a curve 'real'. Default 0.05.
+    select_by : {"aicc", "adequacy"}, optional
+        Model-selection strategy. ``"aicc"`` (default) selects the lowest-AICc
+        model. ``"adequacy"`` keeps the AICc pick unless its residuals are
+        systematically structured, then escalates to a no-simpler adequate model
+        (never demotes). Default ``"aicc"``.
     adequacy_alpha : float, optional
-        Runs-test threshold for adequacy-first shape selection: ``best_model``
-        is the simplest model whose residuals are not systematically clustered
-        at this level (see ``shape``/``shape_status`` in the output). Default
-        0.05.
+        Runs-test threshold for the ``shape_status`` diagnostic and, when
+        ``select_by="adequacy"``, for escalation. Default 0.05.
     delta : float or None, optional
         Region-of-practical-equivalence half-width around zero. If None
         (default), derived globally as ``delta_c * median(predicted y_std)``.
@@ -176,6 +180,7 @@ def cat_response(data_file,
         models_to_run=models,
         best_only=(not write_all_predictions),
         alpha=alpha,
+        select_by=select_by,
         adequacy_alpha=adequacy_alpha,
         delta=delta,
         delta_c=delta_c,
