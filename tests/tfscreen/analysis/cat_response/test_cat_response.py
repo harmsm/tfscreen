@@ -63,10 +63,12 @@ def _capturing_fit(store, **fit_kwargs):
     """A fake cat_fit that records the (x, y, y_std) it was handed per call."""
     def fake_fit(x, y, y_std, x_pred=None, models_to_run=None,
                  best_only=True, alpha=0.05, select_by="aicc",
-                 adequacy_alpha=0.05, verbose=False):
+                 adequacy_alpha=0.05, curvy_cutoff=0.1, verbose=False):
         store.append({"x": list(x), "y": list(y), "y_std": list(y_std),
                       "best_only": best_only, "alpha": alpha,
-                      "select_by": select_by, "adequacy_alpha": adequacy_alpha})
+                      "select_by": select_by, "adequacy_alpha": adequacy_alpha,
+                      "curvy_cutoff": curvy_cutoff,
+                      "models_to_run": models_to_run})
         return _flat(**fit_kwargs), _pred(len(x)), _assess(len(np.unique(x)))
     return fake_fit
 
@@ -184,6 +186,26 @@ class TestColumnSelection:
             cat_response(df, x_obs="titrant_conc", y_obs="theta",
                          y_std="theta_std")
         assert all(call["select_by"] == "aicc" for call in store)
+
+    def test_curvy_cutoff_threaded_to_fitter(self):
+        store = []
+        df = _basic_df()
+        with patch.object(cat_response_mod, "cat_fit",
+                          side_effect=_capturing_fit(store)):
+            cat_response(df, x_obs="titrant_conc", y_obs="theta",
+                         y_std="theta_std", curvy_cutoff=0.25)
+        assert all(call["curvy_cutoff"] == 0.25 for call in store)
+
+    def test_shape_mode_defaults_to_shape_models(self):
+        from tfscreen.mle.curve_models import SHAPE_MODELS
+        store = []
+        df = _basic_df()
+        with patch.object(cat_response_mod, "cat_fit",
+                          side_effect=_capturing_fit(store)):
+            cat_response(df, x_obs="titrant_conc", y_obs="theta",
+                         y_std="theta_std", select_by="shape")
+        assert all(call["models_to_run"] == list(SHAPE_MODELS)
+                   for call in store)
 
 
 # --- validation --------------------------------------------------------------

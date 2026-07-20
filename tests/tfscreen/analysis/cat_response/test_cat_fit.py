@@ -7,9 +7,9 @@ import numpy as np
 import pytest
 
 from tfscreen.analysis.cat_response.cat_fit import (
-    cat_fit, select_by_adequacy, _shape_status,
+    cat_fit, select_by_adequacy, select_by_shape, _shape_status,
 )
-from tfscreen.mle.curve_models import MODEL_LIBRARY, DEFAULT_MODELS
+from tfscreen.mle.curve_models import MODEL_LIBRARY, DEFAULT_MODELS, SHAPE_MODELS
 
 
 # --- escalate-only adequacy selection ----------------------------------------
@@ -61,6 +61,75 @@ class TestShapeStatus:
 
     def test_unassessable(self):
         assert _shape_status(np.nan, 0.05) == "unassessable"
+
+
+# --- shape classifier --------------------------------------------------------
+
+def _srec(model, k, aicc, r2, autocorr_p):
+    return {"model": model, "k": k, "AICc": aicc, "R2": r2,
+            "autocorr_p": autocorr_p}
+
+
+class TestSelectByShape:
+    def test_flat_when_no_structure(self):
+        # flat autocorr_p above cutoff -> not curvy -> flat, even if a curve fits.
+        models = [_srec("flat", 1, 5.0, 0.0, 0.6),
+                  _srec("bell_dip_log", 4, 2.0, 0.95, 0.6)]
+        assert select_by_shape(models, curvy_cutoff=0.1)["model"] == "flat"
+
+    def test_curvy_picks_best_r2_shape(self):
+        # flat is structured (low autocorr_p); the dip fits far better than the
+        # step, so it's chosen despite more parameters (no AICc penalty).
+        models = [_srec("flat", 1, 2.0, -0.05, 0.02),
+                  _srec("inducer", 3, 4.0, 0.51, 0.3),
+                  _srec("bell_dip_log", 4, 8.0, 0.96, 0.3)]
+        chosen = select_by_shape(models, curvy_cutoff=0.1)
+        assert chosen["model"] == "bell_dip_log"     # -> shape "dip"
+
+    def test_prefers_simpler_within_r2_margin(self):
+        # step and dip fit within r2_margin -> the simpler (step) wins.
+        models = [_srec("flat", 1, 2.0, -0.05, 0.02),
+                  _srec("inducer", 3, 4.0, 0.951, 0.3),
+                  _srec("bell_dip_log", 4, 3.0, 0.955, 0.3)]
+        chosen = select_by_shape(models, curvy_cutoff=0.1, r2_margin=0.02)
+        assert chosen["model"] == "inducer"
+
+    def test_curvy_but_no_curvy_model_falls_back_to_flat(self):
+        models = [_srec("flat", 1, 2.0, -0.05, 0.02),
+                  _srec("linear_log", 2, 1.0, 0.3, 0.02)]   # linear is not curvy
+        assert select_by_shape(models, curvy_cutoff=0.1)["model"] == "flat"
+
+    def test_cutoff_controls_flat_vs_curvy(self):
+        models = [_srec("flat", 1, 2.0, -0.05, 0.08),
+                  _srec("inducer", 3, 4.0, 0.9, 0.08)]
+        # strict cutoff -> flat; liberal cutoff -> curvy
+        assert select_by_shape(models, curvy_cutoff=0.05)["model"] == "flat"
+        assert select_by_shape(models, curvy_cutoff=0.20)["model"] == "inducer"
+
+
+def test_shape_mode_default_models():
+    """select_by='shape' with models_to_run=None fits the SHAPE_MODELS set."""
+    x, y, ys = _hill_data()
+    flat_output, _, _ = cat_fit(x, y, ys, select_by="shape")
+    fit_models = {k.split("|", 1)[1] for k in flat_output
+                  if k.startswith("AIC_weight|")}
+    assert fit_models == set(SHAPE_MODELS)
+    assert "linear_log" not in fit_models
+    assert "biphasic_peak" in fit_models
+
+
+def test_shape_mode_classifies_dip():
+    """The reported real-data dip (called flat by AICc) -> 'dip' in shape mode."""
+    conc = np.array([0, 1e-4, 1e-3, 3e-3, 1e-2, 3e-2, 1e-1, 1.0])
+    ep = np.array([0.00922, -2.4289, -3.0633, -3.2761, -2.5217, -1.3812,
+                   -0.6332, 2.1689])
+    es = np.array([1.4067, 1.5657, 0.9956, 0.8424, 1.2566, 1.2217, 1.2639,
+                   2.6622])
+    aicc_out, _, _ = cat_fit(conc, ep, es, select_by="aicc")
+    shape_out, _, _ = cat_fit(conc, ep, es, select_by="shape", curvy_cutoff=0.1)
+    assert aicc_out["best_model"] == "flat"          # AICc buries the dip
+    assert shape_out["shape"] in ("dip", "biphasic")  # classifier recovers it
+    assert shape_out["best_model"] != "flat"
 
 
 # A titration-like grid with enough points that low-parameter models are usable.
@@ -127,12 +196,14 @@ def test_adequacy_columns_present_and_shape():
                                 models_to_run=["flat", "hill_inducer"])
     # New diagnostic + shape columns are emitted.
     for key in ["aicc_best_model", "best_model_gof_p", "best_model_runs_p",
+                "best_model_autocorr", "best_model_autocorr_p",
                 "shape", "shape_status", "gof_p|flat", "runs_p|flat",
+                "autocorr|flat", "autocorr_p|flat",
                 "gof_p|hill_inducer", "runs_p|hill_inducer"]:
         assert key in flat_output
-    # Sigmoid data -> hill_inducer selected -> shape "sigmoid", adequate.
+    # Sigmoid data -> hill_inducer selected -> shape "step", adequate.
     assert flat_output["best_model"] == "hill_inducer"
-    assert flat_output["shape"] == "sigmoid"
+    assert flat_output["shape"] == "step"
     assert flat_output["shape_status"] == "adequate"
 
 

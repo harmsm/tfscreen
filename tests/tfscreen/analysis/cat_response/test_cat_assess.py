@@ -12,9 +12,35 @@ from tfscreen.analysis.cat_response.cat_assess import (
     classify_equiv,
     benjamini_hochberg,
     residual_runs_p,
+    residual_autocorr,
     goodness_of_fit_p,
     _omnibus_chi2,
 )
+
+
+# --- residual autocorrelation (shape gate) -----------------------------------
+
+class TestResidualAutocorr:
+    def test_smooth_structure_positive_and_significant(self):
+        # A smooth ramp = strong positive autocorrelation -> small p.
+        resid = np.array([-3, -2, -1, 0, 1, 2, 3, 4], dtype=float)
+        ac, p = residual_autocorr(resid)
+        assert ac > 0.5
+        assert p < 0.05
+
+    def test_alternating_not_positive(self):
+        resid = np.array([1, -1, 1, -1, 1, -1, 1, -1], dtype=float)
+        ac, p = residual_autocorr(resid)
+        assert ac < 0.0        # negative autocorrelation
+        assert p > 0.5         # not flagged as positive structure
+
+    def test_too_few_points_is_nan(self):
+        ac, p = residual_autocorr(np.array([1.0, -1.0, 1.0]))
+        assert np.isnan(ac) and np.isnan(p)
+
+    def test_all_zero_is_nan(self):
+        ac, p = residual_autocorr(np.zeros(6))
+        assert np.isnan(ac) and np.isnan(p)
 
 
 # --- residual runs test ------------------------------------------------------

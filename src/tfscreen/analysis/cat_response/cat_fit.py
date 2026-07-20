@@ -1,4 +1,4 @@
-from tfscreen.mle.curve_models import MODEL_LIBRARY, DEFAULT_MODELS
+from tfscreen.mle.curve_models import MODEL_LIBRARY, DEFAULT_MODELS, SHAPE_MODELS
 
 from tfscreen.mle import (
     run_least_squares,
@@ -7,7 +7,9 @@ from tfscreen.mle import (
 )
 
 from tfscreen.util.numerical import xfill
-from .cat_assess import assess_best_model, residual_runs_p, goodness_of_fit_p
+from .cat_assess import (
+    assess_best_model, residual_runs_p, residual_autocorr, goodness_of_fit_p,
+)
 
 import numpy as np
 import pandas as pd
@@ -18,12 +20,76 @@ import pandas as pd
 _SHAPE_BY_MODEL = {
     "flat": "flat",
     "linear": "linear", "linear_log": "linear",
-    "repressor": "sigmoid", "inducer": "sigmoid",
-    "hill_repressor": "sigmoid", "hill_inducer": "sigmoid",
-    "bell_peak": "peaked", "bell_dip": "peaked",
-    "bell_peak_log": "peaked", "bell_dip_log": "peaked",
+    "repressor": "step", "inducer": "step",
+    "hill_repressor": "step", "hill_inducer": "step",
+    "bell_peak": "peak", "bell_peak_log": "peak",
+    "bell_dip": "dip", "bell_dip_log": "dip",
     "biphasic_peak": "biphasic", "biphasic_dip": "biphasic",
 }
+
+# Shapes considered "curvy" (real, non-flat responses) by the shape classifier.
+_CURVY_SHAPES = ("step", "peak", "dip", "biphasic")
+
+
+def _resolve_models(models_to_run, select_by):
+    """The model set to fit: explicit list, else the default for this mode."""
+    if models_to_run is not None:
+        return models_to_run
+    return list(SHAPE_MODELS if select_by == "shape" else DEFAULT_MODELS)
+
+
+def select_by_shape(models, curvy_cutoff, r2_margin=0.02):
+    """
+    Liberal, prior-aligned shape classifier (the ``select_by="shape"`` mode).
+
+    A two-step decision that deliberately does *not* use AICc parsimony (too
+    conservative at small n -- it buries a well-fit curve behind the penalty for
+    its extra parameters):
+
+    1. **flat vs curvy** -- gate on structure in the *flat* fit's residuals: the
+       curve is "curvy" when flat's residual autocorrelation is significant
+       (``autocorr_p < curvy_cutoff``). This is the sweepable knob.
+    2. **which curvy shape** -- among the curvy-shape models (step/peak/dip/
+       biphasic; ``linear`` is excluded as unphysical), pick the best-fitting one
+       by weighted R2, preferring the simpler model when two fit within
+       ``r2_margin``. Fit quality, not AICc, decides -- so an R2=0.96 dip is
+       chosen over an R2=0.5 step even though the step has fewer parameters.
+
+    Parameters
+    ----------
+    models : list of dict
+        Records with keys ``model``, ``k``, ``AICc``, ``R2``, ``autocorr_p``
+        (successful, selectable fits). Non-empty.
+    curvy_cutoff : float
+        Threshold on the flat fit's ``autocorr_p``. Larger = more curves called
+        curvy (more liberal). Sweep this and inspect.
+    r2_margin : float, optional
+        Two curvy models within this weighted-R2 margin are treated as
+        equivalent; the simpler (fewer-parameter) one wins. Default 0.02.
+
+    Returns
+    -------
+    dict
+        The selected model's record.
+    """
+    by_name = {m["model"]: m for m in models}
+    flat = by_name.get("flat")
+    aicc_best = min(models, key=lambda m: m["AICc"])
+
+    structured = (flat is not None and np.isfinite(flat["autocorr_p"])
+                  and flat["autocorr_p"] < curvy_cutoff)
+    if not structured:
+        return flat if flat is not None else aicc_best
+
+    curvy = [m for m in models
+             if _SHAPE_BY_MODEL.get(m["model"]) in _CURVY_SHAPES
+             and np.isfinite(m["R2"])]
+    if not curvy:
+        return flat if flat is not None else aicc_best
+
+    best_r2 = max(m["R2"] for m in curvy)
+    cands = [m for m in curvy if m["R2"] >= best_r2 - r2_margin]
+    return min(cands, key=lambda m: (m["k"], m["AICc"]))
 
 
 def _shape_status(runs_p, adequacy_alpha):
@@ -107,6 +173,8 @@ def _set_no_best_model(flat_output):
     flat_output["best_model_AIC_weight"] = np.nan
     flat_output["best_model_gof_p"] = np.nan
     flat_output["best_model_runs_p"] = np.nan
+    flat_output["best_model_autocorr"] = np.nan
+    flat_output["best_model_autocorr_p"] = np.nan
     flat_output["shape"] = "none"
     flat_output["shape_status"] = "none"
 
@@ -118,7 +186,8 @@ def _empty_assess_df():
 
 
 def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
-            alpha=0.05, select_by="aicc", adequacy_alpha=0.05, verbose=False):
+            alpha=0.05, select_by="aicc", adequacy_alpha=0.05,
+            curvy_cutoff=0.1, verbose=False):
     """
     Fits multiple models to a single dataset and returns a flat dictionary
     of all results, suitable for aggregation.
@@ -126,20 +195,26 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
     Model selection (``select_by``):
 
     - ``"aicc"`` (default): ``best_model`` is the lowest-AICc model (the small-
-      sample-corrected AIC on the weighted residuals). This is the robust default
-      -- the weighted chi2 correctly weights the informative points, which the
-      sign-based runs test does not.
+      sample-corrected AIC on the weighted residuals). Robust default -- the
+      weighted chi2 correctly weights the informative points.
     - ``"adequacy"``: escalate-only refinement of the AICc pick -- keep it unless
-      its residuals are systematically structured, in which case move to a
-      no-simpler adequate model (see :func:`select_by_adequacy`). Never demotes,
-      so it cannot collapse a confident curved fit to flat.
+      its residuals are systematically structured, then move to a no-simpler
+      adequate model (see :func:`select_by_adequacy`). Never demotes.
+    - ``"shape"``: liberal, prior-aligned shape classifier for exploration (see
+      :func:`select_by_shape`). Gates flat-vs-curvy on the flat fit's residual
+      autocorrelation (``autocorr_p < curvy_cutoff``), then names the curvy shape
+      by best weighted R2 -- *not* AICc, so a well-fit curve is not buried by the
+      parsimony penalty. When ``models_to_run`` is None this mode defaults to the
+      physical ``SHAPE_MODELS`` vocabulary (no ``linear``; includes biphasic).
 
-    Either way, per-model diagnostics are reported but do **not** gate the default
-    selection: the runs-test p (``runs_p|*``; one-sided, sign-based, robust to
-    ``y_std`` scale) and the weighted-chi2 goodness-of-fit p (``gof_p|*``). The
-    selected model's ``shape``/``shape_status`` summarize its form and whether its
-    residuals look adequate. After selection, the best model is evaluated at the
-    observed x and tested against zero (see :mod:`cat_assess`).
+    Per-model diagnostics are always reported: runs-test p (``runs_p|*``; sign-
+    based, robust to ``y_std`` scale), residual autocorrelation and its p
+    (``autocorr|*`` / ``autocorr_p|*``; weighted, the shape gate's signal), and
+    the weighted-chi2 goodness-of-fit p (``gof_p|*``). The selected model's
+    ``shape`` (flat/step/peak/dip/biphasic) and ``shape_status`` (runs-test
+    diagnostic on the pick) summarize its form. After selection, the best model
+    is evaluated at the observed x and tested against zero (see
+    :mod:`cat_assess`).
 
     Parameters
     ----------
@@ -159,15 +234,21 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
     alpha : float, optional
         Two-sided significance level for the per-point ``sig_nonzero`` test.
         Default 0.05.
-    select_by : {"aicc", "adequacy"}, optional
+    select_by : {"aicc", "adequacy", "shape"}, optional
         Model-selection strategy. ``"aicc"`` (default) picks the lowest-AICc
         model. ``"adequacy"`` starts from the AICc pick and escalates to a
-        no-simpler adequate model only if the AICc pick's residuals are flagged
-        as structured (never demotes). Default ``"aicc"``.
+        no-simpler adequate model only if flagged (never demotes). ``"shape"``
+        is the liberal shape classifier (structure-gated flat-vs-curvy, then
+        best-R2 curvy shape). Default ``"aicc"``.
     adequacy_alpha : float, optional
         Runs-test threshold used for the ``shape_status`` diagnostic and (when
         ``select_by="adequacy"``) for escalation. ``runs_p`` below this flags
         systematic residuals. Default 0.05.
+    curvy_cutoff : float, optional
+        Only used when ``select_by="shape"``. A curve is classified "curvy"
+        (rather than flat) when the flat fit's residual-autocorrelation p-value
+        ``autocorr_p`` is below this. Larger = more liberal (more curves called
+        curvy). Default 0.1.
     verbose : bool, optional
         If True, prints warnings to the console when a model fails to fit.
         Defaults to False.
@@ -192,13 +273,13 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
         downstream in ``cat_response`` once the global delta is known.)
     """
 
-    if models_to_run is None:
-        models_to_run = list(DEFAULT_MODELS)
-
-    if select_by not in ("aicc", "adequacy"):
+    if select_by not in ("aicc", "adequacy", "shape"):
         raise ValueError(
-            f"select_by must be 'aicc' or 'adequacy', got {select_by!r}"
+            "select_by must be 'aicc', 'adequacy', or 'shape', got "
+            f"{select_by!r}"
         )
+
+    models_to_run = _resolve_models(models_to_run, select_by)
 
     flat_output = {}
 
@@ -230,6 +311,8 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
             flat_output[f"AIC_weight|{name}"] = np.nan
             flat_output[f"gof_p|{name}"] = np.nan
             flat_output[f"runs_p|{name}"] = np.nan
+            flat_output[f"autocorr|{name}"] = np.nan
+            flat_output[f"autocorr_p|{name}"] = np.nan
             for p_name in param_names:
                 flat_output[f"{name}|{p_name}|est"] = np.nan
                 flat_output[f"{name}|{p_name}|std"] = np.nan
@@ -285,11 +368,13 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
             resid = (y - y_fit) / y_std
             chi2 = float(np.sum(resid ** 2))
 
-            # Adequacy diagnostics. runs_p (primary, scale-robust) tests the
-            # sign order of the residuals along x for systematic structure;
-            # gof_p is the absolute weighted-chi2 lack-of-fit p (reported only).
+            # Structure / adequacy diagnostics on the residuals ordered by x.
+            # runs_p (sign-based, scale-robust); autocorr/autocorr_p (weighted
+            # Durbin-Watson lag-1 -- the shape gate's signal); gof_p (absolute
+            # weighted-chi2 lack-of-fit). All reported; none gate the default.
             order = np.argsort(x, kind="stable")
             runs_p = residual_runs_p(resid[order])
+            autocorr, autocorr_p = residual_autocorr(resid[order])
             gof_p = goodness_of_fit_p(chi2, n, k)
 
             w = 1.0 / (y_std ** 2)
@@ -324,6 +409,8 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
             summary_results.append({"model": name, "k": k, "R2": r2,
                                     "chi2": chi2, "AIC": aic, "AICc": aicc,
                                     "gof_p": gof_p, "runs_p": runs_p,
+                                    "autocorr": autocorr,
+                                    "autocorr_p": autocorr_p,
                                     "success": True})
             param_results[name] = {"params": params, "std_err": std_err,
                                    "cov": cov_matrix, "names": param_names,
@@ -336,7 +423,8 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
             summary_results.append({"model": name, "k": k, "R2": np.nan,
                                     "chi2": np.nan, "AIC": np.nan,
                                     "AICc": np.nan, "gof_p": np.nan,
-                                    "runs_p": np.nan, "success": False})
+                                    "runs_p": np.nan, "autocorr": np.nan,
+                                    "autocorr_p": np.nan, "success": False})
             param_results[name] = {
                 "params": np.full(k, np.nan), "std_err": np.full(k, np.nan),
                 "cov": None, "names": param_names, "model_func": model_func
@@ -367,6 +455,8 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
         flat_output[f"R2|{model_name}"] = row['R2']
         flat_output[f"gof_p|{model_name}"] = row['gof_p']
         flat_output[f"runs_p|{model_name}"] = row['runs_p']
+        flat_output[f"autocorr|{model_name}"] = row['autocorr']
+        flat_output[f"autocorr_p|{model_name}"] = row['autocorr_p']
 
         p_res = param_results[model_name]
         for i, p_name in enumerate(p_res['names']):
@@ -388,9 +478,12 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
         # adequacy refinement ("adequacy"). aicc_best_model records the AICc pick
         # for transparency when the two diverge.
         aicc_best_model = summary_df.iloc[0]['model']
-        model_records = valid[['model', 'k', 'AICc', 'runs_p']].to_dict('records')
+        model_records = valid[['model', 'k', 'AICc', 'R2', 'runs_p',
+                               'autocorr_p']].to_dict('records')
         if select_by == "adequacy":
             chosen = select_by_adequacy(model_records, adequacy_alpha)
+        elif select_by == "shape":
+            chosen = select_by_shape(model_records, curvy_cutoff)
         else:
             chosen = min(model_records, key=lambda m: m["AICc"])
         best_model = chosen["model"]
@@ -402,6 +495,8 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
         flat_output['best_model_AIC_weight'] = best_row['AIC_weight']
         flat_output['best_model_gof_p'] = best_row['gof_p']
         flat_output['best_model_runs_p'] = best_row['runs_p']
+        flat_output['best_model_autocorr'] = best_row['autocorr']
+        flat_output['best_model_autocorr_p'] = best_row['autocorr_p']
         flat_output['shape'] = _SHAPE_BY_MODEL.get(best_model, "other")
         flat_output['shape_status'] = _shape_status(best_row['runs_p'],
                                                     adequacy_alpha)

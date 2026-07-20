@@ -167,3 +167,20 @@ DEFAULT_MODELS = [
     "bell_peak_log",
     "bell_dip_log",
 ]
+
+# Curated "physical shape" vocabulary used by tfs-cat-response when
+# ``select_by="shape"`` and no models are given. Same log-concentration set as
+# DEFAULT_MODELS but with ``linear_log`` dropped (a sloped line is not a
+# physical titration response -- only ever the middle of a sigmoid) and the
+# biphasic peak/dip shapes added (for dispersive responses). Shapes:
+#   flat -> flat; inducer/repressor -> step; bell_*_log -> peak/dip;
+#   biphasic_* -> biphasic.
+SHAPE_MODELS = [
+    "flat",
+    "inducer",
+    "repressor",
+    "bell_peak_log",
+    "bell_dip_log",
+    "biphasic_peak",
+    "biphasic_dip",
+]

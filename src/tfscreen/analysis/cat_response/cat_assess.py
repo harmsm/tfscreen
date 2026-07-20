@@ -186,6 +186,48 @@ def residual_runs_p(resid):
     return float(norm.cdf(z))
 
 
+def residual_autocorr(resid):
+    """
+    Lag-1 autocorrelation of residuals ordered along the independent variable.
+
+    A *weighted*, magnitude-aware structure detector (pass the standardized
+    residuals ``(y - yfit) / y_std``): smooth systematic misfit makes consecutive
+    residuals track each other, so a bounded flat/constant fit to a real curve
+    shows strong positive autocorrelation. Unlike the sign-based runs test, this
+    is not washed out by many near-baseline points, so it catches structure the
+    runs test misses on noisy, heteroscedastic (logit) data.
+
+    Parameters
+    ----------
+    resid : array-like
+        Residuals in independent-variable order. Non-finite values are dropped.
+
+    Returns
+    -------
+    (autocorr, autocorr_p) : (float, float)
+        ``autocorr`` is the Durbin-Watson lag-1 autocorrelation estimate
+        ``1 - DW/2`` (~0 = no structure, ->1 = smooth positive autocorrelation).
+        ``autocorr_p`` is a one-sided (positive-autocorrelation) p-value from the
+        normal approximation ``DW ~ N(2, 4/n)``; small = systematic structure.
+        Both NaN when fewer than ``_MIN_RUNS_N`` residuals or all-zero.
+    """
+    resid = np.asarray(resid, dtype=float)
+    resid = resid[np.isfinite(resid)]
+    n = resid.size
+    if n < _MIN_RUNS_N:
+        return np.nan, np.nan
+
+    ss = float(np.sum(resid ** 2))
+    if ss <= 0.0:
+        return np.nan, np.nan
+
+    dw = float(np.sum(np.diff(resid) ** 2) / ss)
+    autocorr = 1.0 - dw / 2.0
+    z = (dw - 2.0) / (2.0 / np.sqrt(n))
+    autocorr_p = float(norm.cdf(z))     # lower tail: DW < 2 -> positive autocorr
+    return autocorr, autocorr_p
+
+
 def goodness_of_fit_p(chi2_w, n, k):
     """
     Lack-of-fit p-value from the weighted chi-square of a fit.

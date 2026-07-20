@@ -65,6 +65,7 @@ def cat_response(data_file,
                  alpha=0.05,
                  select_by="aicc",
                  adequacy_alpha=0.05,
+                 curvy_cutoff=0.1,
                  delta=None,
                  delta_c=2.0,
                  write_all_predictions=False,
@@ -117,14 +118,21 @@ def cat_response(data_file,
     alpha : float, optional
         Significance level for the per-point tests and the omnibus q-value
         threshold used to call a curve 'real'. Default 0.05.
-    select_by : {"aicc", "adequacy"}, optional
+    select_by : {"aicc", "adequacy", "shape"}, optional
         Model-selection strategy. ``"aicc"`` (default) selects the lowest-AICc
-        model. ``"adequacy"`` keeps the AICc pick unless its residuals are
-        systematically structured, then escalates to a no-simpler adequate model
-        (never demotes). Default ``"aicc"``.
+        model. ``"adequacy"`` keeps the AICc pick unless flagged, then escalates
+        to a no-simpler adequate model (never demotes). ``"shape"`` is the
+        liberal shape classifier: it gates flat-vs-curvy on the flat fit's
+        residual autocorrelation and names the curvy shape by best R2 (defaults
+        to the physical ``SHAPE_MODELS`` vocabulary -- no linear, includes
+        biphasic). Default ``"aicc"``.
     adequacy_alpha : float, optional
         Runs-test threshold for the ``shape_status`` diagnostic and, when
         ``select_by="adequacy"``, for escalation. Default 0.05.
+    curvy_cutoff : float, optional
+        Only used when ``select_by="shape"``: flat-vs-curvy gate on the flat
+        fit's residual-autocorrelation p-value (larger = more curves called
+        curvy). Sweep it and visually inspect. Default 0.1.
     delta : float or None, optional
         Region-of-practical-equivalence half-width around zero. If None
         (default), derived globally as ``delta_c * median(predicted y_std)``.
@@ -182,6 +190,7 @@ def cat_response(data_file,
         alpha=alpha,
         select_by=select_by,
         adequacy_alpha=adequacy_alpha,
+        curvy_cutoff=curvy_cutoff,
         delta=delta,
         delta_c=delta_c,
         num_workers=num_workers,

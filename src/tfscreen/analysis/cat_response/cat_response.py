@@ -20,7 +20,7 @@ import tqdm
 
 from .cat_fit import cat_fit
 from .cat_assess import compute_delta, classify_equiv, benjamini_hochberg
-from tfscreen.mle.curve_models import MODEL_LIBRARY, DEFAULT_MODELS
+from tfscreen.mle.curve_models import MODEL_LIBRARY, DEFAULT_MODELS, SHAPE_MODELS
 from tfscreen.util import resolve_workers
 from tfscreen.util.numerical import xfill
 
@@ -31,7 +31,7 @@ _CHUNK_SIZE = 200
 
 
 def _fit_one(group_key, x, y, y_std, x_pred, models_to_run, best_only, alpha,
-             select_by, adequacy_alpha, verbose):
+             select_by, adequacy_alpha, curvy_cutoff, verbose):
     """Run cat_fit for one group and tag the results with the group key."""
     flat_out, pred_df, assess_df = cat_fit(x, y, y_std,
                                            x_pred=x_pred,
@@ -40,6 +40,7 @@ def _fit_one(group_key, x, y, y_std, x_pred, models_to_run, best_only, alpha,
                                            alpha=alpha,
                                            select_by=select_by,
                                            adequacy_alpha=adequacy_alpha,
+                                           curvy_cutoff=curvy_cutoff,
                                            verbose=verbose)
     for col, val in group_key.items():
         flat_out[col] = val
@@ -69,6 +70,7 @@ def cat_response(df,
                  alpha=0.05,
                  select_by="aicc",
                  adequacy_alpha=0.05,
+                 curvy_cutoff=0.1,
                  delta=None,
                  delta_c=2.0,
                  num_workers=1,
@@ -110,14 +112,20 @@ def cat_response(df,
         the confidence level of the ``equiv_zero`` interval. Also the threshold
         applied to omnibus q-values when assigning ``response_class``. Default
         0.05.
-    select_by : {"aicc", "adequacy"}, optional
+    select_by : {"aicc", "adequacy", "shape"}, optional
         Model-selection strategy (see :func:`cat_fit`). ``"aicc"`` (default)
         selects the lowest-AICc model. ``"adequacy"`` keeps the AICc pick unless
-        its residuals are systematically structured, then escalates to a
-        no-simpler adequate model (never demotes). Default ``"aicc"``.
+        flagged, then escalates to a no-simpler adequate model (never demotes).
+        ``"shape"`` is the liberal shape classifier (structure-gated flat-vs-
+        curvy, then best-R2 curvy shape); with ``models_to_run=None`` it defaults
+        to the physical ``SHAPE_MODELS`` vocabulary. Default ``"aicc"``.
     adequacy_alpha : float, optional
         Runs-test threshold used for the ``shape_status`` diagnostic and, when
         ``select_by="adequacy"``, for escalation. Default 0.05.
+    curvy_cutoff : float, optional
+        Only used when ``select_by="shape"``: the flat-vs-curvy gate on the flat
+        fit's residual-autocorrelation p-value (larger = more liberal). Sweep it
+        and inspect. Default 0.1.
     delta : float or None, optional
         Region-of-practical-equivalence half-width around zero. If None
         (default), computed globally as ``delta_c * median(predicted y_std)``
@@ -147,10 +155,12 @@ def cat_response(df,
         ``n_nonzero``, ``any_nonzero``, ``all_equiv_zero``, ``response_class``).
         ``best_model`` follows ``select_by`` (default lowest-AICc; see
         :func:`cat_fit`), ``shape`` is its qualitative form
-        (flat/linear/sigmoid/peaked/biphasic), and ``shape_status`` is a
+        (flat/linear/step/peak/dip/biphasic), and ``shape_status`` is a
         diagnostic on the selected model's residuals (adequate / misfit /
-        unassessable). Column names keep the ``|`` delimiter; presentation is
-        left to callers.
+        unassessable). Per-model ``autocorr|*`` / ``autocorr_p|*`` (residual
+        autocorrelation, the shape gate's signal) and ``gof_p|*`` are also
+        included. Column names keep the ``|`` delimiter; presentation is left to
+        callers.
     predictions_df : pandas.DataFrame
         Predicted curves, concatenated across groups. Columns are the group-key
         columns followed by ``model``, ``x``, ``y_model``, ``y_model_std``,
@@ -166,7 +176,10 @@ def cat_response(df,
         ``delta_c`` if not supplied).
     """
     if models_to_run is None:
-        models_to_run = list(DEFAULT_MODELS)
+        # The "shape" classifier defaults to the physical shape vocabulary
+        # (no linear; includes biphasic); other modes use DEFAULT_MODELS.
+        models_to_run = list(SHAPE_MODELS if select_by == "shape"
+                             else DEFAULT_MODELS)
 
     bad = [m for m in models_to_run if m not in MODEL_LIBRARY]
     if bad:
@@ -205,7 +218,7 @@ def cat_response(df,
 
         work_items.append((group_key, x, y, ys, x_pred, models_to_run,
                            best_only, alpha, select_by, adequacy_alpha,
-                           verbose))
+                           curvy_cutoff, verbose))
 
     n_total = len(work_items)
     if n_total == 0:
