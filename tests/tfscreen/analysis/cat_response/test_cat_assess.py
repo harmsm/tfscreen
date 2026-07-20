@@ -11,8 +11,54 @@ from tfscreen.analysis.cat_response.cat_assess import (
     compute_delta,
     classify_equiv,
     benjamini_hochberg,
+    residual_runs_p,
+    goodness_of_fit_p,
     _omnibus_chi2,
 )
+
+
+# --- residual runs test ------------------------------------------------------
+
+class TestResidualRunsP:
+    def test_clustered_residuals_flagged(self):
+        """Same-sign clustering (systematic misfit) -> small p."""
+        resid = np.array([-3, -2, -1, -0.5, 1, 2, 3, 4], dtype=float)
+        assert residual_runs_p(resid) < 0.05
+
+    def test_random_looking_residuals_not_flagged(self):
+        """A well-mixed sign sequence -> large p (adequate)."""
+        resid = np.array([1, -1, 2, -2, 1, -1, 2, -2], dtype=float)
+        assert residual_runs_p(resid) > 0.5
+
+    def test_over_dispersion_not_flagged(self):
+        """One-sided: too-many-runs (alternating) is not a shape error."""
+        resid = np.array([1, -1, 1, -1, 1, -1, 1, -1], dtype=float)
+        assert residual_runs_p(resid) > 0.05
+
+    def test_too_few_points_is_nan(self):
+        assert np.isnan(residual_runs_p(np.array([1.0, -1.0, 1.0])))
+
+    def test_all_one_sign_is_nan(self):
+        assert np.isnan(residual_runs_p(np.array([1, 2, 3, 4, 5.0])))
+
+    def test_zeros_and_nonfinite_dropped(self):
+        # Zeros/NaN removed; remaining 4 clustered residuals still assessable.
+        resid = np.array([0.0, np.nan, -2, -1, 1, 2], dtype=float)
+        assert np.isfinite(residual_runs_p(resid))
+
+
+# --- goodness of fit ---------------------------------------------------------
+
+class TestGoodnessOfFitP:
+    def test_matches_chi2_sf(self):
+        assert goodness_of_fit_p(10.0, 12, 2) == pytest.approx(chi2.sf(10.0, 10))
+
+    def test_large_chi2_small_p(self):
+        assert goodness_of_fit_p(100.0, 12, 2) < 0.001
+
+    def test_nonpositive_df_is_nan(self):
+        assert np.isnan(goodness_of_fit_p(5.0, 4, 4))
+        assert np.isnan(goodness_of_fit_p(5.0, 3, 4))
 
 
 def _linear(params, x):

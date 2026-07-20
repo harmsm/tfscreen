@@ -6,8 +6,47 @@ real MODEL_LIBRARY (fits are deterministic) rather than mocks.
 import numpy as np
 import pytest
 
-from tfscreen.analysis.cat_response.cat_fit import cat_fit
+from tfscreen.analysis.cat_response.cat_fit import cat_fit, select_by_adequacy
 from tfscreen.mle.curve_models import MODEL_LIBRARY, DEFAULT_MODELS
+
+
+# --- adequacy-first selection ------------------------------------------------
+
+def _rec(model, k, aicc, runs_p):
+    return {"model": model, "k": k, "AICc": aicc, "runs_p": runs_p}
+
+
+class TestSelectByAdequacy:
+    def test_picks_simplest_adequate(self):
+        # linear (k=2) is adequate and simplest even though bell has lower AICc.
+        models = [_rec("linear", 2, 10.0, 0.5), _rec("bell", 4, 2.0, 0.6)]
+        assert select_by_adequacy(models, 0.05) == ("linear", "adequate")
+
+    def test_escalates_when_simple_inadequate(self):
+        # flat/linear have structured residuals (low runs_p); bell is adequate.
+        models = [_rec("flat", 1, 5.0, 0.001), _rec("linear", 2, 4.0, 0.01),
+                  _rec("bell", 4, 8.0, 0.4)]
+        assert select_by_adequacy(models, 0.05) == ("bell", "adequate")
+
+    def test_tie_break_by_aicc_within_tier(self):
+        # Two adequate models at the same k -> lower AICc wins.
+        models = [_rec("repressor", 3, 9.0, 0.3), _rec("inducer", 3, 4.0, 0.4)]
+        assert select_by_adequacy(models, 0.05) == ("inducer", "adequate")
+
+    def test_none_adequate_falls_back_unmodeled(self):
+        models = [_rec("flat", 1, 5.0, 0.001), _rec("linear", 2, 4.0, 0.002)]
+        best, status = select_by_adequacy(models, 0.05)
+        assert best == "linear"           # overall AICc-best fallback
+        assert status == "unmodeled"
+
+    def test_unassessable_when_all_runs_nan(self):
+        models = [_rec("flat", 1, 5.0, np.nan), _rec("linear", 2, 4.0, np.nan)]
+        best, status = select_by_adequacy(models, 0.05)
+        assert best == "linear"
+        assert status == "unassessable"
+
+    def test_empty(self):
+        assert select_by_adequacy([], 0.05) == (None, "none")
 
 
 # A titration-like grid with enough points that low-parameter models are usable.
@@ -63,9 +102,41 @@ def test_flat_selected_for_flat_data():
     x, y, ys = _flat_data()
     flat_output, _, _ = cat_fit(x, y, ys,
                                 models_to_run=["flat", "hill_inducer"])
-    # AICc prefers the cheaper (1-param) flat model over a 4-param hill that
-    # buys no fit improvement.
+    # Adequacy-first prefers the simplest adequate (1-param flat) model over a
+    # 4-param hill that buys no fit improvement.
     assert flat_output["best_model"] == "flat"
+
+
+def test_adequacy_columns_present_and_shape():
+    x, y, ys = _hill_data()
+    flat_output, _, _ = cat_fit(x, y, ys,
+                                models_to_run=["flat", "hill_inducer"])
+    # New diagnostic + shape columns are emitted.
+    for key in ["aicc_best_model", "best_model_gof_p", "best_model_runs_p",
+                "shape", "shape_status", "gof_p|flat", "runs_p|flat",
+                "gof_p|hill_inducer", "runs_p|hill_inducer"]:
+        assert key in flat_output
+    # Sigmoid data -> hill_inducer selected -> shape "sigmoid", adequate.
+    assert flat_output["best_model"] == "hill_inducer"
+    assert flat_output["shape"] == "sigmoid"
+    assert flat_output["shape_status"] == "adequate"
+
+
+def test_flat_misfit_escalates_off_linear():
+    """A clearly curved dataset is not left on flat/linear by adequacy-first."""
+    # Monotone-saturating data with small, non-clustered wobble and enough
+    # points for the runs test to have power.
+    x = np.array([0.0, 1.0, 2.0, 3.0, 5.0, 8.0, 13.0, 21.0, 34.0, 55.0])
+    from tfscreen.mle.curve_models.models import model_hill_4p
+    y = model_hill_4p([0.05, 0.9, np.log(5.0), 1.5], x)
+    ys = np.full_like(x, 0.02)
+    flat_output, _, _ = cat_fit(x, y, ys,
+                                models_to_run=["flat", "linear_log",
+                                               "inducer"])
+    assert flat_output["best_model"] != "flat"
+    assert flat_output["shape_status"] == "adequate"
+    # flat's residuals cluster by sign -> flagged inadequate.
+    assert flat_output["runs_p|flat"] < 0.05
 
 
 def test_aicc_excludes_overparameterized_models():

@@ -31,6 +31,10 @@ from scipy.stats import chi2, norm
 
 from tfscreen.mle import predict_with_error
 
+# Minimum number of usable (finite, nonzero) residuals for the runs test to be
+# computed. Below this the test is uninformative and returns NaN.
+_MIN_RUNS_N = 4
+
 
 def assess_best_model(model_func, params, cov_matrix, x, alpha=0.05):
     """
@@ -128,6 +132,81 @@ def _omnibus_chi2(y_est, y_cov):
 
     p = float(chi2.sf(W, df))
     return W, df, p
+
+
+def residual_runs_p(resid):
+    """
+    Wald-Wolfowitz runs-test p-value for systematic structure in residuals.
+
+    Given residuals ordered along the independent variable, tests whether the
+    sign sequence shows *positive clustering* -- fewer runs than random -- which
+    is the fingerprint of a systematically wrong shape (the residuals sit on one
+    side, then the other). This is a **one-sided, lower-tail** test: it flags
+    same-sign clustering but not over-dispersion (alternating residuals are not
+    a shape error), which also gives it usable power at the small n typical
+    here. It uses only the residual *signs*, so it is robust to the scale of the
+    ``y_std`` used for weighting. This is the primary adequacy check for shape
+    selection.
+
+    Parameters
+    ----------
+    resid : array-like
+        Residuals in independent-variable order (e.g. weighted residuals sorted
+        by x). Non-finite and exactly-zero residuals are dropped.
+
+    Returns
+    -------
+    float
+        Lower-tail p-value under the null of random sign order; small when the
+        residuals cluster by sign (systematic misfit). NaN when it cannot be
+        computed: fewer than ``_MIN_RUNS_N`` usable residuals, or all residuals
+        share one sign (itself a sign of a biased fit; callers treat NaN as "not
+        adequate" unless *no* model could be assessed).
+    """
+    resid = np.asarray(resid, dtype=float)
+    resid = resid[np.isfinite(resid) & (resid != 0.0)]
+    n = resid.size
+    if n < _MIN_RUNS_N:
+        return np.nan
+
+    signs = resid > 0
+    n_pos = int(np.count_nonzero(signs))
+    n_neg = n - n_pos
+    if n_pos == 0 or n_neg == 0:
+        return np.nan
+
+    runs = 1 + int(np.count_nonzero(signs[1:] != signs[:-1]))
+    mu = 1.0 + 2.0 * n_pos * n_neg / n
+    var = (2.0 * n_pos * n_neg * (2.0 * n_pos * n_neg - n)
+           / (n ** 2 * (n - 1.0)))
+    if var <= 0:
+        return np.nan
+
+    z = (runs - mu) / np.sqrt(var)
+    return float(norm.cdf(z))
+
+
+def goodness_of_fit_p(chi2_w, n, k):
+    """
+    Lack-of-fit p-value from the weighted chi-square of a fit.
+
+    Under a correct model with calibrated ``y_std`` the weighted residual sum of
+    squares ~ chi2(n - k), so ``p = chi2.sf(chi2_w, n - k)`` is an *absolute*
+    adequacy check complementary to AICc's relative one. Reported alongside
+    selection but -- unlike the runs test -- not used to gate it, since it
+    depends on the ``y_std`` scale. NaN when ``n - k <= 0``.
+
+    Parameters
+    ----------
+    chi2_w : float
+        Weighted residual sum of squares, ``sum(((y - yfit) / y_std) ** 2)``.
+    n, k : int
+        Number of points and number of fitted parameters.
+    """
+    df = n - k
+    if df <= 0:
+        return np.nan
+    return float(chi2.sf(chi2_w, df))
 
 
 def compute_delta(pred_std, delta_c=2.0):

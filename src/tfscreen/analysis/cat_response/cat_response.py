@@ -31,13 +31,14 @@ _CHUNK_SIZE = 200
 
 
 def _fit_one(group_key, x, y, y_std, x_pred, models_to_run, best_only, alpha,
-             verbose):
+             adequacy_alpha, verbose):
     """Run cat_fit for one group and tag the results with the group key."""
     flat_out, pred_df, assess_df = cat_fit(x, y, y_std,
                                            x_pred=x_pred,
                                            models_to_run=models_to_run,
                                            best_only=best_only,
                                            alpha=alpha,
+                                           adequacy_alpha=adequacy_alpha,
                                            verbose=verbose)
     for col, val in group_key.items():
         flat_out[col] = val
@@ -65,6 +66,7 @@ def cat_response(df,
                  models_to_run=None,
                  best_only=True,
                  alpha=0.05,
+                 adequacy_alpha=0.05,
                  delta=None,
                  delta_c=2.0,
                  num_workers=1,
@@ -106,6 +108,10 @@ def cat_response(df,
         the confidence level of the ``equiv_zero`` interval. Also the threshold
         applied to omnibus q-values when assigning ``response_class``. Default
         0.05.
+    adequacy_alpha : float, optional
+        Runs-test threshold for adequacy-first model selection (see
+        :func:`cat_fit`). A curve's ``best_model`` is the simplest model whose
+        residuals are not systematically structured at this level. Default 0.05.
     delta : float or None, optional
         Region-of-practical-equivalence half-width around zero. If None
         (default), computed globally as ``delta_c * median(predicted y_std)``
@@ -127,11 +133,17 @@ def cat_response(df,
     -------
     results_df : pandas.DataFrame
         One row per group. Group-key columns, then the flat cat_fit output
-        (``status``, ``best_model``, per-model ``AIC_weight|*`` / ``R2|*``, and
+        (``status``, ``best_model``, ``aicc_best_model``, ``shape``,
+        ``shape_status``, ``best_model_gof_p`` / ``best_model_runs_p``, per-model
+        ``AIC_weight|*`` / ``R2|*`` / ``gof_p|*`` / ``runs_p|*``, and
         ``<model>|<param>|est`` / ``std`` columns), then the assessment rollups
         (``omnibus_W``, ``omnibus_df``, ``omnibus_p``, ``omnibus_q``,
         ``n_nonzero``, ``any_nonzero``, ``all_equiv_zero``, ``response_class``).
-        Column names keep the ``|`` delimiter; presentation is left to callers.
+        ``best_model`` is the adequacy-first pick (see :func:`cat_fit`) and
+        ``shape`` its qualitative form (flat/linear/sigmoid/peaked/biphasic);
+        ``shape_status`` flags whether that shape actually fits (adequate /
+        unmodeled / unassessable). Column names keep the ``|`` delimiter;
+        presentation is left to callers.
     predictions_df : pandas.DataFrame
         Predicted curves, concatenated across groups. Columns are the group-key
         columns followed by ``model``, ``x``, ``y_model``, ``y_model_std``,
@@ -185,7 +197,7 @@ def cat_response(df,
             ys = np.ones(len(x), dtype=float)
 
         work_items.append((group_key, x, y, ys, x_pred, models_to_run,
-                           best_only, alpha, verbose))
+                           best_only, alpha, adequacy_alpha, verbose))
 
     n_total = len(work_items)
     if n_total == 0:

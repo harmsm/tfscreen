@@ -62,9 +62,11 @@ def _assess(n=2, y_model=0.0, y_model_std=0.1):
 def _capturing_fit(store, **fit_kwargs):
     """A fake cat_fit that records the (x, y, y_std) it was handed per call."""
     def fake_fit(x, y, y_std, x_pred=None, models_to_run=None,
-                 best_only=True, alpha=0.05, verbose=False):
+                 best_only=True, alpha=0.05, adequacy_alpha=0.05,
+                 verbose=False):
         store.append({"x": list(x), "y": list(y), "y_std": list(y_std),
-                      "best_only": best_only, "alpha": alpha})
+                      "best_only": best_only, "alpha": alpha,
+                      "adequacy_alpha": adequacy_alpha})
         return _flat(**fit_kwargs), _pred(len(x)), _assess(len(np.unique(x)))
     return fake_fit
 
@@ -157,6 +159,15 @@ class TestColumnSelection:
                          y_std="theta_std", best_only=False, alpha=0.01)
         assert all(call["best_only"] is False for call in store)
         assert all(call["alpha"] == 0.01 for call in store)
+
+    def test_adequacy_alpha_threaded_to_fitter(self):
+        store = []
+        df = _basic_df()
+        with patch.object(cat_response_mod, "cat_fit",
+                          side_effect=_capturing_fit(store)):
+            cat_response(df, x_obs="titrant_conc", y_obs="theta",
+                         y_std="theta_std", adequacy_alpha=0.2)
+        assert all(call["adequacy_alpha"] == 0.2 for call in store)
 
 
 # --- validation --------------------------------------------------------------

@@ -7,10 +7,70 @@ from tfscreen.mle import (
 )
 
 from tfscreen.util.numerical import xfill
-from .cat_assess import assess_best_model
+from .cat_assess import assess_best_model, residual_runs_p, goodness_of_fit_p
 
 import numpy as np
 import pandas as pd
+
+# Qualitative response shape of each model, surfaced as the ``shape`` column so
+# curves can be categorized by form (independent of the zero/magnitude axis).
+# A model not listed here maps to "other".
+_SHAPE_BY_MODEL = {
+    "flat": "flat",
+    "linear": "linear", "linear_log": "linear",
+    "repressor": "sigmoid", "inducer": "sigmoid",
+    "hill_repressor": "sigmoid", "hill_inducer": "sigmoid",
+    "bell_peak": "peaked", "bell_dip": "peaked",
+    "bell_peak_log": "peaked", "bell_dip_log": "peaked",
+    "biphasic_peak": "biphasic", "biphasic_dip": "biphasic",
+}
+
+
+def select_by_adequacy(models, adequacy_alpha):
+    """
+    Pick the simplest *adequate* model; AICc breaks ties within a complexity tier.
+
+    AICc alone selects the least-bad candidate but never asks whether the winner
+    actually fits, so at small n its parsimony penalty can crown a simple model
+    whose residuals are clearly systematic. Here a model is *adequate* when the
+    residual runs test does not reject randomness (``runs_p >= adequacy_alpha``).
+    Walking complexity (number of parameters ``k``) from low to high, the winner
+    is the lowest-AICc adequate model in the first tier that has one.
+
+    Parameters
+    ----------
+    models : list of dict
+        One dict per selectable fit, with keys ``model``, ``k``, ``AICc``,
+        ``runs_p`` (already filtered to successful fits with a usable covariance
+        and finite AICc).
+    adequacy_alpha : float
+        Runs-test significance threshold. ``runs_p`` below this flags
+        systematic residuals (inadequate shape).
+
+    Returns
+    -------
+    best_model : str or None
+        Selected model name (None if ``models`` is empty).
+    shape_status : str
+        ``"adequate"`` if an adequate model was found; otherwise the fallback is
+        the overall lowest-AICc model, tagged ``"unmodeled"`` (some fit could be
+        assessed but none passed) or ``"unassessable"`` (no fit had a computable
+        runs test), or ``"none"`` when there are no models.
+    """
+    if not models:
+        return None, "none"
+
+    aicc_best = min(models, key=lambda m: m["AICc"])["model"]
+
+    adequate = [m for m in models
+                if np.isfinite(m["runs_p"]) and m["runs_p"] >= adequacy_alpha]
+    if adequate:
+        min_k = min(m["k"] for m in adequate)
+        tier = [m for m in adequate if m["k"] == min_k]
+        return min(tier, key=lambda m: m["AICc"])["model"], "adequate"
+
+    assessable = any(np.isfinite(m["runs_p"]) for m in models)
+    return aicc_best, ("unmodeled" if assessable else "unassessable")
 
 # Keys returned by assess_best_model's per-point dict (the model curve + tests).
 _PER_POINT_COLS = ["x", "y_model", "y_model_std", "z", "sig_nonzero",
@@ -33,6 +93,18 @@ _ROLLUP_KEYS = ["omnibus_W", "omnibus_df", "omnibus_p", "n_nonzero",
                 "any_nonzero"]
 
 
+def _set_no_best_model(flat_output):
+    """Emit the best-model / shape keys for a curve with no selectable model."""
+    flat_output["best_model"] = "None"
+    flat_output["aicc_best_model"] = "None"
+    flat_output["best_model_R2"] = np.nan
+    flat_output["best_model_AIC_weight"] = np.nan
+    flat_output["best_model_gof_p"] = np.nan
+    flat_output["best_model_runs_p"] = np.nan
+    flat_output["shape"] = "none"
+    flat_output["shape_status"] = "none"
+
+
 def _empty_assess_df():
     return pd.DataFrame({
         c: pd.Series(dtype=_ASSESS_DTYPES.get(c, float)) for c in _ASSESS_COLS
@@ -40,16 +112,21 @@ def _empty_assess_df():
 
 
 def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
-            alpha=0.05, verbose=False):
+            alpha=0.05, adequacy_alpha=0.05, verbose=False):
     """
     Fits multiple models to a single dataset and returns a flat dictionary
     of all results, suitable for aggregation.
 
-    Model selection uses AICc (the small-sample-corrected AIC) computed from
-    the *weighted* residuals, since with only a handful of points and up to
-    four parameters the correction term is large and the error bars carry real
-    information. After selection, the best model is evaluated at the observed x
-    and tested against zero (see :mod:`cat_assess`).
+    Model selection is *adequacy-first*: each model's AICc (the small-sample-
+    corrected AIC on the weighted residuals) is still reported, but the selected
+    ``best_model`` is the **simplest model whose residuals are not systematically
+    structured** -- judged by a Wald-Wolfowitz runs test (``runs_p >=
+    adequacy_alpha``) -- with AICc breaking ties within a complexity tier (see
+    :func:`select_by_adequacy`). This avoids AICc's small-sample tendency to
+    crown a simple model (e.g. linear) that clearly misfits. A weighted-chi2
+    goodness-of-fit p-value is also reported per model (``gof_p|*``) but does not
+    gate selection. After selection, the best model is evaluated at the observed
+    x and tested against zero (see :mod:`cat_assess`).
 
     Parameters
     ----------
@@ -69,6 +146,11 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
     alpha : float, optional
         Two-sided significance level for the per-point ``sig_nonzero`` test.
         Default 0.05.
+    adequacy_alpha : float, optional
+        Runs-test threshold for the adequacy-first selection. A model whose
+        ``runs_p`` falls below this is treated as having systematic (structured)
+        residuals and is not selected unless no adequate model exists. Default
+        0.05.
     verbose : bool, optional
         If True, prints warnings to the console when a model fails to fit.
         Defaults to False.
@@ -117,15 +199,15 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
     if len(x) < 2:
 
         flat_output['status'] = "missing"
-        flat_output['best_model'] = "None"
-        flat_output['best_model_R2'] = np.nan
-        flat_output['best_model_AIC_weight'] = np.nan
+        _set_no_best_model(flat_output)
         for key in _ROLLUP_KEYS:
             flat_output[key] = np.nan
         for name in models_to_run:
             param_names = MODEL_LIBRARY[name]["param_names"]
             flat_output[f"R2|{name}"] = np.nan
             flat_output[f"AIC_weight|{name}"] = np.nan
+            flat_output[f"gof_p|{name}"] = np.nan
+            flat_output[f"runs_p|{name}"] = np.nan
             for p_name in param_names:
                 flat_output[f"{name}|{p_name}|est"] = np.nan
                 flat_output[f"{name}|{p_name}|std"] = np.nan
@@ -181,6 +263,13 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
             resid = (y - y_fit) / y_std
             chi2 = float(np.sum(resid ** 2))
 
+            # Adequacy diagnostics. runs_p (primary, scale-robust) tests the
+            # sign order of the residuals along x for systematic structure;
+            # gof_p is the absolute weighted-chi2 lack-of-fit p (reported only).
+            order = np.argsort(x, kind="stable")
+            runs_p = residual_runs_p(resid[order])
+            gof_p = goodness_of_fit_p(chi2, n, k)
+
             w = 1.0 / (y_std ** 2)
             y_wmean = np.average(y, weights=w)
             ss_tot = float(np.sum(w * (y - y_wmean) ** 2))
@@ -210,8 +299,10 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
                 aicc = np.inf
                 cov_matrix = None
 
-            summary_results.append({"model": name, "R2": r2, "chi2": chi2,
-                                    "AIC": aic, "AICc": aicc, "success": True})
+            summary_results.append({"model": name, "k": k, "R2": r2,
+                                    "chi2": chi2, "AIC": aic, "AICc": aicc,
+                                    "gof_p": gof_p, "runs_p": runs_p,
+                                    "success": True})
             param_results[name] = {"params": params, "std_err": std_err,
                                    "cov": cov_matrix, "names": param_names,
                                    "model_func": model_func}
@@ -220,9 +311,10 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
 
             if verbose:
                 print(f"Warning: Model '{name}' failed to fit. Reason: {e}")
-            summary_results.append({"model": name, "R2": np.nan, "chi2": np.nan,
-                                    "AIC": np.nan, "AICc": np.nan,
-                                    "success": False})
+            summary_results.append({"model": name, "k": k, "R2": np.nan,
+                                    "chi2": np.nan, "AIC": np.nan,
+                                    "AICc": np.nan, "gof_p": np.nan,
+                                    "runs_p": np.nan, "success": False})
             param_results[name] = {
                 "params": np.full(k, np.nan), "std_err": np.full(k, np.nan),
                 "cov": None, "names": param_names, "model_func": model_func
@@ -251,6 +343,8 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
         model_name = row['model']
         flat_output[f"AIC_weight|{model_name}"] = row['AIC_weight']
         flat_output[f"R2|{model_name}"] = row['R2']
+        flat_output[f"gof_p|{model_name}"] = row['gof_p']
+        flat_output[f"runs_p|{model_name}"] = row['runs_p']
 
         p_res = param_results[model_name]
         for i, p_name in enumerate(p_res['names']):
@@ -267,16 +361,27 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
         flat_output['status'] = "partial"
 
     if not valid.empty:
-        best_model_row = summary_df.iloc[0]
-        best_model = best_model_row['model']
+        # AICc still ranks the models (summary_df is sorted by it), but the
+        # selected best_model is the simplest *adequate* one; AICc only breaks
+        # ties within a complexity tier. aicc_best_model records what AICc alone
+        # would have chosen, for transparency when the two diverge.
+        aicc_best_model = summary_df.iloc[0]['model']
+        model_records = valid[['model', 'k', 'AICc', 'runs_p']].to_dict('records')
+        best_model, shape_status = select_by_adequacy(model_records,
+                                                      adequacy_alpha)
+
+        best_row = summary_df.set_index('model').loc[best_model]
         flat_output['best_model'] = best_model
-        flat_output['best_model_R2'] = best_model_row['R2']
-        flat_output['best_model_AIC_weight'] = best_model_row['AIC_weight']
+        flat_output['aicc_best_model'] = aicc_best_model
+        flat_output['best_model_R2'] = best_row['R2']
+        flat_output['best_model_AIC_weight'] = best_row['AIC_weight']
+        flat_output['best_model_gof_p'] = best_row['gof_p']
+        flat_output['best_model_runs_p'] = best_row['runs_p']
+        flat_output['shape'] = _SHAPE_BY_MODEL.get(best_model, "other")
+        flat_output['shape_status'] = shape_status
     else:
         best_model = None
-        flat_output['best_model'] = "None"
-        flat_output['best_model_R2'] = np.nan
-        flat_output['best_model_AIC_weight'] = np.nan
+        _set_no_best_model(flat_output)
 
     # Predicted curves. Only successfully-fit models can be predicted, and only
     # the best model unless best_only is False.
