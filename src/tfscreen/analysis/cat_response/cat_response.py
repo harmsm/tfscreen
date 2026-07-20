@@ -172,7 +172,9 @@ def cat_response(df,
         Self-contained per-point best-model assessment at the observed (unique)
         x. Group-key columns followed by ``model``, ``x``, ``y_obs``, ``y_std``,
         ``y_model``, ``y_model_std``, ``z``, ``sig_nonzero``, ``direction``,
-        ``equiv_zero``.
+        ``equiv_zero``. ``response_class`` sits right after ``model`` and carries
+        the curve's class on every point for filtering (the ``model`` name and
+        its fitted values are left intact).
     delta : float
         The equivalence half-width actually used (resolved from ``delta`` /
         ``delta_c`` if not supplied).
@@ -308,11 +310,25 @@ def cat_response(df,
     # Three-valued response class: real / confident_zero / indeterminate.
     results_df["response_class"] = _response_class(results_df, alpha)
 
+    # Surface response_class in the per-point assessment (its own column, so the
+    # model name and its y_model/y_model_std stay intact) for filtering there.
+    if len(assessment_df):
+        assessment_df = assessment_df.merge(
+            results_df[group_cols + ["response_class"]],
+            on=group_cols, how="left",
+        )
+    else:
+        assessment_df["response_class"] = pd.Series(dtype=object)
+
     # Order columns: group keys first.
     other = [c for c in results_df.columns if c not in group_cols]
     results_df = results_df[group_cols + other]
 
     assess_other = [c for c in assessment_df.columns if c not in group_cols]
+    # Keep response_class right next to the model column.
+    if "response_class" in assess_other and "model" in assess_other:
+        assess_other.remove("response_class")
+        assess_other.insert(assess_other.index("model") + 1, "response_class")
     assessment_df = assessment_df[group_cols + assess_other]
 
     return results_df, predictions_df, assessment_df, resolved_delta

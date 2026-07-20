@@ -258,7 +258,29 @@ class TestAssessmentPass:
                 y_std="theta_std", group_by=["titrant_name"])
         assert list(assess.columns[:2]) == ["genotype", "titrant_name"]
         assert "equiv_zero" in assess.columns
+        assert "response_class" in assess.columns
         assert np.isfinite(delta)
+
+    def test_response_class_column_next_to_model(self):
+        # response_class is its own column immediately after model; the model
+        # name and its fitted values are left intact.
+        fit = _capturing_fit([])
+
+        def fake(*a, **k):
+            flat, pred, _ = fit(*a, **k)
+            x = a[0]
+            return flat, pred, _assess(len(np.unique(x)), y_model=0.0,
+                                       y_model_std=5.0)   # huge observed std
+        with patch.object(cat_response_mod, "cat_fit", side_effect=fake):
+            _, _, assess, _ = cat_response(
+                _basic_df(), x_obs="titrant_conc", y_obs="theta",
+                y_std="theta_std", delta=0.5)
+        assert set(assess["response_class"]) == {"indeterminate"}
+        # model name preserved (not overloaded), and y_model left intact.
+        assert set(assess["model"]) == {"flat"}
+        assert "indeterminate" not in set(assess["model"])
+        cols = list(assess.columns)
+        assert cols[cols.index("model") + 1] == "response_class"
 
     def test_delta_defaults_to_median_times_c(self):
         # Fake assessment always reports y_std=0.1 -> median=0.1 -> delta=0.2.
