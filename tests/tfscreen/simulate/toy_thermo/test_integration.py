@@ -29,7 +29,7 @@ def test_cat_response_consumes_titration_df():
     # one row per genotype (wt + 3 singles + 3 doubles)
     assert len(res) == 7
     assert "best_model" in res.columns
-    assert "response_class" in res.columns
+    assert "fittable" in res.columns
 
 
 def test_extract_epistasis_consumes_titration_df():

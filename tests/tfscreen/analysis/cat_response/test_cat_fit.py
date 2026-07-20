@@ -258,6 +258,19 @@ def test_adequacy_mode_escalates_off_flagged_pick():
         assert adeq_out["best_model"] != "flat"
 
 
+def test_biphasic_dip_fits_signed_data_and_can_win():
+    """biphasic_dip's bounds allow signed data, so a genuinely biphasic curve
+    (start +, dip, rise) selects biphasic (regression: baseline>=0 crippled it)."""
+    x = np.logspace(-3, 3, 12)
+    K1, K2 = 0.3, 50.0
+    y = 3.0 / (1.0 + x / K1) + 4.0 * (x / (K2 + x))   # dip-then-rise
+    ys = np.full_like(x, 0.05)
+    flat_output, _, _ = cat_fit(x, y, ys, select_by="shape")
+    assert np.isfinite(flat_output["R2|biphasic_dip"])
+    assert flat_output["R2|biphasic_dip"] > 0.9       # not crippled
+    assert flat_output["shape"] == "biphasic"
+
+
 def test_invalid_select_by_raises():
     x, y, ys = _hill_data()
     with pytest.raises(ValueError, match="select_by"):

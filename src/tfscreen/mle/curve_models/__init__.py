@@ -138,12 +138,15 @@ MODEL_LIBRARY = {
                       "bounds":([-inf,   0, -inf, -inf],
                                 [ inf, inf,  inf,  inf])},
 
-    # parallel competing processes
+    # parallel competing processes. baseline (y at x=0) and amplitude (y at
+    # x=inf) are left unbounded: pinning them >= 0 assumes a non-negative
+    # observable and cripples the fit on signed data (e.g. logit epistasis),
+    # giving a large-negative R2 so it can never be selected.
     "biphasic_dip": {"model_func":model_biphasic_dip,
                      "guess_func":guess_biphasic_dip,
                      "param_names":['baseline', 'amplitude', 'lnK_dip', 'lnK_rise'],
-                     "bounds":([  0,   0, -inf, -inf],
-                               [inf, inf,  inf,  inf])},
+                     "bounds":([-inf, -inf, -inf, -inf],
+                               [ inf,  inf,  inf,  inf])},
 
 }
 

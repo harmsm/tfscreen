@@ -332,3 +332,80 @@ class TestLogitEpistasis:
         # wt (00) clamped to 1 - eps; recompute the expected diff-of-diffs
         expected = (_logit(0.3) - _logit(0.5)) - (_logit(0.8) - _logit(1.0 - eps))
         assert np.isclose(result.iloc[0]["ep_obs"], expected)
+
+
+# --- scale_constant ----------------------------------------------------------
+
+@pytest.fixture
+def add_cycle_df():
+    """One complete cycle with a nonzero additive epistasis (ep = 0.1)."""
+    return pd.DataFrame({
+        "genotype":  ["wt", "A10G", "P25L", "A10G/P25L"],
+        "fitness":   [1.0, 0.8, 0.5, 0.4],   # (0.4-0.5) - (0.8-1.0) = 0.1
+        "error":     [0.05, 0.04, 0.03, 0.06],
+    })
+
+
+class TestScaleConstant:
+
+    def test_default_is_identity(self, add_cycle_df):
+        """scale_constant=1.0 (default) leaves ep_obs/ep_std unchanged."""
+        base = extract_epistasis(add_cycle_df, "fitness", y_std="error",
+                                 scale="add").iloc[0]
+        same = extract_epistasis(add_cycle_df, "fitness", y_std="error",
+                                 scale="add", scale_constant=1.0).iloc[0]
+        assert np.isclose(same["ep_obs"], base["ep_obs"])
+        assert np.isclose(same["ep_std"], base["ep_std"])
+
+    def test_add_scales_obs_and_std(self, add_cycle_df):
+        """add: ep_obs *= sc (signed); ep_std *= abs(sc)."""
+        sc = -2.5
+        base = extract_epistasis(add_cycle_df, "fitness", y_std="error",
+                                 scale="add").iloc[0]
+        scaled = extract_epistasis(add_cycle_df, "fitness", y_std="error",
+                                   scale="add", scale_constant=sc).iloc[0]
+        assert np.isclose(scaled["ep_obs"], sc * base["ep_obs"])
+        assert np.isclose(scaled["ep_std"], abs(sc) * base["ep_std"])
+
+    def test_logit_scales_obs_and_std(self, theta_cycle_df):
+        """logit: ep_obs *= sc (signed); ep_std *= abs(sc)."""
+        sc = -0.6159
+        base = extract_epistasis(theta_cycle_df, "theta", y_std="theta_std",
+                                 scale="logit").iloc[0]
+        scaled = extract_epistasis(theta_cycle_df, "theta", y_std="theta_std",
+                                   scale="logit", scale_constant=sc).iloc[0]
+        assert np.isclose(scaled["ep_obs"], sc * base["ep_obs"])
+        assert np.isclose(scaled["ep_std"], abs(sc) * base["ep_std"])
+
+    def test_logit_energy_equals_minus_RT_logit(self, theta_cycle_df):
+        """The energy use case: ep(sc=-RT) == -RT * ep(logit)."""
+        RT = 0.6159
+        logit_ep = extract_epistasis(theta_cycle_df, "theta",
+                                     scale="logit").iloc[0]["ep_obs"]
+        energy_ep = extract_epistasis(theta_cycle_df, "theta", scale="logit",
+                                      scale_constant=-RT).iloc[0]["ep_obs"]
+        assert np.isclose(energy_ep, -RT * logit_ep)
+
+    def test_scales_without_std(self, add_cycle_df):
+        """scale_constant works when no y_std is provided."""
+        sc = 3.0
+        base = extract_epistasis(add_cycle_df, "fitness",
+                                 scale="add").iloc[0]["ep_obs"]
+        scaled = extract_epistasis(add_cycle_df, "fitness", scale="add",
+                                   scale_constant=sc).iloc[0]["ep_obs"]
+        assert np.isclose(scaled, sc * base)
+        assert "ep_std" not in extract_epistasis(
+            add_cycle_df, "fitness", scale="add", scale_constant=sc).columns
+
+    def test_mult_rejects_nonunit_constant(self, add_cycle_df):
+        """scale_constant cancels on the mult scale -> reject != 1.0."""
+        with pytest.raises(ValueError, match="no effect when scale='mult'"):
+            extract_epistasis(add_cycle_df, "fitness", scale="mult",
+                              scale_constant=2.0)
+
+    def test_mult_allows_unit_constant(self, add_cycle_df):
+        """scale_constant=1.0 is fine with mult (the default path)."""
+        result = extract_epistasis(add_cycle_df, "fitness", scale="mult",
+                                   scale_constant=1.0)
+        # (0.4/0.5) / (0.8/1.0) = 1.0
+        assert np.isclose(result.iloc[0]["ep_obs"], (0.4 / 0.5) / (0.8 / 1.0))

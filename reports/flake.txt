@@ -6,39 +6,35 @@
 ./src/tfscreen/analysis/__init__.py:13:1: W391 blank line at end of file
 ./src/tfscreen/analysis/cat_response/__init__.py:2:77: W291 trailing whitespace
 ./src/tfscreen/analysis/cat_response/__init__.py:3:55: W291 trailing whitespace
-./src/tfscreen/analysis/cat_response/cat_fit.py:42:1: C901 'cat_fit' is too complex (26)
-./src/tfscreen/analysis/cat_response/cat_fit.py:175:72: E231 missing whitespace after ','
-./src/tfscreen/analysis/cat_response/cat_fit.py:175:74: E231 missing whitespace after ','
-./src/tfscreen/analysis/cat_response/cat_fit.py:262:55: E712 comparison to True should be 'if cond is True:' or 'if cond:'
-./src/tfscreen/analysis/cat_response/cat_fit.py:264:57: E712 comparison to False should be 'if cond is False:' or 'if not cond:'
-./src/tfscreen/analysis/cat_response/cat_response.py:60:1: C901 'cat_response' is too complex (15)
-./src/tfscreen/analysis/cat_response/cat_response.py:253:45: E127 continuation line over-indented for visual indent
+./src/tfscreen/analysis/cat_response/cat_fit.py:148:1: E305 expected 2 blank lines after class or function definition, found 1
+./src/tfscreen/analysis/cat_response/cat_fit.py:188:1: C901 'cat_fit' is too complex (28)
+./src/tfscreen/analysis/cat_response/cat_fit.py:365:72: E231 missing whitespace after ','
+./src/tfscreen/analysis/cat_response/cat_fit.py:365:74: E231 missing whitespace after ','
+./src/tfscreen/analysis/cat_response/cat_fit.py:471:55: E712 comparison to True should be 'if cond is True:' or 'if cond:'
+./src/tfscreen/analysis/cat_response/cat_fit.py:473:57: E712 comparison to False should be 'if cond is False:' or 'if not cond:'
+./src/tfscreen/analysis/cat_response/cat_response.py:65:1: C901 'cat_response' is too complex (16)
 ./src/tfscreen/analysis/compare_theta.py:200:1: C901 'compare_theta' is too complex (12)
 ./src/tfscreen/analysis/compare_theta.py:632:1: C901 'aggregate_theta' is too complex (11)
-./src/tfscreen/analysis/extract_epistasis.py:8:1: C901 'mutant_cycle_pivot' is too complex (11)
-./src/tfscreen/analysis/extract_epistasis.py:8:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/analysis/extract_epistasis.py:78:25: E231 missing whitespace after ','
-./src/tfscreen/analysis/extract_epistasis.py:90:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:96:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:100:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:113:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:125:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:129:1: C901 'extract_epistasis' is too complex (15)
-./src/tfscreen/analysis/extract_epistasis.py:133:37: E252 missing whitespace around parameter equals
-./src/tfscreen/analysis/extract_epistasis.py:133:38: E252 missing whitespace around parameter equals
-./src/tfscreen/analysis/extract_epistasis.py:183:36: W291 trailing whitespace
-./src/tfscreen/analysis/extract_epistasis.py:184:27: E231 missing whitespace after ','
-./src/tfscreen/analysis/extract_epistasis.py:187:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:192:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:215:55: E231 missing whitespace after ','
-./src/tfscreen/analysis/extract_epistasis.py:215:60: E231 missing whitespace after ','
-./src/tfscreen/analysis/extract_epistasis.py:215:65: E231 missing whitespace after ','
-./src/tfscreen/analysis/extract_epistasis.py:217:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:223:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/extract_epistasis.py:9:1: C901 'mutant_cycle_pivot' is too complex (11)
+./src/tfscreen/analysis/extract_epistasis.py:9:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/analysis/extract_epistasis.py:79:25: E231 missing whitespace after ','
+./src/tfscreen/analysis/extract_epistasis.py:91:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/extract_epistasis.py:97:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/extract_epistasis.py:101:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/extract_epistasis.py:114:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/extract_epistasis.py:126:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/extract_epistasis.py:130:1: C901 'extract_epistasis' is too complex (19)
+./src/tfscreen/analysis/extract_epistasis.py:134:37: E252 missing whitespace around parameter equals
+./src/tfscreen/analysis/extract_epistasis.py:134:38: E252 missing whitespace around parameter equals
+./src/tfscreen/analysis/extract_epistasis.py:212:27: E231 missing whitespace after ','
+./src/tfscreen/analysis/extract_epistasis.py:212:34: E231 missing whitespace after ','
 ./src/tfscreen/analysis/extract_epistasis.py:230:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:236:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:238:10: W291 trailing whitespace
-./src/tfscreen/analysis/extract_epistasis.py:240:30: W291 trailing whitespace
+./src/tfscreen/analysis/extract_epistasis.py:253:55: E231 missing whitespace after ','
+./src/tfscreen/analysis/extract_epistasis.py:253:60: E231 missing whitespace after ','
+./src/tfscreen/analysis/extract_epistasis.py:253:65: E231 missing whitespace after ','
+./src/tfscreen/analysis/extract_epistasis.py:255:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/extract_epistasis.py:261:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/extract_epistasis.py:268:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/stats_test_suite.py:8:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/stats_test_suite.py:8:31: E231 missing whitespace after ','
 ./src/tfscreen/analysis/stats_test_suite.py:8:42: E231 missing whitespace after ','
@@ -346,11 +342,11 @@
 ./src/tfscreen/mle/curve_models/__init__.py:137:36: E231 missing whitespace after ':'
 ./src/tfscreen/mle/curve_models/__init__.py:138:31: E231 missing whitespace after ':'
 ./src/tfscreen/mle/curve_models/__init__.py:139:34: E201 whitespace after '['
-./src/tfscreen/mle/curve_models/__init__.py:142:34: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:143:34: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:144:35: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:145:30: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:145:33: E201 whitespace after '['
+./src/tfscreen/mle/curve_models/__init__.py:145:34: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:146:34: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:147:35: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:148:30: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:149:33: E201 whitespace after '['
 ./src/tfscreen/mle/curve_models/guesses.py:3:69: W291 trailing whitespace
 ./src/tfscreen/mle/curve_models/guesses.py:13:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/mle/curve_models/guesses.py:27:20: E231 missing whitespace after ','
@@ -4057,7 +4053,8 @@
 ./tests/tfscreen/analysis/test_extract_epistasis.py:220:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/test_extract_epistasis.py:226:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/test_extract_epistasis.py:228:74: E231 missing whitespace after ','
-./tests/tfscreen/analysis/test_extract_epistasis.py:248:28: W292 no newline at end of file
+./tests/tfscreen/analysis/test_extract_epistasis.py:287:9: E731 do not assign a lambda expression, use a def
+./tests/tfscreen/analysis/test_extract_epistasis.py:411:79: W292 no newline at end of file
 ./tests/tfscreen/analysis/test_stats_test_suite.py:6:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/analysis/test_stats_test_suite.py:9:52: E261 at least two spaces before inline comment
 ./tests/tfscreen/analysis/test_stats_test_suite.py:10:1: W293 blank line contains whitespace
@@ -7478,7 +7475,7 @@
 ./tests/tfscreen/util/validation/test_check.py:8:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/validation/test_check.py:26:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/validation/test_check.py:75:70: W292 no newline at end of file
-54    C901 'cat_fit' is too complex (26)
+54    C901 'cat_fit' is too complex (28)
 10    E111 indentation is not a multiple of 4
 6     E114 indentation is not a multiple of 4 (comment)
 6     E116 unexpected indentation (comment)
@@ -7486,7 +7483,7 @@
 1     E122 continuation line missing indentation or outdented
 2     E124 closing bracket does not match visual indentation
 6     E125 continuation line with same indent as next logical line
-214   E127 continuation line over-indented for visual indent
+213   E127 continuation line over-indented for visual indent
 92    E128 continuation line under-indented for visual indent
 3     E131 continuation line unaligned for hanging indent
 46    E201 whitespace after '['
@@ -7496,7 +7493,7 @@
 1839  E221 multiple spaces before operator
 26    E222 multiple spaces after operator
 7     E225 missing whitespace around operator
-1096  E231 missing whitespace after ','
+1097  E231 missing whitespace after ','
 103   E251 unexpected spaces around keyword / parameter equals
 14    E252 missing whitespace around parameter equals
 207   E261 at least two spaces before inline comment
@@ -7506,7 +7503,7 @@
 1     E301 expected 1 blank line, found 0
 767   E302 expected 2 blank lines, found 1
 48    E303 too many blank lines (2)
-19    E305 expected 2 blank lines after class or function definition, found 1
+20    E305 expected 2 blank lines after class or function definition, found 1
 29    E306 expected 1 blank line before a nested definition, found 0
 1     E401 multiple imports on one line
 38    E402 module level import not at top of file
@@ -7515,14 +7512,14 @@
 5     E712 comparison to True should be 'if cond is True:' or 'if cond:'
 2     E713 test for membership should be 'not in'
 1     E722 do not use bare 'except'
-1     E731 do not assign a lambda expression, use a def
+2     E731 do not assign a lambda expression, use a def
 21    E741 ambiguous variable name 'l'
 230   F401 'tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U0_a.thermo.run_model' imported but unused
 11    F541 f-string is missing placeholders
 4     F811 redefinition of unused 'np' from line 1
 40    F841 local variable 'e' is assigned to but never used
-590   W291 trailing whitespace
+587   W291 trailing whitespace
 81    W292 no newline at end of file
-1500  W293 blank line contains whitespace
+1498  W293 blank line contains whitespace
 28    W391 blank line at end of file
-7480
+7477

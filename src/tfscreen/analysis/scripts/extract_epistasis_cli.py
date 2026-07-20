@@ -96,6 +96,7 @@ def extract_epistasis(data_file,
                       y_std=None,
                       group_by=None,
                       scale="add",
+                      scale_constant=1.0,
                       keep_extra=False,
                       logit_eps=1e-9):
     """
@@ -133,6 +134,13 @@ def extract_epistasis(data_file,
         Epistatic scale. "add" (default): (Y11 - Y10) - (Y01 - Y00).
         "mult": (Y11 / Y10) / (Y01 / Y00). "logit": additive epistasis of
         logit(Y) — requires an observable in (0, 1), such as theta/occupancy.
+    scale_constant : float, optional
+        Constant applied to the transformed observable before epistasis is
+        taken; multiplies ep_obs (and abs() multiplies ep_std). Default 1.0.
+        Mainly a unit conversion for scale="logit": since logit(theta) = -dG/RT,
+        passing -RT (e.g. -0.6159 for kcal/mol at 310.15 K) reports epistasis as
+        an interaction free energy. The caller owns the sign, temperature, and
+        gas constant/units. Has no effect on (and is rejected for) scale="mult".
     keep_extra : bool, optional
         If True, retain all columns from the input CSV in the output. If False
         (default), keep only the identifier columns and the calculated epistasis
@@ -167,6 +175,7 @@ def extract_epistasis(data_file,
                                 y_std=y_std,
                                 group_by=group_by,
                                 scale=scale,
+                                scale_constant=scale_constant,
                                 keep_extra=keep_extra,
                                 logit_eps=logit_eps)
 

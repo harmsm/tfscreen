@@ -133,6 +133,7 @@ def extract_epistasis(
     y_std: Optional[str] = None,
     group_by: List[str] | str | None=None,
     scale: str = "add",
+    scale_constant: float = 1.0,
     keep_extra: bool = False,
     logit_eps: float = 1e-9,
 ) -> pd.DataFrame:
@@ -170,6 +171,20 @@ def extract_epistasis(
           L = logit(Y). Requires an observable in (0, 1) (e.g. theta/occupancy);
           removes a saturating measurement scale so genuine (within-state)
           interactions are not masked by the nonlinearity of a bounded readout.
+    scale_constant : float, default 1.0
+        A constant applied to the transformed observable *before* the epistasis
+        difference-of-differences is taken. Because epistasis on the "add" and
+        "logit" scales is a linear operator, this simply multiplies the reported
+        ``ep_obs`` by ``scale_constant`` and ``ep_std`` by ``abs(scale_constant)``
+        -- but computing it up front keeps the two consistent (no error-prone
+        post-hoc rescaling). The main use is unit conversion: for a two-state
+        binding equilibrium, ``logit(theta) = -dG/RT``, so ``scale_constant``
+        carries the observable onto a free-energy scale. Setting it to ``-RT``
+        (e.g. ``-0.6159`` for kcal/mol at 310.15 K) reports ``ep_obs`` as an
+        interaction free energy; the caller owns the sign convention, the
+        temperature, and the choice of gas constant / units. This is a no-op for
+        the "mult" scale (the constant cancels in the ratio-of-ratios), so a
+        value other than 1.0 with ``scale="mult"`` is an error.
     keep_extra : bool, default False
         If True, all columns from the original DataFrame are kept in the
         output. If False, only key identifiers and the calculated epistasis
@@ -189,7 +204,8 @@ def extract_epistasis(
     Raises
     ------
     ValueError
-        If `scale` is not one of "add" or "mult".
+        If `scale` is not one of "add", "mult", or "logit", or if
+        `scale_constant` is not 1.0 when `scale="mult"` (where it has no effect).
     """
 
     # Determine the epistatic scale
@@ -197,7 +213,16 @@ def extract_epistasis(
         err = ("scale should be 'add' (additive), 'mult' (multiplicative), or "
                "'logit' (additive on the logit scale)\n")
         raise ValueError(err)
-    
+
+    # scale_constant multiplies a per-point transform before the (linear)
+    # difference-of-differences. "mult" epistasis is a ratio-of-ratios, so the
+    # constant cancels exactly -- reject it rather than silently ignore it.
+    if scale == "mult" and scale_constant != 1.0:
+        err = ("scale_constant has no effect when scale='mult' (it cancels in "
+               "the ratio-of-ratios). Use scale='add' or 'logit', or leave "
+               "scale_constant at its default of 1.0.\n")
+        raise ValueError(err)
+
     # Figure out what columns to extract
     extract_columns = [y_obs]
     if y_std is not None:
@@ -241,14 +266,18 @@ def extract_epistasis(
         std_01 = cycles[f"01_{y_std}"]
         std_11 = cycles[f"11_{y_std}"]
     
-    # Additive scale
+    # Additive scale. scale_constant scales the (identity) transform, so it
+    # factors straight out of the linear difference-of-differences.
     if scale == "add":
-        ep_obs = (obs_11 - obs_10) - (obs_01 - obs_00)
+        ep_obs = scale_constant * ((obs_11 - obs_10) - (obs_01 - obs_00))
         if y_std is not None:
-            ep_std = np.sqrt(std_11**2 + std_10**2 + std_01**2 + std_00**2)
+            ep_std = np.abs(scale_constant) * np.sqrt(
+                std_11**2 + std_10**2 + std_01**2 + std_00**2)
 
     # Logit scale: additive epistasis of logit(Y). Removes a saturating [0, 1]
     # measurement scale so within-state interactions are not masked by it.
+    # scale_constant multiplies the logit transform up front (e.g. -RT to put
+    # ep_obs on a free-energy scale, since logit(theta) = -dG/RT).
     elif scale == "logit":
         raw = [obs_00, obs_10, obs_01, obs_11]
 
@@ -263,12 +292,14 @@ def extract_epistasis(
             )
 
         clip = [o.clip(logit_eps, 1.0 - logit_eps) for o in raw]
-        t_00, t_10, t_01, t_11 = (np.log(c / (1.0 - c)) for c in clip)
+        t_00, t_10, t_01, t_11 = (scale_constant * np.log(c / (1.0 - c))
+                                  for c in clip)
         ep_obs = (t_11 - t_10) - (t_01 - t_00)
         if y_std is not None:
-            # delta method: d/dy logit(y) = 1 / (y (1 - y))
+            # delta method: d/dy [sc * logit(y)] = sc / (y (1 - y))
             raw_std = [std_00, std_10, std_01, std_11]
-            t_std = [s / (c * (1.0 - c)) for s, c in zip(raw_std, clip)]
+            t_std = [np.abs(scale_constant) * s / (c * (1.0 - c))
+                     for s, c in zip(raw_std, clip)]
             ep_std = np.sqrt(sum(s**2 for s in t_std))
 
     # Multiplicative scale

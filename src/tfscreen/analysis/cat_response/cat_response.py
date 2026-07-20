@@ -10,7 +10,8 @@ the analysis further.
 After fitting, a post-hoc pass grades each group's curve against zero on the
 observed data (a per-point ``sig_nonzero`` test and the per-curve data-based
 ``nonzero`` test), plus a ROPE-based equivalence rollup and a Benjamini-Hochberg
-FDR correction across curves (see :mod:`cat_assess`), yielding ``response_class``.
+FDR correction across curves (see :mod:`cat_assess`), yielding the ``fittable``
+bool (distinguishable from zero) plus ``all_equiv_zero``.
 """
 
 from concurrent.futures import ProcessPoolExecutor
@@ -156,7 +157,9 @@ def cat_response(df,
         (data-based ``nonzero_chi2`` / ``nonzero_df`` / ``nonzero_p`` /
         ``nonzero_q`` which drive the zero call, reported-only model
         ``omnibus_W`` / ``omnibus_df`` / ``omnibus_p`` / ``omnibus_q``,
-        ``n_nonzero``, ``any_nonzero``, ``all_equiv_zero``, ``response_class``).
+        ``n_nonzero``, ``any_nonzero``, ``all_equiv_zero``, and ``fittable``
+        (bool: distinguishable from zero; with ``all_equiv_zero`` it recovers the
+        old real / confident_zero / indeterminate three-way)).
         ``best_model`` follows ``select_by`` (default lowest-AICc; see
         :func:`cat_fit`), ``shape`` is its qualitative form
         (flat/linear/step/peak/dip/biphasic), and ``shape_status`` is a
@@ -172,7 +175,7 @@ def cat_response(df,
         ``best_only`` is False.
     assessment_df : pandas.DataFrame
         Self-contained per-point best-model assessment at the observed (unique)
-        x. Group-key columns, then ``model``, ``response_class`` (carried on
+        x. Group-key columns, then ``model``, ``fittable`` (bool, carried on
         every point for filtering; ``model`` name + fitted values left intact),
         ``x``, ``y_obs``, ``y_std``, ``y_model``, ``y_model_std``, ``z``
         (= y_obs/y_std), ``sig_nonzero``.
@@ -294,7 +297,7 @@ def cat_response(df,
     else:
         results_df["all_equiv_zero"] = pd.Series(dtype=bool)
 
-    # FDR across curves. nonzero_q (data-based) drives response_class; omnibus_q
+    # FDR across curves. nonzero_q (data-based) drives fittable; omnibus_q
     # (model-based) is kept for reference only.
     results_df["nonzero_q"] = benjamini_hochberg(
         results_df.get("nonzero_p", pd.Series(np.nan, index=results_df.index))
@@ -303,60 +306,45 @@ def cat_response(df,
         results_df.get("omnibus_p", pd.Series(np.nan, index=results_df.index))
     )
 
-    # Three-valued response class: real / confident_zero / indeterminate.
-    results_df["response_class"] = _response_class(results_df, alpha)
+    # fittable (bool): is the curve distinguishable from zero (worth
+    # interpreting its shape)? The confident_zero-vs-indeterminate split among
+    # the non-fittable curves is recoverable from all_equiv_zero.
+    results_df["fittable"] = _fittable(results_df, alpha)
 
-    # Surface response_class in the per-point assessment (its own column, so the
-    # model name and its y_model/y_model_std stay intact) for filtering there.
+    # Surface fittable in the per-point assessment (its own column, so the model
+    # name and its y_model/y_model_std stay intact) for filtering there.
     if len(assessment_df):
         assessment_df = assessment_df.merge(
-            results_df[group_cols + ["response_class"]],
+            results_df[group_cols + ["fittable"]],
             on=group_cols, how="left",
         )
     else:
-        assessment_df["response_class"] = pd.Series(dtype=object)
+        assessment_df["fittable"] = pd.Series(dtype=bool)
 
     # Order columns: group keys first.
     other = [c for c in results_df.columns if c not in group_cols]
     results_df = results_df[group_cols + other]
 
     assess_other = [c for c in assessment_df.columns if c not in group_cols]
-    # Keep response_class right next to the model column.
-    if "response_class" in assess_other and "model" in assess_other:
-        assess_other.remove("response_class")
-        assess_other.insert(assess_other.index("model") + 1, "response_class")
+    # Keep fittable right next to the model column.
+    if "fittable" in assess_other and "model" in assess_other:
+        assess_other.remove("fittable")
+        assess_other.insert(assess_other.index("model") + 1, "fittable")
     assessment_df = assessment_df[group_cols + assess_other]
 
     return results_df, predictions_df, assessment_df, resolved_rope
 
 
-def _response_class(results_df, alpha):
+def _fittable(results_df, alpha):
     """
-    Assign each curve to real / confident_zero / indeterminate (data-driven).
+    Bool per curve: is it distinguishable from zero (worth interpreting shape)?
 
-    "Distinguishable from zero" is checked first, on the observed error bars
-    (``nonzero_q``, the BH-adjusted data-based portmanteau test), so a real
-    signal wins even if it happens to fall inside the equivalence region. When a
-    curve is *not* distinguishable from zero, the ROPE separates the two
-    non-signal cases: tight error bars -> confidently flat at zero; wide error
-    bars -> too noisy to tell.
-
-    - ``real``: ``nonzero_q < alpha`` -- the observed points collectively clear
-      the zero line.
-    - ``confident_zero``: not real, and every observed point's CI lies within
-      [-rope_cutoff, rope_cutoff] (confidently flat at zero).
-    - ``indeterminate``: not real and not tightly bounded (too noisy to call).
+    ``True`` iff the observed points collectively clear the zero line
+    (``nonzero_q < alpha``, the BH-adjusted data-based portmanteau test on the
+    observed error bars). ``False`` = not distinguishable from zero. The two
+    ``False`` cases -- "confidently flat at zero" vs "too noisy to tell" -- are
+    recoverable from the ``all_equiv_zero`` column (True = confidently flat).
     """
     q = results_df.get("nonzero_q",
                        pd.Series(np.nan, index=results_df.index)).to_numpy()
-    all_equiv = results_df.get(
-        "all_equiv_zero", pd.Series(False, index=results_df.index)
-    ).fillna(False).to_numpy(dtype=bool)
-
-    out = np.full(len(results_df), "indeterminate", dtype=object)
-    # Not distinguishable from zero but tightly bounded -> confident_zero.
-    out[all_equiv] = "confident_zero"
-    # Distinguishable from zero wins (real-first precedence).
-    real = np.isfinite(q) & (q < alpha)
-    out[real] = "real"
-    return out
+    return np.isfinite(q) & (q < alpha)

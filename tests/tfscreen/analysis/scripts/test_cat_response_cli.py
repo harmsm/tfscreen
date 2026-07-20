@@ -74,12 +74,12 @@ class TestOutputFiles:
 
         assess = pd.read_csv(f"{out_prefix}_assessment.csv")
         assert "genotype" in assess.columns
-        assert {"model", "response_class", "x", "y_obs", "y_std", "y_model",
+        assert {"model", "fittable", "x", "y_obs", "y_std", "y_model",
                 "y_model_std", "z", "sig_nonzero"}.issubset(assess.columns)
         assert "equiv_zero" not in assess.columns   # dropped
         # Rollups landed on the main table.
         assert {"nonzero_p", "nonzero_q", "omnibus_p", "omnibus_q", "n_nonzero",
-                "response_class"}.issubset(main.columns)
+                "fittable"}.issubset(main.columns)
 
     def test_write_all_predictions_flag(self, tmp_path):
         data = _write(tmp_path, _theta_df())

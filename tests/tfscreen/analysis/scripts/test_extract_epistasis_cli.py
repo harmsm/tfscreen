@@ -119,6 +119,27 @@ class TestValidation:
                               out_prefix=str(tmp_path / "out"))
 
 
+class TestScaleConstant:
+
+    def test_scale_constant_scales_add_output(self, tmp_path):
+        data = _write_csv(tmp_path, _single_cycle_rows())
+        out_prefix = str(tmp_path / "out")
+
+        extract_epistasis(data, y_obs="y", y_std="y_err",
+                          scale_constant=-2.0, out_prefix=out_prefix)
+
+        out = pd.read_csv(f"{out_prefix}.csv")
+        # base add ep = 1.0, std = 0.2 -> scaled by -2.0 / abs(-2.0)
+        assert out["ep_obs"].iloc[0] == pytest.approx(-2.0)
+        assert out["ep_std"].iloc[0] == pytest.approx(0.4)
+
+    def test_mult_scale_constant_raises(self, tmp_path):
+        data = _write_csv(tmp_path, _single_cycle_rows())
+        with pytest.raises(ValueError, match="no effect when scale='mult'"):
+            extract_epistasis(data, y_obs="y", scale="mult",
+                              scale_constant=2.0, out_prefix=str(tmp_path / "out"))
+
+
 class TestQuantileDefaults:
 
     def _quantile_cycle_rows(self):
@@ -228,6 +249,7 @@ class TestArgWiring:
                 "--y_std", "y_err",
                 "--group_by", "condition",
                 "--scale", "add",
+                "--scale_constant", "-2.0",
                 "--keep_extra"]
         monkeypatch.setattr(sys, "argv", argv)
 
@@ -238,3 +260,5 @@ class TestArgWiring:
         assert "ep_std" in out.columns
         # keep_extra retained the original observable column.
         assert "y" in out.columns
+        # --scale_constant parsed as a float and applied (base ep = 1.0).
+        assert out["ep_obs"].iloc[0] == pytest.approx(-2.0)

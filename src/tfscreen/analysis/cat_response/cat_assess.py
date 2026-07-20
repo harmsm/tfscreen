@@ -106,7 +106,7 @@ def assess_best_model(model_func, params, cov_matrix, x, y_obs, y_std,
         "sig_nonzero": sig_nonzero,
     }
 
-    # Data-based portmanteau chi-square vs the zero line (drives response_class).
+    # Data-based portmanteau chi-square vs the zero line (drives fittable).
     nonzero_chi2, nonzero_df, nonzero_p = _nonzero_chi2(y_obs, y_std)
     # Model-based omnibus on the fitted curve (reported only).
     omnibus_W, omnibus_df, omnibus_p = _omnibus_chi2(y_model, y_cov)

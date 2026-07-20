@@ -78,13 +78,13 @@ def cat_response(data_file,
     each group the best model is selected per --select_by (default the 'shape'
     classifier), then graded against zero on the observed data (per-point
     sig_nonzero + a per-curve data-based nonzero test with a Benjamini-Hochberg
-    FDR correction) to assign response_class.
+    FDR correction) to assign the 'fittable' bool.
 
     Writes:
       - {out_prefix}.csv             one row per group; all models' weights and
                                      parameter estimates, plus the assessment
                                      rollups (nonzero_p/q, omnibus_p/q,
-                                     n_nonzero, all_equiv_zero, response_class).
+                                     n_nonzero, all_equiv_zero, fittable).
       - {out_prefix}_{model}.csv     one file per model; that model's parameter
                                      table and per-group fit statistics.
       - {out_prefix}_predictions.csv best-model predicted curves (all models

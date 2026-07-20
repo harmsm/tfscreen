@@ -272,7 +272,7 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
         (unique) x, with columns ``model``, ``x``, ``y_obs`` (observed value),
         ``y_std`` (observed input error), ``y_model`` (fitted curve),
         ``y_model_std`` (propagated fit error), ``z`` (= y_obs/y_std), and
-        ``sig_nonzero``. Empty if no model could be fit. (``response_class`` is
+        ``sig_nonzero``. Empty if no model could be fit. (``fittable`` is
         added downstream in ``cat_response``.)
     """
 

@@ -249,19 +249,20 @@ class TestPredictions:
 
 class TestAssessmentPass:
 
-    def test_assessment_tagged_and_has_response_class(self):
+    def test_assessment_tagged_and_has_fittable(self):
         with patch.object(cat_response_mod, "cat_fit",
                           side_effect=_capturing_fit([])):
             _, _, assess, rope = cat_response(
                 _basic_df(), x_obs="titrant_conc", y_obs="theta",
                 y_std="theta_std", group_by=["titrant_name"])
         assert list(assess.columns[:2]) == ["genotype", "titrant_name"]
-        assert "response_class" in assess.columns
+        assert "fittable" in assess.columns
+        assert assess["fittable"].dtype == bool
         assert "equiv_zero" not in assess.columns   # dropped from the output
         assert np.isfinite(rope)
 
-    def test_response_class_column_next_to_model(self):
-        # response_class is its own column immediately after model; the model
+    def test_fittable_column_next_to_model(self):
+        # fittable is its own bool column immediately after model; the model
         # name and its fitted values are left intact.
         fit = _capturing_fit([])
 
@@ -274,12 +275,11 @@ class TestAssessmentPass:
             _, _, assess, _ = cat_response(
                 _basic_df(), x_obs="titrant_conc", y_obs="theta",
                 y_std="theta_std", rope_cutoff=0.5)
-        assert set(assess["response_class"]) == {"indeterminate"}
-        # model name preserved (not overloaded), and y_model left intact.
+        # not distinguishable from zero -> fittable False; model name preserved.
+        assert set(assess["fittable"]) == {False}
         assert set(assess["model"]) == {"flat"}
-        assert "indeterminate" not in set(assess["model"])
         cols = list(assess.columns)
-        assert cols[cols.index("model") + 1] == "response_class"
+        assert cols[cols.index("model") + 1] == "fittable"
 
     def test_rope_defaults_to_median_times_multiplier(self):
         # Fake assessment always reports y_std=0.1 -> median=0.1 -> rope=0.2.
@@ -298,9 +298,10 @@ class TestAssessmentPass:
                 y_std="theta_std", rope_cutoff=0.75)
         assert rope == 0.75
 
-    def test_response_class_confident_zero(self):
-        # Observed y=0 with tiny error -> CI well inside delta -> all_equiv_zero,
-        # and nonzero_p high (0.5) -> not distinguishable -> confident_zero.
+    def test_not_fittable_but_confident_zero(self):
+        # Observed y=0 with tiny error -> all_equiv_zero True; nonzero_p high
+        # (0.5) -> not distinguishable -> fittable False (recoverable as the old
+        # "confident_zero" via all_equiv_zero=True).
         fit = _capturing_fit([])
 
         def fake(*a, **k):
@@ -312,11 +313,12 @@ class TestAssessmentPass:
             results, _, _, _ = cat_response(
                 _basic_df(), x_obs="titrant_conc", y_obs="theta",
                 y_std="theta_std", rope_cutoff=0.5)
-        assert set(results["response_class"]) == {"confident_zero"}
+        assert set(results["fittable"]) == {False}
+        assert set(results["all_equiv_zero"]) == {True}
 
-    def test_real_wins_over_equivalence(self):
-        # Real-first precedence: distinguishable from zero (nonzero_p tiny) wins
-        # even when every observed point sits inside the ROPE.
+    def test_fittable_true_even_inside_rope(self):
+        # Distinguishable from zero (nonzero_p tiny) -> fittable True, even when
+        # every observed point also sits inside the ROPE.
         fit = _capturing_fit([])
 
         def fake(*a, **k):
@@ -329,11 +331,11 @@ class TestAssessmentPass:
             results, _, _, _ = cat_response(
                 _basic_df(), x_obs="titrant_conc", y_obs="theta",
                 y_std="theta_std", rope_cutoff=0.5)
-        assert set(results["response_class"]) == {"real"}
+        assert set(results["fittable"]) == {True}
 
-    def test_indeterminate_when_noisy_and_not_equiv(self):
-        # Not distinguishable from zero (nonzero_p high) and error bars too wide
-        # for the ROPE -> indeterminate (can't tell).
+    def test_not_fittable_and_not_equiv_is_indeterminate(self):
+        # Not distinguishable from zero and error bars too wide for the ROPE ->
+        # fittable False, all_equiv_zero False (the old "indeterminate").
         fit = _capturing_fit([])
 
         def fake(*a, **k):
@@ -345,15 +347,16 @@ class TestAssessmentPass:
             results, _, _, _ = cat_response(
                 _basic_df(), x_obs="titrant_conc", y_obs="theta",
                 y_std="theta_std", rope_cutoff=0.5)
-        assert set(results["response_class"]) == {"indeterminate"}
+        assert set(results["fittable"]) == {False}
+        assert set(results["all_equiv_zero"]) == {False}
 
-    def test_response_class_real_from_low_q(self):
+    def test_fittable_from_low_q(self):
         with patch.object(cat_response_mod, "cat_fit",
                           side_effect=_capturing_fit([], nonzero_p=1e-8)):
             results, _, _, _ = cat_response(
                 _basic_df(), x_obs="titrant_conc", y_obs="theta",
                 y_std="theta_std", rope_cutoff=1e-6)
-        assert set(results["response_class"]) == {"real"}
+        assert set(results["fittable"]) == {True}
         assert (results["nonzero_q"] < 0.05).all()
 
 
