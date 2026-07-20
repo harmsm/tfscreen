@@ -63,11 +63,11 @@ def cat_response(data_file,
                  group_by=None,
                  models=None,
                  alpha=0.05,
-                 select_by="aicc",
+                 select_by="shape",
                  adequacy_alpha=0.05,
                  curvy_cutoff=0.1,
-                 delta=None,
-                 delta_c=2.0,
+                 rope_cutoff=None,
+                 rope_multiplier=2.0,
                  write_all_predictions=False,
                  num_workers=-1):
     """
@@ -75,15 +75,16 @@ def cat_response(data_file,
 
     Reads a long-form CSV and fits one or more response models to every group.
     Groups are defined by the 'genotype' column plus any --group_by columns. For
-    each group the best-fitting model is selected by AICc weight, then graded
-    against zero (per-point sig_nonzero / equiv_zero tests + a per-curve omnibus
-    chi-square with a Benjamini-Hochberg FDR correction).
+    each group the best model is selected per --select_by (default the 'shape'
+    classifier), then graded against zero on the observed data (per-point
+    sig_nonzero + a per-curve data-based nonzero test with a Benjamini-Hochberg
+    FDR correction) to assign response_class.
 
     Writes:
       - {out_prefix}.csv             one row per group; all models' weights and
                                      parameter estimates, plus the assessment
-                                     rollups (omnibus_p/q, n_nonzero,
-                                     all_equiv_zero, response_class).
+                                     rollups (nonzero_p/q, omnibus_p/q,
+                                     n_nonzero, all_equiv_zero, response_class).
       - {out_prefix}_{model}.csv     one file per model; that model's parameter
                                      table and per-group fit statistics.
       - {out_prefix}_predictions.csv best-model predicted curves (all models
@@ -116,16 +117,17 @@ def cat_response(data_file,
         bell_dip_log). Pass explicit names to reach any model in MODEL_LIBRARY,
         including the raw-x and biphasic variants.
     alpha : float, optional
-        Significance level for the per-point tests and the omnibus q-value
-        threshold used to call a curve 'real'. Default 0.05.
-    select_by : {"aicc", "adequacy", "shape"}, optional
-        Model-selection strategy. ``"aicc"`` (default) selects the lowest-AICc
-        model. ``"adequacy"`` keeps the AICc pick unless flagged, then escalates
-        to a no-simpler adequate model (never demotes). ``"shape"`` is the
-        liberal shape classifier: it gates flat-vs-curvy on the flat fit's
-        residual autocorrelation and names the curvy shape by best R2 (defaults
-        to the physical ``SHAPE_MODELS`` vocabulary -- no linear, includes
-        biphasic). Default ``"aicc"``.
+        Significance level with two roles: the per-point ``sig_nonzero`` test,
+        and the ``nonzero_q`` threshold used to call a curve 'real'. Default
+        0.05.
+    select_by : {"shape", "aicc", "adequacy"}, optional
+        Model-selection strategy. ``"shape"`` (default) is the liberal shape
+        classifier: it gates flat-vs-curvy on the flat fit's residual
+        autocorrelation and names the curvy shape by best R2 (defaults to the
+        physical ``SHAPE_MODELS`` vocabulary -- no linear, includes biphasic).
+        ``"aicc"`` selects the lowest-AICc model. ``"adequacy"`` keeps the AICc
+        pick unless flagged, then escalates to a no-simpler adequate model
+        (never demotes).
     adequacy_alpha : float, optional
         Runs-test threshold for the ``shape_status`` diagnostic and, when
         ``select_by="adequacy"``, for escalation. Default 0.05.
@@ -133,12 +135,13 @@ def cat_response(data_file,
         Only used when ``select_by="shape"``: flat-vs-curvy gate on the flat
         fit's residual-autocorrelation p-value (larger = more curves called
         curvy). Sweep it and visually inspect. Default 0.1.
-    delta : float or None, optional
-        Region-of-practical-equivalence half-width around zero. If None
-        (default), derived globally as ``delta_c * median(predicted y_std)``.
-        Pass a value for a fixed, biologically-meaningful region.
-    delta_c : float, optional
-        Multiplier used when ``delta`` is auto-derived. Default 2.0.
+    rope_cutoff : float or None, optional
+        ROPE half-width separating ``confident_zero`` from ``indeterminate``. If
+        None (default), auto-derived as ``rope_multiplier * median(observed
+        y_std)`` -- a detectability threshold that rarely fires ``confident_zero``;
+        pass a fixed, biologically-meaningful value to make it fire.
+    rope_multiplier : float, optional
+        Multiplier used when ``rope_cutoff`` is auto-derived. Default 2.0.
     write_all_predictions : bool, optional
         If True, write every fit model's predicted curve rather than only the
         best model's. Default False.
@@ -179,7 +182,7 @@ def cat_response(data_file,
     print(f"  Fitting groups defined by {group_cols} "
           f"with {num_workers} worker(s)...", flush=True)
 
-    results_df, predictions_df, assessment_df, resolved_delta = _cat_response(
+    results_df, predictions_df, assessment_df, resolved_rope = _cat_response(
         df,
         x_obs=x_obs,
         y_obs=y_obs,
@@ -191,12 +194,12 @@ def cat_response(data_file,
         select_by=select_by,
         adequacy_alpha=adequacy_alpha,
         curvy_cutoff=curvy_cutoff,
-        delta=delta,
-        delta_c=delta_c,
+        rope_cutoff=rope_cutoff,
+        rope_multiplier=rope_multiplier,
         num_workers=num_workers,
     )
 
-    print(f"  Using equivalence half-width delta = {resolved_delta:.6g}",
+    print(f"  Using ROPE half-width rope_cutoff = {resolved_rope:.6g}",
           flush=True)
 
     # Main table: flat, one row per group, with clean column names.
@@ -228,7 +231,7 @@ def main():
                                        "y_std": str,
                                        "group_by": str,
                                        "models": str,
-                                       "delta": float},
+                                       "rope_cutoff": float},
                      manual_arg_nargs={"group_by": "+",
                                        "models": "+"})
 

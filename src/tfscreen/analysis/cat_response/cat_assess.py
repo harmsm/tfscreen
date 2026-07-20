@@ -19,11 +19,12 @@ Two per-curve summaries drive downstream filtering:
 
 - **equivalence test** (:func:`classify_equiv`): a point is ``equiv_zero`` when
   its whole confidence interval falls inside a region of practical equivalence
-  ``[-delta, delta]`` centered on zero. This is what separates "confidently
-  flat" from "too noisy to tell" — a plain significance test cannot. ``delta``
-  defaults to a multiple of the median predicted standard error
-  (:func:`compute_delta`), i.e. a *detectability* threshold; pass an explicit
-  ``delta`` for a fixed biologically-meaningful region instead.
+  ``[-rope_cutoff, rope_cutoff]`` centered on zero. This is what separates
+  "confidently flat" from "too noisy to tell" (drives ``confident_zero``). The
+  auto ``rope_cutoff`` (:func:`compute_rope`, ``rope_multiplier * median(y_std)``)
+  is a *detectability* threshold and rarely lets a whole CI fit inside it -- pass
+  an explicit ``rope_cutoff`` (a biologically-meaningful region) to make
+  ``confident_zero`` fire.
 """
 
 import numpy as np
@@ -74,7 +75,7 @@ def assess_best_model(model_func, params, cov_matrix, x, y_obs, y_std,
     per_point : dict
         Arrays of length ``len(x)``: ``x``, ``y_model`` (fitted curve value),
         ``y_model_std`` (propagated fit uncertainty), ``z`` (= y_obs/y_std),
-        ``sig_nonzero`` (bool), ``direction`` (-1/0/+1).
+        ``sig_nonzero`` (bool). (``direction`` is derivable as ``sign(y_obs)``.)
     rollup : dict
         Scalars: data-based ``nonzero_chi2``/``nonzero_df``/``nonzero_p``,
         model-based ``omnibus_W``/``omnibus_df``/``omnibus_p`` (reported-only),
@@ -96,7 +97,6 @@ def assess_best_model(model_func, params, cov_matrix, x, y_obs, y_std,
     with np.errstate(divide="ignore", invalid="ignore"):
         z = y_obs / y_std
     sig_nonzero = np.isfinite(z) & (np.abs(z) > z_crit)
-    direction = np.where(sig_nonzero, np.sign(y_obs), 0).astype(int)
 
     per_point = {
         "x": x,
@@ -104,7 +104,6 @@ def assess_best_model(model_func, params, cov_matrix, x, y_obs, y_std,
         "y_model_std": y_model_std,
         "z": z,
         "sig_nonzero": sig_nonzero,
-        "direction": direction,
     }
 
     # Data-based portmanteau chi-square vs the zero line (drives response_class).
@@ -292,44 +291,46 @@ def goodness_of_fit_p(chi2_w, n, k):
     return float(chi2.sf(chi2_w, df))
 
 
-def compute_delta(pred_std, delta_c=2.0):
+def compute_rope(pred_std, rope_multiplier=2.0):
     """
-    Default region-of-practical-equivalence half-width from prediction error.
+    Auto region-of-practical-equivalence (ROPE) half-width from the error bars.
 
-    ``delta = delta_c * median(pred_std)`` over all finite predicted standard
+    ``rope_cutoff = rope_multiplier * median(pred_std)`` over all finite standard
     errors. This ties "practically zero" to the typical *detectability* of the
-    experiment rather than to any biological effect size. Returns NaN if no
-    finite values are present.
+    experiment rather than to any biological effect size -- and because it scales
+    with the noise it rarely lets a whole CI fit inside, so ``confident_zero``
+    seldom fires under the auto value; pass an explicit ``rope_cutoff`` for a
+    biologically-meaningful region. Returns NaN if no finite values are present.
 
     Parameters
     ----------
     pred_std : array-like
-        Predicted per-point standard errors, pooled across all groups.
-    delta_c : float, optional
+        Per-point standard errors, pooled across all groups.
+    rope_multiplier : float, optional
         Multiplier on the median. Default 2.0.
     """
     pred_std = np.asarray(pred_std, dtype=float)
     finite = pred_std[np.isfinite(pred_std)]
     if finite.size == 0:
         return np.nan
-    return float(delta_c * np.median(finite))
+    return float(rope_multiplier * np.median(finite))
 
 
-def classify_equiv(y_est, y_std, delta, alpha=0.05):
+def classify_equiv(y_est, y_std, rope_cutoff, alpha=0.05):
     """
-    Flag points whose whole CI lies inside the equivalence region [-delta, delta].
+    Flag points whose whole CI lies inside the ROPE [-rope_cutoff, rope_cutoff].
 
-    A point is ``equiv_zero`` when ``|y_est| + z_crit * y_std <= delta`` — i.e.
-    the two-sided ``(1 - alpha)`` confidence interval is entirely within the
-    region of practical equivalence around zero. NaN std or NaN/invalid delta
-    yield False.
+    A point is ``equiv_zero`` when ``|y_est| + z_crit * y_std <= rope_cutoff`` --
+    i.e. the two-sided ``(1 - alpha)`` confidence interval is entirely within the
+    region of practical equivalence around zero. NaN std or NaN/invalid
+    ``rope_cutoff`` yield False.
 
     Parameters
     ----------
     y_est, y_std : array-like
         Per-point estimate and standard error.
-    delta : float
-        Equivalence half-width (see :func:`compute_delta`).
+    rope_cutoff : float
+        ROPE half-width (see :func:`compute_rope`).
     alpha : float, optional
         Matches the confidence level used elsewhere. Default 0.05.
 
@@ -339,13 +340,13 @@ def classify_equiv(y_est, y_std, delta, alpha=0.05):
     """
     y_est = np.asarray(y_est, dtype=float)
     y_std = np.asarray(y_std, dtype=float)
-    if not np.isfinite(delta):
+    if not np.isfinite(rope_cutoff):
         return np.zeros(y_est.shape, dtype=bool)
 
     z_crit = norm.ppf(1.0 - alpha / 2.0)
     ci_upper = np.abs(y_est) + z_crit * y_std
     with np.errstate(invalid="ignore"):
-        equiv = np.isfinite(ci_upper) & (ci_upper <= delta)
+        equiv = np.isfinite(ci_upper) & (ci_upper <= rope_cutoff)
     return equiv
 
 

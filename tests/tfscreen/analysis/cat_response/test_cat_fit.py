@@ -219,12 +219,12 @@ def _curved_hetero_data():
     return x, bump + rng.normal(0, ystd), ystd
 
 
-def test_aicc_default_does_not_collapse_to_flat():
-    """Regression: default select_by='aicc' keeps the AICc-confident curve even
-    when the runs test is too weak to flag flat (the reported bug)."""
+def test_aicc_mode_does_not_collapse_to_flat():
+    """Regression: select_by='aicc' keeps the AICc-confident curve even when the
+    runs test is too weak to flag flat (the reported bug)."""
     x, y, ys = _curved_hetero_data()
     models = ["flat", "linear_log", "inducer", "bell_peak_log", "bell_dip_log"]
-    flat_output, _, _ = cat_fit(x, y, ys, models_to_run=models)  # default aicc
+    flat_output, _, _ = cat_fit(x, y, ys, models_to_run=models, select_by="aicc")
     assert flat_output["best_model"] != "flat"
     assert flat_output["best_model"] == flat_output["aicc_best_model"]
 
@@ -312,7 +312,7 @@ def test_assessment_rollup_and_frame():
         assert key in flat_output
     assert list(assess_df.columns) == ["model", "x", "y_obs", "y_std",
                                        "y_model", "y_model_std", "z",
-                                       "sig_nonzero", "direction"]
+                                       "sig_nonzero"]
     # One row per unique observed x.
     assert len(assess_df) == len(np.unique(x))
     # Model name recorded; observed data carried through alongside the fit.
@@ -380,16 +380,25 @@ def test_sanitize_filters_nonfinite():
     assert len(assess_df) == 4
 
 
-def test_default_models_are_the_curated_set():
-    """With models_to_run=None, cat_fit fits exactly DEFAULT_MODELS (not all)."""
+def test_default_models_shape_mode_is_shape_set():
+    """Default select_by='shape' with models_to_run=None fits SHAPE_MODELS."""
     x, y, y_std = _hill_data()
-    flat, _, _ = cat_fit(x, y, y_std)  # models_to_run defaults to None
+    flat, _, _ = cat_fit(x, y, y_std)  # defaults: select_by='shape', models=None
+    fit_models = {k.split("|", 1)[1] for k in flat if k.startswith("AIC_weight|")}
+    assert fit_models == set(SHAPE_MODELS)
+    # No linear; biphasic included.
+    assert "linear_log" not in fit_models
+    assert "biphasic_peak" in fit_models
+
+
+def test_default_models_aicc_mode_is_default_set():
+    """select_by='aicc' with models_to_run=None fits DEFAULT_MODELS."""
+    x, y, y_std = _hill_data()
+    flat, _, _ = cat_fit(x, y, y_std, select_by="aicc")
     fit_models = {k.split("|", 1)[1] for k in flat if k.startswith("AIC_weight|")}
     assert fit_models == set(DEFAULT_MODELS)
-    # The log-conc variants are in; the raw-x duplicates and biphasic are out.
-    assert "bell_peak_log" in fit_models
+    assert "linear_log" in fit_models
     assert "biphasic_peak" not in fit_models
-    assert "bell_peak" not in fit_models
 
 
 # --- degenerate-covariance guard ---------------------------------------------

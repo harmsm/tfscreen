@@ -2,14 +2,15 @@
 Generic per-group categorical-response engine.
 
 Fits a family of candidate models to a ``y_obs`` vs ``x_obs`` curve independently
-within each group and selects the best by AICc weight. Grouping mirrors
-``extract_epistasis``: the ``genotype`` column is always the primary axis, with
-any additional ``group_by`` columns partitioning the analysis further.
+within each group and selects the best per ``select_by`` (default the ``shape``
+classifier). Grouping mirrors ``extract_epistasis``: the ``genotype`` column is
+always the primary axis, with any additional ``group_by`` columns partitioning
+the analysis further.
 
-After fitting, a post-hoc pass grades each group's best curve against zero: a
-per-point ``sig_nonzero`` test, an ``equiv_zero`` (region-of-practical-
-equivalence) test using a global ``delta``, a per-curve omnibus chi-square test,
-and a Benjamini-Hochberg FDR correction across curves (see :mod:`cat_assess`).
+After fitting, a post-hoc pass grades each group's curve against zero on the
+observed data (a per-point ``sig_nonzero`` test and the per-curve data-based
+``nonzero`` test), plus a ROPE-based equivalence rollup and a Benjamini-Hochberg
+FDR correction across curves (see :mod:`cat_assess`), yielding ``response_class``.
 """
 
 from concurrent.futures import ProcessPoolExecutor
@@ -19,7 +20,7 @@ import pandas as pd
 import tqdm
 
 from .cat_fit import cat_fit
-from .cat_assess import compute_delta, classify_equiv, benjamini_hochberg
+from .cat_assess import compute_rope, classify_equiv, benjamini_hochberg
 from tfscreen.mle.curve_models import MODEL_LIBRARY, DEFAULT_MODELS, SHAPE_MODELS
 from tfscreen.util import resolve_workers
 from tfscreen.util.numerical import xfill
@@ -68,11 +69,11 @@ def cat_response(df,
                  models_to_run=None,
                  best_only=True,
                  alpha=0.05,
-                 select_by="aicc",
+                 select_by="shape",
                  adequacy_alpha=0.05,
                  curvy_cutoff=0.1,
-                 delta=None,
-                 delta_c=2.0,
+                 rope_cutoff=None,
+                 rope_multiplier=2.0,
                  num_workers=1,
                  progress=True,
                  verbose=False):
@@ -108,17 +109,16 @@ def cat_response(df,
         If True (default), the returned prediction frame holds only each group's
         best-model curve. If False, it holds every fit model's curve.
     alpha : float, optional
-        Two-sided significance level for the per-point ``sig_nonzero`` test and
-        the confidence level of the ``equiv_zero`` interval. Also the threshold
-        applied to omnibus q-values when assigning ``response_class``. Default
-        0.05.
-    select_by : {"aicc", "adequacy", "shape"}, optional
-        Model-selection strategy (see :func:`cat_fit`). ``"aicc"`` (default)
-        selects the lowest-AICc model. ``"adequacy"`` keeps the AICc pick unless
-        flagged, then escalates to a no-simpler adequate model (never demotes).
-        ``"shape"`` is the liberal shape classifier (structure-gated flat-vs-
-        curvy, then best-R2 curvy shape); with ``models_to_run=None`` it defaults
-        to the physical ``SHAPE_MODELS`` vocabulary. Default ``"aicc"``.
+        Significance level with two roles: the per-point ``sig_nonzero`` test /
+        equivalence CI level, **and** the threshold on ``nonzero_q`` that calls a
+        curve ``real``. Default 0.05.
+    select_by : {"shape", "aicc", "adequacy"}, optional
+        Model-selection strategy (see :func:`cat_fit`). ``"shape"`` (default) is
+        the liberal shape classifier (structure-gated flat-vs-curvy, then best-R2
+        curvy shape); with ``models_to_run=None`` it defaults to the physical
+        ``SHAPE_MODELS`` vocabulary. ``"aicc"`` selects the lowest-AICc model.
+        ``"adequacy"`` keeps the AICc pick unless flagged, then escalates to a
+        no-simpler adequate model (never demotes).
     adequacy_alpha : float, optional
         Runs-test threshold used for the ``shape_status`` diagnostic and, when
         ``select_by="adequacy"``, for escalation. Default 0.05.
@@ -126,14 +126,16 @@ def cat_response(df,
         Only used when ``select_by="shape"``: the flat-vs-curvy gate on the flat
         fit's residual-autocorrelation p-value (larger = more liberal). Sweep it
         and inspect. Default 0.1.
-    delta : float or None, optional
-        Region-of-practical-equivalence half-width around zero. If None
-        (default), computed globally as ``delta_c * median(predicted y_std)``
-        over all points (a detectability threshold). Pass a value for a fixed,
-        biologically-meaningful region.
-    delta_c : float, optional
-        Multiplier used when ``delta`` is derived from the median predicted
-        standard error. Default 2.0.
+    rope_cutoff : float or None, optional
+        Region-of-practical-equivalence (ROPE) half-width around zero,
+        separating ``confident_zero`` from ``indeterminate``. If None (default),
+        auto-derived as ``rope_multiplier * median(observed y_std)`` -- a
+        detectability threshold that rarely lets a whole CI fit inside, so
+        ``confident_zero`` seldom fires; pass an explicit value (a biologically-
+        meaningful region) to make it fire.
+    rope_multiplier : float, optional
+        Multiplier used when ``rope_cutoff`` is auto-derived from the median
+        observed standard error. Default 2.0.
     num_workers : int, optional
         Number of worker processes. ``1`` runs serially in-process; ``-1`` uses
         ``os.cpu_count() - 1``; ``N`` uses ``N`` processes. Default 1.
@@ -170,14 +172,13 @@ def cat_response(df,
         ``best_only`` is False.
     assessment_df : pandas.DataFrame
         Self-contained per-point best-model assessment at the observed (unique)
-        x. Group-key columns followed by ``model``, ``x``, ``y_obs``, ``y_std``,
-        ``y_model``, ``y_model_std``, ``z``, ``sig_nonzero``, ``direction``,
-        ``equiv_zero``. ``response_class`` sits right after ``model`` and carries
-        the curve's class on every point for filtering (the ``model`` name and
-        its fitted values are left intact).
-    delta : float
-        The equivalence half-width actually used (resolved from ``delta`` /
-        ``delta_c`` if not supplied).
+        x. Group-key columns, then ``model``, ``response_class`` (carried on
+        every point for filtering; ``model`` name + fitted values left intact),
+        ``x``, ``y_obs``, ``y_std``, ``y_model``, ``y_model_std``, ``z``
+        (= y_obs/y_std), ``sig_nonzero``.
+    rope_cutoff : float
+        The ROPE half-width actually used (resolved from ``rope_cutoff`` /
+        ``rope_multiplier`` if not supplied).
     """
     if models_to_run is None:
         # The "shape" classifier defaults to the physical shape vocabulary
@@ -227,8 +228,8 @@ def cat_response(df,
     n_total = len(work_items)
     if n_total == 0:
         empty = pd.DataFrame(columns=group_cols)
-        resolved_delta = delta if delta is not None else np.nan
-        return empty.copy(), empty.copy(), empty.copy(), resolved_delta
+        resolved_rope = rope_cutoff if rope_cutoff is not None else np.nan
+        return empty.copy(), empty.copy(), empty.copy(), resolved_rope
 
     workers = resolve_workers(num_workers)
     chunks = list(_iter_chunks(work_items, _CHUNK_SIZE))
@@ -266,31 +267,26 @@ def cat_response(df,
 
     assessment_df = pd.concat(assess_list, ignore_index=True)
 
-    # --- Post-hoc pass: global delta, equivalence, FDR, response class -------
-    # The zero axis is data-driven: delta and the equivalence test read the
+    # --- Post-hoc pass: ROPE, equivalence, FDR, response class ---------------
+    # The zero axis is data-driven: the ROPE and equivalence test read the
     # observed y_obs/y_std, not the (overconfident) fitted-curve error.
-    resolved_delta = delta
-    if resolved_delta is None:
-        resolved_delta = compute_delta(
-            assessment_df.get("y_std", []), delta_c
-        )
+    resolved_rope = rope_cutoff
+    if resolved_rope is None:
+        resolved_rope = compute_rope(assessment_df.get("y_std", []),
+                                     rope_multiplier)
 
+    # Per-curve all_equiv_zero rollup (a curve is "confidently flat at zero" only
+    # if *every* observed point's CI sits inside the ROPE). Computed internally;
+    # the per-point equiv flag is not written to the assessment output.
     if len(assessment_df):
-        assessment_df["equiv_zero"] = classify_equiv(
+        equiv = classify_equiv(
             assessment_df["y_obs"].to_numpy(dtype=float),
             assessment_df["y_std"].to_numpy(dtype=float),
-            resolved_delta,
-            alpha=alpha,
+            resolved_rope, alpha=alpha,
         )
-    else:
-        assessment_df["equiv_zero"] = pd.Series(dtype=bool)
-
-    # Per-group all_equiv_zero rollup (a curve is "confidently flat at zero"
-    # only if *every* point's CI sits inside the equivalence region).
-    if len(assessment_df):
-        all_equiv = (assessment_df.groupby(group_cols, sort=False,
-                                            observed=True)["equiv_zero"]
-                     .all())
+        tmp = assessment_df[group_cols].copy()
+        tmp["_equiv"] = equiv
+        all_equiv = tmp.groupby(group_cols, sort=False, observed=True)["_equiv"].all()
         results_df = results_df.merge(
             all_equiv.rename("all_equiv_zero").reset_index(),
             on=group_cols, how="left"
@@ -331,7 +327,7 @@ def cat_response(df,
         assess_other.insert(assess_other.index("model") + 1, "response_class")
     assessment_df = assessment_df[group_cols + assess_other]
 
-    return results_df, predictions_df, assessment_df, resolved_delta
+    return results_df, predictions_df, assessment_df, resolved_rope
 
 
 def _response_class(results_df, alpha):
@@ -348,7 +344,7 @@ def _response_class(results_df, alpha):
     - ``real``: ``nonzero_q < alpha`` -- the observed points collectively clear
       the zero line.
     - ``confident_zero``: not real, and every observed point's CI lies within
-      [-delta, delta] (confidently flat at zero).
+      [-rope_cutoff, rope_cutoff] (confidently flat at zero).
     - ``indeterminate``: not real and not tightly bounded (too noisy to call).
     """
     q = results_df.get("nonzero_q",

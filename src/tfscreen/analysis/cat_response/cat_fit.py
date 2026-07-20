@@ -145,8 +145,7 @@ def select_by_adequacy(models, adequacy_alpha):
     return aicc_best
 
 # Keys returned by assess_best_model's per-point dict (the model curve + tests).
-_PER_POINT_COLS = ["x", "y_model", "y_model_std", "z", "sig_nonzero",
-                   "direction"]
+_PER_POINT_COLS = ["x", "y_model", "y_model_std", "z", "sig_nonzero"]
 
 # Columns of the per-point assessment frame, in order. Kept as a module
 # constant so empty-result paths emit an identically-shaped (empty) frame. This
@@ -154,10 +153,10 @@ _PER_POINT_COLS = ["x", "y_model", "y_model_std", "z", "sig_nonzero",
 # (``y_obs`` and its input error ``y_std``), the fitted curve at the observed x
 # (``y_model`` and its propagated error ``y_model_std``), and the zero tests.
 _ASSESS_COLS = ["model", "x", "y_obs", "y_std", "y_model", "y_model_std",
-                "z", "sig_nonzero", "direction"]
+                "z", "sig_nonzero"]
 
 # Non-float dtypes for the empty-frame path.
-_ASSESS_DTYPES = {"model": object, "sig_nonzero": bool, "direction": int}
+_ASSESS_DTYPES = {"model": object, "sig_nonzero": bool}
 
 # Rollup keys added to flat_output by the post-hoc assessment. Listed here so
 # the insufficient-data / all-fail paths can emit them as NaN.
@@ -187,7 +186,7 @@ def _empty_assess_df():
 
 
 def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
-            alpha=0.05, select_by="aicc", adequacy_alpha=0.05,
+            alpha=0.05, select_by="shape", adequacy_alpha=0.05,
             curvy_cutoff=0.1, verbose=False):
     """
     Fits multiple models to a single dataset and returns a flat dictionary
@@ -233,14 +232,16 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
         emitted in the returned prediction frame. If False, every successfully
         fit model's curve is emitted (the larger, "all models" output).
     alpha : float, optional
-        Two-sided significance level for the per-point ``sig_nonzero`` test.
-        Default 0.05.
-    select_by : {"aicc", "adequacy", "shape"}, optional
-        Model-selection strategy. ``"aicc"`` (default) picks the lowest-AICc
-        model. ``"adequacy"`` starts from the AICc pick and escalates to a
-        no-simpler adequate model only if flagged (never demotes). ``"shape"``
-        is the liberal shape classifier (structure-gated flat-vs-curvy, then
-        best-R2 curvy shape). Default ``"aicc"``.
+        Two-sided significance level for the per-point ``sig_nonzero`` test
+        (``|z| > z_crit(alpha)``). The same ``alpha`` is the threshold applied to
+        ``nonzero_q`` in ``cat_response`` when calling a curve ``real``. Default
+        0.05.
+    select_by : {"shape", "aicc", "adequacy"}, optional
+        Model-selection strategy. ``"shape"`` (default) is the liberal shape
+        classifier (structure-gated flat-vs-curvy, then best-R2 curvy shape;
+        defaults ``models_to_run`` to ``SHAPE_MODELS``). ``"aicc"`` picks the
+        lowest-AICc model. ``"adequacy"`` starts from the AICc pick and escalates
+        to a no-simpler adequate model only if flagged (never demotes).
     adequacy_alpha : float, optional
         Runs-test threshold used for the ``shape_status`` diagnostic and (when
         ``select_by="adequacy"``) for escalation. ``runs_p`` below this flags
@@ -270,9 +271,9 @@ def cat_fit(x, y, y_std, x_pred=None, models_to_run=None, best_only=True,
         Self-contained per-point assessment of the best model at the observed
         (unique) x, with columns ``model``, ``x``, ``y_obs`` (observed value),
         ``y_std`` (observed input error), ``y_model`` (fitted curve),
-        ``y_model_std`` (propagated fit error), ``z``, ``sig_nonzero``,
-        ``direction``. Empty if no model could be fit. (``equiv_zero`` is added
-        downstream in ``cat_response`` once the global delta is known.)
+        ``y_model_std`` (propagated fit error), ``z`` (= y_obs/y_std), and
+        ``sig_nonzero``. Empty if no model could be fit. (``response_class`` is
+        added downstream in ``cat_response``.)
     """
 
     if select_by not in ("aicc", "adequacy", "shape"):

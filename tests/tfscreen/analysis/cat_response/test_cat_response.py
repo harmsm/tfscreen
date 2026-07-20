@@ -56,14 +56,13 @@ def _assess(n=2, y_model=0.0, y_model_std=0.1):
         "y_model_std": np.full(n, y_model_std, dtype=float),
         "z": np.full(n, y_model / y_model_std if y_model_std else 0.0),
         "sig_nonzero": np.zeros(n, dtype=bool),
-        "direction": np.zeros(n, dtype=int),
     })
 
 
 def _capturing_fit(store, **fit_kwargs):
     """A fake cat_fit that records the (x, y, y_std) it was handed per call."""
     def fake_fit(x, y, y_std, x_pred=None, models_to_run=None,
-                 best_only=True, alpha=0.05, select_by="aicc",
+                 best_only=True, alpha=0.05, select_by="shape",
                  adequacy_alpha=0.05, curvy_cutoff=0.1, verbose=False):
         store.append({"x": list(x), "y": list(y), "y_std": list(y_std),
                       "best_only": best_only, "alpha": alpha,
@@ -180,13 +179,13 @@ class TestColumnSelection:
             cat_response(df, x_obs="titrant_conc", y_obs="theta",
                          y_std="theta_std", select_by="adequacy")
         assert all(call["select_by"] == "adequacy" for call in store)
-        # Default is the robust AICc selection.
+        # Default is the shape classifier.
         store.clear()
         with patch.object(cat_response_mod, "cat_fit",
                           side_effect=_capturing_fit(store)):
             cat_response(df, x_obs="titrant_conc", y_obs="theta",
                          y_std="theta_std")
-        assert all(call["select_by"] == "aicc" for call in store)
+        assert all(call["select_by"] == "shape" for call in store)
 
     def test_curvy_cutoff_threaded_to_fitter(self):
         store = []
@@ -250,16 +249,16 @@ class TestPredictions:
 
 class TestAssessmentPass:
 
-    def test_assessment_tagged_and_has_equiv_zero(self):
+    def test_assessment_tagged_and_has_response_class(self):
         with patch.object(cat_response_mod, "cat_fit",
                           side_effect=_capturing_fit([])):
-            _, _, assess, delta = cat_response(
+            _, _, assess, rope = cat_response(
                 _basic_df(), x_obs="titrant_conc", y_obs="theta",
                 y_std="theta_std", group_by=["titrant_name"])
         assert list(assess.columns[:2]) == ["genotype", "titrant_name"]
-        assert "equiv_zero" in assess.columns
         assert "response_class" in assess.columns
-        assert np.isfinite(delta)
+        assert "equiv_zero" not in assess.columns   # dropped from the output
+        assert np.isfinite(rope)
 
     def test_response_class_column_next_to_model(self):
         # response_class is its own column immediately after model; the model
@@ -274,7 +273,7 @@ class TestAssessmentPass:
         with patch.object(cat_response_mod, "cat_fit", side_effect=fake):
             _, _, assess, _ = cat_response(
                 _basic_df(), x_obs="titrant_conc", y_obs="theta",
-                y_std="theta_std", delta=0.5)
+                y_std="theta_std", rope_cutoff=0.5)
         assert set(assess["response_class"]) == {"indeterminate"}
         # model name preserved (not overloaded), and y_model left intact.
         assert set(assess["model"]) == {"flat"}
@@ -282,22 +281,22 @@ class TestAssessmentPass:
         cols = list(assess.columns)
         assert cols[cols.index("model") + 1] == "response_class"
 
-    def test_delta_defaults_to_median_times_c(self):
-        # Fake assessment always reports y_std=0.1 -> median=0.1 -> delta=0.2.
+    def test_rope_defaults_to_median_times_multiplier(self):
+        # Fake assessment always reports y_std=0.1 -> median=0.1 -> rope=0.2.
         with patch.object(cat_response_mod, "cat_fit",
                           side_effect=_capturing_fit([])):
-            _, _, _, delta = cat_response(
+            _, _, _, rope = cat_response(
                 _basic_df(), x_obs="titrant_conc", y_obs="theta",
-                y_std="theta_std", delta_c=2.0)
-        assert delta == pytest.approx(0.2)
+                y_std="theta_std", rope_multiplier=2.0)
+        assert rope == pytest.approx(0.2)
 
-    def test_explicit_delta_is_used(self):
+    def test_explicit_rope_cutoff_is_used(self):
         with patch.object(cat_response_mod, "cat_fit",
                           side_effect=_capturing_fit([])):
-            _, _, _, delta = cat_response(
+            _, _, _, rope = cat_response(
                 _basic_df(), x_obs="titrant_conc", y_obs="theta",
-                y_std="theta_std", delta=0.75)
-        assert delta == 0.75
+                y_std="theta_std", rope_cutoff=0.75)
+        assert rope == 0.75
 
     def test_response_class_confident_zero(self):
         # Observed y=0 with tiny error -> CI well inside delta -> all_equiv_zero,
@@ -312,7 +311,7 @@ class TestAssessmentPass:
         with patch.object(cat_response_mod, "cat_fit", side_effect=fake):
             results, _, _, _ = cat_response(
                 _basic_df(), x_obs="titrant_conc", y_obs="theta",
-                y_std="theta_std", delta=0.5)
+                y_std="theta_std", rope_cutoff=0.5)
         assert set(results["response_class"]) == {"confident_zero"}
 
     def test_real_wins_over_equivalence(self):
@@ -329,7 +328,7 @@ class TestAssessmentPass:
         with patch.object(cat_response_mod, "cat_fit", side_effect=fake):
             results, _, _, _ = cat_response(
                 _basic_df(), x_obs="titrant_conc", y_obs="theta",
-                y_std="theta_std", delta=0.5)
+                y_std="theta_std", rope_cutoff=0.5)
         assert set(results["response_class"]) == {"real"}
 
     def test_indeterminate_when_noisy_and_not_equiv(self):
@@ -345,7 +344,7 @@ class TestAssessmentPass:
         with patch.object(cat_response_mod, "cat_fit", side_effect=fake):
             results, _, _, _ = cat_response(
                 _basic_df(), x_obs="titrant_conc", y_obs="theta",
-                y_std="theta_std", delta=0.5)
+                y_std="theta_std", rope_cutoff=0.5)
         assert set(results["response_class"]) == {"indeterminate"}
 
     def test_response_class_real_from_low_q(self):
@@ -353,7 +352,7 @@ class TestAssessmentPass:
                           side_effect=_capturing_fit([], nonzero_p=1e-8)):
             results, _, _, _ = cat_response(
                 _basic_df(), x_obs="titrant_conc", y_obs="theta",
-                y_std="theta_std", delta=1e-6)
+                y_std="theta_std", rope_cutoff=1e-6)
         assert set(results["response_class"]) == {"real"}
         assert (results["nonzero_q"] < 0.05).all()
 

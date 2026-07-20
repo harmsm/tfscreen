@@ -8,7 +8,7 @@ from scipy.stats import chi2, norm
 
 from tfscreen.analysis.cat_response.cat_assess import (
     assess_best_model,
-    compute_delta,
+    compute_rope,
     classify_equiv,
     benjamini_hochberg,
     residual_runs_p,
@@ -158,7 +158,6 @@ class TestOmnibus:
         # Per-point z-test now reads the observed data.
         assert per_point["z"] == pytest.approx(y_obs / y_std)
         assert np.all(per_point["sig_nonzero"])
-        assert np.all(per_point["direction"] == 1)
         assert rollup["n_nonzero"] == 3
         assert rollup["any_nonzero"] is True
         assert rollup["nonzero_df"] == 3          # data test: one df per point
@@ -201,46 +200,46 @@ class TestOmnibus:
 class TestClassifyEquiv:
 
     def test_ci_inside_region_is_equiv(self):
-        # |y| + z*se = 0.1 + 1.96*0.01 ~ 0.12 < delta=0.5 -> equiv.
-        equiv = classify_equiv(np.array([0.1]), np.array([0.01]), delta=0.5)
+        # |y| + z*se = 0.1 + 1.96*0.01 ~ 0.12 < rope=0.5 -> equiv.
+        equiv = classify_equiv(np.array([0.1]), np.array([0.01]), rope_cutoff=0.5)
         assert equiv[0]
 
     def test_ci_straddles_boundary_not_equiv(self):
         # 0.4 + 1.96*0.1 ~ 0.596 > 0.5 -> not equiv (too wide / too far).
-        equiv = classify_equiv(np.array([0.4]), np.array([0.1]), delta=0.5)
+        equiv = classify_equiv(np.array([0.4]), np.array([0.1]), rope_cutoff=0.5)
         assert not equiv[0]
 
     def test_far_from_zero_not_equiv(self):
-        equiv = classify_equiv(np.array([5.0]), np.array([0.01]), delta=0.5)
+        equiv = classify_equiv(np.array([5.0]), np.array([0.01]), rope_cutoff=0.5)
         assert not equiv[0]
 
-    def test_nan_std_and_bad_delta(self):
+    def test_nan_std_and_bad_rope(self):
         assert not classify_equiv(np.array([0.0]), np.array([np.nan]),
-                                  delta=0.5)[0]
+                                  rope_cutoff=0.5)[0]
         assert not classify_equiv(np.array([0.0]), np.array([0.01]),
-                                  delta=np.nan)[0]
+                                  rope_cutoff=np.nan)[0]
 
     def test_boundary_uses_alpha(self):
         # Larger alpha -> narrower CI -> easier to be equivalent.
-        y, s, d = np.array([0.3]), np.array([0.1]), 0.5
+        y, s, r = np.array([0.3]), np.array([0.1]), 0.5
         # alpha=0.05 -> 0.3+1.96*0.1=0.496 < 0.5 -> equiv (just).
-        assert classify_equiv(y, s, d, alpha=0.05)[0]
+        assert classify_equiv(y, s, r, alpha=0.05)[0]
 
 
-# --- compute_delta -----------------------------------------------------------
+# --- compute_rope ------------------------------------------------------------
 
-class TestComputeDelta:
+class TestComputeRope:
 
-    def test_median_times_c(self):
+    def test_median_times_multiplier(self):
         stds = [0.1, 0.2, 0.3, np.nan]
         # median of finite [0.1,0.2,0.3] = 0.2 -> *2 = 0.4
-        assert compute_delta(stds, delta_c=2.0) == pytest.approx(0.4)
+        assert compute_rope(stds, rope_multiplier=2.0) == pytest.approx(0.4)
 
     def test_all_nan_returns_nan(self):
-        assert np.isnan(compute_delta([np.nan, np.nan]))
+        assert np.isnan(compute_rope([np.nan, np.nan]))
 
     def test_empty_returns_nan(self):
-        assert np.isnan(compute_delta([]))
+        assert np.isnan(compute_rope([]))
 
 
 # --- benjamini-hochberg ------------------------------------------------------
