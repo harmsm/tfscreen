@@ -13,8 +13,8 @@
 ./src/tfscreen/analysis/cat_response/cat_fit.py:471:55: E712 comparison to True should be 'if cond is True:' or 'if cond:'
 ./src/tfscreen/analysis/cat_response/cat_fit.py:473:57: E712 comparison to False should be 'if cond is False:' or 'if not cond:'
 ./src/tfscreen/analysis/cat_response/cat_response.py:65:1: C901 'cat_response' is too complex (16)
-./src/tfscreen/analysis/compare_theta.py:200:1: C901 'compare_theta' is too complex (12)
-./src/tfscreen/analysis/compare_theta.py:632:1: C901 'aggregate_theta' is too complex (11)
+./src/tfscreen/analysis/compare_feature.py:205:1: C901 'compare_feature' is too complex (12)
+./src/tfscreen/analysis/compare_feature.py:639:1: C901 'aggregate_feature' is too complex (11)
 ./src/tfscreen/analysis/extract_epistasis.py:9:1: C901 'mutant_cycle_pivot' is too complex (11)
 ./src/tfscreen/analysis/extract_epistasis.py:9:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/extract_epistasis.py:79:25: E231 missing whitespace after ','
@@ -23,18 +23,18 @@
 ./src/tfscreen/analysis/extract_epistasis.py:101:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/extract_epistasis.py:114:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/extract_epistasis.py:126:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:130:1: C901 'extract_epistasis' is too complex (19)
-./src/tfscreen/analysis/extract_epistasis.py:134:37: E252 missing whitespace around parameter equals
-./src/tfscreen/analysis/extract_epistasis.py:134:38: E252 missing whitespace around parameter equals
-./src/tfscreen/analysis/extract_epistasis.py:212:27: E231 missing whitespace after ','
-./src/tfscreen/analysis/extract_epistasis.py:212:34: E231 missing whitespace after ','
-./src/tfscreen/analysis/extract_epistasis.py:230:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:253:55: E231 missing whitespace after ','
-./src/tfscreen/analysis/extract_epistasis.py:253:60: E231 missing whitespace after ','
-./src/tfscreen/analysis/extract_epistasis.py:253:65: E231 missing whitespace after ','
-./src/tfscreen/analysis/extract_epistasis.py:255:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:261:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:268:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/extract_epistasis.py:203:1: C901 'extract_epistasis' is too complex (16)
+./src/tfscreen/analysis/extract_epistasis.py:207:37: E252 missing whitespace around parameter equals
+./src/tfscreen/analysis/extract_epistasis.py:207:38: E252 missing whitespace around parameter equals
+./src/tfscreen/analysis/extract_epistasis.py:285:27: E231 missing whitespace after ','
+./src/tfscreen/analysis/extract_epistasis.py:285:34: E231 missing whitespace after ','
+./src/tfscreen/analysis/extract_epistasis.py:303:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/extract_epistasis.py:326:55: E231 missing whitespace after ','
+./src/tfscreen/analysis/extract_epistasis.py:326:60: E231 missing whitespace after ','
+./src/tfscreen/analysis/extract_epistasis.py:326:65: E231 missing whitespace after ','
+./src/tfscreen/analysis/extract_epistasis.py:328:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/extract_epistasis.py:334:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/extract_epistasis.py:341:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/stats_test_suite.py:8:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/stats_test_suite.py:8:31: E231 missing whitespace after ','
 ./src/tfscreen/analysis/stats_test_suite.py:8:42: E231 missing whitespace after ','
@@ -1417,14 +1417,14 @@
 ./src/tfscreen/tfmodel/analysis/extraction.py:103:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/tfmodel/analysis/extraction.py:196:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/tfmodel/analysis/extraction.py:274:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/tfmodel/analysis/extraction.py:275:29: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/analysis/extraction.py:276:29: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/analysis/extraction.py:331:16: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/analysis/extraction.py:383:1: C901 'extract_growth_predictions' is too complex (11)
-./src/tfscreen/tfmodel/analysis/extraction.py:482:32: E127 continuation line over-indented for visual indent
-./src/tfscreen/tfmodel/analysis/extraction.py:501:16: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/analysis/extraction.py:503:16: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/analysis/extraction.py:504:16: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/analysis/extraction.py:462:29: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/analysis/extraction.py:463:29: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/analysis/extraction.py:518:16: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/analysis/extraction.py:570:1: C901 'extract_growth_predictions' is too complex (11)
+./src/tfscreen/tfmodel/analysis/extraction.py:669:32: E127 continuation line over-indented for visual indent
+./src/tfscreen/tfmodel/analysis/extraction.py:688:16: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/analysis/extraction.py:690:16: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/analysis/extraction.py:691:16: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/analysis/predict_unmeasured.py:41:15: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/analysis/predict_unmeasured.py:45:12: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/analysis/predict_unmeasured.py:99:16: E221 multiple spaces before operator

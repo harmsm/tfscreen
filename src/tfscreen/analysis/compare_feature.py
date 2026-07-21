@@ -1,14 +1,19 @@
 """
-Cross-run stability grading for per-genotype theta estimates.
+Cross-run stability grading for any per-genotype quantile-summarized feature.
 
-Given N independent theta estimates of the same library (e.g. runs that differ
-only by random seed, or k-fold dropouts of the binding training data), this
-module scores every genotype on two independent axes and assigns a graded
-stability tier:
+Given N independent estimates of the same library (e.g. runs that differ only by
+random seed, or k-fold dropouts of the training data), this module scores every
+genotype on two independent axes and assigns a graded stability tier. The
+feature being compared is whatever quantile ladder the input tables carry
+(``q<level>`` columns) -- theta, growth rate, epistasis, etc. -- so the tool is
+feature-agnostic; only the point estimate (``q0.5``) and a 1-sigma half-width
+matter to the math.
 
-  Axis 1 -- reproducibility: how much the point estimates (``q0.5``) of theta
-            disagree across runs, measured in native theta units. This is the
-            axis the tier (A/B/C/D) is graded on.
+  Axis 1 -- reproducibility: how much the point estimates (``q0.5``) of the
+            feature disagree across runs, measured in the feature's native
+            units. This is the axis the tier (A/B/C/D) is graded on, so its
+            cutlines (``sd_tier_edges``) must be chosen to match the feature's
+            scale -- the defaults are tuned for theta (an occupancy in [0, 1]).
 
   Axis 2 -- self-consistency: whether the run-to-run disagreement is explained
             by each run's own reported uncertainty (derived from the stored
@@ -16,8 +21,8 @@ stability tier:
             *not* folded into the tier -- it distinguishes "honestly uncertain"
             genotypes from the dangerous "overconfident and inconsistent" ones.
 
-Agreement is assessed in absolute theta units (no registration/rescaling of
-runs). Two comparison modes are supported:
+Agreement is assessed in the feature's absolute units (no registration/rescaling
+of runs). Two comparison modes are supported:
 
   * mean mode (``reference_df is None``): symmetric. The target is the cross-run
     mean; every run is treated equally. Intended for same-data/different-seed
@@ -28,7 +33,7 @@ runs). Two comparison modes are supported:
     it. Intended for k-fold dropout runs measured against a full-data fit.
 
 The public API operates on already-loaded DataFrames so it is trivially
-testable; the ``tfs-compare-theta`` CLI wraps it with file IO.
+testable; the ``tfs-compare-feature`` CLI wraps it with file IO.
 """
 
 import numpy as np
@@ -95,9 +100,9 @@ def _condition_grid(df, keys):
 
 def _extract_run(df, keys, point_quantile, sigma_quantiles):
     """
-    Reduce one estimate table to key columns plus ``theta`` and ``sigma``.
+    Reduce one estimate table to key columns plus ``value`` and ``sigma``.
 
-    ``theta`` is the ``point_quantile`` column (median by default); ``sigma`` is
+    ``value`` is the ``point_quantile`` column (median by default); ``sigma`` is
     the symmetric 1-sigma half-width ``(q_hi - q_lo)/2`` from ``sigma_quantiles``.
 
     Parameters
@@ -114,7 +119,7 @@ def _extract_run(df, keys, point_quantile, sigma_quantiles):
     Returns
     -------
     pandas.DataFrame
-        Columns ``keys + ['theta', 'sigma']``.
+        Columns ``keys + ['value', 'sigma']``.
 
     Raises
     ------
@@ -135,7 +140,7 @@ def _extract_run(df, keys, point_quantile, sigma_quantiles):
         )
 
     out = df.loc[:, keys].copy()
-    out["theta"] = df[point_col].to_numpy(dtype=float)
+    out["value"] = df[point_col].to_numpy(dtype=float)
     out["sigma"] = (df[hi_col].to_numpy(dtype=float)
                     - df[lo_col].to_numpy(dtype=float)) / 2.0
     return out
@@ -197,18 +202,20 @@ def _assign_tier(rms_sd, n_present, n_runs, min_coverage, sd_tier_edges):
     return "D"
 
 
-def compare_theta(estimate_dfs,
-                  reference_df=None,
-                  *,
-                  min_coverage=0.5,
-                  sd_tier_edges=(0.02, 0.05, 0.10),
-                  overdispersion_threshold=2.0,
-                  point_quantile=0.5,
-                  sigma_quantiles=(0.159, 0.841)):
+def compare_feature(estimate_dfs,
+                    reference_df=None,
+                    *,
+                    min_coverage=0.5,
+                    sd_tier_edges=(0.02, 0.05, 0.10),
+                    overdispersion_threshold=2.0,
+                    point_quantile=0.5,
+                    sigma_quantiles=(0.159, 0.841)):
     """
-    Grade per-genotype theta stability across N independent estimate runs.
+    Grade per-genotype feature stability across N independent estimate runs.
 
-    See the module docstring for the two axes and the two comparison modes.
+    See the module docstring for the two axes and the two comparison modes. The
+    graded feature is whatever quantile ladder the tables carry (``q<level>``
+    columns); ``sd_tier_edges`` must match that feature's native scale.
 
     Parameters
     ----------
@@ -324,7 +331,7 @@ def compare_theta(estimate_dfs,
 
     if mode == "reference":
         ref = _extract_run(reference_df, keys, point_quantile, sigma_quantiles)
-        ref = ref.rename(columns={"theta": "theta_ref", "sigma": "sigma_ref"})
+        ref = ref.rename(columns={"value": "value_ref", "sigma": "sigma_ref"})
         before = long[_GENOTYPE_KEY].nunique()
         long = long.merge(ref, on=keys, how="inner")
         after = long[_GENOTYPE_KEY].nunique()
@@ -334,13 +341,13 @@ def compare_theta(estimate_dfs,
                 f"the reference table.",
                 flush=True,
             )
-        long["_target"] = long["theta_ref"]
-        long["_dev"] = long["theta"] - long["theta_ref"]
+        long["_target"] = long["value_ref"]
+        long["_dev"] = long["value"] - long["value_ref"]
         long["_var"] = long["sigma"] ** 2 + long["sigma_ref"] ** 2
     else:
         # Symmetric: the per-grid mean is the target.
-        long["_target"] = long.groupby(keys)["theta"].transform("mean")
-        long["_dev"] = long["theta"] - long["_target"]
+        long["_target"] = long.groupby(keys)["value"].transform("mean")
+        long["_dev"] = long["value"] - long["_target"]
         long["_var"] = long["sigma"] ** 2
 
     if long.empty:
@@ -382,18 +389,18 @@ def _per_grid_table(long, keys, estimator):
     Returns a frame keyed by ``keys`` with:
       * ``spread`` -- Axis-1 dispersion at that grid point (std or half-range in
         mean mode; RMS deviation from the reference in reference mode).
-      * ``mu`` -- the target theta curve value (cross-run mean or reference).
+      * ``mu`` -- the target feature curve value (cross-run mean or reference).
       * ``grid_label`` -- the ``sd[...]`` output-column name for this point.
     """
     grp = long.groupby(keys, sort=False)
 
-    if "theta_ref" in long.columns:
+    if "value_ref" in long.columns:
         # Reference mode: RMS deviation of the runs from the reference.
         spread = np.sqrt(grp["_dev"].apply(lambda d: np.nanmean(np.square(d))))
     elif estimator == "std":
-        spread = grp["theta"].std(ddof=1)
+        spread = grp["value"].std(ddof=1)
     else:
-        spread = (grp["theta"].max() - grp["theta"].min()) / 2.0
+        spread = (grp["value"].max() - grp["value"].min()) / 2.0
 
     mu = grp["_target"].first()
 
@@ -450,7 +457,7 @@ def _aggregate_genotypes(per_grid, long, keys, spread_label):
     n_terms = chi_g["term"].apply(lambda s: int(np.isfinite(s).sum()))
     mean_sigma = chi_g["sigma"].mean()
 
-    is_reference = "theta_ref" in long.columns
+    is_reference = "value_ref" in long.columns
     n_grids = long.groupby(_GENOTYPE_KEY)[keys[1:]].apply(
         lambda d: len(d.drop_duplicates())
     )
@@ -491,14 +498,14 @@ def stability_crosstabs(result,
                         overdispersion_threshold=2.0,
                         flat_range_threshold=0.1):
     """
-    Build the two 2x2 interpretation tables from a ``compare_theta`` result.
+    Build the two 2x2 interpretation tables from a ``compare_feature`` result.
 
     ``low_coverage`` genotypes are excluded (they were never graded).
 
     Parameters
     ----------
     result : pandas.DataFrame
-        Output of :func:`compare_theta`.
+        Output of :func:`compare_feature`.
     overdispersion_threshold : float, optional
         Split between "consistent" (<=) and "overconfident" (>). Default 2.0.
     flat_range_threshold : float, optional
@@ -624,14 +631,14 @@ def _mixture_quantiles(value_matrix, probs):
     f_mix = f_sum / n
 
     # Invert F_mix. Collapse ties (flat CDF = zero-density gaps) keeping the
-    # smallest theta for each CDF level, matching the standard quantile def.
+    # smallest value for each CDF level, matching the standard quantile def.
     uf, idx = np.unique(f_mix, return_index=True)
     return np.interp(probs, uf, grid[idx])
 
 
-def aggregate_theta(estimate_dfs, *, progress_every=200_000):
+def aggregate_feature(estimate_dfs, *, progress_every=200_000):
     """
-    Combine N theta estimates into one aggregate theta-vs-condition table.
+    Combine N feature estimates into one aggregate feature-vs-condition table.
 
     For every ``(genotype, [titrant_name,] titrant_conc)`` the N runs present are
     combined as an **equal-weight mixture** of their per-run marginal posteriors
@@ -675,7 +682,7 @@ def aggregate_theta(estimate_dfs, *, progress_every=200_000):
         )
     if len(estimate_dfs) < 2:
         raise ValueError(
-            f"aggregate_theta requires at least 2 estimate tables; "
+            f"aggregate_feature requires at least 2 estimate tables; "
             f"got {len(estimate_dfs)}."
         )
 

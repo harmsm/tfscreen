@@ -52,9 +52,10 @@ tfs-sample-prior           # Draw prior predictive samples
 tfs-extract-params         # Extract parameters from checkpoint
 tfs-predict-growth         # Predict growth from fitted model
 tfs-predict-theta          # Predict operator occupancy
+tfs-predict-epistasis      # Joint second-order epistasis from the theta posterior (per-draw ep, then quantiles; captures cross-genotype posterior covariance the marginal tfs-extract-epistasis path drops)
 tfs-cat-response           # Fit categorical response curves
 tfs-extract-epistasis      # Calculate second-order epistasis from a long-form observable table (--scale add|mult|logit; --scale_constant rescales the transform before epistasis, e.g. -RT to put logit onto a free-energy scale)
-tfs-compare-theta          # Grade per-genotype theta stability across N estimate runs (seeds / k-fold dropouts)
+tfs-compare-feature        # Grade per-genotype stability of any quantile-summarized feature (theta/growth/epistasis) across N estimate runs (seeds / k-fold dropouts); --sd_tier_edges sets the A/B/C/D cutlines to the feature's scale
 tfs-diagnose-nan           # Diagnose NaN issues in inference
 tfs-simulate               # Simulate a full experiment
 tfs-report-cfu0            # Report average ln_cfu0 by genotype class from a simulate config
@@ -94,7 +95,7 @@ FASTQ files
 | `process_raw/` | FASTQ parsing, count normalization, ln_cfu calculation |
 | `simulate/` | Full experiment simulation from thermodynamics to read counts |
 | `simulate/growth/` | Growth/growth-transition linkage models for simulation |
-| `analysis/` | Downstream statistical analysis of inference outputs (cat_response, extract_epistasis, compare_theta) |
+| `analysis/` | Downstream statistical analysis of inference outputs (cat_response, extract_epistasis, compare_feature) |
 | `mle/` | General-purpose MLE regression (FitManager, least squares, WLS, NLS) |
 | `mle/curve_models/` | Empirical curve-fitting functions and MODEL_LIBRARY used by cat_response |
 | `mle/fitters/` | Low-level fitter implementations (least_squares, matrix_nls, matrix_wls) |
@@ -424,6 +425,14 @@ When a list of genotypes, titrant names, or concentrations is needed, the `_cli`
 ### `in_training_data` column
 
 `tfs-predict-growth` and `tfs-predict-theta` output a boolean column `in_training_data` (1/0) at the `(genotype, titrant_name, titrant_conc)` tuple level.
+
+### `in_regime` column (`tfs-predict-epistasis`)
+
+`tfs-predict-epistasis` appends a trailing `in_regime` (int 0/1) after the `q<level>` columns. It is `1` only when **all four corners** of the mutant cycle (wt, both singles, double) have their θ posterior — the central `regime_ci` interval (default 95%) — inside the resolvable band `[regime_eps, 1 - regime_eps]` (default `eps=0.01`, whose logit band is ±~4.6). Outside that band `logit(θ)` saturates and the linear-in-θ growth likelihood constrains it weakly, so the epistasis there leans on the θ-model's functional form and cross-genotype posterior covariance — `in_regime == 0` rows are **model-conditional** (a tight CI can still be flagged 0: the perfectly-correlated-but-saturated case). It is the posterior-mass analogue of the toy model's `measurement_window` join (`simulate/toy_thermo/basis.py`); it does **not** separately test whether the growth signal exceeds the growth noise (that is the heavier `m·A/σ_growth` identifiability check). Computed in `extract_theta_epistasis` (`tfmodel/analysis/extraction.py`) on the raw θ samples, so it is independent of `scale`/`scale_constant`. A MAP checkpoint has one draw, so the interval collapses to a point-value band check.
+
+### Quantile-output column convention
+
+Any CLI that emits a posterior/quantile summary of an estimate writes those quantiles as **bare `q<level>` columns** — `q0.5` (median), `q0.025`, `q0.975`, etc. — with **no feature-name prefix** on the column. This holds for `tfs-predict-theta`, `tfs-predict-growth`, and `tfs-predict-epistasis`; the feature a file describes is conveyed by the file, not by the column name. Downstream tools rely on this: `resolve_obs_columns` (used by `tfs-extract-epistasis`) defaults `y_obs` to `q0.5` and `y_std` to `(q0.841 - q0.159)/2`, and `tfs-compare-feature` reads the whole `q<level>` ladder. Point estimate + std outputs (e.g. the marginal `tfs-extract-epistasis`'s `ep_obs`/`ep_std`) are a different, non-quantile output shape and keep their descriptive names.
 
 ### Registered entry points
 

@@ -1,14 +1,14 @@
 """
-Unit tests for tfscreen.analysis.compare_theta.
+Unit tests for tfscreen.analysis.compare_feature.
 """
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from tfscreen.analysis.compare_theta import (
-    compare_theta,
-    aggregate_theta,
+from tfscreen.analysis.compare_feature import (
+    compare_feature,
+    aggregate_feature,
     stability_crosstabs,
     _detect_keys,
     _extract_run,
@@ -119,7 +119,7 @@ def test_extract_run_sigma():
     df = make_estimate({"wt": [0.3, 0.7]}, sigma=0.05)
     keys = _detect_keys(df)
     out = _extract_run(df, keys, 0.5, (0.159, 0.841))
-    np.testing.assert_allclose(out["theta"].to_numpy(), [0.3, 0.7])
+    np.testing.assert_allclose(out["value"].to_numpy(), [0.3, 0.7])
     np.testing.assert_allclose(out["sigma"].to_numpy(), [0.05, 0.05])
 
 
@@ -159,7 +159,7 @@ def test_assign_tier_low_coverage():
 
 def test_mean_mode_identical_runs():
     df = make_estimate({"wt": [0.2, 0.8], "m1": [0.1, 0.9]})
-    result = compare_theta([df, df.copy(), df.copy()])
+    result = compare_feature([df, df.copy(), df.copy()])
     assert (result["rms_sd"] == 0).all()
     assert (result["max_sd"] == 0).all()
     assert (result["tier"] == "A").all()
@@ -171,7 +171,7 @@ def test_mean_mode_known_offset_halfrange():
     d = 0.2
     r1 = make_estimate({"g": [0.5, 0.5]})
     r2 = make_estimate({"g": [0.5, 0.5 + d]})
-    result = compare_theta([r1, r2])
+    result = compare_feature([r1, r2])
     row = get_row(result, "g")
     assert row["spread_estimator"] == "half_range"
     # conc0 spread 0, conc1 spread d/2
@@ -183,7 +183,7 @@ def test_mean_mode_std_estimator_for_large_n():
     # >=5 runs => sample std (ddof=1).
     thetas = [0.5, 0.5, 0.5, 0.5, 0.6]  # at a single conc across 5 runs
     runs = [make_estimate({"g": [t]}, concs=(0.0,)) for t in thetas]
-    result = compare_theta(runs)
+    result = compare_feature(runs)
     row = get_row(result, "g")
     assert row["spread_estimator"] == "std"
     np.testing.assert_allclose(row["rms_sd"], np.std(thetas, ddof=1))
@@ -193,7 +193,7 @@ def test_flat_curve_is_tier_a_and_zero_range():
     # Genotype pinned flat across all concs and runs: perfectly stable, no
     # dynamic range. Must land in tier A (the whole point of absolute spread).
     flat = make_estimate({"flat": [1e-4, 1e-4, 1e-4]}, concs=(0.0, 1.0, 2.0))
-    result = compare_theta([flat, flat.copy(), flat.copy()])
+    result = compare_feature([flat, flat.copy(), flat.copy()])
     row = get_row(result, "flat")
     assert row["tier"] == "A"
     np.testing.assert_allclose(row["dynamic_range"], 0.0)
@@ -205,7 +205,7 @@ def test_axis2_wide_sigma_not_flagged():
     d = 0.2
     r1 = make_estimate({"g": [0.5, 0.5]}, sigma=0.5)
     r2 = make_estimate({"g": [0.5, 0.5 + d]}, sigma=0.5)
-    result = compare_theta([r1, r2], overdispersion_threshold=2.0)
+    result = compare_feature([r1, r2], overdispersion_threshold=2.0)
     row = get_row(result, "g")
     # chi2 = d^2/(2 sigma^2), dof = 4 terms - 2 grids = 2
     expected = (d ** 2 / (2 * 0.5 ** 2)) / 2
@@ -217,7 +217,7 @@ def test_axis2_tight_sigma_flagged():
     d = 0.2
     r1 = make_estimate({"g": [0.5, 0.5]}, sigma=0.01)
     r2 = make_estimate({"g": [0.5, 0.5 + d]}, sigma=0.01)
-    result = compare_theta([r1, r2], overdispersion_threshold=2.0)
+    result = compare_feature([r1, r2], overdispersion_threshold=2.0)
     row = get_row(result, "g")
     expected = (d ** 2 / (2 * 0.01 ** 2)) / 2
     np.testing.assert_allclose(row["overdispersion"], expected)
@@ -228,7 +228,7 @@ def test_axis2_zero_sigma_skipped():
     # A zero-width interval must not blow up axis 2 (division by zero).
     r1 = make_estimate({"g": [0.5, 0.5]}, sigma=0.0)
     r2 = make_estimate({"g": [0.5, 0.6]}, sigma=0.0)
-    result = compare_theta([r1, r2])
+    result = compare_feature([r1, r2])
     row = get_row(result, "g")
     # All chi2 terms invalid -> overdispersion is NaN, not inf, and not flagged.
     assert np.isnan(row["overdispersion"])
@@ -243,7 +243,7 @@ def test_reference_mode_pooled_deviation():
     a, b = 0.1, 0.3
     e1 = make_estimate({"g": [0.5, 0.5 + a]}, sigma=0.1)
     e2 = make_estimate({"g": [0.5, 0.5 - b]}, sigma=0.1)
-    result = compare_theta([e1, e2], reference_df=ref)
+    result = compare_feature([e1, e2], reference_df=ref)
     row = get_row(result, "g")
     assert row["mode"] == "reference"
     assert row["spread_estimator"] == "rms_dev"
@@ -261,7 +261,7 @@ def test_reference_mode_overdispersion_includes_ref_sigma():
     ref = make_estimate({"g": [0.5]}, concs=(0.0,), sigma=0.1)
     a = 0.2
     e1 = make_estimate({"g": [0.5 + a]}, concs=(0.0,), sigma=0.1)
-    result = compare_theta([e1], reference_df=ref)
+    result = compare_feature([e1], reference_df=ref)
     row = get_row(result, "g")
     # single term: dev^2 / (sigma^2 + sigma_ref^2); dof = 1 term (fixed target)
     expected = a ** 2 / (0.1 ** 2 + 0.1 ** 2)
@@ -271,7 +271,7 @@ def test_reference_mode_overdispersion_includes_ref_sigma():
 def test_reference_mode_drops_genotype_absent_from_reference(capsys):
     ref = make_estimate({"g": [0.5, 0.5]})
     e1 = make_estimate({"g": [0.5, 0.6], "extra": [0.1, 0.2]})
-    result = compare_theta([e1, e1.copy()], reference_df=ref)
+    result = compare_feature([e1, e1.copy()], reference_df=ref)
     assert "extra" not in set(result["genotype"])
     assert "g" in set(result["genotype"])
     out = capsys.readouterr().out
@@ -287,7 +287,7 @@ def test_low_coverage_tier_and_n_present():
     r3 = make_estimate(base)
     # 'c' appears in only 1 of 4 runs
     r4 = make_estimate({"a": [0.1, 0.2], "b": [0.3, 0.4], "c": [0.9, 0.9]})
-    result = compare_theta([r1, r2, r3, r4], min_coverage=0.5)
+    result = compare_feature([r1, r2, r3, r4], min_coverage=0.5)
     c = get_row(result, "c")
     assert c["n_present"] == 1
     assert c["tier"] == "low_coverage"
@@ -301,20 +301,20 @@ def test_grid_mismatch_raises():
     r1 = make_estimate({"g": [0.1, 0.2]}, concs=(0.0, 1.0))
     r2 = make_estimate({"g": [0.1, 0.2]}, concs=(0.0, 2.0))
     with pytest.raises(ValueError, match="condition grid"):
-        compare_theta([r1, r2])
+        compare_feature([r1, r2])
 
 
 def test_key_mismatch_raises():
     r1 = make_estimate({"g": [0.1, 0.2]}, titrant_name="iptg")
     r2 = make_estimate({"g": [0.1, 0.2]})  # no titrant_name
     with pytest.raises(ValueError, match="key columns"):
-        compare_theta([r1, r2])
+        compare_feature([r1, r2])
 
 
 def test_mean_mode_requires_two_runs():
     r1 = make_estimate({"g": [0.1, 0.2]})
     with pytest.raises(ValueError, match="at least 2"):
-        compare_theta([r1])
+        compare_feature([r1])
 
 
 # --- titrant_name handling ---------------------------------------------------
@@ -325,7 +325,7 @@ def test_titrant_name_dynamic_range_is_per_name_max():
     iptg = make_estimate({"g": [0.5, 0.5]}, titrant_name="iptg")
     atc = make_estimate({"g": [0.1, 0.9]}, titrant_name="atc")
     r1 = pd.concat([iptg, atc], ignore_index=True)
-    result = compare_theta([r1, r1.copy()])
+    result = compare_feature([r1, r1.copy()])
     row = get_row(result, "g")
     np.testing.assert_allclose(row["dynamic_range"], 0.8)
     # per-grid sd columns exist for both titrants
@@ -343,7 +343,7 @@ def test_stability_crosstabs_populates_cells():
     unstable_b = make_estimate({"u": [0.5, 0.9]}, sigma=0.001)
     r1 = pd.concat([stable, unstable_a], ignore_index=True)
     r2 = pd.concat([stable.copy(), unstable_b], ignore_index=True)
-    result = compare_theta([r1, r2])
+    result = compare_feature([r1, r2])
     tabs = stability_crosstabs(result)
     assert "tier_vs_overdispersion" in tabs
     assert "tier_vs_dynamic_range" in tabs
@@ -354,11 +354,30 @@ def test_stability_crosstabs_populates_cells():
 def test_result_sorted_by_rms_sd():
     r1 = make_estimate({"a": [0.5, 0.5], "b": [0.5, 0.5]})
     r2 = make_estimate({"a": [0.5, 0.55], "b": [0.5, 0.9]})
-    result = compare_theta([r1, r2])
+    result = compare_feature([r1, r2])
     assert list(result["rms_sd"]) == sorted(result["rms_sd"])
 
 
-# --- aggregate_theta ---------------------------------------------------------
+def test_sd_tier_edges_rescale_the_grading():
+    """Custom sd_tier_edges re-grade the same feature (the generalization knob).
+
+    Two runs disagree by a fixed 0.10 at every grid point; with N=2 the spread
+    estimator is the half-range, so rms_sd == 0.05 exactly. That value lands on
+    the C side of the default edges but the B side of a slightly looser cut,
+    proving the edges thread through and set the feature's grading scale.
+    """
+    r1 = make_estimate({"g": [0.30, 0.30]})
+    r2 = make_estimate({"g": [0.40, 0.40]})
+
+    default = compare_feature([r1, r2])  # edges (0.02, 0.05, 0.10)
+    assert default.loc[0, "rms_sd"] == pytest.approx(0.05)
+    assert default.loc[0, "tier"] == "C"
+
+    loosened = compare_feature([r1, r2], sd_tier_edges=(0.02, 0.06, 0.10))
+    assert loosened.loc[0, "tier"] == "B"
+
+
+# --- aggregate_feature ---------------------------------------------------------
 
 def agg_row(agg, genotype, conc):
     sub = agg[(agg["genotype"] == genotype) & (agg["titrant_conc"] == conc)]
@@ -415,7 +434,7 @@ def test_mixture_quantiles_point_mass_mixed_is_monotone_between():
 
 def test_aggregate_identical_runs_matches_input():
     df = make_estimate_ladder({"wt": [0.2, 0.8], "m1": [0.5, 0.5]})
-    agg = aggregate_theta([df, df.copy(), df.copy()])
+    agg = aggregate_feature([df, df.copy(), df.copy()])
     # schema: keys + ladder + n_present
     for lvl in _LEVELS:
         assert f"q{lvl}" in agg.columns
@@ -430,7 +449,7 @@ def test_aggregate_identical_runs_matches_input():
 def test_aggregate_between_variance_widens():
     r1 = make_estimate_ladder({"g": [0.4, 0.4]}, sigma=0.05)
     r2 = make_estimate_ladder({"g": [0.6, 0.6]}, sigma=0.05)
-    agg = aggregate_theta([r1, r2])
+    agg = aggregate_feature([r1, r2])
     row = agg_row(agg, "g", 0.0)
     agg_width = row["q0.841"] - row["q0.159"]
     single_width = (
@@ -447,14 +466,14 @@ def test_aggregate_coverage_reported():
     r1 = make_estimate_ladder(base)
     r2 = make_estimate_ladder(base)
     r3 = make_estimate_ladder({"a": [0.2, 0.8], "b": [0.5, 0.5]})
-    agg = aggregate_theta([r1, r2, r3])
+    agg = aggregate_feature([r1, r2, r3])
     assert agg_row(agg, "a", 0.0)["n_present"] == 3
     assert agg_row(agg, "b", 0.0)["n_present"] == 1
 
 
 def test_aggregate_with_titrant_name():
     r1 = make_estimate_ladder({"g": [0.2, 0.8]}, titrant_name="iptg")
-    agg = aggregate_theta([r1, r1.copy()])
+    agg = aggregate_feature([r1, r1.copy()])
     assert "titrant_name" in agg.columns
     assert (agg["titrant_name"] == "iptg").all()
 
@@ -462,11 +481,11 @@ def test_aggregate_with_titrant_name():
 def test_aggregate_requires_two_runs():
     r1 = make_estimate_ladder({"g": [0.2, 0.8]})
     with pytest.raises(ValueError, match="at least 2"):
-        aggregate_theta([r1])
+        aggregate_feature([r1])
 
 
 def test_aggregate_key_mismatch_raises():
     r1 = make_estimate_ladder({"g": [0.2, 0.8]}, titrant_name="iptg")
     r2 = make_estimate_ladder({"g": [0.2, 0.8]})
     with pytest.raises(ValueError, match="key columns"):
-        aggregate_theta([r1, r2])
+        aggregate_feature([r1, r2])

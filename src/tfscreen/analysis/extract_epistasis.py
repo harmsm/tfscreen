@@ -127,6 +127,79 @@ def mutant_cycle_pivot(
     return pd.concat(result_dfs).reset_index(drop=True)
 
 
+def _epistasis_from_corners(
+    obs_00,
+    obs_10,
+    obs_01,
+    obs_11,
+    scale: str,
+    scale_constant: float = 1.0,
+    logit_eps: float = 1e-9,
+    warn_out_of_range: bool = True,
+):
+    """
+    Compute second-order epistasis from the four mutant-cycle corner values.
+
+    This is the single definition of *what epistasis means* on each scale,
+    shared by the marginal path (``extract_epistasis``, which pushes per-point
+    quantile-derived means through it) and the joint-posterior path
+    (``tfscreen.tfmodel.analysis.extraction.extract_theta_epistasis``, which
+    pushes a full ``(num_sample, num_cycle)`` array through it). It operates
+    elementwise, so the corner arguments may be scalars, pandas Series, or NumPy
+    arrays of any shape; the result has the broadcast shape of the inputs.
+
+    Parameters
+    ----------
+    obs_00, obs_10, obs_01, obs_11 : array-like
+        The observable at the wildtype (``00``), each single mutant (``10``,
+        ``01``), and the double mutant (``11``).
+    scale : {"add", "mult", "logit"}
+        The epistatic scale. See ``extract_epistasis`` for the definitions.
+    scale_constant : float, default 1.0
+        Constant applied to the (identity/logit) transform before the linear
+        difference-of-differences; a no-op for ``"mult"``.
+    logit_eps : float, default 1e-9
+        Clamp applied inside the logit transform (``scale="logit"`` only).
+    warn_out_of_range : bool, default True
+        If True, warn when a logit-scale input falls outside ``[0, 1]``.
+
+    Returns
+    -------
+    array-like
+        The epistasis value(s), broadcast to the shape of the inputs.
+
+    Raises
+    ------
+    ValueError
+        If ``scale`` is not one of "add", "mult", or "logit".
+    """
+    if scale == "add":
+        return scale_constant * ((obs_11 - obs_10) - (obs_01 - obs_00))
+
+    if scale == "logit":
+        raw = [obs_00, obs_10, obs_01, obs_11]
+        if warn_out_of_range and any(
+                bool(((o < 0.0) | (o > 1.0)).any()) for o in raw):
+            warnings.warn(
+                "scale='logit' expects an observable in [0, 1]; values outside "
+                "this range were found and clamped. Check that y_obs is a "
+                "fraction/occupancy (e.g. theta), not fitness or dG.",
+                stacklevel=2,
+            )
+        clip = [np.clip(o, logit_eps, 1.0 - logit_eps) for o in raw]
+        t_00, t_10, t_01, t_11 = (scale_constant * np.log(c / (1.0 - c))
+                                  for c in clip)
+        return (t_11 - t_10) - (t_01 - t_00)
+
+    if scale == "mult":
+        return (obs_11 / obs_10) / (obs_01 / obs_00)
+
+    raise ValueError(
+        "scale should be 'add' (additive), 'mult' (multiplicative), or "
+        "'logit' (additive on the logit scale)\n"
+    )
+
+
 def extract_epistasis(
     df: pd.DataFrame,
     y_obs: str,
@@ -266,46 +339,32 @@ def extract_epistasis(
         std_01 = cycles[f"01_{y_std}"]
         std_11 = cycles[f"11_{y_std}"]
     
-    # Additive scale. scale_constant scales the (identity) transform, so it
-    # factors straight out of the linear difference-of-differences.
-    if scale == "add":
-        ep_obs = scale_constant * ((obs_11 - obs_10) - (obs_01 - obs_00))
-        if y_std is not None:
+    # The epistasis value itself is computed by the shared helper so the
+    # marginal path here and the joint-posterior path (extract_theta_epistasis)
+    # can never disagree on what epistasis means on a given scale. Error
+    # propagation (below) is specific to the marginal path and stays here.
+    ep_obs = _epistasis_from_corners(obs_00, obs_10, obs_01, obs_11,
+                                     scale=scale,
+                                     scale_constant=scale_constant,
+                                     logit_eps=logit_eps)
+
+    if y_std is not None:
+        # Additive: scale_constant factors straight out of the linear ddd.
+        if scale == "add":
             ep_std = np.abs(scale_constant) * np.sqrt(
                 std_11**2 + std_10**2 + std_01**2 + std_00**2)
 
-    # Logit scale: additive epistasis of logit(Y). Removes a saturating [0, 1]
-    # measurement scale so within-state interactions are not masked by it.
-    # scale_constant multiplies the logit transform up front (e.g. -RT to put
-    # ep_obs on a free-energy scale, since logit(theta) = -dG/RT).
-    elif scale == "logit":
-        raw = [obs_00, obs_10, obs_01, obs_11]
-
-        # logit is only defined on (0, 1); warn if the observable is not a
-        # fraction (a common sign of pointing y_obs at fitness/dG), then clamp.
-        if any(((o < 0.0) | (o > 1.0)).any() for o in raw):
-            warnings.warn(
-                "scale='logit' expects an observable in [0, 1]; values outside "
-                "this range were found and clamped. Check that y_obs is a "
-                "fraction/occupancy (e.g. theta), not fitness or dG.",
-                stacklevel=2,
-            )
-
-        clip = [o.clip(logit_eps, 1.0 - logit_eps) for o in raw]
-        t_00, t_10, t_01, t_11 = (scale_constant * np.log(c / (1.0 - c))
-                                  for c in clip)
-        ep_obs = (t_11 - t_10) - (t_01 - t_00)
-        if y_std is not None:
-            # delta method: d/dy [sc * logit(y)] = sc / (y (1 - y))
+        # Logit: delta method, d/dy [sc * logit(y)] = sc / (y (1 - y)).
+        elif scale == "logit":
+            clip = [o.clip(logit_eps, 1.0 - logit_eps)
+                    for o in (obs_00, obs_10, obs_01, obs_11)]
             raw_std = [std_00, std_10, std_01, std_11]
             t_std = [np.abs(scale_constant) * s / (c * (1.0 - c))
                      for s, c in zip(raw_std, clip)]
             ep_std = np.sqrt(sum(s**2 for s in t_std))
 
-    # Multiplicative scale
-    else:
-        ep_obs = (obs_11 / obs_10) / (obs_01 / obs_00)
-        if y_std is not None:
+        # Multiplicative: relative-error propagation of the ratio-of-ratios.
+        else:
             rel_err_sq = ((std_11 / obs_11)**2 + (std_10 / obs_10)**2 +
                           (std_01 / obs_01)**2 + (std_00 / obs_00)**2)
             ep_std = np.abs(ep_obs) * np.sqrt(rel_err_sq)
