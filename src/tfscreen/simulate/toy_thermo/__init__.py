@@ -20,3 +20,18 @@ from .genotypes import (  # noqa: F401
     STATES,
 )
 from .sampling import sample_effects  # noqa: F401
+from .basis import (  # noqa: F401
+    free_ensemble,
+    basis_curves,
+    epistasis_coeffs,
+    predict_epistasis,
+    exact_epistasis,
+    classify_shape,
+    resolvable_logit,
+    logit_ci,
+    measurement_window,
+    plot_basis,
+    plot_epistasis_decomposition,
+    plot_measurement_window,
+    FREE_STATES,
+)
