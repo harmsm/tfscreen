@@ -1,3 +1,15 @@
+./notebooks/thermo_corr/.ipynb_checkpoints/plots-checkpoint.py:12:1: F401 'pandas as pd' imported but unused
+./notebooks/thermo_corr/.ipynb_checkpoints/plots-checkpoint.py:69:84: E261 at least two spaces before inline comment
+./notebooks/thermo_corr/.ipynb_checkpoints/plots-checkpoint.py:69:85: E262 inline comment should start with '# '
+./notebooks/thermo_corr/assemble.py:26:1: F401 'glob' imported but unused
+./notebooks/thermo_corr/plots.py:12:1: F401 'pandas as pd' imported but unused
+./notebooks/thermo_corr/plots.py:69:84: E261 at least two spaces before inline comment
+./notebooks/thermo_corr/plots.py:69:85: E262 inline comment should start with '# '
+./notebooks/thermo_corr/test_confound.py:14:1: F401 'thermo_corr as tc' imported but unused
+./notebooks/thermo_corr/test_confound.py:41:22: E228 missing whitespace around modulo operator
+./notebooks/thermo_corr/test_core.py:8:1: F401 'numpy as np' imported but unused
+./notebooks/thermo_corr/tiers.py:20:1: F401 'dataclasses.field' imported but unused
+./notebooks/thermo_corr/tiers.py:28:1: F401 '.confound.between_group_corr' imported but unused
 ./scripts/generate_struct_ensemble.py:266:11: E221 multiple spaces before operator
 ./scripts/generate_struct_ensemble.py:272:24: E221 multiple spaces before operator
 ./scripts/generate_struct_ensemble.py:433:18: E221 multiple spaces before operator
@@ -7493,10 +7505,12 @@
 1839  E221 multiple spaces before operator
 26    E222 multiple spaces after operator
 7     E225 missing whitespace around operator
+1     E228 missing whitespace around modulo operator
 1097  E231 missing whitespace after ','
 103   E251 unexpected spaces around keyword / parameter equals
 14    E252 missing whitespace around parameter equals
-207   E261 at least two spaces before inline comment
+209   E261 at least two spaces before inline comment
+2     E262 inline comment should start with '# '
 2     E265 block comment should start with '# '
 2     E266 too many leading '#' for block comment
 149   E272 multiple spaces before keyword
@@ -7514,7 +7528,7 @@
 1     E722 do not use bare 'except'
 2     E731 do not assign a lambda expression, use a def
 21    E741 ambiguous variable name 'l'
-230   F401 'tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U0_a.thermo.run_model' imported but unused
+237   F401 'pandas as pd' imported but unused
 11    F541 f-string is missing placeholders
 4     F811 redefinition of unused 'np' from line 1
 40    F841 local variable 'e' is assigned to but never used
@@ -7522,4 +7536,4 @@
 81    W292 no newline at end of file
 1498  W293 blank line contains whitespace
 28    W391 blank line at end of file
-7477
+7489
