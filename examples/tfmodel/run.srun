@@ -94,4 +94,4 @@ tfs-predict-theta \
 echo ">>> Categorize response"
 tfs-cat-response \
     tfs_theta_pred.csv \
-    --workers 8
+    --num_workers -1

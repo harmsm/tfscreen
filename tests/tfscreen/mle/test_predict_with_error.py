@@ -64,6 +64,46 @@ def test_predict_with_error_no_args():
 def test_numerical_derivative_epsilon():
     # Test that epsilon is used
     # Use a non-linear model where epsilon matters slightly compared to analytical?
-    # actually, with linear model, numerical deriv is exact. 
+    # actually, with linear model, numerical deriv is exact.
     # y = x^2. dy/dx = 2x.
     pass
+
+
+def test_full_cov_diagonal_matches_se():
+    """full_cov returns the (M, M) prediction covariance; its diagonal is se^2."""
+    x = np.array([1.0, 2.0, 3.0])
+    params = np.array([2.0, 1.0])
+    cov = np.array([[0.1, 0.0],
+                    [0.0, 0.2]])
+
+    val, se, pred_cov = predict_with_error(linear_model, params, cov,
+                                           args=(x,), full_cov=True)
+
+    assert pred_cov.shape == (3, 3)
+    assert np.allclose(np.diag(pred_cov), se ** 2)
+
+    # Off-diagonal: Cov(y_i, y_j) = x_i*x_j*Var(m) + Var(b).
+    expected = np.outer(x, x) * 0.1 + 0.2
+    assert np.allclose(pred_cov, expected)
+
+
+def test_full_cov_nan_cov():
+    """Invalid param covariance -> NaN-filled (M, M) prediction covariance."""
+    x = np.array([1.0, 2.0])
+    params = np.array([2.0, 1.0])
+    cov = np.array([[np.nan, 0.0], [0.0, 0.2]])
+
+    val, se, pred_cov = predict_with_error(linear_model, params, cov,
+                                           args=(x,), full_cov=True)
+
+    assert pred_cov.shape == (2, 2)
+    assert np.all(np.isnan(pred_cov))
+    assert np.all(np.isnan(se))
+
+
+def test_full_cov_default_off():
+    """Without full_cov, the return is still a 2-tuple (back-compat)."""
+    x = np.array([1.0, 2.0])
+    out = predict_with_error(linear_model, np.array([2.0, 1.0]),
+                             np.eye(2), args=(x,))
+    assert len(out) == 2

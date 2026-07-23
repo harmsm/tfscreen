@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 from tfscreen.tfmodel.configuration_io import read_configuration
 from tfscreen.tfmodel.inference.checkpoint_io import resolve_param_file
@@ -5,6 +6,60 @@ from tfscreen.tfmodel.inference.posteriors import load_posteriors
 from tfscreen.tfmodel.analysis.prediction import predict
 from tfscreen.tfmodel.analysis.batch_sizing import estimate_genotype_batch_size
 from tfscreen.util.cli import generalized_main, read_lines
+
+
+def _is_oom_error(exc):
+    """True if an exception looks like a GPU/TPU out-of-memory error.
+
+    JAX surfaces device OOM as a ``JaxRuntimeError`` whose message contains
+    ``RESOURCE_EXHAUSTED``; match on the message so we don't need to import the
+    specific error type (which varies across JAX versions).
+    """
+    msg = str(exc)
+    return ("RESOURCE_EXHAUSTED" in msg
+            or "Out of memory" in msg
+            or "out of memory" in msg)
+
+
+def _predict_subset_with_backoff(predict_kwargs, keep, extra):
+    """Run predict() on ``keep + extra`` genotypes, halving ``extra`` on OOM.
+
+    The mandatory ``keep`` genotypes (binding/spiked/file) are always retained;
+    only the randomly-sampled ``extra`` genotypes are dropped when the device
+    runs out of memory. This makes subset mode robust to an over-optimistic
+    genotype_batch_size estimate: the memory-fit block is a sample already, so
+    shrinking it on OOM still yields a valid input/output correlation check.
+    Re-raises any non-OOM error, or an OOM that persists once ``extra`` is
+    empty (the mandatory anchors alone don't fit).
+
+    Parameters
+    ----------
+    predict_kwargs : dict
+        Keyword arguments forwarded to predict() (without ``genotypes``).
+    keep : list of str
+        Mandatory genotypes, always predicted.
+    extra : list of str
+        Optional genotypes, shrunk by half on each OOM retry.
+
+    Returns
+    -------
+    pandas.DataFrame
+        The predict() result for the largest block that fit.
+    """
+    keep = list(keep)
+    extra = list(extra)
+    while True:
+        genotypes = keep + extra
+        try:
+            return predict(**predict_kwargs, genotypes=genotypes)
+        except Exception as exc:
+            if not _is_oom_error(exc) or len(extra) == 0:
+                raise
+            new_n = len(extra) // 2
+            print(f"  GPU out of memory at {len(genotypes)} genotypes; "
+                  f"retrying with {len(keep) + new_n} "
+                  f"({new_n} sampled + {len(keep)} mandatory)...", flush=True)
+            extra = extra[:new_n]
 
 
 def predict_growth(config_file,
@@ -16,7 +71,9 @@ def predict_growth(config_file,
                    only_files=False,
                    num_samples=0,
                    num_marginal_samples=None,
-                   genotype_batch_size=None):
+                   genotype_batch_size=None,
+                   subset_genotypes=False,
+                   subset_seed=None):
     """
     Predict growth signal (ln_cfu) from a fitted hierarchical model.
 
@@ -85,6 +142,18 @@ def predict_growth(config_file,
         one JAX re-compilation per batch. If None (default), a batch size is
         estimated automatically from the available device memory and the
         per-genotype tensor cost; pass an explicit value to override.
+    subset_genotypes : bool, optional
+        If True, predict only a single memory-fit block of genotypes instead
+        of every genotype. The block size is the auto-sized (or explicit)
+        genotype_batch_size; the block always includes the binding genotypes,
+        the spiked genotypes, and any genotypes supplied via genotypes_file,
+        with the remainder of the block filled by a random sample of the other
+        genotypes. Intended for quickly assessing the input/output ln_cfu
+        correlation without paying for a full prediction sweep. Default False.
+    subset_seed : int or None, optional
+        Seed for the random draw used by subset_genotypes, making the sampled
+        block reproducible. Ignored unless subset_genotypes is True. Default
+        None (non-deterministic draw).
     """
     file_genotypes = read_lines(genotypes_file) if genotypes_file else []
     titrant_names = read_lines(titrant_names_file) if titrant_names_file else None
@@ -138,6 +207,44 @@ def predict_growth(config_file,
         binding_genos = []
     binding_set = set(binding_genos)
 
+    # Subset mode: predict a single memory-fit block of genotypes rather than
+    # every genotype, for a fast input/output ln_cfu correlation check. The
+    # block always keeps the binding, spiked, and file-specified genotypes;
+    # the rest of the block is a random sample of the remaining genotypes.
+    if subset_genotypes:
+        try:
+            spiked_list = orchestrator.settings.get("spiked_genotypes") or []
+            spiked_set = set(str(g) for g in spiked_list)
+        except Exception:
+            spiked_set = set()
+
+        universe = list(genotypes)
+        universe_set = set(universe)
+        # Mandatory-keep genotypes, restricted to those actually in the
+        # universe (file genotypes may be novel/absent under some paths).
+        keep_set = (binding_set | spiked_set | set(file_genotypes)) & universe_set
+        keep = [g for g in universe if g in keep_set]          # preserve order
+        remaining = [g for g in universe if g not in keep_set]
+
+        block = genotype_batch_size
+        n_random = max(0, block - len(keep))
+        rng = np.random.default_rng(subset_seed)
+        if n_random < len(remaining):
+            idx = rng.choice(len(remaining), size=n_random, replace=False)
+            sampled = [remaining[i] for i in sorted(idx)]
+        else:
+            sampled = remaining
+
+        genotypes = keep + sampled
+
+        if len(keep) > block:
+            print(f"WARNING: {len(keep)} mandatory (binding/spiked/file) "
+                  f"genotypes exceed the auto-sized block of {block}; "
+                  f"predicting all of them in one call anyway.", flush=True)
+        print(f"Subset mode: predicting {len(genotypes)} genotypes "
+              f"({len(keep)} mandatory + {len(sampled)} random) in a single "
+              f"block.", flush=True)
+
     q_to_get = [0.5] if is_map else None
     print("Running growth predictions...", flush=True)
 
@@ -151,7 +258,12 @@ def predict_growth(config_file,
         q_to_get=q_to_get,
     )
 
-    if genotype_batch_size is not None and genotypes is not None and len(genotypes) > genotype_batch_size:
+    if subset_genotypes:
+        # Subset mode is always a single block; retry with fewer sampled
+        # genotypes if the device runs out of memory (the estimate is only a
+        # guess and can overshoot on GPU).
+        result_df = _predict_subset_with_backoff(predict_kwargs, keep, sampled)
+    elif genotype_batch_size is not None and genotypes is not None and len(genotypes) > genotype_batch_size:
         batches = [genotypes[i:i + genotype_batch_size]
                    for i in range(0, len(genotypes), genotype_batch_size)]
         n_batches = len(batches)
@@ -197,7 +309,9 @@ def main():
                                        "titrant_concs_file": str,
                                        "num_marginal_samples": int,
                                        "genotype_batch_size": int,
-                                       "only_files": bool})
+                                       "subset_seed": int,
+                                       "only_files": bool,
+                                       "subset_genotypes": bool})
 
 
 if __name__ == "__main__":

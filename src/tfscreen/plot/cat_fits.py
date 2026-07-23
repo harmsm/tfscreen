@@ -45,8 +45,8 @@ def cat_fits(x,y,y_std,
     y_std : numpy.ndarray
         Array of standard deviations for the y-coordinates.
     pred_df : pandas.DataFrame
-        DataFrame containing model predictions. Must include columns 'x', 'y', 'y_std',
-        'model', and 'is_best_model'.
+        DataFrame containing model predictions. Must include columns 'x',
+        'y_model', 'y_model_std', 'model', and 'is_best_model'.
     title : str, optional
         Put this title on the plot
     data_color : str, optional
@@ -144,12 +144,12 @@ def cat_fits(x,y,y_std,
                 "label": m,
             }
 
-            ax.plot(model_df['x'],model_df['y'],'-',
+            ax.plot(model_df['x'],model_df['y_model'],'-',
                     **this_fit_line_kwargs)
 
             ax.fill_between(model_df['x'],
-                            model_df['y'] - model_df['y_std'],
-                            model_df['y'] + model_df['y_std'],
+                            model_df['y_model'] - model_df['y_model_std'],
+                            model_df['y_model'] + model_df['y_model_std'],
                             color=err_area_color,
                             zorder=0)
         else:
@@ -160,7 +160,7 @@ def cat_fits(x,y,y_std,
                 "label": m,
             }
 
-            ax.plot(model_df['x'],model_df['y'],'-',
+            ax.plot(model_df['x'],model_df['y_model'],'-',
                     **this_fit_line_kwargs)
 
     # Add legend

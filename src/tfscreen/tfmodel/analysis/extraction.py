@@ -271,6 +271,193 @@ def extract_theta_curves(orchestrator, posteriors, q_to_get=None, manual_titrant
 
     return calc_df.drop(columns=internal_cols)
 
+def extract_theta_epistasis(orchestrator, posteriors, q_to_get=None,
+                            manual_titrant_df=None, scale="logit",
+                            scale_constant=1.0,
+                            group_by=("titrant_name", "titrant_conc"),
+                            regime_eps=0.01, regime_ci=0.95):
+    """
+    Extract second-order epistasis quantiles from the joint theta posterior.
+
+    Unlike calculating epistasis from per-genotype marginal theta estimates
+    (which treats the four corners of each mutant cycle as independent and
+    propagates ``sqrt(sum std**2)``), this function draws theta for every
+    genotype from the *same* posterior sample, computes epistasis within each
+    draw, and then quantiles across draws.  The resulting uncertainty therefore
+    reflects the true posterior covariance between the wildtype, single, and
+    double mutants of each cycle.
+
+    Only genotypes seen during training are supported: the joint sample matrix
+    comes from the theta component's ``build_calc_df`` / ``compute_theta_samples``
+    interface (the same one used by ``extract_theta_curves``), which returns
+    training genotypes.  Out-of-training genotypes have no joint sample matrix
+    and are not handled here.
+
+    Parameters
+    ----------
+    orchestrator : ModelOrchestrator
+        The fitted model instance.
+    posteriors : dict or str
+        Posterior samples (dict, NpzFile, or path to a ``.npz``/``.h5`` file).
+        A MAP checkpoint provides a single "draw"; the returned quantile columns
+        then all collapse to that point estimate (no uncertainty).
+    q_to_get : dict or array-like, optional
+        Quantile levels to extract.  Defaults to the standard dense set used by
+        the other extraction functions.
+    manual_titrant_df : pd.DataFrame, optional
+        A DataFrame specifying ``'titrant_name'`` and ``'titrant_conc'`` values
+        at which to calculate theta before building cycles.  If it also has a
+        ``'genotype'`` column it selects the genotypes; otherwise all training
+        genotypes are used.
+    scale : {"logit", "add", "mult"}, default "logit"
+        The epistatic scale.  ``"logit"`` is the natural choice for theta (an
+        occupancy in ``[0, 1]``); see
+        ``tfscreen.analysis.extract_epistasis`` for the definitions.
+    scale_constant : float, default 1.0
+        Constant applied to the transform before the difference-of-differences
+        (e.g. ``-RT`` to report logit epistasis as an interaction free energy).
+        Rejected for ``scale="mult"`` (it cancels in the ratio-of-ratios).
+    group_by : sequence of str, default ("titrant_name", "titrant_conc")
+        Columns defining a unique condition; epistasis is computed independently
+        within each.  For theta, each concentration is its own condition.
+    regime_eps : float, default 0.01
+        Theta resolution floor for the ``in_regime`` flag.  A cycle corner is
+        "in the resolvable band" when its theta posterior sits inside
+        ``[regime_eps, 1 - regime_eps]``; outside that band logit(theta) is
+        saturated and its uncertainty is dominated by the theta-model
+        extrapolation rather than the data.  Must satisfy ``0 <= regime_eps <
+        0.5``.
+    regime_ci : float, default 0.95
+        Central posterior-mass fraction that must lie inside the band for a
+        corner to count as in-regime (e.g. 0.95 requires the theta 2.5-97.5%
+        interval within ``[regime_eps, 1 - regime_eps]``).  Must be in (0, 1).
+
+    Returns
+    -------
+    pd.DataFrame
+        One row per (double-mutant genotype x condition) with the ``group_by``
+        columns, ``genotype``, one ``q<level>`` column per quantile (the
+        library-wide quantile-output convention, e.g. ``q0.5``, ``q0.025``), and
+        a trailing ``in_regime`` column (int 0/1).  ``in_regime == 1`` means all
+        four cycle corners (wt, both singles, double) have their theta posterior
+        (central ``regime_ci`` interval) within ``[regime_eps, 1 - regime_eps]``,
+        so the epistasis is backed by in-band posterior mass; ``0`` means at
+        least one corner is near saturation, so the estimate leans on the
+        theta-model's extrapolation / posterior covariance and should be treated
+        as model-conditional.  (This is the posterior-mass analogue of a
+        measurement-window check; it does *not* separately test whether the
+        growth signal exceeds the growth noise.)  Empty if no complete mutant
+        cycles (wt + both singles + double) exist.
+
+    Raises
+    ------
+    ValueError
+        If the theta component does not implement the sample interface, if
+        ``scale_constant`` is non-trivial for ``scale="mult"``, or if
+        ``regime_eps``/``regime_ci`` are out of range.
+    """
+    from tfscreen.analysis.extract_epistasis import (
+        mutant_cycle_pivot,
+        _epistasis_from_corners,
+    )
+
+    if scale == "mult" and scale_constant != 1.0:
+        raise ValueError(
+            "scale_constant has no effect when scale='mult' (it cancels in the "
+            "ratio-of-ratios). Use scale='add' or 'logit', or leave "
+            "scale_constant at its default of 1.0."
+        )
+
+    if not (0.0 <= regime_eps < 0.5):
+        raise ValueError(
+            f"regime_eps must be in [0, 0.5); got {regime_eps}."
+        )
+    if not (0.0 < regime_ci < 1.0):
+        raise ValueError(
+            f"regime_ci must be in (0, 1); got {regime_ci}."
+        )
+
+    module = model_registry.get("theta", {}).get(orchestrator._theta)
+    if module is None or not (hasattr(module, "build_calc_df")
+                              and hasattr(module, "compute_theta_samples")):
+        raise ValueError(
+            f"extract_theta_epistasis requires the theta component to implement "
+            f"build_calc_df and compute_theta_samples. "
+            f"'{orchestrator._theta}' does not support this interface."
+        )
+
+    q_to_get, param_posteriors = load_posteriors(posteriors, q_to_get)
+
+    # Joint sample matrix: (num_sample, num_row), rows aligned to calc_df.
+    calc_df, internal_cols, extra_kwargs = module.build_calc_df(
+        orchestrator, manual_titrant_df)
+    theta_samples = module.compute_theta_samples(
+        calc_df, param_posteriors, **extra_kwargs)
+
+    group_by = list(group_by)
+
+    # Pivot on the row index (not the observable): mutant_cycle_pivot matches
+    # wt/single/single/double per condition and returns, for each cycle, the
+    # calc_df row index of each of the four corners.  Those indices then gather
+    # the corresponding columns out of the joint sample matrix.
+    pivot_df = calc_df[["genotype"] + group_by].copy()
+    pivot_df["_row_idx"] = np.arange(len(calc_df))
+    cycles = mutant_cycle_pivot(pivot_df,
+                                extract_columns=["_row_idx"],
+                                group_by=group_by)
+
+    # Drop any cycle missing a corner (e.g. a double whose single parent has no
+    # theta row): without all four joint samples epistasis is undefined. The
+    # missing corner surfaces as a NaN row index from the pivot's reindex.
+    idx_cols = [f"{c}__row_idx" for c in ("00", "10", "01", "11")]
+    if not cycles.empty:
+        cycles = cycles.dropna(subset=idx_cols)
+
+    if cycles.empty:
+        return pd.DataFrame(columns=["genotype"] + group_by
+                            + list(q_to_get) + ["in_regime"])
+
+    idx_00 = cycles["00__row_idx"].values.astype(int)
+    idx_10 = cycles["10__row_idx"].values.astype(int)
+    idx_01 = cycles["01__row_idx"].values.astype(int)
+    idx_11 = cycles["11__row_idx"].values.astype(int)
+
+    # Each of these is (num_sample, num_cycle); epistasis is computed per draw.
+    ep_samples = _epistasis_from_corners(
+        theta_samples[:, idx_00],
+        theta_samples[:, idx_10],
+        theta_samples[:, idx_01],
+        theta_samples[:, idx_11],
+        scale=scale,
+        scale_constant=scale_constant,
+    )
+
+    out = cycles[["genotype"] + group_by].copy()
+    for q_name, q_val in q_to_get.items():
+        out[q_name] = np.quantile(ep_samples, q_val, axis=0)
+
+    # in_regime: are all four cycle corners' theta posteriors inside the
+    # resolvable band [regime_eps, 1 - regime_eps]?  Outside it logit(theta)
+    # saturates and the epistasis leans on the theta-model extrapolation, so the
+    # flag marks whether the estimate is backed by in-band posterior mass.  A
+    # MAP checkpoint has a single "draw", so the interval collapses to the point
+    # estimate and this reduces to a point-value band check.
+    lo_q = (1.0 - regime_ci) / 2.0
+    hi_q = 1.0 - lo_q
+
+    def _corner_in_band(idx):
+        th = theta_samples[:, idx]                     # (num_sample, num_cycle)
+        lo = np.quantile(th, lo_q, axis=0)
+        hi = np.quantile(th, hi_q, axis=0)
+        return (lo >= regime_eps) & (hi <= 1.0 - regime_eps)
+
+    in_regime = (_corner_in_band(idx_00) & _corner_in_band(idx_10)
+                 & _corner_in_band(idx_01) & _corner_in_band(idx_11))
+    out["in_regime"] = in_regime.astype(int)
+
+    return out.sort_values(["genotype"] + group_by).reset_index(drop=True)
+
+
 def extract_theta_unmeasured(orchestrator, posteriors, target_genotypes,
                             manual_titrant_df, q_to_get=None,
                             genotype_batch_size=2000):

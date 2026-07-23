@@ -23,9 +23,11 @@ import numpy as np
 from .models import (  # noqa: F401
     model_flat,
     model_linear,
+    model_linear_logx,
     model_hill_3p,
     model_hill_4p,
     model_bell,
+    model_bell_logx,
     model_biphasic_peak,
     model_biphasic_dip,
     model_poly
@@ -34,12 +36,15 @@ from .models import (  # noqa: F401
 from .guesses import (
     guess_flat,
     guess_linear,
+    guess_linear_logx,
     guess_repressor,
     guess_inducer,
     guess_hill_repressor,
     guess_hill_inducer,
     guess_bell_peak,
     guess_bell_dip,
+    guess_bell_peak_logx,
+    guess_bell_dip_logx,
     guess_biphasic_peak,
     guess_biphasic_dip,
 )
@@ -60,6 +65,13 @@ MODEL_LIBRARY = {
                "param_names":['m', 'b'],
                "bounds":([-inf, -inf],
                          [ inf, inf])},
+
+    # linear model in log10-concentration
+    "linear_log": {"model_func":model_linear_logx,
+                   "guess_func":guess_linear_logx,
+                   "param_names":['m', 'b'],
+                   "bounds":([-inf, -inf],
+                             [ inf, inf])},
 
     # 3 point hill model with negative amplitude
     "repressor": {"model_func":model_hill_3p,
@@ -101,7 +113,23 @@ MODEL_LIBRARY = {
                  "guess_func":guess_bell_dip,
                  "param_names":['baseline', 'amplitude', 'ln_x0', 'ln_width'],
                  "bounds":([-inf, -inf, -inf, -inf],
-                           [ inf,    0,  inf,  inf])}, 
+                           [ inf,    0,  inf,  inf])},
+
+    # gaussian in log10-concentration with positive amplitude (peak)
+    "bell_peak_log": {"model_func":model_bell_logx,
+                      "guess_func":guess_bell_peak_logx,
+                      "param_names":['baseline', 'amplitude', 'center',
+                                     'ln_width'],
+                      "bounds":([-inf,   0, -inf, -inf],
+                                [ inf, inf,  inf,  inf])},
+
+    # gaussian in log10-concentration with negative amplitude (dip)
+    "bell_dip_log": {"model_func":model_bell_logx,
+                     "guess_func":guess_bell_dip_logx,
+                     "param_names":['baseline', 'amplitude', 'center',
+                                    'ln_width'],
+                     "bounds":([-inf, -inf, -inf, -inf],
+                               [ inf,    0,  inf,  inf])},
 
     # sequential processes
     "biphasic_peak": {"model_func":model_biphasic_peak,
@@ -110,11 +138,52 @@ MODEL_LIBRARY = {
                       "bounds":([-inf,   0, -inf, -inf],
                                 [ inf, inf,  inf,  inf])},
 
-    # parallel competing processes
+    # parallel competing processes. baseline (y at x=0) and amplitude (y at
+    # x=inf) are left unbounded: pinning them >= 0 assumes a non-negative
+    # observable and cripples the fit on signed data (e.g. logit epistasis),
+    # giving a large-negative R2 so it can never be selected.
     "biphasic_dip": {"model_func":model_biphasic_dip,
                      "guess_func":guess_biphasic_dip,
                      "param_names":['baseline', 'amplitude', 'lnK_dip', 'lnK_rise'],
-                     "bounds":([  0,   0, -inf, -inf],
-                               [inf, inf,  inf,  inf])},
+                     "bounds":([-inf, -inf, -inf, -inf],
+                               [ inf,  inf,  inf,  inf])},
 
 }
+
+# Default set fit by tfs-cat-response when no models are specified. One
+# parameterization per qualitative response shape, all appropriate for
+# concentration data on a log axis:
+#   - flat          : non-responsive / null baseline
+#   - linear_log    : monotonic, non-saturating trend in log-concentration
+#   - repressor     : saturating sigmoid down (Hill, n=1)
+#   - inducer       : saturating sigmoid up (Hill, n=1)
+#   - bell_peak_log : band-pass peak, symmetric in log-concentration
+#   - bell_dip_log  : band-stop dip, symmetric in log-concentration
+# The remaining models (raw-x bell_peak/bell_dip/linear, the 4-parameter Hill
+# variants, and the biphasic peak/dip shapes) stay registered and are reachable
+# via the ``--models`` flag, but are not fit by default.
+DEFAULT_MODELS = [
+    "flat",
+    "linear_log",
+    "repressor",
+    "inducer",
+    "bell_peak_log",
+    "bell_dip_log",
+]
+
+# Curated "physical shape" vocabulary used by tfs-cat-response when
+# ``select_by="shape"`` and no models are given. Same log-concentration set as
+# DEFAULT_MODELS but with ``linear_log`` dropped (a sloped line is not a
+# physical titration response -- only ever the middle of a sigmoid) and the
+# biphasic peak/dip shapes added (for dispersive responses). Shapes:
+#   flat -> flat; inducer/repressor -> step; bell_*_log -> peak/dip;
+#   biphasic_* -> biphasic.
+SHAPE_MODELS = [
+    "flat",
+    "inducer",
+    "repressor",
+    "bell_peak_log",
+    "bell_dip_log",
+    "biphasic_peak",
+    "biphasic_dip",
+]

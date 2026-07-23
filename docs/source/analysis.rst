@@ -224,20 +224,38 @@ supports it (e.g. ``hill_mut``).
 Step 8: Categorise Response (``tfs-cat-response``)
 ---------------------------------------------------
 
-Fits categorical response curve models to the *θ*-vs-titrant output of
-``tfs-predict-theta`` and selects the best-fitting model per
-(genotype, titrant_name) pair by AIC weight.
+Fits categorical response curve models to a ``y_obs``-vs-``x_obs`` curve and
+selects the best-fitting model per group by AIC weight. Groups are defined by
+the ``genotype`` column plus any ``--group_by`` columns (mirroring
+``tfs-extract-epistasis``). For the *θ*-vs-titrant output of
+``tfs-predict-theta``, pass the concentration column as ``x_obs`` and a theta
+column (e.g. ``q0.5``) as ``y_obs``.
 
 .. code-block:: bash
 
     tfs-cat-response \
         tfs_theta_pred.csv \
-        --workers 8
+        titrant_conc \
+        q0.5 \
+        --group_by titrant_name \
+        --num_workers -1
+
+If ``--y_std`` is omitted and the ``q0.841``/``q0.159`` quantile columns are
+present, the per-row sigma is taken as ``(q0.841 - q0.159) / 2``; otherwise the
+fit is unweighted.
+
+The per-group fits are embarrassingly parallel. ``--num_workers`` defaults to
+``-1`` (use ``os.cpu_count() - 1`` processes); pass ``1`` to run serially or a
+positive integer to pin the worker count.
 
 Output (default ``--out_prefix tfs_cat_response``):
 
-* ``tfs_cat_response.csv`` — one row per (genotype, titrant_name) with
-  ``best_model``, AIC weights, and fitted parameters for every model.
+* ``tfs_cat_response.csv`` — one row per group with ``best_model``, AIC
+  weights, and fitted parameters for every model.
+* ``tfs_cat_response_<model>.csv`` — one file per model with that model's
+  parameter table and per-group fit statistics.
+* ``tfs_cat_response_predictions.csv`` — predicted curves for every group and
+  model.
 
 Step 9: Summarise Fit (``tfs-summarize-fit``)
 ----------------------------------------------

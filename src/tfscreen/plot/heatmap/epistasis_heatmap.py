@@ -31,12 +31,12 @@ def epistasis_heatmap(df,r1,r2,
     # Make sure the genotypes are all unique
     if np.any(df[zero]["genotype"].duplicated()):
         raise ValueError (
-            "condition_selector must be unique to plot an epistasis heat map."
+            "group_by must be unique to plot an epistasis heat map."
         )
-    
+
     # Extract epistasis
     ep_df = tfscreen.analysis.extract_epistasis(sub_df,
-                                                condition_selector=None, #condition_selector,
+                                                group_by=None,
                                                 y_obs=value_column)
     ep_df = tfscreen.genetics.expand_genotype_columns(ep_df)
 

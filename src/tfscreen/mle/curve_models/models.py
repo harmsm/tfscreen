@@ -10,6 +10,47 @@ EPSILON = 1e-12
 EXP_CLIP = 700
 POWER_CLIP = 25
 
+
+def _to_log10_x(x):
+    """
+    Map raw concentration ``x`` onto a ``log10`` axis for the log-conc models.
+
+    Unlike the concentration-parameterized Hill / biphasic models (which take
+    the log of ``x`` internally and so must be handed raw concentration), the
+    geometric log-conc models (``*_log``) are shapes *in* ``log10(x)`` and use
+    this helper to transform their input. Keeping the transform inside the model
+    means the data column stays raw concentration -- no separate log column and
+    no CLI flag.
+
+    Any ``x <= 0`` (typically the ``x == 0`` no-titrant point) is replaced,
+    *before* the log, by ``min(x[x > 0]) / 100`` -- two decades below the
+    smallest positive value in the array. The floor is taken from the array
+    handed to this call; for the usual shared titration grid every group sees
+    the same concentrations, so the floor is consistent across groups. Non-finite
+    entries are preserved as NaN (the fitter drops them). If ``x`` has no positive
+    entries the result is all-NaN (an unfittable degenerate group).
+
+    Parameters
+    ----------
+    x : np.ndarray
+        Raw independent-variable values (concentration units).
+
+    Returns
+    -------
+    np.ndarray
+        ``log10(x)`` with the ``x <= 0`` floor applied.
+    """
+    x = np.asarray(x, dtype=float)
+    pos = x[np.isfinite(x) & (x > 0)]
+    if pos.size == 0:
+        return np.full(x.shape, np.nan)
+
+    floor = pos.min() / 100.0
+    x_sub = np.where(x > 0, x, floor)
+    z = np.log10(x_sub)
+    # Preserve NaNs (np.where turned any NaN into the floor above).
+    return np.where(np.isnan(x), np.nan, z)
+
 def model_flat(params, x):
     """
     A constant, flat line (null model).
@@ -64,6 +105,38 @@ def model_linear(params, x):
     """
 
     return params[0]*x + params[1]
+
+def model_linear_logx(params, x):
+    """
+    A linear model in log10-concentration: ``y = m*log10(x) + b``.
+
+    The log-concentration counterpart of ``model_linear``. ``x`` is raw
+    concentration; the ``log10`` transform (with the ``x <= 0`` floor) happens
+    inside via :func:`_to_log10_x`.
+
+    Parameters
+    ----------
+    params : array-like
+        A two-element array: [m, b].
+        - m: The slope with respect to ``log10(x)``.
+        - b: The y-value at ``log10(x) == 0`` (i.e. at ``x == 1``).
+    x : np.ndarray
+        The independent variable values (raw concentration).
+
+    Returns
+    -------
+    np.ndarray
+        The calculated y-values.
+
+    Notes
+    -----
+    - Mathematical Form: y = m*log10(x) + b
+    - Biological Interpretation: A dose-dependent response that is linear in the
+      log of concentration and does not saturate within the tested range.
+    """
+
+    z = _to_log10_x(x)
+    return params[0]*z + params[1]
 
 def _hill(params, x):
     """
@@ -212,6 +285,57 @@ def model_bell(params, x):
     exponent = -0.5 * ((x - x0) / width) ** 2
     exponent_safe = np.clip(exponent,-EXP_CLIP,EXP_CLIP)
     
+    return baseline + amplitude * np.exp(exponent_safe)
+
+
+def model_bell_logx(params, x):
+    """
+    A symmetric, bell-shaped (Gaussian) peak/dip in log10-concentration.
+
+    The log-concentration counterpart of ``model_bell``. Where ``model_bell`` is
+    a Gaussian in raw ``x`` with its center parameterized as ``exp(ln_x0)`` (so
+    the center is a positive concentration), this model is a Gaussian in
+    ``log10(x)`` with the center a *free real* on the log axis. ``x`` is raw
+    concentration; the ``log10`` transform (with the ``x <= 0`` floor) happens
+    inside via :func:`_to_log10_x`. A positive ``amplitude`` gives a peak, a
+    negative one a dip.
+
+    Parameters
+    ----------
+    params : array-like
+        A four-element array: [baseline, amplitude, center, ln_width].
+        - baseline: Baseline occupancy (asymptote on both sides).
+        - amplitude: Height of the peak (>0) or depth of the dip (<0).
+        - center: Center of the peak on the ``log10(x)`` axis (a real number,
+          e.g. ``-3`` for a peak at ``x == 1e-3``).
+        - ln_width: The natural log of the Gaussian width (in log10-x units).
+    x : np.ndarray
+        The independent variable values (raw concentration).
+
+    Returns
+    -------
+    np.ndarray
+        The calculated y-values.
+
+    Notes
+    -----
+    - Mathematical Form:
+      y = baseline + amplitude * exp(-0.5 * ((log10(x) - center) / width)^2)
+    - Biological Interpretation: a band-pass (peak) or band-stop (dip) response
+      centered symmetrically in log-concentration -- activity that switches on
+      then off (or off then on) over a range of concentrations.
+    """
+
+    baseline, amplitude, center, ln_width = params
+
+    z = _to_log10_x(x)
+
+    ln_width_safe = np.clip(ln_width, -EXP_CLIP, EXP_CLIP)
+    width = max(np.exp(ln_width_safe), EPSILON)
+
+    exponent = -0.5 * ((z - center) / width) ** 2
+    exponent_safe = np.clip(exponent, -EXP_CLIP, EXP_CLIP)
+
     return baseline + amplitude * np.exp(exponent_safe)
 
 

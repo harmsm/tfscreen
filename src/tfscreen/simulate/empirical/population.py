@@ -50,7 +50,6 @@ from tfscreen.simulate.empirical.fit_phenotypes import (
 )
 from scipy.special import expit
 
-_JITTER = 1e-9          # added to matrices before inversion
 _EIG_FLOOR = 1e-8       # floor on eigenvalues of S_i and projected Sigma
 
 
@@ -62,10 +61,28 @@ def _nearest_psd(A, floor=_EIG_FLOOR):
     return (V * w) @ V.T
 
 
-def _batched_inv(mats):
-    """Invert a stack of matrices with a small diagonal jitter."""
-    D = mats.shape[-1]
-    return np.linalg.inv(mats + _JITTER * np.eye(D))
+def _batched_inv(mats, floor=_EIG_FLOOR):
+    """Symmetric-PSD inverse (single ``(D, D)`` or batched ``(N, D, D)``).
+
+    Robust where ``np.linalg.inv`` is not.  ``inv`` raises
+    ``LinAlgError: Singular matrix`` when a matrix is numerically singular, and
+    a *single* bad matrix fails an entire batched call.  A diagonal jitter can't
+    rescue a covariance whose largest eigenvalue dwarfs the jitter: an
+    unidentified Stage-1 parameter yields variances ~1e10+, so once its tiny
+    (floored) eigenvalue is combined with a huge one the condition number
+    exceeds double precision (~1e16), the small eigenvalue is lost to roundoff,
+    and the LU factorization sees an exact-zero pivot.
+
+    Inverting straight from the eigendecomposition instead floors the
+    eigenvalues at ``floor`` *before* taking reciprocals, so the result is
+    always finite, symmetric, and well-conditioned (precision capped at
+    ``1/floor``) no matter how ill-conditioned the input.  ``eigh`` of a finite
+    symmetric matrix never fails, so this cannot raise.
+    """
+    mats = 0.5 * (mats + np.swapaxes(mats, -1, -2))
+    w, V = np.linalg.eigh(mats)
+    inv_w = 1.0 / np.clip(w, floor, None)
+    return (V * inv_w[..., None, :]) @ np.swapaxes(V, -1, -2)
 
 
 def _pheno_block(fit):
@@ -133,13 +150,23 @@ def _moment_init(Y, S):
 
 
 def _marginal_loglik(Y, S, mu, sigma):
-    """Sum_i log Normal(Y_i | mu, Sigma + S_i)."""
+    """Sum_i log Normal(Y_i | mu, Sigma + S_i).
+
+    logdet and the quadratic form are both derived from a single floored
+    eigendecomposition of ``C = Sigma + S_i`` so this stays finite and never
+    raises even when a ``S_i`` is (numerically) singular — consistent with the
+    flooring used in ``_batched_inv``.
+    """
     D = Y.shape[1]
-    C = sigma[None] + S                        # (N, D, D)
+    C = 0.5 * (sigma[None] + S)                # (N, D, D)
+    C = C + np.swapaxes(C, -1, -2)
     r = Y - mu                                 # (N, D)
-    sign, logdet = np.linalg.slogdet(C)
-    sol = np.linalg.solve(C, r[..., None])[..., 0]
-    quad = np.einsum("ni,ni->n", r, sol)
+    w, V = np.linalg.eigh(C)
+    w = np.clip(w, _EIG_FLOOR, None)
+    logdet = np.sum(np.log(w), axis=-1)        # (N,)
+    # quad_n = r_n^T C^{-1} r_n  with  C^{-1} = V diag(1/w) V^T
+    proj = np.einsum("nij,ni->nj", V, r)       # r in the eigenbasis
+    quad = np.einsum("nj,nj->n", proj ** 2, 1.0 / w)
     return float(np.sum(-0.5 * (D * np.log(2 * np.pi) + logdet + quad)))
 
 
@@ -153,7 +180,7 @@ def _em_measurement_error(Y, S, max_iter=500, tol=1e-8):
     ll_prev = -np.inf
 
     for it in range(1, max_iter + 1):
-        sigma_inv = np.linalg.inv(sigma + _JITTER * np.eye(sigma.shape[0]))
+        sigma_inv = _batched_inv(sigma)
 
         # E-step: posterior of each z_i given y_i.
         prec = sigma_inv[None] + S_inv         # (N, D, D)

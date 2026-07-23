@@ -3,12 +3,13 @@ import tfscreen
 import pandas as pd
 import numpy as np
 
+import warnings
 from typing import List, Optional
 
 def mutant_cycle_pivot(
     df: pd.DataFrame,
     extract_columns: List[str],
-    condition_selector: List[str] | str | None = None,
+    group_by: List[str] | str | None = None,
     verbose: bool = False,
 ) -> pd.DataFrame:
     """
@@ -28,10 +29,10 @@ def mutant_cycle_pivot(
     extract_columns : list[str],
         A list of column names whose values will be extracted and placed into
         the new wide-format columns (e.g., 'fitness', 'expression').
-    condition_selector : list[str] or str or None, optional
+    group_by : list[str] or str or None, optional
         Column name(s) to group the DataFrame by. The analysis is performed
-        independently on each group. If None, treat the whole dataframe in a 
-        single analysis. 
+        independently on each group. If None, treat the whole dataframe in a
+        single analysis.
     verbose : bool, default False
         If True, print status messages about skipped groups or dropped data.
 
@@ -74,10 +75,10 @@ def mutant_cycle_pivot(
     else:
         df_proc["m1"] = None
 
-    if condition_selector is None:
+    if group_by is None:
         grouper = [(None,df_proc)]
     else:
-        grouper = df_proc.groupby(condition_selector)
+        grouper = df_proc.groupby(group_by)
 
     result_dfs = []
     for group, sub_df in grouper:
@@ -126,13 +127,88 @@ def mutant_cycle_pivot(
     return pd.concat(result_dfs).reset_index(drop=True)
 
 
+def _epistasis_from_corners(
+    obs_00,
+    obs_10,
+    obs_01,
+    obs_11,
+    scale: str,
+    scale_constant: float = 1.0,
+    logit_eps: float = 1e-9,
+    warn_out_of_range: bool = True,
+):
+    """
+    Compute second-order epistasis from the four mutant-cycle corner values.
+
+    This is the single definition of *what epistasis means* on each scale,
+    shared by the marginal path (``extract_epistasis``, which pushes per-point
+    quantile-derived means through it) and the joint-posterior path
+    (``tfscreen.tfmodel.analysis.extraction.extract_theta_epistasis``, which
+    pushes a full ``(num_sample, num_cycle)`` array through it). It operates
+    elementwise, so the corner arguments may be scalars, pandas Series, or NumPy
+    arrays of any shape; the result has the broadcast shape of the inputs.
+
+    Parameters
+    ----------
+    obs_00, obs_10, obs_01, obs_11 : array-like
+        The observable at the wildtype (``00``), each single mutant (``10``,
+        ``01``), and the double mutant (``11``).
+    scale : {"add", "mult", "logit"}
+        The epistatic scale. See ``extract_epistasis`` for the definitions.
+    scale_constant : float, default 1.0
+        Constant applied to the (identity/logit) transform before the linear
+        difference-of-differences; a no-op for ``"mult"``.
+    logit_eps : float, default 1e-9
+        Clamp applied inside the logit transform (``scale="logit"`` only).
+    warn_out_of_range : bool, default True
+        If True, warn when a logit-scale input falls outside ``[0, 1]``.
+
+    Returns
+    -------
+    array-like
+        The epistasis value(s), broadcast to the shape of the inputs.
+
+    Raises
+    ------
+    ValueError
+        If ``scale`` is not one of "add", "mult", or "logit".
+    """
+    if scale == "add":
+        return scale_constant * ((obs_11 - obs_10) - (obs_01 - obs_00))
+
+    if scale == "logit":
+        raw = [obs_00, obs_10, obs_01, obs_11]
+        if warn_out_of_range and any(
+                bool(((o < 0.0) | (o > 1.0)).any()) for o in raw):
+            warnings.warn(
+                "scale='logit' expects an observable in [0, 1]; values outside "
+                "this range were found and clamped. Check that y_obs is a "
+                "fraction/occupancy (e.g. theta), not fitness or dG.",
+                stacklevel=2,
+            )
+        clip = [np.clip(o, logit_eps, 1.0 - logit_eps) for o in raw]
+        t_00, t_10, t_01, t_11 = (scale_constant * np.log(c / (1.0 - c))
+                                  for c in clip)
+        return (t_11 - t_10) - (t_01 - t_00)
+
+    if scale == "mult":
+        return (obs_11 / obs_10) / (obs_01 / obs_00)
+
+    raise ValueError(
+        "scale should be 'add' (additive), 'mult' (multiplicative), or "
+        "'logit' (additive on the logit scale)\n"
+    )
+
+
 def extract_epistasis(
     df: pd.DataFrame,
     y_obs: str,
     y_std: Optional[str] = None,
-    condition_selector: List[str] | str | None=None,
+    group_by: List[str] | str | None=None,
     scale: str = "add",
-    keep_extra: bool = False
+    scale_constant: float = 1.0,
+    keep_extra: bool = False,
+    logit_eps: float = 1e-9,
 ) -> pd.DataFrame:
     """
     Calculate epistasis between pairs of mutations for a given observable.
@@ -154,18 +230,42 @@ def extract_epistasis(
     y_std : str, optional
         The name of the column containing the standard error for `y_obs`.
         If provided, the error on the epistasis (`ep_std`) will be calculated.
-    condition_selector : list[str] or str or None
+    group_by : list[str] or str or None
         Column name(s) that define a unique experimental condition. Epistasis
-        is calculated independently for each condition. If None, treat all 
+        is calculated independently for each condition. If None, treat all
         conditions at once
-    scale : {"add", "mult"}, default "add"
-        The scale for calculating epistasis.
+    scale : {"add", "mult", "logit"}, default "add"
+        The scale for calculating epistasis. Each name selects a transform of
+        the observable; epistasis is the difference-of-differences of the
+        transformed values (reported in ratio form for "mult").
         - "add": epsilon = (Y_{11} - Y_{10}) - (Y_{01} - Y_{00})
         - "mult": epsilon = (Y_{11} / Y_{10}) / (Y_{01} / Y_{00})
+        - "logit": epsilon = (L_{11} - L_{10}) - (L_{01} - L_{00}), where
+          L = logit(Y). Requires an observable in (0, 1) (e.g. theta/occupancy);
+          removes a saturating measurement scale so genuine (within-state)
+          interactions are not masked by the nonlinearity of a bounded readout.
+    scale_constant : float, default 1.0
+        A constant applied to the transformed observable *before* the epistasis
+        difference-of-differences is taken. Because epistasis on the "add" and
+        "logit" scales is a linear operator, this simply multiplies the reported
+        ``ep_obs`` by ``scale_constant`` and ``ep_std`` by ``abs(scale_constant)``
+        -- but computing it up front keeps the two consistent (no error-prone
+        post-hoc rescaling). The main use is unit conversion: for a two-state
+        binding equilibrium, ``logit(theta) = -dG/RT``, so ``scale_constant``
+        carries the observable onto a free-energy scale. Setting it to ``-RT``
+        (e.g. ``-0.6159`` for kcal/mol at 310.15 K) reports ``ep_obs`` as an
+        interaction free energy; the caller owns the sign convention, the
+        temperature, and the choice of gas constant / units. This is a no-op for
+        the "mult" scale (the constant cancels in the ratio-of-ratios), so a
+        value other than 1.0 with ``scale="mult"`` is an error.
     keep_extra : bool, default False
         If True, all columns from the original DataFrame are kept in the
         output. If False, only key identifiers and the calculated epistasis
         values are returned.
+    logit_eps : float, default 1e-9
+        Only used when scale="logit". Observations are clamped to
+        [logit_eps, 1 - logit_eps] before the logit transform to keep values at
+        the 0/1 bounds finite. Inputs outside [0, 1] are clamped with a warning.
 
     Returns
     -------
@@ -177,14 +277,25 @@ def extract_epistasis(
     Raises
     ------
     ValueError
-        If `scale` is not one of "add" or "mult".
+        If `scale` is not one of "add", "mult", or "logit", or if
+        `scale_constant` is not 1.0 when `scale="mult"` (where it has no effect).
     """
 
-    # Determine the epistatic scale 
-    if scale not in ["add","mult"]:
-        err = "scale should be either 'add' (additive) or 'mult' (multiplicative)\n"
+    # Determine the epistatic scale
+    if scale not in ["add","mult","logit"]:
+        err = ("scale should be 'add' (additive), 'mult' (multiplicative), or "
+               "'logit' (additive on the logit scale)\n")
         raise ValueError(err)
-    
+
+    # scale_constant multiplies a per-point transform before the (linear)
+    # difference-of-differences. "mult" epistasis is a ratio-of-ratios, so the
+    # constant cancels exactly -- reject it rather than silently ignore it.
+    if scale == "mult" and scale_constant != 1.0:
+        err = ("scale_constant has no effect when scale='mult' (it cancels in "
+               "the ratio-of-ratios). Use scale='add' or 'logit', or leave "
+               "scale_constant at its default of 1.0.\n")
+        raise ValueError(err)
+
     # Figure out what columns to extract
     extract_columns = [y_obs]
     if y_std is not None:
@@ -193,16 +304,23 @@ def extract_epistasis(
     # Build a dataframe with mutant cycles
     cycles = mutant_cycle_pivot(df,
                                 extract_columns=extract_columns,
-                                condition_selector=condition_selector)
+                                group_by=group_by)
+
+    # No valid mutant cycles were found (e.g. no double mutants, or no wt). The
+    # pivot returns an empty frame with no cycle columns, so short-circuit before
+    # attempting to select/compute on columns that do not exist.
+    if cycles.empty:
+        return cycles
+
     # Drop extra columns
     if not keep_extra:
 
         keep = ["genotype"]
-        
-        if condition_selector is not None:
-            if isinstance(condition_selector, str):
-                condition_selector = [condition_selector]
-            keep.extend(condition_selector)
+
+        if group_by is not None:
+            if isinstance(group_by, str):
+                group_by = [group_by]
+            keep.extend(group_by)
 
         for c in extract_columns:
             keep.extend([f"{mut}_{c}" for mut in ["00","01","10","11"]])
@@ -221,16 +339,32 @@ def extract_epistasis(
         std_01 = cycles[f"01_{y_std}"]
         std_11 = cycles[f"11_{y_std}"]
     
-    # Additive scale
-    if scale == "add":
-        ep_obs = (obs_11 - obs_10) - (obs_01 - obs_00)
-        if y_std is not None:
-            ep_std = np.sqrt(std_11**2 + std_10**2 + std_01**2 + std_00**2)
-    
-    # Multiplicative scale
-    else: 
-        ep_obs = (obs_11 / obs_10) / (obs_01 / obs_00)
-        if y_std is not None:    
+    # The epistasis value itself is computed by the shared helper so the
+    # marginal path here and the joint-posterior path (extract_theta_epistasis)
+    # can never disagree on what epistasis means on a given scale. Error
+    # propagation (below) is specific to the marginal path and stays here.
+    ep_obs = _epistasis_from_corners(obs_00, obs_10, obs_01, obs_11,
+                                     scale=scale,
+                                     scale_constant=scale_constant,
+                                     logit_eps=logit_eps)
+
+    if y_std is not None:
+        # Additive: scale_constant factors straight out of the linear ddd.
+        if scale == "add":
+            ep_std = np.abs(scale_constant) * np.sqrt(
+                std_11**2 + std_10**2 + std_01**2 + std_00**2)
+
+        # Logit: delta method, d/dy [sc * logit(y)] = sc / (y (1 - y)).
+        elif scale == "logit":
+            clip = [o.clip(logit_eps, 1.0 - logit_eps)
+                    for o in (obs_00, obs_10, obs_01, obs_11)]
+            raw_std = [std_00, std_10, std_01, std_11]
+            t_std = [np.abs(scale_constant) * s / (c * (1.0 - c))
+                     for s, c in zip(raw_std, clip)]
+            ep_std = np.sqrt(sum(s**2 for s in t_std))
+
+        # Multiplicative: relative-error propagation of the ratio-of-ratios.
+        else:
             rel_err_sq = ((std_11 / obs_11)**2 + (std_10 / obs_10)**2 +
                           (std_01 / obs_01)**2 + (std_00 / obs_00)**2)
             ep_std = np.abs(ep_obs) * np.sqrt(rel_err_sq)
@@ -239,5 +373,13 @@ def extract_epistasis(
     cycles["ep_obs"] = ep_obs
     if y_std is not None:
         cycles["ep_std"] = ep_std
+
+    # Sort by (genotype, group_by) for stable, readable output
+    sort_cols = ["genotype"]
+    if group_by is not None:
+        if isinstance(group_by, str):
+            group_by = [group_by]
+        sort_cols.extend(group_by)
+    cycles = cycles.sort_values(sort_cols).reset_index(drop=True)
 
     return cycles

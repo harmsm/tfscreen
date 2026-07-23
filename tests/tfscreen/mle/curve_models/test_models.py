@@ -4,12 +4,15 @@ import numpy as np
 from tfscreen.mle.curve_models.models import (
     model_flat,
     model_linear,
+    model_linear_logx,
     model_hill_3p,
     model_hill_4p,
     model_bell,
+    model_bell_logx,
     model_biphasic_peak,
     model_biphasic_dip,
-    model_poly
+    model_poly,
+    _to_log10_x,
 )
 
 def test_model_flat():
@@ -100,3 +103,61 @@ def test_model_biphasic_dip():
     
     assert np.allclose(y[0], 0.5 + 1.0/101.0)
     assert np.allclose(y[1], 1.0/101.0 + 0.5)
+
+
+# --- log-concentration models ------------------------------------------------
+
+def test_to_log10_x_floor_and_passthrough():
+    # x == 0 -> log10(min positive / 100). min positive = 1e-3 -> floor 1e-5.
+    x = np.array([0.0, 1e-3, 1e-2, 1e-1])
+    z = _to_log10_x(x)
+    assert np.isclose(z[0], np.log10(1e-5))
+    assert np.allclose(z[1:], np.log10([1e-3, 1e-2, 1e-1]))
+
+
+def test_to_log10_x_nan_preserved():
+    z = _to_log10_x(np.array([np.nan, 1e-2, 0.0]))
+    assert np.isnan(z[0])
+    assert np.isclose(z[1], -2.0)
+    # 0 -> floor = 1e-2/100 = 1e-4 -> log10 = -4
+    assert np.isclose(z[2], -4.0)
+
+
+def test_to_log10_x_all_nonpositive_is_nan():
+    z = _to_log10_x(np.array([0.0, 0.0, -1.0]))
+    assert np.all(np.isnan(z))
+
+
+def test_model_linear_logx():
+    # y = m*log10(x) + b with m=2, b=1.
+    x = np.array([1e-2, 1e-1, 1.0])  # log10 -> [-2, -1, 0]
+    y = model_linear_logx([2.0, 1.0], x)
+    assert np.allclose(y, [2 * -2 + 1, 2 * -1 + 1, 2 * 0 + 1])
+
+
+def test_model_bell_logx_peak_centered_in_log_space():
+    # Peak at center = -3 (i.e. x = 1e-3), baseline 0, amplitude 1.
+    params = [0.0, 1.0, -3.0, np.log(1.0)]
+    x = np.array([1e-4, 1e-3, 1e-2])  # log10 -> [-4, -3, -2]
+    y = model_bell_logx(params, x)
+    # Max at the center concentration.
+    assert np.argmax(y) == 1
+    assert np.isclose(y[1], 1.0)
+    # Symmetric one log-unit either side of center.
+    assert np.isclose(y[0], y[2])
+
+
+def test_model_bell_logx_negative_amplitude_is_dip():
+    params = [1.0, -1.0, -3.0, np.log(1.0)]
+    x = np.array([1e-4, 1e-3, 1e-2])
+    y = model_bell_logx(params, x)
+    # Minimum at the center concentration.
+    assert np.argmin(y) == 1
+    assert np.isclose(y[1], 0.0)
+
+
+def test_model_bell_logx_handles_zero_x():
+    # x == 0 must not blow up (it is floored inside _to_log10_x).
+    params = [0.0, 1.0, -3.0, np.log(1.0)]
+    y = model_bell_logx(params, np.array([0.0, 1e-3, 1e-2]))
+    assert np.all(np.isfinite(y))

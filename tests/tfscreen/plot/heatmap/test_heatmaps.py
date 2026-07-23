@@ -131,6 +131,6 @@ def test_epistasis_heatmap_duplicates(mock_heatmap):
         'genotype': ['WT', 'WT'],
         'value': [1.0, 1.0]
     })
-    with pytest.raises(ValueError, match="condition_selector must be unique"):
+    with pytest.raises(ValueError, match="group_by must be unique"):
         epistasis_heatmap(df, 1, 2, 'value')
 

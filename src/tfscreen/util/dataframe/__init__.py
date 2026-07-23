@@ -26,3 +26,7 @@ from .get_group_mean_std import (  # noqa: F401
 from .add_group_columns import (  # noqa: F401
     add_group_columns
 )
+
+from .resolve_obs_columns import (  # noqa: F401
+    resolve_obs_columns
+)

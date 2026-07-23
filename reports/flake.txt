@@ -1,3 +1,15 @@
+./notebooks/thermo_corr/.ipynb_checkpoints/plots-checkpoint.py:12:1: F401 'pandas as pd' imported but unused
+./notebooks/thermo_corr/.ipynb_checkpoints/plots-checkpoint.py:69:84: E261 at least two spaces before inline comment
+./notebooks/thermo_corr/.ipynb_checkpoints/plots-checkpoint.py:69:85: E262 inline comment should start with '# '
+./notebooks/thermo_corr/assemble.py:26:1: F401 'glob' imported but unused
+./notebooks/thermo_corr/plots.py:12:1: F401 'pandas as pd' imported but unused
+./notebooks/thermo_corr/plots.py:69:84: E261 at least two spaces before inline comment
+./notebooks/thermo_corr/plots.py:69:85: E262 inline comment should start with '# '
+./notebooks/thermo_corr/test_confound.py:14:1: F401 'thermo_corr as tc' imported but unused
+./notebooks/thermo_corr/test_confound.py:41:22: E228 missing whitespace around modulo operator
+./notebooks/thermo_corr/test_core.py:8:1: F401 'numpy as np' imported but unused
+./notebooks/thermo_corr/tiers.py:20:1: F401 'dataclasses.field' imported but unused
+./notebooks/thermo_corr/tiers.py:28:1: F401 '.confound.between_group_corr' imported but unused
 ./scripts/generate_struct_ensemble.py:266:11: E221 multiple spaces before operator
 ./scripts/generate_struct_ensemble.py:272:24: E221 multiple spaces before operator
 ./scripts/generate_struct_ensemble.py:433:18: E221 multiple spaces before operator
@@ -6,101 +18,35 @@
 ./src/tfscreen/analysis/__init__.py:13:1: W391 blank line at end of file
 ./src/tfscreen/analysis/cat_response/__init__.py:2:77: W291 trailing whitespace
 ./src/tfscreen/analysis/cat_response/__init__.py:3:55: W291 trailing whitespace
-./src/tfscreen/analysis/cat_response/cat_fit.py:14:1: C901 'cat_fit' is too complex (19)
-./src/tfscreen/analysis/cat_response/cat_fit.py:14:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/analysis/cat_response/cat_fit.py:25:80: W291 trailing whitespace
-./src/tfscreen/analysis/cat_response/cat_fit.py:26:33: W291 trailing whitespace
-./src/tfscreen/analysis/cat_response/cat_fit.py:42:33: W291 trailing whitespace
-./src/tfscreen/analysis/cat_response/cat_fit.py:51:51: W291 trailing whitespace
-./src/tfscreen/analysis/cat_response/cat_fit.py:87:49: E231 missing whitespace after ','
-./src/tfscreen/analysis/cat_response/cat_fit.py:88:40: E231 missing whitespace after ':'
-./src/tfscreen/analysis/cat_response/cat_fit.py:89:36: E231 missing whitespace after ':'
-./src/tfscreen/analysis/cat_response/cat_fit.py:89:51: E231 missing whitespace after ','
-./src/tfscreen/analysis/cat_response/cat_fit.py:90:36: E231 missing whitespace after ':'
-./src/tfscreen/analysis/cat_response/cat_fit.py:91:40: E231 missing whitespace after ':'
-./src/tfscreen/analysis/cat_response/cat_fit.py:92:48: E231 missing whitespace after ':'
-./src/tfscreen/analysis/cat_response/cat_fit.py:94:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/cat_response/cat_fit.py:108:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/cat_response/cat_fit.py:110:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/cat_response/cat_fit.py:115:48: W291 trailing whitespace
-./src/tfscreen/analysis/cat_response/cat_fit.py:117:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/cat_response/cat_fit.py:124:77: W291 trailing whitespace
-./src/tfscreen/analysis/cat_response/cat_fit.py:125:47: W291 trailing whitespace
-./src/tfscreen/analysis/cat_response/cat_fit.py:127:72: E231 missing whitespace after ','
-./src/tfscreen/analysis/cat_response/cat_fit.py:127:74: E231 missing whitespace after ','
-./src/tfscreen/analysis/cat_response/cat_fit.py:128:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/cat_response/cat_fit.py:130:13: E303 too many blank lines (2)
-./src/tfscreen/analysis/cat_response/cat_fit.py:148:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/cat_response/cat_fit.py:150:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/cat_response/cat_fit.py:155:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/cat_response/cat_fit.py:172:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/cat_response/cat_fit.py:174:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/cat_response/cat_fit.py:180:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/cat_response/cat_fit.py:189:55: E712 comparison to True should be 'if cond is True:' or 'if cond:'
-./src/tfscreen/analysis/cat_response/cat_fit.py:189:62: E701 multiple statements on one line (colon)
-./src/tfscreen/analysis/cat_response/cat_fit.py:190:57: E712 comparison to False should be 'if cond is False:' or 'if not cond:'
-./src/tfscreen/analysis/cat_response/cat_fit.py:190:65: E701 multiple statements on one line (colon)
-./src/tfscreen/analysis/cat_response/cat_fit.py:191:9: E701 multiple statements on one line (colon)
-./src/tfscreen/analysis/cat_response/cat_fit.py:192:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/cat_response/cat_fit.py:204:36: E231 missing whitespace after ':'
-./src/tfscreen/analysis/cat_response/cat_fit.py:205:32: E231 missing whitespace after ':'
-./src/tfscreen/analysis/cat_response/cat_fit.py:206:32: E231 missing whitespace after ':'
-./src/tfscreen/analysis/cat_response/cat_fit.py:207:36: E231 missing whitespace after ':'
-./src/tfscreen/analysis/cat_response/cat_fit.py:209:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/cat_response/cat_fit.py:211:5: E303 too many blank lines (2)
-./src/tfscreen/analysis/cat_response/cat_fit.py:211:32: W292 no newline at end of file
-./src/tfscreen/analysis/cat_response/cat_response.py:9:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/analysis/cat_response/cat_response.py:23:73: W291 trailing whitespace
-./src/tfscreen/analysis/cat_response/cat_response.py:26:78: W291 trailing whitespace
-./src/tfscreen/analysis/cat_response/cat_response.py:44:74: W291 trailing whitespace
-./src/tfscreen/analysis/cat_response/cat_response.py:45:75: W291 trailing whitespace
-./src/tfscreen/analysis/cat_response/cat_response.py:46:26: W291 trailing whitespace
-./src/tfscreen/analysis/cat_response/cat_response.py:51:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/cat_response/cat_response.py:57:43: E231 missing whitespace after ','
-./src/tfscreen/analysis/cat_response/cat_response.py:73:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/cat_response/cat_response.py:79:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/cat_response/cat_response.py:90:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/cat_response/cat_response.py:97:43: W291 trailing whitespace
-./src/tfscreen/analysis/cat_response/cat_response.py:98:26: W291 trailing whitespace
-./src/tfscreen/analysis/cat_response/cat_response.py:100:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/cat_response/cat_response.py:103:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/cat_response/cat_response.py:115:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/cat_response/cat_response.py:118:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/cat_response/cat_response.py:130:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/cat_response/cat_response.py:134:34: E231 missing whitespace after ','
-./src/tfscreen/analysis/cat_response/cat_response.py:138:42: E231 missing whitespace after ','
-./src/tfscreen/analysis/cat_response/cat_response.py:141:56: W292 no newline at end of file
-./src/tfscreen/analysis/cat_response/scripts/cat_response_cli.py:12:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/analysis/cat_response/scripts/cat_response_cli.py:21:1: C901 'cat_response' is too complex (11)
-./src/tfscreen/analysis/cat_response/scripts/cat_response_cli.py:91:56: E127 continuation line over-indented for visual indent
-./src/tfscreen/analysis/extract_epistasis.py:8:1: C901 'mutant_cycle_pivot' is too complex (11)
-./src/tfscreen/analysis/extract_epistasis.py:8:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/analysis/extract_epistasis.py:33:77: W291 trailing whitespace
-./src/tfscreen/analysis/extract_epistasis.py:34:25: W291 trailing whitespace
-./src/tfscreen/analysis/extract_epistasis.py:78:25: E231 missing whitespace after ','
-./src/tfscreen/analysis/extract_epistasis.py:90:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:96:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:100:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:113:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:125:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:129:1: C901 'extract_epistasis' is too complex (12)
-./src/tfscreen/analysis/extract_epistasis.py:133:47: E252 missing whitespace around parameter equals
-./src/tfscreen/analysis/extract_epistasis.py:133:48: E252 missing whitespace around parameter equals
-./src/tfscreen/analysis/extract_epistasis.py:159:75: W291 trailing whitespace
-./src/tfscreen/analysis/extract_epistasis.py:183:36: W291 trailing whitespace
-./src/tfscreen/analysis/extract_epistasis.py:184:27: E231 missing whitespace after ','
-./src/tfscreen/analysis/extract_epistasis.py:187:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:192:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:201:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:208:55: E231 missing whitespace after ','
-./src/tfscreen/analysis/extract_epistasis.py:208:60: E231 missing whitespace after ','
-./src/tfscreen/analysis/extract_epistasis.py:208:65: E231 missing whitespace after ','
-./src/tfscreen/analysis/extract_epistasis.py:210:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:216:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:223:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:229:1: W293 blank line contains whitespace
-./src/tfscreen/analysis/extract_epistasis.py:231:10: W291 trailing whitespace
-./src/tfscreen/analysis/extract_epistasis.py:233:30: W291 trailing whitespace
+./src/tfscreen/analysis/cat_response/cat_fit.py:148:1: E305 expected 2 blank lines after class or function definition, found 1
+./src/tfscreen/analysis/cat_response/cat_fit.py:188:1: C901 'cat_fit' is too complex (28)
+./src/tfscreen/analysis/cat_response/cat_fit.py:365:72: E231 missing whitespace after ','
+./src/tfscreen/analysis/cat_response/cat_fit.py:365:74: E231 missing whitespace after ','
+./src/tfscreen/analysis/cat_response/cat_fit.py:471:55: E712 comparison to True should be 'if cond is True:' or 'if cond:'
+./src/tfscreen/analysis/cat_response/cat_fit.py:473:57: E712 comparison to False should be 'if cond is False:' or 'if not cond:'
+./src/tfscreen/analysis/cat_response/cat_response.py:65:1: C901 'cat_response' is too complex (16)
+./src/tfscreen/analysis/compare_feature.py:205:1: C901 'compare_feature' is too complex (12)
+./src/tfscreen/analysis/compare_feature.py:639:1: C901 'aggregate_feature' is too complex (11)
+./src/tfscreen/analysis/extract_epistasis.py:9:1: C901 'mutant_cycle_pivot' is too complex (11)
+./src/tfscreen/analysis/extract_epistasis.py:9:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/analysis/extract_epistasis.py:79:25: E231 missing whitespace after ','
+./src/tfscreen/analysis/extract_epistasis.py:91:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/extract_epistasis.py:97:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/extract_epistasis.py:101:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/extract_epistasis.py:114:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/extract_epistasis.py:126:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/extract_epistasis.py:203:1: C901 'extract_epistasis' is too complex (16)
+./src/tfscreen/analysis/extract_epistasis.py:207:37: E252 missing whitespace around parameter equals
+./src/tfscreen/analysis/extract_epistasis.py:207:38: E252 missing whitespace around parameter equals
+./src/tfscreen/analysis/extract_epistasis.py:285:27: E231 missing whitespace after ','
+./src/tfscreen/analysis/extract_epistasis.py:285:34: E231 missing whitespace after ','
+./src/tfscreen/analysis/extract_epistasis.py:303:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/extract_epistasis.py:326:55: E231 missing whitespace after ','
+./src/tfscreen/analysis/extract_epistasis.py:326:60: E231 missing whitespace after ','
+./src/tfscreen/analysis/extract_epistasis.py:326:65: E231 missing whitespace after ','
+./src/tfscreen/analysis/extract_epistasis.py:328:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/extract_epistasis.py:334:1: W293 blank line contains whitespace
+./src/tfscreen/analysis/extract_epistasis.py:341:1: W293 blank line contains whitespace
 ./src/tfscreen/analysis/stats_test_suite.py:8:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/analysis/stats_test_suite.py:8:31: E231 missing whitespace after ','
 ./src/tfscreen/analysis/stats_test_suite.py:8:42: E231 missing whitespace after ','
@@ -348,150 +294,167 @@
 ./src/tfscreen/mle/curve_models/__init__.py:11:77: W291 trailing whitespace
 ./src/tfscreen/mle/curve_models/__init__.py:16:76: W291 trailing whitespace
 ./src/tfscreen/mle/curve_models/__init__.py:18:29: W291 trailing whitespace
-./src/tfscreen/mle/curve_models/__init__.py:52:26: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:53:26: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:54:27: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:55:22: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:58:28: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:59:28: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:60:29: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:61:24: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:62:27: E201 whitespace after '['
-./src/tfscreen/mle/curve_models/__init__.py:65:31: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:66:31: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:67:32: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:68:27: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:69:30: E201 whitespace after '['
-./src/tfscreen/mle/curve_models/__init__.py:72:29: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:73:29: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:74:30: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:75:25: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:76:28: E201 whitespace after '['
-./src/tfscreen/mle/curve_models/__init__.py:79:36: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:80:36: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:81:37: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:82:32: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:83:35: E201 whitespace after '['
-./src/tfscreen/mle/curve_models/__init__.py:84:1: W293 blank line contains whitespace
-./src/tfscreen/mle/curve_models/__init__.py:86:34: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:87:34: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:88:35: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:89:30: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:90:33: E201 whitespace after '['
-./src/tfscreen/mle/curve_models/__init__.py:93:31: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:94:31: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:95:32: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:96:27: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:97:30: E201 whitespace after '['
-./src/tfscreen/mle/curve_models/__init__.py:100:30: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:57:26: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:58:26: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:59:27: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:60:22: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:63:28: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:64:28: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:65:29: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:66:24: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:67:27: E201 whitespace after '['
+./src/tfscreen/mle/curve_models/__init__.py:70:32: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:71:32: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:72:33: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:73:28: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:74:31: E201 whitespace after '['
+./src/tfscreen/mle/curve_models/__init__.py:77:31: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:78:31: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:79:32: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:80:27: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:81:30: E201 whitespace after '['
+./src/tfscreen/mle/curve_models/__init__.py:84:29: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:85:29: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:86:30: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:87:25: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:88:28: E201 whitespace after '['
+./src/tfscreen/mle/curve_models/__init__.py:91:36: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:92:36: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:93:37: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:94:32: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:95:35: E201 whitespace after '['
+./src/tfscreen/mle/curve_models/__init__.py:96:1: W293 blank line contains whitespace
+./src/tfscreen/mle/curve_models/__init__.py:98:34: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:99:34: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:100:35: E231 missing whitespace after ':'
 ./src/tfscreen/mle/curve_models/__init__.py:101:30: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:102:31: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:103:26: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:104:29: E201 whitespace after '['
-./src/tfscreen/mle/curve_models/__init__.py:104:55: W291 trailing whitespace
-./src/tfscreen/mle/curve_models/__init__.py:107:35: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:108:35: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:109:36: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:110:31: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:111:34: E201 whitespace after '['
-./src/tfscreen/mle/curve_models/__init__.py:114:34: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:115:34: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:116:35: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:117:30: E231 missing whitespace after ':'
-./src/tfscreen/mle/curve_models/__init__.py:117:33: E201 whitespace after '['
+./src/tfscreen/mle/curve_models/__init__.py:102:33: E201 whitespace after '['
+./src/tfscreen/mle/curve_models/__init__.py:105:31: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:106:31: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:107:32: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:108:27: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:109:30: E201 whitespace after '['
+./src/tfscreen/mle/curve_models/__init__.py:112:30: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:113:30: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:114:31: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:115:26: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:116:29: E201 whitespace after '['
+./src/tfscreen/mle/curve_models/__init__.py:119:35: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:120:35: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:121:36: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:123:31: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:124:34: E201 whitespace after '['
+./src/tfscreen/mle/curve_models/__init__.py:127:34: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:128:34: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:129:35: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:131:30: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:132:33: E201 whitespace after '['
+./src/tfscreen/mle/curve_models/__init__.py:135:35: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:136:35: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:137:36: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:138:31: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:139:34: E201 whitespace after '['
+./src/tfscreen/mle/curve_models/__init__.py:145:34: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:146:34: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:147:35: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:148:30: E231 missing whitespace after ':'
+./src/tfscreen/mle/curve_models/__init__.py:149:33: E201 whitespace after '['
 ./src/tfscreen/mle/curve_models/guesses.py:3:69: W291 trailing whitespace
-./src/tfscreen/mle/curve_models/guesses.py:11:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/mle/curve_models/guesses.py:25:20: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/guesses.py:25:25: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/guesses.py:28:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/mle/curve_models/guesses.py:42:20: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/guesses.py:42:25: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/guesses.py:45:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/mle/curve_models/guesses.py:65:23: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/guesses.py:69:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/mle/curve_models/guesses.py:83:1: W293 blank line contains whitespace
-./src/tfscreen/mle/curve_models/guesses.py:89:23: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/guesses.py:109:37: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/guesses.py:110:24: E261 at least two spaces before inline comment
-./src/tfscreen/mle/curve_models/guesses.py:114:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/mle/curve_models/guesses.py:128:1: W293 blank line contains whitespace
-./src/tfscreen/mle/curve_models/guesses.py:129:35: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/guesses.py:130:24: E261 at least two spaces before inline comment
-./src/tfscreen/mle/curve_models/guesses.py:134:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/mle/curve_models/guesses.py:150:1: W293 blank line contains whitespace
-./src/tfscreen/mle/curve_models/guesses.py:155:1: W293 blank line contains whitespace
+./src/tfscreen/mle/curve_models/guesses.py:13:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/mle/curve_models/guesses.py:27:20: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/guesses.py:27:25: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/guesses.py:30:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/mle/curve_models/guesses.py:53:20: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/guesses.py:56:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/mle/curve_models/guesses.py:76:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/mle/curve_models/guesses.py:96:23: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/guesses.py:100:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/mle/curve_models/guesses.py:114:1: W293 blank line contains whitespace
+./src/tfscreen/mle/curve_models/guesses.py:120:23: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/guesses.py:140:37: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/guesses.py:141:24: E261 at least two spaces before inline comment
+./src/tfscreen/mle/curve_models/guesses.py:145:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/mle/curve_models/guesses.py:159:1: W293 blank line contains whitespace
+./src/tfscreen/mle/curve_models/guesses.py:160:35: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/guesses.py:161:24: E261 at least two spaces before inline comment
 ./src/tfscreen/mle/curve_models/guesses.py:165:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/mle/curve_models/guesses.py:181:1: W293 blank line contains whitespace
 ./src/tfscreen/mle/curve_models/guesses.py:186:1: W293 blank line contains whitespace
 ./src/tfscreen/mle/curve_models/guesses.py:196:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/mle/curve_models/guesses.py:212:1: W293 blank line contains whitespace
-./src/tfscreen/mle/curve_models/guesses.py:215:1: W293 blank line contains whitespace
 ./src/tfscreen/mle/curve_models/guesses.py:217:1: W293 blank line contains whitespace
-./src/tfscreen/mle/curve_models/guesses.py:222:1: W293 blank line contains whitespace
-./src/tfscreen/mle/curve_models/guesses.py:225:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/mle/curve_models/guesses.py:243:1: W293 blank line contains whitespace
-./src/tfscreen/mle/curve_models/guesses.py:247:1: W293 blank line contains whitespace
-./src/tfscreen/mle/curve_models/guesses.py:250:26: E225 missing whitespace around operator
-./src/tfscreen/mle/curve_models/guesses.py:252:10: E261 at least two spaces before inline comment
+./src/tfscreen/mle/curve_models/guesses.py:227:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/mle/curve_models/guesses.py:257:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/mle/curve_models/guesses.py:257:21: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/guesses.py:260:1: W293 blank line contains whitespace
-./src/tfscreen/mle/curve_models/guesses.py:271:20: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/guesses.py:271:25: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/guesses.py:274:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/mle/curve_models/guesses.py:274:21: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/guesses.py:277:1: W293 blank line contains whitespace
-./src/tfscreen/mle/curve_models/guesses.py:288:20: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/guesses.py:288:25: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/guesses.py:291:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/mle/curve_models/guesses.py:291:21: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/guesses.py:294:1: W293 blank line contains whitespace
-./src/tfscreen/mle/curve_models/guesses.py:305:20: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/guesses.py:305:25: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/guesses.py:308:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/mle/curve_models/guesses.py:308:21: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/guesses.py:311:1: W293 blank line contains whitespace
-./src/tfscreen/mle/curve_models/guesses.py:322:20: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/guesses.py:322:25: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/guesses.py:324:1: W391 blank line at end of file
-./src/tfscreen/mle/curve_models/models.py:13:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/mle/curve_models/models.py:38:1: W293 blank line contains whitespace
-./src/tfscreen/mle/curve_models/models.py:39:26: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/models.py:40:1: W293 blank line contains whitespace
-./src/tfscreen/mle/curve_models/models.py:41:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/mle/curve_models/models.py:68:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/mle/curve_models/models.py:70:51: W291 trailing whitespace
-./src/tfscreen/mle/curve_models/models.py:75:25: W291 trailing whitespace
-./src/tfscreen/mle/curve_models/models.py:88:1: W293 blank line contains whitespace
-./src/tfscreen/mle/curve_models/models.py:91:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/mle/curve_models/models.py:130:27: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/models.py:130:37: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/models.py:130:42: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/models.py:130:47: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/models.py:132:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/mle/curve_models/models.py:203:1: W293 blank line contains whitespace
-./src/tfscreen/mle/curve_models/models.py:206:31: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/models.py:206:41: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/models.py:207:37: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/models.py:207:47: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/models.py:210:38: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/models.py:211:1: W293 blank line contains whitespace
-./src/tfscreen/mle/curve_models/models.py:213:37: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/models.py:213:47: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/models.py:214:1: W293 blank line contains whitespace
-./src/tfscreen/mle/curve_models/models.py:251:30: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/models.py:251:40: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/models.py:252:31: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/models.py:254:30: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/models.py:254:40: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/models.py:255:31: E231 missing whitespace after ','
-./src/tfscreen/mle/curve_models/models.py:259:1: W293 blank line contains whitespace
-./src/tfscreen/mle/curve_models/models.py:262:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/mle/curve_models/models.py:301:1: W293 blank line contains whitespace
-./src/tfscreen/mle/curve_models/models.py:304:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/mle/curve_models/models.py:316:28: W291 trailing whitespace
-./src/tfscreen/mle/curve_models/models.py:326:1: W293 blank line contains whitespace
-./src/tfscreen/mle/curve_models/models.py:330:1: W293 blank line contains whitespace
+./src/tfscreen/mle/curve_models/guesses.py:287:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/mle/curve_models/guesses.py:303:1: W293 blank line contains whitespace
+./src/tfscreen/mle/curve_models/guesses.py:306:1: W293 blank line contains whitespace
+./src/tfscreen/mle/curve_models/guesses.py:308:1: W293 blank line contains whitespace
+./src/tfscreen/mle/curve_models/guesses.py:313:1: W293 blank line contains whitespace
+./src/tfscreen/mle/curve_models/guesses.py:316:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/mle/curve_models/guesses.py:334:1: W293 blank line contains whitespace
+./src/tfscreen/mle/curve_models/guesses.py:338:1: W293 blank line contains whitespace
+./src/tfscreen/mle/curve_models/guesses.py:341:26: E225 missing whitespace around operator
+./src/tfscreen/mle/curve_models/guesses.py:343:10: E261 at least two spaces before inline comment
+./src/tfscreen/mle/curve_models/guesses.py:348:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/mle/curve_models/guesses.py:348:21: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/guesses.py:351:1: W293 blank line contains whitespace
+./src/tfscreen/mle/curve_models/guesses.py:362:20: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/guesses.py:362:25: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/guesses.py:365:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/mle/curve_models/guesses.py:365:21: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/guesses.py:368:1: W293 blank line contains whitespace
+./src/tfscreen/mle/curve_models/guesses.py:379:20: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/guesses.py:379:25: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/guesses.py:382:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/mle/curve_models/guesses.py:382:21: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/guesses.py:385:1: W293 blank line contains whitespace
+./src/tfscreen/mle/curve_models/guesses.py:396:20: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/guesses.py:396:25: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/guesses.py:399:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/mle/curve_models/guesses.py:399:21: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/guesses.py:402:1: W293 blank line contains whitespace
+./src/tfscreen/mle/curve_models/guesses.py:413:20: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/guesses.py:413:25: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/guesses.py:415:1: W391 blank line at end of file
+./src/tfscreen/mle/curve_models/models.py:54:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/mle/curve_models/models.py:79:1: W293 blank line contains whitespace
+./src/tfscreen/mle/curve_models/models.py:80:26: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/models.py:81:1: W293 blank line contains whitespace
+./src/tfscreen/mle/curve_models/models.py:82:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/mle/curve_models/models.py:109:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/mle/curve_models/models.py:141:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/mle/curve_models/models.py:143:51: W291 trailing whitespace
+./src/tfscreen/mle/curve_models/models.py:148:25: W291 trailing whitespace
+./src/tfscreen/mle/curve_models/models.py:161:1: W293 blank line contains whitespace
+./src/tfscreen/mle/curve_models/models.py:164:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/mle/curve_models/models.py:203:27: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/models.py:203:37: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/models.py:203:42: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/models.py:203:47: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/models.py:205:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/mle/curve_models/models.py:276:1: W293 blank line contains whitespace
+./src/tfscreen/mle/curve_models/models.py:279:31: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/models.py:279:41: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/models.py:280:37: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/models.py:280:47: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/models.py:283:38: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/models.py:284:1: W293 blank line contains whitespace
+./src/tfscreen/mle/curve_models/models.py:286:37: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/models.py:286:47: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/models.py:287:1: W293 blank line contains whitespace
+./src/tfscreen/mle/curve_models/models.py:375:30: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/models.py:375:40: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/models.py:376:31: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/models.py:378:30: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/models.py:378:40: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/models.py:379:31: E231 missing whitespace after ','
+./src/tfscreen/mle/curve_models/models.py:383:1: W293 blank line contains whitespace
+./src/tfscreen/mle/curve_models/models.py:386:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/mle/curve_models/models.py:425:1: W293 blank line contains whitespace
+./src/tfscreen/mle/curve_models/models.py:428:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/mle/curve_models/models.py:440:28: W291 trailing whitespace
+./src/tfscreen/mle/curve_models/models.py:450:1: W293 blank line contains whitespace
+./src/tfscreen/mle/curve_models/models.py:454:1: W293 blank line contains whitespace
 ./src/tfscreen/mle/fit_manager.py:26:72: W291 trailing whitespace
 ./src/tfscreen/mle/fit_manager.py:29:56: W291 trailing whitespace
 ./src/tfscreen/mle/fit_manager.py:34:72: W291 trailing whitespace
@@ -525,14 +488,6 @@
 ./src/tfscreen/mle/fit_manager.py:456:1: W293 blank line contains whitespace
 ./src/tfscreen/mle/fit_manager.py:473:1: W293 blank line contains whitespace
 ./src/tfscreen/mle/fitters/__init__.py:7:1: W391 blank line at end of file
-./src/tfscreen/mle/fitters/_util.py:5:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/mle/fitters/_util.py:5:14: E231 missing whitespace after ','
-./src/tfscreen/mle/fitters/_util.py:5:24: E231 missing whitespace after ','
-./src/tfscreen/mle/fitters/_util.py:5:31: E231 missing whitespace after ','
-./src/tfscreen/mle/fitters/_util.py:6:1: W293 blank line contains whitespace
-./src/tfscreen/mle/fitters/_util.py:19:18: E225 missing whitespace around operator
-./src/tfscreen/mle/fitters/_util.py:21:44: W291 trailing whitespace
-./src/tfscreen/mle/fitters/_util.py:27:34: W292 no newline at end of file
 ./src/tfscreen/mle/fitters/least_squares.py:7:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/mle/fitters/least_squares.py:42:1: W293 blank line contains whitespace
 ./src/tfscreen/mle/fitters/least_squares.py:43:1: W293 blank line contains whitespace
@@ -566,12 +521,10 @@
 ./src/tfscreen/mle/fitters/matrix_wls.py:54:1: W293 blank line contains whitespace
 ./src/tfscreen/mle/fitters/matrix_wls.py:55:52: W292 no newline at end of file
 ./src/tfscreen/mle/predict_with_error.py:3:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/mle/predict_with_error.py:37:1: W293 blank line contains whitespace
-./src/tfscreen/mle/predict_with_error.py:42:36: E231 missing whitespace after ','
-./src/tfscreen/mle/predict_with_error.py:54:1: W293 blank line contains whitespace
-./src/tfscreen/mle/predict_with_error.py:57:43: E231 missing whitespace after ','
-./src/tfscreen/mle/predict_with_error.py:61:45: E231 missing whitespace after ','
-./src/tfscreen/mle/predict_with_error.py:74:32: W292 no newline at end of file
+./src/tfscreen/mle/predict_with_error.py:50:36: E231 missing whitespace after ','
+./src/tfscreen/mle/predict_with_error.py:68:43: E231 missing whitespace after ','
+./src/tfscreen/mle/predict_with_error.py:72:45: E231 missing whitespace after ','
+./src/tfscreen/mle/predict_with_error.py:89:32: W292 no newline at end of file
 ./src/tfscreen/plot/__init__.py:36:63: W291 trailing whitespace
 ./src/tfscreen/plot/cat_fits.py:13:1: C901 'cat_fits' is too complex (11)
 ./src/tfscreen/plot/cat_fits.py:13:1: E302 expected 2 blank lines, found 1
@@ -595,9 +548,9 @@
 ./src/tfscreen/plot/cat_fits.py:131:31: E231 missing whitespace after ','
 ./src/tfscreen/plot/cat_fits.py:137:53: E231 missing whitespace after ','
 ./src/tfscreen/plot/cat_fits.py:147:34: E231 missing whitespace after ','
-./src/tfscreen/plot/cat_fits.py:147:48: E231 missing whitespace after ','
+./src/tfscreen/plot/cat_fits.py:147:54: E231 missing whitespace after ','
 ./src/tfscreen/plot/cat_fits.py:163:34: E231 missing whitespace after ','
-./src/tfscreen/plot/cat_fits.py:163:48: E231 missing whitespace after ','
+./src/tfscreen/plot/cat_fits.py:163:54: E231 missing whitespace after ','
 ./src/tfscreen/plot/cat_fits.py:171:26: E701 multiple statements on one line (colon)
 ./src/tfscreen/plot/cat_fits.py:172:26: E701 multiple statements on one line (colon)
 ./src/tfscreen/plot/cat_fits.py:173:12: E701 multiple statements on one line (colon)
@@ -766,9 +719,6 @@
 ./src/tfscreen/plot/heatmap/epistasis_heatmap.py:23:1: W293 blank line contains whitespace
 ./src/tfscreen/plot/heatmap/epistasis_heatmap.py:25:17: E231 missing whitespace after ','
 ./src/tfscreen/plot/heatmap/epistasis_heatmap.py:33:25: E211 whitespace before '('
-./src/tfscreen/plot/heatmap/epistasis_heatmap.py:36:1: W293 blank line contains whitespace
-./src/tfscreen/plot/heatmap/epistasis_heatmap.py:39:73: E261 at least two spaces before inline comment
-./src/tfscreen/plot/heatmap/epistasis_heatmap.py:39:74: E262 inline comment should start with '# '
 ./src/tfscreen/plot/heatmap/epistasis_heatmap.py:50:43: E231 missing whitespace after ','
 ./src/tfscreen/plot/heatmap/epistasis_heatmap.py:52:19: W292 no newline at end of file
 ./src/tfscreen/plot/heatmap/heatmap_core.py:6:18: W291 trailing whitespace
@@ -1479,14 +1429,14 @@
 ./src/tfscreen/tfmodel/analysis/extraction.py:103:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/tfmodel/analysis/extraction.py:196:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/tfmodel/analysis/extraction.py:274:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/tfmodel/analysis/extraction.py:275:29: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/analysis/extraction.py:276:29: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/analysis/extraction.py:331:16: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/analysis/extraction.py:383:1: C901 'extract_growth_predictions' is too complex (11)
-./src/tfscreen/tfmodel/analysis/extraction.py:482:32: E127 continuation line over-indented for visual indent
-./src/tfscreen/tfmodel/analysis/extraction.py:501:16: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/analysis/extraction.py:503:16: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/analysis/extraction.py:504:16: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/analysis/extraction.py:462:29: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/analysis/extraction.py:463:29: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/analysis/extraction.py:518:16: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/analysis/extraction.py:570:1: C901 'extract_growth_predictions' is too complex (11)
+./src/tfscreen/tfmodel/analysis/extraction.py:669:32: E127 continuation line over-indented for visual indent
+./src/tfscreen/tfmodel/analysis/extraction.py:688:16: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/analysis/extraction.py:690:16: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/analysis/extraction.py:691:16: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/analysis/predict_unmeasured.py:41:15: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/analysis/predict_unmeasured.py:45:12: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/analysis/predict_unmeasured.py:99:16: E221 multiple spaces before operator
@@ -3621,8 +3571,8 @@
 ./src/tfscreen/tfmodel/scripts/fit_model_cli.py:524:72: E231 missing whitespace after ':'
 ./src/tfscreen/tfmodel/scripts/fit_model_cli.py:525:74: E231 missing whitespace after ':'
 ./src/tfscreen/tfmodel/scripts/fit_model_cli.py:527:1: E305 expected 2 blank lines after class or function definition, found 1
-./src/tfscreen/tfmodel/scripts/predict_growth_cli.py:124:27: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/scripts/predict_growth_cli.py:139:5: F841 local variable 'binding_set' is assigned to but never used
+./src/tfscreen/tfmodel/scripts/predict_growth_cli.py:65:1: C901 'predict_growth' is too complex (16)
+./src/tfscreen/tfmodel/scripts/predict_growth_cli.py:193:27: E128 continuation line under-indented for visual indent
 ./src/tfscreen/tfmodel/scripts/predict_theta_cli.py:12:1: C901 'predict_theta' is too complex (11)
 ./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:129:23: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/scripts/prefit_calibration_cli.py:130:23: E221 multiple spaces before operator
@@ -3729,7 +3679,7 @@
 ./src/tfscreen/tfmodel/tensors/tensor_manager.py:512:1: W293 blank line contains whitespace
 ./src/tfscreen/tfmodel/tensors/tensor_manager.py:517:1: W293 blank line contains whitespace
 ./src/tfscreen/tfmodel/tensors/tensor_manager.py:528:1: W391 blank line at end of file
-./src/tfscreen/util/__init__.py:71:2: W292 no newline at end of file
+./src/tfscreen/util/__init__.py:79:2: W292 no newline at end of file
 ./src/tfscreen/util/cli/__init__.py:16:1: W391 blank line at end of file
 ./src/tfscreen/util/cli/generalized_main.py:1:11: W291 trailing whitespace
 ./src/tfscreen/util/cli/generalized_main.py:5:1: C901 'generalized_main' is too complex (15)
@@ -3755,7 +3705,7 @@
 ./src/tfscreen/util/cli/generalized_main.py:104:59: E231 missing whitespace after ','
 ./src/tfscreen/util/cli/generalized_main.py:104:75: E231 missing whitespace after ','
 ./src/tfscreen/util/cli/generalized_main.py:105:1: W293 blank line contains whitespace
-./src/tfscreen/util/dataframe/__init__.py:28:2: W292 no newline at end of file
+./src/tfscreen/util/dataframe/__init__.py:32:2: W292 no newline at end of file
 ./src/tfscreen/util/dataframe/add_group_columns.py:3:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/util/dataframe/add_group_columns.py:8:79: W291 trailing whitespace
 ./src/tfscreen/util/dataframe/add_group_columns.py:9:1: W293 blank line contains whitespace
@@ -3841,13 +3791,11 @@
 ./src/tfscreen/util/numerical/transform.py:10:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/util/numerical/transform.py:189:36: W292 no newline at end of file
 ./src/tfscreen/util/numerical/xfill.py:3:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/util/numerical/xfill.py:14:1: W293 blank line contains whitespace
-./src/tfscreen/util/numerical/xfill.py:26:1: W293 blank line contains whitespace
-./src/tfscreen/util/numerical/xfill.py:32:1: W293 blank line contains whitespace
-./src/tfscreen/util/numerical/xfill.py:58:14: E111 indentation is not a multiple of 4
-./src/tfscreen/util/numerical/xfill.py:58:14: E117 over-indented
-./src/tfscreen/util/numerical/xfill.py:58:29: E261 at least two spaces before inline comment
-./src/tfscreen/util/numerical/xfill.py:79:20: W292 no newline at end of file
+./src/tfscreen/util/numerical/xfill.py:39:1: W293 blank line contains whitespace
+./src/tfscreen/util/numerical/xfill.py:65:14: E111 indentation is not a multiple of 4
+./src/tfscreen/util/numerical/xfill.py:65:14: E117 over-indented
+./src/tfscreen/util/numerical/xfill.py:65:29: E261 at least two spaces before inline comment
+./src/tfscreen/util/numerical/xfill.py:88:20: W292 no newline at end of file
 ./src/tfscreen/util/numerical/zero_truncated_poisson.py:5:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/util/numerical/zero_truncated_poisson.py:45:1: W293 blank line contains whitespace
 ./src/tfscreen/util/numerical/zero_truncated_poisson.py:50:1: W293 blank line contains whitespace
@@ -4066,107 +4014,7 @@
 ./tests/smoke-tests/test_run_growth_analysis_smoke.py:37:1: W293 blank line contains whitespace
 ./tests/smoke-tests/test_run_growth_analysis_smoke.py:45:1: W293 blank line contains whitespace
 ./tests/smoke-tests/test_run_growth_analysis_smoke.py:48:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/scripts/test_cat_response_cli.py:14:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/cat_response/scripts/test_cat_response_cli.py:19:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/cat_response/scripts/test_cat_response_cli.py:24:1: E305 expected 2 blank lines after class or function definition, found 1
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:4:1: F401 'pandas as pd' imported but unused
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:10:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:17:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:26:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:31:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:34:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:38:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:42:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:44:29: E261 at least two spaces before inline comment
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:47:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:54:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:57:56: W291 trailing whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:59:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:67:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:72:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:75:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:82:47: W291 trailing whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:83:55: W291 trailing whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:84:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:88:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:95:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:98:68: W291 trailing whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:99:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:106:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:108:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:109:29: E261 at least two spaces before inline comment
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:111:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:116:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:121:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:129:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:134:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:136:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:138:47: W291 trailing whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:141:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:148:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:152:49: W291 trailing whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:153:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:155:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:171:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:175:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:177:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:181:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:184:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:187:81: W291 trailing whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:190:32: W291 trailing whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:201:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:203:40: E261 at least two spaces before inline comment
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:204:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:213:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:215:18: E111 indentation is not a multiple of 4
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:215:18: E117 over-indented
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:216:18: E111 indentation is not a multiple of 4
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:217:22: E111 indentation is not a multiple of 4
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:218:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:219:22: E111 indentation is not a multiple of 4
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:220:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:221:22: E111 indentation is not a multiple of 4
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:223:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:231:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:233:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:236:58: E231 missing whitespace after ','
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:236:65: E261 at least two spaces before inline comment
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:241:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:243:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:246:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_fit.py:250:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:3:1: F401 'numpy as np' imported but unused
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:5:1: F401 'unittest.mock.MagicMock' imported but unused
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:9:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:20:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:24:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:28:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:31:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:46:39: E231 missing whitespace after ','
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:46:52: E231 missing whitespace after ','
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:46:69: E231 missing whitespace after ','
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:48:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:51:29: W291 trailing whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:57:29: E261 at least two spaces before inline comment
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:63:39: E231 missing whitespace after ','
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:63:51: E231 missing whitespace after ','
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:63:68: E231 missing whitespace after ','
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:65:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:70:17: W291 trailing whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:74:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:77:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:81:44: E261 at least two spaces before inline comment
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:83:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:92:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:94:29: E261 at least two spaces before inline comment
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:98:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:102:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:105:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:111:90: E231 missing whitespace after ':'
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:112:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:113:59: E261 at least two spaces before inline comment
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:114:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/cat_response/test_cat_response.py:119:1: W391 blank line at end of file
+./tests/tfscreen/analysis/cat_response/test_cat_assess.py:7:1: F401 'scipy.stats.norm' imported but unused
 ./tests/tfscreen/analysis/test_extract_epistasis.py:16:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/analysis/test_extract_epistasis.py:22:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/analysis/test_extract_epistasis.py:34:35: W291 trailing whitespace
@@ -4204,20 +4052,21 @@
 ./tests/tfscreen/analysis/test_extract_epistasis.py:178:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/test_extract_epistasis.py:183:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/test_extract_epistasis.py:189:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/test_extract_epistasis.py:191:98: E251 unexpected spaces around keyword / parameter equals
-./tests/tfscreen/analysis/test_extract_epistasis.py:191:110: E231 missing whitespace after ','
+./tests/tfscreen/analysis/test_extract_epistasis.py:191:88: E251 unexpected spaces around keyword / parameter equals
+./tests/tfscreen/analysis/test_extract_epistasis.py:191:100: E231 missing whitespace after ','
 ./tests/tfscreen/analysis/test_extract_epistasis.py:192:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/test_extract_epistasis.py:196:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/test_extract_epistasis.py:199:50: E261 at least two spaces before inline comment
-./tests/tfscreen/analysis/test_extract_epistasis.py:204:101: W291 trailing whitespace
+./tests/tfscreen/analysis/test_extract_epistasis.py:204:91: W291 trailing whitespace
 ./tests/tfscreen/analysis/test_extract_epistasis.py:210:77: E231 missing whitespace after ','
 ./tests/tfscreen/analysis/test_extract_epistasis.py:211:59: E261 at least two spaces before inline comment
 ./tests/tfscreen/analysis/test_extract_epistasis.py:212:1: W293 blank line contains whitespace
-./tests/tfscreen/analysis/test_extract_epistasis.py:219:95: E231 missing whitespace after ','
+./tests/tfscreen/analysis/test_extract_epistasis.py:219:85: E231 missing whitespace after ','
 ./tests/tfscreen/analysis/test_extract_epistasis.py:220:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/test_extract_epistasis.py:226:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/test_extract_epistasis.py:228:74: E231 missing whitespace after ','
-./tests/tfscreen/analysis/test_extract_epistasis.py:229:55: W292 no newline at end of file
+./tests/tfscreen/analysis/test_extract_epistasis.py:287:9: E731 do not assign a lambda expression, use a def
+./tests/tfscreen/analysis/test_extract_epistasis.py:411:79: W292 no newline at end of file
 ./tests/tfscreen/analysis/test_stats_test_suite.py:6:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/analysis/test_stats_test_suite.py:9:52: E261 at least two spaces before inline comment
 ./tests/tfscreen/analysis/test_stats_test_suite.py:10:1: W293 blank line contains whitespace
@@ -4473,47 +4322,46 @@
 ./tests/tfscreen/genetics/test_library_manager.py:815:35: E231 missing whitespace after ':'
 ./tests/tfscreen/genetics/test_library_manager.py:815:49: W291 trailing whitespace
 ./tests/tfscreen/genetics/test_library_manager.py:840:34: W292 no newline at end of file
-./tests/tfscreen/mle/curve_models/test_guesses.py:7:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/mle/curve_models/test_guesses.py:18:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/curve_models/test_guesses.py:21:44: E261 at least two spaces before inline comment
-./tests/tfscreen/mle/curve_models/test_guesses.py:23:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/mle/curve_models/test_guesses.py:26:32: E261 at least two spaces before inline comment
-./tests/tfscreen/mle/curve_models/test_guesses.py:33:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/curve_models/test_guesses.py:41:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/curve_models/test_guesses.py:46:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/curve_models/test_guesses.py:51:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/curve_models/test_guesses.py:57:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/mle/curve_models/test_guesses.py:59:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/curve_models/test_guesses.py:65:45: E261 at least two spaces before inline comment
-./tests/tfscreen/mle/curve_models/test_guesses.py:66:45: E261 at least two spaces before inline comment
-./tests/tfscreen/mle/curve_models/test_guesses.py:67:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/curve_models/test_guesses.py:72:45: E261 at least two spaces before inline comment
-./tests/tfscreen/mle/curve_models/test_guesses.py:73:46: E261 at least two spaces before inline comment
-./tests/tfscreen/mle/curve_models/test_guesses.py:79:1: W293 blank line contains whitespace
+./tests/tfscreen/mle/curve_models/test_guesses.py:14:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/mle/curve_models/test_guesses.py:27:44: E261 at least two spaces before inline comment
+./tests/tfscreen/mle/curve_models/test_guesses.py:78:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/mle/curve_models/test_guesses.py:81:32: E261 at least two spaces before inline comment
+./tests/tfscreen/mle/curve_models/test_guesses.py:88:1: W293 blank line contains whitespace
+./tests/tfscreen/mle/curve_models/test_guesses.py:96:1: W293 blank line contains whitespace
+./tests/tfscreen/mle/curve_models/test_guesses.py:101:1: W293 blank line contains whitespace
+./tests/tfscreen/mle/curve_models/test_guesses.py:106:1: W293 blank line contains whitespace
+./tests/tfscreen/mle/curve_models/test_guesses.py:112:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/mle/curve_models/test_guesses.py:114:1: W293 blank line contains whitespace
+./tests/tfscreen/mle/curve_models/test_guesses.py:120:45: E261 at least two spaces before inline comment
+./tests/tfscreen/mle/curve_models/test_guesses.py:121:45: E261 at least two spaces before inline comment
+./tests/tfscreen/mle/curve_models/test_guesses.py:122:1: W293 blank line contains whitespace
+./tests/tfscreen/mle/curve_models/test_guesses.py:127:45: E261 at least two spaces before inline comment
+./tests/tfscreen/mle/curve_models/test_guesses.py:128:46: E261 at least two spaces before inline comment
+./tests/tfscreen/mle/curve_models/test_guesses.py:134:1: W293 blank line contains whitespace
 ./tests/tfscreen/mle/curve_models/test_models.py:2:1: F401 'pytest' imported but unused
-./tests/tfscreen/mle/curve_models/test_models.py:15:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/mle/curve_models/test_models.py:20:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/mle/curve_models/test_models.py:26:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/mle/curve_models/test_models.py:30:1: W293 blank line contains whitespace
+./tests/tfscreen/mle/curve_models/test_models.py:18:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/mle/curve_models/test_models.py:23:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/mle/curve_models/test_models.py:29:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/mle/curve_models/test_models.py:33:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/curve_models/test_models.py:37:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/curve_models/test_models.py:41:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/mle/curve_models/test_models.py:49:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/mle/curve_models/test_models.py:54:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/curve_models/test_models.py:55:52: W291 trailing whitespace
-./tests/tfscreen/mle/curve_models/test_models.py:59:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/curve_models/test_models.py:64:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/mle/curve_models/test_models.py:69:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/curve_models/test_models.py:71:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/curve_models/test_models.py:74:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/mle/curve_models/test_models.py:79:1: W293 blank line contains whitespace
+./tests/tfscreen/mle/curve_models/test_models.py:36:1: W293 blank line contains whitespace
+./tests/tfscreen/mle/curve_models/test_models.py:40:1: W293 blank line contains whitespace
+./tests/tfscreen/mle/curve_models/test_models.py:44:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/mle/curve_models/test_models.py:52:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/mle/curve_models/test_models.py:57:1: W293 blank line contains whitespace
+./tests/tfscreen/mle/curve_models/test_models.py:58:52: W291 trailing whitespace
+./tests/tfscreen/mle/curve_models/test_models.py:62:1: W293 blank line contains whitespace
+./tests/tfscreen/mle/curve_models/test_models.py:67:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/mle/curve_models/test_models.py:72:1: W293 blank line contains whitespace
+./tests/tfscreen/mle/curve_models/test_models.py:74:1: W293 blank line contains whitespace
+./tests/tfscreen/mle/curve_models/test_models.py:77:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/mle/curve_models/test_models.py:82:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/curve_models/test_models.py:84:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/curve_models/test_models.py:88:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/mle/curve_models/test_models.py:92:1: W293 blank line contains whitespace
+./tests/tfscreen/mle/curve_models/test_models.py:85:1: W293 blank line contains whitespace
+./tests/tfscreen/mle/curve_models/test_models.py:87:1: W293 blank line contains whitespace
+./tests/tfscreen/mle/curve_models/test_models.py:91:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/mle/curve_models/test_models.py:95:1: W293 blank line contains whitespace
 ./tests/tfscreen/mle/curve_models/test_models.py:98:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/curve_models/test_models.py:100:1: W293 blank line contains whitespace
+./tests/tfscreen/mle/curve_models/test_models.py:101:1: W293 blank line contains whitespace
+./tests/tfscreen/mle/curve_models/test_models.py:103:1: W293 blank line contains whitespace
 ./tests/tfscreen/mle/fitters/test_least_squares.py:3:1: F401 'pytest' imported but unused
 ./tests/tfscreen/mle/fitters/test_least_squares.py:6:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/mle/fitters/test_least_squares.py:10:1: E302 expected 2 blank lines, found 1
@@ -4585,32 +4433,28 @@
 ./tests/tfscreen/mle/fitters/test_svd_error.py:55:1: W293 blank line contains whitespace
 ./tests/tfscreen/mle/fitters/test_svd_error.py:59:1: W293 blank line contains whitespace
 ./tests/tfscreen/mle/fitters/test_util.py:3:1: F401 'pytest' imported but unused
-./tests/tfscreen/mle/fitters/test_util.py:7:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/mle/fitters/test_util.py:12:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_util.py:15:34: E261 at least two spaces before inline comment
-./tests/tfscreen/mle/fitters/test_util.py:16:31: E261 at least two spaces before inline comment
-./tests/tfscreen/mle/fitters/test_util.py:17:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_util.py:23:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/mle/fitters/test_util.py:25:29: E261 at least two spaces before inline comment
-./tests/tfscreen/mle/fitters/test_util.py:27:31: E261 at least two spaces before inline comment
-./tests/tfscreen/mle/fitters/test_util.py:28:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_util.py:34:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_util.py:36:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_util.py:40:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/mle/fitters/test_util.py:45:18: E261 at least two spaces before inline comment
-./tests/tfscreen/mle/fitters/test_util.py:46:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_util.py:49:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_util.py:53:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/mle/fitters/test_util.py:59:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_util.py:61:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_util.py:64:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/mle/fitters/test_util.py:70:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_util.py:75:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_util.py:79:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/mle/fitters/test_util.py:85:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_util.py:98:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_util.py:102:1: W293 blank line contains whitespace
-./tests/tfscreen/mle/fitters/test_util.py:105:1: W391 blank line at end of file
+./tests/tfscreen/mle/fitters/test_util.py:6:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/mle/fitters/test_util.py:11:1: W293 blank line contains whitespace
+./tests/tfscreen/mle/fitters/test_util.py:14:34: E261 at least two spaces before inline comment
+./tests/tfscreen/mle/fitters/test_util.py:15:31: E261 at least two spaces before inline comment
+./tests/tfscreen/mle/fitters/test_util.py:16:1: W293 blank line contains whitespace
+./tests/tfscreen/mle/fitters/test_util.py:22:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/mle/fitters/test_util.py:24:29: E261 at least two spaces before inline comment
+./tests/tfscreen/mle/fitters/test_util.py:26:31: E261 at least two spaces before inline comment
+./tests/tfscreen/mle/fitters/test_util.py:27:1: W293 blank line contains whitespace
+./tests/tfscreen/mle/fitters/test_util.py:33:1: W293 blank line contains whitespace
+./tests/tfscreen/mle/fitters/test_util.py:35:1: W293 blank line contains whitespace
+./tests/tfscreen/mle/fitters/test_util.py:39:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/mle/fitters/test_util.py:44:18: E261 at least two spaces before inline comment
+./tests/tfscreen/mle/fitters/test_util.py:45:1: W293 blank line contains whitespace
+./tests/tfscreen/mle/fitters/test_util.py:48:1: W293 blank line contains whitespace
+./tests/tfscreen/mle/fitters/test_util.py:52:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/mle/fitters/test_util.py:58:1: W293 blank line contains whitespace
+./tests/tfscreen/mle/fitters/test_util.py:63:1: W293 blank line contains whitespace
+./tests/tfscreen/mle/fitters/test_util.py:67:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/mle/fitters/test_util.py:73:1: W293 blank line contains whitespace
+./tests/tfscreen/mle/fitters/test_util.py:86:1: W293 blank line contains whitespace
+./tests/tfscreen/mle/fitters/test_util.py:90:1: W293 blank line contains whitespace
 ./tests/tfscreen/mle/test_fit_manager.py:6:1: F401 'scipy.special.expit' imported but unused
 ./tests/tfscreen/mle/test_fit_manager.py:8:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/mle/test_fit_manager.py:20:1: E302 expected 2 blank lines, found 1
@@ -4671,7 +4515,6 @@
 ./tests/tfscreen/mle/test_predict_with_error.py:57:1: W293 blank line contains whitespace
 ./tests/tfscreen/mle/test_predict_with_error.py:59:1: W293 blank line contains whitespace
 ./tests/tfscreen/mle/test_predict_with_error.py:64:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/mle/test_predict_with_error.py:67:61: W291 trailing whitespace
 ./tests/tfscreen/plot/heatmap/test_heatmap_core.py:25:1: F401 'tfscreen.plot.default_styles.DEFAULT_HMAP_PATCH_KWARGS' imported but unused
 ./tests/tfscreen/plot/heatmap/test_heatmap_core.py:31:1: F401 'tfscreen.plot.helper.get_ax_limits' imported but unused
 ./tests/tfscreen/plot/heatmap/test_heatmap_core.py:31:47: W291 trailing whitespace
@@ -7624,7 +7467,8 @@
 ./tests/tfscreen/util/numerical/test_xfill.py:92:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/numerical/test_xfill.py:99:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/numerical/test_xfill.py:101:29: E261 at least two spaces before inline comment
-./tests/tfscreen/util/numerical/test_xfill.py:109:41: W292 no newline at end of file
+./tests/tfscreen/util/numerical/test_xfill.py:110:1: E302 expected 2 blank lines, found 0
+./tests/tfscreen/util/numerical/test_xfill.py:125:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/numerical/test_zero_truncated_poisson.py:5:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/numerical/test_zero_truncated_poisson.py:10:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/numerical/test_zero_truncated_poisson.py:14:1: W293 blank line contains whitespace
@@ -7643,52 +7487,53 @@
 ./tests/tfscreen/util/validation/test_check.py:8:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/validation/test_check.py:26:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/validation/test_check.py:75:70: W292 no newline at end of file
-51    C901 'cat_fit' is too complex (19)
-15    E111 indentation is not a multiple of 4
+54    C901 'cat_fit' is too complex (28)
+10    E111 indentation is not a multiple of 4
 6     E114 indentation is not a multiple of 4 (comment)
 6     E116 unexpected indentation (comment)
-11    E117 over-indented
+10    E117 over-indented
 1     E122 continuation line missing indentation or outdented
 2     E124 closing bracket does not match visual indentation
 6     E125 continuation line with same indent as next logical line
-214   E127 continuation line over-indented for visual indent
+213   E127 continuation line over-indented for visual indent
 92    E128 continuation line under-indented for visual indent
 3     E131 continuation line unaligned for hanging indent
-43    E201 whitespace after '['
+46    E201 whitespace after '['
 28    E202 whitespace before ']'
 6     E203 whitespace before ','
 4     E211 whitespace before '('
 1839  E221 multiple spaces before operator
 26    E222 multiple spaces after operator
-8     E225 missing whitespace around operator
-1110  E231 missing whitespace after ','
+7     E225 missing whitespace around operator
+1     E228 missing whitespace around modulo operator
+1097  E231 missing whitespace after ','
 103   E251 unexpected spaces around keyword / parameter equals
 14    E252 missing whitespace around parameter equals
-216   E261 at least two spaces before inline comment
-1     E262 inline comment should start with '# '
+209   E261 at least two spaces before inline comment
+2     E262 inline comment should start with '# '
 2     E265 block comment should start with '# '
 2     E266 too many leading '#' for block comment
 149   E272 multiple spaces before keyword
 1     E301 expected 1 blank line, found 0
-780   E302 expected 2 blank lines, found 1
-50    E303 too many blank lines (2)
+767   E302 expected 2 blank lines, found 1
+48    E303 too many blank lines (2)
 20    E305 expected 2 blank lines after class or function definition, found 1
 29    E306 expected 1 blank line before a nested definition, found 0
 1     E401 multiple imports on one line
 38    E402 module level import not at top of file
 87    E501 line too long (153 > 127 characters)
-46    E701 multiple statements on one line (colon)
+43    E701 multiple statements on one line (colon)
 5     E712 comparison to True should be 'if cond is True:' or 'if cond:'
 2     E713 test for membership should be 'not in'
 1     E722 do not use bare 'except'
-1     E731 do not assign a lambda expression, use a def
+2     E731 do not assign a lambda expression, use a def
 21    E741 ambiguous variable name 'l'
-232   F401 'tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U0_a.thermo.run_model' imported but unused
+237   F401 'pandas as pd' imported but unused
 11    F541 f-string is missing placeholders
 4     F811 redefinition of unused 'np' from line 1
-41    F841 local variable 'e' is assigned to but never used
-620   W291 trailing whitespace
-85    W292 no newline at end of file
-1582  W293 blank line contains whitespace
-30    W391 blank line at end of file
-7645
+40    F841 local variable 'e' is assigned to but never used
+587   W291 trailing whitespace
+81    W292 no newline at end of file
+1498  W293 blank line contains whitespace
+28    W391 blank line at end of file
+7489

@@ -1,0 +1,178 @@
+# ===========================================================================
+# Empirical-phenotype simulation config
+# ===========================================================================
+#
+# This is an ordinary tfs-simulate config with one change: instead of drawing
+# each genotype's phenotype (theta curve + dk_geno) from made-up priors, it
+# RESAMPLES them from a PopulationModel that tfs-build-empirical fit
+# to REAL screen data.  The simulated library therefore has a phenotype
+# distribution shaped like reality, while ground truth stays known.
+#
+# Workflow:
+#   # 1. real data -> empirical generating distribution (writes emp_phenotype_model.json)
+#   tfs-build-empirical growth.csv 42 \
+#       --binding_file binding.csv --spiked_file spiked.txt --out_prefix emp
+#   # 2. simulate from it
+#   tfs-simulate simulate_config.yaml out_dir/
+#
+# See the "Empirical phenotype pipeline" section of CLAUDE.md for the full story.
+
+# ---------------------------------------------------------------------------
+# Empirical phenotype source   (the only empirical-specific keys)
+# ---------------------------------------------------------------------------
+
+# Resample every library genotype's phenotype from the fitted distribution
+# rather than prior-predictive sampling.  Omit this key (or set "prior") to get
+# the ordinary fully-synthetic simulation.
+phenotype_source: empirical
+
+empirical:
+  # The single self-contained JSON model file that tfs-build-empirical
+  # writes (<out_prefix>_phenotype_model.json) -- it prints this exact path at
+  # the end of its run.  Use an ABSOLUTE path so it resolves no matter which
+  # directory you run tfs-simulate from (no copying files around).
+  phenotype_model: /abs/path/to/tfs_empirical_phenotype_model.json
+
+# What empirical mode overrides vs. what this config still controls:
+#   OVERRIDDEN by the resampled model (values below are ignored):
+#     - theta curves            (no theta_sim_priors / theta_priors needed)
+#     - per-genotype dk_geno     (the dk_geno_hyper_* keys are still read by the
+#                                 loader but their values do not matter)
+#     - activity is forced to 1  (A is absorbed into the fitted theta for a
+#                                 repressor; activity_wt / activity_mut_scale ignored)
+#   STILL CONTROLLED by this config:
+#     - the growth linkage (m/b per condition, below) -- MUST be the calibrated
+#       values (see the growth block)
+#     - conditions, library composition, sequencing/noise, congression, binding
+#       coverage, etc.
+
+# ---------------------------------------------------------------------------
+# Library genetic information   (match your real experiment)
+# ---------------------------------------------------------------------------
+reading_frame: 0
+first_amplicon_residue: 27
+wt_seq: gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatggcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctgcacgcgccgtcgcaaattgtcgcggcgattaaatctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg
+degen_sites: ......nntnnt.............................................................................................nntnnt.........................................................................................................
+tiles: ......111111.............................................................................................222222.........................................................................................................
+expected_5p: cgcgtggtgaaccag
+expected_3p: gtagaacgaagcggc
+tile_combos: ["single-1", "single-2", "double-1-2"]
+spiked_seqs:
+- gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatggcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctggcggcgccgtcgcaaattgtcgcggcgattctgtctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg  # k84l
+- gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgattgcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctgcacgcgccgtcgcaaattgtcgcggcgattctgtctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg  # m42i/k84l
+
+# ---------------------------------------------------------------------------
+# Phenotype calculation
+# ---------------------------------------------------------------------------
+
+# In empirical mode this is FORCED to "hill_geno" (the resampled phenotypes are
+# per-genotype Hill curves); any other value is ignored with a warning.  Set it
+# to hill_geno to avoid the warning and skip an expensive discarded prior draw.
+theta_component: "hill_geno"
+
+# ---------------------------------------------------------------------------
+# Conditions   (match the conditions the calibration was fit on)
+# ---------------------------------------------------------------------------
+condition_blocks:
+  - library: "kanR"
+    titrant_name: "iptg"
+    titrant_conc: [0, 0.0001, 0.001, 0.003]
+    condition_pre: "kanR-kan"
+    t_pre: 30
+    condition_sel: "kanR+kan"
+    t_sel: [160, 180, 200]
+
+  - library: "kanR"
+    titrant_name: "iptg"
+    titrant_conc: [0.01, 0.03, 0.1, 1.0]
+    condition_pre: "kanR-kan"
+    t_pre: 30
+    condition_sel: "kanR+kan"
+    t_sel: [145, 165, 180]
+
+  - library: "pheS"
+    titrant_name: "iptg"
+    titrant_conc: [0, 0.0001, 0.001, 0.003, 0.01, 0.03, 0.1, 1.0]
+    condition_pre: "pheS-4CP"
+    t_pre: 30
+    condition_sel: "pheS+4CP"
+    t_sel: [95, 110, 125]
+
+# ---------------------------------------------------------------------------
+# Growth rate parameters
+# ---------------------------------------------------------------------------
+
+# Linear growth linkage per condition:  k = m * theta + b.
+#
+# IMPORTANT: for a self-consistent empirical simulation these MUST be the same
+# calibrated values the phenotype fit used -- i.e. the per-condition values the
+# pre-fit wrote into <emp>_configure_priors.csv.  For each condition_rep:
+#     b  =  value of parameter  growth.condition_growth.k_loc   (baseline)
+#     m  =  value of parameter  growth.condition_growth.m_loc   (slope)
+# (The numbers below are placeholders -- replace them with your calibration.)
+growth:
+  kanR+kan: {m: -0.009933, b: 0.000000}
+  kanR-kan: {m:  0.000808, b: 0.004670}
+  pheS+4CP: {m:  0.006226, b: 0.010741}
+  pheS-4CP: {m: -0.000344, b: 0.017862}
+
+# Required by the config loader, but OVERRIDDEN per genotype in empirical mode
+# (dk_geno comes from the resampled model).  Values here have no effect.
+dk_geno_hyper_loc: -3.5
+dk_geno_hyper_scale: 1.0
+dk_geno_hyper_shift: 0.02
+
+# ---------------------------------------------------------------------------
+# Experimental simulation parameters   (tune to match your real library)
+# ---------------------------------------------------------------------------
+transform_sizes:
+  single-1: 10_000
+  single-2: 10_000
+  double-1-2: 1_000_000
+  spiked: 1000
+
+library_mixture:
+  single-1: 100
+  single-2: 100
+  double-1-2: 5
+  spiked: 4
+
+lib_assembly_skew_sigma: 1.25
+
+# Congression: plasmids per cell ~ zero-truncated Poisson(lambda).  This is the
+# attenuation your empirical distribution is (currently) uncorrected for, so
+# keep it matched to the real library.
+transformation_poisson_lambda: 1.5
+multi_plasmid_combine_fcn:
+  kanR: "min"
+  pheS: "max"
+
+cfu0: 65_000_000.0
+tube_noise_sigma: 0.002
+total_num_reads: 25_000_000
+prob_index_hop: 0.05
+
+# Random seed for the simulation (independent of the fit's seed).
+seed: null
+
+# ---------------------------------------------------------------------------
+# Binding data   (regenerated from the resampled phenotypes)
+# ---------------------------------------------------------------------------
+
+# In empirical mode the binding CSV is rebuilt from each resampled genotype's
+# Hill curve (this block chooses WHICH genotypes are measured and the noise;
+# the theta VALUES come from the model, not a separate draw).  Keep coverage +
+# noise matched to your real binding assay -- the library_binding anchors are
+# what identify the growth slope m from data.
+binding_data:
+  titrant_name: iptg
+  titrant_conc: [0, 0.0001, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1.0]
+  noise: 0.02
+  # Clean, monoclonal controls (pool = spiked_seqs).
+  spiked_binding:
+    choose_by: stratified
+    num: 4
+  # In-library controls from the bulk (congression-affected). Pool = non-spiked.
+  library_binding:
+    num: 20
+    choose_by: stratified
