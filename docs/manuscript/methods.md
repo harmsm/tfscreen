@@ -203,7 +203,7 @@ From the posterior we computed:
 SVI finds a local optimum, so a single fit conflates the posterior with the
 particular basin the optimizer reached. We therefore repeated the entire
 workflow — configure through prediction — for 10 independent random seeds, and
-combined the results with `tfs-compare-feature`.
+combined the results with `tfs-compare-runs`.
 
 For each feature (θ, epistasis) and each `(genotype, titrant, concentration)`
 cell, we reconstructed each run's marginal posterior from its stored quantile
@@ -215,25 +215,28 @@ replicates of the experiment. All downstream analyses use these aggregate
 posteriors. Any bias shared by all 10 runs is invisible to this procedure; it
 captures optimization variability, not model misspecification.
 
-The same tool also graded every genotype on two independent axes, which we used
-to filter the results:
+The same tool also scored every genotype on two independent axes, which we used
+to filter the results. It reports both as raw statistics rather than grades, so
+the thresholds below are ours and are stated here rather than buried in a
+command line:
 
-- **Reproducibility** — the run-to-run spread (RMS standard deviation over the
-  concentration grid) of the median estimate, in the feature's own units,
-  binned into tiers A–D at cutlines [TODO: report the `--sd_tier_edges` we
-  used for each feature].
-- **Self-consistency** — an overdispersion statistic (χ² per degree of freedom)
+- **Reproducibility** (`rms_sd`) — the run-to-run spread (RMS standard deviation
+  over the concentration grid) of the median estimate, in the feature's own
+  units. We required `rms_sd <` [TODO: cutline per feature].
+- **Self-consistency** (`overdispersion`) — a χ²-per-degree-of-freedom statistic
   asking whether the run-to-run disagreement is explained by each run's own
-  reported uncertainty. This does not enter the tier; it separates genotypes
-  that are honestly uncertain from those that are confidently inconsistent
-  across runs.
+  reported uncertainty, reported with its p-value and a Benjamini-Hochberg
+  q-value across genotypes. It is independent of the reproducibility axis: it
+  separates genotypes that are honestly uncertain from those that are
+  confidently inconsistent across runs. We used [TODO: threshold, or state that
+  it was reported but not used to filter].
 
-[TODO: report how many genotypes fell in each tier, and the reproducibility ×
-self-consistency crosstab.]
+[TODO: report how many genotypes passed each filter, and the reproducibility ×
+self-consistency cross-tabulation.]
 
 ## [TODO] k-fold cross validation
 
-We held out [TODO] and refit ... `tfs-compare-feature` in reference mode scores
+We held out [TODO] and refit ... `tfs-compare-runs` in reference mode scores
 each dropout fit by its deviation from the full-data fit rather than against the
 cross-run mean.
 

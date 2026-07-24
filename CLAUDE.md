@@ -55,7 +55,7 @@ tfs-predict-theta          # Predict operator occupancy
 tfs-predict-epistasis      # Joint second-order epistasis from the theta posterior (per-draw ep, then quantiles; captures cross-genotype posterior covariance the marginal tfs-extract-epistasis path drops)
 tfs-cat-response           # Fit categorical response curves
 tfs-extract-epistasis      # Calculate second-order epistasis from a long-form observable table (--scale add|mult|logit; --scale_constant rescales the transform before epistasis, e.g. -RT to put logit onto a free-energy scale)
-tfs-compare-feature        # Grade per-genotype stability of any quantile-summarized feature (theta/growth/epistasis) across N estimate runs (seeds / k-fold dropouts); --sd_tier_edges sets the A/B/C/D cutlines to the feature's scale
+tfs-compare-runs           # Cross-run agreement statistics for any quantile-summarized estimate -- predicted features (theta/growth/epistasis) or fitted parameters (log_hill_K/dk_geno/growth_k/k_ref) -- across N runs (seeds / k-fold dropouts). Reports raw numbers (rms_sd, overdispersion + p/q, n_present/n_runs); no thresholds, no grades. --index_by picks the entity, --group_by breaks it out further, --match_by overrides key detection
 tfs-diagnose-nan           # Diagnose NaN issues in inference
 tfs-simulate               # Simulate a full experiment
 tfs-report-cfu0            # Report average ln_cfu0 by genotype class from a simulate config
@@ -95,7 +95,7 @@ FASTQ files
 | `process_raw/` | FASTQ parsing, count normalization, ln_cfu calculation |
 | `simulate/` | Full experiment simulation from thermodynamics to read counts |
 | `simulate/growth/` | Growth/growth-transition linkage models for simulation |
-| `analysis/` | Downstream statistical analysis of inference outputs (cat_response, extract_epistasis, compare_feature) |
+| `analysis/` | Downstream statistical analysis of inference outputs (cat_response, extract_epistasis, compare_runs) |
 | `mle/` | General-purpose MLE regression (FitManager, least squares, WLS, NLS) |
 | `mle/curve_models/` | Empirical curve-fitting functions and MODEL_LIBRARY used by cat_response |
 | `mle/fitters/` | Low-level fitter implementations (least_squares, matrix_nls, matrix_wls) |
@@ -294,6 +294,70 @@ The equivalence rollup `all_equiv_zero` (every observed point's CI `|y_obs| + z�
 
 Outputs: rollups (`best_model`/`aicc_best_model`/`shape`/`shape_status`/`best_model_runs_p`/`best_model_autocorr_p`/`best_model_gof_p`, data-based `nonzero_p/q` (drives `fittable`), reported-only model `omnibus_p/q`, `n_nonzero`, `all_equiv_zero`, `fittable` (bool)) land in `{prefix}.csv`; `{prefix}_assessment.csv` is the self-contained per-point record — `model` (best model name), `fittable` (bool, right after `model`; carried on every point for filtering — model name and fitted values left intact), `x`, observed `y_obs`/`y_std`, fitted `y_model`/`y_model_std` (curve value + propagated fit error, **not** the observed error), then `z` (= y_obs/y_std) and `sig_nonzero` (per-observed-point, not the model). `equiv_zero`/`direction` were dropped (the ROPE `equiv_zero` was ~always False; `direction` = `sign(y_obs)`). `{prefix}_predictions.csv` holds only each group's **best** model (columns `model,x,y_model,y_model_std,is_best_model`; `best_only=True` threaded `cat_response→cat_fit` so the all-model curve is never built) unless `--write_all_predictions`. Note `y_model`/`y_model_std` are the **model prediction** at each observed x, distinct from `y_obs`/`y_std` (the experimental point + its input error). `cat_fit` returns a 3-tuple `(flat_output, pred_df, assess_df)`; `cat_response` a 4-tuple `(results_df, predictions_df, assessment_df, rope_cutoff)`.
 
+## Cross-run comparison (`analysis/compare_runs.py`)
+
+`tfs-compare-runs` measures how much N independent estimates of the same
+quantity disagree, and whether that disagreement is explained by the uncertainty
+each run reports. It is estimate-agnostic: anything long-form with a point
+estimate works — `tfs-predict-theta`/`-growth`/`-epistasis` output *and*
+`tfs-extract-params` parameter files.
+
+**No thresholds, no grades.** Every quantity is a raw number; filter downstream
+(`df["overdispersion"] > 2`, `df["rms_sd"] < 0.05`) so the cutline is recorded in
+the analysis that used it. There is no `tier` column, no `overdispersed` flag,
+and no crosstab output — an earlier version had all three, and the arbitrary,
+unrecorded `--sd_tier_edges` cutlines were the reason they were removed.
+`{out_prefix}_metadata.json` records every resolved setting.
+
+**Three key sets** (all printed at runtime and recorded in the metadata):
+
+- **match key** — what makes a row "the same row" across runs. Auto-detected as
+  every column shared by all runs that is not a value column (`q<level>`,
+  `y_obs`, `y_std`) and not incidental (`in_training_data`, `in_regime`,
+  `Unnamed: *`, …). `--match_by` overrides. Fails fast if it is not unique
+  within a run — a non-unique key silently becomes a many-to-many join.
+- **`index_by`** — the entity being scored. Auto: `genotype`, else `parameter`,
+  else the sole match-key column. The last rule is what makes
+  `*_params_growth_k.csv` (keyed `replicate` + `condition_rep`) work — but it is
+  ambiguous there, so that file needs `--index_by condition_rep`.
+- **report key** = `index_by + group_by`; one output row per distinct value.
+
+`match key - report key` is the *residual*: the axes each output row pools over.
+`--group_by` is a statistical **zoom**, not a free refinement — at the finest
+grouping only `n_runs - 1` dof remain per row. `n_rows`/`n_eff` report the
+pooling depth. `dynamic_range` is the target's range over the residual axes and
+is NaN when there is no residual axis; it pools across *all* residual axes at
+once, so put a stratifier in `--group_by` to get per-stratum ranges.
+
+**Statistical notes.** `rms_sd` is in native units and is not comparable across
+parameters; `overdispersion` (χ²/dof, with p and a BH q) is the unit-free axis.
+The default sigma is the symmetric quantile half-width `(q0.841 - q0.159)/2`,
+which stays a fine robust scale but biases Axis 2 for skewed posteriors
+(`theta_low`/`theta_high` at 0/1, `hill_n` at its bound); `rms_sd` is unaffected.
+`--y_obs`/`--y_std` accept explicit columns (via the shared
+`resolve_obs_columns`) for tables with no quantile ladder; Axis 2 is NaN when no
+uncertainty is available.
+
+**Aggregate.** `{out_prefix}_aggregate.csv` is written **by default**
+(`--no_aggregate` suppresses it; it is the slow step on a big library). It mixes
+the per-run posteriors as an equal-weight mixture keyed on the match key, so it
+needs ≥2 shared `q<level>` columns and is skipped with a warning otherwise. It
+is a row-level combination, so `--group_by` does not affect it, and a reference
+run is never mixed in.
+
+**Weights (not yet wired up).** Every reduction is written in weighted form
+against a `_w` column pinned at 1.0, so uniform weights reproduce the unweighted
+formulas exactly (`ddof=1` variance, arithmetic means) and enabling weights later
+changes no existing number. `_mixture_quantiles` already accepts `weights`. When
+wiring them up: on the **run** axis use *design* weights (fold size, run
+validity), never inverse-variance — precision weighting across seed/dropout runs
+down-weights runs that honestly report wide posteriors and tilts toward the
+overconfident ones, exactly what Axis 2 exists to detect.
+
+**Input forms.** The `estimates` positional takes `nargs="+"`: two or more
+arguments are direct CSV paths (`rep1.csv rep2.csv`); a single argument is a
+manifest file (one path per line) *unless* it ends in `.csv`.
+
 ## YAML Standards
 
 All YAML files in this codebase follow these conventions. Apply them when creating or modifying any YAML file.
@@ -432,7 +496,7 @@ When a list of genotypes, titrant names, or concentrations is needed, the `_cli`
 
 ### Quantile-output column convention
 
-Any CLI that emits a posterior/quantile summary of an estimate writes those quantiles as **bare `q<level>` columns** — `q0.5` (median), `q0.025`, `q0.975`, etc. — with **no feature-name prefix** on the column. This holds for `tfs-predict-theta`, `tfs-predict-growth`, and `tfs-predict-epistasis`; the feature a file describes is conveyed by the file, not by the column name. Downstream tools rely on this: `resolve_obs_columns` (used by `tfs-extract-epistasis`) defaults `y_obs` to `q0.5` and `y_std` to `(q0.841 - q0.159)/2`, and `tfs-compare-feature` reads the whole `q<level>` ladder. Point estimate + std outputs (e.g. the marginal `tfs-extract-epistasis`'s `ep_obs`/`ep_std`) are a different, non-quantile output shape and keep their descriptive names.
+Any CLI that emits a posterior/quantile summary of an estimate writes those quantiles as **bare `q<level>` columns** — `q0.5` (median), `q0.025`, `q0.975`, etc. — with **no feature-name prefix** on the column. This holds for `tfs-predict-theta`, `tfs-predict-growth`, and `tfs-predict-epistasis`; the feature a file describes is conveyed by the file, not by the column name. Downstream tools rely on this: `resolve_obs_columns` (used by `tfs-extract-epistasis`) defaults `y_obs` to `q0.5` and `y_std` to `(q0.841 - q0.159)/2`, and `tfs-compare-runs` reads the whole `q<level>` ladder. Point estimate + std outputs (e.g. the marginal `tfs-extract-epistasis`'s `ep_obs`/`ep_std`) are a different, non-quantile output shape and keep their descriptive names.
 
 ### Registered entry points
 
