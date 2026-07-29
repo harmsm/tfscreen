@@ -90,10 +90,13 @@ import pandas as pd
 from scipy import stats
 
 from tfscreen.analysis.cat_response.cat_assess import benjamini_hochberg
+from tfscreen.genetics import set_categorical_genotype
 from tfscreen.util.dataframe import resolve_obs_columns
 
+_GENOTYPE_KEY = "genotype"
+
 # Preferred entity columns, in priority order, for auto-detecting ``index_by``.
-_INDEX_CANDIDATES = ("genotype", "parameter")
+_INDEX_CANDIDATES = (_GENOTYPE_KEY, "parameter")
 
 # Columns that are never part of the match key: bookkeeping emitted by other
 # tfs-* tools, and the sigma column resolve_obs_columns may synthesize.
@@ -677,7 +680,10 @@ def compare_runs(estimate_dfs,
     Returns
     -------
     pandas.DataFrame
-        One row per report key, sorted by ``rms_sd`` ascending. Columns: the
+        One row per report key. Sorted by the report key when ``genotype`` is
+        one of its columns (canonical genotype order -- ``wt``, then singles,
+        then doubles, by site; the ``genotype`` column comes back as an ordered
+        Categorical), otherwise by ``rms_sd`` ascending. Columns: the
         report key, then ``n_runs``, ``n_present``, ``n_rows``, ``n_eff``,
         ``mode``, ``spread_estimator``, ``rms_sd``, ``max_sd``, ``mean_value``,
         ``dynamic_range``, ``mean_reported_sigma``, ``chi2``, ``dof``,
@@ -803,13 +809,36 @@ def compare_runs(estimate_dfs,
     result["spread_estimator"] = spread_label
 
     result = result.loc[:, report_keys + _STAT_COLUMNS]
-    result = result.sort_values("rms_sd", kind="mergesort")
-    return result.reset_index(drop=True)
+    return _sort_output(result, report_keys, "rms_sd")
 
 
 def _empty_result(report_keys):
     """Return an empty result frame with the standard columns."""
     return pd.DataFrame(columns=list(report_keys) + _STAT_COLUMNS)
+
+
+def _sort_output(df, keys, fallback):
+    """
+    Sort an output table, preferring canonical genotype order.
+
+    When a ``genotype`` column is present it is converted to an ordered
+    Categorical in the codebase's canonical order (``wt`` first, then by
+    mutation count, then by site number -- see
+    ``tfscreen.genetics.set_categorical_genotype``) and the table is sorted by
+    ``keys``. Plain lexicographic order would interleave sites nonsensically
+    (``A100V`` before ``A2V``), which is exactly what that Categorical exists to
+    prevent.
+
+    Without a ``genotype`` column there is no canonical order for the entity
+    (``parameter``, ``condition_rep``, ...), so the table falls back to sorting
+    by the ``fallback`` column.
+    """
+    if _GENOTYPE_KEY in df.columns:
+        df = set_categorical_genotype(df)
+        df = df.sort_values(list(keys), kind="mergesort")
+    else:
+        df = df.sort_values(fallback, kind="mergesort")
+    return df.reset_index(drop=True)
 
 
 def _monotone_knots(values, probs):
@@ -945,7 +974,8 @@ def aggregate_runs(estimate_dfs, *, match_by=None, progress_every=200_000):
     pandas.DataFrame
         Long-form, one row per matched row, with the shared ``q<level>`` columns
         holding the mixture quantiles and an ``n_present`` column (how many runs
-        contributed). Sorted by the match key.
+        contributed). Sorted by the match key, in canonical genotype order when
+        a ``genotype`` column is present.
 
     Raises
     ------
@@ -1008,4 +1038,4 @@ def aggregate_runs(estimate_dfs, *, match_by=None, progress_every=200_000):
     for j, col in enumerate(out_cols):
         out[col] = out_values[:, j]
     out["n_present"] = n_present
-    return out.sort_values(keys).reset_index(drop=True)
+    return _sort_output(out, keys, keys)

@@ -208,7 +208,7 @@ def test_dk_geno_shape_genotype_only():
                               ({"genotype": "m1"}, -0.3)],
                              ["genotype"]) for i in range(3)]
     result = compare_runs(runs)
-    assert list(result["genotype"]) == ["m1", "wt"]  # sorted by rms_sd
+    assert list(result["genotype"]) == ["wt", "m1"]  # canonical genotype order
     row = get_row(result, genotype="wt")
     assert row["n_rows"] == 1
     # No residual axis -> dynamic_range undefined, not zero.
@@ -312,13 +312,42 @@ def test_flat_curve_has_zero_dynamic_range():
     assert compare_runs(runs).iloc[0]["dynamic_range"] == pytest.approx(0.0)
 
 
-def test_result_sorted_by_rms_sd_ascending():
+def test_result_sorted_in_canonical_genotype_order():
+    # Deliberately out of order, and with sites that plain lexicographic
+    # sorting would interleave wrongly (A100V before A2V).
+    values = {"A100V": [0.5, 0.5], "A2V/C30G": [0.5, 0.5],
+              "wt": [0.5, 0.5], "A2V": [0.5, 0.5]}
+    runs = [make_estimate(values) for _ in range(3)]
+    result = compare_runs(runs)
+    assert list(result["genotype"]) == ["wt", "A2V", "A100V", "A2V/C30G"]
+
+
+def test_genotype_column_is_an_ordered_categorical():
+    runs = [make_estimate({"A2V": [0.5, 0.5], "wt": [0.5, 0.5]})
+            for _ in range(3)]
+    result = compare_runs(runs)
+    assert isinstance(result["genotype"].dtype, pd.CategoricalDtype)
+    assert result["genotype"].cat.ordered
+
+
+def test_group_by_sorts_within_genotype():
+    runs = [make_estimate({"A2V": [0.5, 0.5], "wt": [0.5, 0.5]},
+                          concs=(10.0, 0.0)) for _ in range(3)]
+    result = compare_runs(runs, group_by=["titrant_conc"])
+    assert list(result["genotype"]) == ["wt", "wt", "A2V", "A2V"]
+    assert list(result["titrant_conc"]) == [0.0, 10.0, 0.0, 10.0]
+
+
+def test_result_sorted_by_rms_sd_without_a_genotype_column():
+    """No canonical order for `parameter`, so fall back to rms_sd ascending."""
     runs = []
     for i in range(3):
-        runs.append(make_estimate({"steady": [0.5, 0.5],
-                                   "jumpy": [0.5 + 0.1 * i, 0.5]}))
+        runs.append(make_param_table(
+            [({"parameter": "steady"}, 0.5),
+             ({"parameter": "jumpy"}, 0.5 + 0.1 * i)],
+            ["parameter"]))
     result = compare_runs(runs)
-    assert list(result["genotype"]) == ["steady", "jumpy"]
+    assert list(result["parameter"]) == ["steady", "jumpy"]
     assert result["rms_sd"].is_monotonic_increasing
 
 
@@ -692,6 +721,23 @@ def test_aggregate_respects_explicit_match_by():
     runs = [make_estimate_ladder({"g": [0.4, 0.6]}) for _ in range(2)]
     agg = aggregate_runs(runs, match_by=["genotype", "titrant_conc"])
     assert list(agg.columns[:2]) == ["genotype", "titrant_conc"]
+
+
+def test_aggregate_sorted_in_canonical_genotype_order():
+    values = {"A100V": [0.5, 0.5], "A2V/C30G": [0.5, 0.5],
+              "wt": [0.5, 0.5], "A2V": [0.5, 0.5]}
+    df = make_estimate_ladder(values)
+    agg = aggregate_runs([df, df.copy()])
+    assert list(agg["genotype"].unique()) == ["wt", "A2V", "A100V", "A2V/C30G"]
+    assert isinstance(agg["genotype"].dtype, pd.CategoricalDtype)
+
+
+def test_aggregate_sorted_by_keys_without_a_genotype_column():
+    runs = [pd.DataFrame({"parameter": ["k_ref", "another"],
+                          "q0.159": [0.8, 0.1], "q0.5": [0.9, 0.2],
+                          "q0.841": [1.0, 0.3]}) for _ in range(2)]
+    agg = aggregate_runs(runs)
+    assert list(agg["parameter"]) == ["another", "k_ref"]
 
 
 def test_aggregate_requires_two_runs():

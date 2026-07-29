@@ -329,6 +329,14 @@ pooling depth. `dynamic_range` is the target's range over the residual axes and
 is NaN when there is no residual axis; it pools across *all* residual axes at
 once, so put a stratifier in `--group_by` to get per-stratum ranges.
 
+**Row order.** Both output tables sort by the report key (compare) / match key
+(aggregate) in **canonical genotype order** via
+`genetics.set_categorical_genotype` — `wt`, then singles, then doubles, by site —
+and the `genotype` column comes back as an ordered Categorical. Plain
+lexicographic order would put `A100V` before `A2V`. With no `genotype` column
+there is no canonical order for the entity (`parameter`, `condition_rep`, …), so
+compare falls back to `rms_sd` ascending and aggregate to the match key.
+
 **Statistical notes.** `rms_sd` is in native units and is not comparable across
 parameters; `overdispersion` (χ²/dof, with p and a BH q) is the unit-free axis.
 The default sigma is the symmetric quantile half-width `(q0.841 - q0.159)/2`,
