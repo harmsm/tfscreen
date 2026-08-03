@@ -434,4 +434,4 @@ def process_fastq(f1_fastq: str,
     counts_df.to_csv(counts_file,index=False)
 
 def main():
-    return generalized_main(process_fastq)
+    return generalized_main(process_fastq,manual_arg_types={"num_workers": int})
