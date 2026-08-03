@@ -2,7 +2,8 @@ from tfscreen.util.io import read_dataframe
 from tfscreen.util.dataframe import check_columns
 
 from tfscreen.genetics import (
-    set_categorical_genotype
+    set_categorical_genotype,
+    UNKNOWN_GENOTYPE
 )
 
 import pandas as pd
@@ -107,20 +108,34 @@ def _calculate_frequencies(df: pd.DataFrame,
 
     return df
 
-def _calculate_concentrations_and_variance(df: pd.DataFrame) -> pd.DataFrame:
+def _calculate_concentrations_and_variance(
+        df: pd.DataFrame,
+        total_counts_per_sample: pd.Series) -> pd.DataFrame:
     """
     Calculate the cfu/mL for each genotype and propagate the variance.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Frame with 'frequency', 'sample', 'sample_cfu', and 'sample_cfu_std'.
+    total_counts_per_sample : pd.Series
+        Total adjusted counts per sample (the full oriented-read depth
+        Sigma x + b), indexed by sample. Used as the binomial denominator so
+        the frequency variance matches the denominator used for the point
+        estimate.
     """
-    
+
     # Calculate the cfu/mL for each genotype
     df['cfu'] = df['frequency'] * df['sample_cfu']
 
     # Convert input standard deviation into variance
     sample_cfu_var = (df["sample_cfu_std"])**2
 
-    # Variance in frequency (from binomial uncertainty)
-    total_counts_per_sample = df.groupby('sample')['adjusted_counts'].transform('sum')
-    var_frequency = df['frequency'] * (1 - df['frequency']) / total_counts_per_sample
+    # Variance in frequency (from binomial uncertainty). Use the same
+    # Sigma x + b denominator as the point estimate rather than re-summing the
+    # (unknown-dropped) adjusted counts, so the binomial N is consistent.
+    total_counts = df['sample'].map(total_counts_per_sample)
+    var_frequency = df['frequency'] * (1 - df['frequency']) / total_counts
 
     # Propagate error from multiplying frequency and cfu
     with np.errstate(divide='ignore', invalid='ignore'):
@@ -209,11 +224,26 @@ def counts_to_lncfu(
                            how='left')
 
     # Calculate the total adjusted counts for each sample before filtering
-    # any genotypes. This ensures a consistent denominator across all 
-    # samples and that discarding low-count or unknown genotypes does not 
-    # bias the frequency estimates for the remaining genotypes. 
+    # any genotypes. This ensures a consistent denominator across all
+    # samples and that discarding low-count genotypes does not bias the
+    # frequency estimates for the remaining genotypes.
+    #
+    # The reserved ``__unknown__`` bucket (reads that oriented/trimmed but were
+    # not attributable to a library genotype) is deliberately kept in the
+    # count sum so the denominator is the full oriented-read depth (Sigma x + b).
+    # It is *not* a modeled genotype, so it is excluded from the per-genotype
+    # pseudocount term and dropped from all downstream genotype rows below.
+    is_unknown = combined_df['genotype'] == UNKNOWN_GENOTYPE
     group = combined_df.groupby('sample')
-    total_counts_per_sample = group['counts'].sum() + group['genotype'].nunique() * pseudocount
+    n_real_genotypes = (combined_df[~is_unknown]
+                        .groupby('sample')['genotype']
+                        .nunique()
+                        .reindex(group['counts'].sum().index, fill_value=0))
+    total_counts_per_sample = group['counts'].sum() + n_real_genotypes * pseudocount
+
+    # Drop the unknown bucket now that it has contributed to the denominator;
+    # everything downstream treats only real library genotypes.
+    combined_df = combined_df[~is_unknown].copy()
 
     # Remove genotypes with too few observations per library
     filtered_df = _filter_low_observation_genotypes(combined_df, min_genotype_obs)
@@ -231,7 +261,8 @@ def counts_to_lncfu(
                                      total_counts_per_sample)
 
     # Calculate genotype cfu/mL and propagate variance
-    final_df = _calculate_concentrations_and_variance(freq_df)
+    final_df = _calculate_concentrations_and_variance(freq_df,
+                                                      total_counts_per_sample)
 
     # Define genotype as a categorical variable
     final_df = set_categorical_genotype(final_df,standardize=True,sort=False)

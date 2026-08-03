@@ -155,13 +155,13 @@ def test_calculate_concentrations_and_variance():
         'sample_cfu_std': [1e7],   # Original sample-level data
         'adjusted_counts': [91]
     })
-    # Simulate a second genotype in the sample for total counts calculation
-    df_with_total = pd.concat([df, pd.DataFrame({
-        'sample': ['s1'], 'adjusted_counts': [11]
-    })], ignore_index=True)
+    # The Sigma x + b denominator is now supplied explicitly (the sample had a
+    # second genotype and/or unknown reads contributing 11 more counts).
+    total_counts_per_sample = pd.Series({'s1': 91 + 11})
 
-    result = _calculate_concentrations_and_variance(df_with_total)
-    
+    result = _calculate_concentrations_and_variance(df.copy(),
+                                                    total_counts_per_sample)
+
     # --- Manually calculate expected values ---
     freq, sample_cfu, sample_var_cfu = 0.9, 1e8, 1e14
     total_adj_counts = 91 + 11
@@ -198,7 +198,9 @@ def test_calculate_concentrations_zero_cfu():
         'sample_cfu_std': [1e7],
         'adjusted_counts': [100]
     })
-    result = _calculate_concentrations_and_variance(df.copy())
+    total_counts_per_sample = pd.Series({'s1': 100})
+    result = _calculate_concentrations_and_variance(df.copy(),
+                                                    total_counts_per_sample)
     
     # FIX: Check the new 'cfu' and 'cfu_var' columns
     assert result['cfu'].iloc[0] == 0
@@ -263,6 +265,48 @@ def test_counts_to_lncfu_full_pipeline(sample_df, counts_df, mocker):
     # Check sorting (genotype, library, sample)
     expected_genotypes = ['G1', 'G1', 'G2', 'G2', 'G3', 'G3']
     assert result['genotype'].tolist() == expected_genotypes
+
+
+def test_counts_to_lncfu_unknown_bucket(mocker):
+    """
+    The reserved __unknown__ bucket must contribute to the per-sample
+    denominator (Sigma x + b) but be absent from the genotype outputs.
+    """
+    mocker.patch('tfscreen.process_raw.counts_to_lncfu.read_dataframe',
+                 side_effect=lambda df, **kwargs: df.copy())
+    mocker.patch(
+        'tfscreen.process_raw.counts_to_lncfu.set_categorical_genotype',
+        side_effect=lambda df, standardize, sort: df.sort_values("genotype")
+    )
+
+    sample_df = pd.DataFrame({
+        'sample': ['s1'],
+        'library': ['libA'],
+        'sample_cfu': [1e8],
+        'sample_cfu_std': [1e7],
+    }).set_index('sample')
+
+    # s1: G1=100, G2=50, and 850 unknown reads. Denominator must be
+    # 100 + 50 + 850 + (2 real genotypes * pseudocount) = 1002.
+    counts_df = pd.DataFrame({
+        'sample':   ['s1', 's1', 's1'],
+        'genotype': ['G1', 'G2', '__unknown__'],
+        'counts':   [100,  50,   850],
+    })
+
+    result = counts_to_lncfu(sample_df, counts_df,
+                             min_genotype_obs=10, pseudocount=1)
+
+    # __unknown__ never appears as a genotype row
+    assert '__unknown__' not in result['genotype'].tolist()
+    assert set(result['genotype']) == {'G1', 'G2'}
+
+    # Frequencies use the full Sigma x + b denominator (1002), i.e. the
+    # unknown bucket dilutes the called genotypes exactly as intended.
+    g1_freq = result[result['genotype'] == 'G1']['frequency'].iloc[0]
+    g2_freq = result[result['genotype'] == 'G2']['frequency'].iloc[0]
+    assert np.isclose(g1_freq, 101 / 1002)
+    assert np.isclose(g2_freq, 51 / 1002)
 
 
 def test_counts_to_lncfu_all_filtered(sample_df, counts_df, mocker):

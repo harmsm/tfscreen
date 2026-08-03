@@ -2,7 +2,8 @@ from ..fastq_to_counts import FastqToCounts
 from tfscreen.util.cli import generalized_main
 from tfscreen.genetics import (
     LibraryManager,
-    set_categorical_genotype
+    set_categorical_genotype,
+    UNKNOWN_GENOTYPE
 )
 
 from tqdm.auto import tqdm
@@ -257,9 +258,18 @@ def _create_stats_df(messages: Counter) -> pd.DataFrame:
 def _create_counts_df(sequences: Counter,
                      expected_genotypes: Iterable[str],
                      messages: Optional[Counter] = None,
-                     unknown_genotype_label: str = "__unknown__") -> pd.DataFrame:
+                     unknown_genotype_label: str = UNKNOWN_GENOTYPE) -> pd.DataFrame:
     """
     Build a counts DataFrame for expected genotypes from a sequence counter.
+
+    In addition to one row per expected library genotype, the returned frame
+    carries a single reserved ``__unknown__`` row (see ``unknown_genotype_label``)
+    aggregating every read that oriented/trimmed successfully but could not be
+    attributed to a library genotype. This is an intentional part of the counts
+    file contract: downstream (``counts_to_lncfu``) uses it as part of the
+    per-sample read-depth denominator (sum of called counts + unknown counts)
+    but drops it from the genotype outputs. The reserved label passes through
+    ``standardize_genotypes`` unchanged (it is *not* collapsed to ``wt``).
 
     Parameters
     ----------
@@ -272,14 +282,15 @@ def _create_counts_df(sequences: Counter,
         Counter mapping processing messages (strings) to counts. If provided,
         messages indicating valid but unknown/ambiguous genotypes will be
         aggregated into `unknown_genotype_label`.
-    unknown_genotype_label : str, default "__unknown__"
+    unknown_genotype_label : str, default ``UNKNOWN_GENOTYPE`` ("__unknown__")
         Label to use for the aggregated unknown genotype counts.
 
     Returns
     -------
     pandas.DataFrame
         DataFrame with categorical 'genotype' column and 'counts', standardized
-        and sorted by ``set_categorical_genotype``.
+        and sorted by ``set_categorical_genotype``. Includes the reserved
+        ``unknown_genotype_label`` row when ``messages`` is provided.
     """
 
     if not expected_genotypes:
@@ -376,6 +387,11 @@ def process_fastq(f1_fastq: str,
     -------
     None
         Writes out two CSV files to ``out_dir``: a stats file and a counts file.
+        The counts file has one row per expected library genotype plus a single
+        reserved ``__unknown__`` row (reads that oriented/trimmed but were not
+        attributable to a library genotype), retained so downstream can form the
+        correct per-sample read-depth denominator. The full breakdown of every
+        failure mode remains in the stats file.
     """
 
     # Make output directory if it does not already exist

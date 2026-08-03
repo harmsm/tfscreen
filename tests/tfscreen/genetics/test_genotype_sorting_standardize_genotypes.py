@@ -1,7 +1,11 @@
 # test_genotype_sorting.py
 
 import pytest
-from tfscreen.genetics.genotype_sorting import standardize_genotypes
+import pandas as pd
+from tfscreen.genetics.genotype_sorting import (
+    standardize_genotypes,
+    UNKNOWN_GENOTYPE,
+)
 import numpy as np
 
 # -------------------------------------------------------------------------
@@ -34,6 +38,41 @@ def test_self_mutation_to_wildtype():
     genotypes = ["A1A", "C100C", "D5D/E6E"]
     expected = ["wt", "wt", "wt"]
     assert np.array_equal(standardize_genotypes(genotypes),np.array(expected))
+
+def test_na_like_to_wildtype():
+    """
+    Tests that null-like values (None, pd.NA, np.nan) and empty/whitespace
+    strings are standardized to 'wt'.
+    """
+    genotypes = [None, pd.NA, np.nan, "", "   ", "wt", "A1T"]
+    expected = ["wt", "wt", "wt", "wt", "wt", "wt", "A1T"]
+    assert np.array_equal(standardize_genotypes(genotypes), np.array(expected))
+
+def test_reserved_label_passthrough():
+    """
+    Reserved sentinel labels (e.g. "__unknown__") must pass through unchanged
+    and must NOT collapse to 'wt'.  This is the regression guard for the bug
+    where "__unknown__" was parsed as a self->self mutation and became 'wt'.
+    """
+    genotypes = ["wt", "A1T", UNKNOWN_GENOTYPE, "__unknown__"]
+    expected = ["wt", "A1T", "__unknown__", "__unknown__"]
+    assert np.array_equal(standardize_genotypes(genotypes), np.array(expected))
+
+    # A single reserved label on its own is preserved (not turned into wt).
+    assert standardize_genotypes(["__unknown__"])[0] == "__unknown__"
+
+def test_non_integer_site_with_equal_ends_raises():
+    """
+    Tokens whose first and last characters match but whose middle is not an
+    integer must raise (they are not synonymous mutations).  This is the fix
+    that stops "__unknown__"-style labels from silently becoming 'wt'.
+    """
+    with pytest.raises(ValueError, match="could not get site number"):
+        standardize_genotypes(["A_A"])
+
+    # equal first/last char ('_'), non-integer middle -> must raise, not wt
+    with pytest.raises(ValueError, match="could not get site number"):
+        standardize_genotypes(["__weird__"])
 
 def test_self_mutation_is_dropped():
     """

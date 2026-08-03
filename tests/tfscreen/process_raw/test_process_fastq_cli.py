@@ -307,8 +307,36 @@ def test_create_counts_df_with_unknown(mock_set_categorical):
 
     expected_df = expected_df.sort_values(by="genotype").reset_index(drop=True)
     result_df = result_df.sort_values(by="genotype").reset_index(drop=True)
-    
+
     pd_testing.assert_frame_equal(result_df, expected_df)
+
+def test_create_counts_df_unknown_not_collapsed_to_wt():
+    """
+    Regression test: the __unknown__ bucket must survive the *real*
+    set_categorical_genotype(standardize=True) call as a distinct row and NOT
+    be collapsed into 'wt'.  Previously "__unknown__" parsed as a synonymous
+    mutation and became a phantom second 'wt' row.
+    """
+    sequences = Counter({"wt": 500, "A1C": 100})
+    expected_genotypes = ["wt", "A1C"]
+    messages = Counter({
+        "fail, F/R agree but their sequence is not in the expected library": 40,
+        "fail, F/R agree but match more than one expected sequence": 2,
+    })
+
+    # No mock -> exercises the real standardizer/categorical machinery
+    result_df = _create_counts_df(sequences, expected_genotypes,
+                                  messages=messages)
+
+    genos = result_df["genotype"].astype(str).tolist()
+    # exactly one wt row and one distinct __unknown__ row
+    assert genos.count("wt") == 1
+    assert genos.count("__unknown__") == 1
+
+    counts = dict(zip(result_df["genotype"].astype(str), result_df["counts"]))
+    assert counts["wt"] == 500          # real wt untouched
+    assert counts["__unknown__"] == 42  # 40 + 2, kept separate from wt
+    assert counts["A1C"] == 100
 
 # -----------------------------------------------------------------------------
 # process_fastq
