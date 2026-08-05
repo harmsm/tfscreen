@@ -6,7 +6,14 @@ import collections
 # LibraryManager is imported to be used as a 'spec' for the mock object.
 # This ensures the mock has the same public interface as the real class.
 from tfscreen.genetics import LibraryManager
-from tfscreen.process_raw.fastq_to_counts import FastqToCounts
+from tfscreen.process_raw.fastq_to_counts import (
+    FastqToCounts,
+    _hamming_dist,
+    _bktree_find,
+    _check_numba_jit,
+)
+
+import pybktree
 
 
 # ------------------------
@@ -1102,3 +1109,166 @@ def test_pipeline_e2e_success(fx_fastq_to_counts_fuzzy):
     # Final assertion
     assert genotype == "A1C"
     assert msg2 == "pass, F/R agree exactly"
+
+
+# --------------------------------------------------------------------------
+# test the flattened-BK-tree numba search kernel (_bktree_find /
+# _flatten_bktree / _search_expected_lib)
+# --------------------------------------------------------------------------
+
+@pytest.fixture
+def fx_ftc_big(mocker):
+    """
+    A FastqToCounts built over a larger, randomly-generated library so the
+    BK-tree has real depth/branching. Used to stress the flattened numba search
+    against a reference pybktree.
+    """
+
+    rng = np.random.default_rng(1234)
+    L = 14
+    n_seqs = 400
+    bases = np.array(list("ACGT"))
+
+    # Generate n_seqs unique DNA strings of length L.
+    seen = set()
+    dna_list = []
+    while len(dna_list) < n_seqs:
+        s = "".join(bases[rng.integers(0, 4, size=L)])
+        if s not in seen:
+            seen.add(s)
+            dna_list.append(s)
+
+    # Amino-acid labels are irrelevant to the search; make them unique, with the
+    # first sequence as wildtype ("").
+    aa_list = [""] + [f"mut{i}" for i in range(1, n_seqs)]
+
+    mock_lm = mocker.create_autospec(LibraryManager, instance=True)
+    mock_lm.run_config = {"expected_5p": "GATTACA", "expected_3p": "TACATAG"}
+    mock_lm.expected_length = L
+    mock_lm.get_libraries.return_value = ({"lib": dna_list}, {"lib": aa_list})
+
+    return FastqToCounts(lm=mock_lm, allowed_num_flank_diffs=0), dna_list
+
+
+def _reference_shell(seqs_int_list, query, max_diffs):
+    """
+    Independent reference implementation of the nearest-shell search using a
+    direct pybktree, mirroring the (removed) original _search_expected_lib body.
+    Returns (set_of_match_bytes, min_dist).
+    """
+    tree = pybktree.BKTree(_hamming_dist, seqs_int_list)
+    matches = tree.find(query, max_diffs)
+    if not matches:
+        return set(), -1
+    min_dist = matches[0][0]
+    shell = {m[1].tobytes() for m in matches if m[0] == min_dist}
+    return shell, min_dist
+
+
+def test_flatten_bktree_arrays_are_consistent(fx_ftc_big):
+    """
+    The flattened CSR arrays should describe a tree with one node per library
+    sequence and exactly (num_nodes - 1) edges, with monotone CSR offsets.
+    """
+    ftc, dna_list = fx_ftc_big
+
+    M = ftc._node_seq.shape[0]
+    assert M == len(dna_list)                      # one node per unique seq
+    assert ftc._node_seq.shape[1] == ftc.expected_length
+    assert ftc._child_start.shape[0] == M + 1
+    assert ftc._child_start[0] == 0
+    assert ftc._child_start[-1] == M - 1           # tree => M-1 edges
+    assert ftc._child_edge.shape[0] == M - 1
+    assert ftc._child_idx.shape[0] == M - 1
+    # CSR offsets must be non-decreasing.
+    assert np.all(np.diff(ftc._child_start) >= 0)
+    # Every child index is a valid node and no node is its own child.
+    assert ftc._child_idx.min() >= 1               # root (0) is never a child
+    assert ftc._child_idx.max() < M
+
+
+def test_flattened_search_matches_reference_pybktree(fx_ftc_big):
+    """
+    The flattened numba search must return the exact same nearest-shell (set of
+    matching sequences and min distance) as a direct pybktree, across a battery
+    of random queries: exact library members, near-neighbours, and far/no-match.
+    """
+    ftc, dna_list = fx_ftc_big
+    L = ftc.expected_length
+
+    # The library as a plain list of int arrays (independent of ftc internals).
+    lib_int = [_dna_to_int(s, ftc) for s in dna_list]
+
+    rng = np.random.default_rng(99)
+
+    queries = []
+    # (a) exact library members
+    for s in dna_list[:40]:
+        queries.append(_dna_to_int(s, ftc).copy())
+    # (b) library members perturbed by 1-3 random substitutions
+    for s in dna_list[:60]:
+        q = _dna_to_int(s, ftc).copy()
+        for pos in rng.choice(L, size=int(rng.integers(1, 4)), replace=False):
+            q[pos] = (q[pos] + 1 + rng.integers(0, 3)) % 4
+        queries.append(q)
+    # (c) fully random queries (mostly far from everything)
+    for _ in range(60):
+        queries.append(rng.integers(0, 4, size=L).astype(np.uint8))
+
+    for max_diffs in (0, 1, 2, 3):
+        for q in queries:
+            got_list, got_dist = ftc._search_expected_lib(q, max_diffs)
+            got_set = {m.tobytes() for m in got_list}
+
+            ref_set, ref_dist = _reference_shell(lib_int, q, max_diffs)
+
+            assert got_dist == ref_dist
+            assert got_set == ref_set
+
+
+def test_search_wrong_length_query_returns_empty(fx_ftc_big):
+    """A query whose length != expected_length yields no match (guarded)."""
+    ftc, _ = fx_ftc_big
+    q = np.zeros(ftc.expected_length - 1, dtype=np.uint8)
+    matches, dist = ftc._search_expected_lib(q, max_diffs=5)
+    assert matches == []
+    assert dist == -1
+
+
+def test_bktree_find_scratch_buffers_allocated_lazily(fx_ftc_big):
+    """
+    Scratch buffers are None until the first search (so they are not pickled to
+    workers), then allocated to length num_nodes.
+    """
+    ftc, _ = fx_ftc_big
+    assert ftc._bk_stack is None
+    assert ftc._bk_match_idx is None
+    assert ftc._bk_match_dist is None
+
+    ftc._search_expected_lib(ftc._node_seq[0].copy(), max_diffs=0)
+
+    M = ftc._node_seq.shape[0]
+    assert ftc._bk_stack.shape == (M,)
+    assert ftc._bk_match_idx.shape == (M,)
+    assert ftc._bk_match_dist.shape == (M,)
+
+
+def test_check_numba_jit_reports_status(capsys):
+    """
+    _check_numba_jit reports JIT status and returns a bool. Under the test suite
+    conftest sets NUMBA_DISABLE_JIT=1, so it must return False and emit the loud
+    WARNING (this is exactly the production misconfiguration we want surfaced).
+    """
+    import numba
+
+    result = _check_numba_jit()
+    err = capsys.readouterr().err
+
+    assert isinstance(result, bool)
+    if numba.config.DISABLE_JIT:
+        assert result is False
+        assert "WARNING" in err
+        assert "DISABLED" in err
+    else:
+        assert result is True
+        assert "JIT active" in err
