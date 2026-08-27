@@ -18356,20 +18356,7 @@
 ./src/tfscreen/tfmodel/model_orchestrator.py:1834:27: E231 missing whitespace after ':'
 ./src/tfscreen/tfmodel/model_orchestrator.py:1835:28: E231 missing whitespace after ':'
 ./src/tfscreen/tfmodel/model_orchestrator.py:1836:31: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/scripts/configure_model_cli.py:225:22: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/scripts/configure_model_cli.py:226:22: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/scripts/configure_model_cli.py:227:22: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/scripts/configure_model_cli.py:228:22: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/scripts/configure_model_cli.py:229:22: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/scripts/configure_model_cli.py:230:22: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/scripts/configure_model_cli.py:231:22: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/scripts/configure_model_cli.py:232:22: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/scripts/configure_model_cli.py:233:22: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/scripts/configure_model_cli.py:234:22: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/scripts/configure_model_cli.py:235:22: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/scripts/configure_model_cli.py:236:22: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/scripts/configure_model_cli.py:237:22: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/scripts/configure_model_cli.py:238:22: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/model_stats.py:790:1: C901 'format_model_stats' is too complex (12)
 ./src/tfscreen/tfmodel/scripts/configure_model_cli.py:239:22: E128 continuation line under-indented for visual indent
 ./src/tfscreen/tfmodel/scripts/configure_model_cli.py:240:22: E128 continuation line under-indented for visual indent
 ./src/tfscreen/tfmodel/scripts/configure_model_cli.py:241:22: E128 continuation line under-indented for visual indent
@@ -18378,19 +18365,33 @@
 ./src/tfscreen/tfmodel/scripts/configure_model_cli.py:244:22: E128 continuation line under-indented for visual indent
 ./src/tfscreen/tfmodel/scripts/configure_model_cli.py:245:22: E128 continuation line under-indented for visual indent
 ./src/tfscreen/tfmodel/scripts/configure_model_cli.py:246:22: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/scripts/configure_model_cli.py:260:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/tfmodel/scripts/configure_model_cli.py:262:59: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/scripts/configure_model_cli.py:263:58: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/scripts/configure_model_cli.py:264:60: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/scripts/configure_model_cli.py:265:63: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/scripts/configure_model_cli.py:266:55: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/scripts/configure_model_cli.py:267:60: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/scripts/configure_model_cli.py:268:59: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/scripts/configure_model_cli.py:269:63: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/scripts/configure_model_cli.py:270:70: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/scripts/configure_model_cli.py:271:55: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/scripts/configure_model_cli.py:272:70: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/scripts/configure_model_cli.py:274:1: E305 expected 2 blank lines after class or function definition, found 1
+./src/tfscreen/tfmodel/scripts/configure_model_cli.py:247:22: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/scripts/configure_model_cli.py:248:22: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/scripts/configure_model_cli.py:249:22: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/scripts/configure_model_cli.py:250:22: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/scripts/configure_model_cli.py:251:22: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/scripts/configure_model_cli.py:252:22: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/scripts/configure_model_cli.py:253:22: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/scripts/configure_model_cli.py:254:22: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/scripts/configure_model_cli.py:255:22: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/scripts/configure_model_cli.py:256:22: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/scripts/configure_model_cli.py:257:22: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/scripts/configure_model_cli.py:258:22: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/scripts/configure_model_cli.py:259:22: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/scripts/configure_model_cli.py:260:22: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/scripts/configure_model_cli.py:281:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/tfmodel/scripts/configure_model_cli.py:283:59: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/scripts/configure_model_cli.py:284:58: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/scripts/configure_model_cli.py:285:60: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/scripts/configure_model_cli.py:286:63: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/scripts/configure_model_cli.py:287:55: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/scripts/configure_model_cli.py:288:60: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/scripts/configure_model_cli.py:289:59: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/scripts/configure_model_cli.py:290:63: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/scripts/configure_model_cli.py:291:70: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/scripts/configure_model_cli.py:292:55: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/scripts/configure_model_cli.py:293:70: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/scripts/configure_model_cli.py:295:1: E305 expected 2 blank lines after class or function definition, found 1
 ./src/tfscreen/tfmodel/scripts/fit_model_cli.py:97:6: E114 indentation is not a multiple of 4 (comment)
 ./src/tfscreen/tfmodel/scripts/fit_model_cli.py:97:6: E116 unexpected indentation (comment)
 ./src/tfscreen/tfmodel/scripts/fit_model_cli.py:120:27: E231 missing whitespace after ','
@@ -21684,71 +21685,71 @@
 ./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:80:40: E261 at least two spaces before inline comment
 ./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:81:42: E261 at least two spaces before inline comment
 ./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:83:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:85:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:89:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:92:45: E261 at least two spaces before inline comment
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:93:48: E261 at least two spaces before inline comment
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:94:44: E261 at least two spaces before inline comment
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:95:41: E261 at least two spaces before inline comment
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:168:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:177:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:185:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:86:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:90:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:93:45: E261 at least two spaces before inline comment
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:94:48: E261 at least two spaces before inline comment
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:95:44: E261 at least two spaces before inline comment
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:96:41: E261 at least two spaces before inline comment
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:172:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:181:1: W293 blank line contains whitespace
 ./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:189:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:191:71: E203 whitespace before ','
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:192:1: E128 continuation line under-indented for visual indent
 ./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:193:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:279:17: E128 continuation line under-indented for visual indent
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:292:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:295:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:300:30: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:300:40: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:300:55: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:300:74: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:303:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:306:30: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:306:40: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:306:55: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:306:74: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:312:34: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:312:49: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:314:14: E111 indentation is not a multiple of 4
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:314:14: E117 over-indented
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:314:31: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:314:41: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:314:56: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:314:75: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:320:34: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:320:54: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:322:14: E111 indentation is not a multiple of 4
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:322:14: E117 over-indented
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:322:31: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:322:41: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:322:56: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:322:75: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:322:128: E501 line too long (142 > 127 characters)
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:323:1: W293 blank line contains whitespace
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:326:76: E261 at least two spaces before inline comment
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:332:14: E111 indentation is not a multiple of 4
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:332:14: E117 over-indented
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:332:31: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:332:41: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:332:56: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:332:75: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:332:128: E501 line too long (150 > 127 characters)
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:344:30: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:344:40: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:344:55: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:344:74: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:399:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:401:5: E306 expected 1 blank line before a nested definition, found 0
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:404:5: E306 expected 1 blank line before a nested definition, found 0
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:532:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:547:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:555:124: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:555:128: E501 line too long (130 > 127 characters)
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:558:9: F841 local variable 'mock_ri_class' is assigned to but never used
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:561:44: E231 missing whitespace after ':'
-./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:577:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:195:71: E203 whitespace before ','
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:196:1: E128 continuation line under-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:197:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:283:17: E128 continuation line under-indented for visual indent
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:296:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:299:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:304:30: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:304:40: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:304:55: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:304:74: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:307:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:310:30: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:310:40: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:310:55: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:310:74: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:316:34: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:316:49: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:318:14: E111 indentation is not a multiple of 4
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:318:14: E117 over-indented
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:318:31: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:318:41: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:318:56: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:318:75: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:324:34: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:324:54: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:326:14: E111 indentation is not a multiple of 4
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:326:14: E117 over-indented
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:326:31: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:326:41: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:326:56: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:326:75: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:326:128: E501 line too long (142 > 127 characters)
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:327:1: W293 blank line contains whitespace
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:330:76: E261 at least two spaces before inline comment
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:336:14: E111 indentation is not a multiple of 4
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:336:14: E117 over-indented
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:336:31: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:336:41: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:336:56: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:336:75: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:336:128: E501 line too long (150 > 127 characters)
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:348:30: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:348:40: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:348:55: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:348:74: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:403:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:405:5: E306 expected 1 blank line before a nested definition, found 0
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:408:5: E306 expected 1 blank line before a nested definition, found 0
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:536:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:551:1: E302 expected 2 blank lines, found 1
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:559:124: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:559:128: E501 line too long (130 > 127 characters)
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:562:9: F841 local variable 'mock_ri_class' is assigned to but never used
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:565:44: E231 missing whitespace after ':'
+./tests/tfscreen/tfmodel/scripts/test_configure_and_run.py:581:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/tfmodel/scripts/test_diagnose_nan_cli.py:77:64: E203 whitespace before ','
 ./tests/tfscreen/tfmodel/scripts/test_extract_params_cli.py:14:1: F401 'numpyro.infer.svi.SVIState' imported but unused
 ./tests/tfscreen/tfmodel/scripts/test_fit_model_cli.py:5:1: F401 'dill' imported but unused
@@ -22329,7 +22330,7 @@
 ./tests/tfscreen/util/validation/test_check.py:8:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/validation/test_check.py:26:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/validation/test_check.py:75:70: W292 no newline at end of file
-162   C901 'cat_fit' is too complex (28)
+163   C901 'cat_fit' is too complex (28)
 30    E111 indentation is not a multiple of 4
 18    E114 indentation is not a multiple of 4 (comment)
 18    E116 unexpected indentation (comment)
@@ -22378,4 +22379,4 @@
 243   W292 no newline at end of file
 4466  W293 blank line contains whitespace
 84    W391 blank line at end of file
-22331
+22332

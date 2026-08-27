@@ -1,5 +1,10 @@
 from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
 from tfscreen.tfmodel.configuration_io import write_configuration
+from tfscreen.tfmodel.model_stats import (
+    count_model_dimensions,
+    format_model_stats,
+    write_model_stats,
+)
 from tfscreen.util.cli.generalized_main import generalized_main
 
 # Maps (condition_growth, theta_rescale) pairs that are fundamentally incompatible
@@ -68,7 +73,8 @@ def configure_model(binding_df,
                     epistasis=False,
                     thermo_data=None,
                     batch_size=1024,
-                    binding_weight=None):
+                    binding_weight=None,
+                    skip_model_stats=False):
     """
     Build and write the YAML configuration files needed by tfs-fit-model.
 
@@ -200,6 +206,14 @@ def configure_model(binding_df,
         Pass an explicit positive float to override this heuristic.  The
         resolved value (never None) is saved in the YAML so that
         ``tfs-fit-model`` applies the same weight without recomputing it.
+    skip_model_stats : bool, optional
+        Skip the pre-fit parameter/observation accounting. By default a
+        summary is printed to stdout and written to
+        {out_prefix}_model_stats.csv (one row per latent) and
+        {out_prefix}_model_stats.json (headline counts, coverage, anchors,
+        warnings). See tfmodel.model_stats. The accounting traces the model
+        abstractly, so it costs no meaningful time or memory; skip it only if
+        a component's trace misbehaves.
 
     Returns
     -------
@@ -256,6 +270,13 @@ def configure_model(binding_df,
                         binding_df_path=binding_df if isinstance(binding_df, str) else "binding.csv",
                         presplit_df_path=presplit_path,
                         base_growth_df_path=base_growth_path)
+
+    # Pre-fit accounting: how many parameters, how many observations, and
+    # which genotypes are individually under-determined.
+    if not skip_model_stats:
+        stats = count_model_dimensions(orchestrator)
+        print(format_model_stats(stats), flush=True)
+        write_model_stats(stats, out_prefix)
 
 def main():
     return generalized_main(configure_model,
