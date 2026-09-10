@@ -17,13 +17,13 @@ import numba
 import pybktree
 from typing import Optional, Tuple
 
-from itertools import takewhile
-import random, string, sys
+from collections import deque
+import random, string, sys, os
 
 @numba.jit(nopython=True, fastmath=True)
 def _hamming_dist(s1, s2):
     """
-    Calculate the Hamming distance between two 1D numpy arrays of the same 
+    Calculate the Hamming distance between two 1D numpy arrays of the same
     length.
     """
     dist = 0
@@ -31,6 +31,128 @@ def _hamming_dist(s1, s2):
         if s1[i] != s2[i]:
             dist += 1
     return dist
+
+
+@numba.jit(nopython=True, fastmath=True, cache=True)
+def _bktree_find(node_seq, child_start, child_edge, child_idx, query, n,
+                 stack, out_idx, out_dist):
+    """
+    Search a flattened BK-tree for all items within Hamming distance ``n`` of
+    ``query``.
+
+    This is a fully compiled re-implementation of ``pybktree.BKTree.find``. The
+    original walks a nested-dict tree in pure Python, calling a (numba) distance
+    function once per visited node; for this library that is ~1275 Python-level
+    dispatches per query and dominates ``tfs-process-fastq`` runtime. Running the
+    whole traversal in one nopython function removes the per-node dispatch
+    overhead while visiting exactly the same nodes and returning exactly the same
+    set of matches.
+
+    The tree is passed in as flat arrays (see ``FastqToCounts._flatten_bktree``):
+
+    - ``node_seq`` : (M, L) uint8 array; row ``i`` is the DNA sequence at node i.
+    - ``child_start`` : (M+1,) int64 CSR offsets into ``child_edge``/``child_idx``.
+    - ``child_edge`` : (E,) int64; edge distance (parent->child) for each edge.
+    - ``child_idx`` : (E,) int64; child node index for each edge.
+
+    ``stack``, ``out_idx``, ``out_dist`` are caller-provided scratch buffers (each
+    length >= M) so no allocation happens per call.
+
+    Returns
+    -------
+    n_match : int
+        number of nodes within distance ``n`` (their indices/distances are in
+        ``out_idx[:n_match]`` / ``out_dist[:n_match]``).
+    min_dist : int
+        the smallest distance among the matches, or -1 if ``n_match == 0``.
+    """
+
+    L = node_seq.shape[1]
+
+    # Manual DFS stack of node indices. Root is index 0. A BK-tree pushes each
+    # node at most once, so a stack of length M can never overflow.
+    stack[0] = 0
+    sp = 1
+
+    n_match = 0
+    min_dist = L + 1
+    while sp > 0:
+        sp -= 1
+        node = stack[sp]
+
+        # Exact Hamming distance from the query to this node. We need the exact
+        # value (not an early-exit bound) because it sets the [d-n, d+n] window
+        # used to decide which children can still contain a match.
+        d = 0
+        row = node_seq[node]
+        for j in range(L):
+            if row[j] != query[j]:
+                d += 1
+
+        if d <= n:
+            out_idx[n_match] = node
+            out_dist[n_match] = d
+            n_match += 1
+            if d < min_dist:
+                min_dist = d
+
+        lower = d - n
+        upper = d + n
+        s = child_start[node]
+        e = child_start[node + 1]
+        for k in range(s, e):
+            ed = child_edge[k]
+            if lower <= ed <= upper:
+                stack[sp] = child_idx[k]
+                sp += 1
+
+    if n_match == 0:
+        return 0, -1
+    return n_match, min_dist
+
+
+def _check_numba_jit():
+    """
+    Report whether numba JIT is actually active and loudly warn if it is not.
+
+    ``tfs-process-fastq`` relies on JIT-compiled Hamming/BK-tree search. If
+    ``NUMBA_DISABLE_JIT`` is set (e.g. leaking in from a test/conda profile) or
+    compilation silently fails, the search falls back to pure Python and the run
+    slows from minutes to hours. This makes that failure mode loud instead of
+    silent. Returns ``True`` if JIT is active and the search kernels compiled.
+    """
+
+    disabled = bool(numba.config.DISABLE_JIT)
+
+    compiled = False
+    try:
+        probe = np.zeros(2, dtype=np.uint8)
+        _hamming_dist(probe, probe)
+        compiled = bool(getattr(_hamming_dist, "signatures", None))
+    except Exception:
+        compiled = False
+
+    if disabled or not compiled:
+        sys.stderr.write(
+            "\n"
+            "*** WARNING: numba JIT is DISABLED for fastq_to_counts "
+            f"(numba.config.DISABLE_JIT={numba.config.DISABLE_JIT}, "
+            f"env NUMBA_DISABLE_JIT={os.environ.get('NUMBA_DISABLE_JIT')!r}, "
+            f"kernels_compiled={compiled}).\n"
+            "*** The expected-library search will run in pure Python and be "
+            "orders of magnitude slower (hours per FASTQ instead of minutes).\n"
+            "*** Unset NUMBA_DISABLE_JIT and confirm the numba cache dir is "
+            "writable, then re-run.\n\n"
+        )
+        sys.stderr.flush()
+    else:
+        sys.stderr.write(
+            "[fastq_to_counts] numba JIT active "
+            f"(DISABLE_JIT={numba.config.DISABLE_JIT}); library search compiled.\n"
+        )
+        sys.stderr.flush()
+
+    return (not disabled) and compiled
 
 
 class FastqToCounts:
@@ -195,7 +317,9 @@ class FastqToCounts:
          + integer representations of flanks/expected length
          + _bytes_to_aa (for looking up amino acid genotype with a bytes
            representation of a dna sequence)
-         + _search_tree (for looking for reads in the expected library).
+         + the flattened BK-tree arrays (_node_seq / _child_start /
+           _child_edge / _child_idx) used by _search_expected_lib to look for
+           reads in the expected library.
         """
 
         # Define overall features of the read -- flanks and length
@@ -259,11 +383,97 @@ class FastqToCounts:
             self.all_expected_genotypes.append(aa)
         
         # Build the search tree we will use to see if a read matches a seq
-        # in the library (Hamming distance). This should take a read as an 
-        # integer array as its search query. 
-        self._search_tree = pybktree.BKTree(_hamming_dist, all_dna_as_ints)
+        # in the library (Hamming distance). This takes a read as an integer
+        # array as its search query. We build the tree with pybktree (its
+        # insertion algorithm is well-tested) but then flatten it into flat
+        # arrays and search it with a fully-compiled numba kernel (_bktree_find),
+        # which removes the pure-Python per-node dispatch that otherwise
+        # dominates runtime. See _flatten_bktree / _search_expected_lib.
+        search_tree = pybktree.BKTree(_hamming_dist, all_dna_as_ints)
+        self._flatten_bktree(search_tree)
 
-                
+        # Loudly report numba JIT status; if JIT is disabled the search falls
+        # back to pure Python and runs orders of magnitude slower.
+        _check_numba_jit()
+
+    def _flatten_bktree(self, search_tree):
+        """
+        Flatten a ``pybktree.BKTree`` into flat CSR arrays for ``_bktree_find``.
+
+        Each pybktree node is ``(item, children_dict)`` where ``children_dict``
+        maps an integer edge distance to a child node. We walk the tree,
+        assigning each node a contiguous index, and record:
+
+        - ``self._node_seq`` : (M, L) uint8 array of node DNA sequences.
+        - ``self._child_start`` : (M+1,) int64 CSR offsets.
+        - ``self._child_edge`` : (E,) int64 parent->child edge distances.
+        - ``self._child_idx`` : (E,) int64 child node indices.
+
+        Scratch buffers used by the search are left as ``None`` and allocated
+        lazily on first search (so they are never pickled to worker processes).
+        """
+
+        root = search_tree.tree
+
+        # Empty library / empty tree.
+        if root is None:
+            self._node_seq = np.empty((0, self.expected_length), dtype=np.uint8)
+            self._child_start = np.zeros(1, dtype=np.int64)
+            self._child_edge = np.empty(0, dtype=np.int64)
+            self._child_idx = np.empty(0, dtype=np.int64)
+            self._bk_stack = None
+            self._bk_match_idx = None
+            self._bk_match_dist = None
+            return
+
+        # First pass: breadth-first index assignment (id(node) -> index).
+        flat_nodes = []
+        index_map = {}
+        queue = deque([root])
+        while queue:
+            node = queue.popleft()
+            index_map[id(node)] = len(flat_nodes)
+            flat_nodes.append(node)
+            _, children = node
+            for child in children.values():
+                queue.append(child)
+
+        M = len(flat_nodes)
+        L = self.expected_length
+        node_seq = np.empty((M, L), dtype=np.uint8)
+        child_start = np.zeros(M + 1, dtype=np.int64)
+        child_edge = []
+        child_idx = []
+        for i, node in enumerate(flat_nodes):
+            item, children = node
+            node_seq[i] = item
+            child_start[i + 1] = child_start[i] + len(children)
+            for edge_dist, child in children.items():
+                child_edge.append(edge_dist)
+                child_idx.append(index_map[id(child)])
+
+        self._node_seq = node_seq
+        self._child_start = child_start
+        self._child_edge = np.asarray(child_edge, dtype=np.int64)
+        self._child_idx = np.asarray(child_idx, dtype=np.int64)
+
+        # Scratch buffers (length M) allocated lazily in _search_expected_lib.
+        self._bk_stack = None
+        self._bk_match_idx = None
+        self._bk_match_dist = None
+
+        # Warm up (compile) the numba search kernel here, in the single main
+        # process. This (a) makes any compilation error surface immediately at
+        # build time rather than mid-run in an opaque worker, (b) lets forked
+        # workers inherit the already-compiled function, and (c) makes this the
+        # sole writer of the on-disk numba cache, so N spawned workers only ever
+        # *read* it -- avoiding a concurrent cache-write race (notably on NFS
+        # cluster home dirs).
+        warm = np.empty(M, dtype=np.int64)
+        _bktree_find(self._node_seq, self._child_start, self._child_edge,
+                     self._child_idx, np.ascontiguousarray(node_seq[0]), 0,
+                     warm, np.empty(M, dtype=np.int64), np.empty(M, dtype=np.int64))
+
     def _find_orientation_strict(self, f1_array, f2_array):
         """
         Identifies the forward and reverse reads based on the flanking
@@ -468,25 +678,56 @@ class FastqToCounts:
         """
         Search the expected sequences seq, allowing up to max_diffs differences.
         Return a list of tuples corresponding to the nearest 'shell' of matches.
-        (If the closest match has 0 diffs, return 1 sequence; if the closest 
+        (If the closest match has 0 diffs, return 1 sequence; if the closest
         match has 1 diff, return all 1 diff sequences, etc.)
+
+        This queries the flattened BK-tree with the compiled ``_bktree_find``
+        kernel. It is a drop-in replacement for the old
+        ``self._search_tree.find(seq, max_diffs)`` call: it visits exactly the
+        same nodes and returns the same set of nearest-shell sequences, only far
+        faster (the traversal runs in nopython numba instead of pure Python).
+        The returned shell is not ordered, but callers only ever depend on its
+        contents (``len`` and byte-set membership), never the order.
         """
 
-        # We can't query the bktree with something that is not the same length
-        # as the input sequences. 
+        # We can't query the tree with something that is not the same length
+        # as the input sequences.
         if len(seq) != self.expected_length:
             return [], -1
 
-        # -- pybktree --
-        # # Look for matches in the search tree. 
-        matches = self._search_tree.find(seq,max_diffs)
-        if not matches:
+        # Empty library -> nothing can match.
+        if self._node_seq.shape[0] == 0:
             return [], -1
 
-        # This grabs only the hits that match the minimum distance seen in the
-        # search. Using takewhile, we only iterate until m[0] != min_dist. 
-        min_dist = matches[0][0]
-        shell_matches = [m[1] for m in takewhile(lambda m: m[0] == min_dist, matches)]
+        # Lazily allocate the per-instance search scratch buffers. Doing this
+        # here (rather than at build time) keeps them out of the pickled state
+        # sent to worker processes -- each worker allocates its own once.
+        if self._bk_stack is None:
+            M = self._node_seq.shape[0]
+            self._bk_stack = np.empty(M, dtype=np.int64)
+            self._bk_match_idx = np.empty(M, dtype=np.int64)
+            self._bk_match_dist = np.empty(M, dtype=np.int64)
+
+        # The kernel indexes ``query[j]`` directly, so it must be a contiguous
+        # uint8 array (frombuffer views already are; this is a cheap safeguard).
+        query = np.ascontiguousarray(seq, dtype=np.uint8)
+
+        n_match, min_dist = _bktree_find(self._node_seq,
+                                         self._child_start,
+                                         self._child_edge,
+                                         self._child_idx,
+                                         query,
+                                         max_diffs,
+                                         self._bk_stack,
+                                         self._bk_match_idx,
+                                         self._bk_match_dist)
+        if n_match == 0:
+            return [], -1
+
+        # Grab only the hits at the minimum distance seen (the nearest shell).
+        shell_matches = [self._node_seq[self._bk_match_idx[i]]
+                         for i in range(n_match)
+                         if self._bk_match_dist[i] == min_dist]
         return shell_matches, min_dist
 
     def _rr_perfect_agreement(self,fwd_wins,rev_wins):

@@ -2,7 +2,8 @@ from ..fastq_to_counts import FastqToCounts
 from tfscreen.util.cli import generalized_main
 from tfscreen.genetics import (
     LibraryManager,
-    set_categorical_genotype
+    set_categorical_genotype,
+    UNKNOWN_GENOTYPE
 )
 
 from tqdm.auto import tqdm
@@ -19,12 +20,39 @@ from concurrent.futures import (
     as_completed
 )
 
-def _process_reads_chunk(chunk: List[Tuple], ftc_instance: 'FastqToCounts') -> Tuple[Counter, Counter]:
+# Per-worker copy of the FastqToCounts instance. The instance is large (~137 MB
+# pickled: it carries the flattened expected-library search tree), so instead of
+# sending it as an argument on every executor.submit -- which re-pickles and
+# re-transmits it once per chunk, thousands of times over a full run -- we send
+# it exactly once per worker through the pool `initializer` (`_init_worker`) and
+# stash it in this module-global. Worker functions fall back to this global when
+# called with `ftc_instance=None` (the pool path); passing it explicitly still
+# works for direct/in-process calls and tests.
+_WORKER_FTC = None
+
+
+def _init_worker(ftc_instance: 'FastqToCounts') -> None:
+    """
+    ProcessPoolExecutor initializer: run once per worker at startup to install
+    the shared FastqToCounts instance as a module global (see `_WORKER_FTC`).
+    """
+    global _WORKER_FTC
+    _WORKER_FTC = ftc_instance
+
+
+def _process_reads_chunk(chunk: List[Tuple],
+                         ftc_instance: 'FastqToCounts' = None) -> Tuple[Counter, Counter]:
     """
     Worker function to process a chunk of read pairs. This will be executed in a
-    separate process. It returns a counter with all fwd/rev read pairs seen 
-    and a counter with error messages. 
+    separate process. It returns a counter with all fwd/rev read pairs seen
+    and a counter with error messages.
+
+    When ``ftc_instance`` is None (the pool path) the per-worker instance
+    installed by :func:`_init_worker` is used.
     """
+
+    if ftc_instance is None:
+        ftc_instance = _WORKER_FTC
 
     # Counters to hold results
     fwd_rev_pairs = Counter()
@@ -61,31 +89,41 @@ def _process_reads_chunk(chunk: List[Tuple], ftc_instance: 'FastqToCounts') -> T
         
     return fwd_rev_pairs, messages
 
-def _process_pairs_chunk(fwd_rev_chunk: List,
-                         fwd_rev_counter: Counter,
-                         ftc_instance: FastqToCounts) -> Tuple[Counter,Counter]:
+def _process_pairs_chunk(pair_count_chunk: List[Tuple],
+                         ftc_instance: FastqToCounts = None) -> Tuple[Counter,Counter]:
     """
     Worker function to process a chunk of fwd/rev pairs, generating final
     protein sequence calls. This is designed to be executed as its own process.
     It returns a counter with all sequences seen, as well as messages from the
     caller.
+
+    Parameters
+    ----------
+    pair_count_chunk : list of ((fwd_wins_bytes, rev_wins_bytes), num_seen)
+        Each item pairs a unique fwd/rev byte-pair with the number of times it
+        was observed in pass 1. Only this chunk's pairs are shipped to the
+        worker (rather than the whole first-pass counter), so the caller does
+        not pay to re-pickle the full pair counter to every worker.
+    ftc_instance : FastqToCounts, optional
+        When None (the pool path) the per-worker instance installed by
+        :func:`_init_worker` is used.
     """
+
+    if ftc_instance is None:
+        ftc_instance = _WORKER_FTC
 
     # Counters to hold results
     sequences = Counter()
     messages = Counter()
 
-    # Grab fwd_wins, and rev_wins pair
-    for pair in fwd_rev_chunk:
+    # Grab each fwd_wins/rev_wins pair together with how many times it was seen.
+    for pair, num_seen in pair_count_chunk:
 
         # Call sequence from int array versions of fwd_wins and rev_wins
         seq, msg = ftc_instance.reconcile_reads(np.frombuffer(pair[0],dtype=np.uint8),
                                                 np.frombuffer(pair[1],dtype=np.uint8))
 
-        # Get the number of times we saw this pair 
-        num_seen = fwd_rev_counter[pair]
-
-        # Update counters with the number of times we saw this in the first 
+        # Update counters with the number of times we saw this in the first
         # pass to identify fwd/rev
         if seq is not None:
             sequences[seq] += num_seen
@@ -163,9 +201,13 @@ def _process_paired_fastq(f1_fastq: str,
     if max_num_reads is not None:
         read_iterator = itertools.islice(read_iterator, max_num_reads)
     
-    # Create a pool for running analyses in parallel
-    with ProcessPoolExecutor(max_workers=num_workers) as executor:
-        
+    # Create a pool for running analyses in parallel. The (large) ftc_instance
+    # is shipped to each worker exactly once via the initializer rather than on
+    # every submit -- see _init_worker / _WORKER_FTC.
+    with ProcessPoolExecutor(max_workers=num_workers,
+                             initializer=_init_worker,
+                             initargs=(ftc_instance,)) as executor:
+
         # Read through the fastq files, building chunks of reads and submitting
         # them to the pool so we can identify F/R and clean up the reads.
         reads_futures = []
@@ -175,15 +217,13 @@ def _process_paired_fastq(f1_fastq: str,
             reads_chunk.append(read_pair)
             if len(reads_chunk) == chunk_size:
                 reads_futures.append(executor.submit(_process_reads_chunk,
-                                                     reads_chunk,
-                                                     ftc_instance))
+                                                     reads_chunk))
                 reads_chunk = []
-        
-        # Submit the last, leftover chunk. 
+
+        # Submit the last, leftover chunk.
         if reads_chunk:
             reads_futures.append(executor.submit(_process_reads_chunk,
-                                                 reads_chunk,
-                                                 ftc_instance))
+                                                 reads_chunk))
 
         # Aggregate final fwd/rev pairs as they complete
         fwd_rev_counter = Counter()
@@ -195,15 +235,15 @@ def _process_paired_fastq(f1_fastq: str,
             fwd_rev_counter.update(pairs)
             total_messages.update(messages)
 
-        # Submit chunks of fwd/rev pairs to workers for genotype calling
+        # Submit chunks of fwd/rev pairs to workers for genotype calling. Each
+        # worker gets only its chunk's (pair, count) items -- not the whole
+        # first-pass counter -- keeping the per-submit payload small.
         call_futures = []
-        all_pairs = list(fwd_rev_counter.keys())
-        chunk_size = int(np.ceil(len(all_pairs)/num_workers))
-        for i in range(0,len(all_pairs),chunk_size):
+        all_items = list(fwd_rev_counter.items())
+        call_chunk_size = max(1, int(np.ceil(len(all_items)/num_workers)))
+        for i in range(0,len(all_items),call_chunk_size):
             call_futures.append(executor.submit(_process_pairs_chunk,
-                                                all_pairs[i:(i+chunk_size)],
-                                                fwd_rev_counter,
-                                                ftc_instance))
+                                                all_items[i:(i+call_chunk_size)]))
         
         # Aggregate final calls as they complete
         pbar_process = tqdm(as_completed(call_futures),
@@ -257,9 +297,18 @@ def _create_stats_df(messages: Counter) -> pd.DataFrame:
 def _create_counts_df(sequences: Counter,
                      expected_genotypes: Iterable[str],
                      messages: Optional[Counter] = None,
-                     unknown_genotype_label: str = "__unknown__") -> pd.DataFrame:
+                     unknown_genotype_label: str = UNKNOWN_GENOTYPE) -> pd.DataFrame:
     """
     Build a counts DataFrame for expected genotypes from a sequence counter.
+
+    In addition to one row per expected library genotype, the returned frame
+    carries a single reserved ``__unknown__`` row (see ``unknown_genotype_label``)
+    aggregating every read that oriented/trimmed successfully but could not be
+    attributed to a library genotype. This is an intentional part of the counts
+    file contract: downstream (``counts_to_lncfu``) uses it as part of the
+    per-sample read-depth denominator (sum of called counts + unknown counts)
+    but drops it from the genotype outputs. The reserved label passes through
+    ``standardize_genotypes`` unchanged (it is *not* collapsed to ``wt``).
 
     Parameters
     ----------
@@ -272,14 +321,15 @@ def _create_counts_df(sequences: Counter,
         Counter mapping processing messages (strings) to counts. If provided,
         messages indicating valid but unknown/ambiguous genotypes will be
         aggregated into `unknown_genotype_label`.
-    unknown_genotype_label : str, default "__unknown__"
+    unknown_genotype_label : str, default ``UNKNOWN_GENOTYPE`` ("__unknown__")
         Label to use for the aggregated unknown genotype counts.
 
     Returns
     -------
     pandas.DataFrame
         DataFrame with categorical 'genotype' column and 'counts', standardized
-        and sorted by ``set_categorical_genotype``.
+        and sorted by ``set_categorical_genotype``. Includes the reserved
+        ``unknown_genotype_label`` row when ``messages`` is provided.
     """
 
     if not expected_genotypes:
@@ -376,6 +426,11 @@ def process_fastq(f1_fastq: str,
     -------
     None
         Writes out two CSV files to ``out_dir``: a stats file and a counts file.
+        The counts file has one row per expected library genotype plus a single
+        reserved ``__unknown__`` row (reads that oriented/trimmed but were not
+        attributable to a library genotype), retained so downstream can form the
+        correct per-sample read-depth denominator. The full breakdown of every
+        failure mode remains in the stats file.
     """
 
     # Make output directory if it does not already exist
@@ -418,4 +473,4 @@ def process_fastq(f1_fastq: str,
     counts_df.to_csv(counts_file,index=False)
 
 def main():
-    return generalized_main(process_fastq)
+    return generalized_main(process_fastq,manual_arg_types={"num_workers": int})

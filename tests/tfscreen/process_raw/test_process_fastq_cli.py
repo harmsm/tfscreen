@@ -11,12 +11,14 @@ from tfscreen.process_raw.scripts.process_fastq_cli import (
     _process_reads_chunk,
     _process_pairs_chunk,
     _process_paired_fastq,
+    _init_worker,
     _create_stats_df,
     _create_counts_df,
     process_fastq,
     LibraryManager,
     FastqToCounts
 )
+import tfscreen.process_raw.scripts.process_fastq_cli as _pfc
 
 # Helper function to create mock FASTQ files
 def create_fastq_file(path, reads):
@@ -100,15 +102,15 @@ def test_process_pairs_chunk_happy_path(mock_ftc):
     """Tests that a valid chunk of read pairs is reconciled correctly."""
     pair1 = (b'fwd1', b'rev1')
     pair2 = (b'fwd2', b'rev2')
-    fwd_rev_chunk = [pair1, pair2]
-    fwd_rev_counter = Counter({pair1: 10, pair2: 5})
+    # New signature: a chunk of (pair, num_seen) items, not a chunk + a counter.
+    pair_count_chunk = [(pair1, 10), (pair2, 5)]
 
     mock_ftc.reconcile_reads.side_effect = [
         ("GENOTYPE_1", "pass, success"),
         ("GENOTYPE_2", "pass, success")
     ]
-    
-    sequences, messages = _process_pairs_chunk(fwd_rev_chunk, fwd_rev_counter, mock_ftc)
+
+    sequences, messages = _process_pairs_chunk(pair_count_chunk, mock_ftc)
 
     assert sequences == Counter({"GENOTYPE_1": 10, "GENOTYPE_2": 5})
     assert messages == Counter({"pass, success": 15})
@@ -117,16 +119,61 @@ def test_process_pairs_chunk_happy_path(mock_ftc):
 def test_process_pairs_chunk_reconcile_failure(mock_ftc):
     """Tests that a failure from reconcile_reads is correctly logged."""
     pair1 = (b'fwd1', b'rev1')
-    fwd_rev_chunk = [pair1]
-    fwd_rev_counter = Counter({pair1: 7})
-    
+    pair_count_chunk = [(pair1, 7)]
+
     mock_ftc.reconcile_reads.return_value = (None, "fail, ambiguous")
 
-    sequences, messages = _process_pairs_chunk(fwd_rev_chunk, fwd_rev_counter, mock_ftc)
+    sequences, messages = _process_pairs_chunk(pair_count_chunk, mock_ftc)
 
     assert sequences == Counter()
     assert messages == Counter({"fail, ambiguous": 7})
     mock_ftc.reconcile_reads.assert_called_once()
+
+# -----------------------------------------------------------------------------
+# _init_worker / per-worker ftc global fallback
+# -----------------------------------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def _reset_worker_ftc():
+    """Keep the module-global worker ftc from leaking between tests."""
+    saved = _pfc._WORKER_FTC
+    _pfc._WORKER_FTC = None
+    yield
+    _pfc._WORKER_FTC = saved
+
+
+def test_init_worker_sets_global(mock_ftc):
+    """_init_worker installs the shared instance as the module global."""
+    assert _pfc._WORKER_FTC is None
+    _init_worker(mock_ftc)
+    assert _pfc._WORKER_FTC is mock_ftc
+
+
+def test_process_reads_chunk_uses_worker_global(mock_ftc):
+    """
+    With ftc_instance omitted (the pool path), _process_reads_chunk falls back
+    to the instance installed by _init_worker.
+    """
+    _init_worker(mock_ftc)
+    chunk = [(("r1", "ACGT", "IIII"), ("r1", "ACGT", "IIII"))]
+
+    fwd_rev_pairs, _ = _process_reads_chunk(chunk)  # no ftc argument
+
+    assert fwd_rev_pairs == Counter({(b'fwd_bytes', b'rev_bytes'): 1})
+    mock_ftc.build_call_pair.assert_called_once()
+
+
+def test_process_pairs_chunk_uses_worker_global(mock_ftc):
+    """_process_pairs_chunk likewise falls back to the worker-global instance."""
+    _init_worker(mock_ftc)
+    pair_count_chunk = [((b'fwd1', b'rev1'), 4)]
+    mock_ftc.reconcile_reads.return_value = ("GENO", "pass, ok")
+
+    sequences, messages = _process_pairs_chunk(pair_count_chunk)  # no ftc argument
+
+    assert sequences == Counter({"GENO": 4})
+    assert messages == Counter({"pass, ok": 4})
+
 
 # -----------------------------------------------------------------------------
 # _process_paired_fastq
@@ -307,8 +354,36 @@ def test_create_counts_df_with_unknown(mock_set_categorical):
 
     expected_df = expected_df.sort_values(by="genotype").reset_index(drop=True)
     result_df = result_df.sort_values(by="genotype").reset_index(drop=True)
-    
+
     pd_testing.assert_frame_equal(result_df, expected_df)
+
+def test_create_counts_df_unknown_not_collapsed_to_wt():
+    """
+    Regression test: the __unknown__ bucket must survive the *real*
+    set_categorical_genotype(standardize=True) call as a distinct row and NOT
+    be collapsed into 'wt'.  Previously "__unknown__" parsed as a synonymous
+    mutation and became a phantom second 'wt' row.
+    """
+    sequences = Counter({"wt": 500, "A1C": 100})
+    expected_genotypes = ["wt", "A1C"]
+    messages = Counter({
+        "fail, F/R agree but their sequence is not in the expected library": 40,
+        "fail, F/R agree but match more than one expected sequence": 2,
+    })
+
+    # No mock -> exercises the real standardizer/categorical machinery
+    result_df = _create_counts_df(sequences, expected_genotypes,
+                                  messages=messages)
+
+    genos = result_df["genotype"].astype(str).tolist()
+    # exactly one wt row and one distinct __unknown__ row
+    assert genos.count("wt") == 1
+    assert genos.count("__unknown__") == 1
+
+    counts = dict(zip(result_df["genotype"].astype(str), result_df["counts"]))
+    assert counts["wt"] == 500          # real wt untouched
+    assert counts["__unknown__"] == 42  # 40 + 2, kept separate from wt
+    assert counts["A1C"] == 100
 
 # -----------------------------------------------------------------------------
 # process_fastq

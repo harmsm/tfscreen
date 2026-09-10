@@ -8,7 +8,9 @@ from .data import (  # noqa: F401
 from .genotype_sorting import (  # noqa: F401
     standardize_genotypes,
     argsort_genotypes,
-    set_categorical_genotype
+    set_categorical_genotype,
+    UNKNOWN_GENOTYPE,
+    RESERVED_GENOTYPES
 )
 
 from .expand_genotype_columns import expand_genotype_columns  # noqa: F401

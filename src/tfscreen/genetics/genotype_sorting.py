@@ -4,29 +4,134 @@ import pandas as pd
 import string
 import re
 
+# Label used for the aggregated bucket of reads that oriented/trimmed
+# successfully but could not be attributed to a single library genotype.
+# It is a first-class part of the process_fastq counts-file contract (it
+# carries the read-depth denominator downstream), so it must survive
+# ``standardize_genotypes`` untouched rather than being parsed as a mutation.
+UNKNOWN_GENOTYPE = "__unknown__"
+
+# Reserved, non-genotype sentinel labels that pass through the standardizer
+# unchanged. They are neither wildtype nor a parseable XsiteY mutation string.
+RESERVED_GENOTYPES = frozenset({UNKNOWN_GENOTYPE})
+
+
+def _is_na(g):
+    """True if ``g`` is a null-like value (None, pd.NA, np.nan)."""
+    if g is None:
+        return True
+    try:
+        return bool(pd.isna(g))
+    except (TypeError, ValueError):
+        # pd.isna on array-like / unhashable inputs; a scalar genotype should
+        # never land here, but fail safe by treating it as non-null.
+        return False
+
+
+def _standardize_one(g):
+    """
+    Standardize a single genotype value to its canonical string form.
+
+    See :func:`standardize_genotypes` for the full contract. Raises
+    ``ValueError`` if ``g`` is neither null-like, a wildtype spelling, a
+    reserved sentinel, nor a parseable XsiteY mutation string.
+    """
+
+    # Null-like -> wt
+    if _is_na(g):
+        return "wt"
+
+    g = f"{g}".strip()
+
+    # Reserved sentinel labels (e.g. "__unknown__") pass through unchanged.
+    # Checked before any parsing so they are never mistaken for a mutation.
+    if g in RESERVED_GENOTYPES:
+        return g
+
+    # Wildtype spellings (case-insensitive) and the empty string -> wt
+    if g.lower() in ["wt", "wildtype", ""]:
+        return "wt"
+
+    # This will hold all mutations in the genotype for sorting by site number.
+    # Since it's a set, it only allows one copy of each mutation.
+    mut_tuples = set()
+
+    # Split on "/" to access individual mutations
+    for m in g.split("/"):
+
+        # Minimum size must be 3 (e.g., A1T)
+        if len(m) < 3:
+            err = f"could not parse mutation '{m}' from genotype '{g}'\n"
+            raise ValueError(err)
+
+        # grab A and T from A278T.
+        wt_state = m[0]
+        mut_state = m[-1]
+
+        # Validate the site number *first* (must be coercible as an int).
+        # Doing this before the self->self check ensures non-mutation tokens
+        # whose first and last characters happen to match (e.g. "__unknown__",
+        # "A_A") are rejected rather than silently collapsed to wt.
+        try:
+            site_number = int(m[1:-1])
+        except ValueError as e:
+            err = f"could not get site number from mutation '{m}' in genotype '{g}'\n"
+            raise ValueError(err) from e
+
+        # If we have a self-to-self (synonymous) mutation, ignore it.
+        if wt_state == mut_state:
+            continue
+
+        # Tuple with site_number first so sorting by tuple will sort by site.
+        # Set means we can only put each tuple in once, causing something
+        # like A1V/A1V to end up as A1V.
+        mut_tuples.add((site_number, wt_state, mut_state))
+
+    # This happens with nothing but self -> self mutations. record as wt.
+    if len(mut_tuples) == 0:
+        return "wt"
+
+    # Convert mut_tuples to a list to sort
+    sort_on = list(mut_tuples)
+
+    # make sure we don't have a duplicated site (A1V and A1T).
+    num_unique_sites = len(set([s[0] for s in sort_on]))
+    if num_unique_sites != len(sort_on):
+        err = f"genotype '{g}' has multiple mutations at the same site\n"
+        raise ValueError(err)
+
+    # Sort from low to high site number
+    sort_on.sort()
+
+    # Reassemble genotype from sort_on
+    return "/".join([f"{s[1]}{s[0]}{s[2]}" for s in sort_on])
+
+
 def standardize_genotypes(genotypes):
     """
-    Take a list of genotypes and standardize their names. 
+    Take a list of genotypes and standardize their names.
 
-    Looks for genotypes with the name convention XsiteY (e.g., A47T), where X 
+    Looks for genotypes with the name convention XsiteY (e.g., A47T), where X
     and Y are single letters denoting wildtype and mutant states. 'site' must
     be coercible as an integer. The function expects multiple mutations to be
     separated by '/'. The function recognizes 'wt' or 'wildtype' (case
-    insensitive) and converts to lowercase 'wt' in the output. Genotypes with
-    only self->self mutations (e.g., A47A) are also converted to 'wt'. The 
-    function drops multiple identical mutations (e.g. A47T/A47T -> A47T). 
-    Multi-mutation sites are returned in site-sorted order (Q2T/A1P -> A1P/Q2T). 
-    The function will raise an error if a genotype has multiple mutations at 
-    the same site (e.g., A1A/A1V). 
+    insensitive), the empty string, and null-like values (None, pd.NA, np.nan)
+    and converts them to lowercase 'wt' in the output. Genotypes with only
+    self->self mutations (e.g., A47A) are also converted to 'wt'. Reserved
+    sentinel labels (see ``RESERVED_GENOTYPES``, e.g. "__unknown__") pass
+    through unchanged. The function drops multiple identical mutations
+    (e.g. A47T/A47T -> A47T). Multi-mutation sites are returned in site-sorted
+    order (Q2T/A1P -> A1P/Q2T). The function raises an error if a genotype has
+    multiple mutations at the same site (e.g., A1A/A1V).
 
     Parameters
     ----------
     genotypes : list-like
         list of genotypes to process. these do not have to be unique
-    
+
     Returns
     -------
-    list : 
+    numpy.ndarray :
         genotypes in clean, standardized format in the same order as the
         original input
 
@@ -34,86 +139,21 @@ def standardize_genotypes(genotypes):
     ------
     ValueError
         Raised if there are unparsable genotypes (e.g., AfiftyT, 50, dumb) or
-        nonsensical genotypes (A1V/A1Q). 
+        nonsensical genotypes (A1V/A1Q).
     """
 
-    # Work on the subset of unique genotypes in the input
-    unique_genotypes = list(set(genotypes))
+    # Standardize each unique input once, caching by a null-safe string key.
+    # (A null-like value can never be used directly as a dict key -- pd.NA's
+    # __eq__ is non-boolean -- so it is normalized to "" here.)
+    cache = {}
+    clean_genotypes = []
+    for g in genotypes:
+        key = "" if _is_na(g) else f"{g}".strip()
+        if key not in cache:
+            cache[key] = _standardize_one(g)
+        clean_genotypes.append(cache[key])
 
-    # Build the genotype_mapper dictionary, which maps input genotype names to 
-    # clean, standardized names
-    genotype_mapper = {}
-    for g in unique_genotypes:
-
-        # Ensure string representation
-        g = f"{g}"
-
-        # If wildtype (case-insensitive wt or wildtype), record as wt and 
-        # continue
-        if g.lower() in ["wt","wildtype",""]:
-            genotype_mapper[g] = "wt"
-            continue
-
-        # This will hold all mutations in the genotype for sorting by site 
-        # number. Since it's a set, it only allows one copy of each mutation.
-        mut_tuples = set()
-
-        # Split on "/" to access individual mutations
-        mutations = g.split("/")
-        for m in mutations:
-
-            # Minimum size must be 3 (e.g., A1T)
-            if len(m) < 3:
-                err = f"could not parse mutation '{m}' from genotype '{g}'\n"
-                raise ValueError(err)
-            
-            # grab A and T from A278T. 
-            wt_state = m[0]
-            mut_state = m[-1]
-
-            # If we have a self-to-self mutation, ignore the mutation.
-            if wt_state == mut_state:
-                continue
-
-            # Try to extract the site number (must be coercible as an int)
-            try:
-                site_number = int(m[1:-1])
-            except ValueError as e:
-                err = f"could not get site number from mutation '{m}' in genotype '{g}'\n"
-                raise ValueError(err) from e
-            
-            # Tuple with site_number first so sorting by tuple will sort by site
-            mut_tuple = (site_number,wt_state,mut_state)
-
-            # Store tuple. Set means we can only put each tuple in once, causing
-            # something like A1V/A1V to end up as A1V. 
-            mut_tuples.add(mut_tuple)
-
-        # This happens with nothing but self -> self mutations. record as wt. 
-        if len(mut_tuples) == 0:
-            genotype_mapper[g] = "wt"
-            continue
-
-        # Convert mut_tuples to a list to sort
-        sort_on = list(mut_tuples)
-
-        # make sure we don't have a duplicated site (A1V and A1T). 
-        num_unique_sites = len(set([s[0] for s in sort_on]))
-        if num_unique_sites != len(sort_on):
-            err = f"genotype '{g}' has multiple mutations at the same site\n"
-            raise ValueError(err)
-
-        # Sort from low to high site number
-        sort_on.sort()
-
-        # Reassemble genotype from sort_on and record the mapping
-        clean_g = "/".join([f"{s[1]}{s[0]}{s[2]}" for s in sort_on])
-        genotype_mapper[g] = clean_g
-
-    # Map original genotypes back to a numpy array of standardized genotype names
-    clean_genotypes = np.array([genotype_mapper[g] for g in genotypes])
-
-    return clean_genotypes
+    return np.array(clean_genotypes)
 
 
 def argsort_genotypes(genotypes):
@@ -150,7 +190,14 @@ def argsort_genotypes(genotypes):
 
     sort_columns = []
 
-    # Column 0: wt vs. not wt (wt is 0, mutants are 1)
+    # Column 0 (primary): reserved sentinel labels (e.g. "__unknown__") sort
+    # after every real genotype. All-zero when no reserved labels are present,
+    # so the ordering of real genotypes is unchanged.
+    is_reserved = np.array([str(g) in RESERVED_GENOTYPES for g in genotypes],
+                           dtype=float)
+    sort_columns.append(is_reserved)
+
+    # Column 1: wt vs. not wt (wt is 0, mutants are 1)
     is_wt = np.char.lower(genotypes.astype(str)) == 'wt'
     sort_columns.append(~is_wt)
 

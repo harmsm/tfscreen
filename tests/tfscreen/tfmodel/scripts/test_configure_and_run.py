@@ -81,7 +81,8 @@ def test_configure_growth_analysis_coverage(mock_orchestrator, tmpdir):
         "unknown_3d": np.zeros((2, 2, 2)) # 3D
     }
     
-    configure_model("b.csv", growth_df="g.csv", out_prefix=out_prefix)
+    configure_model("b.csv", growth_df="g.csv", out_prefix=out_prefix,
+                    skip_model_stats=True)
     
     assert os.path.exists(f"{out_prefix}_config.yaml")
     assert os.path.exists(f"{out_prefix}_priors.csv")
@@ -104,7 +105,7 @@ def test_configure_model_passes_base_growth_df_to_orchestrator_and_config(mock_o
     out_prefix = os.path.join(tmpdir, "test")
 
     configure_model("b.csv", growth_df="g.csv", base_growth_df="bg.csv",
-                    out_prefix=out_prefix)
+                    out_prefix=out_prefix, skip_model_stats=True)
 
     assert mock_orchestrator_class.call_args.kwargs["base_growth_df"] == "bg.csv"
 
@@ -128,7 +129,8 @@ def test_configure_model_requires_transformation_lambda_for_empirical(mock_orche
 def test_configure_model_allows_single_without_transformation_lambda(mock_orchestrator, tmpdir):
     """transformation_model='single' (the default) never requires transformation_lambda."""
     out_prefix = os.path.join(tmpdir, "test")
-    configure_model("b.csv", growth_df="g.csv", out_prefix=out_prefix)
+    configure_model("b.csv", growth_df="g.csv", out_prefix=out_prefix,
+                    skip_model_stats=True)
     assert os.path.exists(f"{out_prefix}_config.yaml")
 
 
@@ -141,6 +143,7 @@ def test_configure_model_forwards_transformation_lambda_to_orchestrator(mock_orc
         transformation_model="empirical",
         transformation_lambda=(0.3572, 0.13),
         out_prefix=out_prefix,
+        skip_model_stats=True,
     )
 
     assert mock_orchestrator_class.call_args.kwargs["transformation_lambda"] == (0.3572, 0.13)
@@ -152,7 +155,8 @@ def test_configure_model_omits_base_growth_when_not_given(mock_orchestrator, tmp
     mock_orchestrator_class, mock_orchestrator_inst = mock_orchestrator
     out_prefix = os.path.join(tmpdir, "test")
 
-    configure_model("b.csv", growth_df="g.csv", out_prefix=out_prefix)
+    configure_model("b.csv", growth_df="g.csv", out_prefix=out_prefix,
+                    skip_model_stats=True)
 
     assert mock_orchestrator_class.call_args.kwargs["base_growth_df"] is None
 
