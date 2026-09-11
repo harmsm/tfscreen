@@ -336,6 +336,72 @@ def test_base_growth_written_when_configured(tmp_path):
     assert float(result.loc[result["genotype"] == "wt", "rate"].iloc[0]) == pytest.approx(0.025)
 
 
+def test_config_file_paths_resolve_relative_to_config_dir(tmp_path):
+    """A params file named in the config is found relative to the config's
+    directory, whatever the working directory."""
+    lib_df, pheno_df, theta_df, params_df, sample_df, counts_df, growth_df = _make_mock_dfs()
+    config_dir = tmp_path / "configs"
+    config_dir.mkdir()
+    cfg = {"seed": 0, "growth": {},
+           "thermo_data": "struct.h5",
+           "binding_data": {"titrant_name": "iptg", "titrant_conc": [0.0],
+                            "spiked_binding": {"choose_by": "hill.csv"}}}
+
+    seen = {}
+
+    def fake_library_prediction(cf):
+        seen["cf"] = cf
+        return lib_df, pheno_df, theta_df, params_df, None
+
+    with patch("tfscreen.util.read_yaml", return_value=cfg), \
+         patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
+               side_effect=fake_library_prediction), \
+         patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
+               return_value=(sample_df, counts_df)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
+               return_value=growth_df):
+        run_simulation_from_config(str(config_dir / "cfg.yaml"),
+                                   str(tmp_path / "out"))
+
+    cf = seen["cf"]
+    assert cf["thermo_data"] == str(config_dir / "struct.h5")
+    assert cf["binding_data"]["spiked_binding"]["choose_by"] == str(config_dir / "hill.csv")
+
+
+def test_base_growth_random_choice_excludes_spiked_and_nonsurvivors(tmp_path):
+    """choose_by: random draws from survivors and never picks a spiked genotype."""
+    _, pheno_df, theta_df, _, sample_df, counts_df, _ = _make_mock_dfs()
+    names = ["wt", "A1V", "B2V", "C3V", "D4V"]
+    lib_df = pd.DataFrame({"genotype": names,
+                           "library_origin": ["spiked", "spiked", "library",
+                                              "library", "library"]})
+    params_df = pd.DataFrame({"genotype": names, "dk_geno": [0.0] + [-0.01] * 4,
+                              "activity": [1.0] * 5})
+    growth_df = pd.DataFrame({"genotype": ["wt", "A1V", "B2V", "C3V"]})  # D4V died
+
+    written = {}
+
+    def capture_csv(self_df, path, **kwargs):
+        written[str(path)] = self_df.copy()
+
+    cfg = {"seed": 0, "growth": {},
+           "base_growth_data": {"k_ref": 0.025, "choose_by": "random",
+                                "num": 2, "noise": 0.001}}
+
+    with patch("tfscreen.util.read_yaml", return_value=cfg), \
+         patch("tfscreen.simulate.scripts.simulate_cli.library_prediction",
+               return_value=(lib_df, pheno_df, theta_df, params_df, None)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.selection_experiment",
+               return_value=(sample_df, counts_df)), \
+         patch("tfscreen.simulate.scripts.simulate_cli.counts_to_lncfu",
+               return_value=growth_df), \
+         patch.object(pd.DataFrame, "to_csv", capture_csv):
+        run_simulation_from_config("config.yaml", str(tmp_path))
+
+    path = next(p for p in written if os.path.basename(p).endswith("base_growth.csv"))
+    assert set(written[path]["genotype"]) == {"wt", "B2V", "C3V"}
+
+
 # ---------------------------------------------------------------------------
 # k_ref: written only alongside base_growth_data, echoing its k_ref value
 # ---------------------------------------------------------------------------

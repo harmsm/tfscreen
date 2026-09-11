@@ -38,20 +38,29 @@ NOTES
 - ``run_name`` may reference variables from either section.
 - Use the ``basename`` Jinja2 filter to strip path info from filenames:
       run_name: "{{ thermo_data | basename }}__noise{{ growth_rate_noise }}"
-- Relative paths in ``simulate`` blocks (e.g. ``thermo_data``) are resolved
-  relative to the grid YAML's directory, then re-expressed relative to each
-  subdirectory in the written config.
-- Relative paths already in the base config are resolved relative to the base
-  config's location, then re-expressed relative to each subdirectory.
+- Input files named in the config (``thermo_data``, ``calibration_file``,
+  a ``binding_data.*_binding.choose_by`` params file, ``empirical.phenotype_model``;
+  see ``tfscreen.simulate.config_paths``) are **copied into every run
+  directory**, and the written config names the local copy.  Runs are thus
+  self-contained: they work from any working directory and after being moved
+  or synced to another machine.  Relative paths are resolved first -- against
+  the grid YAML's directory for ``simulate`` overrides, against the base
+  config's directory for base-config values.  A missing file fails at setup.
 """
 
 import itertools
 import json
 import os
+import shutil
 
 import jinja2
 import yaml
 
+from tfscreen.simulate.config_paths import (
+    existing_input_file,
+    iter_path_entries,
+    resolve_config_paths,
+)
 from tfscreen.util.cli import generalized_main
 from tfscreen.util.grid_utils import (
     make_jinja_env as _make_jinja_env,
@@ -60,8 +69,6 @@ from tfscreen.util.grid_utils import (
     relativize_template_vars as _relativize_template_vars,
 )
 
-# Top-level keys in the simulate config that hold file paths.
-_SIM_PATH_KEYS = frozenset({"thermo_data", "calibration_file"})
 
 # Fixed filename for the per-run config written into each subdirectory.
 _SIM_CONFIG_FILENAME = "tfs_sim_config.yaml"
@@ -86,12 +93,45 @@ def _expand_block(block):
 # ---------------------------------------------------------------------------
 
 def _resolve_paths(vars_dict, base_dir):
-    """Return a copy of vars_dict with _SIM_PATH_KEYS resolved to absolute paths."""
-    out = dict(vars_dict)
-    for key in _SIM_PATH_KEYS:
-        if key in out and out[key] and not os.path.isabs(out[key]):
-            out[key] = os.path.normpath(os.path.join(base_dir, out[key]))
-    return out
+    """
+    Return a deep copy of vars_dict with its file paths resolved to absolute.
+
+    The file-valued keys are defined in ``tfscreen.simulate.config_paths``
+    (e.g. ``thermo_data`` and ``binding_data.spiked_binding.choose_by`` when
+    it names a params file rather than a builtin keyword).  The copy is deep
+    so resolving nested values never mutates the shared base config.
+    """
+    return resolve_config_paths(vars_dict, base_dir)
+
+
+def _localize_inputs(run_cfg, subdir):
+    """
+    Copy every input file named in ``run_cfg`` into ``subdir``.
+
+    Rewrites each file-valued entry to the copied file's basename, so the run
+    directory is self-contained: it works from any working directory and
+    after being moved or synced elsewhere.  ``run_cfg`` paths must already be
+    absolute (``_resolve_paths``).  Fails fast when a file does not exist or
+    two different files share a basename.
+    """
+    copied = {}
+    for container, key, key_path in iter_path_entries(run_cfg):
+        source = existing_input_file(key_path, container[key])
+        if source is None:
+            raise FileNotFoundError(
+                f"Input file for '{key_path}' not found: {container[key]}"
+            )
+        source = os.path.abspath(source)
+        name = os.path.basename(source)
+        if name in copied and copied[name] != source:
+            raise ValueError(
+                f"Two different input files share the name '{name}' "
+                f"({copied[name]} and {source}); rename one."
+            )
+        if name not in copied:
+            shutil.copy2(source, os.path.join(subdir, name))
+            copied[name] = source
+        container[key] = name
 
 
 # ---------------------------------------------------------------------------
@@ -207,8 +247,12 @@ def setup_sim_grid(grid_yaml, out_prefix="sim_grid"):
         run_cfg = _resolve_paths(base_cfg, base_cfg_dir)
         run_cfg.update(_resolve_paths(sim_vars, grid_yaml_dir))
 
-        # Write config; _relativize_config_paths then rewrites any absolute
-        # paths that exist on disk to be relative to subdir.
+        # Copy input files (binding params, thermo data, ...) into the run
+        # directory and point the config at the local copies.
+        _localize_inputs(run_cfg, subdir)
+
+        # Write config; _relativize_config_paths then rewrites any remaining
+        # absolute paths that exist on disk to be relative to subdir.
         cfg_path = os.path.join(subdir, _SIM_CONFIG_FILENAME)
         with open(cfg_path, "w") as fh:
             yaml.dump(run_cfg, fh, default_flow_style=False, sort_keys=False)

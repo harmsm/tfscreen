@@ -20,7 +20,51 @@ import pandas as pd
 from tfscreen.genetics import standardize_genotypes
 
 
-def generate_base_growth_df(base_growth_cfg, parameters_df, rng):
+def _choose_genotypes(base_growth_cfg, parameters_df, growth_df,
+                      exclude_genotypes, rng):
+    """
+    Resolve ``choose_by: random`` into wt plus ``num`` random genotypes.
+
+    The pool is library genotypes that survived with growth data, minus wt
+    and ``exclude_genotypes`` -- so every anchor has growth data to anchor,
+    and base-growth anchors stay disjoint from the binding anchors.
+    """
+    choose_by = base_growth_cfg["choose_by"]
+    if choose_by != "random":
+        raise ValueError(
+            f"base_growth_data.choose_by must be 'random', got '{choose_by}'."
+        )
+    for key in ("genotypes", "rates"):
+        if key in base_growth_cfg:
+            raise ValueError(
+                f"base_growth_data.{key} cannot be combined with choose_by."
+            )
+    num = base_growth_cfg.get("num")
+    if num is None:
+        raise ValueError("base_growth_data requires 'num' with choose_by.")
+    if growth_df is None:
+        raise ValueError(
+            "base_growth_data.choose_by needs the simulated growth_df to "
+            "restrict the choice to genotypes with growth data."
+        )
+
+    excluded = (set(standardize_genotypes(list(exclude_genotypes)))
+                if exclude_genotypes else set())
+    survivors = set(growth_df["genotype"].astype(str).unique())
+    library = set(parameters_df["genotype"].astype(str))
+    pool = sorted((survivors & library) - excluded - {"wt"})
+    if len(pool) < int(num):
+        raise ValueError(
+            f"base_growth_data: only {len(pool)} eligible surviving "
+            f"genotype(s) available, but num={num} requested."
+        )
+
+    picks = rng.choice(len(pool), size=int(num), replace=False)
+    return ["wt"] + [pool[int(i)] for i in picks]
+
+
+def generate_base_growth_df(base_growth_cfg, parameters_df, rng,
+                            growth_df=None, exclude_genotypes=None):
     """
     Generate a simulated base_growth_df.
 
@@ -53,11 +97,27 @@ def generate_base_growth_df(base_growth_cfg, parameters_df, rng):
           noise : float, default 0.0
               Sigma of the Gaussian noise added to the true rate to produce
               the observed rate.
+          choose_by : "random", optional
+              Choose the genotypes instead of listing them: wt plus ``num``
+              genotypes drawn at random from those that survived with growth
+              data (``growth_df``), excluding ``exclude_genotypes``.  Cannot
+              be combined with ``genotypes`` or ``rates``.
+          num : int
+              Number of genotypes to choose (in addition to wt).  Required
+              with ``choose_by``.
     parameters_df : pandas.DataFrame
         Output of library_prediction; must contain 'genotype' and 'dk_geno'
         columns, one row per unique library genotype.
     rng : numpy.random.Generator
-        Shared random-number generator for the noise draws.
+        Shared random-number generator for the noise draws (and the
+        ``choose_by`` selection).
+    growth_df : pandas.DataFrame, optional
+        Simulated growth data; its ``genotype`` column defines the survivors
+        ``choose_by`` draws from.  Required with ``choose_by``.
+    exclude_genotypes : iterable of str, optional
+        Genotypes ``choose_by`` must not pick (e.g. spiked and in-library
+        binding genotypes, keeping base-growth anchors disjoint from binding
+        anchors).
 
     Returns
     -------
@@ -81,10 +141,14 @@ def generate_base_growth_df(base_growth_cfg, parameters_df, rng):
     k_ref = float(base_growth_cfg["k_ref"])
     noise = float(base_growth_cfg.get("noise", 0.0))
 
-    raw_genotypes = list(base_growth_cfg.get("genotypes", ["wt"]))
-    genotypes = list(standardize_genotypes(raw_genotypes))
-    if "wt" not in genotypes:
-        genotypes = ["wt"] + genotypes
+    if "choose_by" in base_growth_cfg:
+        genotypes = _choose_genotypes(base_growth_cfg, parameters_df,
+                                      growth_df, exclude_genotypes, rng)
+    else:
+        raw_genotypes = list(base_growth_cfg.get("genotypes", ["wt"]))
+        genotypes = list(standardize_genotypes(raw_genotypes))
+        if "wt" not in genotypes:
+            genotypes = ["wt"] + genotypes
 
     raw_rates = base_growth_cfg.get("rates", {})
     if raw_rates:

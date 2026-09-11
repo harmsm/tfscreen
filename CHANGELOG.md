@@ -67,6 +67,33 @@ into two kinds:
   value. It now raises `ValueError`, as does `get_laplace_posteriors` (before
   its Hessian), when a MAP latent's genotype axis is not library-sized. Old
   MAP checkpoints are therefore refused; refit them.
+- `tfs-summarize-fit` picked its config and losses files with the globs
+  `*_config.yaml` and `*_losses.txt`. In grid run directories these also match
+  the simulate config (`tfs_sim_config.yaml`) and the prefit and pre-MAP
+  losses, and the right file was chosen only because of alphabetical order.
+  It now takes the YAML that has `data` and `components` sections (the
+  tfmodel config) and ignores `*_prefit_losses.txt` and `*_premap_losses.txt`
+  (`_find_fit_config`, `_find_fit_losses`).
+- **Grid runs could not find input files named in the simulate config.**
+  `tfs-setup-sim-grid` resolved only the top-level `thermo_data` and
+  `calibration_file` paths, so a nested reference such as
+  `binding_data.spiked_binding.choose_by: hill_params.csv` reached each run's
+  `tfs_sim_config.yaml` unchanged. `tfs-simulate` then opened it relative to
+  the job's working directory, so runs failed unless a copy happened to be
+  there.
+  - `tfs-setup-sim-grid` now **copies every input file into each run
+    directory** and writes the local file name into the run's config, so runs
+    are self-contained. They work from any working directory and after being
+    moved or synced to another machine. A missing file fails at setup instead
+    of in every job, and two different files sharing a name is an error.
+  - `tfs-simulate` and `tfs-report-cfu0` now resolve relative input paths
+    against the config file's directory, as the YAML conventions state,
+    rather than the working directory.
+  - The file-valued keys are defined once in `simulate/config_paths.py`:
+    `thermo_data`, `calibration_file`,
+    `binding_data.{spiked,library}_binding.choose_by` (when it names a file
+    rather than `stratified`/`random`), and `empirical.phenotype_model`.
+  - **Action:** re-run `tfs-setup-sim-grid` for grids built before this fix.
 - `draw_prior` (`tfs-sample-prior`, `tfmodel/analysis/prior_predictive.py`)
   returned plate index arrays as latent parameters. It now returns only sample
   and deterministic sites.
@@ -109,6 +136,39 @@ into two kinds:
   eligible. Implemented in `simulate/base_growth_data.py::generate_base_growth_df`
   (new `growth_df` and `exclude_genotypes` arguments) and wired up in
   `simulate/scripts/simulate_cli.py`.
+- **`tfs-summarize-calibration`** (`analysis/calibration_grid.py`,
+  `analysis/scripts/summarize_calibration_cli.py`): posterior calibration
+  across a `tfs-setup-sim-grid` grid.
+  - **Inputs:** every run's `combo.json` plus its `tfs-summarize-fit` outputs:
+    θ against the true θ (`*_theta_corr_test.csv`) and every
+    `*_params_*.csv` with ground truth.
+  - **Metrics:** per run, quantity and stratum it reports coverage at
+    0.5–0.99, calibration error and bias, and PIT KS statistics. These use the
+    same `error_calibration` functions as `tfs-summarize-fit`, so the numbers
+    agree. It also reports central-interval widths and the RMSE and
+    correlation of the posterior median.
+  - **Strata:** has binding data × spiked/bulk, separately and crossed, plus
+    resolvable vs. saturated true θ.
+  - **Arms and pairing:** results are averaged over replicates within each
+    arm (`--replicate_keys`, default `seed fit_seed`). With `--baseline`
+    (e.g. `guide_type=component guide_rank=None`), each run is paired with
+    the baseline run fit to the same simulated data.
+  - **Partial grids:** unfinished runs are listed in `_run_status.csv`. A
+    baseline with no finished runs only skips the paired outputs, while a
+    baseline matching no run at all is an error.
+  - **Outputs:** `_runs.csv`, `_run_status.csv`, `_arms.csv`, `_paired.csv`,
+    `_paired_summary.csv`, a faceted calibration-curve PDF, and
+    `_metadata.json`.
+- `examples/guide-calibration/`: the Phase 3 (Tier 1) guide-calibration grid.
+  - `simulate_config.yaml`: the updated simulate-and-analyze library, about
+    480 genotypes and 9k latents.
+  - `grid.yaml`: 5 simulation seeds × 6 guides (component, auto_normal,
+    auto_diagonal_normal, low-rank rank 10 and 50, auto_multivariate_normal)
+    × full vs. 1/3 batch × `logit_normal`/`zero` θ noise × 2 fit seeds,
+    for 240 runs.
+  - `run.sh`: a Jinja template for the production fit pipeline, ending in
+    `tfs-summarize-fit` calibration against the simulated truth.
+  - `README.md`: usage and design notes.
 - Noise components (`noise/zero`, `noise/beta`, `noise/logit_normal`) accept
   an optional `data=` keyword, which `generative/model.py` passes. This lets
   `logit_normal` sample its epsilon at library size.

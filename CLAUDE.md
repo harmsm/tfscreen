@@ -56,6 +56,7 @@ tfs-predict-epistasis      # Joint second-order epistasis from the theta posteri
 tfs-cat-response           # Fit categorical response curves
 tfs-extract-epistasis      # Calculate second-order epistasis from a long-form observable table (--scale add|mult|logit; --scale_constant rescales the transform before epistasis, e.g. -RT to put logit onto a free-energy scale)
 tfs-compare-runs           # Cross-run agreement statistics for any quantile-summarized estimate -- predicted features (theta/growth/epistasis) or fitted parameters (log_hill_K/dk_geno/growth_k/k_ref) -- across N runs (seeds / k-fold dropouts). Reports raw numbers (rms_sd, overdispersion + p/q, n_present/n_runs); no thresholds, no grades. --index_by picks the entity, --group_by breaks it out further, --match_by overrides key detection
+tfs-summarize-calibration  # Posterior calibration across a tfs-setup-sim-grid grid: coverage/PIT/interval width/accuracy per run x quantity x stratum (has-binding x spiked/bulk, theta regime), averaged per arm (--replicate_keys), paired vs a --baseline arm on the same simulated data
 tfs-diagnose-nan           # Diagnose NaN issues in inference
 tfs-simulate               # Simulate a full experiment
 tfs-report-cfu0            # Report average ln_cfu0 by genotype class from a simulate config
@@ -95,7 +96,7 @@ FASTQ files
 | `process_raw/` | FASTQ parsing, count normalization, ln_cfu calculation |
 | `simulate/` | Full experiment simulation from thermodynamics to read counts |
 | `simulate/growth/` | Growth/growth-transition linkage models for simulation |
-| `analysis/` | Downstream statistical analysis of inference outputs (cat_response, extract_epistasis, compare_runs) |
+| `analysis/` | Downstream statistical analysis of inference outputs (cat_response, extract_epistasis, compare_runs, calibration_grid) |
 | `mle/` | General-purpose MLE regression (FitManager, least squares, WLS, NLS) |
 | `mle/curve_models/` | Empirical curve-fitting functions and MODEL_LIBRARY used by cat_response |
 | `mle/fitters/` | Low-level fitter implementations (least_squares, matrix_nls, matrix_wls) |
@@ -179,7 +180,7 @@ See **YAML Standards** below for the full conventions. The tfmodel config (`tfs_
 - **Full batch, always.** The trace uses `get_batch(data, arange(num_genotype))`. Tracing a mini-batch would report every per-genotype parameter count as the *batch size* rather than the library size.
 - **Observation counts come from `good_mask`**, not tensor shapes, so padding in the ragged tensors is never counted as data. `_observation_counts` reads the masks directly (the four observers' masks reduce to plain `good_mask` sums under a full batch); `test_observation_counts_match_applied_masks` pins that shortcut against the masks a *concrete* trace actually applies, so it fails if an observer changes its masking.
 
-**Site classification** (`_site_scope`): entity plates (`pair` > `mutation` > `genotype`, checked in that order) set `scope`/`entity` and `scales_with_library`; a site indexed by an entity *and* by a measurement axis (`titrant_conc`/`time`, size > 1) is `per_datum` — a random effect that grows with the data, scope-labelled `per_genotype_datum`. Sites with no entity plate fall back to the most specific design axis (`per_condition`, `per_replicate`, `per_sample`, …) or `global`. `level` is `hyperparameter` when a site sits above its component's entity-level latents (components with no entity latents at all, e.g. `condition_growth`, are all `individual`).
+**Site classification** (`_site_scope`): entity plates (`pair` > `mutation` > `genotype`, checked in that order) set `scope`/`entity` and `scales_with_library`; a site indexed by an entity *and* by a measurement axis (`titrant_conc`/`time`, size > 1) is `per_datum` — a random effect that grows with the data, scope-labeled `per_genotype_datum`. Sites with no entity plate fall back to the most specific design axis (`per_condition`, `per_replicate`, `per_sample`, …) or `global`. `level` is `hyperparameter` when a site sits above its component's entity-level latents (components with no entity latents at all, e.g. `condition_growth`, are all `individual`).
 
 **Effective parameters are reported as a bracket, never a single number.** `p_eff_lower` counts everything that is *not* an entity-indexed latent (hypers, condition params, globals); `p_eff_upper` counts every latent. Partial pooling makes each entity-level latent cost strictly less than one dof, so the truth is inside. `per_datum` latents are excluded from **both** bounds and from `params_per_genotype` — counting them against a genotype's observation budget would double-count the data on both sides. `n_obs/n_param` is reported only as the two ends of that bracket. A real `p_eff` (WAIC/PSIS-LOO) needs a fitted model and would belong in `tfs-summarize-fit`.
 
@@ -223,7 +224,7 @@ The optional `binding_data` YAML block configures calibration genotypes for whic
 **Measured Hill parameters** (a `choose_by` *params file*, either block):
 - Reads a CSV with columns `genotype, theta_low, theta_high, log_hill_K, hill_n`.
 - Only supported for Hill-based theta components (`hill_geno`, `hill_mut`).
-- **`theta_low` and `theta_high` are clamped to `[1e-4, 1-1e-4]` at read time** with a `UserWarning`. This is critical: a value of e.g. `1.000004` (a common float-rounding artefact) maps to `logit ≈ +16`, making all per-mutation deltas ~13–15 σ under the `HalfNormal(1)` prior on delta scales and preventing inference from recovering reasonable theta values.
+- **`theta_low` and `theta_high` are clamped to `[1e-4, 1-1e-4]` at read time** with a `UserWarning`. This is critical: a value of e.g. `1.000004` (a common float-rounding artifact) maps to `logit ≈ +16`, making all per-mutation deltas ~13–15 σ under the `HalfNormal(1)` prior on delta scales and preventing inference from recovering reasonable theta values.
 - For `hill_mut`: `build_theta_gc_override_hill_mut` assembles theta for **all library genotypes** (not just the measured ones) by additively combining per-mutation logit-space deltas. The WT reference is taken from `SimPriors` defaults. Multi-mutant genotypes not directly measured in the CSV are assembled from single-mutant deltas; directly-measured multi-mutants use their CSV values directly.
 - Measured genotypes override any earlier simulated-path values in `theta_gc_override`.
 
@@ -445,6 +446,8 @@ template:
 
 Both grid CLIs import from `tfscreen.util.grid_utils` for run-name generation, Jinja2 environment setup, and config-path rewriting.  Add new reusable grid helpers there rather than duplicating them.
 
+**Input files in simulate configs** (`simulate/config_paths.py`): the file-valued keys are `thermo_data`, `calibration_file`, `binding_data.{spiked,library}_binding.choose_by` (when it names a file, not `stratified`/`random`) and `empirical.phenotype_model`. `tfs-simulate` and `tfs-report-cfu0` resolve relative values against the config file's directory (`resolve_config_paths`). `tfs-setup-sim-grid` copies each referenced file into every run directory and writes the local file name into that run's `tfs_sim_config.yaml` (`_localize_inputs`), so run directories are self-contained and a missing file fails at setup. A new file-valued config key must be added to `config_paths.py`, or grids and non-default working directories will not find it.
+
 ### `examples/` directory
 
 | File | Purpose |
@@ -456,6 +459,9 @@ Both grid CLIs import from `tfscreen.util.grid_utils` for run-name generation, J
 | `simulate-empirical/simulate_config.yaml` | Simulate config that resamples phenotypes from a `tfs-build-empirical` model (`phenotype_source: empirical`) |
 | `simulate-and-analyze/hill_params.csv` | Example Hill parameter CSV for binding data input |
 | `simulate-and-analyze/run.sh` | Jinja2 shell template for simulate-and-analyze runs |
+| `guide-calibration/grid.yaml` | Phase 3 SVI guide-calibration grid for `tfs-setup-sim-grid` (sim seed × `--guide_type` × batch size × θ-noise × fit seed; 240 runs) |
+| `guide-calibration/run.sh` | Jinja2 template: simulate → production fit with the guide under test → `tfs-summarize-fit` calibration |
+| `guide-calibration/simulate_config.yaml` | Base sim for the guide grid (simulate-and-analyze library: λ=0.3572, 20 library-binding + 20 random disjoint base-growth anchors) |
 | `tfmodel/grid.yaml` | Example tfmodel grid for `tfs-setup-grid` |
 | `tfmodel/run.srun` | Jinja2 SLURM template rendered into each tfmodel grid run subdir |
 | `process_raw/library_config.yaml` | Minimal library genetics config for `tfs-process-fastq` |
@@ -481,6 +487,39 @@ Both grid CLIs import from `tfscreen.util.grid_utils` for run-name generation, J
 - Slow tests (marked `@pytest.mark.slow`) are skipped by default; use `--runslow` to include them
 - Smoke tests live in `tests/smoke-tests/` and test end-to-end pipelines
 - **Write or update unit tests for any new code added in a session.** Tests mirror the source layout under `tests/tfscreen/`; a new module at `src/tfscreen/foo/bar.py` gets tests at `tests/tfscreen/foo/test_bar.py`.
+
+## Commits (the user commits, Claude drafts the message)
+
+**Do not run `git commit`, `git push`, `git merge`, `git rebase`, `git tag`, or `git stash`, or open PRs, unless the user explicitly asks in the current session.** The user makes every commit themselves so they can review the diff first. Approval to commit once does not carry over to later commits.
+
+Instead, when a session reaches a natural commit point (a feature, fix, or refactor that is complete and tested), end the turn with a **draft commit message** in a fenced `text` block, ready for the user to edit and paste into `git commit -e`. List which files belong in the commit if the working tree has unrelated changes. Draft format:
+
+- **Subject:** at most about 72 characters, imperative mood, optionally prefixed with the area (`tfmodel:`, `simulate:`, `process_raw:`, `analysis:`, `docs:`), no trailing period. Example: `tfmodel: sample per-genotype latents in library-sized plates`.
+- **Body** (wrapped at 72 columns, blank line after the subject):
+  - Why the change was needed, meaning the problem or bug and its symptom.
+  - What changed, naming key files and functions.
+  - User-visible effects: new, renamed or removed CLIs, flags, config keys and output columns, plus any **breaking** change or **action** required.
+  - How it was verified (tests added or run).
+  - Keep it consistent with the `CHANGELOG.md` `[Unreleased]` entry made in the same session, but shorter; the changelog is the user-facing record.
+- **Trailer:** `Co-Authored-By: Claude <model name> <noreply@anthropic.com>`, which the user can keep or drop.
+
+## Spelling
+
+Use **American English** spelling in all prose the project ships or keeps: docs, docstrings, comments, `CHANGELOG.md`, `CLAUDE.md`, commit-message drafts, and user-facing CLI and help text. For example: behavior, color, modeling/modeled, labeled, analyze, optimize, normalize, artifact, center. Do not rename existing code identifiers or config keys just to change their spelling; that is a breaking change and needs its own decision.
+
+## Changelog (`CHANGELOG.md`)
+
+The project keeps a [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) file at the repo root. **Any session that makes a user-visible change updates `## [Unreleased]` in the same session**, as part of the change, the same way tests are part of the change.
+
+- **What counts as user-visible:** new, removed or renamed CLIs, flags, config/YAML keys, components, output files or columns; behavior or default changes; bug fixes that change results; and performance changes a user would notice. Internal refactors, test-only changes and docstring cleanups do not need an entry.
+- **Subsections:** `Added / Changed / Deprecated / Removed / Fixed / Security`, plus `Known issues` and `Credits` when relevant. Omit empty ones.
+- **Style:**
+  - Bullets name files, functions, CLIs and flags in backticks, never commit hashes, so entries survive rebases.
+  - Lead with a bold phrase for major items.
+  - Mark `**Breaking:**` on incompatible changes and `**Action:**` when users must regenerate outputs or edit configs.
+  - For a fix, say what was wrong and which paths/outputs were affected, not just "fixed X".
+- **Releasing:** rename `[Unreleased]` to `## [x.y.z] - YYYY-MM-DD` (matching `src/tfscreen/__version__.py` and the GitHub release tag), open a fresh empty `[Unreleased]`, and add the compare link at the bottom (`https://github.com/harmslab/tfscreen/compare/vPREV...vX.Y.Z`).
+- **Provenance:** entries written at the time of the change are *contemporaneous*. Sections or blocks marked *"Reconstructed on 2026-09-10 …"* were backfilled from git history and GitHub release notes. Only edit reconstructed text to correct an error, and keep its marker. The block-quoted release notes are the author's own and are not edited.
 
 ## CLI Standards
 

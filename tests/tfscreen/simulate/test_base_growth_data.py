@@ -120,6 +120,64 @@ def test_output_columns():
 
 
 # ---------------------------------------------------------------------------
+# choose_by: random
+# ---------------------------------------------------------------------------
+
+def _library_params_df():
+    names = ["wt", "A47V", "K12R", "M1L", "G2A", "D3E", "S4T"]
+    return pd.DataFrame({"genotype": names,
+                         "dk_geno": [0.0] + [-0.01] * (len(names) - 1)})
+
+
+def _growth_df(genotypes):
+    return pd.DataFrame({"genotype": genotypes})
+
+
+def test_random_choice_draws_num_from_survivors_minus_excluded():
+    params = _library_params_df()
+    # G2A did not survive; A47V and K12R are binding anchors.
+    growth = _growth_df(["wt", "A47V", "K12R", "M1L", "D3E", "S4T"])
+    cfg = {"k_ref": 0.025, "choose_by": "random", "num": 3}
+    result = generate_base_growth_df(cfg, params, np.random.default_rng(0),
+                                     growth_df=growth,
+                                     exclude_genotypes=["A47V", "K12R"])
+    chosen = list(result["genotype"])
+    assert chosen[0] == "wt"
+    assert set(chosen[1:]) == {"M1L", "D3E", "S4T"}
+
+
+def test_random_choice_is_seeded():
+    params = _library_params_df()
+    growth = _growth_df(list(params["genotype"]))
+    cfg = {"k_ref": 0.025, "choose_by": "random", "num": 2}
+    a = generate_base_growth_df(cfg, params, np.random.default_rng(7), growth_df=growth)
+    b = generate_base_growth_df(cfg, params, np.random.default_rng(7), growth_df=growth)
+    assert list(a["genotype"]) == list(b["genotype"])
+    assert len(a) == 3 and list(a["genotype"]).count("wt") == 1
+
+
+@pytest.mark.parametrize("extra,match", [
+    ({"choose_by": "stratified", "num": 1}, "must be 'random'"),
+    ({"choose_by": "random"}, "requires 'num'"),
+    ({"choose_by": "random", "num": 1, "genotypes": ["A47V"]}, "cannot be combined"),
+    ({"choose_by": "random", "num": 1, "rates": {"wt": 0.02}}, "cannot be combined"),
+    ({"choose_by": "random", "num": 99}, "only 6 eligible"),
+])
+def test_random_choice_config_errors(extra, match):
+    params = _library_params_df()
+    cfg = {"k_ref": 0.025, **extra}
+    with pytest.raises(ValueError, match=match):
+        generate_base_growth_df(cfg, params, np.random.default_rng(0),
+                                growth_df=_growth_df(list(params["genotype"])))
+
+
+def test_random_choice_requires_growth_df():
+    cfg = {"k_ref": 0.025, "choose_by": "random", "num": 1}
+    with pytest.raises(ValueError, match="needs the simulated growth_df"):
+        generate_base_growth_df(cfg, _library_params_df(), np.random.default_rng(0))
+
+
+# ---------------------------------------------------------------------------
 # generate_k_ref_df
 # ---------------------------------------------------------------------------
 

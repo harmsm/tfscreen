@@ -86,6 +86,92 @@ def test_resolve_paths_absolute_unchanged(tmp_path):
     assert result["thermo_data"] == abs_path
 
 
+def test_resolve_paths_nested_choose_by_file(tmp_path):
+    """A choose_by params file inside binding_data is resolved too."""
+    cfg = {"binding_data": {"spiked_binding": {"choose_by": "hill.csv"},
+                            "library_binding": {"choose_by": "stratified",
+                                                "num": 20}}}
+    result = _resolve_paths(cfg, str(tmp_path))
+    assert result["binding_data"]["spiked_binding"]["choose_by"] == \
+        os.path.join(str(tmp_path), "hill.csv")
+    # Builtin keywords are not paths.
+    assert result["binding_data"]["library_binding"]["choose_by"] == "stratified"
+
+
+def test_resolve_paths_does_not_mutate_input(tmp_path):
+    """Nested resolution works on a deep copy (the base config is shared)."""
+    cfg = {"binding_data": {"spiked_binding": {"choose_by": "hill.csv"}}}
+    _resolve_paths(cfg, str(tmp_path))
+    assert cfg["binding_data"]["spiked_binding"]["choose_by"] == "hill.csv"
+
+
+def test_setup_sim_grid_copies_input_files_into_runs(tmp_path):
+    """Each run directory gets its own copy of the base config's binding
+    params file, and its config names the local copy -- even when the base
+    config lives outside the grid directory."""
+    base_dir = tmp_path / "base"
+    base_dir.mkdir()
+    (base_dir / "hill.csv").write_text("genotype\nwt\n")
+    base = base_dir / "simulate_config.yaml"
+    base.write_text(yaml.dump({
+        "seed": None,
+        "binding_data": {"spiked_binding": {"choose_by": "hill.csv"}},
+    }))
+    grid_dir = tmp_path / "grid"
+    grid_dir.mkdir()
+    grid = grid_dir / "grid.yaml"
+    grid.write_text(
+        f"base_config: {base}\n"
+        "simulate:\n"
+        "  - name: seed\n"
+        "    variants:\n"
+        "      - seed: 1\n"
+        "      - seed: 2\n"
+    )
+
+    out_prefix = str(tmp_path / "out")
+    setup_sim_grid(str(grid), out_prefix=out_prefix)
+
+    run_dirs = sorted(d for d in os.listdir(out_prefix)
+                      if os.path.isdir(os.path.join(out_prefix, d)))
+    assert len(run_dirs) == 2
+    for d in run_dirs:
+        run_dir = os.path.join(out_prefix, d)
+        with open(os.path.join(run_dir, "tfs_sim_config.yaml")) as fh:
+            cfg = yaml.safe_load(fh)
+        assert cfg["binding_data"]["spiked_binding"]["choose_by"] == "hill.csv"
+        with open(os.path.join(run_dir, "hill.csv")) as fh:
+            assert fh.read() == "genotype\nwt\n"
+
+
+def test_setup_sim_grid_missing_input_file_fails_at_setup(tmp_path):
+    """A referenced input file that does not exist fails before any run is made."""
+    base = tmp_path / "simulate_config.yaml"
+    base.write_text(yaml.dump({
+        "binding_data": {"spiked_binding": {"choose_by": "missing.csv"}},
+    }))
+    grid = tmp_path / "grid.yaml"
+    grid.write_text(f"base_config: {base}\n"
+                    "simulate:\n  - name: seed\n    variants:\n      - seed: 1\n")
+    with pytest.raises(FileNotFoundError, match="spiked_binding.choose_by"):
+        setup_sim_grid(str(grid), out_prefix=str(tmp_path / "out"))
+
+
+def test_setup_sim_grid_keyword_choose_by_untouched(tmp_path):
+    base = tmp_path / "simulate_config.yaml"
+    base.write_text(yaml.dump({
+        "binding_data": {"library_binding": {"choose_by": "stratified", "num": 5}},
+    }))
+    grid = tmp_path / "grid.yaml"
+    grid.write_text(f"base_config: {base}\n"
+                    "simulate:\n  - name: seed\n    variants:\n      - seed: 1\n")
+    out = str(tmp_path / "out")
+    runs = setup_sim_grid(str(grid), out_prefix=out)
+    with open(os.path.join(out, runs[0]["run"], "tfs_sim_config.yaml")) as fh:
+        cfg = yaml.safe_load(fh)
+    assert cfg["binding_data"]["library_binding"]["choose_by"] == "stratified"
+
+
 def test_resolve_paths_unknown_key_unchanged(tmp_path):
     result = _resolve_paths({"tube_noise_sigma": 0.01}, str(tmp_path))
     assert result["tube_noise_sigma"] == 0.01

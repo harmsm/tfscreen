@@ -55,20 +55,23 @@ tfs-configure-model \
     tfs_sim_binding.csv \
     --growth_df tfs_sim_growth.csv \
     --presplit_df tfs_sim_presplit.csv \
+    --base_growth_df tfs_sim_base_growth.csv \
+    --transformation_lambda 0.3572 0.1296 \
     --condition_growth_model linear \
     --growth_transition_model instant \
     --ln_cfu0_model hierarchical_factored \
     --dk_geno_model hierarchical_geno \
     --activity_model fixed \
     --theta_model hill_mut \
-    --transformation_model single \
+    --transformation_model empirical \
     --theta_rescale_model passthrough \
     --theta_growth_noise_model logit_normal \
     --theta_binding_noise_model zero \
     --growth_noise_model normal_kt \
-    --spiked wt M42I H74A K84L M42I/H74A M42I/K84L H74A/K84L D88A \
+    --spiked wt M42I H74A K84L M42I/H74A M42I/K84L H74A/K84L M42I/H74A/K84L D88A \
     --growth_shares_replicates \
-    --epistasis
+    --epistasis \
+    --batch_size 65536
 
 # ---------------------------------------------------------------------------
 # 3. Pre-fit calibration
@@ -89,7 +92,7 @@ tfs-fit-model \
     tfs_configure_config.yaml \
     --seed "${seed}" \
     --analysis_method svi \
-    --convergence_tolerance 0.0001
+    --convergence_tolerance 0.0000005
 
 # ---------------------------------------------------------------------------
 # 5. Sample posterior
@@ -97,7 +100,17 @@ tfs-fit-model \
 # Draw posterior samples from the SVI variational distribution and write
 # them to an HDF5 file used by the prediction steps below.
 echo ">>> Sample posterior"
-tfs-sample-posterior tfs_configure_config.yaml tfs_fit_model_checkpoint.pkl
+tfs-sample-posterior tfs_configure_config.yaml tfs_fit_model_checkpoint.pkl \
+    --num_posterior_samples 500 --sampling_batch_size=5
+
+# ---------------------------------------------------------------------------
+# 5b. Predict epistasis
+# ---------------------------------------------------------------------------
+# Joint second-order epistasis from the theta posterior.  --scale_constant
+# -0.6159 (= -RT in kcal/mol at 310 K) puts logit-scale epistasis on a
+# free-energy scale.
+echo ">>> Predict epistasis"
+tfs-predict-epistasis tfs_configure_config.yaml tfs_posterior.h5 --scale_constant -0.6159
 
 # ---------------------------------------------------------------------------
 # 6. Extract parameter estimates
@@ -117,9 +130,11 @@ tfs-predict-theta tfs_configure_config.yaml tfs_posterior.h5
 # ---------------------------------------------------------------------------
 # 8. Predict growth
 # ---------------------------------------------------------------------------
-# Predict ln(CFU) with posterior uncertainty for every training observation.
+# Predict ln(CFU) with posterior uncertainty for a random subset of genotypes.
+# A fixed --subset_seed (42) keeps the same subset across runs.
 echo ">>> Predict growth"
-tfs-predict-growth tfs_configure_config.yaml tfs_posterior.h5 --num_marginal_samples=500
+tfs-predict-growth tfs_configure_config.yaml tfs_posterior.h5 --num_marginal_samples=500 \
+    --subset_genotypes --subset_seed 42
 
 # ---------------------------------------------------------------------------
 # 9. Summarise fit

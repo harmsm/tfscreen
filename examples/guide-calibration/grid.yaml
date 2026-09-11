@@ -1,0 +1,96 @@
+# ---------------------------------------------------------------------------
+# Phase 3, Tier 1 guide-calibration grid for tfs-setup-sim-grid.
+#
+# Usage (from this directory):
+#   tfs-setup-sim-grid grid.yaml --out_prefix guide_grid
+#   for d in guide_grid/*/; do (cd "$d" && sbatch run.sh); done
+#
+# Question: how much of the SVI miscalibration is explained by the variational
+# family (mean-field vs covariance), by the component guides' parameterization,
+# or by genotype mini-batching?  Each run simulates the base library with one
+# seed, fits it with one guide, and ends with tfs-summarize-fit, whose
+# calibration outputs (PIT, coverage) are compared across runs.
+#
+# Contrasts built into the guide block:
+#   component vs auto_normal            same (mean-field) family; isolates the
+#                                       component guides' parameterization,
+#                                       init and constraints
+#   auto_normal vs auto_diagonal_normal sanity check -- should agree
+#   auto_normal -> low-rank -> dense    adds posterior covariance
+#
+# Size: 5 simulations x 6 guides x 2 batch sizes x 2 noise models x 2 fit
+# seeds = 240 runs.  The base library has ~480 genotypes (~9k latents), so the
+# dense auto_multivariate_normal needs ~1 GB.
+# ---------------------------------------------------------------------------
+
+base_config: simulate_config.yaml
+
+# '-' separates fields (run names are sanitized: runs of '_' collapse to one,
+# and values such as logit_normal contain '_').  combo.json in each run
+# directory records the variables exactly.
+run_name: "{{ guide_type }}{% if guide_rank %}-r{{ guide_rank }}{% endif %}-b{{ batch_size }}-{{ theta_growth_noise_model }}-sim{{ seed }}-fit{{ fit_seed }}"
+
+output_file: run.sh
+
+
+# ---------------------------------------------------------------------------
+# simulate blocks (written into each run's tfs_sim_config.yaml)
+# ---------------------------------------------------------------------------
+
+simulate:
+
+  # Independent simulated libraries.  Every fit arm sees the same five data
+  # sets, so guide comparisons are paired.
+  - name: sim_seed
+    variants:
+      - seed: 1
+      - seed: 2
+      - seed: 3
+      - seed: 4
+      - seed: 5
+
+
+# ---------------------------------------------------------------------------
+# template blocks (rendered into run.sh only)
+# ---------------------------------------------------------------------------
+
+template:
+
+  # Variational family.  guide_rank is only meaningful for the low-rank guide;
+  # it is null elsewhere so every run defines it.
+  - name: guide
+    variants:
+      - guide_type: component
+        guide_rank: null
+      - guide_type: auto_normal
+        guide_rank: null
+      - guide_type: auto_diagonal_normal
+        guide_rank: null
+      - guide_type: auto_low_rank_multivariate_normal
+        guide_rank: 10
+      - guide_type: auto_low_rank_multivariate_normal
+        guide_rank: 50
+      - guide_type: auto_multivariate_normal
+        guide_rank: null
+
+  # Genotype mini-batching.  65536 exceeds the library, i.e. full batch;
+  # 160 is ~1/3 of the library, matching production's 65536 / ~200k ratio.
+  - name: batching
+    variants:
+      - batch_size: 65536
+      - batch_size: 160
+
+  # The component guide uses the prior as the guide for logit_normal's
+  # per-observation epsilon, while every autoguide learns it.  Fitting with
+  # 'zero' as well separates that difference from the guide-family effect.
+  - name: theta_growth_noise
+    variants:
+      - theta_growth_noise_model: logit_normal
+      - theta_growth_noise_model: zero
+
+  # Fit (optimization) seed: separates fit-to-fit variability from the guide
+  # effect on a fixed data set.
+  - name: fit_seed
+    variants:
+      - fit_seed: 1
+      - fit_seed: 2

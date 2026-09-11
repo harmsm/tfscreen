@@ -9,6 +9,7 @@ from tfscreen.simulate.binding_data import generate_binding_df
 from tfscreen.simulate.library_binding_data import generate_library_binding_df
 from tfscreen.simulate.presplit_data import generate_presplit_df
 from tfscreen.simulate.base_growth_data import generate_base_growth_df, generate_k_ref_df
+from tfscreen.simulate.config_paths import resolve_config_paths
 from tfscreen.simulate.growth_parameters_output import generate_growth_parameters_df
 from tfscreen.simulate.transformation_lam_output import generate_transformation_lam_df
 from tfscreen.process_raw import counts_to_lncfu
@@ -57,6 +58,8 @@ def run_simulation_from_config(
         Random seed. Overrides seed in the config file when provided.
     """
     cf = tfscreen.util.read_yaml(config_file)
+    # Input files named in the config are relative to the config's directory.
+    cf = resolve_config_paths(cf, os.path.dirname(os.path.abspath(config_file)))
     if seed is not None:
         cf["seed"] = seed
 
@@ -152,6 +155,10 @@ def run_simulation_from_config(
     transformation_lam_df.to_csv(out_path("transformation_lam"), index=False)
     print(f"\nWrote: {', '.join(out_path(n) for n in ['library', 'parameters', 'genotype_theta', 'growth', 'growth_parameters', 'transformation_lam'])}")
 
+    # In-library binding genotypes; base-growth genotypes chosen at random are
+    # kept disjoint from these and from the spiked controls.
+    library_binding_genotypes = []
+
     if "binding_data" in cf:
         binding_cfg = cf["binding_data"]
         # Spiked (clean) binding measurements from the pre-sim binding_theta_df.
@@ -163,8 +170,7 @@ def run_simulation_from_config(
         # In-library binding measurements (post-sim: selection from survivors).
         lb = binding_cfg.get("library_binding")
         if lb is not None:
-            spiked_names = list(pd.unique(
-                library_df.loc[library_df["library_origin"] == "spiked", "genotype"]))
+            spiked_names = _spiked_genotypes(library_df)
             lib_binding_df, lib_manifest = generate_library_binding_df(
                 lb,
                 binding_cfg["titrant_name"],
@@ -176,13 +182,21 @@ def run_simulation_from_config(
                 rng=rng,
             )
             binding_df = pd.concat([binding_df, lib_binding_df], ignore_index=True)
+            library_binding_genotypes = list(lib_manifest["genotype"])
             lib_manifest.to_csv(out_path("library_binding"), index=False)
             print(f"Wrote: {out_path('library_binding')}")
         binding_df.to_csv(out_path("binding"), index=False)
         print(f"Wrote: {out_path('binding')}")
 
     if "base_growth_data" in cf:
-        base_growth_df = generate_base_growth_df(cf["base_growth_data"], parameters_df, rng)
+        exclude = None
+        if "choose_by" in cf["base_growth_data"]:
+            exclude = _spiked_genotypes(library_df) + library_binding_genotypes
+        base_growth_df = generate_base_growth_df(
+            cf["base_growth_data"], parameters_df, rng,
+            growth_df=growth_df,
+            exclude_genotypes=exclude,
+        )
         base_growth_df.to_csv(out_path("base_growth"), index=False)
         print(f"Wrote: {out_path('base_growth')}")
 
@@ -201,6 +215,12 @@ def run_simulation_from_config(
     with open(config_out, "w") as fh:
         yaml.dump(cf, fh, default_flow_style=False, sort_keys=False)
     print(f"Wrote: {config_out}")
+
+
+def _spiked_genotypes(library_df):
+    """Genotype names of the spiked (monoclonal control) library members."""
+    spiked = library_df["library_origin"] == "spiked"
+    return list(pd.unique(library_df.loc[spiked, "genotype"]))
 
 
 def main():

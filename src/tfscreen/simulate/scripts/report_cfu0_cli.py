@@ -1,8 +1,11 @@
+import os
+
 import numpy as np
 import pandas as pd
 
 import tfscreen
 from tfscreen.simulate import library_prediction, selection_experiment
+from tfscreen.simulate.config_paths import resolve_config_paths
 from tfscreen.util.cli.generalized_main import generalized_main
 
 _CLASS_ORDER = ["wt", "spiked", "single", "double", "other"]
@@ -73,6 +76,8 @@ def report_cfu0(config_file, num_replicates=5, seed=None):
     """
 
     cf = tfscreen.util.read_yaml(config_file)
+    # Input files named in the config are relative to the config's directory.
+    cf = resolve_config_paths(cf, os.path.dirname(os.path.abspath(config_file)))
     if seed is not None:
         cf["seed"] = seed
 
