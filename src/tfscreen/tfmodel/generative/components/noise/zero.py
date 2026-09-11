@@ -15,9 +15,10 @@ class ModelPriors:
     pass
 
 
-def define_model(name: str, 
-                 fx_calc: jnp.ndarray, 
-                 priors: ModelPriors) -> jnp.ndarray:
+def define_model(name: str,
+                 fx_calc: jnp.ndarray,
+                 priors: ModelPriors,
+                 data: DataClass = None) -> jnp.ndarray:
     """
     A null model that applies no noise to the input.
 
@@ -34,6 +35,9 @@ def define_model(name: str,
         occupancy).
     priors : ModelPriors
         A Pytree of hyperparameters. (Unused in this model).
+    data : DataClass, optional
+        Batch data, accepted for a uniform noise-component signature.
+        (Unused in this model).
 
     Returns
     -------
@@ -43,9 +47,10 @@ def define_model(name: str,
 
     return fx_calc
 
-def guide(name: str, 
-          fx_calc: jnp.ndarray, 
-          priors: ModelPriors) -> jnp.ndarray:
+def guide(name: str,
+          fx_calc: jnp.ndarray,
+          priors: ModelPriors,
+          data: DataClass = None) -> jnp.ndarray:
     """
     Guide for the no-noise model.
 

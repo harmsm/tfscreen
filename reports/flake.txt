@@ -14899,6 +14899,27 @@
 ./scripts/generate_struct_ensemble.py:266:11: E221 multiple spaces before operator
 ./scripts/generate_struct_ensemble.py:272:24: E221 multiple spaces before operator
 ./scripts/generate_struct_ensemble.py:433:18: E221 multiple spaces before operator
+./scripts/run_block_svi_standalone.py:13:1: F401 'sys' imported but unused
+./scripts/run_block_svi_standalone.py:22:1: E402 module level import not at top of file
+./scripts/run_block_svi_standalone.py:24:1: F401 'numpyro' imported but unused
+./scripts/run_block_svi_standalone.py:24:1: E402 module level import not at top of file
+./scripts/run_block_svi_standalone.py:25:1: F401 'numpyro.handlers' imported but unused
+./scripts/run_block_svi_standalone.py:25:1: E402 module level import not at top of file
+./scripts/run_block_svi_standalone.py:26:1: F401 'numpyro.infer.autoguide.AutoGuideList' imported but unused
+./scripts/run_block_svi_standalone.py:26:1: F401 'numpyro.infer.autoguide.AutoDiagonalNormal' imported but unused
+./scripts/run_block_svi_standalone.py:26:1: E402 module level import not at top of file
+./scripts/run_block_svi_standalone.py:27:1: E402 module level import not at top of file
+./scripts/run_block_svi_standalone.py:28:1: E402 module level import not at top of file
+./scripts/run_block_svi_standalone.py:30:1: E402 module level import not at top of file
+./scripts/run_block_svi_standalone.py:31:1: E402 module level import not at top of file
+./scripts/run_block_svi_standalone.py:32:1: E402 module level import not at top of file
+./scripts/run_block_svi_standalone.py:34:1: E302 expected 2 blank lines, found 1
+./scripts/run_block_svi_standalone.py:41:1: E302 expected 2 blank lines, found 1
+./scripts/run_block_svi_standalone.py:45:1: W293 blank line contains whitespace
+./scripts/run_block_svi_standalone.py:59:1: W293 blank line contains whitespace
+./scripts/run_block_svi_standalone.py:109:1: W293 blank line contains whitespace
+./scripts/run_block_svi_standalone.py:123:1: E302 expected 2 blank lines, found 1
+./scripts/run_block_svi_standalone.py:134:1: E305 expected 2 blank lines after class or function definition, found 1
 ./src/tfscreen/__init__.py:19:1: W391 blank line at end of file
 ./src/tfscreen/__version__.py:5:16: W291 trailing whitespace
 ./src/tfscreen/analysis/__init__.py:13:1: W391 blank line at end of file
@@ -16296,7 +16317,7 @@
 ./src/tfscreen/tfmodel/analysis/prediction.py:607:26: E117 over-indented
 ./src/tfscreen/tfmodel/analysis/prediction.py:610:25: E122 continuation line missing indentation or outdented
 ./src/tfscreen/tfmodel/analysis/prediction.py:616:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/analysis/prior_predictive.py:104:33: E203 whitespace before ':'
+./src/tfscreen/tfmodel/analysis/prior_predictive.py:109:33: E203 whitespace before ':'
 ./src/tfscreen/tfmodel/configuration_io.py:19:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/tfmodel/configuration_io.py:37:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/tfmodel/configuration_io.py:68:1: C901 '_update_dataclass' is too complex (11)
@@ -16361,36 +16382,32 @@
 ./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:46:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:46:28: W291 trailing whitespace
 ./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:47:35: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:100:66: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:104:83: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:108:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:118:39: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:121:29: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:121:34: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:121:39: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:121:44: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:121:49: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:121:54: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:121:57: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:125:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:125:21: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:126:28: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:164:57: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:166:58: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:170:66: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:178:83: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:182:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:192:29: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:192:34: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:192:39: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:192:44: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:192:49: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:192:54: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:192:57: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:210:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:246:60: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:250:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:269:7: W292 no newline at end of file
+./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:107:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:117:39: W291 trailing whitespace
+./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:120:29: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:120:34: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:120:39: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:120:44: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:120:49: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:120:54: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:120:57: W291 trailing whitespace
+./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:124:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:124:21: W291 trailing whitespace
+./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:125:28: W291 trailing whitespace
+./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:163:57: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:165:58: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:176:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:186:29: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:186:34: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:186:39: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:186:44: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:186:49: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:186:54: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:186:57: W291 trailing whitespace
+./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:204:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:240:60: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:244:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/tfmodel/generative/components/activity/hierarchical_geno.py:263:7: W292 no newline at end of file
 ./src/tfscreen/tfmodel/generative/components/activity/hierarchical_mut.py:54:20: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/activity/hierarchical_mut.py:112:20: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:9:1: E302 expected 2 blank lines, found 1
@@ -16400,49 +16417,42 @@
 ./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:63:83: W291 trailing whitespace
 ./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:64:1: W293 blank line contains whitespace
 ./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:65:38: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:66:66: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:68:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:71:45: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:76:83: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:88:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:96:39: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:99:29: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:99:34: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:99:39: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:99:44: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:99:49: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:99:54: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:104:21: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:105:28: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:117:61: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:120:79: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:121:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:123:37: E127 continuation line over-indented for visual indent
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:123:64: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:70:41: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:87:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:95:39: W291 trailing whitespace
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:98:29: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:98:34: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:98:39: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:98:44: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:98:49: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:98:54: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:103:21: W291 trailing whitespace
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:104:28: W291 trailing whitespace
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:116:61: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:119:79: W291 trailing whitespace
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:120:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:122:37: E127 continuation line over-indented for visual indent
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:122:64: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:124:39: E127 continuation line over-indented for visual indent
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:124:65: E231 missing whitespace after ','
 ./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:125:39: E127 continuation line over-indented for visual indent
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:125:65: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:126:39: E127 continuation line over-indented for visual indent
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:127:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:129:66: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:131:67: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:134:38: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:135:66: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:137:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:146:45: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:151:83: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:163:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:171:29: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:171:34: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:171:39: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:171:44: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:171:49: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:171:54: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:175:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:185:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:219:64: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:220:60: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:224:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:243:7: W292 no newline at end of file
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:126:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:128:66: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:130:67: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:133:38: W291 trailing whitespace
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:157:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:165:29: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:165:34: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:165:39: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:165:44: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:165:49: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:165:54: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:169:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:179:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:213:64: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:214:60: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:218:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/tfmodel/generative/components/activity/horseshoe_geno.py:237:7: W292 no newline at end of file
 ./src/tfscreen/tfmodel/generative/components/activity/horseshoe_mut.py:72:20: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/activity/horseshoe_mut.py:141:20: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/dk_geno/fixed.py:7:1: E302 expected 2 blank lines, found 1
@@ -16481,74 +16491,67 @@
 ./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:43:36: W291 trailing whitespace
 ./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:44:1: W293 blank line contains whitespace
 ./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:49:20: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:96:66: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:100:83: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:104:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:105:106: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:108:33: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:111:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:113:51: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:116:40: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:116:45: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:116:50: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:116:55: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:116:60: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:116:65: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:120:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:120:21: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:121:28: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:169:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:170:80: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:171:83: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:171:97: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:175:66: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:177:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:178:41: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:179:45: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:183:83: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:189:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:197:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:199:40: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:199:45: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:199:50: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:199:55: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:199:60: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:199:65: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:203:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:219:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:221:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:267:23: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:269:19: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:276:11: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:277:10: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:284:37: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:287:34: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:292:16: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:307:10: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:309:10: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:311:10: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:312:10: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:313:11: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:314:11: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:316:11: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:317:11: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:319:11: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:320:10: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:323:15: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:334:18: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:335:17: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:336:13: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:343:17: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:344:13: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:345:16: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:348:16: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:351:18: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:352:20: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:355:33: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:358:30: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:362:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:374:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:374:5: W292 no newline at end of file
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:103:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:104:106: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:107:33: W291 trailing whitespace
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:110:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:112:51: W291 trailing whitespace
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:115:40: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:115:45: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:115:50: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:115:55: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:115:60: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:115:65: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:119:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:119:21: W291 trailing whitespace
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:120:28: W291 trailing whitespace
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:168:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:169:80: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:170:83: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:170:97: W291 trailing whitespace
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:182:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:190:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:192:40: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:192:45: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:192:50: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:192:55: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:192:60: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:192:65: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:196:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:212:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:214:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:260:23: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:262:19: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:269:11: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:270:10: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:277:37: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:280:34: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:285:16: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:300:10: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:302:10: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:304:10: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:305:10: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:306:11: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:307:11: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:309:11: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:310:11: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:312:11: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:313:10: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:316:15: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:327:18: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:328:17: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:329:13: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:336:17: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:337:13: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:338:16: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:341:16: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:344:18: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:345:20: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:348:33: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:351:30: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:355:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:367:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/components/dk_geno/hierarchical_geno.py:367:5: W292 no newline at end of file
 ./src/tfscreen/tfmodel/generative/components/growth/linear.py:28:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/tfmodel/generative/components/growth/linear.py:107:13: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/growth/linear.py:280:40: E261 at least two spaces before inline comment
@@ -16585,125 +16588,115 @@
 ./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:101:21: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:213:20: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:230:23: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:295:20: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:333:23: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:370:31: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:420:41: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:421:43: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:422:43: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:423:41: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:424:43: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:425:39: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:426:37: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:427:39: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:428:35: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:433:1: C901 '_empirical_group_estimates' is too complex (15)
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:462:11: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:463:14: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:465:12: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:490:16: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:493:20: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:510:13: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:519:13: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:529:11: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:532:13: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:535:14: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:549:15: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:550:17: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:553:12: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:554:14: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:566:46: E261 at least two spaces before inline comment
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:580:16: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:624:45: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:629:16: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:630:12: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:631:17: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:646:17: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:650:24: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:654:17: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:655:21: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:657:21: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:661:9: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:671:41: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:678:15: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:716:39: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:294:20: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:332:23: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:415:41: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:416:43: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:417:43: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:418:41: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:419:43: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:420:39: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:421:37: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:422:39: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:423:35: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:428:1: C901 '_empirical_group_estimates' is too complex (15)
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:457:11: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:458:14: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:460:12: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:485:16: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:488:20: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:505:13: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:514:13: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:524:11: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:527:13: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:530:14: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:544:15: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:545:17: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:548:12: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:549:14: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:561:46: E261 at least two spaces before inline comment
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:575:16: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:619:45: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:624:16: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:625:12: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:626:17: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:641:17: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:645:24: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:649:17: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:650:21: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:652:21: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:656:9: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:666:41: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:673:15: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical.py:711:39: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:134:23: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:239:23: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:275:32: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:317:37: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:318:39: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:315:37: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:316:39: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:317:39: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:318:37: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:319:39: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:320:37: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:321:39: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:320:35: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:321:33: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:322:35: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:323:33: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:324:35: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:325:31: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:326:37: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:331:15: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:348:39: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:349:43: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:356:16: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:393:45: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:398:16: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:399:12: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:400:17: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:411:17: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:415:24: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:417:17: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:323:31: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:324:37: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:329:15: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:346:39: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:347:43: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:354:16: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:391:45: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:396:16: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:397:12: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:398:17: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:409:17: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:413:24: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:415:17: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:416:21: E128 continuation line under-indented for visual indent
 ./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:418:21: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:420:21: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:438:9: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:450:41: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:436:9: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/ln_cfu0/hierarchical_factored.py:448:41: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/noise/beta.py:10:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/tfmodel/generative/components/noise/beta.py:27:28: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/noise/beta.py:28:39: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/noise/beta.py:67:6: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/noise/beta.py:68:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/noise/beta.py:82:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/noise/beta.py:85:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/noise/beta.py:88:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/tfmodel/generative/components/noise/beta.py:88:21: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/noise/beta.py:89:32: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/noise/beta.py:93:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/noise/beta.py:94:70: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/noise/beta.py:95:65: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/noise/beta.py:96:71: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/noise/beta.py:97:67: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/noise/beta.py:102:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/noise/beta.py:107:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/noise/beta.py:118:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/noise/beta.py:120:41: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/noise/beta.py:129:68: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/noise/beta.py:133:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/noise/beta.py:136:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/tfmodel/generative/components/noise/beta.py:158:26: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/components/noise/beta.py:175:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/noise/beta.py:185:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/tfmodel/generative/components/noise/beta.py:194:48: W292 no newline at end of file
+./src/tfscreen/tfmodel/generative/components/noise/beta.py:76:6: W291 trailing whitespace
+./src/tfscreen/tfmodel/generative/components/noise/beta.py:77:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/components/noise/beta.py:91:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/components/noise/beta.py:94:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/components/noise/beta.py:97:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/tfmodel/generative/components/noise/beta.py:103:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/components/noise/beta.py:104:70: W291 trailing whitespace
+./src/tfscreen/tfmodel/generative/components/noise/beta.py:105:65: W291 trailing whitespace
+./src/tfscreen/tfmodel/generative/components/noise/beta.py:106:71: W291 trailing whitespace
+./src/tfscreen/tfmodel/generative/components/noise/beta.py:107:67: W291 trailing whitespace
+./src/tfscreen/tfmodel/generative/components/noise/beta.py:112:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/components/noise/beta.py:117:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/components/noise/beta.py:128:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/components/noise/beta.py:130:41: W291 trailing whitespace
+./src/tfscreen/tfmodel/generative/components/noise/beta.py:139:68: W291 trailing whitespace
+./src/tfscreen/tfmodel/generative/components/noise/beta.py:143:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/components/noise/beta.py:146:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/tfmodel/generative/components/noise/beta.py:168:26: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/components/noise/beta.py:185:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/components/noise/beta.py:195:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/tfmodel/generative/components/noise/beta.py:204:48: W292 no newline at end of file
 ./src/tfscreen/tfmodel/generative/components/noise/zero.py:8:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/tfmodel/generative/components/noise/zero.py:18:28: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/noise/zero.py:19:39: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/noise/zero.py:46:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/tfmodel/generative/components/noise/zero.py:46:21: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/noise/zero.py:47:32: W291 trailing whitespace
-./src/tfscreen/tfmodel/generative/components/noise/zero.py:90:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/noise/zero.py:95:1: E302 expected 2 blank lines, found 1
-./src/tfscreen/tfmodel/generative/components/noise/zero.py:104:48: W292 no newline at end of file
-./src/tfscreen/tfmodel/generative/components/theta/categorical_geno.py:126:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/theta/categorical_geno.py:225:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/theta/categorical_geno.py:282:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/theta/categorical_geno.py:285:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/components/theta/categorical_geno.py:415:41: E128 continuation line under-indented for visual indent
-./src/tfscreen/tfmodel/generative/components/theta/categorical_geno.py:454:27: E127 continuation line over-indented for visual indent
-./src/tfscreen/tfmodel/generative/components/theta/categorical_geno.py:507:14: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/categorical_geno.py:545:11: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/categorical_geno.py:549:21: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/categorical_geno.py:550:20: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/categorical_geno.py:552:21: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/categorical_geno.py:553:20: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/categorical_geno.py:567:15: E221 multiple spaces before operator
-./src/tfscreen/tfmodel/generative/components/theta/categorical_geno.py:573:18: W292 no newline at end of file
+./src/tfscreen/tfmodel/generative/components/noise/zero.py:50:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/tfmodel/generative/components/noise/zero.py:95:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/components/noise/zero.py:100:1: E302 expected 2 blank lines, found 1
+./src/tfscreen/tfmodel/generative/components/noise/zero.py:109:48: W292 no newline at end of file
+./src/tfscreen/tfmodel/generative/components/theta/categorical_geno.py:125:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/components/theta/categorical_geno.py:217:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/components/theta/categorical_geno.py:274:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/components/theta/categorical_geno.py:277:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/generative/components/theta/categorical_geno.py:407:41: E128 continuation line under-indented for visual indent
+./src/tfscreen/tfmodel/generative/components/theta/categorical_geno.py:446:27: E127 continuation line over-indented for visual indent
+./src/tfscreen/tfmodel/generative/components/theta/categorical_geno.py:499:14: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/categorical_geno.py:537:11: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/categorical_geno.py:541:21: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/categorical_geno.py:542:20: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/categorical_geno.py:544:21: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/categorical_geno.py:545:20: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/categorical_geno.py:559:15: E221 multiple spaces before operator
+./src/tfscreen/tfmodel/generative/components/theta/categorical_geno.py:565:18: W292 no newline at end of file
 ./src/tfscreen/tfmodel/generative/components/theta/hill_geno.py:160:14: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/theta/hill_geno.py:166:15: E221 multiple spaces before operator
 ./src/tfscreen/tfmodel/generative/components/theta/hill_geno.py:167:12: E221 multiple spaces before operator
@@ -17989,15 +17982,15 @@
 ./src/tfscreen/tfmodel/generative/components/transformation/single.py:57:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/tfmodel/generative/model.py:11:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/tfmodel/generative/model.py:47:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/generative/model.py:113:37: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/model.py:114:24: F541 f-string is missing placeholders
-./src/tfscreen/tfmodel/generative/model.py:114:45: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/model.py:143:36: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/model.py:144:24: F541 f-string is missing placeholders
-./src/tfscreen/tfmodel/generative/model.py:144:44: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/generative/model.py:284:28: F541 f-string is missing placeholders
-./src/tfscreen/tfmodel/generative/model.py:285:28: F541 f-string is missing placeholders
-./src/tfscreen/tfmodel/generative/model.py:292:1: W391 blank line at end of file
+./src/tfscreen/tfmodel/generative/model.py:114:37: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/model.py:115:24: F541 f-string is missing placeholders
+./src/tfscreen/tfmodel/generative/model.py:115:45: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/model.py:145:36: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/model.py:146:24: F541 f-string is missing placeholders
+./src/tfscreen/tfmodel/generative/model.py:146:44: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/generative/model.py:287:28: F541 f-string is missing placeholders
+./src/tfscreen/tfmodel/generative/model.py:288:28: F541 f-string is missing placeholders
+./src/tfscreen/tfmodel/generative/model.py:295:1: W391 blank line at end of file
 ./src/tfscreen/tfmodel/generative/observe/binding.py:9:1: E302 expected 2 blank lines, found 1
 ./src/tfscreen/tfmodel/generative/observe/binding.py:42:71: E231 missing whitespace after ','
 ./src/tfscreen/tfmodel/generative/observe/binding.py:43:75: E231 missing whitespace after ','
@@ -18096,74 +18089,75 @@
 ./src/tfscreen/tfmodel/inference/run_inference.py:98:77: W291 trailing whitespace
 ./src/tfscreen/tfmodel/inference/run_inference.py:105:34: W291 trailing whitespace
 ./src/tfscreen/tfmodel/inference/run_inference.py:107:87: W291 trailing whitespace
-./src/tfscreen/tfmodel/inference/run_inference.py:123:58: W291 trailing whitespace
-./src/tfscreen/tfmodel/inference/run_inference.py:124:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/inference/run_inference.py:129:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/inference/run_inference.py:132:5: C901 'RunInference.run_optimization' is too complex (18)
-./src/tfscreen/tfmodel/inference/run_inference.py:223:77: W291 trailing whitespace
-./src/tfscreen/tfmodel/inference/run_inference.py:224:73: W291 trailing whitespace
-./src/tfscreen/tfmodel/inference/run_inference.py:238:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:126:58: W291 trailing whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:127:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:132:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:135:5: C901 'RunInference.run_optimization' is too complex (18)
+./src/tfscreen/tfmodel/inference/run_inference.py:226:77: W291 trailing whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:227:73: W291 trailing whitespace
 ./src/tfscreen/tfmodel/inference/run_inference.py:241:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/inference/run_inference.py:242:34: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/inference/run_inference.py:251:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/inference/run_inference.py:253:53: W291 trailing whitespace
-./src/tfscreen/tfmodel/inference/run_inference.py:261:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/inference/run_inference.py:288:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/inference/run_inference.py:299:48: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/inference/run_inference.py:304:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/inference/run_inference.py:308:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/inference/run_inference.py:318:128: E501 line too long (177 > 127 characters)
-./src/tfscreen/tfmodel/inference/run_inference.py:324:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/inference/run_inference.py:325:37: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/inference/run_inference.py:330:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/inference/run_inference.py:332:60: W291 trailing whitespace
-./src/tfscreen/tfmodel/inference/run_inference.py:346:36: W291 trailing whitespace
-./src/tfscreen/tfmodel/inference/run_inference.py:347:50: W291 trailing whitespace
-./src/tfscreen/tfmodel/inference/run_inference.py:348:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/inference/run_inference.py:370:5: C901 'RunInference._get_genotype_dim_map' is too complex (14)
-./src/tfscreen/tfmodel/inference/run_inference.py:396:26: E261 at least two spaces before inline comment
-./src/tfscreen/tfmodel/inference/run_inference.py:703:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/inference/run_inference.py:705:5: E303 too many blank lines (2)
-./src/tfscreen/tfmodel/inference/run_inference.py:705:37: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/inference/run_inference.py:705:49: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/inference/run_inference.py:738:31: W291 trailing whitespace
-./src/tfscreen/tfmodel/inference/run_inference.py:750:49: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/inference/run_inference.py:751:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/inference/run_inference.py:758:5: E303 too many blank lines (2)
-./src/tfscreen/tfmodel/inference/run_inference.py:758:31: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/inference/run_inference.py:758:41: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/inference/run_inference.py:772:31: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/inference/run_inference.py:773:32: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/inference/run_inference.py:774:35: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/inference/run_inference.py:775:33: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/inference/run_inference.py:244:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:245:34: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/inference/run_inference.py:254:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:256:53: W291 trailing whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:264:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:291:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:302:48: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/inference/run_inference.py:307:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:311:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:321:128: E501 line too long (177 > 127 characters)
+./src/tfscreen/tfmodel/inference/run_inference.py:327:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:328:37: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/inference/run_inference.py:333:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:335:60: W291 trailing whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:349:36: W291 trailing whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:350:50: W291 trailing whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:351:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:373:5: C901 'RunInference._get_genotype_dim_map' is too complex (14)
+./src/tfscreen/tfmodel/inference/run_inference.py:399:26: E261 at least two spaces before inline comment
+./src/tfscreen/tfmodel/inference/run_inference.py:706:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:708:5: E303 too many blank lines (2)
+./src/tfscreen/tfmodel/inference/run_inference.py:708:37: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/inference/run_inference.py:708:49: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/inference/run_inference.py:741:31: W291 trailing whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:753:49: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/inference/run_inference.py:754:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:761:5: E303 too many blank lines (2)
+./src/tfscreen/tfmodel/inference/run_inference.py:761:31: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/inference/run_inference.py:761:41: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/inference/run_inference.py:775:31: E231 missing whitespace after ':'
 ./src/tfscreen/tfmodel/inference/run_inference.py:776:32: E231 missing whitespace after ':'
-./src/tfscreen/tfmodel/inference/run_inference.py:783:38: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/inference/run_inference.py:784:31: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/inference/run_inference.py:866:33: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/inference/run_inference.py:880:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:777:35: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/inference/run_inference.py:778:33: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/inference/run_inference.py:779:32: E231 missing whitespace after ':'
+./src/tfscreen/tfmodel/inference/run_inference.py:786:38: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/inference/run_inference.py:787:31: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/inference/run_inference.py:869:33: E231 missing whitespace after ','
 ./src/tfscreen/tfmodel/inference/run_inference.py:883:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/inference/run_inference.py:884:49: W291 trailing whitespace
-./src/tfscreen/tfmodel/inference/run_inference.py:893:36: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/inference/run_inference.py:900:27: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/inference/run_inference.py:900:34: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/inference/run_inference.py:902:61: W291 trailing whitespace
-./src/tfscreen/tfmodel/inference/run_inference.py:951:5: E303 too many blank lines (4)
-./src/tfscreen/tfmodel/inference/run_inference.py:992:26: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/inference/run_inference.py:992:33: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/inference/run_inference.py:995:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/inference/run_inference.py:1007:41: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/inference/run_inference.py:1009:32: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/inference/run_inference.py:1009:42: W291 trailing whitespace
-./src/tfscreen/tfmodel/inference/run_inference.py:1060:5: C901 'RunInference.get_map_posteriors' is too complex (13)
-./src/tfscreen/tfmodel/inference/run_inference.py:1298:50: E127 continuation line over-indented for visual indent
-./src/tfscreen/tfmodel/inference/run_inference.py:1339:29: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/inference/run_inference.py:1342:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/inference/run_inference.py:1347:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/inference/run_inference.py:1355:35: E231 missing whitespace after ','
-./src/tfscreen/tfmodel/inference/run_inference.py:1359:30: W291 trailing whitespace
-./src/tfscreen/tfmodel/inference/run_inference.py:1362:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:886:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:887:49: W291 trailing whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:896:36: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/inference/run_inference.py:903:27: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/inference/run_inference.py:903:34: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/inference/run_inference.py:905:61: W291 trailing whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:954:5: E303 too many blank lines (4)
+./src/tfscreen/tfmodel/inference/run_inference.py:995:26: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/inference/run_inference.py:995:33: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/inference/run_inference.py:998:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:1010:41: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/inference/run_inference.py:1012:32: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/inference/run_inference.py:1012:42: W291 trailing whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:1085:5: C901 'RunInference.get_map_posteriors' is too complex (12)
+./src/tfscreen/tfmodel/inference/run_inference.py:1317:50: E127 continuation line over-indented for visual indent
+./src/tfscreen/tfmodel/inference/run_inference.py:1358:29: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/inference/run_inference.py:1361:1: W293 blank line contains whitespace
 ./src/tfscreen/tfmodel/inference/run_inference.py:1366:1: W293 blank line contains whitespace
-./src/tfscreen/tfmodel/inference/run_inference.py:1372:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:1374:35: E231 missing whitespace after ','
+./src/tfscreen/tfmodel/inference/run_inference.py:1378:30: W291 trailing whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:1381:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:1385:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:1391:1: W293 blank line contains whitespace
+./src/tfscreen/tfmodel/inference/run_inference.py:1654:1: W293 blank line contains whitespace
 ./src/tfscreen/tfmodel/model_orchestrator.py:38:1: E303 too many blank lines (3)
 ./src/tfscreen/tfmodel/model_orchestrator.py:72:1: W293 blank line contains whitespace
 ./src/tfscreen/tfmodel/model_orchestrator.py:75:39: E231 missing whitespace after ','
@@ -20504,7 +20498,7 @@
 ./tests/tfscreen/tfmodel/generative/components/noise/test_beta.py:211:1: W293 blank line contains whitespace
 ./tests/tfscreen/tfmodel/generative/components/noise/test_beta.py:215:1: W293 blank line contains whitespace
 ./tests/tfscreen/tfmodel/generative/components/noise/test_beta.py:217:58: W292 no newline at end of file
-./tests/tfscreen/tfmodel/generative/components/noise/test_logit_normal.py:4:1: F401 'numpyro' imported but unused
+./tests/tfscreen/tfmodel/generative/components/noise/test_logit_normal.py:6:1: F401 'numpyro' imported but unused
 ./tests/tfscreen/tfmodel/generative/components/noise/test_zero.py:3:1: F401 'numpyro' imported but unused
 ./tests/tfscreen/tfmodel/generative/components/noise/test_zero.py:5:1: F401 'collections.namedtuple' imported but unused
 ./tests/tfscreen/tfmodel/generative/components/noise/test_zero.py:19:1: E302 expected 2 blank lines, found 1
@@ -21658,9 +21652,9 @@
 ./tests/tfscreen/tfmodel/inference/test_run_inference.py:647:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/tfmodel/inference/test_run_inference.py:654:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/tfmodel/inference/test_run_inference.py:727:1: E302 expected 2 blank lines, found 1
-./tests/tfscreen/tfmodel/inference/test_run_inference.py:1110:25: E127 continuation line over-indented for visual indent
-./tests/tfscreen/tfmodel/inference/test_run_inference.py:1110:26: E201 whitespace after '['
-./tests/tfscreen/tfmodel/inference/test_run_inference.py:1111:26: E201 whitespace after '['
+./tests/tfscreen/tfmodel/inference/test_run_inference.py:1134:25: E127 continuation line over-indented for visual indent
+./tests/tfscreen/tfmodel/inference/test_run_inference.py:1134:26: E201 whitespace after '['
+./tests/tfscreen/tfmodel/inference/test_run_inference.py:1135:26: E201 whitespace after '['
 ./tests/tfscreen/tfmodel/scripts/test_checkpoint_protection.py:2:1: F401 'os' imported but unused
 ./tests/tfscreen/tfmodel/scripts/test_checkpoint_protection.py:6:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/tfmodel/scripts/test_checkpoint_protection.py:14:1: E302 expected 2 blank lines, found 1
@@ -22339,17 +22333,17 @@
 6     E124 closing bracket does not match visual indentation
 18    E125 continuation line with same indent as next logical line
 639   E127 continuation line over-indented for visual indent
-277   E128 continuation line under-indented for visual indent
+276   E128 continuation line under-indented for visual indent
 9     E131 continuation line unaligned for hanging indent
 138   E201 whitespace after '['
 84    E202 whitespace before ']'
 18    E203 whitespace before ','
 12    E211 whitespace before '('
-5517  E221 multiple spaces before operator
+5515  E221 multiple spaces before operator
 78    E222 multiple spaces after operator
 21    E225 missing whitespace around operator
 1     E228 missing whitespace around modulo operator
-3280  E231 missing whitespace after ','
+3272  E231 missing whitespace after ','
 309   E251 unexpected spaces around keyword / parameter equals
 42    E252 missing whitespace around parameter equals
 623   E261 at least two spaces before inline comment
@@ -22358,12 +22352,12 @@
 6     E266 too many leading '#' for block comment
 447   E272 multiple spaces before keyword
 3     E301 expected 1 blank line, found 0
-2308  E302 expected 2 blank lines, found 1
+2311  E302 expected 2 blank lines, found 1
 142   E303 too many blank lines (2)
-60    E305 expected 2 blank lines after class or function definition, found 1
+61    E305 expected 2 blank lines after class or function definition, found 1
 87    E306 expected 1 blank line before a nested definition, found 0
 3     E401 multiple imports on one line
-114   E402 module level import not at top of file
+123   E402 module level import not at top of file
 261   E501 line too long (153 > 127 characters)
 129   E701 multiple statements on one line (colon)
 15    E712 comparison to True should be 'if cond is True:' or 'if cond:'
@@ -22371,12 +22365,12 @@
 3     E722 do not use bare 'except'
 6     E731 do not assign a lambda expression, use a def
 63    E741 ambiguous variable name 'l'
-699   F401 'tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U0_a.thermo.run_model' imported but unused
+704   F401 'tfscreen.tfmodel.generative.components.theta.thermo.O2_C12_K5_U0_a.thermo.run_model' imported but unused
 33    F541 f-string is missing placeholders
 12    F811 redefinition of unused 'np' from line 1
 120   F841 local variable 'e' is assigned to but never used
-1680  W291 trailing whitespace
+1666  W291 trailing whitespace
 243   W292 no newline at end of file
-4466  W293 blank line contains whitespace
+4467  W293 blank line contains whitespace
 84    W391 blank line at end of file
-22332
+22326

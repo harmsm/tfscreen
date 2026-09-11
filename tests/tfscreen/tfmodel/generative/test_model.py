@@ -107,8 +107,8 @@ def mock_control():
     )  # pass-through
     
     # Noise models just pass through or add noise. Let's pass through for simplicity.
-    theta_binding_noise_model = MagicMock(side_effect=lambda n, x, p: x)
-    theta_growth_noise_model = MagicMock(side_effect=lambda n, x, p: x)
+    theta_binding_noise_model = MagicMock(side_effect=lambda n, x, p, data=None: x)
+    theta_growth_noise_model = MagicMock(side_effect=lambda n, x, p, data=None: x)
     growth_noise_model = MagicMock(return_value=0.0)  # sigma_k = 0 → no extra noise
     sample_offset_model = MagicMock(return_value=0.0)  # delta_sample = 0 → no offset
 

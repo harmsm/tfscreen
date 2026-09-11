@@ -803,6 +803,30 @@ def test_map_params_to_constrained_values_finite():
 # get_map_posteriors
 # =============================================================================
 
+def _batch_sized_map_params(model, batch_size):
+    """MAP params whose genotype latent is batch-sized (pre-fix checkpoint)."""
+    ri, map_params = _laplace_map_params(model)
+    aliased = dict(map_params)
+    aliased["geno_p_auto_loc"] = map_params["geno_p_auto_loc"][..., :batch_size]
+    return ri, aliased
+
+
+def test_get_map_posteriors_rejects_batch_sized_latent(tmpdir):
+    """A genotype latent shorter than the library is refused, not clipped."""
+    ri, aliased = _batch_sized_map_params(LaplaceModel(num_genotype=5), 3)
+    with pytest.raises(ValueError, match="mini-batch position"):
+        ri.get_map_posteriors(aliased, out_prefix=str(tmpdir.join("aliased")))
+
+
+def test_get_laplace_posteriors_rejects_batch_sized_latent(tmpdir):
+    """The Laplace path refuses it too, before computing the Hessian."""
+    ri, aliased = _batch_sized_map_params(LaplaceModel(num_genotype=5), 3)
+    with pytest.raises(ValueError, match="mini-batch position"):
+        ri.get_laplace_posteriors(aliased,
+                                  out_prefix=str(tmpdir.join("aliased")),
+                                  num_posterior_samples=2)
+
+
 def test_get_map_posteriors_creates_h5(tmpdir):
     """get_map_posteriors writes an HDF5 posterior file."""
     model = LaplaceModel(num_genotype=4)

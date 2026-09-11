@@ -63,21 +63,20 @@ def define_model(name: str,
                                    dist.HalfNormal(priors.global_scale_tau_scale)) 
     
     # Sample local scales and offsets 
-    with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
-        with pyro.handlers.scale(scale=data.scale_vector):
-        
-            # Local scale `lambda`. HalfNormal(1) is the standard Horseshoe.
-            local_scale_lambda = pyro.sample(f"{name}_local_scale",
-                                            dist.HalfNormal(1.0))
+    with pyro.plate(f"{name}_genotype_plate", data.num_genotype, dim=-1):
 
-            # Non-centered offset `z` (always Normal(0,1))
-            activity_offset = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
+        # Local scale `lambda`. HalfNormal(1) is the standard Horseshoe.
+        local_scale_lambda = pyro.sample(f"{name}_local_scale",
+                                        dist.HalfNormal(1.0))
 
-    # Guard against full-sized array substitution during initialization or re-runs 
-    # with full-sized initial values
-    if local_scale_lambda.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+        # Non-centered offset `z` (always Normal(0,1))
+        activity_offset = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
+
+    # Sampled at library size: slice to this batch's genotypes. A value of
+    # any other size is an already-sliced substitution (posterior forward pass).
+    if local_scale_lambda.shape[-1] == data.num_genotype:
         local_scale_lambda = local_scale_lambda[..., data.batch_idx]
-    if activity_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+    if activity_offset.shape[-1] == data.num_genotype:
         activity_offset = activity_offset[..., data.batch_idx]
 
     # Combine scales: `beta = z * (tau * lambda)`
@@ -132,27 +131,22 @@ def guide(name: str,
                                         constraint=dist.constraints.positive)
 
     # Sample local scales and offsets 
-    with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
-        with pyro.handlers.scale(scale=data.scale_vector):
-        
-            lambda_batch_locs = lambda_locs[data.batch_idx]
-            lambda_batch_scales = lambda_scales[data.batch_idx]
+    with pyro.plate(f"{name}_genotype_plate", data.num_genotype, dim=-1):
 
-            activity_batch_locs = activity_offset_locs[data.batch_idx]
-            activity_batch_scales = activity_offset_scales[data.batch_idx]
+        # Local scale `lambda`. HalfNormal(1) is the standard Horseshoe.
+        local_scale_lambda = pyro.sample(f"{name}_local_scale",
+                                         dist.LogNormal(lambda_locs, lambda_scales))
 
-            # Local scale `lambda`. HalfNormal(1) is the standard Horseshoe.
-            local_scale_lambda = pyro.sample(f"{name}_local_scale",
-                                            dist.LogNormal(lambda_batch_locs, lambda_batch_scales))
+        # Non-centered offset `z` (always Normal(0,1))
+        activity_offset = pyro.sample(f"{name}_offset",
+                                      dist.Normal(activity_offset_locs,
+                                                  activity_offset_scales))
 
-            # Non-centered offset `z` (always Normal(0,1))
-            activity_offset = pyro.sample(f"{name}_offset", dist.Normal(activity_batch_locs, activity_batch_scales))
-
-    # Guard against full-sized array substitution during initialization or re-runs 
-    # with full-sized initial values
-    if local_scale_lambda.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+    # Sampled at library size: slice to this batch's genotypes. A value of
+    # any other size is an already-sliced substitution (posterior forward pass).
+    if local_scale_lambda.shape[-1] == data.num_genotype:
         local_scale_lambda = local_scale_lambda[..., data.batch_idx]
-    if activity_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+    if activity_offset.shape[-1] == data.num_genotype:
         activity_offset = activity_offset[..., data.batch_idx]
 
     # Combine scales: `beta = z * (tau * lambda)`

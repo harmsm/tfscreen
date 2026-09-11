@@ -151,12 +151,12 @@ def define_model(name: str,
 
     # Per-(replicate, genotype) non-centred offsets — shape (R, batch)
     with pyro.plate(f"{name}_geno_replicate", data.num_replicate, dim=-2):
-        with pyro.plate("shared_genotype_plate", size=data.batch_size, dim=-1):
-            with pyro.handlers.scale(scale=data.scale_vector):
-                offset_geno = pyro.sample(f"{name}_offset_geno", dist.Normal(0.0, 1.0))
+        with pyro.plate(f"{name}_genotype_plate", data.num_genotype, dim=-1):
+            offset_geno = pyro.sample(f"{name}_offset_geno", dist.Normal(0.0, 1.0))
 
-    # Guard against full-sized array substitution during initialisation
-    if offset_geno.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+    # Sampled at library size: slice to this batch's genotypes. A value of
+    # any other size is an already-sliced substitution (posterior forward pass).
+    if offset_geno.shape[-1] == data.num_genotype:
         offset_geno = offset_geno[..., data.batch_idx]
 
     # Per-(replicate, condition_pre) tube offsets — shape (R, C)
@@ -270,15 +270,13 @@ def guide(name: str,
                                     constraint=dist.constraints.positive)
 
     with pyro.plate(f"{name}_geno_replicate", data.num_replicate, dim=-2):
-        with pyro.plate("shared_genotype_plate", size=data.batch_size, dim=-1):
-            with pyro.handlers.scale(scale=data.scale_vector):
-                batch_geno_locs   = offset_geno_locs[..., data.batch_idx]
-                batch_geno_scales = offset_geno_scales[..., data.batch_idx]
-                offset_geno = pyro.sample(f"{name}_offset_geno",
-                                          dist.Normal(batch_geno_locs, batch_geno_scales))
+        with pyro.plate(f"{name}_genotype_plate", data.num_genotype, dim=-1):
+            offset_geno = pyro.sample(f"{name}_offset_geno",
+                                      dist.Normal(offset_geno_locs, offset_geno_scales))
 
-    # Guard against full-sized substitution
-    if offset_geno.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+    # Sampled at library size: slice to this batch's genotypes. A value of
+    # any other size is an already-sliced substitution (posterior forward pass).
+    if offset_geno.shape[-1] == data.num_genotype:
         offset_geno = offset_geno[..., data.batch_idx]
 
     # Per-(replicate, condition_pre) tube offset variational params — shape (R, C)

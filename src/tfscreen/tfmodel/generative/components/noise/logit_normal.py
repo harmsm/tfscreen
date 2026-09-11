@@ -45,6 +45,38 @@ from typing import Dict, Any
 _LOGIT_EPS = 1e-6
 
 
+def _sample_epsilon(name, fx_calc, sigma_logit, data):
+    """
+    Sample the per-(titrant_conc, genotype) epsilon, returned at fx_calc's shape.
+
+    With ``data``, epsilon is sampled at library size (``data.num_genotype``)
+    and sliced to the batch with ``data.batch_idx``, so it stays attached to
+    the same genotype under mini-batching (see inference/batch_safety.py).  A
+    value of any other size is an already-sliced substitution (posterior
+    forward pass).  Without ``data`` the genotype plate is sized from
+    ``fx_calc`` itself, for standalone callers.
+    """
+    num_genotype = fx_calc.shape[-1] if data is None else data.num_genotype
+    eps_shape = fx_calc.shape[:-1] + (num_genotype,)
+
+    # Plate epsilon on titrant_conc (dim=-2) and genotype (dim=-1) so that
+    # prediction.py's slicing logic can match these named plates to TensorManager
+    # dim names and correctly reduce epsilon to the prediction-time shape.
+    # Without plates, prediction.py passes training-time epsilon unchanged into
+    # a model expecting prediction-time shapes, causing a broadcast error.
+    with pyro.plate(f"{name}_titrant_conc", fx_calc.shape[-2], dim=-2):
+        with pyro.plate(f"{name}_genotype", num_genotype, dim=-1):
+            epsilon = pyro.sample(
+                f"{name}_epsilon",
+                dist.Normal(jnp.zeros(eps_shape), sigma_logit)
+            )
+
+    if data is not None and epsilon.shape[-1] == data.num_genotype:
+        epsilon = epsilon[..., data.batch_idx]
+
+    return epsilon
+
+
 @dataclass(frozen=True)
 class ModelPriors:
     """
@@ -61,7 +93,8 @@ class ModelPriors:
 
 def define_model(name: str,
                  fx_calc: jnp.ndarray,
-                 priors: ModelPriors) -> jnp.ndarray:
+                 priors: ModelPriors,
+                 data: GrowthData = None) -> jnp.ndarray:
     """
     Apply logit-normal noise to a deterministic occupancy array.
 
@@ -70,9 +103,14 @@ def define_model(name: str,
     name : str
         Prefix for all Numpyro sample / deterministic sites.
     fx_calc : jnp.ndarray
-        Deterministic theta values in (0, 1).
+        Deterministic theta values in (0, 1).  The last axis is the batch's
+        genotypes.
     priors : ModelPriors
         Pytree containing ``sigma_logit_scale``.
+    data : GrowthData, optional
+        When given, epsilon is sampled at library size and sliced with
+        ``data.batch_idx`` (mini-batch safe).  ``None`` sizes it from
+        ``fx_calc``.
 
     Returns
     -------
@@ -88,17 +126,7 @@ def define_model(name: str,
     fx_safe = jnp.clip(fx_calc, _LOGIT_EPS, 1.0 - _LOGIT_EPS)
     logit_calc = jnp.log(fx_safe / (1.0 - fx_safe))
 
-    # Plate epsilon on titrant_conc (dim=-2) and genotype (dim=-1) so that
-    # prediction.py's slicing logic can match these named plates to TensorManager
-    # dim names and correctly reduce epsilon to the prediction-time shape.
-    # Without plates, prediction.py passes training-time epsilon unchanged into
-    # a model expecting prediction-time shapes, causing a broadcast error.
-    with pyro.plate(f"{name}_titrant_conc", fx_calc.shape[-2], dim=-2):
-        with pyro.plate(f"{name}_genotype", fx_calc.shape[-1], dim=-1):
-            epsilon = pyro.sample(
-                f"{name}_epsilon",
-                dist.Normal(jnp.zeros_like(fx_calc), sigma_logit)
-            )
+    epsilon = _sample_epsilon(name, fx_calc, sigma_logit, data)
 
     fx_noisy = jax_nn.sigmoid(logit_calc + epsilon)
     pyro.deterministic(name, fx_noisy)
@@ -107,7 +135,8 @@ def define_model(name: str,
 
 def guide(name: str,
           fx_calc: jnp.ndarray,
-          priors: ModelPriors) -> jnp.ndarray:
+          priors: ModelPriors,
+          data: GrowthData = None) -> jnp.ndarray:
     """
     Variational guide for the logit-normal theta noise model.
 
@@ -141,12 +170,7 @@ def guide(name: str,
     )
     sigma_logit = pyro.sample(f"{name}_sigma_logit", dist.LogNormal(loc, scale))
 
-    with pyro.plate(f"{name}_titrant_conc", fx_calc.shape[-2], dim=-2):
-        with pyro.plate(f"{name}_genotype", fx_calc.shape[-1], dim=-1):
-            epsilon = pyro.sample(
-                f"{name}_epsilon",
-                dist.Normal(jnp.zeros_like(fx_calc), sigma_logit)
-            )
+    epsilon = _sample_epsilon(name, fx_calc, sigma_logit, data)
 
     fx_safe = jnp.clip(fx_calc, _LOGIT_EPS, 1.0 - _LOGIT_EPS)
     logit_calc = jnp.log(fx_safe / (1.0 - fx_safe))

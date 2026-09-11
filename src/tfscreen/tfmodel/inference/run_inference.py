@@ -1060,6 +1060,28 @@ class RunInference:
             for k, v in unconstrained.items()
         }
 
+    @staticmethod
+    def _check_library_sized_latents(latents, dim_map, total_num_genotypes):
+        """
+        Raise if any genotype-indexed MAP latent is not library-sized.
+
+        A batch-sized latent (a MAP checkpoint written before per-genotype
+        latents were sampled at library size, or a component that cannot be
+        -- see inference/batch_safety.py) holds values fit per mini-batch
+        position, aliased across genotypes.  Refuse it rather than reuse one
+        genotype's value for another.  ``dim_map`` axes are negative, so
+        ``latents`` may or may not carry a leading sample axis.
+        """
+        for k, v in latents.items():
+            if k in dim_map and v.shape[dim_map[k]] != total_num_genotypes:
+                raise ValueError(
+                    f"MAP latent '{k}' has {v.shape[dim_map[k]]} entries along "
+                    f"the genotype axis but the library has "
+                    f"{total_num_genotypes} genotypes. Its values were fit per "
+                    f"mini-batch position, not per genotype, so they cannot "
+                    f"be mapped back onto genotypes. Refit the model."
+                )
+
     def get_map_posteriors(self,
                            map_params,
                            out_prefix,
@@ -1103,6 +1125,9 @@ class RunInference:
         # Add a leading sample dimension: (*shape) → (1, *shape)
         latent_samples = {k: jnp.expand_dims(v, 0) for k, v in constrained.items()}
 
+        self._check_library_sized_latents(latent_samples, dim_map,
+                                          total_num_genotypes)
+
         h5_file = f"{out_prefix}_posterior.h5"
 
         batch_collector = {}
@@ -1111,17 +1136,8 @@ class RunInference:
             end_idx = min(start_idx + forward_batch_size, total_num_genotypes)
             batch_indices = jnp.arange(start_idx, end_idx)
 
-            # Clip indices to the valid range for each latent before calling
-            # jnp.take.  On GPU, out-of-bounds jnp.take returns NaN; on CPU it
-            # usually clips silently.  MAP checkpoints trained with
-            # batch_size < N_geno have latent parameters sized to batch_size,
-            # so indices beyond that range must be clipped explicitly.
-            def _safe_take(v, idx, axis):
-                n = v.shape[axis if axis >= 0 else len(v.shape) + axis]
-                return jnp.take(v, jnp.clip(idx, 0, n - 1), axis=axis)
-
             batch_latents = {
-                k: _safe_take(v, batch_indices, dim_map[k])
+                k: jnp.take(v, batch_indices, axis=dim_map[k])
                 if k in dim_map else v
                 for k, v in latent_samples.items()
             }
@@ -1441,6 +1457,10 @@ class RunInference:
             for k, v in map_params.items()
             if k.endswith("_auto_loc")
         }
+
+        # Refuse aliased (batch-sized) latents before the costly Hessian.
+        self._check_library_sized_latents(unconstrained, dim_map,
+                                          total_num_genotypes)
 
         # Flatten to a single vector for Hessian computation
         flat_map, unravel = jax.flatten_util.ravel_pytree(unconstrained)

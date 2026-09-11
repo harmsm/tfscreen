@@ -93,13 +93,12 @@ def define_model(name: str,
         pinned,
     )
 
-    with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
-        with pyro.handlers.scale(scale=data.scale_vector):
-            dk_geno_offset = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
+    with pyro.plate(f"{name}_genotype_plate", data.num_genotype, dim=-1):
+        dk_geno_offset = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
 
-    # Guard against full-sized array substitution during initialization or re-runs 
-    # with full-sized initial values
-    if dk_geno_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+    # Sampled at library size: slice to this batch's genotypes. A value of
+    # any other size is an already-sliced substitution (posterior forward pass).
+    if dk_geno_offset.shape[-1] == data.num_genotype:
         dk_geno_offset = dk_geno_offset[..., data.batch_idx]
     
     dk_geno_lognormal_values = jnp.clip(jnp.exp(dk_geno_hyper_loc + dk_geno_offset * dk_geno_hyper_scale),max=1e30)
@@ -171,18 +170,12 @@ def guide(name: str,
     offset_scales = pyro.param(f"{name}_offset_scales", jnp.ones(data.num_genotype,dtype=float), 
                                constraint=dist.constraints.positive)
 
-    # --- Batching ---
-    with pyro.plate("shared_genotype_plate", size=data.batch_size,dim=-1):
-        with pyro.handlers.scale(scale=data.scale_vector):
-        
-            batch_locs = offset_locs[...,data.batch_idx]
-            batch_scales = offset_scales[...,data.batch_idx]
+    with pyro.plate(f"{name}_genotype_plate", data.num_genotype, dim=-1):
+        dk_geno_offset = pyro.sample(f"{name}_offset", dist.Normal(offset_locs, offset_scales))
 
-            dk_geno_offset = pyro.sample(f"{name}_offset", dist.Normal(batch_locs, batch_scales))
-
-    # Guard against full-sized array substitution during initialization or re-runs 
-    # with full-sized initial values
-    if dk_geno_offset.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+    # Sampled at library size: slice to this batch's genotypes. A value of
+    # any other size is an already-sliced substitution (posterior forward pass).
+    if dk_geno_offset.shape[-1] == data.num_genotype:
         dk_geno_offset = dk_geno_offset[..., data.batch_idx]
 
     # --- Deterministic Calculation ---

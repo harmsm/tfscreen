@@ -247,13 +247,12 @@ def define_model(name: str,
     # Sample non-centered offsets for each ln_cfu0 group
     with pyro.plate(f"{name}_replicate", data.num_replicate, dim=-3):
         with pyro.plate(f"{name}_condition_pre", data.num_condition_pre, dim=-2):
-            with pyro.plate("shared_genotype_plate", size=data.batch_size, dim=-1):
-                with pyro.handlers.scale(scale=data.scale_vector):
-                    ln_cfu0_offsets = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
+            with pyro.plate(f"{name}_genotype_plate", data.num_genotype, dim=-1):
+                ln_cfu0_offsets = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
 
-    # Guard against full-sized array substitution during initialization or re-runs
-    # with full-sized initial values
-    if ln_cfu0_offsets.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+    # Sampled at library size: slice to this batch's genotypes. A value of
+    # any other size is an already-sliced substitution (posterior forward pass).
+    if ln_cfu0_offsets.shape[-1] == data.num_genotype:
         ln_cfu0_offsets = ln_cfu0_offsets[..., data.batch_idx]
 
     per_geno_loc, per_geno_scale = _per_geno_loc_scale(
@@ -364,17 +363,13 @@ def guide(name: str,
     # Sample non-centered offsets for each ln_cfu0 group
     with pyro.plate(f"{name}_replicate", data.num_replicate, dim=-3):
         with pyro.plate(f"{name}_condition_pre", data.num_condition_pre, dim=-2):
-            with pyro.plate("shared_genotype_plate", size=data.batch_size, dim=-1):
-                with pyro.handlers.scale(scale=data.scale_vector):
+            with pyro.plate(f"{name}_genotype_plate", data.num_genotype, dim=-1):
+                ln_cfu0_offsets = pyro.sample(f"{name}_offset",
+                                              dist.Normal(offset_locs, offset_scales))
 
-                    batch_locs   = offset_locs[..., data.batch_idx]
-                    batch_scales = offset_scales[..., data.batch_idx]
-                    ln_cfu0_offsets = pyro.sample(f"{name}_offset",
-                                                  dist.Normal(batch_locs, batch_scales))
-
-    # Guard against full-sized array substitution during initialization or re-runs
-    # with full-sized initial values
-    if ln_cfu0_offsets.shape[-1] == data.num_genotype and data.batch_size < data.num_genotype:
+    # Sampled at library size: slice to this batch's genotypes. A value of
+    # any other size is an already-sliced substitution (posterior forward pass).
+    if ln_cfu0_offsets.shape[-1] == data.num_genotype:
         ln_cfu0_offsets = ln_cfu0_offsets[..., data.batch_idx]
 
     per_geno_loc, per_geno_scale = _per_geno_loc_scale(
