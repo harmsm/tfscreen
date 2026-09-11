@@ -252,6 +252,52 @@ class TestSamplePosteriorSvi:
 
 
 # ---------------------------------------------------------------------------
+# Routing by recorded guide_type (checkpoints written after guide selection)
+# ---------------------------------------------------------------------------
+
+class TestSamplePosteriorGuideMetadata:
+
+    def _run(self, tmp_path, chk_data):
+        ri = MagicMock()
+        ri.restore_svi_from_checkpoint.return_value = (MagicMock(), MagicMock())
+        # AutoNormal parameters are also named "{site}_auto_loc", so the
+        # legacy name heuristic alone would misroute them to Laplace.
+        ri.setup_svi.return_value.optim.get_params.return_value = {
+            "global_p_auto_loc": np.array(0.5)
+        }
+        h5_src = str(tmp_path / "out_tmp_posterior_posterior.h5")
+        ckpt_path = str(tmp_path / "ckpt.pkl")
+        open(ckpt_path, "w").close()
+        ri.get_posteriors.side_effect = lambda **kw: open(h5_src, "w").close()
+        ri.get_laplace_posteriors.side_effect = lambda **kw: open(h5_src, "w").close()
+
+        with patch("tfscreen.tfmodel.scripts.sample_posterior_cli.read_configuration",
+                   return_value=(MagicMock(), {})), \
+             patch("tfscreen.tfmodel.scripts.sample_posterior_cli.RunInference",
+                   return_value=ri), \
+             patch("tfscreen.tfmodel.scripts.sample_posterior_cli.dill") as mock_dill:
+            mock_dill.load.return_value = chk_data
+            from tfscreen.tfmodel.scripts.sample_posterior_cli import sample_posterior
+            sample_posterior("cfg.yaml", ckpt_path, out_prefix=str(tmp_path / "out"))
+        return ri
+
+    @pytest.mark.parametrize("guide_type", ["auto_normal",
+                                            "auto_multivariate_normal",
+                                            "component"])
+    def test_svi_guides_draw_from_guide(self, tmp_path, guide_type):
+        ri = self._run(tmp_path, {"svi_state": MagicMock(),
+                                  "guide_type": guide_type})
+        ri.get_posteriors.assert_called_once()
+        ri.get_laplace_posteriors.assert_not_called()
+
+    def test_delta_checkpoint_goes_to_laplace(self, tmp_path):
+        ri = self._run(tmp_path, {"svi_state": MagicMock(),
+                                  "guide_type": "delta"})
+        ri.get_laplace_posteriors.assert_called_once()
+        ri.get_posteriors.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
 # main() routes to generalized_main
 # ---------------------------------------------------------------------------
 

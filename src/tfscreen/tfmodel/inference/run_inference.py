@@ -14,7 +14,73 @@ from numpyro.infer import (
 from numpyro.optim import ClippedAdam
 import numpy as np
 import dill
+import warnings
 from tqdm.auto import tqdm
+
+from numpyro.infer import autoguide
+from numpyro.infer.initialization import init_to_value
+
+from tfscreen.tfmodel.inference.batch_safety import (
+    find_orchestrator_batch_dependent_latents,
+    orchestrator_latent_dimension,
+)
+
+# Autoguides selectable through setup_svi(guide_type=...), keyed by the
+# snake_case form of the numpyro class name ('delta' keeps its historical short
+# name).  'component' -- the guide assembled from the model components -- is
+# handled separately.
+AUTOGUIDES = {
+    "delta": autoguide.AutoDelta,
+    "auto_normal": autoguide.AutoNormal,
+    "auto_diagonal_normal": autoguide.AutoDiagonalNormal,
+    "auto_multivariate_normal": autoguide.AutoMultivariateNormal,
+    "auto_low_rank_multivariate_normal": autoguide.AutoLowRankMultivariateNormal,
+}
+GUIDE_TYPES = ("component",) + tuple(AUTOGUIDES)
+
+# guide_kwargs each guide accepts (init_loc_fn is set through init_values).
+_AUTOGUIDE_KWARGS = {
+    "component": set(),
+    "delta": set(),
+    "auto_normal": {"init_scale"},
+    "auto_diagonal_normal": {"init_scale"},
+    "auto_multivariate_normal": {"init_scale"},
+    "auto_low_rank_multivariate_normal": {"init_scale", "rank"},
+}
+
+# Case-insensitive aliases: numpyro class names, plus 'auto_delta'.
+_GUIDE_ALIASES = {cls.__name__.lower(): name for name, cls in AUTOGUIDES.items()}
+_GUIDE_ALIASES["auto_delta"] = "delta"
+
+# Warn when the dense auto_multivariate_normal covariance exceeds this (GB).
+_DENSE_GUIDE_WARN_GB = 4.0
+
+
+def resolve_guide_type(guide_type):
+    """Return the canonical ``GUIDE_TYPES`` name for ``guide_type``."""
+
+    key = str(guide_type).lower()
+    key = _GUIDE_ALIASES.get(key, key)
+    if key not in GUIDE_TYPES:
+        raise ValueError(
+            f"guide_type '{guide_type}' not recognized. It should be one of "
+            f"{list(GUIDE_TYPES)} (numpyro class names such as 'AutoNormal' "
+            f"are also accepted)."
+        )
+    return key
+
+
+def check_guide_kwargs(guide_type, guide_kwargs):
+    """Raise ValueError if ``guide_kwargs`` has keys ``guide_type`` rejects."""
+
+    guide_type = resolve_guide_type(guide_type)
+    accepted = _AUTOGUIDE_KWARGS[guide_type]
+    unknown = set(guide_kwargs or {}) - accepted
+    if unknown:
+        raise ValueError(
+            f"guide option(s) {sorted(unknown)} not accepted by guide_type "
+            f"'{guide_type}' (accepted: {sorted(accepted) or 'none'})."
+        )
 
 _HDF5_MAX_CHUNK_BYTES = 1 << 30  # 1 GiB; HDF5 hard-limit is 4 GiB
 
@@ -83,44 +149,84 @@ class RunInference:
 
         self._patience_counter = 0
 
+        # Set by setup_svi and written into checkpoints.
+        self._guide_type = None
+        self._guide_kwargs = {}
+
 
     def setup_svi(self,
                   adam_step_size=1e-6,
                   adam_clip_norm=1.0,
                   elbo_num_particles=2,
-                  guide_type="delta"):
+                  guide_type="delta",
+                  guide_kwargs=None,
+                  init_values=None):
         """
-        Set up SVI. 
+        Set up SVI.
 
         Parameters
         ----------
         adam_step_size : float or callable, optional
-            Step size for the ClippedAdam optimizer. Can be a fixed float or 
+            Step size for the ClippedAdam optimizer. Can be a fixed float or
              a callable (e.g., an optax schedule).
         adam_clip_norm : float, optional
             Gradient clipping norm for the ClippedAdam optimizer.
         elbo_num_particles : int, optional
             Number of particles for ELBO estimation.
         guide_type : str, optional
-            Type of guide to use. 
-            - 'component' (default): Use the guide defined in the model components.
-            - 'delta': Use numpyro.infer.autoguide.AutoDelta. Sets up a MAP estimator. 
+            Variational family (default 'delta'); one of ``GUIDE_TYPES``.
+
+            - 'component': the guide assembled from the model components.
+            - 'delta': numpyro ``AutoDelta`` (MAP estimation).
+            - 'auto_normal', 'auto_diagonal_normal',
+              'auto_multivariate_normal', 'auto_low_rank_multivariate_normal':
+              the numpyro autoguide of the same name.
+
+            numpyro class names (e.g. 'AutoNormal') are also accepted,
+            case-insensitively.
+        guide_kwargs : dict or None, optional
+            Extra keyword arguments for an autoguide: ``init_scale`` (every
+            autoguide except 'delta') and ``rank``
+            ('auto_low_rank_multivariate_normal' only).
+        init_values : dict or None, optional
+            Constrained values keyed by model site name, used to initialize an
+            autoguide's location (``init_to_value``).  Sites not present fall
+            back to numpyro's uniform initialization.  Autoguides only.
 
         Returns
         -------
         numpyro.infer.SVI
             An SVI object
+
+        Raises
+        ------
+        ValueError
+            If ``guide_type`` is unknown, or if ``guide_kwargs``/``init_values``
+            are given for a guide that does not take them.  Whether the model
+            can be fit with an autoguide at all is checked when fitting starts
+            (``run_optimization``).
         """
 
-        if guide_type == "delta":
-            guide = numpyro.infer.autoguide.AutoDelta(self.model.jax_model)
-        elif guide_type == "component":
+        guide_type = resolve_guide_type(guide_type)
+        guide_kwargs = dict(guide_kwargs or {})
+        check_guide_kwargs(guide_type, guide_kwargs)
+
+        if guide_type == "component":
+            if init_values is not None:
+                raise ValueError(
+                    "init_values applies only to autoguides, not "
+                    "guide_type='component'."
+                )
             guide = self.model.jax_model_guide
-        elif guide_type == "block_diagonal":
-            from numpyro.infer.autoguide import AutoMultivariateNormal
-            guide = AutoMultivariateNormal(self.model.jax_model)
         else:
-            raise ValueError(f"guide_type '{guide_type}' not recognized.")
+            ctor_kwargs = dict(guide_kwargs)
+            if init_values is not None:
+                ctor_kwargs["init_loc_fn"] = init_to_value(values=init_values)
+            guide = AUTOGUIDES[guide_type](self.model.jax_model, **ctor_kwargs)
+
+        # Recorded in checkpoints so the same guide can be rebuilt on restore.
+        self._guide_type = guide_type
+        self._guide_kwargs = guide_kwargs
 
         optimizer = ClippedAdam(step_size=adam_step_size,
                                 clip_norm=adam_clip_norm)   
@@ -129,8 +235,47 @@ class RunInference:
                   guide,
                   optimizer,
                   loss=Trace_ELBO(num_particles=elbo_num_particles))
-        
+
         return svi
+
+    def _check_autoguide(self, guide):
+        """
+        Refuse an autoguide the model cannot support; report dense-guide size.
+
+        Autoguides size their parameters from a traced batch, so a latent whose
+        shape follows the genotype batch would get one parameter per batch
+        position instead of per genotype -- at any batch size, because the
+        full-batch index is reshuffled every step.  The component guide is
+        exempt: it holds library-sized parameters and slices them itself.
+        Called when fitting starts, since fitting is what creates the aliasing.
+        """
+
+        guide_type = self._guide_type or type(guide).__name__
+
+        found = find_orchestrator_batch_dependent_latents(self.model)
+        if found:
+            raise ValueError(
+                f"guide_type '{guide_type}' cannot fit latent site(s) "
+                f"{sorted(found)}: their shape follows the genotype mini-batch "
+                f"rather than the library, so an autoguide would assign one "
+                f"genotype's value to another. Use guide_type='component', or "
+                f"a component whose latents are library-sized (e.g. "
+                f"theta_growth_noise='logit_normal' instead of 'beta'). See "
+                f"inference/batch_safety.py."
+            )
+
+        if isinstance(guide, autoguide.AutoMultivariateNormal):
+            dim = orchestrator_latent_dimension(self.model)
+            # scale_tril plus Adam's two moment estimates, float32.
+            gigabytes = 3 * dim * dim * 4 / 1e9
+            msg = (f"auto_multivariate_normal: {dim} latent dimensions; the "
+                   f"dense covariance needs ~{gigabytes:.3g} GB (parameters "
+                   f"plus optimizer state).")
+            if gigabytes > _DENSE_GUIDE_WARN_GB:
+                warnings.warn(msg + " Consider "
+                              "'auto_low_rank_multivariate_normal'.")
+            else:
+                print(msg, flush=True)
 
     def run_optimization(self,
                          svi,
@@ -201,7 +346,15 @@ class RunInference:
             If parameters explode to NaN during optimization.
         FileExistsError
             If a numbered epoch checkpoint file already exists.
+        ValueError
+            If ``svi`` uses a numpyro autoguide (AutoDelta included) and the
+            model has latents whose shape follows the genotype mini-batch
+            (see ``inference/batch_safety.py``).
         """
+
+        # Refuse an autoguide the model cannot support before any fitting.
+        if isinstance(svi.guide, autoguide.AutoGuide):
+            self._check_autoguide(svi.guide)
 
         # Set up update function (triggers jit)
         update_function = jax.jit(svi.update)
@@ -635,6 +788,12 @@ class RunInference:
                                                 priors=self.model.priors,
                                                 data=full_data)
 
+                # Drop autoguide auxiliary sites (e.g. AutoContinuous's
+                # flattened "_auto_latent", shape (samples, D)); they are not
+                # model sites.
+                latent_samples = {k: v for k, v in latent_samples.items()
+                                  if not k.startswith("_")}
+
                 # Forward pass: iterate over genotype chunks with the JIT-compiled
                 # chunk_fn.  Each chunk is computed, transferred to CPU, and
                 # discarded from GPU before the next chunk runs, keeping GPU
@@ -776,7 +935,9 @@ class RunInference:
                     "svi_state":host_svi_state,
                     "current_step":self._current_step,
                     "loss_start":self._loss_start,
-                    "loss_best":self._loss_best}
+                    "loss_best":self._loss_best,
+                    "guide_type":self._guide_type,
+                    "guide_kwargs":self._guide_kwargs}
 
         tmp_checkpoint_file = f"{out_prefix}_checkpoint.tmp.pkl"
 
@@ -819,7 +980,9 @@ class RunInference:
                     "svi_state": host_svi_state,
                     "current_step": self._current_step,
                     "loss_start": self._loss_start,
-                    "loss_best": self._loss_best}
+                    "loss_best": self._loss_best,
+                    "guide_type": self._guide_type,
+                    "guide_kwargs": self._guide_kwargs}
 
         tmp_file = f"{epoch_file}.tmp"
         with open(tmp_file, "wb") as f:
@@ -828,8 +991,12 @@ class RunInference:
 
     def restore_svi_from_checkpoint(self, checkpoint_file, init_params=None):
         """
-        Rebuild a component SVI object and restore its state from a checkpoint,
+        Rebuild the SVI object recorded in a checkpoint and restore its state,
         without running any optimization steps or convergence checks.
+
+        The guide is rebuilt from the checkpoint's ``guide_type`` and
+        ``guide_kwargs``.  Checkpoints written before those were recorded are
+        treated as component-guide checkpoints (the only SVI guide then).
 
         ``svi.init()`` must be called at least once to wire up ``constrain_fn``
         on the SVI object before ``svi.get_params()`` can be used.  The state
@@ -841,9 +1008,11 @@ class RunInference:
         checkpoint_file : str
             Path to the checkpoint .pkl file produced by tfs-fit-model.
         init_params : dict or None, optional
-            Initial parameter values forwarded to ``svi.init()``.  The values
-            are never used in inference (the checkpoint overwrites them), but
-            they must be structurally valid for the model.
+            Initial parameter values forwarded to ``svi.init()`` for a
+            component guide.  The values are never used in inference (the
+            checkpoint overwrites them), but they must be structurally valid
+            for the model.  Ignored for autoguides, whose parameter names
+            differ from the component guide's.
 
         Returns
         -------
@@ -852,7 +1021,14 @@ class RunInference:
         svi_state : numpyro.infer.svi.SVIState
             Optimizer state restored from the checkpoint.
         """
-        svi = self.setup_svi(guide_type="component")
+        with open(checkpoint_file, "rb") as f:
+            checkpoint_data = dill.load(f)
+        guide_type = checkpoint_data.get("guide_type") or "component"
+        guide_kwargs = checkpoint_data.get("guide_kwargs") or None
+
+        svi = self.setup_svi(guide_type=guide_type, guide_kwargs=guide_kwargs)
+        if self._guide_type != "component":
+            init_params = None
 
         # init() is required to populate svi.constrain_fn; the resulting state
         # is thrown away — the checkpoint state is used instead.
@@ -1542,157 +1718,6 @@ class RunInference:
 
                 # Unravel each sample and transform to constrained space.
                 # jax.vmap(unravel) maps (N, D) → pytree of (N, *shape) arrays.
-                batch_unconstrained = jax.vmap(unravel)(flat_samples)
-                latent_samples = {
-                    k: jax.vmap(site_transforms[k])(v) if k in site_transforms else v
-                    for k, v in batch_unconstrained.items()
-                }
-
-                # Forward pass over genotype chunks; one chunk at a time on GPU.
-                forward_key = self.get_key()
-                chunk_outputs = {}
-                for chunk_indices in indices_2d:
-                    forward_key, chunk_result = chunk_fn(
-                        data_on_gpu, latent_samples, forward_key, chunk_indices
-                    )
-                    for k, v in chunk_result.items():
-                        chunk_outputs.setdefault(k, []).append(np.asarray(v))
-
-                this_batch = {}
-                for k, chunks in chunk_outputs.items():
-                    if k in dim_map:
-                        this_batch[k] = self._concat_genotype_chunks(
-                            chunks, dim_map[k], total_num_genotypes
-                        )
-                    else:
-                        this_batch[k] = chunks[0]
-
-                # Write to HDF5
-                batch_size_actual = next(iter(this_batch.values())).shape[0]
-                for k, v in this_batch.items():
-                    if k not in hf:
-                        maxshape = (num_posterior_samples,) + v.shape[1:]
-                        chunks = _safe_chunks(min(sampling_batch_size, 100), v.shape[1:], v.dtype)
-                        hf.create_dataset(k, shape=maxshape, dtype=v.dtype,
-                                          chunks=chunks,
-                                          compression="gzip", compression_opts=4)
-                    hf[k][samples_written: samples_written + batch_size_actual] = v
-
-                samples_written += batch_size_actual
-
-            hf.attrs["num_samples"] = samples_written
-            hf.flush()
-
-    def get_pathfinder_posteriors(self,
-                                  map_params,
-                                  out_prefix,
-                                  num_posterior_samples=10000,
-                                  sampling_batch_size=100,
-                                  forward_batch_size=512,
-                                  sites_to_save=None,
-                                  pathfinder_samples=200,
-                                  maxiter=30):
-        """
-        Generate posterior samples from a MAP solution using Blackjax's Pathfinder.
-
-        Uses L-BFGS optimization starting at the MAP point to construct a low-rank
-        plus diagonal covariance approximation to the posterior, then draws samples
-        and runs the forward predictions.
-
-        Parameters
-        ----------
-        map_params : dict
-            Parameter dict from a MAP (AutoDelta) optimizer state.
-        out_prefix : str
-            Root name for the output file (written as ``{out_prefix}_posterior.h5``).
-        num_posterior_samples : int, optional
-            Number of posterior samples to draw (default 10000).
-        sampling_batch_size : int, optional
-            Number of latent samples to draw per batch (default 100).
-        forward_batch_size : int, optional
-            Number of genotypes to process per forward-model batch (default 512).
-        sites_to_save : list of str or None, optional
-            If given, only these site names are saved to the HDF5 file.
-        pathfinder_samples : int, optional
-            Number of samples used by Pathfinder to estimate ELBO at each step (default 200).
-        maxiter : int, optional
-            Maximum number of L-BFGS iterations (default 30).
-        """
-        from numpyro.infer.util import potential_energy
-        from numpyro.distributions.transforms import biject_to
-        import jax.flatten_util
-        import blackjax
-
-        data_on_gpu = jax.device_put(self.model.data)
-        total_num_genotypes = self.model.data.num_genotype
-        dim_map = self._get_genotype_dim_map()
-
-        all_indices = jnp.arange(total_num_genotypes)
-        full_data = self.model.get_batch(data_on_gpu, all_indices)
-        model_kwargs = {"priors": self.model.priors, "data": full_data}
-
-        # Strip _auto_loc suffix → unconstrained site-level param dict
-        unconstrained = {
-            k[: -len("_auto_loc")]: jnp.array(v)
-            for k, v in map_params.items()
-            if k.endswith("_auto_loc")
-        }
-
-        # Flatten to a single vector for Pathfinder
-        flat_map, unravel = jax.flatten_util.ravel_pytree(unconstrained)
-        D = flat_map.shape[0]
-        print(f"Running Pathfinder optimization for {D} parameters...", flush=True)
-
-        def logdensity_fn(flat_p):
-            return -potential_energy(
-                self.model.jax_model, [], model_kwargs, unravel(flat_p)
-            )
-
-        # Run Pathfinder approximation
-        pathfinder_key = self.get_key()
-        approx_key, _ = jax.random.split(pathfinder_key)
-        
-        state, info = blackjax.vi.pathfinder.approximate(
-            approx_key,
-            logdensity_fn,
-            flat_map,
-            num_samples=pathfinder_samples,
-            maxiter=maxiter
-        )
-
-        # Get unconstrained → constrained transform for each latent site
-        seeded_model = seed(self.model.jax_model, rng_seed=0)
-        traced_model = trace(seeded_model)
-        model_trace = traced_model.get_trace(**model_kwargs)
-
-        site_transforms = {
-            name: biject_to(site["fn"].support)
-            for name, site in model_trace.items()
-            if site["type"] == "sample" and not site.get("is_observed", False)
-        }
-
-        sampling_batch_size = min(sampling_batch_size, num_posterior_samples)
-        num_latent_batches = -(-num_posterior_samples // sampling_batch_size)
-
-        # Build the per-chunk function once; reused across all sampling batches.
-        indices_2d = self._genotype_chunk_indices(total_num_genotypes, forward_batch_size)
-        chunk_fn = self._build_genotype_chunk_scanner(dim_map, sites_to_save)
-
-        h5_file = f"{out_prefix}_posterior.h5"
-        samples_written = 0
-
-        with h5py.File(h5_file, "w") as hf:
-            for _ in tqdm(range(num_latent_batches), desc="sampling pathfinder posterior"):
-                this_batch_size = min(sampling_batch_size,
-                                      num_posterior_samples - samples_written)
-
-                # Draw flat unconstrained samples using Pathfinder sample
-                batch_key = self.get_key()
-                flat_samples, _ = blackjax.vi.pathfinder.sample(
-                    batch_key, state, num_samples=this_batch_size
-                )
-
-                # Unravel each sample and transform to constrained space.
                 batch_unconstrained = jax.vmap(unravel)(flat_samples)
                 latent_samples = {
                     k: jax.vmap(site_transforms[k])(v) if k in site_transforms else v

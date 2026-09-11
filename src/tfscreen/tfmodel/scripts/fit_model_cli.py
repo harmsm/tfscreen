@@ -3,7 +3,11 @@ import dill
 
 import optax
 
-from tfscreen.tfmodel.inference.run_inference import RunInference
+from tfscreen.tfmodel.inference.run_inference import (
+    RunInference,
+    check_guide_kwargs,
+    resolve_guide_type,
+)
 
 from tfscreen.util.cli.generalized_main import generalized_main
 
@@ -142,7 +146,10 @@ def _run_svi(ri,
              checkpoint_interval=10,
              max_num_epochs=100000,
              init_param_jitter=0.1,
-             epoch_checkpoint_interval=1000):
+             epoch_checkpoint_interval=1000,
+             guide_type="component",
+             guide_kwargs=None,
+             init_values=None):
     """
     Run stochastic variational inference (SVI) for hierarchical model inference.
 
@@ -188,6 +195,14 @@ def _run_svi(ri,
         Frequency (in epochs) to write numbered epoch checkpoints to a
         ``checkpoints/`` subdirectory (default 1000). Set to 0 or None to
         disable.
+    guide_type : str, optional
+        Variational family passed to ``ri.setup_svi`` (default 'component').
+    guide_kwargs : dict or None, optional
+        Autoguide options (``rank``, ``init_scale``) passed to ``ri.setup_svi``.
+    init_values : dict or None, optional
+        Constrained site values an autoguide's location starts from.  For an
+        autoguide ``init_params`` is not used: it is substituted by parameter
+        name, and only the component guide's names match it.
 
     Notes
     -----
@@ -219,10 +234,15 @@ def _run_svi(ri,
     svi_obj = ri.setup_svi(adam_step_size=schedule,
                            adam_clip_norm=adam_clip_norm,
                            elbo_num_particles=elbo_num_particles,
-                           guide_type="component")
+                           guide_type=guide_type,
+                           guide_kwargs=guide_kwargs,
+                           init_values=init_values)
 
-    # Run svi. Note that `init_params` is not used here, but is required by the
-    # run_optimization method.
+    # init_params are substituted by parameter name, which only the component
+    # guide's names can match; an autoguide starts from init_values instead.
+    if resolve_guide_type(guide_type) != "component":
+        init_params = None
+
     svi_state, params, converged = ri.run_optimization(
         svi_obj,
         init_params=init_params,
@@ -305,10 +325,46 @@ def _run_nuts(ri,
     return mcmc_samples
 
 
+def _autoguide_init_values(init_params):
+    """
+    Site values an autoguide's location starts from.
+
+    After a pre-MAP run ``init_params`` holds the AutoDelta parameters -- the
+    MAP point, already in constrained space, keyed ``{site}_auto_loc``.
+    Otherwise it holds the configured guesses, already keyed by site.
+    """
+
+    suffix = "_auto_loc"
+    if any(k.endswith(suffix) for k in init_params):
+        return {k[:-len(suffix)]: v for k, v in init_params.items()
+                if k.endswith(suffix)}
+    return dict(init_params)
+
+
+def _check_checkpoint_guide(checkpoint_file, guide_type):
+    """Refuse to resume an SVI checkpoint with a different guide."""
+
+    # A missing file is reported by run_optimization when it tries to restore.
+    if not os.path.isfile(checkpoint_file):
+        return
+
+    with open(checkpoint_file, "rb") as f:
+        saved = dill.load(f).get("guide_type") or "component"
+    if saved != guide_type:
+        raise ValueError(
+            f"Checkpoint '{checkpoint_file}' was written with guide_type "
+            f"'{saved}', but guide_type '{guide_type}' was requested. Resume "
+            f"with guide_type='{saved}'."
+        )
+
+
 def fit_model(config_file,
               seed=None,
               checkpoint_file=None,
               analysis_method="svi",
+              guide_type="component",
+              guide_rank=None,
+              guide_init_scale=None,
               out_prefix="tfs_fit_model",
               adam_step_size=1e-3,
               adam_final_step_size=1e-6,
@@ -347,6 +403,21 @@ def fit_model(config_file,
         Method for inference. Allowed values are 'svi' (default), 'map', or 'nuts'.
         Case-insensitive. Posterior sampling is not performed; call
         ``tfs-sample-posterior`` after fitting.
+    guide_type : str, optional
+        Variational family for analysis_method 'svi' (default 'component',
+        the guide assembled from the model components).  Also accepts the
+        numpyro autoguides 'auto_normal', 'auto_diagonal_normal',
+        'auto_multivariate_normal', 'auto_low_rank_multivariate_normal' and
+        'delta'; numpyro class names such as 'AutoNormal' work too.  An
+        autoguide's location starts at the pre-MAP solution when
+        ``pre_map_num_epoch > 0``, otherwise at the configured guesses.
+        A resumed checkpoint must use the guide it was written with.
+    guide_rank : int, optional
+        Covariance rank for 'auto_low_rank_multivariate_normal' (numpyro's
+        default when omitted).
+    guide_init_scale : float, optional
+        Initial scale of an autoguide's variational distribution (numpyro's
+        default when omitted).  Not accepted by 'component' or 'delta'.
     out_prefix : str, optional
         Prefix for all output files: checkpoints, parameter files, and the
         posterior HDF5 (default 'tfs_fit_model'). Files are named
@@ -414,6 +485,23 @@ def fit_model(config_file,
 
     analysis_method = analysis_method.lower()
 
+    # Validate guide options before any (slow) fitting starts.
+    guide_type = resolve_guide_type(guide_type)
+    guide_kwargs = {}
+    if guide_rank is not None:
+        guide_kwargs["rank"] = guide_rank
+    if guide_init_scale is not None:
+        guide_kwargs["init_scale"] = guide_init_scale
+    if analysis_method != "svi" and (guide_type != "component" or guide_kwargs):
+        raise ValueError(
+            "guide_type, guide_rank and guide_init_scale apply only to "
+            "analysis_method='svi' ('map' always uses 'delta'; 'nuts' uses no "
+            "guide)."
+        )
+    check_guide_kwargs(guide_type, guide_kwargs)
+    if analysis_method == "svi" and checkpoint_file is not None:
+        _check_checkpoint_guide(checkpoint_file, guide_type)
+
     # Check for existing results to avoid overwriting unless resuming
     if checkpoint_file is None:
         checkpoint_path = f"{out_prefix}_checkpoint.pkl"
@@ -459,9 +547,16 @@ def fit_model(config_file,
                                          init_param_jitter=0.0,
                                          epoch_checkpoint_interval=None)
 
+        init_values = None
+        if guide_type != "component":
+            init_values = _autoguide_init_values(init_params)
+
         return _run_svi(ri,
                         init_params=init_params,
                         checkpoint_file=checkpoint_file,
+                        guide_type=guide_type,
+                        guide_kwargs=guide_kwargs,
+                        init_values=init_values,
                         out_prefix=out_prefix,
                         adam_step_size=adam_step_size,
                         adam_final_step_size=adam_final_step_size,
@@ -516,6 +611,8 @@ def main():
                             manual_arg_types={"config_file":str,
                                               "seed":int,
                                               "checkpoint_file":str,
+                                              "guide_rank":int,
+                                              "guide_init_scale":float,
                                               "pre_map_num_epoch":int,
                                               "init_param_jitter":float,
                                               "nuts_num_warmup":int,

@@ -18,20 +18,55 @@ two different batch sizes: a correctly written latent has the same shape in
 both traces, while a batch-sized one changes shape.
 """
 
+import math
+
+import jax
 import jax.numpy as jnp
 from numpyro.handlers import seed, trace
 
 
 def _latent_shapes(model_fn, priors, data):
-    """Return {site_name: shape} for every unobserved sample site."""
+    """
+    Return {site_name: shape} for every unobserved sample site.
 
-    model_trace = trace(seed(model_fn, rng_seed=0)).get_trace(data=data,
-                                                              priors=priors)
+    Traces under ``jax.eval_shape`` (abstract evaluation: no FLOPs, no
+    allocation), so the check is free even on a full-size library, falling
+    back to a concrete forward pass if a component cannot be traced
+    abstractly.
+    """
+
+    box = {}
+
+    def _traced(d, p):
+        box["trace"] = trace(seed(model_fn, rng_seed=0)).get_trace(data=d,
+                                                                   priors=p)
+        return jnp.zeros(())
+
+    try:
+        jax.eval_shape(_traced, data, priors)
+    except Exception:
+        box.clear()
+        _traced(data, priors)
+
     return {
         name: tuple(jnp.shape(site["value"]))
-        for name, site in model_trace.items()
+        for name, site in box["trace"].items()
         if site["type"] == "sample" and not site.get("is_observed", False)
     }
+
+
+def orchestrator_latent_dimension(orchestrator):
+    """
+    Total number of scalar latents in a ``ModelOrchestrator``'s model.
+
+    This is the dimension of the flattened latent vector an
+    ``AutoContinuous`` guide (e.g. ``AutoMultivariateNormal``) works in.
+    """
+
+    num_genotype = orchestrator.data.num_genotype
+    data = orchestrator.get_batch(orchestrator.data, jnp.arange(num_genotype))
+    shapes = _latent_shapes(orchestrator.jax_model, orchestrator.priors, data)
+    return sum(math.prod(s) for s in shapes.values())
 
 
 def find_batch_dependent_latents(model_fn, priors, full_data, get_batch,

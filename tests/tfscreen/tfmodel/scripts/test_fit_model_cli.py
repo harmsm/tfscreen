@@ -239,6 +239,95 @@ class TestEpochCheckpointIntervalPassthrough:
 
 
 # ---------------------------------------------------------------------------
+# guide selection
+# ---------------------------------------------------------------------------
+
+_CLI = "tfscreen.tfmodel.scripts.fit_model_cli"
+
+
+class TestGuideSelection:
+
+    def _patch_run_svi(self, mocker):
+        return mocker.patch(f"{_CLI}._run_svi",
+                            return_value=(MagicMock(), {}, True))
+
+    def test_default_is_component_without_init_values(self, mocker):
+        _patch_common(mocker)
+        run_svi_mock = self._patch_run_svi(mocker)
+        fit_model(config_file="dummy.yaml", seed=1, pre_map_num_epoch=0)
+        kwargs = run_svi_mock.call_args.kwargs
+        assert kwargs["guide_type"] == "component"
+        assert kwargs["guide_kwargs"] == {}
+        assert kwargs["init_values"] is None
+
+    def test_guide_options_resolved_and_forwarded(self, mocker):
+        _patch_common(mocker)
+        run_svi_mock = self._patch_run_svi(mocker)
+        fit_model(config_file="dummy.yaml", seed=1, pre_map_num_epoch=0,
+                  guide_type="AutoLowRankMultivariateNormal",
+                  guide_rank=4, guide_init_scale=0.05)
+        kwargs = run_svi_mock.call_args.kwargs
+        assert kwargs["guide_type"] == "auto_low_rank_multivariate_normal"
+        assert kwargs["guide_kwargs"] == {"rank": 4, "init_scale": 0.05}
+
+    def test_autoguide_starts_from_premap_solution(self, mocker):
+        _patch_common(mocker)
+        map_params = {"dk_geno_offset_auto_loc": jnp.ones(3),
+                      "theta_hyper_auto_loc": jnp.array(2.0)}
+        mocker.patch(f"{_CLI}._run_map",
+                     return_value=(MagicMock(), map_params, True))
+        run_svi_mock = self._patch_run_svi(mocker)
+        fit_model(config_file="dummy.yaml", seed=1, pre_map_num_epoch=5,
+                  guide_type="auto_normal")
+        init_values = run_svi_mock.call_args.kwargs["init_values"]
+        assert set(init_values) == {"dk_geno_offset", "theta_hyper"}
+        assert float(init_values["theta_hyper"]) == 2.0
+
+    def test_autoguide_without_premap_starts_from_guesses(self, mocker):
+        _patch_common(mocker)
+        guesses = {"dk_geno_offset": jnp.zeros(3)}
+        mocker.patch(f"{_CLI}.read_configuration",
+                     return_value=(MagicMock(), guesses))
+        run_svi_mock = self._patch_run_svi(mocker)
+        fit_model(config_file="dummy.yaml", seed=1, pre_map_num_epoch=0,
+                  guide_type="auto_normal")
+        assert set(run_svi_mock.call_args.kwargs["init_values"]) == {"dk_geno_offset"}
+
+    @pytest.mark.parametrize("method", ["map", "nuts"])
+    def test_guide_options_rejected_outside_svi(self, method, mocker):
+        _patch_common(mocker)
+        with pytest.raises(ValueError, match="only to analysis_method='svi'"):
+            fit_model(config_file="dummy.yaml", seed=1,
+                      analysis_method=method, guide_type="auto_normal")
+
+    def test_unaccepted_option_rejected_before_fitting(self, mocker):
+        _patch_common(mocker)
+        run_map_mock = mocker.patch(f"{_CLI}._run_map")
+        with pytest.raises(ValueError, match="not accepted"):
+            fit_model(config_file="dummy.yaml", seed=1,
+                      guide_type="auto_normal", guide_rank=3)
+        run_map_mock.assert_not_called()
+
+    def test_resume_with_different_guide_rejected(self, tmp_path, mocker):
+        ckpt = tmp_path / "ckpt.pkl"
+        with open(ckpt, "wb") as f:
+            dill.dump({"guide_type": "component"}, f)
+        _patch_common(mocker)
+        with pytest.raises(ValueError, match="written with guide_type 'component'"):
+            fit_model(config_file="dummy.yaml", checkpoint_file=str(ckpt),
+                      guide_type="auto_normal")
+
+    def test_legacy_checkpoint_resumes_as_component(self, tmp_path, mocker):
+        ckpt = tmp_path / "ckpt.pkl"
+        with open(ckpt, "wb") as f:
+            dill.dump({"svi_state": None}, f)  # no guide metadata
+        _patch_common(mocker)
+        run_svi_mock = self._patch_run_svi(mocker)
+        fit_model(config_file="dummy.yaml", checkpoint_file=str(ckpt))
+        assert run_svi_mock.call_args.kwargs["guide_type"] == "component"
+
+
+# ---------------------------------------------------------------------------
 # _run_svi — convergence message suppression when max_num_epochs=0
 # ---------------------------------------------------------------------------
 

@@ -45,7 +45,7 @@ tfs-process-counts         # counts → ln_cfu DataFrames
 tfs-process-presplit       # Process pre-split count files
 tfs-configure-model        # Generate YAML config template
 tfs-prefit-calibration     # Pre-fit linking function via MAP
-tfs-fit-model              # Main hierarchical Bayesian inference
+tfs-fit-model              # Main hierarchical Bayesian inference (--guide_type component|delta|auto_normal|auto_diagonal_normal|auto_multivariate_normal|auto_low_rank_multivariate_normal; --guide_rank, --guide_init_scale)
 tfs-fit-genotypes          # Per-genotype MLE fits of the growth model (+ optional congression de-attenuation)
 tfs-sample-posterior       # Draw posterior samples from fitted model
 tfs-sample-prior           # Draw prior predictive samples
@@ -113,7 +113,7 @@ The hierarchical Bayesian inference engine. Key files:
 
 - **`model_orchestrator.py`** — `ModelOrchestrator`: top-level class orchestrating data loading, inference, and prediction.
 
-- **`inference/run_inference.py`** — `RunInference`: coordinates JAX/Numpyro sampling (SVI or NUTS) and MAP estimation (optax).
+- **`inference/run_inference.py`** — `RunInference`: coordinates JAX/Numpyro sampling (SVI or NUTS) and MAP estimation (optax). **Guide selection:** `setup_svi(guide_type=..., guide_kwargs=..., init_values=...)` takes any name in `GUIDE_TYPES` — `component` (the guide assembled from the model components) or a numpyro autoguide from the `AUTOGUIDES` registry (snake_case of the class name, `delta` = `AutoDelta`; CamelCase class names accepted via `resolve_guide_type`). `tfs-fit-model --guide_type` exposes it for `analysis_method=svi`; an autoguide's location starts at the pre-MAP point (`init_to_value`), and `init_params` (component-guide param names) is not passed to it. Checkpoints record `guide_type`/`guide_kwargs`; `restore_svi_from_checkpoint` rebuilds that guide (legacy checkpoints → `component`) and `tfs-sample-posterior` routes `delta` → Laplace, everything else → guide sampling. `run_optimization` refuses any autoguide (AutoDelta included) when `inference/batch_safety.py` finds batch-dependent latents. Because per-genotype latents are library-sized, the `AutoContinuous` guides (incl. `auto_multivariate_normal`) are valid under mini-batching; the dense MVN just costs O(D²) memory (reported, warned above `_DENSE_GUIDE_WARN_GB`).
 
 - **`tensors/tensor_manager.py`** — `TensorManager`: maps ragged per-genotype observations into JAX-compatible tensors.
 

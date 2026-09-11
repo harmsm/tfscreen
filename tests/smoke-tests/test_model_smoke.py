@@ -132,8 +132,12 @@ def test_model_svi_smoke(growth_smoke_csv,
     # Initialize RunInference
     inference = RunInference(model=model, seed=42)
     
-    # Setup SVI
-    svi = inference.setup_svi(adam_step_size=1e-3)
+    # Setup SVI. beta theta_growth_noise's per-observation latent is
+    # batch-shaped, which no autoguide (AutoDelta included) can fit -- see
+    # inference/batch_safety.py -- so exercise it through the component guide.
+    guide_type = ("component" if config.get("theta_growth_noise") == "beta"
+                  else "delta")
+    svi = inference.setup_svi(adam_step_size=1e-3, guide_type=guide_type)
     
     # Run a very short optimization
     # We only run for a few steps to verify it doesn't crash

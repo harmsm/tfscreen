@@ -6,7 +6,10 @@ import pandas as pd
 import numpyro
 import numpyro.distributions as dist
 import h5py
-from tfscreen.tfmodel.inference.run_inference import RunInference
+from tfscreen.tfmodel.inference.run_inference import (
+    RunInference,
+    resolve_guide_type,
+)
 import os
 import dill
 import optax
@@ -650,6 +653,77 @@ def test_setup_svi_invalid_guide_type():
     ri = RunInference(model, seed=42)
     with pytest.raises(ValueError, match="not recognized"):
         ri.setup_svi(guide_type="bad_guide")
+
+
+@pytest.mark.parametrize("guide_type,cls_name", [
+    ("delta", "AutoDelta"),
+    ("auto_normal", "AutoNormal"),
+    ("auto_diagonal_normal", "AutoDiagonalNormal"),
+    ("auto_multivariate_normal", "AutoMultivariateNormal"),
+    ("auto_low_rank_multivariate_normal", "AutoLowRankMultivariateNormal"),
+])
+def test_setup_svi_builds_autoguide(guide_type, cls_name):
+    from numpyro.infer import autoguide
+    ri = RunInference(MockModel(), seed=42)
+    svi = ri.setup_svi(guide_type=guide_type)
+    assert isinstance(svi.guide, getattr(autoguide, cls_name))
+    assert ri._guide_type == guide_type
+
+
+@pytest.mark.parametrize("alias,canonical", [
+    ("AutoNormal", "auto_normal"),
+    ("AUTO_NORMAL", "auto_normal"),
+    ("AutoDelta", "delta"),
+    ("auto_delta", "delta"),
+    ("autolowrankmultivariatenormal", "auto_low_rank_multivariate_normal"),
+    ("Component", "component"),
+])
+def test_resolve_guide_type_aliases(alias, canonical):
+    assert resolve_guide_type(alias) == canonical
+
+
+def test_setup_svi_forwards_guide_kwargs():
+    ri = RunInference(MockModel(), seed=42)
+    svi = ri.setup_svi(guide_type="auto_low_rank_multivariate_normal",
+                       guide_kwargs={"rank": 3, "init_scale": 0.05})
+    assert svi.guide.rank == 3
+    assert svi.guide._init_scale == 0.05
+    assert ri._guide_kwargs == {"rank": 3, "init_scale": 0.05}
+
+
+@pytest.mark.parametrize("guide_type,kwargs", [
+    ("auto_normal", {"rank": 3}),
+    ("delta", {"init_scale": 0.1}),
+    ("component", {"init_scale": 0.1}),
+])
+def test_setup_svi_rejects_unaccepted_kwargs(guide_type, kwargs):
+    ri = RunInference(MockModel(), seed=42)
+    with pytest.raises(ValueError, match="not accepted"):
+        ri.setup_svi(guide_type=guide_type, guide_kwargs=kwargs)
+
+
+def test_setup_svi_component_rejects_init_values():
+    ri = RunInference(MockModel(), seed=42)
+    with pytest.raises(ValueError, match="init_values"):
+        ri.setup_svi(guide_type="component", init_values={"a": 1.0})
+
+
+def test_setup_svi_init_values_become_init_loc_fn():
+    ri = RunInference(MockModel(), seed=42)
+    values = {"global_p": 1.0}
+    svi = ri.setup_svi(guide_type="auto_normal", init_values=values)
+    assert svi.guide.init_loc_fn.keywords["values"] is values
+
+
+def test_checkpoint_records_guide(tmpdir):
+    ri = RunInference(MockModel(), seed=42)
+    ri.setup_svi(guide_type="auto_normal", guide_kwargs={"init_scale": 0.2})
+    out_prefix = os.path.join(tmpdir, "guide_meta")
+    ri._write_checkpoint({"dummy": np.zeros(2)}, out_prefix)
+    with open(f"{out_prefix}_checkpoint.pkl", "rb") as f:
+        saved = dill.load(f)
+    assert saved["guide_type"] == "auto_normal"
+    assert saved["guide_kwargs"] == {"init_scale": 0.2}
 
 def test_restore_checkpoint_current_step(tmpdir):
     """_restore_checkpoint restores _current_step when present in checkpoint."""
