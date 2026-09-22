@@ -35,6 +35,11 @@ import numpyro.distributions as dist
 
 _DEFAULT_D0 = 8.0  # Å — residues within ~8 Å Cα-Cα are considered contacts
 
+# Floor on the distance-dependent λ scale. exp(-d/d0) underflows to exactly 0
+# for very distant pairs (d ≳ 100·d0 in float32), and a zero HalfCauchy scale
+# is invalid. 1e-12 only binds beyond ~28·d0, where λ is effectively zero anyway.
+_MIN_LAM_SCALE = 1e-12
+
 
 def sample_pair_ddG(name, struct_names, contact_distances,
                     tau_scale=0.1, slab_scale=2.0, slab_df=4.0,
@@ -81,7 +86,7 @@ def sample_pair_ddG(name, struct_names, contact_distances,
 
     # Distance-dependent prior scale for local shrinkage:
     # close contacts (small dist) → scale ≈ 1; distant → scale → 0
-    lam_scale = jnp.exp(-dists / d0)    # (P, S)
+    lam_scale = jnp.maximum(jnp.exp(-dists / d0), _MIN_LAM_SCALE)    # (P, S)
 
     # Sample per-(pair, struct) local scales and offsets.
     # Plates: struct dim=-2 (outer), pair dim=-1 (inner) → shapes (S, P).

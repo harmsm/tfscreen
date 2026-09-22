@@ -279,11 +279,17 @@ class TestDistributionLogProbs:
         expected = -0.5 * math.log(2 * math.pi) - math.log(0.05)
         npt.assert_allclose(lp, expected, rtol=1e-5)
 
-    def test_half_normal_at_zero(self):
-        """HalfNormal(scale).log_prob(0) = log(2) - log(scale) - 0.5*log(2*pi)."""
-        lp = float(dist.HalfNormal(1.0).log_prob(jnp.array(0.0)))
+    def test_half_normal_known_value(self):
+        """HalfNormal(s).log_prob(x) = log(2) - log(s) - 0.5*log(2*pi) - x²/(2s²).
+
+        Evaluated at x > 0: numpyro >= 0.20 treats the support as open, so
+        log_prob(0) is -inf rather than the x→0 limit.
+        """
+        x, s = 0.3, 1.5
+        lp = float(dist.HalfNormal(s).log_prob(jnp.array(x)))
         import math
-        expected = math.log(2) - math.log(1.0) - 0.5 * math.log(2 * math.pi)
+        expected = (math.log(2) - math.log(s) - 0.5 * math.log(2 * math.pi)
+                    - x**2 / (2 * s**2))
         npt.assert_allclose(lp, expected, rtol=1e-5)
 
     def test_gamma_known_value(self):

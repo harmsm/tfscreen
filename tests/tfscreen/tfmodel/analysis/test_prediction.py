@@ -15,6 +15,17 @@ from tfscreen.tfmodel.analysis.prediction import (
     predict,
 )
 
+
+def _feasible_draw(site):
+    """
+    One-draw fake posterior value for a traced sample site: zeros for
+    real-support sites, a valid in-support value (e.g. ones) for constrained
+    ones. Plain zeros put positive-support sites (noise sigmas, scales) on
+    the boundary, which numpyro >= 0.20 rejects as an invalid scale.
+    """
+    value = site["fn"].support.feasible_like(site["value"])
+    return np.asarray(value)[None, ...]
+
 @pytest.fixture
 def dummy_orchestrator():
     """Create a dummy ModelOrchestrator instance for testing."""
@@ -489,7 +500,7 @@ class TestPredictPriorsPropagate:
             priors=dummy_orchestrator.priors,
         )
         fake_posteriors = {
-            name: np.zeros((1,) + site["value"].shape)
+            name: _feasible_draw(site)
             for name, site in model_tr.items()
             if site["type"] == "sample" and not site.get("is_observed", False)
         }
@@ -599,7 +610,7 @@ class TestPredictPopulationReferenceThreading:
             priors=orchestrator.priors,
         )
         fake_posteriors = {
-            name: np.zeros((1,) + site["value"].shape)
+            name: _feasible_draw(site)
             for name, site in model_tr.items()
             if site["type"] == "sample" and not site.get("is_observed", False)
         }
@@ -672,7 +683,7 @@ class TestPredictPopulationReferenceThreading:
             data=single_orchestrator.data, priors=single_orchestrator.priors,
         )
         fake_posteriors = {
-            name: np.zeros((1,) + site["value"].shape)
+            name: _feasible_draw(site)
             for name, site in model_tr.items()
             if site["type"] == "sample" and not site.get("is_observed", False)
         }
@@ -743,7 +754,7 @@ class TestPredictConditionRepSites:
             data=orchestrator.data, priors=orchestrator.priors,
         )
         fake_posteriors = {
-            name: np.zeros((1,) + site["value"].shape)
+            name: _feasible_draw(site)
             for name, site in model_tr.items()
             if site["type"] == "sample" and not site.get("is_observed", False)
         }
