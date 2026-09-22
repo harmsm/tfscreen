@@ -11,7 +11,9 @@ from typing import (
 )
 
 def get_scaled_cfu(
-    df: pd.DataFrame, need_columns: Optional[Iterable[str]] = None
+    df: pd.DataFrame,
+    need_columns: Optional[Iterable[str]] = None,
+    prefix: str = ""
 ) -> pd.DataFrame:
     """Ensures a DataFrame contains specified CFU-related columns.
 
@@ -28,6 +30,12 @@ def get_scaled_cfu(
     need_columns : iterable of str, optional
         A list or set of column names that must be present in the output
         DataFrame. If None or empty, the original DataFrame is returned.
+        Names are given without `prefix` (e.g. 'ln_cfu', not
+        'sample_ln_cfu').
+    prefix : str, optional
+        Prefix shared by every CFU column this call reads and writes. For
+        example, ``prefix="sample_"`` infers 'sample_ln_cfu' from
+        'sample_cfu' and ignores any unprefixed 'cfu' columns. Default ''.
 
     Returns
     -------
@@ -73,6 +81,24 @@ def get_scaled_cfu(
     invalid_cols = need_columns - VALID_COLS
     if invalid_cols:
         raise ValueError(f"Invalid column(s) requested: {', '.join(invalid_cols)}")
+
+    # With a prefix, strip it, run the unprefixed calculation on just the
+    # prefixed columns, then add the new columns back under the prefix.
+    if prefix:
+        to_base = {f"{prefix}{c}": c for c in VALID_COLS if f"{prefix}{c}" in df.columns}
+        base_df = df[list(to_base)].rename(columns=to_base)
+        try:
+            base_df = get_scaled_cfu(base_df, need_columns=need_columns)
+        except ValueError:
+            missing = sorted(f"{prefix}{c}" for c in need_columns - set(base_df.columns))
+            raise ValueError(
+                f"Could not calculate the following columns: {missing}. "
+                "Insufficient source data in the DataFrame."
+            )
+        new_cols = [c for c in base_df.columns if c not in to_base.values()]
+        if not new_cols:
+            return df
+        return df.join(base_df[new_cols].add_prefix(prefix))
     
     if need_columns.issubset(df.columns):
         return df

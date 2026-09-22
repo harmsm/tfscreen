@@ -49,10 +49,17 @@ def test_process_counts_orchestration(
     )
 
     mock_prep.assert_called_once_with(fx_sample_df, "/counts/path", "test_prefix", False)
-    mock_agg.assert_called_once_with(df_prepped)
-    mock_lncfu.assert_called_once_with(
-        df_prepped, df_aggregated, min_genotype_obs=20, pseudocount=2
-    )
+    # sample_ln_cfu/_std are inferred before counts are aggregated
+    mock_agg.assert_called_once()
+    handed_off = mock_agg.call_args.args[0]
+    assert {"sample_ln_cfu", "sample_ln_cfu_std"} <= set(handed_off.columns)
+    pd.testing.assert_frame_equal(handed_off[df_prepped.columns], df_prepped)
+
+    mock_lncfu.assert_called_once()
+    args, kwargs = mock_lncfu.call_args
+    assert args[0] is handed_off
+    assert args[1] is df_aggregated
+    assert kwargs == {"min_genotype_obs": 20, "pseudocount": 2}
     mock_to_csv.assert_called_once_with("/out/final.csv", index=False)
 
 
@@ -67,7 +74,7 @@ def test_process_counts_missing_cfu_columns(tmp_path):
     prepped["obs_file"] = "dummy.csv"
 
     with patch('tfscreen.process_raw.scripts.process_counts_cli._prep_sample_df', return_value=prepped):
-        with pytest.raises(ValueError, match="Not all required columns seen"):
+        with pytest.raises(ValueError, match="sample_ln_cfu_std"):
             process_counts(
                 sample_df=bad_df,
                 counts_csv_path=str(tmp_path),

@@ -10,6 +10,7 @@ from tfscreen.process_raw.counts_to_lncfu import (
     _impute_missing_genotypes,
     _calculate_frequencies,
     _calculate_concentrations_and_variance,
+    get_sample_ln_cfu,
     counts_to_lncfu
 )
 
@@ -151,8 +152,8 @@ def test_calculate_concentrations_and_variance():
     df = pd.DataFrame({
         'sample': ['s1'],
         'frequency': [0.9],
-        'sample_cfu': [1e8],         # Original sample-level data
-        'sample_cfu_std': [1e7],   # Original sample-level data
+        'sample_ln_cfu': [np.log(1e8)],   # Original sample-level data
+        'sample_ln_cfu_std': [0.1],       # = 1e7/1e8
         'adjusted_counts': [91]
     })
     # The Sigma x + b denominator is now supplied explicitly (the sample had a
@@ -180,10 +181,14 @@ def test_calculate_concentrations_and_variance():
     assert np.isclose(result['cfu'].iloc[0], expected_genotype_cfu)
     assert np.isclose(result['cfu_var'].iloc[0], expected_genotype_var)
 
-    # FIX: Check that the RENAMED columns contain the ORIGINAL sample data
-    assert 'ln_cfu' in result.columns
-    assert 'ln_cfu_var' in result.columns
-    assert np.isclose(result['sample_cfu'].iloc[0], sample_cfu)
+    # Log-space values: ln_cfu = ln(freq) + sample_ln_cfu, and ln_cfu_var is
+    # the summed relative variance
+    assert np.isclose(result['ln_cfu'].iloc[0], np.log(freq * sample_cfu))
+    assert np.isclose(result['ln_cfu_var'].iloc[0],
+                      rel_var_freq + rel_var_sample_cfu)
+
+    # Sample-level data is preserved
+    assert np.isclose(result['sample_ln_cfu'].iloc[0], np.log(sample_cfu))
 
 
 def test_calculate_concentrations_zero_cfu():
@@ -194,8 +199,8 @@ def test_calculate_concentrations_zero_cfu():
     df = pd.DataFrame({
         'sample': ['s1'],
         'frequency': [0.0],
-        'sample_cfu': [1e8],
-        'sample_cfu_std': [1e7],
+        'sample_ln_cfu': [np.log(1e8)],
+        'sample_ln_cfu_std': [0.1],
         'adjusted_counts': [100]
     })
     total_counts_per_sample = pd.Series({'s1': 100})
@@ -318,3 +323,81 @@ def test_counts_to_lncfu_all_filtered(sample_df, counts_df, mocker):
     # Set min_obs so high that all genotypes are removed
     result = counts_to_lncfu(sample_df, counts_df, min_genotype_obs=1000)
     assert result.empty
+
+
+# ---- Tests for sample ln_cfu inference ----
+
+def test_get_sample_ln_cfu_from_linear():
+    """sample_ln_cfu/_std are inferred from sample_cfu/_std."""
+    df = pd.DataFrame({'sample_cfu': [1e8, 2e7],
+                       'sample_cfu_std': [1e7, 4e6]},
+                      index=pd.Index(['s1', 's2'], name='sample'))
+    result = get_sample_ln_cfu(df)
+    np.testing.assert_allclose(result['sample_ln_cfu'], np.log([1e8, 2e7]))
+    np.testing.assert_allclose(result['sample_ln_cfu_std'], [0.1, 0.2])
+    # Original columns kept
+    assert 'sample_cfu' in result.columns
+
+
+def test_get_sample_ln_cfu_from_ln_var():
+    """sample_ln_cfu_std is inferred from sample_ln_cfu_var."""
+    df = pd.DataFrame({'sample_ln_cfu': [18.0],
+                       'sample_ln_cfu_var': [0.04]},
+                      index=pd.Index(['s1'], name='sample'))
+    result = get_sample_ln_cfu(df)
+    np.testing.assert_allclose(result['sample_ln_cfu_std'], [0.2])
+
+
+def test_get_sample_ln_cfu_log_space_wins():
+    """When log-space columns exist, linear-space columns are not used."""
+    df = pd.DataFrame({'sample_ln_cfu': [18.0],
+                       'sample_ln_cfu_std': [0.3],
+                       'sample_cfu': [1e8],
+                       'sample_cfu_std': [1e7]},
+                      index=pd.Index(['s1'], name='sample'))
+    result = get_sample_ln_cfu(df)
+    assert result['sample_ln_cfu'].iloc[0] == 18.0
+    assert result['sample_ln_cfu_std'].iloc[0] == 0.3
+
+
+def test_get_sample_ln_cfu_ignores_unprefixed_columns():
+    """Unprefixed cfu columns must not be used to infer sample columns."""
+    df = pd.DataFrame({'sample_cfu': [1e8],
+                       'cfu_std': [1e7]},
+                      index=pd.Index(['s1'], name='sample'))
+    with pytest.raises(ValueError, match="sample_ln_cfu_std"):
+        get_sample_ln_cfu(df)
+
+
+@pytest.mark.parametrize("cols", [
+    {},
+    {'sample_cfu': [1e8]},
+    {'sample_cfu_std': [1e7]},
+    {'sample_ln_cfu': [18.0]},
+])
+def test_get_sample_ln_cfu_insufficient(cols):
+    df = pd.DataFrame({'library': ['libA'], **cols},
+                      index=pd.Index(['s1'], name='sample'))
+    with pytest.raises(ValueError, match="sample_df must give"):
+        get_sample_ln_cfu(df)
+
+
+def test_counts_to_lncfu_log_and_linear_inputs_agree(sample_df, counts_df, mocker):
+    """Supplying sample_ln_cfu/_std gives the same result as sample_cfu/_std."""
+    mocker.patch('tfscreen.process_raw.counts_to_lncfu.read_dataframe',
+                 side_effect=lambda df, **kwargs: df.copy())
+    mocker.patch(
+        'tfscreen.process_raw.counts_to_lncfu.set_categorical_genotype',
+        side_effect=lambda df, standardize, sort: df.sort_values("genotype")
+    )
+
+    lin = counts_to_lncfu(sample_df, counts_df)
+
+    ln_sample_df = sample_df.drop(columns=['sample_cfu', 'sample_cfu_std'])
+    ln_sample_df['sample_ln_cfu'] = np.log(sample_df['sample_cfu'])
+    ln_sample_df['sample_ln_cfu_std'] = (sample_df['sample_cfu_std'] /
+                                         sample_df['sample_cfu'])
+    log = counts_to_lncfu(ln_sample_df, counts_df)
+
+    for col in ['ln_cfu', 'ln_cfu_var', 'cfu', 'cfu_var']:
+        np.testing.assert_allclose(log[col], lin[col])

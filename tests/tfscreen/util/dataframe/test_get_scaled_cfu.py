@@ -144,3 +144,29 @@ def test_already_present_columns_returns_original_df():
     # --- FIX is here: Assert 'is' not 'is not' ---
     assert result_df is df
     pd.testing.assert_frame_equal(result_df, df)
+
+def test_prefix_infers_prefixed_columns():
+    """With a prefix, only prefixed columns are read and written."""
+    df = pd.DataFrame({'sample_cfu': [100.0], 'sample_cfu_std': [10.0],
+                       'cfu': [5.0], 'other': [1]})
+    result = get_scaled_cfu(df, need_columns=['ln_cfu', 'ln_cfu_std'],
+                            prefix='sample_')
+    assert np.isclose(result['sample_ln_cfu'].iloc[0], np.log(100))
+    assert np.isclose(result['sample_ln_cfu_std'].iloc[0], 0.1)
+    # Unprefixed columns untouched and no unprefixed columns added
+    assert 'ln_cfu' not in result.columns
+    assert result['cfu'].iloc[0] == 5.0
+    assert result['other'].iloc[0] == 1
+
+
+def test_prefix_present_returns_original_df():
+    df = pd.DataFrame({'sample_ln_cfu': [1.0], 'sample_ln_cfu_std': [0.1]})
+    result = get_scaled_cfu(df, need_columns=['ln_cfu', 'ln_cfu_std'],
+                            prefix='sample_')
+    assert result is df
+
+
+def test_prefix_insufficient_names_prefixed_columns():
+    df = pd.DataFrame({'sample_cfu': [100.0], 'cfu_std': [10.0]})
+    with pytest.raises(ValueError, match="sample_ln_cfu_std"):
+        get_scaled_cfu(df, need_columns=['ln_cfu_std'], prefix='sample_')
