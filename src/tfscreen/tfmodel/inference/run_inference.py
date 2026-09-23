@@ -12,6 +12,7 @@ from numpyro.infer import (
     Predictive,
 )
 from numpyro.infer import autoguide
+from numpyro.infer.initialization import init_to_value
 from numpyro.optim import ClippedAdam
 import numpy as np
 import dill
@@ -22,10 +23,64 @@ from tfscreen.tfmodel.inference.batch_safety import (
     orchestrator_latent_dimension,
 )
 
-_HDF5_MAX_CHUNK_BYTES = 1 << 30  # 1 GiB; HDF5 hard-limit is 4 GiB
+# Autoguides selectable through setup_svi(guide_type=...), keyed by the
+# snake_case form of the numpyro class name ('delta' keeps its historical short
+# name).  'component' -- the guide assembled from the model components -- is
+# handled separately.
+AUTOGUIDES = {
+    "delta": autoguide.AutoDelta,
+    "auto_normal": autoguide.AutoNormal,
+    "auto_diagonal_normal": autoguide.AutoDiagonalNormal,
+    "auto_multivariate_normal": autoguide.AutoMultivariateNormal,
+    "auto_low_rank_multivariate_normal": autoguide.AutoLowRankMultivariateNormal,
+}
+GUIDE_TYPES = ("component",) + tuple(AUTOGUIDES)
 
-# Warn when a dense AutoMultivariateNormal covariance exceeds this (GB).
+# guide_kwargs each guide accepts (init_loc_fn is set through init_values).
+_AUTOGUIDE_KWARGS = {
+    "component": set(),
+    "delta": set(),
+    "auto_normal": {"init_scale"},
+    "auto_diagonal_normal": {"init_scale"},
+    "auto_multivariate_normal": {"init_scale"},
+    "auto_low_rank_multivariate_normal": {"init_scale", "rank"},
+}
+
+# Case-insensitive aliases: numpyro class names, plus 'auto_delta'.
+_GUIDE_ALIASES = {cls.__name__.lower(): name for name, cls in AUTOGUIDES.items()}
+_GUIDE_ALIASES["auto_delta"] = "delta"
+
+# Warn when the dense auto_multivariate_normal covariance exceeds this (GB).
 _DENSE_GUIDE_WARN_GB = 4.0
+
+
+def resolve_guide_type(guide_type):
+    """Return the canonical ``GUIDE_TYPES`` name for ``guide_type``."""
+
+    key = str(guide_type).lower()
+    key = _GUIDE_ALIASES.get(key, key)
+    if key not in GUIDE_TYPES:
+        raise ValueError(
+            f"guide_type '{guide_type}' not recognized. It should be one of "
+            f"{list(GUIDE_TYPES)} (numpyro class names such as 'AutoNormal' "
+            f"are also accepted)."
+        )
+    return key
+
+
+def check_guide_kwargs(guide_type, guide_kwargs):
+    """Raise ValueError if ``guide_kwargs`` has keys ``guide_type`` rejects."""
+
+    guide_type = resolve_guide_type(guide_type)
+    accepted = _AUTOGUIDE_KWARGS[guide_type]
+    unknown = set(guide_kwargs or {}) - accepted
+    if unknown:
+        raise ValueError(
+            f"guide option(s) {sorted(unknown)} not accepted by guide_type "
+            f"'{guide_type}' (accepted: {sorted(accepted) or 'none'})."
+        )
+
+_HDF5_MAX_CHUNK_BYTES = 1 << 30  # 1 GiB; HDF5 hard-limit is 4 GiB
 
 def _safe_chunks(first_dim, trailing_shape, dtype):
     """Return a chunk tuple whose total byte size stays under _HDF5_MAX_CHUNK_BYTES."""
@@ -93,41 +148,84 @@ class RunInference:
 
         self._patience_counter = 0
 
+        # Set by setup_svi and written into checkpoints.
+        self._guide_type = None
+        self._guide_kwargs = {}
+
 
     def setup_svi(self,
                   adam_step_size=1e-6,
                   adam_clip_norm=1.0,
                   elbo_num_particles=2,
-                  guide_type="delta"):
+                  guide_type="delta",
+                  guide_kwargs=None,
+                  init_values=None):
         """
-        Set up SVI. 
+        Set up SVI.
 
         Parameters
         ----------
         adam_step_size : float or callable, optional
-            Step size for the ClippedAdam optimizer. Can be a fixed float or 
+            Step size for the ClippedAdam optimizer. Can be a fixed float or
              a callable (e.g., an optax schedule).
         adam_clip_norm : float, optional
             Gradient clipping norm for the ClippedAdam optimizer.
         elbo_num_particles : int, optional
             Number of particles for ELBO estimation.
         guide_type : str, optional
-            Type of guide to use. 
-            - 'component' (default): Use the guide defined in the model components.
-            - 'delta': Use numpyro.infer.autoguide.AutoDelta. Sets up a MAP estimator. 
+            Variational family (default 'delta'); one of ``GUIDE_TYPES``.
+
+            - 'component': the guide assembled from the model components.
+            - 'delta': numpyro ``AutoDelta`` (MAP estimation).
+            - 'auto_normal', 'auto_diagonal_normal',
+              'auto_multivariate_normal', 'auto_low_rank_multivariate_normal':
+              the numpyro autoguide of the same name.
+
+            numpyro class names (e.g. 'AutoNormal') are also accepted,
+            case-insensitively.
+        guide_kwargs : dict or None, optional
+            Extra keyword arguments for an autoguide: ``init_scale`` (every
+            autoguide except 'delta') and ``rank``
+            ('auto_low_rank_multivariate_normal' only).
+        init_values : dict or None, optional
+            Constrained values keyed by model site name, used to initialize an
+            autoguide's location (``init_to_value``).  Sites not present fall
+            back to numpyro's uniform initialization.  Autoguides only.
 
         Returns
         -------
         numpyro.infer.SVI
             An SVI object
+
+        Raises
+        ------
+        ValueError
+            If ``guide_type`` is unknown, or if ``guide_kwargs``/``init_values``
+            are given for a guide that does not take them.  Whether the model
+            can be fit with an autoguide at all is checked when fitting starts
+            (``run_optimization``).
         """
 
-        if guide_type == "delta":
-            guide = numpyro.infer.autoguide.AutoDelta(self.model.jax_model)
-        elif guide_type == "component":
+        guide_type = resolve_guide_type(guide_type)
+        guide_kwargs = dict(guide_kwargs or {})
+        check_guide_kwargs(guide_type, guide_kwargs)
+
+        if guide_type == "component":
+            if init_values is not None:
+                raise ValueError(
+                    "init_values applies only to autoguides, not "
+                    "guide_type='component'."
+                )
             guide = self.model.jax_model_guide
         else:
-            raise ValueError(f"guide_type '{guide_type}' not recognized.")
+            ctor_kwargs = dict(guide_kwargs)
+            if init_values is not None:
+                ctor_kwargs["init_loc_fn"] = init_to_value(values=init_values)
+            guide = AUTOGUIDES[guide_type](self.model.jax_model, **ctor_kwargs)
+
+        # Recorded in checkpoints so the same guide can be rebuilt on restore.
+        self._guide_type = guide_type
+        self._guide_kwargs = guide_kwargs
 
         optimizer = ClippedAdam(step_size=adam_step_size,
                                 clip_norm=adam_clip_norm)   
@@ -136,7 +234,7 @@ class RunInference:
                   guide,
                   optimizer,
                   loss=Trace_ELBO(num_particles=elbo_num_particles))
-        
+
         return svi
 
     def _check_autoguide(self, guide):
@@ -151,16 +249,16 @@ class RunInference:
         Called when fitting starts, since fitting is what creates the aliasing.
         """
 
-        guide_name = type(guide).__name__
+        guide_type = self._guide_type or type(guide).__name__
 
         found = find_orchestrator_batch_dependent_latents(self.model)
         if found:
             raise ValueError(
-                f"{guide_name} cannot fit latent site(s) {sorted(found)}: "
-                f"their shape follows the genotype mini-batch rather than the "
-                f"library, so an autoguide would assign one genotype's value "
-                f"to another. Use guide_type='component', or a component "
-                f"whose latents are library-sized (e.g. "
+                f"guide_type '{guide_type}' cannot fit latent site(s) "
+                f"{sorted(found)}: their shape follows the genotype mini-batch "
+                f"rather than the library, so an autoguide would assign one "
+                f"genotype's value to another. Use guide_type='component', or "
+                f"a component whose latents are library-sized (e.g. "
                 f"theta_growth_noise='logit_normal' instead of 'beta'). See "
                 f"inference/batch_safety.py."
             )
@@ -169,12 +267,12 @@ class RunInference:
             dim = orchestrator_latent_dimension(self.model)
             # scale_tril plus Adam's two moment estimates, float32.
             gigabytes = 3 * dim * dim * 4 / 1e9
-            msg = (f"{guide_name}: {dim} latent dimensions; the dense "
-                   f"covariance needs ~{gigabytes:.3g} GB (parameters plus "
-                   f"optimizer state).")
+            msg = (f"auto_multivariate_normal: {dim} latent dimensions; the "
+                   f"dense covariance needs ~{gigabytes:.3g} GB (parameters "
+                   f"plus optimizer state).")
             if gigabytes > _DENSE_GUIDE_WARN_GB:
                 warnings.warn(msg + " Consider "
-                              "AutoLowRankMultivariateNormal.")
+                              "'auto_low_rank_multivariate_normal'.")
             else:
                 print(msg, flush=True)
 
@@ -689,6 +787,12 @@ class RunInference:
                                                 priors=self.model.priors,
                                                 data=full_data)
 
+                # Drop autoguide auxiliary sites (e.g. AutoContinuous's
+                # flattened "_auto_latent", shape (samples, D)); they are not
+                # model sites.
+                latent_samples = {k: v for k, v in latent_samples.items()
+                                  if not k.startswith("_")}
+
                 # Forward pass: iterate over genotype chunks with the JIT-compiled
                 # chunk_fn.  Each chunk is computed, transferred to CPU, and
                 # discarded from GPU before the next chunk runs, keeping GPU
@@ -830,7 +934,9 @@ class RunInference:
                     "svi_state":host_svi_state,
                     "current_step":self._current_step,
                     "loss_start":self._loss_start,
-                    "loss_best":self._loss_best}
+                    "loss_best":self._loss_best,
+                    "guide_type":self._guide_type,
+                    "guide_kwargs":self._guide_kwargs}
 
         tmp_checkpoint_file = f"{out_prefix}_checkpoint.tmp.pkl"
 
@@ -873,7 +979,9 @@ class RunInference:
                     "svi_state": host_svi_state,
                     "current_step": self._current_step,
                     "loss_start": self._loss_start,
-                    "loss_best": self._loss_best}
+                    "loss_best": self._loss_best,
+                    "guide_type": self._guide_type,
+                    "guide_kwargs": self._guide_kwargs}
 
         tmp_file = f"{epoch_file}.tmp"
         with open(tmp_file, "wb") as f:
@@ -882,8 +990,12 @@ class RunInference:
 
     def restore_svi_from_checkpoint(self, checkpoint_file, init_params=None):
         """
-        Rebuild a component SVI object and restore its state from a checkpoint,
+        Rebuild the SVI object recorded in a checkpoint and restore its state,
         without running any optimization steps or convergence checks.
+
+        The guide is rebuilt from the checkpoint's ``guide_type`` and
+        ``guide_kwargs``.  Checkpoints written before those were recorded are
+        treated as component-guide checkpoints (the only SVI guide then).
 
         ``svi.init()`` must be called at least once to wire up ``constrain_fn``
         on the SVI object before ``svi.get_params()`` can be used.  The state
@@ -895,9 +1007,11 @@ class RunInference:
         checkpoint_file : str
             Path to the checkpoint .pkl file produced by tfs-fit-model.
         init_params : dict or None, optional
-            Initial parameter values forwarded to ``svi.init()``.  The values
-            are never used in inference (the checkpoint overwrites them), but
-            they must be structurally valid for the model.
+            Initial parameter values forwarded to ``svi.init()`` for a
+            component guide.  The values are never used in inference (the
+            checkpoint overwrites them), but they must be structurally valid
+            for the model.  Ignored for autoguides, whose parameter names
+            differ from the component guide's.
 
         Returns
         -------
@@ -906,7 +1020,14 @@ class RunInference:
         svi_state : numpyro.infer.svi.SVIState
             Optimizer state restored from the checkpoint.
         """
-        svi = self.setup_svi(guide_type="component")
+        with open(checkpoint_file, "rb") as f:
+            checkpoint_data = dill.load(f)
+        guide_type = checkpoint_data.get("guide_type") or "component"
+        guide_kwargs = checkpoint_data.get("guide_kwargs") or None
+
+        svi = self.setup_svi(guide_type=guide_type, guide_kwargs=guide_kwargs)
+        if self._guide_type != "component":
+            init_params = None
 
         # init() is required to populate svi.constrain_fn; the resulting state
         # is thrown away — the checkpoint state is used instead.

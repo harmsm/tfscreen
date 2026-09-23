@@ -144,6 +144,68 @@ def test_configure_run_pipeline_smoke(tmpdir, library_smoke_yaml):
 
 
 @pytest.mark.slow
+@pytest.mark.parametrize("guide_type", ["auto_normal",
+                                        "auto_low_rank_multivariate_normal"])
+def test_configure_run_autoguide_smoke(tmpdir, guide_type, library_smoke_yaml):
+    """
+    configure -> fit-model --guide_type <autoguide> (warm-started from the
+    pre-MAP point) -> sample-posterior, restoring the guide from the
+    checkpoint's recorded guide_type.
+    """
+    import h5py
+
+    growth_df = pd.DataFrame({
+        "library": ["lib", "lib"],
+        "replicate": ["R1", "R1"],
+        "condition_pre": ["C1-", "C1-"],
+        "condition_sel": ["C2+", "C2+"],
+        "genotype": ["M42I", "L45P"],
+        "t": [0, 10],
+        "t_sel": [0, 10],
+        "t_pre": [12, 12],
+        "ln_cfu": [1.0, 2.0],
+        "ln_cfu_std": [0.1, 0.1],
+        "titrant_name": ["T1", "T1"],
+        "titrant_conc": [0.1, 0.1]
+    })
+    growth_path = os.path.join(tmpdir, "test_growth.csv")
+    growth_df.to_csv(growth_path, index=False)
+
+    binding_df = pd.DataFrame({
+        "genotype": ["M42I", "L45P"],
+        "titrant_name": ["T1", "T1"],
+        "titrant_conc": [0.1, 0.1],
+        "theta_obs": [0.5, 0.6],
+        "theta_std": [0.05, 0.05]
+    })
+    binding_path = os.path.join(tmpdir, "test_binding.csv")
+    binding_df.to_csv(binding_path, index=False)
+
+    cfg_prefix = os.path.join(tmpdir, "test_tfs")
+    configure_model(binding_path, growth_df=growth_path,
+                    library_config=library_smoke_yaml, out_prefix=cfg_prefix)
+    config_file = f"{cfg_prefix}_config.yaml"
+
+    out_prefix = os.path.join(tmpdir, "test_tfs_auto")
+    fit_model(config_file=config_file,
+              seed=42,
+              max_num_epochs=1,
+              pre_map_num_epoch=2,
+              guide_type=guide_type,
+              out_prefix=out_prefix)
+
+    sample_posterior(config_file=config_file,
+                     checkpoint_file=f"{out_prefix}_checkpoint.pkl",
+                     out_prefix=f"{out_prefix}_posterior",
+                     num_posterior_samples=10,
+                     sampling_batch_size=10)
+
+    with h5py.File(f"{out_prefix}_posterior.h5", "r") as hf:
+        assert hf.attrs["num_samples"] == 10
+        assert not any(k.startswith("_") for k in hf)
+
+
+@pytest.mark.slow
 def test_configure_run_binding_weight_smoke(tmpdir, library_smoke_yaml):
     """
     Smoke test for the binding_weight feature end-to-end.

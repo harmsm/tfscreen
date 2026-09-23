@@ -29,6 +29,37 @@ fall into two kinds:
 
 ## [Unreleased]
 
+### Added
+
+- **Guide selection for SVI (`tfs-fit-model --guide_type`).** With
+  `analysis_method=svi`, the variational family can now be any numpyro
+  autoguide as well as the component guide (still the default):
+  `delta`, `auto_normal`, `auto_diagonal_normal`, `auto_multivariate_normal`
+  or `auto_low_rank_multivariate_normal`. Numpyro class names such as
+  `AutoNormal` are accepted, case-insensitively. `--guide_rank` sets the rank
+  of `auto_low_rank_multivariate_normal`, and `--guide_init_scale` sets an
+  autoguide's initial scale. An option the chosen guide does not take is
+  refused before any fitting starts, as is any guide option with
+  `analysis_method` `map` or `nuts`.
+  - `RunInference.setup_svi` takes `guide_type`, `guide_kwargs` and
+    `init_values` (constrained site values an autoguide's location starts
+    from, via `init_to_value`). The registry is `AUTOGUIDES`/`GUIDE_TYPES` in
+    `inference/run_inference.py`, with `resolve_guide_type` and
+    `check_guide_kwargs`.
+  - An autoguide starts from the pre-MAP solution when `pre_map_num_epoch > 0`,
+    and from the configured guesses otherwise.
+  - Checkpoints record `guide_type` and `guide_kwargs`.
+    `restore_svi_from_checkpoint` rebuilds that guide; a checkpoint written
+    before this change is treated as a component-guide checkpoint.
+    `tfs-fit-model` refuses to resume a checkpoint with a different guide.
+  - `tfs-sample-posterior` sends `delta` checkpoints to the Laplace
+    approximation and every other guide to guide sampling. It routes by the
+    recorded `guide_type`, because `AutoNormal` parameters share AutoDelta's
+    `{site}_auto_loc` names. Older checkpoints still fall back to that name
+    check.
+  - `get_posteriors` drops autoguide auxiliary sites (names starting with
+    `_`, such as `AutoContinuous`'s `_auto_latent`) before the forward pass.
+
 ### Fixed
 
 - **Per-genotype latents scrambled across genotypes under autoguides.**

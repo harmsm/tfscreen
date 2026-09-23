@@ -79,10 +79,19 @@ def sample_posterior(config_file,
                                out_prefix=ri_prefix,
                                forward_batch_size=forward_batch_size)
     else:
-        temp_svi = ri.setup_svi(guide_type="delta")
-        chk_params = temp_svi.optim.get_params(chk_data["svi_state"].optim_state)
+        # Checkpoints record the guide that wrote them.  Older ones do not;
+        # there the only autoguide was AutoDelta (MAP), recognizable by its
+        # "{site}_auto_loc" parameter names.
+        guide_type = chk_data.get("guide_type")
+        if guide_type is None or guide_type == "delta":
+            temp_svi = ri.setup_svi(guide_type="delta")
+            chk_params = temp_svi.optim.get_params(chk_data["svi_state"].optim_state)
+            is_map = (guide_type == "delta"
+                      or any("_auto_loc" in k for k in chk_params))
+        else:
+            is_map = False
 
-        if any("_auto_loc" in k for k in chk_params):
+        if is_map:
             # MAP checkpoint: Hessian-based Laplace approximation.
             print("Detected MAP checkpoint. Drawing Laplace posterior samples...", flush=True)
             ri.get_laplace_posteriors(
