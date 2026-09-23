@@ -11,12 +11,21 @@ from numpyro.infer import (
     Trace_ELBO,
     Predictive,
 )
+from numpyro.infer import autoguide
 from numpyro.optim import ClippedAdam
 import numpy as np
 import dill
 from tqdm.auto import tqdm
 
+from tfscreen.tfmodel.inference.batch_safety import (
+    find_orchestrator_batch_dependent_latents,
+    orchestrator_latent_dimension,
+)
+
 _HDF5_MAX_CHUNK_BYTES = 1 << 30  # 1 GiB; HDF5 hard-limit is 4 GiB
+
+# Warn when a dense AutoMultivariateNormal covariance exceeds this (GB).
+_DENSE_GUIDE_WARN_GB = 4.0
 
 def _safe_chunks(first_dim, trailing_shape, dtype):
     """Return a chunk tuple whose total byte size stays under _HDF5_MAX_CHUNK_BYTES."""
@@ -28,6 +37,7 @@ def _safe_chunks(first_dim, trailing_shape, dtype):
 from collections import deque
 from functools import partial
 import os
+import warnings
 import h5py
 class RunInference:
     """
@@ -129,6 +139,45 @@ class RunInference:
         
         return svi
 
+    def _check_autoguide(self, guide):
+        """
+        Refuse an autoguide the model cannot support; report dense-guide size.
+
+        Autoguides size their parameters from a traced batch, so a latent whose
+        shape follows the genotype batch would get one parameter per batch
+        position instead of per genotype -- at any batch size, because the
+        full-batch index is reshuffled every step.  The component guide is
+        exempt: it holds library-sized parameters and slices them itself.
+        Called when fitting starts, since fitting is what creates the aliasing.
+        """
+
+        guide_name = type(guide).__name__
+
+        found = find_orchestrator_batch_dependent_latents(self.model)
+        if found:
+            raise ValueError(
+                f"{guide_name} cannot fit latent site(s) {sorted(found)}: "
+                f"their shape follows the genotype mini-batch rather than the "
+                f"library, so an autoguide would assign one genotype's value "
+                f"to another. Use guide_type='component', or a component "
+                f"whose latents are library-sized (e.g. "
+                f"theta_growth_noise='logit_normal' instead of 'beta'). See "
+                f"inference/batch_safety.py."
+            )
+
+        if isinstance(guide, autoguide.AutoMultivariateNormal):
+            dim = orchestrator_latent_dimension(self.model)
+            # scale_tril plus Adam's two moment estimates, float32.
+            gigabytes = 3 * dim * dim * 4 / 1e9
+            msg = (f"{guide_name}: {dim} latent dimensions; the dense "
+                   f"covariance needs ~{gigabytes:.3g} GB (parameters plus "
+                   f"optimizer state).")
+            if gigabytes > _DENSE_GUIDE_WARN_GB:
+                warnings.warn(msg + " Consider "
+                              "AutoLowRankMultivariateNormal.")
+            else:
+                print(msg, flush=True)
+
     def run_optimization(self,
                          svi,
                          svi_state=None,
@@ -198,7 +247,15 @@ class RunInference:
             If parameters explode to NaN during optimization.
         FileExistsError
             If a numbered epoch checkpoint file already exists.
+        ValueError
+            If ``svi`` uses a numpyro autoguide (AutoDelta included) and the
+            model has latents whose shape follows the genotype mini-batch
+            (see ``inference/batch_safety.py``).
         """
+
+        # Refuse an autoguide the model cannot support before any fitting.
+        if isinstance(svi.guide, autoguide.AutoGuide):
+            self._check_autoguide(svi.guide)
 
         # Set up update function (triggers jit)
         update_function = jax.jit(svi.update)
@@ -1057,6 +1114,28 @@ class RunInference:
             for k, v in unconstrained.items()
         }
 
+    @staticmethod
+    def _check_library_sized_latents(latents, dim_map, total_num_genotypes):
+        """
+        Raise if any genotype-indexed MAP latent is not library-sized.
+
+        A batch-sized latent (a MAP checkpoint written before per-genotype
+        latents were sampled at library size, or a component that cannot be
+        -- see inference/batch_safety.py) holds values fit per mini-batch
+        position, aliased across genotypes.  Refuse it rather than reuse one
+        genotype's value for another.  ``dim_map`` axes are negative, so
+        ``latents`` may or may not carry a leading sample axis.
+        """
+        for k, v in latents.items():
+            if k in dim_map and v.shape[dim_map[k]] != total_num_genotypes:
+                raise ValueError(
+                    f"MAP latent '{k}' has {v.shape[dim_map[k]]} entries along "
+                    f"the genotype axis but the library has "
+                    f"{total_num_genotypes} genotypes. Its values were fit per "
+                    f"mini-batch position, not per genotype, so they cannot "
+                    f"be mapped back onto genotypes. Refit the model."
+                )
+
     def get_map_posteriors(self,
                            map_params,
                            out_prefix,
@@ -1100,6 +1179,9 @@ class RunInference:
         # Add a leading sample dimension: (*shape) → (1, *shape)
         latent_samples = {k: jnp.expand_dims(v, 0) for k, v in constrained.items()}
 
+        self._check_library_sized_latents(latent_samples, dim_map,
+                                          total_num_genotypes)
+
         h5_file = f"{out_prefix}_posterior.h5"
 
         batch_collector = {}
@@ -1108,17 +1190,8 @@ class RunInference:
             end_idx = min(start_idx + forward_batch_size, total_num_genotypes)
             batch_indices = jnp.arange(start_idx, end_idx)
 
-            # Clip indices to the valid range for each latent before calling
-            # jnp.take.  On GPU, out-of-bounds jnp.take returns NaN; on CPU it
-            # usually clips silently.  MAP checkpoints trained with
-            # batch_size < N_geno have latent parameters sized to batch_size,
-            # so indices beyond that range must be clipped explicitly.
-            def _safe_take(v, idx, axis):
-                n = v.shape[axis if axis >= 0 else len(v.shape) + axis]
-                return jnp.take(v, jnp.clip(idx, 0, n - 1), axis=axis)
-
             batch_latents = {
-                k: _safe_take(v, batch_indices, dim_map[k])
+                k: jnp.take(v, batch_indices, axis=dim_map[k])
                 if k in dim_map else v
                 for k, v in latent_samples.items()
             }
@@ -1438,6 +1511,10 @@ class RunInference:
             for k, v in map_params.items()
             if k.endswith("_auto_loc")
         }
+
+        # Refuse aliased (batch-sized) latents before the costly Hessian.
+        self._check_library_sized_latents(unconstrained, dim_map,
+                                          total_num_genotypes)
 
         # Flatten to a single vector for Hessian computation
         flat_map, unravel = jax.flatten_util.ravel_pytree(unconstrained)

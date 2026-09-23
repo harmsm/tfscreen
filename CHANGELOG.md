@@ -29,7 +29,46 @@ fall into two kinds:
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **Per-genotype latents scrambled across genotypes under autoguides.**
+  Several components sampled their per-genotype latents in a plate sized
+  `data.batch_size`, so every numpyro autoguide -- including the `AutoDelta`
+  behind MAP, pre-MAP and `tfs-prefit-calibration` -- held one parameter per
+  batch *position* rather than per genotype. The full-batch index is
+  binding-first and reshuffled every step, so this happened even without
+  mini-batching: binding genotypes kept their positions, but every bulk
+  genotype's latents were overwritten by whichever genotype landed in that
+  position. The component SVI guide was not affected, since it holds
+  library-sized parameters and slices them itself.
+  - `activity/hierarchical_geno`, `activity/horseshoe_geno`,
+    `dk_geno/hierarchical_geno`, `ln_cfu0/hierarchical`,
+    `ln_cfu0/hierarchical_factored`, `theta/categorical_geno` and
+    `noise/logit_normal` now sample these latents in a library-sized
+    `{name}_genotype_plate` and slice them to the batch with
+    `data.batch_idx`. The latent priors and guides that were wrapped in
+    `scale_vector` no longer are; only the likelihood is scaled.
+  - The theta-noise components (`zero`, `beta`, `logit_normal`) take an
+    optional `data` argument, which `generative/model.py` now passes.
+  - `noise/beta` is a documented exception: its `{name}_dist` latent is the
+    noisy theta itself and remains batch-shaped.
+  - `RunInference.get_map_posteriors` and `get_laplace_posteriors` now raise
+    on a MAP checkpoint whose genotype-indexed latents are not library-sized,
+    instead of clipping the indices and reusing one genotype's value for
+    another. **MAP checkpoints written before this fix must be refit.**
+  - `draw_prior` no longer returns plate sites as if they were latents.
+- **New `tfmodel/inference/batch_safety.py`** detects batch-dependent latents
+  by tracing a model at two batch sizes (abstractly, under `jax.eval_shape`).
+  `tests/tfscreen/tfmodel/inference/test_batch_safety.py` runs it across the
+  component registry. `orchestrator_latent_dimension` gives the size of the
+  flattened latent vector an `AutoContinuous` guide works in.
+- **`RunInference.run_optimization` refuses unsafe autoguide fits.** When the
+  guide is any numpyro `AutoGuide` (including the `AutoDelta` behind MAP,
+  pre-MAP and `tfs-prefit-calibration`), it first runs the batch-safety check
+  and raises a `ValueError` naming the offending sites -- for example, a MAP
+  fit with `theta_growth_noise=beta`. The component guide is not checked. For
+  an `AutoMultivariateNormal` guide it also reports the latent dimension and
+  the memory the dense covariance needs, and warns above 4 GB.
 
 ## [0.4.4] - 2026-09-22
 

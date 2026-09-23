@@ -64,7 +64,8 @@ def jax_model(data: DataClass,
         pyro.deterministic("theta_binding_pred", theta_binding)
         binding_pred = theta_binding_noise_model("theta_binding_noise",
                                                  theta_binding,
-                                                 priors.binding.theta_binding_noise)
+                                                 priors.binding.theta_binding_noise,
+                                                 data=data.binding)
         if is_guide:
             binding_observer("binding", data.binding, None)
         else:
@@ -114,7 +115,8 @@ def jax_model(data: DataClass,
     pyro.deterministic(f"theta_binding_pred",theta_binding)
     binding_pred = theta_binding_noise_model("theta_binding_noise",
                                              theta_binding,
-                                             priors.binding.theta_binding_noise)
+                                             priors.binding.theta_binding_noise,
+                                             data=data.binding)
 
     # -------------------------------------------------------------------------
     # Make prediction for the growth experiment
@@ -195,7 +197,8 @@ def jax_model(data: DataClass,
 
     noisy_theta_growth = theta_growth_noise_model("theta_growth_noise",
                                                   corr_theta_growth,
-                                                  priors.growth.theta_growth_noise)
+                                                  priors.growth.theta_growth_noise,
+                                                  data=data.growth)
 
     rescaled_theta = theta_rescale(noisy_theta_growth)
 

@@ -651,6 +651,77 @@ def test_setup_svi_invalid_guide_type():
     with pytest.raises(ValueError, match="not recognized"):
         ri.setup_svi(guide_type="bad_guide")
 
+
+# -----------------------------------------------------------------------------
+# Autoguide batch-safety guard in run_optimization
+# -----------------------------------------------------------------------------
+
+_SMOKE_DATA = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..", "..", "..", "smoke-tests", "test_data",
+)
+
+
+def _smoke_orchestrator(**kwargs):
+    from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
+    return ModelOrchestrator(
+        growth_df=os.path.join(_SMOKE_DATA, "growth-smoke.csv"),
+        binding_df=os.path.join(_SMOKE_DATA, "binding-smoke.csv"),
+        batch_size=6,
+        **kwargs,
+    )
+
+
+def _svi_with_guide(ri, guide):
+    from numpyro.infer import SVI, Trace_ELBO
+    from numpyro.optim import ClippedAdam
+    return SVI(ri.model.jax_model, guide, ClippedAdam(step_size=1e-3),
+               loss=Trace_ELBO())
+
+
+def test_run_optimization_refuses_delta_for_batch_dependent_latent(tmpdir):
+    """MAP (AutoDelta) is refused before the first step for beta noise."""
+    ri = RunInference(_smoke_orchestrator(theta_growth_noise="beta"), seed=0)
+    svi = ri.setup_svi(guide_type="delta")
+    with pytest.raises(ValueError, match="theta_growth_noise_dist"):
+        ri.run_optimization(svi, max_num_epochs=1,
+                            out_prefix=os.path.join(tmpdir, "refused"))
+
+
+def test_run_optimization_refuses_any_autoguide(tmpdir):
+    """The guard keys off AutoGuide, not a particular guide class."""
+    from numpyro.infer.autoguide import AutoNormal
+    ri = RunInference(_smoke_orchestrator(theta_growth_noise="beta"), seed=0)
+    svi = _svi_with_guide(ri, AutoNormal(ri.model.jax_model))
+    with pytest.raises(ValueError, match="AutoNormal cannot fit"):
+        ri.run_optimization(svi, max_num_epochs=1,
+                            out_prefix=os.path.join(tmpdir, "refused"))
+
+
+def test_run_optimization_allows_component_guide_for_beta(tmpdir):
+    """The component guide slices library-sized params itself."""
+    ri = RunInference(_smoke_orchestrator(theta_growth_noise="beta"), seed=0)
+    svi = ri.setup_svi(adam_step_size=1e-3, guide_type="component")
+    ri.run_optimization(svi, max_num_epochs=1, init_param_jitter=0.0,
+                        out_prefix=os.path.join(tmpdir, "component"),
+                        epoch_checkpoint_interval=None)
+
+
+def test_check_autoguide_reports_dense_guide_size(capsys):
+    from numpyro.infer.autoguide import AutoMultivariateNormal
+    ri = RunInference(_smoke_orchestrator(), seed=0)
+    ri._check_autoguide(AutoMultivariateNormal(ri.model.jax_model))
+    assert "latent dimensions" in capsys.readouterr().out
+
+
+def test_check_autoguide_warns_on_large_dense_guide(monkeypatch):
+    from numpyro.infer.autoguide import AutoMultivariateNormal
+    from tfscreen.tfmodel.inference import run_inference
+    monkeypatch.setattr(run_inference, "_DENSE_GUIDE_WARN_GB", 0.0)
+    ri = RunInference(_smoke_orchestrator(), seed=0)
+    with pytest.warns(UserWarning, match="AutoLowRankMultivariateNormal"):
+        ri._check_autoguide(AutoMultivariateNormal(ri.model.jax_model))
+
 def test_restore_checkpoint_current_step(tmpdir):
     """_restore_checkpoint restores _current_step when present in checkpoint."""
     model = MockModel()
@@ -802,6 +873,30 @@ def test_map_params_to_constrained_values_finite():
 # =============================================================================
 # get_map_posteriors
 # =============================================================================
+
+def _batch_sized_map_params(model, batch_size):
+    """MAP params whose genotype latent is batch-sized (pre-fix checkpoint)."""
+    ri, map_params = _laplace_map_params(model)
+    aliased = dict(map_params)
+    aliased["geno_p_auto_loc"] = map_params["geno_p_auto_loc"][..., :batch_size]
+    return ri, aliased
+
+
+def test_get_map_posteriors_rejects_batch_sized_latent(tmpdir):
+    """A genotype latent shorter than the library is refused, not clipped."""
+    ri, aliased = _batch_sized_map_params(LaplaceModel(num_genotype=5), 3)
+    with pytest.raises(ValueError, match="mini-batch position"):
+        ri.get_map_posteriors(aliased, out_prefix=str(tmpdir.join("aliased")))
+
+
+def test_get_laplace_posteriors_rejects_batch_sized_latent(tmpdir):
+    """The Laplace path refuses it too, before computing the Hessian."""
+    ri, aliased = _batch_sized_map_params(LaplaceModel(num_genotype=5), 3)
+    with pytest.raises(ValueError, match="mini-batch position"):
+        ri.get_laplace_posteriors(aliased,
+                                  out_prefix=str(tmpdir.join("aliased")),
+                                  num_posterior_samples=2)
+
 
 def test_get_map_posteriors_creates_h5(tmpdir):
     """get_map_posteriors writes an HDF5 posterior file."""
