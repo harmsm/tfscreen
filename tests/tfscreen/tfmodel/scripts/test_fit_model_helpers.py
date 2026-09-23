@@ -147,8 +147,11 @@ def test_run_map_not_converged(mock_run_inference, capsys):
 # =============================================================================
 
 @pytest.fixture
-def mock_ri_for_nuts(mocker):
+def mock_ri_for_nuts(mocker, tmp_path, monkeypatch):
     """Minimal ri mock for _run_nuts tests."""
+    # _run_nuts writes a real {out_prefix}_checkpoint.pkl even with a mocked
+    # ri; tests using the default out_prefix would drop it in the cwd.
+    monkeypatch.chdir(tmp_path)
     ri = MagicMock()
     mock_mcmc = MagicMock()
     mock_mcmc.get_samples.return_value = {"param": [1.0, 2.0]}
@@ -173,17 +176,18 @@ def test_run_nuts_calls_run_nuts(mock_ri_for_nuts):
     )
 
 
-def test_run_nuts_calls_get_nuts_posteriors(mock_ri_for_nuts):
+def test_run_nuts_calls_get_nuts_posteriors(tmp_path, mock_ri_for_nuts):
     """_run_nuts calls ri.get_nuts_posteriors with the samples and forward_batch_size."""
     ri = mock_ri_for_nuts
     expected_samples = {"param": [1.0, 2.0]}
     ri.run_nuts.return_value.get_samples.return_value = expected_samples
+    out_prefix = str(tmp_path / "myroot")
 
-    _run_nuts(ri, out_prefix="myroot", forward_batch_size=64)
+    _run_nuts(ri, out_prefix=out_prefix, forward_batch_size=64)
 
     ri.get_nuts_posteriors.assert_called_once_with(
         expected_samples,
-        out_prefix="myroot",
+        out_prefix=out_prefix,
         forward_batch_size=64,
     )
 

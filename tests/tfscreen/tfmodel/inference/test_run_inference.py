@@ -16,6 +16,13 @@ from numpyro.infer.svi import SVIState
 from numpyro.infer.svi import SVIState
 from flax import struct
 
+@pytest.fixture(autouse=True)
+def _run_in_tmp_path(tmp_path, monkeypatch):
+    # Many tests below call run_optimization / _write_checkpoint with the
+    # default out_prefix ("tfs"), which writes checkpoint/loss files into the
+    # cwd. Run every test from its own tmp dir so nothing leaks into the repo.
+    monkeypatch.chdir(tmp_path)
+
 @struct.dataclass
 class MockData:
     num_genotype: int = 10
