@@ -98,6 +98,13 @@ fall into two kinds:
 
 ### Changed
 
+- **Test reports and badges are no longer committed.** `reports/` and
+  `docs/badges/` are gitignored and untracked; `run_all_tests.sh` now writes
+  everything, badges included, under `reports/`, and stops on the first
+  failing step. `README.rst` shows the live GitHub Actions status badge for
+  `tests.yml` instead. A new `.flake8` excludes `.claude/` (agent worktrees),
+  build and venv directories, which made up most of `reports/flake.txt`.
+
 - **Co-transformed cells in the simulator now grow by cell-level physics.**
   A cell carrying several plasmids used to get the min/max/mean/... of its
   plasmids' whole `k*t` (`multi_plasmid_combine_fcn`, per marker library).
