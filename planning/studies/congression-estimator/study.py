@@ -1,5 +1,5 @@
 """
-Step 3.0 of future/congression-physics-plan.md: how should the fit evaluate
+Step 3.0 of planning/congression-physics-plan.md: how should the fit evaluate
 the congressed class's E_S exp(G_{g,S}(t))?
 
 Ground truth comes from the simulator's own machinery (library_prediction on
@@ -60,7 +60,10 @@ rng = np.random.default_rng(SEED)
 # Ground truth phenotypes and design
 # ---------------------------------------------------------------------------
 
-cfg_path = sys.argv[1]
+# Default input: the repository's example simulate config.
+_REPO = __import__("pathlib").Path(__file__).resolve().parents[3]
+cfg_path = (sys.argv[1] if len(sys.argv) > 1
+            else str(_REPO / "examples" / "simulate" / "simulate_config.yaml"))
 cf = read_yaml(cfg_path)
 cf["transformation_poisson_lambda"] = LAM
 cf["library_mixture"] = dict(REAL_MIXTURE)

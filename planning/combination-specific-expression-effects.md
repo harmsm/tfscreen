@@ -7,7 +7,7 @@ revisit_when: >-
   If double-transformation or native mass spec experiments show effects that
   depend on the specific pair of variants rather than on each variant alone.
 related:
-  - future/congression-physics-plan.md
+  - planning/congression-physics-plan.md
 ---
 
 **Context:** The congression plan assumes total repressor expression per cell

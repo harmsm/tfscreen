@@ -7,7 +7,7 @@ revisit_when: >-
   After the congression physics work settles on the soft-min dk_geno rule and
   the current single-lambda dataset is published.
 related:
-  - future/congression-physics-plan.md
+  - planning/congression-physics-plan.md
   - src/tfscreen/simulate/selection_experiment.py
   - src/tfscreen/tfmodel/generative/components/transformation/_congression.py
 ---

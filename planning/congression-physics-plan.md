@@ -14,10 +14,10 @@ related:
   - src/tfscreen/tfmodel/genotype_fit/congression.py
   - src/tfscreen/simulate/transformation_lam_output.py
   - src/tfscreen/genetics/library_design.py
-  - future/estimate-dk-alpha-by-varying-lambda.md
-  - future/plasmid-segregation-low-copy.md
-  - future/combination-specific-expression-effects.md
-  - future/estimate-spike-fraction-from-growth-curvature.md
+  - planning/estimate-dk-alpha-by-varying-lambda.md
+  - planning/plasmid-segregation-low-copy.md
+  - planning/combination-specific-expression-effects.md
+  - planning/estimate-spike-fraction-from-growth-curvature.md
 ---
 
 ## Why
@@ -107,11 +107,11 @@ Provenance: user, 2026-09-13, unless noted.
   it.
 - **Total repressor expression per cell does not depend on plasmid number.**
   Each variant is diluted by its share. Combination-specific effects on
-  expression are out of scope (`future/combination-specific-expression-effects.md`).
+  expression are out of scope (`planning/combination-specific-expression-effects.md`).
 - **Plasmids are high copy and assumed to persist without segregating** over
   the experiment (roughly 3 to 7 doublings). The next design moves to a
   low-copy plasmid, where segregation matters
-  (`future/plasmid-segregation-low-copy.md`).
+  (`planning/plasmid-segregation-low-copy.md`).
 - **The dataset has a single lambda** (0.3572) and is headed for publication.
   Parameters that only a lambda series could identify are set from biology
   and checked by sensitivity, not fit.
@@ -168,7 +168,7 @@ dk_cell = -(1/alpha) * log sum_g x_g exp(-alpha * dk_g)
 
 `alpha -> 0` is dilution (share-weighted mean burden); `alpha -> inf` is
 dominance (the worst variant sets the cost). Alpha is set from biology with a
-sensitivity check, not fit (`future/estimate-dk-alpha-by-varying-lambda.md`).
+sensitivity check, not fit (`planning/estimate-dk-alpha-by-varying-lambda.md`).
 Under dilution the average effect is a uniform shrinkage of each genotype's
 dk toward the population mean, by `E[1/(1+N)] = (1 - exp(-lambda))/lambda` =
 0.841 at lambda = 0.357, which the hierarchical dk_geno prior mostly absorbs.
@@ -336,7 +336,7 @@ Record results here when they arrive.
 ## Steps
 
 Keep this list current. Work the steps in order and keep this conversation's
-scope to them; anything else goes into its own `future/` file or task.
+scope to them; anything else goes into its own `planning/` file or task.
 Each step from 1 on ends with a simulation and a fit that use the same rules,
 checked with `tfs-summarize-calibration`.
 
@@ -426,8 +426,7 @@ checked with `tfs-summarize-calibration`.
        estimator except small-K MC is accurate there. We still build MC
        (decision 2026-09-23): tight dk is not guaranteed for other libraries,
        and K is a knob.
-     Script: `dev/congression_estimator_study.py` (argument: a simulate
-     config).
+     Study: `planning/studies/congression-estimator/`.
    - [x] **3.1 Plumbing.** Done 2026-09-23: `GrowthData.bulk_fraction`,
      `ModelOrchestrator._build_bulk_fraction`; `congression_mask` still
      drives today's correction until 3.3. `f_g` (from `bulk_fraction`) and the `ln_cfu0`

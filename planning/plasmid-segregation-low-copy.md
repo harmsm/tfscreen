@@ -7,7 +7,7 @@ revisit_when: >-
   When designing or analyzing the next experiment, which moves to a low-copy
   plasmid.
 related:
-  - future/congression-physics-plan.md
+  - planning/congression-physics-plan.md
   - src/tfscreen/simulate/selection_experiment.py
 ---
 

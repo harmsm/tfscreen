@@ -182,7 +182,7 @@ Flow: `genetics.library_composition_table(library_config)` (`genetics/library_de
 
 A library-derived spiked genotype that has no growth data is **reported, not fatal** (spikes can drop out of a real dataset), unlike the hand-supplied `spiked_genotypes` list, which still raises.
 
-`pool_fraction`/`bulk_fraction` are computed and snapshotted. `bulk_fraction` is carried into the model as `GrowthData.bulk_fraction` (library-sized float per genotype, indexed by `batch_idx`; built by `ModelOrchestrator._build_bulk_fraction`: the table's value, `__unknown__` → 1.0, any other missing genotype raises; legacy `spiked_genotypes` → 0 spiked / 1 otherwise) but is **not yet read by the model** — it is the `f_g` of the observable-level congression mixture (step 3.3 of `future/congression-physics-plan.md`). Purity (`bulk_fraction`) and the `ln_cfu0` prior class (`ln_cfu0_spiked_mask`, from `in_spiked_origin`) are separate fields; the current backend still applies the binary `congression_mask` for the congression correction.
+`pool_fraction`/`bulk_fraction` are computed and snapshotted. `bulk_fraction` is carried into the model as `GrowthData.bulk_fraction` (library-sized float per genotype, indexed by `batch_idx`; built by `ModelOrchestrator._build_bulk_fraction`: the table's value, `__unknown__` → 1.0, any other missing genotype raises; legacy `spiked_genotypes` → 0 spiked / 1 otherwise) but is **not yet read by the model** — it is the `f_g` of the observable-level congression mixture (step 3.3 of `planning/congression-physics-plan.md`). Purity (`bulk_fraction`) and the `ln_cfu0` prior class (`ln_cfu0_spiked_mask`, from `in_spiked_origin`) are separate fields; the current backend still applies the binary `congression_mask` for the congression correction.
 
 ### Pre-fit model accounting (`tfmodel/model_stats.py`)
 
@@ -398,6 +398,18 @@ overconfident ones, exactly what Axis 2 exists to detect.
 **Input forms.** The `estimates` positional takes `nargs="+"`: two or more
 arguments are direct CSV paths (`rep1.csv rep2.csv`); a single argument is a
 manifest file (one path per line) *unless* it ends in `.csv`.
+
+## Planning (`planning/`)
+
+Ideas, active plans and studies live in `planning/` (called `future/` before
+2026-09-23); `planning/README.md` has the conventions. Ideas and plans are one
+Markdown file each with a YAML header whose `status` (`idea`/`active`/
+`promoted`/`dropped`/`done`) tells them apart. An active plan keeps its step
+list current. Studies live in `planning/studies/<slug>/` (a `README.md` with
+question, decision fed, how to run, inputs, commit and results, plus the
+script); once a plan cites a study it is frozen. `dev/` is untracked scratch;
+anything a plan cites moves into `planning/studies/`. The active plan is
+`planning/congression-physics-plan.md`.
 
 ## YAML Standards
 

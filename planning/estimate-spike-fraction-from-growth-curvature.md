@@ -7,7 +7,7 @@ revisit_when: >-
   If design-computed spike/bulk fractions (f_g) look wrong for real data, or
   after the observable-level mixture (congression plan step 3) is in place.
 related:
-  - future/congression-physics-plan.md
+  - planning/congression-physics-plan.md
 ---
 
 **Context:** In the congression plan, each genotype's cells mix clean and
