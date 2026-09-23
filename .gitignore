@@ -205,3 +205,7 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Local test/lint/coverage output from run_all_tests.sh
+reports/
+docs/badges/

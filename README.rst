@@ -2,6 +2,10 @@
 tfscreen
 ========
 
+.. image:: https://github.com/harmsm/tfscreen/actions/workflows/tests.yml/badge.svg?branch=main
+   :target: https://github.com/harmsm/tfscreen/actions/workflows/tests.yml
+   :alt: Tests
+
 `tfscreen` is a Python library for simulating and analyzing high-throughput screens of transcription
 factor (TF) function. It is designed to infer the energetic effects of mutations on conformations
 in the TF energy landscape — information that enables interpretable predictive models of how
