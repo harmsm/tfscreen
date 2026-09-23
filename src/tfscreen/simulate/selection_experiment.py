@@ -769,6 +769,34 @@ def _sim_growth(
     return trans_cfu
 
 
+def _plasmid_shares(trans_mask: np.ndarray) -> np.ndarray:
+    """Fraction of its cell that each plasmid slot represents.
+
+    A cell carrying n plasmids splits its plasmid copies among them, so each
+    valid slot is 1/n of the cell. Masked slots are 0. A cell therefore
+    contributes one cell's worth of abundance in total, however many plasmids
+    it carries, and the spiked/bulk make-up of a genotype does not depend on
+    the congression parameter lambda (see
+    ``genetics.library_design.expected_library_composition``).
+
+    Parameters
+    ----------
+    trans_mask : numpy.ndarray
+        A 2D boolean array `(num_cells, max_plasmids)`; True marks an invalid
+        plasmid slot.
+
+    Returns
+    -------
+    numpy.ndarray
+        A 2D float array with the same shape as `trans_mask`.
+    """
+    valid = ~trans_mask
+    num_in_cell = np.sum(valid, axis=1, keepdims=True)
+    return np.divide(valid, num_in_cell,
+                     out=np.zeros(trans_mask.shape, dtype=float),
+                     where=num_in_cell > 0)
+
+
 def _sim_sequencing(
     transformants: np.ndarray,
     trans_mask: np.ndarray,
@@ -781,7 +809,9 @@ def _sim_sequencing(
 
     This function models deep sequencing. For each condition, it assumes that
     individual plasmids are sampled for sequencing with a probability
-    proportional to the final abundance (CFU) of their host cell.
+    proportional to the final abundance (CFU) of their host cell, divided
+    among the plasmids that cell carries (a cell with n plasmids gives each
+    1/n of its abundance).
 
     Parameters
     ----------
@@ -816,18 +846,21 @@ def _sim_sequencing(
     # conditions. 
     all_transformed_plas = ma.array(transformants, mask=trans_mask).compressed()
 
+    # Share of its cell that each plasmid slot represents (1/n for a cell
+    # with n plasmids). Shared across all conditions.
+    shares = _plasmid_shares(trans_mask)
+
     # Loop over all conditions
     for i in range(num_conditions):
 
-        # Get the frequencies of cells at this condition and then broadcast to 
-        # match the shape/alignment of all_transformed_plas
+        # Split each cell's abundance at this condition among its plasmids,
+        # aligned with all_transformed_plas
         trans_freq = trans_cfu[:,i]
-        trans_freq_2d = np.broadcast_to(trans_freq[:, np.newaxis],
-                                        transformants.shape)
-        all_transformed_freq = ma.array(trans_freq_2d, mask=trans_mask).compressed()
+        plasmid_freq_2d = trans_freq[:, np.newaxis]*shares
+        all_transformed_freq = ma.array(plasmid_freq_2d, mask=trans_mask).compressed()
 
-        # Count the number of times each plasmid index appears, weighted by the 
-        # frequency of the cells in the population
+        # Count the number of times each plasmid index appears, weighted by
+        # its share of its cell's abundance
         geno_counts = np.bincount(all_transformed_plas,
                                   weights=all_transformed_freq,
                                   minlength=num_genotypes)
@@ -863,8 +896,10 @@ def _calc_genotype_cfu0(
 
     This function determines the starting abundance (cfu0) of each distinct
     genotype based on the stochastic outcome of the transformation simulation.
-    It aggregates the frequencies of all cells containing a given plasmid
-    and partitions the total library cfu0 accordingly.
+    Each cell's frequency is split among the plasmids it carries (1/n each
+    for n plasmids); these shares are summed per genotype and the total
+    library cfu0 is partitioned accordingly. A genotype's cfu0 is thus in
+    cell-equivalents, matching how `_sim_sequencing` counts reads.
 
     Parameters
     ----------
@@ -891,24 +926,24 @@ def _calc_genotype_cfu0(
     # successfully transformed plasmid indices.
     all_transformed_plas = ma.array(transformants, mask=trans_mask).compressed()
 
-    # Create an array that has the frequency of the cell from which each 
-    # plasmid came from in the same shape/alignment as all_transformed_plas
-    trans_freq_2d = np.broadcast_to(trans_freq[:, np.newaxis], transformants.shape)
-    all_transformed_freq = ma.array(trans_freq_2d, mask=trans_mask).compressed()
+    # Split each cell's frequency among its plasmids, in the same
+    # shape/alignment as all_transformed_plas
+    plasmid_freq_2d = trans_freq[:, np.newaxis]*_plasmid_shares(trans_mask)
+    all_transformed_freq = ma.array(plasmid_freq_2d, mask=trans_mask).compressed()
 
-    # Count the number of times each plasmid index appears, weighted by the 
-    # frequency of the cells in the population
+    # Count the number of times each plasmid index appears, weighted by its
+    # share of its cell's frequency
     trans_geno_counts = np.bincount(all_transformed_plas,
                                     weights=all_transformed_freq,
                                     minlength=num_genotypes)
 
     # Calculate the frequency of each genotype in the post-transformation pool.
-    total_plasmids = np.sum(trans_geno_counts)
-    if total_plasmids == 0:
+    total_weight = np.sum(trans_geno_counts)
+    if total_weight == 0:
         # Handle edge case where no successful transformations occurred
         trans_freqs = np.zeros(num_genotypes, dtype=float)
     else:
-        trans_freqs = trans_geno_counts / total_plasmids
+        trans_freqs = trans_geno_counts / total_weight
 
     # Partition the total cfu0 according to these new frequencies.
     genotype_cfu0 = total_cfu0 * trans_freqs

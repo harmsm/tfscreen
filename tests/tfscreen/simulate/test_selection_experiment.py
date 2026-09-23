@@ -22,6 +22,7 @@ from tfscreen.simulate.selection_experiment import (
     SIMULATE_KNOWN_KEYS,
     _sim_sequencing,
     _calc_genotype_cfu0,
+    _plasmid_shares,
     _compute_kt,
     _simulate_library_group,
     selection_experiment
@@ -725,6 +726,55 @@ def test_sim_sequencing_single_survivor(rng: Generator):
     expected_counts = np.array([[reads_per_sample], [0]])
     np.testing.assert_array_equal(result, expected_counts)
 
+def test_plasmid_shares():
+    """Each valid slot is 1/n of its cell; masked slots are 0."""
+    trans_mask = np.array([[False, True, True],
+                           [False, False, True],
+                           [False, False, False]])
+    expected = np.array([[1.0, 0.0, 0.0],
+                         [0.5, 0.5, 0.0],
+                         [1/3, 1/3, 1/3]])
+    np.testing.assert_allclose(_plasmid_shares(trans_mask), expected)
+    np.testing.assert_allclose(_plasmid_shares(trans_mask).sum(axis=1), 1.0)
+
+
+def test_plasmid_shares_empty():
+    """An empty transformant array gives an empty share array."""
+    result = _plasmid_shares(np.empty((0, 0), dtype=bool))
+    assert result.shape == (0, 0)
+
+
+def test_sim_sequencing_splits_cell_among_plasmids(mocker):
+    """
+    A co-transformed cell's abundance is split among its plasmids, so it
+    contributes one cell's worth of reads in total.
+    """
+    # Cell 0: {g0}, abundance 100. Cell 1: {g0, g1}, abundance 100.
+    transformants = np.array([[0, 0], [0, 1]])
+    trans_mask = np.array([[False, True], [False, False]])
+    trans_cfu = np.array([[100.0], [100.0]])
+
+    # g0 = 100 + 50, g1 = 50 -> probabilities 0.75 / 0.25.
+    rng = mocker.Mock()
+    rng.choice.return_value = np.zeros(10, dtype=int)
+    _sim_sequencing(transformants, trans_mask, trans_cfu, 2, 10, rng)
+
+    np.testing.assert_allclose(rng.choice.call_args.kwargs["p"], [0.75, 0.25])
+
+
+def test_sim_sequencing_duplicate_genotype_in_cell(mocker):
+    """Two copies of one genotype in a cell give it the whole cell."""
+    transformants = np.array([[0, 0], [1, 0]])
+    trans_mask = np.array([[False, False], [False, True]])
+    trans_cfu = np.array([[100.0], [100.0]])
+
+    rng = mocker.Mock()
+    rng.choice.return_value = np.zeros(10, dtype=int)
+    _sim_sequencing(transformants, trans_mask, trans_cfu, 2, 10, rng)
+
+    np.testing.assert_allclose(rng.choice.call_args.kwargs["p"], [0.5, 0.5])
+
+
 # ----------------------------------------------------------------------------
 # test _calc_genotype_cfu0
 # ----------------------------------------------------------------------------
@@ -763,19 +813,17 @@ def test_calc_genotype_cfu0_multi_plasmid():
     total_cfu0 = 1.0e7
     num_genotypes = 2
 
-    # Expected logic:
+    # Expected logic: a cell splits its frequency among its plasmids.
     # Plasmids:    [g0,   g0,   g1,   g1]
     # From cells:  [c0,   c1,   c1,   c2]
-    # Cell Freqs:  [0.2,  0.5,  0.5,  0.3]
+    # Share:       [1,    1/2,  1/2,  1]
+    # Weight:      [0.2,  0.25, 0.25, 0.3]
     #
-    # Total weighted count for g0 = 0.2 + 0.5 = 0.7
-    # Total weighted count for g1 = 0.5 + 0.3 = 0.8
-    # Total weight = 0.7 + 0.8 = 1.5
-    #
-    # Final frequency for g0 = 0.7 / 1.5
-    # Final frequency for g1 = 0.8 / 1.5
-    expected_cfu0 = np.array([ (0.7/1.5) * total_cfu0,
-                               (0.8/1.5) * total_cfu0 ])
+    # g0 = 0.2 + 0.25 = 0.45
+    # g1 = 0.25 + 0.3 = 0.55
+    # Total = 1.0 (one cell's worth per cell)
+    expected_cfu0 = np.array([0.45 * total_cfu0,
+                              0.55 * total_cfu0])
     
     result = _calc_genotype_cfu0(
         transformants, trans_mask, trans_freq, total_cfu0, num_genotypes
@@ -783,6 +831,42 @@ def test_calc_genotype_cfu0_multi_plasmid():
     
     np.testing.assert_allclose(result, expected_cfu0)
     
+@pytest.mark.parametrize("lam", [None, 0.357, 1.5])
+def test_calc_genotype_cfu0_matches_design_for_any_lambda(lam):
+    """
+    With plasmid copies shared within a cell, simulated genotype abundance
+    matches the library design's pool_fraction whatever lambda is. Bulk
+    origins are transformed with lambda; the spiked origin is monoclonal.
+    """
+    from tfscreen.genetics.library_design import expected_library_composition
+
+    genotypes = ["wt", "A1V", "B2C", "S3T"]
+    weights = {"bulk": [0.4, 0.3, 0.3, 0.0],
+               "spiked": [0.5, 0.0, 0.0, 0.5]}
+    library_df = pd.DataFrame([
+        {"library_origin": origin, "genotype": g, "weight": w, "probs": w}
+        for origin, ws in weights.items() for g, w in zip(genotypes, ws)
+    ])
+    library_mixture = {"bulk": 3.0, "spiked": 1.0}
+    lib_origin_dict = dict(list(library_df.groupby(["library_origin"])))
+
+    rng = np.random.default_rng(0)
+    transformants, trans_mask, trans_freq = _sim_transform_and_mix(
+        lib_origin_dict,
+        {"bulk": 200_000, "spiked": 200_000},
+        library_mixture,
+        lam,
+        rng)
+    cfu0 = _calc_genotype_cfu0(transformants, trans_mask, trans_freq,
+                               1.0, len(genotypes))
+
+    expected = (expected_library_composition(library_df, library_mixture)
+                .set_index("genotype")
+                .loc[genotypes, "pool_fraction"]
+                .to_numpy())
+    np.testing.assert_allclose(cfu0, expected, atol=0.005)
+
+
 def test_calc_genotype_cfu0_no_transformants():
     """
     Tests the edge case where there are no successful transformations.

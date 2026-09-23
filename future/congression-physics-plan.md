@@ -90,8 +90,8 @@ the example configs use `min` for kanR and `max` for pheS).
 abundance, so a co-transformed cell counts once per plasmid.
 `expected_library_composition` assumes the opposite: a cell's plasmid copies
 are shared among the variants it carries, so `bulk_fraction` does not depend
-on lambda. Until the simulator shares copies (step 1), simulated composition
-and the design `bulk_fraction` disagree.
+on lambda. Fixed in step 1 (2026-09-23): the simulator now splits a cell's
+abundance among its plasmids.
 
 ## Biology and assumptions
 
@@ -302,9 +302,11 @@ checked with `tfs-summarize-calibration`.
      from `guide-selection` (commit e925b90), code only, no grids or results.
      2026-09-23.
 1. **Simulator: share a cell's plasmid copies.**
-   - [ ] `_sim_sequencing` and `_calc_genotype_cfu0` split a cell's abundance
+   - [x] `_sim_sequencing` and `_calc_genotype_cfu0` split a cell's abundance
      among the variants it carries, so simulated composition matches
-     `bulk_fraction` and no longer depends on lambda.
+     `bulk_fraction` and no longer depends on lambda. 2026-09-23
+     (`_plasmid_shares`; a test checks simulated abundance against the
+     design `pool_fraction` at lambda = 0, 0.357 and 1.5).
 2. **Simulator restructure.**
    - [ ] Build each cell's theta and dk from its plasmids with pluggable rules,
      then assemble growth once

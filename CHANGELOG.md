@@ -122,6 +122,21 @@ fall into two kinds:
   `components` sections, and ignores `*_prefit_losses.txt` and
   `*_premap_losses.txt`.
 
+- **Simulator counted a co-transformed cell once per plasmid.**
+  `_sim_sequencing` and `_calc_genotype_cfu0`
+  (`simulate/selection_experiment.py`) gave every plasmid in a cell that
+  cell's whole abundance, so a cell carrying n plasmids contributed n cells'
+  worth of reads and `ln_cfu_0`. Bulk genotypes (transformed with
+  `transformation_poisson_lambda`) were inflated relative to the monoclonal
+  spikes by `E[n | n >= 1] = lambda / (1 - exp(-lambda))` (1.19 at
+  lambda = 0.357), so a genotype's simulated spike/bulk make-up depended on
+  lambda. A cell's abundance is now split among its plasmids (1/n each; new
+  helper `_plasmid_shares`), so each cell counts once and the simulated
+  composition matches the design `pool_fraction`/`bulk_fraction` from
+  `genetics.library_composition_table` at any lambda. **Simulated read counts
+  and `ln_cfu_0` change for any config with lambda > 0.** Growth itself
+  (`_sim_growth`) is unchanged.
+
 ## [0.4.4] - 2026-09-22
 
 A processing and bookkeeping release: two fixes in the read-counting and
