@@ -5,6 +5,7 @@ from flax.struct import dataclass
 from typing import Dict, Any
 
 from tfscreen.tfmodel.data_class import GrowthData
+from tfscreen.tfmodel.generative.components._population import per_genotype
 
 @dataclass(frozen=True)
 class ModelPriors:
@@ -20,9 +21,19 @@ class ModelPriors:
 
     global_scale_tau_scale: float
 
+def _activity_values(global_scale_tau, wt_indexes):
+    """Per-genotype activity: log(activity) = z * tau * lambda; wt pinned to 1."""
+    def compute(local_scale_lambda, activity_offset, genotype_idx):
+        log_activity = activity_offset * (global_scale_tau * local_scale_lambda)
+        activity = jnp.clip(jnp.exp(log_activity), max=1e30)
+        return jnp.where(jnp.isin(genotype_idx, wt_indexes), 1.0, activity)
+    return compute
+
+
 def define_model(name: str, 
                  data: GrowthData, 
-                 priors: ModelPriors) -> jnp.ndarray:
+                 priors: ModelPriors,
+                 return_population: bool = False) -> jnp.ndarray:
     """
     Defines the Horseshoe-regularized model for genotype-specific activity.
 
@@ -49,12 +60,18 @@ def define_model(name: str,
     priors : ModelPriors
         A Pytree (Flax dataclass) containing the hyperparameters for
         the Horseshoe prior.
+    return_population : bool, default False
+        Also return the library-ordered per-genotype values (shape
+        ``(num_genotype,)``, or ``None`` when the latents arrived as a
+        batch-sized substitution), for callers that look genotypes up by
+        library index (the congression mixture).
 
     Returns
     -------
     jnp.ndarray
         The sampled `activity` values, expanded to match the shape of
-        the observations via ``data.map_genotype``.
+        the observations via ``data.map_genotype``. With
+        ``return_population``, a ``(tensor, population)`` tuple.
     """
 
     # Global scale: How big can the "slab" (real effects) be?
@@ -72,24 +89,13 @@ def define_model(name: str,
         # Non-centered offset `z` (always Normal(0,1))
         activity_offset = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
 
-    # Sampled at library size: slice to this batch's genotypes. A value of
-    # any other size is an already-sliced substitution (posterior forward pass).
-    if local_scale_lambda.shape[-1] == data.num_genotype:
-        local_scale_lambda = local_scale_lambda[..., data.batch_idx]
-    if activity_offset.shape[-1] == data.num_genotype:
-        activity_offset = activity_offset[..., data.batch_idx]
-
-    # Combine scales: `beta = z * (tau * lambda)`
-    # The mean `log(activity)` is 0.0 (i.e., activity = 1.0)
-    # The effective scale allows for deviations from 0.0
-    effective_scale = global_scale_tau * local_scale_lambda
-    log_activity_mutant_dists = activity_offset * effective_scale
-    
-    activity = jnp.clip(jnp.exp(log_activity_mutant_dists), max=1e30)
-
-    # Set wildtype activity to 1.0
-    is_wt_mask = jnp.isin(data.batch_idx, data.wt_indexes)
-    activity = jnp.where(is_wt_mask, 1.0, activity)
+    # Sampled at library size: slice to this batch's genotypes (a value of
+    # any other size is an already-sliced substitution from the posterior
+    # forward pass). Combine scales, `beta = z * (tau * lambda)`, around a
+    # mean log(activity) of 0.0; wt activity is 1.0.
+    activity, population = per_genotype(
+        _activity_values(global_scale_tau, data.wt_indexes),
+        [local_scale_lambda, activity_offset], data, return_population)
 
     # Register per-genotype values for inspection
     pyro.deterministic(name, activity)  
@@ -97,12 +103,15 @@ def define_model(name: str,
     # Broadcast to full-sized tensor
     activity = activity[None,None,None,None,None,None,:]
 
+    if return_population:
+        return activity, population
     return activity
 
 
 def guide(name: str, 
           data: GrowthData, 
-          priors: ModelPriors) -> jnp.ndarray:
+          priors: ModelPriors,
+          return_population: bool = False) -> jnp.ndarray:
     """
     Guide corresponding to the Horseshoe-regularized activity model.
 
@@ -142,28 +151,19 @@ def guide(name: str,
                                       dist.Normal(activity_offset_locs,
                                                   activity_offset_scales))
 
-    # Sampled at library size: slice to this batch's genotypes. A value of
-    # any other size is an already-sliced substitution (posterior forward pass).
-    if local_scale_lambda.shape[-1] == data.num_genotype:
-        local_scale_lambda = local_scale_lambda[..., data.batch_idx]
-    if activity_offset.shape[-1] == data.num_genotype:
-        activity_offset = activity_offset[..., data.batch_idx]
-
-    # Combine scales: `beta = z * (tau * lambda)`
-    # The mean `log(activity)` is 0.0 (i.e., activity = 1.0)
-    # The effective scale allows for deviations from 0.0
-    effective_scale = global_scale_tau * local_scale_lambda
-    log_activity_mutant_dists = activity_offset * effective_scale
-    
-    activity = jnp.clip(jnp.exp(log_activity_mutant_dists), max=1e30)
-
-    # Set wildtype activity to 1.0
-    is_wt_mask = jnp.isin(data.batch_idx, data.wt_indexes)
-    activity = jnp.where(is_wt_mask, 1.0, activity)
+    # Sampled at library size: slice to this batch's genotypes (a value of
+    # any other size is an already-sliced substitution from the posterior
+    # forward pass). Combine scales, `beta = z * (tau * lambda)`, around a
+    # mean log(activity) of 0.0; wt activity is 1.0.
+    activity, population = per_genotype(
+        _activity_values(global_scale_tau, data.wt_indexes),
+        [local_scale_lambda, activity_offset], data, return_population)
 
     # Broadcast to full-sized tensor
     activity = activity[None,None,None,None,None,None,:]
 
+    if return_population:
+        return activity, population
     return activity
 
 def get_hyperparameters() -> Dict[str, Any]:

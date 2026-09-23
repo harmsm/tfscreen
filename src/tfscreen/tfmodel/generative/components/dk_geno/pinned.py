@@ -64,16 +64,30 @@ class ModelPriors:
     dk_geno_values: jnp.ndarray
 
 
-def _compute_dk_geno(data: GrowthData, priors: ModelPriors) -> jnp.ndarray:
-    """Shared per-genotype dk_geno lookup, with wildtype forced to 0."""
-    dk_geno_per_genotype = priors.dk_geno_values[data.batch_idx]
-    is_wt_mask = jnp.isin(data.batch_idx, data.wt_indexes)
+def _compute_dk_geno(data: GrowthData, priors: ModelPriors,
+                     genotype_idx=None) -> jnp.ndarray:
+    """
+    Shared per-genotype dk_geno lookup, with wildtype forced to 0.
+
+    ``genotype_idx`` defaults to the batch (``data.batch_idx``); pass
+    ``arange(num_genotype)`` for the library-ordered population.
+    """
+    if genotype_idx is None:
+        genotype_idx = data.batch_idx
+    dk_geno_per_genotype = priors.dk_geno_values[genotype_idx]
+    is_wt_mask = jnp.isin(genotype_idx, data.wt_indexes)
     return jnp.where(is_wt_mask, 0.0, dk_geno_per_genotype)
+
+
+def _population(data: GrowthData, priors: ModelPriors) -> jnp.ndarray:
+    """Library-ordered pinned dk_geno for every genotype."""
+    return _compute_dk_geno(data, priors, jnp.arange(data.num_genotype))
 
 
 def define_model(name: str,
                  data: GrowthData,
-                 priors: ModelPriors) -> jnp.ndarray:
+                 priors: ModelPriors,
+                 return_population: bool = False) -> jnp.ndarray:
     """
     The pleiotropic effect of a genotype on growth rate independent of
     transcription factor occupancy, pinned to caller-supplied per-genotype
@@ -93,6 +107,9 @@ def define_model(name: str,
           wildtype (always forced to dk_geno = 0).
     priors : ModelPriors
         Holds the pinned ``dk_geno_values``.
+    return_population : bool, default False
+        Also return the library-ordered per-genotype values, shape
+        ``(num_genotype,)``, as a ``(tensor, population)`` tuple.
 
     Returns
     -------
@@ -106,12 +123,15 @@ def define_model(name: str,
 
     dk_geno = dk_geno_per_genotype[None, None, None, None, None, None, :]
 
+    if return_population:
+        return dk_geno, _population(data, priors)
     return dk_geno
 
 
 def guide(name: str,
           data: GrowthData,
-          priors: ModelPriors) -> jnp.ndarray:
+          priors: ModelPriors,
+          return_population: bool = False) -> jnp.ndarray:
     """
     Guide for the pinned dk_geno model.
 
@@ -122,6 +142,8 @@ def guide(name: str,
 
     dk_geno = dk_geno_per_genotype[None, None, None, None, None, None, :]
 
+    if return_population:
+        return dk_geno, _population(data, priors)
     return dk_geno
 
 

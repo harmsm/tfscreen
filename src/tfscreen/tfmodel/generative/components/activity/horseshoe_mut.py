@@ -52,7 +52,8 @@ class ModelPriors:
 
 def define_model(name: str,
                  data: GrowthData,
-                 priors: ModelPriors) -> jnp.ndarray:
+                 priors: ModelPriors,
+                 return_population: bool = False) -> jnp.ndarray:
     """
     Define the regularised-horseshoe mutation-decomposed activity model.
 
@@ -63,6 +64,9 @@ def define_model(name: str,
         Must have ``mut_geno_matrix`` (num_mutation x G) and ``num_mutation``.
         If ``num_pair > 0``, must also have ``pair_geno_matrix``.
     priors : ModelPriors
+    return_population : bool, default False
+        Also return the library-ordered per-genotype activity, shape
+        ``(num_genotype,)``, as a ``(tensor, population)`` tuple.
 
     Returns
     -------
@@ -129,13 +133,17 @@ def define_model(name: str,
 
     # activity is library-ordered; always slice to the batch's genotypes.
     # The full-batch index is a reshuffled permutation, not the identity.
-    activity = activity[data.batch_idx]
-    return activity[None, None, None, None, None, None, :]
+    population = activity
+    activity = activity[data.batch_idx][None, None, None, None, None, None, :]
+    if return_population:
+        return activity, population
+    return activity
 
 
 def guide(name: str,
           data: GrowthData,
-          priors: ModelPriors) -> jnp.ndarray:
+          priors: ModelPriors,
+          return_population: bool = False) -> jnp.ndarray:
     """Variational guide for the regularised-horseshoe mutation-decomposed activity model."""
 
     num_mut = data.num_mutation
@@ -218,8 +226,11 @@ def guide(name: str,
 
     # activity is library-ordered; always slice to the batch's genotypes.
     # The full-batch index is a reshuffled permutation, not the identity.
-    activity = activity[data.batch_idx]
-    return activity[None, None, None, None, None, None, :]
+    population = activity
+    activity = activity[data.batch_idx][None, None, None, None, None, None, :]
+    if return_population:
+        return activity, population
+    return activity
 
 
 def get_hyperparameters() -> Dict[str, Any]:

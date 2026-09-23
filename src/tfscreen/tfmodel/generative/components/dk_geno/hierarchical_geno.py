@@ -6,6 +6,7 @@ from flax.struct import dataclass, field
 from typing import Mapping
 
 from tfscreen.tfmodel.data_class import GrowthData
+from tfscreen.tfmodel.generative.components._population import per_genotype
 from tfscreen.tfmodel.generative.components._pinning import (
     _hyper,
     _pinned_value,
@@ -35,9 +36,20 @@ class ModelPriors:
     )
     
 
+def _dk_geno_values(hyper_loc, hyper_scale, hyper_shift, wt_indexes):
+    """Per-genotype dk_geno from offsets (shift - lognormal); wt pinned to 0."""
+    def compute(dk_offset, genotype_idx):
+        lognormal = jnp.clip(jnp.exp(hyper_loc + dk_offset * hyper_scale),
+                             max=1e30)
+        values = hyper_shift - lognormal
+        return jnp.where(jnp.isin(genotype_idx, wt_indexes), 0.0, values)
+    return compute
+
+
 def define_model(name: str, 
                  data: GrowthData, 
-                 priors: ModelPriors) -> jnp.ndarray:
+                 priors: ModelPriors,
+                 return_population: bool = False) -> jnp.ndarray:
     """
     The pleiotropic effect of a genotype on growth rate independent of 
     transcription factor occupancy. 
@@ -64,12 +76,18 @@ def define_model(name: str,
         - ``priors.hyper_loc_loc``
         - ``priors.hyper_loc_scale``
         - ``priors.hyper_scale_loc``
+    return_population : bool, default False
+        Also return the library-ordered per-genotype values (shape
+        ``(num_genotype,)``, or ``None`` when the latents arrived as a
+        batch-sized substitution), for callers that look genotypes up by
+        library index (the congression mixture).
 
     Returns
     -------
     jnp.ndarray
         full tensor with shape (num_replicate,num_time,num_treatment,num_genotype)
-        with dk_geno values for each position in the tensor.
+        with dk_geno values for each position in the tensor. With
+        ``return_population``, a ``(tensor, population)`` tuple.
     """
 
     pinned = priors.pinned
@@ -96,29 +114,28 @@ def define_model(name: str,
     with pyro.plate(f"{name}_genotype_plate", data.num_genotype, dim=-1):
         dk_geno_offset = pyro.sample(f"{name}_offset", dist.Normal(0.0, 1.0))
 
-    # Sampled at library size: slice to this batch's genotypes. A value of
-    # any other size is an already-sliced substitution (posterior forward pass).
-    if dk_geno_offset.shape[-1] == data.num_genotype:
-        dk_geno_offset = dk_geno_offset[..., data.batch_idx]
-    
-    dk_geno_lognormal_values = jnp.clip(jnp.exp(dk_geno_hyper_loc + dk_geno_offset * dk_geno_hyper_scale),max=1e30)
-    dk_geno_per_genotype = dk_geno_hyper_shift - dk_geno_lognormal_values
+    # Sampled at library size: slice to this batch's genotypes (a value of
+    # any other size is an already-sliced substitution from the posterior
+    # forward pass). wt is forced to zero.
+    dk_geno_per_genotype, population = per_genotype(
+        _dk_geno_values(dk_geno_hyper_loc, dk_geno_hyper_scale,
+                        dk_geno_hyper_shift, data.wt_indexes),
+        [dk_geno_offset], data, return_population)
 
-    # Force wildtype to be zero. 
-    is_wt_mask = jnp.isin(data.batch_idx, data.wt_indexes)
-    dk_geno_per_genotype = jnp.where(is_wt_mask, 0.0, dk_geno_per_genotype)
-    
     # Register dists
     pyro.deterministic(name, dk_geno_per_genotype)    
 
     # Expand to full-sized tensor
     dk_geno = dk_geno_per_genotype[None,None,None,None,None,None,:]
 
+    if return_population:
+        return dk_geno, population
     return dk_geno
 
 def guide(name: str, 
           data: GrowthData, 
-          priors: ModelPriors) -> jnp.ndarray:
+          priors: ModelPriors,
+          return_population: bool = False) -> jnp.ndarray:
     """
     Guide corresponding to the hierarchical dk_geno model.
 
@@ -173,24 +190,20 @@ def guide(name: str,
     with pyro.plate(f"{name}_genotype_plate", data.num_genotype, dim=-1):
         dk_geno_offset = pyro.sample(f"{name}_offset", dist.Normal(offset_locs, offset_scales))
 
-    # Sampled at library size: slice to this batch's genotypes. A value of
-    # any other size is an already-sliced substitution (posterior forward pass).
-    if dk_geno_offset.shape[-1] == data.num_genotype:
-        dk_geno_offset = dk_geno_offset[..., data.batch_idx]
-
     # --- Deterministic Calculation ---
-    
-    # Replicate the Shift - LogNormal logic
-    dk_geno_lognormal_values = jnp.clip(jnp.exp(dk_geno_hyper_loc + dk_geno_offset * dk_geno_hyper_scale), max=1e30)
-    dk_geno_per_genotype = dk_geno_hyper_shift - dk_geno_lognormal_values
 
-    # Force wildtype to be zero
-    is_wt_mask = jnp.isin(data.batch_idx, data.wt_indexes)
-    dk_geno_per_genotype = jnp.where(is_wt_mask, 0.0, dk_geno_per_genotype)
-    
+    # Same shift - lognormal logic as the model, sliced to the batch; wt is
+    # forced to zero.
+    dk_geno_per_genotype, population = per_genotype(
+        _dk_geno_values(dk_geno_hyper_loc, dk_geno_hyper_scale,
+                        dk_geno_hyper_shift, data.wt_indexes),
+        [dk_geno_offset], data, return_population)
+
     # Expand to full-sized tensor
     dk_geno = dk_geno_per_genotype[None,None,None,None,None,None,:]
 
+    if return_population:
+        return dk_geno, population
     return dk_geno
 
 def get_hyperparameters():

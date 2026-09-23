@@ -15,7 +15,8 @@ class ModelPriors:
 
 def define_model(name: str, 
                  data: GrowthData, 
-                 priors: ModelPriors) -> jnp.ndarray:
+                 priors: ModelPriors,
+                 return_population: bool = False) -> jnp.ndarray:
     """
     Defines the fixed model for genotype-specific activity.
 
@@ -36,6 +37,9 @@ def define_model(name: str,
           per-genotype parameters to the full set of observations.
     priors : ModelPriors
         A Pytree of hyperparameters. (Unused in this model).
+    return_population : bool, default False
+        Also return the library-ordered per-genotype values, shape
+        ``(num_genotype,)``, as a ``(tensor, population)`` tuple.
 
     Returns
     -------
@@ -53,12 +57,15 @@ def define_model(name: str,
     # Broadcast to full-sized tensor
     activity = activity_dists[None,None,None,None,None,None,:]
 
+    if return_population:
+        return activity, jnp.ones(data.num_genotype, dtype=float)
     return activity
 
 
 def guide(name: str, 
           data: GrowthData, 
-          priors: ModelPriors) -> jnp.ndarray:
+          priors: ModelPriors,
+          return_population: bool = False) -> jnp.ndarray:
     """
     Guide for the fixed activity model.
 
@@ -73,6 +80,8 @@ def guide(name: str,
     # Broadcast to full-sized tensor
     activity = activity_dists[None,None,None,None,None,None,:]
 
+    if return_population:
+        return activity, jnp.ones(data.num_genotype, dtype=float)
     return activity
 
 def get_hyperparameters() -> Dict[str, Any]:

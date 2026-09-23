@@ -434,9 +434,23 @@ checked with `tfs-summarize-calibration`.
      built by the orchestrator from the library table or the legacy
      `spiked_genotypes` list (spiked -> `f_g = 0`, others 1). No behavior
      change: fits identical.
-   - [ ] **3.2 Full-population dk_geno access** (API only), mirroring
-     `population_theta`: mini-batch safe, with an external reference for
-     prediction. Identical fits.
+   - [x] **3.2 Full-population dk_geno and activity access** (API only).
+     Done 2026-09-23. Activity was added to the step: the cell's activity
+     follows the theta rule, so co-residents' activity is needed too. Every
+     `dk_geno` and `activity` component takes `return_population=False`;
+     when True it also returns the library-ordered per-genotype values from
+     the same draw (`generative/components/_population.py::per_genotype`), or
+     `None` when the latents arrived as a batch-sized substitution.
+     `GrowthData.external_dk_population` / `external_activity_population`
+     are the fallback. Nothing requests the population yet, so fits are
+     identical. Building the external arrays in `analysis/prediction.py`
+     moves to 3.4.
+     Found for 3.3: `theta/categorical_geno` slices its latent to the batch
+     at sample time, so `model.py`'s full-population `calc_theta` (arange
+     `batch_idx`/`geno_theta_idx`) returns batch-ordered theta at full batch
+     and indexes past the batch under mini-batching. Harmless for today's
+     empirical CDF at full batch (order-free), but 3.3 needs library-ordered
+     population theta from every theta component; fix and test it there.
    - [ ] **3.3 Mixture.** Class axis ahead of the 7-D growth layout; per-class
      theta rescale, `calculate_growth`, `growth_transition`; logsumexp mix
      with `log w`. New transformation-component interface returning classes

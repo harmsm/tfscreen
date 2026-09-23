@@ -13,7 +13,8 @@ class ModelPriors:
 
 def define_model(name: str, 
                  data: GrowthData, 
-                 priors: ModelPriors) -> jnp.ndarray:
+                 priors: ModelPriors,
+                 return_population: bool = False) -> jnp.ndarray:
     """
     The pleiotropic effect of a genotype on growth rate independent of
     transcription factor occupancy. Fixed to zero. Returns a full tensor. 
@@ -30,6 +31,9 @@ def define_model(name: str,
           per-genotype parameters to the full set of observations.
     priors : ModelPriors
         A Pytree of hyperparameters. (Unused in this model).
+    return_population : bool, default False
+        Also return the library-ordered per-genotype values, shape
+        ``(num_genotype,)``, as a ``(tensor, population)`` tuple.
         
     Returns
     -------
@@ -47,11 +51,14 @@ def define_model(name: str,
     # Expand to full-sized tensor
     dk_geno = dk_geno_per_genotype[None,None,None,None,None,None,:]
 
+    if return_population:
+        return dk_geno, jnp.zeros(data.num_genotype, dtype=float)
     return dk_geno
 
 def guide(name: str, 
           data: GrowthData, 
-          priors: ModelPriors) -> jnp.ndarray:
+          priors: ModelPriors,
+          return_population: bool = False) -> jnp.ndarray:
     """
     Guide for the fixed dk_geno model.
 
@@ -65,6 +72,8 @@ def guide(name: str,
     # Expand to full-sized tensor
     dk_geno = dk_geno_per_genotype[None,None,None,None,None,None,:]
 
+    if return_population:
+        return dk_geno, jnp.zeros(data.num_genotype, dtype=float)
     return dk_geno
 
 def get_hyperparameters():

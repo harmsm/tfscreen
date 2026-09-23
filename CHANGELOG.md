@@ -82,6 +82,20 @@ fall into two kinds:
   class, which previously shared one flag. Not yet used by the model, so fits
   are unchanged.
 
+- **Library-ordered dk_geno and activity from their components.** Every
+  `dk_geno` (`fixed`, `pinned`, `hierarchical_geno`) and `activity`
+  (`fixed`, `hierarchical_geno`, `horseshoe_geno`, `hierarchical_mut`,
+  `horseshoe_mut`) component's `define_model` and `guide` take
+  `return_population=False`. When True they return `(tensor, population)`,
+  where `population` holds every genotype's value in library order, computed
+  from the same draw (no new sample sites), or `None` when the latents arrived
+  as a batch-sized substitution. The shared helper is
+  `generative/components/_population.py::per_genotype`. New
+  `GrowthData.external_dk_population` / `external_activity_population`
+  fields are the fallback for prediction. Groundwork for the congression
+  mixture's co-resident lookup; nothing requests the population yet, so fits
+  are unchanged.
+
 ### Changed
 
 - **Co-transformed cells in the simulator now grow by cell-level physics.**

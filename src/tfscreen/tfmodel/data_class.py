@@ -124,6 +124,17 @@ class GrowthData:
     # supply this explicitly, computed against the true, unsubsetted library.
     external_theta_population: Any = field(default=None)
 
+    # Library-ordered dk_geno and activity for *every* genotype (shape
+    # (num_genotype,), or with leading sample dims), the counterparts of
+    # external_theta_population for the congression mixture's co-resident
+    # lookup (planning/congression-physics-plan.md, step 3). During training
+    # the dk_geno/activity components supply these themselves
+    # (return_population=True). A posterior forward pass that substitutes
+    # batch-sized latents cannot, so prediction code must pass them here.
+    # Not yet read by the model.
+    external_dk_population: Any = field(default=None)
+    external_activity_population: Any = field(default=None)
+
 @dataclass(frozen=True)
 class BindingData:
 
