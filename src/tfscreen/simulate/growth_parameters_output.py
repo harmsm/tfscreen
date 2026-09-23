@@ -42,7 +42,7 @@ def generate_growth_parameters_df(growth_cfg):
         The 'growth' top-level config block: a mapping from condition
         string to a parameter dict. Each parameter dict may contain a
         'model' key ('linear', 'power', or 'saturation'; defaults to
-        'linear' to match simulate.thermo_to_growth._apply_growth_params)
+        'linear' to match simulate.thermo_to_growth.growth_rate_one_condition)
         plus the model's own parameter keys.
 
     Returns

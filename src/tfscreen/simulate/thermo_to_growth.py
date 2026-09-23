@@ -250,39 +250,89 @@ def _assign_dk_geno(unique_genotypes,
     return pd.Series(dk_geno)
 
 
-def _apply_growth_params(condition_array, theta_array, growth_params,
-                         activity_array=None):
+def growth_rate_one_condition(condition, theta_array, activity_array,
+                              dk_geno_array, growth_params,
+                              theta_rescale="passthrough"):
     """
-    Compute per-row growth rate k given theta and per-condition model parameters.
+    Growth rate k from its physical components, all rows in one condition.
+
+    ``k = growth_model[condition](theta_rescale(theta), activity) + dk_geno``.
+    This is the one place the simulator turns theta, activity and dk_geno
+    into a growth rate: ``thermo_to_growth`` uses it (through
+    ``growth_rates``) per genotype and ``selection_experiment`` per
+    co-transformed cell, so the two always agree.
 
     Parameters
     ----------
-    condition_array : numpy.ndarray
-        1D array of condition strings.
+    condition : str
+        Condition (key of ``growth_params``).
     theta_array : numpy.ndarray
-        1D array of fractional occupancy values (same length).
+        1D array of fractional occupancy (raw, before rescaling).
+    activity_array : numpy.ndarray
+        1D array of TF activity.
+    dk_geno_array : numpy.ndarray
+        1D array of pleiotropic growth effects.
     growth_params : dict
-        Mapping from condition string to a parameter dict.  Must contain a
-        ``'model'`` key (``'linear'``, ``'power'``, or ``'saturation'``);
-        remaining keys are forwarded to the model's ``predict()`` method.
-    activity_array : numpy.ndarray or None
-        Per-row TF activity scaling factors.  Defaults to 1.0.
+        Mapping from condition string to a parameter dict with a ``'model'``
+        key (``'linear'``, ``'power'`` or ``'saturation'``; default
+        ``'linear'``); remaining keys go to the model's ``predict()``.
+    theta_rescale : str, default "passthrough"
+        Key of ``_THETA_RESCALE``.
 
     Returns
     -------
     numpy.ndarray
         Growth rate k for each row.
     """
-    if activity_array is None:
-        activity_array = np.ones(len(theta_array), dtype=float)
+    if theta_rescale not in _THETA_RESCALE:
+        raise ValueError(
+            f"theta_rescale '{theta_rescale}' not recognized. "
+            f"It should be one of: {list(_THETA_RESCALE.keys())}"
+        )
+    growth_theta = _THETA_RESCALE[theta_rescale](np.asarray(theta_array, dtype=float))
+    params = growth_params[condition].copy()
+    model = get_growth_model(params.pop("model", "linear"))
+    k = model.predict(growth_theta,
+                      activity=np.asarray(activity_array, dtype=float),
+                      **params)
+    return k + np.asarray(dk_geno_array, dtype=float)
+
+
+def growth_rates(condition_array, theta_array, activity_array, dk_geno_array,
+                 growth_params, theta_rescale="passthrough"):
+    """
+    Growth rate k from its physical components, rows in any conditions.
+
+    Applies ``growth_rate_one_condition`` to the rows of each condition.
+
+    Parameters
+    ----------
+    condition_array : numpy.ndarray
+        1D array of condition strings (keys of ``growth_params``).
+    theta_array, activity_array, dk_geno_array : numpy.ndarray
+        1D arrays aligned with ``condition_array``.
+    growth_params : dict
+        Per-condition growth model parameters.
+    theta_rescale : str, default "passthrough"
+        Key of ``_THETA_RESCALE``.
+
+    Returns
+    -------
+    numpy.ndarray
+        Growth rate k for each row.
+    """
+    condition_array = np.asarray(condition_array)
+    theta_array = np.asarray(theta_array, dtype=float)
+    activity_array = np.asarray(activity_array, dtype=float)
+    dk_geno_array = np.asarray(dk_geno_array, dtype=float)
+
     result = np.zeros(len(theta_array), dtype=float)
     for cond in np.unique(condition_array):
         mask = condition_array == cond
-        params = growth_params[cond].copy()
-        model_name = params.pop("model", "linear")
-        model = get_growth_model(model_name)
-        result[mask] = model.predict(theta_array[mask],
-                                     activity=activity_array[mask], **params)
+        result[mask] = growth_rate_one_condition(cond, theta_array[mask],
+                                                 activity_array[mask],
+                                                 dk_geno_array[mask],
+                                                 growth_params, theta_rescale)
     return result
 
 
@@ -617,15 +667,14 @@ def thermo_to_growth(
     theta = phenotype_df["theta"].to_numpy()
     activity = phenotype_df["activity"].to_numpy()
 
-    growth_theta = _THETA_RESCALE[theta_rescale](theta)
+    dk_geno = phenotype_df["dk_geno"].to_numpy()
 
-    k_pre = _apply_growth_params(phenotype_df["condition_pre"].to_numpy(),
-                                 growth_theta, growth_params, activity_array=activity)
-    phenotype_df["k_pre"] = k_pre + phenotype_df["dk_geno"].to_numpy()
-
-    k_sel = _apply_growth_params(phenotype_df["condition_sel"].to_numpy(),
-                                 growth_theta, growth_params, activity_array=activity)
-    phenotype_df["k_sel"] = k_sel + phenotype_df["dk_geno"].to_numpy()
+    phenotype_df["k_pre"] = growth_rates(phenotype_df["condition_pre"].to_numpy(),
+                                         theta, activity, dk_geno,
+                                         growth_params, theta_rescale)
+    phenotype_df["k_sel"] = growth_rates(phenotype_df["condition_sel"].to_numpy(),
+                                         theta, activity, dk_geno,
+                                         growth_params, theta_rescale)
 
     # ── Final column ordering ─────────────────────────────────────────────────
 

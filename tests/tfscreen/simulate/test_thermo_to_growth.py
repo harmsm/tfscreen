@@ -7,7 +7,8 @@ from numpy.random import Generator
 from tfscreen.simulate.thermo_to_growth import (
     _assign_activity,
     _assign_dk_geno,
-    _apply_growth_params,
+    growth_rates,
+    growth_rate_one_condition,
     _sample_horseshoe_activity,
     _sample_hierarchical_activity,
     _theta_param_to_df,
@@ -166,10 +167,18 @@ def test_assign_dk_geno_fixed_value_skips_rng():
 
 
 # ----------------------------------------------------------------------------
-# test _apply_growth_params
+# test growth_rates / growth_rate_one_condition
 # ----------------------------------------------------------------------------
 
-class TestApplyGrowthParams:
+def _k(conds, theta, growth_params, activity=None, dk=None, theta_rescale="passthrough"):
+    n = len(theta)
+    activity = np.ones(n) if activity is None else activity
+    dk = np.zeros(n) if dk is None else dk
+    return growth_rates(np.asarray(conds), np.asarray(theta), activity, dk,
+                        growth_params, theta_rescale)
+
+
+class TestGrowthRates:
 
     @pytest.fixture
     def growth_params(self):
@@ -179,17 +188,15 @@ class TestApplyGrowthParams:
         }
 
     def test_single_condition_at_theta_zero(self, growth_params):
-        k = _apply_growth_params(np.array(["sel"]), np.array([0.0]), growth_params)
+        k = _k(["sel"], [0.0], growth_params)
         assert np.isclose(k[0], 0.005)
 
     def test_single_condition_at_theta_one(self, growth_params):
-        k = _apply_growth_params(np.array(["sel"]), np.array([1.0]), growth_params)
+        k = _k(["sel"], [1.0], growth_params)
         assert np.isclose(k[0], -0.01 + 0.005)
 
     def test_vector_mixed_conditions(self, growth_params):
-        conds = np.array(["sel", "pre", "sel"])
-        theta = np.array([0.5, 0.3, 0.0])
-        k = _apply_growth_params(conds, theta, growth_params)
+        k = _k(["sel", "pre", "sel"], [0.5, 0.3, 0.0], growth_params)
         expected = np.array([
             -0.01 * 0.5 + 0.005,
              0.002 * 0.3 + 0.020,
@@ -198,35 +205,43 @@ class TestApplyGrowthParams:
         np.testing.assert_allclose(k, expected)
 
     def test_returns_numpy_array(self, growth_params):
-        k = _apply_growth_params(np.array(["pre"]), np.array([0.5]), growth_params)
-        assert isinstance(k, np.ndarray)
+        assert isinstance(_k(["pre"], [0.5], growth_params), np.ndarray)
 
     def test_missing_condition_raises(self, growth_params):
         with pytest.raises(KeyError):
-            _apply_growth_params(np.array(["nonexistent"]), np.array([0.5]), growth_params)
+            _k(["nonexistent"], [0.5], growth_params)
 
     def test_activity_scales_theta_contribution(self, growth_params):
-        conds = np.array(["sel", "sel"])
-        theta = np.array([1.0, 1.0])
         activity = np.array([0.5, 2.0])
-        k = _apply_growth_params(conds, theta, growth_params, activity_array=activity)
+        k = _k(["sel", "sel"], [1.0, 1.0], growth_params, activity=activity)
         b = growth_params["sel"]["b"]
         m = growth_params["sel"]["m"]
-        np.testing.assert_allclose(k, b + activity * m * theta)
+        np.testing.assert_allclose(k, b + activity * m * 1.0)
 
-    def test_activity_none_defaults_to_one(self, growth_params):
-        conds = np.array(["sel"])
-        theta = np.array([0.5])
-        k_default = _apply_growth_params(conds, theta, growth_params, activity_array=None)
-        k_explicit = _apply_growth_params(conds, theta, growth_params,
-                                           activity_array=np.array([1.0]))
-        np.testing.assert_allclose(k_default, k_explicit)
+    def test_dk_geno_is_added(self, growth_params):
+        k = _k(["sel", "pre"], [0.5, 0.5], growth_params, dk=np.array([0.01, -0.02]))
+        np.testing.assert_allclose(k, [-0.01*0.5 + 0.005 + 0.01,
+                                       0.002*0.5 + 0.020 - 0.02])
+
+    def test_theta_rescale_applied(self, growth_params):
+        k = _k(["sel"], [0.5], growth_params, theta_rescale="logit")
+        # logit(0.5) = 0
+        assert np.isclose(k[0], 0.005)
+
+    def test_bad_theta_rescale_raises(self, growth_params):
+        with pytest.raises(ValueError, match="theta_rescale"):
+            _k(["sel"], [0.5], growth_params, theta_rescale="nope")
+
+    def test_one_condition_matches_growth_rates(self, growth_params):
+        theta = np.array([0.1, 0.4, 0.9])
+        activity = np.array([1.0, 0.5, 2.0])
+        dk = np.array([0.0, 0.01, -0.01])
+        one = growth_rate_one_condition("sel", theta, activity, dk, growth_params)
+        many = growth_rates(np.array(["sel"]*3), theta, activity, dk, growth_params)
+        np.testing.assert_allclose(one, many)
 
     def test_zero_activity_returns_baseline(self, growth_params):
-        conds = np.array(["sel"])
-        theta = np.array([0.7])
-        k = _apply_growth_params(conds, theta, growth_params,
-                                  activity_array=np.array([0.0]))
+        k = _k(["sel"], [0.7], growth_params, activity=np.array([0.0]))
         assert np.isclose(k[0], growth_params["sel"]["b"])
 
 

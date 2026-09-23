@@ -18,7 +18,8 @@ from tfscreen.simulate.selection_experiment import (
     _sim_transform,
     _sim_transform_and_mix,
     _sim_growth,
-    MULTI_PLASMID_COMBINE_FCNS,
+    _cell_kt,
+    _check_cell_components,
     SIMULATE_KNOWN_KEYS,
     _sim_sequencing,
     _calc_genotype_cfu0,
@@ -55,8 +56,9 @@ def base_config() -> dict:
             "libA": 0.6,
             "libB": 0.4,
         },
-        "multi_plasmid_combine_fcn": {
-            "test_selection": "mean"
+        "growth": {
+            "M9": {"model": "linear", "b": 0.09, "m": 0.0},
+            "M9 + Ab": {"model": "linear", "b": 0.5, "m": 0.6},
         },
         "condition_selector": [
             "titrant_name", "titrant_conc",
@@ -77,16 +79,23 @@ def base_library_df() -> pd.DataFrame:
 
 @pytest.fixture
 def base_phenotype_df(base_library_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Phenotypes consistent with base_config["growth"]: k = b + m*theta + dk_geno.
+    """
     genotypes = sorted(list(pd.unique(base_library_df["genotype"])))
     conditions = [
         {"titrant_name": "IPTG", "titrant_conc": 10.0},
         {"titrant_name": "IPTG", "titrant_conc": 100.0},
     ]
-    base_growth_rates = {"A1V": 0.8, "A2V": 1.0, "A3V": 1.2, "A4V": 0.6}
-    
+    theta_by_geno = {"A1V": (0.2, 0.1), "A2V": (0.9, 0.5),
+                     "A3V": (0.6, 0.3), "A4V": (0.4, 0.05)}
+    dk_by_geno = {"A1V": 0.01, "A2V": -0.02, "A3V": 0.0, "A4V": 0.005}
+
     records = []
     for g in genotypes:
-        for c in conditions:
+        for i, c in enumerate(conditions):
+            theta = theta_by_geno[g][i]
+            dk = dk_by_geno[g]
             record = {
                 "genotype": g,
                 "replicate": 1,
@@ -95,10 +104,11 @@ def base_phenotype_df(base_library_df: pd.DataFrame) -> pd.DataFrame:
                 "t_pre": 4.0,
                 "condition_sel": "M9 + Ab",
                 "t_sel": 18.0,
-                "k_pre": 0.1,
-                "k_sel": base_growth_rates[g] * (1 + c["titrant_conc"] / 50.0),
-                "dk_geno": 0.01,
-                "theta": 1.0,
+                "k_pre": 0.09 + dk,
+                "k_sel": 0.5 + 0.6*theta + dk,
+                "dk_geno": dk,
+                "activity": 1.0,
+                "theta": theta,
                 **c
             }
             records.append(record)
@@ -249,26 +259,28 @@ def test_check_lib_spec_success(base_config: dict,
     _check_lib_spec(cf_copy, lib_df_copy, pheno_df_copy)
     assert True # Indicates successful run without errors
 
-def test_check_lib_spec_sets_defaults(base_config: dict, 
-                                      base_library_df: pd.DataFrame, 
-                                      base_phenotype_df: pd.DataFrame):
-    """
-    Tests that the function correctly sets the default for the
-    'multi_plasmid_combine_fcn' if it is not in the config.
-    """
-    cf_copy = base_config.copy()
-    lib_df_copy = base_library_df.copy()
-    pheno_df_copy = base_phenotype_df.copy()
+def test_check_cf_rejects_multi_plasmid_combine_fcn(base_config: dict):
+    """The removed key fails with a message naming its replacements."""
+    cf = dict(base_config)
+    cf["multi_plasmid_combine_fcn"] = {"test_selection": "mean"}
+    with pytest.raises(ValueError, match="congression_theta_rule"):
+        _check_cf(cf)
 
-    # Remove the key to test default-setting behavior
-    cf_copy.pop("multi_plasmid_combine_fcn")
 
-    result_cf = _check_lib_spec(cf_copy, lib_df_copy, pheno_df_copy)
+def test_check_cf_congression_rule_defaults(base_config: dict):
+    """Omitted congression rules default to max theta and dilution dk."""
+    cf = _check_cf(dict(base_config))
+    assert cf["congression_theta_rule"] == "max"
+    assert cf["congression_dk_rule"] == "dilution"
 
-    assert "multi_plasmid_combine_fcn" in result_cf
-    # 'test_selection' is the library name in base_phenotype_df
-    expected_default = {"test_selection": "mean"}
-    assert result_cf["multi_plasmid_combine_fcn"] == expected_default
+
+@pytest.mark.parametrize("key", ["congression_theta_rule", "congression_dk_rule"])
+def test_check_cf_bad_congression_rule(base_config: dict, key):
+    cf = dict(base_config)
+    cf[key] = "not_a_rule"
+    with pytest.raises(ValueError, match=key):
+        _check_cf(cf)
+
 
 @pytest.mark.parametrize("modification_lambda, match_error", [
     # Genotype in library_df is missing from phenotype_df
@@ -287,9 +299,7 @@ def test_check_lib_spec_sets_defaults(base_config: dict,
     
     # Ratios in library_mixture sum to zero
     (lambda cf, lib, pheno: cf.update({"library_mixture": {"libA": 0, "libB": 0}}), "cannot be zero"),
-    
-    # Invalid multi_plasmid_combine_fcn name
-    (lambda cf, lib, pheno: cf["multi_plasmid_combine_fcn"].update({"test_selection": "bad_fcn"}), "not recognized"),
+
 ])
 def test_check_lib_spec_failures(base_config: dict, 
                                  base_library_df: pd.DataFrame, 
@@ -570,89 +580,167 @@ def test_sim_transform_and_mix_invariant_to_transform_sizes(rng: Generator):
 # test _sim_growth
 # ----------------------------------------------------------------------------
 
-def test_sim_growth_single_plasmid():
-    """
-    Tests a simple case where all cells have exactly one plasmid.
-    """
-    # 3 cells, each with one plasmid (genotypes 0, 1, 2)
-    transformants = np.array([[0], [1], [2]])
-    trans_mask = np.array([[False], [False], [False]])
+def test_sim_growth():
+    """Final CFU is initial CFU times exp(cell k*t)."""
     trans_freq = np.array([0.2, 0.3, 0.5])
     total_cfu0 = 1.0e6
-    
-    # 3 genotypes, 2 conditions
-    genotype_vs_kt = np.array([
-        [0.1, 0.5], # Genotype 0 k*t values
-        [0.2, 0.6], # Genotype 1 k*t values
-        [0.3, 0.7], # Genotype 2 k*t values
-    ])
+    cell_kt = np.array([[0.1, 0.5],
+                        [0.2, 0.6],
+                        [0.3, 0.7]])
 
-    # Manually calculate expected CFU
-    initial_cfus = total_cfu0 * trans_freq
-    growth_factors = np.exp(genotype_vs_kt)
-    expected_cfu = initial_cfus[:, np.newaxis] * growth_factors
-
-    result_cfu = _sim_growth(
-        transformants, trans_mask, trans_freq, genotype_vs_kt, total_cfu0, "mean"
-    )
+    expected_cfu = (total_cfu0 * trans_freq)[:, np.newaxis] * np.exp(cell_kt)
+    result_cfu = _sim_growth(cell_kt, trans_freq, total_cfu0)
 
     np.testing.assert_allclose(result_cfu, expected_cfu)
 
-@pytest.mark.parametrize("combine_fcn_name", MULTI_PLASMID_COMBINE_FCNS.keys())
-def test_sim_growth_multi_plasmid(combine_fcn_name: str):
+
+# ----------------------------------------------------------------------------
+# test _cell_kt
+# ----------------------------------------------------------------------------
+
+def _cell_kt_inputs(growth_transition=None):
     """
-    Tests that multi-plasmid kt values are combined correctly for all
-    supported combination functions.
+    Three genotypes, two conditions, linear growth k = b + m*A*theta + dk.
+    Pre-growth has m = 0, so only selection depends on theta.
     """
-    # 2 cells: cell 0 has 2 plasmids (geno0, A1V), cell 1 has 1 (A2V)
-    transformants = np.array([[0, 1], [2, 0]]) # Second plasmid for cell 1 is masked
+    cf = {
+        "growth": {"pre": {"model": "linear", "b": 0.1, "m": 0.0},
+                   "sel": {"model": "linear", "b": 0.2, "m": 0.5}},
+        "theta_rescale": "passthrough",
+        "growth_transition": growth_transition,
+        "congression_theta_rule": "max",
+        "congression_dk_rule": "dilution",
+    }
+    theta = np.array([[0.1, 0.9],    # g0
+                      [0.8, 0.2],    # g1
+                      [0.5, 0.5]])   # g2
+    activity = np.array([1.0, 0.5, 1.0])
+    dk = np.array([0.0, -0.04, 0.02])
+    condition_info = pd.DataFrame({"condition_pre": ["pre", "pre"],
+                                   "condition_sel": ["sel", "sel"],
+                                   "t_pre": [1.0, 1.0],
+                                   "t_sel": [10.0, 10.0]})
+
+    def kt(theta_, activity_, dk_):
+        k_pre = 0.1 + dk_
+        k_sel = 0.2 + 0.5*activity_*theta_ + dk_
+        return k_pre*1.0 + k_sel*10.0
+
+    genotype_vs_kt = np.array([[kt(theta[g, c], activity[g], dk[g])
+                                for c in range(2)] for g in range(3)])
+    return cf, theta, activity, dk, condition_info, genotype_vs_kt, kt
+
+
+def test_cell_kt_single_plasmid_cells_match_genotypes():
+    cf, theta, activity, dk, info, gkt, _ = _cell_kt_inputs()
+    transformants = np.array([[0], [1], [2]])
+    trans_mask = np.zeros((3, 1), dtype=bool)
+    result = _cell_kt(transformants, trans_mask, gkt, theta, activity, dk,
+                      info, np.zeros(2), cf)
+    np.testing.assert_allclose(result, gkt)
+
+
+def test_cell_kt_co_transformed_cell_uses_cell_physics():
+    """
+    A {g0, g1} cell: theta and activity from the higher-theta plasmid at each
+    condition, dk diluted by share. Not any combination of the two
+    genotypes' k*t.
+    """
+    cf, theta, activity, dk, info, gkt, kt = _cell_kt_inputs()
+    transformants = np.array([[0, 1], [2, 0]])
     trans_mask = np.array([[False, False], [False, True]])
-    trans_freq = np.array([0.4, 0.6])
-    total_cfu0 = 1.0e6
+    tube_kt = np.array([0.01, -0.02])
 
-    genotype_vs_kt = np.array([
-        [0.1, 1.0], # Genotype 0
-        [0.5, 0.8], # Genotype 1
-        [0.3, 0.6], # Genotype 2
-    ])
+    result = _cell_kt(transformants, trans_mask, gkt + tube_kt, theta,
+                      activity, dk, info, tube_kt, cf)
 
-    # Calculate the expected effective kt for each cell
-    # Cell 0 combines kt from genotypes 0 and 1
-    kt_cell0 = genotype_vs_kt[[0, 1], :]
-    # Cell 1 only has kt from genotype 2
-    kt_cell1 = genotype_vs_kt[[2], :]
-    
-    # Use the actual numpy functions to get the expected combined kt values
-    if combine_fcn_name == "gmean":
-        from scipy.stats import gmean
-        expected_combined_kt_cell0 = gmean(kt_cell0, axis=0)
-    else:
-        # Get the numpy/numpy.ma function (e.g., np.mean, np.max)
-        np_fcn = MULTI_PLASMID_COMBINE_FCNS[combine_fcn_name]
-        expected_combined_kt_cell0 = np_fcn(kt_cell0, axis=0)
+    dk_cell = 0.5*dk[0] + 0.5*dk[1]
+    # condition 0: g1 has the higher theta (0.8, activity 0.5)
+    # condition 1: g0 has the higher theta (0.9, activity 1.0)
+    expected_cell0 = [kt(0.8, 0.5, dk_cell) + tube_kt[0],
+                      kt(0.9, 1.0, dk_cell) + tube_kt[1]]
+    np.testing.assert_allclose(result[0], expected_cell0)
+    # Single-plasmid cell keeps its genotype's k*t (tube noise included)
+    np.testing.assert_allclose(result[1], gkt[2] + tube_kt)
 
-    effective_kt = np.vstack([expected_combined_kt_cell0, kt_cell1])
-    
-    # Calculate final expected CFU
-    initial_cfus = total_cfu0 * trans_freq
-    expected_cfu = initial_cfus[:, np.newaxis] * np.exp(effective_kt)
-    
-    result_cfu = _sim_growth(
-        transformants, trans_mask, trans_freq, genotype_vs_kt, total_cfu0, combine_fcn_name
-    )
 
-    np.testing.assert_allclose(result_cfu, expected_cfu)
+def test_cell_kt_duplicate_genotype_matches_genotype():
+    """A cell with two copies of one genotype grows like that genotype."""
+    cf, theta, activity, dk, info, gkt, _ = _cell_kt_inputs()
+    transformants = np.array([[1, 1]])
+    trans_mask = np.zeros((1, 2), dtype=bool)
+    result = _cell_kt(transformants, trans_mask, gkt, theta, activity, dk,
+                      info, np.zeros(2), cf)
+    np.testing.assert_allclose(result[0], gkt[1])
 
-def test_sim_growth_invalid_fcn():
-    """
-    Tests that the function raises a ValueError for an invalid combine function.
-    """
-    # We can use dummy arrays as the function will fail before using them
-    dummy_array = np.array([[]])
-    with pytest.raises(ValueError, match="not recognized"):
-        _sim_growth(dummy_array, dummy_array, dummy_array, 
-                    dummy_array, 0, "not_a_real_function")
-        
+
+def test_cell_kt_applies_growth_transition():
+    """Co-transformed cells go through the growth transition model too."""
+    gt = [{"condition_pre": "pre", "model": "memory",
+           "tau0": 3.0, "k1": 1.0, "k2": 1.0}]
+    cf, theta, activity, dk, info, gkt, _ = _cell_kt_inputs(growth_transition=gt)
+
+    # Genotype k*t with the transition model, via the shared path
+    rows = []
+    for g in range(3):
+        for c in range(2):
+            rows.append({"k_pre": 0.1 + dk[g],
+                         "k_sel": 0.2 + 0.5*activity[g]*theta[g, c] + dk[g],
+                         "t_pre": 1.0, "t_sel": 10.0, "theta": theta[g, c],
+                         "condition_pre": "pre"})
+    gkt = _compute_kt(pd.DataFrame(rows), gt).reshape(3, 2)
+
+    # A {g2, g2} cell must reproduce g2's transition-model k*t exactly.
+    result = _cell_kt(np.array([[2, 2]]), np.zeros((1, 2), dtype=bool), gkt,
+                      theta, activity, dk, info, np.zeros(2), cf)
+    np.testing.assert_allclose(result[0], gkt[2])
+
+
+def test_cell_kt_nan_theta_gives_zero_growth():
+    cf, theta, activity, dk, info, gkt, _ = _cell_kt_inputs()
+    theta = theta.copy()
+    theta[1, 0] = np.nan
+    result = _cell_kt(np.array([[0, 1]]), np.zeros((1, 2), dtype=bool), gkt,
+                      theta, activity, dk, info, np.zeros(2), cf)
+    assert result[0, 0] == 0.0
+    assert np.isfinite(result[0, 1]) and result[0, 1] != 0.0
+
+
+def test_cell_kt_no_cells():
+    cf, theta, activity, dk, info, gkt, _ = _cell_kt_inputs()
+    result = _cell_kt(np.empty((0, 0), dtype=int), np.empty((0, 0), dtype=bool),
+                      gkt, theta, activity, dk, info, np.zeros(2), cf)
+    assert result.shape == (0, 2)
+
+
+# ----------------------------------------------------------------------------
+# test _check_cell_components
+# ----------------------------------------------------------------------------
+
+def test_check_cell_components_passes(base_config, base_phenotype_df):
+    _check_cell_components(_check_cf(dict(base_config)), base_phenotype_df)
+
+
+def test_check_cell_components_needs_growth(base_config, base_phenotype_df):
+    cf = _check_cf(dict(base_config))
+    cf.pop("growth")
+    with pytest.raises(ValueError, match="'growth' block"):
+        _check_cell_components(cf, base_phenotype_df)
+
+
+def test_check_cell_components_needs_columns(base_config, base_phenotype_df):
+    cf = _check_cf(dict(base_config))
+    with pytest.raises(ValueError, match="activity"):
+        _check_cell_components(cf, base_phenotype_df.drop(columns=["activity"]))
+
+
+def test_check_cell_components_mismatch(base_config, base_phenotype_df):
+    cf = _check_cf(dict(base_config))
+    df = base_phenotype_df.copy()
+    df.loc[0, "k_sel"] += 0.1
+    with pytest.raises(ValueError, match="k_sel"):
+        _check_cell_components(cf, df)
+
 
 # ----------------------------------------------------------------------------
 # test _sim_sequencing
@@ -923,7 +1011,7 @@ def test_simulate_library_group_integration(base_config: dict,
         lib_origin_dict, # Passed as dict
         ordered_genotypes,
         reads_per_sample,
-        base_config,
+        _check_cf(dict(base_config)),
         rng
     )
     
@@ -1011,7 +1099,7 @@ def test_simulate_library_group_handles_sparse_data(
         lib_origin_dict=lib_origin_dict, # Passed as dict
         ordered_genotypes=ordered_genotypes,
         reads_per_sample=reads_per_sample,
-        cf=base_config,
+        cf=_check_cf(dict(base_config)),
         rng=rng
     )
 

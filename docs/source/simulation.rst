@@ -44,8 +44,17 @@ TF activity.
 
 **Experimental parameters** — ``transform_sizes``, ``library_mixture``,
 ``lib_assembly_skew_sigma``, ``transformation_poisson_lambda``,
-``multi_plasmid_combine_fcn``, ``cfu0``, ``tube_noise_sigma``,
-``total_num_reads``, ``prob_index_hop``, ``random_seed``.
+``congression_theta_rule``, ``congression_dk_rule``, ``cfu0``,
+``tube_noise_sigma``, ``total_num_reads``, ``prob_index_hop``,
+``random_seed``.
+
+**Co-transformed cells** — a cell carrying several plasmids splits its
+abundance among them and has one growth rate, built from cell-level physics:
+``congression_theta_rule`` (default ``max``: the highest-theta plasmid sets the
+cell's theta and TF activity) and ``congression_dk_rule`` (default
+``dilution``: share-weighted mean ``dk_geno``), then the same growth model as
+any genotype. This replaces ``multi_plasmid_combine_fcn``, which combined whole
+growth rates and is now rejected.
 
 **Growth transition** (optional) — ``growth_transition`` list; one entry per
 ``condition_pre`` that has a detectable lag phase. Supported models: ``instant``,

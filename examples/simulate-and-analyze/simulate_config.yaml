@@ -179,12 +179,13 @@ lib_assembly_skew_sigma: 1.25
 # Poisson with this lambda.  Set to 0 or null for exactly one plasmid per cell.
 transformation_poisson_lambda: 0
 
-# When a cell carries multiple plasmids, growth rates are combined via this
-# function.  Recommended: 'min' for repressors of antibiotic resistance (tightest
-# binder dominates); 'max' for inducers.  Default: 'mean' for all libraries.
-multi_plasmid_combine_fcn:
-  kanR: "min"
-  pheS: "max"
+# How a cell carrying several plasmids gets its growth rate. The cell's theta
+# and TF activity come from congression_theta_rule ('max': the highest-theta
+# plasmid sets both, at each condition); its dk_geno from congression_dk_rule
+# ('dilution': share-weighted mean). Growth is then computed once from these
+# cell-level values. Both keys are optional; these are the defaults.
+congression_theta_rule: max
+congression_dk_rule: dilution
 
 # Colony-forming units per mL at the start of pre-growth.
 cfu0: 6.5e7

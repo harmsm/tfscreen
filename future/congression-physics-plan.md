@@ -80,10 +80,11 @@ per-genotype `bulk_fraction` (the `f_g` below) and `pool_fraction`. The model
 reads the table but does not yet use either fraction; it only derives the
 spiked set from `in_spiked_origin`.
 
-**Simulator.** `_sim_growth` (`simulate/selection_experiment.py`) combines each
+**Simulator.** `_sim_growth` (`simulate/selection_experiment.py`) combined each
 co-resident plasmid's whole `k*t` with a per-marker-library
 `multi_plasmid_combine_fcn` (`gmean`/`mean`/`min`/`max`/`sum`; default `mean`;
-the example configs use `min` for kanR and `max` for pheS).
+the example configs used `min` for kanR and `max` for pheS). Replaced in
+step 2 (2026-09-23) by cell-level theta and dk rules.
 
 **Known simulator/design mismatch.** `_sim_sequencing` and
 `_calc_genotype_cfu0` credit every plasmid in a cell with that cell's whole
@@ -308,11 +309,16 @@ checked with `tfs-summarize-calibration`.
      (`_plasmid_shares`; a test checks simulated abundance against the
      design `pool_fraction` at lambda = 0, 0.357 and 1.5).
 2. **Simulator restructure.**
-   - [ ] Build each cell's theta and dk from its plasmids with pluggable rules,
+   - [x] Build each cell's theta and dk from its plasmids with pluggable rules,
      then assemble growth once
      (`k_cell = k_condition + dk_cell + m * A * theta_cell`). Replaces
-     `multi_plasmid_combine_fcn` on whole `k*t`.
-   - [ ] First rules: max theta (the fit's current theta rule) and dilution dk.
+     `multi_plasmid_combine_fcn` on whole `k*t`. 2026-09-23:
+     `simulate/cell_rules.py`, `selection_experiment._cell_kt`; config keys
+     `congression_theta_rule`, `congression_dk_rule`.
+   - [x] First rules: max theta (the fit's current theta rule) and dilution dk.
+     TF activity follows the theta rule: it comes from the plasmid that sets
+     theta (user, 2026-09-23). Revisit in step 4, where a partition-function
+     theta rule would put activity into the plasmid weights.
 3. **Fit: observable-level mixture.** Breaking change.
    - [ ] Clean/congressed log-sum-exp mixture in the growth observation, over
      each class's whole pre + selection trajectory through

@@ -74,6 +74,31 @@ fall into two kinds:
   `{out_prefix}_run_status.csv`. No thresholds or grades. New console script:
   reinstall to register it.
 
+### Changed
+
+- **Co-transformed cells in the simulator now grow by cell-level physics.**
+  A cell carrying several plasmids used to get the min/max/mean/... of its
+  plasmids' whole `k*t` (`multi_plasmid_combine_fcn`, per marker library).
+  Because `dk_geno` varies more across genotypes than the whole theta signal,
+  that let `dk_geno` decide which plasmid set the cell's growth. Now the
+  cell's theta and TF activity come from `congression_theta_rule` (`max`:
+  the highest-theta plasmid at each condition), its `dk_geno` from
+  `congression_dk_rule` (`dilution`: share-weighted mean), and its `k_pre`,
+  `k_sel` and `k*t` from the same growth model, theta rescale, growth
+  transition and tube noise as any genotype. Single-plasmid cells are
+  unchanged; at lambda = 0 output is identical to before.
+  - **Breaking:** `multi_plasmid_combine_fcn` is removed and a config that
+    sets it is refused with a message naming the new keys. Both new keys are
+    optional (defaults `max` and `dilution`). Example configs updated.
+  - With `transformation_poisson_lambda > 0`, `selection_experiment` needs
+    the config's `growth` block and phenotype columns `theta`, `activity`,
+    `dk_geno`, and checks that they reproduce the phenotype's `k_pre`/`k_sel`
+    (`_check_cell_components`), so the two paths cannot drift apart.
+  - New `simulate/cell_rules.py` (`THETA_RULES`, `DK_RULES`). New
+    `thermo_to_growth.growth_rates`/`growth_rate_one_condition` are the one
+    theta/activity/dk_geno -> k formula, used per genotype and per cell;
+    they replace `_apply_growth_params`.
+
 ### Fixed
 
 - **Per-genotype latents scrambled across genotypes under autoguides.**

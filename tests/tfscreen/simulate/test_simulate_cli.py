@@ -491,7 +491,6 @@ def test_theta_rng_seed_rejected_as_unknown_key(tmp_path):
         "library_mixture": {},
         "lib_assembly_skew_sigma": 0.0,
         "transformation_poisson_lambda": 1,
-        "multi_plasmid_combine_fcn": "gmean",
         "cfu0": 1e7,
         "tube_noise_sigma": 0.0,
         "total_num_reads": 1000,

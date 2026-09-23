@@ -44624,6 +44624,7 @@
 ./src/tfscreen/__init__.py:19:1: W391 blank line at end of file
 ./src/tfscreen/__version__.py:5:16: W291 trailing whitespace
 ./src/tfscreen/analysis/__init__.py:13:1: W391 blank line at end of file
+./src/tfscreen/analysis/calibration_grid.py:492:1: C901 'summarize_calibration' is too complex (14)
 ./src/tfscreen/analysis/cat_response/__init__.py:2:77: W291 trailing whitespace
 ./src/tfscreen/analysis/cat_response/__init__.py:3:55: W291 trailing whitespace
 ./src/tfscreen/analysis/cat_response/cat_fit.py:148:1: E305 expected 2 blank lines after class or function definition, found 1
@@ -48130,10 +48131,10 @@
 ./src/tfscreen/tfmodel/scripts/setup_grid_cli.py:164:1: C901 'setup_grid' is too complex (17)
 ./src/tfscreen/tfmodel/scripts/subset_genotypes_cli.py:40:1: C901 'subset_genotypes' is too complex (23)
 ./src/tfscreen/tfmodel/scripts/subset_genotypes_cli.py:93:5: F841 local variable 'all_genotypes' is assigned to but never used
-./src/tfscreen/tfmodel/scripts/summarize_fit_cli.py:154:1: C901 '_read_all_losses' is too complex (11)
-./src/tfscreen/tfmodel/scripts/summarize_fit_cli.py:413:1: C901 '_summarize_params' is too complex (23)
-./src/tfscreen/tfmodel/scripts/summarize_fit_cli.py:528:1: C901 '_summarize_condition_growth_params' is too complex (14)
-./src/tfscreen/tfmodel/scripts/summarize_fit_cli.py:723:1: C901 'summarize_fit' is too complex (59)
+./src/tfscreen/tfmodel/scripts/summarize_fit_cli.py:208:1: C901 '_read_all_losses' is too complex (11)
+./src/tfscreen/tfmodel/scripts/summarize_fit_cli.py:467:1: C901 '_summarize_params' is too complex (23)
+./src/tfscreen/tfmodel/scripts/summarize_fit_cli.py:582:1: C901 '_summarize_condition_growth_params' is too complex (14)
+./src/tfscreen/tfmodel/scripts/summarize_fit_cli.py:777:1: C901 'summarize_fit' is too complex (59)
 ./src/tfscreen/tfmodel/scripts/summarize_grid_cli.py:47:30: E127 continuation line over-indented for visual indent
 ./src/tfscreen/tfmodel/scripts/summarize_grid_cli.py:57:1: C901 'summarize_grid' is too complex (11)
 ./src/tfscreen/tfmodel/tensors/batch.py:5:1: E302 expected 2 blank lines, found 1
@@ -48556,6 +48557,11 @@
 ./tests/smoke-tests/test_run_growth_analysis_smoke.py:45:1: W293 blank line contains whitespace
 ./tests/smoke-tests/test_run_growth_analysis_smoke.py:48:1: W293 blank line contains whitespace
 ./tests/tfscreen/analysis/cat_response/test_cat_assess.py:7:1: F401 'scipy.stats.norm' imported but unused
+./tests/tfscreen/analysis/test_calibration_grid.py:9:1: E402 module level import not at top of file
+./tests/tfscreen/analysis/test_calibration_grid.py:10:1: E402 module level import not at top of file
+./tests/tfscreen/analysis/test_calibration_grid.py:11:1: E402 module level import not at top of file
+./tests/tfscreen/analysis/test_calibration_grid.py:12:1: E402 module level import not at top of file
+./tests/tfscreen/analysis/test_calibration_grid.py:14:1: E402 module level import not at top of file
 ./tests/tfscreen/analysis/test_extract_epistasis.py:16:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/analysis/test_extract_epistasis.py:22:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/analysis/test_extract_epistasis.py:34:35: W291 trailing whitespace
@@ -51504,12 +51510,12 @@
 ./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:19:1: E402 module level import not at top of file
 ./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:21:1: E402 module level import not at top of file
 ./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:31:1: E402 module level import not at top of file
-./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:969:18: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:972:17: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:1237:1: E402 module level import not at top of file
-./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:1419:14: E221 multiple spaces before operator
-./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:1681:1: E402 module level import not at top of file
-./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:2061:21: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:1013:18: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:1016:17: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:1281:1: E402 module level import not at top of file
+./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:1463:14: E221 multiple spaces before operator
+./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:1725:1: E402 module level import not at top of file
+./tests/tfscreen/tfmodel/scripts/test_summarize_fit_cli.py:2105:21: E221 multiple spaces before operator
 ./tests/tfscreen/tfmodel/scripts/test_summarize_grid_cli.py:78:9: F841 local variable 'data' is assigned to but never used
 ./tests/tfscreen/tfmodel/scripts/test_summarize_grid_cli.py:182:91: E712 comparison to True should be 'if cond is True:' or 'if cond:'
 ./tests/tfscreen/tfmodel/tensors/test_batch.py:3:1: F401 'numpy as np' imported but unused
@@ -52030,7 +52036,7 @@
 ./tests/tfscreen/util/validation/test_check.py:8:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/validation/test_check.py:26:1: E302 expected 2 blank lines, found 1
 ./tests/tfscreen/util/validation/test_check.py:75:70: W292 no newline at end of file
-389   C901 'cat_fit' is too complex (28)
+390   C901 'cat_fit' is too complex (28)
 70    E111 indentation is not a multiple of 4
 42    E114 indentation is not a multiple of 4 (comment)
 42    E116 unexpected indentation (comment)
@@ -52063,7 +52069,7 @@
 142   E305 expected 2 blank lines after class or function definition, found 1
 203   E306 expected 1 blank line before a nested definition, found 0
 7     E401 multiple imports on one line
-268   E402 module level import not at top of file
+273   E402 module level import not at top of file
 609   E501 line too long (153 > 127 characters)
 301   E701 multiple statements on one line (colon)
 35    E712 comparison to True should be 'if cond is True:' or 'if cond:'
@@ -52079,4 +52085,4 @@
 562   W292 no newline at end of file
 10397 W293 blank line contains whitespace
 196   W391 blank line at end of file
-52032
+52038
