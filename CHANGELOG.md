@@ -74,6 +74,14 @@ fall into two kinds:
   `{out_prefix}_run_status.csv`. No thresholds or grades. New console script:
   reinstall to register it.
 
+- **`GrowthData.bulk_fraction`**: each genotype's fraction of cells from the
+  bulk (co-transformed) sub-libraries, built by `ModelOrchestrator` from the
+  library composition table (legacy `spiked_genotypes`: 0 for spiked, 1
+  otherwise; `__unknown__` counts as bulk; a genotype missing from the table
+  is an error). This separates congression purity from the `ln_cfu0` prior
+  class, which previously shared one flag. Not yet used by the model, so fits
+  are unchanged.
+
 ### Changed
 
 - **Co-transformed cells in the simulator now grow by cell-level physics.**

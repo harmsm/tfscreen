@@ -182,7 +182,7 @@ Flow: `genetics.library_composition_table(library_config)` (`genetics/library_de
 
 A library-derived spiked genotype that has no growth data is **reported, not fatal** (spikes can drop out of a real dataset), unlike the hand-supplied `spiked_genotypes` list, which still raises.
 
-`pool_fraction`/`bulk_fraction` are computed and snapshotted but **not yet consumed by the model** — `bulk_fraction` is the `f_g` the observable-level congression mixture will use (see `future/congression-physics-plan.md`), and the current backend still treats spiked as a binary via `congression_mask`/`ln_cfu0_spiked_mask`.
+`pool_fraction`/`bulk_fraction` are computed and snapshotted. `bulk_fraction` is carried into the model as `GrowthData.bulk_fraction` (library-sized float per genotype, indexed by `batch_idx`; built by `ModelOrchestrator._build_bulk_fraction`: the table's value, `__unknown__` → 1.0, any other missing genotype raises; legacy `spiked_genotypes` → 0 spiked / 1 otherwise) but is **not yet read by the model** — it is the `f_g` of the observable-level congression mixture (step 3.3 of `future/congression-physics-plan.md`). Purity (`bulk_fraction`) and the `ln_cfu0` prior class (`ln_cfu0_spiked_mask`, from `in_spiked_origin`) are separate fields; the current backend still applies the binary `congression_mask` for the congression correction.
 
 ### Pre-fit model accounting (`tfmodel/model_stats.py`)
 

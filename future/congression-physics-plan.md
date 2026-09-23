@@ -117,6 +117,9 @@ Provenance: user, 2026-09-13, unless noted.
   and checked by sensitivity, not fit.
 - **Spiked and library copies are indistinguishable** in this dataset. Future
   runs will give spikes distinct codons.
+- **dk_geno spread is tight in this library** (bench, 2026-09-23): monoculture
+  growth rates of eight genotypes, chosen to be biased toward expected poor
+  growers, were 0.024 +/- 0.001. Not guaranteed for other libraries.
 - **Overnight outgrowth does not shift the clean/congressed class weights**
   (user, 2026-09-23). The mixture weights `w_clean`/`w_congressed` are the
   split at transformation (`f_g`, lambda), but the mixture needs the split at
@@ -238,6 +241,58 @@ existing spiked/bulk prior on it; carry purity in `f_g`. Genotypes can't simply
 be removed from `--spiked`, because their abundance really is far higher than
 the bulk's.
 
+### Fit design (step 3)
+
+Agreed 2026-09-23 (user). Today's fit replaces a bulk genotype's theta by
+`E[max]` over co-residents and grows one trajectory with the genotype's own
+dk, i.e. it averages theta over the genotype's cells where the reads average
+`exp(ln_cfu)`. The replacement:
+
+```
+ln_cfu_g(t) = ln_cfu0_g + logsumexp_c [ log w_{g,c} + G_{g,c}(t) ] + delta_sample
+```
+
+- **Classes c.** *Clean*: the genotype's own theta, activity and dk.
+  *Congressed*: the genotype plus co-residents; cell theta and activity from
+  the theta rule (max), dk from the dk rule (dilution), matching the
+  simulator (`simulate/cell_rules.py`).
+- **Weights.** `w_cong = f_g * (1 - exp(-lambda))`, `w_clean = 1 - w_cong`;
+  time-independent. `f_g` is `bulk_fraction` from the library table.
+- **G** is each class's whole trajectory through the existing pipeline
+  (`theta_rescale` -> `calculate_growth` -> `growth_transition`) over pre and
+  selection growth. Classes go on a new leading axis; the growth and
+  transition components are elementwise and should broadcast (verify).
+- **Unchanged:** `ln_cfu0`, `delta_sample`, growth noise, presplit,
+  base_growth, binding.
+- **`congression_mask` is split.** Purity -> `f_g`; the `ln_cfu0` prior
+  class -> `in_spiked_origin` (spikes really are far more abundant). Legacy
+  `spiked_genotypes` -> `f_g = 0` for spiked, 1 otherwise.
+- **Co-resident background** needs the full-population theta (exists) and
+  dk (new), mini-batch safe, with external references for prediction.
+  Pooled vs per-origin background is decided by 3.0 (each sub-library is
+  transformed separately, so a single's co-residents come from the single
+  library and a double's from the double library).
+- **`theta_growth_noise`** acts on the genotype's own theta before classes
+  are built; co-residents use noiseless population values.
+- **lambda** stays a latent with the measured prior; it now enters the
+  weights as well as the co-resident draws.
+- **Estimator (from 3.0; user, 2026-09-23): fixed Monte Carlo quadrature.**
+  Before fitting, draw once, per genotype, K co-resident sets from the pooled
+  bulk composition (`pool_fraction * bulk_fraction`), stratified by count:
+  K_1 sets with N = 1, K_2 with N = 2, K_3 with N = 3 (e.g. 12 / 3 / 1; N >= 4
+  is about 0.3% of congressed cells at lambda = 0.357 and is dropped). The sets
+  are integer indices stored with the data and never redrawn. Each step builds
+  1 + K cells per genotype from the *current* parameters (focal and
+  co-resident theta/activity/dk looked up by index), weights set k by
+  `w_cong * P(N = n_k | N >= 1; lambda) / K_{n_k}` so lambda stays
+  differentiable, and evaluates the likelihood once. Per-genotype sets
+  (rather than one shared set) keep the quadrature errors independent across
+  genotypes, so they do not push shared parameters (k, m, lambda) in a common
+  direction. Redrawing every step is rejected: the log of a fresh K-sample
+  mean is biased low and adds gradient noise. K is configurable (default 16).
+- **Components.** Keep `single` and `empirical`; retire `logit_norm` (a
+  parametric theta background with no dk counterpart).
+
 ### Binding data stays uncongressed
 
 `congression_mask` already acts only on the growth theta path
@@ -319,22 +374,83 @@ checked with `tfs-summarize-calibration`.
      TF activity follows the theta rule: it comes from the plasmid that sets
      theta (user, 2026-09-23). Revisit in step 4, where a partition-function
      theta rule would put activity into the plasmid weights.
-3. **Fit: observable-level mixture.** Breaking change.
-   - [ ] Clean/congressed log-sum-exp mixture in the growth observation, over
-     each class's whole pre + selection trajectory through
-     `growth_transition`.
-   - [ ] Consume `bulk_fraction` as `f_g`; retire `congression_mask`. Keep the
-     spiked/bulk `ln_cfu0` prior class as its own concept.
-   - [ ] Dilution dk with a full-population dk background (mini-batch safe;
-     external reference for prediction).
-   - [ ] Place `theta_growth_noise` / `theta_rescale` per class.
-   - [ ] Check whether `exp(E[k] t)` is an adequate approximation.
-   - [ ] Update the other users of the congression operator:
-     `analysis/prediction.py`, `genotype_fit/congression.py` (Stage 1.5 of
-     `tfs-fit-genotypes` / `tfs-build-empirical`),
-     `simulate/transformation_lam_output.py`.
-   - [ ] Calibrate against step 2's simulations (current max theta as a
-     placeholder).
+3. **Fit: observable-level mixture.** Design agreed 2026-09-23 (see "Fit
+   design (step 3)"). 3.0 runs alongside 3.1/3.2; only 3.3's estimator
+   waits on it. 3.1, 3.2 and 3.4 are behavior-preserving commits; 3.3 is the
+   breaking one.
+   - [x] **3.0 Numerical study** (no fitting), 2026-09-23. Ground truth from
+     `library_prediction` on `examples/simulate/simulate_config.yaml` (843
+     genotypes, thermo theta prior, memory growth transition, 48 growth
+     conditions, t_sel 95 to 200 min) with the real design's
+     `library_mixture` and lambda = 0.357, and the step 2 cell rules. "Exact"
+     `E_S exp(G)`: N = 1 enumerated over the co-resident library, N >= 2 by
+     Monte Carlo. dk_geno deviations scaled by s (sim prior at s = 1: SD
+     0.068/min, 5th to 95th percentile -0.13 to 0.014/min). Error = approx -
+     exact `ln_cfu`, RMS over genotype x condition cells within 7 ln units of
+     wt (detectable):
+
+     | estimator | s = 0 | s = 0.015 | s = 0.03 | s = 0.1 | s = 0.3 | s = 1 |
+     |---|---|---|---|---|---|---|
+     | no congression | 0.041 | 0.053 | 0.097 | 0.287 | 0.758 | 1.507 |
+     | today's fit rule | 0.019 | 0.041 | 0.093 | 0.293 | 0.770 | 1.524 |
+     | `exp(E_S[G])` | 0.006 | 0.006 | 0.008 | 0.036 | 0.206 | 1.086 |
+     | `E[G] + Var[G]/2` | 0.000 | 0.000 | 0.001 | 0.025 | 0.509 | 12.6 |
+     | N = 1 only (exact) | 0.003 | 0.004 | 0.010 | 0.030 | 0.080 | 0.127 |
+     | MC, K = 4 | 0.016 | 0.016 | 0.032 | 0.072 | 0.181 | 0.379 |
+     | MC, K = 16 | 0.008 | 0.011 | 0.010 | 0.028 | 0.072 | 0.187 |
+     | MC, K = 32 | 0.005 | 0.006 | 0.010 | 0.019 | 0.064 | 0.142 |
+     | pooled background | 0.002 | 0.002 | 0.002 | 0.004 | 0.008 | 0.024 |
+
+     s = 0.015 is the measured regime for the current library (dk SD about
+     0.001/min; see "Biology and assumptions").
+
+     Findings:
+     - The congression effect is large once dk varies (0.29 to 1.5 ln units
+       RMS), and **today's fit rule is no better than no correction** at any
+       s > 0: averaging theta cannot represent a mixture of growth rates.
+     - Averaging the rate first is adequate only for a narrow dk spread
+       (s <= 0.1) and worsens with time; the second-order cumulant fails
+       (heavy dk tails).
+     - Monte Carlo with K fixed co-resident sets (common random numbers,
+       shared by all genotypes) has near-zero mean error at every s, and its
+       RMS falls roughly as 1/sqrt(K). This is the only estimator that holds
+       across the dk range.
+     - **Pooled background is fine** (<= 0.024): no per-origin backgrounds
+       needed. Caveat: in the sim prior, singles and doubles have similar
+       theta/dk distributions; real doubles may be more often broken.
+     - N >= 2 matters little but not nothing (N = 1 only: 0.13 at s = 1);
+       Monte Carlo covers it at no extra cost.
+     - **In the measured regime (s ~ 0.015) the whole effect is modest**:
+       0.053 RMS, 0.105 p95 (comparable to per-point `ln_cfu` noise, but
+       systematic), and today's rule removes only about a quarter of it. Every
+       estimator except small-K MC is accurate there. We still build MC
+       (decision 2026-09-23): tight dk is not guaranteed for other libraries,
+       and K is a knob.
+     Script: `dev/congression_estimator_study.py` (argument: a simulate
+     config).
+   - [x] **3.1 Plumbing.** Done 2026-09-23: `GrowthData.bulk_fraction`,
+     `ModelOrchestrator._build_bulk_fraction`; `congression_mask` still
+     drives today's correction until 3.3. `f_g` (from `bulk_fraction`) and the `ln_cfu0`
+     prior class (from `in_spiked_origin`) as separate `GrowthData` fields,
+     built by the orchestrator from the library table or the legacy
+     `spiked_genotypes` list (spiked -> `f_g = 0`, others 1). No behavior
+     change: fits identical.
+   - [ ] **3.2 Full-population dk_geno access** (API only), mirroring
+     `population_theta`: mini-batch safe, with an external reference for
+     prediction. Identical fits.
+   - [ ] **3.3 Mixture.** Class axis ahead of the 7-D growth layout; per-class
+     theta rescale, `calculate_growth`, `growth_transition`; logsumexp mix
+     with `log w`. New transformation-component interface returning classes
+     `(theta, activity, dk, log w)`. `single` = one class of weight 1 and must
+     reproduce today's `single` fits exactly. Congressed-class estimator from
+     3.0; checked against brute-force MC on toy data. Retire `logit_norm`.
+   - [ ] **3.4 Other consumers.** `analysis/prediction.py`, lambda extraction
+     (`simulate/transformation_lam_output.py`), `genotype_fit/congression.py`
+     (Stage 1.5 of `tfs-fit-genotypes` / `tfs-build-empirical`), and
+     `tfs-summarize-calibration` strata by `bulk_fraction` instead of
+     spiked/bulk origin.
+   - [ ] **3.5 Calibration.** Step 2 simulator vs the new fit, with
+     `tfs-summarize-calibration`; watch bulk genotypes without binding data.
 4. **Theta rule.** Homodimer vs heterodimer soft max, chosen from the bench
    results, in both simulator and fit.
 5. **dk rule.** Soft-min family with an alpha sensitivity check, in both

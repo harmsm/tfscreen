@@ -65,6 +65,17 @@ class GrowthData:
     ln_cfu0_library_masks: Any = field(default=None)
     num_ln_cfu0_library_classes: int = field(pytree_node=False, default=1)
 
+    # Float array, shape (num_genotype,): the fraction of each genotype's
+    # cells that come from the bulk (co-transformed) sub-libraries, in
+    # [0, 1]. 0 = pure monoclonal spike, 1 = pure bulk. This is a genotype's
+    # congression *purity*, kept separate from its ln_cfu0 prior class
+    # (ln_cfu0_spiked_mask), which it no longer shares a flag with. Built by
+    # ModelOrchestrator from the library composition table's bulk_fraction
+    # (legacy spiked_genotypes: 0 for spiked, 1 otherwise). Library-sized;
+    # consumers index it with batch_idx. Not yet used by the model -- see
+    # future/congression-physics-plan.md, step 3.3.
+    bulk_fraction: Any = field(default=None)
+
     growth_shares_replicates: bool = field(pytree_node=False, default=False)
 
     # Optional mutation-decomposition matrices (set when using *_mut_decomp components).

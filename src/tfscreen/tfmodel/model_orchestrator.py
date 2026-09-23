@@ -1039,6 +1039,8 @@ class ModelOrchestrator:
             spiked_idx = np.where(np.isin(genotype_names,self._spiked_genotypes))[0]
             mask[spiked_idx] = False
 
+        bulk_fraction = self._build_bulk_fraction(mask)
+
         wt_mask = np.zeros(sizes["num_genotype"], dtype=bool)
         wt_mask[wt_loc[0]] = True
 
@@ -1062,7 +1064,8 @@ class ModelOrchestrator:
                       "congression_mask":jnp.array(mask,dtype=bool),
                       "ln_cfu0_spiked_mask":jnp.array(~mask,dtype=bool),
                       "ln_cfu0_wt_mask":jnp.array(wt_mask,dtype=bool),
-                      "ln_cfu0_library_masks":jnp.array(_library_masks,dtype=bool)}
+                      "ln_cfu0_library_masks":jnp.array(_library_masks,dtype=bool),
+                      "bulk_fraction":jnp.array(bulk_fraction,dtype=float)}
 
         # Grab the titrant concentration and log_titrant_conc (1D array from 
         # the tensor labels along dimension 6)
@@ -1858,6 +1861,57 @@ class ModelOrchestrator:
     def priors(self):
         """The PriorsClass Pytree holding all model priors."""
         return self._priors
+
+    def _build_bulk_fraction(self, spiked_free_mask):
+        """
+        Per-genotype bulk fraction (congression purity), aligned to the
+        growth tensor's genotype axis.
+
+        With a library composition table, each genotype takes the table's
+        ``bulk_fraction``. The ``__unknown__`` bucket (reads that match no
+        designed genotype) is treated as bulk (1.0), as the congression mask
+        treats it; any other genotype missing from the table is an error.
+        Without a table, the legacy binary applies: 0 for spiked genotypes,
+        1 otherwise.
+
+        Parameters
+        ----------
+        spiked_free_mask : numpy.ndarray
+            Boolean, shape (num_genotype,); False for spiked genotypes (the
+            legacy congression mask).
+
+        Returns
+        -------
+        numpy.ndarray
+            Float, shape (num_genotype,), values in [0, 1].
+        """
+
+        if self._library_df is None:
+            return np.where(spiked_free_mask, 1.0, 0.0)
+
+        genotype_idx = self.growth_tm.tensor_dim_names.index("genotype")
+        genotype_names = [str(g) for g in
+                          self.growth_tm.tensor_dim_labels[genotype_idx]]
+
+        table = self._library_df.set_index("genotype")["bulk_fraction"]
+        missing = [g for g in genotype_names
+                   if g not in table.index and g != "__unknown__"]
+        if len(missing) > 0:
+            raise ValueError(
+                f"{len(missing)} genotypes in the growth data are missing from "
+                f"the library composition table ({self._library_file}), e.g. "
+                f"{missing[:5]}. Regenerate it with tfs-configure-model "
+                f"--library_config."
+            )
+
+        values = np.array([1.0 if g == "__unknown__" else float(table[g])
+                           for g in genotype_names])
+        if np.any(~np.isfinite(values)) or np.any((values < 0) | (values > 1)):
+            raise ValueError(
+                f"bulk_fraction in {self._library_file} must be finite and in "
+                f"[0, 1] for every genotype with growth data."
+            )
+        return values
 
     @property
     def library_df(self):

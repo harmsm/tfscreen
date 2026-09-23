@@ -158,6 +158,78 @@ class TestSpikedGenotypesAbsentFromData:
                               spiked_genotypes=["A2L"])
 
 
+def _bulk_fraction(orchestrator):
+    idx = orchestrator.growth_tm.tensor_dim_names.index("genotype")
+    labels = list(orchestrator.growth_tm.tensor_dim_labels[idx])
+    return dict(zip(labels, np.array(orchestrator.data.growth.bulk_fraction)))
+
+
+class TestBulkFraction:
+    """Congression purity (bulk_fraction) is carried separately from the
+    ln_cfu0 prior class (ln_cfu0_spiked_mask)."""
+
+    def test_from_library_table(self, library_file):
+        orchestrator = ModelOrchestrator(_growth_df(), _binding_df(),
+                                         library_file=library_file)
+        bf = _bulk_fraction(orchestrator)
+        table = orchestrator.library_df.set_index("genotype")["bulk_fraction"]
+        for g in GENOTYPES:
+            assert bf[g] == pytest.approx(table[g])
+        # wt and A2L are spiked *and* in the bulk; A2C is bulk only.
+        assert 0 < bf["wt"] < 1
+        assert 0 < bf["A2L"] < 1
+        assert bf["A2C"] == pytest.approx(1.0)
+
+    def test_ln_cfu0_class_unchanged(self, library_file):
+        """Spiked-origin genotypes keep the spiked ln_cfu0 class even though
+        they are mostly bulk."""
+        orchestrator = ModelOrchestrator(_growth_df(), _binding_df(),
+                                         library_file=library_file)
+        labels, _, spiked = _masks(orchestrator)
+        assert spiked[labels.index("wt")] and spiked[labels.index("A2L")]
+        assert not spiked[labels.index("A2C")]
+
+    def test_legacy_spiked_list_is_binary(self):
+        orchestrator = ModelOrchestrator(_growth_df(), _binding_df(),
+                                         spiked_genotypes=["wt", "A2L"])
+        assert _bulk_fraction(orchestrator) == {"wt": 0.0, "A2L": 0.0,
+                                                "A2C": 1.0}
+
+    def test_no_spike_information_is_all_bulk(self):
+        orchestrator = ModelOrchestrator(_growth_df(), _binding_df())
+        assert set(_bulk_fraction(orchestrator).values()) == {1.0}
+
+    def test_unknown_bucket_is_bulk(self, library_file):
+        growth_df = _growth_df(["wt", "A2C", "__unknown__"])
+        orchestrator = ModelOrchestrator(growth_df,
+                                         _binding_df(["wt", "A2C"]),
+                                         library_file=library_file)
+        assert _bulk_fraction(orchestrator)["__unknown__"] == 1.0
+
+    def test_genotype_missing_from_table_raises(self, library_file):
+        table = pd.read_csv(library_file)
+        table[table["genotype"] != "A2C"].to_csv(library_file, index=False)
+        with pytest.raises(ValueError, match="missing from the library"):
+            ModelOrchestrator(_growth_df(), _binding_df(),
+                              library_file=library_file)
+
+    def test_bad_value_raises(self, library_file):
+        table = pd.read_csv(library_file)
+        table.loc[table["genotype"] == "A2C", "bulk_fraction"] = 1.5
+        table.to_csv(library_file, index=False)
+        with pytest.raises(ValueError, match=r"\[0, 1\]"):
+            ModelOrchestrator(_growth_df(), _binding_df(),
+                              library_file=library_file)
+
+    def test_library_sized_under_batching(self, library_file):
+        from tfscreen.tfmodel.tensors.batch import get_batch
+        orchestrator = ModelOrchestrator(_growth_df(), _binding_df(),
+                                         library_file=library_file)
+        full = np.array(orchestrator.data.growth.bulk_fraction)
+        batch = get_batch(orchestrator.data, np.array([2, 0]))
+        np.testing.assert_array_equal(np.array(batch.growth.bulk_fraction), full)
+
+
 class TestMutualExclusion:
 
     def test_both_raises(self, library_file):
