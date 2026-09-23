@@ -76,6 +76,15 @@ class GrowthData:
     # planning/congression-physics-plan.md, step 3.3.
     bulk_fraction: Any = field(default=None)
 
+    # Fixed co-resident plasmid sets for the congression mixture, drawn once
+    # by ModelOrchestrator._draw_coresident_sets. coresident_idx: int,
+    # (num_genotype, K, N_max), library (growth-tensor) genotype indices,
+    # -1 = empty slot; coresident_n: int, (K,), co-residents per set.
+    # Library-sized; consumers index the first axis with batch_idx. Not yet
+    # used by the model -- see planning/congression-physics-plan.md, 3.3c.
+    coresident_idx: Any = field(default=None)
+    coresident_n: Any = field(default=None)
+
     growth_shares_replicates: bool = field(pytree_node=False, default=False)
 
     # Optional mutation-decomposition matrices (set when using *_mut_decomp components).

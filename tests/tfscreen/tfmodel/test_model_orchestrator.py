@@ -933,6 +933,8 @@ def test_model_class_properties(initialized_model_class):
     model._thermo_data = None
     model._binding_weight = 1.0
     model._base_growth_df = "bg.csv"
+    model._congression_sets = (12, 3, 1)
+    model._congression_seed = 0
 
     assert ModelOrchestrator.jax_model.fget(model) == "jm"
     assert ModelOrchestrator.jax_model_guide.fget(model) == "jmg"

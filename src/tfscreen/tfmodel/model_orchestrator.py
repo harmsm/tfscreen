@@ -751,6 +751,26 @@ def _check_theta_transformation_compatibility(theta, transformation, binding_onl
         )
 
 
+def _check_congression_sets(congression_sets):
+    """
+    Validate ``congression_sets``: a non-empty sequence of non-negative
+    integers with a positive sum. Returns it as a tuple of ints.
+    """
+    try:
+        values = [int(v) for v in congression_sets]
+        exact = all(float(v) == int(v) for v in congression_sets)
+    except (TypeError, ValueError):
+        values, exact = None, False
+    if (not values or not exact or any(v < 0 for v in values)
+            or sum(values) == 0):
+        raise ValueError(
+            f"congression_sets must be a non-empty list of non-negative "
+            f"integers with a positive sum (entry n-1 = number of sets with "
+            f"n co-residents); got {congression_sets!r}."
+        )
+    return tuple(values)
+
+
 class ModelOrchestrator:
     """
     Manages the data wrangling and configuration for the JAX growth model.
@@ -814,6 +834,14 @@ class ModelOrchestrator:
         ``spiked_genotypes``.
     batch_size : int, optional
         The batch size for SVI. If None (default), use full batch.
+    congression_sets : sequence of int, optional
+        Number of fixed co-resident sets drawn per genotype for the
+        congression mixture, by co-resident count: entry n-1 is the number of
+        sets with n co-resident plasmids. Default (12, 3, 1): 16 sets, with
+        1, 2 or 3 co-residents. See ``_draw_coresident_sets``.
+    congression_seed : int, optional
+        Seed for drawing the co-resident sets (default 0). Recorded in the
+        config, so a refit reproduces the same draws.
 
     Attributes
     ----------
@@ -857,7 +885,9 @@ class ModelOrchestrator:
                  thermo_data=None,
                  binding_weight=None,
                  presplit_df=None,
-                 base_growth_df=None):
+                 base_growth_df=None,
+                 congression_sets=(12, 3, 1),
+                 congression_seed=0):
 
         self._ln_cfu_df = growth_df
         self._binding_df = binding_df
@@ -889,6 +919,8 @@ class ModelOrchestrator:
         self._epistasis = epistasis
         self._thermo_data = thermo_data
         self._binding_weight = binding_weight
+        self._congression_sets = _check_congression_sets(congression_sets)
+        self._congression_seed = int(congression_seed)
 
         _check_theta_transformation_compatibility(
             self._theta, self._transformation, binding_only=self._binding_only
@@ -1040,6 +1072,7 @@ class ModelOrchestrator:
             mask[spiked_idx] = False
 
         bulk_fraction = self._build_bulk_fraction(mask)
+        coresident_idx, coresident_n = self._draw_coresident_sets(mask)
 
         wt_mask = np.zeros(sizes["num_genotype"], dtype=bool)
         wt_mask[wt_loc[0]] = True
@@ -1065,7 +1098,9 @@ class ModelOrchestrator:
                       "ln_cfu0_spiked_mask":jnp.array(~mask,dtype=bool),
                       "ln_cfu0_wt_mask":jnp.array(wt_mask,dtype=bool),
                       "ln_cfu0_library_masks":jnp.array(_library_masks,dtype=bool),
-                      "bulk_fraction":jnp.array(bulk_fraction,dtype=float)}
+                      "bulk_fraction":jnp.array(bulk_fraction,dtype=float),
+                      "coresident_idx":jnp.array(coresident_idx,dtype=jnp.int32),
+                      "coresident_n":jnp.array(coresident_n,dtype=jnp.int32)}
 
         # Grab the titrant concentration and log_titrant_conc (1D array from 
         # the tensor labels along dimension 6)
@@ -1913,6 +1948,92 @@ class ModelOrchestrator:
             )
         return values
 
+    def _coresident_pool(self, spiked_free_mask):
+        """
+        Probability of each genotype (growth-tensor order) being drawn as a
+        co-resident plasmid.
+
+        Co-residents come from the bulk sub-libraries, so with a library
+        composition table a genotype's weight is its bulk share of the pool,
+        ``pool_fraction * bulk_fraction``. Only genotypes with growth data
+        can be drawn (they are the only ones with theta and dk_geno in the
+        model); library genotypes with no data, mostly dropouts, are left
+        out, which biases the background slightly toward survivors. The
+        ``__unknown__`` bucket is never drawn. Without a table (legacy
+        path), the pool is uniform over non-spiked genotypes.
+
+        Returns
+        -------
+        numpy.ndarray
+            Float, shape (num_genotype,), summing to 1; all zeros when no
+            genotype can be drawn.
+        """
+
+        genotype_idx = self.growth_tm.tensor_dim_names.index("genotype")
+        genotype_names = [str(g) for g in
+                          self.growth_tm.tensor_dim_labels[genotype_idx]]
+
+        if self._library_df is None:
+            weights = np.where(spiked_free_mask, 1.0, 0.0)
+        else:
+            table = self._library_df.set_index("genotype")
+            weights = np.array([
+                float(table.loc[g, "pool_fraction"] * table.loc[g, "bulk_fraction"])
+                if g in table.index else 0.0
+                for g in genotype_names
+            ])
+
+        weights[np.array(genotype_names) == "__unknown__"] = 0.0
+        weights = np.where(np.isfinite(weights) & (weights > 0), weights, 0.0)
+
+        total = weights.sum()
+        return weights / total if total > 0 else weights
+
+    def _draw_coresident_sets(self, spiked_free_mask):
+        """
+        Draw each genotype's fixed co-resident plasmid sets.
+
+        The congression mixture approximates a congressed cell's expected
+        growth by a fixed quadrature over co-resident sets (see
+        planning/congression-physics-plan.md, "Fit design (step 3)"). Sets
+        are stratified by co-resident count: ``congression_sets[n-1]`` sets
+        of ``n`` co-residents each. Every co-resident is an independent draw
+        from ``_coresident_pool`` (a genotype can co-reside with itself).
+        Drawn once, with ``congression_seed``, and never redrawn.
+
+        Returns
+        -------
+        coresident_idx : numpy.ndarray
+            Int, shape (num_genotype, K, N_max), growth-tensor genotype
+            indices; -1 pads sets with fewer than N_max co-residents, and
+            every entry is -1 when the pool is empty. K is the total number
+            of sets and N_max = len(congression_sets).
+        coresident_n : numpy.ndarray
+            Int, shape (K,): the number of co-residents in each set.
+        """
+
+        pool = self._coresident_pool(spiked_free_mask)
+        num_genotype = len(pool)
+        n_max = len(self._congression_sets)
+
+        coresident_n = np.concatenate([
+            np.full(k, n, dtype=int)
+            for n, k in enumerate(self._congression_sets, start=1)
+        ])
+        num_sets = len(coresident_n)
+
+        coresident_idx = np.full((num_genotype, num_sets, n_max), -1, dtype=int)
+        if pool.sum() <= 0 or num_sets == 0:
+            return coresident_idx, coresident_n
+
+        rng = np.random.default_rng(self._congression_seed)
+        draws = rng.choice(num_genotype, size=(num_genotype, num_sets, n_max),
+                           p=pool)
+        slot = np.arange(n_max)[None, None, :]
+        coresident_idx = np.where(slot < coresident_n[None, :, None], draws, -1)
+
+        return coresident_idx, coresident_n
+
     @property
     def library_df(self):
         """
@@ -1954,4 +2075,6 @@ class ModelOrchestrator:
             "binding_weight": self._binding_weight,
             "presplit_df": getattr(self, "_presplit_df", None),
             "base_growth_df": getattr(self, "_base_growth_df", None),
+            "congression_sets": list(self._congression_sets),
+            "congression_seed": self._congression_seed,
         }

@@ -96,6 +96,20 @@ fall into two kinds:
   mixture's co-resident lookup; nothing requests the population yet, so fits
   are unchanged.
 
+- **Fixed co-resident sets for the congression mixture.** `ModelOrchestrator`
+  draws, once per genotype, K co-resident plasmid sets
+  (`_draw_coresident_sets`) into `GrowthData.coresident_idx`
+  (`(num_genotype, K, N_max)` library indices, -1 = empty slot) and
+  `GrowthData.coresident_n` (co-residents per set). New settings
+  `congression_sets` (default `[12, 3, 1]`: 12 sets with one co-resident,
+  3 with two, 1 with three) and `congression_seed` (default 0) are written
+  to the config's `components` block, so a refit reproduces the same draws.
+  Co-residents are drawn from the bulk share of the pool,
+  `pool_fraction * bulk_fraction`, over genotypes with growth data
+  (`__unknown__` excluded); the legacy `spiked_genotypes` path uses a
+  uniform pool over non-spiked genotypes. Not yet used by the model, so fits
+  are unchanged.
+
 ### Changed
 
 - **Test reports and badges are no longer committed.** `reports/` and

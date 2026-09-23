@@ -230,6 +230,109 @@ class TestBulkFraction:
         np.testing.assert_array_equal(np.array(batch.growth.bulk_fraction), full)
 
 
+def _labels(orchestrator):
+    idx = orchestrator.growth_tm.tensor_dim_names.index("genotype")
+    return list(orchestrator.growth_tm.tensor_dim_labels[idx])
+
+
+class TestCoresidentSets:
+    """Fixed co-resident sets for the congression mixture (step 3.3b)."""
+
+    def test_shapes_and_strata(self, library_file):
+        orchestrator = ModelOrchestrator(_growth_df(), _binding_df(),
+                                         library_file=library_file)
+        g = orchestrator.data.growth
+        idx = np.asarray(g.coresident_idx)
+        n = np.asarray(g.coresident_n)
+
+        assert idx.shape == (g.num_genotype, 16, 3)
+        np.testing.assert_array_equal(n, [1] * 12 + [2] * 3 + [3])
+        # Set k has exactly n[k] co-residents; the rest of its slots are -1.
+        filled = (idx >= 0).sum(axis=-1)
+        np.testing.assert_array_equal(filled, np.broadcast_to(n, filled.shape))
+        assert idx.max() < g.num_genotype
+
+    def test_pool_is_bulk_share_of_genotypes_with_data(self, library_file):
+        orchestrator = ModelOrchestrator(_growth_df(), _binding_df(),
+                                         library_file=library_file)
+        mask = np.array(orchestrator.data.growth.congression_mask)
+        pool = orchestrator._coresident_pool(mask)
+        table = orchestrator.library_df.set_index("genotype")
+        weights = np.array([table.loc[g, "pool_fraction"]
+                            * table.loc[g, "bulk_fraction"]
+                            for g in _labels(orchestrator)])
+        np.testing.assert_allclose(pool, weights / weights.sum())
+
+    def test_draws_follow_pool(self, library_file):
+        orchestrator = ModelOrchestrator(_growth_df(), _binding_df(),
+                                         library_file=library_file,
+                                         congression_sets=[4000])
+        mask = np.array(orchestrator.data.growth.congression_mask)
+        pool = orchestrator._coresident_pool(mask)
+        idx = np.asarray(orchestrator.data.growth.coresident_idx)
+        counts = np.bincount(idx[idx >= 0], minlength=len(pool))
+        np.testing.assert_allclose(counts / counts.sum(), pool, atol=0.01)
+
+    def test_unknown_never_drawn(self, library_file):
+        growth_df = _growth_df(["wt", "A2C", "__unknown__"])
+        orchestrator = ModelOrchestrator(growth_df,
+                                         _binding_df(["wt", "A2C"]),
+                                         library_file=library_file,
+                                         congression_sets=[500])
+        unknown = _labels(orchestrator).index("__unknown__")
+        idx = np.asarray(orchestrator.data.growth.coresident_idx)
+        assert not np.any(idx == unknown)
+
+    def test_legacy_pool_uniform_over_non_spiked(self):
+        orchestrator = ModelOrchestrator(_growth_df(), _binding_df(),
+                                         spiked_genotypes=["wt"])
+        mask = np.array(orchestrator.data.growth.congression_mask)
+        pool = orchestrator._coresident_pool(mask)
+        labels = _labels(orchestrator)
+        assert pool[labels.index("wt")] == 0.0
+        np.testing.assert_allclose(pool[[labels.index("A2L"),
+                                         labels.index("A2C")]], [0.5, 0.5])
+
+    def test_empty_pool_gives_empty_sets(self):
+        orchestrator = ModelOrchestrator(_growth_df(), _binding_df(),
+                                         spiked_genotypes=GENOTYPES)
+        assert np.all(np.asarray(orchestrator.data.growth.coresident_idx) == -1)
+
+    def test_seed_reproduces_and_changes_draws(self, library_file):
+        def draw(seed_value):
+            o = ModelOrchestrator(_growth_df(), _binding_df(),
+                                  library_file=library_file,
+                                  congression_sets=[50, 10],
+                                  congression_seed=seed_value)
+            return np.asarray(o.data.growth.coresident_idx)
+
+        np.testing.assert_array_equal(draw(3), draw(3))
+        assert not np.array_equal(draw(3), draw(4))
+
+    def test_settings_record_sets_and_seed(self, library_file):
+        orchestrator = ModelOrchestrator(_growth_df(), _binding_df(),
+                                         library_file=library_file,
+                                         congression_sets=[5, 2],
+                                         congression_seed=7)
+        assert orchestrator.settings["congression_sets"] == [5, 2]
+        assert orchestrator.settings["congression_seed"] == 7
+
+    @pytest.mark.parametrize("bad", [[], [0, 0], [-1, 2], [1.5], "abc", None])
+    def test_bad_sets_raise(self, bad):
+        with pytest.raises(ValueError, match="congression_sets"):
+            ModelOrchestrator(_growth_df(), _binding_df(),
+                              congression_sets=bad)
+
+    def test_library_sized_under_batching(self, library_file):
+        from tfscreen.tfmodel.tensors.batch import get_batch
+        orchestrator = ModelOrchestrator(_growth_df(), _binding_df(),
+                                         library_file=library_file)
+        full = np.asarray(orchestrator.data.growth.coresident_idx)
+        batch = get_batch(orchestrator.data, np.array([2, 0]))
+        np.testing.assert_array_equal(np.asarray(batch.growth.coresident_idx),
+                                      full)
+
+
 class TestMutualExclusion:
 
     def test_both_raises(self, library_file):
@@ -300,6 +403,22 @@ class TestConfigureModel:
         assert config["library"]["library_mixture"]["spiked"] == 1
         # One source of truth: the derived list is not also written out.
         assert "spiked_genotypes" not in config["components"]
+
+    def test_round_trip_reproduces_coresident_sets(self, tmp_path,
+                                                   library_config_file):
+        out_prefix = self._configure(tmp_path, library_config_file)
+        with open(f"{out_prefix}_config.yaml") as f:
+            config = yaml.safe_load(f)
+        assert config["components"]["congression_sets"] == [12, 3, 1]
+        assert config["components"]["congression_seed"] == 0
+
+        orchestrator, _ = read_configuration(f"{out_prefix}_config.yaml")
+        direct = ModelOrchestrator(_growth_df(), _binding_df(),
+                                   library_file=f"{out_prefix}_library.csv")
+        assert _labels(orchestrator) == _labels(direct)
+        np.testing.assert_array_equal(
+            np.asarray(orchestrator.data.growth.coresident_idx),
+            np.asarray(direct.data.growth.coresident_idx))
 
     def test_round_trip_reproduces_masks(self, tmp_path, library_config_file):
         out_prefix = self._configure(tmp_path, library_config_file)

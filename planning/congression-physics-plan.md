@@ -458,7 +458,16 @@ checked with `tfs-summarize-calibration`.
      `categorical_geno` keeps theta library-sized and indexes through
      `batch_idx[geno_theta_idx]`; `test_population_theta.py` checks every
      theta component.
-   - [ ] **3.3 Mixture.** Class axis ahead of the 7-D growth layout; per-class
+   - [x] **3.3b Co-resident sets.** Done 2026-09-23:
+     `ModelOrchestrator._draw_coresident_sets` / `_coresident_pool`;
+     `GrowthData.coresident_idx` (num_genotype, K, N_max; -1 = empty) and
+     `coresident_n`; settings `congression_sets` (default [12, 3, 1]) and
+     `congression_seed` (default 0), recorded in the config. Pool: bulk share
+     (`pool_fraction * bulk_fraction`) of genotypes with growth data,
+     `__unknown__` excluded; legacy path uniform over non-spiked (user,
+     2026-09-23). An empty pool leaves every slot -1; 3.3c must refuse a
+     congression model with `bulk_fraction > 0` and an empty pool.
+   - [ ] **3.3c Mixture.** Class axis ahead of the 7-D growth layout; per-class
      theta rescale, `calculate_growth`, `growth_transition`; logsumexp mix
      with `log w`. New transformation-component interface returning classes
      `(theta, activity, dk, log w)`. `single` = one class of weight 1 and must
