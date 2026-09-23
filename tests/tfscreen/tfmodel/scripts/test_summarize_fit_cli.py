@@ -29,6 +29,8 @@ pytestmark = pytest.mark.filterwarnings(
 )
 
 from tfscreen.tfmodel.scripts.summarize_fit_cli import (
+    _find_fit_config,
+    _find_fit_losses,
     _find_params_or_posterior,
     _find_unique,
     _json_safe,
@@ -196,6 +198,48 @@ class TestFindUnique:
             result = _find_unique(str(tmp_path), "_config.yaml", "config")
         assert result is not None
         assert any("Multiple" in str(x.message) for x in w)
+
+
+# ---------------------------------------------------------------------------
+# _find_fit_config / _find_fit_losses (grid run dirs hold other matches)
+# ---------------------------------------------------------------------------
+
+class TestFindFitConfigAndLosses:
+
+    def test_config_ignores_simulate_configs(self, tmp_path):
+        _make_config_yaml(str(tmp_path / "tfs_configure_config.yaml"),
+                          binding_csv_path="b.csv", guesses_name="g.csv")
+        # Simulate configs, one sorting ahead of the tfmodel config.
+        for name in ("a_sim_config.yaml", "tfs_sim_config.yaml"):
+            (tmp_path / name).write_text(yaml.dump({"seed": 1, "growth": {}}))
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = _find_fit_config(str(tmp_path))
+        assert result == str(tmp_path / "tfs_configure_config.yaml")
+        assert not any("Multiple" in str(x.message) for x in w)
+
+    def test_config_none_without_tfmodel_config(self, tmp_path):
+        (tmp_path / "tfs_sim_config.yaml").write_text(yaml.dump({"seed": 1}))
+        (tmp_path / "broken_config.yaml").write_text(":\n  - [unclosed")
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = _find_fit_config(str(tmp_path))
+        assert result is None
+        assert any("No tfmodel config" in str(x.message) for x in w)
+
+    def test_losses_ignore_prefit_and_premap(self, tmp_path):
+        for name in ("tfs_prefit_losses.txt", "tfs_fit_model_premap_losses.txt",
+                     "tfs_fit_model_losses.txt"):
+            _make_losses_txt(str(tmp_path / name))
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = _find_fit_losses(str(tmp_path))
+        assert result == str(tmp_path / "tfs_fit_model_losses.txt")
+        assert not any("Multiple" in str(x.message) for x in w)
+
+    def test_losses_none_when_only_auxiliary(self, tmp_path):
+        _make_losses_txt(str(tmp_path / "tfs_prefit_losses.txt"))
+        assert _find_fit_losses(str(tmp_path)) is None
 
 
 # ---------------------------------------------------------------------------

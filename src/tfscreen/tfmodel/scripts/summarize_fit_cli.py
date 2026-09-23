@@ -139,6 +139,60 @@ def _find_unique(run_dir, suffix, label, warn_missing=True):
     return matches[0]
 
 
+def _is_tfmodel_config(path):
+    """True when the YAML at ``path`` is a tfmodel config ('data' + 'components')."""
+    try:
+        with open(path) as fh:
+            cfg = yaml.safe_load(fh)
+    except Exception:
+        return False
+    return isinstance(cfg, dict) and "data" in cfg and "components" in cfg
+
+
+def _find_fit_config(run_dir):
+    """Return the tfmodel config in run_dir, or None.
+
+    Grid run directories also hold other ``*_config.yaml`` files (e.g. the
+    simulate config ``tfs_sim_config.yaml``), so a file counts only if it has
+    the 'data' and 'components' sections ``read_configuration`` requires.
+    """
+    matches = sorted(glob.glob(os.path.join(run_dir, "*_config.yaml")))
+    configs = [m for m in matches if _is_tfmodel_config(m)]
+    if not configs:
+        warnings.warn(
+            f"No tfmodel config (*_config.yaml with 'data' and 'components') "
+            f"found in {run_dir}"
+        )
+        return None
+    if len(configs) > 1:
+        warnings.warn(
+            f"Multiple tfmodel config files found in {run_dir}; "
+            f"using {os.path.basename(configs[0])}"
+        )
+    return configs[0]
+
+
+# Losses written by runs other than the main fit: tfs-prefit-calibration
+# ({prefix}_prefit_losses.txt) and the pre-MAP ahead of SVI
+# ({out_prefix}_premap_losses.txt).
+_AUX_LOSSES_RE = re.compile(r"(^|_)(prefit|premap)_losses\.txt$")
+
+
+def _find_fit_losses(run_dir):
+    """Return the main fit's ``*_losses.txt`` in run_dir, or None."""
+    matches = sorted(glob.glob(os.path.join(run_dir, "*_losses.txt")))
+    fit_losses = [m for m in matches
+                  if not _AUX_LOSSES_RE.search(os.path.basename(m))]
+    if not fit_losses:
+        return None
+    if len(fit_losses) > 1:
+        warnings.warn(
+            f"Multiple fit losses files found in {run_dir}; "
+            f"using {os.path.basename(fit_losses[0])}"
+        )
+    return fit_losses[0]
+
+
 def _resolve_path(path, run_dir):
     """Return an existing path given a raw path and a fallback base directory."""
     if path is None:
@@ -801,9 +855,9 @@ def summarize_fit(run_dir,
     growth_pred_df = None
 
     # --- Locate files in run_dir ---
-    config_file = _find_unique(run_dir, "_config.yaml", "config")
+    config_file = _find_fit_config(run_dir)
     theta_pred_file = _find_unique(run_dir, "_pred_theta.csv", "theta predictions")
-    losses_file = _find_unique(run_dir, "_losses.txt", "losses", warn_missing=False)
+    losses_file = _find_fit_losses(run_dir)
     growth_pred_file = _find_unique(run_dir, "_pred_growth.csv", "growth predictions",
                                     warn_missing=False)
 

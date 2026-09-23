@@ -60,6 +60,20 @@ fall into two kinds:
   - `get_posteriors` drops autoguide auxiliary sites (names starting with
     `_`, such as `AutoContinuous`'s `_auto_latent`) before the forward pass.
 
+- **`tfs-summarize-calibration`** (`analysis/calibration_grid.py`) pools
+  posterior calibration across a `tfs-setup-sim-grid` grid. It reads each
+  run's `combo.json` and the `tfs-summarize-fit` outputs in its `summary/`
+  directory, and reports coverage at several interval levels, calibration
+  error and bias, PIT uniformity (KS), interval width, and median RMSE and
+  Pearson r against the simulated truth. Rows are per run x quantity x
+  stratum: whether the genotype has binding data, whether it is encoded by a
+  spiked sequence, and, for theta, whether the true value is resolvable or
+  saturated. Arms (runs sharing every grid variable except `--replicate_keys`)
+  are averaged, and `--baseline key=value ...` pairs each run with the
+  baseline run fit to the same simulated data. Unfinished runs are listed in
+  `{out_prefix}_run_status.csv`. No thresholds or grades. New console script:
+  reinstall to register it.
+
 ### Fixed
 
 - **Per-genotype latents scrambled across genotypes under autoguides.**
@@ -100,6 +114,13 @@ fall into two kinds:
   fit with `theta_growth_noise=beta`. The component guide is not checked. For
   an `AutoMultivariateNormal` guide it also reports the latent dimension and
   the memory the dense covariance needs, and warns above 4 GB.
+
+- **`tfs-summarize-fit` could pick the wrong config or losses file in a grid
+  run directory.** It matched `*_config.yaml` and `*_losses.txt`, which there
+  also match the simulate config and the prefit/pre-MAP losses; the right file
+  won only by alphabetical order. It now takes the config that has `data` and
+  `components` sections, and ignores `*_prefit_losses.txt` and
+  `*_premap_losses.txt`.
 
 ## [0.4.4] - 2026-09-22
 

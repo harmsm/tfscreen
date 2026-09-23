@@ -65,6 +65,7 @@ tfs-setup-grid             # Set up grid of model configs
 tfs-summarize-grid         # Summarize grid results
 tfs-summarize-fit          # Summarize a fitted model
 tfs-summarize-sbc          # Summarize simulation-based calibration runs
+tfs-summarize-calibration  # Pool posterior calibration (coverage, PIT, width, RMSE) across a tfs-setup-sim-grid grid, by arm and stratum; --baseline pairs runs fit to the same simulated data
 tfs-subset-genotypes       # Subset genotype data
 ```
 

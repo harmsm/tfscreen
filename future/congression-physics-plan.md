@@ -285,7 +285,7 @@ Each step from 1 on ends with a simulation and a fit that use the same rules,
 checked with `tfs-summarize-calibration`.
 
 -2. **Bring in the mini-batch scrambling fix.**
-   - [ ] Port the MAP/autoguide genotype-aliasing fix and its tests
+   - [x] Port the MAP/autoguide genotype-aliasing fix and its tests
      (`inference/batch_safety.py`, `test_batch_safety.py`) from
      `guide-selection` as a separate commit, code only. Every fit used to
      check the steps below depends on it.
@@ -297,9 +297,10 @@ checked with `tfs-summarize-calibration`.
      `genetics.library_composition_table` → `bulk_fraction` in
      `{out_prefix}_library.csv`, via `tfs-configure-model --library_config`
      (commit 77befcb).
-   - [ ] Bring in `tfs-summarize-calibration`
+   - [x] Bring in `tfs-summarize-calibration`
      (`analysis/calibration_grid.py`, `analysis/scripts/summarize_calibration_cli.py`)
-     from `guide-selection`, code only, no grids or results.
+     from `guide-selection` (commit e925b90), code only, no grids or results.
+     2026-09-23.
 1. **Simulator: share a cell's plasmid copies.**
    - [ ] `_sim_sequencing` and `_calc_genotype_cfu0` split a cell's abundance
      among the variants it carries, so simulated composition matches
