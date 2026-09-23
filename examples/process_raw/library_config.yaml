@@ -42,3 +42,23 @@ tile_combos: ["single-1", "single-2", "double-1-2"]
 spiked_seqs:
 - gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatggcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctggcggcgccgtcgcaaattgtcgcggcgattctgtctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg  # k84l
 - gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgattgcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctgcacgcgccgtcgcaaattgtcgcggcgattctgtctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg  # m42i/k84l
+
+# ---------------------------------------------------------------------------
+# Library composition (for tfs-configure-model)
+#
+# Relative amount of each transformed sub-library in the pooled library.  Only
+# ratios matter.  Keys must be exactly the tile_combos above, plus 'spiked'
+# when spiked_seqs is defined.
+#
+# tfs-configure-model uses these -- with the genetics keys above -- to work out
+# each genotype's expected share of the pool and what fraction of its cells
+# come from the bulk (congression-affected) sub-libraries rather than from the
+# monoclonal spike.  Nothing cross-checks these numbers against the data, so
+# they should be the best available estimate of what actually went into the
+# pool, not just the intended design.
+# ---------------------------------------------------------------------------
+library_mixture:
+  single-1: 100
+  single-2: 100
+  double-1-2: 1_000
+  spiked: 1

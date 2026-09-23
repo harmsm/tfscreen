@@ -42,6 +42,11 @@ fi
 echo ">>> Simulate library"
 tfs-simulate "${config_file}" "${run_dir}" --seed "${seed}"
 
+# The simulate config also describes the library (genetics keys +
+# library_mixture), so tfs-configure-model reads the same file.  Resolve it to
+# an absolute path before changing directory.
+library_config="$(cd "$(dirname "${config_file}")" && pwd)/$(basename "${config_file}")"
+
 cd "${run_dir}"
 
 # ---------------------------------------------------------------------------
@@ -66,7 +71,7 @@ tfs-configure-model \
     --theta_growth_noise_model logit_normal \
     --theta_binding_noise_model zero \
     --growth_noise_model normal_kt \
-    --spiked wt M42I H74A K84L M42I/H74A M42I/K84L H74A/K84L D88A \
+    --library_config "${library_config}" \
     --growth_shares_replicates \
     --epistasis
 

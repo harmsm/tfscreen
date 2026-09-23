@@ -14,6 +14,8 @@ TFMODEL_KNOWN_KEYS = frozenset({
     "components",
     "priors_file",
     "guesses_file",
+    "library_file",
+    "library",
 })
 
 def _extract_scalars(obj, prefix=""):
@@ -254,7 +256,8 @@ def write_configuration(orchestrator,
                         growth_df_path=None,
                         binding_df_path=None,
                         presplit_df_path=None,
-                        base_growth_df_path=None):
+                        base_growth_df_path=None,
+                        library_meta=None):
     """
     Write model configuration and extracted priors/guesses to files.
 
@@ -273,6 +276,13 @@ def write_configuration(orchestrator,
     base_growth_df_path : str, optional
         Path to the base_growth_df CSV (direct growth-rate measurements
         anchoring the k_ref latent; see model_orchestrator._read_base_growth_df).
+    library_meta : dict, optional
+        Provenance for the library composition snapshot named by
+        ``orchestrator.settings["library_file"]``: the ``source`` library YAML
+        path and the ``library_mixture`` it declared. Recorded verbatim under
+        the config's ``library`` key. Nothing downstream reads it -- it is
+        there because the mixing ratios are declared, never cross-checked
+        against any other artifact, so the run has to record what it used.
     """
     # Construct priors and guesses dataframes
     priors_list = []
@@ -302,13 +312,28 @@ def write_configuration(orchestrator,
     if base_growth_df_path is not None:
         data_paths["base_growth"] = base_growth_df_path
 
+    # The library composition snapshot is a sibling file like the priors and
+    # guesses CSVs, so it is recorded at the top level (resolved relative to
+    # the config on read) rather than inside components. When it is present it
+    # *is* the spiked-genotype definition, so the derived spiked_genotypes list
+    # is dropped from the written config: one source of truth per file.
+    settings = dict(orchestrator.settings)
+    library_file = settings.pop("library_file", None)
+    if library_file is not None:
+        settings.pop("spiked_genotypes", None)
+
     config = {
         "tfscreen_version": __version__,
         "data": data_paths,
-        "components": orchestrator.settings,
+        "components": settings,
         "priors_file": os.path.basename(priors_path),
         "guesses_file": os.path.basename(guesses_path)
     }
+
+    if library_file is not None:
+        config["library_file"] = os.path.basename(library_file)
+        if library_meta is not None:
+            config["library"] = library_meta
 
     with open(yaml_path, "w") as f:
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)
@@ -462,12 +487,21 @@ def read_configuration(config_file):
     # round-tripping the raw path the user originally supplied).
     settings.pop("presplit_df", None)
     settings.pop("base_growth_df", None)
+    # library_file is a sibling file recorded at the top level (like
+    # priors_file); resolve it relative to the config.  A legacy config
+    # instead carries spiked_genotypes inside components and has no
+    # library_file at all.
+    settings.pop("library_file", None)
+    library_file = config.get("library_file")
+    if library_file is not None:
+        library_file = os.path.join(os.path.dirname(config_file), library_file)
 
     orchestrator = ModelOrchestrator(growth_df_path,
                      binding_df_path,
                      batch_size=batch_size,
                      presplit_df=presplit_df_path,
                      base_growth_df=base_growth_df_path,
+                     library_file=library_file,
                      **settings)
 
     # Update Priors from CSV

@@ -19,11 +19,13 @@ Step 1: Configure Model (``tfs-configure-model``)
 --------------------------------------------------
 
 Validates the input data, maps categorical labels to numerical indices, selects
-model components, and writes three configuration files:
+model components, and writes the configuration files:
 
 * ``{out_prefix}_config.yaml`` — main configuration read by all downstream steps
 * ``{out_prefix}_priors.csv`` — prior distribution settings for all parameters
 * ``{out_prefix}_guesses.csv`` — initial-value guesses for array parameters
+* ``{out_prefix}_library.csv`` — per-genotype library composition resolved from
+  ``--library_config`` (growth models only)
 
 ``binding_df`` (direct binding measurements) is the only required argument.
 ``growth_df`` is optional; omitting it configures a binding-only model. See
@@ -35,7 +37,19 @@ data is useful, and the exact file format for ``binding_df``, ``growth_df``,
 
     tfs-configure-model binding.csv \
         --growth_df growth.csv \
+        --library_config run_config.yaml \
         --out_prefix tfs_configure
+
+``--library_config`` is the library YAML describing the screened library — the
+**same file** passed to ``tfs-process-fastq``. It is required whenever
+``--growth_df`` is given. It tells the model which genotypes came in as
+monoclonal spikes (and so are congression-free), replacing the older
+hand-written ``--spiked`` list; because a spiked control is usually also
+encoded in the bulk sub-libraries, the resolved table records each genotype's
+expected ``pool_fraction`` and ``bulk_fraction`` rather than a yes/no flag.
+``tfs-configure-model`` fails if any genotype in the data is absent from the
+library, which catches a residue-numbering or wt-sequence mismatch between the
+library description and the reads it was called against.
 
 Key component flags (see :ref:`model-components` for the full list):
 

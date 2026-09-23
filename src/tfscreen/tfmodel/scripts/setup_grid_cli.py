@@ -87,6 +87,7 @@ _COMPONENT_AXES = frozenset({
 # configure_model arguments that are file paths and need abs→rel rewriting.
 _PATH_KEYS = frozenset({
     "binding_df", "growth_df", "presplit_df", "base_growth_df", "thermo_data",
+    "library_config",
 })
 
 # Fixed output prefix used inside every per-combination run.

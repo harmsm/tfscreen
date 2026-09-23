@@ -2,6 +2,7 @@
 
 import numpy as np
 import pandas as pd
+import yaml
 import pytest
 
 from tfscreen.simulate.empirical.fit_phenotypes import _hill_theta
@@ -134,12 +135,25 @@ def test_cli_orchestrates_configure_and_prefit(mocker, tmp_path):
     prefit = mocker.patch(
         "tfscreen.tfmodel.scripts.prefit_calibration_cli.run_prefit_calibration")
 
-    spiked_file = tmp_path / "spiked.txt"
-    spiked_file.write_text("wt\nA1V\n")
+    # Library with residues 1-2 degenerate; wt and A1V are the spikes.
+    library_config = tmp_path / "library.yaml"
+    with open(library_config, "w") as f:
+        yaml.dump({
+            "reading_frame": 0,
+            "first_amplicon_residue": 1,
+            "wt_seq":      "gccgcaaaaccggaatgc",
+            "degen_sites": "nntnnt............",
+            "tiles":       "111222............",
+            "tile_combos": ["single-1", "single-2", "double-1-2"],
+            "spiked_seqs": ["..................",    # wt
+                            "gtt..............."],   # A1V
+            "library_mixture": {"single-1": 10, "single-2": 10,
+                                "double-1-2": 100, "spiked": 1},
+        }, f)
 
     build_empirical(
         str(growth_csv), binding_file=str(binding_csv), out_prefix=out_prefix,
-        spiked_file=str(spiked_file), seed=5)
+        library_config=str(library_config), seed=5)
 
     # configure_model wired with the experimental inputs and fixed prefix.
     conf.assert_called_once()
@@ -147,7 +161,7 @@ def test_cli_orchestrates_configure_and_prefit(mocker, tmp_path):
     assert ckw["binding_df"] == str(binding_csv)
     assert ckw["growth_df"] == str(growth_csv)
     assert ckw["out_prefix"] == f"{out_prefix}_configure"
-    assert ckw["spiked"] == ["wt", "A1V"]
+    assert ckw["library_config"] == str(library_config)
 
     # prefit called on the produced config with the seed.
     prefit.assert_called_once()

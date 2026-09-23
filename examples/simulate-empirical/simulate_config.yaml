@@ -11,7 +11,8 @@
 # Workflow:
 #   # 1. real data -> empirical generating distribution (writes emp_phenotype_model.json)
 #   tfs-build-empirical growth.csv 42 \
-#       --binding_file binding.csv --spiked_file spiked.txt --out_prefix emp
+#       --binding_file binding.csv --library_config library_config.yaml \
+#       --out_prefix emp
 #   # 2. simulate from it
 #   tfs-simulate simulate_config.yaml out_dir/
 #

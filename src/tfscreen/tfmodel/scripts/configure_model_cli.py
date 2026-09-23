@@ -6,6 +6,16 @@ from tfscreen.tfmodel.model_stats import (
     write_model_stats,
 )
 from tfscreen.util.cli.generalized_main import generalized_main
+from tfscreen.util import read_dataframe, read_yaml
+from tfscreen.genetics import (
+    RESERVED_GENOTYPES,
+    library_composition_table,
+    standardize_genotypes,
+    write_library_composition,
+)
+
+import numpy as np
+import pandas as pd
 
 # Maps (condition_growth, theta_rescale) pairs that are fundamentally incompatible
 # to a human-readable explanation of why.
@@ -51,6 +61,66 @@ def check_component_compatibility(condition_growth_model, theta_rescale_model):
         )
 
 
+def check_genotypes_in_library(library_genotypes, data_df, label,
+                               max_report=20):
+    """
+    Fail unless every genotype in a data file is part of the library.
+
+    The library YAML handed to ``tfs-configure-model`` must be the same one
+    handed to ``tfs-process-fastq``.  Nothing cross-checks the two, but a
+    mismatch in the *genetics* keys (residue numbering, wt sequence, tiles,
+    spiked sequences) shows up here as genotypes the library does not contain.
+    A one-off numbering shift, for instance, mismatches essentially every
+    mutant.
+
+    Parameters
+    ----------
+    library_genotypes : set of str
+        Standardized genotype names in the library.
+    data_df : str or pandas.DataFrame
+        Data file (or frame) with a ``genotype`` column.
+    label : str
+        Name of the argument being checked, used in the error message.
+    max_report : int, optional
+        Maximum number of offending genotypes to name in the error.
+
+    Raises
+    ------
+    ValueError
+        If any genotype is absent from the library.  Reserved sentinels
+        (``__unknown__``) are ignored.
+    """
+
+    if data_df is None:
+        return
+
+    df = read_dataframe(data_df)
+    if "genotype" not in df.columns:
+        raise ValueError(f"{label} has no 'genotype' column.")
+
+    observed = standardize_genotypes(df["genotype"])
+    observed = pd.unique(np.asarray(observed))
+    observed = [g for g in observed if g not in RESERVED_GENOTYPES]
+
+    missing = sorted(set(observed) - set(library_genotypes))
+    if len(missing) == 0:
+        return
+
+    shown = missing[:max_report]
+    suffix = "" if len(missing) <= max_report else f" (and {len(missing) - max_report} more)"
+    source = data_df if isinstance(data_df, str) else "<dataframe>"
+    raise ValueError(
+        f"{len(missing)} of {len(observed)} genotypes in {label} "
+        f"('{source}') are not in the library described by library_config: "
+        f"{shown}{suffix}.\n"
+        f"The library config must be the same one used to call the "
+        f"sequencing reads (tfs-process-fastq).  A residue-numbering or "
+        f"wt-sequence difference between the two will mismatch most or all "
+        f"genotypes; a handful of mismatches usually means the data include "
+        f"genotypes the library design does not contain."
+    )
+
+
 def configure_model(binding_df,
                     growth_df=None,
                     presplit_df=None,
@@ -68,7 +138,7 @@ def configure_model(binding_df,
                     theta_growth_noise_model="zero",
                     theta_binding_noise_model="zero",
                     growth_noise_model="zero",
-                    spiked=None,
+                    library_config=None,
                     growth_shares_replicates=False,
                     epistasis=False,
                     thermo_data=None,
@@ -79,9 +149,11 @@ def configure_model(binding_df,
     Build and write the YAML configuration files needed by tfs-fit-model.
 
     Constructs a ModelOrchestrator from the supplied data and model-component choices,
-    then writes three files: {out_prefix}_config.yaml (the main configuration),
-    {out_prefix}_priors.csv (prior distributions for all parameters), and
-    {out_prefix}_guesses.csv (initial-value guesses for array parameters).
+    then writes {out_prefix}_config.yaml (the main configuration),
+    {out_prefix}_priors.csv (prior distributions for all parameters),
+    {out_prefix}_guesses.csv (initial-value guesses for array parameters) and,
+    for a growth model, {out_prefix}_library.csv (the per-genotype library
+    composition resolved from library_config).
 
     When only binding_df is provided (no growth_df), a binding-only model is
     configured that infers theta directly from observed binding measurements
@@ -110,9 +182,9 @@ def configure_model(binding_df,
         model_orchestrator._read_base_growth_df and generative/model.py's
         base_growth_obs block.
     out_prefix : str, optional
-        Prefix for the three output files ({out_prefix}_config.yaml,
-        {out_prefix}_priors.csv, {out_prefix}_guesses.csv).
-        Default 'tfs_configure'.
+        Prefix for the output files ({out_prefix}_config.yaml,
+        {out_prefix}_priors.csv, {out_prefix}_guesses.csv and, for a growth
+        model, {out_prefix}_library.csv). Default 'tfs_configure'.
     condition_growth_model: str, optional
         Model to use to describe growth under different conditions (e.g.,
         pheS+4CP). Allowed values are 'linear' (default), 'power', or
@@ -170,9 +242,18 @@ def configure_model(binding_df,
         'normal_kt' learns a global sigma_k that inflates the observation scale
         in quadrature with ln_cfu_std, capturing biological variability in
         growth rates not explained by theta or dk_geno.
-    spiked : list or str, optional
-        Names of genotypes that should be excluded from congression
-        correction.
+    library_config : str, optional
+        Path to the library YAML describing the screened library -- the same
+        file handed to ``tfs-process-fastq``.  Required whenever ``growth_df``
+        is given (a binding-only model has no congression correction and no
+        ln_cfu0 latents, so it does not need one).  Read keys:
+        ``reading_frame``, ``first_amplicon_residue``, ``wt_seq``,
+        ``degen_sites``, ``tiles``, ``tile_combos``, ``spiked_seqs`` and
+        ``library_mixture``; any other keys (a full simulate config, say) are
+        ignored.  Genotypes encoded by a spiked sequence become the spiked
+        set, replacing the old hand-supplied ``--spiked`` list.  The resolved
+        per-genotype table is written to {out_prefix}_library.csv and is what
+        ``tfs-fit-model`` reads.
     growth_shares_replicates : bool, optional
         Whether replicates should share the same parameters for the growth and
         growth transition models. Default is False.
@@ -234,6 +315,43 @@ def configure_model(binding_df,
             f"transformation_lambda=(0.36, 0.05)."
         )
 
+    # Resolve the library description.  The composition table is written
+    # before the orchestrator is built, because the orchestrator reads the
+    # snapshot (not the YAML) -- the same file tfs-fit-model will read.
+    library_file = None
+    library_meta = None
+    if binding_only:
+        if library_config is not None:
+            raise ValueError(
+                "library_config was supplied but no growth_df.  A "
+                "binding-only model has no congression correction and no "
+                "ln_cfu0 latents, so it has no use for the library."
+            )
+    else:
+        if library_config is None:
+            raise ValueError(
+                "library_config is required when growth_df is given.  Pass "
+                "the library YAML that describes the screened library -- the "
+                "same file used for tfs-process-fastq."
+            )
+
+        composition = library_composition_table(library_config)
+
+        for data_df, label in ((growth_df, "growth_df"),
+                               (presplit_df, "presplit_df"),
+                               (base_growth_df, "base_growth_df")):
+            check_genotypes_in_library(set(composition["genotype"]),
+                                       data_df, label)
+
+        library_file = f"{out_prefix}_library.csv"
+        write_library_composition(composition, library_file)
+        print(f"Wrote library composition to {library_file}", flush=True)
+
+        library_meta = {
+            "source": library_config if isinstance(library_config, str) else "<dict>",
+            "library_mixture": read_yaml(library_config)["library_mixture"],
+        }
+
     # Initialize model to build mappings and get guesses
     orchestrator = ModelOrchestrator(growth_df,
                      binding_df,
@@ -252,7 +370,7 @@ def configure_model(binding_df,
                      theta_growth_noise=theta_growth_noise_model,
                      theta_binding_noise=theta_binding_noise_model,
                      growth_noise=growth_noise_model,
-                     spiked_genotypes=spiked,
+                     library_file=library_file,
                      growth_shares_replicates=growth_shares_replicates,
                      epistasis=epistasis,
                      thermo_data=thermo_data,
@@ -269,7 +387,8 @@ def configure_model(binding_df,
                         growth_df_path=growth_path,
                         binding_df_path=binding_df if isinstance(binding_df, str) else "binding.csv",
                         presplit_df_path=presplit_path,
-                        base_growth_df_path=base_growth_path)
+                        base_growth_df_path=base_growth_path,
+                        library_meta=library_meta)
 
     # Pre-fit accounting: how many parameters, how many observations, and
     # which genotypes are individually under-determined.
@@ -284,13 +403,12 @@ def main():
                                               "growth_df":str,
                                               "presplit_df":str,
                                               "base_growth_df":str,
-                                              "spiked":list,
+                                              "library_config":str,
                                               "thermo_data":str,
                                               "batch_size":int,
                                               "binding_weight":float,
                                               "transformation_lambda":float},
-                            manual_arg_nargs={"spiked":"+",
-                                              "transformation_lambda":2})
+                            manual_arg_nargs={"transformation_lambda":2})
 
 if __name__ == "__main__":
     main()

@@ -718,20 +718,24 @@ class LibraryManager:
         ----------
         list_of_seqs : list
             list of spiked sequences (DNA letters)
-        
+
         Returns
         -------
         tuple[list[str], list[str]]
             A tuple containing two lists: (lib_seqs, aa_muts).
-            - lib_seqs: A list of all generated DNA sequences.
+            - lib_seqs: A list of the spiked DNA sequences, one per input
+            sequence, with '.' positions filled in from wt_seq.
             - aa_muts: A parallel list of the corresponding formatted amino
             acid mutation strings.
 
         Notes
         -----
-        The generated set is inclusive. For each pair of mutated sites, the
-        output will contain not only the double mutants but also the two
-        corresponding single mutants and the wild-type sequence.
+        The output holds exactly the sequences passed in -- one spiked
+        sequence per input, in the same order. Nothing is expanded: a spiked
+        double mutant does not imply its two single mutants or wt. This
+        matters for library composition (``genetics.library_design``), where
+        membership in the spiked origin is what makes a genotype
+        congression-free.
         """
 
         spiked_seqs = []

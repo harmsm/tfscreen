@@ -32,13 +32,13 @@ from tfscreen.tfmodel.genotype_fit.fit import (
 )
 from tfscreen.simulate.empirical.population import fit_population
 from tfscreen.util.io import read_dataframe
-from tfscreen.util.cli import read_lines
+from tfscreen.genetics import library_composition_table
 from tfscreen.util.cli.generalized_main import generalized_main
 
 _WT_REF_COLS = ["theta_low", "theta_high", "log_hill_K", "hill_n"]
 
 
-def _run_configure_and_prefit(growth_file, binding_file, spiked,
+def _run_configure_and_prefit(growth_file, binding_file, library_config,
                               base_growth_file, thermo_data, out_prefix, seed):
     """Configure a linear/hill_geno model and MAP-calibrate k/m.
 
@@ -49,6 +49,10 @@ def _run_configure_and_prefit(growth_file, binding_file, spiked,
         raise ValueError(
             "binding data is required to calibrate the growth linkage; pass "
             "--binding_file, or pass --calibration_file to skip configure+prefit.")
+    if library_config is None:
+        raise ValueError(
+            "--library_config is required to configure the model; pass it, or "
+            "pass --calibration_file to skip configure+prefit.")
 
     from tfscreen.tfmodel.scripts.configure_model_cli import configure_model
     from tfscreen.tfmodel.scripts.prefit_calibration_cli import (
@@ -62,7 +66,7 @@ def _run_configure_and_prefit(growth_file, binding_file, spiked,
         binding_df=binding_file,
         growth_df=growth_file,
         base_growth_df=base_growth_file,
-        spiked=spiked,
+        library_config=library_config,
         thermo_data=thermo_data,
         out_prefix=configure_prefix,
     )
@@ -83,7 +87,7 @@ def build_empirical(growth_file,
                     binding_file=None,
                     out_prefix="tfs_empirical",
                     calibration_file=None,
-                    spiked_file=None,
+                    library_config=None,
                     base_growth_file=None,
                     thermo_data=None,
                     congression_lambda=None,
@@ -115,9 +119,11 @@ def build_empirical(growth_file,
         Skip the configure+prefit step and use this calibration directly — a
         prefit priors CSV or a wide ``condition_rep,growth_k,growth_m`` CSV.
         Use this to iterate on the Stage-1/2 knobs without re-running the MAP.
-    spiked_file : str, optional
-        Text file of spiked genotype names (one per line) forwarded to
-        ``configure_model``.
+    library_config : str, optional
+        Library YAML describing the screened library (the same file handed to
+        ``tfs-process-fastq``), forwarded to ``configure_model``.  Required
+        unless ``calibration_file`` is given.  Genotypes encoded by a spiked
+        sequence are congression-free and are left alone by Stage 1.5.
     base_growth_file : str, optional
         Direct growth-rate calibration CSV forwarded to ``configure_model``.
     thermo_data : str, optional
@@ -144,7 +150,11 @@ def build_empirical(growth_file,
         Recommended for large libraries (the fits are embarrassingly parallel).
     """
     growth_df = read_dataframe(growth_file)
-    spiked = read_lines(spiked_file) if spiked_file else None
+    spiked = None
+    if library_config is not None:
+        composition = library_composition_table(library_config)
+        spiked = list(composition.loc[composition["in_spiked_origin"],
+                                      "genotype"])
 
     icols = [c.strip() for c in str(intercept_cols).split(",") if c.strip()]
 
@@ -155,7 +165,7 @@ def build_empirical(growth_file,
     # Calibration: reuse a supplied one, or configure+prefit to produce it.
     if calibration_file is None:
         calibration_file = _run_configure_and_prefit(
-            growth_file, binding_file, spiked, base_growth_file,
+            growth_file, binding_file, library_config, base_growth_file,
             thermo_data, out_prefix, seed)
     else:
         print(f"Using supplied calibration: {calibration_file}", flush=True)
@@ -236,6 +246,6 @@ def main():
     return generalized_main(
         build_empirical,
         manual_arg_types={"binding_file": str, "calibration_file": str,
-                          "spiked_file": str, "base_growth_file": str,
+                          "library_config": str, "base_growth_file": str,
                           "thermo_data": str, "seed": int, "min_obs": int,
                           "congression_lambda": float, "num_workers": int})

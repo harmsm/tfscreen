@@ -54,6 +54,28 @@ def paths(tmp_path):
     return str(growth), str(calib), tmp_path
 
 
+@pytest.fixture
+def library_config(tmp_path):
+    """Library YAML covering wt/A1V/A2V, with wt as the only spiked genotype."""
+    import yaml
+
+    config = {
+        "reading_frame": 0,
+        "first_amplicon_residue": 1,
+        "wt_seq":      "gccgcaaaaccggaatgc",
+        "degen_sites": "nntnnt............",
+        "tiles":       "111222............",
+        "tile_combos": ["single-1", "single-2", "double-1-2"],
+        "spiked_seqs": [".................."],          # wt only
+        "library_mixture": {"single-1": 10, "single-2": 10,
+                            "double-1-2": 100, "spiked": 1},
+    }
+    path = tmp_path / "library.yaml"
+    with open(path, "w") as f:
+        yaml.dump(config, f)
+    return str(path)
+
+
 def test_raw_only_writes_params_and_theta(paths):
     growth, calib, tmp_path = paths
     prefix = str(tmp_path / "run")
@@ -78,14 +100,12 @@ def test_raw_only_writes_params_and_theta(paths):
         assert res.loc[geno, "theta_low"] == pytest.approx(p["theta_low"], abs=2e-3)
 
 
-def test_congression_writes_deattenuated_and_history(paths):
+def test_congression_writes_deattenuated_and_history(paths, library_config):
     growth, calib, tmp_path = paths
-    spiked = tmp_path / "spiked.txt"
-    spiked.write_text("wt\n")
     prefix = str(tmp_path / "run")
 
     fit_genotypes(growth, calib, out_prefix=prefix, dk_geno_prior_sd=0.0,
-                  congression_lambda=1.0, spiked_file=str(spiked),
+                  congression_lambda=1.0, library_config=library_config,
                   save_theta_history=True)
 
     deatt = pd.read_csv(f"{prefix}_params_deattenuated.csv")
@@ -109,14 +129,12 @@ def test_congression_writes_deattenuated_and_history(paths):
     assert history["iter"].max() >= 1
 
 
-def test_congression_without_history_skips_history_file(paths):
+def test_congression_without_history_skips_history_file(paths, library_config):
     growth, calib, tmp_path = paths
-    spiked = tmp_path / "spiked.txt"
-    spiked.write_text("wt\n")
     prefix = str(tmp_path / "run")
 
     fit_genotypes(growth, calib, out_prefix=prefix, dk_geno_prior_sd=0.0,
-                  congression_lambda=1.0, spiked_file=str(spiked))
+                  congression_lambda=1.0, library_config=library_config)
 
     assert (tmp_path / "run_params_deattenuated.csv").exists()
     assert not (tmp_path / "run_theta_history.csv").exists()

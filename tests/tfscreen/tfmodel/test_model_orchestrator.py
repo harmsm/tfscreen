@@ -926,6 +926,7 @@ def test_model_class_properties(initialized_model_class):
     model._growth_noise = "grn"
     model._sample_offset = "so"
     model._spiked_genotypes = ["s"]
+    model._library_file = None
     model._binding_only = False
     model._growth_shares_replicates = False
     model._epistasis = True

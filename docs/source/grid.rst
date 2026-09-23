@@ -77,6 +77,7 @@ Grid YAML format
         variants:
           - binding_df: ../data/binding.csv
             growth_df:  ../data/growth.csv
+            library_config: ../data/run_config.yaml
 
       # 'auto' enumerates every registered component for an axis.
       # Incompatible combinations are skipped automatically.
@@ -120,8 +121,8 @@ Key rules:
   component axes; e.g. ``condition_growth`` rather than
   ``--condition_growth_model``).
 * Relative paths in ``configure_model`` blocks (``binding_df``, ``growth_df``,
-  ``thermo_data``) are resolved relative to the grid YAML and re-expressed
-  relative to each subdirectory in the written config.
+  ``library_config``, ``thermo_data``) are resolved relative to the grid YAML
+  and re-expressed relative to each subdirectory in the written config.
 * The ``auto`` form enumerates every registered component for the given axis.
   Incompatible combinations (e.g. ``power`` growth + ``logit`` theta_rescale)
   are caught by ``tfs-configure-model``, skipped, and logged in

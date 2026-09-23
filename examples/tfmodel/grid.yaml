@@ -35,6 +35,9 @@ configure_model:
     variants:
       - binding_df: ../data/binding.csv
         growth_df:  ../data/growth.csv
+        # The library description -- the same YAML used for tfs-process-fastq.
+        # Required whenever growth_df is given.
+        library_config: ../data/run_config.yaml
 
   - name: fixed_components
     variants:

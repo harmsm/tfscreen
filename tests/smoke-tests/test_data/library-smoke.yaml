@@ -1,0 +1,20 @@
+# Library description for the smoke-test data (tests/smoke-tests/test_data).
+#
+# The same file plays two roles: it is what tfs-process-fastq would use to call
+# reads, and what tfs-configure-model uses to resolve the library composition.
+# Sites 42/45 (tile 1) and 64/68/74/79/81/84 (tile 2) are NNT, which covers
+# every genotype in growth-smoke.csv.  wt and M42I are spiked.
+reading_frame: 0
+first_amplicon_residue: 27
+wt_seq: gccagccacgtttctgcgaaaacgcgggaaaaagtggaagcggcgatggcggagctgaattacattcccaaccgcgtggcacaacaactggcgggcaaacagtcgttgctgattggcgttgccacctccagtctggccctgcacgcgccgtcgcaaattgtcgcggcgattaaatctcgcgccgatcaactgggtgccagcgtggtggtgtcgatg
+degen_sites: .............................................nnt......nnt......................................................nnt.........nnt...............nnt............nnt...nnt......nnt..........................................
+tiles: .............................................111111111111......................................................222222222222222222222222222222222222222222222222222222222222222..........................................
+tile_combos: ["single-1", "single-2", "double-1-2"]
+spiked_seqs:
+- ........................................................................................................................................................................................................................
+- .............................................ata........................................................................................................................................................................
+library_mixture:
+  single-1: 100
+  single-2: 100
+  double-1-2: 1_000
+  spiked: 1

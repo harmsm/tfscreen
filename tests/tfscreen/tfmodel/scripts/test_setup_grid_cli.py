@@ -241,10 +241,12 @@ def test_resolve_cm_paths_resolves_all_df_args(tmp_path):
         "growth_df": "g.csv",
         "presplit_df": "p.csv",
         "base_growth_df": "bg.csv",
+        "library_config": "library.yaml",
         "theta_model": "hill_mut",     # not a path: untouched
     }
     out = _resolve_cm_paths(cm_vars, base)
-    for key in ("binding_df", "growth_df", "presplit_df", "base_growth_df"):
+    for key in ("binding_df", "growth_df", "presplit_df", "base_growth_df",
+                "library_config"):
         assert out[key] == os.path.normpath(os.path.join(base, cm_vars[key]))
         assert os.path.isabs(out[key])
     assert out["theta_model"] == "hill_mut"
