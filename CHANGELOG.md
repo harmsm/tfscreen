@@ -14,8 +14,8 @@ file was assembled on 2026-09-22 around the reconstruction made then. Entries
 fall into two kinds:
 
 - **Contemporaneous.** Written at the time of the change, as part of the
-  change. Everything in `[Unreleased]` is contemporaneous *except* the block
-  explicitly headed "Reconstructed", and all future entries will be.
+  change. Every entry from 0.4.4 onward is contemporaneous *except* blocks
+  explicitly headed "Reconstructed".
 - **Reconstructed.** Backfilled on 2026-09-10 from `git diff` between release
   tags, commit messages, and the GitHub
   [release notes](https://github.com/harmslab/tfscreen/releases). Every
@@ -28,6 +28,16 @@ fall into two kinds:
   own contemporaneous summary, separate from the reconstructed bullets.
 
 ## [Unreleased]
+
+Nothing yet.
+
+## [0.4.4] - 2026-09-22
+
+A processing and bookkeeping release: two fixes in the read-counting and
+`ln_cfu` paths, a library description for `tfs-configure-model`, and a
+general cross-run comparison tool. The inference model itself is unchanged --
+this is the groundwork for 0.5.0, which changes how congression and spiked
+genotypes are handled.
 
 ### Added
 
@@ -667,7 +677,8 @@ fall into two kinds:
 - **Fitting routines** (`tfscreen.fitting`): OLS, WLS, GLS, GEE, GLM, NLS, matrix NLS/WLS, and Kalman / unscented Kalman filter estimators.
 - Walkthrough notebook (`notebooks/tfscreen-walkthrough/`).
 
-[Unreleased]: https://github.com/harmslab/tfscreen/compare/v0.4.3...HEAD
+[Unreleased]: https://github.com/harmslab/tfscreen/compare/v0.4.4...HEAD
+[0.4.4]: https://github.com/harmslab/tfscreen/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/harmslab/tfscreen/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/harmslab/tfscreen/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/harmslab/tfscreen/compare/v0.4.0...v0.4.1
