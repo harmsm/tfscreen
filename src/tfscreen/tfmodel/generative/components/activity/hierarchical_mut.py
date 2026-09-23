@@ -49,7 +49,7 @@ def define_model(name: str,
     Returns
     -------
     jnp.ndarray
-        Activity values broadcast to shape ``(1, 1, 1, 1, 1, 1, num_genotype)``.
+        Activity values for the batch's genotypes, shape ``(1, 1, 1, 1, 1, 1, batch_size)``.
     """
     mut_nnz_mut_idx  = jnp.array(data.mut_nnz_mut_idx)    # COO row (mutation)
     mut_nnz_geno_idx = jnp.array(data.mut_nnz_geno_idx)   # COO col (genotype)
@@ -98,8 +98,9 @@ def define_model(name: str,
 
     pyro.deterministic(name, activity)
 
-    if data.batch_size < data.num_genotype:
-        activity = activity[data.batch_idx]
+    # activity is library-ordered; always slice to the batch's genotypes.
+    # The full-batch index is a reshuffled permutation, not the identity.
+    activity = activity[data.batch_idx]
     return activity[None, None, None, None, None, None, :]
 
 
@@ -160,8 +161,9 @@ def guide(name: str,
 
     activity = jnp.clip(jnp.exp(log_activity), max=1e30)
 
-    if data.batch_size < data.num_genotype:
-        activity = activity[data.batch_idx]
+    # activity is library-ordered; always slice to the batch's genotypes.
+    # The full-batch index is a reshuffled permutation, not the identity.
+    activity = activity[data.batch_idx]
     return activity[None, None, None, None, None, None, :]
 
 

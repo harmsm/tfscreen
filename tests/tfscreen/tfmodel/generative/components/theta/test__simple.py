@@ -29,7 +29,8 @@ MockData = namedtuple("MockData", [
     "scatter_theta",
     "geno_theta_idx",
     "titrant_conc",
-])
+    "batch_idx",
+], defaults=(None,))
 
 
 @pytest.fixture
@@ -37,8 +38,8 @@ def mock_data():
     """
     Two titrants, three concentrations, four genotypes.
 
-    The simple theta component does not use batch_idx/scale_vector, so
-    those fields are intentionally omitted.
+    batch_idx is the identity, so geno_theta_idx selects library genotypes
+    directly. scale_vector is unused and omitted.
     """
     return MockData(
         num_titrant_name=2,
@@ -47,6 +48,7 @@ def mock_data():
         scatter_theta=1,
         geno_theta_idx=jnp.array([1, 3], dtype=jnp.int32),
         titrant_conc=jnp.array([0.0, 1.0, 10.0]),
+        batch_idx=jnp.arange(4, dtype=jnp.int32),
     )
 
 
@@ -354,6 +356,7 @@ def test_extreme_theta_values_finite_mu(mock_data):
         scatter_theta=0,
         geno_theta_idx=jnp.array([0, 1], dtype=jnp.int32),
         titrant_conc=jnp.array([0.0, 1.0, 10.0]),
+        batch_idx=jnp.arange(2, dtype=jnp.int32),
     )
 
     theta_param = define_model(name="x", data=data, priors=priors)
@@ -445,6 +448,21 @@ class TestPerGenotype:
         for col, geno_idx in enumerate(mock_data.geno_theta_idx.tolist()):
             assert jnp.allclose(out[..., col],
                                  mock_priors_3d.theta_values[..., geno_idx])
+
+    def test_run_model_3d_follows_batch_idx(self, mock_data, mock_priors_3d):
+        """
+        With a non-identity batch_idx (the reshuffled full-batch training
+        index), batch position j must read genotype batch_idx[j], not
+        library genotype j.
+        """
+        data = mock_data._replace(scatter_theta=0,
+                                  batch_idx=jnp.array([2, 0, 3, 1]),
+                                  geno_theta_idx=jnp.arange(4))
+        theta_param = define_model(name="pg", data=data, priors=mock_priors_3d)
+        out = run_model(theta_param, data)
+        for pos, geno in enumerate([2, 0, 3, 1]):
+            assert jnp.allclose(out[..., pos],
+                                mock_priors_3d.theta_values[..., geno])
 
     def test_run_model_3d_concentration_mapping(self, mock_data, mock_priors_3d):
         """Concentration remapping must work correctly with per-genotype theta."""

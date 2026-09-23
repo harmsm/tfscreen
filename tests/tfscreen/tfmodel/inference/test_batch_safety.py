@@ -16,7 +16,9 @@ from flax import struct
 
 from tfscreen.tfmodel.inference.batch_safety import (
     find_batch_dependent_latents,
+    find_batch_order_mismatches,
     find_orchestrator_batch_dependent_latents,
+    find_orchestrator_batch_order_mismatches,
     orchestrator_latent_dimension,
 )
 from tfscreen.tfmodel.model_orchestrator import ModelOrchestrator
@@ -252,6 +254,117 @@ def test_beta_growth_noise_is_batch_dependent():
     found = find_orchestrator_batch_dependent_latents(orchestrator)
     found = {k for k in found if _owned_by("theta_growth_noise", k)}
     assert found == {"theta_growth_noise_dist"}
+
+
+# ---------------------------------------------------------------------------
+# Batch order: predictions must follow batch_idx, not library order
+# ---------------------------------------------------------------------------
+
+def _sliced_model(data, priors):
+    """Library-sized latent, sliced to the batch: correct."""
+    with numpyro.plate("genotype_plate", data.num_genotype):
+        offset = numpyro.sample("offset", dist.Normal(0.0, 1.0))
+    numpyro.deterministic("growth_pred", offset[data.batch_idx])
+
+
+def _unsliced_at_full_batch_model(data, priors):
+    """Slices only when mini-batching: wrong at a reordered full batch."""
+    with numpyro.plate("genotype_plate", data.num_genotype):
+        offset = numpyro.sample("offset", dist.Normal(0.0, 1.0))
+    if data.batch_size < data.num_genotype:
+        offset = offset[data.batch_idx]
+    numpyro.deterministic("growth_pred", offset)
+
+
+def test_order_check_passes_sliced_model():
+    found = find_batch_order_mismatches(_sliced_model, None, _toy_full_data(),
+                                        _toy_get_batch, jnp.arange(5),
+                                        jnp.array([0, 3, 1, 4, 2]))
+    assert found == {}
+
+
+def test_order_check_flags_unsliced_model():
+    found = find_batch_order_mismatches(_unsliced_at_full_batch_model, None,
+                                        _toy_full_data(), _toy_get_batch,
+                                        jnp.arange(5),
+                                        jnp.array([0, 3, 1, 4, 2]))
+    assert set(found) == {"growth_pred"}
+    assert found["growth_pred"] > 0
+
+
+def test_order_check_needs_reorderings():
+    with pytest.raises(ValueError, match="reorderings"):
+        find_batch_order_mismatches(_sliced_model, None, _toy_full_data(),
+                                    _toy_get_batch, jnp.arange(5),
+                                    jnp.array([0, 1, 2, 3, 3]))
+
+
+# The full-batch training index keeps the binding genotypes first and
+# reshuffles the rest every step, so run at full batch (batch_size=None).
+# beta *growth* theta noise is the documented exception (tested below).
+@pytest.mark.parametrize("axis,variant", _SAFE_VARIANTS)
+def test_component_predictions_follow_batch_order(axis, variant):
+    orchestrator = ModelOrchestrator(growth_df=_GROWTH_CSV,
+                                     binding_df=_BINDING_CSV,
+                                     **{axis: variant},
+                                     **_VARIANT_KWARGS.get((axis, variant), {}))
+    found = find_orchestrator_batch_order_mismatches(orchestrator)
+    assert found == {}, (
+        f"{axis}={variant}: predictions do not follow a reordered full "
+        f"batch (largest abs difference per site): {found}"
+    )
+
+
+@pytest.mark.parametrize("theta,activity", [
+    ("hill_mut", "hierarchical_mut"),
+    ("hill_mut", "horseshoe_mut"),
+    ("thermo.O2_C4_K3_U0_a.PK", "horseshoe_geno"),
+])
+def test_epistasis_predictions_follow_batch_order(theta, activity):
+    orchestrator = ModelOrchestrator(growth_df=_GROWTH_CSV,
+                                     binding_df=_BINDING_CSV,
+                                     theta=theta,
+                                     activity=activity,
+                                     epistasis=True)
+    assert find_orchestrator_batch_order_mismatches(orchestrator) == {}
+
+
+@pytest.mark.parametrize("theta", ["hill_geno", "categorical_geno"])
+def test_binding_only_predictions_follow_batch_order(theta):
+    orchestrator = ModelOrchestrator(None, _BINDING_CSV,
+                                     binding_only=True,
+                                     theta=theta)
+    assert find_orchestrator_batch_order_mismatches(orchestrator) == {}
+
+
+def test_simple_theta_per_genotype_follows_batch_order():
+    """
+    The pre-fit's _simple theta holds per-genotype, library-ordered curves.
+    It must read them through batch_idx, not by batch position.
+    """
+    import numpy as np
+    orchestrator = ModelOrchestrator(growth_df=_GROWTH_CSV,
+                                     binding_df=_BINDING_CSV,
+                                     theta="_simple")
+    g = orchestrator.data.growth
+    values = np.random.default_rng(0).uniform(
+        0.05, 0.95, (g.num_titrant_name, g.num_titrant_conc, g.num_genotype))
+    priors = orchestrator.priors
+    orchestrator._priors = priors.replace(
+        theta=priors.theta.replace(theta_values=jnp.asarray(values)))
+    assert find_orchestrator_batch_order_mismatches(orchestrator) == {}
+
+
+def test_beta_growth_noise_is_batch_positional():
+    """
+    Documented exception: beta noise's latent is the noisy theta itself, one
+    draw per batch position, so it does not follow a reordering. The order
+    check must keep flagging it.
+    """
+    orchestrator = ModelOrchestrator(growth_df=_GROWTH_CSV,
+                                     binding_df=_BINDING_CSV,
+                                     theta_growth_noise="beta")
+    assert "growth_pred" in find_orchestrator_batch_order_mismatches(orchestrator)
 
 
 # ---------------------------------------------------------------------------

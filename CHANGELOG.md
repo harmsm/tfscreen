@@ -170,6 +170,26 @@ fall into two kinds:
   and `ln_cfu_0` change for any config with lambda > 0.** Growth itself
   (`_sim_growth`) is unchanged.
 
+- **Batch-order bug in three more components.** `activity/hierarchical_mut`
+  and `activity/horseshoe_mut` sliced activity to the batch only when
+  `batch_size < num_genotype`, and `theta/_simple` indexed its per-genotype
+  theta by the batch-relative `geno_theta_idx` alone. The full-batch training
+  index is binding-first and reshuffled every step, so at full batch these
+  returned library-ordered values for reordered batch positions: bulk
+  genotypes got other genotypes' activity (or, for `_simple` with
+  per-genotype curves, theta). The shape-based batch-safety check could not
+  see it. All three now slice through `batch_idx`. Fits using
+  `hierarchical_mut`/`horseshoe_mut` activity without mini-batching should be
+  rerun. The pre-fit's `_simple` model contains only binding genotypes, whose
+  index is library order and never reshuffled, so pre-fit results are
+  unaffected.
+  - New `find_batch_order_mismatches` /
+    `find_orchestrator_batch_order_mismatches` in
+    `inference/batch_safety.py`: trace two orderings of the full batch with
+    the latents held fixed and check that the batch-positional predictions
+    follow the index. `test_batch_safety.py` runs it across the component
+    registry and the epistasis and binding-only variants.
+
 ## [0.4.4] - 2026-09-22
 
 A processing and bookkeeping release: two fixes in the read-counting and

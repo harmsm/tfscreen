@@ -209,7 +209,7 @@ def run_model(theta_param: ThetaParam, data: DataClass) -> jnp.ndarray:
     theta_param : ThetaParam
         Output of ``define_model`` / ``guide``.
     data : DataClass
-        Must expose ``geno_theta_idx``, ``titrant_conc``, and
+        Must expose ``batch_idx``, ``geno_theta_idx``, ``titrant_conc``, and
         ``scatter_theta``.
 
     Returns
@@ -222,7 +222,11 @@ def run_model(theta_param: ThetaParam, data: DataClass) -> jnp.ndarray:
     """
 
     # Subset on the genotype axis using the run-time genotype map.
-    theta_base = theta_param.theta[..., data.geno_theta_idx]
+    # theta is library-ordered: translate batch-relative geno_theta_idx to
+    # library indices through batch_idx (the hill_geno pattern). Indexing
+    # by geno_theta_idx alone reads library positions as batch positions,
+    # which is wrong whenever batch_idx is not the identity.
+    theta_base = theta_param.theta[..., data.batch_idx[data.geno_theta_idx]]
 
     # Map this experiment's concentrations onto the columns of theta_base.
     conc_idx = jnp.searchsorted(theta_param.concentrations, data.titrant_conc)
