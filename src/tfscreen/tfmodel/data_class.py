@@ -73,7 +73,7 @@ class GrowthData:
     # ModelOrchestrator from the library composition table's bulk_fraction
     # (legacy spiked_genotypes: 0 for spiked, 1 otherwise). Library-sized;
     # consumers index it with batch_idx. Not yet used by the model -- see
-    # future/congression-physics-plan.md, step 3.3.
+    # planning/congression-physics-plan.md, step 3.3.
     bulk_fraction: Any = field(default=None)
 
     growth_shares_replicates: bool = field(pytree_node=False, default=False)

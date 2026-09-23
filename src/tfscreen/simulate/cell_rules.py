@@ -29,7 +29,7 @@ dk rules
 - ``dk_geno``: ``(num_cells, max_plasmids)``
 - returns ``(num_cells,)``.
 
-See ``future/congression-physics-plan.md`` for the physics and the planned
+See ``planning/congression-physics-plan.md`` for the physics and the planned
 rules (partition-function theta, soft-min dk).
 """
 
