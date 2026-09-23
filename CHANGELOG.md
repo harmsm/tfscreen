@@ -211,6 +211,22 @@ fall into two kinds:
     follow the index. `test_batch_safety.py` runs it across the component
     registry and the epistasis and binding-only variants.
 
+- **`theta/categorical_geno` full-population theta.** The component sliced
+  its per-genotype latent to the batch when sampling, so the full-population
+  theta `generative/model.py` builds for the congression background (by
+  calling `run_model` with `batch_idx = geno_theta_idx = arange(num_genotype)`)
+  came back in batch order at full batch and indexed past the batch under
+  mini-batching, repeating the last genotype. The empirical correction's
+  background CDF is order-free, so full-batch fits were unaffected; fits
+  combining `categorical_geno`, `transformation=empirical` and mini-batching
+  used a corrupted background and should be rerun. theta now stays
+  library-sized and `run_model` indexes it through
+  `batch_idx[geno_theta_idx]` (the `hill_geno` pattern). The `theta_theta`
+  deterministic site is now stored for every genotype.
+  - New `tests/tfscreen/tfmodel/generative/test_population_theta.py`
+    checks, for every theta component (model and guide; shuffled full batch
+    and mini-batch), that the full-population theta is library-ordered.
+
 ## [0.4.4] - 2026-09-22
 
 A processing and bookkeeping release: two fixes in the read-counting and

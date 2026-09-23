@@ -448,9 +448,16 @@ checked with `tfs-summarize-calibration`.
      Found for 3.3: `theta/categorical_geno` slices its latent to the batch
      at sample time, so `model.py`'s full-population `calc_theta` (arange
      `batch_idx`/`geno_theta_idx`) returns batch-ordered theta at full batch
-     and indexes past the batch under mini-batching. Harmless for today's
-     empirical CDF at full batch (order-free), but 3.3 needs library-ordered
-     population theta from every theta component; fix and test it there.
+     and indexes past the batch under mini-batching. Fixed in 3.3a.
+   - 3.3 lands as three commits: 3.3a library-ordered population theta
+     (bug fix), 3.3b co-resident sets drawn into `GrowthData` (no behavior
+     change), 3.3c the mixture itself (breaking; includes the
+     `analysis/prediction.py` change, since prediction runs the model and
+     must supply full-library populations and the fit's co-resident sets).
+   - [x] **3.3a Library-ordered population theta.** Done 2026-09-23:
+     `categorical_geno` keeps theta library-sized and indexes through
+     `batch_idx[geno_theta_idx]`; `test_population_theta.py` checks every
+     theta component.
    - [ ] **3.3 Mixture.** Class axis ahead of the 7-D growth layout; per-class
      theta rescale, `calculate_growth`, `growth_transition`; logsumexp mix
      with `log w`. New transformation-component interface returning classes
