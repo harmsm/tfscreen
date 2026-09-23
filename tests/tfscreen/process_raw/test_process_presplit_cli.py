@@ -189,7 +189,7 @@ def test_process_presplit_missing_cfu_column(tmp_path, fx_sample_df):
 
     with patch('tfscreen.process_raw.scripts.process_presplit_cli._prep_sample_df',
                return_value=prepped):
-        with pytest.raises(ValueError, match="Not all required columns seen"):
+        with pytest.raises(ValueError, match="sample_ln_cfu_std"):
             process_presplit(
                 sample_df=bad_df,
                 counts_csv_path=str(tmp_path),

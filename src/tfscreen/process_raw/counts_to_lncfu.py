@@ -1,5 +1,8 @@
 from tfscreen.util.io import read_dataframe
-from tfscreen.util.dataframe import check_columns
+from tfscreen.util.dataframe import (
+    check_columns,
+    get_scaled_cfu
+)
 
 from tfscreen.genetics import (
     set_categorical_genotype,
@@ -8,6 +11,33 @@ from tfscreen.genetics import (
 
 import pandas as pd
 import numpy as np
+
+def get_sample_ln_cfu(sample_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Ensure `sample_df` has 'sample_ln_cfu' and 'sample_ln_cfu_std' columns.
+
+    Existing log-space columns are used as-is. Otherwise they are inferred
+    (via get_scaled_cfu) from 'sample_ln_cfu_var', or from 'sample_cfu' with
+    'sample_cfu_std' or 'sample_cfu_var'.
+
+    Raises
+    ------
+    ValueError
+        If the columns cannot be obtained from what `sample_df` provides.
+    """
+    try:
+        sample_df = get_scaled_cfu(sample_df,
+                                   need_columns=["ln_cfu", "ln_cfu_std"],
+                                   prefix="sample_")
+    except ValueError as e:
+        raise ValueError(
+            "sample_df must give each sample's cfu/mL and its uncertainty "
+            "as 'sample_ln_cfu' with 'sample_ln_cfu_std' (or "
+            "'sample_ln_cfu_var'), or as 'sample_cfu' with 'sample_cfu_std' "
+            f"(or 'sample_cfu_var'). ({e})"
+        ) from e
+
+    return sample_df
 
 def _filter_low_observation_genotypes(df: pd.DataFrame,
                                       min_genotype_obs: int) -> pd.DataFrame:
@@ -112,12 +142,18 @@ def _calculate_concentrations_and_variance(
         df: pd.DataFrame,
         total_counts_per_sample: pd.Series) -> pd.DataFrame:
     """
-    Calculate the cfu/mL for each genotype and propagate the variance.
+    Calculate ln(cfu/mL) for each genotype and propagate the variance.
+
+    The calculation is done in log space: ln_cfu = ln(frequency) +
+    sample_ln_cfu, with ln_cfu_var = var(frequency)/frequency**2 +
+    sample_ln_cfu_std**2. Linear-space 'cfu' and 'cfu_var' are derived from
+    these.
 
     Parameters
     ----------
     df : pd.DataFrame
-        Frame with 'frequency', 'sample', 'sample_cfu', and 'sample_cfu_std'.
+        Frame with 'frequency', 'sample', 'sample_ln_cfu', and
+        'sample_ln_cfu_std'.
     total_counts_per_sample : pd.Series
         Total adjusted counts per sample (the full oriented-read depth
         Sigma x + b), indexed by sample. Used as the binomial denominator so
@@ -125,37 +161,29 @@ def _calculate_concentrations_and_variance(
         estimate.
     """
 
-    # Calculate the cfu/mL for each genotype
-    df['cfu'] = df['frequency'] * df['sample_cfu']
-
-    # Convert input standard deviation into variance
-    sample_cfu_var = (df["sample_cfu_std"])**2
-
     # Variance in frequency (from binomial uncertainty). Use the same
     # Sigma x + b denominator as the point estimate rather than re-summing the
     # (unknown-dropped) adjusted counts, so the binomial N is consistent.
     total_counts = df['sample'].map(total_counts_per_sample)
     var_frequency = df['frequency'] * (1 - df['frequency']) / total_counts
 
-    # Propagate error from multiplying frequency and cfu
+    # Relative frequency variance is the variance of ln(frequency)
     with np.errstate(divide='ignore', invalid='ignore'):
-        relative_var_freq = np.nan_to_num(var_frequency / (df['frequency']**2))
-        relative_var_sample_cfu = np.nan_to_num(sample_cfu_var / (df['sample_cfu']**2))
+        ln_freq = np.log(df['frequency'])
+        ln_freq_var = np.nan_to_num(var_frequency / (df['frequency']**2))
 
-    relative_var_sum = relative_var_freq + relative_var_sample_cfu
+    # Combine with the sample-level ln_cfu and its variance
+    df['ln_cfu'] = ln_freq + df['sample_ln_cfu']
+    df['ln_cfu_var'] = ln_freq_var + df['sample_ln_cfu_std']**2
 
-    # Calculate the final variance for the genotype cfu
-    df['cfu_var'] = (df['cfu']**2) * relative_var_sum
+    # Linear-space genotype cfu/mL and its variance
+    df['cfu'] = df['frequency'] * np.exp(df['sample_ln_cfu'])
+    df['cfu_var'] = (df['cfu']**2) * df['ln_cfu_var']
 
-    # Calculate log-transformed values and their variance
-    df['ln_cfu_var'] = relative_var_sum
-    with np.errstate(divide='ignore'):
-        df['ln_cfu'] = np.log(df['cfu'])
-
-    # Handle cases where cfu is 0 or negative
-    mask_zero_cfu = df['cfu'] <= 0
-    df.loc[mask_zero_cfu, 'ln_cfu'] = np.nan
-    df.loc[mask_zero_cfu, 'ln_cfu_var'] = np.nan
+    # Handle cases where cfu is 0 (or the sample ln_cfu is not finite)
+    mask_bad = ~np.isfinite(df['ln_cfu'])
+    df.loc[mask_bad, 'ln_cfu'] = np.nan
+    df.loc[mask_bad, 'ln_cfu_var'] = np.nan
 
     return df
 
@@ -178,9 +206,14 @@ def counts_to_lncfu(
     ----------
     sample_df : pd.DataFrame
         DataFrame indexed by a unique 'sample' string. Must contain metadata
-        for each sample. The required columns are 'library', 'sample_cfu',
-        and 'sample_cfu_std'. Any additional columns (e.g., 'replicate',
-        'time', 'titrant_name') will be preserved in the final output.
+        for each sample. Requires a 'library' column plus the total
+        cfu/mL in each sample tube and its uncertainty, given either in log
+        space ('sample_ln_cfu' with 'sample_ln_cfu_std' or
+        'sample_ln_cfu_var') or in linear space ('sample_cfu' with
+        'sample_cfu_std' or 'sample_cfu_var'). Log-space columns are used
+        when present; otherwise they are inferred from the linear-space
+        ones. Any additional columns (e.g., 'replicate', 'time',
+        'titrant_name') will be preserved in the final output.
     counts_df : pd.DataFrame
         DataFrame with 'sample', 'genotype', and 'counts' columns.
     min_genotype_obs : int, optional
@@ -201,14 +234,15 @@ def counts_to_lncfu(
     Raises
     ------
     ValueError
-        If `sample_df` is not indexed by 'sample'.
+        If `sample_df` is not indexed by 'sample', or if 'sample_ln_cfu' and
+        'sample_ln_cfu_std' cannot be obtained from its columns.
     """
     
     # Read/clean up dataframes
     sample_df = read_dataframe(sample_df,index_column="sample")
-    check_columns(sample_df,required_columns=["library",
-                                              "sample_cfu",
-                                              "sample_cfu_std"])
+    check_columns(sample_df,required_columns=["library"])
+
+    sample_df = get_sample_ln_cfu(sample_df)
     
     # Read counts dataframe
     counts_df = read_dataframe(counts_df)

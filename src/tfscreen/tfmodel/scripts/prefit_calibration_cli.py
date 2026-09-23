@@ -345,6 +345,9 @@ def _build_calibration_model(orchestrator_prod, growth_df_cal, binding_df_cal):
     # through to a "single" calibration model.
     settings["transformation_lambda"] = None
     settings["spiked_genotypes"] = None
+    # library_file would re-derive the spiked list from the library design, so
+    # it has to be dropped alongside spiked_genotypes.
+    settings["library_file"] = None
     # Equal weighting: the calibration MAP must learn the binding→growth
     # linkage from both data sources together.  The production binding_weight
     # (N_growth_prod / N_binding_prod, often >> 1) would drown the binding

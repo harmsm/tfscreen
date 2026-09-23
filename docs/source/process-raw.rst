@@ -113,8 +113,14 @@ genotype across all samples, ready for hierarchical modelling.
     to match this row to a counts CSV file.
   * ``library`` — name of the physical library this sample belongs to. Genotypes
     are filtered and frequency-normalised within each library.
-  * ``sample_cfu`` — total colony-forming units (CFU) measured for this tube.
-  * ``sample_cfu_std`` — standard deviation of ``sample_cfu``.
+  * ``sample_ln_cfu`` — natural log of the total colony-forming units (CFU)
+    measured for this tube.
+  * ``sample_ln_cfu_std`` — standard deviation of ``sample_ln_cfu``.
+
+  Instead of ``sample_ln_cfu``/``sample_ln_cfu_std``, you may supply
+  ``sample_ln_cfu_var``, or the linear-space ``sample_cfu`` with
+  ``sample_cfu_std`` (or ``sample_cfu_var``); the log-space columns are then
+  inferred. Log-space columns are used when both are present.
 
   The following columns are not used by ``tfs-process-counts`` itself but are
   carried through into the ``ln_cfu`` output and are **required by the growth
@@ -179,8 +185,12 @@ can be matched to the correct growth conditions.
   * ``replicate`` — replicate index; matched to the growth data.
   * ``condition_pre`` — pre-selection condition name; matched to the growth
     data.
-  * ``sample_cfu`` — total CFU for this tube.
-  * ``sample_cfu_std`` — standard deviation of ``sample_cfu``.
+  * ``sample_ln_cfu`` — natural log of the total CFU for this tube.
+  * ``sample_ln_cfu_std`` — standard deviation of ``sample_ln_cfu``.
+
+  As for ``tfs-process-counts``, these may instead be inferred from
+  ``sample_ln_cfu_var`` or from ``sample_cfu`` with ``sample_cfu_std`` (or
+  ``sample_cfu_var``).
 
 * ``counts_csv_path``: Directory containing the per-sample count CSV files.
 * ``output_file``: Path for the output presplit CSV.

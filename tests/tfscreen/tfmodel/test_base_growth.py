@@ -53,6 +53,26 @@ def minimal_growth_df():
 
 
 @pytest.fixture
+def minimal_library_config(tmp_path):
+    """Library YAML containing wt, A1V and A2V (residues 1-2, both NNT)."""
+    import yaml as _yaml
+
+    config = {
+        "reading_frame": 0,
+        "first_amplicon_residue": 1,
+        "wt_seq":      "gccgcaaaaccggaatgc",
+        "degen_sites": "nntnnt............",
+        "tiles":       "111222............",
+        "tile_combos": ["single-1", "single-2", "double-1-2"],
+        "library_mixture": {"single-1": 10, "single-2": 10, "double-1-2": 100},
+    }
+    path = os.path.join(tmp_path, "library.yaml")
+    with open(path, "w") as f:
+        _yaml.dump(config, f)
+    return path
+
+
+@pytest.fixture
 def minimal_binding_df():
     return pd.DataFrame({
         "genotype": ["wt", "A1V", "A2V"],
@@ -163,7 +183,8 @@ def test_jax_model_guide_base_growth_k_ref_site_present(minimal_growth_df,
 
 def test_base_growth_obs_masks_genotypes_without_measurement(minimal_growth_df,
                                                                minimal_binding_df,
-                                                               minimal_base_growth_df):
+                                                               minimal_base_growth_df,
+                                                           minimal_library_config):
     """A2V has no base_growth measurement, so its base_growth_obs log_prob
     contribution must be exactly zero (fully masked out)."""
     orchestrator = ModelOrchestrator(minimal_growth_df, minimal_binding_df,
@@ -193,7 +214,8 @@ def test_base_growth_obs_masks_genotypes_without_measurement(minimal_growth_df,
 def test_configure_model_to_read_configuration_round_trip(tmp_path,
                                                            minimal_growth_df,
                                                            minimal_binding_df,
-                                                           minimal_base_growth_df):
+                                                           minimal_base_growth_df,
+                                                           minimal_library_config):
     """base_growth_df must survive the real tfs-configure-model -> YAML ->
     tfs-fit-model (read_configuration) round trip, ending up as a proper
     BaseGrowthData on the orchestrator rebuilt from the config file."""
@@ -207,6 +229,7 @@ def test_configure_model_to_read_configuration_round_trip(tmp_path,
     out_prefix = os.path.join(tmp_path, "tfs_configure")
     configure_model(binding_path, growth_df=growth_path,
                     base_growth_df=base_growth_path,
+                    library_config=minimal_library_config,
                     out_prefix=out_prefix,
                     theta_growth_noise_model="zero")
 

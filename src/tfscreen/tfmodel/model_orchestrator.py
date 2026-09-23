@@ -1,6 +1,7 @@
 import tfscreen
 
 from tfscreen.util.dataframe import add_group_columns
+from tfscreen.genetics import read_library_composition
 from tfscreen.tfmodel.tensors.tensor_manager import TensorManager
 from tfscreen.tfmodel.tensors.populate_dataclass import populate_dataclass
 
@@ -802,8 +803,15 @@ class ModelOrchestrator:
     theta_binding_noise : str, optional
         Model name for noise on theta in the binding model ('zero' or 'beta').
     spiked_genotypes : list or str, optional
-        Names of genotypes that should be excluded from transformation
-        correction.
+        Legacy interface. Names of genotypes that should be excluded from
+        transformation correction. Every name must appear in the growth data.
+        Mutually exclusive with ``library_file``.
+    library_file : str, optional
+        Path to a library composition table ({out_prefix}_library.csv, written
+        by ``tfs-configure-model`` from the library YAML). Its
+        ``in_spiked_origin`` column supplies the spiked genotypes, intersected
+        with the genotypes present in the growth data. Mutually exclusive with
+        ``spiked_genotypes``.
     batch_size : int, optional
         The batch size for SVI. If None (default), use full batch.
 
@@ -843,6 +851,7 @@ class ModelOrchestrator:
                  growth_noise="zero",
                  sample_offset="zero",
                  spiked_genotypes=None,
+                 library_file=None,
                  growth_shares_replicates=False,
                  epistasis=False,
                  thermo_data=None,
@@ -874,6 +883,8 @@ class ModelOrchestrator:
         self._growth_noise = growth_noise
         self._sample_offset = sample_offset
         self._spiked_genotypes = spiked_genotypes
+        self._library_file = library_file
+        self._library_df = None
         self._growth_shares_replicates = growth_shares_replicates
         self._epistasis = epistasis
         self._thermo_data = thermo_data
@@ -882,6 +893,17 @@ class ModelOrchestrator:
         _check_theta_transformation_compatibility(
             self._theta, self._transformation, binding_only=self._binding_only
         )
+
+        if self._library_file is not None:
+            if self._spiked_genotypes is not None:
+                raise ValueError(
+                    "library_file and spiked_genotypes are two ways to say "
+                    "the same thing; pass only one. library_file is the "
+                    "current interface (a library composition table written "
+                    "by tfs-configure-model); spiked_genotypes is the legacy "
+                    "hand-supplied list."
+                )
+            self._library_df = read_library_composition(self._library_file)
 
         if self._dk_geno == "pinned" and self._dk_geno_pins_file is None:
             raise ValueError(
@@ -966,8 +988,33 @@ class ModelOrchestrator:
         # tells the model which genotypes should be corrected for congression.
         # Initialize to all True (no masking).
         mask = np.ones(sizes["num_genotype"],dtype=bool)
+
+        # A library composition table (the current interface) names the spiked
+        # genotypes itself. The list is machine-derived from the library
+        # design, so -- unlike the hand-supplied spiked_genotypes below -- a
+        # spiked genotype that never showed up in the growth data is expected
+        # (it can be lost to low read depth or min_genotype_obs) and is
+        # reported rather than raised.
+        if self._library_df is not None:
+            genotype_idx = self.growth_tm.tensor_dim_names.index("genotype")
+            genotype_names = self.growth_tm.tensor_dim_labels[genotype_idx]
+
+            observed = set(genotype_names)
+            from_library = list(self._library_df.loc[
+                self._library_df["in_spiked_origin"], "genotype"
+            ])
+            in_data = [g for g in from_library if g in observed]
+            absent = [g for g in from_library if g not in observed]
+            if len(absent) > 0:
+                print(f"Note: {len(absent)} of {len(from_library)} spiked "
+                      f"genotypes have no growth data and are ignored: "
+                      f"{sorted(absent)}",
+                      flush=True)
+
+            self._spiked_genotypes = in_data
+
         if self._spiked_genotypes is not None:
-            
+
             # Make sure spiked_genotypes is a list or array
             if isinstance(self._spiked_genotypes,str):
                 self._spiked_genotypes = [self._spiked_genotypes]
@@ -1811,6 +1858,18 @@ class ModelOrchestrator:
     def priors(self):
         """The PriorsClass Pytree holding all model priors."""
         return self._priors
+
+    @property
+    def library_df(self):
+        """
+        Library composition table, or None if no library_file was given.
+
+        One row per library genotype (see
+        ``genetics.library_composition_table``). Holds the design's
+        ``pool_fraction`` and ``bulk_fraction`` for every genotype, including
+        genotypes with no growth data.
+        """
+        return self._library_df
             
     @property
     def settings(self):
@@ -1834,6 +1893,7 @@ class ModelOrchestrator:
             "growth_noise":self._growth_noise,
             "sample_offset":self._sample_offset,
             "spiked_genotypes":self._spiked_genotypes,
+            "library_file":self._library_file,
             "growth_shares_replicates": self._growth_shares_replicates,
             "epistasis": self._epistasis,
             "thermo_data": self._thermo_data,

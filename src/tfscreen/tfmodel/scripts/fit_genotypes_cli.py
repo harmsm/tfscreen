@@ -12,7 +12,7 @@ the co-transformation bias from the *bulk* genotypes' theta curves via the
 iterative fixed point (predict theta -> de-attenuate against the population ->
 refit Hill).  It is inherently a population operation: the correction couples
 all bulk genotypes through their shared background occupancy distribution.
-Spiked genotypes (``--spiked_file``) are congression-free and pass through
+Spiked genotypes (named by ``--library_config``) are congression-free and pass through
 untouched.
 
 Outputs (under ``--out_prefix``)
@@ -35,7 +35,7 @@ from tfscreen.tfmodel.genotype_fit.fit import (
     fit_phenotypes, fits_to_results_df, predict_theta,
 )
 from tfscreen.util.io import read_dataframe
-from tfscreen.util.cli import read_lines
+from tfscreen.genetics import library_composition_table
 from tfscreen.util.cli.generalized_main import generalized_main
 
 
@@ -43,7 +43,7 @@ def fit_genotypes(growth_file,
                   calibration_file,
                   out_prefix="tfs_mle",
                   congression_lambda=None,
-                  spiked_file=None,
+                  library_config=None,
                   intercept_cols="replicate",
                   dk_geno_prior_sd=1.0,
                   min_obs=None,
@@ -65,10 +65,11 @@ def fit_genotypes(growth_file,
         Zero-truncated Poisson congression rate (the same lambda as the
         simulator's ``transformation_poisson_lambda``).  When given, run the
         de-attenuation pass; omit for raw MLE fits only.
-    spiked_file : str, optional
-        Text file of congression-free (spiked) genotype names, one per line.
-        These are excluded from the de-attenuation correction and background.
-        Only relevant with ``--congression_lambda``.
+    library_config : str, optional
+        Library YAML describing the screened library (the same file handed to
+        ``tfs-process-fastq``).  Genotypes encoded by a spiked sequence are
+        congression-free and are excluded from the de-attenuation correction
+        and its background.  Only relevant with ``--congression_lambda``.
     intercept_cols : str
         Comma-separated columns whose unique combinations each get a nuisance
         ``ln_cfu0`` (default ``"replicate"``; empty string -> single intercept).
@@ -85,7 +86,11 @@ def fit_genotypes(growth_file,
         ``--congression_lambda``.
     """
     growth_df = read_dataframe(growth_file)
-    spiked = read_lines(spiked_file) if spiked_file else None
+    spiked = None
+    if library_config is not None:
+        composition = library_composition_table(library_config)
+        spiked = list(composition.loc[composition["in_spiked_origin"],
+                                      "genotype"])
 
     icols = [c.strip() for c in str(intercept_cols).split(",") if c.strip()]
 
@@ -164,7 +169,7 @@ def fit_genotypes(growth_file,
 def main():
     return generalized_main(
         fit_genotypes,
-        manual_arg_types={"spiked_file": str, "congression_lambda": float,
+        manual_arg_types={"library_config": str, "congression_lambda": float,
                           "min_obs": int, "num_workers": int})
 
 

@@ -18,6 +18,12 @@ def binding_smoke_csv(smoke_test_dir):
     return os.path.join(smoke_test_dir, "test_data", "binding-smoke.csv")
 
 @pytest.fixture(scope="session")
+def library_smoke_yaml(smoke_test_dir):
+    """Library description covering every genotype in the smoke data."""
+    return os.path.join(smoke_test_dir, "test_data", "library-smoke.yaml")
+
+
+@pytest.fixture(scope="session")
 def struct_smoke_h5_path(tmp_path_factory, growth_smoke_csv):
     """
     Session-scoped fixture: write a single HDF5 ensemble file covering all four

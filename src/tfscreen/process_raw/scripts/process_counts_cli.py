@@ -1,7 +1,7 @@
 from tfscreen.process_raw import counts_to_lncfu
+from tfscreen.process_raw.counts_to_lncfu import get_sample_ln_cfu
 from tfscreen.process_raw._counts_io import _prep_sample_df, _aggregate_counts
 from tfscreen.util.cli import generalized_main
-from tfscreen.util.dataframe import check_columns
 
 from typing import Union
 
@@ -27,9 +27,10 @@ def process_counts(
     ----------
     sample_df : str or pandas.DataFrame
         Path to (or pre-loaded) sample metadata CSV.  Must contain a unique
-        'sample' column (used as the index) plus 'sample_cfu' and
-        'sample_cfu_std' columns giving the total CFU and its uncertainty for
-        each sample tube.
+        'sample' column (used as the index) plus the total CFU in each
+        sample tube and its uncertainty, as 'sample_ln_cfu' and
+        'sample_ln_cfu_std' (or 'sample_ln_cfu_var'), or as 'sample_cfu'
+        and 'sample_cfu_std' (or 'sample_cfu_var'). See counts_to_lncfu.
     counts_csv_path : str
         Directory containing per-sample count CSV files.  Each file must
         match the glob pattern ``{counts_glob_prefix}*{sample}*.csv``.
@@ -58,8 +59,8 @@ def process_counts(
                                 counts_glob_prefix,
                                 verbose)
 
-    # Require the caller to supply sample_cfu and sample_cfu_std directly.
-    check_columns(sample_df, required_columns=["sample_cfu", "sample_cfu_std"])
+    # Check/infer sample_ln_cfu and sample_ln_cfu_std before reading counts.
+    sample_df = get_sample_ln_cfu(sample_df)
 
     # This will be a single dataframe holding all counts for all samples, with
     # a 'sample' column that can be indexed back to to counts.

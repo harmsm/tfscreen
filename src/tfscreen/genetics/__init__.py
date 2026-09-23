@@ -32,3 +32,12 @@ from .library_manager import LibraryManager  # noqa: F401
 from .build_mut_geno_matrix import build_mut_geno_matrix  # noqa: F401
 
 from .count_mutation_backgrounds import count_mutation_backgrounds  # noqa: F401
+
+from .library_design import (  # noqa: F401
+    estimate_library_mixture,
+    expected_library_composition,
+    library_composition_table,
+    read_library_composition,
+    scale_library_design,
+    write_library_composition,
+)

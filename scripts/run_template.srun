@@ -43,7 +43,7 @@ tfs-configure-growth-analysis \
     --transformation_model {{ TRANSFORMATION_MODEL }} \
     --theta_growth_noise_model {{ THETA_GROWTH_NOISE_MODEL }} \
     --theta_binding_noise_model {{ THETA_BINDING_NOISE_MODEL }} \
-    --spiked {{ SPIKED }} \
+    --library_config {{ LIBRARY_CONFIG }} \
     {{ GROWTH_SHARES_REPLICATES }} \
     {{ DATA_INPUT_FILE }} \
     {{ EPISTASIS }}

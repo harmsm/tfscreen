@@ -1,4 +1,5 @@
 from tfscreen.process_raw import counts_to_lncfu
+from tfscreen.process_raw.counts_to_lncfu import get_sample_ln_cfu
 from tfscreen.process_raw._counts_io import _prep_sample_df, _aggregate_counts
 from tfscreen.util.cli import generalized_main
 from tfscreen.util.dataframe import check_columns, get_scaled_cfu
@@ -30,8 +31,10 @@ def process_presplit(
     ----------
     sample_df : str or pandas.DataFrame
         Path to (or pre-loaded) sample metadata CSV.  Must contain a unique
-        'sample' column (used as the index) plus 'replicate', 'condition_pre',
-        'sample_cfu', and 'sample_cfu_std' columns.  An optional 'library'
+        'sample' column (used as the index) plus 'replicate' and
+        'condition_pre' columns and the total CFU in each tube with its
+        uncertainty ('sample_ln_cfu' + 'sample_ln_cfu_std', or 'sample_cfu'
+        + 'sample_cfu_std'; see counts_to_lncfu).  An optional 'library'
         column groups genotypes for the minimum-observation filter; defaults
         to 'default' when absent.
     counts_csv_path : str
@@ -63,8 +66,10 @@ def process_presplit(
                                 verbose)
 
     # Require the caller to supply the presplit-specific metadata columns.
-    check_columns(sample_df, required_columns=["sample_cfu", "sample_cfu_std",
-                                               "replicate", "condition_pre"])
+    check_columns(sample_df, required_columns=["replicate", "condition_pre"])
+
+    # Check/infer sample_ln_cfu and sample_ln_cfu_std before reading counts.
+    sample_df = get_sample_ln_cfu(sample_df)
 
     # counts_to_lncfu requires a 'library' column for grouping; default when absent.
     if "library" not in sample_df.columns:

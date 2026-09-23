@@ -18,7 +18,7 @@ def test_configure_run_binding_only_smoke(tmpdir):
     """
     # Minimal binding dataset: two genotypes, two titrant concentrations
     binding_df = pd.DataFrame({
-        "genotype": ["wt", "wt", "A123B", "A123B"],
+        "genotype": ["wt", "wt", "M42I", "M42I"],
         "titrant_name": ["T1", "T1", "T1", "T1"],
         "titrant_conc": [0.1, 1.0, 0.1, 1.0],
         "theta_obs": [0.8, 0.3, 0.7, 0.2],
@@ -63,7 +63,7 @@ def test_configure_run_binding_only_smoke(tmpdir):
 
 
 @pytest.mark.slow
-def test_configure_run_pipeline_smoke(tmpdir):
+def test_configure_run_pipeline_smoke(tmpdir, library_smoke_yaml):
     """
     Smoke test for the full configuration -> running pipeline.
     """
@@ -73,7 +73,7 @@ def test_configure_run_pipeline_smoke(tmpdir):
         "replicate": ["R1", "R1"],
         "condition_pre": ["C1-", "C1-"],
         "condition_sel": ["C2+", "C2+"],
-        "genotype": ["A123B", "C456D"],
+        "genotype": ["M42I", "L45P"],
         "t": [0, 10],
         "t_sel": [0, 10],
         "t_pre": [12, 12],
@@ -86,7 +86,7 @@ def test_configure_run_pipeline_smoke(tmpdir):
     growth_df.to_csv(growth_path, index=False)
 
     binding_df = pd.DataFrame({
-        "genotype": ["A123B", "C456D"],
+        "genotype": ["M42I", "L45P"],
         "titrant_name": ["T1", "T1"],
         "titrant_conc": [0.1, 0.1],
         "theta_obs": [0.5, 0.6],
@@ -100,6 +100,7 @@ def test_configure_run_pipeline_smoke(tmpdir):
     # Run configuration
     configure_model(binding_path,
                               growth_df=growth_path,
+                              library_config=library_smoke_yaml,
                               out_prefix=out_prefix)
 
     config_file = f"{out_prefix}_config.yaml"
@@ -143,7 +144,7 @@ def test_configure_run_pipeline_smoke(tmpdir):
 
 
 @pytest.mark.slow
-def test_configure_run_binding_weight_smoke(tmpdir):
+def test_configure_run_binding_weight_smoke(tmpdir, library_smoke_yaml):
     """
     Smoke test for the binding_weight feature end-to-end.
 
@@ -159,7 +160,7 @@ def test_configure_run_binding_weight_smoke(tmpdir):
         "replicate":     ["R1"] * 20,
         "condition_pre": ["C1-"] * 20,
         "condition_sel": ["C2+"] * 20,
-        "genotype":      ["A123B"] * 10 + ["C456D"] * 10,
+        "genotype":      ["M42I"] * 10 + ["L45P"] * 10,
         "t_sel":         [10.0] * 20,
         "t_pre":         [12.0] * 20,
         "ln_cfu":        [1.0] * 20,
@@ -168,7 +169,7 @@ def test_configure_run_binding_weight_smoke(tmpdir):
         "titrant_conc":  [0.1] * 20,
     })
     binding_df = pd.DataFrame({
-        "genotype":     ["A123B", "A123B", "C456D", "C456D"],
+        "genotype":     ["M42I", "M42I", "L45P", "L45P"],
         "titrant_name": ["T1",    "T1",    "T1",    "T1"],
         "titrant_conc": [0.1,     1.0,     0.1,     1.0],
         "theta_obs":    [0.5,     0.3,     0.6,     0.4],
@@ -183,6 +184,7 @@ def test_configure_run_binding_weight_smoke(tmpdir):
     out_explicit = os.path.join(tmpdir, "tfs_explicit")
     configure_model(binding_path,
                     growth_df=growth_path,
+                    library_config=library_smoke_yaml,
                     out_prefix=out_explicit,
                     binding_weight=99.0)
 
@@ -196,6 +198,7 @@ def test_configure_run_binding_weight_smoke(tmpdir):
     out_auto = os.path.join(tmpdir, "tfs_auto")
     configure_model(binding_path,
                     growth_df=growth_path,
+                    library_config=library_smoke_yaml,
                     out_prefix=out_auto)
 
     with open(f"{out_auto}_config.yaml") as f:

@@ -23,7 +23,7 @@ from tfscreen.tfmodel.configuration_io import read_configuration
 
 def _write_inputs(tmpdir):
     """Two genotypes x three conditions x two titrant concs x two timepoints."""
-    genotypes = ["wt", "A123B"]
+    genotypes = ["wt", "M42I"]
     conc = [0.1, 1.0]
     # condition_pre is a control ('-'); two distinct selection ('+') conditions
     # give three distinct condition_reps: C1-, C2+, C3+.
@@ -43,7 +43,7 @@ def _write_inputs(tmpdir):
                         "t_sel": t_sel,
                         "t_pre": 12.0,
                         # mild genotype/condition-dependent slope so the MAP has signal
-                        "ln_cfu": 1.0 + 0.05 * t_sel + (0.2 if g == "A123B" else 0.0),
+                        "ln_cfu": 1.0 + 0.05 * t_sel + (0.2 if g == "M42I" else 0.0),
                         "ln_cfu_std": 0.1,
                         "titrant_name": "T1",
                         "titrant_conc": c,
@@ -51,7 +51,7 @@ def _write_inputs(tmpdir):
     growth_df = pd.DataFrame(rows)
 
     binding_df = pd.DataFrame({
-        "genotype": ["wt", "wt", "A123B", "A123B"],
+        "genotype": ["wt", "wt", "M42I", "M42I"],
         "titrant_name": ["T1"] * 4,
         "titrant_conc": [0.1, 1.0, 0.1, 1.0],
         "theta_obs": [0.8, 0.3, 0.7, 0.2],
@@ -71,12 +71,14 @@ def _write_inputs(tmpdir):
     ("power", "k_loc"),
     ("saturation", "min_loc"),
 ])
-def test_prefit_writes_per_condition_baseline_prior(tmpdir, cg_model, baseline_loc):
+def test_prefit_writes_per_condition_baseline_prior(tmpdir, library_smoke_yaml,
+                                                   cg_model, baseline_loc):
     growth_path, binding_path = _write_inputs(tmpdir)
     out_prefix = os.path.join(tmpdir, f"tfs_{cg_model}")
 
     configure_model(binding_path,
                     growth_df=growth_path,
+                    library_config=library_smoke_yaml,
                     condition_growth_model=cg_model,
                     theta_model="categorical_geno",
                     out_prefix=out_prefix)
@@ -115,7 +117,8 @@ def test_prefit_writes_per_condition_baseline_prior(tmpdir, cg_model, baseline_l
 
 
 @pytest.mark.slow
-def test_configure_prefit_fit_full_loop_with_per_condition_priors(tmpdir):
+def test_configure_prefit_fit_full_loop_with_per_condition_priors(tmpdir,
+                                                                  library_smoke_yaml):
     """The full configure -> prefit -> fit loop runs once the priors CSV holds
     per-condition (array) baseline priors — i.e. the SVI actually consumes
     them without a tracing/shape error."""
@@ -124,6 +127,7 @@ def test_configure_prefit_fit_full_loop_with_per_condition_priors(tmpdir):
 
     configure_model(binding_path,
                     growth_df=growth_path,
+                    library_config=library_smoke_yaml,
                     condition_growth_model="linear",
                     theta_model="categorical_geno",
                     out_prefix=out_prefix)
