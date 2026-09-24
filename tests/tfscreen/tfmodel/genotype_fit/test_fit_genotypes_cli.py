@@ -12,7 +12,6 @@ CALIB = pd.DataFrame({
     "growth_k":      [0.02,        0.0,   0.0],
     "growth_m":      [0.0,        -0.03, -0.06],
 })
-# wt is spiked; A1V/A2V are bulk (>=2 needed to build a congression background).
 TRUTH = {
     "wt":  dict(theta_low=0.90, theta_high=0.08, log_K=np.log(3e-3), n=1.4, dk_geno=0.0),
     "A1V": dict(theta_low=0.70, theta_high=0.20, log_K=np.log(3e-2), n=1.0, dk_geno=0.006),
@@ -54,29 +53,7 @@ def paths(tmp_path):
     return str(growth), str(calib), tmp_path
 
 
-@pytest.fixture
-def library_config(tmp_path):
-    """Library YAML covering wt/A1V/A2V, with wt as the only spiked genotype."""
-    import yaml
-
-    config = {
-        "reading_frame": 0,
-        "first_amplicon_residue": 1,
-        "wt_seq":      "gccgcaaaaccggaatgc",
-        "degen_sites": "nntnnt............",
-        "tiles":       "111222............",
-        "tile_combos": ["single-1", "single-2", "double-1-2"],
-        "spiked_seqs": [".................."],          # wt only
-        "library_mixture": {"single-1": 10, "single-2": 10,
-                            "double-1-2": 100, "spiked": 1},
-    }
-    path = tmp_path / "library.yaml"
-    with open(path, "w") as f:
-        yaml.dump(config, f)
-    return str(path)
-
-
-def test_raw_only_writes_params_and_theta(paths):
+def test_writes_params_and_theta(paths):
     growth, calib, tmp_path = paths
     prefix = str(tmp_path / "run")
     fit_genotypes(growth, calib, out_prefix=prefix, dk_geno_prior_sd=0.0)
@@ -90,7 +67,7 @@ def test_raw_only_writes_params_and_theta(paths):
     assert list(theta.columns) == [
         "genotype", "titrant_name", "titrant_conc", "theta_raw"]
 
-    # No congression artefacts.
+    # The retired congression de-attenuation writes nothing.
     assert not (tmp_path / "run_params_deattenuated.csv").exists()
     assert not (tmp_path / "run_theta_history.csv").exists()
 
@@ -100,41 +77,8 @@ def test_raw_only_writes_params_and_theta(paths):
         assert res.loc[geno, "theta_low"] == pytest.approx(p["theta_low"], abs=2e-3)
 
 
-def test_congression_writes_deattenuated_and_history(paths, library_config):
+def test_congression_lambda_is_retired(paths):
     growth, calib, tmp_path = paths
-    prefix = str(tmp_path / "run")
-
-    fit_genotypes(growth, calib, out_prefix=prefix, dk_geno_prior_sd=0.0,
-                  congression_lambda=1.0, library_config=library_config,
-                  save_theta_history=True)
-
-    deatt = pd.read_csv(f"{prefix}_params_deattenuated.csv")
-    theta = pd.read_csv(f"{prefix}_theta.csv")
-    history = pd.read_csv(f"{prefix}_theta_history.csv")
-
-    assert set(deatt["genotype"]) == set(TRUTH)
-    assert "theta_deattenuated" in theta.columns
-    assert "theta_raw" in theta.columns
-
-    # wt is spiked -> its de-attenuated theta equals its raw theta.
-    wt = theta[theta["genotype"] == "wt"]
-    assert np.allclose(wt["theta_raw"], wt["theta_deattenuated"])
-
-    # Bulk genotypes were corrected: at least one theta_deattenuated differs.
-    bulk = theta[theta["genotype"] != "wt"]
-    assert not np.allclose(bulk["theta_raw"], bulk["theta_deattenuated"])
-
-    # History covers only the bulk genotypes and iterates.
-    assert set(history["genotype"]) == {"A1V", "A2V"}
-    assert history["iter"].max() >= 1
-
-
-def test_congression_without_history_skips_history_file(paths, library_config):
-    growth, calib, tmp_path = paths
-    prefix = str(tmp_path / "run")
-
-    fit_genotypes(growth, calib, out_prefix=prefix, dk_geno_prior_sd=0.0,
-                  congression_lambda=1.0, library_config=library_config)
-
-    assert (tmp_path / "run_params_deattenuated.csv").exists()
-    assert not (tmp_path / "run_theta_history.csv").exists()
+    with pytest.raises(TypeError, match="congression_lambda"):
+        fit_genotypes(growth, calib, out_prefix=str(tmp_path / "run"),
+                      congression_lambda=1.0)

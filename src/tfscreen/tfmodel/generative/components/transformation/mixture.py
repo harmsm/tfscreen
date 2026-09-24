@@ -2,9 +2,17 @@
 Congression as an observable-level mixture of clean and congressed cells.
 
 A genotype's cells are a mixture: most carry only its plasmid ("clean"),
-and a fraction ``w_cong = f_g (1 - exp(-lambda))`` also carry co-resident
-plasmids (Poisson(lambda) co-residents, drawn from the bulk library).
-Each class grows at its own rate, so the classes are mixed at the level of
+and the rest also carry co-resident plasmids drawn from the bulk library.
+Transformants carry M ~ zero-truncated Poisson(lambda) plasmids (cells that
+took up none are never seen: they do not survive selection), and a cell's
+plasmid copies are shared among the variants it carries, so a cell of M
+plasmids gives each 1/M of its abundance. A genotype's abundance therefore
+comes from cells with n co-residents in proportion to P(M = n + 1), and its
+congressed fraction is
+
+    w_cong = f_g (1 - P(M = 1)),   P(M = 1) = lambda exp(-lambda) / (1 - exp(-lambda))
+
+``lambda`` is the simulator's ``transformation_poisson_lambda``. Each class grows at its own rate, so the classes are mixed at the level of
 ``exp(ln_cfu)``, not rates or theta:
 
     ln_cfu_g(t) = ln_cfu0_g + log sum_c w_c exp(G_c(t))
@@ -46,7 +54,8 @@ NEEDS_POPULATION = True
 @dataclass(frozen=True)
 class ModelPriors:
     """
-    LogNormal prior on the congression Poisson rate lambda (the log-space
+    LogNormal prior on the congression rate lambda (the zero-truncated
+    Poisson rate of plasmids per transformant) (the log-space
     location and scale).
     """
 
@@ -83,32 +92,49 @@ def guide(name: str,
     return pyro.sample(f"{name}_lam", dist.LogNormal(lam_loc, lam_scale))
 
 
+def _log_p_congressed(lam):
+    """
+    log(1 - P(M = 1)) for M ~ zero-truncated Poisson(lambda).
+
+    ``1 - P(M = 1) = (e^lam - 1 - lam) / (e^lam - 1)``. The numerator
+    cancels catastrophically for small lambda, so it switches to its series
+    there (both branches are kept finite so the gradient is too).
+    """
+    small = lam < 1e-2
+    lam_big = jnp.where(small, 1.0, lam)
+    numer_big = jnp.expm1(lam_big) - lam_big
+    numer_small = 0.5 * lam**2 * (1.0 + lam / 3.0 + lam**2 / 12.0
+                                   + lam**3 / 60.0)
+    numer = jnp.where(small, numer_small, numer_big)
+    return jnp.log(numer) - jnp.log(jnp.expm1(lam))
+
+
 def _log_class_weights(lam, bulk_fraction, coresident_n):
     """
     Log mixture weights, shape (1 + K, B): clean first, then the K sets.
 
-    ``w_cong = f (1 - exp(-lambda))``; set k (with n_k co-residents) gets
-    ``w_cong * P(N = n_k | N in strata; lambda) / K_{n_k}``, where the
-    stratum probabilities are Poisson(lambda) renormalized over the counts
-    that have sets. Written in log space so the lambda gradient stays finite
-    when ``f = 0`` (those congressed weights are -inf and drop out of the
-    logsumexp).
+    ``w_cong = f (1 - P(M = 1))`` with M ~ zero-truncated Poisson(lambda);
+    set k (with n_k co-residents, so M = n_k + 1) gets
+    ``w_cong * P(M = n_k + 1 | M - 1 in strata) / K_{n_k}``, the stratum
+    probabilities renormalized over the counts that have sets. Written in
+    log space so the lambda gradient stays finite when ``f = 0`` (those
+    congressed weights are -inf and drop out of the logsumexp).
     """
     n = coresident_n.astype(float)                                  # (K,)
     num_in_stratum = jnp.sum(coresident_n[None, :] == coresident_n[:, None],
                              axis=1).astype(float)                  # (K,)
 
-    # Unnormalized log Poisson pmf; exp(-lambda) cancels in the normalization.
-    log_pmf = n * jnp.log(lam) - jax.scipy.special.gammaln(n + 1.0)
+    # Unnormalized log P(M = n + 1); constant factors cancel.
+    log_pmf = n * jnp.log(lam) - jax.scipy.special.gammaln(n + 2.0)
     # Each stratum appears K_n times; divide by K_n so it counts once.
     log_norm = jax.scipy.special.logsumexp(log_pmf - jnp.log(num_in_stratum))
     log_stratum = log_pmf - log_norm - jnp.log(num_in_stratum)     # (K,)
 
-    log_p_cong = jnp.log(-jnp.expm1(-lam))
+    log_p_cong = _log_p_congressed(lam)
     log_f = jnp.log(bulk_fraction)                                  # (B,)
 
     log_w_sets = log_f[None, :] + log_p_cong + log_stratum[:, None]  # (K, B)
-    log_w_clean = jnp.log1p(-bulk_fraction * (-jnp.expm1(-lam)))     # (B,)
+    log_w_clean = jnp.log1p(-bulk_fraction * jnp.exp(log_p_cong))    # (B,)
 
     return jnp.concatenate([log_w_clean[None, :], log_w_sets], axis=0)
 

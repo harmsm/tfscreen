@@ -7,11 +7,11 @@ revisit_when: >-
   Active now. Update the step list as steps finish.
 related:
   - src/tfscreen/simulate/selection_experiment.py
-  - src/tfscreen/tfmodel/generative/components/transformation/_congression.py
+  - src/tfscreen/tfmodel/generative/components/transformation/mixture.py
   - src/tfscreen/tfmodel/generative/model.py
   - src/tfscreen/tfmodel/model_orchestrator.py
   - src/tfscreen/tfmodel/analysis/prediction.py
-  - src/tfscreen/tfmodel/genotype_fit/congression.py
+  - planning/empirical-mixture-refit.md
   - src/tfscreen/simulate/transformation_lam_output.py
   - src/tfscreen/genetics/library_design.py
   - planning/estimate-dk-alpha-by-varying-lambda.md
@@ -45,7 +45,10 @@ A code analysis revealed the simulator and the fit describe congression
 
 Checked and ruled out: the definition of lambda (sim cell sizes are
 zero-truncated Poisson(lambda), so a focal plasmid's co-residents are exactly
-Poisson(lambda), as the fit assumes), and the fit's unweighted background
+Poisson(lambda), as the fit assumes; true only while every plasmid got its
+whole cell's abundance. Since step 1 a cell's abundance is shared among its
+plasmids, and the co-resident weights are zero-truncated; corrected in 3.4),
+and the fit's unweighted background
 distribution (the lambda that reproduces the sim's true theta inflation is 0.30
 to 0.35 against a true 0.357).
 
@@ -170,8 +173,10 @@ dk_cell = -(1/alpha) * log sum_g x_g exp(-alpha * dk_g)
 dominance (the worst variant sets the cost). Alpha is set from biology with a
 sensitivity check, not fit (`planning/estimate-dk-alpha-by-varying-lambda.md`).
 Under dilution the average effect is a uniform shrinkage of each genotype's
-dk toward the population mean, by `E[1/(1+N)] = (1 - exp(-lambda))/lambda` =
-0.841 at lambda = 0.357, which the hierarchical dk_geno prior mostly absorbs.
+dk toward the population mean, by `E[1/M]` over the abundance-weighted cell
+size (`M` zero-truncated Poisson, see 3.4) = 0.913 at lambda = 0.357 (0.841
+under the old size-biased weighting), which the hierarchical dk_geno prior
+mostly absorbs.
 
 The fit's current behavior (each plasmid keeps its own dk) has no cell-level
 counterpart: a cell carrying two plasmids has one growth rate. It is wrong,
@@ -188,7 +193,10 @@ subset genotypes need an external dk population reference.
 A genotype's cells are a mixture of classes growing at different rates, so
 mix `exp(ln_cfu)`, not rates or theta. With `f_g` the fraction of genotype g's
 cells from the bulk library (computed from the library design), a focal plasmid
-has no co-residents with probability `exp(-lambda)`:
+has no co-residents with probability `exp(-lambda)` (superseded in 3.4: with
+a cell's abundance shared among its plasmids, the clean fraction of a bulk
+genotype's abundance is the zero-truncated `P(M = 1) = lambda exp(-lambda) /
+(1 - exp(-lambda))`, so `w_congressed = f_g (1 - P(M = 1))`):
 
 ```
 w_congressed = f_g * (1 - exp(-lambda))
@@ -256,7 +264,8 @@ ln_cfu_g(t) = ln_cfu0_g + logsumexp_c [ log w_{g,c} + G_{g,c}(t) ] + delta_sampl
   *Congressed*: the genotype plus co-residents; cell theta and activity from
   the theta rule (max), dk from the dk rule (dilution), matching the
   simulator (`simulate/cell_rules.py`).
-- **Weights.** `w_cong = f_g * (1 - exp(-lambda))`, `w_clean = 1 - w_cong`;
+- **Weights.** `w_cong = f_g * (1 - exp(-lambda))`, `w_clean = 1 - w_cong`
+  (zero-truncated form since 3.4: `w_cong = f_g (1 - P(M = 1))`);
   time-independent. `f_g` is `bulk_fraction` from the library table.
 - **G** is each class's whole trajectory through the existing pipeline
   (`theta_rescale` -> `calculate_growth` -> `growth_transition`) over pre and
@@ -487,7 +496,7 @@ checked with `tfs-summarize-calibration`.
        broadcast) -> `ln_cfu_pred = ln_cfu0 + logsumexp(log_w + G, 0) +
        delta_sample`. `theta_growth_pred` stays the genotype's own
        uncorrected theta. The guide skips class construction.
-     - *Weights.* `w_cong = f_g (1 - exp(-lambda))`; `log w_clean =
+     - *Weights* (superseded in 3.4 by the zero-truncated form). `w_cong = f_g (1 - exp(-lambda))`; `log w_clean =
        log1p(-w_cong)`; `log w_k = log f_g + log(1 - exp(-lambda)) + log P(N
        = n_k | N in strata; lambda) - log K_{n_k}` (strata renormalized over
        the counts that have sets), so the lambda gradient stays finite for
@@ -514,11 +523,32 @@ checked with `tfs-summarize-calibration`.
        implementation; lambda -> 0 and `f_g = 0` reduce to `single`; finite
        gradients; registry-wide batch shape/order checks; subset prediction
        equals full prediction rows; refusals; smoke tests.
-   - [ ] **3.4 Other consumers.** Lambda extraction
-     (`simulate/transformation_lam_output.py`), `genotype_fit/congression.py`
-     (Stage 1.5 of `tfs-fit-genotypes` / `tfs-build-empirical`), and
-     `tfs-summarize-calibration` strata by `bulk_fraction` instead of
-     spiked/bulk origin.
+   - [x] **3.4 Other consumers.** Done 2026-09-24, three commits:
+     - *Weights (a 3.3c fix found while checking the lambda echo).* Since
+       step 1 the simulator shares a cell's abundance among its plasmids, so
+       a genotype's abundance by co-resident count n is the zero-truncated
+       `P(M = n + 1)`, not Poisson(n; lambda) (which assumed each plasmid got
+       the whole cell). At lambda = 0.357 a bulk genotype is 83% clean, not
+       70%; the old weights would have recovered lambda ~ 0.18 against a
+       simulated 0.357. `mixture._log_class_weights` now uses
+       `w_cong = f_g (1 - P(M = 1))`, `P(M = 1) = lambda e^-lambda /
+       (1 - e^-lambda)`, and strata by `P(M = n + 1)`; a test checks them
+       against simulated cell shares. Zero-truncation is physical: the zero
+       class (no plasmid, marker dead, ...) never grows under selection
+       (user, 2026-09-24). The 3.0 study used the old weights for its
+       "exact" reference as well as the estimators, so its comparisons
+       stand.
+     - *Lambda echo.* With the weights fixed, the fit's `lam` is the
+       simulator's `transformation_poisson_lambda`; docstrings and
+       `docs/source/model-inputs.rst` define it.
+     - *Stage 1.5 retired* (user, 2026-09-24): `--congression_lambda` removed
+       from `tfs-fit-genotypes`/`tfs-build-empirical`; `genotype_fit/
+       congression.py` and `transformation/_congression.py` deleted. The
+       whole empirical pipeline is to be reviewed before it is used again;
+       the replacement is filed as `planning/empirical-mixture-refit.md`.
+     - *`tfs-summarize-calibration`* strata: `origin` (spiked/bulk) became
+       `purity` (`spike`/`mixed`/`bulk`, from the sub-libraries encoding each
+       genotype, i.e. `bulk_fraction` 0, between, or 1).
    - [ ] **3.5 Calibration.** Step 2 simulator vs the new fit, with
      `tfs-summarize-calibration`; watch bulk genotypes without binding data.
 4. **Theta rule.** Homodimer vs heterodimer soft max, chosen from the bench

@@ -88,6 +88,7 @@ def test_quantile_columns_sorted_numerically():
 
 GENOTYPES = [f"G{i}V" for i in range(40)]
 SPIKED = {"G0V", "G1V"}
+ALSO_BULK = {"G1V"}                       # G1V: spiked and in the bulk (mixed)
 BINDING = {"G0V", "G1V", "G2V", "G3V"}   # two spiked + two bulk with binding
 
 
@@ -96,10 +97,11 @@ def _write_run(run_dir, combo, spread, seed, with_summary=True):
     with open(os.path.join(run_dir, "combo.json"), "w") as fh:
         json.dump(combo, fh)
 
-    pd.DataFrame({
-        "library_origin": ["spiked" if g in SPIKED else "double-1-2" for g in GENOTYPES],
-        "genotype": GENOTYPES,
-    }).to_csv(os.path.join(run_dir, "tfs_sim_library.csv"), index=False)
+    rows = ([("spiked", g) for g in GENOTYPES if g in SPIKED]
+            + [("double-1-2", g) for g in GENOTYPES
+               if g not in SPIKED or g in ALSO_BULK])
+    pd.DataFrame(rows, columns=["library_origin", "genotype"]).to_csv(
+        os.path.join(run_dir, "tfs_sim_library.csv"), index=False)
     pd.DataFrame({"genotype": sorted(BINDING)}).to_csv(
         os.path.join(run_dir, "tfs_sim_binding.csv"), index=False)
 
@@ -150,8 +152,10 @@ def grid_dir(tmp_path):
 
 def test_genotype_strata(grid_dir):
     strata = genotype_strata(os.path.join(grid_dir, "run_component_sim1")).set_index("genotype")
-    assert strata.loc["G0V", "origin"] == "spiked"
-    assert strata.loc["G2V", "origin"] == "bulk"
+    assert len(strata) == len(GENOTYPES)
+    assert strata.loc["G0V", "purity"] == "spike"
+    assert strata.loc["G1V", "purity"] == "mixed"
+    assert strata.loc["G2V", "purity"] == "bulk"
     assert strata.loc["G2V", "has_binding"] == "yes"
     assert strata.loc["G9V", "has_binding"] == "no"
 
@@ -165,10 +169,10 @@ def test_summarize_run_strata_rows(grid_dir):
     rows, problem = summarize_run(os.path.join(grid_dir, "run_auto_normal_sim1"))
     assert problem is None
     theta = pd.DataFrame([r for r in rows if r["quantity"] == "theta_test"])
-    pooled = theta[(theta.has_binding == "all") & (theta.origin == "all")
+    pooled = theta[(theta.has_binding == "all") & (theta.purity == "all")
                    & (theta.theta_regime == "all")]
     assert pooled["n"].item() == 40 * 25
-    cross = theta[(theta.has_binding == "yes") & (theta.origin == "bulk")]
+    cross = theta[(theta.has_binding == "yes") & (theta.purity == "bulk")]
     assert cross["n"].item() == 2 * 25        # G2V, G3V
     saturated = theta[theta.theta_regime == "saturated"]
     assert saturated["n"].item() >= 25        # at least G0V
@@ -203,7 +207,7 @@ def test_paired_differences_match_same_simulation(grid_dir):
     paired = paired_differences(runs_df, grid_vars,
                                 {"guide_type": "component", "guide_rank": None})
     pooled = paired[(paired.quantity == "theta_test") & (paired.has_binding == "all")
-                    & (paired.origin == "all") & (paired.theta_regime == "all")]
+                    & (paired.purity == "all") & (paired.theta_regime == "all")]
     assert sorted(pooled["seed"]) == [1, 2]            # one pair per simulation
     assert (pooled["delta_calibration_error"] < 0).all()  # calibrated beats baseline
     assert (pooled["delta_width_0.95"] > 0).all()
@@ -229,7 +233,7 @@ def test_summarize_calibration_writes_outputs(grid_dir, tmp_path):
 
     arms = pd.read_csv(out_prefix + "_arms.csv")
     pooled = arms[(arms.quantity == "theta_test") & (arms.has_binding == "all")
-                  & (arms.origin == "all") & (arms.theta_regime == "all")]
+                  & (arms.purity == "all") & (arms.theta_regime == "all")]
     assert set(pooled["n_runs"]) == {2}               # 2 finished sims per arm
     cov = pooled.set_index("guide_type")["coverage_0.95_mean"]
     assert cov["auto_normal"] == pytest.approx(0.95, abs=0.03)
@@ -238,7 +242,7 @@ def test_summarize_calibration_writes_outputs(grid_dir, tmp_path):
     paired_summary = pd.read_csv(out_prefix + "_paired_summary.csv")
     row = paired_summary[(paired_summary.quantity == "theta_test")
                          & (paired_summary.has_binding == "all")
-                         & (paired_summary.origin == "all")
+                         & (paired_summary.purity == "all")
                          & (paired_summary.theta_regime == "all")]
     assert row["n_pairs"].item() == 2
     assert row["delta_calibration_error_mean"].item() < 0

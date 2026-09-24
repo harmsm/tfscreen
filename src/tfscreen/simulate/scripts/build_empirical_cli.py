@@ -28,11 +28,10 @@ import os
 import warnings
 
 from tfscreen.tfmodel.genotype_fit.fit import (
-    fit_phenotypes, fits_to_results_df, _natural_from_transformed,
+    fit_phenotypes, _natural_from_transformed,
 )
 from tfscreen.simulate.empirical.population import fit_population
 from tfscreen.util.io import read_dataframe
-from tfscreen.genetics import library_composition_table
 from tfscreen.util.cli.generalized_main import generalized_main
 
 _WT_REF_COLS = ["theta_low", "theta_high", "log_hill_K", "hill_n"]
@@ -90,7 +89,6 @@ def build_empirical(growth_file,
                     library_config=None,
                     base_growth_file=None,
                     thermo_data=None,
-                    congression_lambda=None,
                     intercept_cols="replicate",
                     dk_geno_prior_sd=1.0,
                     min_obs=None,
@@ -111,9 +109,8 @@ def build_empirical(growth_file,
         identifies the growth slope ``m`` from data (the in-library anchors).
     out_prefix : str
         Output prefix.  Writes ``<prefix>_model.npz`` (+ ``.names.json``),
-        ``<prefix>_stage1_fits.csv`` (the RAW per-genotype fits), and — when
-        ``congression_lambda`` is given — ``<prefix>_stage1p5_fits.csv`` (the
-        de-attenuated fits that feed Stage 2).  Unless ``calibration_file`` is
+        ``<prefix>_stage1_fits.csv`` (the per-genotype fits that feed Stage 2).
+        Unless ``calibration_file`` is
         given, also the ``<prefix>_configure_*`` / ``<prefix>_prefit_*`` intermediates.
     calibration_file : str, optional
         Skip the configure+prefit step and use this calibration directly — a
@@ -122,19 +119,12 @@ def build_empirical(growth_file,
     library_config : str, optional
         Library YAML describing the screened library (the same file handed to
         ``tfs-process-fastq``), forwarded to ``configure_model``.  Required
-        unless ``calibration_file`` is given.  Genotypes encoded by a spiked
-        sequence are congression-free and are left alone by Stage 1.5.
+        unless ``calibration_file`` is given.
     base_growth_file : str, optional
         Direct growth-rate calibration CSV forwarded to ``configure_model``.
     thermo_data : str, optional
         Thermodynamic data path forwarded to ``configure_model`` (unused by
         the default hill_geno theta).
-    congression_lambda : float, optional
-        Zero-truncated Poisson congression rate (the same lambda as the
-        simulator's ``transformation_poisson_lambda``).  When given, run Stage
-        1.5: de-attenuate the bulk theta curves for co-transformation before
-        building the distribution (spiked genotypes are congression-free and
-        left alone).  Omit for no correction.
     intercept_cols : str
         Comma-separated columns whose unique combinations each get a nuisance
         ``ln_cfu0`` (default ``"replicate"``; empty string -> single intercept).
@@ -150,12 +140,6 @@ def build_empirical(growth_file,
         Recommended for large libraries (the fits are embarrassingly parallel).
     """
     growth_df = read_dataframe(growth_file)
-    spiked = None
-    if library_config is not None:
-        composition = library_composition_table(library_config)
-        spiked = list(composition.loc[composition["in_spiked_origin"],
-                                      "genotype"])
-
     icols = [c.strip() for c in str(intercept_cols).split(",") if c.strip()]
 
     dk_prior = None
@@ -177,27 +161,13 @@ def build_empirical(growth_file,
         growth_df, calibration_file, intercept_cols=icols,
         dk_geno_prior=dk_prior, min_obs=min_obs, num_workers=num_workers)
 
-    # Stage 1.5 (optional): de-attenuate the bulk theta curves for congression.
-    # The raw Stage-1 table (results_df) is left as-is; the corrected fits are
-    # written to their own table so both are available and unambiguous.
-    stage1p5_df = None
-    if congression_lambda is not None and float(congression_lambda) > 0:
-        from tfscreen.tfmodel.genotype_fit.congression import (
-            deattenuate_congression,
-        )
-        print(f"Stage 1.5: de-attenuating congression "
-              f"(lambda={float(congression_lambda):g})...", flush=True)
-        fits = deattenuate_congression(
-            fits, growth_df, float(congression_lambda), spiked=spiked)
-        stage1p5_df = fits_to_results_df(fits)
-
     # Stage 2: turn the per-genotype fits into ONE generating distribution
     # (deconvolving estimation noise).  This distribution is the deliverable.
     print(f"Stage 2: building the generating distribution from "
           f"{len(fits)} per-genotype fits...", flush=True)
     model = fit_population(fits, drop_railed=drop_railed)
 
-    # Embed wt's actual (congression-corrected, if applied) phenotype so the
+    # Embed wt's actual phenotype so the
     # simulation pins wt to its real value rather than a resampled/mean draw.
     wt_keys = [k for k in fits if k[0] == "wt"]
     if wt_keys:
@@ -214,26 +184,14 @@ def build_empirical(growth_file,
     fits_path = os.path.abspath(f"{out_prefix}_stage1_fits.csv")
     results_df.to_csv(fits_path, index=False)
 
-    # The de-attenuated (Stage-1.5) fits, when congression was applied.  The
-    # Stage-1 table above is always the *raw* (pre-de-attenuation) fit.
-    stage1p5_path = None
-    if stage1p5_df is not None:
-        stage1p5_path = os.path.abspath(f"{out_prefix}_stage1p5_fits.csv")
-        stage1p5_df.to_csv(stage1p5_path, index=False)
-
     bar = "=" * 72
     print(f"\n{bar}")
     print(f"Fit the generating distribution from {model.n_used} genotypes "
           f"(loglik={model.loglik:.4g}, {model.n_iter} EM iters).")
     print("\n  Phenotype model  (the distribution tfs-simulate samples from):")
     print(f"    {model_path}")
-    print("  Per-genotype Stage-1 fits, RAW / pre-de-attenuation "
-          "(diagnostic only, not used downstream):")
+    print("  Per-genotype Stage-1 fits (what feeds Stage 2):")
     print(f"    {fits_path}")
-    if stage1p5_path is not None:
-        print("  Per-genotype Stage-1.5 fits, congression-de-attenuated "
-              "(what feeds Stage 2):")
-        print(f"    {stage1p5_path}")
     print("\nTo simulate from it, add to your tfs-simulate config:")
     print("    phenotype_source: empirical")
     print("    empirical:")
@@ -248,4 +206,4 @@ def main():
         manual_arg_types={"binding_file": str, "calibration_file": str,
                           "library_config": str, "base_growth_file": str,
                           "thermo_data": str, "seed": int, "min_obs": int,
-                          "congression_lambda": float, "num_workers": int})
+                          "num_workers": int})

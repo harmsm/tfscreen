@@ -219,6 +219,14 @@ and guesses CSVs with rescaled log-space values. See
 :ref:`model-components`'s Transformation Correction section for what the
 ``mixture``/``single`` models each do with it.
 
+Lambda is the rate of a zero-truncated Poisson: a transformant (a cell that
+took up at least one plasmid and survives selection) carries ``M`` plasmids
+with ``P(M = m) = Poisson(m; lambda) / (1 - exp(-lambda))``. The zero class
+is never observed, so it plays no part. A measurement of the mean number of
+distinct plasmids per transformant, ``E[M] = lambda / (1 - exp(-lambda))``,
+has to be converted to lambda before it is passed here. This is the same
+lambda as the simulator's ``transformation_poisson_lambda``.
+
 **Scale**
 
 A single measurement (one mean, one uncertainty) from an independent

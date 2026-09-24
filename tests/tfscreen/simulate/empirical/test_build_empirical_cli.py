@@ -181,3 +181,9 @@ def test_cli_requires_binding_or_calibration(tmp_path):
     with pytest.raises(ValueError, match="binding data is required"):
         build_empirical(str(growth_csv), seed=0,
                                  out_prefix=str(tmp_path / "emp"))
+
+
+def test_congression_lambda_is_retired(tmp_path):
+    with pytest.raises(TypeError, match="congression_lambda"):
+        build_empirical("growth.csv", seed=0, congression_lambda=1.0,
+                        out_prefix=str(tmp_path / "emp"))

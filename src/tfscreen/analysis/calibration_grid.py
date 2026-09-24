@@ -27,10 +27,14 @@ Metrics (per run x quantity x stratum)
 Strata
 ------
 Genotype-indexed quantities are also broken out by ``has_binding`` (the
-genotype has binding data: ``*_sim_binding.csv``) and ``origin`` (``spiked``
--- encoded by a spiked sequence -- vs ``bulk``, from ``*_sim_library.csv``),
-separately and crossed.  ``spiked`` is not the same as congression-free: wt and
-the spiked single mutants are also encoded in the bulk sub-libraries.  θ is additionally split by ``theta_regime``:
+genotype has binding data: ``*_sim_binding.csv``) and ``purity`` (from the
+sub-libraries encoding the genotype in ``*_sim_library.csv``), separately and
+crossed.  ``purity`` follows the genotype's ``bulk_fraction``, which sets its
+congressed fraction: ``spike`` (only a spiked sequence encodes it,
+``bulk_fraction`` 0, never congressed), ``bulk`` (only bulk sub-libraries,
+``bulk_fraction`` 1) or ``mixed`` (both, as for wt and the spiked single
+mutants, which the bulk sub-libraries also encode).  θ is additionally split
+by ``theta_regime``:
 ``resolvable`` when the true θ lies in ``[regime_eps, 1 - regime_eps]``,
 ``saturated`` otherwise.  The pooled row carries ``"all"`` in every stratum
 column.
@@ -55,7 +59,8 @@ from tfscreen.tfmodel.analysis.error_calibration import (
 
 CURVE_LEVELS = (0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99)
 WIDTH_LEVELS = (0.5, 0.8, 0.95)
-STRATUM_COLS = ("has_binding", "origin", "theta_regime")
+STRATUM_COLS = ("has_binding", "purity", "theta_regime")
+SPIKED_ORIGIN = "spiked"
 ALL = "all"
 
 # Metrics compared against the baseline in paired_differences.
@@ -182,15 +187,19 @@ def genotype_strata(run_dir):
     Per-genotype strata from the simulation outputs, or None.
 
     Returns a DataFrame with ``genotype``, ``has_binding`` ("yes"/"no") and
-    ``origin`` ("spiked"/"bulk").  None when ``*_sim_library.csv`` is absent.
+    ``purity`` ("spike"/"mixed"/"bulk").  None when ``*_sim_library.csv`` is
+    absent.
     """
     lib_path = _sim_file(run_dir, "library")
     if lib_path is None:
         return None
     lib_df = pd.read_csv(lib_path)
     genotypes = pd.unique(lib_df["genotype"].astype(str))
-    spiked = set(lib_df.loc[lib_df["library_origin"] == "spiked",
-                            "genotype"].astype(str))
+    is_spiked = lib_df["library_origin"].astype(str) == SPIKED_ORIGIN
+    by_genotype = (lib_df.assign(genotype=lib_df["genotype"].astype(str),
+                                 _spiked=is_spiked)
+                   .groupby("genotype")["_spiked"])
+    any_spiked, all_spiked = by_genotype.any(), by_genotype.all()
 
     binding_path = _sim_file(run_dir, "binding")
     binding = (set(pd.read_csv(binding_path)["genotype"].astype(str))
@@ -199,7 +208,8 @@ def genotype_strata(run_dir):
     return pd.DataFrame({
         "genotype": genotypes,
         "has_binding": ["yes" if g in binding else "no" for g in genotypes],
-        "origin": ["spiked" if g in spiked else "bulk" for g in genotypes],
+        "purity": ["spike" if all_spiked[g] else
+                   "mixed" if any_spiked[g] else "bulk" for g in genotypes],
     })
 
 
@@ -232,8 +242,8 @@ def _groupings(df):
     """Stratum groupings present in ``df`` (the pooled one first)."""
     present = [c for c in STRATUM_COLS if c in df.columns and df[c].notna().any()]
     groupings = [()] + [(c,) for c in present]
-    if "has_binding" in present and "origin" in present:
-        groupings.append(("has_binding", "origin"))
+    if "has_binding" in present and "purity" in present:
+        groupings.append(("has_binding", "purity"))
     return groupings
 
 
@@ -264,7 +274,7 @@ def summarize_run(run_dir, summary_subdir="summary", regime_eps=0.01):
         if "genotype" in df.columns and strata is not None:
             df["genotype"] = df["genotype"].astype(str)
             df = df.merge(strata, on="genotype", how="left")
-            unmatched = df["origin"].isna().mean()
+            unmatched = df["purity"].isna().mean()
             if unmatched > 0:
                 warnings.warn(f"{run_dir}: {unmatched:.1%} of '{quantity}' rows "
                               f"have genotypes missing from the sim library; "

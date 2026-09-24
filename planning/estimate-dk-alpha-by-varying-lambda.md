@@ -9,7 +9,7 @@ revisit_when: >-
 related:
   - planning/congression-physics-plan.md
   - src/tfscreen/simulate/selection_experiment.py
-  - src/tfscreen/tfmodel/generative/components/transformation/_congression.py
+  - src/tfscreen/tfmodel/generative/components/transformation/mixture.py
 ---
 
 **Context:** While fixing the simulator/fit mismatch in how co-resident

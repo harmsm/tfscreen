@@ -15,6 +15,11 @@ from scipy.stats import poisson
 from tfscreen.tfmodel.generative.components.transformation import mixture
 
 
+def _ztp_pmf(m, lam):
+    """P(M = m) for M ~ zero-truncated Poisson(lam)."""
+    return poisson.pmf(m, lam) / (1.0 - np.exp(-lam))
+
+
 # ---------------------------------------------------------------------------
 # Priors, guesses, define_model / guide
 # ---------------------------------------------------------------------------
@@ -97,20 +102,60 @@ def test_weights_sum_to_one(sets, lam):
 
 
 @pytest.mark.parametrize("sets", [[12, 3, 1], [0, 4], [2, 0, 5]])
-def test_weights_match_poisson_over_strata(sets):
+def test_weights_match_zero_truncated_poisson_over_strata(sets):
+    """A set with n co-residents is a cell of M = n + 1 plasmids."""
     lam, f = 0.357, 0.8
     log_w = np.asarray(mixture._log_class_weights(jnp.array(lam),
                                                   jnp.array([f]),
                                                   _counts(sets)))[:, 0]
-    w_cong = f * (1.0 - np.exp(-lam))
+    w_cong = f * (1.0 - _ztp_pmf(1, lam))
     assert np.isclose(np.exp(log_w[0]), 1.0 - w_cong)
 
     present = [n for n, k in enumerate(sets, start=1) if k > 0]
-    pmf = poisson.pmf(present, lam)
+    pmf = _ztp_pmf(np.array(present) + 1, lam)
     pmf = dict(zip(present, pmf / pmf.sum()))
     n_of_set = np.asarray(_counts(sets))
     expected = np.array([w_cong * pmf[n] / sets[n - 1] for n in n_of_set])
-    np.testing.assert_allclose(np.exp(log_w[1:]), expected, rtol=1e-6)
+    np.testing.assert_allclose(np.exp(log_w[1:]), expected, rtol=1e-5)
+
+
+@pytest.mark.parametrize("lam", [1e-6, 5e-3, 1e-2, 2e-2, 0.357, 3.0])
+def test_congressed_fraction_is_stable_across_the_series_switch(lam):
+    """1 - P(M = 1) switches to a series at small lambda; both sides agree."""
+    got = float(np.exp(mixture._log_p_congressed(jnp.array(lam))))
+    lam64 = np.float64(lam)
+    expected = (lam64 / 2.0 - lam64**2 / 12.0 if lam < 1e-3
+                else 1.0 - lam64 / np.expm1(lam64))
+    np.testing.assert_allclose(got, expected, rtol=1e-4)
+    grad = float(jax.grad(mixture._log_p_congressed)(jnp.array(lam)))
+    assert np.isfinite(grad)
+
+
+def test_weights_match_simulated_cell_shares():
+    """
+    The fit's lambda is the simulator's transformation_poisson_lambda: the
+    clean and congressed weights equal a genotype's abundance share by
+    co-resident count when cells carry zero-truncated Poisson(lambda)
+    plasmids that split the cell's abundance (selection_experiment).
+    """
+    from tfscreen.simulate.selection_experiment import _plasmid_shares
+    from tfscreen.util.numerical import zero_truncated_poisson
+
+    lam, num_cells, num_geno = 0.357, 400_000, 20
+    rng = np.random.default_rng(0)
+    m = zero_truncated_poisson(num_cells, lam, rng)
+    plasmids = rng.choice(num_geno, size=(num_cells, m.max()))
+    mask = np.arange(m.max())[None, :] >= m[:, None]
+    share = np.sum(_plasmid_shares(mask) * ((plasmids == 0) & ~mask), axis=1)
+
+    sim_clean = share[m == 1].sum() / share.sum()
+    sim_one = share[m == 2].sum() / share.sum()
+
+    log_w = np.asarray(mixture._log_class_weights(
+        jnp.array(lam), jnp.array([1.0]), _counts([12, 3, 1])))[:, 0]
+    w = np.exp(log_w)
+    assert np.isclose(w[0], sim_clean, atol=0.005)
+    assert np.isclose(w[1:13].sum(), sim_one, atol=0.005)
 
 
 def test_spike_only_genotype_has_no_congressed_cells_and_finite_gradient():
@@ -196,9 +241,9 @@ def _reference_classes(data, focal, population, lam):
                                      [dk_pop[h] for h in co])
 
     f = np.asarray(data.bulk_fraction)[batch_idx]
-    w_cong = f * (1.0 - np.exp(-lam))
+    w_cong = f * (1.0 - _ztp_pmf(1, lam))
     present = sorted(set(counts))
-    pmf = poisson.pmf(present, lam)
+    pmf = _ztp_pmf(np.array(present) + 1, lam)
     pmf = dict(zip(present, pmf / pmf.sum()))
     per_stratum = {n: int(np.sum(counts == n)) for n in present}
     w = np.zeros((1 + num_k, num_b))

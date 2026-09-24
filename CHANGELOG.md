@@ -66,8 +66,10 @@ fall into two kinds:
   directory, and reports coverage at several interval levels, calibration
   error and bias, PIT uniformity (KS), interval width, and median RMSE and
   Pearson r against the simulated truth. Rows are per run x quantity x
-  stratum: whether the genotype has binding data, whether it is encoded by a
-  spiked sequence, and, for theta, whether the true value is resolvable or
+  stratum: whether the genotype has binding data, its purity (`spike`: only
+  a spiked sequence encodes it, `bulk_fraction` 0; `bulk`: only the bulk
+  sub-libraries, `bulk_fraction` 1; `mixed`: both, like wt and the spiked
+  single mutants), and, for theta, whether the true value is resolvable or
   saturated. Arms (runs sharing every grid variable except `--replicate_keys`)
   are averaged, and `--baseline key=value ...` pairs each run with the
   baseline run fit to the same simulated data. Unfinished runs are listed in
@@ -126,14 +128,16 @@ fall into two kinds:
   `theta_rescale` → `calculate_growth` → `growth_transition` pipeline on a
   leading class axis, and the classes are mixed as
   `ln_cfu = ln_cfu0 + logsumexp_c(log w_c + G_c)`, with
-  `w_cong = bulk_fraction * (1 - exp(-lambda))` split over the sets by the
-  Poisson(lambda) probability of their co-resident count. Theta noise acts on
+  `w_cong = bulk_fraction * (1 - P(M = 1))` split over the sets by
+  `P(M = n + 1)`, where a transformant carries `M` ~ zero-truncated
+  Poisson(lambda) plasmids that share its abundance (as in the simulator, so
+  the fit's lambda is the simulator's `transformation_poisson_lambda`; the
+  zero class of cells that never took up a plasmid is not observed). Theta noise acts on
   the genotype's own theta before the classes are built; `theta_growth_pred`
   is still the genotype's own theta.
   - `empirical` and `logit_norm` are removed and refused by name with a
     message; configs must switch to `transformation: mixture` (fits are not
-    comparable). `_congression.update_thetas` stays as a plain function for
-    Stage 1.5 of `tfs-fit-genotypes`.
+    comparable).
   - New transformation interface: `define_model`/`guide` sample lambda only;
     `cell_classes(focal, population, params, data)` returns the classes;
     `NEEDS_POPULATION` replaces `NEEDS_FULL_POPULATION_THETA`.
@@ -151,6 +155,20 @@ fall into two kinds:
     instead of warning and predicting without a background.
   - Growth tensors grow by a factor of 1 + K (K = 16 by default); use
     mini-batching or a smaller `congression_sets` on large libraries.
+
+- **Breaking: the empirical pipeline's congression de-attenuation (Stage 1.5)
+  is retired.** `--congression_lambda` is removed from `tfs-fit-genotypes`
+  and `tfs-build-empirical`, together with `--library_config` and
+  `--save_theta_history` on `tfs-fit-genotypes` and the
+  `*_params_deattenuated.csv`, `*_theta_history.csv` and
+  `*_stage1p5_fits.csv` outputs. It corrected theta alone with the
+  expected-maximum operator the fit dropped above, and it used Poisson rather
+  than zero-truncated co-resident weights, a spiked/bulk split rather than
+  `bulk_fraction`, and no dk_geno dilution. Empirical distributions are now
+  built from uncorrected per-genotype fits. `genotype_fit/congression.py`,
+  `simulate/empirical/congression.py` and
+  `transformation/_congression.py` are deleted. A replacement is filed as
+  `planning/empirical-mixture-refit.md`.
 
 - **Test reports and badges are no longer committed.** `reports/` and
   `docs/badges/` are gitignored and untracked; `run_all_tests.sh` now writes
