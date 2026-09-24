@@ -217,7 +217,7 @@ used to moment-match a LogNormal prior for the transformation model's
 lambda parameter, replacing the manual step of hand-editing the priors
 and guesses CSVs with rescaled log-space values. See
 :ref:`model-components`'s Transformation Correction section for what the
-``empirical``/``logit_norm``/``single`` models each do with it.
+``mixture``/``single`` models each do with it.
 
 **Scale**
 
@@ -227,11 +227,11 @@ congression-rate experiment — not a per-genotype or per-row dataset.
 **Format**
 
 Passed directly as two floats via ``--transformation_lambda``, required
-when ``--transformation_model`` is ``empirical`` or ``logit_norm``, and
+when ``--transformation_model`` is ``mixture``, and
 forbidden (must be omitted) when it is ``single``:
 
 .. code-block:: bash
 
     tfs-configure-model binding.csv --growth_df growth.csv \
-        --transformation_model empirical \
+        --transformation_model mixture \
         --transformation_lambda 0.36 0.05

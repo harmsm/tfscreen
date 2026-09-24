@@ -310,17 +310,13 @@ def test_extract_parameters_h5_file(mock_model, tmp_path):
     h5_path = os.path.join(tmp_path, "params.h5")
     
     # We need a model config that actually extracts something
-    mock_model._transformation = "logit_norm"
+    mock_model._transformation = "mixture"
     
     with h5py.File(h5_path, "w") as f:
         f.create_dataset("transformation_lam", data=np.random.rand(10, 1))
-        # shape for mu/sigma is (num_samples, num_titrant_name, num_titrant_conc, 1)
-        f.create_dataset("transformation_mu", data=np.random.rand(10, 1, 1, 1))
-        f.create_dataset("transformation_sigma", data=np.random.rand(10, 1, 1, 1))
-    
+
     params = extract_parameters(mock_model, h5_path)
     assert "lam" in params
-    assert "mu" in params
 
 def test_extract_theta_curves_hdf5_path(mock_model, tmp_path):
     """Test extract_theta_curves loading from an HDF5 file path."""

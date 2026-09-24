@@ -43,7 +43,6 @@ def _make_growth_data(num_genotype=4, **overrides):
         t_pre=jnp.zeros(shape),
         t_sel=jnp.zeros(shape),
         good_mask=jnp.ones(shape, dtype=bool),
-        congression_mask=jnp.ones(G, dtype=bool),
         num_replicate=1,
         num_time=1,
         num_condition_pre=1,

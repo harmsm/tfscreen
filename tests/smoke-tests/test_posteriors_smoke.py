@@ -21,7 +21,7 @@ def test_checkpoint_and_posterior_smoke(growth_smoke_csv,
         growth_df=growth_smoke_csv,
         binding_df=binding_smoke_csv,
         condition_growth="linear",
-        transformation="logit_norm",
+        transformation="mixture",
         theta="hill_geno",
         batch_size=None
     )
@@ -82,7 +82,7 @@ def test_extract_parameters_smoke(growth_smoke_csv,
         growth_df=growth_smoke_csv,
         binding_df=binding_smoke_csv,
         theta="hill_geno",
-        transformation="logit_norm"
+        transformation="mixture"
     )
     
     inference = RunInference(model=model, seed=42)
@@ -106,7 +106,7 @@ def test_extract_parameters_smoke(growth_smoke_csv,
     param_dfs = extract_parameters(model, posterior_file)
     assert "hill_n" in param_dfs
     assert "activity" in param_dfs
-    assert "lam" in param_dfs # for logit_norm/empirical
+    assert "lam" in param_dfs # for mixture
     
     # Verify they are DataFrames
     import pandas as pd

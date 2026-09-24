@@ -467,13 +467,54 @@ checked with `tfs-summarize-calibration`.
      `__unknown__` excluded; legacy path uniform over non-spiked (user,
      2026-09-23). An empty pool leaves every slot -1; 3.3c must refuse a
      congression model with `bulk_fraction > 0` and an empty pool.
-   - [ ] **3.3c Mixture.** Class axis ahead of the 7-D growth layout; per-class
-     theta rescale, `calculate_growth`, `growth_transition`; logsumexp mix
-     with `log w`. New transformation-component interface returning classes
-     `(theta, activity, dk, log w)`. `single` = one class of weight 1 and must
-     reproduce today's `single` fits exactly. Congressed-class estimator from
-     3.0; checked against brute-force MC on toy data. Retire `logit_norm`.
-   - [ ] **3.4 Other consumers.** `analysis/prediction.py`, lambda extraction
+   - [x] **3.3c Mixture.** Done 2026-09-23. Code plan and decisions agreed 2026-09-23 (user):
+     - *Transformation interface.* `define_model`/`guide` sample lambda only
+       (no `anchors`). New `cell_classes(focal, population, params, data)`
+       returns `(theta, activity, dk, log_w)` with a leading class axis.
+       `NEEDS_POPULATION` replaces `NEEDS_FULL_POPULATION_THETA`. `single`:
+       one class, `log_w = 0`, identical to today. The mixture component is
+       named **`mixture`**; `transformation: empirical` is refused with a
+       message explaining the change, so old configs do not silently switch
+       physics. `logit_norm` is removed. `_congression.update_thetas` stays as
+       a plain function for Stage 1.5 until 3.4.
+     - *`model.py`.* theta -> noise on the genotype's own theta -> population
+       theta/dk/activity (external if supplied, else the full-population
+       `calc_theta` and `return_population=True`) -> gather
+       `coresident_idx[batch_idx]` -> classes (max theta and its activity per
+       titrant point; dilution dk; -1 slots masked) on a class axis ahead of
+       `(rep, time, cp, cs, tn, tc, batch)` -> per class `theta_rescale`,
+       `calculate_growth`, `growth_transition` (each called once; they
+       broadcast) -> `ln_cfu_pred = ln_cfu0 + logsumexp(log_w + G, 0) +
+       delta_sample`. `theta_growth_pred` stays the genotype's own
+       uncorrected theta. The guide skips class construction.
+     - *Weights.* `w_cong = f_g (1 - exp(-lambda))`; `log w_clean =
+       log1p(-w_cong)`; `log w_k = log f_g + log(1 - exp(-lambda)) + log P(N
+       = n_k | N in strata; lambda) - log K_{n_k}` (strata renormalized over
+       the counts that have sets), so the lambda gradient stays finite for
+       `f_g = 0`.
+     - *Refusals.* A `mixture` model with some `bulk_fraction > 0` and an
+       empty co-resident pool is refused at build time. The
+       `categorical_geno`/`empirical` incompatibility check is deleted (fixed
+       in 3.3a).
+     - *`congression_mask` is removed* from `GrowthData`, `batch.py`, the
+       orchestrator and tests.
+     - *Prediction.* `predict()` passes full-library
+       `external_{theta,dk,activity}_population` (dk/activity: posterior
+       medians of their deterministic sites; theta: the theta component at
+       posterior-median parameters, evaluated on the prediction's
+       concentration grid) and the subset's rows of
+       the original `coresident_idx`. A raw MAP checkpoint (no stored
+       deterministic sites) with a `mixture` model raises, pointing to
+       `tfs-sample-posterior`.
+     - *Cost.* Growth tensors grow by (1 + K); default K stays 16
+       (`[12, 3, 1]`). Main runs mini-batch. A memory-flat `lax.scan` over
+       classes would need growth_transition components split into sample and
+       compute; deferred unless memory bites.
+     - *Tests.* `single` regression; mixture vs an independent numpy
+       implementation; lambda -> 0 and `f_g = 0` reduce to `single`; finite
+       gradients; registry-wide batch shape/order checks; subset prediction
+       equals full prediction rows; refusals; smoke tests.
+   - [ ] **3.4 Other consumers.** Lambda extraction
      (`simulate/transformation_lam_output.py`), `genotype_fit/congression.py`
      (Stage 1.5 of `tfs-fit-genotypes` / `tfs-build-empirical`), and
      `tfs-summarize-calibration` strata by `bulk_fraction` instead of

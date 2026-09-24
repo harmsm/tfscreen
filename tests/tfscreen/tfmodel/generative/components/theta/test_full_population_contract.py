@@ -1,17 +1,14 @@
 """
 Cross-component API-contract test for theta components used with
-transformation="empirical".
+transformation="mixture".
 
-The congression correction (transformation/_congression.py) needs a theta
-reference covering the *full* genotype population, not just whatever
-genotypes are active in the current forward pass.  generative/model.py
-gets this "for free" for hill_mut, hill_geno, and the thermo.* components by
-re-calling run_model with batch_idx = geno_theta_idx = arange(num_genotype)
-against the already-full-size ThetaParam these components assemble in
-define_model/guide (see model_orchestrator._THETA_MODELS_INCOMPATIBLE_WITH_EMPIRICAL
-and model_orchestrator._check_theta_transformation_compatibility for the one
-component, categorical_geno, that does not yet satisfy this contract and is
-rejected outright rather than silently mishandled).
+The congression mixture (transformation/mixture.py) looks co-resident
+genotypes up in a theta population covering the *full* library, not just the
+genotypes active in the current forward pass. generative/model.py builds it
+by re-calling run_model with batch_idx = geno_theta_idx = arange(num_genotype)
+against the full-size ThetaParam each component assembles in
+define_model/guide. Every theta component now satisfies this (categorical_geno
+since step 3.3a); test_population_theta.py checks it registry-wide.
 
 This test locks in the contract for the components that DO support it:
 run_model(theta_param, subset_data) must equal

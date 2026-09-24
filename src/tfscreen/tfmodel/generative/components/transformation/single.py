@@ -1,46 +1,52 @@
-import jax.numpy as jnp
+"""
+No congression: every cell of a genotype carries only its own plasmid.
+"""
+
 from flax.struct import dataclass
+
 from tfscreen.tfmodel.data_class import GrowthData
+from tfscreen.tfmodel.generative.components.transformation._classes import (
+    CellClasses,
+    single_class,
+)
+
+
+# One class built from the genotype's own values; no population needed.
+NEEDS_POPULATION = False
+
 
 @dataclass(frozen=True)
 class ModelPriors:
     """
     JAX Pytree holding data needed to specify model priors.
-    
+
     No priors needed for single transformation (dummy).
     """
     pass
 
-def define_model(name: str, 
-                 data: GrowthData, 
-                 priors: ModelPriors,
-                 anchors: tuple = None) -> jnp.ndarray:
-    """
-    Dummy model definition for single transformation.
-    """
-    return 1.0, 1.0, 1.0 # Dummy lambda, a, b
 
-def guide(name: str, 
-          data: GrowthData, 
-          priors: ModelPriors,
-          anchors: tuple = None) -> jnp.ndarray:
-    """
-    Dummy guide for single transformation.
-    """
-    return 1.0, 1.0, 1.0
-
-def update_thetas(theta, params, mask=None):
-    """
-    Pass-through update_thetas for single transformation.
-
-    Returns theta unchanged.
-    """
-    return theta
+def define_model(name: str,
+                 data: GrowthData,
+                 priors: ModelPriors):
+    """No latent parameters."""
+    return None
 
 
-# No congression correction is applied at all in single-plasmid mode, so
-# there is nothing that needs a population-wide theta reference.
-NEEDS_FULL_POPULATION_THETA = False
+def guide(name: str,
+          data: GrowthData,
+          priors: ModelPriors):
+    """No latent parameters."""
+    return None
+
+
+def cell_classes(focal, population, params, data: GrowthData) -> CellClasses:
+    """
+    One class, weight 1, built from the genotype's own theta, activity and
+    dk_geno. ``population`` and ``params`` are ignored.
+    """
+    theta, activity, dk_geno = focal
+    return single_class(theta, activity, dk_geno)
+
 
 def get_hyperparameters():
     """
@@ -48,11 +54,13 @@ def get_hyperparameters():
     """
     return {}
 
+
 def get_guesses(name, data):
     """
     No guesses needed.
     """
     return {}
+
 
 def get_priors():
     return ModelPriors(**get_hyperparameters())

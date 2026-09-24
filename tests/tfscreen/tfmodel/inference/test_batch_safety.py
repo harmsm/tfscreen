@@ -162,8 +162,7 @@ _SAFE_VARIANTS = [
     ("theta_rescale", "passthrough"),
     ("theta_rescale", "logit"),
     ("transformation", "single"),
-    ("transformation", "empirical"),
-    ("transformation", "logit_norm"),
+    ("transformation", "mixture"),
     ("theta_growth_noise", "zero"),
     ("theta_growth_noise", "logit_normal"),
     ("theta_binding_noise", "zero"),
@@ -176,8 +175,7 @@ _SAFE_VARIANTS = [
 
 # Extra constructor arguments some variants require.
 _VARIANT_KWARGS = {
-    ("transformation", "empirical"): {"transformation_lambda": (1.0, 0.1)},
-    ("transformation", "logit_norm"): {"transformation_lambda": (1.0, 0.1)},
+    ("transformation", "mixture"): {"transformation_lambda": (1.0, 0.1)},
 }
 
 

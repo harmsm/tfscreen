@@ -341,7 +341,7 @@ def _build_calibration_model(orchestrator_prod, growth_df_cal, binding_df_cal):
         settings[k] = v
     # transformation is forced to "single" above, which carries no lambda
     # parameter; drop any production transformation_lambda (set when the production
-    # transformation is "empirical"/"logit_norm") so it doesn't get passed
+    # transformation is "mixture") so it doesn't get passed
     # through to a "single" calibration model.
     settings["transformation_lambda"] = None
     settings["spiked_genotypes"] = None

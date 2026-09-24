@@ -93,7 +93,7 @@ def _masks(orchestrator):
     idx = orchestrator.growth_tm.tensor_dim_names.index("genotype")
     labels = list(orchestrator.growth_tm.tensor_dim_labels[idx])
     return (labels,
-            np.array(orchestrator.data.growth.congression_mask),
+            ~np.array(orchestrator.data.growth.ln_cfu0_spiked_mask),
             np.array(orchestrator.data.growth.ln_cfu0_spiked_mask))
 
 
@@ -255,7 +255,7 @@ class TestCoresidentSets:
     def test_pool_is_bulk_share_of_genotypes_with_data(self, library_file):
         orchestrator = ModelOrchestrator(_growth_df(), _binding_df(),
                                          library_file=library_file)
-        mask = np.array(orchestrator.data.growth.congression_mask)
+        mask = ~np.array(orchestrator.data.growth.ln_cfu0_spiked_mask)
         pool = orchestrator._coresident_pool(mask)
         table = orchestrator.library_df.set_index("genotype")
         weights = np.array([table.loc[g, "pool_fraction"]
@@ -267,7 +267,7 @@ class TestCoresidentSets:
         orchestrator = ModelOrchestrator(_growth_df(), _binding_df(),
                                          library_file=library_file,
                                          congression_sets=[4000])
-        mask = np.array(orchestrator.data.growth.congression_mask)
+        mask = ~np.array(orchestrator.data.growth.ln_cfu0_spiked_mask)
         pool = orchestrator._coresident_pool(mask)
         idx = np.asarray(orchestrator.data.growth.coresident_idx)
         counts = np.bincount(idx[idx >= 0], minlength=len(pool))
@@ -286,7 +286,7 @@ class TestCoresidentSets:
     def test_legacy_pool_uniform_over_non_spiked(self):
         orchestrator = ModelOrchestrator(_growth_df(), _binding_df(),
                                          spiked_genotypes=["wt"])
-        mask = np.array(orchestrator.data.growth.congression_mask)
+        mask = ~np.array(orchestrator.data.growth.ln_cfu0_spiked_mask)
         pool = orchestrator._coresident_pool(mask)
         labels = _labels(orchestrator)
         assert pool[labels.index("wt")] == 0.0
@@ -297,6 +297,21 @@ class TestCoresidentSets:
         orchestrator = ModelOrchestrator(_growth_df(), _binding_df(),
                                          spiked_genotypes=GENOTYPES)
         assert np.all(np.asarray(orchestrator.data.growth.coresident_idx) == -1)
+
+    def test_mixture_refuses_empty_pool_with_bulk_genotypes(self,
+                                                            library_file):
+        """Bulk genotypes but nothing drawable: a mixture model cannot build
+        congressed cells, so it refuses; 'single' does not care."""
+        table = pd.read_csv(library_file)
+        table["pool_fraction"] = 0.0
+        table.to_csv(library_file, index=False)
+
+        with pytest.raises(ValueError, match="co-resident pool is empty"):
+            ModelOrchestrator(_growth_df(), _binding_df(),
+                              library_file=library_file,
+                              transformation="mixture")
+        ModelOrchestrator(_growth_df(), _binding_df(),
+                          library_file=library_file, transformation="single")
 
     def test_seed_reproduces_and_changes_draws(self, library_file):
         def draw(seed_value):

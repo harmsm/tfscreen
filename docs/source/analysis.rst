@@ -363,12 +363,18 @@ concentration.
 Transformation Correction (``--transformation_model``)
 -------------------------------------------------------
 
-Corrects for congression (multiple plasmids entering one cell during
+Models congression (multiple plasmids entering one cell during
 transformation).
 
-* **empirical** (default) — empirical correction curve
-* **logit_norm** — logit-normal correction
-* **single** — no correction (assumes exactly one plasmid per cell)
+* **single** (default) — no congression (assumes exactly one plasmid per cell)
+* **mixture** — each genotype's cells are a mixture of clean cells and
+  congressed cells carrying co-resident plasmids; each class has its own
+  cell-level theta, activity and ``dk_geno``, and the classes are mixed at
+  the level of ``exp(ln_cfu)``. Uses the library composition table's
+  ``bulk_fraction`` and fixed co-resident sets drawn from the bulk library.
+
+``empirical`` and ``logit_norm`` were removed; a config that names them is
+refused with a message.
 
 Theta Rescale (``--theta_rescale_model``)
 ------------------------------------------

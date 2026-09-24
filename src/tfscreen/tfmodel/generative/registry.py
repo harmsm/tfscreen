@@ -38,8 +38,7 @@ from .components.theta.thermo.O2_C12_K5_U0_a import PddG as theta_mwc_dimer_lnK_
 from .components.theta.thermo.O2_C12_K5_U1_a import PK as theta_mwc_dimer_unfolded_lnK_mut
 from .components.theta.thermo.O2_C12_K5_U1_a import PnnC as theta_mwc_dimer_unfolded_lnK_nn_prior
 from .components.theta.thermo.O2_C12_K5_U1_a import PddG as theta_mwc_dimer_unfolded_lnK_ddG_prior
-from .components.transformation import empirical as transformation_empirical
-from .components.transformation import logit_norm as transformation_logit_norm
+from .components.transformation import mixture as transformation_mixture
 from .components.transformation import single as transformation_single
 
 from .components.theta_rescale import passthrough as theta_rescale_passthrough
@@ -83,8 +82,7 @@ model_registry = {
         "horseshoe_mut":activity_horseshoe_mut,
     },
     "transformation":{
-        "empirical": transformation_empirical,
-        "logit_norm": transformation_logit_norm,
+        "mixture": transformation_mixture,
         "single": transformation_single,
     },
     "theta_rescale":{

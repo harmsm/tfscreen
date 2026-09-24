@@ -50,7 +50,6 @@ def get_batch(full_data: DataClass, idx: jnp.ndarray) -> DataClass:
             map_condition_pre=full_data.growth.map_condition_pre[...,idx],
             map_condition_sel=full_data.growth.map_condition_sel[...,idx],
             good_mask=full_data.growth.good_mask[...,idx],
-            congression_mask=full_data.growth.congression_mask[...,idx],
         )
         return full_data.replace(growth=new_growth)
 

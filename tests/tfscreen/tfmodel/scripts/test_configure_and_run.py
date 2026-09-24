@@ -143,14 +143,14 @@ def test_configure_model_passes_base_growth_df_to_orchestrator_and_config(mock_o
     assert written_config["data"]["base_growth"] == "bg.csv"
 
 
-def test_configure_model_requires_transformation_lambda_for_empirical(mock_orchestrator, tmpdir):
-    """transformation_model='empirical' (or 'logit_norm') without transformation_lambda
+def test_configure_model_requires_transformation_lambda_for_mixture(mock_orchestrator, tmpdir):
+    """transformation_model='mixture' without transformation_lambda
     must raise before ModelOrchestrator is even constructed."""
     out_prefix = os.path.join(tmpdir, "test")
     with pytest.raises(ValueError, match="transformation_lambda"):
         configure_model(
             "b.csv", growth_df="g.csv", library_config="lib.yaml",
-            transformation_model="empirical",
+            transformation_model="mixture",
             out_prefix=out_prefix,
         )
 
@@ -169,14 +169,14 @@ def test_configure_model_forwards_transformation_lambda_to_orchestrator(mock_orc
 
     configure_model(
         "b.csv", growth_df="g.csv", library_config="lib.yaml",
-        transformation_model="empirical",
+        transformation_model="mixture",
         transformation_lambda=(0.3572, 0.13),
         out_prefix=out_prefix,
         skip_model_stats=True,
     )
 
     assert mock_orchestrator_class.call_args.kwargs["transformation_lambda"] == (0.3572, 0.13)
-    assert mock_orchestrator_class.call_args.kwargs["transformation"] == "empirical"
+    assert mock_orchestrator_class.call_args.kwargs["transformation"] == "mixture"
 
 
 def test_configure_model_omits_base_growth_when_not_given(mock_orchestrator, tmpdir):

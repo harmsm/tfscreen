@@ -691,64 +691,27 @@ def _setup_batching(growth_genotypes,
     return out
 
 
-# Theta components that cannot yet supply a full-population theta reference
-# for the "empirical" transformation's congression correction.  Unlike
-# hill_mut/hill_geno/thermo.*, which already assemble per-genotype parameters
-# for the full library on every forward pass (batching only gathers a subset
-# of an already-full-size ThetaParam), categorical_geno only ever samples
-# batch_size-worth of per-genotype offsets per call.  Wiring it up to
-# "empirical" would silently reproduce the population-CDF bug the
-# NEEDS_FULL_POPULATION_THETA mechanism exists to fix (see
-# transformation/_congression.py and generative/model.py), rather than
-# raising — so it's blocked explicitly here until categorical_geno gets its
-# own full-population code path.
-_THETA_MODELS_INCOMPATIBLE_WITH_EMPIRICAL = frozenset({"categorical_geno"})
-
-
-def _check_theta_transformation_compatibility(theta, transformation, binding_only=False):
-    """
-    Raise a clear error for known theta/transformation combinations that
-    would silently produce incorrect results rather than failing loudly.
-
-    Parameters
-    ----------
-    theta : str
-        Name of the requested theta component (model_registry["theta"] key).
-    transformation : str
-        Name of the requested transformation component
-        (model_registry["transformation"] key).
-    binding_only : bool, optional
-        Whether the model is being built in binding-only mode. In that mode
-        jax_model returns before ever touching the transformation/congression
-        code path (see generative/model.py's early `if binding_only: ...
-        return`), so the transformation setting is inert and this check does
-        not apply. Default False.
-
-    Raises
-    ------
-    ValueError
-        If `transformation == "empirical"` and `theta` is a component that
-        cannot supply a full-population theta reference for the congression
-        correction, and the model is not binding-only.
-    """
-    if binding_only:
-        return
-
-    if (transformation == "empirical"
-            and theta in _THETA_MODELS_INCOMPATIBLE_WITH_EMPIRICAL):
-        raise ValueError(
-            f"theta='{theta}' is not compatible with transformation='empirical'. "
-            "The empirical congression correction requires a theta reference "
-            f"covering the full genotype population, but '{theta}' only ever "
-            "assembles theta for the genotypes in the current batch/request "
-            "(see categorical_geno.define_model's batch_size-scoped "
-            "logit_theta_offset plate). Using it with transformation='empirical' "
-            "would silently reproduce the population-CDF bug this check exists "
-            "to prevent, rather than raise. Use transformation='single' or "
-            "'logit_norm' with this theta model, or choose a theta component "
-            "that already assembles full-population parameters (hill_geno, "
-            "hill_mut, or a thermo.* component)."
-        )
+# Transformation components that were removed or renamed, with the reason.
+# Refused by name so an old config fails loudly instead of silently meaning
+# something new.
+_RETIRED_TRANSFORMATIONS = {
+    "empirical": (
+        "transformation 'empirical' has been replaced by 'mixture'. The old "
+        "component corrected each genotype's theta to the expected maximum "
+        "over co-resident plasmids and grew one trajectory with the "
+        "genotype's own dk_geno; averaging theta cannot represent a mixture "
+        "of growth rates. 'mixture' instead mixes clean and congressed cells "
+        "at the level of exp(ln_cfu), with cell-level theta, activity and "
+        "dk_geno (see planning/congression-physics-plan.md). Set "
+        "transformation: mixture (fits are not comparable with the old "
+        "component)."
+    ),
+    "logit_norm": (
+        "transformation 'logit_norm' has been removed: it modeled the "
+        "co-resident background as a parametric theta distribution with no "
+        "dk_geno counterpart. Use 'mixture' (or 'single' for no congression)."
+    ),
+}
 
 
 def _check_congression_sets(congression_sets):
@@ -804,16 +767,16 @@ class ModelOrchestrator:
     theta : str, optional
         Model name for theta calculation (e.g., "hill").
     transformation : str, optional
-        Model name for transformation correction. Allowed values are 'single'
-        (default), 'empirical', or 'logit_norm'.
+        Model name for congression. 'single' (default; every cell carries one
+        plasmid) or 'mixture' (clean and congressed cells mixed at the
+        observable level; see ``transformation/mixture.py``).
     transformation_lambda : tuple, optional
         ``(mean, std)`` -- the experimentally measured congression lambda,
         in linear space -- used to anchor the ``transformation`` prior when
-        it is 'empirical' or 'logit_norm'. Forbidden when
-        ``transformation == 'single'`` (which has no lambda parameter). If
-        omitted for 'empirical'/'logit_norm', a weakly-informative
-        placeholder prior is used (see
-        ``generative/components/transformation/_congression.get_hyperparameters``);
+        it is 'mixture'. Forbidden when ``transformation == 'single'``
+        (which has no lambda parameter). If omitted for 'mixture', a
+        weakly-informative placeholder prior is used (see
+        ``generative/components/transformation/mixture.get_hyperparameters``);
         ``configure_model`` (the ``tfs-configure-model`` entry point)
         requires it explicitly rather than silently falling back to the
         placeholder.
@@ -922,9 +885,8 @@ class ModelOrchestrator:
         self._congression_sets = _check_congression_sets(congression_sets)
         self._congression_seed = int(congression_seed)
 
-        _check_theta_transformation_compatibility(
-            self._theta, self._transformation, binding_only=self._binding_only
-        )
+        if self._transformation in _RETIRED_TRANSFORMATIONS:
+            raise ValueError(_RETIRED_TRANSFORMATIONS[self._transformation])
 
         if self._library_file is not None:
             if self._spiked_genotypes is not None:
@@ -1014,11 +976,11 @@ class ModelOrchestrator:
         wt_loc = np.where(self.growth_tm.tensor_dim_labels[genotype_idx] == "wt")
         wt_info = {"wt_indexes":jnp.array(wt_loc[0], dtype=jnp.int32)}
 
-         # scatter_theta tells the theta model caller to return a full-sized
-        # growth_tm tensor instead of the smaller growth_theta_tm-sized tensor
-        # congression_mask is a boolean array of shape (num_genotype,) that 
-        # tells the model which genotypes should be corrected for congression.
-        # Initialize to all True (no masking).
+        # scatter_theta tells the theta model caller to return a full-sized
+        # growth_tm tensor instead of the smaller growth_theta_tm-sized tensor.
+        # mask is a boolean array of shape (num_genotype,): False for spiked
+        # genotypes. It sets the ln_cfu0 prior class and, on the legacy path,
+        # the binary bulk_fraction. Initialize to all True (nothing spiked).
         mask = np.ones(sizes["num_genotype"],dtype=bool)
 
         # A library composition table (the current interface) names the spiked
@@ -1074,6 +1036,18 @@ class ModelOrchestrator:
         bulk_fraction = self._build_bulk_fraction(mask)
         coresident_idx, coresident_n = self._draw_coresident_sets(mask)
 
+        if (self._transformation == "mixture"
+                and np.any(bulk_fraction > 0)
+                and np.all(coresident_idx < 0)):
+            raise ValueError(
+                "transformation='mixture' needs co-resident plasmids to draw, "
+                "but no genotype with growth data can be one (the co-resident "
+                "pool is empty: every genotype is spiked-only or has zero "
+                "bulk share) while some genotypes have bulk_fraction > 0. "
+                "Check the library composition table, or use "
+                "transformation='single'."
+            )
+
         wt_mask = np.zeros(sizes["num_genotype"], dtype=bool)
         wt_mask[wt_loc[0]] = True
 
@@ -1094,7 +1068,6 @@ class ModelOrchestrator:
         sizes["num_ln_cfu0_library_classes"] = 2
 
         other_data = {"scatter_theta":1,
-                      "congression_mask":jnp.array(mask,dtype=bool),
                       "ln_cfu0_spiked_mask":jnp.array(~mask,dtype=bool),
                       "ln_cfu0_wt_mask":jnp.array(wt_mask,dtype=bool),
                       "ln_cfu0_library_masks":jnp.array(_library_masks,dtype=bool),
@@ -1684,15 +1657,14 @@ class ModelOrchestrator:
                                              component_module.run_model,
                                              component_module.get_population_moments)
             elif key == "transformation":
-                needs_full_population = getattr(
-                    component_module, "NEEDS_FULL_POPULATION_THETA", False
-                )
+                needs_population = getattr(component_module,
+                                           "NEEDS_POPULATION", False)
                 main_control_kwargs[key] = (component_module.define_model,
-                                            component_module.update_thetas,
-                                            needs_full_population)
+                                            component_module.cell_classes,
+                                            needs_population)
                 guide_control_kwargs[key] = (component_module.guide,
-                                             component_module.update_thetas,
-                                             needs_full_population)
+                                             component_module.cell_classes,
+                                             needs_population)
             elif key == "condition_growth":
                 main_control_kwargs[key] = component_module.define_model
                 guide_control_kwargs[key] = component_module.guide

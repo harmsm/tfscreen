@@ -52,7 +52,7 @@ def run():
         binding_df=BINDING_CSV,
         batch_size=BATCH_SIZE,
         condition_growth="linear",
-        transformation="empirical",
+        transformation="mixture",
         theta="hill_geno",
         growth_transition="instant",
         dk_geno="hierarchical_geno",

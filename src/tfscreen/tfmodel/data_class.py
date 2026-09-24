@@ -22,7 +22,6 @@ class GrowthData:
     t_pre: jnp.ndarray
     t_sel: jnp.ndarray
     good_mask: jnp.ndarray
-    congression_mask: jnp.ndarray
 
         
     # Tensor shape
@@ -72,16 +71,16 @@ class GrowthData:
     # (ln_cfu0_spiked_mask), which it no longer shares a flag with. Built by
     # ModelOrchestrator from the library composition table's bulk_fraction
     # (legacy spiked_genotypes: 0 for spiked, 1 otherwise). Library-sized;
-    # consumers index it with batch_idx. Not yet used by the model -- see
-    # planning/congression-physics-plan.md, step 3.3.
+    # consumers index it with batch_idx. Sets the congressed fraction of the
+    # mixture transformation (transformation/mixture.py).
     bulk_fraction: Any = field(default=None)
 
     # Fixed co-resident plasmid sets for the congression mixture, drawn once
     # by ModelOrchestrator._draw_coresident_sets. coresident_idx: int,
     # (num_genotype, K, N_max), library (growth-tensor) genotype indices,
     # -1 = empty slot; coresident_n: int, (K,), co-residents per set.
-    # Library-sized; consumers index the first axis with batch_idx. Not yet
-    # used by the model -- see planning/congression-physics-plan.md, 3.3c.
+    # Library-sized; consumers index the first axis with batch_idx. Used by
+    # the mixture transformation (transformation/mixture.py).
     coresident_idx: Any = field(default=None)
     coresident_n: Any = field(default=None)
 
@@ -123,8 +122,8 @@ class GrowthData:
 
     # Precomputed theta at growth titrant concentrations for *every* genotype
     # in the library (shape (num_titrant_name, num_titrant_conc, true_num_genotype)),
-    # used only by transformation components whose congression correction needs
-    # a population-wide reference distribution (see transformation/_congression.py).
+    # used only by transformation components that need a population-wide
+    # reference (NEEDS_POPULATION; see transformation/mixture.py).
     # None (the default) tells `jax_model` to compute this locally from
     # `data.growth` itself, which is only correct when `data.growth` already
     # spans the full genotype population (true during SVI training, since
@@ -140,7 +139,6 @@ class GrowthData:
     # the dk_geno/activity components supply these themselves
     # (return_population=True). A posterior forward pass that substitutes
     # batch-sized latents cannot, so prediction code must pass them here.
-    # Not yet read by the model.
     external_dk_population: Any = field(default=None)
     external_activity_population: Any = field(default=None)
 

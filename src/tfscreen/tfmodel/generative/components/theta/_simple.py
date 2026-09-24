@@ -31,8 +31,8 @@ The population moments ``(mu, sigma)`` are derived from ``theta_values``:
 * 3-D input: ``mu = mean(logit(theta_values), axis=-1, keepdims=True)``;
   ``sigma = max(std(logit(theta_values), axis=-1, keepdims=True), floor)``.
 
-Both variants return moments of shape ``(T, C, 1)`` to satisfy the
-contract used by downstream transformations (e.g. ``transformation.logit_norm``).
+Both variants return moments of shape ``(T, C, 1)`` to satisfy the theta
+component interface (``get_population_moments``).
 """
 
 import jax.numpy as jnp

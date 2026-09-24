@@ -11,13 +11,17 @@ from tfscreen.tfmodel.data_class import (
     DataClass, PriorsClass, GrowthData, BindingData, 
     GrowthPriors, BindingPriors
 )
+from tfscreen.tfmodel.generative.components.transformation._classes import (
+    single_class,
+)
 
 # --- Mocks ---
 
 # Define minimal mocks for the nested data structures
 class MockGrowthData(namedtuple("MockGrowthData", [
-        "t_pre", "t_sel", "congression_mask", "num_genotype",
-        "external_theta_population", "batch_idx", "geno_theta_idx",
+        "t_pre", "t_sel", "num_genotype",
+        "external_theta_population", "external_dk_population",
+        "external_activity_population", "batch_idx", "geno_theta_idx",
         "scatter_theta"])):
     """Namedtuple with a flax-struct-like ``.replace()`` for exercising the
     full-population congression branch in jax_model without a real GrowthData."""
@@ -45,8 +49,9 @@ def mock_data():
     t_sel = jnp.array(3.0)
     
     growth = MockGrowthData(
-        t_pre=t_pre, t_sel=t_sel, congression_mask="mock_mask",
+        t_pre=t_pre, t_sel=t_sel,
         num_genotype=1, external_theta_population=None,
+        external_dk_population=None, external_activity_population=None,
         batch_idx=jnp.array([0]), geno_theta_idx=jnp.array([0]),
         # Deliberately non-default (1, not 0) so tests can confirm jax_model
         # preserves it rather than silently resetting it when building the
@@ -98,13 +103,21 @@ def mock_control():
     growth_transition_model = MagicMock(return_value=105.0)
     
     ln_cfu0_model = MagicMock(return_value=jnp.array([5.0])) # ln_cfu0 (must be array for softmax)
-    activity_model = MagicMock(return_value=1.0) # activity
-    dk_geno_model = MagicMock(return_value=0.0) # dk_geno
-    
-    transformation_model = MagicMock(return_value=(1.0, 1.0, 1.0)) # (lam, mu, sigma)
-    transformation_update = MagicMock(
-        side_effect=lambda t, params, mask=None, population_theta=None: t
-    )  # pass-through
+
+    # activity / dk_geno: scalars; with return_population=True they also
+    # return a library-ordered population.
+    activity_model = MagicMock(
+        side_effect=lambda *a, return_population=False, **k:
+            (1.0, jnp.array([1.0])) if return_population else 1.0)
+    dk_geno_model = MagicMock(
+        side_effect=lambda *a, return_population=False, **k:
+            (0.0, jnp.array([0.0])) if return_population else 0.0)
+
+    transformation_model = MagicMock(return_value=1.0)  # lambda
+    # One class holding every cell (the "single" behavior).
+    cell_classes = MagicMock(
+        side_effect=lambda focal, population, params, data:
+            single_class(jnp.asarray(focal[0]), focal[1], focal[2]))
     
     # Noise models just pass through or add noise. Let's pass through for simplicity.
     theta_binding_noise_model = MagicMock(side_effect=lambda n, x, p, data=None: x)
@@ -123,7 +136,7 @@ def mock_control():
         "ln_cfu0": ln_cfu0_model,
         "activity": activity_model,
         "dk_geno": dk_geno_model,
-        "transformation": (transformation_model, transformation_update, False),
+        "transformation": (transformation_model, cell_classes, False),
         "theta_binding_noise": theta_binding_noise_model,
         "theta_growth_noise": theta_growth_noise_model,
         "growth_noise": growth_noise_model,
@@ -154,8 +167,8 @@ def test_jax_model_execution_flow(mock_data, mock_priors, mock_control):
     # theta_model called with (name, growth_data, theta_priors)
     mock_control["theta"][0].assert_called_once_with("theta", mock_data.growth, "prior_theta")
 
-    # get_moments called with (theta, growth_data)
-    mock_control["theta"][2].assert_called_once_with(10.0, mock_data.growth)
+    # get_moments is no longer used (its only consumer, logit_norm, is gone)
+    mock_control["theta"][2].assert_not_called()
     
     # Calc Theta
     # Called twice: once for binding, once for growth
@@ -186,15 +199,17 @@ def test_jax_model_execution_flow(mock_data, mock_priors, mock_control):
         "ln_cfu0", mock_data.growth, "prior_cfu0"
     )
     
-    # Transformation
+    # Transformation: lambda, then the cell classes built from the
+    # genotype's (noisy) theta, activity and dk_geno
     mock_control["transformation"][0].assert_called_once_with(
-        "transformation", mock_data.growth, "prior_trans", anchors=(0.0, 1.0)
+        "transformation", mock_data.growth, "prior_trans"
     )
-    mock_control["transformation"][1].assert_called_once_with(
-        jnp.array(20.0), # theta_growth
-        params=(1.0, 1.0, 1.0),
-        mask="mock_mask"
-    )
+    (focal, population, params, data), _ = \
+        mock_control["transformation"][1].call_args
+    assert jnp.isclose(focal[0], 20.0) and focal[1] == 1.0 and focal[2] == 0.0
+    assert population is None
+    assert params == 1.0
+    assert data is mock_data.growth
     
     # Observers
     mock_control["observe_growth"].assert_called_once()
@@ -251,16 +266,21 @@ def test_jax_model_guide_flow(mock_data, mock_priors, mock_control):
 
 
 # ---------------------------------------------------------------------------
-# transformation_needs_population wiring (congression full-population fix)
+# transformation_needs_population wiring (congression mixture)
 # ---------------------------------------------------------------------------
+
+def _needs_population(mock_control):
+    transformation_model, cell_classes, _ = mock_control["transformation"]
+    mock_control["transformation"] = (transformation_model, cell_classes, True)
+    return cell_classes
+
 
 def test_jax_model_population_not_needed_skips_extra_calc_theta(
         mock_data, mock_priors, mock_control):
     """
-    When the transformation component doesn't need a population reference
-    (the "single" / "logit_norm" case, needs_population=False), calc_theta
-    must be called exactly twice (binding, growth) and transformation_update
-    must not receive a population_theta kwarg at all.
+    Without a population need ("single"), calc_theta runs exactly twice
+    (binding, growth), dk_geno/activity are called without
+    return_population, and cell_classes gets no population.
     """
     assert mock_control["transformation"][2] is False
 
@@ -268,65 +288,77 @@ def test_jax_model_population_not_needed_skips_extra_calc_theta(
         jax_model(mock_data, mock_priors, **mock_control)
 
     assert mock_control["theta"][1].call_count == 2
-
-    _, kwargs = mock_control["transformation"][1].call_args
-    assert "population_theta" not in kwargs
+    assert "return_population" not in mock_control["dk_geno"].call_args.kwargs
+    assert "return_population" not in mock_control["activity"].call_args.kwargs
+    (_, population, _, _), _ = mock_control["transformation"][1].call_args
+    assert population is None
 
 
 def test_jax_model_population_needed_computes_locally(
         mock_data, mock_priors, mock_control):
     """
-    When needs_population=True and no external override is supplied
-    (data.growth.external_theta_population is None — the training-time case),
-    jax_model must compute the population reference itself by calling
-    calc_theta a third time against a full-population data view (batch_idx /
-    geno_theta_idx spanning arange(num_genotype)). scatter_theta must be left
-    untouched (not reset to 0) so the result's leading dimensions match
-    theta_growth's exactly, which update_thetas relies on for broadcasting.
+    With a population need and no external references (training), jax_model
+    computes theta over a full-population data view (batch_idx /
+    geno_theta_idx = arange(num_genotype), scatter_theta untouched) and takes
+    dk_geno/activity populations from their components.
     """
-    transformation_model, transformation_update, _ = mock_control["transformation"]
-    mock_control["transformation"] = (transformation_model, transformation_update, True)
+    cell_classes = _needs_population(mock_control)
 
     with numpyro.handlers.seed(rng_seed=0):
         jax_model(mock_data, mock_priors, **mock_control)
 
     # binding, growth, and the extra population pass
     assert mock_control["theta"][1].call_count == 3
-
     third_call_data = mock_control["theta"][1].call_args_list[2].args[1]
     assert jnp.array_equal(third_call_data.batch_idx, jnp.arange(mock_data.growth.num_genotype))
     assert jnp.array_equal(third_call_data.geno_theta_idx, jnp.arange(mock_data.growth.num_genotype))
     assert third_call_data.scatter_theta == mock_data.growth.scatter_theta
 
-    _, kwargs = transformation_update.call_args
-    # calc_theta's mock is `lambda t, d: t * 2.0`; theta == 10.0 either way,
-    # so the population call reduces to the same 20.0 as the growth call.
-    assert jnp.isclose(kwargs["population_theta"], 20.0)
+    assert mock_control["dk_geno"].call_args.kwargs["return_population"] is True
+    assert mock_control["activity"].call_args.kwargs["return_population"] is True
+
+    (_, population, _, _), _ = cell_classes.call_args
+    theta_pop, activity_pop, dk_pop = population
+    assert jnp.isclose(theta_pop, 20.0)
+    assert jnp.array_equal(activity_pop, jnp.array([1.0]))
+    assert jnp.array_equal(dk_pop, jnp.array([0.0]))
 
 
 def test_jax_model_population_needed_uses_external_override(
         mock_data, mock_priors, mock_control):
     """
-    When needs_population=True and data.growth.external_theta_population is
-    already supplied (the prediction-time case, where data.growth may only
-    span a genotype subset), jax_model must use it directly rather than
-    computing a local (and, in that scenario, wrong) full-population value —
-    so calc_theta must be called only twice, not three times.
+    External references (prediction on a genotype subset) are used as-is: no
+    local population theta pass, and they replace the components' values.
     """
-    transformation_model, transformation_update, _ = mock_control["transformation"]
-    mock_control["transformation"] = (transformation_model, transformation_update, True)
+    cell_classes = _needs_population(mock_control)
 
-    external_population = jnp.array(999.0)
-    growth_with_override = mock_data.growth.replace(
-        external_theta_population=external_population
+    growth = mock_data.growth.replace(
+        external_theta_population=jnp.array(999.0),
+        external_dk_population=jnp.array([7.0]),
+        external_activity_population=jnp.array([3.0]),
     )
-    data_with_override = mock_data._replace(growth=growth_with_override)
-
     with numpyro.handlers.seed(rng_seed=0):
-        jax_model(data_with_override, mock_priors, **mock_control)
+        jax_model(mock_data._replace(growth=growth), mock_priors, **mock_control)
 
-    # No extra local population pass — only binding + growth.
     assert mock_control["theta"][1].call_count == 2
+    (_, population, _, _), _ = cell_classes.call_args
+    assert population[0] is growth.external_theta_population
+    assert population[1] is growth.external_activity_population
+    assert population[2] is growth.external_dk_population
 
-    _, kwargs = transformation_update.call_args
-    assert kwargs["population_theta"] is external_population
+
+def test_jax_model_population_missing_raises(mock_data, mock_priors,
+                                             mock_control):
+    """
+    If a component cannot supply its population (batch-sized latents) and no
+    external reference is given, jax_model refuses rather than building
+    congressed cells from nothing.
+    """
+    _needs_population(mock_control)
+    mock_control["dk_geno"] = MagicMock(
+        side_effect=lambda *a, return_population=False, **k:
+            (0.0, None) if return_population else 0.0)
+
+    with pytest.raises(ValueError, match="dk_geno"):
+        with numpyro.handlers.seed(rng_seed=0):
+            jax_model(mock_data, mock_priors, **mock_control)

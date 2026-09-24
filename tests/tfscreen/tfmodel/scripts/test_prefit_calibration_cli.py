@@ -857,7 +857,7 @@ class TestBuildCalibrationModel:
             "activity": "horseshoe_geno",         # → hierarchical
             "dk_geno": "fixed",              # → hierarchical
             "ln_cfu0": "fixed",              # → hierarchical
-            "transformation": "logit_norm",  # → single
+            "transformation": "mixture",  # → single
             "theta_growth_noise": "beta",    # → zero
             "theta_binding_noise": "beta",   # → zero
             "condition_growth": "linear",    # passthrough
@@ -909,7 +909,7 @@ class TestBuildCalibrationModel:
             "dk_geno": "pinned",
             "dk_geno_pins_file": "dk_geno_pins.csv",
             "ln_cfu0": "fixed",
-            "transformation": "logit_norm",
+            "transformation": "mixture",
             "theta_growth_noise": "beta",
             "theta_binding_noise": "beta",
             "condition_growth": "linear",
@@ -943,7 +943,7 @@ class TestBuildCalibrationModel:
             "dk_geno": "hierarchical_geno",
             "dk_geno_pins_file": "stale_pins.csv",
             "ln_cfu0": "fixed",
-            "transformation": "logit_norm",
+            "transformation": "mixture",
             "theta_growth_noise": "beta",
             "theta_binding_noise": "beta",
             "condition_growth": "linear",
@@ -965,7 +965,7 @@ class TestBuildCalibrationModel:
 
     def test_transformation_lambda_dropped_when_forced_to_single(self):
         """
-        Production transformation="empirical" carries a transformation_lambda
+        Production transformation="mixture" carries a transformation_lambda
         (mean, std) pair anchoring its lambda parameter. The calibration
         model always overrides transformation to "single", which has no
         lambda parameter -- ModelOrchestrator raises if transformation_lambda is
@@ -977,7 +977,7 @@ class TestBuildCalibrationModel:
             "activity": "horseshoe_geno",
             "dk_geno": "fixed",
             "ln_cfu0": "fixed",
-            "transformation": "empirical",
+            "transformation": "mixture",
             "transformation_lambda": (0.3572, 0.2592),
             "theta_growth_noise": "beta",
             "theta_binding_noise": "beta",
@@ -1008,7 +1008,7 @@ class TestBuildCalibrationModel:
             "activity": "horseshoe_geno",
             "dk_geno": "fixed",
             "ln_cfu0": "fixed",
-            "transformation": "logit_norm",
+            "transformation": "mixture",
             "theta_growth_noise": "beta",
             "theta_binding_noise": "beta",
             "condition_growth": "linear",
@@ -1034,7 +1034,7 @@ class TestBuildCalibrationModel:
                             "activity": "horseshoe_geno",
                             "dk_geno": "fixed",
                             "ln_cfu0": "fixed",
-                            "transformation": "logit_norm",
+                            "transformation": "mixture",
                             "theta_growth_noise": "beta",
                             "theta_binding_noise": "beta",
                             "spiked_genotypes": None,
@@ -1057,7 +1057,7 @@ class TestBuildCalibrationModel:
             "activity": "horseshoe_geno",
             "dk_geno": "hierarchical_geno",  # production value; not "pinned"
             "ln_cfu0": "fixed",
-            "transformation": "logit_norm",
+            "transformation": "mixture",
             "theta_growth_noise": "beta",
             "theta_binding_noise": "beta",
             "condition_growth": "linear",

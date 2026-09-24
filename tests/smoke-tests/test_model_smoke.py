@@ -15,7 +15,7 @@ SMOKE_CONFIGS = [
     # Default-ish config
     {
         "condition_growth":"linear",
-        "transformation":"empirical",
+        "transformation":"mixture",
         "theta":"hill_geno",
         "growth_transition":"instant",
         "dk_geno":"hierarchical_geno",
@@ -27,7 +27,7 @@ SMOKE_CONFIGS = [
     # test other condition growth and transformation
     {
         "condition_growth":"linear",
-        "transformation":"logit_norm",
+        "transformation":"mixture",
         "theta":"categorical_geno",
         "growth_transition":"memory",
         "dk_geno":"fixed",
@@ -38,7 +38,7 @@ SMOKE_CONFIGS = [
     # test other transition and transformation
     {
         "condition_growth":"power",
-        "transformation":"logit_norm",
+        "transformation":"mixture",
         "theta":"hill_geno",
         "growth_transition":"baranyi",
         "activity":"fixed",

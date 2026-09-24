@@ -217,12 +217,13 @@ def configure_model(binding_df,
         'thermo.O2_C12_K5_U0_a.PnnC', 'thermo.O2_C12_K5_U0_a.PddG', and
         their O2_C4_K3_U1_a / O2_C12_K5_U1_a unfolded equivalents).
     transformation_model : str, optional
-        Model for transformation correction. Allowed values are 'single'
-        (default), 'empirical', or 'logit_norm'.
+        Model for congression. Allowed values are 'single' (default; one
+        plasmid per cell) or 'mixture' (clean and congressed cells mixed at
+        the observable level). 'empirical' and 'logit_norm' were removed.
     transformation_lambda : list or tuple, optional
         ``(mean, std)`` -- the experimentally measured congression lambda,
         in linear space (e.g. ``(0.36, 0.05)``). Required when
-        ``transformation_model`` is 'empirical' or 'logit_norm'; forbidden
+        ``transformation_model`` is 'mixture'; forbidden
         when it is 'single'. Used to moment-match a LogNormal prior for the
         transformation's lambda parameter, replacing the manual step of
         hand-editing the priors/guesses CSVs with rescaled log-space values.

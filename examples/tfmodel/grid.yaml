@@ -43,10 +43,10 @@ configure_model:
     variants:
       - activity: horseshoe_geno
         dk_geno: hierarchical_geno
-        transformation: empirical
+        transformation: mixture
         # (mean, std) of the experimentally measured congression lambda, in
-        # linear space -- required whenever transformation is 'empirical'
-        # or 'logit_norm' (transformation and transformation_lambda always travel
+        # linear space -- required whenever transformation is 'mixture'
+        # (transformation and transformation_lambda always travel
         # together, hence the joint variant here).
         transformation_lambda: [0.3572, 0.13]
         theta_rescale: passthrough
