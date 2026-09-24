@@ -328,7 +328,7 @@ library_mixture:
 
 ## Experiments (bench)
 
-Underway (user, 2026-09-23); results expected 2026-09-24. They decide the
+Underway (user, 2026-09-23); first result 2026-09-24 (below). They decide the
 theta rule in step 4.
 
 - **Double transformation, tight + dead binder:** relative to the tight binder
@@ -341,6 +341,35 @@ theta rule in step 4.
   measure heterodimer formation.
 
 Record results here when they arrive.
+
+**Result, 2026-09-24 (user; student's experiment).** Growth in the pheS
+selection (4CP) at three IPTG concentrations; high IPTG induces the toxin and
+slows growth. Transformations at high DNA concentration of wt, D88A (super
+repressor, tight binder), K84L (barely binds), and the pairs wt:D88A and
+wt:K84L. At the intermediate IPTG: D88A fastest, wt intermediate, K84L no
+growth. wt:D88A grew faster than wt, slightly slower than D88A; wt:K84L grew
+faster than K84L, slightly slower than wt. So each pair grows between its
+parents, close to the tighter binder.
+
+- User's reading: not consistent with weaker-binder dominance; does not
+  separate stronger-binder dominance (max) from a partition-function rule.
+  Encouraging that the sign of the correction is right.
+- Limits (user): no direct lambda, so the mix of double transformants and
+  single transformants of each parent in the paired cultures is unknown
+  (high DNA concentration should give many doubles); pheS arm only.
+- Caveat (Claude): single transformants of both parents are present in a
+  paired culture, and the faster parent's singles take over under
+  exponential growth. So "between the parents, close to the faster" is
+  partly expected under any rule, including weak-binder dominance, if singles
+  make up much of the culture. What separates the rules is how close to the
+  faster parent the pair is given the fraction of doubles. It could be
+  firmed up by estimating that fraction (genotyping single colonies from the
+  paired transformation), by the shape of the growth curve (a mixture of
+  subpopulations speeds up over time as the fast one takes over; a clonal
+  double grows at a constant rate), or by growing verified clonal doubles,
+  though those segregate over generations
+  (`planning/plasmid-segregation-low-copy.md`).
+- Native MS: not available.
 
 ## Steps
 
