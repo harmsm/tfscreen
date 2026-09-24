@@ -551,6 +551,14 @@ checked with `tfs-summarize-calibration`.
        genotype, i.e. `bulk_fraction` 0, between, or 1).
    - [ ] **3.5 Calibration.** Step 2 simulator vs the new fit, with
      `tfs-summarize-calibration`; watch bulk genotypes without binding data.
+     Grid set up 2026-09-24 (user: cluster, both extra arms, `mixed` left
+     unstratified): `planning/studies/congression-calibration/`, 54 runs =
+     simulated lambda {0, 0.357, 1.0} x dk spread {wide, tight} x 3 seeds x
+     fit {single, mixture with matched lambda prior, mixture with the
+     measured 0.357 prior}, paired against `single`. Both sides use the max
+     theta rule, so this checks the machinery and also serves as the
+     baseline for step 4. Whether to run it before the bench result on the
+     dominance rule is still open (2026-09-24).
 4. **Theta rule.** Homodimer vs heterodimer soft max, chosen from the bench
    results, in both simulator and fit.
 5. **dk rule.** Soft-min family with an alpha sensitivity check, in both

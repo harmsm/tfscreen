@@ -505,3 +505,22 @@ class TestLegacyConfig:
 
         reloaded, _ = read_configuration(f"{out_prefix}_config.yaml")
         assert reloaded.settings["spiked_genotypes"] == ["wt", "A2L"]
+
+
+class TestPredictionSubset:
+    """Genotype-subset prediction copies a library_file model's settings."""
+
+    def test_copy_orchestrator_subset_keeps_library_file(self, library_file):
+        from tfscreen.tfmodel.analysis.prediction import copy_orchestrator
+
+        orchestrator = ModelOrchestrator(_growth_df(), _binding_df(),
+                                         library_file=library_file)
+        full = copy_orchestrator(orchestrator)
+        assert sorted(_masks(full)[0]) == sorted(GENOTYPES)
+
+        subset = copy_orchestrator(orchestrator, genotypes=["A2L", "A2C"])
+        assert subset.settings["library_file"] == library_file
+        labels, _, spiked = _masks(subset)
+        # A2L is still in the spiked origin, as in the full model.
+        assert dict(zip(labels, spiked)) == {"A2L": True, "A2C": False}
+

@@ -1,0 +1,110 @@
+#!/bin/bash -l
+#SBATCH --account=harmslab
+#SBATCH --job-name=cong_calib
+#SBATCH --output=run.out
+#SBATCH --error=run.err
+#SBATCH --partition=gpu
+#SBATCH --time=00-12:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gpus=1
+#SBATCH --ntasks-per-node=1
+
+# Congression calibration study, one run (rendered by tfs-setup-sim-grid from
+# planning/studies/congression-calibration/run.srun). Submit from the run
+# directory: sbatch run.srun
+
+# Swap lines if on cluster (module load) or local (XLA_FLAGS to use CPU)
+module load cuda/12.4.1
+#export XLA_FLAGS="--xla_force_host_platform_device_count=8"
+
+set -e
+
+FIT="{{ fit }}"
+LAM_PRIOR="{{ lam_prior }}"
+LAM_PRIOR_SD=0.05
+LAM_MEASURED=0.357
+
+# The simulated lambda and the seed live in tfs_sim_config.yaml.
+read -r SEED LAM_SIM < <(python -c "
+import yaml
+cf = yaml.safe_load(open('tfs_sim_config.yaml'))
+print(cf['seed'], cf.get('transformation_poisson_lambda') or 0.0)")
+
+# binding_data.spiked_binding.choose_by is resolved against the working
+# directory.
+cp "{{ hill_params_file }}" hill_params.csv
+
+# ---------------------------------------------------------------------------
+# 1. Simulate
+# ---------------------------------------------------------------------------
+echo ">>> Simulate (lambda=${LAM_SIM}, seed=${SEED})"
+tfs-simulate tfs_sim_config.yaml . --seed "${SEED}"
+
+# ---------------------------------------------------------------------------
+# 2. Configure
+# ---------------------------------------------------------------------------
+if [[ "${FIT}" == "single" ]]; then
+    TRANSFORMATION_ARGS=(--transformation_model single)
+else
+    if [[ "${LAM_PRIOR}" == "matched" ]]; then
+        LAM_MEAN=$(python -c "print(max(${LAM_SIM}, 0.01))")
+    else
+        LAM_MEAN=${LAM_MEASURED}
+    fi
+    TRANSFORMATION_ARGS=(--transformation_model mixture
+                         --transformation_lambda "${LAM_MEAN}" "${LAM_PRIOR_SD}")
+fi
+
+echo ">>> Configure (${FIT}, lambda prior ${LAM_PRIOR})"
+tfs-configure-model \
+    tfs_sim_binding.csv \
+    --growth_df tfs_sim_growth.csv \
+    --presplit_df tfs_sim_presplit.csv \
+    --condition_growth_model linear \
+    --growth_transition_model instant \
+    --ln_cfu0_model hierarchical_factored \
+    --dk_geno_model hierarchical_geno \
+    --activity_model fixed \
+    --theta_model hill_mut \
+    --theta_rescale_model passthrough \
+    --theta_growth_noise_model logit_normal \
+    --theta_binding_noise_model zero \
+    --growth_noise_model normal_kt \
+    --library_config tfs_sim_config.yaml \
+    --growth_shares_replicates \
+    --epistasis \
+    "${TRANSFORMATION_ARGS[@]}"
+
+# ---------------------------------------------------------------------------
+# 3. Pre-fit calibration, fit, posterior
+# ---------------------------------------------------------------------------
+echo ">>> Pre-fit calibration"
+tfs-prefit-calibration tfs_configure_config.yaml --seed "${SEED}"
+
+echo ">>> Fit model"
+tfs-fit-model tfs_configure_config.yaml \
+    --seed "${SEED}" \
+    --analysis_method svi \
+    --convergence_tolerance 0.0001
+
+echo ">>> Sample posterior"
+tfs-sample-posterior tfs_configure_config.yaml tfs_fit_model_checkpoint.pkl
+
+# ---------------------------------------------------------------------------
+# 4. Extract, predict, summarize
+# ---------------------------------------------------------------------------
+echo ">>> Extract parameters"
+tfs-extract-params tfs_configure_config.yaml tfs_posterior.h5
+
+echo ">>> Predict theta"
+tfs-predict-theta tfs_configure_config.yaml tfs_posterior.h5
+
+echo ">>> Predict growth"
+tfs-predict-growth tfs_configure_config.yaml tfs_posterior.h5 \
+    --num_marginal_samples=500
+
+echo ">>> Summarize fit"
+tfs-summarize-fit .
+
+echo ">>> Done"

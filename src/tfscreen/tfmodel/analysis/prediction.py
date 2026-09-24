@@ -275,7 +275,12 @@ def copy_orchestrator(orchestrator,
     # the subset must remain marked as spiked; those outside the subset are
     # simply omitted.  Dropping all spiked_genotypes would silently mis-classify
     # in-subset spiked genotypes as library genotypes and corrupt predictions.
-    if genotypes is not None:
+    # A model built from library_file reports the spiked list it derived, but
+    # the library table is the definition (and covers any subset), so the
+    # derived list is dropped, as write_configuration does.
+    if settings.get("library_file") is not None:
+        settings.pop("spiked_genotypes", None)
+    elif genotypes is not None:
         geno_set = set(geno_strs)
         orig_spiked = settings.get("spiked_genotypes") or []
         settings["spiked_genotypes"] = [

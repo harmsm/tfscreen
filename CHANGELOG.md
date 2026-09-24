@@ -202,6 +202,17 @@ fall into two kinds:
 
 ### Fixed
 
+- **Growth prediction failed on every model built from a library file.**
+  `tfs-predict-growth`, and everything else that goes through
+  `prediction.predict` (prior-predictive growth, the genotype trajectory
+  plots), raised. `prediction.copy_orchestrator` rebuilt the prediction model from
+  `orchestrator.settings`, which carries both `library_file` and the spiked
+  list derived from it, and `ModelOrchestrator` refuses the pair. It now
+  drops the derived list when `library_file` is set, as
+  `write_configuration` does. Configs from `tfs-configure-model
+  --library_config` (the only current path) were affected; legacy
+  `spiked_genotypes` configs were not.
+
 - **Per-genotype latents scrambled across genotypes under autoguides.**
   Several components sampled their per-genotype latents in a plate sized
   `data.batch_size`, so every numpyro autoguide -- including the `AutoDelta`

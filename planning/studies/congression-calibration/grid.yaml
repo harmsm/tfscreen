@@ -1,0 +1,74 @@
+# ---------------------------------------------------------------------------
+# Congression calibration grid (step 3.5 of planning/congression-physics-plan.md)
+#
+#   tfs-setup-sim-grid grid.yaml --out_prefix congression_calibration
+#   for d in congression_calibration/*/; do (cd "$d" && sbatch run.srun); done
+#
+# 3 lambda x 2 dk spreads x 3 seeds x 3 fits = 54 runs. See README.md.
+# ---------------------------------------------------------------------------
+
+base_config: simulate_config.yaml
+
+run_name: "lam{{ transformation_poisson_lambda }}__dkloc{{ dk_geno_hyper_loc }}__seed{{ seed }}__{{ fit }}_{{ lam_prior }}"
+
+output_file: run.srun
+
+
+simulate:
+
+  # --- Simulated congression rate ------------------------------------------
+  # 0 = no congression (null arm); 0.357 = measured; 1.0 = stress.
+
+  - name: lam
+    variants:
+      - transformation_poisson_lambda: 0.0
+      - transformation_poisson_lambda: 0.357
+      - transformation_poisson_lambda: 1.0
+
+  # --- dk_geno spread --------------------------------------------------------
+  # dk_geno = shift - exp(Normal(loc, scale)), wt = 0.
+  #   wide  (loc -3.5): SD 0.018/min, 5th-95th percentile -0.049 to 0.007
+  #                     (the example config)
+  #   tight (loc -7.0): SD 0.0006/min, mean ~0 (the measured regime, dk SD
+  #                     ~0.001/min)
+
+  - name: dk
+    variants:
+      - dk_geno_hyper_loc: -3.5
+        dk_geno_hyper_scale: 0.5
+        dk_geno_hyper_shift: 0.02
+      - dk_geno_hyper_loc: -7.0
+        dk_geno_hyper_scale: 0.5
+        dk_geno_hyper_shift: 0.001
+
+  # --- Simulation seed (also the fit seed) -----------------------------------
+
+  - name: seed
+    variants:
+      - seed: 1
+      - seed: 2
+      - seed: 3
+
+
+template:
+
+  # --- Fit ------------------------------------------------------------------
+  # single: no congression model (the paired baseline).
+  # mixture/matched: lambda prior centered on the simulated value (0.01 when
+  #   the simulated value is 0), SD 0.05.
+  # mixture/measured: lambda prior 0.357 +/- 0.05 whatever the truth, so
+  #   lambda = 0 and 1.0 test a misspecified prior. At lambda = 0.357 it is
+  #   the same fit as matched (a determinism check).
+
+  - name: fit
+    variants:
+      - fit: single
+        lam_prior: "off"
+      - fit: mixture
+        lam_prior: matched
+      - fit: mixture
+        lam_prior: measured
+
+  - name: files
+    variants:
+      - hill_params_file: hill_params.csv
