@@ -1,0 +1,5 @@
+# Grid outputs (tens of GB) and the calibration summary; see README.md.
+congression_calibration/
+calib/
+congression_calibration_masked/
+diagnosis/*.csv

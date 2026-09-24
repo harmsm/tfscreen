@@ -80,8 +80,86 @@ Arms average over `seed` (the default `--replicate_keys`).
 
 ## Commit
 
-Pending (set up 2026-09-24).
+Grid set up and run on `6e4735e` (2026-09-24).
 
-## Results
+## Results (grid.yaml, 2026-09-24)
 
-Pending.
+All 54 runs finished and SVI converged. `tfs-summarize-calibration` outputs
+are in `calib/` (not committed). The grid does not yet answer its question,
+for three reasons:
+
+1. **The k/dk_geno slide is unanchored.** In every run the `growth_k` error
+   mirrors the `dk_geno` error, and the spread of the `dk_geno` errors is
+   small (0.001 to 0.01/min): each genotype's dk is recovered up to one
+   global constant. Nothing pins it here: `hierarchical_geno` does not pin
+   wt, there is no `base_growth` data, and the prefit's Hessian-derived
+   `k_scale` hit its 0.1 ceiling. `single` fits drift -0.02 to 0 in k,
+   mixture fits +0.02 to +0.07 (true baselines 0.01 to 0.03). `dk_geno` and
+   `growth_k` calibration are therefore meaningless in this grid.
+2. **Congression is below the noise floor of this design.** `single`'s
+   errors do not change with the simulated lambda (growth RMSE 0.469 at
+   lambda 0 vs 0.471 at 1.0, tight dk; bulk theta without binding 0.180 vs
+   0.181), although 42% of a bulk genotype's cells are congressed at
+   lambda 1.0.
+3. **Lambda is pulled up whatever the truth.** With the 0.357 +/- 0.05
+   prior, posterior medians were 0.46 to 0.66 at a true lambda of 0,
+   0.46 to 0.60 at 0.357, and 0.44 to 0.63 at 1.0. With the matched prior at
+   1.0: 1.00 to 1.28. Seed 3 is highest in every arm.
+
+Also: the mixture's theta RMSE is slightly worse than `single`'s in every
+arm (0.20 to 0.22 vs 0.18, bulk genotypes), including lambda 0 with the
+matched prior, where the fitted lambda is ~0.004. Bulk theta 95% coverage is
+~0.65 in every arm, `single` included (a baseline overconfidence, separate
+from congression). Binding genotypes are recovered well everywhere (theta
+RMSE 0.015).
+
+## Diagnosis: the mixture fits the detection floor (2026-09-24)
+
+Scripts: [`diagnosis/`](diagnosis/) (run from that directory against the
+pulled grid). Runs 0001 (`single`) and 0002 (mixture, matched prior, true
+lambda 0, fitted lambda 0.004) were fit to the same data.
+
+- The mixture's forward model is right: at `single`'s posterior-median
+  latents with lambda = 1e-8 it reproduces `single`'s `growth_pred` to 1e-6.
+- The mixture fit leans on its congressed classes anyway: switching them off
+  at its own latents costs 36,700 in growth log-likelihood. A class weighted
+  0.2% can only matter that much by outgrowing the clean class by ~6 ln
+  units. The fit gets there through dk dilution: slow genotypes (true
+  dk_geno -0.02 to -0.05) are fit at ~-0.12, and their congressed cells,
+  with dk averaged against a co-resident, carry the late timepoints.
+- What those classes fit is the read-count floor. `ln_cfu` uses a
+  pseudocount of 1 (`process_raw/counts_to_lncfu.py`, the same path as real
+  data), so a dying genotype's late timepoints stall above the truth:
+
+  | reads | mean error vs truth (ln) | reported SD |
+  |---|---|---|
+  | 0 | +1.26 | 1.00 |
+  | 1-2 | +0.62 | 0.71 |
+  | 3-5 | +0.22 | 0.45 |
+  | 6-20 | +0.07 | 0.29 |
+
+  A single exponential cannot bend upward; a dying clean class plus a slower
+  congressed class can. Genotypes relying on congressed classes have zero
+  reads in 29% of their rows, against 6% for the rest.
+- This accounts for the grid results: more congressed weight fits the floor
+  better (lambda pulled up everywhere), the dk shifts move the fits along
+  the unanchored slide, and the mixture spends flexibility on the artifact.
+  `single` is biased by the same points, less visibly.
+- Real data share the pseudocount path, so a mixture fit to real data would
+  do the same.
+
+The 0.4 ln-unit error on well-measured rows is the simulator's per-tube
+growth noise (`tube_noise_sigma` x t; per-sample SD 0.374, within-sample
+0.054), which `growth_noise` is meant to absorb. Not a data problem.
+
+## Next: masked re-run (grid_masked.yaml)
+
+Tests the diagnosis by dropping growth rows with fewer than 5 reads before
+fitting (`min_counts`, handled in `run.srun`; 13,253 of 54,300 rows in the
+lambda 0 simulation). Same simulations as grid runs 0001-0003 and 0037-0039
+(wide dk, seed 1), 6 runs. If the diagnosis is right, the lambda 0 mixture
+matches `single`, and lambda stops being pulled up. The principled fix is a
+censored likelihood for floor observations (user, 2026-09-24: preferred
+next step over masking; fitting read counts directly is a longer-term
+option). The anchored re-run of the full grid (a `base_growth` block) waits
+on this.

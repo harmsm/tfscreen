@@ -588,6 +588,17 @@ checked with `tfs-summarize-calibration`.
      theta rule, so this checks the machinery and also serves as the
      baseline for step 4. Whether to run it before the bench result on the
      dominance rule is still open (2026-09-24).
+     Ran 2026-09-24 (all 54 converged); not yet usable. The k/dk_geno slide
+     is unanchored in this pipeline (no wt pin, no `base_growth`, prefit
+     `k_scale` at its ceiling); congression sits below the design's noise
+     floor (`single`'s errors do not change with lambda); and lambda is
+     pulled up whatever the truth. Diagnosis: the mixture uses its
+     congressed classes to fit the read-count detection floor (pseudocount
+     1 puts 0-read rows +1.3 ln above the truth), which real data share.
+     Next: `grid_masked.yaml` (rows with < 5 reads dropped) to test the
+     diagnosis; then a censored likelihood for floor observations (user's
+     preferred fix), then the full grid re-run with a `base_growth` anchor.
+     Details: `planning/studies/congression-calibration/README.md`.
 4. **Theta rule.** Homodimer vs heterodimer soft max, chosen from the bench
    results, in both simulator and fit.
 5. **dk rule.** Soft-min family with an alpha sensitivity check, in both

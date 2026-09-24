@@ -24,6 +24,9 @@ FIT="{{ fit }}"
 LAM_PRIOR="{{ lam_prior }}"
 LAM_PRIOR_SD=0.05
 LAM_MEASURED=0.357
+# Growth rows with fewer reads than this are dropped before configure (0 keeps
+# everything). grid_masked.yaml sets it; grid.yaml leaves the default.
+MIN_COUNTS={{ min_counts | default(0) }}
 
 # The simulated lambda and the seed live in tfs_sim_config.yaml.
 read -r SEED LAM_SIM < <(python -c "
@@ -40,6 +43,17 @@ cp "{{ hill_params_file }}" hill_params.csv
 # ---------------------------------------------------------------------------
 echo ">>> Simulate (lambda=${LAM_SIM}, seed=${SEED})"
 tfs-simulate tfs_sim_config.yaml . --seed "${SEED}"
+
+GROWTH_CSV=tfs_sim_growth.csv
+if [[ "${MIN_COUNTS}" -gt 0 ]]; then
+    GROWTH_CSV=tfs_sim_growth_min${MIN_COUNTS}.csv
+    python -c "
+import pandas as pd
+df = pd.read_csv('tfs_sim_growth.csv')
+kept = df[df['counts'] >= ${MIN_COUNTS}]
+kept.to_csv('${GROWTH_CSV}', index=False)
+print(f'Dropped {len(df) - len(kept)} of {len(df)} growth rows with counts < ${MIN_COUNTS}')"
+fi
 
 # ---------------------------------------------------------------------------
 # 2. Configure
@@ -59,7 +73,7 @@ fi
 echo ">>> Configure (${FIT}, lambda prior ${LAM_PRIOR})"
 tfs-configure-model \
     tfs_sim_binding.csv \
-    --growth_df tfs_sim_growth.csv \
+    --growth_df "${GROWTH_CSV}" \
     --presplit_df tfs_sim_presplit.csv \
     --condition_growth_model linear \
     --growth_transition_model instant \
