@@ -651,6 +651,26 @@ class RunInference:
         slices[pos] = slice(0, total_size)
         return merged[tuple(slices)]
 
+    def _batch_positional_latents(self):
+        """
+        Latent sites whose value has one entry per batch *position* rather
+        than per genotype (e.g. ``noise/beta``'s ``{name}_dist``).
+
+        Every other genotype-indexed latent is sampled at library size and
+        sliced to the batch inside its component with ``batch_idx``, so a
+        forward pass over a genotype chunk must hand it the full,
+        library-ordered value -- exactly as training does. Slicing it to the
+        chunk beforehand breaks components that index their parameters by
+        library position (``hill_geno``, ``thermo.*``, ``categorical_geno``):
+        every chunk after the first reads past the sliced array, and JAX
+        clamps the index instead of raising. Only the batch-positional
+        latents found here are sliced to the chunk.
+        """
+        if not hasattr(self, "_batch_positional_cache"):
+            self._batch_positional_cache = frozenset(
+                find_orchestrator_batch_dependent_latents(self.model))
+        return self._batch_positional_cache
+
     def _build_genotype_chunk_scanner(self, dim_map, sites_to_save):
         """
         Build a JIT-compiled forward-pass function for a single genotype chunk.
@@ -683,17 +703,25 @@ class RunInference:
         model_fn = self.model.jax_model
         get_batch = self.model.get_batch
         priors = self.model.priors
+        batch_positional = self._batch_positional_latents()
 
         @jax.jit
         def chunk_fn(data, latents, key, batch_indices):
+            # Output: every genotype-indexed site, sliced to this chunk.
             batch_latents = {
                 k: jnp.take(v, batch_indices, axis=dim_map[k]) if k in dim_map else v
+                for k, v in latents.items()
+            }
+            # Model input: library-sized latents stay whole (components slice
+            # them with batch_idx); only batch-positional ones are sliced.
+            model_latents = {
+                k: batch_latents[k] if k in batch_positional else v
                 for k, v in latents.items()
             }
             batch_data = get_batch(data, batch_indices)
 
             key, subkey = jax.random.split(key)
-            forward_sampler = Predictive(model_fn, posterior_samples=batch_latents)
+            forward_sampler = Predictive(model_fn, posterior_samples=model_latents)
             batch_pred = forward_sampler(subkey, priors=priors, data=batch_data)
 
             # Predictions take precedence over latents of the same name.
@@ -1316,10 +1344,17 @@ class RunInference:
                 if k in dim_map else v
                 for k, v in latent_samples.items()
             }
+            # Library-sized latents stay whole for the model (see
+            # _batch_positional_latents); batch_latents is only the output.
+            batch_positional = self._batch_positional_latents()
+            model_latents = {
+                k: batch_latents[k] if k in batch_positional else v
+                for k, v in latent_samples.items()
+            }
 
             batch_data = self.model.get_batch(data_on_gpu, batch_indices)
             forward_sampler = Predictive(self.model.jax_model,
-                                         posterior_samples=batch_latents)
+                                         posterior_samples=model_latents)
             pred_key = self.get_key()
             batch_pred = forward_sampler(pred_key,
                                          priors=self.model.priors,

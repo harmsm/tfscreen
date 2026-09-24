@@ -112,6 +112,46 @@ fall into two kinds:
 
 ### Changed
 
+- **Breaking: congression is now an observable-level mixture
+  (`transformation: mixture`).** The old `empirical` component replaced each
+  bulk genotype's theta by the expected maximum over co-resident plasmids and
+  grew one trajectory with the genotype's own dk_geno. Averaging theta cannot
+  represent a mixture of growth rates, and in simulation that correction
+  removed almost none of the congression error once dk_geno varies
+  (`planning/studies/congression-estimator/`). The `mixture` component splits
+  each genotype's cells into a clean class and K congressed classes built from
+  the fixed co-resident sets: a congressed cell takes theta and TF activity
+  from its highest-theta plasmid (at each titrant concentration) and the mean
+  dk_geno of its plasmids (dilution). Every class is grown through the usual
+  `theta_rescale` → `calculate_growth` → `growth_transition` pipeline on a
+  leading class axis, and the classes are mixed as
+  `ln_cfu = ln_cfu0 + logsumexp_c(log w_c + G_c)`, with
+  `w_cong = bulk_fraction * (1 - exp(-lambda))` split over the sets by the
+  Poisson(lambda) probability of their co-resident count. Theta noise acts on
+  the genotype's own theta before the classes are built; `theta_growth_pred`
+  is still the genotype's own theta.
+  - `empirical` and `logit_norm` are removed and refused by name with a
+    message; configs must switch to `transformation: mixture` (fits are not
+    comparable). `_congression.update_thetas` stays as a plain function for
+    Stage 1.5 of `tfs-fit-genotypes`.
+  - New transformation interface: `define_model`/`guide` sample lambda only;
+    `cell_classes(focal, population, params, data)` returns the classes;
+    `NEEDS_POPULATION` replaces `NEEDS_FULL_POPULATION_THETA`.
+  - `GrowthData.congression_mask` is removed; purity is `bulk_fraction`.
+  - The `categorical_geno`/`empirical` incompatibility check is gone (fixed in
+    step 3.3a).
+  - A `mixture` model with bulk genotypes but an empty co-resident pool is
+    refused when built.
+  - `predict()` passes library-wide references and the fitted model's
+    co-resident sets to the genotype-subset model: dk_geno and activity are
+    posterior medians of their deterministic sites; theta is the theta
+    component evaluated at posterior-median parameters over the whole library
+    on the *prediction's* concentration grid (which can differ from the fit's). A raw MAP
+    checkpoint with a `mixture` model now raises (run `tfs-sample-posterior`)
+    instead of warning and predicting without a background.
+  - Growth tensors grow by a factor of 1 + K (K = 16 by default); use
+    mini-batching or a smaller `congression_sets` on large libraries.
+
 - **Test reports and badges are no longer committed.** `reports/` and
   `docs/badges/` are gitignored and untracked; `run_all_tests.sh` now writes
   everything, badges included, under `reports/`, and stops on the first
@@ -240,6 +280,25 @@ fall into two kinds:
   - New `tests/tfscreen/tfmodel/generative/test_population_theta.py`
     checks, for every theta component (model and guide; shuffled full batch
     and mini-batch), that the full-population theta is library-ordered.
+
+- **Posterior files depended on `forward_batch_size`.** `get_posteriors`,
+  `get_laplace_posteriors` and `get_map_posteriors` run the model over
+  genotype chunks, and sliced every genotype-indexed latent to the chunk
+  first. Components that index library-sized parameters by library position
+  (`hill_geno`, `thermo.*`, and `categorical_geno`) then read past the sliced
+  arrays for every chunk after the first, and JAX clamped the index instead
+  of raising. So for any library larger than one chunk (512 genotypes by
+  default), the deterministic sites written for genotypes past the first
+  chunk (`theta_growth_pred`, `growth_pred`, and everything
+  `tfs-predict-theta`/`-growth` derive from them) were wrong. The forward pass
+  now receives library-sized latents whole, as in training, and slices only
+  batch-positional latents (`noise/beta`) and the saved output
+  (`RunInference._batch_positional_latents`). Posterior files for libraries
+  larger than `forward_batch_size` should be regenerated with
+  `tfs-sample-posterior`.
+  - New `tests/tfscreen/tfmodel/inference/test_forward_chunking.py` checks
+    that posterior and MAP posterior files are identical at
+    `forward_batch_size` 512 and 2.
 
 ## [0.4.4] - 2026-09-22
 
