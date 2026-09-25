@@ -18,7 +18,7 @@ from numpyro.handlers import seed, substitute, trace
 from tfscreen.tfmodel.configuration_io import read_configuration
 from tfscreen.tfmodel.inference.run_inference import RunInference
 
-GRID = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "congression_calibration")
+GRID = os.environ.get("GRID", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "congression_calibration"))
 RUNS = sys.argv[1:] or ["run_0001", "run_0002"]
 
 

@@ -604,6 +604,15 @@ checked with `tfs-summarize-calibration`.
      Filed 2026-09-24 as follow-ups: `planning/per-sample-level-offset.md`
      and `planning/count-likelihood.md`. Censoring waits on the masked
      results (user).
+     Masked re-run (2026-09-24): dropping rows with < 5 reads changed almost
+     nothing, so the floor was not the driver. Revised diagnosis: the
+     default `binding_weight` (growth rows / binding rows, ~251) with
+     simulated binding SD 0.001 dominates the objective; the mixture's
+     congressed classes let bulk genotypes hand their growth away (dk
+     dilution) so theta, and shared hill_mut effects, can follow binding.
+     Next: `grid_bw1.yaml` (binding_weight 1). The weight and the real
+     binding SDs (SE of a fitted Hill curve) are open questions for real
+     data (user, 2026-09-24).
 4. **Theta rule.** Homodimer vs heterodimer soft max, chosen from the bench
    results, in both simulator and fit.
 5. **dk rule.** Soft-min family with an alpha sensitivity check, in both

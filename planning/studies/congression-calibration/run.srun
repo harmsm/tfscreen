@@ -4,7 +4,7 @@
 #SBATCH --output=run.out
 #SBATCH --error=run.err
 #SBATCH --partition=gpu
-#SBATCH --time=00-12:00:00
+#SBATCH --time=00-02:00:00
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
 #SBATCH --gpus=1
@@ -27,6 +27,9 @@ LAM_MEASURED=0.357
 # Growth rows with fewer reads than this are dropped before configure (0 keeps
 # everything). grid_masked.yaml sets it; grid.yaml leaves the default.
 MIN_COUNTS={{ min_counts | default(0) }}
+# Binding likelihood weight passed to tfs-configure-model (empty = its default,
+# growth rows / binding rows). grid_bw1.yaml sets it to 1.
+BINDING_WEIGHT="{{ binding_weight | default('') }}"
 
 # The simulated lambda and the seed live in tfs_sim_config.yaml.
 read -r SEED LAM_SIM < <(python -c "
@@ -66,6 +69,11 @@ else
                          --transformation_lambda "${LAM_MEAN}" "${LAM_PRIOR_SD}")
 fi
 
+BINDING_WEIGHT_ARGS=()
+if [[ -n "${BINDING_WEIGHT}" ]]; then
+    BINDING_WEIGHT_ARGS=(--binding_weight "${BINDING_WEIGHT}")
+fi
+
 echo ">>> Configure (${FIT}, lambda prior ${LAM_PRIOR})"
 tfs-configure-model \
     tfs_sim_binding.csv \
@@ -84,7 +92,8 @@ tfs-configure-model \
     --library_config tfs_sim_config.yaml \
     --growth_shares_replicates \
     --epistasis \
-    "${TRANSFORMATION_ARGS[@]}"
+    "${TRANSFORMATION_ARGS[@]}" \
+    "${BINDING_WEIGHT_ARGS[@]}"
 
 # ---------------------------------------------------------------------------
 # 3. Pre-fit calibration, fit, posterior

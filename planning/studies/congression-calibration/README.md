@@ -114,7 +114,7 @@ matched prior, where the fitted lambda is ~0.004. Bulk theta 95% coverage is
 from congression). Binding genotypes are recovered well everywhere (theta
 RMSE 0.015).
 
-## Diagnosis: the mixture fits the detection floor (2026-09-24)
+## First diagnosis: the detection floor (2026-09-24; superseded, see below)
 
 Scripts: [`diagnosis/`](diagnosis/) (run from that directory against the
 pulled grid). Runs 0001 (`single`) and 0002 (mixture, matched prior, true
@@ -153,14 +153,64 @@ The 0.4 ln-unit error on well-measured rows is the simulator's per-tube
 growth noise (`tube_noise_sigma` x t; per-sample SD 0.374, within-sample
 0.054), which `growth_noise` is meant to absorb. Not a data problem.
 
-## Next: masked re-run (grid_masked.yaml)
+## Masked re-run (grid_masked.yaml, 2026-09-24): floor not the driver
 
-Tests the diagnosis by dropping growth rows with fewer than 5 reads before
-fitting (`min_counts`, handled in `run.srun`; 13,253 of 54,300 rows in the
-lambda 0 simulation). Same simulations as grid runs 0001-0003 and 0037-0039
-(wide dk, seed 1), 6 runs. If the diagnosis is right, the lambda 0 mixture
-matches `single`, and lambda stops being pulled up. The principled fix is a
-censored likelihood for floor observations (user, 2026-09-24: preferred
-next step over masking; fitting read counts directly is a longer-term
-option). The anchored re-run of the full grid (a `base_growth` block) waits
-on this.
+`grid_masked.yaml` dropped growth rows with fewer than 5 reads (`min_counts`
+in `run.srun`) and refit grid runs 0001-0003 and 0037-0039. The cluster
+reproduced the original simulations exactly. Comparison
+([`diagnosis/compare_masked.py`](diagnosis/compare_masked.py)), true lambda 0:
+
+| | full data | masked |
+|---|---|---|
+| lambda, measured prior (0.357 +/- 0.05) | 0.55 | 0.53 |
+| k offset, mixture (matched prior) | +0.062 | +0.065 |
+| bulk theta RMSE, mixture vs `single` | 0.267 vs 0.219 | 0.270 vs 0.220 |
+
+Lambda 1.0 behaved the same. The mixture still leans on its congressed
+classes (switching them off costs 21,100 in growth log-likelihood, against
+36,700 unmasked). The floor bias is real and censoring is still worth doing,
+but it does not drive the mixture's behavior.
+
+## Revised diagnosis: the binding weight (2026-09-24)
+
+Scripts: [`diagnosis/diag_basin.py`](diagnosis/diag_basin.py) and
+[`diagnosis/diag_sites.py`](diagnosis/diag_sites.py) (runs 0001/0002). The
+joint log density of the two lambda-0 fits differs almost entirely in the
+binding likelihood:
+
+| term | mixture fit - `single` fit |
+|---|---|
+| binding likelihood, as weighted in the fit | +1,044,800 |
+| growth likelihood | -37,600 |
+| everything else | about -1,100 |
+
+`ModelOrchestrator` scales the binding likelihood by `binding_weight`,
+which defaults to growth rows / binding rows (about 54,300 / 216 = 251
+here), and the simulated binding data have `theta_std` 0.001. Together they
+dominate the objective; `single` cannot fit them (residuals ~15 sigma,
+theta ~0.015). The mixture gives the fit a way out: pushing a genotype's own
+dk_geno far down removes its clean cells from its trajectory, its congressed
+classes (dk averaged with a co-resident) carry its growth, and its theta is
+free to follow binding. The 20 in-library binding genotypes gain 1,430; the
+4 spiked ones gain 2,730, mostly H74A (2,020), through hill_mut mutation
+effects shared with bulk genotypes carrying H74 changes. This accounts for
+lambda being pulled up, the slide, and the worse bulk theta and growth.
+Not a mixture bug: the weight also bends `single` fits, less visibly.
+
+Background (user, 2026-09-24): the weight was added when, with ~200,000
+growth genotypes and ~10 binding genotypes, fits ignoring the binding data
+won. That points to a conflict between the modalities over shared
+parameters (m, k, shared mutation effects) rather than a volume problem;
+the binding assay has since moved closer to cellular conditions. The
+binding SDs used on real data are the SE of a Hill curve fitted to the
+anisotropy points, which counts 9 correlated values as independent and
+leaves no room for differences between assay and cell.
+
+## Next: binding weight 1 (grid_bw1.yaml)
+
+The same 6 simulations as the masked grid, all rows, refit with
+`--binding_weight 1` (`binding_weight` in `run.srun`). If the revised
+diagnosis is right, the lambda-0 mixture matches `single`, lambda stops
+being pulled up, and the mixture's extra slide goes away. The simulation
+generates binding and growth consistently, so it tests the weighting, not
+the real modality mismatch.
