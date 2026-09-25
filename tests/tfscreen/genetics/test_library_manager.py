@@ -439,8 +439,10 @@ def test_prepare_indexes():
     lm.libraries_seen = {'1', '2'}
     lm.lib_lookup = ['.', '1', '.', '2', '2', '.', '1']
     lm.first_amplicon_residue = 42
-    # The contents of wt_blocks don't matter, only its length
-    lm.wt_blocks = [[] for _ in range(len(lm.lib_lookup))]
+    # Tile blocks are sites only where mut_blocks differs from wt_blocks
+    lm.wt_blocks = [['a'], ['gct'], ['c'], ['gat'], ['cgt'], ['g'], ['aaa']]
+    lm.mut_blocks = [['a'], ['gct', 'gat'], ['c'], ['gat', 'gct'], ['cgt', 'cct'],
+                     ['g'], ['tta']]
 
     # 2. Call the method under test
     lm._prepare_indexes()
@@ -814,8 +816,9 @@ def test_get_libraries_dispatcher(mock_get_singles,
     # should cause to call _get_spiked
     lm.run_config = {"spiked_seqs":"spike_call"} 
 
-    # 3. Call the method under test
-    dna_libs, aa_libs = lm.get_libraries()
+    # 3. Call the method under test (the mocked genotypes include no wt)
+    with pytest.warns(UserWarning, match="no wildtype sequence"):
+        dna_libs, aa_libs = lm.get_libraries()
 
     # 4. Assert that each helper was called correctly
     mock_get_singles.assert_called_once_with('1')
@@ -838,3 +841,130 @@ def test_get_libraries_dispatcher(mock_get_singles,
     }
     assert dna_libs == expected_dna
     assert aa_libs == expected_aa
+
+def test_prepare_indexes_skips_non_site_blocks():
+    """
+    Tile blocks identical to wt (non-degenerate codons, flanks) are not sites.
+    """
+    lm = LibraryManager.__new__(LibraryManager)
+    lm.libraries_seen = {'1'}
+    lm.lib_lookup = ['.', '1', '1', '1', '1']
+    lm.first_amplicon_residue = 1
+    lm.wt_blocks = [['a'], ['tg'], ['gct'], ['aaa'], ['c']]
+    lm.mut_blocks = [['a'], ['tg'], ['gct', 'gat'], ['aaa'], ['c']]
+
+    lm._prepare_indexes()
+
+    assert lm.indexers == {'1': [2]}
+
+
+def test_prepare_indexes_tile_without_sites():
+    """A tile with no codon differing from wt is a config error."""
+    lm = LibraryManager.__new__(LibraryManager)
+    lm.libraries_seen = {'1'}
+    lm.lib_lookup = ['.', '1']
+    lm.first_amplicon_residue = 1
+    lm.wt_blocks = [['a'], ['gct']]
+    lm.mut_blocks = [['a'], ['gct']]
+
+    with pytest.raises(ValueError, match="no library sites"):
+        lm._prepare_indexes()
+
+
+# ----------------------------------------------------------------------------
+# Library enumeration end to end: which codons count as sites
+# ----------------------------------------------------------------------------
+
+# wt: atg gct aaa | gat cgt  ->  M A K | D R  (residues 10-14)
+# tile 1 = codons 10-12, NNT at A11 only (GCT is an NNT codon: 1 wt entry)
+# tile 2 = codons 13-14, NNT at D13 only (GAT is an NNT codon: 1 wt entry)
+@pytest.fixture
+def partial_tile_config() -> dict:
+    return {
+        "reading_frame": 0,
+        "first_amplicon_residue": 10,
+        "wt_seq":      "atggctaaagatcgt",
+        "degen_sites": "...nnt...nnt...",
+        "tiles":       "111111111222222",
+        "tile_combos": ["single-1", "single-2", "double-1-2"],
+    }
+
+
+def _origin_counts(config):
+    """Total and wt degeneracy per library origin."""
+    df = LibraryManager(config).build_library_df()
+    df["library_origin"] = df["library_origin"].astype(str)
+    df["genotype"] = df["genotype"].astype(str)
+    total = df.groupby("library_origin")["degeneracy"].sum().to_dict()
+    wt = (df[df["genotype"] == "wt"]
+          .set_index("library_origin")["degeneracy"].to_dict())
+    return total, wt
+
+
+def test_enumeration_partial_tiles_count_only_sites(partial_tile_config):
+    total, wt = _origin_counts(partial_tile_config)
+    assert total == {"single-1": 16, "single-2": 16, "double-1-2": 256}
+    assert wt == {"single-1": 1, "single-2": 1, "double-1-2": 1}
+
+
+def test_enumeration_fully_degenerate_tiles(partial_tile_config):
+    partial_tile_config["degen_sites"] = "nntnntnntnntnnt"
+    total, wt = _origin_counts(partial_tile_config)
+    # 3 and 2 NNT sites; inter-tile doubles: 3 * 2 site pairs * 16 * 16
+    assert total == {"single-1": 48, "single-2": 32, "double-1-2": 1536}
+    # wt codons that are NNT: gct (A11), gat (D13), cgt (R14); atg/aaa are not
+    assert wt == {"single-1": 1, "single-2": 2, "double-1-2": 2}
+
+
+def test_enumeration_explicit_mutant_codon_is_a_site(partial_tile_config):
+    partial_tile_config["degen_sites"] = "...gat...nnt..."
+    partial_tile_config["tile_combos"] = ["single-1"]
+    # The only designed sequence is A11D, so the library has no wt
+    with pytest.warns(UserWarning, match="no wildtype sequence"):
+        df = LibraryManager(partial_tile_config).build_library_df()
+    assert list(df["genotype"].astype(str)) == ["A11D"]
+    assert list(df["degeneracy"]) == [1]
+
+
+def test_enumeration_flank_is_not_a_site(partial_tile_config):
+    # tile 1 starts one base into codon 10, leaving a 2-base left flank
+    partial_tile_config["tiles"] = ".11111111222222"
+    partial_tile_config["tile_combos"] = ["single-1"]
+    total, wt = _origin_counts(partial_tile_config)
+    assert total == {"single-1": 16}
+    assert wt == {"single-1": 1}
+
+
+def test_enumeration_library_composition_wt_share(partial_tile_config):
+    from tfscreen.genetics.library_design import library_composition_table
+
+    partial_tile_config["library_mixture"] = {"single-1": 1, "single-2": 1,
+                                              "double-1-2": 1}
+    comp = library_composition_table(partial_tile_config)
+    wt = comp.set_index("genotype").loc["wt"]
+    assert wt["pool_fraction"] == pytest.approx((1/16 + 1/16 + 1/256) / 3)
+    assert wt["bulk_fraction"] == pytest.approx(1.0)
+
+
+def test_enumeration_warns_without_wt(partial_tile_config):
+    # atg (M10) and aaa (K12) are not NNT codons, so no site encodes wt
+    partial_tile_config["degen_sites"] = "nnt...nnt......"
+    partial_tile_config["tiles"] = "111111111......"
+    partial_tile_config["tile_combos"] = ["single-1"]
+    with pytest.warns(UserWarning, match="no wildtype sequence"):
+        df = LibraryManager(partial_tile_config).build_library_df()
+    assert "wt" not in set(df["genotype"].astype(str))
+
+
+def test_enumeration_wt_spike_suppresses_warning(partial_tile_config):
+    import warnings
+
+    partial_tile_config["degen_sites"] = "nnt...nnt......"
+    partial_tile_config["tiles"] = "111111111......"
+    partial_tile_config["tile_combos"] = ["single-1"]
+    partial_tile_config["spiked_seqs"] = ["..............."]
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        df = LibraryManager(partial_tile_config).build_library_df()
+    wt = df[df["genotype"].astype(str) == "wt"]
+    assert list(wt["library_origin"].astype(str)) == ["spiked"]
