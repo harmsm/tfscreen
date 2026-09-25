@@ -634,6 +634,15 @@ checked with `tfs-summarize-calibration`.
      superseded. Next (user): resume anchored runs 0001/0002/0005 to
      convergence (`resume.srun`); fixing the SVI stop rule and warm-up goes
      to its own session, since it affects every `tfs-fit-model` fit.
+     Resumed to convergence (2026-09-25): the lambda-0 mixture matches
+     `single` (k at the truth, theta RMSE 0.131 vs 0.129), confirming the
+     transient; converging halves theta RMSE (0.23 to 0.13) but leaves
+     coverage low (0.55-0.66). Still open on converged fits: lambda pulled
+     up (0.043 at truth 0; 1.30 at truth 1.0 under a 1.0 +/- 0.05 prior).
+     The library enumeration bug behind the 39% wt pool is fixed
+     (bff2c51); new grids simulate the corrected library. Next: converged
+     `single` at lambda 1 (resume run 0004); then, after the convergence
+     fix, a lambda profile and the coverage question.
 4. **Theta rule.** Homodimer vs heterodimer soft max, chosen from the bench
    results, in both simulator and fit.
 5. **dk rule.** Soft-min family with an alpha sensitivity check, in both

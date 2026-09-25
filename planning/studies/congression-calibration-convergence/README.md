@@ -188,8 +188,15 @@ in tile 2's 37, so each single sub-library gets one wt entry per
 non-degenerate codon. For example, `single-1` has 30 wt entries plus the 16
 NNT codons at site 42. The simulator and the fit share the enumerator, so
 this is not a sim/fit mismatch. It does make this simulation unrepresentative
-of a library whose tiles are fully degenerate. Whether the enumeration is
-intended is an open question.
+of a library whose tiles are fully degenerate.
+
+**Resolved 2026-09-25 (bff2c51):** it was a bug. A site is now a codon whose
+designed sequence differs from wt. Fully degenerate designs (the real
+library, the examples) enumerate as before; this study config goes from
+46/67/3082 sequences (30/36/1080 wt) to 16/32/512 (0/1/0 wt), and wt's
+co-resident share from 0.39 to 0.003. Every grid in the calibration study
+was simulated and fit under the old enumeration (consistently on both
+sides); new grids from this config simulate a different library.
 
 ### 6. Status of the earlier diagnoses
 

@@ -312,12 +312,63 @@ What stands from the earlier sections: the read-count floor bias (0 reads
 +1.26 ln) and the binding weight's dominance of the objective, as facts about
 the data and the objective. Their effect on converged fits is open.
 
-## Next: resume to convergence (resume.srun)
+## Resumed to convergence (resume.srun, 2026-09-25)
 
-Route 1 of the review: resume anchored runs 0001 (`single`), 0002 (mixture,
-lambda 0) and 0005 (mixture, lambda 1) from their checkpoints, in copies
-(`<grid>_resumed/`), with the default max_num_epochs, then trace them with
-`../congression-calibration-convergence/trace_checkpoints.py`. If the
-mixture's k returns to the truth, the transient explanation is confirmed.
-Fixing the stop rule and the warm-up is a separate piece of work (general
-to `tfs-fit-model`).
+Anchored runs 0001 (`single`, lambda 0), 0002 (mixture, matched prior,
+lambda 0) and 0005 (mixture, matched prior, lambda 1.0), resumed from their
+checkpoints for the full default 100,000 epochs. Traced with
+`../congression-calibration-convergence/trace_checkpoints.py`: all three
+stop moving after ~70,000 epochs, at losses of 5.2e4 to 5.4e4 (1.7e5 to
+1.9e5 at the old stops). The resumed stop rule never fired, as expected.
+
+| growth_k | kanR+kan | kanR-kan | pheS+4CP | pheS-4CP |
+|---|---|---|---|---|
+| truth | 0.0107 | 0.0154 | 0.0214 | 0.0286 |
+| `single`, lambda 0 | 0.0102 | 0.0139 | 0.0212 | 0.0286 |
+| mixture, lambda 0 | 0.0109 | 0.0145 | 0.0220 | 0.0294 |
+| mixture, lambda 1 | 0.0120 | 0.0170 | 0.0226 | 0.0295 |
+
+| run | fit | lambda (95%) | k offset | dk offset | bulk theta RMSE | bulk theta 95% coverage |
+|---|---|---|---|---|---|---|
+| 0001 `single`, lambda 0 | stopped | | -0.0004 | +0.0020 | 0.230 | 0.75 |
+| | converged | | -0.0005 | +0.0014 | 0.129 | 0.66 |
+| 0002 mixture, lambda 0 | stopped | 0.004 (0.003-0.005) | +0.083 | -0.095 | 0.261 | 0.70 |
+| | converged | 0.043 (0.039-0.048) | +0.0002 | +0.0003 | 0.131 | 0.66 |
+| 0005 mixture, lambda 1 | stopped | 0.98 (0.92-1.04) | +0.021 | -0.031 | 0.227 | 0.73 |
+| | converged | 1.30 (1.29-1.32) | +0.0013 | -0.0029 | 0.173 | 0.55 |
+
+- **The transient explanation is confirmed.** Converged, the lambda-0
+  mixture matches `single` (k, dk_geno, theta RMSE 0.131 vs 0.129). The k
+  drift, the abandoned wt and the worse theta were artifacts of stopping
+  early.
+- **Converging halves the theta error** (bulk, no binding: 0.23 to 0.13).
+- **Coverage got worse** as the guide scales shrank (0.66, and 0.55 for the
+  lambda-1 mixture): converged mean-field SVI is overconfident here.
+- **Lambda is still pulled up, now with tight intervals that exclude the
+  truth:** 0.043 at a true 0, and 1.30 at a true 1.0 under a 1.0 +/- 0.05
+  prior (six prior SDs). Open.
+- Growth-noise nu at convergence: 61 (`single`), 28 (mixture lambda 0),
+  6.5 (mixture lambda 1). The lambda-1 mixture needs much heavier tails.
+
+These grids used the library enumeration from before bff2c51 (wt 39% of the
+co-resident pool; see the convergence study, result 5). Simulation and fit
+shared it, so these comparisons stand; new grids from `simulate_config.yaml`
+simulate a different library.
+
+## Next
+
+1. `single` on the lambda-1 data, converged (resume anchored run 0004 with
+   `resume.srun`; no new code needed), to see whether the mixture beats it
+   where congression is real.
+
+Items 2 and 3 need new fits, so they wait for the convergence work
+(separate session):
+
+2. Why lambda is pulled up on converged fits: profile lambda (fixed lambda
+   on a grid, everything else converged) on the lambda-0 and lambda-1 data,
+   then test candidate causes one at a time (the read-count floor, which
+   curves dying trajectories the way a mixture does; realized vs design
+   library composition in the simulator's transformation, including
+   `lib_assembly_skew_sigma`; the fixed co-resident sets).
+3. Coverage: why converged fits are overconfident (guide family, the
+   binding weight).
