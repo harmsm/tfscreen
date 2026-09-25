@@ -34,10 +34,6 @@ import yaml
 cf = yaml.safe_load(open('tfs_sim_config.yaml'))
 print(cf['seed'], cf.get('transformation_poisson_lambda') or 0.0)")
 
-# binding_data.spiked_binding.choose_by is resolved against the working
-# directory.
-cp "{{ hill_params_file }}" hill_params.csv
-
 # ---------------------------------------------------------------------------
 # 1. Simulate
 # ---------------------------------------------------------------------------

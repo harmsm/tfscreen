@@ -6,8 +6,8 @@
 #   - library_binding adds 20 in-library (bulk) binding anchors;
 #   - transformation_poisson_lambda and the dk_geno hyperparameters are set
 #     per run by grid.yaml.
-# binding_data.spiked_binding.choose_by names hill_params.csv relative to the
-# working directory; run.srun copies it into each run directory.
+# binding_data.spiked_binding.choose_by names hill_params.csv relative to this
+# file; tfs-setup-sim-grid rewrites it relative to each run directory.
 
 
 # ---------------------------------------------------------------------------

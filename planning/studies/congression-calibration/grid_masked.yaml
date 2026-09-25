@@ -49,7 +49,3 @@ template:
   - name: mask
     variants:
       - min_counts: 5
-
-  - name: files
-    variants:
-      - hill_params_file: hill_params.csv

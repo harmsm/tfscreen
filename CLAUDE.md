@@ -472,6 +472,7 @@ template:
 - Multi-key variants (multiple keys in one dict) always travel together and are never split.
 - `simulate` / `configure_model` variables go to the config; `template` variables go to the Jinja2 template only.  To share a variable, list it in both sections.
 - Variable names in blocks: `snake_case`.
+- File paths are the grid tool's job, never the run template's: relative paths resolve against the base config's directory (base config values) or the grid YAML's (overrides) and are written relative to each run subdir. `tfs-setup-sim-grid` resolves only the key paths listed in `_SIM_PATH_KEYS` (`setup_sim_grid_cli.py`; nested keys such as `binding_data.*.choose_by` and `empirical.phenotype_model` included, `choose_by` keywords excepted) — add any new file-valued simulate key there.
 
 ### Shared grid utilities
 
