@@ -620,6 +620,14 @@ checked with `tfs-summarize-calibration`.
      never engaged (k_scale at its 0.1 ceiling). No gradient bug: the
      mixture's SVI gradient matches `single`'s. Next: `grid_anchor.yaml`
      (prefit `--k_scale_ceiling 0.005`, weight 1).
+     Review (2026-09-25): none of the 3.5 fits converged. The stop rule is
+     relative to the loss at the start of SVI (~500 times the final loss).
+     The anchored grid's epoch checkpoints show that the mixture's k
+     overshoot is an early SVI excursion, still unwinding at the stop,
+     while `single` holds k at the truth. The simulated co-resident pool is
+     also 39% wt. Earlier diagnoses need re-judging on converged fits.
+     Proposed routes forward, not yet decided:
+     `planning/studies/congression-calibration-convergence/`.
 4. **Theta rule.** Homodimer vs heterodimer soft max, chosen from the bench
    results, in both simulator and fit.
 5. **dk rule.** Soft-min family with an alpha sensitivity check, in both
