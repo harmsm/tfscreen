@@ -43,8 +43,13 @@ NOTES
   subdirectory in the written config.
 - Relative paths already in the base config are resolved relative to the base
   config's location, then re-expressed relative to each subdirectory.
+- The file-path keys are listed in ``_SIM_PATH_KEYS``, nested ones included
+  (``empirical.phenotype_model``, ``binding_data.*.choose_by``). A
+  ``choose_by`` keyword (``stratified``/``random``) is not a path and is left
+  alone. Run templates never need to copy input files into the run directory.
 """
 
+import copy
 import itertools
 import json
 import os
@@ -60,8 +65,20 @@ from tfscreen.util.grid_utils import (
     relativize_template_vars as _relativize_template_vars,
 )
 
-# Top-level keys in the simulate config that hold file paths.
-_SIM_PATH_KEYS = frozenset({"thermo_data", "calibration_file"})
+# Keys in the simulate config that hold file paths, as key paths into the
+# (possibly nested) config dict. Add any new file-valued key here; a key missing
+# from this list is copied verbatim and then resolves against the run directory.
+_SIM_PATH_KEYS = (
+    ("thermo_data",),
+    ("calibration_file",),
+    ("empirical", "phenotype_model"),
+    ("binding_data", "spiked_binding", "choose_by"),
+    ("binding_data", "library_binding", "choose_by"),
+)
+
+# Values of a path key that are keywords, not paths (see
+# simulate/library_prediction.py::_is_file_choice).
+_PATH_KEYWORDS = frozenset({"stratified", "random"})
 
 # Fixed filename for the per-run config written into each subdirectory.
 _SIM_CONFIG_FILENAME = "tfs_sim_config.yaml"
@@ -86,11 +103,24 @@ def _expand_block(block):
 # ---------------------------------------------------------------------------
 
 def _resolve_paths(vars_dict, base_dir):
-    """Return a copy of vars_dict with _SIM_PATH_KEYS resolved to absolute paths."""
-    out = dict(vars_dict)
-    for key in _SIM_PATH_KEYS:
-        if key in out and out[key] and not os.path.isabs(out[key]):
-            out[key] = os.path.normpath(os.path.join(base_dir, out[key]))
+    """Return a copy of vars_dict with _SIM_PATH_KEYS resolved to absolute paths.
+
+    Nested key paths are followed only through dicts; missing or empty values,
+    absolute paths, non-strings and ``_PATH_KEYWORDS`` are left unchanged. The
+    input is not modified.
+    """
+    out = copy.deepcopy(vars_dict)
+    for key_path in _SIM_PATH_KEYS:
+        node = out
+        for key in key_path[:-1]:
+            node = node.get(key) if isinstance(node, dict) else None
+        if not isinstance(node, dict):
+            continue
+        val = node.get(key_path[-1])
+        if (not isinstance(val, str) or not val or os.path.isabs(val)
+                or val in _PATH_KEYWORDS):
+            continue
+        node[key_path[-1]] = os.path.normpath(os.path.join(base_dir, val))
     return out
 
 

@@ -202,6 +202,20 @@ fall into two kinds:
 
 ### Fixed
 
+- **`tfs-setup-sim-grid` left nested file paths unresolved.** Only the
+  top-level `thermo_data`/`calibration_file` keys were resolved; nested ones,
+  notably a `binding_data.spiked_binding.choose_by` or
+  `binding_data.library_binding.choose_by` params file and
+  `empirical.phenotype_model`, were copied verbatim into each run's
+  `tfs_sim_config.yaml` and then resolved against the run directory, so
+  `tfs-simulate` could not find them unless the run template copied the file
+  in. `_SIM_PATH_KEYS` (`simulate/scripts/setup_sim_grid_cli.py`) is now a
+  list of key paths, nested ones included; they resolve against the base
+  config's directory (base config) or the grid YAML's (simulate overrides) and
+  are written relative to the run directory. The `stratified`/`random`
+  `choose_by` keywords are left alone. The congression-calibration study's
+  `run.srun` no longer copies `hill_params.csv`, and its grid YAMLs drop the
+  `hill_params_file` template block.
 - **Growth prediction failed on every model built from a library file.**
   `tfs-predict-growth`, and everything else that goes through
   `prediction.predict` (prior-predictive growth, the genotype trajectory

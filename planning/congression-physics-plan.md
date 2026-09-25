@@ -18,6 +18,8 @@ related:
   - planning/plasmid-segregation-low-copy.md
   - planning/combination-specific-expression-effects.md
   - planning/estimate-spike-fraction-from-growth-curvature.md
+  - planning/per-sample-level-offset.md
+  - planning/count-likelihood.md
 ---
 
 ## Why
@@ -599,6 +601,9 @@ checked with `tfs-summarize-calibration`.
      diagnosis; then a censored likelihood for floor observations (user's
      preferred fix), then the full grid re-run with a `base_growth` anchor.
      Details: `planning/studies/congression-calibration/README.md`.
+     Filed 2026-09-24 as follow-ups: `planning/per-sample-level-offset.md`
+     and `planning/count-likelihood.md`. Censoring waits on the masked
+     results (user).
 4. **Theta rule.** Homodimer vs heterodimer soft max, chosen from the bench
    results, in both simulator and fit.
 5. **dk rule.** Soft-min family with an alpha sensitivity check, in both

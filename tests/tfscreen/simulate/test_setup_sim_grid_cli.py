@@ -251,3 +251,119 @@ simulate:
     assert cfg["observable_calculator"] == "eee"
     # Base config values not overridden are preserved
     assert cfg["reading_frame"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Nested file paths (binding_data.*.choose_by, empirical.phenotype_model)
+# ---------------------------------------------------------------------------
+
+def _read_run_config(out, run):
+    with open(os.path.join(out, run["run"], "tfs_sim_config.yaml")) as fh:
+        return yaml.safe_load(fh)
+
+
+def test_resolve_paths_nested_choose_by(tmp_path):
+    (tmp_path / "hill_params.csv").write_text("x")
+    cfg = {"binding_data": {"spiked_binding": {"choose_by": "hill_params.csv"},
+                            "library_binding": {"choose_by": "stratified",
+                                                "num": 5}}}
+    result = _resolve_paths(cfg, str(tmp_path))
+    assert (result["binding_data"]["spiked_binding"]["choose_by"]
+            == str(tmp_path / "hill_params.csv"))
+    assert result["binding_data"]["library_binding"]["choose_by"] == "stratified"
+    # The input is not modified
+    assert cfg["binding_data"]["spiked_binding"]["choose_by"] == "hill_params.csv"
+
+
+def test_resolve_paths_nested_phenotype_model(tmp_path):
+    result = _resolve_paths({"empirical": {"phenotype_model": "m.json"}},
+                            str(tmp_path))
+    assert result["empirical"]["phenotype_model"] == str(tmp_path / "m.json")
+
+
+def test_resolve_paths_missing_nested_parent(tmp_path):
+    cfg = {"binding_data": None, "empirical": "not-a-dict"}
+    assert _resolve_paths(cfg, str(tmp_path)) == cfg
+
+
+def test_setup_sim_grid_base_config_choose_by_file(tmp_path):
+    """A choose_by params file in the base config resolves from the run dir."""
+    study = tmp_path / "study"
+    study.mkdir()
+    (study / "hill_params.csv").write_text("genotype\nwt\n")
+    base = {"seed": 1,
+            "binding_data": {"spiked_binding": {"choose_by": "hill_params.csv"},
+                             "library_binding": {"choose_by": "random",
+                                                 "num": 3}}}
+    (study / "simulate_config.yaml").write_text(yaml.dump(base))
+    (study / "grid.yaml").write_text("""\
+base_config: simulate_config.yaml
+simulate:
+  - name: seed
+    variants:
+      - seed: 1
+      - seed: 2
+""")
+    out = str(tmp_path / "elsewhere" / "grid_out")
+    runs = setup_sim_grid(str(study / "grid.yaml"), out_prefix=out)
+    assert len(runs) == 2
+    for run in runs:
+        cfg = _read_run_config(out, run)
+        choose_by = cfg["binding_data"]["spiked_binding"]["choose_by"]
+        # Written relative to the run directory, and it resolves from there
+        assert not os.path.isabs(choose_by)
+        run_dir = os.path.join(out, run["run"])
+        assert (os.path.realpath(os.path.join(run_dir, choose_by))
+                == os.path.realpath(study / "hill_params.csv"))
+        # Keyword left alone
+        assert cfg["binding_data"]["library_binding"]["choose_by"] == "random"
+
+
+def test_setup_sim_grid_keyword_choose_by_unchanged(tmp_path):
+    """A choose_by keyword is kept even when a file of that name exists."""
+    (tmp_path / "stratified").write_text("x")
+    base = {"binding_data": {"spiked_binding": {"choose_by": "stratified"}}}
+    (tmp_path / "simulate_config.yaml").write_text(yaml.dump(base))
+    (tmp_path / "grid.yaml").write_text("""\
+base_config: simulate_config.yaml
+simulate:
+  - name: seed
+    variants:
+      - seed: 1
+""")
+    out = str(tmp_path / "grid_out")
+    runs = setup_sim_grid(str(tmp_path / "grid.yaml"), out_prefix=out)
+    cfg = _read_run_config(out, runs[0])
+    assert cfg["binding_data"]["spiked_binding"]["choose_by"] == "stratified"
+
+
+def test_setup_sim_grid_override_choose_by_from_grid_dir(tmp_path):
+    """A binding_data override resolves its choose_by against the grid YAML."""
+    base_dir = tmp_path / "base"
+    base_dir.mkdir()
+    (base_dir / "simulate_config.yaml").write_text(yaml.dump(
+        {"binding_data": {"spiked_binding": {"choose_by": "stratified"}}}))
+    grid_dir = tmp_path / "grid"
+    grid_dir.mkdir()
+    (grid_dir / "measured.csv").write_text("genotype\nwt\n")
+    (grid_dir / "grid.yaml").write_text("""\
+base_config: ../base/simulate_config.yaml
+simulate:
+  - name: binding
+    variants:
+      - binding_data:
+          spiked_binding:
+            choose_by: measured.csv
+""")
+    out = str(tmp_path / "grid_out")
+    runs = setup_sim_grid(str(grid_dir / "grid.yaml"), out_prefix=out)
+    cfg = _read_run_config(out, runs[0])
+    choose_by = cfg["binding_data"]["spiked_binding"]["choose_by"]
+    run_dir = os.path.join(out, runs[0]["run"])
+    assert (os.path.realpath(os.path.join(run_dir, choose_by))
+            == os.path.realpath(grid_dir / "measured.csv"))
+    # combo.json keeps the override as written
+    with open(os.path.join(run_dir, "combo.json")) as fh:
+        combo = json.load(fh)
+    assert (combo["simulate"]["binding_data"]["spiked_binding"]["choose_by"]
+            == "measured.csv")

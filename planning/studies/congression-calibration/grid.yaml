@@ -68,7 +68,3 @@ template:
         lam_prior: matched
       - fit: mixture
         lam_prior: measured
-
-  - name: files
-    variants:
-      - hill_params_file: hill_params.csv
