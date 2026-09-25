@@ -613,6 +613,13 @@ checked with `tfs-summarize-calibration`.
      Next: `grid_bw1.yaml` (binding_weight 1). The weight and the real
      binding SDs (SE of a fitted Hill curve) are open questions for real
      data (user, 2026-09-24).
+     Weight 1 (2026-09-24) did not fix it either (it did improve theta
+     coverage). Third diagnosis: the k/dk_geno slide is held only by wt's
+     dk_geno pin, the Student-t growth likelihood makes abandoning wt cheap
+     (the mixture fit misses wt by ~13.6 ln units), and the prefit k prior
+     never engaged (k_scale at its 0.1 ceiling). No gradient bug: the
+     mixture's SVI gradient matches `single`'s. Next: `grid_anchor.yaml`
+     (prefit `--k_scale_ceiling 0.005`, weight 1).
 4. **Theta rule.** Homodimer vs heterodimer soft max, chosen from the bench
    results, in both simulator and fit.
 5. **dk rule.** Soft-min family with an alpha sensitivity check, in both

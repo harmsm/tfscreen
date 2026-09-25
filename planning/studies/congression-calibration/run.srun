@@ -30,6 +30,9 @@ MIN_COUNTS={{ min_counts | default(0) }}
 # Binding likelihood weight passed to tfs-configure-model (empty = its default,
 # growth rows / binding rows). grid_bw1.yaml sets it to 1.
 BINDING_WEIGHT="{{ binding_weight | default('') }}"
+# Ceiling on the prefit's per-condition k prior scale (empty = its default,
+# 0.1). grid_anchor.yaml sets it low to pin the k/dk_geno slide.
+K_SCALE_CEILING="{{ k_scale_ceiling | default('') }}"
 
 # The simulated lambda and the seed live in tfs_sim_config.yaml.
 read -r SEED LAM_SIM < <(python -c "
@@ -98,8 +101,13 @@ tfs-configure-model \
 # ---------------------------------------------------------------------------
 # 3. Pre-fit calibration, fit, posterior
 # ---------------------------------------------------------------------------
+PREFIT_ARGS=()
+if [[ -n "${K_SCALE_CEILING}" ]]; then
+    PREFIT_ARGS=(--k_scale_ceiling "${K_SCALE_CEILING}")
+fi
+
 echo ">>> Pre-fit calibration"
-tfs-prefit-calibration tfs_configure_config.yaml --seed "${SEED}"
+tfs-prefit-calibration tfs_configure_config.yaml --seed "${SEED}" "${PREFIT_ARGS[@]}"
 
 echo ">>> Fit model"
 tfs-fit-model tfs_configure_config.yaml \

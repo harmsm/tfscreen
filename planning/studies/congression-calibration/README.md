@@ -171,7 +171,7 @@ classes (switching them off costs 21,100 in growth log-likelihood, against
 36,700 unmasked). The floor bias is real and censoring is still worth doing,
 but it does not drive the mixture's behavior.
 
-## Revised diagnosis: the binding weight (2026-09-24)
+## Second diagnosis: the binding weight (2026-09-24; superseded, see below)
 
 Scripts: [`diagnosis/diag_basin.py`](diagnosis/diag_basin.py) and
 [`diagnosis/diag_sites.py`](diagnosis/diag_sites.py) (runs 0001/0002). The
@@ -206,11 +206,57 @@ binding SDs used on real data are the SE of a Hill curve fitted to the
 anisotropy points, which counts 9 correlated values as independent and
 leaves no room for differences between assay and cell.
 
-## Next: binding weight 1 (grid_bw1.yaml)
+## Binding weight 1 (grid_bw1.yaml, 2026-09-24): weight not the driver
 
-The same 6 simulations as the masked grid, all rows, refit with
-`--binding_weight 1` (`binding_weight` in `run.srun`). If the revised
-diagnosis is right, the lambda-0 mixture matches `single`, lambda stops
-being pulled up, and the mixture's extra slide goes away. The simulation
-generates binding and growth consistently, so it tests the weighting, not
-the real modality mismatch.
+The same 6 simulations refit with `--binding_weight 1`
+([`diagnosis/compare_masked.py`](diagnosis/compare_masked.py), which now
+takes the follow-up grids as arguments). True lambda 0:
+
+| | original | masked | weight 1 |
+|---|---|---|---|
+| lambda, measured prior (0.357 +/- 0.05) | 0.55 | 0.53 | 0.47 |
+| k offset, mixture (matched prior) | +0.062 | +0.065 | +0.080 |
+| bulk theta RMSE, mixture | 0.267 | 0.270 | 0.247 |
+| bulk theta RMSE, `single` | 0.219 | 0.220 | 0.227 |
+
+Theta 95% coverage improved in every arm at weight 1 (0.71 to 0.75, from
+0.61 to 0.70), so the weight matters for calibration, but the mixture's
+behavior survived. At weight 1 the mixture fit is worse than `single` on
+both binding and growth, so no trade-off explains it.
+
+## Third diagnosis: the unanchored slide (2026-09-24)
+
+- **Optimization, not the objective.** Under the mixture model's own joint
+  density, `single`'s solution at lambda 0.004 scores ~18,000 log units
+  better than where the mixture's SVI stopped
+  ([`diagnosis/diag_basin.py`](diagnosis/diag_basin.py), bw1 grid).
+- **The drift happens in SVI, after the MAP warm-up.** After the warm-up all
+  fits have sensible `growth_k` (truth 0.011 to 0.029); the matched-prior
+  mixture then climbs to 0.089 to 0.112, with the between-condition
+  differences collapsing, and every `dk_geno` falls by ~0.09 (`ln_cfu0`
+  barely moves, so it is not a per-genotype trap).
+- **No gradient bug.** The mean SVI gradient (64 draws) at `single`'s
+  solution is the same for both models (kanR+kan `growth_k`: -1.90e6 vs
+  -1.86e6), as is the exact joint-density gradient
+  ([`diagnosis/diag_gradient.py`](diagnosis/diag_gradient.py)). Both pull k
+  up from `single`'s point and back down from the mixture's: `single`
+  stopped short, the mixture overshot.
+- **The only anchor is weak.** `hierarchical_geno` pins wt's `dk_geno` to 0,
+  and it stays 0 in both fits. The mixture fit abandons wt instead: it
+  predicts wt's `ln_cfu` ~13.6 ln units too high (`single`: +1.3). The
+  growth likelihood is Student-t (fitted nu ~9 `single`, ~6.4 mixture),
+  whose cost grows only logarithmically: that miss costs ~2,000 log units
+  here, against ~44,000 under a Normal.
+- **The intended anchor never engaged.** The prefit's per-condition k prior
+  is meant to pin the slide, but its Hessian-based `k_scale` hit the 0.1
+  ceiling in every run.
+
+## Next: pin k (grid_anchor.yaml)
+
+The same 6 simulations at binding weight 1 with the prefit's k prior forced
+tight (`--k_scale_ceiling 0.005`, `k_scale_ceiling` in `run.srun`). The
+prefit's k estimates are themselves 0.006 to 0.009 low in these
+simulations, so expect a uniform `dk_geno` offset. If the diagnosis is
+right, the lambda-0 mixture matches `single` and lambda stops being pulled
+up. Open for real data: why the prefit cannot determine k, and whether nu
+should be free (a Normal likelihood would give wt's pin real weight).

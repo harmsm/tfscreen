@@ -1,10 +1,12 @@
 """
-Compare the masked runs (grid_masked.yaml, rows with < 5 reads dropped) with
-their unmasked twins in grid.yaml (same simulated data). Run from the study
-directory.
+Compare follow-up runs (grid_masked.yaml: rows with < 5 reads dropped;
+grid_bw1.yaml: binding_weight 1) with their twins in grid.yaml (same
+simulated data). Run from the study directory; arguments name the follow-up
+grid directories (default: congression_calibration_masked).
 """
 import glob
 import json
+import sys
 
 import numpy as np
 import pandas as pd
@@ -40,10 +42,13 @@ def summarize(d):
     return out
 
 
+GRIDS = sys.argv[1:] or ["congression_calibration_masked"]
 rows = []
 for m, o in PAIRS.items():
-    for tag, d in (("masked", glob.glob(f"congression_calibration_masked/run_{m}_*")[0]),
-                   ("full", glob.glob(f"congression_calibration/run_{o}_*")[0])):
+    runs = [("original", glob.glob(f"congression_calibration/run_{o}_*")[0])]
+    runs += [(g.replace("congression_calibration_", ""), glob.glob(f"{g}/run_{m}_*")[0])
+             for g in GRIDS]
+    for tag, d in runs:
         r = summarize(d)
         r["data"] = tag
         rows.append(r)
