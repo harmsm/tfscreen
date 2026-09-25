@@ -270,28 +270,114 @@ class TestGuideSelection:
         assert kwargs["guide_type"] == "auto_low_rank_multivariate_normal"
         assert kwargs["guide_kwargs"] == {"rank": 4, "init_scale": 0.05}
 
+    @staticmethod
+    def _patch_ri(mocker, guesses=None):
+        """RunInference whose site_values strips ``_auto_loc`` (like the
+        real one does for a MAP result) and keeps site-keyed values."""
+        ri = MagicMock(_iterations_per_epoch=1)
+        ri.site_values.side_effect = lambda values: {
+            (k[:-len("_auto_loc")] if k.endswith("_auto_loc") else k): v
+            for k, v in values.items()}
+        mocker.patch(f"{_CLI}.RunInference", return_value=ri)
+        mocker.patch(f"{_CLI}.read_configuration",
+                     return_value=(MagicMock(), dict(guesses or {})))
+        return ri
+
     def test_autoguide_starts_from_premap_solution(self, mocker):
         _patch_common(mocker)
+        self._patch_ri(mocker, guesses={"dk_geno_offset": jnp.zeros(3)})
         map_params = {"dk_geno_offset_auto_loc": jnp.ones(3),
                       "theta_hyper_auto_loc": jnp.array(2.0)}
-        mocker.patch(f"{_CLI}._run_map",
-                     return_value=(MagicMock(), map_params, True))
+        run_map_mock = mocker.patch(f"{_CLI}._run_map",
+                                    return_value=(MagicMock(), map_params,
+                                                  True))
         run_svi_mock = self._patch_run_svi(mocker)
         fit_model(config_file="dummy.yaml", seed=1, pre_map_num_epoch=5,
                   guide_type="auto_normal")
+        # the pre-MAP starts from the guesses
+        premap = run_map_mock.call_args.kwargs
+        assert set(premap["init_values"]) == {"dk_geno_offset"}
+        assert premap["max_num_epochs"] == 5
         init_values = run_svi_mock.call_args.kwargs["init_values"]
         assert set(init_values) == {"dk_geno_offset", "theta_hyper"}
         assert float(init_values["theta_hyper"]) == 2.0
+        # the MAP value replaces the guess
+        assert float(init_values["dk_geno_offset"][0]) == 1.0
 
     def test_autoguide_without_premap_starts_from_guesses(self, mocker):
         _patch_common(mocker)
-        guesses = {"dk_geno_offset": jnp.zeros(3)}
-        mocker.patch(f"{_CLI}.read_configuration",
-                     return_value=(MagicMock(), guesses))
+        self._patch_ri(mocker, guesses={"dk_geno_offset": jnp.zeros(3)})
         run_svi_mock = self._patch_run_svi(mocker)
         fit_model(config_file="dummy.yaml", seed=1, pre_map_num_epoch=0,
                   guide_type="auto_normal")
-        assert set(run_svi_mock.call_args.kwargs["init_values"]) == {"dk_geno_offset"}
+        kwargs = run_svi_mock.call_args.kwargs
+        assert set(kwargs["init_values"]) == {"dk_geno_offset"}
+        assert kwargs["init_params"] is None
+
+    @pytest.mark.parametrize("scale,expected", [(None, 0.1), (0.02, 0.02)])
+    def test_component_guide_starts_from_premap(self, mocker, scale,
+                                                expected):
+        _patch_common(mocker)
+        guesses = {"dk_geno_offset": jnp.zeros(3)}
+        ri = self._patch_ri(mocker, guesses=guesses)
+        ri.component_guide_start.return_value = {"dk_geno_offset_locs": 1}
+        mocker.patch(f"{_CLI}._run_map",
+                     return_value=(MagicMock(),
+                                   {"dk_geno_offset_auto_loc": jnp.ones(3)},
+                                   True))
+        run_svi_mock = self._patch_run_svi(mocker)
+        fit_model(config_file="dummy.yaml", seed=1, pre_map_num_epoch=5,
+                  guide_init_scale=scale)
+        args = ri.component_guide_start.call_args
+        assert float(args.args[0]["dk_geno_offset"][0]) == 1.0
+        assert args.kwargs["guesses"] == guesses
+        assert args.kwargs["init_scale"] == expected
+        kwargs = run_svi_mock.call_args.kwargs
+        assert kwargs["init_params"] == {"dk_geno_offset_locs": 1}
+        assert kwargs["init_values"] is None
+        assert kwargs["guide_kwargs"] == {}
+
+    def test_map_starts_from_guesses(self, mocker):
+        _patch_common(mocker)
+        self._patch_ri(mocker, guesses={"mu": 1.0})
+        run_map_mock = mocker.patch(f"{_CLI}._run_map",
+                                    return_value=(MagicMock(), {}, True))
+        fit_model(config_file="dummy.yaml", seed=1, analysis_method="map")
+        assert run_map_mock.call_args.kwargs["init_values"] == {"mu": 1.0}
+
+    def test_resume_skips_start_translation(self, tmp_path, mocker):
+        ckpt = tmp_path / "ckpt.pkl"
+        with open(ckpt, "wb") as f:
+            dill.dump({"guide_type": "component"}, f)
+        _patch_common(mocker)
+        ri = self._patch_ri(mocker)
+        run_map_mock = mocker.patch(f"{_CLI}._run_map")
+        run_svi_mock = self._patch_run_svi(mocker)
+        fit_model(config_file="dummy.yaml", checkpoint_file=str(ckpt))
+        run_map_mock.assert_not_called()
+        ri.site_values.assert_not_called()
+        assert run_svi_mock.call_args.kwargs["checkpoint_file"] == str(ckpt)
+
+    def test_convergence_options_forwarded(self, mocker):
+        _patch_common(mocker)
+        run_svi_mock = self._patch_run_svi(mocker)
+        fit_model(config_file="dummy.yaml", seed=1, pre_map_num_epoch=0,
+                  convergence_window_steps=500, patience=4,
+                  convergence_z=2.5, loss_rtol=1e-7, param_tolerance=0.1,
+                  adam_final_step_size=1e-5, adam_step_size_cut=0.5)
+        kwargs = run_svi_mock.call_args.kwargs
+        assert kwargs["convergence_window_steps"] == 500
+        assert kwargs["patience"] == 4
+        assert kwargs["convergence_z"] == 2.5
+        assert kwargs["loss_rtol"] == 1e-7
+        assert kwargs["param_tolerance"] == 0.1
+        assert kwargs["final_step_size"] == 1e-5
+        assert kwargs["step_size_cut"] == 0.5
+
+    def test_guide_init_scale_must_be_positive(self, mocker):
+        _patch_common(mocker)
+        with pytest.raises(ValueError, match="positive"):
+            fit_model(config_file="dummy.yaml", seed=1, guide_init_scale=0.0)
 
     @pytest.mark.parametrize("method", ["map", "nuts"])
     def test_guide_options_rejected_outside_svi(self, method, mocker):

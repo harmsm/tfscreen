@@ -96,7 +96,6 @@ def test_prefit_writes_per_condition_baseline_prior(tmpdir, library_smoke_yaml,
                            seed=1,
                            out_prefix=f"{out_prefix}_prefit",
                            max_num_epochs=3,
-                           convergence_check_interval=1,
                            patience=1,
                            hessian_chunk_size=8)
 
@@ -136,7 +135,7 @@ def test_configure_prefit_fit_full_loop_with_per_condition_priors(tmpdir,
 
     run_prefit_calibration(config_file=config_file, seed=1,
                            out_prefix=f"{out_prefix}_prefit",
-                           max_num_epochs=3, convergence_check_interval=1,
+                           max_num_epochs=3,
                            patience=1, hessian_chunk_size=8)
 
     # Sanity: the priors CSV now carries per-condition k_loc rows.

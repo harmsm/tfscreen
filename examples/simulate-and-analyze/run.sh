@@ -93,8 +93,7 @@ echo ">>> Fit model"
 tfs-fit-model \
     tfs_configure_config.yaml \
     --seed "${seed}" \
-    --analysis_method svi \
-    --convergence_tolerance 0.0001
+    --analysis_method svi
 
 # ---------------------------------------------------------------------------
 # 5. Sample posterior

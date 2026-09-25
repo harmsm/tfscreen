@@ -79,12 +79,13 @@ prefix ``tfs_prefit``):
 * ``tfs_prefit_checkpoint.pkl`` — optimizer checkpoint (can be passed to
   ``--checkpoint_file`` to resume an interrupted calibration run).
 * ``tfs_prefit_losses.txt`` — per-epoch loss history.
+* ``tfs_prefit_convergence.csv`` — one row per convergence window (see
+  *Convergence* below).
 
 .. code-block:: bash
 
     tfs-prefit-calibration tfs_configure_config.yaml \
-        --seed 42 \
-        --convergence_tolerance 0.00001
+        --seed 42
 
 Step 3: Fit Model (``tfs-fit-model``)
 --------------------------------------
@@ -95,10 +96,11 @@ via ``--analysis_method``:
 * **map** — Maximum A Posteriori optimisation (Adam). Fast; produces a point
   estimate. Use ``tfs-sample-posterior`` afterwards to obtain uncertainty
   estimates via a Laplace approximation.
-* **svi** (default) — Stochastic Variational Inference. Automatically runs a
-  short MAP pre-pass (``--pre_map_num_epoch``) before the full variational fit.
-  Produces a full approximate posterior; posterior samples are drawn after
-  convergence.
+* **svi** (default) — Stochastic Variational Inference. First runs a MAP
+  warm-up (at most ``--pre_map_num_epoch`` epochs) and starts the variational
+  fit at its solution, with guide scales capped at ``--guide_init_scale``
+  (default 0.1). Produces a full approximate posterior; posterior samples are
+  drawn with ``tfs-sample-posterior``.
 * **nuts** — No-U-Turn Sampler (exact MCMC). Slowest; most accurate.
 
 The example below matches the MAP configuration used in the example ``run.srun``:
@@ -110,18 +112,48 @@ The example below matches the MAP configuration used in the example ``run.srun``
         --seed 42 \
         --analysis_method map \
         --adam_step_size 1e-6 \
-        --convergence_check_interval 100 \
-        --convergence_window 50 \
+        --adam_final_step_size 1e-6 \
         --checkpoint_interval 100 \
         --max_num_epochs 100000000 \
-        --pre_map_num_epoch 100000 \
-        --convergence_tolerance 0.0005 \
         --patience 5
 
 Key outputs (with default ``--out_prefix tfs_fit_model``):
 
 * ``tfs_fit_model_checkpoint.pkl`` — optimizer checkpoint; resume with ``--checkpoint_file``
 * ``tfs_fit_model_params.npz`` — MAP/SVI parameter point estimates
+* ``tfs_fit_model_convergence.csv`` — one row per convergence window
+
+Convergence
+~~~~~~~~~~~
+
+``tfs-fit-model`` (SVI, MAP and the SVI warm-up) and ``tfs-prefit-calibration``
+decide when to stop the same way. Optimization runs in windows of
+``--convergence_window_steps`` optimizer steps (default 2000, and at least 10
+epochs). At the end of each window two questions are asked:
+
+* **Is the loss still improving?** A line through the medians of 20 blocks of
+  the window's losses gives the drop per window and its standard error. The
+  loss is improving if the drop is more than ``--convergence_z`` (default 3)
+  standard errors, and more than ``--loss_rtol`` (default 1e-6) of the loss.
+  The loss is judged against its own noise, so a noisy ELBO (few particles,
+  mini-batches) neither stops early nor runs forever.
+* **Is any parameter still moving?** Each parameter's trend over the window is
+  measured in units of its posterior SD (the guide scale; for MAP the prior
+  SD, and log units for positive parameters). Movement explained by noise, or
+  smaller than the optimizer can resolve at the current step size, does not
+  count; anything left above ``--param_tolerance`` (default 0.05) does.
+
+After ``--patience`` (default 3) windows in a row without loss improvement,
+the step size is multiplied by ``--adam_step_size_cut`` (default 0.1), down to
+``--adam_final_step_size``. At that floor the run stops after ``--patience``
+windows in which the loss has not improved *and* no parameter has moved.
+``--max_num_epochs`` is only a cap. A run that reaches it says so, and names
+the largest remaining movement. Resuming from a checkpoint continues at the
+checkpoint's step size.
+
+``{out_prefix}_convergence.csv`` records every window: the loss, its drop and
+standard error, the parameter moving most, the step size and the decision
+(``continue``, ``cut`` or ``converged``).
 
 Step 4: Sample Posterior (``tfs-sample-posterior``)
 ----------------------------------------------------

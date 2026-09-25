@@ -63,7 +63,6 @@ import tempfile
 import numpy as np
 import pandas as pd
 import jax.numpy as jnp
-import optax
 
 import yaml
 
@@ -1094,47 +1093,45 @@ def _resolve_csv_paths(config_file):
 # ---------------------------------------------------------------------------
 
 def _run_calibration_map(ri,
-                         init_params,
+                         init_values,
                          out_prefix,
                          checkpoint_file,
                          adam_step_size,
                          adam_final_step_size,
+                         adam_step_size_cut,
                          adam_clip_norm,
                          elbo_num_particles,
-                         convergence_tolerance,
-                         convergence_window,
+                         convergence_window_steps,
                          patience,
-                         convergence_check_interval,
+                         convergence_z,
+                         loss_rtol,
+                         param_tolerance,
                          checkpoint_interval,
                          max_num_epochs,
-                         init_param_jitter,
                          epoch_checkpoint_interval):
     """Set up a MAP SVI optimizer and run it; return ``(svi_state, params,
     converged)``.  Behaviour mirrors ``fit_model._run_map`` but
     the ``always_get_posterior`` plumbing is dropped (the pre-fit only
     consumes MAP point estimates and Hessian-derived sigmas)."""
-    schedule = optax.exponential_decay(
-        init_value=adam_step_size,
-        transition_steps=float(max_num_epochs * ri._iterations_per_epoch),
-        decay_rate=adam_final_step_size / adam_step_size,
-    )
-    map_obj = ri.setup_svi(adam_step_size=schedule,
+    map_obj = ri.setup_svi(adam_step_size=adam_step_size,
                            adam_clip_norm=adam_clip_norm,
                            elbo_num_particles=elbo_num_particles,
-                           guide_type="delta")
+                           guide_type="delta",
+                           init_values=init_values)
 
     svi_state, params, converged = ri.run_optimization(
         map_obj,
-        init_params=init_params,
         out_prefix=out_prefix,
         svi_state=checkpoint_file,
-        convergence_tolerance=convergence_tolerance,
-        convergence_window=convergence_window,
+        convergence_window_steps=convergence_window_steps,
         patience=patience,
-        convergence_check_interval=convergence_check_interval,
+        convergence_z=convergence_z,
+        loss_rtol=loss_rtol,
+        param_tolerance=param_tolerance,
+        final_step_size=adam_final_step_size,
+        step_size_cut=adam_step_size_cut,
         checkpoint_interval=checkpoint_interval,
         max_num_epochs=max_num_epochs,
-        init_param_jitter=init_param_jitter,
         epoch_checkpoint_interval=epoch_checkpoint_interval
     )
 
@@ -1159,15 +1156,16 @@ def run_prefit_calibration(config_file,
                            out_prefix="tfs_prefit",
                            adam_step_size=1e-3,
                            adam_final_step_size=1e-6,
+                           adam_step_size_cut=0.1,
                            adam_clip_norm=1.0,
                            elbo_num_particles=2,
-                           convergence_tolerance=1e-5,
-                           convergence_window=10,
-                           patience=10,
-                           convergence_check_interval=2,
+                           convergence_window_steps=2000,
+                           patience=3,
+                           convergence_z=3.0,
+                           loss_rtol=1e-6,
+                           param_tolerance=0.05,
                            checkpoint_interval=10,
                            max_num_epochs=100000,
-                           init_param_jitter=0.0,
                            epoch_checkpoint_interval=0,
                            k_scale_floor=_DEFAULT_K_SCALE_FLOOR,
                            m_scale_floor=_DEFAULT_M_SCALE_FLOOR,
@@ -1215,28 +1213,35 @@ def run_prefit_calibration(config_file,
     adam_step_size : float, optional
         Starting step size for the Adam optimizer (default 1e-3).
     adam_final_step_size : float, optional
-        Final step size for the Adam optimizer (default 1e-6).
+        Smallest step size for the Adam optimizer (default 1e-6).  The step
+        size is cut by ``adam_step_size_cut`` each time the fit plateaus, and
+        the run converges at the first plateau at this size.
+    adam_step_size_cut : float, optional
+        Factor applied to the step size at each cut (default 0.1).
     adam_clip_norm : float, optional
         Gradient clipping norm for the Adam optimizer (default 1.0).
     elbo_num_particles : int, optional
         Number of particles for ELBO estimation (default 2).
-    convergence_tolerance : float, optional
-        Relative change in loss to declare MAP convergence (default 1e-5).
-    convergence_window : int, optional
-        Number of epochs to average when checking convergence (default 10).
+    convergence_window_steps : int, optional
+        Optimizer steps per convergence window (default 2000; at least 10
+        epochs).
     patience : int, optional
-        Number of consecutive convergence checks that must pass before
-        declaring convergence (default 10).
-    convergence_check_interval : int, optional
-        Frequency (in epochs) at which convergence is checked (default 2).
+        Consecutive windows without loss improvement required for a step-size
+        cut, and (at the final step size) without loss improvement or
+        parameter movement required for convergence (default 3).
+    convergence_z : float, optional
+        Standard errors of change attributed to noise (default 3).
+    loss_rtol : float, optional
+        Loss changes per window below this fraction of the loss count as no
+        change (default 1e-6).
+    param_tolerance : float, optional
+        Parameter movement per window, beyond noise, still counted as no
+        change (default 0.05), in prior SDs (or log/logit units for positive
+        or bounded parameters).
     checkpoint_interval : int, optional
         Frequency (in epochs) between checkpoint writes (default 10).
     max_num_epochs : int, optional
-        Maximum number of MAP optimization epochs (default 100000).
-    init_param_jitter : float, optional
-        Jitter added to initial parameters to break symmetry (default 0.0).
-        The pre-fit benefits from determinism given a seed, so this is 0
-        by default (unlike tfs-fit-model which defaults to 0.1).
+        Maximum number of MAP optimization epochs (default 100000); a cap only.
     epoch_checkpoint_interval : int or None, optional
         Frequency (in epochs) to write numbered epoch checkpoints to a
         ``checkpoints/`` subdirectory (default 0). Set to 0 or None to
@@ -1308,22 +1313,28 @@ def run_prefit_calibration(config_file,
     effective_seed = seed if seed is not None else 0
     ri = RunInference(orchestrator_cal, effective_seed)
 
+    # Start from the configured guesses (resuming: from the checkpoint).
+    init_values = None
+    if checkpoint_file is None:
+        init_values = ri.site_values(orchestrator_cal.init_params)
+
     svi_state, params, converged = _run_calibration_map(
         ri,
-        init_params=orchestrator_cal.init_params,
+        init_values=init_values,
         out_prefix=out_prefix,
         checkpoint_file=checkpoint_file,
         adam_step_size=adam_step_size,
         adam_final_step_size=adam_final_step_size,
+        adam_step_size_cut=adam_step_size_cut,
         adam_clip_norm=adam_clip_norm,
         elbo_num_particles=elbo_num_particles,
-        convergence_tolerance=convergence_tolerance,
-        convergence_window=convergence_window,
+        convergence_window_steps=convergence_window_steps,
         patience=patience,
-        convergence_check_interval=convergence_check_interval,
+        convergence_z=convergence_z,
+        loss_rtol=loss_rtol,
+        param_tolerance=param_tolerance,
         checkpoint_interval=checkpoint_interval,
         max_num_epochs=max_num_epochs,
-        init_param_jitter=init_param_jitter,
         epoch_checkpoint_interval=epoch_checkpoint_interval
     )
 
@@ -1395,7 +1406,6 @@ def main():
         manual_arg_types={"config_file": str,
                           "seed": int,
                           "checkpoint_file": str,
-                          "init_param_jitter": float,
                           "k_scale_floor": float,
                           "m_scale_floor": float,
                           "k_scale_ceiling": float,

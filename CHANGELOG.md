@@ -114,6 +114,61 @@ fall into two kinds:
 
 ### Changed
 
+- **Breaking: convergence and step size in `tfs-fit-model` and
+  `tfs-prefit-calibration`.** The stop rule divided the window-to-window loss
+  change by the improvement since the start of the run. On the step-3.5
+  simulations the start-up loss was ~500 times the final loss, so fits stopped
+  (and printed "converged") while the loss was still falling 20-30% per 1000
+  epochs; after a resume the same rule effectively never fired. The rule
+  before that (change relative to the loss itself) never fired on a noisy
+  ELBO. Both measured against an arbitrary scale instead of the loss's noise.
+  - Optimization now runs in windows of `--convergence_window_steps` optimizer
+    steps (default 2000, at least 10 epochs). A window's loss is *improving*
+    if a line through 20 block medians drops by more than `--convergence_z`
+    (3) standard errors and more than `--loss_rtol` (1e-6) of the loss. Each
+    parameter's trend is measured in posterior SDs (guide scale), prior SDs
+    (MAP) or log units (positive parameters), beyond noise and the step size's
+    resolution; it is *moving* above `--param_tolerance` (0.05). See
+    `inference/convergence.py`.
+  - The step size is now cut by `--adam_step_size_cut` (0.1) after
+    `--patience` (3) windows without loss improvement, down to
+    `--adam_final_step_size`. This replaces the exponential decay over
+    `max_num_epochs`, which collapsed the pre-MAP's step size within its own
+    1000 epochs and made resumes depend on `max_num_epochs`. At the final step
+    size, `--patience` windows with neither loss improvement nor parameter
+    movement end the run. `--max_num_epochs` is only a cap, and a run that
+    reaches it says it has not converged and names the parameter still
+    moving.
+  - Removed flags: `--convergence_tolerance`, `--convergence_window` (replaced
+    by `--convergence_window_steps`, in optimizer steps) and
+    `--convergence_check_interval`. `--patience` now counts windows (default
+    3, was 10 checks). `--init_param_jitter` was removed from
+    `tfs-prefit-calibration` (it never affected the MAP). Old templates that
+    pass the removed flags now fail at argument parsing.
+  - New output `{out_prefix}_convergence.csv`, one row per window (loss, drop,
+    standard error, parameter moving most, step size, decision).
+    `{out_prefix}_losses.txt` is now `epoch,loss,step,step_size`, with the
+    loss the median of each block. Checkpoints record the step size and the
+    monitor state; a resume continues at that step size.
+  - `RunInference.run_optimization` takes `convergence_window_steps`,
+    `patience`, `convergence_z`, `loss_rtol`, `param_tolerance`,
+    `final_step_size` and `step_size_cut`, in place of `convergence_tolerance`,
+    `convergence_window` and `convergence_check_interval`.
+- **SVI and MAP start where they were meant to.** AutoDelta (MAP, the SVI
+  pre-MAP, `tfs-prefit-calibration`) ignored the configured guesses and
+  started at prior medians. The component guide ignored guesses keyed by site
+  name, and the pre-MAP result reached it under names it does not use
+  (`{site}_auto_loc`), so SVI never started from the pre-MAP. Now
+  `RunInference.site_values` collects site values from guesses and MAP
+  results, MAP runs start from them, and `RunInference.component_guide_start`
+  maps them onto the component guide's `{site}_loc(s)` parameters
+  (`inference/initialization.py`). The component guide's scales now start at
+  most `--guide_init_scale` (default 0.1; was the prior width, 1.0), as the
+  numpyro autoguides do. `--pre_map_num_epoch` is now a cap for a warm-up
+  that stops when it converges (default 10000, was a fixed 1000). On the smoke
+  data SVI starts ~18 times lower in loss, converges in 40k instead of 64k
+  steps, and ends ~185 nats lower.
+
 - **Breaking: congression is now an observable-level mixture
   (`transformation: mixture`).** The old `empirical` component replaced each
   bulk genotype's theta by the expected maximum over co-resident plasmids and
@@ -201,6 +256,11 @@ fall into two kinds:
     they replace `_apply_growth_params`.
 
 ### Fixed
+
+- **The SVI loss file and epoch checkpoints were numbered from the end of the
+  pre-MAP**, because the step counter carried over from the pre-MAP to SVI on
+  the same `RunInference`; the SVI `losses.txt` also lost its header. A run
+  started without a state now resets the counter.
 
 - **`tfs-setup-sim-grid` grids could not be moved, and nested file paths were
   not resolved.** Each run's `tfs_sim_config.yaml` and rendered template

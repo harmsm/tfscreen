@@ -65,7 +65,6 @@ def test_autoguide_round_trip(tmpdir, guide_type, guide_kwargs):
     _, params, _ = ri.run_optimization(svi, max_num_epochs=2,
                                        out_prefix=out_prefix,
                                        init_param_jitter=0.0,
-                                       convergence_tolerance=None,
                                        epoch_checkpoint_interval=None)
 
     with open(f"{out_prefix}_checkpoint.pkl", "rb") as f:
