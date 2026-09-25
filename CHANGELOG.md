@@ -202,6 +202,32 @@ fall into two kinds:
 
 ### Fixed
 
+- **Library enumeration counted every codon of a tile as a site, flooding
+  partially degenerate libraries with wt.** `LibraryManager._prepare_indexes`
+  (`genetics/library_manager.py`) indexed every block in a tile, so each
+  non-degenerate codon (and each out-of-frame flank) added one wt copy to every
+  single-mutant sub-library, and each such codon paired with a degenerate one
+  added a full single-mutant expansion to the double-mutant sub-libraries. A
+  site is now a codon whose designed sequence differs from wt (a degenerate or
+  explicit mutant codon). Fully degenerate tiles, including the real design and
+  `examples/process_raw`/`examples/simulate`, enumerate exactly as before.
+  Partially degenerate ones change a lot: in
+  `planning/studies/congression-calibration/simulate_config.yaml`, `single-1`
+  goes from 46 sequences (30 wt) to 16 (0 wt), `single-2` from 67 (36 wt) to
+  32 (1 wt), and `double-1-2` from 3082 (1080 wt) to 512 (0 wt), and wt's share
+  of the co-resident pool drops from 0.39 to 0.003 (0.59 to 0.015 for
+  `examples/simulate-and-analyze`). Everything built on the enumeration moves
+  with it for such libraries: the simulator's transformation draws,
+  `tfs-report-cfu0`, and `tfs-configure-model`'s library snapshot
+  (`pool_fraction`, `bulk_fraction`) and hence the fit's co-resident sets.
+  Simulations and fits made from partially degenerate configs should be
+  regenerated. Genotype names are unchanged. `tfs-process-fastq` no longer
+  expects the exact wt DNA sequence unless a site's expansion or a spiked
+  sequence contains it (it used to come from the non-degenerate codons). A
+  tile with no
+  site is now an error, and a design that encodes no wt at all (no site's
+  codon encodes the wt amino acid and no spiked sequence is wt) warns, since wt
+  is then not an expected genotype.
 - **`tfs-setup-sim-grid` grids could not be moved, and nested file paths were
   not resolved.** Each run's `tfs_sim_config.yaml` and rendered template
   referred to input files by a path relative to their original location, so

@@ -20,6 +20,8 @@ from itertools import (
 
 from typing import Iterable, Set, Dict, Union, Tuple, List
 
+import warnings
+
 
 def _check_char(some_str: str,
                 name: str,
@@ -508,18 +510,35 @@ class LibraryManager:
 
         self.indexers : dict[str, list[int]]
             A dictionary mapping each tile identifier (e.g., '1') to a
-            list of the integer indices where that tile's blocks appear in
-            the main block lists (`wt_blocks`, `mut_blocks`).
+            list of the integer indices of that tile's sites in the main
+            block lists (`wt_blocks`, `mut_blocks`). A site is a codon block
+            whose designed sequence differs from wt: a degenerate codon or
+            an explicit mutant codon. Non-degenerate codons and out-of-frame
+            flanks are part of the tile but are not sites. Counting them
+            would add one wt copy per such codon to every single-mutant
+            sub-library (and a full single-mutant expansion per pair to the
+            double-mutant ones), inflating wt's share of the pool.
         self.residues : list[str]
             A list of strings, where each string is the amino acid residue
             number corresponding to each block. This is offset by
             `self.first_amplicon_residue`.
+
+        Raises
+        ------
+        ValueError
+            If a tile has no sites (no codon differs from wt).
         """
 
         self.indexers = {}
         for lib in self.libraries_seen:
             self.indexers[lib] = [i for i in range(len(self.lib_lookup))
-                                  if self.lib_lookup[i] == lib]
+                                  if self.lib_lookup[i] == lib
+                                  and self.mut_blocks[i] != self.wt_blocks[i]]
+            if len(self.indexers[lib]) == 0:
+                raise ValueError(
+                    f"Tile '{lib}' has no library sites: none of its codons "
+                    f"differ from wt in degen_sites."
+                )
 
         self.residues = [f"{i + self.first_amplicon_residue}"
                          for i in range(len(self.wt_blocks))]
@@ -596,8 +615,9 @@ class LibraryManager:
         This method relies on pre-computed attributes: `self.indexers`,
         `self.wt_blocks`, and `self.mut_blocks`. It calls the helper method
         `self._convert_to_aa` for the final translation step.
-        The wild-type sequence will be present in the output list once for
-        each mutable position in the tile.
+        The wild-type sequence is present in the output once for each site
+        whose expansion includes the wt codon (e.g. GCT at an NNT site).
+        Codons that are not sites (see `_prepare_indexes`) contribute nothing.
 
         """
 
@@ -805,6 +825,18 @@ class LibraryManager:
             lib_seqs, aa_muts = self._get_spiked_seqs(self.run_config["spiked_seqs"])
             all_lib_seqs["spiked"] = lib_seqs
             all_aa_muts["spiked"] = aa_muts
+
+        # wt is only in the library if some site's expansion encodes the wt
+        # amino acid or a spiked sequence is wt. A design can legitimately
+        # lack it, but it is more often a mistake, so say so.
+        if not any(aa == "" for muts in all_aa_muts.values() for aa in muts):
+            warnings.warn(
+                "The library design encodes no wildtype sequence: no library "
+                "site's degenerate codon encodes the wt amino acid and no "
+                "spiked sequence is wt. wt will not be an expected genotype.",
+                UserWarning,
+                stacklevel=2,
+            )
 
 
         return all_lib_seqs, all_aa_muts
