@@ -19,9 +19,8 @@
 #
 # The copy goes to <grid_dir>_resumed/<run name>. Resuming overwrites
 # tfs_fit_model_checkpoint.pkl and tfs_fit_model_losses.txt, hence the copy.
-# A resumed fit re-bases the stop rule on its own improvement, so it will
-# probably run the full default max_num_epochs (100,000; keep the default,
-# which also sets the step-size decay horizon).
+# Written for fits from before the noise-referenced stop rule (5bf5b78),
+# whose stop rule fired early; the current rule stops on its own.
 
 # Swap lines if on cluster (module load) or local (XLA_FLAGS to use CPU)
 module load cuda/12.4.1
@@ -50,8 +49,7 @@ echo ">>> Resume fit (${METHOD}) from ${SRC}"
 tfs-fit-model tfs_configure_config.yaml \
     --seed "${SEED}" \
     --analysis_method "${METHOD}" \
-    --checkpoint_file tfs_fit_model_checkpoint.pkl \
-    --convergence_tolerance 0.0001
+    --checkpoint_file tfs_fit_model_checkpoint.pkl
 
 echo ">>> Sample posterior"
 tfs-sample-posterior tfs_configure_config.yaml tfs_fit_model_checkpoint.pkl

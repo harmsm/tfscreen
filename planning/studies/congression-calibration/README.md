@@ -350,6 +350,26 @@ stop moving after ~70,000 epochs, at losses of 5.2e4 to 5.4e4 (1.7e5 to
 - Growth-noise nu at convergence: 61 (`single`), 28 (mixture lambda 0),
   6.5 (mixture lambda 1). The lambda-1 mixture needs much heavier tails.
 
+`single` on the lambda-1 data (run 0004), resumed the same way, also
+converged (parameters flat after ~70,000 epochs). Against the lambda-1
+mixture (run 0005), same data:
+
+| lambda 1, converged | `single` (0004) | mixture (0005) |
+|---|---|---|
+| final loss | 5.59e4 | 5.40e4 |
+| dk_geno RMSE | 0.0105 | 0.0049 |
+| growth_m RMSE | 0.0012 | 0.0009 |
+| bulk theta RMSE | 0.155 | 0.173 |
+| log_hill_K RMSE | 1.03 | 1.17 |
+| bulk theta 95% coverage | 0.58 | 0.55 |
+| lambda | | 1.30 (truth 1.0) |
+
+The mixture fits the data better and halves the dk_geno error (the 3.0
+study's main congression channel, dk dilution) but does not recover theta:
+`single`'s theta RMSE rises from 0.129 at lambda 0 to 0.155 at lambda 1,
+and the mixture's is 0.173. The overestimated lambda may be
+over-correcting theta; the lambda profile tests that.
+
 These grids used the library enumeration from before bff2c51 (wt 39% of the
 co-resident pool; see the convergence study, result 5). Simulation and fit
 shared it, so these comparisons stand; new grids from `simulate_config.yaml`
@@ -357,18 +377,31 @@ simulate a different library.
 
 ## Next
 
-1. `single` on the lambda-1 data, converged (resume anchored run 0004 with
-   `resume.srun`; no new code needed), to see whether the mixture beats it
-   where congression is real.
+The convergence work has landed (5bf5b78: noise-referenced stop rule,
+step-size cuts on stalls, SVI started from a converged pre-MAP with guide
+scales capped at 0.1; `--convergence_tolerance` is gone and `run.srun` /
+`resume.srun` no longer pass it). New grids use it and simulate the
+corrected library (bff2c51).
 
-Items 2 and 3 need new fits, so they wait for the convergence work
-(separate session):
-
-2. Why lambda is pulled up on converged fits: profile lambda (fixed lambda
+1. Why lambda is pulled up on converged fits: profile lambda (fixed lambda
    on a grid, everything else converged) on the lambda-0 and lambda-1 data,
    then test candidate causes one at a time (the read-count floor, which
    curves dying trajectories the way a mixture does; realized vs design
    library composition in the simulator's transformation, including
    `lib_assembly_skew_sigma`; the fixed co-resident sets).
-3. Coverage: why converged fits are overconfident (guide family, the
+2. Coverage: why converged fits are overconfident (guide family, the
    binding weight).
+
+Set up (2026-09-25), anchored settings (binding weight 1, prefit
+`--k_scale_ceiling 0.005`), corrected library (483 genotypes as before;
+wt's co-resident share 0.0026, from 0.39):
+
+- `grid_baseline.yaml`: lambda 0 and 1.0 x {`single`, mixture with the
+  matched prior} x seeds 1 and 2 (8 runs). Does the new stop rule end runs
+  cleanly, and do the converged results above hold on the corrected
+  library?
+- `grid_profile.yaml`: the mixture with lambda held at 0.6, 0.8, 1.0, 1.2,
+  1.4 (`lam_prior: fixed`, prior SD 0.1% of the value) on the lambda-1,
+  seed-1 simulation (5 runs). Loss against lambda says whether the data
+  prefer lambda > 1; theta error against lambda says whether theta is
+  recovered at the true lambda.

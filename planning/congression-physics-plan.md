@@ -640,9 +640,11 @@ checked with `tfs-summarize-calibration`.
      coverage low (0.55-0.66). Still open on converged fits: lambda pulled
      up (0.043 at truth 0; 1.30 at truth 1.0 under a 1.0 +/- 0.05 prior).
      The library enumeration bug behind the 39% wt pool is fixed
-     (bff2c51); new grids simulate the corrected library. Next: converged
-     `single` at lambda 1 (resume run 0004); then, after the convergence
-     fix, a lambda profile and the coverage question.
+     (bff2c51); new grids simulate the corrected library. Converged at
+     lambda 1, the mixture beats `single` on fit (loss 5.40e4 vs 5.59e4)
+     and dk_geno (RMSE 0.0049 vs 0.0105) but not theta (0.173 vs 0.155),
+     with lambda at 1.30. The convergence overhaul (5bf5b78) is in; next:
+     a lambda profile and the coverage question, on new grids.
 4. **Theta rule.** Homodimer vs heterodimer soft max, chosen from the bench
    results, in both simulator and fit.
 5. **dk rule.** Soft-min family with an alpha sensitivity check, in both

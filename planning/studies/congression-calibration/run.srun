@@ -35,6 +35,8 @@ BINDING_WEIGHT="{{ binding_weight | default('') }}"
 K_SCALE_CEILING="{{ k_scale_ceiling | default('') }}"
 # tfs-fit-model --analysis_method (svi or map). grid_controls.yaml sets map.
 ANALYSIS_METHOD="{{ analysis_method | default('svi') }}"
+# Lambda value for lam_prior "fixed" (grid_profile.yaml).
+LAM_FIXED="{{ lam_fixed | default('') }}"
 
 # The simulated lambda and the seed live in tfs_sim_config.yaml.
 read -r SEED LAM_SIM < <(python -c "
@@ -67,6 +69,10 @@ if [[ "${FIT}" == "single" ]]; then
 else
     if [[ "${LAM_PRIOR}" == "matched" ]]; then
         LAM_MEAN=$(python -c "print(max(${LAM_SIM}, 0.01))")
+    elif [[ "${LAM_PRIOR}" == "fixed" ]]; then
+        # lambda held at LAM_FIXED (prior SD 0.1% of the value).
+        LAM_MEAN=${LAM_FIXED}
+        LAM_PRIOR_SD=$(python -c "print(${LAM_FIXED} * 1e-3)")
     elif [[ "${LAM_PRIOR}" == "fixed0" ]]; then
         # lambda pinned essentially at zero: the mixture is then single.
         LAM_MEAN=1e-6
@@ -118,8 +124,7 @@ tfs-prefit-calibration tfs_configure_config.yaml --seed "${SEED}" "${PREFIT_ARGS
 echo ">>> Fit model"
 tfs-fit-model tfs_configure_config.yaml \
     --seed "${SEED}" \
-    --analysis_method "${ANALYSIS_METHOD}" \
-    --convergence_tolerance 0.0001
+    --analysis_method "${ANALYSIS_METHOD}"
 
 echo ">>> Sample posterior"
 tfs-sample-posterior tfs_configure_config.yaml tfs_fit_model_checkpoint.pkl

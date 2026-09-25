@@ -7,6 +7,9 @@ congression_calibration_bw1/
 congression_calibration_anchor/
 congression_calibration_controls/
 fetch.sh
-*.csv
-*.json
 congression_calibration_anchor_resumed/
+# Written by tfs-setup-sim-grid next to a grid set up here; not inputs.
+grid_summary.json
+inputs/
+congression_calibration_baseline/
+congression_calibration_profile/

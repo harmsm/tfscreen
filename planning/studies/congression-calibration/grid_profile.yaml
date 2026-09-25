@@ -1,0 +1,59 @@
+# ---------------------------------------------------------------------------
+# Lambda profile on the lambda-1 simulation (congression calibration,
+# step 3.5)
+#
+#   tfs-setup-sim-grid grid_profile.yaml --out_prefix congression_calibration_profile
+#   for d in congression_calibration_profile/run_*/; do (cd "$d" && sbatch run.srun); done
+#
+# Converged mixture fits put lambda at 1.30 on data simulated at 1.0 (README
+# "Resumed to convergence"). Hold lambda fixed (lam_prior "fixed", prior SD
+# 0.1% of the value) at five values and fit everything else, on the same
+# simulation as grid_baseline.yaml's lambda-1 seed-1 runs. The loss against
+# lambda says whether the data prefer lambda > 1; theta error against lambda
+# says whether theta is recovered at the true lambda. Anchored settings as in
+# grid_baseline.yaml. 5 runs.
+# ---------------------------------------------------------------------------
+
+base_config: simulate_config.yaml
+
+run_name: "lam{{ transformation_poisson_lambda }}__seed{{ seed }}__{{ fit }}_{{ lam_prior }}{{ lam_fixed }}"
+
+output_file: run.srun
+
+
+simulate:
+
+  - name: lam
+    variants:
+      - transformation_poisson_lambda: 1.0
+
+  - name: dk
+    variants:
+      - dk_geno_hyper_loc: -3.5
+        dk_geno_hyper_scale: 0.5
+        dk_geno_hyper_shift: 0.02
+
+  - name: seed
+    variants:
+      - seed: 1
+
+
+template:
+
+  - name: fit
+    variants:
+      - fit: mixture
+        lam_prior: fixed
+
+  - name: lam_value
+    variants:
+      - lam_fixed: 0.6
+      - lam_fixed: 0.8
+      - lam_fixed: 1.0
+      - lam_fixed: 1.2
+      - lam_fixed: 1.4
+
+  - name: anchor
+    variants:
+      - binding_weight: 1.0
+        k_scale_ceiling: 0.005
