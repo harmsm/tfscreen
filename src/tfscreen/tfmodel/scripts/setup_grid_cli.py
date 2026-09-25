@@ -43,9 +43,36 @@ NOTES
       run_name: "{{ binding_df | basename }}__{{ condition_growth }}"
 - Incompatible component combinations are skipped automatically and logged in
   ``grid_summary.json``.
-- Relative paths in configure_model blocks (binding_df, growth_df,
-  thermo_data) are resolved relative to the grid YAML's directory, then
-  re-expressed relative to each subdirectory in the written config file.
+
+INPUT FILES
+-----------
+The grid directory is self-contained and can be moved as a unit (on and off a
+cluster, onto another partition). Every input file a run needs is copied into
+``<out_prefix>/inputs/`` once, and each run's config and rendered template
+refer to it as ``../inputs/<name>``. Nothing in a run points outside the grid.
+
+- The configure_model file arguments are the keys in ``_PATH_KEYS``
+  (``binding_df``, ``growth_df``, ``presplit_df``, ``base_growth_df``,
+  ``thermo_data``, ``library_config``). A relative value resolves against the
+  grid YAML's directory. tfs-configure-model reads the original file; the
+  written ``tfs_configure_config.yaml`` then names the copy wherever it
+  recorded that file (``data.*``, ``components.thermo_data``,
+  ``components.presplit_df``/``base_growth_df``, ``library.source``).
+- The priors, guesses and library-composition CSVs are per-run outputs written
+  next to the config (``priors_file``/``guesses_file``/``library_file``, read
+  relative to the config) and are left alone.
+- Data paths in the config are read relative to the working directory, so
+  each run is launched from its own directory (as the templates do).
+- A ``template`` variable that names an existing file (relative to the grid
+  YAML, or absolute) is copied the same way.
+- Two different files with the same name are kept apart by a numeric suffix
+  (``growth_2.csv``); the same file used by many runs is copied once.
+- Setup fails rather than write a run that depends on a location outside the
+  grid. Before anything is written: a missing input file, an input that is a
+  directory, a configure_model value outside ``_PATH_KEYS`` that names an
+  existing file, or a template that does not render. After tfs-configure-model
+  runs: any other path in the written config that names an existing file
+  outside the grid (add its argument to ``_PATH_KEYS``).
 """
 
 import itertools
@@ -58,10 +85,12 @@ import yaml
 
 from tfscreen.util.cli import generalized_main
 from tfscreen.util.grid_utils import (
+    InputStager as _InputStager,
+    check_no_outside_paths as _check_no_outside_paths,
     make_jinja_env as _make_jinja_env,
     make_run_name as _make_run_name,
-    relativize_config_paths as _relativize_config_paths,
-    relativize_template_vars as _relativize_template_vars,
+    render_run_template as _render_run_template,
+    stage_template_vars as _stage_template_vars,
 )
 from tfscreen.tfmodel.generative.registry import model_registry
 from tfscreen.tfmodel.scripts.configure_model_cli import (
@@ -84,14 +113,24 @@ _COMPONENT_AXES = frozenset({
     "growth_noise",
 })
 
-# configure_model arguments that are file paths and need abs→rel rewriting.
+# configure_model arguments that are input file paths. Each is copied into
+# <out_prefix>/inputs/ and the written config names the copy. Add any new
+# file-valued configure_model argument here; setup fails on a configure_model
+# value outside this set that names an existing file.
 _PATH_KEYS = frozenset({
     "binding_df", "growth_df", "presplit_df", "base_growth_df", "thermo_data",
     "library_config",
 })
 
+# Top-level keys of the written config naming files configure_model writes
+# into the run directory (read relative to the config): per-run outputs, not
+# inputs to copy.
+_RUN_OUTPUT_KEYS = (("priors_file",), ("guesses_file",), ("library_file",))
+
 # Fixed output prefix used inside every per-combination run.
 _CONFIGURE_OUT_PREFIX = "tfs_configure"
+
+_TOOL = "tfs-setup-grid"
 
 
 # ---------------------------------------------------------------------------
@@ -137,6 +176,57 @@ def _resolve_cm_paths(cm_vars, base_dir):
     return out
 
 
+def _input_paths(resolved_cm):
+    """Return ``{key: path}`` for the file arguments present in resolved_cm."""
+    return {k: resolved_cm[k] for k in sorted(_PATH_KEYS)
+            if isinstance(resolved_cm.get(k), str) and resolved_cm[k]}
+
+
+def _check_cm_vars(cm_vars, grid_yaml_dir, stager):
+    """Validate one combination's configure_model variables (writes nothing).
+
+    Fails if a value outside ``_PATH_KEYS`` names an existing file, or if a
+    ``_PATH_KEYS`` value is missing or a directory.
+    """
+    _check_no_outside_paths(
+        cm_vars, [(k,) for k in _PATH_KEYS], grid_yaml_dir,
+        hint=(f"If tfs-configure-model reads this file, add the argument to "
+              f"_PATH_KEYS in {__name__}; otherwise change the value."),
+    )
+    for key, path in _input_paths(_resolve_cm_paths(cm_vars, grid_yaml_dir)).items():
+        stager.stage(path, f"configure_model variable '{key}'")
+
+
+def _stage_written_config(cfg, path_map, subdir):
+    """Point a written config at the staged input copies (returns a new dict).
+
+    Every string value equal to an input path in ``path_map`` (original
+    absolute path → ``../inputs/<name>``) is replaced by its copy, wherever
+    tfs-configure-model recorded it. Any other value that names an existing
+    file outside the run directory is an error: the run would not be movable.
+    """
+    staged_keys = []
+
+    def rewrite(node, key_path):
+        if isinstance(node, dict):
+            return {k: rewrite(v, key_path + (k,)) for k, v in node.items()}
+        if isinstance(node, list):
+            return [rewrite(v, key_path + (i,)) for i, v in enumerate(node)]
+        if isinstance(node, str) and node in path_map:
+            staged_keys.append(key_path)
+            return path_map[node]
+        return node
+
+    out = rewrite(cfg, ())
+    _check_no_outside_paths(
+        out, staged_keys + list(_RUN_OUTPUT_KEYS), subdir,
+        hint=(f"tfs-configure-model recorded a path {_TOOL} does not know how "
+              f"to copy. If it is an input file, add the configure_model "
+              f"argument that supplies it to _PATH_KEYS in {__name__}."),
+    )
+    return out
+
+
 # ---------------------------------------------------------------------------
 # configure_model kwargs preparation
 # ---------------------------------------------------------------------------
@@ -178,7 +268,11 @@ def setup_grid(grid_yaml, out_prefix="grid"):
     4. Writes ``combo.json`` recording the variable assignments for that run.
 
     A ``grid_summary.json`` is written to *out_prefix* listing all created
-    runs and any skipped combinations.
+    runs and any skipped combinations. Input files named by the
+    configure_model or template variables are copied into
+    ``<out_prefix>/inputs/`` and referenced as ``../inputs/<name>``, so the
+    *out_prefix* directory can be moved as a unit. Every combination's inputs
+    and template are validated before anything is written.
 
     Parameters
     ----------
@@ -243,17 +337,33 @@ def setup_grid(grid_yaml, out_prefix="grid"):
         except jinja2.TemplateSyntaxError as e:
             raise ValueError(f"Template syntax error in {output_file}: {e}") from e
 
+    # Validate every combination's input files and render its template before
+    # writing anything, so a bad input cannot leave a half-built grid.
+    # (Component incompatibilities only surface when configure_model runs; those
+    # combinations are skipped below, as before.)
+    runs_to_write = []
+    checker = _InputStager(out_prefix, _TOOL, dry_run=True)
+    for i, (cm_vars, tmpl_vars) in enumerate(all_combos, start=1):
+        all_vars = {**cm_vars, **tmpl_vars}
+        run_name = _make_run_name(run_name_template, all_vars, i)
+        _check_cm_vars(cm_vars, grid_yaml_dir, checker)
+        if jinja_template is not None:
+            _render_run_template(jinja_template, _stage_template_vars(
+                tmpl_vars, grid_yaml_dir, checker), run_name)
+        runs_to_write.append((run_name, cm_vars, tmpl_vars))
+
     os.makedirs(out_prefix, exist_ok=True)
+    stager = _InputStager(out_prefix, _TOOL)
 
     all_runs = []
     skipped = []
 
-    for i, (cm_vars, tmpl_vars) in enumerate(all_combos, start=1):
+    for run_name, cm_vars, tmpl_vars in runs_to_write:
         all_vars = {**cm_vars, **tmpl_vars}
-        run_name = _make_run_name(run_name_template, all_vars, i)
         subdir = os.path.abspath(os.path.join(out_prefix, run_name))
 
-        # Resolve relative paths in cm_vars to absolute before calling configure_model.
+        # configure_model reads the original input files (relative paths
+        # resolved against the grid YAML's directory).
         resolved_cm = _resolve_cm_paths(cm_vars, grid_yaml_dir)
         cm_kw = _cm_kwargs(resolved_cm)
         cm_out_prefix = os.path.join(subdir, _CONFIGURE_OUT_PREFIX)
@@ -262,7 +372,6 @@ def setup_grid(grid_yaml, out_prefix="grid"):
 
         try:
             configure_model(out_prefix=cm_out_prefix, **cm_kw)
-            _relativize_config_paths(f"{cm_out_prefix}_config.yaml", subdir)
         except Exception as exc:
             reason = str(exc)
             skipped.append({"run": run_name, "reason": reason, "combo": all_vars})
@@ -270,15 +379,27 @@ def setup_grid(grid_yaml, out_prefix="grid"):
             print(f"  SKIP {run_name}: {reason}", flush=True)
             continue
 
+        # Copy the inputs into <out_prefix>/inputs/ and point the written
+        # config at the copies (../inputs/<name>).
+        path_map = {
+            path: stager.stage(path, f"configure_model variable '{key}'")
+            for key, path in _input_paths(resolved_cm).items()
+        }
+        cfg_path = f"{cm_out_prefix}_config.yaml"
+        with open(cfg_path) as fh:
+            cfg = yaml.safe_load(fh)
+        try:
+            cfg = _stage_written_config(cfg, path_map, subdir)
+        except ValueError:
+            shutil.rmtree(subdir, ignore_errors=True)
+            raise
+        with open(cfg_path, "w") as fh:
+            yaml.dump(cfg, fh, default_flow_style=False, sort_keys=False)
+
         # Render Jinja2 template with template-section variables only.
         if jinja_template is not None:
-            rendered_tmpl_vars = _relativize_template_vars(tmpl_vars, grid_yaml_dir, subdir)
-            try:
-                rendered = jinja_template.render(**rendered_tmpl_vars)
-            except jinja2.UndefinedError as exc:
-                raise ValueError(
-                    f"Undefined template variable for run '{run_name}': {exc}"
-                ) from exc
+            rendered = _render_run_template(jinja_template, _stage_template_vars(
+                tmpl_vars, grid_yaml_dir, stager), run_name)
             out_filename = os.path.basename(output_file)
             with open(os.path.join(subdir, out_filename), "w") as fh:
                 fh.write(rendered)

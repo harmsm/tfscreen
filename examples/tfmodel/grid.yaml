@@ -24,7 +24,8 @@ output_file: run.srun
 #
 # Variables here are forwarded to tfs-configure-model.  They are NOT
 # injected into the Jinja2 template.  Paths are resolved relative to this
-# YAML and re-expressed relative to each subdirectory in the written config.
+# YAML; each input file is copied into <out_prefix>/inputs/ and the written
+# config refers to the copy, so the grid directory can be moved as a unit.
 # ---------------------------------------------------------------------------
 
 configure_model:
@@ -104,8 +105,8 @@ template:
       - seed: 0
       - seed: 1
 
-  # Path to the genotypes file for tfs-predict-theta.
-  # Use an absolute path, or a path relative to each run subdirectory.
+  # Path to the genotypes file for tfs-predict-theta (absolute, or relative
+  # to this YAML).  It is copied into <out_prefix>/inputs/ like any input.
   - name: predict_genotypes
     variants:
       - predict_genotypes_file: /path/to/predict_genotypes.txt

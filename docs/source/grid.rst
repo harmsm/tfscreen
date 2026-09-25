@@ -121,8 +121,12 @@ Key rules:
   component axes; e.g. ``condition_growth`` rather than
   ``--condition_growth_model``).
 * Relative paths in ``configure_model`` blocks (``binding_df``, ``growth_df``,
-  ``library_config``, ``thermo_data``) are resolved relative to the grid YAML
-  and re-expressed relative to each subdirectory in the written config.
+  ``presplit_df``, ``base_growth_df``, ``library_config``, ``thermo_data``) and
+  template variables that name a file are resolved relative to the grid YAML.
+  Each input file is copied once into ``<out_prefix>/inputs/`` and every run
+  refers to it as ``../inputs/<name>``, so the grid directory is
+  self-contained and can be moved as a unit. Launch each run from its own
+  directory. Setup fails, before writing anything, on a missing input file.
 * The ``auto`` form enumerates every registered component for the given axis.
   Incompatible combinations (e.g. ``power`` growth + ``logit`` theta_rescale)
   are caught by ``tfs-configure-model``, skipped, and logged in

@@ -1,212 +1,24 @@
-"""Tests for path-rewriting helpers (now in grid_utils, re-exported from setup_grid_cli)."""
-
-import os
-
-import yaml
+"""Tests for tfs-setup-grid: path helpers and self-contained, movable grids."""
 
 import inspect
+import os
+import shutil
 
-from tfscreen.util.grid_utils import (
-    relativize_config_paths as _relativize_config_paths,
-    relativize_node as _relativize_node,
-    relativize_template_vars as _relativize_template_vars,
-)
+import pandas as pd
+import pytest
+import yaml
+
+from tfscreen.util.grid_utils import INPUTS_DIRNAME
+from tfscreen.tfmodel.configuration_io import read_configuration
 from tfscreen.tfmodel.scripts.setup_grid_cli import (
+    setup_grid,
     _cm_kwargs,
     _resolve_cm_paths,
+    _stage_written_config,
     _COMPONENT_AXES,
     _PATH_KEYS,
 )
 from tfscreen.tfmodel.scripts.configure_model_cli import configure_model
-
-
-# ---------------------------------------------------------------------------
-# _relativize_node
-# ---------------------------------------------------------------------------
-
-def test_relativize_node_absolute_existing(tmp_path):
-    """Absolute path to an existing file is rewritten relative to subdir."""
-    f = tmp_path / "data.csv"
-    f.write_text("x")
-    subdir = tmp_path / "run_0001"
-    subdir.mkdir()
-    result = _relativize_node(str(f), str(subdir))
-    assert result == os.path.relpath(str(f), str(subdir))
-
-
-def test_relativize_node_absolute_missing(tmp_path):
-    """Absolute path to a non-existent file is left unchanged."""
-    subdir = tmp_path / "run_0001"
-    subdir.mkdir()
-    missing = str(tmp_path / "ghost.csv")
-    assert _relativize_node(missing, str(subdir)) == missing
-
-
-def test_relativize_node_relative_string(tmp_path):
-    """Relative (non-absolute) strings are never touched."""
-    subdir = tmp_path / "run_0001"
-    subdir.mkdir()
-    assert _relativize_node("data/foo.csv", str(subdir)) == "data/foo.csv"
-
-
-def test_relativize_node_non_string(tmp_path):
-    """Non-string values are returned unchanged."""
-    subdir = str(tmp_path / "run_0001")
-    os.makedirs(subdir)
-    assert _relativize_node(42, subdir) == 42
-    assert _relativize_node(None, subdir) is None
-    assert _relativize_node(True, subdir) is True
-
-
-def test_relativize_node_dict(tmp_path):
-    """Dict values with absolute paths are recursively rewritten."""
-    f = tmp_path / "binding.csv"
-    f.write_text("x")
-    subdir = tmp_path / "run_0001"
-    subdir.mkdir()
-    node = {"binding_df": str(f), "n_samples": 100}
-    result = _relativize_node(node, str(subdir))
-    assert result["binding_df"] == os.path.relpath(str(f), str(subdir))
-    assert result["n_samples"] == 100
-
-
-def test_relativize_node_list(tmp_path):
-    """List values with absolute paths are recursively rewritten."""
-    f = tmp_path / "file.csv"
-    f.write_text("x")
-    subdir = tmp_path / "run_0001"
-    subdir.mkdir()
-    result = _relativize_node([str(f), "unchanged"], str(subdir))
-    assert result[0] == os.path.relpath(str(f), str(subdir))
-    assert result[1] == "unchanged"
-
-
-def test_relativize_node_nested(tmp_path):
-    """Nested dicts/lists are handled recursively."""
-    f = tmp_path / "deep.csv"
-    f.write_text("x")
-    subdir = tmp_path / "run_0001"
-    subdir.mkdir()
-    node = {"outer": {"inner": str(f)}}
-    result = _relativize_node(node, str(subdir))
-    assert result["outer"]["inner"] == os.path.relpath(str(f), str(subdir))
-
-
-# ---------------------------------------------------------------------------
-# _relativize_config_paths
-# ---------------------------------------------------------------------------
-
-def test_relativize_config_paths_data_section(tmp_path):
-    """Absolute paths in the data section are rewritten to relative."""
-    f = tmp_path / "binding.csv"
-    f.write_text("x")
-    subdir = tmp_path / "run_0001"
-    subdir.mkdir()
-    cfg = {"data": {"binding_df": str(f), "n_samples": 100}}
-    yaml_path = subdir / "config.yaml"
-    yaml_path.write_text(yaml.dump(cfg))
-
-    _relativize_config_paths(str(yaml_path), str(subdir))
-
-    with open(yaml_path) as fh:
-        result = yaml.safe_load(fh)
-    assert not os.path.isabs(result["data"]["binding_df"])
-    assert result["data"]["n_samples"] == 100
-
-
-def test_relativize_config_paths_top_level(tmp_path):
-    """Absolute paths outside the data section are also rewritten."""
-    cal = tmp_path / "calibration.json"
-    cal.write_text("{}")
-    subdir = tmp_path / "run_0001"
-    subdir.mkdir()
-    cfg = {"calibration_file": str(cal), "n_samples": 200}
-    yaml_path = subdir / "config.yaml"
-    yaml_path.write_text(yaml.dump(cfg))
-
-    _relativize_config_paths(str(yaml_path), str(subdir))
-
-    with open(yaml_path) as fh:
-        result = yaml.safe_load(fh)
-    assert not os.path.isabs(result["calibration_file"])
-    assert result["n_samples"] == 200
-
-
-def test_relativize_config_paths_no_change(tmp_path):
-    """Config with no absolute paths is not rewritten."""
-    subdir = tmp_path / "run_0001"
-    subdir.mkdir()
-    cfg = {"data": {"binding_df": "../../data/binding.csv"}}
-    yaml_path = subdir / "config.yaml"
-    original = yaml.dump(cfg)
-    yaml_path.write_text(original)
-    mtime_before = yaml_path.stat().st_mtime
-
-    _relativize_config_paths(str(yaml_path), str(subdir))
-
-    assert yaml_path.stat().st_mtime == mtime_before
-
-
-# ---------------------------------------------------------------------------
-# _relativize_template_vars
-# ---------------------------------------------------------------------------
-
-def test_relativize_template_vars_existing_file(tmp_path):
-    """A relative path in a template var that resolves to an existing file is rewritten."""
-    data_dir = tmp_path / "data"
-    data_dir.mkdir()
-    geno = data_dir / "genotypes.csv"
-    geno.write_text("x")
-
-    grid_yaml_dir = str(tmp_path)
-    subdir = str(tmp_path / "grid" / "run_0001")
-    os.makedirs(subdir)
-
-    tmpl_vars = {"genotypes_file": "data/genotypes.csv", "seed": 42}
-    result = _relativize_template_vars(tmpl_vars, grid_yaml_dir, subdir)
-
-    assert not os.path.isabs(result["genotypes_file"])
-    # Path from run subdir should navigate up to tmp_path/data/genotypes.csv
-    resolved = os.path.normpath(os.path.join(subdir, result["genotypes_file"]))
-    assert resolved == str(geno)
-    assert result["seed"] == 42
-
-
-def test_relativize_template_vars_nonexistent(tmp_path):
-    """A string that doesn't point to an existing path is left unchanged."""
-    grid_yaml_dir = str(tmp_path)
-    subdir = str(tmp_path / "run_0001")
-    os.makedirs(subdir)
-
-    tmpl_vars = {"genotypes_file": "data/missing.csv", "label": "control"}
-    result = _relativize_template_vars(tmpl_vars, grid_yaml_dir, subdir)
-    assert result == tmpl_vars
-
-
-def test_relativize_template_vars_absolute_path(tmp_path):
-    """An absolute path in a template var is also rewritten if the file exists."""
-    f = tmp_path / "abs.csv"
-    f.write_text("x")
-    grid_yaml_dir = str(tmp_path)
-    subdir = str(tmp_path / "run_0001")
-    os.makedirs(subdir)
-
-    tmpl_vars = {"genotypes_file": str(f)}
-    result = _relativize_template_vars(tmpl_vars, grid_yaml_dir, subdir)
-    assert not os.path.isabs(result["genotypes_file"])
-    resolved = os.path.normpath(os.path.join(subdir, result["genotypes_file"]))
-    assert resolved == str(f)
-
-
-def test_relativize_template_vars_non_string_passthrough(tmp_path):
-    """Non-string template variable values are returned unchanged."""
-    grid_yaml_dir = str(tmp_path)
-    subdir = str(tmp_path / "run_0001")
-    os.makedirs(subdir)
-
-    tmpl_vars = {"seed": 0, "flag": True, "ratio": 1.5, "none_val": None}
-    result = _relativize_template_vars(tmpl_vars, grid_yaml_dir, subdir)
-    assert result == tmpl_vars
 
 
 # ---------------------------------------------------------------------------
@@ -285,3 +97,290 @@ def test_path_keys_cover_all_df_params():
     df_params = {p for p in params if p.endswith("_df")}
     missing = df_params - _PATH_KEYS
     assert not missing, f"_PATH_KEYS missing configure_model df args: {sorted(missing)}"
+
+
+# ---------------------------------------------------------------------------
+# End to end: self-contained, movable grid directories
+# ---------------------------------------------------------------------------
+
+_GENOTYPES = ["wt", "A2L", "A2C"]
+
+_LIBRARY = {
+    "reading_frame": 0,
+    "first_amplicon_residue": 1,
+    "wt_seq":      "atggcaaaaccggaatgc",
+    "degen_sites": "...nnt......nnt...",
+    "tiles":       "...111......222...",
+    "tile_combos": ["single-1", "single-2", "double-1-2"],
+    "spiked_seqs": ["..................",
+                    "...ctt............"],
+    "library_mixture": {"single-1": 10, "single-2": 10,
+                        "double-1-2": 100, "spiked": 1},
+}
+
+_TEMPLATE = (
+    "SEED={{ seed }}\n"
+    "GENOTYPES={{ predict_genotypes_file }}\n"
+)
+
+
+def _write_growth(path, ln_cfu=1.0):
+    rows = []
+    for g in _GENOTYPES:
+        for t in (0.0, 10.0):
+            rows.append({"library": "lib", "replicate": 1, "time": t,
+                         "genotype": g, "ln_cfu": ln_cfu, "ln_cfu_std": 0.1,
+                         "condition_pre": "pre-cond",
+                         "condition_sel": "sel+cond",
+                         "t_pre": 1.0, "t_sel": 10.0,
+                         "titrant_name": "iptg", "titrant_conc": 0.0})
+    pd.DataFrame(rows).to_csv(path, index=False)
+
+
+def _write_binding(path):
+    pd.DataFrame([{"genotype": g, "titrant_name": "iptg", "titrant_conc": 0.0,
+                   "theta_obs": 0.5, "theta_std": 0.05}
+                  for g in _GENOTYPES]).to_csv(path, index=False)
+
+
+@pytest.fixture
+def project(tmp_path):
+    """Inputs in <tmp>/data, grid YAML + template in <tmp>/grids."""
+    data = tmp_path / "data"
+    data.mkdir()
+    _write_growth(data / "growth.csv")
+    _write_binding(data / "binding.csv")
+    (data / "library.yaml").write_text(yaml.dump(_LIBRARY))
+    (data / "genotypes.txt").write_text("wt\nA2L\n")
+    grids = tmp_path / "grids"
+    grids.mkdir()
+    (grids / "run.sh").write_text(_TEMPLATE)
+    return tmp_path
+
+
+def _data_block(**extra):
+    variant = {"binding_df": "../data/binding.csv",
+               "growth_df": "../data/growth.csv",
+               "library_config": "../data/library.yaml",
+               "skip_model_stats": True}
+    variant.update(extra)
+    return {"name": "data", "variants": [variant]}
+
+
+def _write_grid(project, cm_blocks, tmpl_blocks=None):
+    grid = {"run_name": "{{ condition_growth }}__seed{{ seed }}",
+            "output_file": "run.sh",
+            "configure_model": cm_blocks,
+            "template": tmpl_blocks if tmpl_blocks is not None else [
+                {"name": "seed", "variants": [{"seed": 0}, {"seed": 1}]},
+                {"name": "predict", "variants": [
+                    {"predict_genotypes_file": "../data/genotypes.txt"}]},
+            ]}
+    path = project / "grids" / "grid.yaml"
+    path.write_text(yaml.dump(grid, sort_keys=False))
+    return str(path)
+
+
+def _default_cm_blocks():
+    return [_data_block(),
+            {"name": "condition_growth",
+             "variants": [{"condition_growth": "linear"}]}]
+
+
+def _config_file_refs(cfg):
+    """Every (key, path) in a written config that names a file, relative to cwd."""
+    refs = [("data." + k, v) for k, v in cfg["data"].items()]
+    for k in ("thermo_data", "presplit_df", "base_growth_df", "dk_geno_pins_file"):
+        if cfg["components"].get(k):
+            refs.append(("components." + k, cfg["components"][k]))
+    if isinstance(cfg.get("library", {}).get("source"), str):
+        refs.append(("library.source", cfg["library"]["source"]))
+    return refs
+
+
+def test_grid_survives_move_and_deleting_inputs(project, monkeypatch):
+    """Move the grid, delete the original inputs: every run still resolves."""
+    grid_yaml = _write_grid(project, _default_cm_blocks())
+    out = project / "grid_out"
+    runs = setup_grid(grid_yaml, out_prefix=str(out))
+    assert len(runs) == 2
+
+    moved = project / "elsewhere" / "deeper" / "grid_moved"
+    moved.parent.mkdir(parents=True)
+    shutil.move(str(out), str(moved))
+    shutil.rmtree(project / "data")
+    shutil.rmtree(project / "grids")
+
+    for run in runs:
+        run_dir = moved / run["run"]
+        cfg_path = run_dir / "tfs_configure_config.yaml"
+        cfg = yaml.safe_load(cfg_path.read_text())
+
+        # Data/library paths are read relative to the run directory.
+        refs = _config_file_refs(cfg)
+        assert {k for k, _ in refs} >= {"data.growth", "data.binding",
+                                        "library.source"}
+        for key, path in refs:
+            assert not os.path.isabs(path), key
+            assert path.startswith(os.path.join("..", INPUTS_DIRNAME)), key
+            assert os.path.isfile(run_dir / path), key
+
+        # Per-run outputs sit next to the config.
+        for key in ("priors_file", "guesses_file", "library_file"):
+            assert os.path.isfile(run_dir / cfg[key]), key
+
+        # Rendered template paths resolve too.
+        rendered = (run_dir / "run.sh").read_text()
+        geno_path = rendered.split("GENOTYPES=")[1].strip()
+        assert geno_path == os.path.join("..", INPUTS_DIRNAME, "genotypes.txt")
+        assert (run_dir / geno_path).read_text() == "wt\nA2L\n"
+
+        # No string in the config points outside the grid.
+        assert str(project) not in cfg_path.read_text()
+
+        # And the run actually loads from its own directory.
+        monkeypatch.chdir(run_dir)
+        orchestrator, _ = read_configuration("tfs_configure_config.yaml")
+        assert orchestrator.growth_tm is not None
+
+
+def test_inputs_copied_once(project):
+    """Runs sharing an input share one copy under inputs/."""
+    grid_yaml = _write_grid(project, _default_cm_blocks())
+    out = project / "grid_out"
+    setup_grid(grid_yaml, out_prefix=str(out))
+    assert sorted(os.listdir(out / INPUTS_DIRNAME)) == [
+        "binding.csv", "genotypes.txt", "growth.csv", "library.yaml"]
+
+
+def test_same_name_different_files_kept_apart(project):
+    """Two different growth.csv files get distinct copies, each run its own."""
+    other = project / "data" / "other"
+    other.mkdir()
+    _write_growth(other / "growth.csv", ln_cfu=2.0)
+    blocks = [
+        {"name": "data", "variants": [
+            _data_block()["variants"][0],
+            _data_block(growth_df="../data/other/growth.csv")["variants"][0],
+        ]},
+        {"name": "condition_growth", "variants": [{"condition_growth": "linear"}]},
+    ]
+    grid_yaml = _write_grid(project, blocks, tmpl_blocks=[
+        {"name": "seed", "variants": [{"seed": 0}]},
+        {"name": "predict", "variants": [
+            {"predict_genotypes_file": "../data/genotypes.txt"}]}])
+    out = project / "grid_out"
+    runs = setup_grid(grid_yaml, out_prefix=str(out))
+    assert len(runs) == 2
+
+    growth_refs = []
+    for run in runs:
+        cfg = yaml.safe_load(
+            (out / run["run"] / "tfs_configure_config.yaml").read_text())
+        growth_refs.append(cfg["data"]["growth"])
+        src = os.path.normpath(os.path.join(
+            project / "grids", run["configure_model"]["growth_df"]))
+        copy = out / run["run"] / cfg["data"]["growth"]
+        assert copy.read_text() == open(src).read()
+    assert sorted(os.path.basename(p) for p in growth_refs) == [
+        "growth.csv", "growth_2.csv"]
+
+
+def test_changed_input_never_overwrites_existing_copy(project):
+    """Re-running setup with a changed input leaves earlier runs' copy intact."""
+    grid_yaml = _write_grid(project, _default_cm_blocks())
+    out = project / "grid_out"
+    setup_grid(grid_yaml, out_prefix=str(out))
+    before = (out / INPUTS_DIRNAME / "growth.csv").read_text()
+
+    _write_growth(project / "data" / "growth.csv", ln_cfu=3.0)
+    runs = setup_grid(grid_yaml, out_prefix=str(out))
+
+    assert (out / INPUTS_DIRNAME / "growth.csv").read_text() == before
+    cfg = yaml.safe_load(
+        (out / runs[0]["run"] / "tfs_configure_config.yaml").read_text())
+    assert cfg["data"]["growth"] == os.path.join("..", INPUTS_DIRNAME,
+                                                 "growth_2.csv")
+
+
+def test_missing_input_fails_before_writing(project):
+    blocks = [_data_block(presplit_df="../data/missing.csv"),
+              {"name": "condition_growth",
+               "variants": [{"condition_growth": "linear"}]}]
+    out = project / "grid_out"
+    with pytest.raises(FileNotFoundError, match="presplit_df"):
+        setup_grid(_write_grid(project, blocks), out_prefix=str(out))
+    assert not out.exists()
+
+
+def test_directory_input_fails_before_writing(project):
+    (project / "data" / "thermo").mkdir()
+    blocks = [_data_block(thermo_data="../data/thermo"),
+              {"name": "condition_growth",
+               "variants": [{"condition_growth": "linear"}]}]
+    out = project / "grid_out"
+    with pytest.raises(ValueError, match="directory"):
+        setup_grid(_write_grid(project, blocks), out_prefix=str(out))
+    assert not out.exists()
+
+
+def test_unknown_file_argument_fails_before_writing(project):
+    """A configure_model value outside _PATH_KEYS naming a file is refused."""
+    blocks = [_data_block(),
+              {"name": "extra",
+               "variants": [{"mystery_file": "../data/genotypes.txt"}]}]
+    out = project / "grid_out"
+    with pytest.raises(ValueError, match="mystery_file.*_PATH_KEYS"):
+        setup_grid(_write_grid(project, blocks), out_prefix=str(out))
+    assert not out.exists()
+
+
+def test_template_errors_fail_before_writing(project):
+    out = project / "grid_out"
+    grid_yaml = _write_grid(project, _default_cm_blocks(), tmpl_blocks=[
+        {"name": "seed", "variants": [{"seed": 0}]}])  # predict_genotypes_file undefined
+    with pytest.raises(ValueError, match="Undefined template variable"):
+        setup_grid(grid_yaml, out_prefix=str(out))
+    assert not out.exists()
+
+    grid_yaml = _write_grid(project, _default_cm_blocks(), tmpl_blocks=[
+        {"name": "seed", "variants": [{"seed": 0}]},
+        {"name": "predict", "variants": [{"predict_genotypes_file": "../data"}]}])
+    with pytest.raises(ValueError, match="directory"):
+        setup_grid(grid_yaml, out_prefix=str(out))
+    assert not out.exists()
+
+
+def test_skipped_combination_copies_nothing(project):
+    """An incompatible combination is skipped and leaves no orphan copies."""
+    blocks = [_data_block(),
+              {"name": "combo", "variants": [
+                  {"condition_growth": "power", "theta_rescale": "logit"}]}]
+    out = project / "grid_out"
+    runs = setup_grid(_write_grid(project, blocks), out_prefix=str(out))
+    assert runs == []
+    assert not (out / INPUTS_DIRNAME).exists()
+
+
+# ---------------------------------------------------------------------------
+# _stage_written_config
+# ---------------------------------------------------------------------------
+
+def test_stage_written_config_rewrites_every_occurrence(tmp_path):
+    src = str(tmp_path / "lib.yaml")
+    open(src, "w").write("x")
+    cfg = {"data": {"growth": "/g.csv"},
+           "components": {"theta": "hill_geno"},
+           "library": {"source": src},
+           "priors_file": "tfs_configure_priors.csv"}
+    out = _stage_written_config(cfg, {src: "../inputs/lib.yaml"}, str(tmp_path))
+    assert out["library"]["source"] == "../inputs/lib.yaml"
+    assert cfg["library"]["source"] == src  # input not modified
+
+
+def test_stage_written_config_refuses_unknown_outside_path(tmp_path):
+    stray = str(tmp_path / "pins.csv")
+    open(stray, "w").write("x")
+    cfg = {"components": {"dk_geno_pins_file": stray}}
+    with pytest.raises(ValueError, match="dk_geno_pins_file"):
+        _stage_written_config(cfg, {}, str(tmp_path / "run"))

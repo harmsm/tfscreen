@@ -221,6 +221,27 @@ fall into two kinds:
   `_SIM_PATH_KEYS` names an existing file. The congression-calibration study's
   `run.srun` no longer copies `hill_params.csv`, and its grid YAMLs drop the
   `hill_params_file` template block.
+- **`tfs-setup-grid` grids could not be moved.** Each run's
+  `tfs_configure_config.yaml` and rendered template referred to the input
+  files (`growth_df`, `binding_df`, `library_config`, ...) by a path relative
+  to their original location, so moving the grid directory (on or off a
+  cluster, to another partition) broke every run. Setup now copies every input
+  file into `<out_prefix>/inputs/` once and each run refers to it as
+  `../inputs/<name>`, so the grid directory is self-contained. The inputs are
+  the `configure_model` file arguments in `_PATH_KEYS`
+  (`tfmodel/scripts/setup_grid_cli.py`) and template variables naming a file;
+  the written config names the copy everywhere it recorded the file,
+  `library.source` included. The priors/guesses/library CSVs are per-run
+  outputs and are unchanged. Two different files with the same name get a
+  numeric suffix, and a changed file never overwrites a copy that existing
+  runs use. Setup now fails before writing anything if an input file is
+  missing or is a directory (previously a missing data file quietly skipped
+  the combination), if a `configure_model` value outside `_PATH_KEYS` names a
+  file, or if the template does not render. The staging helpers moved from
+  `setup_sim_grid_cli.py` into `util/grid_utils.py` (`InputStager`,
+  `check_no_outside_paths`, `stage_template_vars`, `render_run_template`),
+  and both grid CLIs use them; the unused `relativize_*` path helpers were
+  removed.
 - **Growth prediction failed on every model built from a library file.**
   `tfs-predict-growth`, and everything else that goes through
   `prediction.predict` (prior-predictive growth, the genotype trajectory
