@@ -628,6 +628,12 @@ checked with `tfs-summarize-calibration`.
      also 39% wt. Earlier diagnoses need re-judging on converged fits.
      Proposed routes forward, not yet decided:
      `planning/studies/congression-calibration-convergence/`.
+     Integrated 2026-09-25: the review's claims check out, and the
+     controls agree (under MAP the lambda-0 mixture matches `single`, k
+     offset +0.0003). The endpoint diagnoses in the calibration README are
+     superseded. Next (user): resume anchored runs 0001/0002/0005 to
+     convergence (`resume.srun`); fixing the SVI stop rule and warm-up goes
+     to its own session, since it affects every `tfs-fit-model` fit.
 4. **Theta rule.** Homodimer vs heterodimer soft max, chosen from the bench
    results, in both simulator and fit.
 5. **dk rule.** Soft-min family with an alpha sensitivity check, in both

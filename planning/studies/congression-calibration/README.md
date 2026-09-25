@@ -224,7 +224,7 @@ Theta 95% coverage improved in every arm at weight 1 (0.71 to 0.75, from
 behavior survived. At weight 1 the mixture fit is worse than `single` on
 both binding and growth, so no trade-off explains it.
 
-## Third diagnosis: the unanchored slide (2026-09-24)
+## Third diagnosis: the unanchored slide (2026-09-24; superseded, see below)
 
 - **Optimization, not the objective.** Under the mixture model's own joint
   density, `single`'s solution at lambda 0.004 scores ~18,000 log units
@@ -251,12 +251,73 @@ both binding and growth, so no trade-off explains it.
   is meant to pin the slide, but its Hessian-based `k_scale` hit the 0.1
   ceiling in every run.
 
-## Next: pin k (grid_anchor.yaml)
+## Anchored grid (grid_anchor.yaml, 2026-09-25)
 
-The same 6 simulations at binding weight 1 with the prefit's k prior forced
-tight (`--k_scale_ceiling 0.005`, `k_scale_ceiling` in `run.srun`). The
-prefit's k estimates are themselves 0.006 to 0.009 low in these
-simulations, so expect a uniform `dk_geno` offset. If the diagnosis is
-right, the lambda-0 mixture matches `single` and lambda stops being pulled
-up. Open for real data: why the prefit cannot determine k, and whether nu
-should be free (a Normal likelihood would give wt's pin real weight).
+Binding weight 1 plus a tight prefit k prior (`--k_scale_ceiling 0.005`,
+prefit `k_scale` 0.005). True lambda 0:
+
+| | original | weight 1 | weight 1 + tight k prior |
+|---|---|---|---|
+| k offset, `single` | -0.015 | -0.007 | -0.0004 |
+| k offset, mixture (matched prior) | +0.062 | +0.080 | +0.083 |
+| lambda, measured prior (0.357 +/- 0.05) | 0.55 | 0.47 | 0.45 |
+| bulk theta RMSE, mixture vs `single` | 0.267 vs 0.219 | 0.247 vs 0.227 | 0.261 vs 0.230 |
+
+The prior fixed `single`; the mixture drifted ~17 prior SDs past it. Two
+further endpoint checks were inconclusive or negative: the ELBO at the two
+solutions ([`diagnosis/diag_elbo.py`](diagnosis/diag_elbo.py)) and the
+population arrays the mixture looks co-residents up in, which match each
+genotype's own values exactly
+([`diagnosis/diag_population.py`](diagnosis/diag_population.py)).
+
+## Controls (grid_controls.yaml, 2026-09-25)
+
+Lambda-0 simulation, anchored settings. All three were still improving at
+the stop.
+
+| run | k offset | fitted lambda | final loss |
+|---|---|---|---|
+| mixture, MAP | +0.0003 | 0.0047 | 6.5e4 |
+| `single`, MAP | -0.0013 | | 6.2e4 |
+| mixture, lambda pinned ~1e-6, SVI | +0.016 | 1e-6 | 1.7e5 |
+| mixture, matched prior, SVI (anchored grid) | +0.083 | 0.004 | 1.8e5 |
+
+Without SVI's guide draws the mixture lands where `single` does; MAP also
+reaches much lower loss. The pinned-lambda SVI fit drifts less but still
+drifts.
+
+## Review: the fits never converged (2026-09-25)
+
+An independent review
+([`../congression-calibration-convergence/`](../congression-calibration-convergence/README.md))
+found that none of the 3.5 fits converged, `single` included, and it
+supersedes the endpoint diagnoses above. Verified here:
+
+- The stop rule (`RunInference._update_loss_deque`) divides the loss change
+  by the improvement since the start of SVI, whose loss is ~500 times the
+  final loss. Runs stop while the loss is still falling: run 0002 of the
+  anchored grid went 5.5e5, 3.6e5, 2.5e5, 1.9e5 over epochs 6000-9000 and
+  stopped at 9234. "SVI run converged" in the logs did not mean converged;
+  the diagnoses above took it at face value.
+- The pre-MAP warm-up's step size decays to 1e-6 within its own 1000
+  epochs, so SVI starts far from the mode with prior-width guide scales.
+- Epoch checkpoints show `single` holding k at the truth while the
+  mixture's k jumps early (to +0.12 near epoch 4000, with nu ~1.3) and
+  returns slowly; it was cut off mid-return. The controls agree: under MAP
+  the mixture matches `single`.
+- The simulated co-resident pool is 39% wt (the library enumerator adds a
+  wt entry per non-degenerate codon); being checked separately.
+
+What stands from the earlier sections: the read-count floor bias (0 reads
++1.26 ln) and the binding weight's dominance of the objective, as facts about
+the data and the objective. Their effect on converged fits is open.
+
+## Next: resume to convergence (resume.srun)
+
+Route 1 of the review: resume anchored runs 0001 (`single`), 0002 (mixture,
+lambda 0) and 0005 (mixture, lambda 1) from their checkpoints, in copies
+(`<grid>_resumed/`), with the default max_num_epochs, then trace them with
+`../congression-calibration-convergence/trace_checkpoints.py`. If the
+mixture's k returns to the truth, the transient explanation is confirmed.
+Fixing the stop rule and the warm-up is a separate piece of work (general
+to `tfs-fit-model`).

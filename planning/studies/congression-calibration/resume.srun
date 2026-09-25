@@ -1,0 +1,72 @@
+#!/bin/bash -l
+#SBATCH --account=harmslab
+#SBATCH --job-name=cong_resume
+#SBATCH --output=resume_%j.out
+#SBATCH --error=resume_%j.err
+#SBATCH --partition=gpu
+#SBATCH --time=00-02:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gpus=1
+#SBATCH --ntasks-per-node=1
+
+# Resume one finished grid run to real convergence, in a copy of its
+# directory (step 3.5 convergence check; see
+# planning/studies/congression-calibration-convergence/README.md, route 1).
+#
+#   sbatch resume.srun <grid_dir> <run_prefix>
+#   e.g. sbatch resume.srun congression_calibration_anchor run_0002
+#
+# The copy goes to <grid_dir>_resumed/<run name>. Resuming overwrites
+# tfs_fit_model_checkpoint.pkl and tfs_fit_model_losses.txt, hence the copy.
+# A resumed fit re-bases the stop rule on its own improvement, so it will
+# probably run the full default max_num_epochs (100,000; keep the default,
+# which also sets the step-size decay horizon).
+
+# Swap lines if on cluster (module load) or local (XLA_FLAGS to use CPU)
+module load cuda/12.4.1
+#export XLA_FLAGS="--xla_force_host_platform_device_count=8"
+
+set -e
+
+GRID_DIR="${1%/}"
+RUN_PREFIX="${2}"
+if [[ -z "${GRID_DIR}" || -z "${RUN_PREFIX}" ]]; then
+    echo "Usage: sbatch resume.srun <grid_dir> <run_prefix>"
+    exit 1
+fi
+
+SRC=$(ls -d "${GRID_DIR}/${RUN_PREFIX}"_* | head -1)
+DEST="${GRID_DIR}_resumed/$(basename "${SRC}")"
+mkdir -p "${GRID_DIR}_resumed"
+rsync -a --exclude '*.h5' --exclude 'summary/' "${SRC}/" "${DEST}/"
+cd "${DEST}"
+
+SEED=$(python -c "import yaml; print(yaml.safe_load(open('tfs_sim_config.yaml'))['seed'])")
+METHOD=$(grep -o '^ANALYSIS_METHOD="[a-z]*"' run.srun | cut -d'"' -f2)
+METHOD=${METHOD:-svi}
+
+echo ">>> Resume fit (${METHOD}) from ${SRC}"
+tfs-fit-model tfs_configure_config.yaml \
+    --seed "${SEED}" \
+    --analysis_method "${METHOD}" \
+    --checkpoint_file tfs_fit_model_checkpoint.pkl \
+    --convergence_tolerance 0.0001
+
+echo ">>> Sample posterior"
+tfs-sample-posterior tfs_configure_config.yaml tfs_fit_model_checkpoint.pkl
+
+echo ">>> Extract parameters"
+tfs-extract-params tfs_configure_config.yaml tfs_posterior.h5
+
+echo ">>> Predict theta"
+tfs-predict-theta tfs_configure_config.yaml tfs_posterior.h5
+
+echo ">>> Predict growth"
+tfs-predict-growth tfs_configure_config.yaml tfs_posterior.h5 \
+    --num_marginal_samples=500
+
+echo ">>> Summarize fit"
+tfs-summarize-fit .
+
+echo ">>> Done"
