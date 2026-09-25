@@ -1,0 +1,65 @@
+# ---------------------------------------------------------------------------
+# Controlled fits for the lambda-0 mixture anomaly (congression calibration,
+# step 3.5)
+#
+#   tfs-setup-sim-grid grid_controls.yaml --out_prefix congression_calibration_controls
+#   for d in congression_calibration_controls/run_*/; do (cd "$d" && sbatch run.srun); done
+#
+# In every follow-up grid the lambda-0 mixture fit ends in a solution that
+# leans on congressed classes of weight ~0.2%, with k ~0.08 too high and wt
+# abandoned, while single does not. Two controls on the same simulation as
+# grid.yaml runs 0001-0003 (lambda 0, wide dk, seed 1), with the anchored
+# settings of grid_anchor.yaml (binding_weight 1, prefit k_scale_ceiling
+# 0.005):
+#
+#   mixture / fixed0 / svi  lambda pinned at ~1e-6, so the mixture is single.
+#                           Drift here means a bug in the mixture code path
+#                           during training.
+#   mixture / matched / map MAP instead of SVI. The same solution here means a
+#                           real mode of the model; single-like means an SVI
+#                           artifact.
+#   single / off / map      the MAP baseline for the MAP mixture fit.
+# ---------------------------------------------------------------------------
+
+base_config: simulate_config.yaml
+
+run_name: "lam{{ transformation_poisson_lambda }}__seed{{ seed }}__{{ fit }}_{{ lam_prior }}__{{ analysis_method }}"
+
+output_file: run.srun
+
+
+simulate:
+
+  - name: lam
+    variants:
+      - transformation_poisson_lambda: 0.0
+
+  - name: dk
+    variants:
+      - dk_geno_hyper_loc: -3.5
+        dk_geno_hyper_scale: 0.5
+        dk_geno_hyper_shift: 0.02
+
+  - name: seed
+    variants:
+      - seed: 1
+
+
+template:
+
+  - name: fit
+    variants:
+      - fit: mixture
+        lam_prior: fixed0
+        analysis_method: svi
+      - fit: mixture
+        lam_prior: matched
+        analysis_method: map
+      - fit: single
+        lam_prior: "off"
+        analysis_method: map
+
+  - name: anchor
+    variants:
+      - binding_weight: 1.0
+        k_scale_ceiling: 0.005

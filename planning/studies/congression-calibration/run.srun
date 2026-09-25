@@ -33,6 +33,8 @@ BINDING_WEIGHT="{{ binding_weight | default('') }}"
 # Ceiling on the prefit's per-condition k prior scale (empty = its default,
 # 0.1). grid_anchor.yaml sets it low to pin the k/dk_geno slide.
 K_SCALE_CEILING="{{ k_scale_ceiling | default('') }}"
+# tfs-fit-model --analysis_method (svi or map). grid_controls.yaml sets map.
+ANALYSIS_METHOD="{{ analysis_method | default('svi') }}"
 
 # The simulated lambda and the seed live in tfs_sim_config.yaml.
 read -r SEED LAM_SIM < <(python -c "
@@ -65,6 +67,10 @@ if [[ "${FIT}" == "single" ]]; then
 else
     if [[ "${LAM_PRIOR}" == "matched" ]]; then
         LAM_MEAN=$(python -c "print(max(${LAM_SIM}, 0.01))")
+    elif [[ "${LAM_PRIOR}" == "fixed0" ]]; then
+        # lambda pinned essentially at zero: the mixture is then single.
+        LAM_MEAN=1e-6
+        LAM_PRIOR_SD=1e-9
     else
         LAM_MEAN=${LAM_MEASURED}
     fi
@@ -112,7 +118,7 @@ tfs-prefit-calibration tfs_configure_config.yaml --seed "${SEED}" "${PREFIT_ARGS
 echo ">>> Fit model"
 tfs-fit-model tfs_configure_config.yaml \
     --seed "${SEED}" \
-    --analysis_method svi \
+    --analysis_method "${ANALYSIS_METHOD}" \
     --convergence_tolerance 0.0001
 
 echo ">>> Sample posterior"
