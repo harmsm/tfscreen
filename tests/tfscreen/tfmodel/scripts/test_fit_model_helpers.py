@@ -4,6 +4,7 @@ import os
 import dill
 
 from tfscreen.tfmodel.scripts.fit_model_cli import (
+    _optimization_kwargs,
     _run_svi,
     _run_map,
     _run_nuts,
@@ -47,7 +48,7 @@ def test_run_svi_flow_converged(mock_run_inference):
         ri,
         init_params=None,
         out_prefix="test_root",
-        max_num_epochs=500,
+        **_optimization_kwargs(max_num_epochs=500, patience=4),
     )
 
     ri.setup_svi.assert_called_once()
@@ -57,10 +58,13 @@ def test_run_svi_flow_converged(mock_run_inference):
         init_params=None,
         out_prefix="test_root",
         svi_state=None,
-        convergence_tolerance=ANY,
-        convergence_window=ANY,
-        patience=ANY,
-        convergence_check_interval=ANY,
+        convergence_window_steps=2000,
+        patience=4,
+        convergence_z=ANY,
+        loss_rtol=ANY,
+        param_tolerance=ANY,
+        final_step_size=1e-6,
+        step_size_cut=0.1,
         checkpoint_interval=ANY,
         max_num_epochs=500,
         init_param_jitter=ANY,
@@ -100,31 +104,25 @@ def test_run_svi_not_converged_stdout(mock_run_inference, capsys):
 def test_run_map_flow(mock_run_inference):
     """Test MAP execution flow."""
     _, ri = mock_run_inference
-    init_params = {"p": 10}
+    init_values = {"p": 10}
     state, params, converged = _run_map(
         ri,
-        init_params=init_params,
+        init_values=init_values,
         out_prefix="test_map",
         max_num_epochs=1000,
     )
 
-    # 1. Setup MAP
+    # 1. Setup MAP: an AutoDelta starting at the given site values
     ri.setup_svi.assert_called_once()
+    assert ri.setup_svi.call_args.kwargs["guide_type"] == "delta"
+    assert ri.setup_svi.call_args.kwargs["init_values"] == init_values
 
     # 2. Run Optimization
     ri.run_optimization.assert_called_once_with(
         "mock_svi_obj",
-        init_params=init_params,
         out_prefix="test_map",
         svi_state=None,
-        convergence_tolerance=ANY,
-        convergence_window=ANY,
-        patience=ANY,
-        convergence_check_interval=ANY,
-        checkpoint_interval=ANY,
         max_num_epochs=1000,
-        init_param_jitter=ANY,
-        epoch_checkpoint_interval=ANY
     )
 
     ri.write_params.assert_called_once_with({"p": 1}, out_prefix="test_map")
@@ -136,7 +134,7 @@ def test_run_map_not_converged(mock_run_inference, capsys):
     """Test MAP not converged message."""
     _, ri = mock_run_inference
     ri.run_optimization.return_value = ("state", {"p": 1}, False)
-    _run_map(ri, init_params={"p": 1})
+    _run_map(ri, init_values={"p": 1})
     captured = capsys.readouterr()
     assert "MAP run converged" not in captured.out
     assert "MAP run has not yet converged" in captured.out

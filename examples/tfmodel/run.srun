@@ -38,8 +38,7 @@ PREDICT_GENOTYPES_FILE="{{ predict_genotypes_file }}"
 
 echo ">>> Prefit calibration"
 tfs-prefit-calibration tfs_configure_config.yaml \
-    --seed ${RUN_SEED} \
-    --convergence_tolerance 0.00001
+    --seed ${RUN_SEED}
 
 # ---------------------------------------------------------------------------
 # MAP fit
@@ -51,12 +50,9 @@ tfs-fit-model \
     --seed ${RUN_SEED} \
     --analysis_method map \
     --adam_step_size 1e-6 \
-    --convergence_check_interval 100 \
-    --convergence_window 50 \
+    --adam_final_step_size 1e-6 \
     --checkpoint_interval 100 \
     --max_num_epochs 100000000 \
-    --pre_map_num_epoch 100000 \
-    --convergence_tolerance 0.0005 \
     --patience 5
 
 # ---------------------------------------------------------------------------

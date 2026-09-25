@@ -72,7 +72,6 @@ def run():
         svi=svi,
         max_num_epochs=NUM_STEPS,
         out_prefix=out_prefix,
-        convergence_check_interval=100,
         checkpoint_interval=500,
     )
     print(f"  converged={converged}")

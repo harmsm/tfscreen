@@ -12,16 +12,49 @@ from numpyro.infer import (
     Predictive,
 )
 from numpyro.infer import autoguide
-from numpyro.infer.initialization import init_to_value
+from numpyro.infer.initialization import (
+    init_to_median,
+    init_to_uniform,
+)
+from numpyro.distributions.transforms import IdentityTransform
 from numpyro.optim import ClippedAdam
 import numpy as np
 import dill
+from functools import partial
 from tqdm.auto import tqdm
 
 from tfscreen.tfmodel.inference.batch_safety import (
     find_orchestrator_batch_dependent_latents,
     orchestrator_latent_dimension,
 )
+from tfscreen.tfmodel.inference import convergence as conv
+from tfscreen.tfmodel.inference.initialization import (
+    AUTO_LOC_SUFFIX,
+    component_guide_init,
+    component_guide_map,
+    site_prior_sds,
+    site_values,
+    trace_model_sites,
+)
+
+# The convergence window is split into this many blocks for the parameter
+# test (each block's parameter mean is accumulated on the device), and the
+# loop hands control back to the host once per block.
+PARAM_BLOCKS = 8
+
+# Every window spans at least this many epochs, so with mini-batching each
+# genotype is visited several times per window.
+MIN_WINDOW_EPOCHS = 10
+
+# Parameters never tracked for movement: dense covariance factors (their
+# diagonal is tracked through the derived posterior SD instead).
+_UNTRACKED_PARAM_TAGS = ("scale_tril", "cov_factor")
+
+# Location/scale suffix pairs, checked in order (``_auto_loc`` also ends in
+# ``_loc``).
+_LOC_SCALE_SUFFIXES = (("_auto_loc", "_auto_scale"),
+                       ("_locs", "_scales"),
+                       ("_loc", "_scale"))
 
 # Autoguides selectable through setup_svi(guide_type=...), keyed by the
 # snake_case form of the numpyro class name ('delta' keeps its historical short
@@ -52,6 +85,19 @@ _GUIDE_ALIASES["auto_delta"] = "delta"
 
 # Warn when the dense auto_multivariate_normal covariance exceeds this (GB).
 _DENSE_GUIDE_WARN_GB = 4.0
+
+
+def _init_to_value_or(site=None, values=None, fallback=init_to_uniform):
+    """
+    ``init_to_value`` with a choice of strategy for sites missing from
+    ``values`` (numpyro's always falls back to ``init_to_uniform``).
+    """
+    if site is None:
+        return partial(_init_to_value_or, values=values, fallback=fallback)
+    if site["type"] == "sample" and not site["is_observed"] \
+            and site["name"] in (values or {}):
+        return values[site["name"]]
+    return fallback(site)
 
 
 def resolve_guide_type(guide_type):
@@ -89,8 +135,6 @@ def _safe_chunks(first_dim, trailing_shape, dtype):
     safe_first = max(1, _HDF5_MAX_CHUNK_BYTES // (trailing * item))
     return (min(first_dim, safe_first),) + trailing_shape
 
-from collections import deque
-from functools import partial
 import os
 import warnings
 import h5py
@@ -132,9 +176,17 @@ class RunInference:
         self._seed = seed
         self._main_key = random.PRNGKey(self._seed)
         self._current_step = 0
-        self._relative_change = np.inf
-        self._loss_start = None
-        self._loss_best = np.inf
+
+        # Step size and gradient clip of the optimizer built by setup_svi.
+        # run_optimization rebuilds the optimizer when it cuts the step size.
+        self._step_size = None
+        self._adam_clip_norm = None
+
+        # Convergence-monitor state: restored from a checkpoint (resume) and
+        # written back into checkpoints; the monitor itself lives in
+        # run_optimization.
+        self._monitor_state = None
+        self._monitor = None
 
         # Calculate iterations per epoch
         num_genotypes = self.model.data.num_genotype
@@ -145,8 +197,7 @@ class RunInference:
         batch_size = len(test_idx.flatten())
 
         self._iterations_per_epoch = int(np.ceil(num_genotypes / batch_size))
-
-        self._patience_counter = 0
+        self._batch_size = batch_size
 
         # Set by setup_svi and written into checkpoints.
         self._guide_type = None
@@ -189,7 +240,7 @@ class RunInference:
             ('auto_low_rank_multivariate_normal' only).
         init_values : dict or None, optional
             Constrained values keyed by model site name, used to initialize an
-            autoguide's location (``init_to_value``).  Sites not present fall
+            autoguide's location.  Sites not present fall
             back to numpyro's uniform initialization.  Autoguides only.
 
         Returns
@@ -220,15 +271,24 @@ class RunInference:
         else:
             ctor_kwargs = dict(guide_kwargs)
             if init_values is not None:
-                ctor_kwargs["init_loc_fn"] = init_to_value(values=init_values)
+                # Sites without a value fall back to the autoguide's own
+                # default initialization (median for AutoDelta, uniform for
+                # the others).
+                fallback = (init_to_median if guide_type == "delta"
+                            else init_to_uniform)
+                ctor_kwargs["init_loc_fn"] = partial(_init_to_value_or,
+                                                     values=init_values,
+                                                     fallback=fallback)
             guide = AUTOGUIDES[guide_type](self.model.jax_model, **ctor_kwargs)
 
         # Recorded in checkpoints so the same guide can be rebuilt on restore.
         self._guide_type = guide_type
         self._guide_kwargs = guide_kwargs
 
+        self._step_size = adam_step_size
+        self._adam_clip_norm = adam_clip_norm
         optimizer = ClippedAdam(step_size=adam_step_size,
-                                clip_norm=adam_clip_norm)   
+                                clip_norm=adam_clip_norm)
         
         svi = SVI(self.model.jax_model,
                   guide,
@@ -281,43 +341,69 @@ class RunInference:
                          svi_state=None,
                          init_params=None,
                          out_prefix="tfs",
-                         convergence_tolerance=1e-5,
-                         convergence_window=10,
-                         patience=10,
-                         convergence_check_interval=2,
+                         convergence_window_steps=2000,
+                         patience=3,
+                         convergence_z=3.0,
+                         loss_rtol=1e-6,
+                         param_tolerance=0.05,
+                         final_step_size=None,
+                         step_size_cut=0.1,
                          checkpoint_interval=10,
                          max_num_epochs=10000000,
                          init_param_jitter=0.1,
                          epoch_checkpoint_interval=1000):
         """
-        Run the SVI optimization loop.
+        Run the optimization loop until convergence or ``max_num_epochs``.
 
-        This method iterates, updates SVI state, calculates loss, checks for
-        convergence, and writes checkpoints.
+        The loop runs in tumbling windows of optimizer steps.  At the end of
+        each window ``inference/convergence.py`` tests whether the loss is
+        still improving (relative to its own noise) and whether any parameter
+        is still moving (relative to its posterior or prior width).  After
+        ``patience`` consecutive windows without loss improvement the step
+        size is cut by ``step_size_cut``; once it has reached
+        ``final_step_size``, ``patience`` consecutive windows with neither
+        loss improvement nor parameter movement are convergence.  Every window
+        is recorded in ``{out_prefix}_convergence.csv``.
 
         Parameters
         ----------
         svi : numpyro.infer.SVI
-            The SVI object from `setup_svi`.
+            The SVI object from `setup_svi`.  Its optimizer is replaced (same
+            state, smaller step size) at each step-size cut.
         svi_state : Any, optional
-            An existing SVI state to resume from. If None, a new state is
-            initialized. If a checkpoint file, restore from the checkpoint.
+            An existing SVI state to continue from, or the path of a checkpoint
+            to resume (restoring the step count, step size and convergence
+            stage).  If None, a new state is initialized and the step count
+            starts at zero.
         init_params : dict, optional
             Initial parameters.
         out_prefix : str, optional
             Root name for output files (checkpoints, losses).
-        convergence_tolerance : float, optional
-            Convergence criterion: stop when the window-to-window change in
-            smoothed loss is less than this fraction of the total improvement
-            seen since warm-up ended (i.e., since the loss deque first filled).
-            Default 1e-5.
-        convergence_window : int, optional
-            Number of epochs to average over for convergence check.
+        convergence_window_steps : int, optional
+            Length of a convergence window in optimizer steps (default 2000).
+            Raised to at least ``MIN_WINDOW_EPOCHS`` epochs and rounded up to a
+            multiple of ``PARAM_BLOCKS``.
         patience : int, optional
-            Number of consecutive convergence checks that must meet tolerance
-            to declare convergence.
-        convergence_check_interval : int, optional
-            Frequency (in epochs) to check for convergence.
+            Consecutive windows without loss improvement required for a
+            step-size cut, and (at ``final_step_size``) without loss
+            improvement or parameter movement required for convergence
+            (default 3).
+        convergence_z : float, optional
+            Standard errors of change attributed to noise (default 3).
+        loss_rtol : float, optional
+            Loss changes smaller than this fraction of the loss per window
+            count as a plateau even when significant (default 1e-6); matters
+            only for (near-)deterministic losses.
+        param_tolerance : float, optional
+            Parameter movement per window, beyond noise, that still counts as
+            a plateau (default 0.05), in posterior SDs (guide scale), prior SDs
+            (MAP locations), or log/logit units (positive or bounded
+            parameters).
+        final_step_size : float or None, optional
+            Smallest step size.  None (default) or a value >= the current step
+            size disables cuts: the first sustained plateau is convergence.
+        step_size_cut : float, optional
+            Factor applied to the step size at each cut (default 0.1).
         checkpoint_interval : int, optional
             Frequency (in epochs) to write checkpoints.
         max_num_epochs : int, optional
@@ -337,7 +423,7 @@ class RunInference:
         params : dict
             The final optimized parameters.
         converged : bool
-            True if the optimization converged based on the tolerance.
+            True if the run stopped because it converged (see above).
 
         Raises
         ------
@@ -348,15 +434,13 @@ class RunInference:
         ValueError
             If ``svi`` uses a numpyro autoguide (AutoDelta included) and the
             model has latents whose shape follows the genotype mini-batch
-            (see ``inference/batch_safety.py``).
+            (see ``inference/batch_safety.py``), or if step-size cuts are
+            requested for an optimizer built with a step-size schedule.
         """
 
         # Refuse an autoguide the model cannot support before any fitting.
         if isinstance(svi.guide, autoguide.AutoGuide):
             self._check_autoguide(svi.guide)
-
-        # Set up update function (triggers jit)
-        update_function = jax.jit(svi.update)
 
         # Add jitter to the input parameters if they are specified
         if init_params is not None:
@@ -365,20 +449,6 @@ class RunInference:
 
         # Put the data on to the gpu
         data_on_gpu = jax.device_put(self.model.data)
-
-        # JAX-optimized update function for use with lax.scan
-        def scan_fn(data_on_gpu, carry, indices):
-            svi_state = carry
-            batch = self.model.get_batch(data_on_gpu, indices)
-            new_svi_state, loss = update_function(svi_state,
-                                                  priors=self.model.priors,
-                                                  data=batch)
-            return new_svi_state, loss
-
-        # JIT the scan function. We pass data_on_gpu as a formal argument to 
-        # the jitted function to avoid capturing it as a constant in the 
-        # closure (which triggers expensive constant folding for large datasets)
-        fast_scan = jax.jit(lambda data, state, indices: jax.lax.scan(partial(scan_fn, data), state, indices))
 
         # Create an initial batch to initialize SVI
         gpu_batch_idx = jax.device_put(self.model.get_random_idx())
@@ -390,10 +460,11 @@ class RunInference:
                                      init_params=init_params,
                                      priors=self.model.priors,
                                      data=batch_data)
-            
+
+        self._monitor_state = None
         if svi_state is None:
             svi_state = initial_svi_state
-            
+            self._current_step = 0
         elif isinstance(svi_state,str):
             if os.path.isfile(svi_state):
                 svi_state = self._restore_checkpoint(svi_state)
@@ -401,23 +472,84 @@ class RunInference:
                 raise ValueError(
                     f"svi_state '{svi_state}' is not valid"
                 )
-        else:
-            svi_state = svi_state
-            
-        # Initialize loss file
-        self._write_losses(np.array([]), out_prefix) 
 
-        # loss deque holds loss values for smoothing to check for convergence
-        # The window represents epochs, so we multiply by iterations_per_epoch.
-        # We need two such windows (one old, one new) to compare.
-        deque_maxlen = 2 * convergence_window * self._iterations_per_epoch
-        self._loss_deque = deque(maxlen=deque_maxlen)
+        # --- Step size and convergence monitor ---
+
+        step_size = self._step_size
+        if step_size is None:
+            step_size = getattr(svi.optim, "step_size", None)
+        if callable(step_size):
+            if final_step_size is not None:
+                raise ValueError(
+                    "step-size cuts (final_step_size) need a constant step "
+                    "size from setup_svi, not a schedule."
+                )
+            monitor_step_size = np.nan
+        else:
+            monitor_step_size = float(step_size) if step_size is not None else np.nan
+
+        monitor = conv.ConvergenceMonitor(
+            step_size=monitor_step_size,
+            final_step_size=final_step_size,
+            step_size_cut=step_size_cut,
+            patience=patience,
+            z=convergence_z,
+            loss_rtol=loss_rtol,
+            param_tolerance=param_tolerance,
+        )
+        if self._monitor_state is not None:
+            monitor.load_state_dict(self._monitor_state)
+            if monitor.step_size != monitor_step_size:
+                print(f"Resuming at the checkpoint's step size "
+                      f"{monitor.step_size:.3g}.", flush=True)
+                self._set_step_size(svi, monitor.step_size)
+        self._monitor = monitor
+
+        # --- Window geometry ---
+
+        ipe = self._iterations_per_epoch
+        window_steps = max(int(convergence_window_steps),
+                           MIN_WINDOW_EPOCHS * ipe, 3 * PARAM_BLOCKS)
+        block_steps = int(np.ceil(window_steps / PARAM_BLOCKS))
+        window_steps = block_steps * PARAM_BLOCKS
+
+        # --- Parameters tracked for movement ---
+
+        unconstrained = svi.optim.get_params(svi_state.optim_state)
+        specs = self._param_normalizer_specs(svi, svi_state, unconstrained)
+        zero_acc = {k: jnp.zeros_like(unconstrained[k]) for k in specs}
+
+        # JAX-optimized update function for use with lax.scan.  Each step also
+        # adds the tracked (unconstrained) parameters to an accumulator, so
+        # the host gets per-block parameter means without per-step transfers.
+        def scan_fn(data_on_gpu, carry, indices):
+            state, acc = carry
+            batch = self.model.get_batch(data_on_gpu, indices)
+            new_state, loss = svi.update(state,
+                                         priors=self.model.priors,
+                                         data=batch)
+            current = svi.optim.get_params(new_state.optim_state)
+            acc = {k: acc[k] + current[k] for k in acc}
+            return (new_state, acc), loss
+
+        # Built as a fresh closure so a step-size cut (which swaps svi.optim)
+        # re-traces rather than hitting a cached compilation. The data are a
+        # formal argument to avoid capturing them as a constant (expensive
+        # constant folding for large datasets).
+        def build_scan():
+            return jax.jit(lambda data, state, acc, indices: jax.lax.scan(
+                partial(scan_fn, data), (state, acc), indices))
+
+        fast_scan = build_scan()
+
+        # Initialize loss and convergence files
+        self._write_losses(np.array([]), out_prefix)
+        self._write_convergence(None, out_prefix)
+
         converged = False
-        
-        # Convert intervals from epochs to iterations
-        check_interval_steps = convergence_check_interval * self._iterations_per_epoch
-        checkpoint_interval_steps = checkpoint_interval * self._iterations_per_epoch
-        total_steps = max_num_epochs * self._iterations_per_epoch
+        total_steps = max_num_epochs * ipe
+
+        checkpoint_interval_steps = checkpoint_interval * ipe
 
         # Track next checkpoint in steps
         # If resuming, we want to write checkpoint at the next multiple of
@@ -426,7 +558,7 @@ class RunInference:
 
         # Set up epoch checkpoint tracking
         if epoch_checkpoint_interval:
-            epoch_checkpoint_interval_steps = epoch_checkpoint_interval * self._iterations_per_epoch
+            epoch_checkpoint_interval_steps = epoch_checkpoint_interval * ipe
             self._next_epoch_checkpoint_step = (
                 (self._current_step // epoch_checkpoint_interval_steps) + 1
             ) * epoch_checkpoint_interval_steps
@@ -436,17 +568,24 @@ class RunInference:
         else:
             epoch_checkpoint_interval_steps = None
 
-        # Reset convergence state
-        self._patience_counter = 0
-        self._loss_start = None
-        self._loss_best = np.inf
-        
-        # Loop over steps in chunks of check_interval_steps
+        print(f"Convergence window: {window_steps} steps "
+              f"({window_steps / ipe:.4g} epochs); patience {patience} "
+              f"windows; step size {monitor.step_size:.3g}"
+              + (f" -> {monitor.final_step_size:.3g}"
+                 if not monitor.at_floor else "")
+              + f"; tracking {len(specs)} parameter arrays.", flush=True)
+
+        # Current window
+        window_losses = []
+        block_means = []
+        block_centers = []
+        window_filled = 0
+
         current_optimization_step = 0
         while current_optimization_step < total_steps:
 
             # Determine size of this block
-            block_size = min(check_interval_steps, total_steps - current_optimization_step)
+            block_size = min(block_steps, total_steps - current_optimization_step)
 
             # Generate a block of random indices (using NumPy/Python)
             block_idx = self.model.get_random_idx(num_batches=block_size)
@@ -455,36 +594,60 @@ class RunInference:
             gpu_block_idx = jax.device_put(block_idx)
 
             # Run the block of updates using lax.scan (entirely on GPU)
-            svi_state, block_losses = fast_scan(data_on_gpu, svi_state, gpu_block_idx)
-            
+            (svi_state, acc), block_losses = fast_scan(data_on_gpu, svi_state,
+                                                       zero_acc, gpu_block_idx)
+
             # Convert JAX array to NumPy for host-side metadata management
-            # Ensure it is at least 1D for deque/IO
+            # Ensure it is at least 1D for IO
             interval_losses = np.atleast_1d(np.array(block_losses))
-            
+
             # Update counters
             current_optimization_step += block_size
             self._current_step += block_size
 
-            # Update loss deque for convergence check
-            self._update_loss_deque(interval_losses)
+            # Accumulate the window
+            window_losses.append(interval_losses)
+            block_means.append({k: v / block_size for k, v in acc.items()})
+            block_centers.append(window_filled + block_size / 2)
+            window_filled += block_size
 
             # stdout
-            # Print status using the last loss in the block
-            print(f"Step: {self._current_step:10d}, Loss: {interval_losses[-1]:10.5e}, Change: {self._relative_change:10.5e}, Patience: {self._patience_counter:3d}", flush=True)
+            print(f"Step: {self._current_step:10d}, "
+                  f"Loss: {np.median(interval_losses):10.5e}, "
+                  f"Step size: {monitor.step_size:9.3e}, "
+                  f"Plateau: {monitor.plateau_count}/{patience}", flush=True)
 
             # Check for explosion in parameters
             params = svi.get_params(svi_state)
             for k in params:
                 if np.any(np.isnan(params[k])):
-                    
+
                     nan_params = [(k,params[k]) for k in params]
                     raise RuntimeError(
                         f"model exploded (observed at step {self._current_step}). "
                         f"NaN params: {nan_params}."
                     )
-                
+
             # Write outputs (checkpoints and losses)
-            self._write_losses(interval_losses, out_prefix) 
+            self._write_losses(interval_losses, out_prefix)
+
+            # End of a convergence window
+            decision = None
+            if window_filled >= window_steps:
+                decision = self._end_window(svi, svi_state, monitor, specs,
+                                            np.concatenate(window_losses),
+                                            block_means, block_centers,
+                                            window_filled)
+                self._write_convergence(monitor.last, out_prefix)
+                print("Convergence window, " + monitor.describe(), flush=True)
+                window_losses = []
+                block_means = []
+                block_centers = []
+                window_filled = 0
+
+                if decision == conv.CUT:
+                    self._set_step_size(svi, monitor.step_size)
+                    fast_scan = build_scan()
 
             # Check if we should write a checkpoint
             if self._current_step >= self._next_checkpoint_step:
@@ -494,33 +657,248 @@ class RunInference:
             # Check if we should write a numbered epoch checkpoint
             if epoch_checkpoint_interval_steps is not None:
                 if self._current_step >= self._next_epoch_checkpoint_step:
-                    current_epoch = self._current_step // self._iterations_per_epoch
+                    current_epoch = self._current_step // ipe
                     self._write_epoch_checkpoint(svi_state, current_epoch)
                     self._next_epoch_checkpoint_step += epoch_checkpoint_interval_steps
 
-            # Check for convergence               
-            if convergence_tolerance is not None: 
-                
-                if self._relative_change < convergence_tolerance:
-                    self._patience_counter += 1
-                else:
-                    self._patience_counter = 0
-
-                if self._patience_counter >= patience:
-                    converged = True
-                    # Final checkpoint before exiting
-                    self._write_checkpoint(svi_state, out_prefix)
-                    break
+            if decision == conv.CONVERGED:
+                converged = True
+                # Final checkpoint before exiting
+                self._write_checkpoint(svi_state, out_prefix)
+                break
 
         # Write a final checkpoint when the loop exits by reaching max_num_epochs
         # (convergence already writes its own checkpoint via the break path above).
         if not converged and total_steps > 0:
             self._write_checkpoint(svi_state, out_prefix)
 
+        if total_steps > 0:
+            if converged:
+                print(f"Converged at step {self._current_step} (step size "
+                      f"{monitor.step_size:.3g}, {monitor.num_cuts} cut(s)): "
+                      f"no significant loss improvement or parameter movement "
+                      f"for {patience} windows.", flush=True)
+            else:
+                print(f"Stopped at step {self._current_step} "
+                      f"(max_num_epochs) without converging. Last window: "
+                      f"{monitor.describe()}", flush=True)
+
         # Get final parameters
         params = svi.get_params(svi_state)
 
         return svi_state, params, converged
+
+    def _set_step_size(self, svi, step_size):
+        """
+        Give ``svi`` a ClippedAdam with a new constant step size.
+
+        The optimizer state (step count, parameters, Adam moments) does not
+        depend on the step size, so the existing state carries over.
+        """
+
+        clip_norm = self._adam_clip_norm
+        if clip_norm is None:
+            clip_norm = getattr(svi.optim, "clip_norm", 10.0)
+        svi.optim = ClippedAdam(step_size=step_size, clip_norm=clip_norm)
+        self._step_size = step_size
+
+    @staticmethod
+    def _param_transforms(svi):
+        """``{param name: transform}`` recorded by ``svi.init``, if exposed."""
+        args = getattr(getattr(svi, "constrain_fn", None), "args", None)
+        if args and isinstance(args[0], dict):
+            return args[0]
+        return {}
+
+    def _param_normalizer_specs(self, svi, svi_state, unconstrained):
+        """
+        How to normalize each tracked parameter's movement.
+
+        Returns ``{param name: spec}`` where spec is one of
+
+        - ``("unit",)``: movement taken as is -- parameters on a positive or
+          bounded support (tracked in log/logit units, so relative), and real
+          parameters with no better reference;
+        - ``("scale", scale_name)``: a guide location divided by its paired
+          guide scale (posterior SD);
+        - ``("auto_continuous",)``: an AutoContinuous ``auto_loc`` divided by
+          the posterior SD derived from its scale parameters;
+        - ``("prior", sd)``: a MAP (AutoDelta) location divided by the prior
+          SD of its site.
+        """
+
+        transforms = self._param_transforms(svi)
+        shapes = {k: jnp.shape(v) for k, v in unconstrained.items()}
+
+        prior_sds = {}
+        if self._guide_type == "delta":
+            prior_sds = self._delta_prior_sds(svi, svi_state)
+
+        specs = {}
+        for name in unconstrained:
+            if any(tag in name for tag in _UNTRACKED_PARAM_TAGS):
+                continue
+            transform = transforms.get(name)
+            if transform is not None and not isinstance(transform,
+                                                        IdentityTransform):
+                specs[name] = ("unit",)
+                continue
+
+            if name == "auto_loc":
+                specs[name] = ("auto_continuous",)
+                continue
+
+            partner = None
+            for loc_suffix, scale_suffix in _LOC_SCALE_SUFFIXES:
+                if name.endswith(loc_suffix):
+                    candidate = name[:-len(loc_suffix)] + scale_suffix
+                    if shapes.get(candidate) == shapes[name]:
+                        partner = candidate
+                    break
+
+            site = (name[:-len(AUTO_LOC_SUFFIX)]
+                    if name.endswith(AUTO_LOC_SUFFIX) else None)
+            if partner is not None:
+                specs[name] = ("scale", partner)
+            elif site is not None and site in prior_sds \
+                    and jnp.shape(prior_sds[site]) == shapes[name]:
+                specs[name] = ("prior", prior_sds[site])
+            else:
+                specs[name] = ("unit",)
+        return specs
+
+    def _delta_prior_sds(self, svi, svi_state):
+        """Prior SD of each site at the current MAP point ({} on failure)."""
+        try:
+            constrained = svi.get_params(svi_state)
+            substitutions = {k[:-len(AUTO_LOC_SUFFIX)]: v
+                             for k, v in constrained.items()
+                             if k.endswith(AUTO_LOC_SUFFIX)}
+            sites = trace_model_sites(self.model.jax_model,
+                                      self.model.priors,
+                                      self._trace_batch(),
+                                      substitutions=substitutions)
+            return site_prior_sds(sites)
+        except Exception as err:  # pragma: no cover - defensive
+            print(f"Could not compute prior SDs for MAP parameter movement "
+                  f"({err}); movement is measured in unconstrained units.",
+                  flush=True)
+            return {}
+
+    def _trace_batch(self):
+        """
+        A deterministic batch for tracing: the first ``batch_size`` genotypes
+        of the full binding-first index (latent sites are library-sized
+        whatever the batch).
+        """
+        data = jax.device_put(self.model.data)
+        idx = jnp.asarray(self.model.data.batch_idx)[:self._batch_size]
+        return self.model.get_batch(data, idx)
+
+    def site_values(self, values):
+        """
+        Constrained site values found in ``values`` (guesses, a MAP result or
+        both), keyed by model site name.  See ``inference/initialization.py``.
+        """
+        batch = self._trace_batch()
+        sites = trace_model_sites(self.model.jax_model, self.model.priors,
+                                  batch)
+        guide_map, _, _ = component_guide_map(self.model.jax_model_guide,
+                                              self.model.priors, batch)
+        return site_values(values, sites, guide_map)
+
+    def component_guide_start(self, values, guesses=None, init_scale=None):
+        """
+        Initial component-guide parameters starting at the given site values.
+
+        Parameters
+        ----------
+        values : dict
+            Constrained site values (``site_values``).
+        guesses : dict or None, optional
+            Configured guesses.  Those keyed by component-guide param name are
+            kept (and overridden where ``values`` gives the same site).
+        init_scale : float or None, optional
+            Upper bound on every mapped guide scale at the start.
+
+        Returns
+        -------
+        dict
+            ``init_params`` for ``run_optimization`` with the component guide.
+        """
+
+        guesses = dict(guesses or {})
+        guide_map, unmatched, defaults = component_guide_map(
+            self.model.jax_model_guide, self.model.priors, self._trace_batch())
+
+        init_params = {k: v for k, v in guesses.items() if k in defaults}
+        start_defaults = dict(defaults)
+        start_defaults.update(init_params)
+
+        translated, skipped = component_guide_init(values, guide_map,
+                                                   start_defaults,
+                                                   init_scale=init_scale)
+        init_params.update(translated)
+
+        n_loc = sum(1 for e in guide_map.values() if e["loc"] in translated)
+        print(f"Guide start: {n_loc} of {len(guide_map) + len(unmatched)} "
+              f"guide sites start at the given values"
+              + (f"; scales capped at {init_scale:g}"
+                 if init_scale is not None else "")
+              + ".", flush=True)
+        if unmatched:
+            print(f"  guide sites without a recognized location parameter "
+                  f"(left at their defaults): {unmatched}", flush=True)
+        if skipped:
+            print(f"  non-positive values for LogNormal-guided sites (left "
+                  f"at their defaults): {skipped}", flush=True)
+        return init_params
+
+    @staticmethod
+    def _normalizer(spec, constrained):
+        """Evaluate one normalizer spec at the current constrained params."""
+        kind = spec[0]
+        if kind == "scale":
+            norm = constrained[spec[1]]
+        elif kind == "auto_continuous":
+            if "auto_scale_tril" in constrained:
+                tril = constrained["auto_scale_tril"]
+                norm = jnp.sqrt(jnp.sum(tril * tril, axis=-1))
+            elif "auto_cov_factor" in constrained:
+                factor = constrained["auto_cov_factor"]
+                norm = jnp.sqrt(jnp.sum(factor * factor, axis=-1)
+                                + constrained["auto_scale"] ** 2)
+            elif "auto_scale" in constrained:
+                norm = constrained["auto_scale"]
+            else:
+                norm = 1.0
+        elif kind == "prior":
+            norm = spec[1]
+        else:
+            norm = 1.0
+        return jnp.maximum(jnp.asarray(norm, dtype=float), 1e-12)
+
+    def _end_window(self, svi, svi_state, monitor, specs, losses,
+                    block_means, block_centers, window_steps):
+        """Run both convergence tests on a finished window; return the decision."""
+
+        loss_stats = conv.loss_trend(losses)
+
+        constrained = svi.get_params(svi_state)
+        centers = np.asarray(block_centers, dtype=float)
+        floor = monitor.drift_floor(window_steps)
+        excess_summary = {}
+        drift_summary = {}
+        for name, spec in specs.items():
+            stacked = jnp.stack([b[name] for b in block_means])
+            drift, excess = conv.param_drift(stacked, centers, window_steps,
+                                             self._normalizer(spec, constrained),
+                                             monitor.z, floor=floor)
+            excess_summary[name] = conv.summarize_excess(excess)
+            drift_summary[name] = conv.summarize_excess(jnp.abs(drift))
+
+        return monitor.end_window(self._current_step, loss_stats,
+                                  excess_summary, drift_summary)
 
     def _get_genotype_dim_map(self):
         """
@@ -961,8 +1339,8 @@ class RunInference:
         out_dict = {"main_key":self._main_key,
                     "svi_state":host_svi_state,
                     "current_step":self._current_step,
-                    "loss_start":self._loss_start,
-                    "loss_best":self._loss_best,
+                    "step_size": self._checkpoint_step_size(),
+                    "convergence": self._convergence_state(),
                     "guide_type":self._guide_type,
                     "guide_kwargs":self._guide_kwargs}
 
@@ -1006,8 +1384,8 @@ class RunInference:
         out_dict = {"main_key": self._main_key,
                     "svi_state": host_svi_state,
                     "current_step": self._current_step,
-                    "loss_start": self._loss_start,
-                    "loss_best": self._loss_best,
+                    "step_size": self._checkpoint_step_size(),
+                    "convergence": self._convergence_state(),
                     "guide_type": self._guide_type,
                     "guide_kwargs": self._guide_kwargs}
 
@@ -1091,10 +1469,10 @@ class RunInference:
         self._main_key = checkpoint_data['main_key']
         if 'current_step' in checkpoint_data:
             self._current_step = checkpoint_data['current_step']
-        if 'loss_start' in checkpoint_data:
-            self._loss_start = checkpoint_data['loss_start']
-        if 'loss_best' in checkpoint_data:
-            self._loss_best = checkpoint_data['loss_best']
+        # Convergence stage (step size, plateau count); absent from
+        # checkpoints written before step-size cuts, which resume at the
+        # configured step size.
+        self._monitor_state = checkpoint_data.get('convergence')
 
         if not isinstance(svi_state,numpyro.infer.svi.SVIState):
             raise ValueError(
@@ -1129,7 +1507,7 @@ class RunInference:
                 os.remove(readable_losses_file)
 
             with open(readable_losses_file, "w") as f:
-                f.write("epoch,loss,relative_change\n")
+                f.write("epoch,loss,step,step_size\n")
                 f.flush()
                 os.fsync(f.fileno())
 
@@ -1145,55 +1523,61 @@ class RunInference:
             f.flush()
             os.fsync(f.fileno())
 
-        # Write a human-readable losses file: epoch,loss,relative_change
+        # Write a human-readable losses file: epoch, median loss of the block,
+        # step, step size.
+        step_size = self._checkpoint_step_size()
         with open(readable_losses_file, "a") as f:
-            f.write(f"{epoch},{losses[-1]},{self._relative_change}\n")
+            f.write(f"{epoch},{np.median(losses)},{self._current_step},"
+                    f"{step_size}\n")
             f.flush()
             os.fsync(f.fileno())
 
+    _CONVERGENCE_COLUMNS = ("step", "epoch", "step_size", "loss", "loss_drop",
+                            "loss_drop_se", "loss_t", "loss_improving",
+                            "worst_param", "worst_param_excess",
+                            "worst_param_drift", "params_moving", "plateau",
+                            "plateau_count", "decision")
 
-
-
-    def _update_loss_deque(self, losses):
+    def _write_convergence(self, record, out_prefix):
         """
-        Update the loss deque and calculate the convergence metric.
+        Append one convergence-window record to ``{out_prefix}_convergence.csv``.
 
-        The metric is the window-to-window change in smoothed loss, normalized
-        by the total improvement seen since the deque first filled (warm-up):
-
-            |mean_old - mean_new| / max(|loss_start - loss_best|, 1e-6)
-
-        loss_start is captured once, when the deque fills for the first time.
-        loss_best is the running minimum of mean_new across all checks.
-
-        Parameters
-        ----------
-        losses : list
-            List of new losses to add to the deque.
+        With ``record=None`` (start of a run) the file is created with its
+        header -- replacing any old file -- on a fresh run, and left alone on
+        a resume.
         """
 
-        self._loss_deque.extend(list(losses))
-
-        # Deque must be full before any check (natural warm-up period)
-        if len(self._loss_deque) < self._loss_deque.maxlen:
-            self._relative_change = np.inf
+        path = f"{out_prefix}_convergence.csv"
+        if record is None:
+            if self._current_step == 0 or not os.path.exists(path):
+                with open(path, "w") as f:
+                    f.write(",".join(self._CONVERGENCE_COLUMNS) + "\n")
             return
 
-        history = np.array(self._loss_deque)
-        half = len(history) // 2
-        mean_old = np.mean(history[:half])
-        mean_new = np.mean(history[half:])
+        row = dict(record)
+        row["epoch"] = row["step"] // self._iterations_per_epoch
+        with open(path, "a") as f:
+            f.write(",".join(str(row.get(c, "")) for c in
+                             self._CONVERGENCE_COLUMNS) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
 
-        # Capture loss_start once, at the end of warm-up
-        if self._loss_start is None:
-            self._loss_start = mean_old
+    def _checkpoint_step_size(self):
+        """Current constant step size, or None for a schedule/unknown."""
+        if self._monitor is not None and np.isfinite(self._monitor.step_size):
+            return self._monitor.step_size
+        if self._step_size is not None and not callable(self._step_size):
+            return float(self._step_size)
+        return None
 
-        # Track the best (lowest) smoothed loss seen so far
-        self._loss_best = min(self._loss_best, mean_new)
+    def _convergence_state(self):
+        """Monitor state for checkpoints (None before any optimization)."""
+        if self._monitor is None:
+            return self._monitor_state
+        return self._monitor.state_dict()
 
-        # Denominator: total improvement since warm-up, with floor for robustness
-        denom = max(abs(self._loss_start - self._loss_best), 1e-6)
-        self._relative_change = abs(mean_old - mean_new) / denom
+
+
 
     def write_params(self,params,out_prefix):
         """
