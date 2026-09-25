@@ -202,18 +202,23 @@ fall into two kinds:
 
 ### Fixed
 
-- **`tfs-setup-sim-grid` left nested file paths unresolved.** Only the
-  top-level `thermo_data`/`calibration_file` keys were resolved; nested ones,
-  notably a `binding_data.spiked_binding.choose_by` or
-  `binding_data.library_binding.choose_by` params file and
-  `empirical.phenotype_model`, were copied verbatim into each run's
-  `tfs_sim_config.yaml` and then resolved against the run directory, so
-  `tfs-simulate` could not find them unless the run template copied the file
-  in. `_SIM_PATH_KEYS` (`simulate/scripts/setup_sim_grid_cli.py`) is now a
-  list of key paths, nested ones included; they resolve against the base
-  config's directory (base config) or the grid YAML's (simulate overrides) and
-  are written relative to the run directory. The `stratified`/`random`
-  `choose_by` keywords are left alone. The congression-calibration study's
+- **`tfs-setup-sim-grid` grids could not be moved, and nested file paths were
+  not resolved.** Each run's `tfs_sim_config.yaml` and rendered template
+  referred to input files by a path relative to their original location, so
+  moving the grid (on or off a cluster, to another partition) broke every run.
+  Nested file keys (`binding_data.*.choose_by` params files,
+  `empirical.phenotype_model`) were not resolved at all and so needed the run
+  template to copy the file in. Setup now copies every input file into
+  `<out_prefix>/inputs/` once and each run refers to it as
+  `../inputs/<name>`, so the grid directory is self-contained. The file-path
+  keys are listed in `_SIM_PATH_KEYS`
+  (`simulate/scripts/setup_sim_grid_cli.py`), nested ones included; the
+  `stratified`/`random` `choose_by` keywords are left alone, and template
+  variables naming a file are copied the same way. Two different files with
+  the same name get a numeric suffix, and a changed file never overwrites a
+  copy that existing runs use. Setup fails before writing anything if an input
+  file is missing or is a directory, or if a config value outside
+  `_SIM_PATH_KEYS` names an existing file. The congression-calibration study's
   `run.srun` no longer copies `hill_params.csv`, and its grid YAMLs drop the
   `hill_params_file` template block.
 - **Growth prediction failed on every model built from a library file.**

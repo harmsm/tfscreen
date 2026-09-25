@@ -7,7 +7,7 @@
 #   - transformation_poisson_lambda and the dk_geno hyperparameters are set
 #     per run by grid.yaml.
 # binding_data.spiked_binding.choose_by names hill_params.csv relative to this
-# file; tfs-setup-sim-grid rewrites it relative to each run directory.
+# file; tfs-setup-sim-grid copies it into the grid's inputs/ directory.
 
 
 # ---------------------------------------------------------------------------

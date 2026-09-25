@@ -472,7 +472,7 @@ template:
 - Multi-key variants (multiple keys in one dict) always travel together and are never split.
 - `simulate` / `configure_model` variables go to the config; `template` variables go to the Jinja2 template only.  To share a variable, list it in both sections.
 - Variable names in blocks: `snake_case`.
-- File paths are the grid tool's job, never the run template's: relative paths resolve against the base config's directory (base config values) or the grid YAML's (overrides) and are written relative to each run subdir. `tfs-setup-sim-grid` resolves only the key paths listed in `_SIM_PATH_KEYS` (`setup_sim_grid_cli.py`; nested keys such as `binding_data.*.choose_by` and `empirical.phenotype_model` included, `choose_by` keywords excepted) — add any new file-valued simulate key there.
+- File paths are the grid tool's job, never the run template's, and a simulate grid directory must stay movable as a unit. `tfs-setup-sim-grid` copies every input file into `<out_prefix>/inputs/` and each run refers to it as `../inputs/<name>`; relative paths resolve against the base config's directory (base config values) or the grid YAML's (overrides and template variables). Config file paths are the key paths in `_SIM_PATH_KEYS` (`setup_sim_grid_cli.py`; nested keys such as `binding_data.*.choose_by` and `empirical.phenotype_model` included, `choose_by` keywords excepted). Setup fails, before writing anything, on a missing or directory input or on a config value outside `_SIM_PATH_KEYS` that names an existing file, so add any new file-valued simulate key there. (`tfs-setup-grid` still writes paths relative to the original location.)
 
 ### Shared grid utilities
 

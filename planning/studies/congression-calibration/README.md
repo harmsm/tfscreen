@@ -50,9 +50,9 @@ Each run ([`run.srun`](run.srun)): `tfs-simulate` -> `tfs-configure-model`
 ## How to run
 
 On the cluster, from a scratch directory, with this repository checked out.
-`tfs-setup-sim-grid` writes each run's `binding_data.spiked_binding.choose_by`
-as a path from the run directory to this study's `hill_params.csv`, so nothing
-is copied, but keep the grid and the checkout where they are after setup:
+`tfs-setup-sim-grid` copies `hill_params.csv` into the grid's `inputs/`
+directory and each run refers to it as `../inputs/hill_params.csv`, so the grid
+directory can be moved as a unit after setup:
 
 ```bash
 tfs-setup-sim-grid /path/to/tfscreen/planning/studies/congression-calibration/grid.yaml \

@@ -27,8 +27,9 @@ output_file: run.sh    # in the same examples/simulate/ directory
 # simulate blocks
 #
 # Variables here override top-level keys in the base config.  They are NOT
-# injected into the Jinja2 template.  Paths are resolved relative to this
-# YAML and re-expressed relative to each subdirectory in the written config.
+# injected into the Jinja2 template.  Relative file paths are resolved against
+# this YAML; every input file is copied into <out_prefix>/inputs/ and each run
+# refers to it as ../inputs/<name>, so the grid directory can be moved.
 #
 # Multi-key variants always move together and are never split by the Cartesian
 # product — use this to keep parameters that are only meaningful in combination.

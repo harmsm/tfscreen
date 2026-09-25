@@ -2,6 +2,7 @@
 
 import json
 import os
+import shutil
 
 import pytest
 import yaml
@@ -286,8 +287,29 @@ def test_resolve_paths_missing_nested_parent(tmp_path):
     assert _resolve_paths(cfg, str(tmp_path)) == cfg
 
 
+def _write_study(tmp_path, base, grid_body, grid_dir=None):
+    """Write simulate_config.yaml (base) and grid.yaml; return the grid path."""
+    study = tmp_path / "study"
+    study.mkdir(exist_ok=True)
+    (study / "simulate_config.yaml").write_text(yaml.dump(base))
+    grid_dir = grid_dir or study
+    base_ref = os.path.relpath(study / "simulate_config.yaml", grid_dir)
+    grid_path = grid_dir / "grid.yaml"
+    grid_path.write_text(f"base_config: {base_ref}\n" + grid_body)
+    return str(grid_path)
+
+
+_SEED_BLOCK = """\
+simulate:
+  - name: seed
+    variants:
+      - seed: 1
+      - seed: 2
+"""
+
+
 def test_setup_sim_grid_base_config_choose_by_file(tmp_path):
-    """A choose_by params file in the base config resolves from the run dir."""
+    """A choose_by params file is copied into inputs/ and referenced from there."""
     study = tmp_path / "study"
     study.mkdir()
     (study / "hill_params.csv").write_text("genotype\nwt\n")
@@ -295,28 +317,173 @@ def test_setup_sim_grid_base_config_choose_by_file(tmp_path):
             "binding_data": {"spiked_binding": {"choose_by": "hill_params.csv"},
                              "library_binding": {"choose_by": "random",
                                                  "num": 3}}}
-    (study / "simulate_config.yaml").write_text(yaml.dump(base))
-    (study / "grid.yaml").write_text("""\
-base_config: simulate_config.yaml
+    grid_path = _write_study(tmp_path, base, _SEED_BLOCK)
+    out = str(tmp_path / "elsewhere" / "grid_out")
+    runs = setup_sim_grid(grid_path, out_prefix=out)
+    assert len(runs) == 2
+    assert os.listdir(os.path.join(out, "inputs")) == ["hill_params.csv"]
+    for run in runs:
+        cfg = _read_run_config(out, run)
+        assert (cfg["binding_data"]["spiked_binding"]["choose_by"]
+                == os.path.join("..", "inputs", "hill_params.csv"))
+        # Keyword left alone
+        assert cfg["binding_data"]["library_binding"]["choose_by"] == "random"
+
+
+def test_setup_sim_grid_is_movable(tmp_path):
+    """The grid works after it is moved and the original inputs are deleted."""
+    study = tmp_path / "study"
+    study.mkdir()
+    (study / "hill_params.csv").write_text("genotype\nwt\n")
+    (study / "struct.h5").write_text("h5")
+    (study / "run.sh").write_text("cat {{ extra }}\n")
+    (study / "extra.txt").write_text("extra")
+    base = {"thermo_data": "struct.h5",
+            "binding_data": {"spiked_binding": {"choose_by": "hill_params.csv"}}}
+    grid_path = _write_study(tmp_path, base, """\
+output_file: run.sh
 simulate:
   - name: seed
     variants:
       - seed: 1
-      - seed: 2
+template:
+  - name: extra
+    variants:
+      - extra: extra.txt
 """)
-    out = str(tmp_path / "elsewhere" / "grid_out")
-    runs = setup_sim_grid(str(study / "grid.yaml"), out_prefix=out)
-    assert len(runs) == 2
-    for run in runs:
-        cfg = _read_run_config(out, run)
-        choose_by = cfg["binding_data"]["spiked_binding"]["choose_by"]
-        # Written relative to the run directory, and it resolves from there
-        assert not os.path.isabs(choose_by)
-        run_dir = os.path.join(out, run["run"])
-        assert (os.path.realpath(os.path.join(run_dir, choose_by))
-                == os.path.realpath(study / "hill_params.csv"))
-        # Keyword left alone
-        assert cfg["binding_data"]["library_binding"]["choose_by"] == "random"
+    out = tmp_path / "grid_out"
+    runs = setup_sim_grid(grid_path, out_prefix=str(out))
+
+    moved = tmp_path / "far" / "away" / "grid_out"
+    moved.parent.mkdir(parents=True)
+    shutil.move(str(out), str(moved))
+    shutil.rmtree(study)
+
+    run_dir = moved / runs[0]["run"]
+    cfg = _read_run_config(str(moved), runs[0])
+    assert (run_dir / cfg["thermo_data"]).read_text() == "h5"
+    assert ((run_dir / cfg["binding_data"]["spiked_binding"]["choose_by"])
+            .read_text() == "genotype\nwt\n")
+    rendered = (run_dir / "run.sh").read_text()
+    assert rendered == f"cat {os.path.join('..', 'inputs', 'extra.txt')}"
+    assert (run_dir / ".." / "inputs" / "extra.txt").read_text() == "extra"
+
+
+def test_setup_sim_grid_same_name_different_files(tmp_path):
+    """Two different files with one name get distinct copies."""
+    study = tmp_path / "study"
+    for sub in ("a", "b"):
+        (study / sub).mkdir(parents=True)
+        (study / sub / "params.csv").write_text(f"genotype\n{sub}\n")
+    grid_path = _write_study(tmp_path, {"seed": 1}, """\
+simulate:
+  - name: binding
+    variants:
+      - binding_data:
+          spiked_binding:
+            choose_by: a/params.csv
+      - binding_data:
+          spiked_binding:
+            choose_by: b/params.csv
+      - binding_data:
+          spiked_binding:
+            choose_by: a/params.csv
+""")
+    out = str(tmp_path / "grid_out")
+    runs = setup_sim_grid(grid_path, out_prefix=out)
+    got = [_read_run_config(out, r)["binding_data"]["spiked_binding"]["choose_by"]
+           for r in runs]
+    assert got == [os.path.join("..", "inputs", "params.csv"),
+                   os.path.join("..", "inputs", "params_2.csv"),
+                   os.path.join("..", "inputs", "params.csv")]
+    assert sorted(os.listdir(os.path.join(out, "inputs"))) == [
+        "params.csv", "params_2.csv"]
+    assert open(os.path.join(out, "inputs", "params_2.csv")).read() == "genotype\nb\n"
+
+
+def test_setup_sim_grid_rerun_changed_input_not_overwritten(tmp_path):
+    """Re-running into the same grid never changes a file older runs use."""
+    study = tmp_path / "study"
+    study.mkdir()
+    (study / "hill_params.csv").write_text("v1")
+    base = {"binding_data": {"spiked_binding": {"choose_by": "hill_params.csv"}}}
+    grid_path = _write_study(tmp_path, base, _SEED_BLOCK)
+    out = str(tmp_path / "grid_out")
+    setup_sim_grid(grid_path, out_prefix=out)
+    runs = setup_sim_grid(grid_path, out_prefix=out)  # unchanged: reused
+    assert os.listdir(os.path.join(out, "inputs")) == ["hill_params.csv"]
+
+    (study / "hill_params.csv").write_text("v2")
+    runs = setup_sim_grid(grid_path, out_prefix=out)
+    cfg = _read_run_config(out, runs[0])
+    assert (cfg["binding_data"]["spiked_binding"]["choose_by"]
+            == os.path.join("..", "inputs", "hill_params_2.csv"))
+    assert open(os.path.join(out, "inputs", "hill_params.csv")).read() == "v1"
+
+
+def test_setup_sim_grid_phenotype_model_prefix(tmp_path):
+    """A bare phenotype_model prefix copies the JSON the simulator would load."""
+    study = tmp_path / "study"
+    study.mkdir()
+    (study / "emp_phenotype_model.json").write_text("{}")
+    base = {"empirical": {"phenotype_model": "emp"}}
+    grid_path = _write_study(tmp_path, base, _SEED_BLOCK)
+    out = str(tmp_path / "grid_out")
+    runs = setup_sim_grid(grid_path, out_prefix=out)
+    cfg = _read_run_config(out, runs[0])
+    assert (cfg["empirical"]["phenotype_model"]
+            == os.path.join("..", "inputs", "emp_phenotype_model.json"))
+
+
+def test_setup_sim_grid_missing_input_file_raises(tmp_path):
+    base = {"binding_data": {"spiked_binding": {"choose_by": "nope.csv"}}}
+    grid_path = _write_study(tmp_path, base, _SEED_BLOCK)
+    out = tmp_path / "grid_out"
+    with pytest.raises(FileNotFoundError, match="binding_data.spiked_binding.choose_by"):
+        setup_sim_grid(grid_path, out_prefix=str(out))
+    assert not out.exists()
+
+
+def test_setup_sim_grid_directory_input_raises(tmp_path):
+    study = tmp_path / "study"
+    (study / "structs").mkdir(parents=True)
+    grid_path = _write_study(tmp_path, {"thermo_data": "structs"}, _SEED_BLOCK)
+    with pytest.raises(ValueError, match="directory"):
+        setup_sim_grid(grid_path, out_prefix=str(tmp_path / "grid_out"))
+
+
+def test_setup_sim_grid_unknown_path_key_raises(tmp_path):
+    """A file named by a key setup does not know about is a hard error."""
+    study = tmp_path / "study"
+    study.mkdir()
+    (study / "mystery.csv").write_text("x")
+    base = {"presplit_data": {"source": "mystery.csv"}}
+    grid_path = _write_study(tmp_path, base, _SEED_BLOCK)
+    out = tmp_path / "grid_out"
+    with pytest.raises(ValueError, match="presplit_data.source.*_SIM_PATH_KEYS"):
+        setup_sim_grid(grid_path, out_prefix=str(out))
+    assert not out.exists()
+
+
+def test_setup_sim_grid_unknown_absolute_path_raises(tmp_path):
+    grid_path = _write_study(tmp_path, {"some_dir": str(tmp_path)}, _SEED_BLOCK)
+    with pytest.raises(ValueError, match="some_dir"):
+        setup_sim_grid(grid_path, out_prefix=str(tmp_path / "grid_out"))
+
+
+def test_setup_sim_grid_template_directory_raises(tmp_path):
+    study = tmp_path / "study"
+    (study / "data").mkdir(parents=True)
+    (study / "run.sh").write_text("{{ d }}")
+    grid_path = _write_study(tmp_path, {"seed": 1}, """\
+output_file: run.sh
+template:
+  - name: d
+    variants:
+      - d: data
+""")
+    with pytest.raises(ValueError, match="Template variable 'd'.*directory"):
+        setup_sim_grid(grid_path, out_prefix=str(tmp_path / "grid_out"))
 
 
 def test_setup_sim_grid_keyword_choose_by_unchanged(tmp_path):
@@ -358,10 +525,10 @@ simulate:
     out = str(tmp_path / "grid_out")
     runs = setup_sim_grid(str(grid_dir / "grid.yaml"), out_prefix=out)
     cfg = _read_run_config(out, runs[0])
-    choose_by = cfg["binding_data"]["spiked_binding"]["choose_by"]
+    assert (cfg["binding_data"]["spiked_binding"]["choose_by"]
+            == os.path.join("..", "inputs", "measured.csv"))
+    assert open(os.path.join(out, "inputs", "measured.csv")).read() == "genotype\nwt\n"
     run_dir = os.path.join(out, runs[0]["run"])
-    assert (os.path.realpath(os.path.join(run_dir, choose_by))
-            == os.path.realpath(grid_dir / "measured.csv"))
     # combo.json keeps the override as written
     with open(os.path.join(run_dir, "combo.json")) as fh:
         combo = json.load(fh)
