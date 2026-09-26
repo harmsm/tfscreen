@@ -46,7 +46,7 @@ def _run_map(ri,
              checkpoint_file=None,
              out_prefix="tfs",
              adam_step_size=1e-3,
-             adam_clip_norm=1.0,
+             adam_clip_norm=None,
              elbo_num_particles=2,
              label="MAP",
              **optimization_kwargs):
@@ -66,8 +66,11 @@ def _run_map(ri,
         Output file root for checkpoints and results (default "tfs").
     adam_step_size : float, optional
         Starting step size for the Adam optimizer (default 1e-3).
-    adam_clip_norm : float, optional
-        Gradient clipping norm for Adam optimizer (default 1.0).
+    adam_clip_norm : float or None, optional
+        Clip each gradient element to +/- this value (numpyro ClippedAdam).
+        None (default) disables clipping: when gradients are much larger
+        than the clip, an elementwise clip makes Adam follow the gradient's
+        sign, and its fixed point is biased by rare large ELBO penalties.
     elbo_num_particles : int, optional
         Number of particles for ELBO estimation during MAP (default 2).
     label : str, optional
@@ -121,7 +124,7 @@ def _run_svi(ri,
              checkpoint_file=None,
              out_prefix="tfs",
              adam_step_size=1e-3,
-             adam_clip_norm=1.0,
+             adam_clip_norm=None,
              elbo_num_particles=2,
              guide_type="component",
              guide_kwargs=None,
@@ -143,8 +146,11 @@ def _run_svi(ri,
         Output file root for checkpoints and results (default "tfs").
     adam_step_size : float, optional
         Starting step size for the Adam optimizer (default 1e-3).
-    adam_clip_norm : float, optional
-        Gradient clipping norm for Adam optimizer (default 1.0).
+    adam_clip_norm : float or None, optional
+        Clip each gradient element to +/- this value (numpyro ClippedAdam).
+        None (default) disables clipping: when gradients are much larger
+        than the clip, an elementwise clip makes Adam follow the gradient's
+        sign, and its fixed point is biased by rare large ELBO penalties.
     elbo_num_particles : int, optional
         Number of particles for ELBO estimation during SVI (default 2).
     guide_type : str, optional
@@ -291,7 +297,7 @@ def fit_model(config_file,
               adam_step_size=1e-3,
               adam_final_step_size=1e-6,
               adam_step_size_cut=0.1,
-              adam_clip_norm=1.0,
+              adam_clip_norm=None,
               elbo_num_particles=2,
               convergence_window_steps=2000,
               patience=3,
@@ -366,8 +372,11 @@ def fit_model(config_file,
         for a constant step size.
     adam_step_size_cut : float, optional
         Factor applied to the step size at each cut (default 0.1).
-    adam_clip_norm : float, optional
-        Gradient clipping norm for Adam optimizer (default 1.0).
+    adam_clip_norm : float or None, optional
+        Clip each gradient element to +/- this value (numpyro ClippedAdam).
+        None (default) disables clipping: when gradients are much larger
+        than the clip, an elementwise clip makes Adam follow the gradient's
+        sign, and its fixed point is biased by rare large ELBO penalties.
     elbo_num_particles : int, optional
         Number of particles for ELBO estimation (default 2).
     convergence_window_steps : int, optional
@@ -583,6 +592,7 @@ def fit_model(config_file,
 def main():
     return generalized_main(fit_model,
                             manual_arg_types={"config_file":str,
+                                              "adam_clip_norm":float,
                                               "seed":int,
                                               "checkpoint_file":str,
                                               "guide_rank":int,

@@ -114,6 +114,53 @@ fall into two kinds:
 
 ### Changed
 
+- **Gradient clipping is off by default in `tfs-fit-model` and
+  `tfs-prefit-calibration` (SVI, MAP, pre-MAP, prefit).** Every
+  congression-calibration fit on the step-3.5 grids ran to `max_num_epochs`,
+  and the lambda-1 seed-1 fits "blew up" to 4-5 times their best loss.
+  numpyro's `ClippedAdam` (the only optimizer, `adam_clip_norm=1.0`) clips each
+  gradient *element*. These losses have gradients of 1e3-1e6 per element, so
+  every element was clipped every step and each update followed the sign of
+  one draw's gradient; the fit settled where those signs balance, not where
+  the expected gradient vanishes. The ELBO was heavy-tailed: one binding
+  genotype (a step-like curve, `hill_n` 24.6, measured with SD 0.001) cost
+  ~2.4e5 nats whenever a guide draw crossed its step. At the sign-balance
+  point 5-90% of draws crossed it, depending on the run, and a step-size cut
+  cannot move such a point. The "blow-ups" were the block medians flipping
+  once that share passed 50%; the parameters barely moved. Resumed unclipped
+  from the blown-up checkpoints, the crossings fall to ~0 and the loss to
+  below the clipped runs' best, and a fresh unclipped fit converges (46k
+  steps). Study: `planning/studies/congression-calibration/diagnosis/`.
+  - The default optimizer is numpyro `Adam` (`inference/run_inference.py`,
+    `adam_optimizer`). `--adam_clip_norm` still selects `ClippedAdam`.
+    Step-size cuts keep whichever was chosen. Both share their state, so
+    checkpoints written under clipping resume unclipped. Checkpoints now
+    record `adam_clip_norm`.
+  - Results of fits made with the clip, notably the step-3.5 baseline and
+    lambda-profile grids, are biased toward whatever the clipped
+    equilibrium favored, and should be rerun.
+- **The convergence stop also needs an unskewed loss, and posterior SDs used
+  to measure parameter movement are floored at 1% of the prior SD.**
+  - The loss test reads block medians, which ignore rare large penalties that
+    dominate the mean, the actual objective. Each window now also reports its
+    mean and its skew, `(mean - median) / (1.4826 MAD)` about the trend line
+    (`convergence.loss_skew`). At the final step size a window with skew above
+    `MAX_LOSS_SKEW` (3) is not a plateau, so such a run is reported rather
+    than called converged. Skew never forces a step-size cut. Benign ELBO noise
+    stays below ~1 (at most 0.4 on every recorded clean trace); the clipped
+    calibration runs gave 29-37. The statistic cannot see penalties carried
+    by most steps, but then the loss level shows them.
+  - The mean-field component guide collapses the guide SDs of hierarchical
+    scales (hill_mut `theta_sigma_d_*`, `theta_epi_tau`) to ~4e-4, far below
+    any honest posterior width. Measured in those units, a location creeping
+    ~2e-4 per window read as 0.3-0.5 SDs of movement at step size 1e-6
+    forever. The SD used is now at least `PRIOR_SD_FLOOR` (0.01) times the
+    site's prior SD in the location's unconstrained units
+    (`initialization.site_unconstrained_prior_sds`), for the component guide,
+    AutoNormal and the AutoContinuous guides.
+  - `{out_prefix}_convergence.csv` gains `loss_mean`, `loss_skew` and
+    `loss_skewed`. A resume rewrites an older file under the new columns.
+
 - **Breaking: convergence and step size in `tfs-fit-model` and
   `tfs-prefit-calibration`.** The stop rule divided the window-to-window loss
   change by the improvement since the start of the run. On the step-3.5
@@ -256,6 +303,15 @@ fall into two kinds:
     they replace `_apply_growth_params`.
 
 ### Fixed
+
+- **MAP parameter movement silently lost all its prior-SD units on models with
+  a horseshoe slab.** `initialization.site_prior_sds` did not catch the
+  `ZeroDivisionError` numpyro raises for the variance of an `InverseGamma`
+  with Python-float concentration 2 (the slab prior with the default
+  `slab_df` 4). The whole calculation then fell back to unconstrained units
+  for every parameter ("Could not compute prior SDs for MAP parameter
+  movement" in the pre-MAP log of every hill_mut epistasis fit). An undefined
+  variance now skips only its own site.
 
 - **Library enumeration counted every codon of a tile as a site, flooding
   partially degenerate libraries with wt.** `LibraryManager._prepare_indexes`

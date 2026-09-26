@@ -16,7 +16,14 @@ import optax
 from flax import struct
 from numpyro import handlers
 
-from tfscreen.tfmodel.inference.run_inference import RunInference
+import jax
+from numpyro.infer import SVI, Trace_ELBO
+from numpyro.optim import Adam, ClippedAdam
+
+from tfscreen.tfmodel.inference.run_inference import (
+    RunInference,
+    adam_optimizer,
+)
 
 NUM_GENOTYPE = 12
 NUM_OBS = 6
@@ -195,6 +202,90 @@ def test_schedule_without_cuts_runs():
 
 
 # -----------------------------------------------------------------------------
+# Optimizer: gradient clipping off by default
+# -----------------------------------------------------------------------------
+
+def test_setup_svi_defaults_to_unclipped_adam():
+    ri = RunInference(ToyModel(), seed=0)
+    svi = ri.setup_svi(adam_step_size=1e-2, guide_type="component")
+    assert type(svi.optim) is Adam
+    clipped = ri.setup_svi(adam_step_size=1e-2, adam_clip_norm=2.0,
+                           guide_type="component")
+    assert isinstance(clipped.optim, ClippedAdam)
+    assert clipped.optim.clip_norm == 2.0
+
+
+@pytest.mark.parametrize("clip_norm", [None, 2.0])
+def test_step_size_cut_keeps_clip_choice(clip_norm):
+    ri = RunInference(ToyModel(), seed=0)
+    svi = ri.setup_svi(adam_step_size=1e-2, adam_clip_norm=clip_norm,
+                       guide_type="component")
+    _fit(ri, svi, final_step_size=1e-4)
+    assert ri._monitor.num_cuts > 0
+    if clip_norm is None:
+        assert type(svi.optim) is Adam
+    else:
+        assert isinstance(svi.optim, ClippedAdam)
+        assert svi.optim.clip_norm == clip_norm
+    with open("toy_checkpoint.pkl", "rb") as f:
+        assert dill.load(f)["adam_clip_norm"] == clip_norm
+
+
+def test_clipped_checkpoint_resumes_unclipped():
+    """Adam and ClippedAdam share their state, so a checkpoint written under
+    one resumes under the other."""
+    ri = RunInference(ToyModel(), seed=0)
+    svi = ri.setup_svi(adam_step_size=1e-2, adam_clip_norm=1.0,
+                       guide_type="component")
+    _fit(ri, svi, max_num_epochs=50)
+    ri2 = RunInference(ToyModel(), seed=0)
+    svi2 = ri2.setup_svi(adam_step_size=1e-2, guide_type="component")
+    _fit(ri2, svi2, svi_state="toy_checkpoint.pkl", max_num_epochs=50)
+    assert ri2._current_step == 100
+
+
+def _wall_model():
+    """A latent pulled toward x = 5 by many observations, and one binding-like
+    observation, measured with SD 1e-3, of a step that is 'on' only for
+    x < 0.  The guide's width is fixed (in the real model it is held up by
+    shared hyperparameters), so the optimizer can only trade the pull against
+    the rare draws that cross the step."""
+
+    def model():
+        x = numpyro.sample("x", dist.Normal(0.0, 10.0))
+        numpyro.sample("pull", dist.Normal(x, 1.0).expand([50]).to_event(1),
+                       obs=jnp.full(50, 5.0))
+        theta = jax.nn.sigmoid(200.0 * (0.0 - x))
+        numpyro.sample("wall", dist.Normal(theta, 1e-3), obs=0.999)
+
+    def guide():
+        loc = numpyro.param("x_loc", -1.0)
+        numpyro.sample("x", dist.Normal(loc, 0.3))
+
+    return model, guide
+
+
+@pytest.mark.parametrize("clip_norm,crosses", [(1.0, True), (None, False)])
+def test_elementwise_clip_walks_through_rare_penalties(clip_norm, crosses):
+    """The failure behind the congression-calibration blow-ups.  Gradients of
+    this loss are far above 1, so ClippedAdam follows each draw's gradient
+    sign: the pull wins every draw that misses the step, and past the step
+    (where it saturates) every draw, so the location is carried through the
+    constraint.  Unclipped Adam balances the expected gradient and keeps the
+    guide on the allowed side, crossing on ~1% of draws."""
+    model, guide = _wall_model()
+    svi = SVI(model, guide, adam_optimizer(1e-2, clip_norm), Trace_ELBO())
+    result = svi.run(jax.random.PRNGKey(0), 3000, progress_bar=False)
+    loc = float(result.params["x_loc"])
+    draws = loc + 0.3 * np.random.default_rng(0).normal(size=20000)
+    p_cross = float(np.mean(draws > 0.0))
+    if crosses:
+        assert loc > 0 and p_cross > 0.5
+    else:
+        assert loc < 0 and p_cross < 0.05
+
+
+# -----------------------------------------------------------------------------
 # Resume, step counter, checkpoints
 # -----------------------------------------------------------------------------
 
@@ -240,6 +331,33 @@ def test_resume_old_checkpoint_without_convergence_state():
     svi2 = ri2.setup_svi(adam_step_size=1e-3, guide_type="component")
     _fit(ri2, svi2, svi_state="old_checkpoint.pkl", max_num_epochs=50)
     assert ri2._monitor.step_size == pytest.approx(1e-3)
+
+
+def test_resume_migrates_old_convergence_file():
+    """A convergence file written before the loss-skew columns existed is
+    rewritten under the current header on resume; old values keep their
+    columns and new ones are left empty."""
+    ri = RunInference(ToyModel(), seed=0)
+    svi = ri.setup_svi(adam_step_size=1e-2, guide_type="component")
+    _fit(ri, svi, max_num_epochs=50)
+    old_cols = [c for c in ri._CONVERGENCE_COLUMNS
+                if c not in ("loss_mean", "loss_skew", "loss_skewed")]
+    with open("toy_convergence.csv", "w") as f:
+        f.write(",".join(old_cols) + "\n")
+        f.write(",".join("7" if c == "step" else "x" for c in old_cols) + "\n")
+
+    ri2 = RunInference(ToyModel(), seed=0)
+    svi2 = ri2.setup_svi(adam_step_size=1e-2, guide_type="component")
+    _fit(ri2, svi2, svi_state="toy_checkpoint.pkl", max_num_epochs=1000)
+
+    import csv
+    with open("toy_convergence.csv", newline="") as f:
+        rows = list(csv.DictReader(f))
+        f.seek(0)
+        header = next(csv.reader(f))
+    assert tuple(header) == ri2._CONVERGENCE_COLUMNS
+    assert rows[0]["step"] == "7" and rows[0]["loss_skew"] == ""
+    assert len(rows) > 1 and rows[-1]["loss_skew"] != ""
 
 
 def test_fresh_run_resets_step_counter():
@@ -319,16 +437,39 @@ def _specs(guide_type, **guide_kwargs):
 
 def test_normalizers_component_guide():
     _, _, _, specs = _specs("component")
-    assert specs["theta_locs"] == ("scale", "theta_scales")
-    assert specs["mu_loc"] == ("scale", "mu_scale")
+    assert specs["theta_locs"][:2] == ("scale", "theta_scales")
+    assert specs["mu_loc"][:2] == ("scale", "mu_scale")
     # LogNormal location (log space) paired with its log-space scale
-    assert specs["sigma_loc"] == ("scale", "sigma_scale")
+    assert specs["sigma_loc"][:2] == ("scale", "sigma_scale")
     assert specs["theta_scales"] == ("unit",)
+
+    # Floors: PRIOR_SD_FLOOR x the prior SD in the location's own units --
+    # Normal(0, 10) for mu, Normal(mu, 1) for theta, and log units for the
+    # HalfNormal(1) sigma (log|Z| has SD ~1.1; a robust MC estimate)
+    np.testing.assert_allclose(specs["mu_loc"][2], 0.1, rtol=1e-5)
+    np.testing.assert_allclose(specs["theta_locs"][2],
+                               np.full(NUM_GENOTYPE, 0.01), rtol=1e-5)
+    assert 0.005 < float(specs["sigma_loc"][2]) < 0.02
+
+
+def test_normalizer_floors_collapsed_guide_scale():
+    """A guide scale far below the prior SD is not used as the yardstick."""
+    ri, svi, state, specs = _specs("component")
+    constrained = dict(svi.get_params(state))
+    constrained["theta_scales"] = jnp.full(NUM_GENOTYPE, 1e-5)
+    constrained["mu_scale"] = jnp.asarray(0.5)
+    theta = ri._normalizer(specs["theta_locs"], constrained)
+    np.testing.assert_allclose(theta, 0.01, rtol=1e-5)
+    # a scale above its floor is used as is
+    mu = ri._normalizer(specs["mu_loc"], constrained)
+    assert float(mu) == pytest.approx(0.5)
 
 
 def test_normalizers_auto_normal():
     _, _, _, specs = _specs("auto_normal")
-    assert specs["theta_auto_loc"] == ("scale", "theta_auto_scale")
+    assert specs["theta_auto_loc"][:2] == ("scale", "theta_auto_scale")
+    np.testing.assert_allclose(specs["theta_auto_loc"][2],
+                               np.full(NUM_GENOTYPE, 0.01), rtol=1e-5)
     assert specs["theta_auto_scale"] == ("unit",)
 
 
@@ -349,11 +490,21 @@ def test_normalizers_delta_use_prior_sd():
 ])
 def test_normalizers_auto_continuous(guide_type, kwargs):
     ri, svi, state, specs = _specs(guide_type, **kwargs)
-    assert specs["auto_loc"] == ("auto_continuous",)
+    kind, floor = specs["auto_loc"]
+    assert kind == "auto_continuous"
     assert not any("scale_tril" in k or "cov_factor" in k for k in specs)
     norm = ri._normalizer(specs["auto_loc"], svi.get_params(state))
     assert norm.shape == (NUM_GENOTYPE + 2,)
     assert np.all(np.asarray(norm) > 0)
+
+    # The floor follows the guide's latent layout: mu, sigma (log units),
+    # then the theta block.
+    floor = np.asarray(floor)
+    assert floor.shape == (NUM_GENOTYPE + 2,)
+    unpacked = svi.guide._unpack_latent(jnp.asarray(floor))
+    np.testing.assert_allclose(unpacked["mu"], 0.1, rtol=1e-5)
+    np.testing.assert_allclose(unpacked["theta"], 0.01, rtol=1e-5)
+    assert 0.005 < float(unpacked["sigma"]) < 0.02
 
 
 # -----------------------------------------------------------------------------

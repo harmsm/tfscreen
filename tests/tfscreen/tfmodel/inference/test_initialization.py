@@ -16,6 +16,7 @@ from tfscreen.tfmodel.inference.initialization import (
     component_guide_init,
     component_guide_map,
     site_prior_sds,
+    site_unconstrained_prior_sds,
     site_values,
     trace_model_sites,
 )
@@ -107,6 +108,41 @@ def test_site_prior_sds():
     np.testing.assert_allclose(sds["c"], 0.5)
     assert float(sds["b"]) == pytest.approx(3.0 * np.sqrt(1 - 2 / np.pi))
     assert "d" not in sds  # Cauchy: no finite variance
+
+
+def test_site_prior_sds_skip_undefined_variance():
+    """InverseGamma(2, .) with Python floats raises ZeroDivisionError from its
+    variance (the horseshoe slab prior, slab_df = 4); that site is skipped,
+    not the whole model."""
+
+    def model(data=None, priors=None):
+        numpyro.sample("a", dist.Normal(1.0, 2.0))
+        numpyro.sample("c2", dist.InverseGamma(2.0, 2.0))
+
+    sites = trace_model_sites(model, None, None)
+    sds = site_prior_sds(sites)
+    assert "c2" not in sds
+    assert float(sds["a"]) == pytest.approx(2.0)
+    # the unconstrained spread falls back to Monte Carlo (log units)
+    assert np.isfinite(float(site_unconstrained_prior_sds(sites)["c2"]))
+
+
+def test_site_unconstrained_prior_sds():
+    """Prior spread in the units guide locations live in: exact SDs for real
+    sites with a finite variance, a robust Monte Carlo estimate (IQR / 1.349)
+    otherwise -- log units for a positive site, finite for a Cauchy."""
+    sites = trace_model_sites(_model, None, None, substitutions={"a": 0.0})
+    sds = site_unconstrained_prior_sds(sites)
+    assert float(sds["a"]) == pytest.approx(2.0)
+    np.testing.assert_allclose(sds["c"], 0.5)
+    assert sds["c"].shape == (4,)
+    # log|3Z|, Z ~ N(0, 1): IQR / 1.349 = 0.95 (the scale does not matter)
+    assert 0.6 < float(sds["b"]) < 1.4
+    # Cauchy(0, 1): IQR / 1.349 = 1.48
+    assert 0.8 < float(sds["d"]) < 2.5
+    # deterministic for a given seed
+    again = site_unconstrained_prior_sds(sites)
+    assert float(again["b"]) == float(sds["b"])
 
 
 # Guide sites that do not follow the {site}_loc(s) convention, and why.

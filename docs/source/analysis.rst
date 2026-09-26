@@ -129,7 +129,7 @@ Convergence
 ``tfs-fit-model`` (SVI, MAP and the SVI warm-up) and ``tfs-prefit-calibration``
 decide when to stop the same way. Optimization runs in windows of
 ``--convergence_window_steps`` optimizer steps (default 2000, and at least 10
-epochs). At the end of each window two questions are asked:
+epochs). At the end of each window three questions are asked:
 
 * **Is the loss still improving?** A line through the medians of 20 blocks of
   the window's losses gives the drop per window and its standard error. The
@@ -138,22 +138,43 @@ epochs). At the end of each window two questions are asked:
   The loss is judged against its own noise, so a noisy ELBO (few particles,
   mini-batches) neither stops early nor runs forever.
 * **Is any parameter still moving?** Each parameter's trend over the window is
-  measured in units of its posterior SD (the guide scale; for MAP the prior
-  SD, and log units for positive parameters). Movement explained by noise, or
-  smaller than the optimizer can resolve at the current step size, does not
-  count; anything left above ``--param_tolerance`` (default 0.05) does.
+  measured in units of its posterior SD (the guide scale, but never less than
+  1% of the prior SD; for MAP the prior SD, and log units for positive
+  parameters). Movement explained by noise, or smaller than the optimizer can
+  resolve at the current step size, does not count; anything left above
+  ``--param_tolerance`` (default 0.05) does. The 1% floor matters for a
+  mean-field guide, which can shrink a hierarchical scale's guide SD far below
+  any honest posterior width; measured in those units, a negligible creep
+  would never count as settled.
+* **Does the median loss represent the mean?** The loss being minimized is the
+  mean over guide draws. If rare draws carry a huge penalty (for example a
+  steep binding curve measured very precisely, crossed by an occasional draw),
+  the block medians ignore them. The window's skew, how many robust SDs its
+  mean sits above its median, exposes this; benign ELBO noise stays below
+  about 1.
 
 After ``--patience`` (default 3) windows in a row without loss improvement,
 the step size is multiplied by ``--adam_step_size_cut`` (default 0.1), down to
 ``--adam_final_step_size``. At that floor the run stops after ``--patience``
-windows in which the loss has not improved *and* no parameter has moved.
+windows in which the loss has not improved, no parameter has moved *and* the
+skew is at most 3. Skew never triggers a cut: a smaller step size does not
+remove rare penalties.
 ``--max_num_epochs`` is only a cap. A run that reaches it says so, and names
 the largest remaining movement. Resuming from a checkpoint continues at the
 checkpoint's step size.
 
-``{out_prefix}_convergence.csv`` records every window: the loss, its drop and
-standard error, the parameter moving most, the step size and the decision
-(``continue``, ``cut`` or ``converged``).
+``{out_prefix}_convergence.csv`` records every window: the loss (median and
+mean), its drop and standard error, the skew, the parameter moving most, the
+step size and the decision (``continue``, ``cut`` or ``converged``).
+
+The optimizer is Adam without gradient clipping. ``--adam_clip_norm`` restores
+numpyro's ``ClippedAdam``, which clips each gradient *element*. When gradients
+are much larger than the clip, as they are for these models, that makes each
+update follow the sign of the gradient of a single draw, and the fit settles
+where those signs balance rather than where the expected gradient is zero.
+With rare large penalties that point can sit on the wrong side of a
+constraint: on the congression-calibration grids it held 5-90% of draws in
+violation of one binding curve.
 
 Step 4: Sample Posterior (``tfs-sample-posterior``)
 ----------------------------------------------------

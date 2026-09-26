@@ -12,6 +12,7 @@ import jax.numpy as jnp
 from tfscreen.tfmodel.inference import convergence as conv
 from tfscreen.tfmodel.inference.convergence import (
     ConvergenceMonitor,
+    loss_skew,
     loss_trend,
     param_drift,
     summarize_excess,
@@ -98,6 +99,59 @@ def test_loss_trend_detects_decrease_well_below_step_noise():
     losses = (1e5 - 5000 * np.arange(WINDOW) / WINDOW
               + 1e4 * rng.normal(size=WINDOW))
     assert loss_trend(losses)["t"] > 3
+
+
+# -----------------------------------------------------------------------------
+# loss_skew
+# -----------------------------------------------------------------------------
+
+@pytest.mark.parametrize("noise", ["normal", "exponential", "lognormal",
+                                   "student_t3"])
+def test_loss_skew_benign_noise_is_small(noise):
+    """Monte Carlo ELBO noise, right-skewed or heavy-tailed but without
+    separate penalties, stays well under MAX_LOSS_SKEW."""
+    rng = np.random.default_rng(0)
+    draw = {"normal": lambda n: rng.normal(size=n),
+            "exponential": lambda n: rng.exponential(size=n),
+            "lognormal": lambda n: rng.lognormal(sigma=1.0, size=n),
+            "student_t3": lambda n: rng.standard_t(3, size=n)}[noise]
+    for _ in range(20):
+        stats = loss_trend(1e5 + 1e3 * draw(WINDOW))
+        assert stats["skew"] < 1.5 < conv.MAX_LOSS_SKEW
+
+
+def test_loss_skew_rare_penalties_are_large():
+    """Rare draws with a huge penalty: the median ignores them, the mean does
+    not.  The skew is the mean shift (rate x penalty) in per-step noise SDs:
+    here 5-30% of steps carrying 240 noise SDs."""
+    rng = np.random.default_rng(1)
+    for rate in (0.05, 0.1, 0.3):
+        losses = (4e4 + 1e3 * rng.normal(size=WINDOW)
+                  + 2.4e5 * (rng.random(WINDOW) < rate))
+        stats = loss_trend(losses)
+        assert stats["skew"] > 3 * conv.MAX_LOSS_SKEW
+        assert stats["mean"] > stats["level"] + 3e3
+
+
+def test_loss_skew_ignores_trend():
+    """A falling loss is not read as skew (residuals are about the line)."""
+    rng = np.random.default_rng(2)
+    losses = 1e5 - 20.0 * np.arange(WINDOW) + 10.0 * rng.normal(size=WINDOW)
+    assert abs(loss_trend(losses)["skew"]) < 0.5
+
+
+def test_loss_skew_constant_and_empty():
+    assert loss_trend(np.full(WINDOW, 5.0))["skew"] == 0.0
+    assert loss_skew(np.zeros(10)) == 0.0
+    assert loss_skew([]) == 0.0
+
+
+def test_loss_skew_deterministic_repeats_are_not_skew():
+    """A deterministic loss whose steps mostly repeat one value: the spread
+    is floored at rtol * |level|, so float-level differences are not skew."""
+    losses = np.full(WINDOW, 1e5)
+    losses[::7] += 1e-3
+    assert loss_skew(losses - 1e5, level=1e5) < conv.MAX_LOSS_SKEW
 
 
 # -----------------------------------------------------------------------------
@@ -245,6 +299,35 @@ def test_monitor_stop_needs_parameters_still_at_floor():
     m.end_window(10, _FLAT, still)
     assert m.end_window(11, _FLAT, still) == conv.CONVERGED
     assert m.converged
+
+
+def test_monitor_stop_needs_unskewed_loss_at_floor():
+    """At the floor a skewed window is not a plateau: the run continues (and
+    reports it) rather than converging on a median that hides the mean."""
+    skewed = dict(_FLAT, skew=40.0, mean=500.0)
+    m = ConvergenceMonitor(1e-6, 1e-6, patience=2)
+    assert [m.end_window(i, skewed) for i in range(6)] == [conv.CONTINUE] * 6
+    assert m.last["loss_skewed"] and m.last["loss_skew"] == 40.0
+    assert m.last["loss_mean"] == 500.0
+    assert "loss skewed" in m.describe()
+    assert m.end_window(6, dict(_FLAT, skew=0.3)) == conv.CONTINUE
+    assert m.end_window(7, dict(_FLAT, skew=0.3)) == conv.CONVERGED
+
+
+def test_monitor_skew_never_blocks_a_cut():
+    """A smaller step size does not remove rare penalties, so skew only gates
+    the stop."""
+    m = ConvergenceMonitor(1e-3, 1e-6, patience=2)
+    skewed = dict(_FLAT, skew=40.0)
+    m.end_window(0, skewed)
+    assert m.end_window(1, skewed) == conv.CUT
+
+
+def test_monitor_max_loss_skew_setting():
+    m = ConvergenceMonitor(1e-6, 1e-6, patience=1, max_loss_skew=50.0)
+    assert m.end_window(0, dict(_FLAT, skew=40.0)) == conv.CONVERGED
+    m = ConvergenceMonitor(1e-6, 1e-6, patience=1)
+    assert m.end_window(0, dict(_FLAT, skew=np.nan)) == conv.CONTINUE
 
 
 def test_monitor_goes_through_all_stages():
@@ -409,3 +492,42 @@ def test_recorded_simulation_trace_is_still_improving():
     decisions = _feed(m, trace.astype(float))
     assert set(decisions) == {conv.CONTINUE}
     assert m.last["loss_t"] > 10
+
+
+def test_recorded_traces_are_not_skewed():
+    """Neither recorded clean trace has a window near MAX_LOSS_SKEW."""
+    for name in ("real_svi_200k_genotypes", "sim_svi_anchored_run0002",
+                 "sim_svi_unclipped_converged_run0005"):
+        trace = np.load(os.path.join(TRACES, name + ".npy")).astype(float)
+        for _, losses in _windows(trace):
+            assert loss_trend(losses)["skew"] < 1.0, name
+
+
+def test_recorded_clipped_trace_never_converges():
+    """Congression-calibration baseline run 0003 at step size 1e-6 under
+    elementwise gradient clipping: ~15% of steps carry a ~2.4e5 binding
+    penalty (a steep binding curve measured with SD 1e-3).  The block medians
+    are flat, so the loss test alone called every window a plateau; the skew
+    keeps the monitor from calling it converged."""
+    trace = np.load(os.path.join(
+        TRACES, "sim_svi_clipped_events_run0003.npy")).astype(float)
+    skews = [loss_trend(losses)["skew"] for _, losses in _windows(trace)]
+    assert min(skews) > 5 * conv.MAX_LOSS_SKEW
+
+    m = ConvergenceMonitor(1e-6, 1e-6, patience=2)
+    decisions = _feed(m, trace)
+    assert set(decisions) == {conv.CONTINUE}
+    assert m.last["loss_skewed"] and not m.last["loss_improving"]
+
+    # the loss test alone would have stopped it
+    blind = ConvergenceMonitor(1e-6, 1e-6, patience=2, max_loss_skew=np.inf)
+    assert _feed(blind, trace)[-1] == conv.CONVERGED
+
+
+def test_recorded_unclipped_trace_converges_at_floor():
+    """The same simulation (run 0005) refit without clipping, around its
+    convergence: flat and unskewed, so the loss test stops it."""
+    trace = np.load(os.path.join(
+        TRACES, "sim_svi_unclipped_converged_run0005.npy")).astype(float)
+    m = ConvergenceMonitor(1e-6, 1e-6, patience=3)
+    assert _feed(m, trace)[-1] == conv.CONVERGED

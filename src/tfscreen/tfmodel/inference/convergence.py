@@ -17,13 +17,34 @@ medians keep the right-skewed noise of a stochastic ELBO from biasing the
 trend, and blocks of many steps make the standard error robust to
 short-range autocorrelation.
 
+**Loss skew.**  The loss being minimized is the *mean* of the per-step
+losses, which the block medians can hide: an ELBO estimate that is usually
+near its typical value but occasionally carries a huge penalty (a rare guide
+draw that violates a razor-sharp likelihood) has a median that ignores the
+penalties however much of the mean they make up.  The window's ``skew`` is
+``(mean - median) / (1.4826 * MAD)`` of the losses after removing the fitted
+trend line -- how many robust standard deviations the mean sits above the
+median.  It is roughly the penalized fraction of steps times the penalty, in
+per-step noise SDs.  Benign Monte Carlo noise, including the right skew of an
+ELBO estimate, stays below ~1; penalties that move the mean by more than
+``max_loss_skew`` noise SDs are flagged (on the congression-calibration runs,
+5-30% of steps carrying ~200 noise SDs gave 20-40).  The statistic only sees
+penalties that are a minority of steps: once most steps carry one, the median
+(and the robust spread) follow them, but then the loss level itself shows the
+problem.
+
 **Parameter test.**  Each tracked parameter is averaged over ``param_blocks``
 blocks of the window.  The same line fit through the block means gives each
 element's projected movement over one window and its standard error, both
 divided by a *normalizer*: the parameter's posterior SD (its guide scale) for
 a variational location, the prior SD for a MAP location, and 1 for a
 parameter already in log or logit units (positive or bounded parameters, so
-the movement is relative).  An element's *excess* is the part of its movement
+the movement is relative).  A posterior SD is floored at ``PRIOR_SD_FLOOR``
+times the site's prior SD (both in the location's own, unconstrained units):
+a mean-field guide can collapse a scale far below any honest posterior width
+(a hierarchical scale's guide SD reaching 1e-4 of its prior SD), and in those
+units a location creeping at a negligible absolute rate reads as moving
+indefinitely.  An element's *excess* is the part of its movement
 not explained by noise or by the optimizer's resolution,
 ``max(|drift| - z * se - floor, 0)``, where ``floor`` is
 ``MIN_STEP_COHERENCE * step_size * window_steps`` (normalized the same way).
@@ -49,12 +70,15 @@ the noise tail).  The parameters are *moving* when any summary exceeds
   directions never settle under a given objective (a MAP of a horseshoe local
   scale drifts toward zero forever, at almost no change in loss), and holding
   the step size high for them helps nothing.
-- Once the step size is at its floor, a window that is a stall *and* has no
-  moving parameter is a *plateau*, and ``patience`` consecutive plateaus are
-  convergence.  A parameter that is still moving therefore keeps the run
-  going (and is named in the log) until it stops or ``max_num_epochs`` is
-  reached, so a slow slide or a degenerate direction is reported, never
-  mistaken for convergence.
+- Once the step size is at its floor, a window that is a stall, has no
+  moving parameter *and* has a loss skew within ``max_loss_skew`` is a
+  *plateau*, and ``patience`` consecutive plateaus are convergence.  A
+  parameter that is still moving therefore keeps the run going (and is named
+  in the log) until it stops or ``max_num_epochs`` is reached, so a slow slide
+  or a degenerate direction is reported, never mistaken for convergence; so
+  does a skewed loss, whose median plateau says nothing about the objective.
+  Skew never forces a cut: a smaller step size does not remove rare
+  penalties.
 
 Because a parameter's systematic drift and its step-to-step jitter both scale
 with the step size, the significance part of the tests does not depend on the
@@ -74,6 +98,16 @@ MIN_STEP_COHERENCE = 0.01
 # Arrays with at most this many elements are summarized by their maximum
 # excess; larger (per-genotype, per-mutation) arrays by a quantile.
 SMALL_ARRAY_SIZE = 100
+
+# A posterior SD used as a normalizer is floored at this fraction of the
+# site's prior SD (see the module docstring).
+PRIOR_SD_FLOOR = 0.01
+
+# Largest loss skew, (mean - median) / robust SD, of a window that can count
+# as a plateau at the floor step size.  Clean traces (recorded real-data and
+# simulated SVI, MAP, synthetic exponential/lognormal noise) stay below ~1;
+# windows with rare large penalties reach 17-150.
+MAX_LOSS_SKEW = 3.0
 
 # Convergence decisions returned by ConvergenceMonitor.end_window.
 CONTINUE = "continue"
@@ -124,10 +158,11 @@ def loss_trend(losses, num_blocks=20):
     Returns
     -------
     dict
-        ``level`` (median of the last block), ``drop`` (loss decrease over the
-        window predicted by the fitted line; positive when the loss falls),
-        ``drop_se`` and ``t`` (``drop / drop_se``; ``inf`` when the block
-        medians lie exactly on the line).
+        ``level`` (median of the last block), ``mean`` (mean of the last
+        block), ``drop`` (loss decrease over the window predicted by the
+        fitted line; positive when the loss falls), ``drop_se``, ``t``
+        (``drop / drop_se``; ``inf`` when the block medians lie exactly on the
+        line) and ``skew`` (``loss_skew`` of the window about the line).
     """
 
     losses = np.asarray(losses, dtype=float).ravel()
@@ -138,7 +173,8 @@ def loss_trend(losses, num_blocks=20):
         )
     block = losses.size // num_blocks
     used = losses[losses.size - num_blocks * block:]
-    medians = np.median(used.reshape(num_blocks, block), axis=1)
+    blocks = used.reshape(num_blocks, block)
+    medians = np.median(blocks, axis=1)
     centers = (np.arange(num_blocks) + 0.5) * block
 
     slope, se = _line_fit(medians, centers)
@@ -150,10 +186,50 @@ def loss_trend(losses, num_blocks=20):
     else:
         t = np.inf if drop != 0 else 0.0
 
+    # Residuals about the fitted line, so a falling loss is not read as skew.
+    line = (medians.mean()
+            + float(slope) * (np.arange(used.size) + 0.5 - centers.mean()))
+
     return {"level": float(medians[-1]),
+            "mean": float(blocks[-1].mean()),
             "drop": drop,
             "drop_se": drop_se,
-            "t": float(t)}
+            "t": float(t),
+            "skew": loss_skew(used - line, level=medians[-1])}
+
+
+def loss_skew(residuals, level=0.0, rtol=1e-6):
+    """
+    How far the mean of ``residuals`` sits above their median, in robust SDs.
+
+    Parameters
+    ----------
+    residuals : 1-D array
+        Per-step losses with any trend removed.
+    level : float, optional
+        Typical loss; ``rtol * |level|`` floors the robust SD so an exactly
+        constant (deterministic) loss has skew 0 rather than 0/0.
+    rtol : float, optional
+        Relative floor on the robust SD (default 1e-6, the default
+        ``loss_rtol``: differences below it are not resolved anyway).
+
+    Returns
+    -------
+    float
+        ``(mean - median) / max(1.4826 * MAD, rtol * |level|)``; 0 when the
+        spread and the floor are both zero.
+    """
+
+    r = np.asarray(residuals, dtype=float).ravel()
+    if r.size == 0:
+        return 0.0
+    med = np.median(r)
+    sd = max(1.4826 * float(np.median(np.abs(r - med))),
+             rtol * abs(float(level)))
+    gap = float(np.mean(r) - med)
+    if sd <= 0:
+        return 0.0
+    return gap / sd
 
 
 def param_drift(block_means, block_centers, window_steps, normalizer, z,
@@ -238,6 +314,9 @@ class ConvergenceMonitor:
     param_tolerance : float, optional
         Largest allowed parameter excess per window, in normalizer units
         (default 0.05).
+    max_loss_skew : float, optional
+        Largest loss skew (``loss_skew``) of a window that can be a plateau at
+        the floor step size (default ``MAX_LOSS_SKEW``).
     """
 
     def __init__(self,
@@ -247,7 +326,8 @@ class ConvergenceMonitor:
                  patience=3,
                  z=3.0,
                  loss_rtol=1e-6,
-                 param_tolerance=0.05):
+                 param_tolerance=0.05,
+                 max_loss_skew=MAX_LOSS_SKEW):
 
         if not 0 < step_size_cut < 1:
             raise ValueError(
@@ -265,6 +345,7 @@ class ConvergenceMonitor:
         self.z = float(z)
         self.loss_rtol = float(loss_rtol)
         self.param_tolerance = float(param_tolerance)
+        self.max_loss_skew = float(max_loss_skew)
 
         self.plateau_count = 0
         self.num_cuts = 0
@@ -321,10 +402,16 @@ class ConvergenceMonitor:
                 worst_param, worst_excess = name, value
         params_moving = worst_excess > self.param_tolerance
 
-        # Cuts follow the loss alone; the stop also needs the parameters.
+        # A median plateau says nothing about the mean when rare penalties
+        # dominate it (see the module docstring).
+        loss_skew = float(loss_stats.get("skew", 0.0))
+        loss_skewed = not loss_skew <= self.max_loss_skew
+
+        # Cuts follow the loss alone; the stop also needs the parameters and
+        # an unskewed loss.
         at_floor = self.at_floor
         if at_floor:
-            plateau = not (loss_improving or params_moving)
+            plateau = not (loss_improving or params_moving or loss_skewed)
         else:
             plateau = not loss_improving
         self.plateau_count = self.plateau_count + 1 if plateau else 0
@@ -346,10 +433,13 @@ class ConvergenceMonitor:
             "step": int(step),
             "step_size": step_size,
             "loss": loss_stats["level"],
+            "loss_mean": float(loss_stats.get("mean", np.nan)),
             "loss_drop": loss_stats["drop"],
             "loss_drop_se": loss_stats["drop_se"],
             "loss_t": loss_stats["t"],
             "loss_improving": bool(loss_improving),
+            "loss_skew": loss_skew,
+            "loss_skewed": bool(loss_skewed),
             "worst_param": worst_param,
             "worst_param_excess": float(worst_excess),
             "worst_param_drift": float(param_drift.get(worst_param, np.nan))
@@ -368,6 +458,10 @@ class ConvergenceMonitor:
         r = self.last
         loss = (f"loss {r['loss']:.6g}, drop/window {r['loss_drop']:.4g} "
                 f"+/- {r['loss_drop_se']:.3g} (t={r['loss_t']:.3g})")
+        skew = r.get("loss_skew", 0.0)
+        if r.get("loss_skewed"):
+            loss += (f"; loss skewed ({skew:.3g} robust SDs of mean above "
+                     f"median: rare large penalties)")
         if r["worst_param"] is None:
             params = "no parameters tracked"
         else:
