@@ -756,3 +756,16 @@ checked with `tfs-summarize-calibration`.
      are at least as slow as it is, closing the route (an earlier,
      unconverged diagnosis) by which a genotype pushes its own dk down and
      lets its congressed cells carry its growth.
+     Results (2026-09-26, all 36 converged): at the realistic tight dk
+     spread the rule does not matter (theta, dk_geno and loss agree within
+     0.001 RMSE and 30 loss units), and the mixture does not beat `single`
+     on theta there. At the wide spread the dilution fit gives the best
+     theta whichever rule simulated the data, while the min fit gains
+     nothing over `single` even when min is true; dk_geno and lambda need
+     the right rule (min data at lambda 1: min fit lambda 1.02/0.89 and best
+     dk_geno; dilution fit lambda 0.47/0.38). The dilution mixture's theta
+     gain does not track congression (same size on min data, at lambda 0
+     and 1, absent at tight spread): it needs slow genotypes that a faster
+     congressed class can rescue, which points at the read-count floor
+     (untested). At the tight spread lambda is pulled to 0.54-0.97 at a
+     true 0.357. `dilution` stays the default. Step 5 done.

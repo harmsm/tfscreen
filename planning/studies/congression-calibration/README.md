@@ -707,3 +707,67 @@ rule on both sides), at the wide dk spread (worst case) at lambda 0.357 and
 1.0 and the tight, realistic spread at 0.357, x seeds 1-2 (36 runs). Does
 the dk rule matter, and does it matter at a realistic dk spread? Summary
 commands are in the grid file's header.
+
+### Results (2026-09-26)
+
+**All 36 runs converged**, each fit with its intended dk rule. Outputs:
+`calib/dkrule_*` (against `single`), `calib/dkrule_vs_dilution_*` (min
+against dilution on the same simulation). Means over seeds 1-2 (bulk theta
+without binding data; lambda per seed):
+
+| design | simulated | fit | bulk theta RMSE | coverage | dk_geno RMSE | lambda |
+|---|---|---|---|---|---|---|
+| wide dk, lambda 0.357 | dilution | `single` | 0.135 | 0.60 | 0.0057 | |
+| | | mixture, dilution | 0.094 | 0.75 | 0.0023 | 0.27, 0.47 |
+| | | mixture, min | 0.140 | 0.61 | 0.0055 | 0.13, 0.34 |
+| | min | `single` | 0.115 | 0.71 | 0.0023 | |
+| | | mixture, dilution | 0.090 | 0.75 | 0.0018 | 0.11, 0.19 |
+| | | mixture, min | 0.121 | 0.70 | 0.0021 | 0.15, 0.44 |
+| wide dk, lambda 1 | dilution | `single` | 0.103 | 0.68 | 0.0086 | |
+| | | mixture, dilution | 0.088 | 0.83 | 0.0028 | 0.91, 0.84 |
+| | | mixture, min | 0.107 | 0.68 | 0.0080 | 0.83, 0.76 |
+| | min | `single` | 0.103 | 0.76 | 0.0024 | |
+| | | mixture, dilution | 0.084 | 0.82 | 0.0050 | 0.47, 0.38 |
+| | | mixture, min | 0.116 | 0.78 | 0.0017 | 1.02, 0.89 |
+| tight dk, lambda 0.357 | dilution | `single` | 0.065 | 0.70 | 0.00025 | |
+| | | mixture, dilution | 0.064 | 0.78 | 0.00032 | 0.55, 0.90 |
+| | | mixture, min | 0.065 | 0.76 | 0.00028 | 0.56, 0.97 |
+| | min | `single` | 0.065 | 0.71 | 0.00026 | |
+| | | mixture, dilution | 0.064 | 0.79 | 0.00034 | 0.54, 0.89 |
+| | | mixture, min | 0.065 | 0.76 | 0.00029 | 0.55, 0.96 |
+
+- **At a realistic (tight) dk spread the dk rule does not matter:** theta,
+  dk_geno and loss agree between the two rules to within 0.001 RMSE and
+  30 loss units, whichever rule simulated the data. The mixture does not
+  beat `single` on theta there either (-0.001); it does improve coverage
+  (+0.06 to +0.08).
+- **At the wide spread, the dilution fit gives the best theta whichever
+  rule simulated the data** (0.084-0.094 vs 0.103-0.135 for `single`),
+  and it also has the lower loss on min-simulated data at lambda 0.357
+  (by 360-480). The min fit gains nothing on theta over `single`, even
+  when min is the truth (0.121 vs 0.115; 0.116 vs 0.103 at lambda 1).
+- **dk_geno and lambda need the right rule.** On min-simulated data at
+  lambda 1, the min fit recovers lambda (1.02, 0.89) and gives the best
+  dk_geno (0.0017); the dilution fit puts lambda at 0.47 and 0.38 and its
+  dk_geno error is twice `single`'s. On dilution-simulated data the
+  dilution fit cuts dk_geno error ~3x and the min fit does not. So the
+  min fit is consistent with its own data: no sign of a fitting bug.
+- **What the dilution mixture's theta gain comes from.** It does not
+  track congression: it is as large on min-simulated data (where
+  congressed cells cannot outgrow a slow genotype) as on dilution data,
+  about the same at lambda 0 in the baseline grid (-0.018) as at lambda 1
+  (-0.017), and absent at the tight dk spread. It needs slow genotypes and
+  a rule that lets congressed cells outgrow them. The read-count floor fits
+  that description (a dying genotype's late timepoints stall above the
+  truth, and only a faster-growing class can bend its trajectory up), but
+  this is an inference from the pattern, not yet a test. The dk_geno gain,
+  by contrast, grows with lambda and follows the right rule: that part is
+  congression.
+- **Lambda at the tight spread is pulled well above the truth** (0.54 to
+  0.97 at a true 0.357, against a 0.357 +/- 0.05 prior), identically under
+  both rules. With little dk spread only theta mixing carries congression,
+  and the fit leans on it; worth understanding before trusting a fitted
+  lambda on real data (where the spread is tight).
+
+`dilution` stays the default: at a realistic spread the choice does not
+matter, and at a wide one no rule does better on theta.
