@@ -641,3 +641,9 @@ the rule the simulation used (`fit_theta_rule` overrides it, for cross-rule
 grids). The confirming round (`grid_measured.yaml`, `grid_seed3.yaml`) was
 set up before this change and runs `max` on both sides.
 
+`grid_crossrule.yaml` (set up 2026-09-26) is the step 4 validation: simulate
+with `max` or `homodimer`, then fit each simulation with `single` and with
+the mixture under each rule, at lambda 0.357 and 1.0 x seeds 1-2 (24 runs).
+Does the right rule recover theta, and what does the wrong one cost? The
+summary commands are in the grid file's header.
+

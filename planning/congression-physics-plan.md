@@ -715,5 +715,9 @@ checked with `tfs-summarize-calibration`.
      `homodimer`.
    - Validation: a cross-rule grid (`max` vs `homodimer`, simulated with one
      and fit with the other) at lambda 0.357 and 1.
+     Implemented 2026-09-26. Cross-rule grid set up:
+     `planning/studies/congression-calibration/grid_crossrule.yaml`
+     (simulate {max, homodimer} x fit {single, mixture-max,
+     mixture-homodimer} x lambda {0.357, 1} x seeds 1-2; 24 runs).
 5. **dk rule.** Soft-min family with an alpha sensitivity check, in both
    simulator and fit.
