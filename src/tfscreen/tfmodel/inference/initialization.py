@@ -272,9 +272,73 @@ def site_prior_sds(model_sites):
         try:
             sd = jnp.sqrt(jnp.asarray(site["fn"].variance, dtype=float))
             sd = jnp.broadcast_to(sd, jnp.shape(site["value"]))
-        except (NotImplementedError, ValueError, TypeError, AttributeError):
+        except (NotImplementedError, ValueError, TypeError, AttributeError,
+                ArithmeticError):
+            # ArithmeticError: e.g. an InverseGamma with Python-float
+            # concentration 2 divides by zero in its variance.
             continue
         sd = np.asarray(sd)
+        if sd.size == 0 or not np.all(np.isfinite(sd)) or not np.all(sd > 0):
+            continue
+        out[name] = sd
+    return out
+
+
+def site_unconstrained_prior_sds(model_sites, seed=0, num_draws=64):
+    """
+    Prior spread of each site in its unconstrained coordinates.
+
+    Guide locations live in unconstrained space (a LogNormal guide's location
+    is ``log`` of a positive site, an AutoNormal location is the site mapped
+    through ``biject_to(support).inv``), so this is the prior width in the
+    same units.  A real-valued site with a finite prior variance uses the
+    exact SD; every other site uses a robust Monte Carlo estimate, ``IQR /
+    1.349`` of ``num_draws`` prior draws mapped to unconstrained space (the SD
+    for a normal, finite for heavy-tailed priors such as a half-Cauchy).
+
+    Parameters
+    ----------
+    model_sites : dict
+        ``trace_model_sites`` output (ideally traced with the current site
+        values substituted, so hierarchical priors reflect them).
+    seed : int, optional
+        PRNG seed for the Monte Carlo draws.
+    num_draws : int, optional
+        Draws per site for the Monte Carlo estimate (default 64).
+
+    Returns
+    -------
+    dict
+        ``{site: array}`` broadcast to the site's shape, for sites whose
+        spread is finite and positive everywhere.  Other sites are left out.
+    """
+
+    import jax
+    from numpyro.distributions.transforms import biject_to
+
+    exact = site_prior_sds(model_sites)
+    key = jax.random.PRNGKey(seed)
+
+    out = {}
+    for name, site in model_sites.items():
+        fn = site["fn"]
+        shape = jnp.shape(site["value"])
+        try:
+            real = _unwrap(fn).support is dist.constraints.real
+        except (NotImplementedError, AttributeError):
+            real = False
+        if real and name in exact:
+            out[name] = exact[name]
+            continue
+        try:
+            key, sub = jax.random.split(key)
+            draws = fn.sample(sub, (num_draws,))
+            u = biject_to(fn.support).inv(draws)
+            q25, q75 = jnp.quantile(u, jnp.array([0.25, 0.75]), axis=0)
+            sd = np.asarray(jnp.broadcast_to((q75 - q25) / 1.349, shape))
+        except (NotImplementedError, ValueError, TypeError, AttributeError,
+                ArithmeticError):
+            continue
         if sd.size == 0 or not np.all(np.isfinite(sd)) or not np.all(sd > 0):
             continue
         out[name] = sd

@@ -375,6 +375,68 @@ co-resident pool; see the convergence study, result 5). Simulation and fit
 shared it, so these comparisons stand; new grids from `simulate_config.yaml`
 simulate a different library.
 
+## Baseline and profile grids on 5bf5b78: the gradient clip (2026-09-25)
+
+All 13 runs of `grid_baseline.yaml` and `grid_profile.yaml` ran to 100,000
+steps without converging, and the lambda-1 seed-1 fits (baseline 0005/0006,
+profile 0.8-1.4) jumped to 4-5 times their best loss and stayed there
+through three step-size cuts. Neither is a convergence-rule problem at
+root; both come from `ClippedAdam`'s elementwise gradient clip at 1.0
+(`adam_clip_norm`, older than 5bf5b78).
+
+- **The per-step loss is quantized**: 41k + n x 243k (n = 0-5) on run 0005.
+  Each quantum is one binding point of M42C/K84N (from `hill_params.csv`, so
+  in every simulation): true `hill_n` 24.6, K between the 0.001 and 0.003
+  grid points, measured with SD 0.001. A guide draw that shifts the step
+  across a grid point flips theta 0.99 <-> 0.007 there (`diagnosis/diag_clip.py`,
+  part 1).
+- **Every run carries these penalties at a steady share of steps**, old code
+  and new: ~5% (the resumed anchored runs), 5-15% (seed 2), 27-32% (lambda-0
+  seed 1), 46-89% (lambda-1 seed 1). The "blow-ups" are the 250-step block
+  medians flipping to the penalized level once the share passes 50%; guide
+  parameters moved by at most ~0.4 across the jump.
+- **The share is set by the clip.** Gradients here are 1e3-1e6 per element,
+  so every element is clipped every step and Adam follows each draw's
+  gradient sign; it settles where the signs balance, not where the mean
+  gradient vanishes. At checkpoint 40000 of run 0005, mutation 1's
+  `theta_d_logit_delta_offset_locs` has mean gradient -7.9e3 +/- 0.9e3 (away
+  from the penalty) and mean clipped gradient -0.04; for
+  `theta_d_logit_low_offset_locs` the clip reverses the sign (-1.2e3 raw,
+  +0.14 clipped). The balance point does not depend on the step size (48%
+  at 1e-3 and at 1e-6), so the cuts locked it in.
+- **Resumed from run 0005's checkpoints** (`diag_clip.py` part 3, local CPU):
+
+| from | clip | step size | penalized share per 2000 steps | mean loss |
+|---|---|---|---|---|
+| step 8000 (before the jump) | 1.0 | 1e-3 | 0.17, 0.42, 0.57, 0.77, 0.97 | 96k -> 485k |
+| step 8000 | none | 1e-3 | 0.01, 0.00 | 47k -> 38k |
+| step 40000 (after) | none | 1e-3 | 0.21, 0.07, 0.04, 0.02, 0.00 | 102k -> 40k |
+| step 40000 | 1.0 | 1e-4 | 0.48 throughout | ~200k |
+
+- **Fresh fits of run 0005's data** (`tfs-fit-model`, CPU): unclipped, the
+  penalties vanish by step 8000 and SVI **converges at step 46,000** (3 cuts,
+  loss 38.5k, below the clipped run's best of 41k). With the clip and the old
+  start (`--pre_map_num_epoch 0`) it settles at 8-11% penalized (mean loss
+  68k), not 48%: 5bf5b78's pre-MAP start only picked a worse clipped
+  equilibrium on this simulation.
+- **The non-stop (failure 1) is the same clip, plus a yardstick problem.**
+  At 1e-6 the flagged locations crept in one direction at ~10% of Adam's top
+  speed for 60k steps (clipped dynamics), measured against guide SDs that had
+  collapsed to ~4e-4 (hill_mut `theta_sigma_d_*`, `theta_epi_tau`). The
+  collapse itself is the mean-field ELBO (it happens unclipped too; the raw
+  and clipped gradients agree on shrinking), so those reported widths are
+  not honest posterior SDs. Unclipped, the worst movement at 1e-6 was
+  0.02-0.03 SDs and the rule stopped the run.
+
+Fixed in the optimizer (CHANGELOG, "Gradient clipping is off by default"):
+plain Adam by default (`--adam_clip_norm` opts back in); at the final step
+size a window whose mean sits more than 3 robust SDs above its median (rare
+penalties the median hides) is not a plateau; posterior SDs used to measure
+parameter movement are floored at 1% of the prior SD. Every result on these
+two grids, and any clipped fit with this binding set, is biased and should
+be rerun. Separately, binding noise 0.001 on step-like curves is much tighter
+than real assays; to be loosened in the simulation config.
+
 ## Next
 
 The convergence work has landed (5bf5b78: noise-referenced stop rule,

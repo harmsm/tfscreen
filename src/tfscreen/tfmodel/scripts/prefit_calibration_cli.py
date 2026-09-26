@@ -1157,7 +1157,7 @@ def run_prefit_calibration(config_file,
                            adam_step_size=1e-3,
                            adam_final_step_size=1e-6,
                            adam_step_size_cut=0.1,
-                           adam_clip_norm=1.0,
+                           adam_clip_norm=None,
                            elbo_num_particles=2,
                            convergence_window_steps=2000,
                            patience=3,
@@ -1218,8 +1218,11 @@ def run_prefit_calibration(config_file,
         the run converges at the first plateau at this size.
     adam_step_size_cut : float, optional
         Factor applied to the step size at each cut (default 0.1).
-    adam_clip_norm : float, optional
-        Gradient clipping norm for the Adam optimizer (default 1.0).
+    adam_clip_norm : float or None, optional
+        Clip each gradient element to +/- this value (numpyro ClippedAdam).
+        None (default) disables clipping: when gradients are much larger
+        than the clip, an elementwise clip makes Adam follow the gradient's
+        sign, and its fixed point is biased by rare large ELBO penalties.
     elbo_num_particles : int, optional
         Number of particles for ELBO estimation (default 2).
     convergence_window_steps : int, optional
@@ -1404,6 +1407,7 @@ def main():
     return generalized_main(
         run_prefit_calibration,
         manual_arg_types={"config_file": str,
+                          "adam_clip_norm": float,
                           "seed": int,
                           "checkpoint_file": str,
                           "k_scale_floor": float,

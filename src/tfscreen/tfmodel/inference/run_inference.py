@@ -17,7 +17,7 @@ from numpyro.infer.initialization import (
     init_to_uniform,
 )
 from numpyro.distributions.transforms import IdentityTransform
-from numpyro.optim import ClippedAdam
+from numpyro.optim import Adam, ClippedAdam
 import numpy as np
 import dill
 from functools import partial
@@ -33,6 +33,7 @@ from tfscreen.tfmodel.inference.initialization import (
     component_guide_init,
     component_guide_map,
     site_prior_sds,
+    site_unconstrained_prior_sds,
     site_values,
     trace_model_sites,
 )
@@ -85,6 +86,27 @@ _GUIDE_ALIASES["auto_delta"] = "delta"
 
 # Warn when the dense auto_multivariate_normal covariance exceeds this (GB).
 _DENSE_GUIDE_WARN_GB = 4.0
+
+
+def adam_optimizer(step_size, clip_norm=None):
+    """
+    The optimizer for SVI/MAP: plain Adam, or ClippedAdam when ``clip_norm``
+    is given.
+
+    ClippedAdam clips every gradient *element* to ``[-clip_norm,
+    clip_norm]``.  On a loss whose gradients are far larger than the clip
+    (thousands of nats per unit parameter), nearly every element is clipped
+    every step, so the update follows the sign of each draw's gradient: the
+    optimizer then settles where the per-step signs balance, not where the
+    expected gradient vanishes.  With a heavy-tailed ELBO estimate (rare
+    draws carrying a huge penalty) that point is biased toward the penalties,
+    so clipping is off by default.  Adam's own normalization already bounds
+    each step to a few times the step size.  Both optimizers keep the same
+    state, so a checkpoint from either resumes under the other.
+    """
+    if clip_norm is None:
+        return Adam(step_size=step_size)
+    return ClippedAdam(step_size=step_size, clip_norm=clip_norm)
 
 
 def _init_to_value_or(site=None, values=None, fallback=init_to_uniform):
@@ -206,7 +228,7 @@ class RunInference:
 
     def setup_svi(self,
                   adam_step_size=1e-6,
-                  adam_clip_norm=1.0,
+                  adam_clip_norm=None,
                   elbo_num_particles=2,
                   guide_type="delta",
                   guide_kwargs=None,
@@ -217,10 +239,12 @@ class RunInference:
         Parameters
         ----------
         adam_step_size : float or callable, optional
-            Step size for the ClippedAdam optimizer. Can be a fixed float or
-             a callable (e.g., an optax schedule).
-        adam_clip_norm : float, optional
-            Gradient clipping norm for the ClippedAdam optimizer.
+            Step size for the Adam optimizer. Can be a fixed float or a
+            callable (e.g., an optax schedule).
+        adam_clip_norm : float or None, optional
+            Clip each gradient element to ``[-adam_clip_norm,
+            adam_clip_norm]`` (numpyro ``ClippedAdam``).  None (default)
+            disables clipping; see ``adam_optimizer`` for why.
         elbo_num_particles : int, optional
             Number of particles for ELBO estimation.
         guide_type : str, optional
@@ -287,8 +311,7 @@ class RunInference:
 
         self._step_size = adam_step_size
         self._adam_clip_norm = adam_clip_norm
-        optimizer = ClippedAdam(step_size=adam_step_size,
-                                clip_norm=adam_clip_norm)
+        optimizer = adam_optimizer(adam_step_size, adam_clip_norm)
         
         svi = SVI(self.model.jax_model,
                   guide,
@@ -361,9 +384,10 @@ class RunInference:
         is still moving (relative to its posterior or prior width).  After
         ``patience`` consecutive windows without loss improvement the step
         size is cut by ``step_size_cut``; once it has reached
-        ``final_step_size``, ``patience`` consecutive windows with neither
-        loss improvement nor parameter movement are convergence.  Every window
-        is recorded in ``{out_prefix}_convergence.csv``.
+        ``final_step_size``, ``patience`` consecutive windows with no loss
+        improvement, no parameter movement and no loss skew (a mean well above
+        the median: rare large penalties the median hides) are convergence.
+        Every window is recorded in ``{out_prefix}_convergence.csv``.
 
         Parameters
         ----------
@@ -396,9 +420,9 @@ class RunInference:
             only for (near-)deterministic losses.
         param_tolerance : float, optional
             Parameter movement per window, beyond noise, that still counts as
-            a plateau (default 0.05), in posterior SDs (guide scale), prior SDs
-            (MAP locations), or log/logit units (positive or bounded
-            parameters).
+            a plateau (default 0.05), in posterior SDs (guide scale, floored
+            at ``PRIOR_SD_FLOOR`` of the prior SD), prior SDs (MAP locations),
+            or log/logit units (positive or bounded parameters).
         final_step_size : float or None, optional
             Smallest step size.  None (default) or a value >= the current step
             size disables cuts: the first sustained plateau is convergence.
@@ -676,8 +700,8 @@ class RunInference:
             if converged:
                 print(f"Converged at step {self._current_step} (step size "
                       f"{monitor.step_size:.3g}, {monitor.num_cuts} cut(s)): "
-                      f"no significant loss improvement or parameter movement "
-                      f"for {patience} windows.", flush=True)
+                      f"no significant loss improvement, parameter movement "
+                      f"or loss skew for {patience} windows.", flush=True)
             else:
                 print(f"Stopped at step {self._current_step} "
                       f"(max_num_epochs) without converging. Last window: "
@@ -690,16 +714,15 @@ class RunInference:
 
     def _set_step_size(self, svi, step_size):
         """
-        Give ``svi`` a ClippedAdam with a new constant step size.
+        Give ``svi`` the same kind of optimizer (clipped or not) with a new
+        constant step size.
 
         The optimizer state (step count, parameters, Adam moments) does not
         depend on the step size, so the existing state carries over.
         """
 
-        clip_norm = self._adam_clip_norm
-        if clip_norm is None:
-            clip_norm = getattr(svi.optim, "clip_norm", 10.0)
-        svi.optim = ClippedAdam(step_size=step_size, clip_norm=clip_norm)
+        clip_norm = getattr(svi.optim, "clip_norm", None)
+        svi.optim = adam_optimizer(step_size, clip_norm)
         self._step_size = step_size
 
     @staticmethod
@@ -719,20 +742,27 @@ class RunInference:
         - ``("unit",)``: movement taken as is -- parameters on a positive or
           bounded support (tracked in log/logit units, so relative), and real
           parameters with no better reference;
-        - ``("scale", scale_name)``: a guide location divided by its paired
-          guide scale (posterior SD);
-        - ``("auto_continuous",)``: an AutoContinuous ``auto_loc`` divided by
-          the posterior SD derived from its scale parameters;
+        - ``("scale", scale_name, floor)``: a guide location divided by its
+          paired guide scale (posterior SD);
+        - ``("auto_continuous", floor)``: an AutoContinuous ``auto_loc``
+          divided by the posterior SD derived from its scale parameters;
         - ``("prior", sd)``: a MAP (AutoDelta) location divided by the prior
           SD of its site.
+
+        ``floor`` (an array broadcastable to the location, or None) is
+        ``conv.PRIOR_SD_FLOOR`` times the site's prior SD in unconstrained
+        units; the posterior SD is never taken to be smaller.
         """
 
         transforms = self._param_transforms(svi)
         shapes = {k: jnp.shape(v) for k, v in unconstrained.items()}
 
         prior_sds = {}
+        floors = {}
         if self._guide_type == "delta":
             prior_sds = self._delta_prior_sds(svi, svi_state)
+        else:
+            floors = self._posterior_sd_floors(svi, svi_state, shapes)
 
         specs = {}
         for name in unconstrained:
@@ -745,7 +775,7 @@ class RunInference:
                 continue
 
             if name == "auto_loc":
-                specs[name] = ("auto_continuous",)
+                specs[name] = ("auto_continuous", floors.get(name))
                 continue
 
             partner = None
@@ -759,13 +789,84 @@ class RunInference:
             site = (name[:-len(AUTO_LOC_SUFFIX)]
                     if name.endswith(AUTO_LOC_SUFFIX) else None)
             if partner is not None:
-                specs[name] = ("scale", partner)
+                specs[name] = ("scale", partner, floors.get(name))
             elif site is not None and site in prior_sds \
                     and jnp.shape(prior_sds[site]) == shapes[name]:
                 specs[name] = ("prior", prior_sds[site])
             else:
                 specs[name] = ("unit",)
         return specs
+
+    def _posterior_sd_floors(self, svi, svi_state, shapes):
+        """
+        ``{location param: PRIOR_SD_FLOOR * prior SD}`` for variational
+        guides, in the location's unconstrained units ({} on failure).
+
+        Component-guide locations are matched to their sites through the
+        ``{site}_loc(s)`` convention, AutoNormal's through ``{site}_auto_loc``,
+        and an AutoContinuous ``auto_loc`` is assembled from the per-site
+        floors in the guide's own latent order (sites without a finite prior
+        spread get no floor).
+        """
+
+        try:
+            constrained = svi.get_params(svi_state)
+            batch = self._trace_batch()
+            sites = trace_model_sites(self.model.jax_model, self.model.priors,
+                                      batch)
+            guide = svi.guide
+            if isinstance(guide, autoguide.AutoGuide):
+                guide_map = None
+                current = guide.median(constrained)
+            else:
+                guide_map, _, _ = component_guide_map(guide,
+                                                      self.model.priors,
+                                                      batch)
+                current = site_values(constrained, sites, guide_map)
+            sites = trace_model_sites(self.model.jax_model, self.model.priors,
+                                      batch, substitutions=current)
+            sds = site_unconstrained_prior_sds(sites)
+        except Exception as err:  # pragma: no cover - defensive
+            print(f"Could not compute prior SDs to floor posterior SDs for "
+                  f"parameter movement ({err}); guide scales are used as "
+                  f"they are.", flush=True)
+            return {}
+
+        frac = conv.PRIOR_SD_FLOOR
+        floors = {}
+        if guide_map is not None:
+            for site, entry in guide_map.items():
+                loc = entry["loc"]
+                if site in sds and loc in shapes:
+                    try:
+                        floors[loc] = frac * jnp.broadcast_to(sds[site],
+                                                              shapes[loc])
+                    except ValueError:
+                        pass
+        elif isinstance(guide, autoguide.AutoContinuous):
+            init_locs = getattr(guide, "_init_locs", None)
+            if init_locs and "auto_loc" in shapes:
+                from numpyro.infer.autoguide import _ravel_dict
+                parts = {}
+                for site, value in init_locs.items():
+                    shape = jnp.shape(value)
+                    if site in sds and jnp.size(sds[site]) == jnp.size(value):
+                        parts[site] = frac * jnp.reshape(
+                            jnp.asarray(sds[site], dtype=float), shape)
+                    else:
+                        parts[site] = jnp.zeros(shape)
+                flat, _ = _ravel_dict(parts)
+                if flat.shape == shapes["auto_loc"]:
+                    floors["auto_loc"] = flat
+        else:
+            for site, sd in sds.items():
+                loc = site + AUTO_LOC_SUFFIX
+                if loc in shapes:
+                    try:
+                        floors[loc] = frac * jnp.broadcast_to(sd, shapes[loc])
+                    except ValueError:
+                        pass
+        return floors
 
     def _delta_prior_sds(self, svi, svi_state):
         """Prior SD of each site at the current MAP point ({} on failure)."""
@@ -858,9 +959,12 @@ class RunInference:
     def _normalizer(spec, constrained):
         """Evaluate one normalizer spec at the current constrained params."""
         kind = spec[0]
+        floor = None
         if kind == "scale":
             norm = constrained[spec[1]]
+            floor = spec[2] if len(spec) > 2 else None
         elif kind == "auto_continuous":
+            floor = spec[1] if len(spec) > 1 else None
             if "auto_scale_tril" in constrained:
                 tril = constrained["auto_scale_tril"]
                 norm = jnp.sqrt(jnp.sum(tril * tril, axis=-1))
@@ -876,7 +980,10 @@ class RunInference:
             norm = spec[1]
         else:
             norm = 1.0
-        return jnp.maximum(jnp.asarray(norm, dtype=float), 1e-12)
+        norm = jnp.asarray(norm, dtype=float)
+        if floor is not None:
+            norm = jnp.maximum(norm, floor)
+        return jnp.maximum(norm, 1e-12)
 
     def _end_window(self, svi, svi_state, monitor, specs, losses,
                     block_means, block_centers, window_steps):
@@ -1342,7 +1449,8 @@ class RunInference:
                     "step_size": self._checkpoint_step_size(),
                     "convergence": self._convergence_state(),
                     "guide_type":self._guide_type,
-                    "guide_kwargs":self._guide_kwargs}
+                    "guide_kwargs":self._guide_kwargs,
+                    "adam_clip_norm":self._adam_clip_norm}
 
         tmp_checkpoint_file = f"{out_prefix}_checkpoint.tmp.pkl"
 
@@ -1387,7 +1495,8 @@ class RunInference:
                     "step_size": self._checkpoint_step_size(),
                     "convergence": self._convergence_state(),
                     "guide_type": self._guide_type,
-                    "guide_kwargs": self._guide_kwargs}
+                    "guide_kwargs": self._guide_kwargs,
+                    "adam_clip_norm": self._adam_clip_norm}
 
         tmp_file = f"{epoch_file}.tmp"
         with open(tmp_file, "wb") as f:
@@ -1534,6 +1643,7 @@ class RunInference:
 
     _CONVERGENCE_COLUMNS = ("step", "epoch", "step_size", "loss", "loss_drop",
                             "loss_drop_se", "loss_t", "loss_improving",
+                            "loss_mean", "loss_skew", "loss_skewed",
                             "worst_param", "worst_param_excess",
                             "worst_param_drift", "params_moving", "plateau",
                             "plateau_count", "decision")
@@ -1552,6 +1662,8 @@ class RunInference:
             if self._current_step == 0 or not os.path.exists(path):
                 with open(path, "w") as f:
                     f.write(",".join(self._CONVERGENCE_COLUMNS) + "\n")
+            else:
+                self._migrate_convergence_columns(path)
             return
 
         row = dict(record)
@@ -1561,6 +1673,27 @@ class RunInference:
                              self._CONVERGENCE_COLUMNS) + "\n")
             f.flush()
             os.fsync(f.fileno())
+
+    def _migrate_convergence_columns(self, path):
+        """
+        Rewrite a resumed run's convergence file under the current columns
+        (a file written by an older version lacks some), keeping every value
+        under its column name and leaving new columns empty.
+        """
+
+        import csv
+        with open(path, newline="") as f:
+            rows = list(csv.DictReader(f))
+            f.seek(0)
+            header = next(csv.reader(f), [])
+        if tuple(header) == self._CONVERGENCE_COLUMNS:
+            return
+        with open(path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=self._CONVERGENCE_COLUMNS,
+                                    extrasaction="ignore", restval="",
+                                    lineterminator="\n")
+            writer.writeheader()
+            writer.writerows(rows)
 
     def _checkpoint_step_size(self):
         """Current constant step size, or None for a schedule/unknown."""
