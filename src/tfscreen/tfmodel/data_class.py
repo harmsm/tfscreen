@@ -89,6 +89,12 @@ class GrowthData:
     # Static: set by ModelOrchestrator from its congression_theta_rule.
     congression_theta_rule: str = field(pytree_node=False, default="homodimer")
 
+    # How a congressed cell's dk_geno is built from its plasmids' ("dilution",
+    # "softmin" with congression_dk_alpha, "min"). Static: set by
+    # ModelOrchestrator.
+    congression_dk_rule: str = field(pytree_node=False, default="dilution")
+    congression_dk_alpha: Any = field(pytree_node=False, default=None)
+
     growth_shares_replicates: bool = field(pytree_node=False, default=False)
 
     # Optional mutation-decomposition matrices (set when using *_mut_decomp components).

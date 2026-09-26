@@ -1,0 +1,84 @@
+# ---------------------------------------------------------------------------
+# dk rule sensitivity (congression physics plan, step 5)
+#
+#   tfs-setup-sim-grid grid_dkrule.yaml --out_prefix congression_calibration_dkrule
+#   for d in congression_calibration_dkrule/run_*/; do (cd "$d" && sbatch run.srun); done
+#
+# Simulate with the dilution or the min dk rule (the two ends of the soft-min
+# family); fit each simulation with `single` and with the mixture under each
+# rule (matched lambda prior). Theta rule homodimer on both sides (the
+# default; step 4 found the theta rule does not matter here).
+#
+# Designs: the study's wide dk_geno spread (SD ~0.018/min, a worst case) at
+# lambda 0.357 and 1.0, and a realistic tight spread (bench: 0.024 +/- 0.001)
+# at lambda 0.357 only. x seeds 1-2 = 36 runs.
+#
+# Summaries: against `single` (fit_dk_rule na), and min against dilution on
+# the same simulation:
+#
+#   tfs-summarize-calibration congression_calibration_dkrule \
+#       --out_prefix calib/dkrule \
+#       --baseline fit=single lam_prior=off fit_dk_rule=na
+#   tfs-summarize-calibration congression_calibration_dkrule \
+#       --out_prefix calib/dkrule_vs_dilution --baseline fit_dk_rule=dilution
+# ---------------------------------------------------------------------------
+
+base_config: simulate_config.yaml
+
+run_name: "lam{{ transformation_poisson_lambda }}__dk{{ dk_geno_hyper_loc }}__sim{{ congression_dk_rule }}__seed{{ seed }}__{{ fit }}_{{ fit_dk_rule }}"
+
+output_file: run.srun
+
+
+simulate:
+
+  # lambda and dk spread move together: wide at 0.357 and 1.0, tight at 0.357.
+  - name: design
+    variants:
+      - transformation_poisson_lambda: 0.357
+        dk_geno_hyper_loc: -3.5
+        dk_geno_hyper_scale: 0.5
+        dk_geno_hyper_shift: 0.02
+      - transformation_poisson_lambda: 1.0
+        dk_geno_hyper_loc: -3.5
+        dk_geno_hyper_scale: 0.5
+        dk_geno_hyper_shift: 0.02
+      - transformation_poisson_lambda: 0.357
+        dk_geno_hyper_loc: -7.0
+        dk_geno_hyper_scale: 0.5
+        dk_geno_hyper_shift: 0.001
+
+  - name: theta_rule
+    variants:
+      - congression_theta_rule: homodimer
+
+  - name: sim_dk_rule
+    variants:
+      - congression_dk_rule: dilution
+      - congression_dk_rule: min
+
+  - name: seed
+    variants:
+      - seed: 1
+      - seed: 2
+
+
+template:
+
+  # fit_dk_rule "na": `single` has no dk rule (run.srun ignores it).
+  - name: fit
+    variants:
+      - fit: single
+        lam_prior: "off"
+        fit_dk_rule: na
+      - fit: mixture
+        lam_prior: matched
+        fit_dk_rule: dilution
+      - fit: mixture
+        lam_prior: matched
+        fit_dk_rule: min
+
+  - name: anchor
+    variants:
+      - binding_weight: 1.0
+        k_scale_ceiling: 0.005

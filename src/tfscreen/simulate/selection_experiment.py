@@ -61,7 +61,7 @@ SIMULATE_KNOWN_KEYS = frozenset({
     # Experimental simulation parameters
     "transform_sizes", "library_mixture", "lib_assembly_skew_sigma",
     "transformation_poisson_lambda", "cfu0",
-    "congression_theta_rule", "congression_dk_rule",
+    "congression_theta_rule", "congression_dk_rule", "congression_dk_alpha",
     "tube_noise_sigma", "growth_transition",
     # Data collection
     "total_num_reads", "prob_index_hop", "seed",
@@ -250,6 +250,22 @@ def _check_cf(
         if cf[key] not in rules:
             raise ValueError(f"'{key}' must be one of {sorted(rules)}, "
                              f"not '{cf[key]}'.")
+
+    # congression_dk_alpha: required by 'softmin', refused by the other rules.
+    if cf.get("congression_dk_alpha") is None:
+        cf["congression_dk_alpha"] = None
+    if cf["congression_dk_rule"] == "softmin":
+        cf = _check_dict_number("congression_dk_alpha", cf, cast_type=float,
+                                min_allowed=0, inclusive_min=False)
+        if not np.isfinite(cf["congression_dk_alpha"]):
+            raise ValueError("'congression_dk_alpha' must be finite; use "
+                             "congression_dk_rule 'min' for the alpha -> inf "
+                             "limit.")
+    elif cf["congression_dk_alpha"] is not None:
+        raise ValueError(
+            f"'congression_dk_alpha' is only used by congression_dk_rule "
+            f"'softmin' (got rule '{cf['congression_dk_rule']}'); remove it "
+            f"or set the rule to 'softmin'.")
 
     if not isinstance(cf["condition_selector"], list):
         raise ValueError("condition_selector must be a list of column names.")
@@ -798,7 +814,7 @@ def _cell_kt(
     cf : dict
         Validated config (``growth``, ``theta_rescale``,
         ``growth_transition``, ``congression_theta_rule``,
-        ``congression_dk_rule``).
+        ``congression_dk_rule``, ``congression_dk_alpha``).
 
     Returns
     -------
@@ -832,7 +848,8 @@ def _cell_kt(
     slot_activity = np.broadcast_to(genotype_activity[multi_trans][:, :, np.newaxis],
                                     slot_theta.shape)
     theta_cell, activity_cell = theta_rule(slot_theta, slot_activity, shares)
-    dk_cell = dk_rule(genotype_dk_geno[multi_trans], shares)
+    dk_cell = dk_rule(genotype_dk_geno[multi_trans], shares,
+                      alpha=cf.get("congression_dk_alpha"))
 
     growth_params = cf["growth"]
     theta_rescale = cf.get("theta_rescale", "passthrough")

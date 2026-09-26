@@ -274,6 +274,38 @@ def test_check_cf_congression_rule_defaults(base_config: dict):
     assert cf["congression_dk_rule"] == "dilution"
 
 
+def test_check_cf_dk_alpha_default_none(base_config: dict):
+    cf = _check_cf(dict(base_config))
+    assert cf["congression_dk_alpha"] is None
+
+
+def test_check_cf_softmin_takes_alpha(base_config: dict):
+    cf = dict(base_config)
+    cf["congression_dk_rule"] = "softmin"
+    cf["congression_dk_alpha"] = 100
+    cf = _check_cf(cf)
+    assert cf["congression_dk_alpha"] == 100.0
+    assert isinstance(cf["congression_dk_alpha"], float)
+
+
+@pytest.mark.parametrize("alpha", [None, 0, -1.0, float("inf")])
+def test_check_cf_softmin_needs_positive_finite_alpha(base_config: dict, alpha):
+    cf = dict(base_config)
+    cf["congression_dk_rule"] = "softmin"
+    cf["congression_dk_alpha"] = alpha
+    with pytest.raises(ValueError, match="congression_dk_alpha"):
+        _check_cf(cf)
+
+
+@pytest.mark.parametrize("rule", ["dilution", "min"])
+def test_check_cf_other_dk_rules_refuse_alpha(base_config: dict, rule):
+    cf = dict(base_config)
+    cf["congression_dk_rule"] = rule
+    cf["congression_dk_alpha"] = 100.0
+    with pytest.raises(ValueError, match="only used by"):
+        _check_cf(cf)
+
+
 @pytest.mark.parametrize("key", ["congression_theta_rule", "congression_dk_rule"])
 def test_check_cf_bad_congression_rule(base_config: dict, key):
     cf = dict(base_config)
@@ -662,6 +694,26 @@ def test_cell_kt_co_transformed_cell_uses_cell_physics():
     np.testing.assert_allclose(result[0], expected_cell0)
     # Single-plasmid cell keeps its genotype's k*t (tube noise included)
     np.testing.assert_allclose(result[1], gkt[2] + tube_kt)
+
+
+@pytest.mark.parametrize("dk_rule,alpha", [("min", None), ("softmin", 100.0)])
+def test_cell_kt_dk_rule(dk_rule, alpha):
+    """The congression_dk_rule (and its alpha) sets a co-transformed cell's
+    dk_geno."""
+    cf, theta, activity, dk, info, gkt, kt = _cell_kt_inputs()
+    cf["congression_dk_rule"] = dk_rule
+    cf["congression_dk_alpha"] = alpha
+    transformants = np.array([[0, 1]])
+    trans_mask = np.zeros((1, 2), dtype=bool)
+    result = _cell_kt(transformants, trans_mask, gkt, theta, activity, dk,
+                      info, np.zeros(2), cf)
+    if dk_rule == "min":
+        dk_cell = min(dk[0], dk[1])
+    else:
+        dk_cell = -np.log(0.5*np.exp(-alpha*dk[0])
+                          + 0.5*np.exp(-alpha*dk[1])) / alpha
+    np.testing.assert_allclose(result[0], [kt(0.8, 0.5, dk_cell),
+                                           kt(0.9, 1.0, dk_cell)])
 
 
 def test_cell_kt_duplicate_genotype_matches_genotype():

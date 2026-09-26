@@ -647,3 +647,127 @@ the mixture under each rule, at lambda 0.357 and 1.0 x seeds 1-2 (24 runs).
 Does the right rule recover theta, and what does the wrong one cost? The
 summary commands are in the grid file's header.
 
+## Cross-rule grid (grid_crossrule.yaml, 2026-09-26)
+
+**All 24 runs converged**, and each fit used the rule it was set up with
+(`max` and `homodimer` fits of the same data stop at the same step only
+because the windows are 2,000 steps). Outputs: `calib/crossrule_*`
+(against `single`), `calib/crossrule_vs_max_*` (homodimer against max on
+the same simulation).
+
+Bulk genotypes without binding data (theta RMSE, 95% coverage, loss):
+
+| lambda | simulated | seed | `single` | mixture, `max` | mixture, `homodimer` |
+|---|---|---|---|---|---|
+| 0.357 | `max` | 1 | 0.112, 0.69, 32,610 | 0.083, 0.83, 31,727 | 0.076, 0.85, 31,675 |
+| 0.357 | `max` | 2 | 0.144, 0.53, 31,240 | 0.108, 0.65, 29,468 | 0.104, 0.69, 29,411 |
+| 0.357 | `homodimer` | 1 | 0.122, 0.69, 32,739 | 0.091, 0.81, 31,824 | 0.083, 0.82, 31,770 |
+| 0.357 | `homodimer` | 2 | 0.147, 0.53, 31,169 | 0.108, 0.67, 29,694 | 0.105, 0.63, 29,581 |
+| 1 | `max` | 1 | 0.125, 0.58, 37,829 | 0.104, 0.81, 36,292 | 0.117, 0.79, 35,861 |
+| 1 | `max` | 2 | 0.084, 0.77, 29,421 | 0.074, 0.87, 28,173 | 0.071, 0.86, 28,159 |
+| 1 | `homodimer` | 1 | 0.125, 0.55, 37,729 | 0.095, 0.83, 36,202 | 0.101, 0.82, 36,241 |
+| 1 | `homodimer` | 2 | 0.087, 0.76, 29,479 | 0.086, 0.84, 28,251 | 0.075, 0.85, 28,171 |
+
+Homodimer fit minus max fit, same simulation (mean +/- SE over 2 seeds):
+
+| lambda | simulated | delta theta RMSE | delta coverage | delta dk_geno RMSE | fitted lambda (max / homodimer) |
+|---|---|---|---|---|---|
+| 0.357 | `max` | -0.006 +/- 0.001 | +0.03 | 0.0000 | 0.27, 0.44 / 0.27, 0.47 |
+| 0.357 | `homodimer` | -0.006 +/- 0.003 | -0.01 | 0.0000 | 0.26, 0.43 / 0.27, 0.45 |
+| 1 | `max` | +0.005 +/- 0.008 | -0.01 | 0.0000 | 0.94, 0.80 / 0.98, 0.85 |
+| 1 | `homodimer` | -0.003 +/- 0.008 | +0.00 | -0.0001 | 0.88, 0.77 / 0.91, 0.84 |
+
+- **The rule is not identifiable from these data, and the wrong one costs
+  nothing measurable.** Theta, dk_geno and coverage differ between the two
+  mixture fits by less than the seed-to-seed spread whichever rule
+  simulated the data. The homodimer fit has the lower loss in 7 of 8
+  pairs, including all 4 simulated with `max`, by 14-430, within the
+  loss noise seen in the lambda profile.
+- **Both mixture fits beat `single` in all 16 pairs** (bulk theta RMSE
+  -0.010 to -0.041, coverage +0.12 to +0.18, dk_geno error ~2.5x lower).
+- The homodimer fit puts lambda slightly higher (by 0.01-0.07), closer to
+  the truth at 1.0. Partition-function mixing pulls a strong binder's
+  theta down in a congressed cell, so matching the same data takes a
+  little more congression than `max` needs.
+- The simulated data do differ by rule (`ln_cfu` differs by 0.1 on average
+  between the `max` and `homodimer` simulations of the same seed; this
+  includes resampled read counts), but not in a way the fit can pin.
+
+`homodimer` stays the default (the physics, the user's call in step 4); the
+choice between the rules waits on native mass spec, not on screen data.
+
+## Step 5: dk rule sensitivity (grid_dkrule.yaml, set up 2026-09-26)
+
+The fit and simulator now offer the soft-min dk family (`dilution`,
+`softmin` with `congression_dk_alpha`, `min`). `run.srun` fits with the
+simulation's dk rule and alpha unless `fit_dk_rule`/`fit_dk_alpha` are
+set. `grid_dkrule.yaml` simulates with `dilution` or `min` and fits each
+simulation with `single` and the mixture under each rule (homodimer theta
+rule on both sides), at the wide dk spread (worst case) at lambda 0.357 and
+1.0 and the tight, realistic spread at 0.357, x seeds 1-2 (36 runs). Does
+the dk rule matter, and does it matter at a realistic dk spread? Summary
+commands are in the grid file's header.
+
+### Results (2026-09-26)
+
+**All 36 runs converged**, each fit with its intended dk rule. Outputs:
+`calib/dkrule_*` (against `single`), `calib/dkrule_vs_dilution_*` (min
+against dilution on the same simulation). Means over seeds 1-2 (bulk theta
+without binding data; lambda per seed):
+
+| design | simulated | fit | bulk theta RMSE | coverage | dk_geno RMSE | lambda |
+|---|---|---|---|---|---|---|
+| wide dk, lambda 0.357 | dilution | `single` | 0.135 | 0.60 | 0.0057 | |
+| | | mixture, dilution | 0.094 | 0.75 | 0.0023 | 0.27, 0.47 |
+| | | mixture, min | 0.140 | 0.61 | 0.0055 | 0.13, 0.34 |
+| | min | `single` | 0.115 | 0.71 | 0.0023 | |
+| | | mixture, dilution | 0.090 | 0.75 | 0.0018 | 0.11, 0.19 |
+| | | mixture, min | 0.121 | 0.70 | 0.0021 | 0.15, 0.44 |
+| wide dk, lambda 1 | dilution | `single` | 0.103 | 0.68 | 0.0086 | |
+| | | mixture, dilution | 0.088 | 0.83 | 0.0028 | 0.91, 0.84 |
+| | | mixture, min | 0.107 | 0.68 | 0.0080 | 0.83, 0.76 |
+| | min | `single` | 0.103 | 0.76 | 0.0024 | |
+| | | mixture, dilution | 0.084 | 0.82 | 0.0050 | 0.47, 0.38 |
+| | | mixture, min | 0.116 | 0.78 | 0.0017 | 1.02, 0.89 |
+| tight dk, lambda 0.357 | dilution | `single` | 0.065 | 0.70 | 0.00025 | |
+| | | mixture, dilution | 0.064 | 0.78 | 0.00032 | 0.55, 0.90 |
+| | | mixture, min | 0.065 | 0.76 | 0.00028 | 0.56, 0.97 |
+| | min | `single` | 0.065 | 0.71 | 0.00026 | |
+| | | mixture, dilution | 0.064 | 0.79 | 0.00034 | 0.54, 0.89 |
+| | | mixture, min | 0.065 | 0.76 | 0.00029 | 0.55, 0.96 |
+
+- **At a realistic (tight) dk spread the dk rule does not matter:** theta,
+  dk_geno and loss agree between the two rules to within 0.001 RMSE and
+  30 loss units, whichever rule simulated the data. The mixture does not
+  beat `single` on theta there either (-0.001); it does improve coverage
+  (+0.06 to +0.08).
+- **At the wide spread, the dilution fit gives the best theta whichever
+  rule simulated the data** (0.084-0.094 vs 0.103-0.135 for `single`),
+  and it also has the lower loss on min-simulated data at lambda 0.357
+  (by 360-480). The min fit gains nothing on theta over `single`, even
+  when min is the truth (0.121 vs 0.115; 0.116 vs 0.103 at lambda 1).
+- **dk_geno and lambda need the right rule.** On min-simulated data at
+  lambda 1, the min fit recovers lambda (1.02, 0.89) and gives the best
+  dk_geno (0.0017); the dilution fit puts lambda at 0.47 and 0.38 and its
+  dk_geno error is twice `single`'s. On dilution-simulated data the
+  dilution fit cuts dk_geno error ~3x and the min fit does not. So the
+  min fit is consistent with its own data: no sign of a fitting bug.
+- **What the dilution mixture's theta gain comes from.** It does not
+  track congression: it is as large on min-simulated data (where
+  congressed cells cannot outgrow a slow genotype) as on dilution data,
+  about the same at lambda 0 in the baseline grid (-0.018) as at lambda 1
+  (-0.017), and absent at the tight dk spread. It needs slow genotypes and
+  a rule that lets congressed cells outgrow them. The read-count floor fits
+  that description (a dying genotype's late timepoints stall above the
+  truth, and only a faster-growing class can bend its trajectory up), but
+  this is an inference from the pattern, not yet a test. The dk_geno gain,
+  by contrast, grows with lambda and follows the right rule: that part is
+  congression.
+- **Lambda at the tight spread is pulled well above the truth** (0.54 to
+  0.97 at a true 0.357, against a 0.357 +/- 0.05 prior), identically under
+  both rules. With little dk spread only theta mixing carries congression,
+  and the fit leans on it; worth understanding before trusting a fitted
+  lambda on real data (where the spread is tight).
+
+`dilution` stays the default: at a realistic spread the choice does not
+matter, and at a wide one no rule does better on theta.

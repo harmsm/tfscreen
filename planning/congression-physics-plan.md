@@ -719,5 +719,70 @@ checked with `tfs-summarize-calibration`.
      `planning/studies/congression-calibration/grid_crossrule.yaml`
      (simulate {max, homodimer} x fit {single, mixture-max,
      mixture-homodimer} x lambda {0.357, 1} x seeds 1-2; 24 runs).
+     Cross-rule results (2026-09-26, all 24 converged): the rule is not
+     identifiable from screen data at this design. Homodimer vs max fits
+     of the same simulation differ by -0.006 to +0.005 in bulk theta RMSE
+     and ~0 in dk_geno, whichever rule simulated the data, and both beat
+     `single` in all 16 pairs. The homodimer fit has the lower loss in 7
+     of 8 pairs and puts lambda 0.01-0.07 higher. `homodimer` stays the
+     default; the physical choice waits on native mass spec. Step 4 done.
 5. **dk rule.** Soft-min family with an alpha sensitivity check, in both
    simulator and fit.
+   Design agreed 2026-09-26 (user):
+   - Rules `dilution` (alpha -> 0, the share-weighted mean; **stays the
+     default**), `softmin` (finite alpha from `congression_dk_alpha`, in
+     units of 1/dk) and `min` (alpha -> inf, the worst variant sets the
+     cost). The limits are named rules, so neither end is approximated by
+     an extreme alpha; alpha is required by `softmin` and refused by the
+     others. Equal shares `x_g = 1/M`, as for theta.
+   - Scale: alpha matters once alpha times the spread of a cell's dk values
+     reaches ~1. For a 1:1 cell with dk 0 and -0.03: dilution -0.015,
+     alpha 100 -0.024, min -0.030.
+   - Fit: `mixture.cell_classes` takes a log-sum-exp (softmin) or a min
+     over the focal plasmid and its valid co-resident slots; orchestrator
+     settings `congression_dk_rule`/`congression_dk_alpha`, written to the
+     config and carried as static `GrowthData` fields;
+     `tfs-configure-model --congression_dk_rule/--congression_dk_alpha`.
+     Simulator: `simulate/cell_rules.py` (`dk_softmin`, `dk_min`), config
+     keys of the same names. In float32 the fit's softmin has absolute
+     error ~1e-7 / alpha, so tiny alpha is a job for `dilution`.
+   - Sensitivity check: simulate {dilution, min} x fit {single,
+     mixture-dilution, mixture-min}, homodimer theta rule on both sides,
+     x seeds 1-2, on the study's wide dk spread (a deliberate worst case,
+     user) at lambda 0.357 and 1, plus the realistic tight spread at 0.357
+     (36 runs, `planning/studies/congression-calibration/grid_dkrule.yaml`).
+     No intermediate alpha: if the two ends agree, everything between does.
+   - Side effect to watch: under `min` a slow genotype's congressed cells
+     are at least as slow as it is, closing the route (an earlier,
+     unconverged diagnosis) by which a genotype pushes its own dk down and
+     lets its congressed cells carry its growth.
+     Results (2026-09-26, all 36 converged): at the realistic tight dk
+     spread the rule does not matter (theta, dk_geno and loss agree within
+     0.001 RMSE and 30 loss units), and the mixture does not beat `single`
+     on theta there. At the wide spread the dilution fit gives the best
+     theta whichever rule simulated the data, while the min fit gains
+     nothing over `single` even when min is true; dk_geno and lambda need
+     the right rule (min data at lambda 1: min fit lambda 1.02/0.89 and best
+     dk_geno; dilution fit lambda 0.47/0.38). The dilution mixture's theta
+     gain does not track congression (same size on min data, at lambda 0
+     and 1, absent at tight spread): it needs slow genotypes that a faster
+     congressed class can rescue, which points at the read-count floor
+     (untested). At the tight spread lambda is pulled to 0.54-0.97 at a
+     true 0.357. `dilution` stays the default. Step 5 done.
+6. **Re-validate on the count likelihood.** Open (user, 2026-09-26): the
+   congression arc (steps 1-5) is closed; the read-count floor is to be
+   handled by fitting read counts directly (`planning/count-likelihood.md`,
+   a separate piece of work), not by the masked test proposed after step 5.
+   Once that model exists, re-run `grid_baseline.yaml` (lambda 0 and 1) and
+   `grid_dkrule.yaml` on it (`planning/studies/congression-calibration/`):
+   - The theta gain of the mixture over `single` that remains is what
+     congression costs. Today's gain (about -0.018 bulk theta RMSE) is the
+     same at lambda 0 and 1 and on min-simulated data, so it is probably
+     mostly the floor.
+   - The dk_geno gain should persist: it grows with lambda and follows the
+     true dk rule (about 3x lower error at lambda 1), so it is congression.
+   - Check the fitted lambda at the tight dk spread, pulled to 0.54-0.97 at
+     a true 0.357 against a 0.357 +/- 0.05 prior, before trusting a fitted
+     lambda on real data (whose dk spread is tight).
+   The other open items under 3.5 (lambda's overconfident intervals,
+   coverage below nominal, the binding weight and SDs) stand.

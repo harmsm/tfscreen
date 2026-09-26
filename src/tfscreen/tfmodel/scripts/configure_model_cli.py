@@ -135,6 +135,8 @@ def configure_model(binding_df,
                     transformation_model="single",
                     transformation_lambda=None,
                     congression_theta_rule="homodimer",
+                    congression_dk_rule="dilution",
+                    congression_dk_alpha=None,
                     theta_rescale_model="passthrough",
                     theta_growth_noise_model="zero",
                     theta_binding_noise_model="zero",
@@ -234,6 +236,15 @@ def configure_model(binding_df,
         from its plasmids' thetas: 'homodimer' (default), 'heterodimer' or
         'max'. The homodimer and heterodimer rules require activity_model
         'fixed'. Ignored by 'single'.
+    congression_dk_rule : str, optional
+        How the 'mixture' transformation builds a congressed cell's dk_geno
+        from its plasmids': 'dilution' (default; the share-weighted mean),
+        'softmin' (with congression_dk_alpha) or 'min' (the worst variant
+        sets the cost). Ignored by 'single'.
+    congression_dk_alpha : float, optional
+        alpha for congression_dk_rule 'softmin' (> 0, in units of 1/dk):
+        ``dk_cell = -(1/alpha) log sum_g x_g exp(-alpha dk_g)``. Required by
+        'softmin', refused by the other rules.
     theta_rescale_model : str, optional
         Rescaling applied to theta before it enters the growth model. Allowed
         values are 'passthrough' (default, identity) or 'logit' (maps theta to
@@ -375,6 +386,8 @@ def configure_model(binding_df,
                      transformation=transformation_model,
                      transformation_lambda=transformation_lambda,
                      congression_theta_rule=congression_theta_rule,
+                     congression_dk_rule=congression_dk_rule,
+                     congression_dk_alpha=congression_dk_alpha,
                      theta_rescale=theta_rescale_model,
                      theta_growth_noise=theta_growth_noise_model,
                      theta_binding_noise=theta_binding_noise_model,
@@ -409,6 +422,7 @@ def configure_model(binding_df,
 def main():
     return generalized_main(configure_model,
                             manual_arg_types={"binding_df":str,
+                                              "congression_dk_alpha":float,
                                               "growth_df":str,
                                               "presplit_df":str,
                                               "base_growth_df":str,

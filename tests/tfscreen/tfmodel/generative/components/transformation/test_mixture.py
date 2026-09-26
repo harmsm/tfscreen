@@ -178,7 +178,8 @@ def test_spike_only_genotype_has_no_congressed_cells_and_finite_gradient():
 # ---------------------------------------------------------------------------
 
 def _toy(seed=0, num_genotype=6, num_tn=2, num_tc=3,
-         batch_idx=(4, 0, 2), sets=(3, 2, 1), rule="max"):
+         batch_idx=(4, 0, 2), sets=(3, 2, 1), rule="max",
+         dk_rule="dilution", dk_alpha=None):
     rng = np.random.default_rng(seed)
     batch_idx = np.array(batch_idx)
     counts = np.asarray(_counts(list(sets)))
@@ -202,7 +203,9 @@ def _toy(seed=0, num_genotype=6, num_tn=2, num_tc=3,
                            bulk_fraction=jnp.array(bulk_fraction),
                            coresident_idx=jnp.array(coresident_idx),
                            coresident_n=jnp.array(counts),
-                           congression_theta_rule=rule)
+                           congression_theta_rule=rule,
+                           congression_dk_rule=dk_rule,
+                           congression_dk_alpha=dk_alpha)
 
     # The batch's own values; theta perturbed (noise acts on the focal theta
     # only), so the focal plasmid is not just its population value.
@@ -249,8 +252,14 @@ def _reference_classes(data, focal, population, lam):
                         cell = np.log(np.mean(np.exp(p * logit))) / p
                         c_theta[1 + k, i, j, b] = 1.0 / (1.0 + np.exp(-cell))
                         c_act[1 + k, i, j, b] = 1.0
-            c_dk[1 + k, b] = np.mean([dk_geno.reshape(-1)[b]] +
-                                     [dk_pop[h] for h in co])
+            dks = np.array([dk_geno.reshape(-1)[b]] + [dk_pop[h] for h in co])
+            if data.congression_dk_rule == "dilution":
+                c_dk[1 + k, b] = np.mean(dks)
+            elif data.congression_dk_rule == "min":
+                c_dk[1 + k, b] = np.min(dks)
+            else:
+                a = data.congression_dk_alpha
+                c_dk[1 + k, b] = -np.log(np.mean(np.exp(-a * dks))) / a
 
     f = np.asarray(data.bulk_fraction)[batch_idx]
     w_cong = f * (1.0 - _ztp_pmf(1, lam))
@@ -266,9 +275,16 @@ def _reference_classes(data, focal, population, lam):
     return c_theta, c_act, c_dk, w
 
 
-@pytest.mark.parametrize("rule", ["max", "homodimer", "heterodimer"])
-def test_cell_classes_match_reference(rule):
-    data, focal, population = _toy(rule=rule)
+@pytest.mark.parametrize("rule,dk_rule,dk_alpha",
+                         [("max", "dilution", None),
+                          ("homodimer", "dilution", None),
+                          ("heterodimer", "dilution", None),
+                          ("homodimer", "softmin", 100.0),
+                          ("homodimer", "min", None),
+                          ("max", "min", None)])
+def test_cell_classes_match_reference(rule, dk_rule, dk_alpha):
+    data, focal, population = _toy(rule=rule, dk_rule=dk_rule,
+                                   dk_alpha=dk_alpha)
     lam = 0.357
     classes = mixture.cell_classes(focal, population, jnp.array(lam), data)
     c_theta, c_act, c_dk, w = _reference_classes(data, focal, population, lam)
@@ -339,3 +355,83 @@ def test_partition_rule_matches_simulator():
                     np.asarray(classes.theta)[1 + k, 0, 0, 0, 0, :, :, b].ravel(),
                     cell[0], rtol=1e-5)
 
+
+
+def _cell_dk(dk_rule, dk_alpha=None, **kwargs):
+    data, focal, population = _toy(rule="homodimer", dk_rule=dk_rule,
+                                   dk_alpha=dk_alpha, **kwargs)
+    classes = mixture.cell_classes(focal, population, jnp.array(0.357), data)
+    return np.asarray(classes.dk_geno)
+
+
+def test_dk_rules_order_and_limits():
+    """min <= softmin <= dilution; softmin tends to dilution as alpha -> 0
+    and to min as alpha -> inf."""
+    dilution, minimum = _cell_dk("dilution"), _cell_dk("min")
+    soft = _cell_dk("softmin", 100.0)
+    assert np.all(minimum <= soft + 1e-12)
+    assert np.all(soft <= dilution + 1e-12)
+    assert np.any(minimum < dilution - 1e-4)
+    # Small alpha: within alpha * var / 2 (< 1e-5 here) of dilution. (In
+    # float32 the soft-min's absolute error is ~1e-7 / alpha, so much smaller
+    # alpha is a job for 'dilution'.)
+    np.testing.assert_allclose(_cell_dk("softmin", 0.1), dilution, atol=1e-5)
+    np.testing.assert_allclose(_cell_dk("softmin", 1e5), minimum, atol=1e-4)
+    # The clean class keeps the focal dk under every rule.
+    np.testing.assert_array_equal(soft[0], dilution[0])
+
+
+@pytest.mark.parametrize("dk_rule,dk_alpha", [("softmin", 100.0),
+                                              ("min", None)])
+def test_dk_rule_single_plasmid_keeps_own_dk(dk_rule, dk_alpha):
+    data, focal, population = _toy(rule="homodimer", sets=(1,),
+                                   dk_rule=dk_rule, dk_alpha=dk_alpha)
+    data.coresident_idx = jnp.full_like(data.coresident_idx, -1)
+    classes = mixture.cell_classes(focal, population, jnp.array(0.357), data)
+    np.testing.assert_allclose(np.asarray(classes.dk_geno)[1].ravel(),
+                               np.asarray(focal[2]).ravel(), rtol=1e-6)
+
+
+@pytest.mark.parametrize("dk_rule,dk_alpha", [("dilution", None),
+                                              ("softmin", 100.0),
+                                              ("min", None)])
+def test_dk_rule_matches_simulator(dk_rule, dk_alpha):
+    """The fit's congressed-cell dk equals simulate/cell_rules's DK_RULES."""
+    from tfscreen.simulate.cell_rules import DK_RULES
+    data, focal, population = _toy(rule="homodimer", dk_rule=dk_rule,
+                                   dk_alpha=dk_alpha)
+    classes = mixture.cell_classes(focal, population, jnp.array(0.357), data)
+    dk_geno, dk_pop = np.asarray(focal[2]).ravel(), population[2]
+    idx = np.asarray(data.coresident_idx)
+    n_max = idx.shape[2] + 1
+    for b, g in enumerate(np.asarray(data.batch_idx)):
+        for k in range(idx.shape[1]):
+            co = [h for h in idx[g, k] if h >= 0]
+            m = len(co) + 1
+            slots = np.zeros((1, n_max))
+            slots[0, :m] = [dk_geno[b]] + [dk_pop[h] for h in co]
+            shares = np.zeros((1, n_max))
+            shares[0, :m] = 1.0 / m
+            expected = DK_RULES[dk_rule](slots, shares, alpha=dk_alpha)
+            np.testing.assert_allclose(
+                np.asarray(classes.dk_geno)[1 + k].ravel()[b], expected[0],
+                rtol=1e-5, atol=1e-9)
+
+
+@pytest.mark.parametrize("dk_rule,dk_alpha", [("softmin", 100.0),
+                                              ("min", None)])
+def test_dk_rule_gradient_is_finite(dk_rule, dk_alpha):
+    data, focal, population = _toy(rule="homodimer", dk_rule=dk_rule,
+                                   dk_alpha=dk_alpha)
+    theta, activity, _ = focal
+
+    def total(dk_geno, dk_pop):
+        classes = mixture.cell_classes(
+            (theta, activity, dk_geno),
+            (population[0], population[1], dk_pop), jnp.array(0.357), data)
+        return jnp.sum(classes.dk_geno)
+
+    grads = jax.grad(total, argnums=(0, 1))(jnp.array(focal[2]),
+                                            jnp.array(population[2]))
+    for grad in grads:
+        assert np.all(np.isfinite(np.asarray(grad)))

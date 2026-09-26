@@ -175,6 +175,9 @@ def test_defaults_are_homodimer_and_fixed_activity():
     assert orchestrator.settings["activity"] == "fixed"
     assert orchestrator.settings["congression_theta_rule"] == "homodimer"
     assert orchestrator.data.growth.congression_theta_rule == "homodimer"
+    assert orchestrator.settings["congression_dk_rule"] == "dilution"
+    assert orchestrator.settings["congression_dk_alpha"] is None
+    assert orchestrator.data.growth.congression_dk_rule == "dilution"
 
 
 def test_max_rule_allows_learned_activity():
@@ -204,3 +207,29 @@ def test_rules_give_different_predictions():
     assert not np.allclose(preds["max"], preds["homodimer"])
     assert not np.allclose(preds["homodimer"], preds["heterodimer"])
 
+
+
+@pytest.mark.parametrize("dk_rule,dk_alpha", [("dilution", None),
+                                              ("softmin", 100.0),
+                                              ("min", None)])
+def test_every_dk_rule_runs_and_survives_batching(dk_rule, dk_alpha):
+    orchestrator = _orchestrator("mixture", congression_dk_rule=dk_rule,
+                                 congression_dk_alpha=dk_alpha)
+    batch = _full_batch(orchestrator)
+    assert batch.growth.congression_dk_rule == dk_rule
+    assert batch.growth.congression_dk_alpha == dk_alpha
+    pred = np.asarray(_trace(orchestrator)["growth_pred"]["value"])
+    assert np.all(np.isfinite(pred))
+
+
+def test_dk_rules_give_different_predictions():
+    """Same latents, different dk rules: the congressed classes differ."""
+    base = _orchestrator("mixture")
+    latents = _latents(_trace(base))
+    latents["transformation_lam"] = jnp.array(1.0)
+    preds = {}
+    for dk_rule, dk_alpha in (("dilution", None), ("min", None)):
+        o = _orchestrator("mixture", congression_dk_rule=dk_rule,
+                          congression_dk_alpha=dk_alpha)
+        preds[dk_rule] = np.asarray(_trace(o, latents)["growth_pred"]["value"])
+    assert not np.allclose(preds["dilution"], preds["min"])

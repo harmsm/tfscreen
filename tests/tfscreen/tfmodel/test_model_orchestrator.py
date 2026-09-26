@@ -882,6 +882,31 @@ def test_model_orchestrator_partition_rules_need_fixed_activity(rule):
                           congression_theta_rule=rule)
 
 
+def test_model_orchestrator_refuses_unknown_congression_dk_rule():
+    with pytest.raises(ValueError, match="congression_dk_rule must be one of"):
+        ModelOrchestrator("g.csv", "b.csv", congression_dk_rule="max")
+
+
+@pytest.mark.parametrize("alpha", [None, 0.0, -2.0, float("inf"), "x"])
+def test_model_orchestrator_softmin_needs_positive_finite_alpha(alpha):
+    with pytest.raises(ValueError, match="needs a finite"):
+        ModelOrchestrator("g.csv", "b.csv", congression_dk_rule="softmin",
+                          congression_dk_alpha=alpha)
+
+
+@pytest.mark.parametrize("rule", ["dilution", "min"])
+def test_model_orchestrator_other_dk_rules_refuse_alpha(rule):
+    with pytest.raises(ValueError, match="only used by"):
+        ModelOrchestrator("g.csv", "b.csv", congression_dk_rule=rule,
+                          congression_dk_alpha=10.0)
+
+
+def test_check_congression_dk_alpha_casts():
+    from tfscreen.tfmodel.model_orchestrator import _check_congression_dk_alpha
+    assert _check_congression_dk_alpha("softmin", "100") == 100.0
+    assert _check_congression_dk_alpha("dilution", None) is None
+
+
 def test_model_class_properties(initialized_model_class):
     model = initialized_model_class
     model._jax_model = "jm"
@@ -915,6 +940,8 @@ def test_model_class_properties(initialized_model_class):
     model._congression_sets = (12, 3, 1)
     model._congression_seed = 0
     model._congression_theta_rule = "homodimer"
+    model._congression_dk_rule = "softmin"
+    model._congression_dk_alpha = 50.0
 
     assert ModelOrchestrator.jax_model.fget(model) == "jm"
     assert ModelOrchestrator.jax_model_guide.fget(model) == "jmg"
@@ -923,6 +950,8 @@ def test_model_class_properties(initialized_model_class):
     assert ModelOrchestrator.init_params.fget(model) == "ip"
     assert ModelOrchestrator.settings.fget(model)["activity"] == "a"
     assert ModelOrchestrator.settings.fget(model)["congression_theta_rule"] == "homodimer"
+    assert ModelOrchestrator.settings.fget(model)["congression_dk_rule"] == "softmin"
+    assert ModelOrchestrator.settings.fget(model)["congression_dk_alpha"] == 50.0
     assert ModelOrchestrator.settings.fget(model)["theta"] == "t"
     assert ModelOrchestrator.settings.fget(model)["transformation"] == "tr"
     assert ModelOrchestrator.settings.fget(model)["transformation_lambda"] is None

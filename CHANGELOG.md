@@ -31,6 +31,19 @@ fall into two kinds:
 
 ### Added
 
+- **Soft-min congression dk rules (`congression_dk_rule` `softmin`, `min`).**
+  A congressed cell's dk_geno can now follow the whole soft-min family
+  `dk_cell = -(1/alpha) log sum_g x_g exp(-alpha dk_g)`, not only its
+  `alpha -> 0` limit: `dilution` (still the default, the share-weighted
+  mean), `softmin` (finite alpha, from the new `congression_dk_alpha`, in
+  units of 1/dk) and `min` (`alpha -> inf`, the worst variant sets the
+  cell's cost). Available in the simulator (`simulate/cell_rules.py`,
+  config keys `congression_dk_rule`/`congression_dk_alpha`) and the fit's
+  `mixture` transformation (`ModelOrchestrator` settings written to the
+  config and carried as static `GrowthData` fields; `tfs-configure-model
+  --congression_dk_rule`/`--congression_dk_alpha`). Alpha is required by
+  `softmin` and refused by the other rules. Congression physics plan,
+  step 5.
 - **Limit on simulated Hill coefficients (`theta_sim_priors.max_hill_n`).**
   hill_mut's simulation adds per-mutation and horseshoe-epistasis effects on
   log(hill_n), so double mutants could reach Hill coefficients in the
