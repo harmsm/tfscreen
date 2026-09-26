@@ -240,6 +240,17 @@ cancels from slopes; only curvature error does not). The calibration file
 therefore keeps the full parameter covariance, and the fit treats the
 calibration parameters as global quantities (D10), never as per-tube noise.
 
+**C12. Count noise scales with the mean, and rare genotypes start from few
+cells.** Study 0b found per-tube variance 5-18 times Poisson at 100-3,000
+reads, the signature of a bottleneck upstream of the reads, not a
+constant-CV floor. The count likelihood's dispersion must allow
+`var = phi * mu` (NB1 / quasi-Poisson), with at most a small NB2 floor. A
+typical double has a few founder cells per tube at the split, drawn anew for
+every tube, so its starting abundance differs between tubes; the shared
+`ln_cfu0` is a mean, and founder noise is part of the per-tube dispersion.
+The simulator must produce both (step 4), or its calibration grids
+understate real noise.
+
 ## Steps
 
 Keep this list current. Two tracks, G (growth-only) and N (noise, counts and
@@ -252,7 +263,16 @@ a simulation checked by `tfs-summarize-calibration`.
 
 0. **Studies on real data** (no package code; run in parallel; all can start
    now).
-   - [ ] **0a. Growth-binding map, model-free** (G's step 0). Per genotype with
+   Data: the 2026-07-23 snapshot, extracted by
+   `planning/studies/step0-data/` (113 sequenced tubes, 215,402 genotypes).
+   **The first results are provisional** (user, 2026-09-26): that
+   snapshot's FASTQ processing assigned every unknown read to wt and used a
+   very stringent Q cutoff, and its binding data were five genotypes at the
+   original protein concentration. A new processing batch is running, and
+   new binding data exist (10 genotypes, two lower repressor
+   concentrations whose curves match the in vivo concentration range).
+   Re-run 0a and 0b on those before acting on them.
+   - [x] **0a. Growth-binding map, model-free** (G's step 0). Per genotype with
      binding data: slope of `ln_cfu` on `t_sel` per replicate x condition x
      concentration; subtract wt; plot against binding theta (Hill fits if
      concentrations differ), spiked and bulk separately. Decides the base
@@ -260,7 +280,18 @@ a simulation checked by `tfs-summarize-calibration`.
      no map). Also answers the idea file's open question on whether growth
      and binding concentrations coincide. Study:
      `planning/studies/growth-binding-map/`.
-   - [ ] **0b. Read noise anatomy.** From the real counts: fraction of rows
+     Result (2026-09-26): concentrations coincide (eight IPTG points). Only
+     five genotypes (all spiked, all near wt in vitro) have binding data.
+     wt-relative, total-free slopes have no leverage. Absolute slopes (with
+     the smoothed totals) reject one linear map at s = 1 in kan (reduced
+     chi2 6.7; genotype-specific slopes p = 2e-5): growth rises between
+     0.001 and 0.01 mM IPTG where in vitro theta is still 1. An in vivo
+     concentration scale s = 30-100 brings reduced chi2 to about 3 (kan m
+     about -0.025 per min). 4CP growth does not track binding. **The base
+     case is not supported**; the map needs s (step 8), and the direct test
+     is monoculture growth of these genotypes across the titration
+     (`planning/absolute-abundance-measurements.md`).
+   - [x] **0b. Read noise anatomy.** From the real counts: fraction of rows
      below 20 and below 5 reads, by genotype class and condition; the
      per-tube composition offset `u_s` (shared residual of frequencies of
      well-measured genotypes, wt and spikes, within a tube); a look for
@@ -270,7 +301,19 @@ a simulation checked by `tfs-summarize-calibration`.
      spread of high-count spike ratios against the binomial expectation,
      which sizes the count dispersion. Sets priors for steps 6 and 7 and the
      simulator parameters of step 4. Study: `planning/studies/noise-anatomy/`.
-   - [ ] **0c. OD600 anatomy.** All OD600 readings for the three
+     Result (2026-09-26): doubles (97% of rows) have a median of 3-5 reads
+     per tube (23-33% zero, 72-85% under 20); singles about 5,300; spikes
+     29,000-56,000. Composition offset `u_s` SD 0.018. Per-tube count
+     variance is 5-18 times Poisson at 100-3,000 reads (pooled: variance
+     = 0.0055 + 8.4 x Poisson): a bottleneck upstream of the reads
+     (template molecules and/or founder cells), so the dispersion scales
+     with the mean (C12). Today's `ln_cfu_var` understates the noise 5-10
+     fold. No extraction-batch analysis was possible from the recorded
+     order. Low counts are mostly low abundance, not crashes: about 88% of
+     double rows under 5 reads in selective tubes belong to genotypes
+     already under 5 reads without the drug; only 0.1% of doubles with >= 20
+     reads without the drug fall below 5 in half their selective tubes.
+   - [ ] **0c. OD600 anatomy.** (First pass done; waiting on data.) All OD600 readings for the three
      bioreplicates, through the lab calibration: the shape of `ln N(t)` per
      condition x concentration (pre-growth and selection, lag, any
      saturation), how much of the between-bioreplicate difference is a level
@@ -282,6 +325,16 @@ a simulation checked by `tfs-summarize-calibration`.
      whether kan and 4CP tubes differ in ways that suggest the
      calibration does not transfer to stressed cells (D11). Decides the
      curve form (D9). Study: `planning/studies/od600-population/`.
+     First pass (2026-09-26, the two sequenced replicates only): replicate
+     2 reads +0.24 ln units above replicate 1 (a level; per-condition
+     levels add nothing), but replicate-specific slopes are also
+     significant (p = 7e-5). Tube scatter 0.17 ln units against 0.03
+     reading noise, not growing with time. No tube below threshold (lowest
+     1.5x, kan+ 0 mM, which barely grows). Per-condition population slopes
+     have SE 0.003-0.007 per min, comparable to `m`: these tubes alone do
+     not pin `k_c`. Still needed: the third bioreplicate's OD600, the
+     repeated OD600 runs behind the smoothed totals, and the presplit
+     OD600 and dilution.
 1. **Binding-optional plumbing** (G).
    The list in the idea file: `binding_df` becomes `--binding_df` in
    `tfs-configure-model` (at least one of growth/binding required; no phantom
@@ -332,7 +385,10 @@ a simulation checked by `tfs-summarize-calibration`.
    `sample_cfu_std = 0.0` and no OD. Add: OD600 per tube through an inverse
    calibration (from a calibration YAML) with reading noise, the detection
    threshold and the calibrated range; bioreplicates that get OD only (no
-   reads); PCR jackpotting (Gamma-Poisson counts with a configured
+   reads); founder sampling per tube (each tube seeded with a Poisson
+   draw of cells per genotype at the split, not `total_cfu0 * freq`; 0b);
+   a template bottleneck before sequencing (reads drawn from a limited
+   number of template molecules; 0b); PCR jackpotting (Gamma-Poisson counts with a configured
    dispersion); a per-tube composition offset; optional monoculture
    growth-rate measurements and a spike-in counting standard, to size how
    much each would help before it is run. Each source can be switched off,
@@ -392,7 +448,8 @@ a simulation checked by `tfs-summarize-calibration`.
 7. **Count likelihood** (N).
    `growth_likelihood: counts` (C2): growth and presplit observers with
    `reads_{g,s} ~ NegBin(depth_s * exp(ln n_{g,s} - P_s + u_s), dispersion)`,
-   `P` and `u` from step 6, a learned dispersion (one per experiment; no
+   `P` and `u` from step 6, a learned dispersion whose variance scales with
+   the mean (C12; one per experiment; no
    per-batch term, D8), optional index hopping (`E[reads] = N (p_g + h q_g)`),
    and, for future screens, a spike-in counting standard (a non-growing
    pseudo-genotype of known abundance per tube, which fixes `P_s`).
@@ -512,6 +569,11 @@ User, 2026-09-26.
   size and shape, and dead cells still scatter light (and still carry
   plasmid DNA into the reads). 0c looks for signs of it; a bench check
   (OD vs plate counts under selection) would settle it.
+- **Where the extra count noise comes from** (C12). A technical replicate
+  (re-amplify and re-sequence the same extracted DNA for a few tubes)
+  separates the template/PCR part from founder sampling and biology. Cheap
+  if DNA remains.
+
 Answered (user, 2026-09-26): OD600 is read with the calibration's setup
 (same reader, plate, 200 uL); the presplit is read and then diluted
 identically into every tube (above); `ln_cfu` is `ln(cfu/mL * 5 mL)`; each

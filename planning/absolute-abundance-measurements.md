@@ -62,6 +62,14 @@ OD600, chosen by what each one pins.
    `k_ref + dk_geno` in one reference condition. Caveat: a monoculture
    lacks the library's other cells (density, any cross-protection), which
    the matched starting density only partly addresses.
+   **Extended after study 0a (2026-09-26):** run the five genotypes with
+   in vitro binding data (wt, M42I, H74A, K84L, M42I/H74A) across all eight
+   IPTG concentrations in kan and 4CP. That measures the growth-binding
+   map directly, with no library and no totals problem. 0a found the
+   library data inconsistent with one linear map at the in vitro
+   concentration scale (kan responds at roughly 30-100x lower IPTG; 4CP
+   does not track binding), but could not rule out errors in the
+   per-column totals.
 2. **OD600 against plate counts under selection**, a few screen-like tubes
    in the strongest conditions at densities the reader can see. Tests
    whether the unstressed calibration transfers to stressed cells: dead
