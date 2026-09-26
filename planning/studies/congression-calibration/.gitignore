@@ -15,3 +15,5 @@ congression_calibration_baseline/
 congression_calibration_profile/
 # Renamed copies of old grid runs
 *.old/
+congression_calibration_measured/
+congression_calibration_seed3/

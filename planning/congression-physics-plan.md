@@ -665,6 +665,20 @@ checked with `tfs-summarize-calibration`.
      intervals; at a true 0 the mixture finds ~0.12 yet still fits theta
      better than `single`. The lambda profile is flat within loss noise
      over 0.6-1.4, and theta error changes little across it.
+     Closing (user, 2026-09-26): a confirming round (`grid_measured.yaml`:
+     lambda 0.357 x seeds 1-3; `grid_seed3.yaml`: a third seed at lambda 0
+     and 1), then step 4. Open items, recorded rather than pursued now:
+     - Lambda's intervals are overconfident and its profile is flat over
+       0.6-1.4 in these data; this supports setting lambda from the
+       measurement (a tight prior or a constant) rather than learning it.
+     - At a true lambda 0 the mixture finds ~0.12 and still fits theta
+       better than `single`: its congressed classes absorb something in the
+       data (the read-count floor is the leading candidate; censoring is
+       the planned fix).
+     - Theta 95% coverage is 0.78-0.87 for both models.
+     - The model's default binding weight (growth rows / binding rows) is
+       to be lowered, and the binding SDs rethought (raw anisotropy points,
+       an assay-to-cell term); its own step.
 4. **Theta rule.** Homodimer vs heterodimer soft max, chosen from the bench
    results, in both simulator and fit.
 5. **dk rule.** Soft-min family with an alpha sensitivity check, in both

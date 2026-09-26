@@ -1,0 +1,50 @@
+# ---------------------------------------------------------------------------
+# Measured-regime confirmation (congression calibration, step 3.5)
+#
+#   tfs-setup-sim-grid grid_measured.yaml --out_prefix congression_calibration_measured
+#   for d in congression_calibration_measured/run_*/; do (cd "$d" && sbatch run.srun); done
+#
+# The real library's lambda (0.357), with the matched prior (0.357 +/- 0.05,
+# as on real data), {single, mixture} x seeds 1-3. Same settings as
+# grid_baseline.yaml. 6 runs.
+# ---------------------------------------------------------------------------
+
+base_config: simulate_config.yaml
+
+run_name: "lam{{ transformation_poisson_lambda }}__seed{{ seed }}__{{ fit }}_{{ lam_prior }}"
+
+output_file: run.srun
+
+
+simulate:
+
+  - name: lam
+    variants:
+      - transformation_poisson_lambda: 0.357
+
+  - name: dk
+    variants:
+      - dk_geno_hyper_loc: -3.5
+        dk_geno_hyper_scale: 0.5
+        dk_geno_hyper_shift: 0.02
+
+  - name: seed
+    variants:
+      - seed: 1
+      - seed: 2
+      - seed: 3
+
+
+template:
+
+  - name: fit
+    variants:
+      - fit: single
+        lam_prior: "off"
+      - fit: mixture
+        lam_prior: matched
+
+  - name: anchor
+    variants:
+      - binding_weight: 1.0
+        k_scale_ceiling: 0.005
