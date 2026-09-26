@@ -695,3 +695,15 @@ Homodimer fit minus max fit, same simulation (mean +/- SE over 2 seeds):
 
 `homodimer` stays the default (the physics, the user's call in step 4); the
 choice between the rules waits on native mass spec, not on screen data.
+
+## Step 5: dk rule sensitivity (grid_dkrule.yaml, set up 2026-09-26)
+
+The fit and simulator now offer the soft-min dk family (`dilution`,
+`softmin` with `congression_dk_alpha`, `min`). `run.srun` fits with the
+simulation's dk rule and alpha unless `fit_dk_rule`/`fit_dk_alpha` are
+set. `grid_dkrule.yaml` simulates with `dilution` or `min` and fits each
+simulation with `single` and the mixture under each rule (homodimer theta
+rule on both sides), at the wide dk spread (worst case) at lambda 0.357 and
+1.0 and the tight, realistic spread at 0.357, x seeds 1-2 (36 runs). Does
+the dk rule matter, and does it matter at a realistic dk spread? Summary
+commands are in the grid file's header.

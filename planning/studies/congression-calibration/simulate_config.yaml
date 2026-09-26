@@ -196,8 +196,10 @@ transformation_poisson_lambda: 0
 # How a cell carrying several plasmids gets its growth rate. The cell's theta
 # and TF activity come from congression_theta_rule ('max': the highest-theta
 # plasmid sets both, at each condition); its dk_geno from congression_dk_rule
-# ('dilution': share-weighted mean). Growth is then computed once from these
-# cell-level values. Both keys are optional; these are the defaults.
+# ('dilution': share-weighted mean; also 'softmin' with congression_dk_alpha,
+# or 'min'). Growth is then computed once from these cell-level values. The
+# study keeps 'max' so its recorded grids stay reproducible (the default is
+# now 'homodimer'); grids set the rules they test.
 congression_theta_rule: max
 congression_dk_rule: dilution
 

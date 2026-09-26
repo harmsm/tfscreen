@@ -228,9 +228,12 @@ transformation_poisson_lambda: 1.5
 # theta odds), 'heterodimer' (closer to the mean logit) or 'max' (the
 # highest-theta plasmid sets theta and TF activity). 'homodimer' and
 # 'heterodimer' need activity 1 (activity_mut_scale 0). Its dk_geno comes
-# from congression_dk_rule ('dilution': share-weighted mean). Growth is then
-# computed once from these cell-level values. Both keys are optional; these
-# are the defaults.
+# from congression_dk_rule, the soft-min family
+# dk_cell = -(1/alpha) log sum_g x_g exp(-alpha dk_g): 'dilution'
+# (alpha -> 0, the share-weighted mean), 'softmin' (finite alpha, set by
+# congression_dk_alpha, in units of 1/dk) or 'min' (alpha -> inf, the worst
+# variant sets the cost). Growth is then computed once from these cell-level
+# values. All three keys are optional; these are the defaults (no alpha).
 congression_theta_rule: homodimer
 congression_dk_rule: dilution
 

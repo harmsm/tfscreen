@@ -696,6 +696,9 @@ def _setup_batching(growth_genotypes,
 # something new.
 # Rules for a congressed cell's theta (transformation/mixture.py).
 _CONGRESSION_THETA_RULES = ("homodimer", "heterodimer", "max")
+# Rules for a congressed cell's dk_geno (the soft-min family; only
+# "softmin" takes congression_dk_alpha).
+_CONGRESSION_DK_RULES = ("dilution", "softmin", "min")
 
 _RETIRED_TRANSFORMATIONS = {
     "empirical": (
@@ -735,6 +738,34 @@ def _check_congression_sets(congression_sets):
             f"n co-residents); got {congression_sets!r}."
         )
     return tuple(values)
+
+
+def _check_congression_dk_alpha(congression_dk_rule, congression_dk_alpha):
+    """
+    Validate ``congression_dk_alpha`` against the dk rule: ``"softmin"``
+    needs a finite alpha > 0 (returned as a float); every other rule takes
+    none (returns None).
+    """
+    if congression_dk_rule != "softmin":
+        if congression_dk_alpha is not None:
+            raise ValueError(
+                f"congression_dk_alpha is only used by "
+                f"congression_dk_rule='softmin'; got "
+                f"congression_dk_rule={congression_dk_rule!r} with "
+                f"congression_dk_alpha={congression_dk_alpha!r}."
+            )
+        return None
+    try:
+        alpha = float(congression_dk_alpha)
+    except (TypeError, ValueError):
+        alpha = None
+    if alpha is None or not np.isfinite(alpha) or alpha <= 0:
+        raise ValueError(
+            f"congression_dk_rule='softmin' needs a finite "
+            f"congression_dk_alpha > 0; got {congression_dk_alpha!r}. Use "
+            f"'dilution' or 'min' for the alpha -> 0 and alpha -> inf limits."
+        )
+    return alpha
 
 
 class ModelOrchestrator:
@@ -816,6 +847,16 @@ class ModelOrchestrator:
         2)``) or ``"max"`` (the highest-theta plasmid sets theta and
         activity). The homodimer and heterodimer rules require
         ``activity='fixed'`` (activity 1).
+    congression_dk_rule : str, optional
+        How the congression mixture builds a congressed cell's dk_geno from
+        its plasmids', the soft-min family ``dk_cell = -(1/alpha) log sum_g
+        x_g exp(-alpha dk_g)``: ``"dilution"`` (default; alpha -> 0, the
+        share-weighted mean), ``"softmin"`` (finite alpha, from
+        ``congression_dk_alpha``) or ``"min"`` (alpha -> inf, the worst
+        variant sets the cost).
+    congression_dk_alpha : float, optional
+        alpha for ``congression_dk_rule="softmin"`` (> 0, in units of 1/dk);
+        required by that rule and refused by the others.
 
     Attributes
     ----------
@@ -862,7 +903,9 @@ class ModelOrchestrator:
                  base_growth_df=None,
                  congression_sets=(12, 3, 1),
                  congression_seed=0,
-                 congression_theta_rule="homodimer"):
+                 congression_theta_rule="homodimer",
+                 congression_dk_rule="dilution",
+                 congression_dk_alpha=None):
 
         self._ln_cfu_df = growth_df
         self._binding_df = binding_df
@@ -897,6 +940,9 @@ class ModelOrchestrator:
         self._congression_sets = _check_congression_sets(congression_sets)
         self._congression_seed = int(congression_seed)
         self._congression_theta_rule = congression_theta_rule
+        self._congression_dk_rule = congression_dk_rule
+        self._congression_dk_alpha = _check_congression_dk_alpha(
+            congression_dk_rule, congression_dk_alpha)
 
         if self._transformation in _RETIRED_TRANSFORMATIONS:
             raise ValueError(_RETIRED_TRANSFORMATIONS[self._transformation])
@@ -906,6 +952,12 @@ class ModelOrchestrator:
                 f"congression_theta_rule must be one of "
                 f"{list(_CONGRESSION_THETA_RULES)}; got "
                 f"{self._congression_theta_rule!r}."
+            )
+        if self._congression_dk_rule not in _CONGRESSION_DK_RULES:
+            raise ValueError(
+                f"congression_dk_rule must be one of "
+                f"{list(_CONGRESSION_DK_RULES)}; got "
+                f"{self._congression_dk_rule!r}."
             )
         if (self._transformation == "mixture"
                 and self._congression_theta_rule != "max"
@@ -1105,7 +1157,9 @@ class ModelOrchestrator:
                       "bulk_fraction":jnp.array(bulk_fraction,dtype=float),
                       "coresident_idx":jnp.array(coresident_idx,dtype=jnp.int32),
                       "coresident_n":jnp.array(coresident_n,dtype=jnp.int32),
-                      "congression_theta_rule":self._congression_theta_rule}
+                      "congression_theta_rule":self._congression_theta_rule,
+                      "congression_dk_rule":self._congression_dk_rule,
+                      "congression_dk_alpha":self._congression_dk_alpha}
 
         # Grab the titrant concentration and log_titrant_conc (1D array from 
         # the tensor labels along dimension 6)
@@ -2082,4 +2136,6 @@ class ModelOrchestrator:
             "congression_sets": list(self._congression_sets),
             "congression_seed": self._congression_seed,
             "congression_theta_rule": self._congression_theta_rule,
+            "congression_dk_rule": self._congression_dk_rule,
+            "congression_dk_alpha": self._congression_dk_alpha,
         }

@@ -27,13 +27,18 @@ fully active; see the congression plan, step 4).
 
 dk rules
 --------
-``fcn(dk_geno, shares) -> dk_cell``
+``fcn(dk_geno, shares, alpha=None) -> dk_cell``
 
 - ``dk_geno``: ``(num_cells, max_plasmids)``
 - returns ``(num_cells,)``.
 
-See ``planning/congression-physics-plan.md`` for the physics and the planned
-rules (soft-min dk).
+The soft-min family ``dk_cell = -(1/alpha) log sum_g x_g exp(-alpha dk_g)``
+(congression plan, step 5): ``dilution`` (``alpha -> 0``, the default: the
+share-weighted mean), ``softmin`` (finite ``alpha > 0``, in units of 1/dk)
+and ``min`` (``alpha -> inf``: the worst variant sets the cell's cost). Only
+``softmin`` takes ``alpha``.
+
+See ``planning/congression-physics-plan.md`` for the physics.
 """
 
 import numpy as np
@@ -137,7 +142,13 @@ def theta_heterodimer(theta, activity, shares):
     return _theta_partition(theta, activity, shares, 0.5)
 
 
-def dk_dilution(dk_geno, shares):
+def _check_no_alpha(name, alpha):
+    if alpha is not None:
+        raise ValueError(f"congression_dk_rule '{name}' takes no alpha "
+                         f"(got {alpha}); only 'softmin' does.")
+
+
+def dk_dilution(dk_geno, shares, alpha=None):
     """
     Share-weighted mean dk_geno (each variant's burden diluted by its share).
 
@@ -149,13 +160,46 @@ def dk_dilution(dk_geno, shares):
         ``(num_cells, max_plasmids)``.
     shares : numpy.ndarray
         ``(num_cells, max_plasmids)``; rows sum to 1.
+    alpha : None
+        Not used; must be None.
 
     Returns
     -------
     numpy.ndarray
         ``(num_cells,)``.
     """
+    _check_no_alpha("dilution", alpha)
     return np.sum(np.where(shares > 0, dk_geno, 0.0) * shares, axis=1)
+
+
+def dk_softmin(dk_geno, shares, alpha=None):
+    """
+    Soft minimum: ``dk_cell = -(1/alpha) log sum_g x_g exp(-alpha dk_g)``.
+
+    Between the share-weighted mean (``alpha -> 0``) and the minimum
+    (``alpha -> inf``); ``alpha`` is in units of 1/dk (minutes when dk is
+    per minute), so it matters once ``alpha`` times the spread of a cell's
+    dk values reaches ~1. Masked slots are ignored; a NaN dk_geno in a
+    valid slot makes the cell's dk NaN. Arguments and returns as in
+    :func:`dk_dilution`, with ``alpha`` a positive float.
+    """
+    if alpha is None or not alpha > 0 or not np.isfinite(alpha):
+        raise ValueError(f"congression_dk_rule 'softmin' needs a finite "
+                         f"alpha > 0, not {alpha}.")
+    valid = shares > 0
+    dk = np.where(valid, dk_geno, 0.0)
+    return -logsumexp(-alpha * dk, axis=1, b=shares) / alpha
+
+
+def dk_min(dk_geno, shares, alpha=None):
+    """
+    The worst variant (lowest dk_geno) sets the cell's cost: the
+    ``alpha -> inf`` limit of the soft-min family. Masked slots are ignored;
+    a NaN dk_geno in a valid slot makes the cell's dk NaN. Arguments and
+    returns as in :func:`dk_dilution`.
+    """
+    _check_no_alpha("min", alpha)
+    return np.min(np.where(shares > 0, dk_geno, np.inf), axis=1)
 
 
 THETA_RULES = {
@@ -166,4 +210,6 @@ THETA_RULES = {
 
 DK_RULES = {
     "dilution": dk_dilution,
+    "softmin": dk_softmin,
+    "min": dk_min,
 }

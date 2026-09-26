@@ -728,3 +728,31 @@ checked with `tfs-summarize-calibration`.
      default; the physical choice waits on native mass spec. Step 4 done.
 5. **dk rule.** Soft-min family with an alpha sensitivity check, in both
    simulator and fit.
+   Design agreed 2026-09-26 (user):
+   - Rules `dilution` (alpha -> 0, the share-weighted mean; **stays the
+     default**), `softmin` (finite alpha from `congression_dk_alpha`, in
+     units of 1/dk) and `min` (alpha -> inf, the worst variant sets the
+     cost). The limits are named rules, so neither end is approximated by
+     an extreme alpha; alpha is required by `softmin` and refused by the
+     others. Equal shares `x_g = 1/M`, as for theta.
+   - Scale: alpha matters once alpha times the spread of a cell's dk values
+     reaches ~1. For a 1:1 cell with dk 0 and -0.03: dilution -0.015,
+     alpha 100 -0.024, min -0.030.
+   - Fit: `mixture.cell_classes` takes a log-sum-exp (softmin) or a min
+     over the focal plasmid and its valid co-resident slots; orchestrator
+     settings `congression_dk_rule`/`congression_dk_alpha`, written to the
+     config and carried as static `GrowthData` fields;
+     `tfs-configure-model --congression_dk_rule/--congression_dk_alpha`.
+     Simulator: `simulate/cell_rules.py` (`dk_softmin`, `dk_min`), config
+     keys of the same names. In float32 the fit's softmin has absolute
+     error ~1e-7 / alpha, so tiny alpha is a job for `dilution`.
+   - Sensitivity check: simulate {dilution, min} x fit {single,
+     mixture-dilution, mixture-min}, homodimer theta rule on both sides,
+     x seeds 1-2, on the study's wide dk spread (a deliberate worst case,
+     user) at lambda 0.357 and 1, plus the realistic tight spread at 0.357
+     (36 runs, `planning/studies/congression-calibration/grid_dkrule.yaml`).
+     No intermediate alpha: if the two ends agree, everything between does.
+   - Side effect to watch: under `min` a slow genotype's congressed cells
+     are at least as slow as it is, closing the route (an earlier,
+     unconverged diagnosis) by which a genotype pushes its own dk down and
+     lets its congressed cells carry its growth.

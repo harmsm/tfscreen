@@ -8,6 +8,8 @@ from tfscreen.simulate.cell_rules import (
     THETA_EPS,
     THETA_RULES,
     dk_dilution,
+    dk_min,
+    dk_softmin,
     theta_heterodimer,
     theta_homodimer,
     theta_max,
@@ -35,7 +37,7 @@ def _cells():
 
 def test_registry():
     assert set(THETA_RULES) == {"max", "homodimer", "heterodimer"}
-    assert set(DK_RULES) == {"dilution"}
+    assert set(DK_RULES) == {"dilution", "softmin", "min"}
 
 
 def test_max_takes_highest_theta_and_its_activity():
@@ -124,3 +126,59 @@ def test_dk_dilution_is_share_weighted_mean():
     dk = np.array([[0.0, -0.02, 5.0], [-0.03, 0.0, 0.03]])
     shares = np.array([[0.5, 0.5, 0.0], [1 / 3, 1 / 3, 1 / 3]])
     np.testing.assert_allclose(dk_dilution(dk, shares), [-0.01, 0.0])
+
+
+def _dk_cells():
+    dk = np.array([[0.0, -0.03, 5.0], [-0.03, 0.0, 0.03]])
+    shares = np.array([[0.5, 0.5, 0.0], [1 / 3, 1 / 3, 1 / 3]])
+    return dk, shares
+
+
+def test_dk_min_takes_worst_valid_slot():
+    dk, shares = _dk_cells()
+    np.testing.assert_allclose(dk_min(dk, shares), [-0.03, -0.03])
+
+
+def test_dk_softmin_matches_hand_calculation():
+    dk, shares = _dk_cells()
+    alpha = 100.0
+    expected = [-np.log(0.5 * np.exp(0.0) + 0.5 * np.exp(3.0)) / alpha,
+                -np.log(np.mean(np.exp(-alpha * dk[1]))) / alpha]
+    np.testing.assert_allclose(dk_softmin(dk, shares, alpha=alpha), expected)
+    # The worked example in the plan: 1:1 cell, dk 0 and -0.03 -> -0.024
+    assert dk_softmin(dk, shares, alpha=alpha)[0] == pytest.approx(-0.0236, abs=1e-4)
+
+
+def test_dk_softmin_limits_and_order():
+    dk, shares = _dk_cells()
+    dil, mn = dk_dilution(dk, shares), dk_min(dk, shares)
+    np.testing.assert_allclose(dk_softmin(dk, shares, alpha=1e-6), dil, atol=1e-9)
+    np.testing.assert_allclose(dk_softmin(dk, shares, alpha=1e6), mn, atol=1e-5)
+    soft = dk_softmin(dk, shares, alpha=50.0)
+    assert np.all(mn <= soft) and np.all(soft <= dil)
+
+
+@pytest.mark.parametrize("rule", [dk_dilution, dk_min])
+def test_dk_rules_without_alpha_refuse_one(rule):
+    dk, shares = _dk_cells()
+    with pytest.raises(ValueError, match="takes no alpha"):
+        rule(dk, shares, alpha=10.0)
+
+
+@pytest.mark.parametrize("alpha", [None, 0.0, -1.0, np.inf])
+def test_dk_softmin_needs_positive_finite_alpha(alpha):
+    dk, shares = _dk_cells()
+    with pytest.raises(ValueError, match="alpha > 0"):
+        dk_softmin(dk, shares, alpha=alpha)
+
+
+@pytest.mark.parametrize("rule,kwargs", [(dk_dilution, {}), (dk_min, {}),
+                                         (dk_softmin, {"alpha": 100.0})])
+def test_dk_rules_single_plasmid_and_nan(rule, kwargs):
+    single = np.array([[-0.02, 7.0]])
+    np.testing.assert_allclose(rule(single, np.array([[1.0, 0.0]]), **kwargs),
+                               [-0.02], atol=1e-12)
+    dk, shares = _dk_cells()
+    dk[1, 0] = np.nan
+    out = rule(dk, shares, **kwargs)
+    assert np.isnan(out[1]) and np.isfinite(out[0])

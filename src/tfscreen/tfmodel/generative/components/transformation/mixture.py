@@ -21,17 +21,24 @@ The congressed term ``E_S exp(G_{g,S}(t))`` over random co-resident sets S is
 evaluated by a fixed quadrature: K co-resident sets per genotype, drawn once
 by ``ModelOrchestrator._draw_coresident_sets`` (``data.coresident_idx``,
 ``data.coresident_n``) and stratified by co-resident count. A congressed
-cell's dk_geno is the share-weighted mean of its plasmids' (dilution). Its
-theta follows ``data.congression_theta_rule``, per titrant concentration,
-with ``l_g = logit(theta_g)`` and equal shares ``x_g = 1/M`` for a cell of M
-plasmids:
+cell's plasmids have equal shares ``x_g = 1/M`` for a cell of M plasmids.
+Its theta follows ``data.congression_theta_rule``, per titrant
+concentration, with ``l_g = logit(theta_g)``:
 
 - ``homodimer`` (default): ``logit(theta_cell) = log sum_g x_g exp(l_g)``;
 - ``heterodimer``: ``logit(theta_cell) = 2 log sum_g x_g exp(l_g / 2)``;
 - ``max``: the highest-theta plasmid sets theta and TF activity.
 
 The homodimer and heterodimer rules require TF activity 1 (checked by
-``ModelOrchestrator``). All three match ``simulate/cell_rules.py``.
+``ModelOrchestrator``). Its dk_geno follows ``data.congression_dk_rule``, the
+soft-min family ``dk_cell = -(1/alpha) log sum_g x_g exp(-alpha dk_g)``:
+
+- ``dilution`` (default; ``alpha -> 0``): the share-weighted mean;
+- ``softmin``: finite ``alpha = data.congression_dk_alpha > 0`` (in float32
+  its absolute error is ~1e-7 / alpha, so use ``dilution`` for tiny alpha);
+- ``min`` (``alpha -> inf``): the worst variant sets the cell's cost.
+
+All rules match ``simulate/cell_rules.py``.
 
 See ``planning/congression-physics-plan.md`` ("Fit design (step 3)") and
 ``planning/studies/congression-estimator/`` for why this estimator.
@@ -173,7 +180,8 @@ def cell_classes(focal, population, lam, data: GrowthData) -> CellClasses:
         Congression Poisson rate.
     data : GrowthData
         Uses ``batch_idx``, ``bulk_fraction``, ``coresident_idx``,
-        ``coresident_n``.
+        ``coresident_n``, ``congression_theta_rule``, ``congression_dk_rule``
+        and ``congression_dk_alpha``.
 
     Returns
     -------
@@ -224,10 +232,31 @@ def cell_classes(focal, population, lam, data: GrowthData) -> CellClasses:
     else:
         raise ValueError(f"unknown congression_theta_rule {rule!r}")
 
-    # --- dk_geno: share-weighted mean (dilution) --------------------------
+    # --- dk_geno: soft-min family over equal shares ------------------------
     co_dk = jnp.where(valid, dk_pop[safe], 0.0)                 # (B, K, N)
     num_plasmids = 1.0 + jnp.sum(valid, axis=-1)                # (B, K)
-    cell_dk = (dk_geno[..., None] + jnp.sum(co_dk, axis=-1)) / num_plasmids
+    dk_rule = data.congression_dk_rule
+    if dk_rule == "dilution":
+        cell_dk = (dk_geno[..., None] + jnp.sum(co_dk, axis=-1)) / num_plasmids
+    else:
+        focal_dk = jnp.broadcast_to(dk_geno[..., None, None],
+                                    dk_geno.shape + valid.shape[-2:-1] + (1,))
+        co_dk = jnp.broadcast_to(co_dk, focal_dk.shape[:-1] + co_dk.shape[-1:])
+        slot_dk = jnp.concatenate([focal_dk, co_dk], axis=-1)   # (..., B, K, 1+N)
+        dk_valid = jnp.broadcast_to(
+            jnp.concatenate([jnp.ones(valid.shape[:-1] + (1,), dtype=bool),
+                             valid], axis=-1), slot_dk.shape)
+        if dk_rule == "min":
+            cell_dk = jnp.min(jnp.where(dk_valid, slot_dk, jnp.inf), axis=-1)
+        elif dk_rule == "softmin":
+            alpha = data.congression_dk_alpha
+            log_share = jnp.where(dk_valid, -jnp.log(num_plasmids)[..., None],
+                                  -jnp.inf)
+            cell_dk = -jax.scipy.special.logsumexp(
+                log_share - alpha * jnp.where(dk_valid, slot_dk, 0.0),
+                axis=-1) / alpha
+        else:
+            raise ValueError(f"unknown congression_dk_rule {dk_rule!r}")
 
     # --- stack classes on a leading axis (clean first) --------------------
     def stack(clean, congressed):
