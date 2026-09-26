@@ -410,7 +410,8 @@ def test_initialize_classes_logic(mocker):
         "growth_transition": {"instant": MagicMock(), "linear": MagicMock()},
         "ln_cfu0": {"hierarchical": MagicMock()},
         "dk_geno": {"hierarchical_geno": MagicMock()},
-        "activity": {"hierarchical_geno": MagicMock(), "horseshoe_geno": MagicMock()},
+        "activity": {"hierarchical_geno": MagicMock(), "horseshoe_geno": MagicMock(),
+                     "fixed": MagicMock()},
         "theta": {"categorical_geno": MagicMock(), "hill_geno": MagicMock(), "fixed": MagicMock()},
         "transformation": {"mixture": MagicMock(), "single": MagicMock()},
         "theta_rescale": {"passthrough": MagicMock()},
@@ -744,6 +745,7 @@ def _build_orchestrator_with_transformation_spy(mocker, spy, transformation_lamb
             transformation_lambda=transformation_lambda,
             condition_growth="independent", growth_transition="instant",
             activity="hierarchical_geno", theta_growth_noise="zero",
+            congression_theta_rule="max",
         )
 
 
@@ -809,7 +811,7 @@ def test_transformation_control_kwargs_carry_needs_population_flag(
         "growth_transition": {"instant": MagicMock()},
         "ln_cfu0": {"hierarchical": MagicMock()},
         "dk_geno": {"hierarchical_geno": MagicMock()},
-        "activity": {"horseshoe_geno": MagicMock()},
+        "activity": {"horseshoe_geno": MagicMock(), "fixed": MagicMock()},
         "theta": {"hill_geno": MagicMock()},
         "transformation": {transformation_key: real_transformation_module},
         "theta_rescale": {"passthrough": MagicMock()},
@@ -861,6 +863,25 @@ def test_model_orchestrator_refuses_retired_transformations(name, match,
                           binding_only=binding_only)
 
 
+# ---------------------------------------------------------------------------
+# Congression theta rule
+# ---------------------------------------------------------------------------
+
+def test_model_orchestrator_refuses_unknown_congression_theta_rule():
+    with pytest.raises(ValueError, match="congression_theta_rule must be one of"):
+        ModelOrchestrator("g.csv", "b.csv", congression_theta_rule="min")
+
+
+@pytest.mark.parametrize("rule", ["homodimer", "heterodimer"])
+def test_model_orchestrator_partition_rules_need_fixed_activity(rule):
+    """The partition-function rules mix variants' occupancies and require
+    activity 1; refused before any data I/O."""
+    with pytest.raises(ValueError, match="requires TF activity 1"):
+        ModelOrchestrator("g.csv", "b.csv", transformation="mixture",
+                          activity="horseshoe_geno",
+                          congression_theta_rule=rule)
+
+
 def test_model_class_properties(initialized_model_class):
     model = initialized_model_class
     model._jax_model = "jm"
@@ -893,6 +914,7 @@ def test_model_class_properties(initialized_model_class):
     model._base_growth_df = "bg.csv"
     model._congression_sets = (12, 3, 1)
     model._congression_seed = 0
+    model._congression_theta_rule = "homodimer"
 
     assert ModelOrchestrator.jax_model.fget(model) == "jm"
     assert ModelOrchestrator.jax_model_guide.fget(model) == "jmg"
@@ -900,6 +922,7 @@ def test_model_class_properties(initialized_model_class):
     assert ModelOrchestrator.priors.fget(model) == "p"
     assert ModelOrchestrator.init_params.fget(model) == "ip"
     assert ModelOrchestrator.settings.fget(model)["activity"] == "a"
+    assert ModelOrchestrator.settings.fget(model)["congression_theta_rule"] == "homodimer"
     assert ModelOrchestrator.settings.fget(model)["theta"] == "t"
     assert ModelOrchestrator.settings.fget(model)["transformation"] == "tr"
     assert ModelOrchestrator.settings.fget(model)["transformation_lambda"] is None

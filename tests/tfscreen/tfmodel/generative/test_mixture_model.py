@@ -164,3 +164,43 @@ def test_mixture_posteriors_independent_of_chunk_size():
             out[forward_batch_size] = f["growth_pred"][()]
 
     np.testing.assert_allclose(out[512], out[2], rtol=1e-5, atol=1e-5)
+
+
+# ---------------------------------------------------------------------------
+# Congression theta rule and activity defaults
+# ---------------------------------------------------------------------------
+
+def test_defaults_are_homodimer_and_fixed_activity():
+    orchestrator = _orchestrator("mixture")
+    assert orchestrator.settings["activity"] == "fixed"
+    assert orchestrator.settings["congression_theta_rule"] == "homodimer"
+    assert orchestrator.data.growth.congression_theta_rule == "homodimer"
+
+
+def test_max_rule_allows_learned_activity():
+    orchestrator = _orchestrator("mixture", activity="horseshoe_geno",
+                                 congression_theta_rule="max")
+    assert orchestrator.data.growth.congression_theta_rule == "max"
+
+
+@pytest.mark.parametrize("rule", ["homodimer", "heterodimer", "max"])
+def test_every_rule_runs_and_rule_survives_batching(rule):
+    orchestrator = _orchestrator("mixture", congression_theta_rule=rule)
+    batch = _full_batch(orchestrator)
+    assert batch.growth.congression_theta_rule == rule
+    pred = np.asarray(_trace(orchestrator)["growth_pred"]["value"])
+    assert np.all(np.isfinite(pred))
+
+
+def test_rules_give_different_predictions():
+    """Same latents, different rules: the congressed classes differ."""
+    base = _orchestrator("mixture", congression_theta_rule="max")
+    latents = _latents(_trace(base))
+    latents["transformation_lam"] = jnp.array(1.0)
+    preds = {}
+    for rule in ("max", "homodimer", "heterodimer"):
+        o = _orchestrator("mixture", congression_theta_rule=rule)
+        preds[rule] = np.asarray(_trace(o, latents)["growth_pred"]["value"])
+    assert not np.allclose(preds["max"], preds["homodimer"])
+    assert not np.allclose(preds["homodimer"], preds["heterodimer"])
+

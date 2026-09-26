@@ -694,6 +694,9 @@ def _setup_batching(growth_genotypes,
 # Transformation components that were removed or renamed, with the reason.
 # Refused by name so an old config fails loudly instead of silently meaning
 # something new.
+# Rules for a congressed cell's theta (transformation/mixture.py).
+_CONGRESSION_THETA_RULES = ("homodimer", "heterodimer", "max")
+
 _RETIRED_TRANSFORMATIONS = {
     "empirical": (
         "transformation 'empirical' has been replaced by 'mixture'. The old "
@@ -762,8 +765,9 @@ class ModelOrchestrator:
         Model name for genotype-specific death rate. Allowed values are 'hierarchical' 
         (default) or 'fixed'.
     activity : str, optional
-        Model name for genotype activity. Allowed values are "horseshoe" (default), 
-        "hierarchical", or "fixed".
+        Model name for genotype activity: "fixed" (default; activity 1 for
+        every genotype), "hierarchical_geno", "horseshoe_geno",
+        "hierarchical_mut" or "horseshoe_mut".
     theta : str, optional
         Model name for theta calculation (e.g., "hill").
     transformation : str, optional
@@ -805,6 +809,13 @@ class ModelOrchestrator:
     congression_seed : int, optional
         Seed for drawing the co-resident sets (default 0). Recorded in the
         config, so a refit reproduces the same draws.
+    congression_theta_rule : str, optional
+        How the congression mixture builds a congressed cell's theta from its
+        plasmids' thetas: ``"homodimer"`` (default; ``logit theta_cell = log
+        sum_g x_g exp(l_g)``), ``"heterodimer"`` (``2 log sum_g x_g exp(l_g /
+        2)``) or ``"max"`` (the highest-theta plasmid sets theta and
+        activity). The homodimer and heterodimer rules require
+        ``activity='fixed'`` (activity 1).
 
     Attributes
     ----------
@@ -832,7 +843,7 @@ class ModelOrchestrator:
                  ln_cfu0="hierarchical",
                  dk_geno="hierarchical_geno",
                  dk_geno_pins_file=None,
-                 activity="horseshoe_geno",
+                 activity="fixed",
                  theta="hill_geno",
                  transformation="single",
                  transformation_lambda=None,
@@ -850,7 +861,8 @@ class ModelOrchestrator:
                  presplit_df=None,
                  base_growth_df=None,
                  congression_sets=(12, 3, 1),
-                 congression_seed=0):
+                 congression_seed=0,
+                 congression_theta_rule="homodimer"):
 
         self._ln_cfu_df = growth_df
         self._binding_df = binding_df
@@ -884,9 +896,28 @@ class ModelOrchestrator:
         self._binding_weight = binding_weight
         self._congression_sets = _check_congression_sets(congression_sets)
         self._congression_seed = int(congression_seed)
+        self._congression_theta_rule = congression_theta_rule
 
         if self._transformation in _RETIRED_TRANSFORMATIONS:
             raise ValueError(_RETIRED_TRANSFORMATIONS[self._transformation])
+
+        if self._congression_theta_rule not in _CONGRESSION_THETA_RULES:
+            raise ValueError(
+                f"congression_theta_rule must be one of "
+                f"{list(_CONGRESSION_THETA_RULES)}; got "
+                f"{self._congression_theta_rule!r}."
+            )
+        if (self._transformation == "mixture"
+                and self._congression_theta_rule != "max"
+                and self._activity != "fixed"):
+            raise ValueError(
+                f"congression_theta_rule={self._congression_theta_rule!r} "
+                f"mixes the occupancies of a cell's variants and requires TF "
+                f"activity 1 (activity='fixed'); got "
+                f"activity={self._activity!r}. Use activity='fixed', or "
+                f"congression_theta_rule='max'. See the congression physics "
+                f"plan, step 4."
+            )
 
         if self._library_file is not None:
             if self._spiked_genotypes is not None:
@@ -1073,7 +1104,8 @@ class ModelOrchestrator:
                       "ln_cfu0_library_masks":jnp.array(_library_masks,dtype=bool),
                       "bulk_fraction":jnp.array(bulk_fraction,dtype=float),
                       "coresident_idx":jnp.array(coresident_idx,dtype=jnp.int32),
-                      "coresident_n":jnp.array(coresident_n,dtype=jnp.int32)}
+                      "coresident_n":jnp.array(coresident_n,dtype=jnp.int32),
+                      "congression_theta_rule":self._congression_theta_rule}
 
         # Grab the titrant concentration and log_titrant_conc (1D array from 
         # the tensor labels along dimension 6)
@@ -2049,4 +2081,5 @@ class ModelOrchestrator:
             "base_growth_df": getattr(self, "_base_growth_df", None),
             "congression_sets": list(self._congression_sets),
             "congression_seed": self._congression_seed,
+            "congression_theta_rule": self._congression_theta_rule,
         }

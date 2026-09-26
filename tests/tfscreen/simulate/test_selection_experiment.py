@@ -268,9 +268,9 @@ def test_check_cf_rejects_multi_plasmid_combine_fcn(base_config: dict):
 
 
 def test_check_cf_congression_rule_defaults(base_config: dict):
-    """Omitted congression rules default to max theta and dilution dk."""
+    """Omitted congression rules default to homodimer theta and dilution dk."""
     cf = _check_cf(dict(base_config))
-    assert cf["congression_theta_rule"] == "max"
+    assert cf["congression_theta_rule"] == "homodimer"
     assert cf["congression_dk_rule"] == "dilution"
 
 

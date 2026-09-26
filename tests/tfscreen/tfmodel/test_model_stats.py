@@ -91,7 +91,10 @@ def binding_df():
 # configure_model -- the caller this tool actually runs under -- defaults it to
 # "zero". Pin it so the base fixture reflects the CLI default; the
 # logit_normal case gets its own test.
-BASE_KWARGS = {"batch_size": None, "theta_growth_noise": "zero"}
+# activity is set explicitly: the census checks a learned activity
+# component's scale latents (the default activity is now "fixed").
+BASE_KWARGS = {"batch_size": None, "theta_growth_noise": "zero",
+               "activity": "horseshoe_geno"}
 
 
 @pytest.fixture
@@ -530,7 +533,8 @@ def test_minibatching_does_not_change_counts(growth_df, binding_df):
         ModelOrchestrator(growth_df, binding_df, **BASE_KWARGS))
     batched = count_model_dimensions(
         ModelOrchestrator(growth_df, binding_df, batch_size=2,
-                          theta_growth_noise="zero"))
+                          theta_growth_noise="zero",
+                          activity=BASE_KWARGS["activity"]))
 
     assert full.summary["parameters"]["n_param_total"] == \
         batched.summary["parameters"]["n_param_total"]

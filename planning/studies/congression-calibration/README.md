@@ -581,3 +581,12 @@ Profile (mixture, lambda fixed, lambda-1 seed-1 data):
 - Coverage remains below nominal for both fits (0.78-0.87), the mixture's
   less so.
 
+## Step 4 changes that affect this study (2026-09-26)
+
+The fit's default congression theta rule is now `homodimer` and the default
+activity `fixed`. `simulate_config.yaml` keeps `congression_theta_rule: max`
+so the recorded grids stay reproducible, and `run.srun` now passes the fit
+the rule the simulation used (`fit_theta_rule` overrides it, for cross-rule
+grids). The confirming round (`grid_measured.yaml`, `grid_seed3.yaml`) was
+set up before this change and runs `max` on both sides.
+

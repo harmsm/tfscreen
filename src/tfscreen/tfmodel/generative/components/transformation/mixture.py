@@ -20,10 +20,18 @@ congressed fraction is
 The congressed term ``E_S exp(G_{g,S}(t))`` over random co-resident sets S is
 evaluated by a fixed quadrature: K co-resident sets per genotype, drawn once
 by ``ModelOrchestrator._draw_coresident_sets`` (``data.coresident_idx``,
-``data.coresident_n``) and stratified by co-resident count. A congressed cell
-takes its theta and TF activity from the plasmid with the highest theta (at
-each titrant concentration) and the share-weighted mean dk_geno of its
-plasmids (dilution), matching ``simulate/cell_rules.py``.
+``data.coresident_n``) and stratified by co-resident count. A congressed
+cell's dk_geno is the share-weighted mean of its plasmids' (dilution). Its
+theta follows ``data.congression_theta_rule``, per titrant concentration,
+with ``l_g = logit(theta_g)`` and equal shares ``x_g = 1/M`` for a cell of M
+plasmids:
+
+- ``homodimer`` (default): ``logit(theta_cell) = log sum_g x_g exp(l_g)``;
+- ``heterodimer``: ``logit(theta_cell) = 2 log sum_g x_g exp(l_g / 2)``;
+- ``max``: the highest-theta plasmid sets theta and TF activity.
+
+The homodimer and heterodimer rules require TF activity 1 (checked by
+``ModelOrchestrator``). All three match ``simulate/cell_rules.py``.
 
 See ``planning/congression-physics-plan.md`` ("Fit design (step 3)") and
 ``planning/studies/congression-estimator/`` for why this estimator.
@@ -42,6 +50,14 @@ from tfscreen.tfmodel.data_class import GrowthData
 from tfscreen.tfmodel.generative.components.transformation._classes import (
     CellClasses,
 )
+
+
+# Theta is clipped to [THETA_EPS, 1 - THETA_EPS] before its logit in the
+# partition-function rules (same value as simulate/cell_rules.py).
+THETA_EPS = 1e-6
+
+# power p in logit(theta_cell) = (1/p) log sum_g x_g exp(p l_g)
+_PARTITION_POWER = {"homodimer": 1.0, "heterodimer": 0.5}
 
 
 # The mixture's congressed cells draw co-residents' theta, activity and
@@ -171,7 +187,7 @@ def cell_classes(focal, population, lam, data: GrowthData) -> CellClasses:
     valid = idx >= 0
     safe = jnp.where(valid, idx, 0)
 
-    # --- theta and activity: the highest-theta plasmid sets both ---------
+    # --- theta and activity -----------------------------------------------
     # Slots: the focal plasmid, then the set's co-residents.
     co_theta = theta_pop[..., safe]                             # (..., B, K, N)
     focal_theta = jnp.broadcast_to(theta[..., None, None],
@@ -179,15 +195,34 @@ def cell_classes(focal, population, lam, data: GrowthData) -> CellClasses:
     slot_theta = jnp.concatenate([focal_theta, co_theta], axis=-1)
     slot_valid = jnp.concatenate(
         [jnp.ones(valid.shape[:-1] + (1,), dtype=bool), valid], axis=-1)
-    slot_theta = jnp.where(slot_valid, slot_theta, -jnp.inf)
-    best = jnp.argmax(slot_theta, axis=-1)[..., None]           # (..., B, K, 1)
-    cell_theta = jnp.take_along_axis(slot_theta, best, axis=-1)[..., 0]
-
     act_focal = jnp.broadcast_to(activity, theta.shape)
-    slot_act = jnp.concatenate(
-        [jnp.broadcast_to(act_focal[..., None, None], focal_theta.shape),
-         jnp.broadcast_to(activity_pop[safe], co_theta.shape)], axis=-1)
-    cell_act = jnp.take_along_axis(slot_act, best, axis=-1)[..., 0]
+
+    rule = data.congression_theta_rule
+    if rule == "max":
+        # The highest-theta plasmid sets both theta and activity.
+        slot_theta = jnp.where(slot_valid, slot_theta, -jnp.inf)
+        best = jnp.argmax(slot_theta, axis=-1)[..., None]       # (..., B, K, 1)
+        cell_theta = jnp.take_along_axis(slot_theta, best, axis=-1)[..., 0]
+        slot_act = jnp.concatenate(
+            [jnp.broadcast_to(act_focal[..., None, None], focal_theta.shape),
+             jnp.broadcast_to(activity_pop[safe], co_theta.shape)], axis=-1)
+        cell_act = jnp.take_along_axis(slot_act, best, axis=-1)[..., 0]
+    elif rule in _PARTITION_POWER:
+        # Partition function over equal shares: logit(theta_cell) =
+        # (1/p) log sum_g x_g exp(p l_g). Activity is 1 (orchestrator check).
+        power = _PARTITION_POWER[rule]
+        clipped = jnp.clip(slot_theta, THETA_EPS, 1.0 - THETA_EPS)
+        logit = jnp.log(clipped) - jnp.log1p(-clipped)
+        num_slots = jnp.sum(slot_valid, axis=-1, keepdims=True)
+        log_share = jnp.where(slot_valid, -jnp.log(num_slots.astype(float)),
+                              -jnp.inf)
+        cell_logit = jax.scipy.special.logsumexp(
+            log_share + power * jnp.where(slot_valid, logit, 0.0),
+            axis=-1) / power
+        cell_theta = jax.nn.sigmoid(cell_logit)
+        cell_act = jnp.broadcast_to(act_focal[..., None], cell_theta.shape)
+    else:
+        raise ValueError(f"unknown congression_theta_rule {rule!r}")
 
     # --- dk_geno: share-weighted mean (dilution) --------------------------
     co_dk = jnp.where(valid, dk_pop[safe], 0.0)                 # (B, K, N)

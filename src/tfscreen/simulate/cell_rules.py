@@ -20,7 +20,10 @@ Theta rules
 - returns two ``(num_cells, num_conditions)`` arrays.
 
 TF activity multiplies theta in the growth model, so it is combined by the
-theta rule: it comes from whatever sets the cell's theta.
+theta rule. Under ``max`` it comes from the plasmid that sets the cell's
+theta. The partition-function rules (``homodimer``, ``heterodimer``) mix the
+variants' occupancies and require activity 1 (the lac repressor is taken as
+fully active; see the congression plan, step 4).
 
 dk rules
 --------
@@ -30,10 +33,15 @@ dk rules
 - returns ``(num_cells,)``.
 
 See ``planning/congression-physics-plan.md`` for the physics and the planned
-rules (partition-function theta, soft-min dk).
+rules (soft-min dk).
 """
 
 import numpy as np
+from scipy.special import logsumexp
+
+# Theta is clipped to [THETA_EPS, 1 - THETA_EPS] before taking its logit in
+# the partition-function rules (the fit uses the same value).
+THETA_EPS = 1e-6
 
 
 def theta_max(theta, activity, shares):
@@ -70,6 +78,65 @@ def theta_max(theta, activity, shares):
     return theta_cell, activity_cell
 
 
+def _theta_partition(theta, activity, shares, power):
+    """
+    Partition-function cell theta, in logit space.
+
+    ``logit(theta_cell) = (1 / power) * log sum_g x_g exp(power * l_g)``,
+    with ``l_g = logit(theta_g)`` and ``x_g`` the slot's share. ``power`` 1
+    is homodimers, 0.5 random heterodimers with additive half-site energies.
+    A cell with one plasmid keeps that plasmid's theta. Requires activity 1
+    in every valid slot. Masked slots are ignored; a NaN theta in a valid
+    slot makes the cell's theta NaN.
+    """
+    valid = shares > 0
+    if np.any(np.abs(activity[valid] - 1.0) > 1e-9):
+        raise ValueError(
+            "The partition-function congression theta rules ('homodimer', "
+            "'heterodimer') require TF activity 1 for every genotype (set "
+            "activity_mut_scale to 0 and activity_wt to 1), or use "
+            "congression_theta_rule 'max'. See the congression physics plan, "
+            "step 4.")
+
+    clipped = np.clip(theta, THETA_EPS, 1.0 - THETA_EPS)
+    logit = np.log(clipped) - np.log1p(-clipped)
+    valid3 = valid[:, :, np.newaxis]
+    logit = np.where(valid3, logit, 0.0)
+    weights = np.broadcast_to(shares[:, :, np.newaxis], logit.shape)
+
+    cell_logit = logsumexp(power * logit, axis=1, b=weights) / power
+    theta_cell = 1.0 / (1.0 + np.exp(-cell_logit))
+
+    activity_cell = np.ones(theta_cell.shape)
+    return theta_cell, activity_cell
+
+
+def theta_homodimer(theta, activity, shares):
+    """
+    Homodimers only: the cell's odds are the share-weighted mean of its
+    variants' odds, ``logit(theta_cell) = log sum_g x_g exp(l_g)``.
+
+    A soft maximum between the share-weighted mean logit and the max; a
+    strong binder in a 1:1 cell loses ``log 2`` logit units against the
+    ``max`` rule. Requires activity 1. Arguments and returns as in
+    :func:`theta_max`.
+    """
+    return _theta_partition(theta, activity, shares, 1.0)
+
+
+def theta_heterodimer(theta, activity, shares):
+    """
+    Random heterodimers with additive half-site energies:
+    ``logit(theta_cell) = 2 log sum_g x_g exp(l_g / 2)``.
+
+    Closer to the share-weighted mean logit than :func:`theta_homodimer`;
+    a strong binder in a 1:1 cell loses ``log 4``. Exact per titrant
+    concentration only if subunits bind ligand independently. Requires
+    activity 1. Arguments and returns as in :func:`theta_max`.
+    """
+    return _theta_partition(theta, activity, shares, 0.5)
+
+
 def dk_dilution(dk_geno, shares):
     """
     Share-weighted mean dk_geno (each variant's burden diluted by its share).
@@ -93,6 +160,8 @@ def dk_dilution(dk_geno, shares):
 
 THETA_RULES = {
     "max": theta_max,
+    "homodimer": theta_homodimer,
+    "heterodimer": theta_heterodimer,
 }
 
 DK_RULES = {

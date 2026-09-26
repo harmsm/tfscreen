@@ -180,11 +180,15 @@ lib_assembly_skew_sigma: 1.25
 transformation_poisson_lambda: 0
 
 # How a cell carrying several plasmids gets its growth rate. The cell's theta
-# and TF activity come from congression_theta_rule ('max': the highest-theta
-# plasmid sets both, at each condition); its dk_geno from congression_dk_rule
-# ('dilution': share-weighted mean). Growth is then computed once from these
-# cell-level values. Both keys are optional; these are the defaults.
-congression_theta_rule: max
+# comes from congression_theta_rule, at each condition: 'homodimer'
+# (logit theta_cell = log of the share-weighted mean of the plasmids'
+# theta odds), 'heterodimer' (closer to the mean logit) or 'max' (the
+# highest-theta plasmid sets theta and TF activity). 'homodimer' and
+# 'heterodimer' need activity 1 (activity_mut_scale 0). Its dk_geno comes
+# from congression_dk_rule ('dilution': share-weighted mean). Growth is then
+# computed once from these cell-level values. Both keys are optional; these
+# are the defaults.
+congression_theta_rule: homodimer
 congression_dk_rule: dilution
 
 # Colony-forming units per mL at the start of pre-growth.

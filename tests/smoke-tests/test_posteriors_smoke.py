@@ -82,7 +82,10 @@ def test_extract_parameters_smoke(growth_smoke_csv,
         growth_df=growth_smoke_csv,
         binding_df=binding_smoke_csv,
         theta="hill_geno",
-        transformation="mixture"
+        transformation="mixture",
+        # a learned activity (extracted below) needs the max congression rule
+        activity="horseshoe_geno",
+        congression_theta_rule="max",
     )
     
     inference = RunInference(model=model, seed=42)

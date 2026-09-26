@@ -197,7 +197,7 @@ def _check_cf(
             "whole growth rates of a cell's plasmids, which let dk_geno decide "
             "which plasmid set the cell's growth. A co-transformed cell's "
             "growth is now built from cell-level theta and dk_geno: set "
-            "'congression_theta_rule' (default 'max') and "
+            "'congression_theta_rule' (default 'homodimer') and "
             "'congression_dk_rule' (default 'dilution') instead, or omit both "
             "for the defaults."
         )
@@ -243,7 +243,7 @@ def _check_cf(
         cf["library_selector"] = ["replicate", "library"]
 
     # --- Rules for combining a co-transformed cell's plasmids ---
-    for key, rules, default in (("congression_theta_rule", THETA_RULES, "max"),
+    for key, rules, default in (("congression_theta_rule", THETA_RULES, "homodimer"),
                                 ("congression_dk_rule", DK_RULES, "dilution")):
         if cf.get(key) is None:
             cf[key] = default

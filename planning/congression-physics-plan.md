@@ -681,5 +681,31 @@ checked with `tfs-summarize-calibration`.
        an assay-to-cell term); its own step.
 4. **Theta rule.** Homodimer vs heterodimer soft max, chosen from the bench
    results, in both simulator and fit.
+   Design agreed 2026-09-26 (user):
+   - Rules `max` (kept), `homodimer` (cell logit `log sum_g x_g exp(l_g)`)
+     and `heterodimer` (`2 log sum_g x_g exp(l_g / 2)`), with `l_g` = logit
+     theta_g per titrant concentration. The bench result rules out
+     weak-binder dominance but cannot separate `max` from the
+     partition-function rules; **default `homodimer`**, as the plan said,
+     until native mass spec says otherwise.
+   - **Shares are equal:** `x_g = 1/M` for a cell with M plasmids. Library
+     frequency sets which plasmids share a cell (the co-resident draw), not
+     their shares once together.
+   - **Activity is held at 1.** The partition-function rules require it, on
+     both sides (the simulator and the fit refuse otherwise), and the
+     default activity component becomes `fixed` (was `horseshoe_geno`).
+     Physically, activity would scale a variant's share of active repressor
+     (cell odds `sum_g x_g A_g z_g`), which disagrees with the clean class's
+     `A * theta` whenever A != 1. The first paper holds A = 1 for the lac
+     repressor; the real treatment waits for activators.
+   - Fit: `mixture.cell_classes` takes a log-sum-exp over the focal plasmid
+     and its valid co-resident slots in place of the argmax. The rule is an
+     orchestrator setting (`congression_theta_rule`, default `homodimer`)
+     written to the config and carried as a static `GrowthData` field;
+     `tfs-configure-model --congression_theta_rule`. Simulator: new rules in
+     `simulate/cell_rules.py`; `congression_theta_rule` defaults to
+     `homodimer`.
+   - Validation: a cross-rule grid (`max` vs `homodimer`, simulated with one
+     and fit with the other) at lambda 0.357 and 1.
 5. **dk rule.** Soft-min family with an alpha sensitivity check, in both
    simulator and fit.

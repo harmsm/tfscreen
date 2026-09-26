@@ -12,14 +12,14 @@ from tfscreen.tfmodel.generative.registry import model_registry
 # ModelOrchestrator arguments. We want to make sure every entry in the 
 # model_registry is tested at least once. 
 SMOKE_CONFIGS = [
-    # Default-ish config
+    # Default-ish config (homodimer congression rule, activity fixed at 1)
     {
         "condition_growth":"linear",
         "transformation":"mixture",
         "theta":"hill_geno",
         "growth_transition":"instant",
         "dk_geno":"hierarchical_geno",
-        "activity":"horseshoe_geno",
+        "activity":"fixed",
         "ln_cfu0":"hierarchical",
         "theta_growth_noise":"zero",
         "theta_binding_noise":"zero"
@@ -32,6 +32,7 @@ SMOKE_CONFIGS = [
         "growth_transition":"memory",
         "dk_geno":"fixed",
         "activity":"hierarchical_geno",
+        "congression_theta_rule":"max",   # learned activity needs the max rule
         "theta_growth_noise":"beta",
         "theta_binding_noise":"beta"
     },
@@ -42,11 +43,13 @@ SMOKE_CONFIGS = [
         "theta":"hill_geno",
         "growth_transition":"baranyi",
         "activity":"fixed",
+        "congression_theta_rule":"heterodimer",
     },
-    # test power and saturation
+    # test power and saturation (and learned horseshoe activity)
     {
         "condition_growth":"power",
         "transformation":"single",
+        "activity":"horseshoe_geno",
     },
     {
         "condition_growth":"saturation",

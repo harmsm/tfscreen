@@ -178,7 +178,7 @@ def test_spike_only_genotype_has_no_congressed_cells_and_finite_gradient():
 # ---------------------------------------------------------------------------
 
 def _toy(seed=0, num_genotype=6, num_tn=2, num_tc=3,
-         batch_idx=(4, 0, 2), sets=(3, 2, 1)):
+         batch_idx=(4, 0, 2), sets=(3, 2, 1), rule="max"):
     rng = np.random.default_rng(seed)
     batch_idx = np.array(batch_idx)
     counts = np.asarray(_counts(list(sets)))
@@ -192,6 +192,8 @@ def _toy(seed=0, num_genotype=6, num_tn=2, num_tc=3,
     theta_pop = rng.uniform(0.05, 0.95, (1, 1, 1, 1, num_tn, num_tc,
                                          num_genotype))
     activity_pop = rng.uniform(0.5, 2.0, num_genotype)
+    if rule != "max":
+        activity_pop = np.ones(num_genotype)   # partition rules need activity 1
     dk_pop = rng.normal(0.0, 0.01, num_genotype)
     bulk_fraction = rng.uniform(0.0, 1.0, num_genotype)
     bulk_fraction[batch_idx[1]] = 0.0          # a spike-only genotype
@@ -199,7 +201,8 @@ def _toy(seed=0, num_genotype=6, num_tn=2, num_tc=3,
     data = SimpleNamespace(batch_idx=jnp.array(batch_idx),
                            bulk_fraction=jnp.array(bulk_fraction),
                            coresident_idx=jnp.array(coresident_idx),
-                           coresident_n=jnp.array(counts))
+                           coresident_n=jnp.array(counts),
+                           congression_theta_rule=rule)
 
     # The batch's own values; theta perturbed (noise acts on the focal theta
     # only), so the focal plasmid is not just its population value.
@@ -234,9 +237,18 @@ def _reference_classes(data, focal, population, lam):
                              [theta_pop[0, 0, 0, 0, i, j, h] for h in co]
                     acts = [activity.reshape(-1)[b]] + \
                            [activity_pop[h] for h in co]
-                    best = int(np.argmax(values))
-                    c_theta[1 + k, i, j, b] = values[best]
-                    c_act[1 + k, i, j, b] = acts[best]
+                    if data.congression_theta_rule == "max":
+                        best = int(np.argmax(values))
+                        c_theta[1 + k, i, j, b] = values[best]
+                        c_act[1 + k, i, j, b] = acts[best]
+                    else:
+                        p = {"homodimer": 1.0, "heterodimer": 0.5}[
+                            data.congression_theta_rule]
+                        v = np.clip(np.array(values), 1e-6, 1 - 1e-6)
+                        logit = np.log(v / (1 - v))
+                        cell = np.log(np.mean(np.exp(p * logit))) / p
+                        c_theta[1 + k, i, j, b] = 1.0 / (1.0 + np.exp(-cell))
+                        c_act[1 + k, i, j, b] = 1.0
             c_dk[1 + k, b] = np.mean([dk_geno.reshape(-1)[b]] +
                                      [dk_pop[h] for h in co])
 
@@ -254,8 +266,9 @@ def _reference_classes(data, focal, population, lam):
     return c_theta, c_act, c_dk, w
 
 
-def test_cell_classes_match_reference():
-    data, focal, population = _toy()
+@pytest.mark.parametrize("rule", ["max", "homodimer", "heterodimer"])
+def test_cell_classes_match_reference(rule):
+    data, focal, population = _toy(rule=rule)
     lam = 0.357
     classes = mixture.cell_classes(focal, population, jnp.array(lam), data)
     c_theta, c_act, c_dk, w = _reference_classes(data, focal, population, lam)
@@ -283,3 +296,46 @@ def test_cell_classes_mixture_reduces_to_clean_as_lambda_vanishes():
         -1, *([1] * (classes.log_weight.ndim - 1)))
     mixed = jax.scipy.special.logsumexp(classes.log_weight + growth, axis=0)
     np.testing.assert_allclose(np.asarray(mixed), 0.0, atol=1e-6)
+
+
+def test_partition_rules_order_and_single_plasmid():
+    """heterodimer <= homodimer <= max per cell, all between the mean and the
+    max logit; a cell with no co-residents keeps its own theta."""
+    out = {}
+    for rule in ("max", "homodimer", "heterodimer"):
+        data, focal, population = _toy(rule=rule)
+        out[rule] = np.asarray(mixture.cell_classes(
+            focal, population, jnp.array(0.357), data).theta)
+    assert np.all(out["heterodimer"] <= out["homodimer"] + 1e-6)
+    assert np.all(out["homodimer"] <= out["max"] + 1e-6)
+
+    data, focal, population = _toy(rule="homodimer", sets=(1,))
+    data.coresident_idx = jnp.full_like(data.coresident_idx, -1)
+    classes = mixture.cell_classes(focal, population, jnp.array(0.357), data)
+    np.testing.assert_allclose(np.asarray(classes.theta)[1],
+                               np.asarray(focal[0]), rtol=1e-5)
+
+
+def test_partition_rule_matches_simulator():
+    """The fit's homodimer/heterodimer cell theta equals simulate/cell_rules."""
+    from tfscreen.simulate.cell_rules import THETA_RULES, THETA_EPS
+    assert THETA_EPS == mixture.THETA_EPS
+    for rule in ("homodimer", "heterodimer"):
+        data, focal, population = _toy(rule=rule)
+        classes = mixture.cell_classes(focal, population, jnp.array(0.357), data)
+        theta, _, _ = focal
+        theta_pop = population[0]
+        idx = np.asarray(data.coresident_idx)
+        for b, g in enumerate(np.asarray(data.batch_idx)):
+            for k in range(idx.shape[1]):
+                co = [h for h in idx[g, k] if h >= 0]
+                slots = np.stack([theta[0, 0, 0, 0, :, :, b]] +
+                                 [theta_pop[0, 0, 0, 0, :, :, h] for h in co])
+                m = len(co) + 1
+                cell, act = THETA_RULES[rule](
+                    slots.reshape(1, m, -1), np.ones((1, m, slots[0].size)),
+                    np.full((1, m), 1.0 / m))
+                np.testing.assert_allclose(
+                    np.asarray(classes.theta)[1 + k, 0, 0, 0, 0, :, :, b].ravel(),
+                    cell[0], rtol=1e-5)
+

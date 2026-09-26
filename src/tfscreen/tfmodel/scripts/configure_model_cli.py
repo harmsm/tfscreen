@@ -130,10 +130,11 @@ def configure_model(binding_df,
                     growth_transition_model="instant",
                     ln_cfu0_model="hierarchical",
                     dk_geno_model="hierarchical_geno",
-                    activity_model="horseshoe_geno",
+                    activity_model="fixed",
                     theta_model="hill_geno",
                     transformation_model="single",
                     transformation_lambda=None,
+                    congression_theta_rule="homodimer",
                     theta_rescale_model="passthrough",
                     theta_growth_noise_model="zero",
                     theta_binding_noise_model="zero",
@@ -205,8 +206,9 @@ def configure_model(binding_df,
     activity_model : str, optional
         Model to use to describe activity, a scalar multiplied against
         occupancy that defines how strongly a genotype alters transcription
-        given its occupancy. Allowed values are 'fixed', 'hierarchical_geno',
-        'horseshoe_geno' (default), 'hierarchical_mut', or 'horseshoe_mut'.
+        given its occupancy. Allowed values are 'fixed' (default; activity 1
+        for every genotype), 'hierarchical_geno', 'horseshoe_geno',
+        'hierarchical_mut', or 'horseshoe_mut'.
     theta_model : str, optional
         Model to use to describe theta, the fractional occupancy of a genotype
         on the transcription factor binding site. Allowed values are
@@ -227,6 +229,11 @@ def configure_model(binding_df,
         when it is 'single'. Used to moment-match a LogNormal prior for the
         transformation's lambda parameter, replacing the manual step of
         hand-editing the priors/guesses CSVs with rescaled log-space values.
+    congression_theta_rule : str, optional
+        How the 'mixture' transformation builds a congressed cell's theta
+        from its plasmids' thetas: 'homodimer' (default), 'heterodimer' or
+        'max'. The homodimer and heterodimer rules require activity_model
+        'fixed'. Ignored by 'single'.
     theta_rescale_model : str, optional
         Rescaling applied to theta before it enters the growth model. Allowed
         values are 'passthrough' (default, identity) or 'logit' (maps theta to
@@ -367,6 +374,7 @@ def configure_model(binding_df,
                      theta=theta_model,
                      transformation=transformation_model,
                      transformation_lambda=transformation_lambda,
+                     congression_theta_rule=congression_theta_rule,
                      theta_rescale=theta_rescale_model,
                      theta_growth_noise=theta_growth_noise_model,
                      theta_binding_noise=theta_binding_noise_model,

@@ -37,12 +37,18 @@ K_SCALE_CEILING="{{ k_scale_ceiling | default('') }}"
 ANALYSIS_METHOD="{{ analysis_method | default('svi') }}"
 # Lambda value for lam_prior "fixed" (grid_profile.yaml).
 LAM_FIXED="{{ lam_fixed | default('') }}"
+# Congression theta rule for the fit (mixture only). Empty = the rule the
+# simulation used (tfs_sim_config.yaml's congression_theta_rule); set it to
+# fit with a different rule (cross-rule grids).
+FIT_THETA_RULE="{{ fit_theta_rule | default('') }}"
 
 # The simulated lambda and the seed live in tfs_sim_config.yaml.
-read -r SEED LAM_SIM < <(python -c "
+read -r SEED LAM_SIM SIM_THETA_RULE < <(python -c "
 import yaml
 cf = yaml.safe_load(open('tfs_sim_config.yaml'))
-print(cf['seed'], cf.get('transformation_poisson_lambda') or 0.0)")
+print(cf['seed'], cf.get('transformation_poisson_lambda') or 0.0,
+      cf.get('congression_theta_rule') or 'homodimer')")
+FIT_THETA_RULE=${FIT_THETA_RULE:-${SIM_THETA_RULE}}
 
 # ---------------------------------------------------------------------------
 # 1. Simulate
@@ -81,7 +87,8 @@ else
         LAM_MEAN=${LAM_MEASURED}
     fi
     TRANSFORMATION_ARGS=(--transformation_model mixture
-                         --transformation_lambda "${LAM_MEAN}" "${LAM_PRIOR_SD}")
+                         --transformation_lambda "${LAM_MEAN}" "${LAM_PRIOR_SD}"
+                         --congression_theta_rule "${FIT_THETA_RULE}")
 fi
 
 BINDING_WEIGHT_ARGS=()
@@ -89,7 +96,7 @@ if [[ -n "${BINDING_WEIGHT}" ]]; then
     BINDING_WEIGHT_ARGS=(--binding_weight "${BINDING_WEIGHT}")
 fi
 
-echo ">>> Configure (${FIT}, lambda prior ${LAM_PRIOR})"
+echo ">>> Configure (${FIT}, lambda prior ${LAM_PRIOR}, theta rule ${FIT_THETA_RULE})"
 tfs-configure-model \
     tfs_sim_binding.csv \
     --growth_df "${GROWTH_CSV}" \

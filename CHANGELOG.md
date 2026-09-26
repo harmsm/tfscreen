@@ -124,6 +124,26 @@ fall into two kinds:
 
 ### Changed
 
+- **Breaking: a congressed cell's theta now follows a partition function
+  (`congression_theta_rule: homodimer`), and TF activity defaults to 1.**
+  The congression mixture (`transformation: mixture`) and the simulator
+  took a co-transformed cell's theta from its highest-theta plasmid. Both
+  now default to the homodimer partition function over equal plasmid
+  shares, `logit(theta_cell) = log sum_g x_g exp(l_g)` with `x_g = 1/M`;
+  `heterodimer` (`2 log sum_g x_g exp(l_g / 2)`) and the old `max` remain
+  selectable. The fit's rule is a new `ModelOrchestrator` setting
+  (`congression_theta_rule`, written to the config) and
+  `tfs-configure-model --congression_theta_rule`; the simulator key keeps
+  its name. The partition-function rules mix the variants' occupancies and
+  require TF activity 1: the simulator refuses otherwise, and
+  `ModelOrchestrator` refuses a mixture model with these rules and a
+  learned activity component. To match, the default activity component is
+  now `fixed` (was `horseshoe_geno`) in `ModelOrchestrator` and
+  `tfs-configure-model`. Configs that set neither key change behavior;
+  set `congression_theta_rule: max` and/or `activity_model: horseshoe_geno`
+  to keep the old ones. The example simulate configs now use `homodimer`.
+  See `planning/congression-physics-plan.md`, step 4.
+
 - **Gradient clipping is off by default in `tfs-fit-model` and
   `tfs-prefit-calibration` (SVI, MAP, pre-MAP, prefit).** Every
   congression-calibration fit on the step-3.5 grids ran to `max_num_epochs`,

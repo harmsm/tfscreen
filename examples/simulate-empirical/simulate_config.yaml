@@ -144,7 +144,7 @@ lib_assembly_skew_sigma: 1.25
 # attenuation your empirical distribution is (currently) uncorrected for, so
 # keep it matched to the real library.
 transformation_poisson_lambda: 1.5
-congression_theta_rule: max
+congression_theta_rule: homodimer   # needs activity 1 (the empirical path forces it)
 congression_dk_rule: dilution
 
 cfu0: 65_000_000.0

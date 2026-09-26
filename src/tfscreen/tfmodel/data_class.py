@@ -84,6 +84,11 @@ class GrowthData:
     coresident_idx: Any = field(default=None)
     coresident_n: Any = field(default=None)
 
+    # How a congressed cell's theta is built from its plasmids' thetas
+    # ("max", "homodimer", "heterodimer"; see transformation/mixture.py).
+    # Static: set by ModelOrchestrator from its congression_theta_rule.
+    congression_theta_rule: str = field(pytree_node=False, default="homodimer")
+
     growth_shares_replicates: bool = field(pytree_node=False, default=False)
 
     # Optional mutation-decomposition matrices (set when using *_mut_decomp components).
