@@ -13,3 +13,5 @@ grid_summary.json
 inputs/
 congression_calibration_baseline/
 congression_calibration_profile/
+# Renamed copies of old grid runs
+*.old/

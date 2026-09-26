@@ -657,6 +657,14 @@ checked with `tfs-summarize-calibration`.
      and a simulated Hill-coefficient limit of 4 (new
      `theta_sim_priors.max_hill_n`); the optimizer was updated. Lowering the
      model's default binding weight is planned as its own step (user).
+     Re-run (2026-09-26): all 13 runs converged, no blow-ups. At lambda 1
+     the mixture beats `single` (bulk theta RMSE 0.104 vs 0.125 and 0.074
+     vs 0.084; dk_geno error ~3x lower; coverage 0.81-0.87 vs 0.58-0.77),
+     with the gain in bulk genotypes without binding data. Lambda is
+     recovered roughly (0.94, 0.80 at a true 1.0) with overconfident
+     intervals; at a true 0 the mixture finds ~0.12 yet still fits theta
+     better than `single`. The lambda profile is flat within loss noise
+     over 0.6-1.4, and theta error changes little across it.
 4. **Theta rule.** Homodimer vs heterodimer soft max, chosen from the bench
    results, in both simulator and fit.
 5. **dk rule.** Soft-min family with an alpha sensitivity check, in both

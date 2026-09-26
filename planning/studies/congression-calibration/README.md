@@ -525,3 +525,59 @@ The model's default binding weight (growth rows / binding rows) is also to
 be lowered, but that is a change to the model for real fits; it is left
 for its own step. These grids run at `--binding_weight 1` regardless.
 
+## Re-run with realistic data and the fixed optimizer (2026-09-26)
+
+`grid_baseline.yaml` and `grid_profile.yaml` again, with binding noise
+0.025, `max_hill_n` 4 and the updated optimizer. **All 13 runs converged**
+under the stop rule (40,000-48,000 steps), each ending at its best loss; no
+blow-ups. `tfs-summarize-calibration` outputs: `calib/baseline_*`.
+
+Baseline (bulk theta and parameters; 95% intervals for lambda):
+
+| lambda, seed | fit | lambda | dk_geno RMSE | log_hill_K RMSE | bulk theta RMSE | bulk theta coverage | loss |
+|---|---|---|---|---|---|---|---|
+| 0, 1 | `single` | | 0.0023 | 0.72 | 0.108 | 0.79 | 35,874 |
+| 0, 1 | mixture | 0.131 (0.128-0.134) | 0.0015 | 0.67 | 0.089 | 0.82 | 35,153 |
+| 0, 2 | `single` | | 0.0024 | 0.72 | 0.097 | 0.80 | 32,480 |
+| 0, 2 | mixture | 0.113 (0.110-0.116) | 0.0013 | 0.71 | 0.079 | 0.86 | 32,116 |
+| 1, 1 | `single` | | 0.0092 | 0.94 | 0.125 | 0.58 | 37,837 |
+| 1, 1 | mixture | 0.942 (0.936-0.948) | 0.0032 | 0.75 | 0.104 | 0.81 | 36,285 |
+| 1, 2 | `single` | | 0.0080 | 0.65 | 0.084 | 0.77 | 29,437 |
+| 1, 2 | mixture | 0.803 (0.796-0.810) | 0.0024 | 0.61 | 0.074 | 0.87 | 28,182 |
+
+Paired against `single` (`calib/baseline_paired_summary.csv`, theta, mean
+of 2 seeds), the gain is in bulk genotypes without binding data:
+
+| lambda | stratum | delta theta RMSE | delta 95% coverage |
+|---|---|---|---|
+| 0 | bulk, no binding | -0.018 | +0.05 |
+| 0 | with binding / spike / mixed | ~0 | small |
+| 1 | bulk, no binding | -0.015 | +0.16 |
+| 1 | with binding / spike / mixed | ~0 | small |
+
+Profile (mixture, lambda fixed, lambda-1 seed-1 data):
+
+| lambda held at | 0.6 | 0.8 | 1.0 | 1.2 | 1.4 |
+|---|---|---|---|---|---|
+| loss | 36,319 | 35,812 | 36,294 | 35,870 | 36,013 |
+| bulk theta RMSE | 0.111 | 0.107 | 0.105 | 0.102 | 0.102 |
+| dk_geno RMSE | 0.0044 | 0.0034 | 0.0032 | 0.0041 | 0.0052 |
+
+- **The mixture now beats `single` where congression is real** (lambda 1):
+  bulk theta RMSE 0.104 vs 0.125 and 0.074 vs 0.084, dk_geno error cut
+  ~3x, coverage 0.81-0.87 vs 0.58-0.77, and a better fit. The earlier
+  "mixture worse on theta" results came from unconverged or unstable fits.
+- **Lambda is recovered roughly, with overconfident intervals:** 0.94 and
+  0.80 at a true 1.0; intervals ~+/-0.007 exclude the truth. At a true 0
+  the mixture still finds 0.11-0.13, yet fits better than `single` on
+  theta, dk_geno and coverage there too, so its congressed classes absorb
+  something real in the data (the read-count floor is the leading
+  candidate).
+- **The profile is flat within the loss noise** (differences of a few
+  hundred, not monotone): these data barely pin lambda between 0.6 and 1.4.
+  Theta error changes little across that range (0.111 to 0.102), and
+  dk_geno error is lowest near the true lambda. So a misestimated lambda
+  costs little in theta.
+- Coverage remains below nominal for both fits (0.78-0.87), the mixture's
+  less so.
+
