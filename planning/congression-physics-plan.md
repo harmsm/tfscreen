@@ -719,5 +719,12 @@ checked with `tfs-summarize-calibration`.
      `planning/studies/congression-calibration/grid_crossrule.yaml`
      (simulate {max, homodimer} x fit {single, mixture-max,
      mixture-homodimer} x lambda {0.357, 1} x seeds 1-2; 24 runs).
+     Cross-rule results (2026-09-26, all 24 converged): the rule is not
+     identifiable from screen data at this design. Homodimer vs max fits
+     of the same simulation differ by -0.006 to +0.005 in bulk theta RMSE
+     and ~0 in dk_geno, whichever rule simulated the data, and both beat
+     `single` in all 16 pairs. The homodimer fit has the lower loss in 7
+     of 8 pairs and puts lambda 0.01-0.07 higher. `homodimer` stays the
+     default; the physical choice waits on native mass spec. Step 4 done.
 5. **dk rule.** Soft-min family with an alpha sensitivity check, in both
    simulator and fit.

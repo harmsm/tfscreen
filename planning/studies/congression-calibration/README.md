@@ -647,3 +647,51 @@ the mixture under each rule, at lambda 0.357 and 1.0 x seeds 1-2 (24 runs).
 Does the right rule recover theta, and what does the wrong one cost? The
 summary commands are in the grid file's header.
 
+## Cross-rule grid (grid_crossrule.yaml, 2026-09-26)
+
+**All 24 runs converged**, and each fit used the rule it was set up with
+(`max` and `homodimer` fits of the same data stop at the same step only
+because the windows are 2,000 steps). Outputs: `calib/crossrule_*`
+(against `single`), `calib/crossrule_vs_max_*` (homodimer against max on
+the same simulation).
+
+Bulk genotypes without binding data (theta RMSE, 95% coverage, loss):
+
+| lambda | simulated | seed | `single` | mixture, `max` | mixture, `homodimer` |
+|---|---|---|---|---|---|
+| 0.357 | `max` | 1 | 0.112, 0.69, 32,610 | 0.083, 0.83, 31,727 | 0.076, 0.85, 31,675 |
+| 0.357 | `max` | 2 | 0.144, 0.53, 31,240 | 0.108, 0.65, 29,468 | 0.104, 0.69, 29,411 |
+| 0.357 | `homodimer` | 1 | 0.122, 0.69, 32,739 | 0.091, 0.81, 31,824 | 0.083, 0.82, 31,770 |
+| 0.357 | `homodimer` | 2 | 0.147, 0.53, 31,169 | 0.108, 0.67, 29,694 | 0.105, 0.63, 29,581 |
+| 1 | `max` | 1 | 0.125, 0.58, 37,829 | 0.104, 0.81, 36,292 | 0.117, 0.79, 35,861 |
+| 1 | `max` | 2 | 0.084, 0.77, 29,421 | 0.074, 0.87, 28,173 | 0.071, 0.86, 28,159 |
+| 1 | `homodimer` | 1 | 0.125, 0.55, 37,729 | 0.095, 0.83, 36,202 | 0.101, 0.82, 36,241 |
+| 1 | `homodimer` | 2 | 0.087, 0.76, 29,479 | 0.086, 0.84, 28,251 | 0.075, 0.85, 28,171 |
+
+Homodimer fit minus max fit, same simulation (mean +/- SE over 2 seeds):
+
+| lambda | simulated | delta theta RMSE | delta coverage | delta dk_geno RMSE | fitted lambda (max / homodimer) |
+|---|---|---|---|---|---|
+| 0.357 | `max` | -0.006 +/- 0.001 | +0.03 | 0.0000 | 0.27, 0.44 / 0.27, 0.47 |
+| 0.357 | `homodimer` | -0.006 +/- 0.003 | -0.01 | 0.0000 | 0.26, 0.43 / 0.27, 0.45 |
+| 1 | `max` | +0.005 +/- 0.008 | -0.01 | 0.0000 | 0.94, 0.80 / 0.98, 0.85 |
+| 1 | `homodimer` | -0.003 +/- 0.008 | +0.00 | -0.0001 | 0.88, 0.77 / 0.91, 0.84 |
+
+- **The rule is not identifiable from these data, and the wrong one costs
+  nothing measurable.** Theta, dk_geno and coverage differ between the two
+  mixture fits by less than the seed-to-seed spread whichever rule
+  simulated the data. The homodimer fit has the lower loss in 7 of 8
+  pairs, including all 4 simulated with `max`, by 14-430, within the
+  loss noise seen in the lambda profile.
+- **Both mixture fits beat `single` in all 16 pairs** (bulk theta RMSE
+  -0.010 to -0.041, coverage +0.12 to +0.18, dk_geno error ~2.5x lower).
+- The homodimer fit puts lambda slightly higher (by 0.01-0.07), closer to
+  the truth at 1.0. Partition-function mixing pulls a strong binder's
+  theta down in a congressed cell, so matching the same data takes a
+  little more congression than `max` needs.
+- The simulated data do differ by rule (`ln_cfu` differs by 0.1 on average
+  between the `max` and `homodimer` simulations of the same seed; this
+  includes resampled read counts), but not in a way the fit can pin.
+
+`homodimer` stays the default (the physics, the user's call in step 4); the
+choice between the rules waits on native mass spec, not on screen data.
