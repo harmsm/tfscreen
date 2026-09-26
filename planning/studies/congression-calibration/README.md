@@ -405,3 +405,46 @@ wt's co-resident share 0.0026, from 0.39):
   seed-1 simulation (5 runs). Loss against lambda says whether the data
   prefer lambda > 1; theta error against lambda says whether theta is
   recovered at the true lambda.
+
+## Baseline and profile grids (2026-09-25)
+
+Both on the noise-referenced convergence code (5bf5b78) and the corrected
+library (bff2c51). **The stop rule never fired: all 13 runs ran to the
+100,000-step cap** ("SVI run has not yet converged"). After three 10x
+step-size cuts (to 1e-6) the parameter criterion still reads hill_mut's
+hierarchical scales as moving by 0.3-0.5 posterior SDs; their guide SDs
+have collapsed to 0.001-0.005, so noise-level movement counts.
+
+**Blow-ups on one simulation.** On the lambda-1, seed-1 simulation, both
+`single` (baseline 0005) and the mixture (0006), and four of the five
+profile runs (lambda fixed at 0.8-1.4), reach a good loss (4-6e4) and then
+jump ~5x at full step size between steps 8,000 and 14,000 (profile run
+0003: one step at epoch 8,750 took it from 7.2e4 to 2.8e5 with guide
+parameters moving at most ~0.4). The step-size cuts then lock the damage in.
+Flagged parameters: hill_mut's `theta_sigma_d_*` scales. Not
+congression-specific (`single` does it too) and not seen before 5bf5b78 on
+the analogous runs. The profile grid is therefore uninterpretable: only the
+lambda-0.6 run avoided the blow-up. Both failures went to the convergence
+work as a separate task.
+
+**The stable pairs** (losses ended within ~2% of their best, so usable with
+that caveat):
+
+| | lambda (95%) | dk_geno RMSE | bulk theta RMSE | bulk theta 95% coverage |
+|---|---|---|---|---|
+| lambda 0, seed 1: `single` / mixture | - / 0.155 (0.151-0.160) | 0.0023 / 0.0017 | 0.133 / 0.121 | 0.82 / 0.83 |
+| lambda 0, seed 2: `single` / mixture | - / 0.149 (0.145-0.154) | 0.0021 / 0.0017 | 0.116 / 0.101 | 0.79 / 0.82 |
+| lambda 1, seed 2: `single` / mixture | - / 0.98 (0.97-0.99) | 0.0077 / 0.0023 | 0.106 / 0.121 | 0.76 / 0.81 |
+
+- At lambda 1 the mixture recovers lambda (0.98 at a true 1.0; 1.30 on the
+  old library) and cuts the dk_geno error ~3x; bulk theta is still slightly
+  worse than `single`'s.
+- At lambda 0 the mixture still finds lambda ~0.15 (matched prior centered
+  at 0.01), yet its theta and dk_geno are slightly better than `single`'s.
+  What the congressed classes absorb there is open (the read-count floor is
+  one candidate).
+- Coverage is better than on the old code (0.76-0.83, from 0.55-0.66).
+
+Next: wait for the convergence fixes, then re-run the profile grid and more
+seeds of the baseline.
+

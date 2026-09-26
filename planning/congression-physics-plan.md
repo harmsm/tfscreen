@@ -645,6 +645,14 @@ checked with `tfs-summarize-calibration`.
      and dk_geno (RMSE 0.0049 vs 0.0105) but not theta (0.173 vs 0.155),
      with lambda at 1.30. The convergence overhaul (5bf5b78) is in; next:
      a lambda profile and the coverage question, on new grids.
+     Baseline and profile grids (2026-09-25, new convergence code and
+     library): the stop rule never fired (13/13 hit the cap), and the
+     lambda-1 seed-1 simulation blew up at full step size in `single` and
+     the mixture alike, making the profile grid uninterpretable; both went
+     to the convergence work. On the stable pairs, the lambda-1 mixture
+     recovers lambda (0.98) and cuts dk_geno error ~3x, theta slightly
+     worse than `single`; at lambda 0 the mixture still finds lambda
+     ~0.15. Next: re-run after the convergence fixes.
 4. **Theta rule.** Homodimer vs heterodimer soft max, chosen from the bench
    results, in both simulator and fit.
 5. **dk rule.** Soft-min family with an alpha sensitivity check, in both
