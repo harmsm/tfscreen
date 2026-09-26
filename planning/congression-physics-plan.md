@@ -580,7 +580,7 @@ checked with `tfs-summarize-calibration`.
      - *`tfs-summarize-calibration`* strata: `origin` (spiked/bulk) became
        `purity` (`spike`/`mixed`/`bulk`, from the sub-libraries encoding each
        genotype, i.e. `bulk_fraction` 0, between, or 1).
-   - [ ] **3.5 Calibration.** Step 2 simulator vs the new fit, with
+   - [x] **3.5 Calibration.** Step 2 simulator vs the new fit, with
      `tfs-summarize-calibration`; watch bulk genotypes without binding data.
      Grid set up 2026-09-24 (user: cluster, both extra arms, `mixed` left
      unstratified): `planning/studies/congression-calibration/`, 54 runs =
@@ -679,6 +679,14 @@ checked with `tfs-summarize-calibration`.
      - The model's default binding weight (growth rows / binding rows) is
        to be lowered, and the binding SDs rethought (raw anisotropy points,
        an assay-to-cell term); its own step.
+     Confirming round (2026-09-26, all 10 converged): the mixture beats
+     `single` in all 9 pairs (3 seeds x lambda 0, 0.357, 1) on loss, bulk
+     theta RMSE (-0.018, -0.034, -0.017), coverage (+0.04, +0.13, +0.18)
+     and dk_geno. Lambda is right on average at 0.357 (0.27, 0.44, 0.35)
+     but low at 1.0 (0.94, 0.80, 0.66) and high at 0 (~0.12); the
+     seed-to-seed spread is 30-50 times the reported posterior SD, which
+     strengthens the case for setting lambda from the measurement. Step 3.5
+     closed.
 4. **Theta rule.** Homodimer vs heterodimer soft max, chosen from the bench
    results, in both simulator and fit.
    Design agreed 2026-09-26 (user):

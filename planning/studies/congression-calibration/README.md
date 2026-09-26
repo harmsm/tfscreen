@@ -581,6 +581,57 @@ Profile (mixture, lambda fixed, lambda-1 seed-1 data):
 - Coverage remains below nominal for both fits (0.78-0.87), the mixture's
   less so.
 
+## Confirming round (grid_measured.yaml, grid_seed3.yaml, 2026-09-26)
+
+Same settings as the re-run above (`max` rule on both sides). **All 10 runs
+converged** (38,000-48,000 steps). Outputs: `calib/measured_*`, and
+`calib/pooled_*` for the baseline grid plus seed 3 (runs linked into
+`calib/pooled_all/`).
+
+Measured regime (lambda 0.357, prior 0.357 +/- 0.05):
+
+| seed | fit | lambda (95%) | dk_geno RMSE | bulk theta RMSE | bulk theta coverage | loss |
+|---|---|---|---|---|---|---|
+| 1 | `single` | | 0.0057 | 0.112 | 0.69 | 32,654 |
+| 1 | mixture | 0.266 (0.262-0.269) | 0.0025 | 0.083 | 0.83 | 31,733 |
+| 2 | `single` | | 0.0056 | 0.145 | 0.53 | 31,228 |
+| 2 | mixture | 0.439 (0.434-0.444) | 0.0017 | 0.110 | 0.64 | 29,604 |
+| 3 | `single` | | 0.0064 | 0.106 | 0.72 | 34,176 |
+| 3 | mixture | 0.347 (0.341-0.353) | 0.0026 | 0.068 | 0.85 | 32,850 |
+
+Seed 3 at lambda 0 and 1:
+
+| lambda | fit | lambda (95%) | dk_geno RMSE | bulk theta RMSE | bulk theta coverage | loss |
+|---|---|---|---|---|---|---|
+| 0 | `single` | | 0.0023 | 0.103 | 0.69 | 33,228 |
+| 0 | mixture | 0.119 (0.116-0.123) | 0.0018 | 0.086 | 0.71 | 32,675 |
+| 1 | `single` | | 0.0088 | 0.099 | 0.56 | 25,878 |
+| 1 | mixture | 0.656 (0.650-0.662) | 0.0037 | 0.078 | 0.78 | 24,694 |
+
+Paired against `single` (bulk genotypes without binding data; mean +/- SE
+over 3 seeds):
+
+| lambda | delta theta RMSE | delta 95% coverage | delta dk_geno RMSE |
+|---|---|---|---|
+| 0 | -0.018 +/- 0.000 | +0.04 +/- 0.01 | -0.0008 |
+| 0.357 | -0.034 +/- 0.003 | +0.13 +/- 0.01 | -0.0036 |
+| 1 | -0.017 +/- 0.004 | +0.18 +/- 0.04 | -0.0056 |
+
+Genotypes with binding data are unchanged (delta theta RMSE ~0).
+
+- **The mixture beats `single` in all 9 pairs** on fit (loss), bulk theta
+  RMSE, coverage and dk_geno. The gain is largest in the measured regime.
+- **Lambda: roughly right on average, badly overconfident per run.** At
+  0.357 the three seeds give 0.27, 0.44 and 0.35 (mean 0.35); at 1.0 they
+  give 0.94, 0.80 and 0.66; at 0 they give 0.13, 0.11 and 0.12. The
+  seed-to-seed spread (SD ~0.09 at 0.357, ~0.14 at 1.0) is 30-50 times
+  the reported posterior SD (~0.003), and seed 3 at 1.0 sits 7 prior SDs
+  below its matched prior. Theta is recovered well regardless, as the flat
+  profile predicted.
+- Coverage is still below nominal (mixture 0.64-0.86).
+
+Step 3.5 is closed on these results. Open items are recorded in the plan.
+
 ## Step 4 changes that affect this study (2026-09-26)
 
 The fit's default congression theta rule is now `homodimer` and the default
