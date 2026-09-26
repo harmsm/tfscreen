@@ -80,6 +80,31 @@ def _try_plot_theta_fits(binding_df, pred_df, out_prefix):
         warnings.warn(f"Could not generate theta fit plots: {exc}")
 
 
+# Number of randomly chosen extra genotypes whose trajectories are plotted
+# when the run has no binding genotypes to plot.
+_TRAJECTORY_RANDOM_GENOTYPES = 10
+
+
+def _default_trajectory_genotypes(orchestrator,
+                                  num_random=_TRAJECTORY_RANDOM_GENOTYPES,
+                                  seed=0):
+    """
+    Genotypes to plot when there is no binding data to choose them: wt, the
+    spiked genotypes, and a fixed-seed sample of ``num_random`` others (so
+    reruns plot the same ones). Without this a growth-only run would write a
+    trajectory CSV and PDF for every genotype in the library.
+    """
+    tm = orchestrator.growth_tm
+    all_genos = [str(g) for g in tm.tensor_dim_labels[tm.tensor_dim_names.index("genotype")]]
+    spiked = [str(g) for g in (orchestrator.settings.get("spiked_genotypes") or [])]
+    keep = [g for g in ["wt"] + spiked if g in all_genos]
+    keep = list(dict.fromkeys(keep))
+    rest = sorted(set(all_genos) - set(keep))
+    rng = np.random.default_rng(seed)
+    extra = rng.choice(rest, size=min(num_random, len(rest)), replace=False)
+    return keep + sorted(str(g) for g in extra)
+
+
 def _try_plot_trajectories(config_file, config_yaml, run_dir, out_prefix, binding_df):
     """Attempt to generate per-genotype growth trajectory plots.
 
@@ -103,7 +128,10 @@ def _try_plot_trajectories(config_file, config_yaml, run_dir, out_prefix, bindin
 
         orchestrator, _ = read_configuration(config_file)
 
-        genotypes = list(binding_df["genotype"].unique()) if binding_df is not None else None
+        if binding_df is not None:
+            genotypes = list(binding_df["genotype"].unique())
+        else:
+            genotypes = _default_trajectory_genotypes(orchestrator)
 
         pred_df = predict_geno_trajectory_df(
             orchestrator,

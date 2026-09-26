@@ -425,8 +425,9 @@ def test_read_configuration_unknown_key_error_mentions_label(tmpdir):
 
 
 def test_configure_model_errors(tmpdir):
-    # Missing binding_df
-    with pytest.raises(ValueError, match="binding_df must be provided"):
+    # Neither binding_df nor growth_df
+    with pytest.raises(ValueError,
+                       match="At least one of binding_df and growth_df"):
         configure_model(None)
 
 def test_update_dataclass_recursion():
@@ -564,7 +565,8 @@ def test_update_dataclass_dict_field_coerces_floats():
 
 def test_mains(mocker):
     # Test main functions via mocker to cover boilerplate
-    mocker.patch("sys.argv", ["tfs-configure", "b.csv", "--growth_df", "g.csv"])
+    mocker.patch("sys.argv", ["tfs-configure", "--binding_df", "b.csv",
+                              "--growth_df", "g.csv"])
     # Mock the internal call so we don't actually run it
     mock_run = mocker.patch("tfscreen.tfmodel.scripts.configure_model_cli.configure_model", autospec=True)
     from tfscreen.tfmodel.scripts.configure_model_cli import main

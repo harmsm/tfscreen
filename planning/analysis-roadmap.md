@@ -261,6 +261,16 @@ congression calibration grid, 0.78-0.87 after convergence fixes).
 Breaking changes are allowed throughout (D12); each modeling step ends with
 a simulation checked by `tfs-summarize-calibration`.
 
+**Implementation order (D14, 2026-09-26).** While the refined data are
+gathered, build what does not hang on it: 1 -> 4 -> 7 (with supplied
+totals) -> 5 -> 3, then 2's OD600 part, 6, 7b, 8, 9 as data arrive. Step 7
+comes before step 6: until the population model exists, each tube's total
+is the supplied `sample_ln_cfu` (as today) and the tube offset is
+`ln depth_s - sample_ln_cfu_s + u_s`; step 6 later replaces the supplied
+totals. The count and depth columns of step 2 come with step 7. The
+congression plan's step 6 (re-validate on the count likelihood) waits on
+step 7.
+
 0. **Studies on real data** (no package code; run in parallel; all can start
    now).
    Data: the 2026-07-23 snapshot, extracted by
@@ -335,7 +345,7 @@ a simulation checked by `tfs-summarize-calibration`.
      not pin `k_c`. Still needed: the third bioreplicate's OD600, the
      repeated OD600 runs behind the smoothed totals, and the presplit
      OD600 and dilution.
-1. **Binding-optional plumbing** (G).
+1. [x] **Binding-optional plumbing** (G).
    The list in the idea file: `binding_df` becomes `--binding_df` in
    `tfs-configure-model` (at least one of growth/binding required; no phantom
    `data.binding`); the orchestrator gates binding tensors, `BindingData`, the
@@ -350,6 +360,12 @@ a simulation checked by `tfs-summarize-calibration`.
    smoke test on `growth-smoke.csv` + `library-smoke.yaml`. Check that a
    joint fit is unchanged (fixed-seed MAP loss against main): not for
    compatibility, but to show the plumbing changed nothing it should not.
+   Done 2026-09-26. Joint model log density at a fixed seed identical to
+   before (`single` and `mixture`). Also fixed: absent prior groups
+   (`priors.binding` here, `priors.growth` for binding-only) reloaded from
+   the priors CSV as NaN; they are now left out and stay `None`. Tests:
+   `tests/tfscreen/tfmodel/test_growth_only.py`, a growth-only smoke test
+   in `tests/smoke-tests/test_configure_run_smoke.py`.
 2. **Counts and OD600 through processing** (N; breaking).
    - `counts_to_lncfu` writes `counts` and per-tube depth (with
      `__unknown__`) next to today's columns. The same for
@@ -448,8 +464,11 @@ a simulation checked by `tfs-summarize-calibration`.
 7. **Count likelihood** (N).
    `growth_likelihood: counts` (C2): growth and presplit observers with
    `reads_{g,s} ~ NegBin(depth_s * exp(ln n_{g,s} - P_s + u_s), dispersion)`,
-   `P` and `u` from step 6, a learned dispersion whose variance scales with
-   the mean (C12; one per experiment; no
+   `P` from step 6 (until then, the supplied `sample_ln_cfu`, D14), `u`
+   from step 6's `sample_offset`, and a learned dispersion with both a term
+   proportional to the mean and a quadratic term,
+   `var = mu (1 + phi) + mu^2 / r`, so the refined data only set priors
+   (C12; one per experiment; no
    per-batch term, D8), optional index hopping (`E[reads] = N (p_g + h q_g)`),
    and, for future screens, a spike-in counting standard (a non-growing
    pseudo-genotype of known abundance per tube, which fixes `P_s`).
@@ -541,6 +560,8 @@ User, 2026-09-26.
 - **D13. One framing for growth regimes** (user, 2026-09-26). Once a
   physically motivated model is chosen (7b; D9 for the population curve),
   models outside that framing are removed, not kept as options.
+- **D14. Build order while data are gathered** (user, 2026-09-26): steps
+  1, 4, 7 (supplied totals), 5, 3; see "Steps".
 
 ## Open
 

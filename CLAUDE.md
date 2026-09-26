@@ -136,7 +136,7 @@ The hierarchical Bayesian inference engine. Key files:
   - `ln_cfu0/`: `hierarchical`, `hierarchical_factored`
   - `sample_offset/`: `zero`, `normal`
 
-- **`generative/observe/`** — *not* under `components/`, and not swappable via YAML. Holds the four observation-likelihood layers (`binding`, `growth`, `presplit`, `base_growth`), registered under flat `model_registry` keys `observe_binding`/`observe_growth`/`observe_presplit`/`observe_base_growth`. `ModelOrchestrator` wires in `observe_binding` and (unless `binding_only`) `observe_growth` unconditionally, plus `observe_presplit`/`observe_base_growth` only when the corresponding data (`presplit_df`/`base_growth_df`) was supplied — these are parallel, independently-gated observers, not alternative choices for one axis.
+- **`generative/observe/`** — *not* under `components/`, and not swappable via YAML. Holds the four observation-likelihood layers (`binding`, `growth`, `presplit`, `base_growth`), registered under flat `model_registry` keys `observe_binding`/`observe_growth`/`observe_presplit`/`observe_base_growth`. `ModelOrchestrator` wires in `observe_binding` whenever binding data were supplied and (unless `binding_only`) `observe_growth`, plus `observe_presplit`/`observe_base_growth` only when the corresponding data (`presplit_df`/`base_growth_df`) was supplied — these are parallel, independently-gated observers, not alternative choices for one axis. **Growth-only models** (`binding_df=None`, `tfs-configure-model` without `--binding_df`) have `data.binding = None`, `priors.binding = None`, no `theta_binding_noise` component and no binding sites in the model (`jax_model` gates them on `data.binding is not None`, static structure); the orchestrator refuses a `binding_weight` or a non-`zero` `theta_binding_noise` without binding, and `tfs-prefit-calibration` refuses a growth-only config. Absent prior groups are left out of the priors CSV (`configuration_io._extract_scalars` / `_update_dataclass` skip `None`), so they reload as `None`, not NaN.
 
 ### Adding a New Model Component
 
@@ -558,7 +558,7 @@ Positional argument order (use only what the script needs):
 
 ### `--library_config`
 
-`tfs-configure-model` and `tfs-build-empirical` take the library YAML as `--library_config`. It is an exception to the positional-if-required rule: `tfs-configure-model` requires it only when `growth_df` is given, and `growth_df` is itself a flag, so a positional would be wrong for the binding-only call. Validate it in the function body instead.
+`tfs-configure-model` and `tfs-build-empirical` take the library YAML as `--library_config`. It is an exception to the positional-if-required rule: `tfs-configure-model` requires it only when `growth_df` is given, and `growth_df` is itself a flag, so a positional would be wrong for the binding-only call. Validate it in the function body instead. The same holds for the data: `tfs-configure-model` takes `--binding_df` and `--growth_df` as flags and requires at least one (both: joint model; binding only: binding-only model; growth only: growth-only model).
 
 ### Output flag
 

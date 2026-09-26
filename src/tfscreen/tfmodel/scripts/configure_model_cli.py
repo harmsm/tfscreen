@@ -121,7 +121,7 @@ def check_genotypes_in_library(library_genotypes, data_df, label,
     )
 
 
-def configure_model(binding_df,
+def configure_model(binding_df=None,
                     growth_df=None,
                     presplit_df=None,
                     base_growth_df=None,
@@ -158,15 +158,19 @@ def configure_model(binding_df,
     for a growth model, {out_prefix}_library.csv (the per-genotype library
     composition resolved from library_config).
 
-    When only binding_df is provided (no growth_df), a binding-only model is
-    configured that infers theta directly from observed binding measurements
-    rather than from bacterial growth data.
+    At least one of growth_df and binding_df is required. With both, the
+    joint growth + binding model is configured. With only binding_df, a
+    binding-only model infers theta directly from the binding measurements.
+    With only growth_df, a growth-only model infers theta from growth alone
+    (no binding likelihood, so theta_binding_noise_model must stay 'zero'
+    and binding_weight unset; tfs-prefit-calibration needs binding and
+    refuses such a config).
 
     Parameters
     ----------
-    binding_df : str
+    binding_df : str, optional
         Path to the binding data CSV file (theta vs. titrant measurements per
-        genotype). Required.
+        genotype). When omitted, a growth-only model is configured.
     growth_df : str, optional
         Path to the growth data CSV file (ln_cfu measurements per genotype,
         replicate, and timepoint). When omitted, a binding-only model is
@@ -319,8 +323,9 @@ def configure_model(binding_df,
     -------
     None
     """
-    if binding_df is None:
-        raise ValueError("binding_df must be provided")
+    if binding_df is None and growth_df is None:
+        raise ValueError("At least one of binding_df and growth_df must be "
+                         "provided.")
 
     binding_only = growth_df is None
     if not binding_only:
@@ -407,7 +412,9 @@ def configure_model(binding_df,
     write_configuration(orchestrator=orchestrator,
                         out_prefix=out_prefix,
                         growth_df_path=growth_path,
-                        binding_df_path=binding_df if isinstance(binding_df, str) else "binding.csv",
+                        binding_df_path=(None if binding_df is None else
+                                         binding_df if isinstance(binding_df, str)
+                                         else "binding.csv"),
                         presplit_df_path=presplit_path,
                         base_growth_df_path=base_growth_path,
                         library_meta=library_meta)

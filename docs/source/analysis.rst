@@ -35,7 +35,7 @@ data is useful, and the exact file format for ``binding_df``, ``growth_df``,
 
 .. code-block:: bash
 
-    tfs-configure-model binding.csv \
+    tfs-configure-model --binding_df binding.csv \
         --growth_df growth.csv \
         --library_config run_config.yaml \
         --out_prefix tfs_configure

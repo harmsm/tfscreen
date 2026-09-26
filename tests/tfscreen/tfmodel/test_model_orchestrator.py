@@ -1458,6 +1458,7 @@ class TestConditionLabelExtraction:
         orchestrator.growth_df = growth_df
         orchestrator._data = MagicMock()
         orchestrator._binding_only = False
+        orchestrator._has_binding = True
         orchestrator._batch_size = None
         orchestrator._condition_growth = "linear"
         orchestrator._growth_transition = "instant"

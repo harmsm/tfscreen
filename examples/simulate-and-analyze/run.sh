@@ -57,7 +57,7 @@ cd "${run_dir}"
 # Edit the flags here to change which model components are used.
 echo ">>> Configure model"
 tfs-configure-model \
-    tfs_sim_binding.csv \
+    --binding_df tfs_sim_binding.csv \
     --growth_df tfs_sim_growth.csv \
     --presplit_df tfs_sim_presplit.csv \
     --condition_growth_model linear \

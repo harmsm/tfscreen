@@ -781,9 +781,13 @@ class ModelOrchestrator:
     Parameters
     ----------
     growth_df : pd.DataFrame or str
-        DataFrame or path to file with growth data.
-    binding_df : pd.DataFrame or str
-        DataFrame or path to file with binding data.
+        DataFrame or path to file with growth data. None for a binding-only
+        model (``binding_only=True``).
+    binding_df : pd.DataFrame or str or None
+        DataFrame or path to file with binding data. None for a growth-only
+        model: theta is then inferred from growth alone, with no binding
+        likelihood, no ``theta_binding_noise`` component and no binding
+        weight (both of which are refused unless left at their defaults).
     condition_growth : str, optional
         Model name for condition-specific growth. Allowed values are 'linear'
         (default), 'linear_independent', 'power', or 'saturation'.
@@ -946,6 +950,27 @@ class ModelOrchestrator:
 
         if self._transformation in _RETIRED_TRANSFORMATIONS:
             raise ValueError(_RETIRED_TRANSFORMATIONS[self._transformation])
+
+        # A growth-only model has no binding data at all: no binding tensors,
+        # no binding likelihood, no binding noise component.
+        self._has_binding = binding_df is not None
+        if self._binding_only and not self._has_binding:
+            raise ValueError("binding_only=True requires binding_df.")
+        if not self._binding_only and growth_df is None:
+            raise ValueError(
+                "growth_df is required unless binding_only=True.")
+        if not self._has_binding:
+            if self._binding_weight is not None:
+                raise ValueError(
+                    f"binding_weight={self._binding_weight!r} was given but "
+                    f"there is no binding_df; a growth-only model has no "
+                    f"binding likelihood to weight.")
+            if self._theta_binding_noise != "zero":
+                raise ValueError(
+                    f"theta_binding_noise={self._theta_binding_noise!r} was "
+                    f"given but there is no binding_df; a growth-only model "
+                    f"has no binding observations to add noise to. Leave it "
+                    f"at 'zero'.")
 
         if self._congression_theta_rule not in _CONGRESSION_THETA_RULES:
             raise ValueError(
@@ -1283,40 +1308,47 @@ class ModelOrchestrator:
             })
 
         # ---------------------------------------------------------------------
-        # binding dataclass
-  
-        # Load in the binding data, creating one block of tensors. This is
-        # only (titrant_conc,theta_group). Use the growth tensor manager to
-        # make sure that the mapping to parameters matches between the growth 
-        # and the binding data. 
-        self.binding_df = _read_binding_df(self._binding_df,self.growth_tm.df)
-        self.binding_tm = _build_binding_tm(self.binding_df)
+        # binding dataclass (absent in a growth-only model)
 
-        # Grab the sizes
-        sizes = {"num_titrant_name":self.binding_tm.tensor_shape[0],
-                 "num_titrant_conc":self.binding_tm.tensor_shape[1],
-                 "num_genotype":self.binding_tm.tensor_shape[2]}
-        other_data = {"scatter_theta":0}
+        if self._has_binding:
 
-        # Grab the titrant concentration and log_titrant_conc (1D array from 
-        # the tensor labels along dimension 6)
-        idx = np.where(np.array(self.binding_tm.tensor_dim_names) == "titrant_conc")[0][0]
-        titrant_conc = np.array(self.binding_tm.tensor_dim_labels[idx])
-        log_titrant_conc = titrant_conc.copy()
-        log_titrant_conc[log_titrant_conc == 0] = ZERO_CONC_VALUE
-        log_titrant_conc = np.log(log_titrant_conc)
+            # Load in the binding data, creating one block of tensors. This is
+            # only (titrant_conc,theta_group). Use the growth tensor manager to
+            # make sure that the mapping to parameters matches between the
+            # growth and the binding data.
+            self.binding_df = _read_binding_df(self._binding_df,self.growth_tm.df)
+            self.binding_tm = _build_binding_tm(self.binding_df)
 
-        other_data["titrant_conc"] = titrant_conc
-        other_data["log_titrant_conc"] = log_titrant_conc
+            # Grab the sizes
+            sizes = {"num_titrant_name":self.binding_tm.tensor_shape[0],
+                     "num_titrant_conc":self.binding_tm.tensor_shape[1],
+                     "num_genotype":self.binding_tm.tensor_shape[2]}
+            other_data = {"scatter_theta":0}
 
-        binding_data_sources = [self.binding_tm.tensors,sizes,other_data]
+            # Grab the titrant concentration and log_titrant_conc (1D array
+            # from the tensor labels along dimension 6)
+            idx = np.where(np.array(self.binding_tm.tensor_dim_names) == "titrant_conc")[0][0]
+            titrant_conc = np.array(self.binding_tm.tensor_dim_labels[idx])
+            log_titrant_conc = titrant_conc.copy()
+            log_titrant_conc[log_titrant_conc == 0] = ZERO_CONC_VALUE
+            log_titrant_conc = np.log(log_titrant_conc)
+
+            other_data["titrant_conc"] = titrant_conc
+            other_data["log_titrant_conc"] = log_titrant_conc
+
+            binding_data_sources = [self.binding_tm.tensors,sizes,other_data]
+            binding_genotypes = self.binding_tm.tensor_dim_labels[-1]
+        else:
+            self.binding_df = None
+            self.binding_tm = None
+            binding_genotypes = np.array([], dtype=object)
 
         # ---------------------------------------------------------------------
         # Create full-batch data (source of truth for indices and shapes) 
        
         # Pass None as batch_size to get full indices and scale factors of 1.0
         full_batch_data = _setup_batching(self.growth_tm.tensor_dim_labels[-1],
-                                          self.binding_tm.tensor_dim_labels[-1],
+                                          binding_genotypes,
                                           batch_size=None)
         
         # If mini-batching is requested, pre-calculate the scale vector that 
@@ -1325,7 +1357,7 @@ class ModelOrchestrator:
             
             # Use the helper to find indices and scale factor for the target batch size
             scaling_info = _setup_batching(self.growth_tm.tensor_dim_labels[-1],
-                                           self.binding_tm.tensor_dim_labels[-1],
+                                           binding_genotypes,
                                            self._batch_size)
             
             # Create a full-sized vector with these scale factors
@@ -1347,22 +1379,25 @@ class ModelOrchestrator:
         growth_batch_data["geno_theta_idx"] = np.arange(full_batch_data["batch_size"],dtype=int)
         growth_data_sources.append(growth_batch_data)
         
-        # Record relevant batch data for the binding dataset
-        binding_batch_data = {}
-        binding_num_binding = full_batch_data["num_binding"]
-        binding_batch_data["batch_idx"] = full_batch_data["batch_idx"][:binding_num_binding]
-        binding_batch_data["batch_size"] = binding_num_binding
-        binding_batch_data["scale_vector"] = full_batch_data["scale_vector"][:binding_num_binding]
-        binding_batch_data["geno_theta_idx"] = np.arange(binding_num_binding,dtype=int)
+        if self._has_binding:
 
-        # Apply binding weight: upscale the binding likelihood to compete with
-        # the (typically much larger) growth dataset.  None → auto-compute as
-        # N_growth_rows / N_binding_rows so each binding observation contributes
-        # the same weight as the average growth observation.
-        if self._binding_weight is None:
-            self._binding_weight = len(self.growth_tm.df) / max(len(self.binding_tm.df), 1)
-        binding_batch_data["scale_vector"] = binding_batch_data["scale_vector"] * self._binding_weight
-        binding_data_sources.append(binding_batch_data)
+            # Record relevant batch data for the binding dataset
+            binding_batch_data = {}
+            binding_num_binding = full_batch_data["num_binding"]
+            binding_batch_data["batch_idx"] = full_batch_data["batch_idx"][:binding_num_binding]
+            binding_batch_data["batch_size"] = binding_num_binding
+            binding_batch_data["scale_vector"] = full_batch_data["scale_vector"][:binding_num_binding]
+            binding_batch_data["geno_theta_idx"] = np.arange(binding_num_binding,dtype=int)
+
+            # Apply binding weight: upscale the binding likelihood to compete
+            # with the (typically much larger) growth dataset.  None →
+            # auto-compute as N_growth_rows / N_binding_rows so each binding
+            # observation contributes the same weight as the average growth
+            # observation.
+            if self._binding_weight is None:
+                self._binding_weight = len(self.growth_tm.df) / max(len(self.binding_tm.df), 1)
+            binding_batch_data["scale_vector"] = binding_batch_data["scale_vector"] * self._binding_weight
+            binding_data_sources.append(binding_batch_data)
 
         # ---------------------------------------------------------------------
         # Populate dataclasses
@@ -1377,8 +1412,11 @@ class ModelOrchestrator:
             growth_dataclass = growth_dataclass.replace(struct_names=_struct_names_tuple)
 
         # Populate a BindingData flax dataclass with all keys in `sources`
-        binding_dataclass = populate_dataclass(BindingData,
-                                               sources=binding_data_sources)
+        if self._has_binding:
+            binding_dataclass = populate_dataclass(BindingData,
+                                                   sources=binding_data_sources)
+        else:
+            binding_dataclass = None
 
         # ---------------------------------------------------------------------
         # presplit dataclass (optional)
@@ -1642,8 +1680,10 @@ class ModelOrchestrator:
                         ("transformation", self._transformation, "growth"),
                         ("theta_growth_noise", self._theta_growth_noise, "growth"),
                         ("growth_noise", self._growth_noise, "growth"),
-                        ("sample_offset", self._sample_offset, "growth"),
-                        ("theta_binding_noise", self._theta_binding_noise, "binding")]
+                        ("sample_offset", self._sample_offset, "growth")]
+            if self._has_binding:
+                load_map.append(("theta_binding_noise",
+                                 self._theta_binding_noise, "binding"))
 
         main_control_kwargs = {"is_guide":False}
         guide_control_kwargs = {"is_guide":True}
@@ -1774,9 +1814,11 @@ class ModelOrchestrator:
         main_control_kwargs["theta_rescale"] = rescale_fn
         guide_control_kwargs["theta_rescale"] = rescale_fn
 
-        # Set the observables; growth observer is only needed in the full model
-        main_control_kwargs["observe_binding"] = model_registry["observe_binding"].observe
-        guide_control_kwargs["observe_binding"] = model_registry["observe_binding"].guide
+        # Set the observables; the binding observer only when there is binding
+        # data, the growth observer only in the full model
+        if self._has_binding:
+            main_control_kwargs["observe_binding"] = model_registry["observe_binding"].observe
+            guide_control_kwargs["observe_binding"] = model_registry["observe_binding"].guide
         if not self._binding_only:
             main_control_kwargs["observe_growth"] = model_registry["observe_growth"].observe
             guide_control_kwargs["observe_growth"] = model_registry["observe_growth"].guide
@@ -1839,8 +1881,11 @@ class ModelOrchestrator:
                 )
             growth_priors = populate_dataclass(GrowthPriors,
                                                sources=priors_class_kwargs["growth"])
-        binding_priors = populate_dataclass(BindingPriors,
-                                            sources=priors_class_kwargs["binding"])
+        if self._has_binding:
+            binding_priors = populate_dataclass(BindingPriors,
+                                                sources=priors_class_kwargs["binding"])
+        else:
+            binding_priors = None
         priors = populate_dataclass(PriorsClass,
                                     sources=dict(theta=priors_class_kwargs["theta"]["theta"],
                                                  growth=growth_priors,

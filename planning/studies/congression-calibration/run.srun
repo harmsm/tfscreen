@@ -112,7 +112,7 @@ fi
 
 echo ">>> Configure (${FIT}, lambda prior ${LAM_PRIOR}, theta rule ${FIT_THETA_RULE}, dk rule ${FIT_DK_RULE}${FIT_DK_ALPHA:+ alpha ${FIT_DK_ALPHA}})"
 tfs-configure-model \
-    tfs_sim_binding.csv \
+    --binding_df tfs_sim_binding.csv \
     --growth_df "${GROWTH_CSV}" \
     --presplit_df tfs_sim_presplit.csv \
     --condition_growth_model linear \

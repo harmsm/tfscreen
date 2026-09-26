@@ -1293,6 +1293,17 @@ def run_prefit_calibration(config_file,
     if seed is None and checkpoint_file is None:
         raise ValueError("seed must be provided unless loading from a checkpoint.")
 
+    # The calibration fits the growth-theta link on genotypes that have both
+    # growth and binding data, so a growth-only model has nothing to fit.
+    with open(config_file, "r") as fh:
+        _data_paths = (yaml.safe_load(fh) or {}).get("data", {})
+    if not _data_paths.get("binding"):
+        raise ValueError(
+            f"{config_file} is a growth-only model (no binding data). "
+            f"tfs-prefit-calibration calibrates the growth-theta link on the "
+            f"genotypes that have binding measurements, so it needs binding "
+            f"data. Fit a growth-only model with tfs-fit-model directly.")
+
     # 1. Resolve production config and CSV targets.
     priors_path, guesses_path = _resolve_csv_paths(config_file)
     orchestrator_prod, _ = read_configuration(config_file)

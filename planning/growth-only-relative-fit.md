@@ -1,6 +1,6 @@
 ---
 title: Fit growth alone on a wt-relative scale, then measure the growth-binding map
-status: idea
+status: promoted
 filed: 2026-09-26
 area: tfmodel
 revisit_when: >-
@@ -19,6 +19,9 @@ related:
   - planning/congression-physics-plan.md
   - planning/studies/congression-calibration/README.md
 ---
+
+**Promoted 2026-09-26** into `planning/analysis-roadmap.md` (Track G: steps
+0a, 1, 5, 8, 9). Step 1, the growth-only plumbing listed below, is done.
 
 **Context:** While calibrating fits for congression, it became clear we want
 to fit growth data without binding data, at least to check whether the two

@@ -262,8 +262,10 @@ def copy_orchestrator(orchestrator,
     new_growth_df["ln_cfu_std"] = 1.0
 
     # We keep the binding_df as is, as it's keyed by genotype/titrant_name
-    # and we aren't subsetting those in this step.
-    new_binding_df = orchestrator.binding_df.copy()
+    # and we aren't subsetting those in this step. A growth-only model has
+    # none.
+    new_binding_df = (None if orchestrator.binding_df is None
+                      else orchestrator.binding_df.copy())
 
     # Create new ModelOrchestrator using settings from the old one
     settings = orchestrator.settings.copy()

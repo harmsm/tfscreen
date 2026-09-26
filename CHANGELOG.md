@@ -31,6 +31,17 @@ fall into two kinds:
 
 ### Added
 
+- **Growth-only models (no binding data).** `ModelOrchestrator` accepts
+  `binding_df=None` alongside growth data, and `tfs-configure-model` takes
+  `--binding_df` as an optional flag (at least one of `--binding_df` and
+  `--growth_df` is required). A growth-only model has no binding tensors,
+  no binding likelihood and no `theta_binding_noise` component; it refuses
+  a `binding_weight` or a non-`zero` binding noise model, and
+  `tfs-prefit-calibration` refuses a growth-only config.
+  `tfs-summarize-fit` then plots trajectories for wt, the spiked genotypes
+  and ten other genotypes chosen with a fixed seed, instead of every
+  genotype. Joint growth + binding models are unchanged (identical log
+  density at a fixed seed). Step 1 of `planning/analysis-roadmap.md`.
 - **Soft-min congression dk rules (`congression_dk_rule` `softmin`, `min`).**
   A congressed cell's dk_geno can now follow the whole soft-min family
   `dk_cell = -(1/alpha) log sum_g x_g exp(-alpha dk_g)`, not only its
@@ -137,6 +148,11 @@ fall into two kinds:
 
 ### Changed
 
+- **`tfs-configure-model`: `binding_df` is now the `--binding_df` flag**,
+  no longer a positional argument (breaking for command-line callers;
+  `configure_model(binding_path, ...)` from Python still works).
+  `examples/simulate-and-analyze/run.sh`, the congression-calibration
+  study's `run.srun` and the docs are updated.
 - **Breaking: a congressed cell's theta now follows a partition function
   (`congression_theta_rule: homodimer`), and TF activity defaults to 1.**
   The congression mixture (`transformation: mixture`) and the simulator
@@ -347,6 +363,11 @@ fall into two kinds:
 
 ### Fixed
 
+- **Absent prior groups survive the priors CSV.** `write_configuration`
+  wrote a `None` prior group (growth priors of a binding-only model, binding
+  priors of a growth-only one) as a `None` row that reloaded as NaN; it is
+  now left out and reloads as `None` (`configuration_io._extract_scalars`,
+  `_update_dataclass`).
 - **MAP parameter movement silently lost all its prior-SD units on models with
   a horseshoe slab.** `initialization.site_prior_sds` did not catch the
   `ZeroDivisionError` numpyro raises for the variance of an `InverseGamma`
