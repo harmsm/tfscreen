@@ -1,11 +1,13 @@
 # Base simulate config for the congression calibration study (step 3.5 of
 # planning/congression-physics-plan.md). Copied from
-# examples/simulate-and-analyze/simulate_config.yaml, with three changes:
+# examples/simulate-and-analyze/simulate_config.yaml, with these changes:
 #   - library_mixture is the real design (single-1 100, single-2 100,
 #     double-1-2 1000, spiked 1), as in planning/studies/congression-estimator;
 #   - library_binding adds 20 in-library (bulk) binding anchors;
 #   - transformation_poisson_lambda and the dk_geno hyperparameters are set
-#     per run by grid.yaml.
+#     per run by grid.yaml;
+#   - from 2026-09-26, binding noise 0.025 (the experimental theta error; was
+#     0.001) and a Hill coefficient limit of 4 (theta_sim_priors.max_hill_n).
 # binding_data.spiked_binding.choose_by names hill_params.csv relative to this
 # file; tfs-setup-sim-grid copies it into the grid's inputs/ directory.
 
@@ -71,6 +73,7 @@ theta_component: "hill_mut"
 # Pairwise epistasis (regularized horseshoe; used when library has doubles):
 theta_sim_priors: 
    epi_tau_scale:        0.1    # HalfCauchy scale for global sparsity τ
+   max_hill_n:           4.0    # physical upper limit on the Hill coefficient
 
 # Optional: path to structural/thermodynamic data file required by PnnC and
 # PddG theta components.  Omit (or set to null) for all other models.
@@ -252,7 +255,7 @@ binding_data:
   # The binding assay (shared by both genotype sets).
   titrant_name: iptg
   titrant_conc: [0, 0.0001, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1.0]
-  noise: 0.001
+  noise: 0.025    # experimental theta error (user, 2026-09-26)
 
   # Clean, monoclonal (congression-free) controls. Pool = spiked_seqs.
   #   choose_by: <params file> | stratified | random

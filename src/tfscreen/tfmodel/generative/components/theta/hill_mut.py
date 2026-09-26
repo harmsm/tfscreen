@@ -31,7 +31,7 @@ import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
 import pandas as pd
-from flax.struct import dataclass
+from flax.struct import dataclass, field
 from typing import Dict, Any, Optional, Union
 from functools import partial
 from tfscreen.tfmodel.data_class import GrowthData, BindingData
@@ -120,6 +120,12 @@ class SimPriors:
         scale of the InvGamma slab (c²).
     epi_slab_df : float
         Degrees of freedom for the InvGamma slab prior on c².  Usually 4.
+    max_hill_n : float or None
+        Upper limit on the simulated Hill coefficient (``None``, the
+        default, applies none).  Per-mutation deltas and horseshoe epistasis
+        on log(hill_n) add up, so double mutants can reach Hill coefficients
+        far beyond anything physical (hundreds); with a limit, larger draws
+        are set to it.
     """
 
     wt_theta_low: float
@@ -138,6 +144,9 @@ class SimPriors:
     epi_tau_scale: float    # HalfCauchy scale for global τ
     epi_slab_scale: float   # typical magnitude of a large epistasis effect
     epi_slab_df: float      # InvGamma degrees of freedom (slab; usually 4)
+
+    # Optional upper limit on the simulated Hill coefficient.
+    max_hill_n: Optional[float] = field(pytree_node=False, default=None)
 
 
 # ---------------------------------------------------------------------------
@@ -751,6 +760,13 @@ def simulate(name: str,
             log_n       += _scatter_pair(_horseshoe(P))
         # else: tau == 0.0 → all epistasis effects are exactly zero; nothing to add
 
+    # Optional upper limit on the Hill coefficient
+    if sim_priors.max_hill_n is not None:
+        if sim_priors.max_hill_n <= 0:
+            raise ValueError(
+                f"max_hill_n must be > 0; got {sim_priors.max_hill_n}")
+        log_n = np.minimum(log_n, np.log(sim_priors.max_hill_n))
+
     # Convert to probability space
     theta_low_arr  = 1.0 / (1.0 + np.exp(-logit_low))               # (G,)
     theta_high_arr = 1.0 / (1.0 + np.exp(-(logit_low + logit_delta))) # (G,)
@@ -852,6 +868,7 @@ def get_sim_hyperparameters() -> Dict[str, Any]:
         "epi_tau_scale":       0.1,   # matches theta_epi_tau_scale in get_hyperparameters()
         "epi_slab_scale":      2.0,   # matches theta_epi_slab_scale
         "epi_slab_df":         4.0,   # matches theta_epi_slab_df
+        "max_hill_n":          None,  # no limit on the simulated Hill coefficient
     }
 
 

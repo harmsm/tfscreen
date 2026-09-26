@@ -653,6 +653,10 @@ checked with `tfs-summarize-calibration`.
      recovers lambda (0.98) and cuts dk_geno error ~3x, theta slightly
      worse than `single`; at lambda 0 the mixture still finds lambda
      ~0.15. Next: re-run after the convergence fixes.
+     Before the re-run (2026-09-26): study binding noise 0.025 (was 0.001)
+     and a simulated Hill-coefficient limit of 4 (new
+     `theta_sim_priors.max_hill_n`); the optimizer was updated. Lowering the
+     model's default binding weight is planned as its own step (user).
 4. **Theta rule.** Homodimer vs heterodimer soft max, chosen from the bench
    results, in both simulator and fit.
 5. **dk rule.** Soft-min family with an alpha sensitivity check, in both

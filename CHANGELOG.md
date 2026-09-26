@@ -31,6 +31,16 @@ fall into two kinds:
 
 ### Added
 
+- **Limit on simulated Hill coefficients (`theta_sim_priors.max_hill_n`).**
+  hill_mut's simulation adds per-mutation and horseshoe-epistasis effects on
+  log(hill_n), so double mutants could reach Hill coefficients in the
+  hundreds (270 in the congression calibration study's library, with 50 of
+  483 genotypes above 4). An optional `max_hill_n` in hill_mut's `SimPriors`
+  sets larger draws to the limit, in both `hill_mut.simulate` and
+  `binding_params.build_theta_gc_override_hill_mut` (the path used when
+  spiked binding curves come from a params file). Off by default, so
+  existing configs simulate as before.
+
 - **Guide selection for SVI (`tfs-fit-model --guide_type`).** With
   `analysis_method=svi`, the variational family can now be any numpyro
   autoguide as well as the component guide (still the default):

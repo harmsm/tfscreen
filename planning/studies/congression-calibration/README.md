@@ -510,3 +510,18 @@ that caveat):
 Next: wait for the convergence fixes, then re-run the profile grid and more
 seeds of the baseline.
 
+## Realism fixes before the re-run (2026-09-26)
+
+The blow-ups traced in part to unrealistic binding data: SD 0.001 on
+theta, and near-step curves (the simulator drew Hill coefficients up to 270;
+50 of 483 genotypes above 4, including 5 of the 20 in-library binding
+anchors). From here on the study config uses binding noise 0.025 (the
+experimental theta error, user) and `theta_sim_priors.max_hill_n: 4.0`
+(new; larger draws are set to 4, so ~10% of genotypes sit exactly at 4).
+The optimizer was also updated. Grids after this date are not comparable
+with earlier ones.
+
+The model's default binding weight (growth rows / binding rows) is also to
+be lowered, but that is a change to the model for real fits; it is left
+for its own step. These grids run at `--binding_weight 1` regardless.
+
