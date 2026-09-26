@@ -769,3 +769,20 @@ checked with `tfs-summarize-calibration`.
      congressed class can rescue, which points at the read-count floor
      (untested). At the tight spread lambda is pulled to 0.54-0.97 at a
      true 0.357. `dilution` stays the default. Step 5 done.
+6. **Re-validate on the count likelihood.** Open (user, 2026-09-26): the
+   congression arc (steps 1-5) is closed; the read-count floor is to be
+   handled by fitting read counts directly (`planning/count-likelihood.md`,
+   a separate piece of work), not by the masked test proposed after step 5.
+   Once that model exists, re-run `grid_baseline.yaml` (lambda 0 and 1) and
+   `grid_dkrule.yaml` on it (`planning/studies/congression-calibration/`):
+   - The theta gain of the mixture over `single` that remains is what
+     congression costs. Today's gain (about -0.018 bulk theta RMSE) is the
+     same at lambda 0 and 1 and on min-simulated data, so it is probably
+     mostly the floor.
+   - The dk_geno gain should persist: it grows with lambda and follows the
+     true dk rule (about 3x lower error at lambda 1), so it is congression.
+   - Check the fitted lambda at the tight dk spread, pulled to 0.54-0.97 at
+     a true 0.357 against a 0.357 +/- 0.05 prior, before trusting a fitted
+     lambda on real data (whose dk spread is tight).
+   The other open items under 3.5 (lambda's overconfident intervals,
+   coverage below nominal, the binding weight and SDs) stand.
