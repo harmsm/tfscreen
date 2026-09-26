@@ -8,6 +8,7 @@ revisit_when: >-
   plan), or sooner if theta coverage stays well below nominal once the
   floor bias is fixed.
 related:
+  - planning/analysis-roadmap.md
   - planning/congression-physics-plan.md
   - planning/count-likelihood.md
   - planning/studies/congression-calibration/README.md
@@ -45,9 +46,12 @@ whose size in real data is not yet measured.
 
 **What it would take:**
 
-- A new component (or a replacement for `sample_offset`, whose current form
-  offsets the growth *rate*, not the level; it is also not exposed by
-  `tfs-configure-model`).
+- Superseded in design (2026-09-26, `planning/analysis-roadmap.md`, "Reads
+  and totals" and step 6): tube growth noise cancels from read frequencies,
+  so it belongs in an OD600 likelihood around a smooth population curve, not
+  on every genotype. `sample_offset` keeps only a per-tube composition
+  offset (PCR, calling) with a time-independent prior (roadmap D2). The
+  "plating" SD below is really the OD-to-CFU error; CFU comes from OD600.
 - `counts_to_lncfu` to write the counting variance and the plating variance
   separately instead of summing them into `ln_cfu_var`.
 - `o_s` is a per-sample latent: mini-batch safe as a global site, like the

@@ -8,6 +8,7 @@ revisit_when: >-
   growth report the same occupancy. Step 0 (model-free look) can be run any
   time on the existing real data.
 related:
+  - planning/analysis-roadmap.md
   - src/tfscreen/tfmodel/model_orchestrator.py
   - src/tfscreen/tfmodel/generative/model.py
   - src/tfscreen/tfmodel/scripts/configure_model_cli.py
@@ -65,9 +66,11 @@ measured end concentrations, if wt does not saturate in range.)
   quantity: a genotype's X at no IPTG trades against dk_geno and is separated
   only by selective-vs-control contrasts (control conditions have not ranked
   dk_geno well so far).
-- Congression: the mixture's max-theta rule is invariant under any increasing
-  map (`max f(θ) = f(max θ)`), so it carries over if X is oriented to
-  increase with repression.
+- Congression: the mixture's `max` theta rule is invariant under any
+  increasing map (`max f(θ) = f(max θ)`), so it carries over if X is oriented
+  to increase with repression. The `homodimer` default (congression step 4)
+  and `heterodimer` take `logit(θ)` and are not invariant; a relative fit must
+  use `max` or `single` (`planning/analysis-roadmap.md`, C1).
 
 **Step 0 (model-free, do first).** For the genotypes with binding data:
 regress ln_cfu on t_sel per genotype × replicate × condition × concentration
@@ -167,7 +170,8 @@ found free m with ~20 in-library binding anchors beat the prefit clamp
 (theta slope 0.91 vs 0.85; older machinery).
 
 **Open questions:**
-- Gauge: pin wt asymptotes or wt values at the measured end concentrations?
-- Shared X across conditions, or per-condition X and test the relation?
+- Gauge: decided (roadmap D4): pin wt at 0 and 1 mM IPTG.
+- Shared X across conditions: decided (roadmap D5): shared, with a kan-vs-4CP
+  consistency check.
 - Do growth and binding concentrations coincide in the real data?
 - Default genotype subset for summarize-fit trajectories without binding.

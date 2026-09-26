@@ -4,14 +4,81 @@ Processing Raw Data
 
 A typical TF screen involves growing bacteria transformed with a plasmid-encoded
 library of TF variants under one or more selection conditions (e.g. antibiotic resistance
-driven by a TF-regulated promoter). At each time-point an aliquot is
-plated to measure total colony-forming units (CFU) and deep-sequenced so
-that the absolute abundance of every genotype can be determined. The raw
+driven by a TF-regulated promoter). Each time-point is a tube of its own
+(see "One tube per time-point" below). Its total colony-forming units (CFU)
+are estimated, typically from OD600 through a lab-specific calibration, and
+it is deep-sequenced, so that the absolute abundance of every genotype can be
+determined. The raw
 inputs to the pipeline are paired-end FASTQ files (one pair per sample) and
 a sample metadata table (``sample_df``) that links each sequenced tube to its
 biological context and its measured CFU count. The pipeline converts read
 counts into per-genotype log-CFU estimates (``ln_cfu``) that feed the
 hierarchical Bayesian growth model.
+
+One tube per time-point
+-----------------------
+
+The protocol:
+
+1. Transform the library.
+2. Grow the transformed culture to a set OD.
+3. Take the ``presplit`` sample and read its OD600.
+4. Dilute the culture by the same factor into every tube, one per
+   condition, titrant concentration and planned time-point. Every tube of a
+   replicate therefore starts from the same, known total (the presplit
+   OD600 estimate divided by the dilution factor). For a titration this is a grid: rows are
+   time-points, columns are IPTG concentrations.
+5. At each time-point, pull every tube in that row. Each pulled tube's
+   OD600 is read, and the tubes are spun down and frozen immediately; the spread in stop time within
+   a row is seconds, negligible on the time scale of growth.
+6. After the experiment, all samples are processed together: thaw and DNA
+   extraction in batches of about 20 (three batches for 60 samples), then
+   one PCR block for every sample, then sequencing. Record each sample's
+   extraction batch; for the current dataset it was not recorded (batches
+   generally, but not reliably, followed processing order).
+
+Pre-growth and selection both happen in the tubes, after the split. OD600
+is read on three bioreplicates of the experiment; two are sequenced.
+
+Total CFU per tube comes from OD600 through an OD-to-CFU calibration. The
+calibration depends on the plate reader, plate, volume and strain, so it is
+the lab's, not part of this package; the pipeline takes the resulting CFU
+estimate per tube (``sample_cfu`` and its uncertainty, or the log-space
+equivalents). A calibration gives cfu/mL; the pipeline's ``ln_cfu`` is cells
+in the 5 mL tube, ``ln(cfu/mL * 5 mL)``. Under the strongest selection a
+tube may never reach the reader's detection threshold, so its OD600 bounds
+its total from above rather than measuring it.
+
+Why tubes and not aliquots: pulling aliquots from a single tube over time
+meant stopping the shaker, pipetting and returning the tube across many
+IPTG conditions, and that disturbed the growth trajectories more than the
+tube-to-tube differences of this design do.
+
+Consequences for the model:
+
+- A sequenced sample *is* a tube, and the time-points of one condition come
+  from different tubes. Anything that affects a whole tube (its growth
+  environment over ``t_pre + t_sel``, its OD600 reading, its PCR) is independent
+  from one time-point to the next, not carried along a trajectory. The
+  model's per-tube offset (``sample_offset``) is indexed accordingly: one
+  offset per replicate x time x condition x titrant, scaled by
+  ``t_pre + t_sel``.
+- A growth difference shared by every cell in a tube changes every
+  genotype's abundance by the same factor, so it does not change the
+  genotype *frequencies* the reads measure. It enters ``ln_cfu`` only
+  through the tube's total CFU. This is why a total smoothed across
+  bioreplicates (earlier analyses used the pooled mean per condition and
+  time-point) gives much steadier ``ln_cfu`` trajectories than each tube's
+  own OD600 estimate.
+- Everything before the split (transformation, outgrowth) is shared by all
+  tubes of a replicate. It sets each genotype's starting abundance,
+  ``ln_cfu0``, which the ``presplit`` sample measures directly.
+- No step is shared by the tubes of one row and not by the others: rows
+  are stopped within seconds and processed with everything else. The one
+  batched step is DNA extraction. Extraction yield does not change a
+  sample's genotype frequencies, so it should not shift ``ln_cfu``; if it
+  matters at all, it is through the amount of template going into PCR,
+  which changes how noisy the counts are.
 
 There are three primary scripts for processing raw data:
 

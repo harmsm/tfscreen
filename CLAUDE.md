@@ -522,8 +522,8 @@ Both grid CLIs import from `tfscreen.util.grid_utils` for run-name generation, J
 ### Terminology
 
 - **Condition**: unique growth setting (marker + selection) — same avg growth rate for same genotype
-- **Sample**: one experimental tube (replicate + condition)
-- **Timepoint**: one aliquot (replicate + condition + time)
+- **Tube = sequenced sample = timepoint**: after `presplit` the culture is split into one tube per condition × titrant × planned timepoint (a grid: rows = timepoints, columns = IPTG); pre-growth and selection both happen in the tubes; a timepoint is taken by pulling every tube in its row and reading its OD600, spinning it down and freezing it; sequencing comes later. Total CFU per tube comes from OD600 through a lab-specific calibration (not in this repo). There are no aliquots from a shared tube (stopping the shaker to pipette disturbed the trajectories more than tube-to-tube noise does). So anything tube-level (growth environment, OD600 reading, PCR) is independent across timepoints, not a trajectory-wide effect. Rationale: `docs/source/process-raw.rst`, "One tube per time-point"
+- **Sample** (in `sample_df`/`sample_ln_cfu`): one sequenced tube, i.e. one replicate × condition × titrant × time. Older text sometimes says "sample" for a replicate × condition; read it per this entry
 - **theta (θ)**: operator occupancy — fraction of operators bound by TF
 - **A**: per-genotype TF activity (multiplied by theta to scale occupancy)
 - **dk_geno**: pleiotropic growth effect of mutation independent of TF activity
