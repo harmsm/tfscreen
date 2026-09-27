@@ -287,6 +287,53 @@ prob_index_hop: 0.05
 seed: null
 
 # ---------------------------------------------------------------------------
+# Sampling noise (optional; all off when omitted)
+# ---------------------------------------------------------------------------
+
+# Real read counts vary 5-18x more than Poisson at 100-3,000 reads
+# (planning/studies/noise-anatomy/). These switches add the physical sources;
+# each can be turned on alone to measure what it does to a fit.
+#
+# founder_sampling: each tube is seeded with a Poisson number of cells from
+#   each transformant clone (mean cfu0 * frequency), drawn anew for every
+#   tube, so a rare genotype's starting abundance differs between tubes.
+# demographic_growth: given its founders, a clone's cells at harvest are
+#   Gamma(founders, exp(kt)) when it grows and Binomial(founders, exp(kt))
+#   when it shrinks. Needs founder_sampling.
+# shared_transformation: every replicate draws its cells from one library
+#   assembly and transformation (one glycerol stock), as in the real
+#   protocol, instead of redrawing them per replicate.
+# pcr_template_molecules: reads are drawn from this many template molecules
+#   per tube. The count variance grows by about
+#   (reads per tube / templates) * (1 + pcr_amplification_cv^2).
+# pcr_amplification_cv: CV of each template's amplification (PCR
+#   jackpotting). Needs pcr_template_molecules.
+#
+# founder_sampling: true
+# demographic_growth: true
+# shared_transformation: true
+# pcr_template_molecules: 2_000_000
+# pcr_amplification_cv: 1.0
+
+# One OD600 reading per tube, from its true total through an OD600-to-CFU
+# calibration (od600_calibration.yaml here is synthetic; a lab supplies its
+# own). Writes tfs_sim_od600.csv with every tube of every replicate.
+#   calibration:            constants file (A_CFU, B_CFU, C_CFU,
+#                           OD600_PCT_STD, OD600_MEAS_THRESHOLD, optional
+#                           OD600_MAX and P/Q/R_JCJT_CFU)
+#   tube_volume_mL:         tube volume; the calibration is per mL (5.0)
+#   num_od_only_replicates: extra replicates with OD600 but no reads (0)
+#   sample_cfu_from_od600:  give the pipeline each tube's total as estimated
+#                           from its OD600, as the lab does, instead of the
+#                           true total (false)
+#
+# od600:
+#   calibration: od600_calibration.yaml
+#   tube_volume_mL: 5.0
+#   num_od_only_replicates: 1
+#   sample_cfu_from_od600: true
+
+# ---------------------------------------------------------------------------
 # Binding data simulation (optional)
 # ---------------------------------------------------------------------------
 

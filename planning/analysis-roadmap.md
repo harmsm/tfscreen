@@ -395,7 +395,7 @@ step 7.
    `process_raw/`. Test: reproduces the lab notebook's constants and CFU
    estimates from its spreadsheets (run locally; the data stay out of the
    repo), and a synthetic example in `examples/`.
-4. **Simulator realism** (N; simulator only).
+4. [x] **Simulator realism** (N; simulator only).
    The simulator has index hopping (`prob_index_hop`) and per-tube growth
    noise (per timepoint, matching the design) but writes
    `sample_cfu_std = 0.0` and no OD. Add: OD600 per tube through an inverse
@@ -411,6 +411,21 @@ step 7.
    so its effect on the fit can be measured (a scientific switch, D12).
    Values from 0b and 0c. Needed to validate steps 6 and 7, and step 5
    under realistic noise.
+   Done 2026-09-26: `founder_sampling`, `demographic_growth`,
+   `pcr_template_molecules`, `pcr_amplification_cv`, an `od600` block
+   (`simulate/od600.py`; OD-only replicates, `tfs_sim_od600.csv`,
+   `sample_cfu_from_od600`), plus `shared_transformation`: every replicate
+   used to redraw the library assembly and transformation, unlike the real
+   protocol's single glycerol stock. With all options off the simulator's
+   output is byte-identical to before. Checked on the example config: the
+   template bottleneck adds `(reads / templates)(1 + cv^2)` to the
+   variance/Poisson ratio, as designed; the example config's 260k reads
+   per tube against 2M templates gives only 1.2-1.8x, so matching the real
+   5-18x needs templates on the order of reads per tube / 10 (about 1-2M
+   at the real ~18M reads per tube). The example config's tubes also reach
+   OD600 2.9, above a realistic calibrated range; tune `cfu0` and timing
+   before using its OD600. Deferred: monoculture growth-rate outputs and a
+   spike-in counting standard (waiting on the bench decisions).
 5. **Relative-X fit** (G; new component, opt-in).
    - A relative Hill theta component: hill_geno's curve with real-valued
      baselines, population priors centered on wt, registry rules (C5). Gauge

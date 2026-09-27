@@ -31,6 +31,20 @@ fall into two kinds:
 
 ### Added
 
+- **Simulator sampling noise and OD600 (roadmap step 4).** Optional
+  simulate-config keys, all off by default so existing configs simulate
+  exactly as before: `founder_sampling` (Poisson founders per clone per
+  tube), `demographic_growth` (birth-death noise given the founders),
+  `shared_transformation` (one library assembly and transformation for all
+  replicates, as from one glycerol stock), `pcr_template_molecules` and
+  `pcr_amplification_cv` (a template bottleneck with PCR jackpotting before
+  sequencing). An `od600` block gives every tube one simulated OD600 reading
+  through an OD600-to-CFU calibration (`simulate/od600.py`), optionally
+  feeds the pipeline the OD600-derived total instead of the truth, adds
+  OD-only replicates, and writes `tfs_sim_od600.csv`.
+  `selection_experiment` gains `shared_state` and `sequence`.
+  `examples/simulate/od600_calibration.yaml` is a synthetic calibration for
+  examples; `od600.calibration` is a `tfs-setup-sim-grid` path key.
 - **Growth-only models (no binding data).** `ModelOrchestrator` accepts
   `binding_df=None` alongside growth data, and `tfs-configure-model` takes
   `--binding_df` as an optional flag (at least one of `--binding_df` and

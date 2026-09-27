@@ -87,6 +87,7 @@ _SIM_PATH_KEYS = (
     ("thermo_data",),
     ("calibration_file",),
     ("empirical", "phenotype_model"),
+    ("od600", "calibration"),
     ("binding_data", "spiked_binding", "choose_by"),
     ("binding_data", "library_binding", "choose_by"),
 )

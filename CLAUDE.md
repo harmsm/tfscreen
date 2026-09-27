@@ -283,6 +283,10 @@ The optional `base_growth_data` YAML block generates a simulated `base_growth_df
 - Each growth model uses different YAML parameter names than the fit's extract names, and the module hand-maintains the mapping (`b,m` → `growth_k,growth_m` for `linear`; `b,a,n` → `growth_k,growth_m,growth_n` for `power`; `kmin,kmax` → `growth_min,growth_max` for `saturation`) by comparing `simulate/growth/growth_linkage.py`'s numpy formulas against the corresponding JAX formulas in `generative/components/growth/*.py`. If a new `condition_growth` component is added, this mapping must be extended too, or its parameters won't get ground-truth comparison in `tfs-summarize-fit`.
 - On the `tfmodel` side, `tfmodel/scripts/summarize_fit_cli.py::_summarize_condition_growth_params` and `_summarize_k_ref` join these two files against the fit's extracted params (on `condition_rep`, and trivially for the single-row `k_ref`, respectively) to annotate them with a `ref` column, mirroring `_summarize_params`'s genotype-keyed comparison but for growth's condition-keyed/global-scalar parameters.
 
+### Sampling noise (roadmap step 4)
+
+Optional simulate-config keys, all off by default (a config without them simulates byte-for-byte as before): `founder_sampling` (`_sim_growth`: each tube gets a Poisson number of cells per transformant clone, drawn per tube), `demographic_growth` (given founders, Gamma(n0, e^kt) growth or Binomial(n0, e^kt) death; needs `founder_sampling`), `shared_transformation` (one library assembly and transformation shared by all replicates through the `shared_state` dict `simulate_cli` passes to `selection_experiment`; without it each replicate redraws both, unlike the real protocol's single glycerol stock), `pcr_template_molecules` / `pcr_amplification_cv` (`_sim_sequencing`: reads drawn from a multinomial set of template molecules, each amplified by a Gamma factor; count variance grows by about `(reads/templates)(1 + cv^2)`). `selection_experiment(..., sequence=False)` simulates totals (and OD600) without reads, for OD-only replicates. Real counts are 5-18x Poisson at 100-3,000 reads (`planning/studies/noise-anatomy/`); matching that needs templates on the order of reads per tube / 10.
+
 ### theta_gc_override and theta_params_override
 
 These two dicts are the mechanism by which binding data is "pinned" into the growth simulation.
@@ -311,6 +315,7 @@ These two dicts are the mechanism by which binding data is "pinned" into the gro
 | `simulate/base_growth_data.py` | Generates simulated direct growth-rate calibration data (`base_growth_data` YAML block) and the single-row `k_ref` ground-truth echo |
 | `simulate/growth_parameters_output.py` | Generates per-condition `condition_growth` ground truth (`tfs_sim_growth_parameters.csv`) from the `growth` YAML block |
 | `simulate/presplit_data.py` | Generates simulated pre-split (t = -t_pre) data (`presplit_data` YAML block; `generate_presplit_df`) |
+| `simulate/od600.py` | Simulated OD600 per tube (`od600` YAML block): inverts the lab-format calibration (`A/B/C_CFU`, `OD600_PCT_STD`, `OD600_MEAS_THRESHOLD`, optional `OD600_MAX`, `P/Q/R_JCJT_CFU`) to get each tube's true OD600, adds reading noise, flags detectable/in-range, and (`sample_cfu_from_od600`) runs it forward to the lab's estimate. `simulate_cli` writes `tfs_sim_od600.csv` for every replicate, including `num_od_only_replicates` extra unsequenced ones |
 | `simulate/sample_theta.py` | `sample_theta_prior` (prior-predictive) and `sample_theta_stratified` (greedy maximin) |
 | `simulate/sim_data_class.py` | `SimData` container and `build_sim_data` factory |
 | `simulate/build_sample_dataframes.py` | Constructs sample/timepoint DataFrames from simulation config |
@@ -504,6 +509,7 @@ Both grid CLIs import from `tfscreen.util.grid_utils` for run-name generation, J
 |------|---------|
 | `simulate/simulate_config.yaml` | Canonical well-commented simulate config reference |
 | `simulate/simulate_grid.yaml` | Example simulate grid for `tfs-setup-sim-grid` |
+| `simulate/od600_calibration.yaml` | Synthetic OD600-to-CFU calibration for the `od600` block in examples and tests (not any lab's real calibration) |
 | `simulate/run.sh` | Jinja2 shell template rendered into each simulate grid run subdir |
 | `simulate-and-analyze/simulate_config.yaml` | Combined simulate + analyze workflow config |
 | `simulate-empirical/simulate_config.yaml` | Simulate config that resamples phenotypes from a `tfs-build-empirical` model (`phenotype_source: empirical`) |

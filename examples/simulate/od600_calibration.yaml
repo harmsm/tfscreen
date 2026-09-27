@@ -1,0 +1,16 @@
+# Synthetic OD600-to-CFU calibration for examples and tests only.
+#
+# A real calibration depends on the plate reader, plate, volume and strain,
+# so every lab measures its own (tfs-calibrate-od600, roadmap step 3). These
+# numbers are made up to be plausible, not taken from any instrument.
+#
+# cfu/mL = A_CFU + B_CFU * OD600 + C_CFU * OD600^2
+A_CFU: 0.0
+B_CFU: 80_000_000.0
+C_CFU: 20_000_000.0
+# SD of one OD600 reading, as a fraction of the reading.
+OD600_PCT_STD: 0.02
+# Readings below this are not measurable.
+OD600_MEAS_THRESHOLD: 0.08
+# Top of the calibrated range.
+OD600_MAX: 0.8
