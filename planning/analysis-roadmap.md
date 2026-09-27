@@ -426,7 +426,8 @@ step 7.
    OD600 2.9, above a realistic calibrated range; tune `cfu0` and timing
    before using its OD600. Deferred: monoculture growth-rate outputs and a
    spike-in counting standard (waiting on the bench decisions).
-5. **Relative-X fit** (G; new component, opt-in).
+5. [ ] **Relative-X fit** (G; new component, opt-in). (Implemented;
+   validation grid pending.)
    - A relative Hill theta component: hill_geno's curve with real-valued
      baselines, population priors centered on wt, registry rules (C5). Gauge
      (D4): wt's curve is pinned to `X = 1` at `c_lo` and `X = 0` at `c_hi`
@@ -451,6 +452,27 @@ step 7.
      binding file, so this is a held-out comparison); `k_c`/`m_c` recovery
      and the IPTG-independent genotypes as internal standards (C4). Then
      under step 4's noise. Real data runs use step 2's smoothed total.
+   Implemented 2026-09-26: `theta: hill_relative`
+   (`generative/components/theta/hill_relative.py`; baselines `X_low` and
+   `X_delta` real-valued and hierarchical, priors centered on wt's 1 and
+   -1; wt's baselines computed from its K and n by `gauge_baselines`, with
+   the occupancy span floored at 1e-3). The gauge is the orchestrator
+   setting `theta_gauge_conc` (`--theta_gauge_conc`; default the measured
+   min and max, written to the config). The orchestrator refuses binding
+   data, learned activity, `logit` rescaling, non-linear growth, theta
+   noise, and non-`max` rules under `mixture` (C1; `mixture`'s `max`
+   branch does not clip, checked). C8: `THETA_SCALE = "X"`;
+   `tfs-predict-theta` writes `theta_scale = X`; epistasis tools allow only
+   `add` (no `in_regime`); `tfs-summarize-fit` maps theta and
+   `growth_k`/`growth_m` truth onto the gauge (with simulated activity);
+   `tfs-summarize-calibration` labels those rows `theta_regime = X`.
+   Prediction on a genotype subset keeps wt for the gauge. Registry-wide
+   batch-safety, batch-order and guide-naming tests pass for it. Not built:
+   the kan-vs-4CP consistency check (X is shared by construction, so a fit
+   cannot test it alone; needs a per-condition-family X variant or a
+   model-free comparison, to be decided with the real-data run). Validation
+   grid: `planning/studies/relative-fit/` (24 runs: noise x likelihood x
+   joint/relative x 3 seeds; not yet run).
 6. **Population model in the fit** (N; replaces the per-tube offset).
    - Population curves: `P = ln N` per replicate x condition x concentration
      over `t_pre + t_sel`, starting at the replicate's split density (from

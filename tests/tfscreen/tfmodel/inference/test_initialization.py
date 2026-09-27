@@ -27,7 +27,7 @@ from .test_batch_safety import (
     _BINDING_CSV,
     _GROWTH_CSV,
     _SAFE_VARIANTS,
-    _VARIANT_KWARGS,
+    _variant_kwargs,
     _owned_by,
 )
 
@@ -161,10 +161,8 @@ _KNOWN_UNMAPPED = {
 @pytest.mark.parametrize("axis,variant", _SAFE_VARIANTS)
 def test_component_guides_follow_loc_scale_convention(axis, variant):
     orchestrator = ModelOrchestrator(growth_df=_GROWTH_CSV,
-                                     binding_df=_BINDING_CSV,
                                      batch_size=None,
-                                     **{axis: variant},
-                                     **_VARIANT_KWARGS.get((axis, variant), {}))
+                                     **_variant_kwargs(axis, variant))
     ri = RunInference(orchestrator, seed=0)
     mapping, unmatched, _ = component_guide_map(orchestrator.jax_model_guide,
                                                 orchestrator.priors,

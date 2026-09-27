@@ -143,6 +143,7 @@ def configure_model(binding_df=None,
                     growth_noise_model="zero",
                     sample_offset_model="zero",
                     growth_likelihood="lncfu",
+                    theta_gauge_conc=None,
                     library_config=None,
                     growth_shares_replicates=False,
                     epistasis=False,
@@ -226,6 +227,12 @@ def configure_model(binding_df=None,
         'thermo.O2_C4_K3_U0_a.PddG', 'thermo.O2_C12_K5_U0_a.PK',
         'thermo.O2_C12_K5_U0_a.PnnC', 'thermo.O2_C12_K5_U0_a.PddG', and
         their O2_C4_K3_U1_a / O2_C12_K5_U1_a unfolded equivalents).
+        'hill_relative' fits growth alone on a wt-relative scale X instead
+        of theta (wt's X is 1 at the low and 0 at the high gauge
+        concentration, theta_gauge_conc). It takes no binding_df, and
+        requires activity 'fixed', theta_rescale 'passthrough', linear
+        condition growth, theta_growth_noise 'zero' and, with the
+        'mixture' transformation, congression_theta_rule 'max'.
     transformation_model : str, optional
         Model for congression. Allowed values are 'single' (default; one
         plasmid per cell) or 'mixture' (clean and congressed cells mixed at
@@ -284,6 +291,10 @@ def configure_model(binding_df=None,
         'adjusted_counts' and 'frequency' to derive it) and total cells
         ('sample_ln_cfu', or 'sample_cfu' with its uncertainty), and
         growth_noise_model 'zero'.
+    theta_gauge_conc : list of float, optional
+        ``c_lo c_hi``: the titrant concentrations at which theta_model
+        'hill_relative' pins wt's X to 1 and 0. Default: the lowest and
+        highest concentration in growth_df. Refused by other theta models.
     library_config : str, optional
         Path to the library YAML describing the screened library -- the same
         file handed to ``tfs-process-fastq``.  Required whenever ``growth_df``
@@ -418,6 +429,7 @@ def configure_model(binding_df=None,
                      growth_noise=growth_noise_model,
                      sample_offset=sample_offset_model,
                      growth_likelihood=growth_likelihood,
+                     theta_gauge_conc=theta_gauge_conc,
                      library_file=library_file,
                      growth_shares_replicates=growth_shares_replicates,
                      epistasis=epistasis,
@@ -458,8 +470,10 @@ def main():
                                               "thermo_data":str,
                                               "batch_size":int,
                                               "binding_weight":float,
-                                              "transformation_lambda":float},
-                            manual_arg_nargs={"transformation_lambda":2})
+                                              "transformation_lambda":float,
+                                              "theta_gauge_conc":float},
+                            manual_arg_nargs={"transformation_lambda":2,
+                                              "theta_gauge_conc":2})
 
 if __name__ == "__main__":
     main()

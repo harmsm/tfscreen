@@ -97,6 +97,12 @@ class GrowthData:
 
     growth_shares_replicates: bool = field(pytree_node=False, default=False)
 
+    # (ln c_lo, ln c_hi): the concentrations at which the relative theta
+    # component (theta/hill_relative.py) pins wt's X to 1 and 0. None for
+    # every other theta component. Set by ModelOrchestrator from its
+    # theta_gauge_conc (zero concentration mapped like log_titrant_conc).
+    theta_gauge_log_conc: Any = field(default=None)
+
     # Growth observation model: "lncfu" (Student-t on ln_cfu, observe/growth.py)
     # or "counts" (negative binomial on read counts, observe/growth_counts.py).
     # Static: set by ModelOrchestrator from its growth_likelihood.

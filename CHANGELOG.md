@@ -31,6 +31,25 @@ fall into two kinds:
 
 ### Added
 
+- **Relative-X fit (`theta: hill_relative`; roadmap step 5).** A theta
+  component that fits growth alone on a wt-relative scale X instead of
+  claiming absolute occupancy (growth fixes it only up to an affine map):
+  hill_geno's per-genotype curve with real-valued baselines, gauged so that
+  wt's X is 1 at the low and 0 at the high gauge concentration
+  (`theta_gauge_conc`, an orchestrator setting and `tfs-configure-model
+  --theta_gauge_conc c_lo c_hi`; default the lowest and highest measured
+  concentration, recorded in the config). wt keeps its K and n free. It
+  refuses binding data, a learned activity, `logit` rescaling, non-linear
+  condition growth, theta noise and, under the congression mixture, any
+  theta rule but `max`. Outputs are labelled: deterministic sites
+  `theta_X_low`/`theta_X_high`, a `theta_scale = X` column from
+  `tfs-predict-theta`; `tfs-predict-epistasis` and `tfs-extract-epistasis`
+  allow only `--scale add` on X, and the former writes no `in_regime`.
+  `tfs-summarize-fit` puts simulated theta and `growth_k`/`growth_m` truth
+  on the X gauge, and `tfs-summarize-calibration` gives such rows
+  `theta_regime = X`. Prediction on a genotype subset keeps wt (the gauge
+  needs it) and drops it from the output. Validation grid:
+  `planning/studies/relative-fit/`.
 - **Count likelihood (`growth_likelihood: counts`; roadmap step 7).** Growth
   can be observed as read counts instead of `ln_cfu`: each genotype's reads
   in a tube are negative binomial with mean

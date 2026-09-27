@@ -84,6 +84,8 @@ def predict_epistasis(config_file,
         Epistatic scale. 'logit' (default) computes additive epistasis of
         logit(theta) -- the natural scale for an occupancy in [0, 1]. 'add':
         (Y11 - Y10) - (Y01 - Y00). 'mult': (Y11 / Y10) / (Y01 / Y00).
+        A relative fit (theta 'hill_relative') gives X, not theta: it takes
+        only 'add', and its output has no 'in_regime' column.
     scale_constant : float, optional
         Constant applied to the transform before the difference-of-differences;
         multiplies the reported epistasis. Default 1.0. Mainly a unit

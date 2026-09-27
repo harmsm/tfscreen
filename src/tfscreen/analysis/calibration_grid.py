@@ -36,8 +36,10 @@ congressed fraction: ``spike`` (only a spiked sequence encodes it,
 mutants, which the bulk sub-libraries also encode).  θ is additionally split
 by ``theta_regime``:
 ``resolvable`` when the true θ lies in ``[regime_eps, 1 - regime_eps]``,
-``saturated`` otherwise.  The pooled row carries ``"all"`` in every stratum
-column.
+``saturated`` otherwise; a relative fit's θ is the wt-relative X (its
+``theta_scale`` column is ``X``, and ``ref`` is the truth on the X gauge), where
+the band means nothing, so its ``theta_regime`` is ``X``.  The pooled row
+carries ``"all"`` in every stratum column.
 
 No thresholds, no grades: every value is a raw number; filter downstream.
 """
@@ -282,6 +284,8 @@ def summarize_run(run_dir, summary_subdir="summary", regime_eps=0.01):
         if quantity == "theta_test":
             resolvable = df["ref"].between(regime_eps, 1.0 - regime_eps)
             df["theta_regime"] = np.where(resolvable, "resolvable", "saturated")
+            if "theta_scale" in df.columns:
+                df.loc[df["theta_scale"] == "X", "theta_regime"] = "X"
 
         for keys in _groupings(df):
             groups = [((), df)] if not keys else df.groupby(list(keys), dropna=True)

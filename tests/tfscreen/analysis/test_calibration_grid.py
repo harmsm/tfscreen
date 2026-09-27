@@ -181,6 +181,19 @@ def test_summarize_run_strata_rows(grid_dir):
     assert len(mut) == 1 and mut[0]["has_binding"] == "all"
 
 
+def test_x_scale_rows_have_their_own_regime(grid_dir):
+    """A relative fit's theta_test (theta_scale X) is not split by the
+    theta band, which means nothing for X."""
+    run = os.path.join(grid_dir, "run_auto_normal_sim1")
+    path = os.path.join(run, "summary", "tfs_summarize_theta_corr_test.csv")
+    df = pd.read_csv(path)
+    df["theta_scale"] = "X"
+    df.to_csv(path, index=False)
+    rows, _ = summarize_run(run)
+    regimes = {r["theta_regime"] for r in rows if r["quantity"] == "theta_test"}
+    assert regimes == {"all", "X"}
+
+
 def test_unfinished_run_reported_in_status(grid_dir):
     runs_df, status_df, grid_vars = summarize_grid_runs(grid_dir)
     status = status_df.set_index("run")["status"]

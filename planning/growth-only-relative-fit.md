@@ -21,7 +21,10 @@ related:
 ---
 
 **Promoted 2026-09-26** into `planning/analysis-roadmap.md` (Track G: steps
-0a, 1, 5, 8, 9). Step 1, the growth-only plumbing listed below, is done.
+0a, 1, 5, 8, 9). Step 1, the growth-only plumbing listed below, is done;
+step 5, the relative-X fit, is implemented as `theta: hill_relative` (gauge:
+wt pinned at the measured concentration range's ends), with its validation
+grid in `planning/studies/relative-fit/`.
 
 **Context:** While calibrating fits for congression, it became clear we want
 to fit growth data without binding data, at least to check whether the two

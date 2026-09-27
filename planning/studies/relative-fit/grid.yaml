@@ -1,0 +1,76 @@
+# ---------------------------------------------------------------------------
+# Relative-X fit validation (roadmap step 5, planning/analysis-roadmap.md)
+#
+#   tfs-setup-sim-grid grid.yaml --out_prefix relative_fit
+#   for d in relative_fit/run_*/; do (cd "$d" && sbatch run.srun); done
+#
+# Does a growth-only fit on the wt-relative scale X (theta: hill_relative;
+# wt's X pinned to 1 at 0 mM and 0 at 1 mM IPTG; no binding data, no prefit)
+# recover X, the Hill K and n, and each condition's k and m as well as the
+# joint fit recovers theta with binding anchors? Truth goes onto the X gauge
+# in tfs-summarize-fit (C8).
+#
+# Simulated noise (as in ../count-likelihood/grid.yaml):
+#   poisson    deterministic growth, one multinomial draw of reads.
+#   realistic  founder sampling, demographic growth, shared transformation,
+#              template bottleneck with PCR jackpotting (~8x Poisson).
+#
+# Fits (both hill-per-genotype, theta noise off, single transformation; the
+# simulation has lambda 0, so congression is out of the comparison):
+#   joint     hill_geno with binding at weight 1, prefit (k_scale_ceiling
+#             0.005), the anchored baseline of the congression study
+#   relative  hill_relative, growth only, no prefit
+# crossed with the growth likelihood:
+#   lncfu     Student-t on ln_cfu with normal_kt growth noise (today's)
+#   counts    negative binomial on reads with a per-tube level offset
+#
+# 2 noise x 2 likelihood x 2 fits x 3 seeds = 24 runs.
+# ---------------------------------------------------------------------------
+
+base_config: ../congression-calibration/simulate_config.yaml
+
+run_name: "{{ 'realistic' if founder_sampling else 'poisson' }}__seed{{ seed }}__{{ likelihood }}__{{ fit }}"
+
+output_file: run.srun
+
+
+simulate:
+
+  - name: noise
+    variants:
+      - founder_sampling: false
+      - founder_sampling: true
+        demographic_growth: true
+        shared_transformation: true
+        cfu0: 150_000.0
+        pcr_template_molecules: 150_000
+        pcr_amplification_cv: 0.5
+
+  - name: lam
+    variants:
+      - transformation_poisson_lambda: 0.0
+
+  - name: dk
+    variants:
+      - dk_geno_hyper_loc: -3.5
+        dk_geno_hyper_scale: 0.5
+        dk_geno_hyper_shift: 0.02
+
+  - name: seed
+    variants:
+      - seed: 1
+      - seed: 2
+      - seed: 3
+
+
+template:
+
+  - name: fit
+    variants:
+      - fit: joint
+      - fit: relative
+
+  - name: likelihood
+    variants:
+      - likelihood: lncfu
+      - likelihood: counts

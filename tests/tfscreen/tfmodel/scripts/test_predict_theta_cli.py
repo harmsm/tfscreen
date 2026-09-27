@@ -462,3 +462,26 @@ class TestPredictThetaQToGet:
                           out_prefix=str(tmp_path / "out"))
 
         assert extract_calls["q_to_get"] is None
+
+
+# ---------------------------------------------------------------------------
+# X-scale label (relative theta component; roadmap C8)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("theta,label", [("hill_relative", "X"),
+                                         ("hill_geno", None)])
+def test_relative_output_is_labelled_X(mock_extract, mock_orchestrator,
+                                       tmp_path, theta, label):
+    mock_orchestrator._theta = theta
+    out = str(tmp_path / "out")
+    with patch("tfscreen.tfmodel.scripts.predict_theta_cli.extract_theta_curves",
+               return_value=pd.DataFrame({"genotype": ["wt"],
+                                          "titrant_name": ["IPTG"],
+                                          "titrant_conc": [0.0],
+                                          "q0.5": [1.0]})):
+        predict_theta("cfg.yaml", "post.h5", out_prefix=out)
+    df = pd.read_csv(f"{out}.csv")
+    if label is None:
+        assert "theta_scale" not in df.columns
+    else:
+        assert (df["theta_scale"] == label).all()

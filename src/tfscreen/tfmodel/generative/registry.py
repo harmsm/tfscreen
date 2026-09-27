@@ -25,6 +25,7 @@ from .components.activity import horseshoe_mut as activity_horseshoe_mut
 from .components.theta import _simple as theta_simple
 from .components.theta import categorical_geno as theta_cat
 from .components.theta import hill_geno as theta_hill
+from .components.theta import hill_relative as theta_hill_relative
 from .components.theta import hill_mut as theta_hill_mut
 from .components.theta.thermo.O2_C4_K3_U0_a import PK as theta_lac_dimer_lnK_mut
 from .components.theta.thermo.O2_C4_K3_U0_a import PnnC as theta_lac_dimer_lnK_nn_prior
@@ -95,6 +96,7 @@ model_registry = {
         "_simple":theta_simple,
         "categorical_geno":theta_cat,
         "hill_geno":theta_hill,
+        "hill_relative":theta_hill_relative,
         "hill_mut":theta_hill_mut,
         "thermo.O2_C4_K3_U0_a.PK":theta_lac_dimer_lnK_mut,
         "thermo.O2_C4_K3_U0_a.PnnC":theta_lac_dimer_lnK_nn_prior,

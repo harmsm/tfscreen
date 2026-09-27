@@ -386,6 +386,16 @@ def extract_theta_epistasis(orchestrator, posteriors, q_to_get=None,
             f"'{orchestrator._theta}' does not support this interface."
         )
 
+    # A relative theta component gives X, defined only up to an affine map
+    # (roadmap C8): additive epistasis is the only scale that means anything
+    # until the map to theta is known, and the in_regime band is a theta band.
+    relative = getattr(module, "THETA_SCALE", "theta") == "X"
+    if relative and scale != "add":
+        raise ValueError(
+            f"theta component '{orchestrator._theta}' predicts the "
+            f"wt-relative growth variable X, not an occupancy in (0, 1); only "
+            f"scale='add' applies to it (got scale={scale!r}).")
+
     q_to_get, param_posteriors = load_posteriors(posteriors, q_to_get)
 
     # Joint sample matrix: (num_sample, num_row), rows aligned to calc_df.
@@ -414,8 +424,8 @@ def extract_theta_epistasis(orchestrator, posteriors, q_to_get=None,
         cycles = cycles.dropna(subset=idx_cols)
 
     if cycles.empty:
-        return pd.DataFrame(columns=["genotype"] + group_by
-                            + list(q_to_get) + ["in_regime"])
+        return pd.DataFrame(columns=["genotype"] + group_by + list(q_to_get)
+                            + ([] if relative else ["in_regime"]))
 
     idx_00 = cycles["00__row_idx"].values.astype(int)
     idx_10 = cycles["10__row_idx"].values.astype(int)
@@ -435,6 +445,9 @@ def extract_theta_epistasis(orchestrator, posteriors, q_to_get=None,
     out = cycles[["genotype"] + group_by].copy()
     for q_name, q_val in q_to_get.items():
         out[q_name] = np.quantile(ep_samples, q_val, axis=0)
+
+    if relative:
+        return out.sort_values(["genotype"] + group_by).reset_index(drop=True)
 
     # in_regime: are all four cycle corners' theta posteriors inside the
     # resolvable band [regime_eps, 1 - regime_eps]?  Outside it logit(theta)

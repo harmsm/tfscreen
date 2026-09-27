@@ -943,6 +943,7 @@ def test_model_class_properties(initialized_model_class):
     model._congression_dk_rule = "softmin"
     model._congression_dk_alpha = 50.0
     model._growth_likelihood = "lncfu"
+    model._theta_gauge_conc = None
 
     assert ModelOrchestrator.jax_model.fget(model) == "jm"
     assert ModelOrchestrator.jax_model_guide.fget(model) == "jmg"

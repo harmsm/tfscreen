@@ -152,6 +152,7 @@ _SAFE_VARIANTS = [
     ("ln_cfu0", "hierarchical"),
     ("ln_cfu0", "hierarchical_factored"),
     ("theta", "hill_geno"),
+    ("theta", "hill_relative"),
     ("theta", "hill_mut"),
     ("theta", "categorical_geno"),
     ("theta", "_simple"),
@@ -173,10 +174,19 @@ _SAFE_VARIANTS = [
     ("sample_offset", "normal"),
 ]
 
-# Extra constructor arguments some variants require.
+# Extra constructor arguments some variants require. The relative theta
+# component (X scale) takes no binding data and no theta noise.
 _VARIANT_KWARGS = {
     ("transformation", "mixture"): {"transformation_lambda": (1.0, 0.1)},
+    ("theta", "hill_relative"): {"binding_df": None,
+                                 "theta_growth_noise": "zero"},
 }
+
+
+def _variant_kwargs(axis, variant):
+    """Constructor arguments for one variant (binding data unless refused)."""
+    return {"binding_df": _BINDING_CSV, axis: variant,
+            **_VARIANT_KWARGS.get((axis, variant), {})}
 
 
 def _owned_by(axis, site_name):
@@ -193,10 +203,8 @@ def _owned_by(axis, site_name):
 @pytest.mark.parametrize("axis,variant", _SAFE_VARIANTS)
 def test_component_latents_are_batch_safe(axis, variant):
     orchestrator = ModelOrchestrator(growth_df=_GROWTH_CSV,
-                                     binding_df=_BINDING_CSV,
                                      batch_size=6,
-                                     **{axis: variant},
-                                     **_VARIANT_KWARGS.get((axis, variant), {}))
+                                     **_variant_kwargs(axis, variant))
     found = find_orchestrator_batch_dependent_latents(orchestrator)
     found = {k: v for k, v in found.items() if _owned_by(axis, k)}
     assert found == {}, (
@@ -303,9 +311,7 @@ def test_order_check_needs_reorderings():
 @pytest.mark.parametrize("axis,variant", _SAFE_VARIANTS)
 def test_component_predictions_follow_batch_order(axis, variant):
     orchestrator = ModelOrchestrator(growth_df=_GROWTH_CSV,
-                                     binding_df=_BINDING_CSV,
-                                     **{axis: variant},
-                                     **_VARIANT_KWARGS.get((axis, variant), {}))
+                                     **_variant_kwargs(axis, variant))
     found = find_orchestrator_batch_order_mismatches(orchestrator)
     assert found == {}, (
         f"{axis}={variant}: predictions do not follow a reordered full "

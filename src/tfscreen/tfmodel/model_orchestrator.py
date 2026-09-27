@@ -776,6 +776,10 @@ _CONGRESSION_THETA_RULES = ("homodimer", "heterodimer", "max")
 # "softmin" takes congression_dk_alpha).
 _CONGRESSION_DK_RULES = ("dilution", "softmin", "min")
 
+# Theta components on the wt-relative X scale (roadmap step 5): real-valued,
+# defined up to an affine map, gauged on wt at two concentrations.
+_RELATIVE_THETA = ("hill_relative",)
+
 _RETIRED_TRANSFORMATIONS = {
     "empirical": (
         "transformation 'empirical' has been replaced by 'mixture'. The old "
@@ -794,6 +798,58 @@ _RETIRED_TRANSFORMATIONS = {
         "dk_geno counterpart. Use 'mixture' (or 'single' for no congression)."
     ),
 }
+
+
+def _check_relative_theta(theta, has_binding, activity, theta_rescale,
+                          condition_growth, theta_growth_noise,
+                          transformation, congression_theta_rule,
+                          theta_gauge_conc):
+    """
+    Refuse settings that assume theta is an absolute occupancy when the theta
+    component is on the relative X scale, and check ``theta_gauge_conc``.
+
+    Returns ``theta_gauge_conc`` as a list of two floats, or None.
+    """
+    if theta not in _RELATIVE_THETA:
+        if theta_gauge_conc is not None:
+            raise ValueError(
+                f"theta_gauge_conc={theta_gauge_conc!r} was given but theta "
+                f"{theta!r} is not a relative theta component "
+                f"({list(_RELATIVE_THETA)}); only those have a gauge.")
+        return None
+
+    why = (f"theta={theta!r} infers a wt-relative growth variable X, not an "
+           f"absolute occupancy (roadmap step 5, "
+           f"planning/analysis-roadmap.md)")
+    if has_binding:
+        raise ValueError(
+            f"{why}, so binding data (an absolute occupancy) cannot be fit "
+            f"with it. Leave out binding_df.")
+    fixed = {"activity": (activity, "fixed"),
+             "theta_rescale": (theta_rescale, "passthrough"),
+             "condition_growth": (condition_growth, "linear"),
+             "theta_growth_noise": (theta_growth_noise, "zero")}
+    for key, (value, required) in fixed.items():
+        if value != required:
+            raise ValueError(
+                f"{why}; it requires {key}={required!r} (got {value!r}). "
+                f"X's scale absorbs activity, and rescaling, nonlinear "
+                f"growth and theta noise all assume theta in (0, 1).")
+    if transformation == "mixture" and congression_theta_rule != "max":
+        raise ValueError(
+            f"{why}; under the congression mixture only "
+            f"congression_theta_rule='max' is invariant to X's affine gauge "
+            f"(the partition-function rules take logit(theta)). Got "
+            f"{congression_theta_rule!r}.")
+
+    if theta_gauge_conc is None:
+        return None
+    gauge = [float(c) for c in theta_gauge_conc]
+    if len(gauge) != 2 or not (0.0 <= gauge[0] < gauge[1]):
+        raise ValueError(
+            f"theta_gauge_conc must be two concentrations (c_lo, c_hi) with "
+            f"0 <= c_lo < c_hi; got {theta_gauge_conc!r}.")
+    return gauge
 
 
 def _check_congression_sets(congression_sets):
@@ -992,7 +1048,8 @@ class ModelOrchestrator:
                  congression_theta_rule="homodimer",
                  congression_dk_rule="dilution",
                  congression_dk_alpha=None,
-                 growth_likelihood="lncfu"):
+                 growth_likelihood="lncfu",
+                 theta_gauge_conc=None):
 
         self._ln_cfu_df = growth_df
         self._binding_df = binding_df
@@ -1044,6 +1101,11 @@ class ModelOrchestrator:
 
         if self._transformation in _RETIRED_TRANSFORMATIONS:
             raise ValueError(_RETIRED_TRANSFORMATIONS[self._transformation])
+
+        self._theta_gauge_conc = _check_relative_theta(
+            theta, binding_df is not None, activity, theta_rescale,
+            condition_growth, theta_growth_noise, transformation,
+            congression_theta_rule, theta_gauge_conc)
 
         # A growth-only model has no binding data at all: no binding tensors,
         # no binding likelihood, no binding noise component.
@@ -1297,6 +1359,23 @@ class ModelOrchestrator:
         
         other_data["titrant_conc"] = titrant_conc
         other_data["log_titrant_conc"] = log_titrant_conc
+
+        # The relative theta component's gauge: wt's X is 1 at c_lo and 0 at
+        # c_hi, by default the lowest and highest measured concentration.
+        # The resolved pair goes into settings, so the config records it.
+        if self._theta in _RELATIVE_THETA:
+            if len(wt_loc[0]) != 1:
+                raise ValueError(
+                    f"theta={self._theta!r} is gauged on wt, so the growth "
+                    f"data must contain the genotype 'wt' (found "
+                    f"{len(wt_loc[0])}).")
+            if self._theta_gauge_conc is None:
+                self._theta_gauge_conc = [float(np.min(titrant_conc)),
+                                          float(np.max(titrant_conc))]
+            gauge = np.array(self._theta_gauge_conc, dtype=float)
+            gauge[gauge == 0] = ZERO_CONC_VALUE
+            other_data["theta_gauge_log_conc"] = jnp.asarray(
+                np.log(gauge), dtype=FLOAT_DTYPE)
         other_data["growth_shares_replicates"] = bool(self._growth_shares_replicates)
 
         # Resolve pinned dk_geno values (dk_geno == "pinned") from an
@@ -2286,4 +2365,5 @@ class ModelOrchestrator:
             "congression_dk_rule": self._congression_dk_rule,
             "congression_dk_alpha": self._congression_dk_alpha,
             "growth_likelihood": self._growth_likelihood,
+            "theta_gauge_conc": self._theta_gauge_conc,
         }

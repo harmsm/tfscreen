@@ -39,6 +39,10 @@ def predict_theta(config_file,
     (genotype, titrant_name, titrant_conc) triple was in the training data,
     0 otherwise.
 
+    A relative theta component (``hill_relative``) predicts the wt-relative
+    growth variable X, not theta; its output gets a column ``theta_scale``
+    with the value ``X`` so nothing downstream takes it for an occupancy.
+
     Parameters
     ----------
     config_file : str
@@ -204,6 +208,11 @@ def predict_theta(config_file,
                         in training_tuples),
         axis=1,
     )
+
+    theta_scale = getattr(model_registry["theta"].get(orchestrator._theta),
+                          "THETA_SCALE", "theta")
+    if theta_scale != "theta":
+        result_df["theta_scale"] = theta_scale
 
     out_file = f"{out_prefix}.csv"
     result_df.to_csv(out_file, index=False)
