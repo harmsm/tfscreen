@@ -1256,3 +1256,37 @@ def test_write_epoch_checkpoint_atomic_no_tmp_left(tmpdir):
 
     tmp_path = os.path.join(ri._epoch_checkpoints_dir, "0000003_checkpoint.pkl.tmp")
     assert not os.path.exists(tmp_path)
+
+
+# =============================================================================
+# compute_hessian_sigmas: takes constrained MAP values (svi.get_params)
+# =============================================================================
+
+def test_compute_hessian_sigmas_takes_constrained_values():
+    """
+    run_optimization returns svi.get_params(), which AutoDelta constrains.
+    compute_hessian_sigmas must map those back to unconstrained space; it
+    used to take them as unconstrained, so a positive site was evaluated at
+    exp(value) (the pre-fit's k_scale came out NaN on the count likelihood,
+    2026-09-27). With s ~ LogNormal(1, 0.5), log s is Normal(1, 0.5): at the
+    MAP s = e the unconstrained sigma is 0.5 and the constrained one e / 2.
+    """
+    def model(data, priors):
+        numpyro.sample("s", dist.LogNormal(1.0, 0.5))
+        numpyro.sample("x", dist.Normal(0.0, 2.0))
+
+    m = MockModel(num_genotype=1)
+    m.jax_model = model
+    ri = RunInference(m, seed=0)
+
+    # confirm what AutoDelta's get_params hands over
+    svi = ri.setup_svi(guide_type="delta",
+                       init_values={"s": float(np.e), "x": 0.0})
+    state = svi.init(ri.get_key(), data=m.data, priors=m.priors)
+    params = svi.get_params(state)
+    assert float(params["s_auto_loc"]) == pytest.approx(np.e, rel=1e-5)
+
+    out = ri.compute_hessian_sigmas(params)
+    assert float(out["s"]["map"]) == pytest.approx(np.e, rel=1e-5)
+    assert float(out["s"]["sigma"]) == pytest.approx(np.e * 0.5, rel=1e-3)
+    assert float(out["x"]["sigma"]) == pytest.approx(2.0, rel=1e-3)

@@ -72,10 +72,44 @@ Repository paths only: `grid.yaml`, `run.srun`,
 
 ## Commit
 
-Not yet run. A local smoke run of one `realistic`/`counts`/`mixture` run with
-3 epochs completed every pipeline step (2026-09-26); it checks plumbing, not
-results.
+First run: commit 775f8b7 (2026-09-26/27). Rerun after the two fixes below
+(this branch, 2026-09-27); give the rerun its own `--out_prefix`.
 
 ## Results
 
-Pending.
+**First run (775f8b7): 11 of the 12 `counts` runs failed; not usable for
+the comparison.** All 12 `lncfu` runs and one `counts` run
+(`poisson`/seed 2/`mixture`) finished.
+
+- 8 `counts` runs crashed at the fit on a NaN `k_scale` written by the
+  pre-fit. Cause: `RunInference.compute_hessian_sigmas` took the constrained
+  MAP values it was given as unconstrained, so every positive site was
+  evaluated at `exp(value)`; the count likelihood's `growth_phi` (MAP 49
+  from the calibration model's misfit, dk_geno fixed at 0) became e^49 and
+  overflowed. Reproduced from `run_0003`'s saved MAP; fixed. The same bug
+  loosened the `lncfu` arms' pre-fit `k_scale` (0.0028 written against
+  k sigmas of 0.0003-0.0007 at the right point, which the 0.002 floor
+  now overrides), so the `lncfu` arms need the rerun too.
+- 3 `counts` runs (`poisson` seeds 2 and 3) went NaN within 250 SVI steps
+  after the pre-MAP. Cause: the negative binomial's concentration `mu / phi`
+  underflows float32 for genotypes predicted near extinction (all-zero
+  genotypes drift there), and the gradient goes NaN. Reproduced by
+  replaying `run_0007`'s pre-MAP hand-off (NaN by step 250); with the
+  concentration floor (`c + e^-30`) the same replay runs normally.
+- The one finished `counts` run (true lambda 0, prior 0.357 +/- 0.05)
+  found lambda 0.027 (95% 0.026-0.028): far from the prior and well below
+  the ~0.12 the `lncfu` mixture found at true lambda 0 in the congression
+  study, as the floor hypothesis predicts; one run, and the interval is
+  overconfident. Its theta RMSE was 0.054 against 0.10 for the `lncfu`
+  arms at the same noise.
+- `lncfu` arms, pooled theta 95% coverage (3 seeds each): `poisson`
+  0.76 (`zero`) and 0.55 (`level`); `realistic` 0.82 (`zero`) and 0.68
+  (`level`). The `level` offset narrows the theta intervals by about half
+  at the same RMSE, so it makes `lncfu` more overconfident, not less.
+  `growth_k` coverage is about 0 in every arm (intervals ~1e-4 wide, RMSE
+  0.001): the pre-fit's k prior dominates.
+- Counts runs start SVI at a much higher ELBO than `lncfu` (about 3e8 at
+  the pre-MAP point here): at 1e4-1e5 reads the likelihood is sharp and the
+  component guide's initial location scales (0.1) cost ~(0.1 mu)^2 / var per
+  observation. It falls as the scales shrink; a smaller
+  `--guide_init_scale` may suit counts fits if this slows convergence.

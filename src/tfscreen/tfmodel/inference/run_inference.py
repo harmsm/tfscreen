@@ -1742,8 +1742,10 @@ class RunInference:
         Parameters
         ----------
         map_params : dict
-            Parameter dict from an AutoDelta guide state, keys follow the
-            ``{site}_auto_loc`` convention, values are in unconstrained space.
+            AutoDelta parameters in *unconstrained* space, keys following the
+            ``{site}_auto_loc`` convention: the optimizer state
+            (``svi.optim.get_params(svi_state.optim_state)``), not
+            ``svi.get_params``, which returns constrained values.
 
         Returns
         -------
@@ -1825,7 +1827,8 @@ class RunInference:
         ----------
         map_params : dict
             Parameter dict from a MAP (AutoDelta) optimizer state, as
-            returned by ``svi.get_params(svi_state)``.  Keys follow the
+            returned by ``svi.optim.get_params(svi_state.optim_state)`` (not
+            ``svi.get_params``, which constrains them).  Keys follow the
             ``{site}_auto_loc`` convention; values are in unconstrained space.
         out_prefix : str
             Root name for the output file (written as
@@ -1974,10 +1977,16 @@ class RunInference:
         Parameters
         ----------
         map_params : dict
-            Parameter dict from a MAP (AutoDelta) optimizer state, as
-            returned by ``svi.get_params(svi_state)``.  Keys follow the
-            ``{site}_auto_loc`` convention; values are in unconstrained
-            space.
+            MAP (AutoDelta) parameters as returned by
+            ``svi.get_params(svi_state)`` (what ``run_optimization`` returns):
+            keys follow the ``{site}_auto_loc`` convention and values are in
+            *constrained* space (AutoDelta's ``_auto_loc`` params carry the
+            site's support, so ``get_params`` constrains them). They are
+            mapped to unconstrained space here, where the Hessian is taken.
+            (Until 2026-09-27 they were taken as already unconstrained, so
+            every positive site was evaluated at ``exp(value)``: the Hessian
+            of the pre-fit was taken at the wrong point, and overflowed on
+            the count likelihood's ``growth_phi``.)
         hessian_chunk_size : int, optional
             Number of Hessian rows to compute per device batch (default 64).
             Reduce if you hit device OOM during the Hessian computation.
@@ -2002,15 +2011,31 @@ class RunInference:
         full_data = self.model.get_batch(data_on_gpu, all_indices)
         model_kwargs = {"priors": self.model.priors, "data": full_data}
 
-        # Strip _auto_loc suffix → unconstrained site-level param dict
-        unconstrained = {
+        # Strip _auto_loc suffix → constrained site-level param dict
+        constrained = {
             k[: -len("_auto_loc")]: jnp.array(v)
             for k, v in map_params.items()
             if k.endswith("_auto_loc")
         }
 
-        if len(unconstrained) == 0:
+        if len(constrained) == 0:
             return {}
+
+        # Per-site bijection (unconstrained -> constrained) from a model
+        # trace; identity for real-valued supports.
+        seeded_model = seed(self.model.jax_model, rng_seed=0)
+        traced_model = trace(seeded_model)
+        model_trace = traced_model.get_trace(**model_kwargs)
+        site_transforms = {
+            name: biject_to(site["fn"].support)
+            for name, site in model_trace.items()
+            if site["type"] == "sample" and not site.get("is_observed", False)
+        }
+        unconstrained = {
+            name: (site_transforms[name].inv(v) if name in site_transforms
+                   else v)
+            for name, v in constrained.items()
+        }
 
         # Flatten to a single vector for Hessian computation.  We need to
         # remember the per-site shapes / offsets so we can pull the
@@ -2042,17 +2067,6 @@ class RunInference:
         # Unravel the unconstrained sigmas back to per-site shape.
         sigma_unconstrained = unravel(jnp.array(sigma_unconstrained_flat,
                                                  dtype=flat_map.dtype))
-
-        # Get the per-site bijection from a model trace.  For unconstrained
-        # supports (Normal) this is the identity transform.
-        seeded_model = seed(self.model.jax_model, rng_seed=0)
-        traced_model = trace(seeded_model)
-        model_trace = traced_model.get_trace(**model_kwargs)
-        site_transforms = {
-            name: biject_to(site["fn"].support)
-            for name, site in model_trace.items()
-            if site["type"] == "sample" and not site.get("is_observed", False)
-        }
 
         out = {}
         for name, x_unc in unconstrained.items():
@@ -2139,7 +2153,8 @@ class RunInference:
         ----------
         map_params : dict
             Parameter dict from a MAP (AutoDelta) optimizer state, as returned
-            by ``svi.get_params(svi_state)``. Keys follow the
+            by ``svi.optim.get_params(svi_state.optim_state)`` (not
+            ``svi.get_params``, which constrains them). Keys follow the
             ``{site}_auto_loc`` convention used by AutoDelta; values are in
             the unconstrained parameter space.
         out_prefix : str

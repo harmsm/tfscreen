@@ -417,6 +417,26 @@ fall into two kinds:
 
 ### Fixed
 
+- **`tfs-prefit-calibration` took its Hessian at the wrong point.**
+  `RunInference.compute_hessian_sigmas` treated the MAP values it was given
+  as unconstrained, but its caller passes `svi.get_params(...)`, which
+  AutoDelta returns constrained; every positive site (hyper-scales, noise
+  scales, the count likelihood's `phi`) was evaluated at `exp(value)`. The
+  pre-fit's Hessian-derived `k_scale`/`m_scale_plus` were therefore off
+  (on a count-likelihood grid run, k sigmas of 0.0012-0.0029 against 0.0003-0.0007 at the
+  right point, so the written `k_scale` was ~0.0028 where the 0.002 floor
+  now applies), and on the count likelihood `phi` overflowed and wrote
+  NaN scales that crashed the fit. It now maps the values to unconstrained
+  space first. `tfs-sample-posterior` and `tfs-extract-params` read the
+  optimizer state (already unconstrained) and were not affected.
+- **Count likelihood NaN for genotypes predicted near extinction.** The
+  negative binomial's concentration `mu / phi` underflowed float32 when the
+  expected reads fell below about `e^-40` (reached by genotypes with zero
+  reads everywhere, whose likelihood keeps rising as `mu` falls), and the
+  log-pmf's gradient and Hessian went to NaN; SVI then exploded within its
+  first 250 steps. The concentration now has a floor of `e^-30`
+  (`growth_counts._LOG_C_FLOOR`), which changes only rows expecting under
+  ~1e-12 reads.
 - **Prediction with a per-tube `sample_offset`.** `tfs-predict-growth` (and
   anything calling `analysis.prediction.predict` on a new time or
   concentration grid) failed to reshape the per-tube offsets of

@@ -143,3 +143,30 @@ def test_priors():
     assert isinstance(p, GrowthCountsObsPriors)
     assert np.exp(p.phi_loc) == pytest.approx(5.0)
     assert np.exp(p.inv_r_loc) == pytest.approx(0.01)
+
+
+@pytest.mark.parametrize("log_mu", [-200.0, -80.0, -40.0, 0.0, 14.0])
+@pytest.mark.parametrize("log_phi", [-15.0, 1.6, 10.0])
+@pytest.mark.parametrize("k", [0.0, 1.0, 30.0, 1e6])
+def test_finite_value_gradient_and_hessian(log_mu, log_phi, k):
+    # A genotype predicted near extinction (log mu << 0; the MAP of an
+    # all-zero genotype goes there) used to underflow the concentration
+    # mu / phi in float32 and turn the gradient and Hessian to NaN
+    # (count-likelihood grid, 2026-09-27).
+    def lp(p):
+        return count_distribution(p[0], jnp.exp(p[1]), jnp.exp(p[2])).log_prob(
+            jnp.float32(k))
+    p = jnp.array([log_mu, log_phi, -4.6], dtype=jnp.float32)
+    assert np.isfinite(float(lp(p)))
+    assert np.all(np.isfinite(np.asarray(jax.grad(lp)(p))))
+    assert np.all(np.isfinite(np.asarray(jax.hessian(lp)(p))))
+
+
+def test_concentration_floor_leaves_ordinary_rows_alone():
+    # the floor (exp(-30)) is far below any concentration a real row has
+    mu, phi, inv_r = 0.01, 8.0, 0.05
+    c = 1.0 / (phi / mu + inv_r)
+    k = np.arange(0, 5)
+    got = count_distribution(jnp.log(mu), phi, inv_r).log_prob(jnp.asarray(k, float))
+    assert np.allclose(np.asarray(got), stats.nbinom.logpmf(k, c, c / (c + mu)),
+                       atol=1e-5)

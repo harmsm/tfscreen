@@ -163,13 +163,25 @@ class CountNegativeBinomial(dist.Distribution):
         return mu + mu*mu*jnp.exp(-self.log_c)
 
 
+# Floor on the concentration, c + exp(_LOG_C_FLOOR). Without it c ~ mu / phi
+# underflows float32 for genotypes predicted near extinction (log mu below
+# about -40, which the MAP reaches for genotypes with zero reads everywhere:
+# P(0) keeps rising as mu falls), and the gradient and Hessian of the log-pmf
+# go to NaN (count-likelihood grid, 2026-09-27). It changes only rows whose
+# expected reads are below ~phi * 1e-13, where P(0) is 1 either way and a
+# nonzero count still pushes mu up.
+_LOG_C_FLOOR = -30.0
+
+
 def count_distribution(log_mu, phi, inv_r):
     """
     Negative binomial with mean ``exp(log_mu)`` and variance
-    ``mu (1 + phi) + mu^2 inv_r``: concentration ``1 / (phi / mu + inv_r)``,
-    in log space so that very small means do not underflow.
+    ``mu (1 + phi) + mu^2 inv_r``: concentration ``1 / (phi / mu + inv_r)``
+    (plus a floor of ``exp(_LOG_C_FLOOR)``), in log space so that very small
+    means do not underflow.
     """
     log_c = -jnp.logaddexp(jnp.log(phi) - log_mu, jnp.log(inv_r))
+    log_c = jnp.logaddexp(log_c, _LOG_C_FLOOR)
     return CountNegativeBinomial(log_mu, log_c)
 
 

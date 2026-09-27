@@ -525,7 +525,13 @@ step 7.
    the new processing batch needs no rerun. Refuses `growth_noise` other
    than `zero`. Presplit stays `ln_cfu` (its data have no counts yet);
    index hopping is not modeled yet. Validation grid:
-   `planning/studies/count-likelihood/` (24 runs, not yet run).
+   `planning/studies/count-likelihood/` (24 runs). First run (2026-09-27):
+   11 of 12 `counts` runs failed, on two bugs now fixed (the pre-fit's
+   Hessian was taken at `exp` of every positive site's MAP, overflowing on
+   `phi`; the concentration underflowed for near-extinct genotypes, giving
+   NaN gradients). Rerun needed, `lncfu` arms included (the Hessian bug
+   also loosened their `k_scale`). The one finished `counts` mixture run
+   found lambda 0.027 at a true 0 (the `lncfu` mixture found ~0.12).
    - [ ] **7b. Growth regime: test, choose, purge** (N). The
      `growth_transition` components (`instant`, `memory`, `baranyi`,
      `baranyi_k`, `baranyi_tau`, `two_pop`) were unconstrained by the data
