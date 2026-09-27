@@ -498,7 +498,8 @@ step 7.
    - Validation: the calibration grid with step 4's noise on, against the
      step 2 interim total: theta coverage, `k_c`/`m_c` recovery (C4), in the
      joint and the relative fit.
-7. [ ] **Count likelihood** (N). (Implemented; validation grid pending.)
+7. [x] **Count likelihood** (N). (Validated 2026-09-27; whether it becomes
+   the default for real data is the user's call.)
    `growth_likelihood: counts` (C2): growth and presplit observers with
    `reads_{g,s} ~ NegBin(depth_s * exp(ln n_{g,s} - P_s + u_s), dispersion)`,
    `P` from step 6 (until then, the supplied `sample_ln_cfu`, D14), `u`
@@ -541,7 +542,13 @@ step 7.
    cut during a noisy descent (one wrong fit). Both fixed (overflow-safe
    horseshoe helpers; pooled check of stalled windows before a cut, which
    would have kept 20 of 23 v2 runs from cutting mid-descent). A third run
-   is needed. Details: `planning/studies/count-likelihood/README.md`.
+   is needed. Third run (2026-09-27, all 24 fine): counts cuts theta
+   RMSE 35-60% and dk_geno RMSE 40-85% against `lncfu`, at about the same
+   coverage as `lncfu`/`zero` (0.79 against 0.82 realistic; 0.65 against
+   0.76 poisson), under-covering most for mixed-purity and near-saturated
+   genotypes; lambda at a true 0 is 0.02-0.06. The remaining
+   overconfidence is the fit's, not the likelihood's. Details:
+   `planning/studies/count-likelihood/README.md`.
    - [ ] **7b. Growth regime: test, choose, purge** (N). The
      `growth_transition` components (`instant`, `memory`, `baranyi`,
      `baranyi_k`, `baranyi_tau`, `two_pop`) were unconstrained by the data

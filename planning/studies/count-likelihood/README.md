@@ -78,6 +78,56 @@ Second run: commit c65390aa (2026-09-27), results in `count_likelihood_v2/`
 
 ## Results
 
+**Third run (`count_likelihood_v3`, commit 740ebc19, 2026-09-27): the
+answer.** All 24 runs finished; no NaN, no wrong optimum (run_0012's theta
+RMSE is 0.035, was 0.51). 16 stopped on the convergence rule. 8 reached
+the 100k-epoch cap, all poisson: the loss was flat at the floor step size
+and one global noise parameter whose true value is 0 (`growth_inv_r` for
+counts, `growth_noise` sigma for `lncfu`/`level`) kept sliding toward its
+boundary just past the movement tolerance (excess 0.05-0.08) -- a benign,
+honestly reported non-convergence.
+
+Pooled theta (test genotypes), mean over 3 seeds:
+
+| noise | fit | 95% coverage | 95% width | RMSE |
+|---|---|---|---|---|
+| poisson | lncfu / zero | 0.76 | 0.156 | 0.101 |
+| poisson | lncfu / level | 0.56 | 0.073 | 0.100 |
+| poisson | counts / level / single | 0.65 | 0.067 | 0.041 |
+| poisson | counts / level / mixture | 0.65 | 0.067 | 0.043 |
+| realistic | lncfu / zero | 0.82 | 0.207 | 0.113 |
+| realistic | lncfu / level | 0.69 | 0.139 | 0.110 |
+| realistic | counts / level / single | 0.79 | 0.152 | 0.073 |
+| realistic | counts / level / mixture | 0.78 | 0.154 | 0.074 |
+
+- **Accuracy: counts wins everywhere.** Theta RMSE falls 60% (poisson) and
+  35% (realistic); dk_geno RMSE 85% (poisson) and 40% (realistic); Hill K
+  and n improve too (log K RMSE 0.41 against 0.68 for `lncfu`/`zero`,
+  poisson). By stratum the gain holds for bulk, spiked and binding-anchored
+  genotypes; spiked genotypes gain the most under realistic noise (RMSE
+  0.13 against 0.26, coverage 0.93 against 0.50).
+- **Calibration: counts is about as overconfident as `lncfu`/`zero`, not
+  less.** Coverage 0.79 against 0.82 (realistic), 0.65 against 0.76
+  (poisson): intervals shrink with the error but not as far. The shortfall
+  is concentrated where the data say least: `mixed`-purity genotypes (0.41
+  poisson, 0.55 realistic) and theta near saturation (0.46 poisson, 0.69
+  realistic). So the remaining overconfidence is the fit's (mean-field
+  guide, the k pin), not the likelihood's; `growth_k` coverage is ~0 in
+  every arm (95% width 1e-4 against RMSE 6e-4-1.3e-3).
+- **Lambda at a true 0** (prior 0.357 +/- 0.05): 0.019-0.027 (poisson),
+  0.055-0.064 (realistic), against ~0.12 for the `lncfu` mixture in the
+  congression study. Most of that spurious lambda was the read-count floor;
+  the rest remains, and its intervals (width 0.002-0.006) exclude 0. The
+  mixture costs nothing on theta against `single`.
+- **Longer runs changed little.** Run for run against v2 (early cuts),
+  theta RMSE moved by at most 0.0015 and 95% coverage by at most 0.03
+  (poisson counts runs lost ~0.025), except run_0012, which the early cut
+  had broken. The pooled check mattered for robustness, not for the
+  typical run.
+- Dispersion and per-tube offsets as in v2: poisson phi ~0.05, realistic
+  phi ~28 (the realistic arm is ~29x Poisson, more than intended);
+  `sample_offset` SD ~0.36 absorbing the simulator's tube growth noise.
+
 **Second run (`count_likelihood_v2`, commit c65390aa, 2026-09-27): the
 count likelihood is clearly more accurate; two failures remain, neither in
 the likelihood itself.** 23 of 24 runs finished; 18 stopped on the
