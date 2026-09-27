@@ -532,6 +532,16 @@ step 7.
    NaN gradients). Rerun needed, `lncfu` arms included (the Hessian bug
    also loosened their `k_scale`). The one finished `counts` mixture run
    found lambda 0.027 at a true 0 (the `lncfu` mixture found ~0.12).
+   Second run (2026-09-27, 23 of 24 finished): counts cuts theta RMSE by a
+   third to two thirds against `lncfu`, at coverage close to `lncfu`/`zero`
+   (all arms still under-cover, 0.66-0.81 at 95%); lambda at a true 0 is
+   0.02-0.06 (not ~0.12), with intervals that exclude 0. Two failures
+   outside the likelihood: hill_mut's horseshoe local scales widen for
+   low-read doubles until a draw overflows (NaN), and a premature step-size
+   cut during a noisy descent (one wrong fit). Both fixed (overflow-safe
+   horseshoe helpers; pooled check of stalled windows before a cut, which
+   would have kept 20 of 23 v2 runs from cutting mid-descent). A third run
+   is needed. Details: `planning/studies/count-likelihood/README.md`.
    - [ ] **7b. Growth regime: test, choose, purge** (N). The
      `growth_transition` components (`instant`, `memory`, `baranyi`,
      `baranyi_k`, `baranyi_tau`, `two_pop`) were unconstrained by the data

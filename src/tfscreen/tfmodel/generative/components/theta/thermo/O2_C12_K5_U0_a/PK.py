@@ -37,6 +37,7 @@ population moments) are imported from thermo.py.
 import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
+from tfscreen.tfmodel.generative.components._horseshoe import regularized_scale, HalfCauchy
 import pandas as pd
 from flax.struct import dataclass
 from functools import partial
@@ -255,7 +256,7 @@ def define_model(name: str,
 
         tau_epi = pyro.sample(
             f"{name}_epi_tau",
-            dist.HalfCauchy(priors.theta_epi_tau_scale))
+            HalfCauchy(priors.theta_epi_tau_scale))
         c2_epi = pyro.sample(
             f"{name}_epi_c2",
             dist.InverseGamma(priors.theta_epi_slab_df / 2.0,
@@ -263,19 +264,19 @@ def define_model(name: str,
 
         # Scalar K_h_l, K_h_o, K_l_o: (num_pair,) each
         with pyro.plate(f"{name}_pair_scalar_plate", num_pair, dim=-1):
-            epi_K_h_l_lam = pyro.sample(f"{name}_epi_ln_K_h_l_lambda", dist.HalfCauchy(1.0))
+            epi_K_h_l_lam = pyro.sample(f"{name}_epi_ln_K_h_l_lambda", HalfCauchy(1.0))
             epi_K_h_l_off = pyro.sample(f"{name}_epi_ln_K_h_l_offset", dist.Normal(0.0, 1.0))
-            epi_K_h_o_lam = pyro.sample(f"{name}_epi_ln_K_h_o_lambda", dist.HalfCauchy(1.0))
+            epi_K_h_o_lam = pyro.sample(f"{name}_epi_ln_K_h_o_lambda", HalfCauchy(1.0))
             epi_K_h_o_off = pyro.sample(f"{name}_epi_ln_K_h_o_offset", dist.Normal(0.0, 1.0))
-            epi_K_l_o_lam = pyro.sample(f"{name}_epi_ln_K_l_o_lambda", dist.HalfCauchy(1.0))
+            epi_K_l_o_lam = pyro.sample(f"{name}_epi_ln_K_l_o_lambda", HalfCauchy(1.0))
             epi_K_l_o_off = pyro.sample(f"{name}_epi_ln_K_l_o_offset", dist.Normal(0.0, 1.0))
 
         # T-dimensional K_h_e, K_l_e: (T, num_pair) each
         with pyro.plate(f"{name}_titrant_epi_outer_plate", T, dim=-2):
             with pyro.plate(f"{name}_pair_plate", num_pair, dim=-1):
-                epi_K_h_e_lam = pyro.sample(f"{name}_epi_ln_K_h_e_lambda", dist.HalfCauchy(1.0))
+                epi_K_h_e_lam = pyro.sample(f"{name}_epi_ln_K_h_e_lambda", HalfCauchy(1.0))
                 epi_K_h_e_off = pyro.sample(f"{name}_epi_ln_K_h_e_offset", dist.Normal(0.0, 1.0))
-                epi_K_l_e_lam = pyro.sample(f"{name}_epi_ln_K_l_e_lambda", dist.HalfCauchy(1.0))
+                epi_K_l_e_lam = pyro.sample(f"{name}_epi_ln_K_l_e_lambda", HalfCauchy(1.0))
                 epi_K_l_e_off = pyro.sample(f"{name}_epi_ln_K_l_e_offset", dist.Normal(0.0, 1.0))
     else:
         pair_scatter = None
@@ -297,7 +298,7 @@ def define_model(name: str,
 
     if has_epi:
         def _lam_tilde(lam):
-            return jnp.sqrt(c2_epi * lam ** 2 / (c2_epi + tau_epi ** 2 * lam ** 2))
+            return regularized_scale(lam, tau_epi, c2_epi)
 
         epi_ln_K_h_l = epi_K_h_l_off * tau_epi * _lam_tilde(epi_K_h_l_lam)   # (P,)
         epi_ln_K_h_o = epi_K_h_o_off * tau_epi * _lam_tilde(epi_K_h_o_lam)   # (P,)
@@ -490,7 +491,7 @@ def guide(name: str,
         c2_epi  = pyro.sample(f"{name}_epi_c2",  dist.LogNormal(c2_epi_loc,  c2_epi_scale))
 
         def _lam_tilde(lam):
-            return jnp.sqrt(c2_epi * lam ** 2 / (c2_epi + tau_epi ** 2 * lam ** 2))
+            return regularized_scale(lam, tau_epi, c2_epi)
 
         # Scalar K_h_l epistasis: (num_pair,)
         epi_K_h_l_lam_locs   = pyro.param(f"{name}_epi_ln_K_h_l_lambda_locs",   jnp.zeros(num_pair))

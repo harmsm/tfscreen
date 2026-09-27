@@ -417,6 +417,26 @@ fall into two kinds:
 
 ### Fixed
 
+- **Step-size cuts during a slow descent.** The convergence monitor cut the
+  step size after `patience` windows each without a significant loss trend,
+  even when those windows together were clearly still falling: on the
+  count-likelihood v2 grid, 20 of 23 runs made their first cut mid-descent
+  (pooled t = 4-14), and one (run 0012) was cut into a wrong optimum at
+  twice its twin's ELBO. Before a cut or a stop the monitor now fits one
+  line through all the stalled windows (`convergence.pooled_loss_trend`) and
+  starts the count over if that is a significant descent. Fits spend longer
+  at the large step size; more may reach `max_num_epochs`. New
+  `pooled_loss_t` column in `{out_prefix}_convergence.csv`; checkpoints
+  carry the stalled windows.
+- **NaN from horseshoe priors far in the tail.** The slab-regularized
+  horseshoe scale `sqrt(c2 lam^2 / (c2 + tau^2 lam^2))` and numpyro's
+  HalfCauchy log density both square the local scale; a draw near 1e20
+  overflowed float32 and turned the fit to NaN (hill_mut epistasis for
+  low-read doubles, whose guide local scales widened to ~11 in log space;
+  count-likelihood v2 run 0007). New `components/_horseshoe.py`
+  (`regularized_scale`, a `HalfCauchy` with a `hypot`-based log density),
+  used by hill_mut, activity `horseshoe_mut`, `thermo/horseshoe.py` and the
+  thermo `PK`/`PnnC`/`PddG` variants; same values, no overflow.
 - **`tfs-prefit-calibration` took its Hessian at the wrong point.**
   `RunInference.compute_hessian_sigmas` treated the MAP values it was given
   as unconstrained, but its caller passes `svi.get_params(...)`, which

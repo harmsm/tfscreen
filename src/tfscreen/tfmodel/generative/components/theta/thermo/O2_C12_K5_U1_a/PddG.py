@@ -66,6 +66,7 @@ absent from the CSV receive a prior mean of 0.0 (no structural prediction).
 import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
+from tfscreen.tfmodel.generative.components._horseshoe import regularized_scale
 import numpyro.distributions.constraints as constraints
 import pandas as pd
 from flax.struct import dataclass
@@ -464,7 +465,7 @@ def guide(name: str,
                 )
 
         def _lam_tilde(l):
-            return jnp.sqrt(c2_epi * l ** 2 / (c2_epi + tau_epi ** 2 * l ** 2))
+            return regularized_scale(l, tau_epi, c2_epi)
 
         epi_SP        = epi_off * tau_epi * _lam_tilde(lam)   # (S, P)
         epi_ddG       = epi_SP.T                               # (P, S)

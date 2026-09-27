@@ -1646,7 +1646,7 @@ class RunInference:
                             "loss_mean", "loss_skew", "loss_skewed",
                             "worst_param", "worst_param_excess",
                             "worst_param_drift", "params_moving", "plateau",
-                            "plateau_count", "decision")
+                            "plateau_count", "pooled_loss_t", "decision")
 
     def _write_convergence(self, record, out_prefix):
         """

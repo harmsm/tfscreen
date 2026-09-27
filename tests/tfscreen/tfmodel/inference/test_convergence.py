@@ -531,3 +531,68 @@ def test_recorded_unclipped_trace_converges_at_floor():
         TRACES, "sim_svi_unclipped_converged_run0005.npy")).astype(float)
     m = ConvergenceMonitor(1e-6, 1e-6, patience=3)
     assert _feed(m, trace)[-1] == conv.CONVERGED
+
+
+# -----------------------------------------------------------------------------
+# Pooled check of a run of stalls
+# -----------------------------------------------------------------------------
+
+def test_pooled_loss_trend_matches_single_window_line():
+    """Pooling windows of one exact line gives that line's drop per window."""
+    trace = 1e6 - 50.0 * np.arange(3 * WINDOW)
+    stats = [loss_trend(trace[i * WINDOW:(i + 1) * WINDOW]) for i in range(3)]
+    pooled = conv.pooled_loss_trend(stats)
+    assert pooled["drop"] == pytest.approx(50.0 * WINDOW, rel=1e-6)
+
+
+def test_pooled_check_keeps_a_slow_noisy_descent():
+    """Each window alone is not significant, but three pooled are."""
+    rng = np.random.default_rng(1)
+    trace = 1e6 - 20.0 * np.arange(12 * WINDOW) + 1.5e5 * rng.normal(size=12 * WINDOW)
+    single = [loss_trend(trace[i:i + WINDOW])["t"]
+              for i in range(0, 12 * WINDOW, WINDOW)]
+    assert np.median(single) < conv.ConvergenceMonitor(1e-3).z
+    m = ConvergenceMonitor(1e-3, 1e-6, patience=3)
+    assert conv.CUT not in _feed(m, trace)
+
+
+def test_pooled_check_still_cuts_a_real_plateau():
+    rng = np.random.default_rng(2)
+    trace = 1e6 + 1.5e5 * rng.normal(size=6 * WINDOW)
+    m = ConvergenceMonitor(1e-3, 1e-6, patience=3)
+    decisions = _feed(m, trace)
+    assert decisions[2] == conv.CUT
+    assert abs(m.last["pooled_loss_t"]) < 3
+
+
+def test_pooled_check_blocks_a_stop_on_a_descent_at_the_floor():
+    rng = np.random.default_rng(3)
+    trace = 1e6 - 20.0 * np.arange(9 * WINDOW) + 1.5e5 * rng.normal(size=9 * WINDOW)
+    m = ConvergenceMonitor(1e-6, 1e-6, patience=3)
+    assert conv.CONVERGED not in _feed(m, trace)
+
+
+def test_pooled_stalls_survive_a_resume():
+    rng = np.random.default_rng(5)
+    trace = 1e6 - 20.0 * np.arange(6 * WINDOW) + 1.5e5 * rng.normal(size=6 * WINDOW)
+    whole = ConvergenceMonitor(1e-3, 1e-6, patience=3)
+    expected = _feed(whole, trace)
+    first = ConvergenceMonitor(1e-3, 1e-6, patience=3)
+    got = _feed(first, trace[:2 * WINDOW])
+    resumed = ConvergenceMonitor(1e-3, 1e-6, patience=3)
+    resumed.load_state_dict(first.state_dict())
+    got += _feed(resumed, trace[2 * WINDOW:])
+    assert got == expected
+
+
+def test_recorded_count_likelihood_descent_is_not_cut():
+    """Count-likelihood grid v2, run 0012 (poisson, seed 3, mixture), steps
+    1-22,000 at step size 1e-3. The per-window test called windows
+    16k/18k/20k stalls (t = 1.9, 3.0, 1.0) while the window medians kept
+    falling 1.5-1.9e5 per window; the cut at 20k left the fit at twice the
+    ELBO of its seed-2 twin, in a wrong optimum. Pooled, it is a descent."""
+    trace = np.load(os.path.join(
+        TRACES, "sim_svi_counts_noisy_descent_run0012.npy")).astype(float)
+    m = ConvergenceMonitor(1e-3, 1e-6, patience=3)
+    decisions = _feed(m, trace)
+    assert conv.CUT not in decisions

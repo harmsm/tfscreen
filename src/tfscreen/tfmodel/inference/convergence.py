@@ -64,7 +64,15 @@ the noise tail).  The parameters are *moving* when any summary exceeds
 
 - A window in which the loss is not improving is a *stall*.  After
   ``patience`` consecutive stalls the step size is cut (by ``step_size_cut``,
-  floored at ``final_step_size``), whatever the parameters are doing.  This is
+  floored at ``final_step_size``), whatever the parameters are doing --
+  unless the stalls, pooled, are a descent: one line through the block
+  medians of all ``patience`` windows (``pooled_loss_trend``) has a
+  significant drop per window (same ``z`` and ``loss_rtol``), and the stall
+  count starts over.  Each window alone can miss a slow, noisy descent
+  (count-likelihood run 0012: medians falling 1.5-1.9e5 per window at a
+  per-window t of 1.9, 3.0 and 1.0, then cut into a wrong optimum); pooling
+  three windows shrinks the slope's SE about fivefold, while a real plateau
+  stays at t ~ 0.  This is
   the usual reduce-on-plateau rule: the loss alone decides when the current
   step size has done what it can.  Parameters do not block a cut because some
   directions never settle under a given objective (a MAP of a horseshoe local
@@ -195,7 +203,50 @@ def loss_trend(losses, num_blocks=20):
             "drop": drop,
             "drop_se": drop_se,
             "t": float(t),
-            "skew": loss_skew(used - line, level=medians[-1])}
+            "skew": loss_skew(used - line, level=medians[-1]),
+            "medians": medians,
+            "width": width}
+
+
+def pooled_loss_trend(windows):
+    """
+    One ``loss_trend``-style line through the block medians of consecutive
+    windows.
+
+    Parameters
+    ----------
+    windows : list of dict
+        ``loss_trend`` results of consecutive windows (oldest first), each
+        with ``medians`` and ``width``.
+
+    Returns
+    -------
+    dict
+        ``level`` (last block median of the last window), ``drop`` (loss
+        decrease per window, at the last window's width, predicted by the
+        pooled line), ``drop_se`` and ``t``.
+    """
+    ys, ts = [], []
+    offset = 0.0
+    for w in windows:
+        medians = np.asarray(w["medians"], dtype=float)
+        width = float(w["width"])
+        block = width / medians.size
+        ys.append(medians)
+        ts.append(offset + (np.arange(medians.size) + 0.5) * block)
+        offset += width
+    y = np.concatenate(ys)
+    t_all = np.concatenate(ts)
+    slope, se = _line_fit(y, t_all)
+    width = float(windows[-1]["width"])
+    drop = -float(slope) * width
+    drop_se = float(se) * width
+    if drop_se > 0:
+        t = drop / drop_se
+    else:
+        t = np.inf if drop != 0 else 0.0
+    return {"level": float(ys[-1][-1]), "drop": drop, "drop_se": drop_se,
+            "t": float(t)}
 
 
 def loss_skew(residuals, level=0.0, rtol=1e-6):
@@ -351,6 +402,9 @@ class ConvergenceMonitor:
         self.num_cuts = 0
         self.converged = False
         self.last = None
+        # loss_trend results of the current run of stalled windows, for the
+        # pooled check before a cut or a stop.
+        self._stalls = []
 
     @property
     def at_floor(self):
@@ -415,6 +469,24 @@ class ConvergenceMonitor:
         else:
             plateau = not loss_improving
         self.plateau_count = self.plateau_count + 1 if plateau else 0
+        if plateau and "medians" in loss_stats:
+            self._stalls = (self._stalls + [
+                {"medians": np.asarray(loss_stats["medians"], dtype=float),
+                 "width": float(loss_stats["width"])}])[-self.patience:]
+        else:
+            self._stalls = []
+
+        # Before acting on `patience` stalls, check whether they are, pooled,
+        # a slow descent rather than a plateau (see the module docstring).
+        pooled_t = np.nan
+        if (self.plateau_count >= self.patience
+                and len(self._stalls) == self.patience and self.patience > 1):
+            pooled = pooled_loss_trend(self._stalls)
+            pooled_t = pooled["t"]
+            if self.loss_improving(pooled):
+                self.plateau_count = 0
+                self._stalls = []
+                plateau = False
 
         decision = CONTINUE
         step_size = self.step_size
@@ -428,6 +500,7 @@ class ConvergenceMonitor:
                                      self.final_step_size)
                 self.num_cuts += 1
                 self.plateau_count = 0
+                self._stalls = []
 
         self.last = {
             "step": int(step),
@@ -447,6 +520,7 @@ class ConvergenceMonitor:
             "params_moving": bool(params_moving),
             "plateau": bool(plateau),
             "plateau_count": self.plateau_count,
+            "pooled_loss_t": float(pooled_t),
             "decision": decision,
         }
         return decision
@@ -462,6 +536,12 @@ class ConvergenceMonitor:
         if r.get("loss_skewed"):
             loss += (f"; loss skewed ({skew:.3g} robust SDs of mean above "
                      f"median: rare large penalties)")
+        pooled_t = r.get("pooled_loss_t", np.nan)
+        if np.isfinite(pooled_t):
+            verdict = ("a slow descent, not a plateau" if r["plateau_count"] == 0
+                       else "a plateau")
+            loss += (f"; pooled over {self.patience} stalled windows "
+                     f"t={pooled_t:.3g} ({verdict})")
         if r["worst_param"] is None:
             params = "no parameters tracked"
         else:
@@ -479,7 +559,9 @@ class ConvergenceMonitor:
                 "plateau_count": self.plateau_count,
                 "num_cuts": self.num_cuts,
                 "converged": self.converged,
-                "last": self.last}
+                "last": self.last,
+                "stalls": [{"medians": w["medians"].tolist(),
+                            "width": w["width"]} for w in self._stalls]}
 
     def load_state_dict(self, state):
         """
@@ -492,3 +574,6 @@ class ConvergenceMonitor:
         self.num_cuts = int(state.get("num_cuts", 0))
         self.converged = bool(state.get("converged", False))
         self.last = state.get("last")
+        self._stalls = [{"medians": np.asarray(w["medians"], dtype=float),
+                         "width": float(w["width"])}
+                        for w in state.get("stalls", [])]

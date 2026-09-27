@@ -72,10 +72,82 @@ Repository paths only: `grid.yaml`, `run.srun`,
 
 ## Commit
 
-First run: commit 775f8b7 (2026-09-26/27). Rerun after the two fixes below
-(this branch, 2026-09-27); give the rerun its own `--out_prefix`.
+First run: commit 775f8b7 (2026-09-26/27), results in `count_likelihood/`.
+Second run: commit c65390aa (2026-09-27), results in `count_likelihood_v2/`
+(neither is committed).
 
 ## Results
+
+**Second run (`count_likelihood_v2`, commit c65390aa, 2026-09-27): the
+count likelihood is clearly more accurate; two failures remain, neither in
+the likelihood itself.** 23 of 24 runs finished; 18 stopped on the
+convergence rule, 5 at the epoch cap (3 `counts`, 2 `lncfu`/`level`).
+
+Pooled theta (test genotypes), mean over seeds:
+
+| noise | fit | 95% coverage | 95% width | RMSE |
+|---|---|---|---|---|
+| poisson | lncfu / zero | 0.76 | 0.157 | 0.101 |
+| poisson | lncfu / level | 0.56 | 0.076 | 0.100 |
+| poisson | counts / level / single (2 runs) | 0.70 | 0.068 | 0.037 |
+| poisson | counts / level / mixture (seeds 1, 2) | 0.66 | 0.072 | 0.047 |
+| realistic | lncfu / zero | 0.81 | 0.207 | 0.114 |
+| realistic | lncfu / level | 0.68 | 0.140 | 0.110 |
+| realistic | counts / level / single | 0.78 | 0.153 | 0.073 |
+| realistic | counts / level / mixture | 0.78 | 0.155 | 0.074 |
+
+- **Accuracy.** Counts cut theta RMSE by a third (realistic) to two thirds
+  (poisson) against either `lncfu` arm, with coverage close to `lncfu`/
+  `zero` and better than `lncfu`/`level`. dk_geno RMSE also falls
+  (poisson single: 0.0003 against 0.002). Every arm still under-covers
+  (0.66-0.81 at 95%): the overconfidence is not the likelihood's.
+- **Lambda at a true 0** (prior 0.357 +/- 0.05): 0.023 and 0.027
+  (poisson), 0.054-0.064 (realistic), against ~0.12 for the `lncfu`
+  mixture in the congression study. Counts removes most of the spurious
+  lambda but not all, and the intervals (width ~0.01) exclude 0. The
+  mixture arms lose nothing against `single` on theta.
+- **Dispersion.** poisson: phi 0.03-0.06, inv_r 0.0014 (Poisson, as
+  simulated). realistic: phi 27-29, inv_r 0.007, i.e. ~29x Poisson,
+  well above the ~8x the arm was designed for (real data: 5-18x); the
+  realistic arm is noisier than intended.
+- **`sample_offset` level SD ~0.36 in every count run**, poisson included:
+  the base config's `tube_noise_sigma` (0.002/min over ~230 min, ~0.4 ln
+  units) shifts each tube's genotypes and its supplied total together, and
+  the model's predictions carry no tube term; the offset absorbs it, as
+  intended until step 6. The same explains `lncfu`/`level` under-covering:
+  in `lncfu`/`zero` the `normal_kt` row noise soaked up this tube noise and
+  with it the understated `ln_cfu` noise; the structural offset removes that
+  cover and the intervals halve at the same RMSE.
+- **`growth_k` coverage ~0 in every arm** (95% widths ~1e-4 against RMSE
+  ~1e-3): the pre-fit's k pin, not the likelihood.
+- **Failure 1, `run_0007` (poisson, seed 2, counts, single): NaN at step
+  ~12,400.** Not the likelihood: hill_mut's horseshoe local scales for the
+  lowest-read doubles (200-800 reads over all tubes, mostly zeros under
+  selection; typical doubles 3,600-200,000) widened (guide LogNormal scale
+  up to 11.5 on 41 elements; every other run stays at ~1.5), because beyond
+  saturation theta, and so the likelihood, no longer changes, while the
+  half-Cauchy tail is heavy. A draw of ~e^90 overflows float32 and the
+  epistasis term, theta, growth and the likelihood go NaN. Reproduced by
+  replaying from the step-12,000 checkpoint.
+- **Failure 2, `run_0012` (poisson, seed 3, counts, mixture): converged to
+  a wrong answer** (theta RMSE 0.51; m shrunk to ~40% and 4CP's m of the
+  wrong sign; ELBO 5.4e5 against 2.6e5 for the same-sized seed-2 mixture;
+  its `single` twin on the same data is fine). The step size was cut at
+  step 20,000 during a noisy but steady descent: window-median losses fell
+  1.5e5-1.9e5 per window, but each window's own trend was t = 1.9, 3.0,
+  1.0, so three windows counted as a plateau. It also showed some lambda
+  widening (scales to 4.9), perhaps from the same low-read doubles.
+- **Both fixed on this branch (2026-09-27).** Horseshoe: overflow-safe
+  `regularized_scale` and `HalfCauchy` (`components/_horseshoe.py`); a
+  replay of run_0007 from its step-12,000 checkpoint, which went NaN at step
+  12,370 before, ran 3,000 steps clean. Convergence: before a cut or stop,
+  the stalled windows are pooled into one trend (`pooled_loss_trend`).
+  Replaying every v2 run's loss trace up to its first cut, 20 of 23 first
+  cuts were made mid-descent (pooled t 4.4-14.2; run_0012: 14.2) and would
+  now continue; the other 3 (pooled t -0.5 to 1.4) are still cut. So the
+  early cut was the norm, not a one-off, and the v2 fits (and the earlier
+  congression grids) mostly finished their fast phase at too small a step.
+  A third run with both fixes is needed; runs will be longer.
 
 **First run (775f8b7): 11 of the 12 `counts` runs failed; not usable for
 the comparison.** All 12 `lncfu` runs and one `counts` run

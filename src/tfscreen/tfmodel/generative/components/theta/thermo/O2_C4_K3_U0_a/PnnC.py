@@ -53,6 +53,7 @@ Optional (for distance-dependent epistasis):
 import jax.numpy as jnp
 import numpyro as pyro
 import numpyro.distributions as dist
+from tfscreen.tfmodel.generative.components._horseshoe import regularized_scale
 import numpyro.distributions.constraints as constraints
 import pandas as pd
 from flax.struct import dataclass, field
@@ -390,7 +391,7 @@ def guide(name: str,
                                num_genotype=data.num_genotype)
 
         def _lam_tilde(lam):
-            return jnp.sqrt(c2_epi * lam ** 2 / (c2_epi + tau_epi ** 2 * lam ** 2))
+            return regularized_scale(lam, tau_epi, c2_epi)
 
         epi_SP       = epi_off * tau_epi * _lam_tilde(lam)   # (S, P)
         epi_ddG      = epi_SP.T                              # (P, S)
