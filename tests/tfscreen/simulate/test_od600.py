@@ -9,8 +9,11 @@ from tfscreen.simulate.od600 import (
     simulate_od600,
 )
 
-CAL = {"A_CFU": 1e6, "B_CFU": 8e7, "C_CFU": 2e7, "OD600_PCT_STD": 0.02,
-       "OD600_MEAS_THRESHOLD": 0.08, "OD600_MAX": 0.8}
+CAL = {"kind": "od600_to_cfu_per_mL", "degree": 2,
+       "coefficients": [1e6, 8e8, 2e8],
+       "covariance": [[1e10, 0, 0], [0, 1e12, 0], [0, 0, 1e12]],
+       "reading_rel_sd": 0.02, "detection_threshold": 0.08,
+       "calibrated_od600_range": [0.1, 0.8]}
 
 
 @pytest.fixture
@@ -18,51 +21,11 @@ def cal():
     return read_od600_calibration(dict(CAL))
 
 
-def test_read_fills_optional(cal):
-    assert cal["P_JCJT_CFU"] is None
-    assert cal["OD600_MAX"] == 0.8
-
-
-def test_read_needs_required():
-    bad = dict(CAL)
-    del bad["B_CFU"]
-    with pytest.raises(ValueError, match="B_CFU"):
-        read_od600_calibration(bad)
-
-
-def test_read_refuses_decreasing_curve():
-    bad = dict(CAL, C_CFU=-1e9)
-    with pytest.raises(ValueError, match="not increasing"):
-        read_od600_calibration(bad)
-
-
 def test_round_trip(cal):
     od = np.array([0.1, 0.3, 0.7])
     cfu, _, detectable = od600_to_cfu_per_mL(od, cal)
     assert detectable.all()
     assert np.allclose(cfu_per_mL_to_od600(cfu, cal), od)
-
-
-def test_below_threshold_is_an_upper_bound(cal):
-    cfu, _, detectable = od600_to_cfu_per_mL(np.array([0.01]), cal)
-    at_threshold, _, _ = od600_to_cfu_per_mL(np.array([0.08]), cal)
-    assert not detectable[0]
-    assert cfu[0] == pytest.approx(at_threshold[0])
-
-
-def test_forward_sd_is_reading_noise_through_slope(cal):
-    od = 0.4
-    _, sd, _ = od600_to_cfu_per_mL(np.array([od]), cal)
-    slope = CAL["B_CFU"] + 2 * CAL["C_CFU"] * od
-    assert sd[0] == pytest.approx(slope * 0.02 * od)
-
-
-def test_forward_sd_includes_curve_error():
-    c = read_od600_calibration(dict(CAL, P_JCJT_CFU=1e5, Q_JCJT_CFU=0.0,
-                                    R_JCJT_CFU=0.0))
-    _, sd, _ = od600_to_cfu_per_mL(np.array([0.4]), c)
-    slope = CAL["B_CFU"] + 2 * CAL["C_CFU"] * 0.4
-    assert sd[0] == pytest.approx(np.hypot(slope * 0.02 * 0.4, 1e5))
 
 
 def test_simulate_od600(cal):
@@ -78,13 +41,15 @@ def test_simulate_od600(cal):
     assert r["od600_in_range"].all()
 
 
-def test_simulate_flags(cal):
-    rng = np.random.default_rng(0)
-    # Evaluate the curve directly: the forward calibration clamps readings
-    # below the threshold to the threshold.
-    def curve(od):
-        return CAL["A_CFU"] + CAL["B_CFU"] * od + CAL["C_CFU"] * od ** 2
-    low, high = curve(0.02), curve(1.5)
-    r = simulate_od600(np.array([low, high]), 1.0, cal, rng)
-    assert list(r["od600_detectable"]) == [False, True]
-    assert list(r["od600_in_range"]) == [True, False]
+def test_simulate_flags_blind_and_saturated_tubes(cal):
+    rng = np.random.default_rng(1)
+    low, _, _ = od600_to_cfu_per_mL(np.array([0.02]), dict(cal, detection_threshold=0.0))
+    high, _, _ = od600_to_cfu_per_mL(np.array([1.2]), cal)
+    r = simulate_od600(np.array([low[0], high[0]]) * 5.0, 5.0, cal, rng)
+    assert not r["od600_detectable"][0]
+    assert not r["od600_in_range"][1]
+
+
+def test_accepts_raw_dict():
+    r = simulate_od600(np.array([1e9]), 5.0, dict(CAL), np.random.default_rng(0))
+    assert r["od600"].shape == (1,)

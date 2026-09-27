@@ -41,8 +41,9 @@ Pre-growth and selection both happen in the tubes, after the split. OD600
 is read on three bioreplicates of the experiment; two are sequenced.
 
 Total CFU per tube comes from OD600 through an OD-to-CFU calibration. The
-calibration depends on the plate reader, plate, volume and strain, so it is
-the lab's, not part of this package; the pipeline takes the resulting CFU
+calibration depends on the plate reader, plate, volume and strain, so each
+lab makes its own with ``tfs-calibrate-od600`` (see "OD600 calibration"
+below); the pipeline takes the resulting CFU
 estimate per tube (``sample_cfu`` and its uncertainty, or the log-space
 equivalents). A calibration gives cfu/mL; the pipeline's ``ln_cfu`` is cells
 in the 5 mL tube, ``ln(cfu/mL * 5 mL)``. Under the strongest selection a
@@ -90,6 +91,46 @@ There are three primary scripts for processing raw data:
    pre-split time-point (before the library is divided into separate
    selection conditions). The output anchors the initial genotype
    abundances used by the growth model.
+
+OD600 calibration
+-----------------
+
+``tfs-calibrate-od600`` fits the calibration from two small experiments, both
+done with the same handling as production samples (same reader, plate type,
+volume and strain):
+
+- **Repeated readings of a dilution series.** Read each dilution several
+  times, repeating the whole step each time (swirl the culture, pipette into
+  the plate, read). A CSV with one row per reading, columns ``dilution``
+  (relative to the undiluted culture) and ``od600``. The largest relative SD
+  across dilutions is the reading noise; the detection threshold is midway
+  between the mean readings of the two most dilute samples, where the series
+  has flattened onto the reader's floor (``--detection_threshold``
+  overrides it).
+- **Plate counts of cultures whose OD600 was read.** One row per plate:
+  ``od600``, ``colonies``, ``dilution`` (total dilution factor before
+  plating), ``plated_volume_mL``, ``num_dilutions`` and ``plating_steps``.
+  CFU/mL is ``colonies * dilution / plated_volume_mL``, with relative
+  variance ``1 / colonies`` (counting) plus ``pipette_rel_error^2`` per
+  dilution and plating step.
+
+A polynomial of CFU/mL in OD600 (``--degree``, default 2) is fit by weighted
+least squares. The output ``{out_prefix}.yaml`` holds the coefficients and
+their full covariance, the reading noise, the detection threshold and the
+calibrated OD600 range. The covariance matters: the curve's error is one
+error shared by every tube calibrated with it, so it does not average out
+across tubes and must not be treated as independent per-tube noise
+(``tfscreen.process_raw.od600.cfu_per_mL_error_components`` returns the curve
+and reading parts separately). ``{out_prefix}.pdf`` shows the dilution
+series, the fit and the calibrated CFU's relative error; the two CSVs hold
+the per-dilution noise and the per-plate fit.
+
+.. code-block:: bash
+
+    tfs-calibrate-od600 replicates.csv plate_counts.csv --out_prefix od600
+
+``examples/od600/`` has synthetic inputs in these formats
+(``make_example_data.py``) and the calibration made from them.
 
 Configuration File (run_config.yaml)
 -------------------------------------

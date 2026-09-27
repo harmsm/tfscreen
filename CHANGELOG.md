@@ -29,7 +29,33 @@ fall into two kinds:
 
 ## [Unreleased]
 
+### Added
+
+- **`tfs-calibrate-od600` (roadmap step 3).** Fits an OD600-to-CFU/mL
+  calibration from a lab's own two experiments: repeated OD600 readings of
+  a dilution series (reading noise and detection threshold) and plate
+  counts of cultures whose OD600 was read (CFU/mL from colonies, dilution
+  and plated volume, with counting and pipetting error). Writes the
+  polynomial's coefficients with their full covariance (the curve's error
+  is shared by every tube, so callers get it apart from the reading noise),
+  the reading noise, the detection threshold and the calibrated range, plus
+  a diagnostic PDF and CSVs. The method, file format and apply/invert
+  functions are in `tfscreen.process_raw.od600`; documented CSV inputs;
+  synthetic example in `examples/od600/`. It reproduces the lab
+  notebook's coefficients to 2e-9 when fed the notebook's CFU/mL, but the
+  notebook did not divide by the plated volume, so its constants (and the
+  CFU totals made with them) are 10x low.
+
 ### Changed
+
+- **Breaking: the simulator's `od600.calibration` is a
+  `tfs-calibrate-od600` file.** The lab notebook's format (`A_CFU`,
+  `OD600_PCT_STD`, ...) is refused with a pointer to the new tool.
+  `examples/simulate/od600_calibration.yaml` is replaced by
+  `examples/od600/od600_calibration.yaml`, made by the tool from synthetic
+  data at a realistic scale (8e8 CFU/mL per OD600 unit, not the old
+  example's 8e7). `od600_in_range` now means at or below the top of the
+  calibrated OD600 range.
 
 - **Breaking: `tfs-configure-model` defaults to the count likelihood.**
   `--growth_likelihood` now defaults to `counts` and

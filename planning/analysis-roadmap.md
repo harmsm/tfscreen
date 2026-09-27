@@ -383,7 +383,7 @@ step 7.
    - The orchestrator requires counts, depth and the OD table. Old
      processed files are not supported; reprocess the real data (C6) and
      regenerate simulations.
-3. **Generic OD600 calibration** (N; new CLI; C10, C11).
+3. [x] **Generic OD600 calibration** (N; new CLI; C10, C11).
    `tfs-calibrate-od600`: port the notebook's method (technical-replicate
    reading noise, detection threshold, errors-in-variables polynomial of CFU
    on OD, counting plus pipetting error on the plate counts) with a
@@ -395,6 +395,22 @@ step 7.
    `process_raw/`. Test: reproduces the lab notebook's constants and CFU
    estimates from its spreadsheets (run locally; the data stay out of the
    repo), and a synthetic example in `examples/`.
+   Done 2026-09-27: `tfs-calibrate-od600` (`process_raw/od600.py`,
+   `scripts/calibrate_od600_cli.py`), documented CSV inputs, a
+   `kind: od600_to_cfu_per_mL` YAML with the full covariance, and
+   `examples/od600/`. The simulator's `od600` block reads the new format
+   (the old one is refused). Run locally on the lab's spreadsheets, it
+   reproduces the notebook's coefficients to 2e-9, the detection threshold
+   (0.0957) and the reading noise (1.96%) exactly, given the notebook's
+   CFU/mL. **But the notebook's CFU/mL omits the division by the plated
+   volume** (0.1 mL): the sheet's own `CFU_per_mL` column is 10x the value
+   fitted, so the lab's constants, and every CFU total and `ln_cfu` made
+   with them, are 10x (ln 10 = 2.3) low. Frequencies, growth rates, theta
+   and dk_geno are unaffected (a constant factor cancels); `ln_cfu0`, the
+   presplit level, simulated `cfu0` tuned against real `ln_cfu`, and the
+   absolute totals the population model (step 6) will use are affected.
+   The notebook's quadratic approximation of the curve error (`P/Q/R`) is
+   replaced by the exact `J C J^T`; they differ by up to 1.8x at low OD.
 4. [x] **Simulator realism** (N; simulator only).
    The simulator has index hopping (`prob_index_hop`) and per-tube growth
    noise (per timepoint, matching the design) but writes

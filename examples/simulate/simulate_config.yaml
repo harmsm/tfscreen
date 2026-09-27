@@ -316,11 +316,10 @@ seed: null
 # pcr_amplification_cv: 1.0
 
 # One OD600 reading per tube, from its true total through an OD600-to-CFU
-# calibration (od600_calibration.yaml here is synthetic; a lab supplies its
-# own). Writes tfs_sim_od600.csv with every tube of every replicate.
-#   calibration:            constants file (A_CFU, B_CFU, C_CFU,
-#                           OD600_PCT_STD, OD600_MEAS_THRESHOLD, optional
-#                           OD600_MAX and P/Q/R_JCJT_CFU)
+# calibration (the one in ../od600/ is synthetic; a lab makes its own with
+# tfs-calibrate-od600). Writes tfs_sim_od600.csv with every tube of every
+# replicate.
+#   calibration:            calibration YAML written by tfs-calibrate-od600
 #   tube_volume_mL:         tube volume; the calibration is per mL (5.0)
 #   num_od_only_replicates: extra replicates with OD600 but no reads (0)
 #   sample_cfu_from_od600:  give the pipeline each tube's total as estimated
@@ -328,7 +327,7 @@ seed: null
 #                           true total (false)
 #
 # od600:
-#   calibration: od600_calibration.yaml
+#   calibration: ../od600/od600_calibration.yaml
 #   tube_volume_mL: 5.0
 #   num_od_only_replicates: 1
 #   sample_cfu_from_od600: true

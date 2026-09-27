@@ -1,0 +1,33 @@
+# OD600-to-CFU calibration, written by tfs-calibrate-od600.
+# cfu/mL = sum_i coefficients[i] * OD600^i. covariance is the
+# coefficients' (shared by every tube calibrated with this file);
+# reading_rel_sd is one reading's SD as a fraction of the reading.
+# Specific to one plate reader, plate, volume and strain.
+kind: od600_to_cfu_per_mL
+degree: 2
+coefficients:
+- -3232113.9094636133
+- 854172076.6876991
+- 41938427.08096051
+covariance:
+- - 227467162769893.9
+  - -1599191946265586.5
+  - 2296356870091127.0
+- - -1599191946265586.5
+  - 1.2197351004649222e+16
+  - -1.828231333112995e+16
+- - 2296356870091127.0
+  - -1.828231333112995e+16
+  - 2.857868475371398e+16
+chi2_reduced: 0.39237605605574044
+reading_rel_sd: 0.01886048606352703
+detection_threshold: 0.09292
+calibrated_od600_range:
+- 0.1192
+- 0.5997
+num_plate_counts: 16
+pipette_rel_error: 0.02
+source:
+  replicate_file: replicates.csv
+  plate_count_file: plate_counts.csv
+written: '2026-09-27'
