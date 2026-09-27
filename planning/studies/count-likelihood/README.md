@@ -235,3 +235,9 @@ the comparison.** All 12 `lncfu` runs and one `counts` run
   component guide's initial location scales (0.1) cost ~(0.1 mu)^2 / var per
   observation. It falls as the scales shrink; a smaller
   `--guide_init_scale` may suit counts fits if this slows convergence.
+  **Update (2026-09-27):** it did more than slow convergence. SVI lost the
+  pre-MAP point and settled into other optima (`../relative-fit/`,
+  Results), and every arm here, `lncfu` included, started 2e6-5e8 above
+  its pre-MAP. The default is now 1e-4 with no jitter. The comparisons
+  between arms ran under the same handicap. The absolute coverage numbers
+  above, `growth_k` included, need a rerun.

@@ -29,6 +29,23 @@ fall into two kinds:
 
 ## [Unreleased]
 
+### Fixed
+
+- **SVI no longer throws away the pre-MAP solution.** The component guide
+  started with every scale at 0.1 and a multiplicative 0.1 jitter on every
+  starting value. The scale is in each parameter's own units, so for growth
+  rates (per minute) and ln_cfu levels it was enormous. SVI started about
+  1000x above the pre-MAP's loss, count and `lncfu` fits alike. It then
+  re-descended for tens of thousands of epochs into other optima: a
+  sign-flipped mirror mode, a halved slope `m`, or the whole library
+  shifted against wt. `tfs-fit-model --guide_init_scale` now defaults to
+  1e-4 (`DEFAULT_GUIDE_INIT_SCALE`). It also sets the autoguides'
+  `init_scale` for a fresh fit, instead of numpyro's 0.1. SVI widens the
+  scales itself. `--init_param_jitter` and
+  `RunInference.run_optimization(init_param_jitter=...)` now default to 0.
+  SVI calibration results from before this fix (the count-likelihood and
+  relative-fit grids) need a rerun.
+
 ### Added
 
 - **`tfs-calibrate-od600` (roadmap step 3).** Fits an OD600-to-CFU/mL

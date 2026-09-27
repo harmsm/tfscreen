@@ -11,10 +11,15 @@ from tfscreen.util.cli.generalized_main import generalized_main
 
 from tfscreen.tfmodel.configuration_io import read_configuration
 
-# Upper bound on the component guide's starting scales (the numpyro autoguides'
-# own default init_scale).  Starting at prior width makes early SVI escape the
-# guide variance by inflating the noise terms.
-DEFAULT_COMPONENT_INIT_SCALE = 0.1
+# Starting scale of the variational guide, in each site's unconstrained units:
+# an upper bound on every component-guide scale, and the autoguides'
+# ``init_scale`` for a fresh fit. It has to be small because it is one number
+# for every site: 0.1 on a growth rate (per minute) is 17 ln units over a
+# selection, and at 0.1 SVI started ~1000x above the pre-MAP's loss and
+# re-descended into other optima (relative-fit grid, 2026-09-27). SVI widens
+# the scales itself; the entropy term raises each about e-fold per 1000 Adam
+# steps at step size 1e-3.
+DEFAULT_GUIDE_INIT_SCALE = 1e-4
 
 def _optimization_kwargs(convergence_window_steps=2000,
                          patience=3,
@@ -308,7 +313,7 @@ def fit_model(config_file,
               max_num_epochs=100000,
               forward_batch_size=512,
               pre_map_num_epoch=10000,
-              init_param_jitter=0.1,
+              init_param_jitter=0.0,
               nuts_num_warmup=500,
               nuts_num_samples=500,
               nuts_num_chains=1,
@@ -357,10 +362,12 @@ def fit_model(config_file,
         Covariance rank for 'auto_low_rank_multivariate_normal' (numpyro's
         default when omitted).
     guide_init_scale : float, optional
-        Initial scale of the variational distribution.  For 'component' it
-        caps every guide scale at the start (default 0.1); for an autoguide
-        it is numpyro's ``init_scale`` (numpyro's default when omitted).  Not
-        accepted by 'delta'.
+        Initial scale of the variational distribution, in each site's
+        unconstrained units (default 1e-4, ``DEFAULT_GUIDE_INIT_SCALE``).
+        For 'component' it caps every guide scale at the start; for an
+        autoguide it is numpyro's ``init_scale`` for a fresh fit (a resumed
+        fit keeps its checkpoint's).  SVI widens the scales itself; a large
+        start throws the pre-MAP point away.  Not accepted by 'delta'.
     out_prefix : str, optional
         Prefix for all output files: checkpoints, parameter files, and the
         posterior HDF5 (default 'tfs_fit_model'). Files are named
@@ -408,8 +415,10 @@ def fit_model(config_file,
         10000; 0 skips it).  The warm-up stops earlier when it converges.
         Only used if analysis_method is 'svi'.
     init_param_jitter : float, optional
-        Multiplicative jitter on the component guide's starting parameters,
-        to break symmetry (default 0.1).  Not used by autoguides or MAP.
+        Multiplicative jitter on the component guide's starting parameters
+        (default 0, none).  Not used by autoguides or MAP.  Leave it off when
+        starting from a pre-MAP: it scales with each value, so 0.1 moves an
+        ln_cfu0 location near 15 by about 1.5 ln units.
     nuts_num_warmup : int, optional
         Number of NUTS warmup steps (default 500). Only used if
         analysis_method is 'nuts'.
@@ -530,10 +539,9 @@ def fit_model(config_file,
                 # The MAP point replaces the guesses where it has a value.
                 start_values = {**start_values, **ri.site_values(map_params)}
 
+            init_scale = (DEFAULT_GUIDE_INIT_SCALE
+                          if guide_init_scale is None else guide_init_scale)
             if guide_type == "component":
-                init_scale = (DEFAULT_COMPONENT_INIT_SCALE
-                              if guide_init_scale is None
-                              else guide_init_scale)
                 init_params = ri.component_guide_start(start_values,
                                                        guesses=guesses,
                                                        init_scale=init_scale)
@@ -541,6 +549,8 @@ def fit_model(config_file,
             else:
                 init_params = None
                 init_values = start_values
+                if guide_type != "delta":
+                    guide_kwargs["init_scale"] = init_scale
 
         return _run_svi(ri,
                         init_params=init_params,

@@ -99,7 +99,8 @@ via ``--analysis_method``:
 * **svi** (default) — Stochastic Variational Inference. First runs a MAP
   warm-up (at most ``--pre_map_num_epoch`` epochs) and starts the variational
   fit at its solution, with guide scales capped at ``--guide_init_scale``
-  (default 0.1). Produces a full approximate posterior; posterior samples are
+  (default 1e-4, in each parameter's own units; SVI widens them itself, and a
+  larger start throws the MAP solution away). Produces a full approximate posterior; posterior samples are
   drawn with ``tfs-sample-posterior``.
 * **nuts** — No-U-Turn Sampler (exact MCMC). Slowest; most accurate.
 

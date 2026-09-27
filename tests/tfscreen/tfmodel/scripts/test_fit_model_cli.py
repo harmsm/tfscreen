@@ -270,6 +270,19 @@ class TestGuideSelection:
         assert kwargs["guide_type"] == "auto_low_rank_multivariate_normal"
         assert kwargs["guide_kwargs"] == {"rank": 4, "init_scale": 0.05}
 
+    @pytest.mark.parametrize("guide_type,expected", [
+        ("auto_normal", {"init_scale": 1e-4}),
+        ("delta", {}),
+    ])
+    def test_fresh_autoguide_starts_narrow(self, mocker, guide_type,
+                                           expected):
+        """numpyro's default init_scale (0.1) would throw the start away."""
+        _patch_common(mocker)
+        run_svi_mock = self._patch_run_svi(mocker)
+        fit_model(config_file="dummy.yaml", seed=1, pre_map_num_epoch=0,
+                  guide_type=guide_type)
+        assert run_svi_mock.call_args.kwargs["guide_kwargs"] == expected
+
     @staticmethod
     def _patch_ri(mocker, guesses=None):
         """RunInference whose site_values strips ``_auto_loc`` (like the
@@ -314,7 +327,7 @@ class TestGuideSelection:
         assert set(kwargs["init_values"]) == {"dk_geno_offset"}
         assert kwargs["init_params"] is None
 
-    @pytest.mark.parametrize("scale,expected", [(None, 0.1), (0.02, 0.02)])
+    @pytest.mark.parametrize("scale,expected", [(None, 1e-4), (0.02, 0.02)])
     def test_component_guide_starts_from_premap(self, mocker, scale,
                                                 expected):
         _patch_common(mocker)

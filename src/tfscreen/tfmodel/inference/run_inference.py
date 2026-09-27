@@ -373,7 +373,7 @@ class RunInference:
                          step_size_cut=0.1,
                          checkpoint_interval=10,
                          max_num_epochs=10000000,
-                         init_param_jitter=0.1,
+                         init_param_jitter=0.0,
                          epoch_checkpoint_interval=1000):
         """
         Run the optimization loop until convergence or ``max_num_epochs``.
@@ -433,7 +433,10 @@ class RunInference:
         max_num_epochs : int, optional
             Maximum number of optimization epochs to run.
         init_param_jitter : float, optional
-            amount of jitter to add to init_params. To turn off, set to 0.
+            Multiplicative log-normal jitter on ``init_params`` (default 0,
+            none).  It scales with each value, so it moves large locations
+            (ln_cfu0 near 15) by whole ln units; keep it off when starting
+            from a MAP point.
         epoch_checkpoint_interval : int or None, optional
             Frequency (in epochs) to write numbered epoch checkpoints to a
             ``checkpoints/`` subdirectory alongside ``out_prefix``. Files are

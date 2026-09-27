@@ -190,3 +190,53 @@ def test_default_model_guide_start_round_trip():
     assert float(np.max(start["dk_geno_offset_scales"])) == pytest.approx(0.1)
     # param-keyed guesses (not sites) are kept
     assert "condition_growth_k_locs" in start
+
+
+def test_default_guide_start_stays_near_its_point():
+    """
+    SVI starts where the pre-MAP ended, not far above it.
+
+    The starting scale is one number in every site's own units, so a large one
+    is enormous on growth rates (per minute) and ln_cfu levels: at 0.1 the
+    relative-fit grid's SVI started ~1000x above its pre-MAP loss and
+    re-descended into other optima (2026-09-27).  Checked on the count
+    likelihood, the most sensitive to it.
+    """
+    from numpyro.handlers import seed, substitute, trace
+    from numpyro.infer.util import log_density
+
+    from tfscreen.tfmodel.scripts.fit_model_cli import DEFAULT_GUIDE_INIT_SCALE
+
+    orchestrator = ModelOrchestrator(growth_df=_GROWTH_CSV,
+                                     binding_df=_BINDING_CSV,
+                                     batch_size=None,
+                                     growth_likelihood="counts",
+                                     sample_offset="level")
+    ri = RunInference(orchestrator, seed=0)
+    values = ri.site_values(orchestrator.init_params)
+    data = orchestrator.get_batch(orchestrator.data,
+                                  jnp.asarray(orchestrator.get_random_idx()))
+
+    def neg_log_joint(params, key):
+        draw = trace(seed(substitute(orchestrator.jax_model_guide, params),
+                          key)).get_trace(data=data,
+                                          priors=orchestrator.priors)
+        point = {k: s["value"] for k, s in draw.items() if s["type"] == "sample"}
+        lp, _ = log_density(orchestrator.jax_model, (),
+                            dict(data=data, priors=orchestrator.priors), point)
+        return -float(lp)
+
+    def start(scale):
+        return ri.component_guide_start(values,
+                                        guesses=orchestrator.init_params,
+                                        init_scale=scale)
+
+    at_point = neg_log_joint(start(1e-12), 0)
+
+    def excess(scale):
+        params = start(scale)
+        return np.median([neg_log_joint(params, k) for k in range(8)]) - at_point
+
+    assert excess(DEFAULT_GUIDE_INIT_SCALE) < 0.01 * abs(at_point)
+    # the test can fail: the old default started far from the point
+    assert excess(0.1) > abs(at_point)
