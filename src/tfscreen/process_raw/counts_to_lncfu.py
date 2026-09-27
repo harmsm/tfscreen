@@ -228,6 +228,8 @@ def counts_to_lncfu(
     pd.DataFrame
         A new DataFrame containing the combined data, with calculated
         frequencies, genotype-specific cfu/mL, and propagated variances.
+        ``sample_reads`` is each sample's total reads (``__unknown__``
+        included, no pseudocounts), the depth the count likelihood uses.
         The DataFrame is sorted, and the 'genotype' column is cast as a
         categorical type.
 
@@ -275,6 +277,10 @@ def counts_to_lncfu(
                         .reindex(group['counts'].sum().index, fill_value=0))
     total_counts_per_sample = group['counts'].sum() + n_real_genotypes * pseudocount
 
+    # The tube's total reads, __unknown__ included and without pseudocounts:
+    # the depth the count likelihood (growth_likelihood='counts') uses.
+    sample_reads = group['counts'].sum()
+
     # Drop the unknown bucket now that it has contributed to the denominator;
     # everything downstream treats only real library genotypes.
     combined_df = combined_df[~is_unknown].copy()
@@ -297,6 +303,8 @@ def counts_to_lncfu(
     # Calculate genotype cfu/mL and propagate variance
     final_df = _calculate_concentrations_and_variance(freq_df,
                                                       total_counts_per_sample)
+
+    final_df['sample_reads'] = final_df['sample'].map(sample_reads)
 
     # Define genotype as a categorical variable
     final_df = set_categorical_genotype(final_df,standardize=True,sort=False)

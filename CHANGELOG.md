@@ -31,6 +31,27 @@ fall into two kinds:
 
 ### Added
 
+- **Count likelihood (`growth_likelihood: counts`; roadmap step 7).** Growth
+  can be observed as read counts instead of `ln_cfu`: each genotype's reads
+  in a tube are negative binomial with mean
+  `depth * exp(ln_cfu_pred - ln(tube total))` and variance
+  `mu (1 + phi) + mu^2 inv_r` (both learned; study 0b found real counts 5-18x
+  Poisson), with no pseudocount (`generative/observe/growth_counts.py`). The
+  log-pmf is computed by Loader's algorithm (`CountNegativeBinomial`),
+  accurate to ~1e-4 nats in float32 where numpyro's negative binomial loses
+  several nats per observation at 1e4-1e6 reads. `tfs-configure-model
+  --growth_likelihood counts` (requires `growth_noise_model zero`); the
+  growth file needs `counts`, each tube's total reads (`sample_reads`, or
+  `adjusted_counts`/`frequency` to derive it) and total cells
+  (`sample_ln_cfu` or `sample_cfu`). Presplit data are still observed as
+  `ln_cfu`.
+- **`sample_offset: level`.** One ln_cfu offset per tube, shared by every
+  genotype in it, with a learned constant SD (the tube's composition offset
+  and any error in its supplied total), in place of `normal`'s
+  time-scaled growth-rate offset. `tfs-configure-model` now exposes
+  `--sample_offset_model` (it was always `zero` before).
+- **`counts_to_lncfu` writes `sample_reads`**, each tube's total reads
+  (`__unknown__` included, no pseudocounts).
 - **Simulator sampling noise and OD600 (roadmap step 4).** Optional
   simulate-config keys, all off by default so existing configs simulate
   exactly as before: `founder_sampling` (Poisson founders per clone per
@@ -377,6 +398,12 @@ fall into two kinds:
 
 ### Fixed
 
+- **Prediction with a per-tube `sample_offset`.** `tfs-predict-growth` (and
+  anything calling `analysis.prediction.predict` on a new time or
+  concentration grid) failed to reshape the per-tube offsets of
+  `sample_offset: normal` (and now `level`) onto the prediction grid's
+  tubes. Per-tube offsets are now set to zero there: a prediction is for a
+  typical tube.
 - **Absent prior groups survive the priors CSV.** `write_configuration`
   wrote a `None` prior group (growth priors of a binding-only model, binding
   priors of a growth-only one) as a `None` row that reloaded as NaN; it is

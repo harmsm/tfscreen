@@ -126,6 +126,22 @@ specification (``genotype``, ``library``, ``replicate``,
 ``condition_pre``, ``condition_sel``, ``titrant_name``, ``titrant_conc``,
 ``t_pre``, ``t_sel``, ``ln_cfu``, ``ln_cfu_std``).
 
+**Likelihood.** By default (``--growth_likelihood lncfu``) each row's
+``ln_cfu`` is observed with a Student-t likelihood. With
+``--growth_likelihood counts`` the read counts are observed instead: a
+negative binomial with mean ``tube reads x predicted frequency`` and a
+learned dispersion (variance ``mu (1 + phi) + mu^2 / r``), with no
+pseudocount, so a genotype with zero reads is an observation rather than a
+floor. Real counts vary several times more than Poisson, mostly in
+proportion to the mean, which ``phi`` describes. This needs three more
+columns: ``counts``, each tube's total reads (``sample_reads``, written by
+``tfs-process-counts``; older files can supply ``adjusted_counts`` and
+``frequency`` instead) and each tube's total cells (``sample_ln_cfu``, or
+``sample_cfu`` with its uncertainty). It also needs
+``--growth_noise_model zero``, and pairs with ``--sample_offset_model
+level``, one offset per tube shared by all of its genotypes, which absorbs
+an error in the tube's supplied total.
+
 Passed via the optional flag:
 
 .. code-block:: bash

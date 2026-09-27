@@ -53,9 +53,11 @@ from .components.growth_noise import normal_kt as growth_noise_normal_kt
 
 from .components.sample_offset import zero as sample_offset_zero
 from .components.sample_offset import normal as sample_offset_normal
+from .components.sample_offset import level as sample_offset_level
 
 from .observe import binding
 from .observe import growth
+from .observe import growth_counts
 from .observe import presplit
 from .observe import base_growth
 
@@ -123,6 +125,7 @@ model_registry = {
     "sample_offset":{
         "zero":sample_offset_zero,
         "normal":sample_offset_normal,
+        "level":sample_offset_level,
     },
     "growth_transition":{
         "instant":growth_transition_instant,
@@ -134,6 +137,7 @@ model_registry = {
     },
     "observe_binding":binding,
     "observe_growth":growth,
+    "observe_growth_counts":growth_counts,
     "observe_presplit":presplit,
     "observe_base_growth":base_growth,
 }

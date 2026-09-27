@@ -1,6 +1,6 @@
 ---
 title: Fit read counts directly instead of ln_cfu
-status: idea
+status: promoted
 filed: 2026-09-24
 area: tfmodel
 revisit_when: >-
@@ -16,6 +16,10 @@ related:
   - src/tfscreen/tfmodel/generative/observe/growth.py
   - src/tfscreen/tfmodel/generative/observe/presplit.py
 ---
+
+**Promoted 2026-09-26** into `planning/analysis-roadmap.md` (Track N, step 7,
+implemented with supplied tube totals; validation grid in
+`planning/studies/count-likelihood/`).
 
 **Context:** The congression calibration grid (2026-09-24) found that the
 mixture used its congressed classes to fit the read-count detection floor.

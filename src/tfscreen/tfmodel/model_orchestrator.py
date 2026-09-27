@@ -38,7 +38,8 @@ ZERO_CONC_VALUE = 1e-20
 
 def _read_growth_df(growth_df,
                     theta_group_cols=None,
-                    treatment_cols=None):
+                    treatment_cols=None,
+                    growth_likelihood="lncfu"):
     """
     Reads and preprocesses a DataFrame containing growth curve data.
 
@@ -64,6 +65,10 @@ def _read_growth_df(growth_df,
         Column names used to define unique growth treatment conditions.
         If not specified, defaults to ["condition_pre", "condition_sel",
         "titrant_name", "titrant_conc"].
+    growth_likelihood : str, optional
+        "lncfu" (default) or "counts". For "counts" the frame also needs
+        ``counts``, each tube's total reads and total cells; see
+        :func:`_add_count_columns`.
 
     Returns
     -------
@@ -105,6 +110,9 @@ def _read_growth_df(growth_df,
     required.extend(["ln_cfu","ln_cfu_std","replicate","t_pre","t_sel"])
     tfscreen.util.dataframe.check_columns(growth_df,required_columns=required)
 
+    if growth_likelihood == "counts":
+        growth_df = _add_count_columns(growth_df)
+
     # These two maps are used to look up parameters after sampling posteriors
     growth_df = add_group_columns(target_df=growth_df,
                                   group_cols=treatment_cols,
@@ -123,6 +131,62 @@ def _read_growth_df(growth_df,
 
         
     return growth_df
+
+def _add_count_columns(growth_df):
+    """
+    Columns the count likelihood needs (``growth_likelihood='counts'``):
+    ``counts`` (reads of the genotype in the tube), ``ln_sample_reads`` (ln of
+    the tube's total reads, ``__unknown__`` included) and ``sample_ln_cfu``
+    (ln of the tube's total cells).
+
+    The tube's total reads come from ``sample_reads`` (written by
+    ``counts_to_lncfu``) when present, else from ``adjusted_counts /
+    frequency`` (the frequency denominator of older processed files, which
+    also counts one pseudocount per genotype: about 1% more than the reads,
+    the same for every genotype in a tube, so a per-tube offset absorbs
+    it). ``sample_ln_cfu`` is used as given, else derived from
+    ``sample_cfu`` as ``counts_to_lncfu`` does.
+
+    Raises
+    ------
+    ValueError
+        If a column cannot be found or derived, or a tube's reads or
+        ``counts`` are not finite and non-negative.
+    """
+    from tfscreen.process_raw.counts_to_lncfu import get_sample_ln_cfu
+
+    if "counts" not in growth_df.columns:
+        raise ValueError("growth_likelihood='counts' needs a 'counts' column "
+                         "in growth_df (reads per genotype per tube).")
+    counts = growth_df["counts"].to_numpy(dtype=float)
+    if not np.all(np.isfinite(counts) & (counts >= 0)):
+        raise ValueError("growth_df 'counts' must be finite and >= 0.")
+
+    if "sample_reads" in growth_df.columns:
+        reads = growth_df["sample_reads"].to_numpy(dtype=float)
+    elif {"adjusted_counts", "frequency"} <= set(growth_df.columns):
+        with np.errstate(divide="ignore", invalid="ignore"):
+            reads = (growth_df["adjusted_counts"].to_numpy(dtype=float)
+                     / growth_df["frequency"].to_numpy(dtype=float))
+    else:
+        raise ValueError(
+            "growth_likelihood='counts' needs each tube's total reads: a "
+            "'sample_reads' column (tfs-process-counts writes it), or "
+            "'adjusted_counts' and 'frequency' to derive it from.")
+    if not np.all(np.isfinite(reads) & (reads > 0)):
+        raise ValueError("Every tube's total reads must be finite and > 0.")
+    growth_df["ln_sample_reads"] = np.log(reads)
+
+    if "sample_ln_cfu" not in growth_df.columns:
+        try:
+            growth_df = get_sample_ln_cfu(growth_df)
+        except ValueError as e:
+            raise ValueError(
+                f"growth_likelihood='counts' needs each tube's total cells: "
+                f"{e}") from e
+
+    return growth_df
+
 
 def _infer_is_selection(growth_df, per_library=False):
     """
@@ -167,7 +231,8 @@ def _infer_is_selection(growth_df, per_library=False):
         return {cond: bool(cond not in pre_set) for cond in sorted(all_conds)}
 
 
-def _build_growth_tm(growth_df, growth_shares_replicates=False):
+def _build_growth_tm(growth_df, growth_shares_replicates=False,
+                     growth_likelihood="lncfu"):
     """
     Builds a TensorManager for the main growth data.
 
@@ -186,6 +251,9 @@ def _build_growth_tm(growth_df, growth_shares_replicates=False):
         Must contain all columns required for pivots and maps.
     growth_shares_replicates : bool, optional
         Whether to exclude replicate when mapping identical parameters.
+    growth_likelihood : str, optional
+        "lncfu" (default) or "counts". "counts" also registers the
+        ``counts``, ``ln_sample_reads`` and ``sample_ln_cfu`` tensors.
 
     Returns
     -------
@@ -222,6 +290,9 @@ def _build_growth_tm(growth_df, growth_shares_replicates=False):
     growth_tm.add_data_tensor("ln_cfu_std",dtype=FLOAT_DTYPE)
     growth_tm.add_data_tensor("t_pre",dtype=FLOAT_DTYPE)
     growth_tm.add_data_tensor("t_sel",dtype=FLOAT_DTYPE)
+    if growth_likelihood == "counts":
+        for col in ("counts", "ln_sample_reads", "sample_ln_cfu"):
+            growth_tm.add_data_tensor(col, dtype=FLOAT_DTYPE)
 
     # This creates a full-dimension map tensor that lets us look up the growth
     # conditions (pre and sel) for each element in the tensor. 
@@ -694,6 +765,11 @@ def _setup_batching(growth_genotypes,
 # Transformation components that were removed or renamed, with the reason.
 # Refused by name so an old config fails loudly instead of silently meaning
 # something new.
+# Growth observation models: Student-t on ln_cfu, or negative binomial on
+# read counts (roadmap step 7).
+_GROWTH_LIKELIHOODS = {"lncfu": "observe_growth",
+                       "counts": "observe_growth_counts"}
+
 # Rules for a congressed cell's theta (transformation/mixture.py).
 _CONGRESSION_THETA_RULES = ("homodimer", "heterodimer", "max")
 # Rules for a congressed cell's dk_geno (the soft-min family; only
@@ -861,6 +937,12 @@ class ModelOrchestrator:
     congression_dk_alpha : float, optional
         alpha for ``congression_dk_rule="softmin"`` (> 0, in units of 1/dk);
         required by that rule and refused by the others.
+    growth_likelihood : str, optional
+        How growth is observed: ``"lncfu"`` (default; Student-t on ``ln_cfu``,
+        ``observe/growth.py``) or ``"counts"`` (negative binomial on the read
+        counts, ``observe/growth_counts.py``; needs ``counts``, each tube's
+        total reads and total cells, see ``_add_count_columns``, and
+        ``growth_noise='zero'``).
 
     Attributes
     ----------
@@ -909,7 +991,8 @@ class ModelOrchestrator:
                  congression_seed=0,
                  congression_theta_rule="homodimer",
                  congression_dk_rule="dilution",
-                 congression_dk_alpha=None):
+                 congression_dk_alpha=None,
+                 growth_likelihood="lncfu"):
 
         self._ln_cfu_df = growth_df
         self._binding_df = binding_df
@@ -947,6 +1030,17 @@ class ModelOrchestrator:
         self._congression_dk_rule = congression_dk_rule
         self._congression_dk_alpha = _check_congression_dk_alpha(
             congression_dk_rule, congression_dk_alpha)
+        self._growth_likelihood = growth_likelihood
+
+        if self._growth_likelihood not in _GROWTH_LIKELIHOODS:
+            raise ValueError(
+                f"growth_likelihood must be one of "
+                f"{list(_GROWTH_LIKELIHOODS)}; got {self._growth_likelihood!r}.")
+        if self._growth_likelihood == "counts" and growth_noise != "zero":
+            raise ValueError(
+                f"growth_likelihood='counts' describes extra per-row noise "
+                f"through its own dispersion (phi, inv_r), so growth_noise "
+                f"must be 'zero'; got {growth_noise!r}.")
 
         if self._transformation in _RETIRED_TRANSFORMATIONS:
             raise ValueError(_RETIRED_TRANSFORMATIONS[self._transformation])
@@ -1057,8 +1151,11 @@ class ModelOrchestrator:
         # Load in growth data, creating two blocks of tensors. One holds the
         # growth (replicate,time,condition,genotype) data. The other holds
         # the theta (titrant_conc,theta_group) tensor.
-        self.growth_df = _read_growth_df(self._ln_cfu_df)
-        self.growth_tm = _build_growth_tm(self.growth_df, self._growth_shares_replicates)
+        self.growth_df = _read_growth_df(self._ln_cfu_df,
+                                         growth_likelihood=self._growth_likelihood)
+        self.growth_tm = _build_growth_tm(self.growth_df,
+                                          self._growth_shares_replicates,
+                                          growth_likelihood=self._growth_likelihood)
                    
         # Assemble tensors. 
         tensors = {}
@@ -1066,6 +1163,9 @@ class ModelOrchestrator:
         from_growth_tm = ["ln_cfu","ln_cfu_std","t_pre","t_sel",
                           "map_condition_pre","map_condition_sel","good_mask"]
                           
+        if self._growth_likelihood == "counts":
+            from_growth_tm += ["counts", "ln_sample_reads", "sample_ln_cfu"]
+
         for k in from_growth_tm:
             tensors[k] = self.growth_tm.tensors[k]
 
@@ -1184,7 +1284,8 @@ class ModelOrchestrator:
                       "coresident_n":jnp.array(coresident_n,dtype=jnp.int32),
                       "congression_theta_rule":self._congression_theta_rule,
                       "congression_dk_rule":self._congression_dk_rule,
-                      "congression_dk_alpha":self._congression_dk_alpha}
+                      "congression_dk_alpha":self._congression_dk_alpha,
+                      "growth_likelihood":self._growth_likelihood}
 
         # Grab the titrant concentration and log_titrant_conc (1D array from 
         # the tensor labels along dimension 6)
@@ -1820,8 +1921,9 @@ class ModelOrchestrator:
             main_control_kwargs["observe_binding"] = model_registry["observe_binding"].observe
             guide_control_kwargs["observe_binding"] = model_registry["observe_binding"].guide
         if not self._binding_only:
-            main_control_kwargs["observe_growth"] = model_registry["observe_growth"].observe
-            guide_control_kwargs["observe_growth"] = model_registry["observe_growth"].guide
+            growth_observer = model_registry[_GROWTH_LIKELIHOODS[self._growth_likelihood]]
+            main_control_kwargs["observe_growth"] = growth_observer.observe
+            guide_control_kwargs["observe_growth"] = growth_observer.guide
 
             # Optional side-channel observers -- wired only when their data was
             # supplied. Both borrow growth's genotype batch state and a latent
@@ -1868,7 +1970,7 @@ class ModelOrchestrator:
             )
         else:
             priors_class_kwargs["growth"]["growth_obs"] = \
-                model_registry["observe_growth"].get_priors()
+                model_registry[_GROWTH_LIKELIHOODS[self._growth_likelihood]].get_priors()
             if self._base_growth_df is not None:
                 priors_class_kwargs["growth"]["base_growth"] = \
                     model_registry["observe_base_growth"].get_priors(
@@ -2183,4 +2285,5 @@ class ModelOrchestrator:
             "congression_theta_rule": self._congression_theta_rule,
             "congression_dk_rule": self._congression_dk_rule,
             "congression_dk_alpha": self._congression_dk_alpha,
+            "growth_likelihood": self._growth_likelihood,
         }

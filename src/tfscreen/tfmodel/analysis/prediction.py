@@ -260,6 +260,12 @@ def copy_orchestrator(orchestrator,
     # Add required data columns with dummy values
     new_growth_df["ln_cfu"] = 0.0
     new_growth_df["ln_cfu_std"] = 1.0
+    if orchestrator.settings.get("growth_likelihood") == "counts":
+        # The count observer's inputs; placeholders too, since prediction
+        # reads growth_pred, not the observation.
+        new_growth_df["counts"] = 0
+        new_growth_df["sample_reads"] = 1.0
+        new_growth_df["sample_ln_cfu"] = 0.0
 
     # We keep the binding_df as is, as it's keyed by genotype/titrant_name
     # and we aren't subsetting those in this step. A growth-only model has
@@ -611,6 +617,18 @@ def predict(orchestrator,
             continue
             
         val = val[sample_indices]
+
+        # Per-tube offsets (sample_offset: one value per tube, on a
+        # "{name}_tubes" plate) describe particular tubes. A prediction is
+        # for a typical tube, and its tube grid (every t_pre x t_sel x
+        # concentration asked for) is not the training grid, so these are
+        # set to zero: the expected growth, without any one tube's shift.
+        if any(frame.name.endswith("_tubes")
+               for frame in site.get("cond_indep_stack", [])):
+            num_new_tubes = int(np.prod(new_orchestrator.growth_tm.tensor_shape[:-1]))
+            sliced_samples[site_name] = jnp.zeros((val.shape[0], num_new_tubes),
+                                                  dtype=val.dtype)
+            continue
 
         # Slice any plated dimension to match the new data labels.
         # This handles genotype subsetting and any other model plates (like

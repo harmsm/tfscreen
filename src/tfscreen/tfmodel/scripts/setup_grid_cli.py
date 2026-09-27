@@ -111,6 +111,7 @@ _COMPONENT_AXES = frozenset({
     "theta_growth_noise",
     "theta_binding_noise",
     "growth_noise",
+    "sample_offset",
 })
 
 # configure_model arguments that are input file paths. Each is copied into

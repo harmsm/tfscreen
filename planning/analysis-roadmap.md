@@ -476,7 +476,7 @@ step 7.
    - Validation: the calibration grid with step 4's noise on, against the
      step 2 interim total: theta coverage, `k_c`/`m_c` recovery (C4), in the
      joint and the relative fit.
-7. **Count likelihood** (N).
+7. [ ] **Count likelihood** (N). (Implemented; validation grid pending.)
    `growth_likelihood: counts` (C2): growth and presplit observers with
    `reads_{g,s} ~ NegBin(depth_s * exp(ln n_{g,s} - P_s + u_s), dispersion)`,
    `P` from step 6 (until then, the supplied `sample_ln_cfu`, D14), `u`
@@ -492,6 +492,18 @@ step 7.
    true-lambda-0 arm where the mixture currently finds lambda ~0.12, a
    leading suspect for which is the floor. Low-count genotypes are the
    stratum to watch.
+   Implemented 2026-09-26 (with supplied totals, D14):
+   `generative/observe/growth_counts.py` (`reads ~ NegBin(mu, mu (1 + phi)
+   + mu^2 inv_r)`, `log mu = ln reads + ln_cfu_pred - ln total`), a
+   float32-accurate log-pmf (Loader's algorithm; numpyro's negative
+   binomial lost several nats per observation at 1e4-1e6 reads),
+   `sample_offset: level` (one constant-prior offset per tube, D2), and
+   `sample_reads` from `counts_to_lncfu`; the orchestrator derives tube
+   reads from `adjusted_counts / frequency` for files processed before, so
+   the new processing batch needs no rerun. Refuses `growth_noise` other
+   than `zero`. Presplit stays `ln_cfu` (its data have no counts yet);
+   index hopping is not modeled yet. Validation grid:
+   `planning/studies/count-likelihood/` (24 runs, not yet run).
    - [ ] **7b. Growth regime: test, choose, purge** (N). The
      `growth_transition` components (`instant`, `memory`, `baranyi`,
      `baranyi_k`, `baranyi_tau`, `two_pop`) were unconstrained by the data

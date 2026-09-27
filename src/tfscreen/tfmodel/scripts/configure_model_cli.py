@@ -141,6 +141,8 @@ def configure_model(binding_df=None,
                     theta_growth_noise_model="zero",
                     theta_binding_noise_model="zero",
                     growth_noise_model="zero",
+                    sample_offset_model="zero",
+                    growth_likelihood="lncfu",
                     library_config=None,
                     growth_shares_replicates=False,
                     epistasis=False,
@@ -265,6 +267,23 @@ def configure_model(binding_df=None,
         'normal_kt' learns a global sigma_k that inflates the observation scale
         in quadrature with ln_cfu_std, capturing biological variability in
         growth rates not explained by theta or dk_geno.
+    sample_offset_model : str, optional
+        Per-tube offset shared by every genotype in a tube. 'zero' (default)
+        adds none; 'level' adds one ln_cfu offset per tube with a learned,
+        constant SD (the tube's composition offset and any error in its
+        supplied total); 'normal' adds a per-tube growth-rate offset scaled
+        by elapsed time. Recommended with growth_likelihood 'counts', where
+        an error in a tube's supplied total otherwise moves every genotype
+        in it.
+    growth_likelihood : str, optional
+        How growth data are observed: 'lncfu' (default; Student-t on
+        ln_cfu) or 'counts' (negative binomial on the read counts, with a
+        learned dispersion whose variance has a part proportional to the
+        mean and a quadratic part; no pseudocount). 'counts' needs a
+        'counts' column, each tube's total reads ('sample_reads', or
+        'adjusted_counts' and 'frequency' to derive it) and total cells
+        ('sample_ln_cfu', or 'sample_cfu' with its uncertainty), and
+        growth_noise_model 'zero'.
     library_config : str, optional
         Path to the library YAML describing the screened library -- the same
         file handed to ``tfs-process-fastq``.  Required whenever ``growth_df``
@@ -397,6 +416,8 @@ def configure_model(binding_df=None,
                      theta_growth_noise=theta_growth_noise_model,
                      theta_binding_noise=theta_binding_noise_model,
                      growth_noise=growth_noise_model,
+                     sample_offset=sample_offset_model,
+                     growth_likelihood=growth_likelihood,
                      library_file=library_file,
                      growth_shares_replicates=growth_shares_replicates,
                      epistasis=epistasis,

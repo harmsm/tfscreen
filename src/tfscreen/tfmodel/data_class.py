@@ -97,6 +97,18 @@ class GrowthData:
 
     growth_shares_replicates: bool = field(pytree_node=False, default=False)
 
+    # Growth observation model: "lncfu" (Student-t on ln_cfu, observe/growth.py)
+    # or "counts" (negative binomial on read counts, observe/growth_counts.py).
+    # Static: set by ModelOrchestrator from its growth_likelihood.
+    growth_likelihood: str = field(pytree_node=False, default="lncfu")
+    # Count-likelihood tensors, same layout as ln_cfu; None unless
+    # growth_likelihood == "counts". counts: reads of the genotype in the
+    # tube; ln_sample_reads: ln of the tube's total reads (__unknown__
+    # included); sample_ln_cfu: ln of the tube's total cells as supplied.
+    counts: Any = field(default=None)
+    ln_sample_reads: Any = field(default=None)
+    sample_ln_cfu: Any = field(default=None)
+
     # Optional mutation-decomposition matrices (set when using *_mut_decomp components).
     # Stored as pytree_node=False so they are treated as static by JAX tracing.
     # Shape: mut_geno_matrix (num_mutation, num_genotype).

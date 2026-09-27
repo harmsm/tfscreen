@@ -1,0 +1,183 @@
+#!/bin/bash -l
+#SBATCH --account=harmslab
+#SBATCH --job-name=count_lik
+#SBATCH --output=run.out
+#SBATCH --error=run.err
+#SBATCH --partition=gpu
+#SBATCH --time=00-02:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gpus=1
+#SBATCH --ntasks-per-node=1
+
+# Count-likelihood study, one run (rendered by tfs-setup-sim-grid from
+# planning/studies/count-likelihood/run.srun, which is the congression-
+# calibration study's run.srun plus the likelihood and sample-offset arms).
+# Submit from the run directory: sbatch run.srun
+
+# Swap lines if on cluster (module load) or local (XLA_FLAGS to use CPU)
+module load cuda/12.4.1
+#export XLA_FLAGS="--xla_force_host_platform_device_count=8"
+
+set -e
+
+FIT="{{ fit }}"
+# Growth likelihood (lncfu or counts) and per-tube offset (zero or level).
+LIKELIHOOD="{{ likelihood }}"
+SAMPLE_OFFSET="{{ sample_offset }}"
+LAM_PRIOR="{{ lam_prior }}"
+LAM_PRIOR_SD=0.05
+LAM_MEASURED=0.357
+# Growth rows with fewer reads than this are dropped before configure (0 keeps
+# everything). grid_masked.yaml sets it; grid.yaml leaves the default.
+MIN_COUNTS={{ min_counts | default(0) }}
+# Binding likelihood weight passed to tfs-configure-model (empty = its default,
+# growth rows / binding rows). grid_bw1.yaml sets it to 1.
+BINDING_WEIGHT="{{ binding_weight | default('') }}"
+# Ceiling on the prefit's per-condition k prior scale (empty = its default,
+# 0.1). grid_anchor.yaml sets it low to pin the k/dk_geno slide.
+K_SCALE_CEILING="{{ k_scale_ceiling | default('') }}"
+# tfs-fit-model --analysis_method (svi or map). grid_controls.yaml sets map.
+ANALYSIS_METHOD="{{ analysis_method | default('svi') }}"
+# Lambda value for lam_prior "fixed" (grid_profile.yaml).
+LAM_FIXED="{{ lam_fixed | default('') }}"
+# Congression theta rule for the fit (mixture only). Empty = the rule the
+# simulation used (tfs_sim_config.yaml's congression_theta_rule); set it to
+# fit with a different rule (cross-rule grids).
+FIT_THETA_RULE="{{ fit_theta_rule | default('') }}"
+# Congression dk rule (and softmin alpha) for the fit (mixture only). Empty =
+# the simulation's (congression_dk_rule, congression_dk_alpha).
+FIT_DK_RULE="{{ fit_dk_rule | default('') }}"
+FIT_DK_ALPHA="{{ fit_dk_alpha | default('') }}"
+
+# The simulated lambda and the seed live in tfs_sim_config.yaml.
+read -r SEED LAM_SIM SIM_THETA_RULE SIM_DK_RULE SIM_DK_ALPHA < <(python -c "
+import yaml
+cf = yaml.safe_load(open('tfs_sim_config.yaml'))
+print(cf['seed'], cf.get('transformation_poisson_lambda') or 0.0,
+      cf.get('congression_theta_rule') or 'homodimer',
+      cf.get('congression_dk_rule') or 'dilution',
+      cf.get('congression_dk_alpha') or '')")
+FIT_THETA_RULE=${FIT_THETA_RULE:-${SIM_THETA_RULE}}
+if [[ -z "${FIT_DK_RULE}" ]]; then
+    FIT_DK_RULE=${SIM_DK_RULE}
+    FIT_DK_ALPHA=${SIM_DK_ALPHA}
+fi
+
+# ---------------------------------------------------------------------------
+# 1. Simulate
+# ---------------------------------------------------------------------------
+echo ">>> Simulate (lambda=${LAM_SIM}, seed=${SEED})"
+tfs-simulate tfs_sim_config.yaml . --seed "${SEED}"
+
+GROWTH_CSV=tfs_sim_growth.csv
+if [[ "${MIN_COUNTS}" -gt 0 ]]; then
+    GROWTH_CSV=tfs_sim_growth_min${MIN_COUNTS}.csv
+    python -c "
+import pandas as pd
+df = pd.read_csv('tfs_sim_growth.csv')
+kept = df[df['counts'] >= ${MIN_COUNTS}]
+kept.to_csv('${GROWTH_CSV}', index=False)
+print(f'Dropped {len(df) - len(kept)} of {len(df)} growth rows with counts < ${MIN_COUNTS}')"
+fi
+
+# ---------------------------------------------------------------------------
+# 2. Configure
+# ---------------------------------------------------------------------------
+if [[ "${FIT}" == "single" ]]; then
+    TRANSFORMATION_ARGS=(--transformation_model single)
+else
+    if [[ "${LAM_PRIOR}" == "matched" ]]; then
+        LAM_MEAN=$(python -c "print(max(${LAM_SIM}, 0.01))")
+    elif [[ "${LAM_PRIOR}" == "fixed" ]]; then
+        # lambda held at LAM_FIXED (prior SD 0.1% of the value).
+        LAM_MEAN=${LAM_FIXED}
+        LAM_PRIOR_SD=$(python -c "print(${LAM_FIXED} * 1e-3)")
+    elif [[ "${LAM_PRIOR}" == "fixed0" ]]; then
+        # lambda pinned essentially at zero: the mixture is then single.
+        LAM_MEAN=1e-6
+        LAM_PRIOR_SD=1e-9
+    else
+        LAM_MEAN=${LAM_MEASURED}
+    fi
+    TRANSFORMATION_ARGS=(--transformation_model mixture
+                         --transformation_lambda "${LAM_MEAN}" "${LAM_PRIOR_SD}"
+                         --congression_theta_rule "${FIT_THETA_RULE}"
+                         --congression_dk_rule "${FIT_DK_RULE}")
+    if [[ -n "${FIT_DK_ALPHA}" ]]; then
+        TRANSFORMATION_ARGS+=(--congression_dk_alpha "${FIT_DK_ALPHA}")
+    fi
+fi
+
+# The count likelihood carries its own per-row dispersion, so it refuses the
+# extra ln_cfu-scale growth noise the lncfu arms use.
+if [[ "${LIKELIHOOD}" == "counts" ]]; then
+    GROWTH_NOISE=zero
+else
+    GROWTH_NOISE=normal_kt
+fi
+
+BINDING_WEIGHT_ARGS=()
+if [[ -n "${BINDING_WEIGHT}" ]]; then
+    BINDING_WEIGHT_ARGS=(--binding_weight "${BINDING_WEIGHT}")
+fi
+
+echo ">>> Configure (${LIKELIHOOD}, offset ${SAMPLE_OFFSET}, ${FIT}, lambda prior ${LAM_PRIOR}, theta rule ${FIT_THETA_RULE}, dk rule ${FIT_DK_RULE}${FIT_DK_ALPHA:+ alpha ${FIT_DK_ALPHA}})"
+tfs-configure-model \
+    --binding_df tfs_sim_binding.csv \
+    --growth_df "${GROWTH_CSV}" \
+    --presplit_df tfs_sim_presplit.csv \
+    --condition_growth_model linear \
+    --growth_transition_model instant \
+    --ln_cfu0_model hierarchical_factored \
+    --dk_geno_model hierarchical_geno \
+    --activity_model fixed \
+    --theta_model hill_mut \
+    --theta_rescale_model passthrough \
+    --theta_growth_noise_model logit_normal \
+    --theta_binding_noise_model zero \
+    --growth_noise_model "${GROWTH_NOISE}" \
+    --growth_likelihood "${LIKELIHOOD}" \
+    --sample_offset_model "${SAMPLE_OFFSET}" \
+    --library_config tfs_sim_config.yaml \
+    --growth_shares_replicates \
+    --epistasis \
+    "${TRANSFORMATION_ARGS[@]}" \
+    "${BINDING_WEIGHT_ARGS[@]}"
+
+# ---------------------------------------------------------------------------
+# 3. Pre-fit calibration, fit, posterior
+# ---------------------------------------------------------------------------
+PREFIT_ARGS=()
+if [[ -n "${K_SCALE_CEILING}" ]]; then
+    PREFIT_ARGS=(--k_scale_ceiling "${K_SCALE_CEILING}")
+fi
+
+echo ">>> Pre-fit calibration"
+tfs-prefit-calibration tfs_configure_config.yaml --seed "${SEED}" "${PREFIT_ARGS[@]}"
+
+echo ">>> Fit model"
+tfs-fit-model tfs_configure_config.yaml \
+    --seed "${SEED}" \
+    --analysis_method "${ANALYSIS_METHOD}"
+
+echo ">>> Sample posterior"
+tfs-sample-posterior tfs_configure_config.yaml tfs_fit_model_checkpoint.pkl
+
+# ---------------------------------------------------------------------------
+# 4. Extract, predict, summarize
+# ---------------------------------------------------------------------------
+echo ">>> Extract parameters"
+tfs-extract-params tfs_configure_config.yaml tfs_posterior.h5
+
+echo ">>> Predict theta"
+tfs-predict-theta tfs_configure_config.yaml tfs_posterior.h5
+
+echo ">>> Predict growth"
+tfs-predict-growth tfs_configure_config.yaml tfs_posterior.h5 \
+    --num_marginal_samples=500
+
+echo ">>> Summarize fit"
+tfs-summarize-fit .
+
+echo ">>> Done"
