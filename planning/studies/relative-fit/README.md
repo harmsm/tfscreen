@@ -4,7 +4,7 @@
 component `hill_relative`: no binding data, no prefit, wt's X pinned to 1 at
 0 mM and 0 at 1 mM IPTG) recover X, the Hill K and n, and each condition's
 `k` and `m`, about as well as the anchored joint fit recovers theta? Does
-that hold under realistic count noise, and on either growth likelihood?
+that hold under realistic count noise?
 
 **Decisions it feeds.**
 - Roadmap step 5 (`planning/analysis-roadmap.md`): whether the relative fit
@@ -21,17 +21,18 @@ in-library binding anchors), at lambda 0 and the wide dk spread, like
 `../count-likelihood/`. Lambda 0 keeps congression out of the comparison;
 both fits use `single`.
 
-[`grid.yaml`](grid.yaml): 2 noise x 2 likelihood x 2 fits x 3 seeds = 24
-runs.
+[`grid.yaml`](grid.yaml): 2 noise x 2 fits x 3 seeds = 12 runs, all on
+the count likelihood (the default after `../count-likelihood/`; the
+`lncfu` arm of the first design was dropped, 2026-09-27).
 
 | axis | levels |
 |---|---|
-| simulated noise | `poisson`; `realistic` (founder sampling, demographic growth, shared transformation, 150,000 PCR templates with CV 0.5: about 8x Poisson), as in `../count-likelihood/` |
-| likelihood | `lncfu` (Student-t on `ln_cfu`, `normal_kt` growth noise); `counts` (negative binomial on reads, `sample_offset: level`) |
+| simulated noise | `poisson`; `realistic` (founder sampling, demographic growth, shared transformation, 150,000 PCR templates with CV 0.5; designed for ~8x Poisson, fitted at ~29x in `../count-likelihood/` v3) |
 | fit | `joint` (`hill_geno`, binding at weight 1, prefit with `k_scale_ceiling` 0.005); `relative` (`hill_relative`, growth only, no prefit) |
 | seed | 1, 2, 3 |
 
-Both fits use per-genotype Hill curves (the simulation's `hill_mut` truth
+Both fits use `growth_likelihood: counts` with `sample_offset: level` and
+per-genotype Hill curves (the simulation's `hill_mut` truth
 is fit by neither), activity fixed and no theta noise (the relative fit
 refuses it; the joint fit leaves it off to match). Each run
 ([`run.srun`](run.srun)) simulates, configures, prefits (joint only), fits,

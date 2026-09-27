@@ -16,20 +16,19 @@
 #              template bottleneck with PCR jackpotting (~8x Poisson).
 #
 # Fits (both hill-per-genotype, theta noise off, single transformation; the
-# simulation has lambda 0, so congression is out of the comparison):
+# simulation has lambda 0, so congression is out of the comparison), both on
+# the count likelihood with a per-tube level offset (the default since the
+# count-likelihood study, ../count-likelihood/):
 #   joint     hill_geno with binding at weight 1, prefit (k_scale_ceiling
 #             0.005), the anchored baseline of the congression study
 #   relative  hill_relative, growth only, no prefit
-# crossed with the growth likelihood:
-#   lncfu     Student-t on ln_cfu with normal_kt growth noise (today's)
-#   counts    negative binomial on reads with a per-tube level offset
 #
-# 2 noise x 2 likelihood x 2 fits x 3 seeds = 24 runs.
+# 2 noise x 2 fits x 3 seeds = 12 runs.
 # ---------------------------------------------------------------------------
 
 base_config: ../congression-calibration/simulate_config.yaml
 
-run_name: "{{ 'realistic' if founder_sampling else 'poisson' }}__seed{{ seed }}__{{ likelihood }}__{{ fit }}"
+run_name: "{{ 'realistic' if founder_sampling else 'poisson' }}__seed{{ seed }}__{{ fit }}"
 
 output_file: run.srun
 
@@ -69,8 +68,3 @@ template:
     variants:
       - fit: joint
       - fit: relative
-
-  - name: likelihood
-    variants:
-      - likelihood: lncfu
-      - likelihood: counts

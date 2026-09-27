@@ -29,6 +29,23 @@ fall into two kinds:
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking: `tfs-configure-model` defaults to the count likelihood.**
+  `--growth_likelihood` now defaults to `counts` and
+  `--sample_offset_model` to `level` (was `lncfu` and `zero`). On the
+  count-likelihood simulation grid (`planning/studies/count-likelihood/`)
+  counts cut theta RMSE by 35-60% and dk_geno RMSE by 40-85% at about the
+  same coverage. The growth file then needs read counts, each tube's total
+  reads and its total cells (see `--growth_likelihood`), and
+  `--growth_noise_model` must stay `zero`: a call that passed
+  `--growth_noise_model normal_kt` without a likelihood now fails, and
+  should add `--growth_likelihood lncfu --sample_offset_model zero` to keep
+  its old model. `ModelOrchestrator` keeps `lncfu`/`zero` as its own
+  defaults, so a config written before the count likelihood existed (no
+  `growth_likelihood` key) still reads back as the model it was.
+  `tfs-build-empirical` inherits the new defaults.
+
 ### Added
 
 - **Relative-X fit (`theta: hill_relative`; roadmap step 5).** A theta

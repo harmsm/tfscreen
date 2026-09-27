@@ -22,9 +22,10 @@ set -e
 
 # joint (hill_geno + binding + prefit) or relative (hill_relative, growth only)
 FIT="{{ fit }}"
-# Growth likelihood: lncfu (with normal_kt growth noise) or counts (with a
-# per-tube level offset; it refuses extra growth noise).
-LIKELIHOOD="{{ likelihood }}"
+# Growth likelihood: counts (default; with a per-tube level offset, and no
+# extra growth noise, which it refuses) or lncfu (with normal_kt growth
+# noise). grid.yaml runs counts only.
+LIKELIHOOD="{{ likelihood | default('counts') }}"
 
 SEED=$(python -c "import yaml; print(yaml.safe_load(open('tfs_sim_config.yaml'))['seed'])")
 

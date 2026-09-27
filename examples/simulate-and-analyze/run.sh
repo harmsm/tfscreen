@@ -70,7 +70,9 @@ tfs-configure-model \
     --theta_rescale_model passthrough \
     --theta_growth_noise_model logit_normal \
     --theta_binding_noise_model zero \
-    --growth_noise_model normal_kt \
+    --growth_likelihood counts \
+    --sample_offset_model level \
+    --growth_noise_model zero \
     --library_config "${library_config}" \
     --growth_shares_replicates \
     --epistasis

@@ -162,7 +162,10 @@ def _data_block(**extra):
     variant = {"binding_df": "../data/binding.csv",
                "growth_df": "../data/growth.csv",
                "library_config": "../data/library.yaml",
-               "skip_model_stats": True}
+               "skip_model_stats": True,
+               # synthetic ln_cfu table without read counts
+               "growth_likelihood": "lncfu",
+               "sample_offset_model": "zero"}
     variant.update(extra)
     return {"name": "data", "variants": [variant]}
 

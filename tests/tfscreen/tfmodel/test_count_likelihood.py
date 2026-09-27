@@ -172,3 +172,21 @@ def test_predict_on_new_tube_grid(sample_offset):
                   num_samples=None)
     assert len(out) > 0
     assert np.isfinite(out.filter(like="q0.5").to_numpy()).all()
+
+
+def test_configure_defaults_to_counts(tmp_path):
+    """tfs-configure-model defaults to the count likelihood with a per-tube
+    level offset (count-likelihood study, 2026-09-27); ModelOrchestrator
+    keeps lncfu, so a config written before step 7 (no growth_likelihood
+    key) still reads back as the model it was."""
+    out_prefix = str(tmp_path / "d")
+    configure_model(growth_df=_GROWTH_CSV, library_config=_LIBRARY_YAML,
+                    out_prefix=out_prefix, skip_model_stats=True)
+    with open(f"{out_prefix}_config.yaml") as fh:
+        components = yaml.safe_load(fh)["components"]
+    assert components["growth_likelihood"] == "counts"
+    assert components["sample_offset"] == "level"
+    assert components["growth_noise"] == "zero"
+
+    o = ModelOrchestrator(growth_df=_GROWTH_CSV, binding_df=_BINDING_CSV)
+    assert o.settings["growth_likelihood"] == "lncfu"

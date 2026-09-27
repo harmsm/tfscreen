@@ -125,6 +125,8 @@ tfs-configure-model \
     --theta_growth_noise_model logit_normal \
     --theta_binding_noise_model zero \
     --growth_noise_model normal_kt \
+    --growth_likelihood lncfu \
+    --sample_offset_model zero \
     --library_config tfs_sim_config.yaml \
     --growth_shares_replicates \
     --epistasis \
