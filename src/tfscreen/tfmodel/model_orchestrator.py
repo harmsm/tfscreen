@@ -852,6 +852,42 @@ def _check_relative_theta(theta, has_binding, activity, theta_rescale,
     return gauge
 
 
+def _check_factored_ln_cfu0(ln_cfu0, growth_df):
+    """
+    Refuse ``ln_cfu0: hierarchical_factored`` when it would share a
+    genotype's starting abundance across separately grown libraries.
+
+    The factored model gives each genotype one baseline per replicate, shared
+    by every ``condition_pre``, plus one offset per tube. That holds when the
+    pre-conditions are split from one culture. When a replicate's
+    pre-conditions come from different libraries (kanR and pheS are
+    transformed and grown up separately, user 2026-09-28), each genotype's
+    starting abundance differs between them and the fit pushes the
+    difference into its growth rates: on simulations with separate libraries
+    it gave a confident per-genotype theta error, 95% coverage 0.09 above
+    1000 reads against 0.80 with ``hierarchical``
+    (planning/studies/svi-overconfidence/). Data without a ``library``
+    column are not checked.
+    """
+    if ln_cfu0 != "hierarchical_factored" or growth_df is None:
+        return
+    if "library" not in growth_df.columns:
+        return
+    per_rep = (growth_df[["replicate", "condition_pre", "library"]]
+               .drop_duplicates()
+               .groupby("replicate", observed=True)["library"].nunique())
+    mixed = per_rep[per_rep > 1]
+    if len(mixed):
+        pairs = (growth_df[["condition_pre", "library"]].drop_duplicates()
+                 .astype(str).agg(" from ".join, axis=1).tolist())
+        raise ValueError(
+            "ln_cfu0='hierarchical_factored' shares each genotype's starting "
+            "abundance across every condition_pre of a replicate, but these "
+            f"pre-conditions come from different libraries ({', '.join(pairs)}), "
+            "which are grown up separately. Use ln_cfu0='hierarchical' (one "
+            "starting abundance per replicate, condition_pre and genotype).")
+
+
 def _check_congression_sets(congression_sets):
     """
     Validate ``congression_sets``: a non-empty sequence of non-negative
@@ -1215,6 +1251,7 @@ class ModelOrchestrator:
         # the theta (titrant_conc,theta_group) tensor.
         self.growth_df = _read_growth_df(self._ln_cfu_df,
                                          growth_likelihood=self._growth_likelihood)
+        _check_factored_ln_cfu0(self._ln_cfu0, self.growth_df)
         self.growth_tm = _build_growth_tm(self.growth_df,
                                           self._growth_shares_replicates,
                                           growth_likelihood=self._growth_likelihood)

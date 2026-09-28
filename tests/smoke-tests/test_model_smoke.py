@@ -123,10 +123,19 @@ def test_model_svi_smoke(growth_smoke_csv,
     initialized and a few steps of optimization can be performed without error.
     """
     out_prefix = os.path.join(tmpdir, "smoke_test")
-    
+
+    # hierarchical_factored shares a genotype's baseline across condition_pre,
+    # which the orchestrator refuses when they come from different libraries
+    # (the smoke data's kanR and pheS): run it on a one-library copy.
+    growth = growth_smoke_csv
+    if config.get("ln_cfu0") == "hierarchical_factored":
+        import pandas as pd
+        growth = pd.read_csv(growth_smoke_csv)
+        growth["library"] = "kanR"
+
     # Initialize ModelOrchestrator
     model = ModelOrchestrator(
-        growth_df=growth_smoke_csv,
+        growth_df=growth,
         binding_df=binding_smoke_csv,
         batch_size=None, # Use all data for smoke test
         **config

@@ -31,6 +31,17 @@ fall into two kinds:
 
 ### Fixed
 
+- **Breaking: `ln_cfu0: hierarchical_factored` is refused across libraries.**
+  It shares each genotype's starting abundance across every pre-condition of
+  a replicate. kanR and pheS are transformed and grown up separately, so
+  that is wrong for them. On simulations the fit pushed the per-genotype
+  difference, SD 0.17-0.29 ln units, into a confident per-genotype theta
+  error: 95% coverage above 1000 reads was 0.09, against 0.80 with
+  `hierarchical`. The orchestrator now refuses the factored model when a
+  replicate's pre-conditions come from different libraries. The study grids
+  and `examples/simulate-and-analyze/run.sh` now use `hierarchical`, and
+  their earlier calibration numbers carry the mismatch.
+
 - **Breaking: `ln_cfu0: hierarchical_factored` has a non-centered tube
   offset.** It used to draw `tube_offset ~ Normal(0, tube_scale)` directly.
   The 4 offsets (replicate x pre-condition) trade against the genotype

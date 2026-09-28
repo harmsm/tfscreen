@@ -183,9 +183,28 @@ _VARIANT_KWARGS = {
 }
 
 
+def _single_library_growth():
+    """
+    The smoke growth data as one library. hierarchical_factored shares a
+    genotype's baseline across condition_pre, which the orchestrator refuses
+    when the pre-conditions come from different libraries (the smoke data's
+    kanR and pheS), so it is exercised on a one-library copy.
+    """
+    import pandas as pd
+    df = pd.read_csv(_GROWTH_CSV)
+    df["library"] = "kanR"
+    return df
+
+
 def _variant_kwargs(axis, variant):
-    """Constructor arguments for one variant (binding data unless refused)."""
-    return {"binding_df": _BINDING_CSV, axis: variant,
+    """
+    Constructor arguments for one variant, growth data included (binding
+    data unless refused).
+    """
+    growth = (_single_library_growth()
+              if (axis, variant) == ("ln_cfu0", "hierarchical_factored")
+              else _GROWTH_CSV)
+    return {"growth_df": growth, "binding_df": _BINDING_CSV, axis: variant,
             **_VARIANT_KWARGS.get((axis, variant), {})}
 
 
@@ -202,8 +221,7 @@ def _owned_by(axis, site_name):
 
 @pytest.mark.parametrize("axis,variant", _SAFE_VARIANTS)
 def test_component_latents_are_batch_safe(axis, variant):
-    orchestrator = ModelOrchestrator(growth_df=_GROWTH_CSV,
-                                     batch_size=6,
+    orchestrator = ModelOrchestrator(batch_size=6,
                                      **_variant_kwargs(axis, variant))
     found = find_orchestrator_batch_dependent_latents(orchestrator)
     found = {k: v for k, v in found.items() if _owned_by(axis, k)}
@@ -310,8 +328,7 @@ def test_order_check_needs_reorderings():
 # beta *growth* theta noise is the documented exception (tested below).
 @pytest.mark.parametrize("axis,variant", _SAFE_VARIANTS)
 def test_component_predictions_follow_batch_order(axis, variant):
-    orchestrator = ModelOrchestrator(growth_df=_GROWTH_CSV,
-                                     **_variant_kwargs(axis, variant))
+    orchestrator = ModelOrchestrator(**_variant_kwargs(axis, variant))
     found = find_orchestrator_batch_order_mismatches(orchestrator)
     assert found == {}, (
         f"{axis}={variant}: predictions do not follow a reordered full "

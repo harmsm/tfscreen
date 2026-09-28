@@ -377,8 +377,14 @@ Initial Population (``--ln_cfu0_model``)
 
 Models the starting genotype frequencies in each replicate.
 
-* **hierarchical** (default) — shared global prior on ln(CFU\ :sub:`0`)
-* **hierarchical_factored** — factored hierarchical prior
+* **hierarchical** (default) — shared global prior on ln(CFU\ :sub:`0`), one
+  starting abundance per replicate, pre-condition and genotype
+* **hierarchical_factored** — factored hierarchical prior: one genotype
+  baseline per replicate, shared by every pre-condition, plus one offset per
+  tube. Only valid when the pre-conditions are split from one culture. When
+  they come from separately grown libraries, as kanR and pheS do, each
+  genotype's starting abundance differs between them and the fit pushes the
+  difference into its growth rates. The orchestrator refuses it then.
 
 Pleiotropic Growth Effect (``--dk_geno_model``)
 ------------------------------------------------

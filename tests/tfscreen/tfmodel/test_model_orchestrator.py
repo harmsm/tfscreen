@@ -2376,3 +2376,32 @@ class TestBaseGrowthDf:
             )
 
         assert model_no_base_growth._priors.growth.base_growth is None
+
+
+# ---------------------------------------------------------------------------
+# hierarchical_factored ln_cfu0 across libraries
+# ---------------------------------------------------------------------------
+
+def _factored_df(libraries):
+    """Two pre-conditions per replicate, from the given libraries."""
+    return pd.DataFrame({
+        "replicate": [1, 1, 2, 2],
+        "condition_pre": ["kanR-kan", "pheS-4CP"] * 2,
+        "library": libraries * 2,
+    })
+
+
+def test_factored_ln_cfu0_refused_across_libraries():
+    from tfscreen.tfmodel.model_orchestrator import _check_factored_ln_cfu0
+    with pytest.raises(ValueError, match="different libraries"):
+        _check_factored_ln_cfu0("hierarchical_factored",
+                                _factored_df(["kanR", "pheS"]))
+
+
+def test_factored_ln_cfu0_allowed_within_one_library():
+    from tfscreen.tfmodel.model_orchestrator import _check_factored_ln_cfu0
+    _check_factored_ln_cfu0("hierarchical_factored", _factored_df(["kanR", "kanR"]))
+    # other ln_cfu0 models and data without a library column are not checked
+    _check_factored_ln_cfu0("hierarchical", _factored_df(["kanR", "pheS"]))
+    _check_factored_ln_cfu0("hierarchical_factored",
+                            _factored_df(["kanR", "pheS"]).drop(columns="library"))

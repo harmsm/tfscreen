@@ -62,7 +62,7 @@ tfs-configure-model \
     --presplit_df tfs_sim_presplit.csv \
     --condition_growth_model linear \
     --growth_transition_model instant \
-    --ln_cfu0_model hierarchical_factored \
+    --ln_cfu0_model hierarchical \
     --dk_geno_model hierarchical_geno \
     --activity_model fixed \
     --theta_model hill_mut \

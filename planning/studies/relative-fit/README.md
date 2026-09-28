@@ -47,14 +47,14 @@ samples the posterior and summarizes.
 On the cluster, from a scratch directory, with this repository checked out:
 
 ```bash
-tfs-setup-sim-grid grid.yaml --out_prefix relative_fit_v2
-for d in relative_fit_v2/run_*/; do (cd "$d" && sbatch run.srun); done
+tfs-setup-sim-grid grid.yaml --out_prefix relative_fit_v3
+for d in relative_fit_v3/run_*/; do (cd "$d" && sbatch run.srun); done
 ```
 
 When the runs finish:
 
 ```bash
-tfs-summarize-calibration relative_fit_v2 --out_prefix calib/relative_fit_v2 \
+tfs-summarize-calibration relative_fit_v3 --out_prefix calib/relative_fit_v3 \
     --baseline fit=joint inference=component --facet_by founder_sampling
 ```
 
@@ -105,6 +105,18 @@ gauge, and `growth_k`/`growth_m` carry X-scale truth. It checks plumbing,
 not results.
 
 ## Results
+
+**Run 3 (pending, 2026-09-28): rerun with `ln_cfu0: hierarchical`.**
+Every earlier run fit `ln_cfu0: hierarchical_factored`. That model shares each
+genotype's starting abundance across the kanR and pheS pre-conditions,
+but the simulator (like the real experiment) grows those libraries up
+separately. The fit pushed the difference into a confident per-genotype
+theta error, which made coverage fall with read depth
+(`../svi-overconfidence/`: 95% coverage above 1000 reads 0.09 with the
+factored model, 0.80 with `hierarchical`). The earlier runs' absolute
+coverage and RMSE carry that mismatch. Their between-arm comparisons were
+made under the same handicap. `run.srun` now uses `hierarchical`; outputs go
+to `relative_fit_v3/`.
 
 **Run 1 (2026-09-27): inconclusive; the SVI start is broken.** All 12 runs
 finished. Three hit the 100,000-epoch cap (0002, 0003, 0004). run_0011's

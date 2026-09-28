@@ -39,14 +39,14 @@ with `--growth_likelihood` and `--sample_offset_model` from the fit arm.
 On the cluster, from a scratch directory, with this repository checked out:
 
 ```bash
-tfs-setup-sim-grid grid.yaml --out_prefix count_likelihood
-for d in count_likelihood/run_*/; do (cd "$d" && sbatch run.srun); done
+tfs-setup-sim-grid grid.yaml --out_prefix count_likelihood_v4
+for d in count_likelihood_v4/run_*/; do (cd "$d" && sbatch run.srun); done
 ```
 
 When the runs finish:
 
 ```bash
-tfs-summarize-calibration count_likelihood --out_prefix calib/count_likelihood \
+tfs-summarize-calibration count_likelihood_v4 --out_prefix calib/count_likelihood_v4 \
     --baseline likelihood=lncfu sample_offset=zero fit=single \
     --facet_by founder_sampling
 ```
@@ -77,6 +77,18 @@ Second run: commit c65390aa (2026-09-27), results in `count_likelihood_v2/`
 (neither is committed).
 
 ## Results
+
+**Fourth run (pending, 2026-09-28): rerun with `ln_cfu0: hierarchical`.**
+Every earlier run fit `ln_cfu0: hierarchical_factored`. That model shares each
+genotype's starting abundance across the kanR and pheS pre-conditions,
+but the simulator (like the real experiment) grows those libraries up
+separately. The fit pushed the difference into a confident per-genotype
+theta error, which made coverage fall with read depth
+(`../svi-overconfidence/`: 95% coverage above 1000 reads 0.09 with the
+factored model, 0.80 with `hierarchical`). The earlier runs' absolute
+coverage and RMSE carry that mismatch. Their between-arm comparisons were
+made under the same handicap. `run.srun` now uses `hierarchical`; outputs go
+to `count_likelihood_v4/`.
 
 **Third run (`count_likelihood_v3`, commit 740ebc19, 2026-09-27): the
 answer.** All 24 runs finished; no NaN, no wrong optimum (run_0012's theta

@@ -78,15 +78,15 @@ NUTS changes made for the pilot, kept (2026-09-28):
 On the cluster, from this directory:
 
 ```bash
-tfs-setup-sim-grid grid.yaml --out_prefix svi_overconfidence
-for d in svi_overconfidence/run_*/; do (cd "$d" && sbatch run.srun); done
+tfs-setup-sim-grid grid.yaml --out_prefix svi_overconfidence_v2
+for d in svi_overconfidence_v2/run_*/; do (cd "$d" && sbatch run.srun); done
 ```
 
 When the runs finish:
 
 ```bash
-tfs-summarize-calibration svi_overconfidence --out_prefix calib/svi_overconfidence --baseline inference=map
-python coverage_by_depth.py svi_overconfidence --out_prefix calib/svi_overconfidence
+tfs-summarize-calibration svi_overconfidence_v2 --out_prefix calib/svi_overconfidence_v2 --baseline inference=map
+python coverage_by_depth.py svi_overconfidence_v2 --out_prefix calib/svi_overconfidence_v2
 ```
 
 ## What to look at
@@ -122,6 +122,18 @@ and the guide diagnostics.
 Not yet run on the cluster.
 
 ## Results
+
+**Run 2 on the cluster (pending, 2026-09-28): rerun with `ln_cfu0: hierarchical`.**
+Every earlier run fit `ln_cfu0: hierarchical_factored`. That model shares each
+genotype's starting abundance across the kanR and pheS pre-conditions,
+but the simulator (like the real experiment) grows those libraries up
+separately. The fit pushed the difference into a confident per-genotype
+theta error, which made coverage fall with read depth
+(`../svi-overconfidence/`: 95% coverage above 1000 reads 0.09 with the
+factored model, 0.80 with `hierarchical`). The earlier runs' absolute
+coverage and RMSE carry that mismatch. Their between-arm comparisons were
+made under the same handicap. `run.srun` now uses `hierarchical`; outputs go
+to `svi_overconfidence_v2/`.
 
 **NUTS pilot (2026-09-28, local, seed 1, relative fit): no usable
 reference yet.** Every attempt ran at the maximum tree depth (1023

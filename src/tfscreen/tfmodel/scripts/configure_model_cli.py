@@ -206,7 +206,9 @@ def configure_model(binding_df=None,
     ln_cfu0_model : str, optional
         Model to use to describe ln_cfu0, the initial populations of genotypes
         in each replicate. Allowed values are 'hierarchical' (default) or
-        'hierarchical_factored'.
+        'hierarchical_factored'. The latter shares each genotype's baseline
+        across pre-conditions and is refused when they come from different
+        libraries (kanR and pheS are grown up separately).
     dk_geno_model : str, optional
         Model to use to describe dk_geno, the pleiotropic effect of a genotype
         on growth, independent of occupancy. Allowed values are

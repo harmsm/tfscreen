@@ -160,8 +160,7 @@ _KNOWN_UNMAPPED = {
 
 @pytest.mark.parametrize("axis,variant", _SAFE_VARIANTS)
 def test_component_guides_follow_loc_scale_convention(axis, variant):
-    orchestrator = ModelOrchestrator(growth_df=_GROWTH_CSV,
-                                     batch_size=None,
+    orchestrator = ModelOrchestrator(batch_size=None,
                                      **_variant_kwargs(axis, variant))
     ri = RunInference(orchestrator, seed=0)
     mapping, unmatched, _ = component_guide_map(orchestrator.jax_model_guide,
