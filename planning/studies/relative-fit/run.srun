@@ -4,7 +4,7 @@
 #SBATCH --output=run.out
 #SBATCH --error=run.err
 #SBATCH --partition=gpu
-#SBATCH --time=00-02:00:00
+#SBATCH --time=00-06:00:00
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
 #SBATCH --gpus=1
@@ -26,6 +26,9 @@ FIT="{{ fit }}"
 # extra growth noise, which it refuses) or lncfu (with normal_kt growth
 # noise). grid.yaml runs counts only.
 LIKELIHOOD="{{ likelihood | default('counts') }}"
+# component (mean-field component guide), low_rank (low-rank multivariate
+# normal autoguide) or map (MAP, then a Laplace posterior)
+INFERENCE="{{ inference | default('component') }}"
 
 SEED=$(python -c "import yaml; print(yaml.safe_load(open('tfs_sim_config.yaml'))['seed'])")
 
@@ -81,8 +84,18 @@ if [[ "${FIT}" == "joint" ]]; then
         --k_scale_ceiling 0.005
 fi
 
-echo ">>> Fit model"
-tfs-fit-model tfs_configure_config.yaml --seed "${SEED}"
+case "${INFERENCE}" in
+    component) INFERENCE_ARGS=() ;;
+    low_rank)  INFERENCE_ARGS=(--guide_type auto_low_rank_multivariate_normal) ;;
+    # a converged MAP took ~130,000 epochs on run 1's run 0002; Laplace
+    # needs it converged (a MAP stopped at a fixed step size had 9 negative
+    # Hessian eigenvalues and gave 95% intervals ~1e10 wide)
+    map)       INFERENCE_ARGS=(--analysis_method map --max_num_epochs 200000) ;;
+    *) echo "unknown inference '${INFERENCE}'" >&2; exit 1 ;;
+esac
+
+echo ">>> Fit model (${INFERENCE})"
+tfs-fit-model tfs_configure_config.yaml --seed "${SEED}" "${INFERENCE_ARGS[@]}"
 
 echo ">>> Sample posterior"
 tfs-sample-posterior tfs_configure_config.yaml tfs_fit_model_checkpoint.pkl

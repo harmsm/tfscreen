@@ -23,12 +23,22 @@
 #             0.005), the anchored baseline of the congression study
 #   relative  hill_relative, growth only, no prefit
 #
-# 2 noise x 2 fits x 3 seeds = 12 runs.
+# Inference (run 2, 2026-09-27). Run 1 found the mean-field component guide
+# biased on the relative fit: from the pre-MAP point SVI slides along the
+# m*X ridge (smaller |m|, stretched X) while the MAP stays on truth. So the
+# relative fit gets three arms:
+#   component  mean-field component guide (the default; run 1's method)
+#   low_rank   auto_low_rank_multivariate_normal (numpyro's default rank),
+#              which can represent the ridge's correlations
+#   map        MAP, then a Laplace posterior from tfs-sample-posterior
+# The joint fit keeps the component guide as the anchored baseline.
+#
+# 2 noise x 4 fit/inference arms x 3 seeds = 24 runs.
 # ---------------------------------------------------------------------------
 
 base_config: ../congression-calibration/simulate_config.yaml
 
-run_name: "{{ 'realistic' if founder_sampling else 'poisson' }}__seed{{ seed }}__{{ fit }}"
+run_name: "{{ 'realistic' if founder_sampling else 'poisson' }}__seed{{ seed }}__{{ fit }}__{{ inference }}"
 
 output_file: run.srun
 
@@ -67,4 +77,10 @@ template:
   - name: fit
     variants:
       - fit: joint
+        inference: component
       - fit: relative
+        inference: component
+      - fit: relative
+        inference: low_rank
+      - fit: relative
+        inference: map

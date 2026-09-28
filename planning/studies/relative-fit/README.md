@@ -21,14 +21,18 @@ in-library binding anchors), at lambda 0 and the wide dk spread, like
 `../count-likelihood/`. Lambda 0 keeps congression out of the comparison;
 both fits use `single`.
 
-[`grid.yaml`](grid.yaml): 2 noise x 2 fits x 3 seeds = 12 runs, all on
-the count likelihood (the default after `../count-likelihood/`; the
-`lncfu` arm of the first design was dropped, 2026-09-27).
+[`grid.yaml`](grid.yaml): 2 noise x 4 fit/inference arms x 3 seeds = 24
+runs, all on the count likelihood (the default after `../count-likelihood/`;
+the `lncfu` arm of the first design was dropped, 2026-09-27). Run 1 had only
+the two component-guide arms. Run 2 added the `low_rank` and `map` arms for
+the relative fit after run 1 found the mean-field guide biased there
+(Results).
 
 | axis | levels |
 |---|---|
 | simulated noise | `poisson`; `realistic` (founder sampling, demographic growth, shared transformation, 150,000 PCR templates with CV 0.5; designed for ~8x Poisson, fitted at ~29x in `../count-likelihood/` v3) |
 | fit | `joint` (`hill_geno`, binding at weight 1, prefit with `k_scale_ceiling` 0.005); `relative` (`hill_relative`, growth only, no prefit) |
+| inference | `component` (mean-field component guide, the default); `low_rank` (`auto_low_rank_multivariate_normal`, numpyro's default rank); `map` (MAP, then a Laplace posterior in `tfs-sample-posterior`). The joint fit runs `component` only. |
 | seed | 1, 2, 3 |
 
 Both fits use `growth_likelihood: counts` with `sample_offset: level` and
@@ -43,15 +47,15 @@ samples the posterior and summarizes.
 On the cluster, from a scratch directory, with this repository checked out:
 
 ```bash
-tfs-setup-sim-grid grid.yaml --out_prefix relative_fit
-for d in relative_fit/run_*/; do (cd "$d" && sbatch run.srun); done
+tfs-setup-sim-grid grid.yaml --out_prefix relative_fit_v2
+for d in relative_fit_v2/run_*/; do (cd "$d" && sbatch run.srun); done
 ```
 
 When the runs finish:
 
 ```bash
-tfs-summarize-calibration relative_fit --out_prefix calib/relative_fit \
-    --baseline fit=joint --facet_by founder_sampling
+tfs-summarize-calibration relative_fit_v2 --out_prefix calib/relative_fit_v2 \
+    --baseline fit=joint inference=component --facet_by founder_sampling
 ```
 
 ## What to look at
@@ -181,5 +185,20 @@ only through the tube totals. A mean-field Gaussian cannot follow a curved
 ridge, and it slides toward smaller |m|. The joint fit escapes because
 binding observes theta for the anchors.
 
-Next: test a guide that can follow the ridge (`auto_low_rank_multivariate_normal`) and
-MAP + Laplace on the relative arm, then rerun the grid.
+**MAP + Laplace works on run 0002, once the MAP has converged.** We
+continued the pre-MAP at a fixed step size of 1e-3. The result sat far
+from a stationary point, with gradient norm 1.4e7. Its Hessian had 9
+negative eigenvalues, down to -767, all on per-genotype offsets.
+Clamping them made the Laplace X intervals useless (median 95% width
+2.6e10). Continuing with step-size cuts, the fit reached 1e-4 after about
+128,000 epochs in total. The loss was still falling about 3 nats per
+2000-epoch window. At that point:
+- **Gradient and Hessian.** The gradient norm was 2.8e4 and one tiny
+  negative eigenvalue remained (-5e-5, on `ln_cfu0_tube_scale`).
+- **m.** m stayed on truth (-0.00976).
+- **Laplace X.** X was unbiased: RMSE 0.109, slope 1.00, intercept
+  -0.01. 95% coverage was 0.99 and 50% coverage 0.77, so the intervals
+  are conservative. The run-1 SVI covered 8%.
+
+Run 2 therefore adds a `map` arm with `--max_num_epochs 200000` and a
+`low_rank` arm (`auto_low_rank_multivariate_normal`).
