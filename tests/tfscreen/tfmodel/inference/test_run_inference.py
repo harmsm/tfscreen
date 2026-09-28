@@ -1290,3 +1290,47 @@ def test_compute_hessian_sigmas_takes_constrained_values():
     assert float(out["s"]["map"]) == pytest.approx(np.e, rel=1e-5)
     assert float(out["s"]["sigma"]) == pytest.approx(np.e * 0.5, rel=1e-3)
     assert float(out["x"]["sigma"]) == pytest.approx(2.0, rel=1e-3)
+
+
+def test_run_nuts_starts_at_given_values(mocker):
+    """
+    run_nuts starts every chain at the given constrained site values and
+    falls back to prior medians (it once handed initialize_model's ParamInfo
+    tuple to init_to_value, which matched no site).
+    """
+    from unittest.mock import MagicMock
+
+    import numpyro.distributions as dist
+
+    ri = RunInference.__new__(RunInference)
+    ri._seed = 0
+    ri.model = MagicMock()
+    ri.model.data.num_genotype = 3
+    nuts = mocker.patch("numpyro.infer.NUTS")
+    mcmc = mocker.patch("numpyro.infer.MCMC")
+    mcmc.return_value.get_extra_fields.return_value = {}
+    ri.run_nuts(num_warmup=1, num_samples=1, init_values={"a": 2.5},
+                dense_mass=True)
+    assert nuts.call_args.kwargs["dense_mass"] is True
+    strategy = nuts.call_args.kwargs["init_strategy"]
+    site = {"type": "sample", "is_observed": False, "name": "a",
+            "fn": dist.Normal(0.0, 1.0), "value": None, "kwargs": {}}
+    assert float(strategy(site)) == 2.5
+    # the full data set goes in as one batch
+    ri.model.get_batch.assert_called_once()
+
+
+def test_report_nuts_diagnostics(capsys):
+    """Worst split R-hat and least n_eff, skipping constant sites."""
+    from unittest.mock import MagicMock
+
+    rng = np.random.default_rng(0)
+    mixed = rng.normal(size=(2, 200))
+    stuck = np.stack([rng.normal(0, 1, 200), rng.normal(5, 1, 200)])
+    mcmc = MagicMock()
+    mcmc.get_samples.return_value = {"good": mixed, "bad": stuck,
+                                     "fixed": np.zeros((2, 200))}
+    RunInference._report_nuts_diagnostics(mcmc)
+    out = capsys.readouterr().out
+    assert "max split R-hat" in out and "(bad)" in out
+    assert "inf" not in out

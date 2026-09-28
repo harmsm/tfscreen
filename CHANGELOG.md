@@ -31,6 +31,15 @@ fall into two kinds:
 
 ### Fixed
 
+- **NUTS starts where it should.** `RunInference.run_nuts` passed
+  `initialize_model`'s `ParamInfo` tuple to `init_to_value`. No site
+  matched it, so every chain started at a uniform draw in [-2, 2] on the
+  unconstrained scale. `tfs-fit-model --analysis_method nuts` now starts
+  the chains at the MAP warm-up's point (`--pre_map_num_epoch`, as SVI
+  does), falling back to prior medians. It also passes the full data set
+  through `get_batch`, prints the worst split R-hat and least n_eff, and
+  takes `--nuts_dense_mass`.
+
 - **SVI no longer throws away the pre-MAP solution.** The component guide
   started with every scale at 0.1 and a multiplicative 0.1 jitter on every
   starting value. The scale is in each parameter's own units, so for growth

@@ -88,6 +88,9 @@ class TestRunGrowthAnalysisNuts:
             ".fit_model_cli.RunInference",
             return_value=MagicMock(_iterations_per_epoch=1),
         )
+        # NUTS starts from a MAP warm-up (pre_map_num_epoch > 0 by default)
+        mocker.patch("tfscreen.tfmodel.scripts.fit_model_cli._run_map",
+                     return_value=(MagicMock(), {}, True))
         fake_samples = {"param": [1.0]}
         run_nuts_mock = mocker.patch(
             "tfscreen.tfmodel.scripts"
@@ -326,6 +329,31 @@ class TestGuideSelection:
         kwargs = run_svi_mock.call_args.kwargs
         assert set(kwargs["init_values"]) == {"dk_geno_offset"}
         assert kwargs["init_params"] is None
+
+    def test_nuts_starts_from_premap_solution(self, mocker):
+        _patch_common(mocker)
+        self._patch_ri(mocker, guesses={"dk_geno_offset": jnp.zeros(3)})
+        map_params = {"dk_geno_offset_auto_loc": jnp.ones(3)}
+        run_map_mock = mocker.patch(f"{_CLI}._run_map",
+                                    return_value=(MagicMock(), map_params,
+                                                  True))
+        run_nuts_mock = mocker.patch(f"{_CLI}._run_nuts", return_value={})
+        fit_model(config_file="dummy.yaml", seed=1, analysis_method="nuts",
+                  pre_map_num_epoch=5)
+        assert run_map_mock.call_args.kwargs["max_num_epochs"] == 5
+        init_values = run_nuts_mock.call_args.kwargs["init_values"]
+        assert float(init_values["dk_geno_offset"][0]) == 1.0
+
+    def test_nuts_without_premap_starts_from_guesses(self, mocker):
+        _patch_common(mocker)
+        self._patch_ri(mocker, guesses={"dk_geno_offset": jnp.zeros(3)})
+        run_map_mock = mocker.patch(f"{_CLI}._run_map")
+        run_nuts_mock = mocker.patch(f"{_CLI}._run_nuts", return_value={})
+        fit_model(config_file="dummy.yaml", seed=1, analysis_method="nuts",
+                  pre_map_num_epoch=0)
+        run_map_mock.assert_not_called()
+        init_values = run_nuts_mock.call_args.kwargs["init_values"]
+        assert float(init_values["dk_geno_offset"][0]) == 0.0
 
     @pytest.mark.parametrize("scale,expected", [(None, 1e-4), (0.02, 0.02)])
     def test_component_guide_starts_from_premap(self, mocker, scale,

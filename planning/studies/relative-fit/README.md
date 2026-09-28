@@ -202,3 +202,49 @@ Clamping them made the Laplace X intervals useless (median 95% width
 
 Run 2 therefore adds a `map` arm with `--max_num_epochs 200000` and a
 `low_rank` arm (`auto_low_rank_multivariate_normal`).
+
+**Run 2 (2026-09-28): `relative_fit_v2`, 24 runs, all finished.** Pooled
+in `calib/relative_fit_v2_*` (not committed).
+
+- **Start fix confirmed.** Every SVI run began within about 45k of its
+  pre-MAP loss (run 1 began about 4e8 above). No mirror modes. All
+  component-guide runs, joint included, hit the 100,000-epoch cap at step
+  size 1e-6 without being called converged. Five of the six `low_rank`
+  runs converged. All `map` runs hit the 200,000 cap at step size 1e-4 or
+  1e-5.
+- **Joint fit (component).** Much better than run 1: theta r 0.99/0.97
+  and RMSE 0.07/0.10 (Poisson/realistic), against run 1's 0.29 r under
+  Poisson. It still undercovers: 95% coverage 0.43/0.58.
+
+X test set (`theta_test`), per-arm means over 3 seeds, Poisson / realistic:
+
+| relative arm | 95% coverage | 50% coverage | RMSE | median 95% width |
+|---|---|---|---|---|
+| component | 0.17 / 0.43 | 0.06 / 0.18 | 0.13 / 0.27 | 0.045 / 0.23 |
+| low_rank | 0.64 / 0.78 | 0.29 / 0.39 | 0.058 / 0.115 | 0.034 / 0.18 |
+| map + Laplace | 1 of 6 runs usable | | | |
+
+- **`low_rank` removes most of the relative fit's bias.** Its X RMSE is
+  at or below the joint fit's (0.058 vs 0.068 Poisson), with coverage at
+  or above the joint fit's. The component guide stays biased, as in
+  run 1.
+- **`map` + Laplace is not usable as is.** Every MAP recovered m with
+  calibrated intervals (95% coverage 1.0/1.0). The Laplace covariance on
+  the genotype parameters blew up in 5 of 6 runs, though: 36-126
+  genotypes had `hill_n` 95% widths above 100, and X widths reached
+  1e8-1e14 even for the other genotypes. Only run 0004 (seed 1, Poisson)
+  gave sensible X (95% coverage 0.91).
+- **Every SVI arm is overconfident.** 50% coverage of X/theta is 0.2-0.4.
+  `growth_k`/`growth_m` intervals are about 1e-4 wide with coverage near
+  0, in the joint and relative arms alike. The MAP's Laplace intervals
+  on k and m cover (0.92-1.0). Remaining gap: the guides' variance, not
+  their location.
+
+**Decision fed (step 5).** The relative fit is sound. Its point estimates
+match the anchored joint fit's without binding data. Fit it with
+`--guide_type auto_low_rank_multivariate_normal`, not the component guide.
+This is documented, not made the default: the default waits on studies
+with real data (user, 2026-09-28).
+Its intervals, like every SVI fit's here, are too narrow. That is a
+separate problem shared with the joint fit, to take up before trusting
+coverage from any arm.

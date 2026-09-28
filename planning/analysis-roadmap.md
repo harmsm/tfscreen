@@ -442,8 +442,12 @@ step 7.
    OD600 2.9, above a realistic calibrated range; tune `cfu0` and timing
    before using its OD600. Deferred: monoculture growth-rate outputs and a
    spike-in counting standard (waiting on the bench decisions).
-5. [ ] **Relative-X fit** (G; new component, opt-in). (Implemented;
-   validation grid pending.)
+5. [x] **Relative-X fit** (G; new component, opt-in). (Done 2026-09-28;
+   `planning/studies/relative-fit/`. Point estimates match the anchored
+   joint fit without binding data when fit with
+   `--guide_type auto_low_rank_multivariate_normal`. The mean-field
+   component guide is biased along the m·X ridge. Intervals from every
+   SVI arm, joint included, are too narrow; that is a separate problem.)
    - A relative Hill theta component: hill_geno's curve with real-valued
      baselines, population priors centered on wt, registry rules (C5). Gauge
      (D4): wt's curve is pinned to `X = 1` at `c_lo` and `X = 0` at `c_hi`

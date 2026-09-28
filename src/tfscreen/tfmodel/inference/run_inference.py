@@ -2399,7 +2399,9 @@ class RunInference:
                  num_warmup=500,
                  num_samples=500,
                  num_chains=1,
-                 target_accept_prob=0.9):
+                 target_accept_prob=0.9,
+                 init_values=None,
+                 dense_mass=False):
         """
         Run NUTS (No-U-Turn Sampler) MCMC on the full dataset.
 
@@ -2413,6 +2415,15 @@ class RunInference:
             Number of MCMC chains.
         target_accept_prob : float
             Target acceptance probability for step-size adaptation.
+        init_values : dict or None, optional
+            Constrained site values to start every chain at (``site_values``,
+            e.g. from a MAP warm-up).  Sites without a value start at their
+            prior median.
+        dense_mass : bool, optional
+            Adapt a dense mass matrix instead of a diagonal one.  It costs
+            O(D^2) memory and O(D^3) per adaptation window but follows
+            correlated posteriors (the relative fit's m*X ridge), where a
+            diagonal mass matrix leaves NUTS at its maximum tree depth.
 
         Returns
         -------
@@ -2420,30 +2431,30 @@ class RunInference:
             The MCMC object after sampling. Call `.get_samples()` to get
             posterior samples as a dict of {site_name: jnp.array}.
         """
-        from numpyro.infer import MCMC, NUTS, init_to_value, init_to_median
-        import numpyro.infer.util
+        from numpyro.infer import MCMC, NUTS
 
         main_key = random.PRNGKey(self._seed)
 
+        # The full data set as one batch, in library order (the path the
+        # Laplace posterior uses).
+        full_data = self.model.get_batch(self.model.data,
+                                         jnp.arange(self.model.data.num_genotype))
         jax_model_kwargs = {
             "priors": self.model.priors,
-            "data": self.model.data,
+            "data": full_data,
         }
 
-        # Initialise from prior median — more robust than random for
-        # hierarchical models with constrained parameters.
-        init_params, _, _, _ = numpyro.infer.util.initialize_model(
-            main_key,
-            self.model.jax_model,
-            model_args=[],
-            model_kwargs=jax_model_kwargs,
-            init_strategy=init_to_median,
-        )
-        init_strategy = init_to_value(values=init_params)
+        # Start at the given constrained site values, else at prior medians.
+        # (This used to hand initialize_model's ParamInfo tuple to
+        # init_to_value, which matched no site, so every chain started at
+        # init_to_uniform's draw in [-2, 2] on the unconstrained scale.)
+        init_strategy = _init_to_value_or(values=init_values,
+                                          fallback=init_to_median)
 
         kernel = NUTS(self.model.jax_model,
                       init_strategy=init_strategy,
-                      target_accept_prob=target_accept_prob)
+                      target_accept_prob=target_accept_prob,
+                      dense_mass=dense_mass)
 
         mcmc = MCMC(kernel,
                     num_warmup=num_warmup,
@@ -2460,4 +2471,31 @@ class RunInference:
             total = num_samples * num_chains
             print(f"NUTS: {num_div} divergences out of {total} samples")
 
+        self._report_nuts_diagnostics(mcmc)
+
         return mcmc
+
+    @staticmethod
+    def _report_nuts_diagnostics(mcmc):
+        """Print the worst split R-hat and smallest effective sample size."""
+        from numpyro.diagnostics import summary
+
+        try:
+            stats = summary(mcmc.get_samples(group_by_chain=True))
+        except Exception as err:  # diagnostics must never sink a finished run
+            print(f"NUTS: diagnostics unavailable ({err})")
+            return
+        worst_rhat, worst_rhat_site = -np.inf, None
+        least_neff, least_neff_site = np.inf, None
+        for site, st in stats.items():
+            # Constant deterministic sites (fixed values) give inf/NaN.
+            r_hat = np.asarray(st.get("r_hat", np.nan), dtype=float)
+            r_hat = r_hat[np.isfinite(r_hat)]
+            n_eff = np.asarray(st.get("n_eff", np.nan), dtype=float)
+            n_eff = n_eff[np.isfinite(n_eff)]
+            if r_hat.size and r_hat.max() > worst_rhat:
+                worst_rhat, worst_rhat_site = float(r_hat.max()), site
+            if n_eff.size and n_eff.min() < least_neff:
+                least_neff, least_neff_site = float(n_eff.min()), site
+        print(f"NUTS: max split R-hat {worst_rhat:.3f} ({worst_rhat_site}); "
+              f"min n_eff {least_neff:.0f} ({least_neff_site})", flush=True)

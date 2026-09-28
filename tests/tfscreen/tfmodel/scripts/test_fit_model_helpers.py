@@ -171,7 +171,18 @@ def test_run_nuts_calls_run_nuts(mock_ri_for_nuts):
         num_samples=20,
         num_chains=2,
         target_accept_prob=0.8,
+        init_values=None,
+        dense_mass=False,
     )
+
+
+def test_run_nuts_passes_init_values(mock_ri_for_nuts):
+    """_run_nuts hands the starting site values to ri.run_nuts."""
+    ri = mock_ri_for_nuts
+    values = {"dk_geno_offset": 1.0}
+    _run_nuts(ri, init_values=values, nuts_dense_mass=True)
+    assert ri.run_nuts.call_args.kwargs["init_values"] is values
+    assert ri.run_nuts.call_args.kwargs["dense_mass"] is True
 
 
 def test_run_nuts_calls_get_nuts_posteriors(tmp_path, mock_ri_for_nuts):

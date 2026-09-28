@@ -218,11 +218,13 @@ def _run_svi(ri,
     return svi_obj, svi_state, params, converged
 
 def _run_nuts(ri,
+              init_values=None,
               out_prefix="tfs",
               nuts_num_warmup=500,
               nuts_num_samples=500,
               nuts_num_chains=1,
               nuts_target_accept_prob=0.9,
+              nuts_dense_mass=False,
               forward_batch_size=512):
     """
     Run NUTS (No-U-Turn Sampler) MCMC inference.
@@ -231,6 +233,9 @@ def _run_nuts(ri,
     ----------
     ri : RunInference
         RunInference object that manages model setup and MCMC routines.
+    init_values : dict or None, optional
+        Constrained site values to start the chains at (default: prior
+        medians).
     out_prefix : str, optional
         Output file root for checkpoints and results (default "tfs").
     nuts_num_warmup : int, optional
@@ -241,6 +246,8 @@ def _run_nuts(ri,
         Number of MCMC chains (default 1).
     nuts_target_accept_prob : float, optional
         Target acceptance probability for NUTS step-size adaptation (default 0.9).
+    nuts_dense_mass : bool, optional
+        Adapt a dense mass matrix (default False, diagonal).
     forward_batch_size : int, optional
         Number of genotypes to process per forward-model batch when computing
         posteriors (default 512).
@@ -254,7 +261,9 @@ def _run_nuts(ri,
     mcmc = ri.run_nuts(num_warmup=nuts_num_warmup,
                        num_samples=nuts_num_samples,
                        num_chains=nuts_num_chains,
-                       target_accept_prob=nuts_target_accept_prob)
+                       target_accept_prob=nuts_target_accept_prob,
+                       init_values=init_values,
+                       dense_mass=nuts_dense_mass)
 
     mcmc_samples = mcmc.get_samples()
 
@@ -318,6 +327,7 @@ def fit_model(config_file,
               nuts_num_samples=500,
               nuts_num_chains=1,
               nuts_target_accept_prob=0.9,
+              nuts_dense_mass=False,
               epoch_checkpoint_interval=1000):
     """
     Fit the joint hierarchical model using a previously generated configuration file.
@@ -411,9 +421,10 @@ def fit_model(config_file,
         When getting NUTS posteriors, calculate forward predictions in batches
         of this size (default 512).
     pre_map_num_epoch : int, optional
-        Maximum number of epochs of the MAP warm-up run before SVI (default
-        10000; 0 skips it).  The warm-up stops earlier when it converges.
-        Only used if analysis_method is 'svi'.
+        Maximum number of epochs of the MAP warm-up run before SVI or NUTS
+        (default 10000; 0 skips it).  The warm-up stops earlier when it
+        converges.  SVI's guide and NUTS's chains start at its point.  Not
+        used by 'map'.
     init_param_jitter : float, optional
         Multiplicative jitter on the component guide's starting parameters
         (default 0, none).  Not used by autoguides or MAP.  Leave it off when
@@ -431,6 +442,11 @@ def fit_model(config_file,
     nuts_target_accept_prob : float, optional
         Target acceptance probability for NUTS step-size adaptation
         (default 0.9). Only used if analysis_method is 'nuts'.
+    nuts_dense_mass : bool, optional
+        Adapt a dense mass matrix for NUTS instead of a diagonal one
+        (default False).  Worth it for correlated posteriors of up to a few
+        thousand latents; with a diagonal one the relative fit ran at NUTS's
+        maximum tree depth.  Only used if analysis_method is 'nuts'.
     epoch_checkpoint_interval : int or None, optional
         Frequency (in epochs) to write numbered epoch checkpoints to a
         ``checkpoints/`` subdirectory alongside ``out_prefix`` (default 1000).
@@ -484,7 +500,7 @@ def fit_model(config_file,
                 "the file or change out_prefix."
             )
 
-        if analysis_method == "svi" and pre_map_num_epoch > 0:
+        if analysis_method in ("svi", "nuts") and pre_map_num_epoch > 0:
             premap_path = f"{out_prefix}_premap_checkpoint.pkl"
             if os.path.exists(premap_path):
                 raise FileExistsError(
@@ -583,12 +599,30 @@ def fit_model(config_file,
                             epoch_checkpoint_interval=epoch_checkpoint_interval))
 
     elif analysis_method == "nuts":
+        # Start the chains at the MAP warm-up's point, as SVI does: from
+        # prior medians warmup spends its adaptation getting to the mode.
+        init_values = ri.site_values(guesses)
+        if pre_map_num_epoch > 0:
+            _, map_params, _ = _run_map(
+                ri,
+                init_values=init_values,
+                out_prefix=f"{out_prefix}_premap",
+                label="Pre-MAP",
+                **optimizer_kwargs,
+                **_optimization_kwargs(
+                    **convergence_kwargs,
+                    checkpoint_interval=pre_map_num_epoch,
+                    max_num_epochs=pre_map_num_epoch,
+                    epoch_checkpoint_interval=None))
+            init_values = {**init_values, **ri.site_values(map_params)}
         mcmc_samples = _run_nuts(ri,
+                                 init_values=init_values,
                                  out_prefix=out_prefix,
                                  nuts_num_warmup=nuts_num_warmup,
                                  nuts_num_samples=nuts_num_samples,
                                  nuts_num_chains=nuts_num_chains,
                                  nuts_target_accept_prob=nuts_target_accept_prob,
+                                 nuts_dense_mass=nuts_dense_mass,
                                  forward_batch_size=forward_batch_size)
         return None, mcmc_samples, True
 
