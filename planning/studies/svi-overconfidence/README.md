@@ -123,17 +123,36 @@ Not yet run on the cluster.
 
 ## Results
 
-**Run 2 on the cluster (pending, 2026-09-28): rerun with `ln_cfu0: hierarchical`.**
-Every earlier run fit `ln_cfu0: hierarchical_factored`. That model shares each
-genotype's starting abundance across the kanR and pheS pre-conditions,
-but the simulator (like the real experiment) grows those libraries up
-separately. The fit pushed the difference into a confident per-genotype
-theta error, which made coverage fall with read depth
-(`../svi-overconfidence/`: 95% coverage above 1000 reads 0.09 with the
-factored model, 0.80 with `hierarchical`). The earlier runs' absolute
-coverage and RMSE carry that mismatch. Their between-arm comparisons were
-made under the same handicap. `run.srun` now uses `hierarchical`; outputs go
-to `svi_overconfidence_v2/`.
+**Run 2 (`svi_overconfidence_v2`, cluster, 2026-09-28):
+`ln_cfu0: hierarchical`.** All 60 runs finished. 95% theta/X coverage by
+median reads per tube, mean over 10 seeds (run 1 in brackets):
+
+| arm | <=5 | 21-100 | 101-1000 | >1000 | RMSE |
+|---|---|---|---|---|---|
+| joint component | 0.84 (0.78) | 0.81 (0.61) | 0.63 (0.47) | 0.36 (0.30) | 0.029 (0.052) |
+| joint low_rank | 0.88 (0.80) | 0.87 (0.65) | 0.75 (0.49) | 0.31 (0.27) | 0.027 (0.053) |
+| relative component | 0.86 (0.84) | 0.81 (0.62) | 0.75 (0.43) | 0.55 (0.30) | 0.060 (0.080) |
+| relative low_rank | 0.90 (0.88) | 0.81 (0.64) | 0.77 (0.43) | 0.63 (0.29) | 0.057 (0.078) |
+
+- **The ln_cfu0 fix halved the joint fit's RMSE** and lifted coverage at
+  every depth. It was less than the seed-1 refit suggested (0.80 above 1000
+  reads there, 0.31-0.63 across 10 seeds here).
+- **The depth gradient remains, and it tracks k and m.** SVI arms sit a
+  median 5-125 of their own SDs off truth on k and m (95% coverage
+  0-0.25). MAP + Laplace sits at 0.3-0.5 SDs and covers (0.95-1.0). With
+  the model mismatch gone, what remains is the guides dropping the shared
+  parameters' uncertainty. It matters most for genotypes whose own counts
+  are precise. The low-rank guide is closer to its posterior (log-weight SD
+  21-22 against 750-780 for the component guide) but still collapses k and
+  m.
+- **MAP + Laplace on theta is still unusable in the relative fit**
+  (Laplace blowups). In the joint fit it covers 0.53 above 1000 reads, the
+  best of any arm there.
+
+Next: carry k and m uncertainty into the per-genotype posteriors. Options:
+a guide that pairs the per-condition k and m with the genotype parameters
+(block structure), or a two-stage approach that samples k and m from their
+Laplace posterior and fits the rest conditionally.
 
 **NUTS pilot (2026-09-28, local, seed 1, relative fit): no usable
 reference yet.** Every attempt ran at the maximum tree depth (1023

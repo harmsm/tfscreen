@@ -78,17 +78,36 @@ Second run: commit c65390aa (2026-09-27), results in `count_likelihood_v2/`
 
 ## Results
 
-**Fourth run (pending, 2026-09-28): rerun with `ln_cfu0: hierarchical`.**
-Every earlier run fit `ln_cfu0: hierarchical_factored`. That model shares each
-genotype's starting abundance across the kanR and pheS pre-conditions,
-but the simulator (like the real experiment) grows those libraries up
-separately. The fit pushed the difference into a confident per-genotype
-theta error, which made coverage fall with read depth
-(`../svi-overconfidence/`: 95% coverage above 1000 reads 0.09 with the
-factored model, 0.80 with `hierarchical`). The earlier runs' absolute
-coverage and RMSE carry that mismatch. Their between-arm comparisons were
-made under the same handicap. `run.srun` now uses `hierarchical`; outputs go
-to `count_likelihood_v4/`.
+**Fourth run (`count_likelihood_v4`, 2026-09-28): `ln_cfu0: hierarchical`.**
+All 24 runs finished. This is the first run after the SVI start fix
+(`../relative-fit/`) and the ln_cfu0 fix (`../svi-overconfidence/`). Every
+earlier run fit `hierarchical_factored`, which shares each genotype's
+starting abundance across the separately grown kanR and pheS libraries.
+
+Pooled theta (test genotypes), mean over 3 seeds, 95% coverage / RMSE, with
+the third run's numbers for comparison:
+
+| noise | fit | v4 | v3 |
+|---|---|---|---|
+| poisson | lncfu / zero | 0.72 / 0.100 | 0.76 / 0.101 |
+| poisson | lncfu / level | 0.74 / 0.100 | 0.56 / 0.100 |
+| poisson | counts / level / single | 0.83 / 0.035 | 0.65 / 0.041 |
+| poisson | counts / level / mixture | 0.82 / 0.037 | 0.65 / 0.043 |
+| realistic | lncfu / zero | 0.83 / 0.109 | 0.82 / 0.113 |
+| realistic | lncfu / level | 0.76 / 0.109 | 0.69 / 0.110 |
+| realistic | counts / level / single | 0.84 / 0.072 | 0.79 / 0.073 |
+| realistic | counts / level / mixture | 0.84 / 0.073 | 0.78 / 0.074 |
+
+- **Counts now wins on coverage as well as accuracy.** Under Poisson noise
+  it covers 0.83 against 0.72 for `lncfu`/`zero`, at a third of the RMSE.
+  Its coverage gain over v3 came from the two fixes. RMSE barely moved.
+- **dk_geno:** counts/single covers 0.86 (poisson) and 0.71 (realistic),
+  against 0.53-0.55 for `lncfu`/`zero`.
+- **k and m are still overconfident in every arm:** `growth_m` 95%
+  coverage is 0-0.58. This is the guides' shared-parameter collapse
+  (`../svi-overconfidence/`).
+- **Lambda at a true 0** is unchanged: 0.019-0.028 (poisson), 0.056-0.063
+  (realistic), with intervals that exclude 0.
 
 **Third run (`count_likelihood_v3`, commit 740ebc19, 2026-09-27): the
 answer.** All 24 runs finished; no NaN, no wrong optimum (run_0012's theta

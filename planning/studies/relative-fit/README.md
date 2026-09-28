@@ -106,17 +106,30 @@ not results.
 
 ## Results
 
-**Run 3 (pending, 2026-09-28): rerun with `ln_cfu0: hierarchical`.**
-Every earlier run fit `ln_cfu0: hierarchical_factored`. That model shares each
-genotype's starting abundance across the kanR and pheS pre-conditions,
-but the simulator (like the real experiment) grows those libraries up
-separately. The fit pushed the difference into a confident per-genotype
-theta error, which made coverage fall with read depth
-(`../svi-overconfidence/`: 95% coverage above 1000 reads 0.09 with the
-factored model, 0.80 with `hierarchical`). The earlier runs' absolute
-coverage and RMSE carry that mismatch. Their between-arm comparisons were
-made under the same handicap. `run.srun` now uses `hierarchical`; outputs go
-to `relative_fit_v3/`.
+**Run 3 (`relative_fit_v3`, 2026-09-28): `ln_cfu0: hierarchical`.** All
+24 runs finished. Theta/X test set, 95% coverage / RMSE, mean over 3 seeds
+(run 2 in brackets):
+
+| noise | arm | run 3 | run 2 |
+|---|---|---|---|
+| poisson | joint component | 0.36 / 0.071 | 0.43 / 0.068 |
+| poisson | relative component | 0.07 / 0.254 | 0.17 / 0.130 |
+| poisson | relative low_rank | 0.78 / 0.065 | 0.64 / 0.057 |
+| realistic | joint component | 0.61 / 0.094 | 0.58 / 0.097 |
+| realistic | relative component | 0.38 / 0.288 | 0.43 / 0.270 |
+| realistic | relative low_rank | 0.78 / 0.122 | 0.78 / 0.115 |
+
+- **This library barely moved, unlike the small one.** Most of its
+  genotypes are low-read doubles (median 3-5 reads per tube), where the
+  ln_cfu0 mismatch was never the main error. The low-rank relative fit
+  gained coverage under Poisson noise (0.64 to 0.78).
+- **The relative component guide got worse** (RMSE 0.13 to 0.25 under
+  Poisson noise). The per-library ln_cfu0 adds free parameters per
+  genotype, which flattens the m·X ridge the mean-field guide already
+  slides along. The low-rank guide is unaffected, which keeps the
+  recommendation.
+- **MAP + Laplace:** m covers in every run (1.0). Theta is still unusable
+  because of the Laplace blowups.
 
 **Run 1 (2026-09-27): inconclusive; the SVI start is broken.** All 12 runs
 finished. Three hit the 100,000-epoch cap (0002, 0003, 0004). run_0011's
