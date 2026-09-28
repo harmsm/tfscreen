@@ -31,6 +31,22 @@ fall into two kinds:
 
 ### Fixed
 
+- **Breaking: `ln_cfu0: hierarchical_factored` has a non-centered tube
+  offset.** It used to draw `tube_offset ~ Normal(0, tube_scale)` directly.
+  The 4 offsets (replicate x pre-condition) trade against the genotype
+  baselines, so they could sit at 0. The joint density then grew without
+  bound as `tube_scale` went to 0, so no MAP existed: the pre-MAP put the
+  scale at 5e-5 against a prior median of 0.34. The component now samples
+  `tube_offset_z ~ N(0, 1)` and keeps `tube_offset = tube_scale *
+  tube_offset_z` as a deterministic site. The guide's parameters are now
+  `ln_cfu0_tube_offset_z_locs/scales`, so checkpoints and guesses files
+  written before do not load. Reconfigure and refit.
+- **A runaway loss is no longer called converged.** The convergence monitor
+  records the run's starting loss. A window whose loss falls below -1000
+  times its magnitude now ends the run as `diverged`, not converged
+  (`convergence.RUNAWAY_LOSS_FACTOR`). A full-covariance guide had run to a
+  loss of -8e23 and was reported as converged.
+
 - **NUTS starts where it should.** `RunInference.run_nuts` passed
   `initialize_model`'s `ParamInfo` tuple to `init_to_value`. No site
   matched it, so every chain started at a uniform draw in [-2, 2] on the

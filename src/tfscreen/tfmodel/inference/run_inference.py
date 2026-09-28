@@ -693,6 +693,9 @@ class RunInference:
                 # Final checkpoint before exiting
                 self._write_checkpoint(svi_state, out_prefix)
                 break
+            if decision == conv.DIVERGED:
+                self._write_checkpoint(svi_state, out_prefix)
+                break
 
         # Write a final checkpoint when the loop exits by reaching max_num_epochs
         # (convergence already writes its own checkpoint via the break path above).
@@ -705,6 +708,13 @@ class RunInference:
                       f"{monitor.step_size:.3g}, {monitor.num_cuts} cut(s)): "
                       f"no significant loss improvement, parameter movement "
                       f"or loss skew for {patience} windows.", flush=True)
+            elif monitor.diverged:
+                print(f"Stopped at step {self._current_step}: the loss ran "
+                      f"away (below -{conv.RUNAWAY_LOSS_FACTOR:g} x its "
+                      f"starting magnitude {monitor.reference_loss:.4g}), so "
+                      f"the posterior density is unbounded along some "
+                      f"direction and there is no optimum. Not converged. "
+                      f"Last window: {monitor.describe()}", flush=True)
             else:
                 print(f"Stopped at step {self._current_step} "
                       f"(max_num_epochs) without converging. Last window: "

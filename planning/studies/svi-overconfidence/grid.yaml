@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# SVI overconfidence: a NUTS reference on a small library
+# SVI overconfidence: repeated simulations on a small library
 # (planning/studies/svi-overconfidence/README.md)
 #
 #   tfs-setup-sim-grid grid.yaml --out_prefix svi_overconfidence
@@ -7,15 +7,18 @@
 #
 # Every SVI arm of the relative-fit grid undercovered, worst for the
 # best-measured genotypes, with growth_m 10-300 of its own SDs off truth.
-# Is that the variational approximation (NUTS covers, the guides do not) or
-# the model (NUTS undercovers too)? A library small enough for NUTS
-# (singles and spikes, ~50 genotypes, ~600 latents) fit four ways on the
-# same data, in the joint and the relative fit.
+# Is that the variational approximation or the model? NUTS gave no reference
+# here (tree-depth ceiling, R-hat 3.5; README), so the reference is
+# calibration against truth over many simulations: a small library
+# (singles and spikes, ~50 genotypes, ~600 latents) fit three ways on the
+# same data, in the joint and the relative fit, with a Laplace posterior at
+# a converged MAP as the full-covariance comparison. Each SVI run also
+# reports how far its guide is from the posterior (guide_diagnostics.py).
 #
 # Poisson noise only (no founder sampling): the overconfidence was worst
 # there, and it keeps the question about the fit.
 #
-# 3 seeds x 2 fits x 4 inference arms = 24 runs.
+# 10 seeds x 2 fits x 3 inference arms = 60 runs.
 # ---------------------------------------------------------------------------
 
 base_config: simulate_config.yaml
@@ -46,6 +49,13 @@ simulate:
       - seed: 1
       - seed: 2
       - seed: 3
+      - seed: 4
+      - seed: 5
+      - seed: 6
+      - seed: 7
+      - seed: 8
+      - seed: 9
+      - seed: 10
 
 
 template:
@@ -57,7 +67,11 @@ template:
 
   - name: inference
     variants:
-      - inference: nuts
       - inference: component
       - inference: low_rank
       - inference: map
+
+  # copied into the grid's inputs/ and named from each run
+  - name: scripts
+    variants:
+      - diagnostics_script: guide_diagnostics.py

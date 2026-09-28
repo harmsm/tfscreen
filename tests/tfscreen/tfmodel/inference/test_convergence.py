@@ -34,7 +34,7 @@ def _feed(monitor, trace, window=WINDOW, param_excess=None):
     for step, losses in _windows(trace, window):
         decisions.append(monitor.end_window(step, loss_trend(losses),
                                             param_excess))
-        if decisions[-1] == conv.CONVERGED:
+        if decisions[-1] in (conv.CONVERGED, conv.DIVERGED):
             break
     return decisions
 
@@ -596,3 +596,42 @@ def test_recorded_count_likelihood_descent_is_not_cut():
     m = ConvergenceMonitor(1e-3, 1e-6, patience=3)
     decisions = _feed(m, trace)
     assert conv.CUT not in decisions
+
+
+# -----------------------------------------------------------------------------
+# runaway loss
+# -----------------------------------------------------------------------------
+
+def test_runaway_loss_is_diverged_not_converged():
+    """
+    A loss that runs off toward -inf (an unbounded posterior density) stops
+    the run as diverged, where it used to plateau at ~-8e23 and converge.
+    """
+    rng = np.random.default_rng(0)
+    start = 4e4 + rng.normal(0, 100, WINDOW)
+    runaway = -8e23 * (1 + 0.1 * rng.normal(size=6 * WINDOW))
+    m = ConvergenceMonitor(1e-3, None, patience=3)
+    decisions = _feed(m, np.concatenate([start, runaway]))
+    assert decisions[-1] == conv.DIVERGED
+    assert m.diverged and not m.converged
+    assert m.reference_loss == pytest.approx(4e4, rel=0.05)
+
+
+def test_negative_but_bounded_loss_is_not_runaway():
+    """A loss that settles below zero, far above the runaway line, is fine."""
+    rng = np.random.default_rng(1)
+    trace = np.concatenate([1e4 - np.linspace(0, 1.2e4, 4 * WINDOW),
+                            -2e3 + rng.normal(0, 1, 8 * WINDOW)])
+    m = ConvergenceMonitor(1e-3, None, patience=3)
+    decisions = _feed(m, trace)
+    assert conv.DIVERGED not in decisions
+    assert decisions[-1] == conv.CONVERGED
+
+
+def test_reference_loss_survives_checkpoint():
+    m = ConvergenceMonitor(1e-3, 1e-6)
+    m.end_window(WINDOW, loss_trend(np.full(WINDOW, 5e3)
+                                    + np.random.default_rng(2).normal(0, 1, WINDOW)))
+    resumed = ConvergenceMonitor(1e-3, 1e-6)
+    resumed.load_state_dict(m.state_dict())
+    assert resumed.reference_loss == pytest.approx(m.reference_loss)

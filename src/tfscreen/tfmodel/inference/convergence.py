@@ -117,10 +117,19 @@ PRIOR_SD_FLOOR = 0.01
 # windows with rare large penalties reach 17-150.
 MAX_LOSS_SKEW = 3.0
 
+# A window whose loss (block median) falls below -RUNAWAY_LOSS_FACTOR times
+# the magnitude of the run's first block median is a runaway: the posterior
+# density is unbounded along some direction (a hierarchical scale collapsing
+# onto its offsets), so there is no optimum to converge to. A full-covariance
+# guide on a centred tube offset reached -8e23 from +4e4 and was called
+# converged (planning/studies/svi-overconfidence/, 2026-09-28).
+RUNAWAY_LOSS_FACTOR = 1e3
+
 # Convergence decisions returned by ConvergenceMonitor.end_window.
 CONTINUE = "continue"
 CUT = "cut"
 CONVERGED = "converged"
+DIVERGED = "diverged"
 
 
 def _line_fit(y, t):
@@ -401,6 +410,10 @@ class ConvergenceMonitor:
         self.plateau_count = 0
         self.num_cuts = 0
         self.converged = False
+        self.diverged = False
+        # |loss| at the start of the run (first block median), the scale
+        # for the runaway check.
+        self.reference_loss = None
         self.last = None
         # loss_trend results of the current run of stalled windows, for the
         # pooled check before a cut or a stop.
@@ -448,6 +461,15 @@ class ConvergenceMonitor:
         param_excess = dict(param_excess or {})
         param_drift = dict(param_drift or {})
 
+        if self.reference_loss is None:
+            medians = loss_stats.get("medians")
+            start = (float(np.asarray(medians)[0])
+                     if medians is not None and np.size(medians)
+                     else float(loss_stats["level"]))
+            self.reference_loss = abs(start)
+        runaway = (float(loss_stats["level"])
+                   < -RUNAWAY_LOSS_FACTOR * max(self.reference_loss, 1.0))
+
         loss_improving = self.loss_improving(loss_stats)
 
         worst_param, worst_excess = None, 0.0
@@ -490,7 +512,10 @@ class ConvergenceMonitor:
 
         decision = CONTINUE
         step_size = self.step_size
-        if self.plateau_count >= self.patience:
+        if runaway:
+            decision = DIVERGED
+            self.diverged = True
+        elif self.plateau_count >= self.patience:
             if at_floor:
                 decision = CONVERGED
                 self.converged = True
@@ -559,6 +584,8 @@ class ConvergenceMonitor:
                 "plateau_count": self.plateau_count,
                 "num_cuts": self.num_cuts,
                 "converged": self.converged,
+                "diverged": self.diverged,
+                "reference_loss": self.reference_loss,
                 "last": self.last,
                 "stalls": [{"medians": w["medians"].tolist(),
                             "width": w["width"]} for w in self._stalls]}
@@ -573,6 +600,8 @@ class ConvergenceMonitor:
         self.plateau_count = int(state.get("plateau_count", 0))
         self.num_cuts = int(state.get("num_cuts", 0))
         self.converged = bool(state.get("converged", False))
+        self.diverged = bool(state.get("diverged", False))
+        self.reference_loss = state.get("reference_loss")
         self.last = state.get("last")
         self._stalls = [{"medians": np.asarray(w["medians"], dtype=float),
                          "width": float(w["width"])}

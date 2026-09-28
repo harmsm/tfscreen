@@ -27,7 +27,7 @@ FIT="{{ fit }}"
 # noise). grid.yaml runs counts only.
 LIKELIHOOD="{{ likelihood | default('counts') }}"
 # component (mean-field component guide), low_rank (low-rank multivariate
-# normal autoguide), map (MAP, then a Laplace posterior) or nuts
+# normal autoguide) or map (MAP, then a Laplace posterior)
 INFERENCE="{{ inference | default('component') }}"
 
 SEED=$(python -c "import yaml; print(yaml.safe_load(open('tfs_sim_config.yaml'))['seed'])")
@@ -91,14 +91,19 @@ case "${INFERENCE}" in
     # needs it converged (a MAP stopped at a fixed step size had 9 negative
     # Hessian eigenvalues and gave 95% intervals ~1e10 wide)
     map)       INFERENCE_ARGS=(--analysis_method map --max_num_epochs 200000) ;;
-    # the reference posterior; chains start at the pre-MAP point
-    nuts)      INFERENCE_ARGS=(--analysis_method nuts --nuts_num_warmup 1000
-                               --nuts_num_samples 1000 --nuts_num_chains 4) ;;
     *) echo "unknown inference '${INFERENCE}'" >&2; exit 1 ;;
 esac
 
 echo ">>> Fit model (${INFERENCE})"
 tfs-fit-model tfs_configure_config.yaml --seed "${SEED}" "${INFERENCE_ARGS[@]}"
+
+if [[ "${INFERENCE}" != "map" ]]; then
+    echo ">>> Guide diagnostics"
+    # diagnostics only; never stops the run
+    python "{{ diagnostics_script }}" tfs_fit_model_checkpoint.pkl \
+        --num_draws 2000 --out_prefix tfs_guide_diagnostics \
+        || echo "guide diagnostics failed" >&2
+fi
 
 echo ">>> Sample posterior"
 tfs-sample-posterior tfs_configure_config.yaml tfs_fit_model_checkpoint.pkl

@@ -166,8 +166,9 @@ def _default_subs(name, data, priors, *, offset_geno=None, tube_offset=None):
         f"{name}_tube_scale": jnp.array(0.5),
         f"{name}_offset_geno": offset_geno if offset_geno is not None
                                else jnp.zeros((R, B), dtype=float),
-        f"{name}_tube_offset": tube_offset if tube_offset is not None
-                               else jnp.zeros((R, C), dtype=float),
+        # non-centred: tube_offset = tube_scale (0.5) * tube_offset_z
+        f"{name}_tube_offset_z": tube_offset / 0.5 if tube_offset is not None
+                                 else jnp.zeros((R, C), dtype=float),
     }
     for i in range(num_classes):
         subs[f"{name}_hyper_loc_{i}"]   = jnp.array(float(guesses[f"{name}_hyper_loc_{i}"]))
@@ -262,8 +263,8 @@ def test_get_guesses_offset_geno_shape(mock_data):
 def test_get_guesses_tube_offset_shape(mock_data):
     R, C = mock_data.num_replicate, mock_data.num_condition_pre
     guesses = get_guesses("x", mock_data)
-    assert f"x_tube_offset" in guesses
-    assert guesses["x_tube_offset"].shape == (R, C)
+    assert f"x_tube_offset_z" in guesses
+    assert guesses["x_tube_offset_z"].shape == (R, C)
 
 
 def test_get_guesses_tube_scale_present(mock_data):
@@ -276,7 +277,7 @@ def test_get_guesses_uniform_data_offsets_zero(mock_data):
     """All genotypes at same ln_cfu → zero offsets and zero tube offsets."""
     guesses = get_guesses("x", mock_data)
     assert jnp.allclose(guesses["x_offset_geno"], 0.0)
-    assert jnp.allclose(guesses["x_tube_offset"], 0.0)
+    assert jnp.allclose(guesses["x_tube_offset_z"], 0.0)
 
 
 def test_get_guesses_tube_offset_from_condition_shift(mock_data_varied):
@@ -286,7 +287,9 @@ def test_get_guesses_tube_offset_from_condition_shift(mock_data_varied):
     tube_offset[:, 0] ≈ −0.25 (median-centred within each replicate).
     """
     guesses = get_guesses("x", mock_data_varied)
-    tube_offset = np.array(guesses["x_tube_offset"])  # (R, C)
+    # non-centred: offset = tube_scale * z
+    tube_offset = (np.array(guesses["x_tube_offset_z"])
+                   * float(guesses["x_tube_scale"]))  # (R, C)
 
     # The two conditions differ by exactly 0.5; after centering on the
     # per-genotype median, their residuals are ±0.25.
@@ -393,7 +396,7 @@ def test_define_model_offset_geno_zero_gives_hyper_loc_plus_tube(mock_data):
         f"{name}_wt_loc":        jnp.array(12.0),
         f"{name}_tube_scale":    jnp.array(0.5),
         f"{name}_offset_geno":   jnp.zeros((R, B)),
-        f"{name}_tube_offset":   known_tube,
+        f"{name}_tube_offset_z": known_tube / 0.5,
     }
 
     model = substitute(define_model, data=subs)
@@ -513,7 +516,7 @@ def test_define_model_two_classes_separate_locs(mock_data_two_classes):
         f"{name}_wt_loc":        jnp.array(13.0),
         f"{name}_tube_scale":    jnp.array(0.5),
         f"{name}_offset_geno":   jnp.zeros((R, B)),
-        f"{name}_tube_offset":   jnp.zeros((R, C)),
+        f"{name}_tube_offset_z": jnp.zeros((R, C)),
     }
 
     tr   = trace(substitute(define_model, data=subs)).get_trace(
@@ -569,9 +572,9 @@ def test_guide_tube_offset_param_shape(mock_data):
     with seed(rng_seed=0):
         tr = trace(guide).get_trace(name=name, data=mock_data, priors=priors)
 
-    assert f"{name}_tube_offset_locs" in tr
-    assert tr[f"{name}_tube_offset_locs"]["value"].shape == (R, C)
-    assert tr[f"{name}_tube_offset_scales"]["value"].shape == (R, C)
+    assert f"{name}_tube_offset_z_locs" in tr
+    assert tr[f"{name}_tube_offset_z_locs"]["value"].shape == (R, C)
+    assert tr[f"{name}_tube_offset_z_scales"]["value"].shape == (R, C)
 
 
 def test_guide_has_tube_scale_sample_site(mock_data):
@@ -607,7 +610,7 @@ def test_guide_tube_offset_sample_shape(mock_data):
     with seed(rng_seed=0):
         tr = trace(guide).get_trace(name=name, data=mock_data, priors=priors)
 
-    assert tr[f"{name}_tube_offset"]["value"].shape == (R, C)
+    assert tr[f"{name}_tube_offset_z"]["value"].shape == (R, C)
 
 
 def test_guide_two_classes_has_per_class_params(mock_data_two_classes):
@@ -722,7 +725,7 @@ def test_guide_pinned_drops_variational_params(mock_data):
     # Other sites intact
     assert f"{name}_tube_scale" in tr
     assert f"{name}_offset_geno" in tr
-    assert f"{name}_tube_offset" in tr
+    assert f"{name}_tube_offset_z" in tr
 
 
 def test_model_and_guide_compatible_under_pinning(mock_data):
@@ -749,3 +752,26 @@ def test_model_and_guide_compatible_under_pinning(mock_data):
         f"model only: {model_samples - guide_samples}\n"
         f"guide only: {guide_samples - model_samples}"
     )
+
+
+def test_tube_offset_density_bounded_as_scale_collapses(mock_data):
+    """
+    With the tube offsets at 0 the joint density stays bounded as tube_scale
+    goes to 0 (non-centred). The centred form Normal(0, tube_scale) grew
+    like tube_scale^-(R*C) there, so no MAP existed.
+    """
+    from numpyro.infer.util import log_density
+
+    name = "x"
+    priors = get_priors()
+    R, C = mock_data.num_replicate, mock_data.num_condition_pre
+
+    def log_p(scale):
+        subs = _default_subs(name, mock_data, priors)
+        subs[f"{name}_tube_scale"] = jnp.array(scale)
+        subs[f"{name}_tube_offset_z"] = jnp.zeros((R, C))
+        lp, _ = log_density(define_model, (),
+                            dict(name=name, data=mock_data, priors=priors), subs)
+        return float(lp)
+
+    assert log_p(1e-8) - log_p(1e-2) < 1.0
