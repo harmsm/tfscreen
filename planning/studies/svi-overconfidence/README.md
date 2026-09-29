@@ -349,3 +349,90 @@ When they finish, pool and compare with `svi_overconfidence_v2`:
 tfs-summarize-calibration svi_overconfidence_two_stage --out_prefix calib/svi_overconfidence_two_stage
 python coverage_by_depth.py svi_overconfidence_two_stage --out_prefix calib/svi_overconfidence_two_stage
 ```
+
+### Two-stage grid (2026-09-28)
+
+`svi_overconfidence_two_stage`: 20 runs, the v2 simulations, 10 Laplace
+draws per run. All 20 finished. Pooled with the commands above; compared
+with `svi_overconfidence_v2`.
+
+Theta (joint) or X (relative), mean over 10 seeds:
+
+| fit | inference | 95% coverage | >1000 reads | 95% width | RMSE |
+|---|---|---|---|---|---|
+| joint | component | 0.57 | 0.36 | 0.062 | 0.037 |
+| joint | low_rank | 0.59 | 0.31 | 0.057 | 0.034 |
+| joint | two_stage | 0.86 | 0.81 | 0.136 | 0.046 |
+| relative | component | 0.68 | 0.55 | 0.10 | 0.071 |
+| relative | low_rank | 0.74 | 0.63 | 0.11 | 0.072 |
+| relative | two_stage | 0.94 | 0.97 | 0.52 | 0.071 |
+
+growth_k and growth_m 95% coverage rose from 0-0.25 under the guides to
+0.78-1.0, median |z| 0.4-0.7. dk_geno coverage rose from 0.85-0.86 to
+0.92-0.94 and log_hill_K from 0.76-0.88 to 0.91-0.93.
+
+The averages hide a split by seed. Every MAP hit its 200,000-epoch cap,
+and every Laplace Hessian had 2-7 negative eigenvalues, clamped to 1e-3.
+Where the clamped directions touch m, the Laplace draws of m spread widely
+(seed 8 joint: m for kanR+kan from -0.049 to +0.017, SD 0.018, truth
+-0.010), and the conditional fits' final losses differ by thousands of
+nats. So the loss range across a run's draws flags a broken Laplace:
+
+- Joint seeds with a sound Laplace (loss range under 170 nats; seeds 1, 6,
+  7, 10): k and m are covered (|z| at most 1.9), but theta above 1000
+  reads still covers only 0.44-0.63, and widths stay at 0.04-0.10.
+- Joint seeds with a broken Laplace (range 440-7,600 nats): coverage
+  0.93-1.0, bought with widths of 0.10-0.30. Seed 8's RMSE tripled
+  (0.033 to 0.113).
+- Relative: coverage above 1000 reads is 0.83-1.0 in every seed, sound
+  Laplace or not. Seeds 3 and 5 have broken Laplaces and X widths of 2.7
+  and 1.2. Seed 2's RMSE of 0.22 matches every other method on that seed.
+
+Reading: for the relative fit, carrying k and m uncertainty closes the
+coverage gap. For the joint fit it does not: with k and m honestly
+covered, the conditional fit still undercovers theta at high depth, so
+something inside the conditional component-guide fit collapses too. The
+Laplace stage is fragile everywhere, because the MAP never converges.
+
+Each conditional fit again ran to its 100,000-epoch cap on the
+`dk_geno_hyper_loc_scale` infinite-drift quirk.
+
+### Fixes after the two-stage grid, and the fix grid (2026-09-29)
+
+Two bugs, both fixed in the code:
+
+- **Frozen hyperparameter scales.** The component guide's hyperparameter
+  scales are constrained `greater_than(1e-4)`, and the guide start capped
+  every scale at 1e-4, so they started on the bound, `-inf` unconstrained,
+  and never moved. Every component-guide SVI fit since 2026-09-27 kept each
+  hyperparameter's guide SD at 1e-4, v2 and the two-stage grid included.
+  The conditional fits' "infinite drift" on `dk_geno_hyper_loc_scale` was
+  this, not a monitor quirk. It may explain part of the joint fit's
+  undercoverage.
+- **Laplace floor.** The 1e-3 eigenvalue floor is now the prior's
+  curvature along each eigenvector. Rerun locally on the grid's own MAPs,
+  the Laplace SD of m fell from 0.018 to 0.0005 on seed 8 joint, and m
+  and k now sit within about 3 SD of truth on seeds 1, 3 and 8 joint and
+  3 and 5 relative. The MAPs still stop at the cap with 4-7 negative
+  eigenvalues.
+
+`two_stage.py` now records each conditional fit's final loss in
+`draws.csv` and prints their span, and takes `--max_num_epochs`.
+`run.srun` has a `two_stage_low_rank` arm: the same pipeline with the
+low-rank autoguide in the conditional fits.
+
+[`grid_fix.yaml`](grid_fix.yaml): joint fit, seeds 1 and 7 (sound
+Laplace, still undercovered) and 3 and 8 (broken Laplace), each with
+`component`, `two_stage` and `two_stage_low_rank`. 12 runs.
+
+```bash
+tfs-setup-sim-grid grid_fix.yaml --out_prefix svi_overconfidence_fix
+for d in svi_overconfidence_fix/run_*/; do (cd "$d" && sbatch run.srun); done
+```
+
+Then:
+
+```bash
+tfs-summarize-calibration svi_overconfidence_fix --out_prefix calib/svi_overconfidence_fix
+python coverage_by_depth.py svi_overconfidence_fix --out_prefix calib/svi_overconfidence_fix
+```

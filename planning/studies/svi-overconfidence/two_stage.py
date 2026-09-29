@@ -72,6 +72,15 @@ def draw_config(config_file, draw_dir, k, m, cond_labels):
     return out
 
 
+def final_loss(prefix):
+    """Last logged loss (block median) of a fit, or NaN."""
+    try:
+        lines = open(f"{prefix}_losses.txt").read().strip().splitlines()
+        return float(lines[-1].split(",")[1])
+    except (OSError, IndexError, ValueError):
+        return float("nan")
+
+
 def pool(files, out_file):
     """Concatenate posterior files draw-wise (same keys and trailing shapes)."""
     handles = [h5py.File(f, "r") for f in files]
@@ -105,6 +114,9 @@ def main():
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--work_dir", default="two_stage")
     parser.add_argument("--out_prefix", default="tfs_posterior")
+    parser.add_argument("--max_num_epochs", type=int, default=None,
+                        help="cap on each conditional fit (default: "
+                             "tfs-fit-model's)")
     args = parser.parse_args()
 
     with h5py.File(args.laplace_file, "r") as f:
@@ -125,19 +137,29 @@ def main():
         prefix = os.path.join(draw_dir, "fit")
         print(f">>> two-stage draw {d + 1}/{args.num_draws}: k={np.round(k, 5)} "
               f"m={np.round(m, 5)}", flush=True)
+        fit_kwargs = {}
+        if args.max_num_epochs is not None:
+            fit_kwargs["max_num_epochs"] = args.max_num_epochs
         fit_model(cfg, seed=args.seed + 1 + d, out_prefix=prefix,
-                  guide_type=args.guide_type, epoch_checkpoint_interval=None)
+                  guide_type=args.guide_type, epoch_checkpoint_interval=None,
+                  **fit_kwargs)
         post = os.path.join(draw_dir, "posterior")
         sample_posterior(cfg, f"{prefix}_checkpoint.pkl", out_prefix=post,
                          seed=args.seed + 1 + d,
                          num_posterior_samples=args.samples_per_draw)
         posteriors.append(f"{post}.h5")
         records.append(dict(draw=d, laplace_index=int(i),
+                            final_loss=final_loss(prefix),
                             **{f"k_{j}": float(v) for j, v in enumerate(k)},
                             **{f"m_{j}": float(v) for j, v in enumerate(m)}))
 
-    pd.DataFrame(records).to_csv(os.path.join(args.work_dir, "draws.csv"),
-                                 index=False)
+    draws = pd.DataFrame(records)
+    draws.to_csv(os.path.join(args.work_dir, "draws.csv"), index=False)
+    spread = draws["final_loss"].max() - draws["final_loss"].min()
+    print(f"Conditional fits' final losses span {spread:.0f} nats "
+          f"(min {draws['final_loss'].min():.0f}). A span of hundreds to "
+          f"thousands of nats flags Laplace draws of k, m far outside their "
+          f"posterior (two-stage grid, 2026-09-28).", flush=True)
     pool(posteriors, f"{args.out_prefix}.h5")
     print(f"Pooled {len(posteriors)} conditional posteriors into "
           f"{args.out_prefix}.h5", flush=True)

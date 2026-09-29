@@ -4,7 +4,7 @@
 #SBATCH --output=run.out
 #SBATCH --error=run.err
 #SBATCH --partition=gpu
-#SBATCH --time=00-06:00:00
+#SBATCH --time=00-12:00:00
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
 #SBATCH --gpus=1
@@ -27,7 +27,8 @@ FIT="{{ fit }}"
 # noise). grid.yaml runs counts only.
 LIKELIHOOD="{{ likelihood | default('counts') }}"
 # component (mean-field component guide), low_rank (low-rank multivariate
-# normal autoguide) or map (MAP, then a Laplace posterior)
+# normal autoguide), map (MAP, then a Laplace posterior), or two_stage /
+# two_stage_low_rank (MAP, Laplace, then conditional SVI refits)
 INFERENCE="{{ inference | default('component') }}"
 
 SEED=$(python -c "import yaml; print(yaml.safe_load(open('tfs_sim_config.yaml'))['seed'])")
@@ -92,14 +93,17 @@ case "${INFERENCE}" in
     # Hessian eigenvalues and gave 95% intervals ~1e10 wide)
     map)       INFERENCE_ARGS=(--analysis_method map --max_num_epochs 200000) ;;
     # MAP as for map, then two_stage.py: SVI refits at Laplace draws of k, m
-    two_stage) INFERENCE_ARGS=(--analysis_method map --max_num_epochs 200000) ;;
+    # with the component guide (two_stage) or the low-rank autoguide
+    # (two_stage_low_rank)
+    two_stage|two_stage_low_rank)
+               INFERENCE_ARGS=(--analysis_method map --max_num_epochs 200000) ;;
     *) echo "unknown inference '${INFERENCE}'" >&2; exit 1 ;;
 esac
 
 echo ">>> Fit model (${INFERENCE})"
 tfs-fit-model tfs_configure_config.yaml --seed "${SEED}" "${INFERENCE_ARGS[@]}"
 
-if [[ "${INFERENCE}" != "map" && "${INFERENCE}" != "two_stage" ]]; then
+if [[ "${INFERENCE}" != "map" && "${INFERENCE}" != two_stage* ]]; then
     echo ">>> Guide diagnostics"
     # diagnostics only; never stops the run
     python "{{ diagnostics_script }}" tfs_fit_model_checkpoint.pkl \
@@ -107,14 +111,19 @@ if [[ "${INFERENCE}" != "map" && "${INFERENCE}" != "two_stage" ]]; then
         || echo "guide diagnostics failed" >&2
 fi
 
-if [[ "${INFERENCE}" == "two_stage" ]]; then
+if [[ "${INFERENCE}" == two_stage* ]]; then
+    if [[ "${INFERENCE}" == "two_stage_low_rank" ]]; then
+        GUIDE=auto_low_rank_multivariate_normal
+    else
+        GUIDE=component
+    fi
     echo ">>> Laplace posterior (stage 1)"
     tfs-sample-posterior tfs_configure_config.yaml tfs_fit_model_checkpoint.pkl \
         --out_prefix tfs_laplace
     echo ">>> Conditional fits at Laplace draws of k, m (stage 2)"
     python "{{ two_stage_script | default('two_stage.py') }}" \
         --laplace_file tfs_laplace.h5 --num_draws 10 --samples_per_draw 1000 \
-        --seed "${SEED}" --out_prefix tfs_posterior
+        --seed "${SEED}" --guide_type "${GUIDE}" --out_prefix tfs_posterior
 else
     echo ">>> Sample posterior"
     tfs-sample-posterior tfs_configure_config.yaml tfs_fit_model_checkpoint.pkl

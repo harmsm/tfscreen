@@ -38,6 +38,47 @@ from tfscreen.tfmodel.inference.initialization import (
     trace_model_sites,
 )
 
+# Smallest Hessian eigenvalue the Laplace posterior keeps, for elements with
+# no usable prior SD (see laplace_eigenvalue_floor).
+LAPLACE_MIN_EIGENVALUE = 1e-3
+
+
+def laplace_eigenvalue_floor(eigenvalues, eigenvectors, prior_precision):
+    """
+    Floor Hessian eigenvalues at the prior's curvature along each eigenvector.
+
+    At an optimum the Hessian of the negative log joint is the prior's
+    curvature plus the likelihood's, and a log-concave likelihood only adds
+    to it, so no direction should be flatter than the prior alone. An
+    eigenvalue below ``v^T diag(prior_precision) v`` (negative ones
+    included, from a MAP stopped short of its optimum) is raised to it:
+    the posterior is never wider than the prior along that direction.
+
+    Parameters
+    ----------
+    eigenvalues : numpy.ndarray
+        Shape ``(D,)``.
+    eigenvectors : numpy.ndarray
+        Shape ``(D, D)``, columns are eigenvectors (``numpy.linalg.eigh``).
+    prior_precision : numpy.ndarray
+        Shape ``(D,)``, positive prior precision per element.
+
+    Returns
+    -------
+    floored : numpy.ndarray
+        Eigenvalues, each at least its direction's prior curvature and at
+        least ``LAPLACE_MIN_EIGENVALUE``.
+    num_floored : int
+        How many eigenvalues were raised.
+    """
+
+    curvature = np.einsum("ij,i,ij->j", eigenvectors, prior_precision,
+                          eigenvectors)
+    floor = np.maximum(curvature, LAPLACE_MIN_EIGENVALUE)
+    floored = np.maximum(eigenvalues, floor)
+    return floored, int(np.sum(eigenvalues < floor))
+
+
 # The convergence window is split into this many blocks for the parameter
 # test (each block's parameter mean is accumulated on the device), and the
 # loop hands control back to the host once per block.
@@ -2145,6 +2186,56 @@ class RunInference:
         
         return site_names
 
+    def _laplace_prior_precision(self, unconstrained, model_kwargs, D):
+        """
+        Prior precision of each flattened unconstrained MAP element.
+
+        The prior SD comes from ``site_unconstrained_prior_sds`` with the MAP
+        values substituted, so a hierarchical latent's prior is conditional
+        on the MAP's hyperparameters. Elements without a finite, positive
+        prior SD get ``LAPLACE_MIN_EIGENVALUE``. Returns a length-``D``
+        numpy array in the order of ``ravel_pytree(unconstrained)``.
+        """
+        import jax.flatten_util
+        from numpyro.distributions.transforms import biject_to
+
+        fallback = np.full(D, LAPLACE_MIN_EIGENVALUE)
+        try:
+            sites = trace_model_sites(self.model.jax_model,
+                                      model_kwargs["priors"],
+                                      model_kwargs["data"])
+            constrained = {
+                k: biject_to(sites[k]["fn"].support)(v)
+                for k, v in unconstrained.items() if k in sites
+            }
+            sites = trace_model_sites(self.model.jax_model,
+                                      model_kwargs["priors"],
+                                      model_kwargs["data"],
+                                      substitutions=constrained)
+            sds = site_unconstrained_prior_sds(sites)
+        except Exception as err:  # pragma: no cover - defensive
+            print(f"  Could not compute prior SDs for the Laplace floor "
+                  f"({err}); using {LAPLACE_MIN_EIGENVALUE}.", flush=True)
+            return fallback
+
+        prec = {}
+        for k, v in unconstrained.items():
+            p = np.full(np.shape(v), np.nan)
+            if k in sds:
+                try:
+                    p = 1.0 / np.broadcast_to(np.asarray(sds[k], float),
+                                              np.shape(v)) ** 2
+                except ValueError:
+                    pass
+            prec[k] = jnp.asarray(p)
+        flat, _ = jax.flatten_util.ravel_pytree(prec)
+        flat = np.asarray(flat, dtype=float)
+        if flat.shape[0] != D:  # pragma: no cover - defensive
+            return fallback
+        bad = ~np.isfinite(flat) | (flat <= 0)
+        flat[bad] = LAPLACE_MIN_EIGENVALUE
+        return flat
+
     def get_laplace_posteriors(self,
                                map_params,
                                out_prefix,
@@ -2242,17 +2333,28 @@ class RunInference:
         #  3. jax.random.multivariate_normal uses Cholesky internally; if the
         #     covariance is not PD the Cholesky fails → NaN samples.
         #
-        # Fix: do the eigendecomposition and Cholesky in numpy float64, clamp
-        # negative eigenvalues to 1e-3 (caps max variance per direction at 1000),
-        # then sample as mean + L @ z where z ~ N(0,I) in float32.
+        # Fix: do the eigendecomposition and Cholesky in numpy float64, floor
+        # each eigenvalue at the prior's curvature along its eigenvector
+        # (``laplace_eigenvalue_floor``), then sample as mean + L @ z where
+        # z ~ N(0,I) in float32. The old flat floor of 1e-3 gave a direction
+        # with a negative eigenvalue a variance of 1000 in unconstrained
+        # units; a MAP stopped short of its optimum always has a few, and
+        # where they touched the growth slopes m, Laplace draws of m spread
+        # 50x wider than its posterior (SVI-overconfidence two-stage grid,
+        # seed 8: m from -0.049 to +0.017, truth -0.010).
         print("Projecting Hessian to PD cone and computing Cholesky ...", flush=True)
         eigenvalues_np, eigenvectors_np = np.linalg.eigh(H_np)
         n_negative = int(np.sum(eigenvalues_np < 0))
+        prior_precision = self._laplace_prior_precision(unconstrained,
+                                                        model_kwargs, D)
+        eigenvalues_pd, n_floored = laplace_eigenvalue_floor(
+            eigenvalues_np, eigenvectors_np, prior_precision)
         if n_negative > 0:
             print(f"  Warning: {n_negative} negative Hessian eigenvalues "
-                  f"(min={eigenvalues_np.min():.3e}); clamping to 1e-3.",
-                  flush=True)
-        eigenvalues_pd = np.maximum(eigenvalues_np, 1e-3)
+                  f"(min={eigenvalues_np.min():.3e}); the MAP is not at an "
+                  f"optimum.", flush=True)
+        print(f"  {n_floored} of {D} eigenvalues raised to the prior's "
+              f"curvature along their eigenvector.", flush=True)
         cov_np = eigenvectors_np @ np.diag(1.0 / eigenvalues_pd) @ eigenvectors_np.T
         # Cholesky in float64; cast factor to float32 for the forward pass
         L_np = np.linalg.cholesky(cov_np)

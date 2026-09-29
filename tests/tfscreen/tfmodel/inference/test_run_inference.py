@@ -7,7 +7,9 @@ import numpyro
 import numpyro.distributions as dist
 import h5py
 from tfscreen.tfmodel.inference.run_inference import (
+    LAPLACE_MIN_EIGENVALUE,
     RunInference,
+    laplace_eigenvalue_floor,
     resolve_guide_type,
 )
 import os
@@ -1334,3 +1336,48 @@ def test_report_nuts_diagnostics(capsys):
     out = capsys.readouterr().out
     assert "max split R-hat" in out and "(bad)" in out
     assert "inf" not in out
+
+
+# ---------------------------------------------------------------------------
+# laplace_eigenvalue_floor
+# ---------------------------------------------------------------------------
+
+def test_laplace_eigenvalue_floor_uses_prior_curvature():
+    """A direction flatter than the prior (or negative) gets the prior's curvature."""
+    rng = np.random.default_rng(0)
+    q, _ = np.linalg.qr(rng.normal(size=(3, 3)))
+    prior_precision = np.array([4.0, 100.0, 1.0])
+    curvature = np.einsum("ij,i,ij->j", q, prior_precision, q)
+    eigenvalues = np.array([-50.0, 1e6, 0.5 * curvature[2]])
+    floored, n = laplace_eigenvalue_floor(eigenvalues, q, prior_precision)
+    assert n == 2
+    assert floored[0] == pytest.approx(curvature[0])
+    assert floored[1] == pytest.approx(1e6)          # well-determined: kept
+    assert floored[2] == pytest.approx(curvature[2])
+
+
+def test_laplace_eigenvalue_floor_bounds_leak_into_other_elements():
+    """
+    A negative eigenvalue no longer inflates every element it touches.
+
+    The old flat floor of 1e-3 gave such a direction a variance of 1000, so
+    an element with a 3% share of it (the growth slope m, seed 8 of the
+    two-stage grid) had an SD near 1.
+    """
+    theta = 0.03
+    v = np.array([[np.cos(theta), -np.sin(theta)],
+                  [np.sin(theta), np.cos(theta)]])
+    eigenvalues = np.array([-10.0, 1e6])     # direction 0 mostly element 0
+    prior_precision = np.array([1.0, 1e4])
+    floored, _ = laplace_eigenvalue_floor(eigenvalues, v, prior_precision)
+    cov = v @ np.diag(1.0 / floored) @ v.T
+    old = v @ np.diag(1.0 / np.maximum(eigenvalues, 1e-3)) @ v.T
+    assert np.sqrt(old[1, 1]) > 0.5
+    assert np.sqrt(cov[1, 1]) < 0.05
+
+
+def test_laplace_eigenvalue_floor_minimum():
+    floored, n = laplace_eigenvalue_floor(np.array([-1.0]), np.eye(1),
+                                          np.array([0.0]))
+    assert floored[0] == pytest.approx(LAPLACE_MIN_EIGENVALUE)
+    assert n == 1

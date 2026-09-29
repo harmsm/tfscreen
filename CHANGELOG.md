@@ -40,6 +40,28 @@ fall into two kinds:
 
 ### Fixed
 
+- **SVI hyperparameter scales no longer start frozen.** The component
+  guide's hyperparameter scales are constrained `greater_than(1e-4)`, and
+  the guide start capped every scale at `guide_init_scale`, also 1e-4. They
+  started on the bound, `-inf` in unconstrained space, and never moved: in
+  every component-guide SVI fit since 2026-09-27 each hyperparameter's guide
+  SD stayed at 1e-4. The convergence monitor reported them as an infinite
+  drift, so conditional fits never stopped before their cap.
+  `initialization.component_guide_init` now starts a bounded scale at least
+  `init_scale` above its bound (`component_guide_map` records the bound).
+  Study grids fit with the component guide since then (count-likelihood v4,
+  relative-fit v3, SVI-overconfidence v2 and two-stage) carry the bug.
+- **Laplace posteriors no longer blow up along a MAP's negative-curvature
+  directions.** `get_laplace_posteriors` floored Hessian eigenvalues at
+  1e-3, a variance of 1000 in unconstrained units. A MAP stopped short of
+  its optimum always has a few negative eigenvalues, and where they touched
+  the growth slopes m the Laplace draws of m spread 50x wider than their
+  posterior. Eigenvalues are now floored at the prior's curvature along
+  each eigenvector (`laplace_eigenvalue_floor`, prior SDs from
+  `site_unconstrained_prior_sds` at the MAP), so no direction is wider than
+  the prior. On seed 8 of the two-stage grid the SD of m fell from 0.018 to
+  0.0005.
+
 - **Breaking: `ln_cfu0: hierarchical_factored` is refused across libraries.**
   It shares each genotype's starting abundance across every pre-condition of
   a replicate. kanR and pheS are transformed and grown up separately, so

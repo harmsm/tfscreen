@@ -1,0 +1,75 @@
+# ---------------------------------------------------------------------------
+# SVI overconfidence, fix grid (planning/studies/svi-overconfidence/)
+#
+#   tfs-setup-sim-grid grid_fix.yaml --out_prefix svi_overconfidence_fix
+#   for d in svi_overconfidence_fix/run_*/; do (cd "$d" && sbatch run.srun); done
+#
+# After the two-stage grid (2026-09-28), with two fixes in the code:
+#
+# - Laplace eigenvalues are floored at the prior's curvature along each
+#   eigenvector, not at 1e-3. The flat floor let the MAP's negative
+#   eigenvalues spread the Laplace draws of m 50x (seeds 3 and 8).
+# - Component-guide scales with a greater_than(1e-4) constraint start
+#   above the bound. They had started on it, -inf unconstrained, and every
+#   hyperparameter scale stayed frozen at 1e-4 in every SVI fit since
+#   2026-09-27 (the conditional fits' "infinite drift").
+#
+# Joint fit only, four seeds of grid.yaml: 1 and 7 (sound Laplace, joint
+# still undercovered at high depth), 3 and 8 (broken Laplace).
+#
+# - component: plain SVI, to see what the scale fix alone does
+# - two_stage: MAP, floored Laplace, conditional component-guide fits
+# - two_stage_low_rank: the same, conditional low-rank autoguide fits
+#
+# 4 seeds x 3 = 12 runs. Compare with svi_overconfidence_v2 and
+# svi_overconfidence_two_stage on the same seeds.
+# ---------------------------------------------------------------------------
+
+base_config: simulate_config.yaml
+
+run_name: "seed{{ seed }}__{{ fit }}__{{ inference }}"
+
+output_file: run.srun
+
+
+simulate:
+
+  - name: noise
+    variants:
+      - founder_sampling: false
+
+  - name: lam
+    variants:
+      - transformation_poisson_lambda: 0.0
+
+  - name: dk
+    variants:
+      - dk_geno_hyper_loc: -3.5
+        dk_geno_hyper_scale: 0.5
+        dk_geno_hyper_shift: 0.02
+
+  - name: seed
+    variants:
+      - seed: 1
+      - seed: 3
+      - seed: 7
+      - seed: 8
+
+
+template:
+
+  - name: fit
+    variants:
+      - fit: joint
+
+  - name: inference
+    variants:
+      - inference: component
+      - inference: two_stage
+      - inference: two_stage_low_rank
+
+  # copied into the grid's inputs/ and named from each run
+  - name: scripts
+    variants:
+      - diagnostics_script: guide_diagnostics.py
+        two_stage_script: two_stage.py

@@ -105,7 +105,9 @@ def component_guide_map(guide, priors, data, seed=0):
     -------
     mapping : dict
         ``{site: {"kind": "normal"|"lognormal", "loc": param name,
-        "scale": param name or None, "shape": site shape}}``.
+        "scale": param name or None, "shape": site shape,
+        "scale_lower_bound": the scale param's constraint lower bound or
+        None}}``.
     unmatched : list of str
         Guide sample sites whose location parameter could not be identified
         (not Normal/LogNormal, or not following the naming convention).
@@ -117,6 +119,14 @@ def component_guide_map(guide, priors, data, seed=0):
                                                               data=data)
     params = {name: site["value"] for name, site in tr.items()
               if site["type"] == "param"}
+    lower_bounds = {}
+    for name, site in tr.items():
+        if site["type"] != "param":
+            continue
+        bound = getattr(site.get("kwargs", {}).get("constraint"),
+                        "lower_bound", None)
+        if bound is not None:
+            lower_bounds[name] = bound
 
     mapping = {}
     unmatched = []
@@ -141,7 +151,8 @@ def component_guide_map(guide, priors, data, seed=0):
         scale = _matching_param(name, ("_scale", "_scales"), params,
                                 jnp.asarray(fn.scale), shape)
         mapping[name] = {"kind": kind, "loc": loc, "scale": scale,
-                         "shape": shape}
+                         "shape": shape,
+                         "scale_lower_bound": lower_bounds.get(scale)}
 
     return mapping, sorted(unmatched), params
 
@@ -217,6 +228,10 @@ def component_guide_init(values, guide_map, defaults, init_scale=None):
     init_scale : float or None, optional
         Upper bound for every mapped scale param: each starts at
         ``min(default, init_scale)``.  None leaves scales at their defaults.
+        A scale whose constraint has a lower bound (``greater_than(1e-4)``
+        on the hyperparameter scales) starts at least ``init_scale`` above
+        that bound: a param starting on its bound is ``-inf`` in
+        unconstrained space and never moves.
 
     Returns
     -------
@@ -243,9 +258,12 @@ def component_guide_init(values, guide_map, defaults, init_scale=None):
 
         scale = entry["scale"]
         if init_scale is not None and scale is not None and scale in defaults:
-            params[scale] = jnp.minimum(jnp.asarray(defaults[scale],
-                                                    dtype=float),
-                                        init_scale)
+            start = jnp.minimum(jnp.asarray(defaults[scale], dtype=float),
+                                init_scale)
+            bound = entry.get("scale_lower_bound")
+            if bound is not None:
+                start = jnp.maximum(start, jnp.asarray(bound) + init_scale)
+            params[scale] = start
 
     return params, sorted(skipped)
 
