@@ -208,6 +208,7 @@ def run_simulation_from_config(
                 growth_df,
                 spiked_genotypes=spiked_names,
                 rng=rng,
+                clip_theta_obs=bool(binding_cfg.get("clip_theta_obs", False)),
             )
             binding_df = pd.concat([binding_df, lib_binding_df], ignore_index=True)
             lib_manifest.to_csv(out_path("library_binding"), index=False)

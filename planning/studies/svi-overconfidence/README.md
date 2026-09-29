@@ -436,3 +436,52 @@ Then:
 tfs-summarize-calibration svi_overconfidence_fix --out_prefix calib/svi_overconfidence_fix
 python coverage_by_depth.py svi_overconfidence_fix --out_prefix calib/svi_overconfidence_fix
 ```
+
+### Fix grid results, and clipped binding (2026-09-29)
+
+`svi_overconfidence_fix`, 12 runs, all finished. Joint theta, mean over
+seeds 1, 3, 7 and 8:
+
+| grid | inference | 95% coverage | >1000 reads | 95% width | RMSE |
+|---|---|---|---|---|---|
+| v2 | component | 0.57 | 0.34 | 0.060 | 0.030 |
+| v2 | low_rank | 0.61 | 0.33 | 0.055 | 0.029 |
+| two-stage (old Laplace) | two_stage | 0.84 | 0.76 | 0.177 | 0.051 |
+| fix | component | 0.61 | 0.37 | 0.061 | 0.029 |
+| fix | two_stage | 0.67 | 0.46 | 0.060 | 0.028 |
+| fix | two_stage_low_rank | 0.67 | 0.46 | 0.055 | 0.031 |
+
+- The unfrozen hyperparameter scales barely moved plain SVI (0.34 to 0.37
+  above 1000 reads).
+- With a sound Laplace, the two-stage fit helps only modestly (0.46). The
+  old grid's 0.76 came from the broken Laplace's inflated k/m draws.
+- The low-rank conditional guide adds nothing.
+- growth_k and growth_m cover 0.63-0.69 in two_stage (median |z| 1.7 and
+  0.8): the floored Laplace is somewhat narrow, since the MAP still stops
+  short of its optimum.
+
+Where the high-depth misses are: in the two_stage runs, every genotype
+above 1000 reads, wt included, has theta_low (about 0.99) and theta_high
+(about 0.01) about 0.01 low, median z of -3.3 and -3.2, in all four seeds.
+log_hill_K, hill_n and dk_geno cover 0.90-0.96. Theta misses are worst at
+the plateaus (coverage 0.2 at 0-0.001 and 1 mM) and fine at the
+transition (0.82-0.92 at 0.01-0.03 mM). So the remaining undercoverage is
+a shared offset in the absolute theta scale, which the joint fit takes
+from the binding data. The relative fit, with no binding, covers.
+
+One candidate: the simulator clipped noisy binding observations to [0, 1]
+(8-14 of 81 per run), while the fit's binding likelihood is an unclipped
+Normal. Clipping near 1 pulls the high plateau down, which fits
+theta_low's bias, but clipping near 0 would pull theta_high up, not down,
+so it may not be the whole story. `tfs-simulate` no longer clips
+(`binding_data.clip_theta_obs`, default false); regenerated with it,
+seed 1's binding table differs in exactly its 8 clipped rows and the
+growth data match to round-off.
+
+[`grid_noclip.yaml`](grid_noclip.yaml): the same 4 seeds, component and
+two_stage, 8 runs.
+
+```bash
+tfs-setup-sim-grid grid_noclip.yaml --out_prefix svi_overconfidence_noclip
+for d in svi_overconfidence_noclip/run_*/; do (cd "$d" && sbatch run.srun); done
+```

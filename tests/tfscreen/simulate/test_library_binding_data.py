@@ -114,7 +114,22 @@ def test_noise_sets_theta_std_and_perturbs(params_df):
         rng=np.random.default_rng(4),
     )
     assert (bdf["theta_std"] == 0.02).all()
-    assert (bdf["theta_obs"] >= 0.0).all() and (bdf["theta_obs"] <= 1.0).all()
+
+
+def test_noise_is_not_clipped_by_default(params_df):
+    """Noisy theta_obs may leave [0, 1]; clip_theta_obs restores the old clip."""
+    kw = dict(titrant_name="iptg", titrant_conc=CONCS, noise=0.2,
+              parameters_df=params_df, growth_df=_all_survive(params_df),
+              spiked_genotypes=["wt"])
+    bdf, _ = generate_library_binding_df({"choose_by": "random", "num": 2},
+                                         rng=np.random.default_rng(4), **kw)
+    assert ((bdf["theta_obs"] < 0) | (bdf["theta_obs"] > 1)).any()
+    clipped, _ = generate_library_binding_df(
+        {"choose_by": "random", "num": 2}, rng=np.random.default_rng(4),
+        clip_theta_obs=True, **kw)
+    assert (clipped["theta_obs"] >= 0).all() and (clipped["theta_obs"] <= 1).all()
+    np.testing.assert_allclose(clipped["theta_obs"],
+                               np.clip(bdf["theta_obs"], 0, 1))
 
 
 # ---------------------------------------------------------------------------

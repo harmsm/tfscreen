@@ -1,0 +1,65 @@
+# ---------------------------------------------------------------------------
+# SVI overconfidence, unclipped-binding grid (planning/studies/svi-overconfidence/)
+#
+#   tfs-setup-sim-grid grid_noclip.yaml --out_prefix svi_overconfidence_noclip
+#   for d in svi_overconfidence_noclip/run_*/; do (cd "$d" && sbatch run.srun); done
+#
+# The fix grid (2026-09-29) left the joint fit undercovering at high depth
+# (0.37-0.46 above 1000 reads) with k and m covered. Every well-measured
+# genotype, wt included, had theta_low (about 0.99) and theta_high (about
+# 0.01) about 0.01 low, 3 posterior SDs. The simulator clipped noisy binding
+# observations to [0, 1] (10-17% of them), while the fit's binding
+# likelihood is an unclipped Normal. tfs-simulate no longer clips
+# (binding_data.clip_theta_obs, default false). Same seeds and random draws
+# as grid_fix.yaml: only the clipped binding values change.
+#
+# 4 seeds x 2 = 8 runs. Compare with svi_overconfidence_fix, run for run.
+# ---------------------------------------------------------------------------
+
+base_config: simulate_config.yaml
+
+run_name: "seed{{ seed }}__{{ fit }}__{{ inference }}"
+
+output_file: run.srun
+
+
+simulate:
+
+  - name: noise
+    variants:
+      - founder_sampling: false
+
+  - name: lam
+    variants:
+      - transformation_poisson_lambda: 0.0
+
+  - name: dk
+    variants:
+      - dk_geno_hyper_loc: -3.5
+        dk_geno_hyper_scale: 0.5
+        dk_geno_hyper_shift: 0.02
+
+  - name: seed
+    variants:
+      - seed: 1
+      - seed: 3
+      - seed: 7
+      - seed: 8
+
+
+template:
+
+  - name: fit
+    variants:
+      - fit: joint
+
+  - name: inference
+    variants:
+      - inference: component
+      - inference: two_stage
+
+  # copied into the grid's inputs/ and named from each run
+  - name: scripts
+    variants:
+      - diagnostics_script: guide_diagnostics.py
+        two_stage_script: two_stage.py

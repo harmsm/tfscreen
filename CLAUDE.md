@@ -274,6 +274,8 @@ The optional `binding_data` YAML block configures calibration genotypes for whic
 - These are regime-matched to the bulk: on the fit side they are simply extra `binding_df` rows and, because they are not spiked, their growth gets the bulk `bulk_fraction` automatically (binding itself is never congressed). No fit-side change.
 - **Pre/post-sim split** (`simulate/library_binding_data.py::generate_library_binding_df`): the `file` path injects the genotypes' phenotype *pre-sim* (in `library_prediction`, via the same override machinery), but the binding *measurement* — and, for `stratified`/`random`, the *selection* — happen **post-growth-sim** so selection is restricted to genotypes that actually survived with growth data (guaranteeing `num` usable anchors). `file`-specified genotypes that don't survive are **warned** and dropped. `simulate_cli.py` writes the selected set to `tfs_sim_library_binding.csv`.
 
+**Noise** (`binding_data.noise`): Gaussian on `theta_obs`, not clipped to [0, 1] (the fit's binding likelihood is an unclipped Normal; clipped anchors biased the absolute theta scale). `binding_data.clip_theta_obs: true` reproduces simulations made before 2026-09-29.
+
 **Validation** (`library_prediction._validate_binding_config`, fail-fast): `spiked_binding` file genotypes must be ⊆ `spiked_seqs`; `library_binding` file genotypes must be disjoint from `spiked_seqs`; `num` + a file is an error; a file requires a Hill theta component; `spiked_binding.num` ∈ `[1, num_spiked]`; `library_binding` stratified/random requires `num`.
 
 **Measured Hill parameters** (a `choose_by` *params file*, either block):

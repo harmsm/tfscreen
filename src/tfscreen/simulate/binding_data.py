@@ -33,6 +33,10 @@ def generate_binding_df(binding_cfg, rng, binding_theta_df):
           titrant_name: str, name of the titrant (e.g. 'iptg')
           titrant_conc: list of concentrations (mM)
           noise       : float, sigma for Gaussian noise on theta_obs (default 0)
+          clip_theta_obs : bool, clip noisy theta_obs to [0, 1] (default
+                        False). The fit's binding likelihood is an unclipped
+                        Normal, and clipping biases the anchors near 0 and 1;
+                        True reproduces simulations made before 2026-09-29.
         An optional ``genotypes`` list restricts the output to those genotypes;
         when absent (the normal case under the spiked_binding schema) every
         genotype in ``binding_theta_df`` is emitted.
@@ -49,6 +53,7 @@ def generate_binding_df(binding_cfg, rng, binding_theta_df):
     titrant_name = binding_cfg["titrant_name"]
     titrant_conc = list(binding_cfg["titrant_conc"])
     noise = float(binding_cfg.get("noise", 0.0))
+    clip = bool(binding_cfg.get("clip_theta_obs", False))
 
     # Build lookup: (genotype, conc) → theta_true
     theta_lookup = {
@@ -74,7 +79,10 @@ def generate_binding_df(binding_cfg, rng, binding_theta_df):
                 )
             theta_true = float(theta_lookup[key])
             if noise > 0:
-                theta_obs = float(np.clip(theta_true + rng.normal(0, noise), 0, 1))
+                theta_obs = theta_true + rng.normal(0, noise)
+                if clip:
+                    theta_obs = np.clip(theta_obs, 0, 1)
+                theta_obs = float(theta_obs)
             else:
                 theta_obs = theta_true
             rows.append({

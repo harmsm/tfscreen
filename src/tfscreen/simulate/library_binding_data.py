@@ -57,7 +57,8 @@ def generate_library_binding_df(library_binding_cfg,
                                 parameters_df,
                                 growth_df,
                                 spiked_genotypes,
-                                rng):
+                                rng,
+                                clip_theta_obs=False):
     """
     Generate binding-curve data for in-library (bulk) genotypes.
 
@@ -83,6 +84,9 @@ def generate_library_binding_df(library_binding_cfg,
     spiked_genotypes : iterable of str or None
         Genotypes that are spiked (excluded from the in-library pool).
     rng : numpy.random.Generator
+    clip_theta_obs : bool, optional
+        Clip noisy ``theta_obs`` to [0, 1] (default False; see
+        ``binding_data.generate_binding_df``).
 
     Returns
     -------
@@ -151,8 +155,13 @@ def generate_library_binding_df(library_binding_cfg,
     for gi, g in enumerate(genotypes):
         for cj, conc in enumerate(titrant_conc):
             tt = float(theta_true[gi, cj])
-            tobs = (float(np.clip(tt + rng.normal(0, noise), 0.0, 1.0))
-                    if noise > 0 else tt)
+            if noise > 0:
+                tobs = tt + rng.normal(0, noise)
+                if clip_theta_obs:
+                    tobs = np.clip(tobs, 0.0, 1.0)
+                tobs = float(tobs)
+            else:
+                tobs = tt
             rows.append({"genotype": g, "titrant_name": titrant_name,
                          "titrant_conc": conc, "theta_obs": tobs,
                          "theta_std": noise})

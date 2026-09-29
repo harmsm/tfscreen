@@ -40,6 +40,14 @@ fall into two kinds:
 
 ### Fixed
 
+- **Simulated binding observations are no longer clipped to [0, 1].**
+  `generate_binding_df` and `generate_library_binding_df` clipped noisy
+  `theta_obs` to [0, 1], while the fit's binding likelihood is an unclipped
+  Normal, so the clipped anchors near 0 and 1 were biased (10-17% of the
+  observations in the SVI-overconfidence grids). `binding_data.clip_theta_obs:
+  true` reproduces the old simulations; the random draws are unchanged, so
+  only the formerly clipped values differ.
+
 - **SVI hyperparameter scales no longer start frozen.** The component
   guide's hyperparameter scales are constrained `greater_than(1e-4)`, and
   the guide start capped every scale at `guide_init_scale`, also 1e-4. They
