@@ -307,3 +307,45 @@ configure default, on the same data:
 Next: rerun this grid (or seed subsets) with `ln_cfu0: hierarchical` to
 measure what remains, once the ln_cfu0 question is settled for the real
 protocol. The earlier grids' calibration numbers carry the same mismatch.
+
+**Two-stage fit (2026-09-28).** The SVI guides collapse the uncertainty on
+the per-condition k and m, and Laplace at the MAP covers them. So the
+`two_stage` arm ([`two_stage.py`](two_stage.py)) works in two stages:
+- **Stage 1.** Fit the MAP and take a Laplace posterior.
+- **Stage 2.** Take 10 draws of (k, m) from it. For each, refit everything
+  else by SVI with k and m pinned at the draw (`linear`'s new `k_pinned`
+  and the existing `m_pinned`).
+- **Pool.** Combine the 10 conditional posteriors with equal weight. With
+  the draws from p(k, m | y), the pool approximates the marginal posterior
+  of the genotype parameters, and their intervals carry the k/m
+  uncertainty.
+
+Local test, seed 1, relative fit, only 2 draws (same data as v2):
+
+| | two-stage | v2 component | v2 low_rank |
+|---|---|---|---|
+| X RMSE | 0.027 | 0.030 | 0.027 |
+| 95% coverage, 101-1000 reads | 0.88 | 0.70 | 0.81 |
+| 95% coverage, >1000 reads | 0.91 | 0.60 | 0.79 |
+| growth_m abs z | 0.2-1.1 | 0.8-7.4 | 0.9-29 |
+
+With 2 draws growth_k is still 2-19 SDs off; the grid uses 10. Each
+conditional fit took about 5 minutes locally. Each conditional SVI fit
+ended at its 100,000-epoch cap, because the parameter test reads an
+infinite drift on `dk_geno_hyper_loc_scale`. That is a monitor quirk to fix
+separately.
+
+[`grid_two_stage.yaml`](grid_two_stage.yaml): the same simulations as
+`grid.yaml` (same seeds), `two_stage` only, 20 runs. On the cluster:
+
+```bash
+tfs-setup-sim-grid grid_two_stage.yaml --out_prefix svi_overconfidence_two_stage
+for d in svi_overconfidence_two_stage/run_*/; do (cd "$d" && sbatch run.srun); done
+```
+
+When they finish, pool and compare with `svi_overconfidence_v2`:
+
+```bash
+tfs-summarize-calibration svi_overconfidence_two_stage --out_prefix calib/svi_overconfidence_two_stage
+python coverage_by_depth.py svi_overconfidence_two_stage --out_prefix calib/svi_overconfidence_two_stage
+```

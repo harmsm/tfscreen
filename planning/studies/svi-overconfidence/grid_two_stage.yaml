@@ -1,0 +1,88 @@
+# ---------------------------------------------------------------------------
+# SVI overconfidence, two-stage arm (planning/studies/svi-overconfidence/)
+#
+#   tfs-setup-sim-grid grid_two_stage.yaml --out_prefix svi_overconfidence_two_stage
+#   for d in svi_overconfidence_two_stage/run_*/; do (cd "$d" && sbatch run.srun); done
+#
+# The same simulations as grid.yaml (same seeds, noise, library) with one
+# inference arm, two_stage: MAP + Laplace, then SVI refits at 10 Laplace
+# draws of the per-condition k and m (two_stage.py), pooled. Compare with
+# svi_overconfidence_v2, which fit the same data with component, low_rank
+# and map.
+#
+# 10 seeds x 2 fits = 20 runs.
+#
+# Original grid.yaml header follows.
+#
+#
+#   tfs-setup-sim-grid grid.yaml --out_prefix svi_overconfidence
+#   for d in svi_overconfidence/run_*/; do (cd "$d" && sbatch run.srun); done
+#
+# Every SVI arm of the relative-fit grid undercovered, worst for the
+# best-measured genotypes, with growth_m 10-300 of its own SDs off truth.
+# Is that the variational approximation or the model? NUTS gave no reference
+# here (tree-depth ceiling, R-hat 3.5; README), so the reference is
+# calibration against truth over many simulations: a small library
+# (singles and spikes, ~50 genotypes, ~600 latents) fit three ways on the
+# same data, in the joint and the relative fit, with a Laplace posterior at
+# a converged MAP as the full-covariance comparison. Each SVI run also
+# reports how far its guide is from the posterior (guide_diagnostics.py).
+#
+# Poisson noise only (no founder sampling): the overconfidence was worst
+# there, and it keeps the question about the fit.
+#
+# ---------------------------------------------------------------------------
+
+base_config: simulate_config.yaml
+
+run_name: "seed{{ seed }}__{{ fit }}__{{ inference }}"
+
+output_file: run.srun
+
+
+simulate:
+
+  - name: noise
+    variants:
+      - founder_sampling: false
+
+  - name: lam
+    variants:
+      - transformation_poisson_lambda: 0.0
+
+  - name: dk
+    variants:
+      - dk_geno_hyper_loc: -3.5
+        dk_geno_hyper_scale: 0.5
+        dk_geno_hyper_shift: 0.02
+
+  - name: seed
+    variants:
+      - seed: 1
+      - seed: 2
+      - seed: 3
+      - seed: 4
+      - seed: 5
+      - seed: 6
+      - seed: 7
+      - seed: 8
+      - seed: 9
+      - seed: 10
+
+
+template:
+
+  - name: fit
+    variants:
+      - fit: joint
+      - fit: relative
+
+  - name: inference
+    variants:
+      - inference: two_stage
+
+  # copied into the grid's inputs/ and named from each run
+  - name: scripts
+    variants:
+      - diagnostics_script: guide_diagnostics.py
+        two_stage_script: two_stage.py

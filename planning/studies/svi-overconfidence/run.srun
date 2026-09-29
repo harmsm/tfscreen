@@ -91,13 +91,15 @@ case "${INFERENCE}" in
     # needs it converged (a MAP stopped at a fixed step size had 9 negative
     # Hessian eigenvalues and gave 95% intervals ~1e10 wide)
     map)       INFERENCE_ARGS=(--analysis_method map --max_num_epochs 200000) ;;
+    # MAP as for map, then two_stage.py: SVI refits at Laplace draws of k, m
+    two_stage) INFERENCE_ARGS=(--analysis_method map --max_num_epochs 200000) ;;
     *) echo "unknown inference '${INFERENCE}'" >&2; exit 1 ;;
 esac
 
 echo ">>> Fit model (${INFERENCE})"
 tfs-fit-model tfs_configure_config.yaml --seed "${SEED}" "${INFERENCE_ARGS[@]}"
 
-if [[ "${INFERENCE}" != "map" ]]; then
+if [[ "${INFERENCE}" != "map" && "${INFERENCE}" != "two_stage" ]]; then
     echo ">>> Guide diagnostics"
     # diagnostics only; never stops the run
     python "{{ diagnostics_script }}" tfs_fit_model_checkpoint.pkl \
@@ -105,8 +107,18 @@ if [[ "${INFERENCE}" != "map" ]]; then
         || echo "guide diagnostics failed" >&2
 fi
 
-echo ">>> Sample posterior"
-tfs-sample-posterior tfs_configure_config.yaml tfs_fit_model_checkpoint.pkl
+if [[ "${INFERENCE}" == "two_stage" ]]; then
+    echo ">>> Laplace posterior (stage 1)"
+    tfs-sample-posterior tfs_configure_config.yaml tfs_fit_model_checkpoint.pkl \
+        --out_prefix tfs_laplace
+    echo ">>> Conditional fits at Laplace draws of k, m (stage 2)"
+    python "{{ two_stage_script | default('two_stage.py') }}" \
+        --laplace_file tfs_laplace.h5 --num_draws 10 --samples_per_draw 1000 \
+        --seed "${SEED}" --out_prefix tfs_posterior
+else
+    echo ">>> Sample posterior"
+    tfs-sample-posterior tfs_configure_config.yaml tfs_fit_model_checkpoint.pkl
+fi
 
 # ---------------------------------------------------------------------------
 # 4. Extract, predict, summarize

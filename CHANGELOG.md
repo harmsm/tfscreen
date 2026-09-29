@@ -29,6 +29,15 @@ fall into two kinds:
 
 ## [Unreleased]
 
+### Added
+
+- **`linear` growth takes `k_pinned`.** Like `m_pinned`, it holds the
+  per-condition baseline k at `k_loc` (a deterministic site with no guide
+  parameters), set by `condition_growth.k_pinned` in the priors CSV. It is
+  for conditional fits at a fixed draw of k and m, such as the two-stage fit
+  in `planning/studies/svi-overconfidence/`. It is not meant for production
+  fits.
+
 ### Fixed
 
 - **Breaking: `ln_cfu0: hierarchical_factored` is refused across libraries.**
