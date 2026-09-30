@@ -3,6 +3,7 @@ Tests for run_growth_analysis.py.
 """
 import pytest
 import dill
+import numpy as np
 import jax.numpy as jnp
 from unittest.mock import MagicMock
 
@@ -385,6 +386,45 @@ class TestGuideSelection:
                                     return_value=(MagicMock(), {}, True))
         fit_model(config_file="dummy.yaml", seed=1, analysis_method="map")
         assert run_map_mock.call_args.kwargs["init_values"] == {"mu": 1.0}
+
+    def test_map_starts_from_init_from(self, tmp_path, mocker):
+        """A MAP params npz seeds every site it names, over the guesses;
+        guesses for sites it lacks are kept (a level-offset fit started from
+        a zero-offset fit's point)."""
+        npz = tmp_path / "prev_params.npz"
+        np.savez(npz, mu_auto_loc=np.array([2.0, 3.0]),
+                 offset_auto_loc=np.array([0.1]), not_a_site=np.array(9.0))
+        _patch_common(mocker)
+        ri = self._patch_ri(mocker, guesses={"mu": 1.0, "sigma": 0.5})
+        run_map_mock = mocker.patch(f"{_CLI}._run_map",
+                                    return_value=(MagicMock(), {}, True))
+        fit_model(config_file="dummy.yaml", seed=1, analysis_method="map",
+                  init_from=str(npz))
+        start = run_map_mock.call_args.kwargs["init_values"]
+        assert set(start) == {"mu", "sigma", "offset"}
+        np.testing.assert_array_equal(start["mu"], [2.0, 3.0])
+        np.testing.assert_allclose(start["offset"], [0.1], rtol=1e-6)
+        assert start["sigma"] == 0.5
+        # both keys reach site_values, which ranks {site}_auto_loc first
+        seen = ri.site_values.call_args.args[0]
+        assert "mu" in seen and "mu_auto_loc" in seen
+
+    def test_init_from_needs_map_arrays(self, tmp_path, mocker):
+        npz = tmp_path / "other.npz"
+        np.savez(npz, mu=np.array(1.0))
+        _patch_common(mocker)
+        with pytest.raises(ValueError, match="no '\\*_auto_loc' arrays"):
+            fit_model(config_file="dummy.yaml", seed=1, analysis_method="map",
+                      init_from=str(npz))
+
+    def test_init_from_refused_on_resume(self, tmp_path, mocker):
+        ckpt = tmp_path / "ckpt.pkl"
+        with open(ckpt, "wb") as f:
+            dill.dump({"guide_type": "component"}, f)
+        _patch_common(mocker)
+        with pytest.raises(ValueError, match="init_from and checkpoint_file"):
+            fit_model(config_file="dummy.yaml", analysis_method="map",
+                      checkpoint_file=str(ckpt), init_from="x.npz")
 
     def test_resume_skips_start_translation(self, tmp_path, mocker):
         ckpt = tmp_path / "ckpt.pkl"

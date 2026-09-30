@@ -1,5 +1,7 @@
 import os
 import dill
+import numpy as np
+import jax.numpy as jnp
 
 from tfscreen.tfmodel.inference.run_inference import (
     RunInference,
@@ -300,6 +302,21 @@ def _check_checkpoint_guide(checkpoint_file, guide_type):
         )
 
 
+def _read_init_from(path):
+    """
+    The ``{site}_auto_loc`` arrays of a MAP ``*_params.npz`` (constrained
+    values, as ``write_params`` saves them), for ``site_values``: they take
+    precedence over guesses keyed by site or by guide parameter.
+    """
+    with np.load(path) as z:
+        values = {k: jnp.asarray(z[k]) for k in z.files if k.endswith("_auto_loc")}
+    if not values:
+        raise ValueError(f"init_from '{path}' has no '*_auto_loc' arrays; it "
+                         "should be the *_params.npz of a MAP fit.")
+    print(f"Starting from {len(values)} MAP sites in {path}")
+    return values
+
+
 def fit_model(config_file,
               seed=None,
               checkpoint_file=None,
@@ -328,7 +345,8 @@ def fit_model(config_file,
               nuts_num_chains=1,
               nuts_target_accept_prob=0.9,
               nuts_dense_mass=False,
-              epoch_checkpoint_interval=1000):
+              epoch_checkpoint_interval=1000,
+              init_from=None):
     """
     Fit the joint hierarchical model using a previously generated configuration file.
 
@@ -452,6 +470,14 @@ def fit_model(config_file,
         ``checkpoints/`` subdirectory alongside ``out_prefix`` (default 1000).
         Files are named ``{epoch:07d}_checkpoint.pkl``. Set to 0 or None to
         disable. Raises ``FileExistsError`` if a target file already exists.
+    init_from : str or None, optional
+        A ``*_params.npz`` written by a MAP fit (``{site}_auto_loc`` arrays)
+        to start from instead of the configured guesses, wherever it names a
+        site of this model; other sites start at their guesses. The fit may
+        be of a different model: starting a ``sample_offset: level`` fit from
+        a ``zero`` fit's point, say (the npz can carry
+        ``sample_offset_offset_auto_loc`` to set the offsets too). Refused
+        with ``checkpoint_file``, which sets the start itself.
 
     Returns
     -------
@@ -508,7 +534,13 @@ def fit_model(config_file,
                     "overwrite, delete the file or change out_prefix."
                 )
 
+    if init_from is not None and checkpoint_file is not None:
+        raise ValueError("init_from and checkpoint_file both set the starting "
+                         "point; give one.")
+
     orchestrator, guesses = read_configuration(config_file)
+    if init_from is not None:
+        guesses = {**guesses, **_read_init_from(init_from)}
 
     # For posterior mode the seed is optional: the checkpoint restores the PRNG
     # key for SVI checkpoints, and any valid key works for MAP/Laplace sampling.
@@ -647,7 +679,8 @@ def main():
                                               "nuts_num_samples":int,
                                               "nuts_num_chains":int,
                                               "nuts_target_accept_prob":float,
-                                              "epoch_checkpoint_interval":int})
+                                              "epoch_checkpoint_interval":int,
+                                              "init_from":str})
 
 if __name__ == "__main__":
     main()

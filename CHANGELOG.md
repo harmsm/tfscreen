@@ -31,6 +31,20 @@ fall into two kinds:
 
 ### Added
 
+- **`tfs-fit-model --init_from <params.npz>`** starts a fit at a MAP
+  point, the `{site}_auto_loc` arrays of an earlier fit's
+  `*_params.npz`, wherever they name a site of this model. They take
+  precedence over the guesses, and other sites start at their guesses. So
+  a model can be seeded from a simpler one, for example a
+  `sample_offset: level` fit from a `zero` fit. The option is refused with
+  `checkpoint_file`. Before this, guesses were the only way in, and
+  `read_configuration` silently drops guess rows for names outside the
+  configured guesses, including sites such as `condition_growth_k` and the
+  tube offsets. On the dev-data screen the level-offset MAP had fallen into
+  a mode with offsets of ±2.8. Holding the no-offset MAP's point and
+  fitting only small per-tube offsets beat it by 1.2e5 nats of count
+  likelihood (`planning/dev-data/real_fit`, gitignored).
+
 - **`sample_offset: level` takes `sigma_fixed`.** Above 0, the SD of the
   per-tube offsets is held at that value (a deterministic site, no guide
   parameters) instead of learned; set `growth.sample_offset.sigma_fixed` in
