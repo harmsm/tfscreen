@@ -988,7 +988,9 @@ def test_extract_parameters_full(initialized_model_class):
     })
     model.growth_tm.map_groups = {"condition_rep": pd.DataFrame({"replicate":[1], "condition_rep":["A"], "map_condition_rep":[0]})}
     model.growth_tm.tensor_dim_names = ["replicate", "time", "condition_pre", "condition_sel", "titrant_name", "titrant_conc", "genotype"]
-    model.growth_tm.tensor_dim_labels = [[], [], [], [], [], [1.0], []]
+    # the axes ln_cfu0's extraction keys rows by (replicate, condition_pre,
+    # genotype) must carry the table's labels
+    model.growth_tm.tensor_dim_labels = [[1], [], ["A"], [], [], [1.0], ["wt"]]
     
     post = {
         "theta_hill_n": np.zeros((1, 1, 1)), "theta_log_hill_K": np.zeros((1, 1, 1)), 

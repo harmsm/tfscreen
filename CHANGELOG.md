@@ -31,6 +31,14 @@ fall into two kinds:
 
 ### Added
 
+- **`sample_offset: level` takes `sigma_fixed`.** Above 0, the SD of the
+  per-tube offsets is held at that value (a deterministic site, no guide
+  parameters) instead of learned; set `growth.sample_offset.sigma_fixed` in
+  the priors CSV. On the first real-data fit the learned SD went from its
+  0.2 prior scale to 0.53, and the offsets (-2.7 to +3.0, smooth in IPTG
+  and time) carried the population's growth in place of k and m. Default 0
+  keeps the learned SD.
+
 - **`tfs-sample-posterior --map_point`** writes a MAP checkpoint's point
   itself (one sample, `RunInference.get_map_posteriors`) instead of a
   Laplace posterior, whose full Hessian is out of reach on a full library

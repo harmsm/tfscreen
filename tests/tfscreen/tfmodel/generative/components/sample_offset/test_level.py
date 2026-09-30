@@ -65,3 +65,30 @@ def test_guide_follows_loc_scale_convention():
 
 def test_guesses():
     assert set(get_guesses("sample_offset", _data())) == {"sample_offset_sigma"}
+
+
+def test_sigma_fixed_holds_sigma():
+    """
+    sigma_fixed > 0 makes sigma a deterministic site at that value and drops
+    its guide parameters; 0 (the default) keeps it learned.
+    """
+    import dataclasses
+    assert get_priors().sigma_fixed == 0.0
+    priors = dataclasses.replace(get_priors(), sigma_fixed=0.17)
+
+    tr = handlers.trace(handlers.seed(define_model, 0)).get_trace(
+        "sample_offset", _data(), priors)
+    assert tr["sample_offset_sigma"]["type"] == "deterministic"
+    assert float(tr["sample_offset_sigma"]["value"]) == pytest.approx(0.17)
+    assert float(tr["sample_offset_offset"]["fn"].base_dist.scale) == \
+        pytest.approx(0.17)
+
+    tr = handlers.trace(handlers.seed(guide, 0)).get_trace(
+        "sample_offset", _data(), priors)
+    params = {k for k, v in tr.items() if v["type"] == "param"}
+    assert params == {"sample_offset_offset_loc", "sample_offset_offset_scale"}
+    assert "sample_offset_sigma" not in tr
+
+    tr = handlers.trace(handlers.seed(define_model, 0)).get_trace(
+        "sample_offset", _data(), get_priors())
+    assert tr["sample_offset_sigma"]["type"] == "sample"
